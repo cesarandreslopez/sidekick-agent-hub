@@ -1,0 +1,139 @@
+{
+  "name": "sidekick-for-max",
+  "displayName": "Sidekick for Max",
+  "description": "AI code completions and transformations powered by your Claude Max subscription",
+  "version": "0.2.0",
+  "publisher": "CesarAndresLopez",
+  "author": {
+    "name": "Cesar Andres Lopez",
+    "email": "cesarandreslopez@gmail.com"
+  },
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cesarandreslopez/sidekick-for-claude-max"
+  },
+  "homepage": "https://github.com/cesarandreslopez/sidekick-for-claude-max#readme",
+  "bugs": {
+    "url": "https://github.com/cesarandreslopez/sidekick-for-claude-max/issues"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "copilot",
+    "completion",
+    "anthropic",
+    "code-completion",
+    "inline-completion"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Machine Learning", "Programming Languages"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Sidekick for Max",
+      "properties": {
+        "sidekick.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3456",
+          "description": "URL of the Sidekick server"
+        },
+        "sidekick.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable inline completions"
+        },
+        "sidekick.debounceMs": {
+          "type": "number",
+          "default": 300,
+          "description": "Debounce delay in milliseconds before requesting completion"
+        },
+        "sidekick.inlineContextLines": {
+          "type": "number",
+          "default": 30,
+          "description": "Lines of context before/after cursor for inline completions"
+        },
+        "sidekick.transformContextLines": {
+          "type": "number",
+          "default": 50,
+          "description": "Lines of context before/after selection for transforms"
+        },
+        "sidekick.multiline": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable multi-line completions (up to 10 lines). When disabled, completions are limited to 1-3 lines."
+        },
+        "sidekick.inlineModel": {
+          "type": "string",
+          "enum": ["haiku", "sonnet"],
+          "default": "haiku",
+          "description": "Model for inline completions (haiku=fast, sonnet=quality)",
+          "enumDescriptions": [
+            "Claude Haiku - Faster completions (recommended for inline)",
+            "Claude Sonnet - Higher quality, slower"
+          ]
+        },
+        "sidekick.transformModel": {
+          "type": "string",
+          "enum": ["haiku", "sonnet", "opus"],
+          "default": "opus",
+          "description": "Model for code transformations (opus=highest quality, sonnet=balanced, haiku=fast)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality",
+            "Claude Opus - Highest quality (recommended for transforms)"
+          ]
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "sidekick.toggle",
+        "title": "Sidekick: Toggle Inline Completions"
+      },
+      {
+        "command": "sidekick.triggerCompletion",
+        "title": "Sidekick: Trigger Completion"
+      },
+      {
+        "command": "sidekick.transform",
+        "title": "Sidekick: Transform Selected Code"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "sidekick.triggerCompletion",
+        "key": "ctrl+shift+space",
+        "mac": "cmd+shift+space",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "sidekick.transform",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "editorTextFocus && editorHasSelection"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}

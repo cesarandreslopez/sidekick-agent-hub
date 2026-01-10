@@ -1,0 +1,25 @@
+# Source files (compiled JS is in out/)
+src/**
+
+# Config files
+.vscode/**
+.gitignore
+tsconfig.json
+eslint.config.js
+vitest.config.ts
+vitest.config.js
+vitest.config.js.map
+
+# Test files
+**/*.test.ts
+**/*.test.js
+out/extension.test.js
+out/extension.test.js.map
+
+# Dependencies and build artifacts
+node_modules/**
+dist/**
+
+# Other
+*.vsix
+.npm
