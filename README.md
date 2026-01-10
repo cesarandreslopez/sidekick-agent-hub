@@ -5,10 +5,10 @@
 <h1 align="center">Sidekick for Max</h1>
 
 <p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max"><img src="https://img.shields.io/visual-studio-marketplace/v/CesarAndresLopez.sidekick-for-max?label=VS%20Code%20Marketplace" alt="VS Code Marketplace"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://github.com/cesarandreslopez/sidekick-for-claude-max/actions/workflows/ci.yml"><img src="https://github.com/cesarandreslopez/sidekick-for-claude-max/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/VS%20Code-1.85+-007ACC.svg" alt="VS Code 1.85+">
 </p>
 
 <p align="center">
@@ -68,7 +68,7 @@ VS Code Extension                    Local Server (port 3456)
    ./start-server.sh
    ```
 
-3. Install the VS Code extension from the `sidekick-vscode/` directory
+3. Install the [VS Code extension from the Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max)
 
 4. Start coding - completions appear automatically as you type
 
