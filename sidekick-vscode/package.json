@@ -42,6 +42,16 @@
     "configuration": {
       "title": "Sidekick for Max",
       "properties": {
+        "sidekick.authMode": {
+          "type": "string",
+          "enum": ["api-key", "max-subscription"],
+          "default": "max-subscription",
+          "description": "Authentication mode for Claude API",
+          "enumDescriptions": [
+            "Use an Anthropic API key (requires ANTHROPIC_API_KEY env var or configured key)",
+            "Use Claude Max subscription (requires Claude Code CLI installed and authenticated)"
+          ]
+        },
         "sidekick.serverUrl": {
           "type": "string",
           "default": "http://localhost:3456",
@@ -114,6 +124,14 @@
       {
         "command": "sidekick.transform",
         "title": "Sidekick: Transform Selected Code"
+      },
+      {
+        "command": "sidekick.setApiKey",
+        "title": "Sidekick: Set API Key"
+      },
+      {
+        "command": "sidekick.testConnection",
+        "title": "Sidekick: Test Connection"
       }
     ],
     "keybindings": [
