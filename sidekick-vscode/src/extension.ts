@@ -19,20 +19,8 @@ import * as vscode from "vscode";
 import * as https from "https";
 import * as http from "http";
 import { AuthService } from "./services/AuthService";
-
-/**
- * Response from the completion server.
- */
-interface CompletionResponse {
-  /** The generated code completion */
-  completion: string;
-  /** Error message if the request failed */
-  error?: string;
-  /** Request ID for tracing (correlates with server logs) */
-  requestId?: string;
-  /** HTTP status code from the response */
-  statusCode?: number;
-}
+import { CompletionService } from "./services/CompletionService";
+import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
 
 /**
  * Response from the transform endpoint.
@@ -54,14 +42,11 @@ let statusBarItem: vscode.StatusBarItem;
 /** Whether completions are currently enabled */
 let enabled = true;
 
-/** Timer for debouncing completion requests */
-let debounceTimer: NodeJS.Timeout | undefined;
-
-/** Counter for tracking the latest request (used to cancel stale requests) */
-let lastRequestId = 0;
-
 /** Auth service managing Claude API access */
 let authService: AuthService | undefined;
+
+/** Completion service managing completion requests */
+let completionService: CompletionService | undefined;
 
 /**
  * Activates the extension.
@@ -90,13 +75,17 @@ export function activate(context: vscode.ExtensionContext) {
   authService = new AuthService(context);
   context.subscriptions.push(authService);
 
-  // Register inline completion provider
-  const provider = new SidekickInlineCompletionProvider();
-  const disposable = vscode.languages.registerInlineCompletionItemProvider(
+  // Initialize completion service (depends on authService)
+  completionService = new CompletionService(authService);
+  context.subscriptions.push(completionService);
+
+  // Register inline completion provider using CompletionService
+  const inlineProvider = new InlineCompletionProvider(completionService);
+  const inlineDisposable = vscode.languages.registerInlineCompletionItemProvider(
     { pattern: "**" }, // All files
-    provider
+    inlineProvider
   );
-  context.subscriptions.push(disposable);
+  context.subscriptions.push(inlineDisposable);
 
   // Register commands
   context.subscriptions.push(
@@ -271,215 +260,6 @@ function updateStatusBar(): void {
 }
 
 /**
- * Inline completion provider that fetches suggestions from the server.
- *
- * This provider implements VS Code's InlineCompletionItemProvider interface
- * to show AI-generated code suggestions as ghost text in the editor.
- */
-class SidekickInlineCompletionProvider
-  implements vscode.InlineCompletionItemProvider
-{
-  /**
-   * Provides inline completion items for the current cursor position.
-   *
-   * @param document - The text document being edited
-   * @param position - The cursor position
-   * @param context - The inline completion context
-   * @param token - Cancellation token for aborting the request
-   * @returns Array of inline completion items or undefined
-   */
-  async provideInlineCompletionItems(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-    context: vscode.InlineCompletionContext,
-    token: vscode.CancellationToken
-  ): Promise<vscode.InlineCompletionItem[] | undefined> {
-    // Check if enabled
-    const config = vscode.workspace.getConfiguration("sidekick");
-    if (!enabled || !config.get("enabled")) {
-      return undefined;
-    }
-
-    // Debounce
-    const debounceMs = config.get<number>("debounceMs") || 300;
-    const requestId = ++lastRequestId;
-
-    await new Promise((resolve) => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      debounceTimer = setTimeout(resolve, debounceMs);
-    });
-
-    // Check if this request is still valid
-    if (requestId !== lastRequestId || token.isCancellationRequested) {
-      return undefined;
-    }
-
-    try {
-      const completion = await this.getCompletion(document, position, config);
-
-      if (
-        !completion ||
-        token.isCancellationRequested ||
-        requestId !== lastRequestId
-      ) {
-        return undefined;
-      }
-
-      return [
-        new vscode.InlineCompletionItem(
-          completion,
-          new vscode.Range(position, position)
-        ),
-      ];
-    } catch (error) {
-      console.error("Completion error:", error);
-      return undefined;
-    }
-  }
-
-  /**
-   * Fetches a code completion from the server.
-   *
-   * @param document - The text document being edited
-   * @param position - The cursor position
-   * @param config - The extension configuration
-   * @returns The completion text or undefined if no completion available
-   */
-  private async getCompletion(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-    config: vscode.WorkspaceConfiguration
-  ): Promise<string | undefined> {
-    const serverUrl =
-      config.get<string>("serverUrl") || "http://localhost:3456";
-    const maxContextLines = config.get<number>("inlineContextLines") || 30;
-    const multiline = config.get<boolean>("multiline") || false;
-    const model = config.get<string>("inlineModel") || "haiku";
-
-    // Get context around cursor
-    const startLine = Math.max(0, position.line - maxContextLines);
-    const endLine = Math.min(
-      document.lineCount - 1,
-      position.line + maxContextLines
-    );
-
-    // Get prefix (everything before cursor)
-    const prefixRange = new vscode.Range(
-      new vscode.Position(startLine, 0),
-      position
-    );
-    const prefix = document.getText(prefixRange);
-
-    // Get suffix (everything after cursor)
-    const suffixRange = new vscode.Range(
-      position,
-      new vscode.Position(endLine, document.lineAt(endLine).text.length)
-    );
-    const suffix = document.getText(suffixRange);
-
-    // Detect language
-    const language = document.languageId;
-    const filename = document.fileName.split("/").pop() || "unknown";
-
-    // Make request to completion server
-    const response = await this.fetchCompletion(serverUrl, {
-      prefix,
-      suffix,
-      language,
-      filename,
-      model,
-      multiline,
-    });
-
-    // Log request ID for debugging correlation with server logs
-    if (response.requestId) {
-      console.debug(`Completion request ${response.requestId}`);
-    }
-
-    // Handle rate limiting
-    if (response.statusCode === 429) {
-      vscode.window.showWarningMessage(
-        "Rate limited. Please wait a moment."
-      );
-      return undefined;
-    }
-
-    if (response.error) {
-      console.error(
-        `Completion server error${response.requestId ? ` [${response.requestId}]` : ""}:`,
-        response.error
-      );
-      return undefined;
-    }
-
-    return response.completion || undefined;
-  }
-
-  /**
-   * Makes an HTTP request to the completion server.
-   *
-   * @param serverUrl - The base URL of the completion server
-   * @param body - The request payload containing code context
-   * @returns Promise resolving to the server response
-   */
-  private fetchCompletion(
-    serverUrl: string,
-    body: object
-  ): Promise<CompletionResponse> {
-    return new Promise((resolve) => {
-      const url = new URL("/inline", serverUrl);
-      const isHttps = url.protocol === "https:";
-      const httpModule = isHttps ? https : http;
-
-      const postData = JSON.stringify(body);
-
-      const options = {
-        hostname: url.hostname,
-        port: url.port || (isHttps ? 443 : 80),
-        path: url.pathname,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(postData),
-        },
-        timeout: 10000,
-      };
-
-      const req = httpModule.request(options, (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(data);
-            resolve({ ...parsed, statusCode: res.statusCode });
-          } catch {
-            resolve({
-              completion: "",
-              error: "Invalid JSON response",
-              statusCode: res.statusCode,
-            });
-          }
-        });
-      });
-
-      req.on("error", (error) => {
-        resolve({ completion: "", error: error.message });
-      });
-
-      req.on("timeout", () => {
-        req.destroy();
-        resolve({ completion: "", error: "Request timeout" });
-      });
-
-      req.write(postData);
-      req.end();
-    });
-  }
-}
-
-/**
  * Makes an HTTP request to the transform endpoint.
  *
  * @param serverUrl - The base URL of the server
@@ -543,12 +323,9 @@ function fetchTransform(
 /**
  * Deactivates the extension.
  *
- * Called when the extension is deactivated. Cleans up any pending timers.
- * AuthService cleanup happens automatically via context.subscriptions.
+ * Called when the extension is deactivated.
+ * Cleanup handled via context.subscriptions (AuthService, CompletionService).
  */
 export function deactivate(): void {
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
-  }
-  // AuthService cleanup happens via context.subscriptions
+  // Cleanup handled via context.subscriptions (AuthService, CompletionService)
 }
