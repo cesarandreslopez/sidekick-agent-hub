@@ -1,16 +1,17 @@
 /**
  * @fileoverview VS Code extension providing Sidekick for Max inline completions.
  *
- * This extension integrates with the Sidekick server to provide
- * intelligent code suggestions as you type. It registers an inline completion
- * provider that sends code context to the server and displays suggestions.
+ * This extension uses Claude via the Agent SDK (Max subscription) or API key
+ * to provide intelligent code suggestions as you type. It registers an inline
+ * completion provider that sends code context to Claude and displays suggestions.
  *
  * Features:
  * - Automatic inline completions as you type
+ * - Code transformation via selection and instruction
  * - Configurable debounce delay
  * - Toggle enable/disable via status bar or command
  * - Manual trigger via keyboard shortcut (Ctrl+Shift+Space)
- * - Model selection (haiku for speed, sonnet for quality)
+ * - Model selection (haiku for speed, sonnet/opus for quality)
  *
  * @module extension
  */
@@ -25,20 +26,6 @@ import {
   getTransformUserPrompt,
   cleanTransformResponse,
 } from "./utils/prompts";
-
-/**
- * Response from the transform endpoint.
- */
-interface TransformResponse {
-  /** The modified code */
-  modified_code: string;
-  /** Error message if the request failed */
-  error?: string;
-  /** Request ID for tracing */
-  requestId?: string;
-  /** HTTP status code from the response */
-  statusCode?: number;
-}
 
 /** Whether completions are currently enabled */
 let enabled = true;
@@ -263,67 +250,6 @@ export function activate(context: vscode.ExtensionContext) {
       }
     )
   );
-}
-
-/**
- * Makes an HTTP request to the transform endpoint.
- *
- * @param serverUrl - The base URL of the server
- * @param body - The request payload containing code and instruction
- * @returns Promise resolving to the server response
- */
-function fetchTransform(
-  serverUrl: string,
-  body: object
-): Promise<TransformResponse> {
-  return new Promise((resolve) => {
-    const url = new URL("/transform", serverUrl);
-    const isHttps = url.protocol === "https:";
-    const httpModule = isHttps ? https : http;
-
-    const postData = JSON.stringify(body);
-
-    const options = {
-      hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
-      path: url.pathname,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(postData),
-      },
-      timeout: 20000, // 20 second timeout for transforms
-    };
-
-    const req = httpModule.request(options, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve({ ...parsed, statusCode: res.statusCode });
-        } catch {
-          resolve({
-            modified_code: "",
-            error: "Invalid JSON response",
-            statusCode: res.statusCode,
-          });
-        }
-      });
-    });
-
-    req.on("error", (error) => {
-      resolve({ modified_code: "", error: error.message });
-    });
-
-    req.on("timeout", () => {
-      req.destroy();
-      resolve({ modified_code: "", error: "Request timeout" });
-    });
-
-    req.write(postData);
-    req.end();
-  });
 }
 
 /**
