@@ -18,7 +18,6 @@ vi.mock("vscode", () => ({
     getConfiguration: vi.fn(() => ({
       get: vi.fn((key: string) => {
         const defaults: Record<string, unknown> = {
-          serverUrl: "http://localhost:3456",
           enabled: true,
           debounceMs: 300,
           maxContextLines: 50,
@@ -70,7 +69,6 @@ describe("Extension Configuration", () => {
     const vscode = await import("vscode");
     const config = vscode.workspace.getConfiguration("sidekick");
 
-    expect(config.get("serverUrl")).toBe("http://localhost:3456");
     expect(config.get("enabled")).toBe(true);
     expect(config.get("debounceMs")).toBe(300);
     expect(config.get("maxContextLines")).toBe(50);

@@ -52,11 +52,6 @@
             "Use Claude Max subscription (requires Claude Code CLI installed and authenticated)"
           ]
         },
-        "sidekick.serverUrl": {
-          "type": "string",
-          "default": "http://localhost:3456",
-          "description": "URL of the Sidekick server"
-        },
         "sidekick.enabled": {
           "type": "boolean",
           "default": true,
