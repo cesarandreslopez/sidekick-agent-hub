@@ -8,7 +8,9 @@
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noEmit": true,
+    "moduleResolution": "node"
   },
   "exclude": ["node_modules", ".vscode-test", "vitest.config.ts"]
 }
