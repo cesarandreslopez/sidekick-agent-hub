@@ -16,12 +16,15 @@
  */
 
 import * as vscode from "vscode";
-import * as https from "https";
-import * as http from "http";
 import { AuthService } from "./services/AuthService";
 import { CompletionService } from "./services/CompletionService";
 import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
+import {
+  getTransformSystemPrompt,
+  getTransformUserPrompt,
+  cleanTransformResponse,
+} from "./utils/prompts";
 
 /**
  * Response from the transform endpoint.
@@ -171,19 +174,17 @@ export function activate(context: vscode.ExtensionContext) {
         const instruction = await vscode.window.showInputBox({
           prompt: "How should this code be transformed?",
           placeHolder: "e.g., Add error handling, Convert to async/await, Add types",
+          ignoreFocusOut: true,
         });
 
         if (!instruction) {
           return; // User cancelled
         }
 
-        const selectedText = editor.document.getText(editor.selection);
         const language = editor.document.languageId;
-        const filename = editor.document.fileName.split("/").pop() || "unknown";
         const config = vscode.workspace.getConfiguration("sidekick");
-        const serverUrl = config.get<string>("serverUrl") || "http://localhost:3456";
-        const model = config.get<string>("transformModel") || "opus";
-        const contextLines = config.get<number>("transformContextLines") || 50;
+        const model = config.get<string>("transformModel") ?? "opus";
+        const contextLines = config.get<number>("transformContextLines") ?? 50;
 
         // Get context before selection
         const selectionStart = editor.selection.start;
@@ -206,50 +207,59 @@ export function activate(context: vscode.ExtensionContext) {
         );
         const suffix = editor.document.getText(suffixRange);
 
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Sidekick: Transforming code...",
-            cancellable: true,
-          },
-          async (progress, token) => {
-            const result = await fetchTransform(serverUrl, {
-              code: selectedText,
-              instruction,
-              language,
-              filename,
-              model,
-              prefix,
-              suffix,
-            });
+        // Capture selection state before async operation
+        const originalSelection = editor.selection;
+        const selectedText = editor.document.getText(originalSelection);
 
-            if (token.isCancellationRequested) {
-              return;
-            }
+        statusBarManager?.setLoading("Transforming");
 
-            if (result.statusCode === 429) {
-              vscode.window.showWarningMessage(
-                "Rate limited. Please wait a moment."
-              );
-              return;
-            }
+        try {
+          // Build prompt using prompt templates
+          const prompt =
+            getTransformSystemPrompt() +
+            "\n\n" +
+            getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
 
-            if (result.error) {
-              vscode.window.showErrorMessage(`Transform failed: ${result.error}`);
-              return;
-            }
+          // Use AuthService instead of HTTP
+          const result = await authService!.complete(prompt, {
+            model,
+            maxTokens: 4096,
+            timeout: 60000, // Transforms can take longer
+          });
 
-            if (!result.modified_code) {
-              vscode.window.showWarningMessage("No transformation returned");
-              return;
-            }
-
-            // Replace selection with modified code
-            await editor.edit((editBuilder) => {
-              editBuilder.replace(editor.selection, result.modified_code);
-            });
+          // Clean the response
+          const cleaned = cleanTransformResponse(result);
+          if (!cleaned) {
+            vscode.window.showWarningMessage("No transformation returned");
+            statusBarManager?.setConnected();
+            return;
           }
-        );
+
+          // Verify selection hasn't changed
+          if (!editor.selection.isEqual(originalSelection)) {
+            vscode.window.showWarningMessage(
+              "Selection changed during transform. Please try again."
+            );
+            statusBarManager?.setConnected();
+            return;
+          }
+
+          // Apply the edit
+          const success = await editor.edit((editBuilder) => {
+            editBuilder.replace(originalSelection, cleaned);
+          });
+
+          if (success) {
+            statusBarManager?.setConnected();
+          } else {
+            statusBarManager?.setError("Edit failed");
+            vscode.window.showErrorMessage("Failed to apply transformation");
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown error";
+          statusBarManager?.setError(message);
+          vscode.window.showErrorMessage(`Transform failed: ${message}`);
+        }
       }
     )
   );
