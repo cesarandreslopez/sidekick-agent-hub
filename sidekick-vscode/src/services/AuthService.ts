@@ -163,7 +163,9 @@ export class AuthService implements vscode.Disposable {
           return {
             success: false,
             message:
-              'Claude Code CLI not found. Please install it: npm install -g @anthropic-ai/claude-code',
+              'Claude Code CLI not found. Install it with: npm install -g @anthropic-ai/claude-code\n\n' +
+              'If already installed (e.g., via pnpm), set the path in Settings > Sidekick > Claude Path.\n' +
+              'Find your claude path with: which claude (Linux/Mac) or where claude (Windows)',
           };
         }
         return {

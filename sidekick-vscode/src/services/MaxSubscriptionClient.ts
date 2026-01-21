@@ -10,6 +10,8 @@
 
 import * as vscode from 'vscode';
 import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
 import { ClaudeClient, CompletionOptions } from '../types';
 import { log, logError } from './Logger';
 
@@ -25,6 +27,84 @@ let cachedQuery: QueryFunction | null = null;
  */
 function getWorkingDirectory(): string {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
+}
+
+/**
+ * Common installation paths for the Claude CLI on different platforms.
+ * These are checked when the CLI isn't found in PATH.
+ */
+function getCommonClaudePaths(): string[] {
+  const homeDir = os.homedir();
+  const isWindows = process.platform === 'win32';
+  const ext = isWindows ? '.cmd' : '';
+
+  return [
+    // npm global (standard)
+    path.join(homeDir, '.npm-global', 'bin', `claude${ext}`),
+    // npm global (alternative)
+    path.join(homeDir, 'npm-global', 'bin', `claude${ext}`),
+    // pnpm global
+    path.join(homeDir, '.local', 'share', 'pnpm', `claude${ext}`),
+    // pnpm alternative location
+    path.join(homeDir, 'Library', 'pnpm', `claude${ext}`),
+    // yarn global
+    path.join(homeDir, '.yarn', 'bin', `claude${ext}`),
+    // volta
+    path.join(homeDir, '.volta', 'bin', `claude${ext}`),
+    // nvm (common node versions)
+    path.join(homeDir, '.nvm', 'versions', 'node', '**', 'bin', `claude${ext}`),
+    // Linux system paths
+    `/usr/local/bin/claude${ext}`,
+    `/usr/bin/claude${ext}`,
+    // macOS Homebrew
+    '/opt/homebrew/bin/claude',
+    '/usr/local/opt/node/bin/claude',
+    // Windows npm global
+    ...(isWindows ? [
+      path.join(process.env.APPDATA || '', 'npm', 'claude.cmd'),
+      path.join(process.env.LOCALAPPDATA || '', 'pnpm', 'claude.cmd'),
+    ] : []),
+  ];
+}
+
+/**
+ * Finds the Claude CLI executable path.
+ *
+ * Checks in order:
+ * 1. User-configured path (sidekick.claudePath setting)
+ * 2. Common installation paths
+ * 3. Falls back to 'claude' (assumes it's in PATH)
+ *
+ * @returns The path to the claude executable, or 'claude' if not found
+ */
+function findClaudeCli(): string {
+  // Check user-configured path first
+  const config = vscode.workspace.getConfiguration('sidekick');
+  const configuredPath = config.get<string>('claudePath');
+
+  if (configuredPath && configuredPath.trim() !== '') {
+    const expandedPath = configuredPath.replace(/^~/, os.homedir());
+    if (fs.existsSync(expandedPath)) {
+      log(`Using configured claude path: ${expandedPath}`);
+      return expandedPath;
+    }
+    log(`Configured claude path not found: ${expandedPath}`);
+  }
+
+  // Check common installation paths
+  for (const candidatePath of getCommonClaudePaths()) {
+    // Skip glob patterns (nvm paths with **)
+    if (candidatePath.includes('**')) continue;
+
+    if (fs.existsSync(candidatePath)) {
+      log(`Found claude at: ${candidatePath}`);
+      return candidatePath;
+    }
+  }
+
+  // Fall back to 'claude' (hope it's in PATH)
+  log('Claude not found in common paths, falling back to PATH lookup');
+  return 'claude';
 }
 
 /**
@@ -138,19 +218,27 @@ export class MaxSubscriptionClient implements ClaudeClient {
   /**
    * Tests if Claude Code CLI is available.
    *
-   * Checks if the `claude` command exists by running `claude --version`.
-   * This is a synchronous check but only runs once during connection test.
+   * Checks for the claude CLI in:
+   * 1. User-configured path (sidekick.claudePath setting)
+   * 2. Common installation paths (pnpm, npm, yarn, etc.)
+   * 3. System PATH
    *
    * @returns Promise resolving to true if CLI is available
    */
   async isAvailable(): Promise<boolean> {
     try {
-      // Check if Claude Code CLI is available
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { execSync } = require('child_process');
-      execSync('claude --version', { stdio: 'ignore' });
+      const claudePath = findClaudeCli();
+
+      log(`Testing CLI availability with: ${claudePath}`);
+
+      // Use shell: true to handle paths with spaces and resolve symlinks
+      execSync(`"${claudePath}" --version`, { stdio: 'ignore', shell: true });
+      log('Claude CLI is available');
       return true;
-    } catch {
+    } catch (error) {
+      logError('Claude CLI not available', error);
       return false;
     }
   }

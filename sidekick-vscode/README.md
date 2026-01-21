@@ -124,6 +124,7 @@ Click "Sidekick" in the status bar to access:
 | `sidekick.multiline` | `false` | Enable multi-line completions (prose files always use multiline) |
 | `sidekick.inlineModel` | `haiku` | Model for inline: `haiku`, `sonnet`, or `opus` |
 | `sidekick.transformModel` | `opus` | Model for transform: `opus`, `sonnet`, or `haiku` |
+| `sidekick.claudePath` | (empty) | Custom path to Claude CLI (for pnpm/yarn/non-standard installs) |
 
 > **Note:** Prose files (Markdown, plaintext, HTML, XML, LaTeX, etc.) automatically use multiline mode regardless of the setting.
 
@@ -138,6 +139,7 @@ Click "Sidekick" in the status bar to access:
 - Install the CLI: `npm install -g @anthropic-ai/claude-code`
 - Authenticate: `claude auth`
 - Verify: `claude --version`
+- **If installed via pnpm/yarn/volta:** Set `sidekick.claudePath` in settings to the full path (find it with `which claude` on Linux/Mac or `where claude` on Windows)
 
 ### API key issues (API key mode)
 - Run "Sidekick: Set API Key" to update your key

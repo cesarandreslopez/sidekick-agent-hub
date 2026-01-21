@@ -5,6 +5,25 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2025-01-21
+
+### Added
+- **Custom Claude CLI path setting** (`sidekick.claudePath`): Specify a custom path to the Claude CLI executable for non-standard installations (pnpm, yarn, volta, etc.)
+- **Auto-detection of common CLI paths**: Extension now checks common installation locations (pnpm, yarn, volta, npm global, Homebrew) before falling back to PATH
+
+### Fixed
+- Fixed "Claude Code CLI not found" error for users who installed Claude CLI via pnpm, yarn, or other package managers ([#3](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/3))
+- Improved error message with instructions for setting custom CLI path
+
+## [0.3.1] - 2025-01-21
+
+### Added
+- Demo GIFs in README for better feature visibility
+- Social media preview image
+
+### Fixed
+- Minor documentation improvements
+
 ## [0.3.0] - 2025-01-21
 
 ### Added

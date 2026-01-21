@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick for Max",
   "description": "Copilot-style AI code completions using your Claude Max subscription - no extra cost. Fast inline suggestions with Haiku, powerful transforms with Opus.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -115,6 +115,11 @@
             "Claude Sonnet - Balanced speed and quality",
             "Claude Opus - Highest quality (recommended for transforms)"
           ]
+        },
+        "sidekick.claudePath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to the Claude CLI executable. Leave empty to auto-detect. Useful when claude is installed via pnpm or in a non-standard location."
         }
       }
     },
