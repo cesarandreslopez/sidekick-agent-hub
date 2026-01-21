@@ -5,6 +5,25 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-01-21
+
+### Added
+- **AI Commit Message Generation**: Generate commit messages from your staged changes with a single click
+  - Sparkle button in Source Control toolbar triggers generation
+  - Analyzes git diff to create contextual commit messages
+  - Supports Conventional Commits format or simple descriptions (`sidekick.commitMessageStyle`)
+  - Configurable model selection (`sidekick.commitMessageModel`, defaults to Sonnet)
+  - Default guidance setting for consistent commit style (`sidekick.commitMessageGuidance`)
+  - Regenerate with custom guidance (e.g., "focus on the bug fix", "make it shorter")
+  - Automatically filters out binary files, lockfiles, and generated code from diff analysis
+  - Intelligent diff truncation at file boundaries for large changesets
+- **New Settings**:
+  - `sidekick.commitMessageModel`: Model for commit messages (haiku/sonnet/opus, default: sonnet)
+  - `sidekick.commitMessageStyle`: Format style (conventional/simple, default: conventional)
+  - `sidekick.commitMessageGuidance`: Default guidance applied to all commit messages
+  - `sidekick.showCommitButton`: Toggle visibility of the commit message button
+
+
 ## [0.3.2] - 2025-01-21
 
 ### Added

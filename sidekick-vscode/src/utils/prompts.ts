@@ -449,3 +449,109 @@ export function cleanTransformResponse(text: string): string | undefined {
 
   return cleaned || undefined;
 }
+
+/**
+ * Style options for commit message generation.
+ */
+export type CommitMessageStyle = 'conventional' | 'simple';
+
+/**
+ * Generates the system prompt for commit message generation.
+ *
+ * Instructs Claude to generate a single-line commit message in the specified style
+ * without any markdown, explanations, or formatting.
+ *
+ * @param style - The commit message style ('conventional' or 'simple')
+ * @returns System prompt string for commit message generation
+ */
+export function getCommitMessageSystemPrompt(style: CommitMessageStyle = 'conventional'): string {
+  if (style === 'simple') {
+    return `You are a Git commit message generator. Generate a single, concise commit message.
+
+REQUIREMENTS:
+- Write a clear, imperative description of the change
+- Start with a capitalized verb: Add, Fix, Update, Remove, Refactor, Improve, Create, Delete, Move, Rename
+- Keep message under 50 characters
+- Output ONLY the commit message (single line)
+- No markdown, no backticks, no code blocks
+- No explanations or meta-commentary
+- If multiple changes, describe the primary change`;
+  }
+
+  return `You are a Git commit message generator. Generate a single, concise commit message.
+
+REQUIREMENTS:
+- Use Conventional Commits format: type(scope): description
+- Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
+- Keep description under 50 characters
+- Output ONLY the commit message (single line)
+- No markdown, no backticks, no code blocks
+- No explanations or meta-commentary
+- If multiple changes, choose the primary type`;
+}
+
+/**
+ * Generates the user prompt for commit message generation.
+ *
+ * @param diff - The git diff text to analyze
+ * @param guidance - Optional user guidance for how to generate the message
+ * @returns User prompt string containing the diff
+ */
+export function getCommitMessageUserPrompt(diff: string, guidance?: string): string {
+  let prompt = '';
+
+  // Put guidance FIRST so it's not buried after a long diff
+  if (guidance && guidance.trim()) {
+    prompt += `IMPORTANT - Follow this guidance when writing the commit message: ${guidance.trim()}
+
+`;
+  }
+
+  prompt += `Generate a commit message for this diff:
+
+${diff}
+
+COMMIT MESSAGE:`;
+
+  return prompt;
+}
+
+/**
+ * Cleans and validates a commit message response from Claude.
+ *
+ * Removes markdown formatting, quotes, and explanatory text.
+ * Returns null if the response doesn't look like a valid commit message.
+ *
+ * @param text - Raw response text from Claude
+ * @returns Cleaned commit message, or null if invalid
+ */
+export function cleanCommitMessage(text: string): string | null {
+  const cleaned = text
+    .trim()
+    // Remove markdown code blocks
+    .replace(/^```[\w-]*\n?/, '')
+    .replace(/\n?```$/, '')
+    // Remove quotes if wrapped
+    .replace(/^["']|["']$/g, '')
+    .trim()
+    // Take only first line (in case Claude added explanation)
+    .split('\n')[0]
+    .trim();
+
+  // Validate format and length
+  if (!cleaned || cleaned.length > 100) {
+    return null;
+  }
+
+  // Reject explanatory text (similar to META_RESPONSE_PATTERNS)
+  if (/^(here|the|this|i['']ve|i have|let me|sure|okay|certainly|of course)/i.test(cleaned)) {
+    return null;
+  }
+
+  // Must be at least 5 characters to be a reasonable message
+  if (cleaned.length < 5) {
+    return null;
+  }
+
+  return cleaned;
+}

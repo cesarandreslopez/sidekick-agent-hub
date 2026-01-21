@@ -5,14 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+
+## [0.4.0] - 2025-01-21
 
 ### Added
-- GitHub issue templates and PR template
-- Contributing guidelines
-- Code of conduct
-- Security policy
-- CI/CD workflow
+- **AI Commit Message Generation**: Generate commit messages from staged changes with one click
+  - Sparkle button in Source Control toolbar
+  - Analyzes git diff to create contextual messages
+  - Conventional Commits or simple description format
+  - Configurable model (defaults to Sonnet)
+  - Default guidance setting for consistent commit style
+  - Regenerate with custom guidance
+  - Filters out lockfiles, binary files, and generated code
+- New settings: `commitMessageModel`, `commitMessageStyle`, `commitMessageGuidance`, `showCommitButton`
+
+## [0.3.2] - 2025-01-21
+
+### Added
+- **Custom Claude CLI path setting** (`sidekick.claudePath`): Specify a custom path to the Claude CLI executable for non-standard installations (pnpm, yarn, volta, etc.)
+- **Auto-detection of common CLI paths**: Extension now checks common installation locations (pnpm, yarn, volta, npm global, Homebrew) before falling back to PATH
+
+### Fixed
+- Fixed "Claude Code CLI not found" error for users who installed Claude CLI via pnpm, yarn, or other package managers ([#3](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/3))
+- Improved error message with instructions for setting custom CLI path
+
+## [0.3.1] - 2025-01-21
+
+### Added
+- Demo GIFs in README for better feature visibility
+- Social media preview image
+
+### Fixed
+- Minor documentation improvements
 
 ## [0.3.0] - 2025-01-21
 

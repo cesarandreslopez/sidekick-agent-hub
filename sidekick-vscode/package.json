@@ -1,8 +1,8 @@
 {
   "name": "sidekick-for-max",
   "displayName": "Sidekick for Max",
-  "description": "Copilot-style AI code completions using your Claude Max subscription - no extra cost. Fast inline suggestions with Haiku, powerful transforms with Opus.",
-  "version": "0.3.2",
+  "description": "AI-powered code completions, transforms, and commit messages using your Claude Max subscription - no extra cost.",
+  "version": "0.4.0",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -116,10 +116,45 @@
             "Claude Opus - Highest quality (recommended for transforms)"
           ]
         },
+        "sidekick.commitMessageModel": {
+          "type": "string",
+          "enum": [
+            "haiku",
+            "sonnet",
+            "opus"
+          ],
+          "default": "sonnet",
+          "description": "Model for commit message generation (haiku=fast, sonnet=balanced, opus=quality)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality (recommended)",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
+        "sidekick.commitMessageGuidance": {
+          "type": "string",
+          "default": "",
+          "description": "Default guidance for commit message generation. Applied to all commits (e.g., 'keep it short', 'always mention ticket numbers', 'use past tense')"
+        },
         "sidekick.claudePath": {
           "type": "string",
           "default": "",
           "description": "Custom path to the Claude CLI executable. Leave empty to auto-detect. Useful when claude is installed via pnpm or in a non-standard location."
+        },
+        "sidekick.showCommitButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show AI commit message button in Source Control toolbar"
+        },
+        "sidekick.commitMessageStyle": {
+          "type": "string",
+          "enum": ["conventional", "simple"],
+          "default": "conventional",
+          "markdownEnumDescriptions": [
+            "**Conventional Commits** - Structured format: `type(scope): description` (e.g., `feat(auth): add OAuth2 support`)",
+            "**Simple Description** - Plain imperative description (e.g., `Add OAuth2 authentication support`)"
+          ],
+          "description": "Format style for AI-generated commit messages"
         }
       }
     },
@@ -151,6 +186,11 @@
       {
         "command": "sidekick.showMenu",
         "title": "Sidekick: Show Menu"
+      },
+      {
+        "command": "sidekick.generateCommitMessage",
+        "title": "Sidekick: Generate Commit Message",
+        "icon": "$(sparkle)"
       }
     ],
     "keybindings": [
@@ -166,7 +206,16 @@
         "mac": "cmd+shift+m",
         "when": "editorTextFocus && editorHasSelection"
       }
-    ]
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "sidekick.generateCommitMessage",
+          "group": "navigation",
+          "when": "scmProvider == git && config.sidekick.showCommitButton"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run build",

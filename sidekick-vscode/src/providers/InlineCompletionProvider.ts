@@ -52,6 +52,11 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
     context: vscode.InlineCompletionContext,
     token: vscode.CancellationToken
   ): Promise<vscode.InlineCompletionItem[] | undefined> {
+    // Only provide completions for regular file documents (not SCM input, output panels, etc.)
+    if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled') {
+      return undefined;
+    }
+
     // Check if completions are enabled in config
     const config = vscode.workspace.getConfiguration('sidekick');
     if (!config.get('enabled')) {

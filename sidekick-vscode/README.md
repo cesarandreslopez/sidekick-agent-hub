@@ -1,12 +1,12 @@
 # Sidekick for Max
 
-AI code completions and transformations powered by your Claude Max subscription.
+AI-powered code completions, transforms, and commit messages using your Claude Max subscription.
 
 ![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/inline_transforms.gif)
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
 
-If you're already paying for Claude Max, Sidekick lets you use those tokens for fast, Copilot-style completions--no extra cost, no separate account.
+If you're already paying for Claude Max, Sidekick lets you use those tokens for inline completions, code transforms, and AI commit messages--no extra cost, no separate account.
 
 ## Why Use This Extension?
 
@@ -87,6 +87,24 @@ Transform selected code using natural language instructions.
 3. Enter your instruction (e.g., "Add error handling", "Convert to async/await", "Add TypeScript types")
 4. The selection is replaced with the modified code
 
+### AI Commit Messages
+
+Generate intelligent commit messages from your staged changes with a single click.
+
+![AI commit message generation](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/commit_generation.gif)
+
+1. Stage your changes in the Source Control panel
+2. Click the sparkle button in the Source Control toolbar
+3. A commit message is generated based on your diff
+4. Optionally regenerate with custom guidance (e.g., "focus on the bug fix", "make it shorter")
+
+**Features:**
+- Analyzes your git diff to create contextual commit messages
+- Supports Conventional Commits format (`feat(scope): description`) or simple descriptions
+- Configurable default guidance for consistent commit style across your team
+- Automatically filters out lockfiles, binary files, and generated code
+- Uses Sonnet by default for high-quality messages
+
 ## Commands
 
 | Command | Keybinding | Description |
@@ -95,6 +113,7 @@ Transform selected code using natural language instructions.
 | Sidekick: Toggle Inline Completions | - | Enable/disable completions |
 | Sidekick: Trigger Completion | Ctrl+Shift+Space | Manually request a completion |
 | Sidekick: Transform Selected Code | Ctrl+Shift+M | Transform selected code with instruction |
+| Sidekick: Generate Commit Message | Click sparkle in SCM | Generate commit message from staged changes |
 | Sidekick: View Logs | - | Open output channel for debugging |
 | Sidekick: Set API Key | - | Set your Anthropic API key |
 | Sidekick: Test Connection | - | Test API connectivity |
@@ -123,6 +142,10 @@ Click "Sidekick" in the status bar to access:
 | `sidekick.multiline` | `false` | Enable multi-line completions (prose files always use multiline) |
 | `sidekick.inlineModel` | `haiku` | Model for inline: `haiku`, `sonnet`, or `opus` |
 | `sidekick.transformModel` | `opus` | Model for transform: `opus`, `sonnet`, or `haiku` |
+| `sidekick.commitMessageModel` | `sonnet` | Model for commit messages: `haiku`, `sonnet`, or `opus` |
+| `sidekick.commitMessageStyle` | `conventional` | Commit format: `conventional` or `simple` |
+| `sidekick.commitMessageGuidance` | (empty) | Default guidance for all commit messages |
+| `sidekick.showCommitButton` | `true` | Show commit message button in Source Control |
 | `sidekick.claudePath` | (empty) | Custom path to Claude CLI (for pnpm/yarn/non-standard installs) |
 
 > **Note:** Prose files (Markdown, plaintext, HTML, XML, LaTeX, etc.) automatically use multiline mode regardless of the setting.

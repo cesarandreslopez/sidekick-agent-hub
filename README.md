@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  AI-powered inline code completions and transformations for VS Code, powered by your Claude Max subscription.
+  AI-powered code completions, transforms, and commit messages for VS Code, using your Claude Max subscription.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
 
-If you're already paying for Claude Max, Sidekick lets you use those tokens for fast, Copilot-style completions—no extra cost, no separate account.
+If you're already paying for Claude Max, Sidekick lets you use those tokens for inline completions, code transforms, and AI commit messages—no extra cost, no separate account.
 
 Let's consider the following: 
 
@@ -78,6 +78,16 @@ Select code, press `Ctrl+Shift+M`, and describe how to transform it. Uses Opus b
 
 ![Code transforms demo](assets/code_transforms.gif)
 
+### AI Commit Messages
+Generate intelligent commit messages from your staged changes with a single click. Click the sparkle button in the Source Control toolbar to analyze your diff and create a contextual commit message.
+
+![AI commit message generation](assets/commit_generation.gif)
+
+- **Conventional Commits** or simple description format
+- **Regenerate with guidance** - refine the message with instructions like "focus on the bug fix" or "make it shorter"
+- **Default guidance** - configure consistent commit style for your team
+- Uses Sonnet by default for high-quality messages
+
 ### Status Bar Menu
 Click "Sidekick" in the status bar to access logs, test connection, configure settings, and more.
 
@@ -89,8 +99,9 @@ Click "Sidekick" in the status bar to access logs, test connection, configure se
 |---------|---------------|--------------|
 | Inline completions | Haiku | Minimal - fast and cheap |
 | Code transforms | Opus | Higher - worth it for quality |
+| Commit messages | Sonnet | Moderate - balanced quality and speed |
 
-This design lets you use inline completions freely throughout the day while preserving quota for heavier CLI workflows and transforms.
+This design lets you use inline completions freely throughout the day while preserving quota for heavier CLI workflows, transforms, and commit messages.
 
 ## Multiple Windows
 

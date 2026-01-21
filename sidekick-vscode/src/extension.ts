@@ -19,6 +19,8 @@
 import * as vscode from "vscode";
 import { AuthService } from "./services/AuthService";
 import { CompletionService } from "./services/CompletionService";
+import { GitService } from "./services/GitService";
+import { CommitMessageService } from "./services/CommitMessageService";
 import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
 import { initLogger, log, logError, showLog } from "./services/Logger";
@@ -40,6 +42,12 @@ let authService: AuthService | undefined;
 /** Completion service managing completion requests */
 let completionService: CompletionService | undefined;
 
+/** Git service for repository access */
+let gitService: GitService | undefined;
+
+/** Commit message service for AI-powered commit generation */
+let commitMessageService: CommitMessageService | undefined;
+
 /**
  * Activates the extension.
  *
@@ -50,7 +58,7 @@ let completionService: CompletionService | undefined;
  *
  * @param context - The extension context provided by VS Code
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   // Initialize logger first
   const outputChannel = initLogger();
   context.subscriptions.push(outputChannel);
@@ -84,6 +92,20 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize completion service (depends on authService)
   completionService = new CompletionService(authService);
   context.subscriptions.push(completionService);
+
+  // Initialize Git service
+  gitService = new GitService();
+  const gitInitialized = await gitService.initialize();
+  if (!gitInitialized) {
+    log('Git extension not available. Commit message features will be disabled.');
+  }
+  context.subscriptions.push(gitService);
+
+  // Initialize commit message service (depends on gitService and authService)
+  if (gitInitialized) {
+    commitMessageService = new CommitMessageService(gitService, authService);
+    context.subscriptions.push(commitMessageService);
+  }
 
   // Register inline completion provider using CompletionService
   const inlineProvider = new InlineCompletionProvider(completionService);
@@ -228,6 +250,90 @@ export function activate(context: vscode.ExtensionContext) {
         statusBarManager?.setError(result.message);
         vscode.window.showErrorMessage(result.message);
       }
+    })
+  );
+
+  /**
+   * Generates commit message with progress indicator and SCM input population.
+   * @param guidance - Optional user guidance for regeneration (e.g., "focus on the API changes")
+   */
+  async function generateCommitMessageWithProgress(guidance?: string): Promise<void> {
+    if (!commitMessageService || !gitService) {
+      return;
+    }
+
+    const isRegenerate = guidance !== undefined;
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.SourceControl,
+        title: isRegenerate ? "Regenerating commit message" : "Generating commit message",
+        cancellable: false,
+      },
+      async (progress) => {
+        try {
+          progress.report({ message: "Reading changes..." });
+
+          const result = await commitMessageService!.generateCommitMessage(guidance);
+
+          if (result.error) {
+            statusBarManager?.setError(result.error);
+            vscode.window.showErrorMessage(`Commit message generation failed: ${result.error}`);
+            return;
+          }
+
+          if (result.message) {
+            // Set message in SCM input box (skip confirmation if regenerating)
+            const success = await gitService!.setCommitMessage(result.message, !isRegenerate);
+
+            if (success) {
+              statusBarManager?.setConnected();
+
+              // Show success with regenerate option (don't await - let progress complete)
+              vscode.window.showInformationMessage(
+                `Commit message generated`,
+                "Regenerate",
+                "Regenerate with guidance"
+              ).then(async (action) => {
+                if (action === "Regenerate") {
+                  generateCommitMessageWithProgress("");
+                } else if (action === "Regenerate with guidance") {
+                  const userGuidance = await vscode.window.showInputBox({
+                    prompt: "How should the commit message be different?",
+                    placeHolder: "e.g., focus on the bug fix, make it shorter, mention the refactoring",
+                    ignoreFocusOut: true,
+                  });
+                  if (userGuidance) {
+                    generateCommitMessageWithProgress(userGuidance);
+                  }
+                }
+              });
+            } else {
+              // User cancelled overwrite or no repo
+              statusBarManager?.setConnected();
+            }
+          } else {
+            statusBarManager?.setConnected();
+            vscode.window.showWarningMessage("Could not generate a valid commit message. Try with different changes.");
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown error";
+          statusBarManager?.setError(message);
+          vscode.window.showErrorMessage(`Commit message generation failed: ${message}`);
+        }
+      }
+    );
+  }
+
+  // Register generate commit message command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("sidekick.generateCommitMessage", async () => {
+      if (!commitMessageService || !gitService) {
+        vscode.window.showErrorMessage("Git integration not available. Cannot generate commit message.");
+        return;
+      }
+
+      await generateCommitMessageWithProgress(false);
     })
   );
 
