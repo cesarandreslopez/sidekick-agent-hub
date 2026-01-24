@@ -12,16 +12,16 @@
 </p>
 
 <p align="center">
-  AI-powered code completions, transforms, and commit messages for VS Code, using your Claude Max subscription.
+  Your Claude Max, working harder: completions, transforms, commits, and speed reading.
 </p>
 
 <p align="center">
-  <img src="assets/inline_transforms.gif" alt="Sidekick inline completions demo" width="800">
+  <img src="assets/all_features.gif?v=2" alt="Sidekick features demo" width="800">
 </p>
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
 
-If you're already paying for Claude Max, Sidekick lets you use those tokens for inline completions, code transforms, and AI commit messages—no extra cost, no separate account.
+If you're already paying for Claude Max, Sidekick lets you use those tokens for inline completions, code transforms, AI commit messages, and speed reading with AI explanations—no extra cost, no separate account.
 
 Let's consider the following: 
 
@@ -52,7 +52,7 @@ The extension uses the Anthropic SDK directly to call Claude. If you have a Clau
 
 ### Setup
 
-![Installation demo](assets/installation.gif)
+![Installation demo](assets/installation.gif?v=2)
 
 1. Install and authenticate Claude Code CLI:
    ```bash
@@ -71,27 +71,41 @@ The extension uses the Anthropic SDK directly to call Claude. If you have a Clau
 ### Inline Completions
 Get intelligent code suggestions as you type. Uses Haiku by default for fast, lightweight completions that won't drain your quota.
 
-![Inline completions demo](assets/inline_transforms.gif)
+![Inline completions demo](assets/inline_transforms.gif?v=2)
 
 ### Code Transforms
 Select code, press `Ctrl+Shift+M`, and describe how to transform it. Uses Opus by default for high-quality refactoring.
 
-![Code transforms demo](assets/code_transforms.gif)
+![Code transforms demo](assets/code_transforms.gif?v=2)
 
 ### AI Commit Messages
 Generate intelligent commit messages from your staged changes with a single click. Click the sparkle button in the Source Control toolbar to analyze your diff and create a contextual commit message.
 
-![AI commit message generation](assets/commit_generation.gif)
+![AI commit message generation](assets/commit_generation.gif?v=2)
 
 - **Conventional Commits** or simple description format
 - **Regenerate with guidance** - refine the message with instructions like "focus on the bug fix" or "make it shorter"
 - **Default guidance** - configure consistent commit style for your team
 - Uses Sonnet by default for high-quality messages
 
+### RSVP Reader
+Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visual Presentation)](https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation) displays words one at a time at a fixed focal point, eliminating eye movement and enabling reading speeds of 2-3x normal. Select text, press `Ctrl+Shift+R`, and read faster with ORP (Optimal Recognition Point) highlighting.
+
+![RSVP speed reading demo](assets/document_rsvp_speed_reading.gif?v=2)
+
+![AI code explanation with RSVP](assets/explain_code_plus_rsvp.gif?v=2)
+
+- **Word-by-word display** with ORP highlighting for reduced eye movement
+- **Adjustable speed** from 100-900 WPM
+- **AI explanations** at five complexity levels: ELI5, Curious Amateur, Imposter Syndrome, Senior, PhD Mode
+- **Dual modes** - toggle between RSVP and full-text view, switch between original and explanation
+- **Keyboard controls** - Space (play/pause), arrows (navigate/speed), R (restart), F (full-text)
+- Uses Sonnet by default for intelligent explanations
+
 ### Status Bar Menu
 Click "Sidekick" in the status bar to access logs, test connection, configure settings, and more.
 
-![Logs and configuration](assets/logs_and_configuration.gif)
+![Logs and configuration](assets/logs_and_configuration.gif?v=2)
 
 ## Token Efficiency
 
@@ -100,6 +114,7 @@ Click "Sidekick" in the status bar to access logs, test connection, configure se
 | Inline completions | Haiku | Minimal - fast and cheap |
 | Code transforms | Opus | Higher - worth it for quality |
 | Commit messages | Sonnet | Moderate - balanced quality and speed |
+| RSVP explanations | Sonnet | Moderate - on-demand only |
 
 This design lets you use inline completions freely throughout the day while preserving quota for heavier CLI workflows, transforms, and commit messages.
 

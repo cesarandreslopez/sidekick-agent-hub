@@ -147,7 +147,7 @@ export class CompletionService implements vscode.Disposable {
       const completion = await this.authService.complete(prompt, {
         model,
         maxTokens: 200,
-        timeout: 10000,
+        timeout: 20000, // SDK needs ~3s to init, plus completion time
       });
 
       // Check validity after API call

@@ -5,6 +5,37 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-01-24
+
+### Added
+- **RSVP Reader**: Speed reading with AI-powered explanations for selected text
+  - Select text and press `Ctrl+Shift+R` (Cmd+Shift+R on Mac) to open the RSVP Reader panel
+  - Word-by-word display with ORP (Optimal Recognition Point) highlighting reduces eye movement and increases reading speed
+  - Adjustable reading speed from 100-900 WPM with real-time controls
+  - **Five AI explanation complexity levels**:
+    - **ELI5** - Complete beginner explanations with simple analogies
+    - **Curious Amateur** - Learning mode with defined technical terms
+    - **Imposter Syndrome** - Fill knowledge gaps, assume basic familiarity (default)
+    - **Senior** - High-level summary, skip basics, highlight key details
+    - **PhD Mode** - Expert-level analysis without simplification
+  - **Dual content modes**: Toggle between original text and AI-generated explanation
+  - **Two reading modes**: RSVP (word-by-word) or full-text scrollable view
+  - **Context menu integration**: Right-click selected text → "Sidekick: RSVP Reader" submenu
+  - **Rich keyboard controls**:
+    - Space: Play/Pause
+    - Left/Right arrows: Navigate words
+    - Up/Down arrows: Adjust speed (±50 WPM)
+    - R: Restart from beginning
+    - O: Toggle original/explanation
+    - F: Toggle full-text mode
+  - Regenerate explanations with custom instructions
+  - Intelligent content classification (prose/technical/code) for tailored explanations
+  - VS Code theme-aware UI with dark/light mode support
+- **New Settings**:
+  - `sidekick.rsvpMode`: Default reading mode (direct/explain-first)
+  - `sidekick.explanationComplexity`: Default AI explanation level
+  - `sidekick.explanationModel`: Model for explanations (haiku/sonnet/opus, default: sonnet)
+
 ## [0.4.0] - 2025-01-21
 
 ### Added

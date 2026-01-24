@@ -1,8 +1,8 @@
 {
   "name": "sidekick-for-max",
   "displayName": "Sidekick for Max",
-  "description": "AI-powered code completions, transforms, and commit messages using your Claude Max subscription - no extra cost.",
-  "version": "0.4.0",
+  "description": "AI-powered code completions, transforms, commit messages, and RSVP speed reading using your Claude Max subscription - no extra cost.",
+  "version": "0.5.0",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -33,7 +33,9 @@
     "autocomplete",
     "claude-max",
     "ai-assistant",
-    "code-transform"
+    "code-transform",
+    "rsvp",
+    "speed-reading"
   ],
   "engines": {
     "vscode": "^1.85.0"
@@ -155,6 +157,50 @@
             "**Simple Description** - Plain imperative description (e.g., `Add OAuth2 authentication support`)"
           ],
           "description": "Format style for AI-generated commit messages"
+        },
+        "sidekick.rsvpMode": {
+          "type": "string",
+          "enum": ["direct", "explain-first"],
+          "default": "direct",
+          "description": "RSVP reading mode",
+          "enumDescriptions": [
+            "Direct Read - Start RSVP immediately",
+            "Explain-First - Show AI explanation before reading"
+          ]
+        },
+        "sidekick.explanationComplexity": {
+          "type": "string",
+          "enum": ["eli5", "curious-amateur", "imposter-syndrome", "senior", "phd"],
+          "default": "imposter-syndrome",
+          "description": "Explanation complexity level for Explain-First mode",
+          "enumDescriptions": [
+            "ELI5 - Explain for complete beginners",
+            "Curious Amateur - Explain for someone learning",
+            "Imposter Syndrome - Fill knowledge gaps for partial understanding",
+            "Senior - Summarize key points for experienced readers",
+            "PhD Mode - Expert-level analysis without simplification"
+          ]
+        },
+        "sidekick.explanationModel": {
+          "type": "string",
+          "enum": ["haiku", "sonnet", "opus"],
+          "default": "sonnet",
+          "description": "Model for generating explanations (sonnet=recommended)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality (recommended)",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
+        "sidekick.showCompletionHint": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show visual hint at cursor suggesting AI completion shortcut after typing stops"
+        },
+        "sidekick.completionHintDelayMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "Delay in milliseconds after typing stops before showing completion hint"
         }
       }
     },
@@ -191,6 +237,41 @@
         "command": "sidekick.generateCommitMessage",
         "title": "Sidekick: Generate Commit Message",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "sidekick.speedRead",
+        "title": "Sidekick: RSVP Reader",
+        "icon": "$(book)"
+      },
+      {
+        "command": "sidekick.speedRead.direct",
+        "title": "Direct Read"
+      },
+      {
+        "command": "sidekick.speedRead.eli5",
+        "title": "Explain: ELI5"
+      },
+      {
+        "command": "sidekick.speedRead.curiousAmateur",
+        "title": "Explain: Curious Amateur"
+      },
+      {
+        "command": "sidekick.speedRead.imposterSyndrome",
+        "title": "Explain: Imposter Syndrome"
+      },
+      {
+        "command": "sidekick.speedRead.senior",
+        "title": "Explain: Senior"
+      },
+      {
+        "command": "sidekick.speedRead.phd",
+        "title": "Explain: PhD Mode"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "sidekick.speedReadSubmenu",
+        "label": "Sidekick: RSVP Reader"
       }
     ],
     "keybindings": [
@@ -205,6 +286,12 @@
         "key": "ctrl+shift+m",
         "mac": "cmd+shift+m",
         "when": "editorTextFocus && editorHasSelection"
+      },
+      {
+        "command": "sidekick.speedRead",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorTextFocus && editorHasSelection"
       }
     ],
     "menus": {
@@ -213,6 +300,44 @@
           "command": "sidekick.generateCommitMessage",
           "group": "navigation",
           "when": "scmProvider == git && config.sidekick.showCommitButton"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "sidekick.speedReadSubmenu",
+          "group": "1_sidekick@1",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "sidekick.transform",
+          "group": "1_sidekick@2",
+          "when": "editorHasSelection"
+        }
+      ],
+      "sidekick.speedReadSubmenu": [
+        {
+          "command": "sidekick.speedRead.direct",
+          "group": "1_direct"
+        },
+        {
+          "command": "sidekick.speedRead.eli5",
+          "group": "2_explain@1"
+        },
+        {
+          "command": "sidekick.speedRead.curiousAmateur",
+          "group": "2_explain@2"
+        },
+        {
+          "command": "sidekick.speedRead.imposterSyndrome",
+          "group": "2_explain@3"
+        },
+        {
+          "command": "sidekick.speedRead.senior",
+          "group": "2_explain@4"
+        },
+        {
+          "command": "sidekick.speedRead.phd",
+          "group": "2_explain@5"
         }
       ]
     }

@@ -19,9 +19,11 @@
 import * as vscode from "vscode";
 import { AuthService } from "./services/AuthService";
 import { CompletionService } from "./services/CompletionService";
+import { warmupSdk } from "./services/MaxSubscriptionClient";
 import { GitService } from "./services/GitService";
 import { CommitMessageService } from "./services/CommitMessageService";
 import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
+import { RsvpViewProvider } from "./providers/RsvpViewProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
 import { initLogger, log, logError, showLog } from "./services/Logger";
 import {
@@ -47,6 +49,9 @@ let gitService: GitService | undefined;
 
 /** Commit message service for AI-powered commit generation */
 let commitMessageService: CommitMessageService | undefined;
+
+/** RSVP view provider for speed reading */
+let rsvpProvider: RsvpViewProvider | undefined;
 
 /**
  * Activates the extension.
@@ -89,6 +94,9 @@ export async function activate(context: vscode.ExtensionContext) {
   authService = new AuthService(context);
   context.subscriptions.push(authService);
 
+  // Pre-warm SDK in background (don't await - let activation continue)
+  warmupSdk().catch(() => { /* ignored - will retry on first request */ });
+
   // Initialize completion service (depends on authService)
   completionService = new CompletionService(authService);
   context.subscriptions.push(completionService);
@@ -114,6 +122,10 @@ export async function activate(context: vscode.ExtensionContext) {
     inlineProvider
   );
   context.subscriptions.push(inlineDisposable);
+
+  // Create RSVP provider (creates panel on demand, not a sidebar view)
+  rsvpProvider = new RsvpViewProvider(context.extensionUri, authService);
+  context.subscriptions.push(rsvpProvider);
 
   // Register commands
   context.subscriptions.push(
@@ -200,6 +212,8 @@ export async function activate(context: vscode.ExtensionContext) {
       async () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
+          // Clear highlight before triggering
+          statusBarManager?.clearHighlight();
           // Trigger inline completion manually
           vscode.commands.executeCommand("editor.action.inlineSuggest.trigger");
         }
@@ -333,7 +347,7 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      await generateCommitMessageWithProgress(false);
+      await generateCommitMessageWithProgress();
     })
   );
 
@@ -390,62 +404,106 @@ export async function activate(context: vscode.ExtensionContext) {
 
         statusBarManager?.setLoading("Transforming");
 
-        try {
-          log(`Transform starting: model=${model}, language=${language}`);
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Transforming code...",
+            cancellable: false,
+          },
+          async () => {
+            try {
+              log(`Transform starting: model=${model}, language=${language}`);
 
-          // Build prompt using prompt templates
-          const prompt =
-            getTransformSystemPrompt() +
-            "\n\n" +
-            getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
+              // Build prompt using prompt templates
+              const prompt =
+                getTransformSystemPrompt() +
+                "\n\n" +
+                getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
 
-          log(`Calling authService.complete...`);
+              log(`Calling authService.complete...`);
 
-          // Use AuthService instead of HTTP
-          const result = await authService!.complete(prompt, {
-            model,
-            maxTokens: 4096,
-            timeout: 60000, // Transforms can take longer
-          });
+              // Use AuthService instead of HTTP
+              const result = await authService!.complete(prompt, {
+                model,
+                maxTokens: 4096,
+                timeout: 60000, // Transforms can take longer
+              });
 
-          log(`Transform completed, result length: ${result.length}`);
+              log(`Transform completed, result length: ${result.length}`);
 
-          // Clean the response
-          const cleaned = cleanTransformResponse(result);
-          if (!cleaned) {
-            vscode.window.showWarningMessage("No transformation returned");
-            statusBarManager?.setConnected();
-            return;
+              // Clean the response
+              const cleaned = cleanTransformResponse(result);
+              if (!cleaned) {
+                vscode.window.showWarningMessage("No transformation returned");
+                statusBarManager?.setConnected();
+                return;
+              }
+
+              // Verify selection hasn't changed
+              if (!editor.selection.isEqual(originalSelection)) {
+                vscode.window.showWarningMessage(
+                  "Selection changed during transform. Please try again."
+                );
+                statusBarManager?.setConnected();
+                return;
+              }
+
+              // Apply the edit
+              const success = await editor.edit((editBuilder) => {
+                editBuilder.replace(originalSelection, cleaned);
+              });
+
+              if (success) {
+                statusBarManager?.setConnected();
+              } else {
+                statusBarManager?.setError("Edit failed");
+                vscode.window.showErrorMessage("Failed to apply transformation");
+              }
+            } catch (error) {
+              logError("Transform failed", error);
+              const message = error instanceof Error ? error.message : "Unknown error";
+              statusBarManager?.setError(message);
+              vscode.window.showErrorMessage(`Transform failed: ${message}`);
+            }
           }
-
-          // Verify selection hasn't changed
-          if (!editor.selection.isEqual(originalSelection)) {
-            vscode.window.showWarningMessage(
-              "Selection changed during transform. Please try again."
-            );
-            statusBarManager?.setConnected();
-            return;
-          }
-
-          // Apply the edit
-          const success = await editor.edit((editBuilder) => {
-            editBuilder.replace(originalSelection, cleaned);
-          });
-
-          if (success) {
-            statusBarManager?.setConnected();
-          } else {
-            statusBarManager?.setError("Edit failed");
-            vscode.window.showErrorMessage("Failed to apply transformation");
-          }
-        } catch (error) {
-          logError("Transform failed", error);
-          const message = error instanceof Error ? error.message : "Unknown error";
-          statusBarManager?.setError(message);
-          vscode.window.showErrorMessage(`Transform failed: ${message}`);
-        }
+        );
       }
     )
+  );
+
+  // Helper function for speed read commands
+  const speedReadWithMode = async (mode: 'direct' | 'explain', complexity?: 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd') => {
+    const editor = vscode.window.activeTextEditor;
+
+    if (!editor || editor.selection.isEmpty) {
+      vscode.window.showWarningMessage('Select text to speed read');
+      return;
+    }
+
+    const text = editor.document.getText(editor.selection);
+    const fileName = editor.document.fileName.split(/[/\\]/).pop() || '';
+    const languageId = editor.document.languageId;
+
+    if (!rsvpProvider) {
+      return;
+    }
+
+    if (mode === 'direct') {
+      await rsvpProvider.loadText(text);
+    } else if (complexity) {
+      await rsvpProvider.loadTextWithExplanation(text, complexity, { fileName, languageId });
+    }
+  };
+
+  // Register speed read commands for context menu
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.speedRead', () => speedReadWithMode('direct')),
+    vscode.commands.registerCommand('sidekick.speedRead.direct', () => speedReadWithMode('direct')),
+    vscode.commands.registerCommand('sidekick.speedRead.eli5', () => speedReadWithMode('explain', 'eli5')),
+    vscode.commands.registerCommand('sidekick.speedRead.curiousAmateur', () => speedReadWithMode('explain', 'curious-amateur')),
+    vscode.commands.registerCommand('sidekick.speedRead.imposterSyndrome', () => speedReadWithMode('explain', 'imposter-syndrome')),
+    vscode.commands.registerCommand('sidekick.speedRead.senior', () => speedReadWithMode('explain', 'senior')),
+    vscode.commands.registerCommand('sidekick.speedRead.phd', () => speedReadWithMode('explain', 'phd'))
   );
 }
 

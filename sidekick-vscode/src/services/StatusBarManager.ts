@@ -2,8 +2,8 @@
  * @fileoverview Centralized status bar state management for Sidekick.
  *
  * StatusBarManager provides a multi-state status bar with proper visual feedback
- * for connected, disconnected, loading, and error states. It replaces the simple
- * toggle pattern with comprehensive connection state tracking.
+ * for connected, disconnected, loading, and error states. Also handles the
+ * completion hint highlight after typing stops.
  *
  * @module StatusBarManager
  */
@@ -24,7 +24,7 @@ export type ConnectionState = 'connected' | 'disconnected' | 'loading' | 'error'
  * Manages the VS Code status bar item with multi-state support.
  *
  * Provides visual feedback for different extension states including
- * connection status, loading indicators, and error states.
+ * connection status, loading indicators, error states, and completion hints.
  *
  * @example
  * ```typescript
@@ -58,6 +58,24 @@ export class StatusBarManager implements vscode.Disposable {
   /** The VS Code status bar item */
   private statusBarItem: vscode.StatusBarItem;
 
+  /** Whether completion hint highlight is active */
+  private highlightActive: boolean = false;
+
+  /** Disposables for event listeners */
+  private _disposables: vscode.Disposable[] = [];
+
+  /** Active editor for tracking typing */
+  private _activeEditor: vscode.TextEditor | undefined;
+
+  /** Timer for highlight delay */
+  private _highlightTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Timer for highlight fade */
+  private _fadeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Keyboard shortcut text */
+  private _shortcut: string;
+
   /**
    * Creates a new StatusBarManager.
    *
@@ -70,8 +88,96 @@ export class StatusBarManager implements vscode.Disposable {
       100
     );
     this.statusBarItem.command = 'sidekick.showMenu';
+
+    const isMac = process.platform === 'darwin';
+    this._shortcut = isMac ? '\u2318\u21E7Space' : 'Ctrl+Shift+Space';
+
     this.update();
     this.statusBarItem.show();
+
+    // Track active editor
+    this._activeEditor = vscode.window.activeTextEditor;
+
+    // Listen for text document changes to trigger highlight
+    this._disposables.push(
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        if (this._activeEditor && e.document === this._activeEditor.document) {
+          this.onTextChange();
+        }
+      })
+    );
+
+    // Listen for active editor changes
+    this._disposables.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this._activeEditor = editor;
+        this.clearHighlight();
+      })
+    );
+  }
+
+  /**
+   * Handle text change - schedule highlight after delay.
+   */
+  private onTextChange(): void {
+    // Clear any pending timers
+    this.clearTimers();
+
+    // Remove highlight while typing
+    if (this.highlightActive) {
+      this.highlightActive = false;
+      this.update();
+    }
+
+    // Don't highlight if not in connected state
+    if (this.state !== 'connected') {
+      return;
+    }
+
+    // Only for file documents
+    const scheme = this._activeEditor?.document.uri.scheme;
+    if (scheme !== 'file' && scheme !== 'untitled') {
+      return;
+    }
+
+    // Schedule highlight after 1 second of no typing
+    this._highlightTimer = setTimeout(() => {
+      this._highlightTimer = undefined;
+      this.highlightActive = true;
+      this.update();
+
+      // Schedule fade after 4 seconds
+      this._fadeTimer = setTimeout(() => {
+        this._fadeTimer = undefined;
+        this.highlightActive = false;
+        this.update();
+      }, 4000);
+    }, 1000);
+  }
+
+  /**
+   * Clear highlight timers.
+   */
+  private clearTimers(): void {
+    if (this._highlightTimer) {
+      clearTimeout(this._highlightTimer);
+      this._highlightTimer = undefined;
+    }
+    if (this._fadeTimer) {
+      clearTimeout(this._fadeTimer);
+      this._fadeTimer = undefined;
+    }
+  }
+
+  /**
+   * Clear highlight state.
+   */
+  public clearHighlight(): void {
+    this.clearTimers();
+    if (this.highlightActive) {
+      this.highlightActive = false;
+      this.update();
+    }
   }
 
   /**
@@ -93,6 +199,7 @@ export class StatusBarManager implements vscode.Disposable {
   setDisconnected(): void {
     this.state = 'disconnected';
     this.errorMessage = undefined;
+    this.clearHighlight();
     this.update();
   }
 
@@ -106,6 +213,8 @@ export class StatusBarManager implements vscode.Disposable {
   setLoading(operation?: string): void {
     this.state = 'loading';
     this.errorMessage = undefined;
+    this.clearTimers();
+    this.highlightActive = false;
     this.update(operation);
   }
 
@@ -119,6 +228,8 @@ export class StatusBarManager implements vscode.Disposable {
   setError(message: string): void {
     this.state = 'error';
     this.errorMessage = message;
+    this.clearTimers();
+    this.highlightActive = false;
     this.update();
   }
 
@@ -149,9 +260,15 @@ export class StatusBarManager implements vscode.Disposable {
   private update(operation?: string): void {
     switch (this.state) {
       case 'connected':
-        this.statusBarItem.text = '$(sparkle) Sidekick';
-        this.statusBarItem.tooltip = `Sidekick: Connected (${this.currentModel})`;
-        this.statusBarItem.backgroundColor = undefined;
+        if (this.highlightActive) {
+          this.statusBarItem.text = `$(sparkle) Sidekick [${this._shortcut}]`;
+          this.statusBarItem.tooltip = `Press ${this._shortcut} for AI completion`;
+          this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        } else {
+          this.statusBarItem.text = '$(sparkle) Sidekick';
+          this.statusBarItem.tooltip = `Sidekick (${this.currentModel}) · AI Complete: ${this._shortcut}`;
+          this.statusBarItem.backgroundColor = undefined;
+        }
         break;
 
       case 'disconnected':
@@ -182,6 +299,9 @@ export class StatusBarManager implements vscode.Disposable {
    * Called automatically when removed from context.subscriptions.
    */
   dispose(): void {
+    this.clearTimers();
     this.statusBarItem.dispose();
+    this._disposables.forEach((d) => d.dispose());
+    this._disposables = [];
   }
 }

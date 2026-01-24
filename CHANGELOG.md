@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.0] - 2025-01-24
+
+### Added
+- **RSVP Reader**: Speed reading with AI-powered explanations
+  - Word-by-word display with ORP (Optimal Recognition Point) highlighting for faster reading
+  - Adjustable reading speed (100-900 WPM)
+  - Five AI explanation complexity levels: ELI5, Curious Amateur, Imposter Syndrome, Senior, PhD Mode
+  - Toggle between speed reading mode and full-text view
+  - Dual-mode content: switch between original text and AI explanation
+  - Context menu integration with submenu for quick access
+  - Keyboard shortcut: `Ctrl+Shift+R` (Cmd+Shift+R on Mac)
+  - Rich playback controls: Space (play/pause), arrows (navigate/speed), R (restart), F (full-text toggle)
+- New settings: `rsvpMode`, `explanationComplexity`, `explanationModel`
+
 ## [0.4.0] - 2025-01-21
 
 ### Added

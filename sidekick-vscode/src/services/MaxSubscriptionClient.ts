@@ -38,7 +38,22 @@ function getCommonClaudePaths(): string[] {
   const isWindows = process.platform === 'win32';
   const ext = isWindows ? '.cmd' : '';
 
+  const isMac = process.platform === 'darwin';
+  const isLinux = process.platform === 'linux';
+
   return [
+    // Native Claude Code installer paths (platform-specific) - check first as preferred
+    ...(isLinux ? [
+      path.join(homeDir, '.local', 'bin', 'claude'),
+    ] : []),
+    ...(isMac ? [
+      '/usr/local/bin/claude',
+      path.join(homeDir, '.claude', 'local', 'claude'),
+    ] : []),
+    ...(isWindows ? [
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Claude', 'claude.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Claude', 'claude.exe'),
+    ] : []),
     // npm global (standard)
     path.join(homeDir, '.npm-global', 'bin', `claude${ext}`),
     // npm global (alternative)
@@ -53,9 +68,9 @@ function getCommonClaudePaths(): string[] {
     path.join(homeDir, '.volta', 'bin', `claude${ext}`),
     // nvm (common node versions)
     path.join(homeDir, '.nvm', 'versions', 'node', '**', 'bin', `claude${ext}`),
-    // Linux system paths
-    `/usr/local/bin/claude${ext}`,
-    `/usr/bin/claude${ext}`,
+    // Linux/macOS system paths
+    `/usr/local/bin/claude`,
+    `/usr/bin/claude`,
     // macOS Homebrew
     '/opt/homebrew/bin/claude',
     '/usr/local/opt/node/bin/claude',
@@ -140,6 +155,23 @@ async function getQueryFunction(): Promise<QueryFunction> {
 }
 
 /**
+ * Pre-warms the SDK by importing it early.
+ * Call this on extension activation to reduce first-request latency.
+ * The actual Claude Code process still spawns per-request, but
+ * at least the SDK module will be loaded and ready.
+ */
+export async function warmupSdk(): Promise<void> {
+  try {
+    log('Pre-warming SDK...');
+    await getQueryFunction();
+    log('SDK pre-warmed successfully');
+  } catch (error) {
+    // Non-fatal - will try again on first real request
+    logError('SDK pre-warm failed (will retry on first request)', error);
+  }
+}
+
+/**
  * Claude client using Max subscription authentication.
  *
  * Uses @anthropic-ai/claude-agent-sdk which interfaces with the
@@ -179,6 +211,9 @@ export class MaxSubscriptionClient implements ClaudeClient {
 
       log(`Starting query with cwd: ${cwd}`);
 
+      const claudePath = findClaudeCli();
+      log(`Using Claude CLI at: ${claudePath}`);
+
       for await (const message of query({
         prompt,
         options: {
@@ -188,6 +223,7 @@ export class MaxSubscriptionClient implements ClaudeClient {
           maxTurns: 1,
           allowedTools: [],
           permissionMode: 'bypassPermissions',
+          pathToClaudeCodeExecutable: claudePath,
         },
       })) {
         log(`Received message: type=${message.type}, subtype=${'subtype' in message ? message.subtype : 'n/a'}`);

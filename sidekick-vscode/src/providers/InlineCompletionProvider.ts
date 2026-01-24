@@ -52,6 +52,11 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
     context: vscode.InlineCompletionContext,
     token: vscode.CancellationToken
   ): Promise<vscode.InlineCompletionItem[] | undefined> {
+    // Only provide completions when manually triggered (not on every keystroke)
+    if (context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke) {
+      return undefined;
+    }
+
     // Only provide completions for regular file documents (not SCM input, output panels, etc.)
     if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled') {
       return undefined;
@@ -73,37 +78,47 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
     const char = position.character;
     log(`Inline: request at ${document.fileName.split('/').pop()}:${line}:${char}`);
 
-    try {
-      // Delegate to CompletionService
-      const completion = await this.completionService.getCompletion(
-        document,
-        position,
-        token
-      );
+    // Show progress notification while generating completion
+    return await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Generating completion...',
+        cancellable: false,
+      },
+      async () => {
+        try {
+          // Delegate to CompletionService
+          const completion = await this.completionService.getCompletion(
+            document,
+            position,
+            token
+          );
 
-      // Check cancellation after async operation
-      if (token.isCancellationRequested) {
-        log('Inline: cancelled after getCompletion');
-        return undefined;
+          // Check cancellation after async operation
+          if (token.isCancellationRequested) {
+            log('Inline: cancelled after getCompletion');
+            return undefined;
+          }
+
+          if (!completion) {
+            log('Inline: no completion returned');
+            return undefined;
+          }
+
+          log(`Inline: got completion (${completion.length} chars): "${completion.substring(0, 50)}..."`);
+
+          // Return completion as InlineCompletionItem
+          return [
+            new vscode.InlineCompletionItem(
+              completion,
+              new vscode.Range(position, position)
+            ),
+          ];
+        } catch (error) {
+          logError('Inline: completion error', error);
+          return undefined;
+        }
       }
-
-      if (!completion) {
-        log('Inline: no completion returned');
-        return undefined;
-      }
-
-      log(`Inline: got completion (${completion.length} chars): "${completion.substring(0, 50)}..."`);
-
-      // Return completion as InlineCompletionItem
-      return [
-        new vscode.InlineCompletionItem(
-          completion,
-          new vscode.Range(position, position)
-        ),
-      ];
-    } catch (error) {
-      logError('Inline: completion error', error);
-      return undefined;
-    }
+    );
   }
 }
