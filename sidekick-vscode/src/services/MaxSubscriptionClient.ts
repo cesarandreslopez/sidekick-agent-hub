@@ -12,6 +12,7 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execSync } from 'child_process';
 import { ClaudeClient, CompletionOptions } from '../types';
 import { log, logError } from './Logger';
 
@@ -83,14 +84,42 @@ function getCommonClaudePaths(): string[] {
 }
 
 /**
+ * Resolves a command name to its absolute path using the system's PATH.
+ * Works cross-platform: `which` on Unix, `where` on Windows.
+ *
+ * @param command - The command name to resolve (e.g., 'claude')
+ * @returns The absolute path to the command, or null if not found
+ */
+function resolveCommandPath(command: string): string | null {
+  try {
+    const isWindows = process.platform === 'win32';
+    const cmd = isWindows ? `where ${command}` : `which ${command}`;
+    const result = execSync(cmd, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    // `where` on Windows may return multiple lines; take the first
+    const resolvedPath = result.trim().split(/\r?\n/)[0];
+    if (resolvedPath && fs.existsSync(resolvedPath)) {
+      log(`Resolved '${command}' from PATH: ${resolvedPath}`);
+      return resolvedPath;
+    }
+  } catch {
+    // Command not found in PATH
+  }
+  return null;
+}
+
+/**
  * Finds the Claude CLI executable path.
  *
  * Checks in order:
  * 1. User-configured path (sidekick.claudePath setting)
  * 2. Common installation paths
- * 3. Falls back to 'claude' (assumes it's in PATH)
+ * 3. Resolves 'claude' from system PATH to absolute path
  *
- * @returns The path to the claude executable, or 'claude' if not found
+ * @returns The absolute path to the claude executable
+ * @throws Error if claude CLI cannot be found
  */
 function findClaudeCli(): string {
   // Check user-configured path first
@@ -117,9 +146,19 @@ function findClaudeCli(): string {
     }
   }
 
-  // Fall back to 'claude' (hope it's in PATH)
-  log('Claude not found in common paths, falling back to PATH lookup');
-  return 'claude';
+  // Try to resolve 'claude' from PATH to get absolute path
+  // (The SDK requires an absolute path, not just a command name)
+  log('Claude not found in common paths, resolving from PATH...');
+  const resolvedPath = resolveCommandPath('claude');
+  if (resolvedPath) {
+    return resolvedPath;
+  }
+
+  // Could not find claude anywhere
+  throw new Error(
+    'Claude CLI not found. Please install Claude Code (https://claude.ai/download) ' +
+    'or set the path manually in Settings > Sidekick: Claude Path'
+  );
 }
 
 /**
@@ -152,6 +191,52 @@ async function getQueryFunction(): Promise<QueryFunction> {
     // Restore original cwd after import
     process.cwd = originalCwd;
   }
+}
+
+/**
+ * Attempts to find the Claude CLI and offers to save the path to settings.
+ * Useful for diagnostics when auto-detection isn't working.
+ *
+ * @returns Object with found path and whether it was saved to settings
+ */
+export async function suggestClaudePath(): Promise<{
+  found: boolean;
+  path?: string;
+  savedToSettings: boolean;
+}> {
+  // First check if it's already configured
+  const config = vscode.workspace.getConfiguration('sidekick');
+  const configuredPath = config.get<string>('claudePath');
+  if (configuredPath && configuredPath.trim() !== '') {
+    const expandedPath = configuredPath.replace(/^~/, os.homedir());
+    if (fs.existsSync(expandedPath)) {
+      return { found: true, path: expandedPath, savedToSettings: false };
+    }
+  }
+
+  // Try to resolve from PATH
+  const resolvedPath = resolveCommandPath('claude');
+  if (!resolvedPath) {
+    vscode.window.showErrorMessage(
+      'Claude CLI not found. Please install Claude Code from https://claude.ai/download'
+    );
+    return { found: false, savedToSettings: false };
+  }
+
+  // Found it - offer to save to settings
+  const action = await vscode.window.showInformationMessage(
+    `Found Claude CLI at: ${resolvedPath}`,
+    'Save to Settings',
+    'Dismiss'
+  );
+
+  if (action === 'Save to Settings') {
+    await config.update('claudePath', resolvedPath, vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage(`Saved Claude path to settings: ${resolvedPath}`);
+    return { found: true, path: resolvedPath, savedToSettings: true };
+  }
+
+  return { found: true, path: resolvedPath, savedToSettings: false };
 }
 
 /**
@@ -257,20 +342,19 @@ export class MaxSubscriptionClient implements ClaudeClient {
    * Checks for the claude CLI in:
    * 1. User-configured path (sidekick.claudePath setting)
    * 2. Common installation paths (pnpm, npm, yarn, etc.)
-   * 3. System PATH
+   * 3. System PATH (resolved to absolute path)
    *
    * @returns Promise resolving to true if CLI is available
    */
   async isAvailable(): Promise<boolean> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { execSync } = require('child_process');
       const claudePath = findClaudeCli();
 
       log(`Testing CLI availability with: ${claudePath}`);
 
-      // Use shell: true to handle paths with spaces and resolve symlinks
-      execSync(`"${claudePath}" --version`, { stdio: 'ignore', shell: true });
+      // Use shell: true to handle paths with spaces
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      execSync(`"${claudePath}" --version`, { stdio: 'ignore', shell: true } as any);
       log('Claude CLI is available');
       return true;
     } catch (error) {

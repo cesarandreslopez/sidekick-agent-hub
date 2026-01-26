@@ -142,7 +142,7 @@ export class CommitMessageService implements vscode.Disposable {
       const response = await this.authService.complete(fullPrompt, {
         model,
         maxTokens: 100,
-        timeout: 15000, // 15 second timeout (longer for larger models)
+        timeout: 30000, // 30 second timeout
       });
 
       log(`CommitMessageService: Received response: ${response.substring(0, 100)}`);

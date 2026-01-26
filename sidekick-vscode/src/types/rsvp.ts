@@ -68,7 +68,8 @@ export type WebviewMessage =
   | { type: 'requestExplanation'; requestId: string; text: string; contentType: ContentType; complexity: ComplexityLevel }
   | { type: 'cancelPendingRequests' }
   | { type: 'webviewReady' }
-  | { type: 'requestRegenerate'; instructions: string };
+  | { type: 'requestRegenerate'; instructions: string }
+  | { type: 'openInExplain'; explanation: string; code?: string };
 
 /**
  * Default initial state for RSVP reader

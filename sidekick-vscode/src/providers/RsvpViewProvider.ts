@@ -173,6 +173,10 @@ export class RsvpViewProvider implements vscode.Disposable {
           case 'requestRegenerate':
             await this.handleRegenerateRequest(message.instructions);
             break;
+          case 'openInExplain':
+            // Open explanation in Explain panel for full reading
+            vscode.commands.executeCommand('sidekick.openExplanationPanel', message.explanation, message.code);
+            break;
           case 'stateUpdate':
             // Future: handle state updates if needed
             break;

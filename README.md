@@ -78,6 +78,39 @@ Select code, press `Ctrl+Shift+M`, and describe how to transform it. Uses Opus b
 
 ![Code transforms demo](assets/code_transforms.gif?v=2)
 
+### Quick Ask (Inline Chat)
+Ask questions about code or request changes without leaving your editor. Press `Ctrl+I` (Cmd+I on Mac) to open the quick input.
+
+- **Context-aware** - uses selected code or cursor context
+- **Ask questions** - "What does this function do?" or "Is this thread-safe?"
+- **Request changes** - "Add error handling" or "Convert to async/await"
+- **Diff preview** - review proposed changes before accepting
+- Uses Sonnet by default for balanced quality
+
+### Generate Documentation
+Automatically generate JSDoc/docstrings for functions, classes, and methods. Place your cursor in a function and press `Ctrl+Shift+D` (Cmd+Shift+D on Mac).
+
+- Supports TypeScript, JavaScript, Python, and more
+- Generates parameter descriptions, return types, and examples
+- Uses Haiku by default for fast generation
+
+### Explain Code
+Get AI-powered explanations for selected code. Select code and press `Ctrl+Shift+E` (Cmd+Shift+E on Mac).
+
+- **Five complexity levels**: ELI5, Curious Amateur, Imposter Syndrome, Senior, PhD Mode
+- **Rich webview panel** with markdown rendering
+- **Regenerate** with custom instructions for different perspectives
+- **Read in RSVP** - speed read explanations with one click
+- Uses Sonnet by default for quality explanations
+
+### Error Explanations & Fixes
+Understand and fix errors with AI assistance. Click the lightbulb on any diagnostic or use the context menu.
+
+- **Explain Error** - understand what went wrong and why
+- **Fix Error** - get a suggested fix applied directly to your code
+- **Five complexity levels** for explanations
+- Uses Sonnet by default for accurate analysis
+
 ### AI Commit Messages
 Generate intelligent commit messages from your staged changes with a single click. Click the sparkle button in the Source Control toolbar to analyze your diff and create a contextual commit message.
 
@@ -87,6 +120,25 @@ Generate intelligent commit messages from your staged changes with a single clic
 - **Regenerate with guidance** - refine the message with instructions like "focus on the bug fix" or "make it shorter"
 - **Default guidance** - configure consistent commit style for your team
 - Uses Sonnet by default for high-quality messages
+
+### Pre-commit AI Review
+Review your changes before committing. Click the eye icon in the Source Control toolbar to get AI feedback on your staged changes.
+
+- **Bug detection** - catches potential issues before they're committed
+- **Security concerns** - highlights potential vulnerabilities
+- **Code smells** - identifies maintainability issues
+- **Inline decorations** - issues shown directly in the editor
+- Uses Sonnet by default for thorough analysis
+
+### PR Description Generation
+Generate pull request descriptions automatically. Click the PR icon in the Source Control toolbar.
+
+- **Analyzes all commits** on your branch vs the base branch
+- **Generates summary** - high-level overview of changes
+- **Lists changes** - detailed breakdown by area
+- **Test plan** - suggested testing checklist
+- **Copies to clipboard** - ready to paste into GitHub/GitLab
+- Uses Sonnet by default for comprehensive descriptions
 
 ### RSVP Reader
 Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visual Presentation)](https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation) displays words one at a time at a fixed focal point, eliminating eye movement and enabling reading speeds of 2-3x normal. Select text, press `Ctrl+Shift+R`, and read faster with ORP (Optimal Recognition Point) highlighting.
@@ -112,8 +164,14 @@ Click "Sidekick" in the status bar to access logs, test connection, configure se
 | Feature | Default Model | Token Impact |
 |---------|---------------|--------------|
 | Inline completions | Haiku | Minimal - fast and cheap |
+| Generate documentation | Haiku | Minimal - fast generation |
 | Code transforms | Opus | Higher - worth it for quality |
+| Quick Ask | Sonnet | Moderate - balanced quality |
+| Explain Code | Sonnet | Moderate - on-demand only |
+| Error explanations | Sonnet | Moderate - on-demand only |
 | Commit messages | Sonnet | Moderate - balanced quality and speed |
+| Pre-commit review | Sonnet | Moderate - thorough analysis |
+| PR descriptions | Sonnet | Moderate - one-time generation |
 | RSVP explanations | Sonnet | Moderate - on-demand only |
 
 This design lets you use inline completions freely throughout the day while preserving quota for heavier CLI workflows, transforms, and commit messages.

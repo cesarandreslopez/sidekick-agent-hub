@@ -38,8 +38,8 @@ async function main() {
     logLevel: 'warning',
   });
 
-  // Webview context (Browser)
-  const webviewCtx = await esbuild.context({
+  // Webview context - RSVP (Browser)
+  const webviewRsvpCtx = await esbuild.context({
     entryPoints: ['src/webview/rsvp.ts'],
     bundle: true,
     format: 'iife',
@@ -52,17 +52,49 @@ async function main() {
     logLevel: 'warning',
   });
 
+  // Webview context - Explain (Browser)
+  const webviewExplainCtx = await esbuild.context({
+    entryPoints: ['src/webview/explain.ts'],
+    bundle: true,
+    format: 'iife',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'browser',
+    outfile: 'out/webview/explain.js',
+    target: ['es2020'],
+    logLevel: 'warning',
+  });
+
+  // Webview context - Error (Browser)
+  const webviewErrorCtx = await esbuild.context({
+    entryPoints: ['src/webview/error.ts'],
+    bundle: true,
+    format: 'iife',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'browser',
+    outfile: 'out/webview/error.js',
+    target: ['es2020'],
+    logLevel: 'warning',
+  });
+
   // Copy webview assets (CSS files)
   copyWebviewAssets();
 
   if (watch) {
-    await Promise.all([extensionCtx.watch(), webviewCtx.watch()]);
+    await Promise.all([extensionCtx.watch(), webviewRsvpCtx.watch(), webviewExplainCtx.watch(), webviewErrorCtx.watch()]);
     console.log('Watching for changes...');
   } else {
     await extensionCtx.rebuild();
-    await webviewCtx.rebuild();
+    await webviewRsvpCtx.rebuild();
+    await webviewExplainCtx.rebuild();
+    await webviewErrorCtx.rebuild();
     await extensionCtx.dispose();
-    await webviewCtx.dispose();
+    await webviewRsvpCtx.dispose();
+    await webviewExplainCtx.dispose();
+    await webviewErrorCtx.dispose();
   }
 }
 

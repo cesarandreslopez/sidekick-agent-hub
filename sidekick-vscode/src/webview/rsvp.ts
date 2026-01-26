@@ -22,7 +22,7 @@ declare function acquireVsCodeApi(): {
 const vscode = acquireVsCodeApi();
 
 // Restore state from previous session
-let state: RsvpState = vscode.getState() || { ...DEFAULT_RSVP_STATE };
+const state: RsvpState = vscode.getState() || { ...DEFAULT_RSVP_STATE };
 
 // Content storage
 let currentText: string = '';
@@ -89,6 +89,9 @@ function initializeDOM() {
           <button id="toggle-mode-btn" class="toggle-btn" style="display: none;" title="Click to toggle">
             <span class="toggle-label">RSVP</span>
           </button>
+          <button id="open-explain-btn" class="toggle-btn open-explain-btn" style="display: none;" title="Open in Explain panel">
+            <span class="toggle-label">📖 Explain Panel</span>
+          </button>
         </div>
         <div id="char-counts" class="char-counts" style="display: none;"></div>
         <div class="shortcuts-hint">
@@ -136,8 +139,10 @@ function setupEventListeners() {
   // Toggle buttons
   const toggleContentBtn = document.getElementById('toggle-content-btn');
   const toggleModeBtn = document.getElementById('toggle-mode-btn');
+  const openExplainBtn = document.getElementById('open-explain-btn');
   toggleContentBtn?.addEventListener('click', toggleContent);
   toggleModeBtn?.addEventListener('click', toggleReadingMode);
+  openExplainBtn?.addEventListener('click', openInExplainPanel);
 
   // Regenerate controls
   const regenerateBtn = document.getElementById('regenerate-btn');
@@ -182,8 +187,10 @@ function handleExtensionMessage(event: MessageEvent) {
       state.isPlaying = false;
       saveState();
       // Clear the input
-      const input = document.getElementById('regenerate-input') as HTMLInputElement;
-      if (input) input.value = '';
+      {
+        const input = document.getElementById('regenerate-input') as HTMLInputElement;
+        if (input) input.value = '';
+      }
       updateUI();
       break;
     case 'regenerateError':
@@ -256,6 +263,19 @@ function requestRegenerate() {
   vscode.postMessage({
     type: 'requestRegenerate',
     instructions
+  } as WebviewMessage);
+}
+
+/**
+ * Open current content in Explain panel for full reading
+ */
+function openInExplainPanel() {
+  if (!currentText) return;
+
+  vscode.postMessage({
+    type: 'openInExplain',
+    explanation: currentText,
+    code: originalText
   } as WebviewMessage);
 }
 
@@ -503,6 +523,12 @@ function updateUI() {
       toggleModeBtn.style.display = 'block';
       const label = toggleModeBtn.querySelector('.toggle-label');
       if (label) label.textContent = isRsvpMode ? 'RSVP' : 'Full Text';
+    }
+
+    // Open in Explain button - always visible when content loaded
+    const openExplainBtn = document.getElementById('open-explain-btn');
+    if (openExplainBtn) {
+      openExplainBtn.style.display = 'block';
     }
 
     // Show/hide based on reading mode

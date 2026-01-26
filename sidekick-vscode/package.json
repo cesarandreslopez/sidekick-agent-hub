@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick for Max",
   "description": "AI-powered code completions, transforms, commit messages, and RSVP speed reading using your Claude Max subscription - no extra cost.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -133,6 +133,88 @@
             "Claude Opus - Highest quality, slower"
           ]
         },
+        "sidekick.docModel": {
+          "type": "string",
+          "enum": [
+            "haiku",
+            "sonnet",
+            "opus"
+          ],
+          "default": "haiku",
+          "description": "Model for documentation generation (haiku=fast, sonnet=balanced, opus=quality)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest (recommended for documentation)",
+            "Claude Sonnet - Balanced speed and quality",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
+        "sidekick.explainModel": {
+          "type": "string",
+          "enum": [
+            "haiku",
+            "sonnet",
+            "opus"
+          ],
+          "default": "sonnet",
+          "description": "Model for code explanations (sonnet=recommended for quality)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality (recommended)",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
+        "sidekick.errorModel": {
+          "type": "string",
+          "enum": [
+            "haiku",
+            "sonnet",
+            "opus"
+          ],
+          "default": "sonnet",
+          "description": "Model for error explanations and fixes (sonnet=recommended for accuracy)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality (recommended)",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
+        "sidekick.inlineChatModel": {
+          "type": "string",
+          "enum": [
+            "haiku",
+            "sonnet",
+            "opus"
+          ],
+          "default": "sonnet",
+          "description": "Model for inline chat / quick ask (sonnet=recommended for balance)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality (recommended)",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
+        "sidekick.reviewModel": {
+          "type": "string",
+          "enum": ["haiku", "sonnet", "opus"],
+          "default": "sonnet",
+          "description": "Model for pre-commit code review (sonnet=recommended for thoroughness)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality (recommended)",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
+        "sidekick.prDescriptionModel": {
+          "type": "string",
+          "enum": ["haiku", "sonnet", "opus"],
+          "default": "sonnet",
+          "description": "Model for PR description generation (sonnet=recommended for quality)",
+          "enumDescriptions": [
+            "Claude Haiku - Fastest, lower quality",
+            "Claude Sonnet - Balanced speed and quality (recommended)",
+            "Claude Opus - Highest quality, slower"
+          ]
+        },
         "sidekick.commitMessageGuidance": {
           "type": "string",
           "default": "",
@@ -214,6 +296,83 @@
         "title": "Sidekick: Trigger Completion"
       },
       {
+        "command": "sidekick.generateDocs",
+        "title": "Generate Documentation",
+        "icon": "$(book)"
+      },
+      {
+        "command": "sidekick.explainCode",
+        "title": "Explain",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "sidekick.explainCode.eli5",
+        "title": "ELI5"
+      },
+      {
+        "command": "sidekick.explainCode.curiousAmateur",
+        "title": "Curious Amateur"
+      },
+      {
+        "command": "sidekick.explainCode.imposterSyndrome",
+        "title": "Imposter Syndrome"
+      },
+      {
+        "command": "sidekick.explainCode.senior",
+        "title": "Senior"
+      },
+      {
+        "command": "sidekick.explainCode.phd",
+        "title": "PhD Mode"
+      },
+      {
+        "command": "sidekick.explainError",
+        "title": "Explain Error with AI"
+      },
+      {
+        "command": "sidekick.explainError.eli5",
+        "title": "ELI5"
+      },
+      {
+        "command": "sidekick.explainError.curiousAmateur",
+        "title": "Curious Amateur"
+      },
+      {
+        "command": "sidekick.explainError.imposterSyndrome",
+        "title": "Imposter Syndrome"
+      },
+      {
+        "command": "sidekick.explainError.senior",
+        "title": "Senior"
+      },
+      {
+        "command": "sidekick.explainError.phd",
+        "title": "PhD Mode"
+      },
+      {
+        "command": "sidekick.fixError",
+        "title": "Fix Error with AI"
+      },
+      {
+        "command": "sidekick.inlineChat",
+        "title": "Quick Ask",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "sidekick.reviewChanges",
+        "title": "Sidekick: Review My Changes",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "sidekick.clearReview",
+        "title": "Sidekick: Clear AI Review"
+      },
+      {
+        "command": "sidekick.generatePrDescription",
+        "title": "Sidekick: Generate PR Description",
+        "icon": "$(git-pull-request)"
+      },
+      {
         "command": "sidekick.transform",
         "title": "Sidekick: Transform Selected Code"
       },
@@ -270,8 +429,20 @@
     ],
     "submenus": [
       {
+        "id": "sidekick.menu",
+        "label": "Sidekick"
+      },
+      {
+        "id": "sidekick.explainSubmenu",
+        "label": "Explain Code"
+      },
+      {
+        "id": "sidekick.explainErrorSubmenu",
+        "label": "Explain Error with AI"
+      },
+      {
         "id": "sidekick.speedReadSubmenu",
-        "label": "Sidekick: RSVP Reader"
+        "label": "RSVP Reader"
       }
     ],
     "keybindings": [
@@ -288,14 +459,42 @@
         "when": "editorTextFocus && editorHasSelection"
       },
       {
+        "command": "sidekick.generateDocs",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "sidekick.explainCode",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorTextFocus && editorHasSelection"
+      },
+      {
         "command": "sidekick.speedRead",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r",
         "when": "editorTextFocus && editorHasSelection"
+      },
+      {
+        "command": "sidekick.inlineChat",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && !editorReadonly && !suggestWidgetVisible && !inlineChatFocused"
       }
     ],
     "menus": {
       "scm/title": [
+        {
+          "command": "sidekick.reviewChanges",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        },
+        {
+          "command": "sidekick.generatePrDescription",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        },
         {
           "command": "sidekick.generateCommitMessage",
           "group": "navigation",
@@ -304,14 +503,90 @@
       ],
       "editor/context": [
         {
-          "submenu": "sidekick.speedReadSubmenu",
+          "submenu": "sidekick.menu",
           "group": "1_sidekick@1",
+          "when": "editorTextFocus"
+        }
+      ],
+      "sidekick.menu": [
+        {
+          "command": "sidekick.inlineChat",
+          "group": "0_ask@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "sidekick.generateDocs",
+          "group": "1_docs@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "submenu": "sidekick.explainSubmenu",
+          "group": "2_explain@1",
+          "when": "editorHasSelection"
+        },
+        {
+          "submenu": "sidekick.explainErrorSubmenu",
+          "group": "2_explain@2",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "sidekick.fixError",
+          "group": "2_explain@3",
           "when": "editorHasSelection"
         },
         {
           "command": "sidekick.transform",
-          "group": "1_sidekick@2",
+          "group": "3_transform@1",
           "when": "editorHasSelection"
+        },
+        {
+          "submenu": "sidekick.speedReadSubmenu",
+          "group": "4_read@1",
+          "when": "editorHasSelection"
+        }
+      ],
+      "sidekick.explainSubmenu": [
+        {
+          "command": "sidekick.explainCode.eli5",
+          "group": "1_levels@1"
+        },
+        {
+          "command": "sidekick.explainCode.curiousAmateur",
+          "group": "1_levels@2"
+        },
+        {
+          "command": "sidekick.explainCode.imposterSyndrome",
+          "group": "1_levels@3"
+        },
+        {
+          "command": "sidekick.explainCode.senior",
+          "group": "1_levels@4"
+        },
+        {
+          "command": "sidekick.explainCode.phd",
+          "group": "1_levels@5"
+        }
+      ],
+      "sidekick.explainErrorSubmenu": [
+        {
+          "command": "sidekick.explainError.eli5",
+          "group": "1_levels@1"
+        },
+        {
+          "command": "sidekick.explainError.curiousAmateur",
+          "group": "1_levels@2"
+        },
+        {
+          "command": "sidekick.explainError.imposterSyndrome",
+          "group": "1_levels@3"
+        },
+        {
+          "command": "sidekick.explainError.senior",
+          "group": "1_levels@4"
+        },
+        {
+          "command": "sidekick.explainError.phd",
+          "group": "1_levels@5"
         }
       ],
       "sidekick.speedReadSubmenu": [
@@ -353,6 +628,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.0",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.27.2",
@@ -363,6 +639,8 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.12",
-    "@anthropic-ai/sdk": "^0.71.2"
+    "@anthropic-ai/sdk": "^0.71.2",
+    "marked": "^12.0.0",
+    "dompurify": "^3.0.0"
   }
 }

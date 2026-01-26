@@ -5,6 +5,66 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-26
+
+### Added
+- **Generate Documentation**: Automatically generate JSDoc/docstrings for functions, classes, and methods
+  - Press `Ctrl+Shift+D` (Cmd+Shift+D on Mac) with cursor in a function
+  - Supports all major languages (TypeScript, JavaScript, Python, etc.)
+  - Configurable model via `sidekick.docModel` (default: haiku)
+
+- **Explain Code**: Get AI-powered explanations for selected code
+  - Press `Ctrl+Shift+E` (Cmd+Shift+E on Mac) with code selected
+  - Five complexity levels: ELI5, Curious Amateur, Imposter Syndrome, Senior, PhD Mode
+  - Rich webview panel with markdown rendering
+  - Regenerate with custom instructions
+  - Configurable model via `sidekick.explainModel` (default: sonnet)
+
+- **Error Explanations**: Understand and fix errors with AI assistance
+  - Lightbulb quick action on diagnostics: "Explain Error with AI"
+  - "Fix Error with AI" command applies suggested fixes directly
+  - Five complexity levels for explanations
+  - Configurable model via `sidekick.errorModel` (default: sonnet)
+
+- **Quick Ask (Inline Chat)**: Ask questions about code without leaving the editor
+  - Press `Ctrl+I` (Cmd+I on Mac) to open quick input
+  - Ask questions or request code changes
+  - Diff preview for proposed changes with Accept/Reject
+  - Context-aware: uses selected code or cursor context
+  - Configurable model via `sidekick.inlineChatModel` (default: sonnet)
+
+- **Pre-commit AI Review**: Review your changes before committing
+  - Click the eye icon in Source Control toolbar
+  - AI analyzes staged/unstaged changes for issues
+  - Highlights bugs, security concerns, code smells
+  - Results shown as inline decorations in editor
+  - Configurable model via `sidekick.reviewModel` (default: sonnet)
+
+- **PR Description Generation**: Generate pull request descriptions automatically
+  - Click the PR icon in Source Control toolbar
+  - Analyzes all commits on your branch vs base branch
+  - Generates summary, change list, and test plan
+  - Copies to clipboard, ready to paste
+  - Configurable model via `sidekick.prDescriptionModel` (default: sonnet)
+
+- **Context Menu Submenu**: All Sidekick commands organized under "Sidekick" submenu
+  - Quick Ask, Generate Docs, Explain Code, Explain Error, Fix Error, Transform, RSVP Reader
+  - Complexity level submenus for Explain Code and RSVP Reader
+
+- **Completion Hint**: Visual indicator suggesting AI completion shortcut
+  - Shows hint at cursor after typing stops
+  - Configurable delay via `sidekick.completionHintDelayMs` (default: 1500ms)
+  - Toggle via `sidekick.showCompletionHint` (default: true)
+
+### Fixed
+- **Claude CLI path resolution**: Fixed "Claude Code native binary not found" error when Claude is in PATH but not in common installation directories ([#4](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/4))
+  - Now uses `which` (Unix) or `where` (Windows) to resolve the absolute path
+  - Better error messages with installation instructions
+
+### Changed
+- Shortened "Explain Code" command title for cleaner context menus
+- Bidirectional integration between Explain Code and RSVP Reader (read explanations in RSVP mode)
+
 ## [0.5.0] - 2025-01-24
 
 ### Added

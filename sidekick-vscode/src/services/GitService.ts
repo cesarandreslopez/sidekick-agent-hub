@@ -281,6 +281,88 @@ export class GitService implements vscode.Disposable {
   }
 
   /**
+   * Executes a git command and returns the output.
+   * Uses spawn to handle large outputs without buffer limits.
+   *
+   * @param repoPath - The repository root path (fsPath)
+   * @param args - Git command arguments (without 'git' prefix)
+   * @returns Promise resolving to command output
+   * @throws Error if command fails
+   */
+  async execGit(repoPath: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      log(`Executing: git ${args.join(' ')} in ${repoPath}`);
+
+      const gitProcess = spawn('git', args, { cwd: repoPath, shell: true });
+
+      const chunks: Buffer[] = [];
+      const errorChunks: Buffer[] = [];
+
+      gitProcess.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+      gitProcess.stderr.on('data', (chunk: Buffer) => errorChunks.push(chunk));
+
+      gitProcess.on('close', (code) => {
+        if (code !== 0) {
+          const errorText = Buffer.concat(errorChunks).toString('utf8');
+          reject(new Error(`git ${args[0]} failed: ${errorText}`));
+          return;
+        }
+        resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+
+      gitProcess.on('error', (error) => reject(error));
+    });
+  }
+
+  /**
+   * Gets commit messages on current branch that aren't on base branch.
+   * Uses: git log base..HEAD --format=%s
+   *
+   * @param repository - The repository
+   * @param baseBranch - Base branch to compare against (default: 'main')
+   * @returns Promise resolving to array of commit subject lines
+   */
+  async getBranchCommits(repository: Repository, baseBranch: string = 'main'): Promise<string[]> {
+    try {
+      const output = await this.execGit(repository.rootUri.fsPath, [
+        'log',
+        `${baseBranch}..HEAD`,
+        '--format=%s'  // Subject line only
+      ]);
+
+      // Split by newlines, filter empty
+      const commits = output.trim().split('\n').filter(line => line.length > 0);
+      log(`Found ${commits.length} commits on branch vs ${baseBranch}`);
+      return commits;
+    } catch (error) {
+      logError(`getBranchCommits failed`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Gets the diff between current branch and base branch.
+   * Uses: git diff base...HEAD (triple-dot = since common ancestor)
+   *
+   * @param repository - The repository
+   * @param baseBranch - Base branch to compare against (default: 'main')
+   * @returns Promise resolving to diff text
+   */
+  async getBranchDiff(repository: Repository, baseBranch: string = 'main'): Promise<string> {
+    try {
+      const diff = await this.execGit(repository.rootUri.fsPath, [
+        'diff',
+        `${baseBranch}...HEAD`  // Triple-dot: compare since divergence
+      ]);
+      log(`Branch diff: ${diff.length} characters vs ${baseBranch}`);
+      return diff;
+    } catch (error) {
+      logError(`getBranchDiff failed`, error);
+      return '';
+    }
+  }
+
+  /**
    * Disposes of all resources.
    *
    * Cleans up any event listeners or resources.

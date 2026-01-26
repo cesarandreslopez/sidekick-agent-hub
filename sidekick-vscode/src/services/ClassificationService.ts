@@ -52,7 +52,7 @@ Output ONLY the category word (prose, technical, or code). No explanation.`;
       const response = await this.authService.complete(prompt, {
         model: 'haiku',
         maxTokens: 10,
-        timeout: 15000, // SDK needs ~3s to init
+        timeout: 30000, // SDK needs ~3s to init
       });
 
       // Validate response is one of the three expected categories
