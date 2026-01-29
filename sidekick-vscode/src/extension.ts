@@ -375,6 +375,55 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Register session diagnostics command (helps debug path resolution issues)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.sessionDiagnostics', async () => {
+      const { getSessionDiagnostics } = await import('./services/SessionPathResolver');
+
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showErrorMessage('No workspace folder open');
+        return;
+      }
+
+      const workspacePath = workspaceFolders[0].uri.fsPath;
+      const diag = getSessionDiagnostics(workspacePath);
+
+      // Log detailed diagnostics
+      log('=== Session Diagnostics ===');
+      log(`Platform: ${diag.platform}`);
+      log(`Workspace path: ${diag.workspacePath}`);
+      log(`Encoded path: ${diag.encodedPath}`);
+      log(`Expected session dir: ${diag.expectedSessionDir}`);
+      log(`Expected dir exists: ${diag.expectedDirExists}`);
+      log(`Existing project dirs (${diag.existingProjectDirs.length}):`);
+      diag.existingProjectDirs.forEach(dir => log(`  - ${dir}`));
+      if (diag.similarDirs.length > 0) {
+        log(`Similar dirs (possible matches):`);
+        diag.similarDirs.forEach(dir => log(`  - ${dir}`));
+      }
+      log('=== End Diagnostics ===');
+
+      // Show output channel
+      showLog();
+
+      // Show summary to user
+      if (diag.expectedDirExists) {
+        vscode.window.showInformationMessage(
+          `Session directory found: ${diag.expectedSessionDir}`
+        );
+      } else if (diag.similarDirs.length > 0) {
+        vscode.window.showWarningMessage(
+          `Expected dir not found. Similar dirs exist: ${diag.similarDirs.join(', ')}. Check Sidekick logs for details.`
+        );
+      } else {
+        vscode.window.showWarningMessage(
+          `No session directory found. Expected: ${diag.encodedPath}. Check Sidekick logs for details.`
+        );
+      }
+    })
+  );
+
   // Register status bar menu command
   context.subscriptions.push(
     vscode.commands.registerCommand("sidekick.showMenu", async () => {

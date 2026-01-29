@@ -460,6 +460,11 @@
         "command": "sidekick.refreshSession",
         "title": "Sidekick: Refresh/Find Session",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "sidekick.sessionDiagnostics",
+        "title": "Sidekick: Session Path Diagnostics",
+        "icon": "$(info)"
       }
     ],
     "submenus": [

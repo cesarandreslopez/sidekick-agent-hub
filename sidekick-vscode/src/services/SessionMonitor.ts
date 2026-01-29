@@ -198,6 +198,11 @@ export class SessionMonitor implements vscode.Disposable {
     // Store workspace path for session detection
     this.workspacePath = workspacePath;
 
+    // Log diagnostic information for debugging path resolution issues
+    const sessionDir = getSessionDirectory(workspacePath);
+    log(`Session monitoring starting for workspace: ${workspacePath}`);
+    log(`Looking for sessions in: ${sessionDir}`);
+
     // Find active session
     this.sessionPath = findActiveSession(workspacePath);
 
@@ -206,6 +211,8 @@ export class SessionMonitor implements vscode.Disposable {
 
     if (!this.sessionPath) {
       log('No active Claude Code session detected, entering discovery mode');
+      log(`Expected session directory: ${sessionDir}`);
+      log(`Tip: Check if ~/.claude/projects/ contains a directory matching your workspace path`);
       this.isWaitingForSession = true;
       this._onDiscoveryModeChange.fire(true);
       this.startDiscoveryPolling();

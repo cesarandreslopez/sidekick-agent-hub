@@ -182,3 +182,76 @@ export function findAllSessions(workspacePath: string): string[] {
     return [];
   }
 }
+
+/**
+ * Diagnostic information about session path resolution.
+ *
+ * Helps debug issues where sessions aren't being detected by showing
+ * what paths the extension is looking for and what actually exists.
+ */
+export interface SessionDiagnostics {
+  /** Workspace path being monitored */
+  workspacePath: string;
+  /** Encoded path (how Claude Code names the directory) */
+  encodedPath: string;
+  /** Full expected session directory path */
+  expectedSessionDir: string;
+  /** Whether the expected directory exists */
+  expectedDirExists: boolean;
+  /** All directories in ~/.claude/projects/ (for debugging path mismatches) */
+  existingProjectDirs: string[];
+  /** Directories that look similar to expected (fuzzy matches) */
+  similarDirs: string[];
+  /** Platform info */
+  platform: string;
+}
+
+/**
+ * Gets diagnostic information about session path resolution.
+ *
+ * Useful for debugging why sessions aren't being detected,
+ * especially on Mac where path encoding might differ.
+ *
+ * @param workspacePath - Absolute path to workspace directory
+ * @returns Diagnostic information
+ */
+export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics {
+  const encodedPath = encodeWorkspacePath(workspacePath);
+  const expectedSessionDir = getSessionDirectory(workspacePath);
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+
+  let existingProjectDirs: string[] = [];
+  let expectedDirExists = false;
+
+  try {
+    if (fs.existsSync(projectsDir)) {
+      existingProjectDirs = fs.readdirSync(projectsDir)
+        .filter(name => {
+          const fullPath = path.join(projectsDir, name);
+          return fs.statSync(fullPath).isDirectory();
+        })
+        .sort();
+    }
+    expectedDirExists = fs.existsSync(expectedSessionDir);
+  } catch {
+    // Ignore errors - just return empty arrays
+  }
+
+  // Find similar directories (fuzzy match for debugging)
+  const workspaceBasename = path.basename(workspacePath).toLowerCase();
+  const similarDirs = existingProjectDirs.filter(dir => {
+    const dirLower = dir.toLowerCase();
+    return dirLower.includes(workspaceBasename) ||
+           workspaceBasename.includes(dirLower.split('-').pop() || '');
+  });
+
+  return {
+    workspacePath,
+    encodedPath,
+    expectedSessionDir,
+    expectedDirExists,
+    existingProjectDirs,
+    similarDirs,
+    platform: process.platform
+  };
+}
