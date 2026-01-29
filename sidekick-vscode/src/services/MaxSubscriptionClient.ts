@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
-import { ClaudeClient, CompletionOptions } from '../types';
+import { ClaudeClient, CompletionOptions, TimeoutError } from '../types';
 import { log, logError } from './Logger';
 
 // Type for the query function from the SDK
@@ -328,7 +328,7 @@ export class MaxSubscriptionClient implements ClaudeClient {
     } catch (error) {
       logError('MaxSubscriptionClient.complete error', error);
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Request timed out after ${timeoutMs}ms`);
+        throw new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs);
       }
       throw error;
     } finally {

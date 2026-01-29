@@ -14,7 +14,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
 import { CompletionCache } from './CompletionCache';
-import { CompletionContext } from '../types';
+import { CompletionContext, TimeoutError } from '../types';
 import { getSystemPrompt, getUserPrompt, cleanCompletion } from '../utils/prompts';
 import { log } from './Logger';
 
@@ -79,6 +79,7 @@ export class CompletionService implements vscode.Disposable {
     const contextLines = config.get<number>('inlineContextLines') ?? 30;
     const multilineSetting = config.get<boolean>('multiline') ?? false;
     const model = config.get<string>('inlineModel') ?? 'haiku';
+    const timeoutMs = config.get<number>('inlineTimeout') ?? 15000;
 
     // Prose files always use multiline mode
     const proseLanguages = ['markdown', 'md', 'plaintext', 'text', 'txt', 'restructuredtext', 'asciidoc', 'latex', 'tex', 'html', 'xml'];
@@ -87,7 +88,7 @@ export class CompletionService implements vscode.Disposable {
 
     // Increment request ID for tracking
     const requestId = ++this.lastRequestId;
-    log(`Service: request #${requestId}, model=${model}, debounce=${debounceMs}ms`);
+    log(`Service: request #${requestId}, model=${model}, debounce=${debounceMs}ms, timeout=${timeoutMs}ms`);
 
     // Cancel any pending request
     if (this.pendingController) {
@@ -147,7 +148,7 @@ export class CompletionService implements vscode.Disposable {
       const completion = await this.authService.complete(prompt, {
         model,
         maxTokens: 200,
-        timeout: 30000, // SDK needs ~3s to init, plus completion time
+        timeout: timeoutMs,
       });
 
       // Check validity after API call
@@ -175,7 +176,12 @@ export class CompletionService implements vscode.Disposable {
       this.cache.set(context, cleaned);
       return cleaned;
     } catch (error) {
-      // AbortError is not an error - request was cancelled
+      // TimeoutError should bubble up for user feedback
+      if (error instanceof TimeoutError) {
+        log(`Service: request #${requestId} timed out after ${error.timeoutMs}ms`);
+        throw error;
+      }
+      // AbortError is not an error - request was cancelled by user/new request
       if (error instanceof Error && error.name === 'AbortError') {
         log(`Service: request #${requestId} aborted`);
         return undefined;

@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick for Max",
   "description": "AI-powered code completions, transforms, commit messages, RSVP speed reading, and Claude Code session monitoring - all using your Claude Max subscription at no extra cost.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -76,6 +76,13 @@
           "type": "number",
           "default": 1000,
           "description": "Debounce delay in milliseconds before requesting completion"
+        },
+        "sidekick.inlineTimeout": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 5000,
+          "maximum": 120000,
+          "description": "Timeout in milliseconds for inline completions. Increase if you frequently get timeouts (default: 15000ms = 15s)"
         },
         "sidekick.inlineContextLines": {
           "type": "number",

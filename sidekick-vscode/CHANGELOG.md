@@ -5,6 +5,22 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-01-29
+
+### Fixed
+- **Silent timeout on inline completions**: Completions that timed out would silently fail with no user feedback ([#5](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/5))
+  - Now shows a warning notification when requests timeout, with options to open settings or view logs
+  - Added `TimeoutError` class that survives the error chain for proper identification
+  - Other completion errors now also show user-friendly messages
+
+### Added
+- **New Setting**: `sidekick.inlineTimeout` - Configurable timeout for inline completions (default: 15s, was hardcoded 30s)
+  - Increase if you frequently experience timeouts when Claude servers are slow
+  - Range: 5-120 seconds
+
+### Changed
+- Reduced default inline completion timeout from 30s to 15s for faster feedback when servers are slow
+
 ## [0.7.0] - 2026-01-29
 
 ### Added

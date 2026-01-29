@@ -57,6 +57,18 @@ export interface CompletionContext {
 }
 
 /**
+ * Custom error class for request timeouts.
+ * This survives the error chain so it can be properly identified
+ * at any level of the call stack.
+ */
+export class TimeoutError extends Error {
+  constructor(message: string, public readonly timeoutMs: number) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+/**
  * Interface for Claude API clients.
  *
  * Both ApiKeyClient and MaxSubscriptionClient implement this interface,
