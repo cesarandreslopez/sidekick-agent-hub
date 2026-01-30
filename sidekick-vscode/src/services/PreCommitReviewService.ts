@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { GitService } from './GitService';
 import { AuthService } from './AuthService';
+import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { truncateDiffIntelligently } from '../utils/tokenEstimator';
@@ -49,6 +50,7 @@ export interface ReviewResult {
 export class PreCommitReviewService implements vscode.Disposable {
   /** Diagnostic collection for AI review findings */
   private diagnosticCollection: vscode.DiagnosticCollection;
+  private readonly timeoutManager: TimeoutManager;
 
   /**
    * Creates a new PreCommitReviewService.
@@ -61,6 +63,7 @@ export class PreCommitReviewService implements vscode.Disposable {
     private readonly authService: AuthService
   ) {
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection('sidekick-review');
+    this.timeoutManager = getTimeoutManager();
   }
 
   /**
@@ -105,14 +108,37 @@ export class PreCommitReviewService implements vscode.Disposable {
 
       log(`PreCommitReviewService: Calling Claude (model: ${model})`);
 
-      // Build prompt and call Claude
+      // Build prompt and call Claude with timeout management
       const prompt = getPreCommitReviewPrompt(truncated);
-      const response = await this.authService.complete(prompt, {
-        model,
-        maxTokens: 2000,
-        timeout: 30000
+      const contextSize = new TextEncoder().encode(prompt).length;
+      const timeoutConfig = this.timeoutManager.getTimeoutConfig('review');
+
+      const result = await this.timeoutManager.executeWithTimeout({
+        operation: 'Reviewing changes',
+        task: (signal: AbortSignal) => this.authService.complete(prompt, {
+          model,
+          maxTokens: 2000,
+          signal,
+        }),
+        config: timeoutConfig,
+        contextSize,
+        showProgress: true,
+        cancellable: true,
+        onTimeout: (timeoutMs: number, contextKb: number) =>
+          this.timeoutManager.promptRetry('Reviewing changes', timeoutMs, contextKb),
       });
 
+      if (!result.success) {
+        if (result.timedOut) {
+          return { issueCount: 0, error: `Review timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.` };
+        }
+        if (result.error?.name === 'AbortError') {
+          return { issueCount: 0, error: 'Review cancelled' };
+        }
+        return { issueCount: 0, error: result.error?.message ?? 'Unknown error' };
+      }
+
+      const response = result.result!;
       log(`PreCommitReviewService: Got response, ${response.length} characters`);
 
       // Parse response into issues

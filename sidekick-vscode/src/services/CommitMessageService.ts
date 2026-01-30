@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 import Anthropic from '@anthropic-ai/sdk';
 import { GitService } from './GitService';
 import { AuthService } from './AuthService';
+import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { estimateTokens, truncateDiffIntelligently } from '../utils/tokenEstimator';
@@ -57,6 +58,8 @@ export interface CommitMessageResult {
  * ```
  */
 export class CommitMessageService implements vscode.Disposable {
+  private readonly timeoutManager: TimeoutManager;
+
   /**
    * Creates a new CommitMessageService.
    *
@@ -66,7 +69,9 @@ export class CommitMessageService implements vscode.Disposable {
   constructor(
     private readonly gitService: GitService,
     private readonly authService: AuthService
-  ) {}
+  ) {
+    this.timeoutManager = getTimeoutManager();
+  }
 
   /**
    * Generates a commit message based on current git changes.
@@ -138,13 +143,43 @@ export class CommitMessageService implements vscode.Disposable {
 
       log(`CommitMessageService: Calling Claude API (model: ${model}, maxTokens: 100)`);
 
-      // Call Claude API via AuthService
-      const response = await this.authService.complete(fullPrompt, {
-        model,
-        maxTokens: 100,
-        timeout: 30000, // 30 second timeout
+      // Calculate context size for timeout scaling
+      const contextSize = new TextEncoder().encode(fullPrompt).length;
+      const timeoutConfig = this.timeoutManager.getTimeoutConfig('commitMessage');
+
+      // Call Claude API via AuthService with timeout management
+      const result = await this.timeoutManager.executeWithTimeout({
+        operation: 'Generating commit message',
+        task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
+          model,
+          maxTokens: 100,
+          signal,
+        }),
+        config: timeoutConfig,
+        contextSize,
+        showProgress: true,
+        cancellable: true,
+        onTimeout: (timeoutMs: number, contextKb: number) =>
+          this.timeoutManager.promptRetry('Generating commit message', timeoutMs, contextKb),
       });
 
+      if (!result.success) {
+        if (result.timedOut) {
+          return {
+            message: null,
+            error: `Request timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+          };
+        }
+        if (result.error?.name === 'AbortError') {
+          return { message: null }; // User cancelled
+        }
+        return {
+          message: null,
+          error: result.error?.message ?? 'Unknown error',
+        };
+      }
+
+      const response = result.result!;
       log(`CommitMessageService: Received response: ${response.substring(0, 100)}`);
 
       // Clean and validate response

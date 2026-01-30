@@ -39,7 +39,7 @@ export function encodeWorkspacePath(workspacePath: string): string {
   // Replace colons, slashes, and underscores with hyphens
   // Windows: C:\Users\foo_bar -> C:/Users/foo_bar -> C--Users-foo-bar
   // Unix: /home/user/foo_bar -> -home-user-foo-bar
-  return normalized.replace(/[:\/_]/g, '-');
+  return normalized.replace(/[:/_]/g, '-');
 }
 
 /**

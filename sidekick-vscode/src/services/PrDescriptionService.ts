@@ -10,6 +10,7 @@
 import * as vscode from 'vscode';
 import { GitService } from './GitService';
 import { AuthService } from './AuthService';
+import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { truncateDiffIntelligently } from '../utils/tokenEstimator';
@@ -48,6 +49,8 @@ export interface PrDescriptionResult {
  * ```
  */
 export class PrDescriptionService implements vscode.Disposable {
+  private readonly timeoutManager: TimeoutManager;
+
   /**
    * Creates a new PrDescriptionService.
    *
@@ -57,7 +60,9 @@ export class PrDescriptionService implements vscode.Disposable {
   constructor(
     private readonly gitService: GitService,
     private readonly authService: AuthService
-  ) {}
+  ) {
+    this.timeoutManager = getTimeoutManager();
+  }
 
   /**
    * Generates a PR description from current branch commits and diff.
@@ -108,14 +113,37 @@ export class PrDescriptionService implements vscode.Disposable {
 
       log(`PrDescriptionService: Calling Claude (model: ${model})`);
 
-      // Build prompt and call Claude
+      // Build prompt and call Claude with timeout management
       const prompt = getPrDescriptionPrompt(commits, truncated);
-      const response = await this.authService.complete(prompt, {
-        model,
-        maxTokens: 1000,
-        timeout: 30000
+      const contextSize = new TextEncoder().encode(prompt).length;
+      const timeoutConfig = this.timeoutManager.getTimeoutConfig('prDescription');
+
+      const result = await this.timeoutManager.executeWithTimeout({
+        operation: 'Generating PR description',
+        task: (signal: AbortSignal) => this.authService.complete(prompt, {
+          model,
+          maxTokens: 1000,
+          signal,
+        }),
+        config: timeoutConfig,
+        contextSize,
+        showProgress: true,
+        cancellable: true,
+        onTimeout: (timeoutMs: number, contextKb: number) =>
+          this.timeoutManager.promptRetry('Generating PR description', timeoutMs, contextKb),
       });
 
+      if (!result.success) {
+        if (result.timedOut) {
+          return { description: null, error: `Request timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.` };
+        }
+        if (result.error?.name === 'AbortError') {
+          return { description: null, error: 'Request cancelled' };
+        }
+        return { description: null, error: result.error?.message ?? 'Unknown error' };
+      }
+
+      const response = result.result!;
       log(`PrDescriptionService: Got response, ${response.length} characters`);
 
       // Clean and format description

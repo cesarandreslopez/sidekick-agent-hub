@@ -28,6 +28,7 @@ import { ErrorExplanationService } from "./services/ErrorExplanationService";
 import { InlineChatService } from "./services/InlineChatService";
 import { PreCommitReviewService } from "./services/PreCommitReviewService";
 import { PrDescriptionService } from "./services/PrDescriptionService";
+import { getTimeoutManager } from "./services/TimeoutManager";
 import { SessionMonitor } from './services/SessionMonitor';
 import { MonitorStatusBar } from './services/MonitorStatusBar';
 import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
@@ -803,69 +804,87 @@ export async function activate(context: vscode.ExtensionContext) {
 
         statusBarManager?.setLoading("Transforming");
 
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Transforming code...",
-            cancellable: false,
-          },
-          async () => {
-            try {
-              log(`Transform starting: model=${model}, language=${language}`);
+        try {
+          log(`Transform starting: model=${model}, language=${language}`);
 
-              // Build prompt using prompt templates
-              const prompt =
-                getTransformSystemPrompt() +
-                "\n\n" +
-                getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
+          // Build prompt using prompt templates
+          const prompt =
+            getTransformSystemPrompt() +
+            "\n\n" +
+            getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
 
-              log(`Calling authService.complete...`);
+          log(`Calling authService.complete...`);
 
-              // Use AuthService instead of HTTP
-              const result = await authService!.complete(prompt, {
-                model,
-                maxTokens: 4096,
-                timeout: 60000, // Transforms can take longer
-              });
+          // Calculate context size for timeout scaling
+          const contextSize = new TextEncoder().encode(prompt).length;
+          const timeoutManager = getTimeoutManager();
+          const timeoutConfig = timeoutManager.getTimeoutConfig('codeTransform');
 
-              log(`Transform completed, result length: ${result.length}`);
+          // Execute with timeout management and retry support
+          const result = await timeoutManager.executeWithTimeout({
+            operation: 'Transforming code',
+            task: (signal: AbortSignal) => authService!.complete(prompt, {
+              model,
+              maxTokens: 4096,
+              signal,
+            }),
+            config: timeoutConfig,
+            contextSize,
+            showProgress: true,
+            cancellable: true,
+            onTimeout: (timeoutMs: number, contextKb: number) =>
+              timeoutManager.promptRetry('Transforming code', timeoutMs, contextKb),
+          });
 
-              // Clean the response
-              const cleaned = cleanTransformResponse(result);
-              if (!cleaned) {
-                vscode.window.showWarningMessage("No transformation returned");
-                statusBarManager?.setConnected();
-                return;
-              }
-
-              // Verify selection hasn't changed
-              if (!editor.selection.isEqual(originalSelection)) {
-                vscode.window.showWarningMessage(
-                  "Selection changed during transform. Please try again."
-                );
-                statusBarManager?.setConnected();
-                return;
-              }
-
-              // Apply the edit
-              const success = await editor.edit((editBuilder) => {
-                editBuilder.replace(originalSelection, cleaned);
-              });
-
-              if (success) {
-                statusBarManager?.setConnected();
-              } else {
-                statusBarManager?.setError("Edit failed");
-                vscode.window.showErrorMessage("Failed to apply transformation");
-              }
-            } catch (error) {
-              logError("Transform failed", error);
-              const message = error instanceof Error ? error.message : "Unknown error";
-              statusBarManager?.setError(message);
-              vscode.window.showErrorMessage(`Transform failed: ${message}`);
+          if (!result.success) {
+            if (result.timedOut) {
+              statusBarManager?.setError("Timeout");
+              vscode.window.showErrorMessage(`Transform timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`);
+              return;
             }
+            if (result.error?.name === 'AbortError') {
+              statusBarManager?.setConnected();
+              return; // User cancelled
+            }
+            throw result.error ?? new Error('Unknown error');
           }
-        );
+
+          log(`Transform completed, result length: ${result.result!.length}`);
+
+          // Clean the response
+          const cleaned = cleanTransformResponse(result.result!);
+          if (!cleaned) {
+            vscode.window.showWarningMessage("No transformation returned");
+            statusBarManager?.setConnected();
+            return;
+          }
+
+          // Verify selection hasn't changed
+          if (!editor.selection.isEqual(originalSelection)) {
+            vscode.window.showWarningMessage(
+              "Selection changed during transform. Please try again."
+            );
+            statusBarManager?.setConnected();
+            return;
+          }
+
+          // Apply the edit
+          const success = await editor.edit((editBuilder) => {
+            editBuilder.replace(originalSelection, cleaned);
+          });
+
+          if (success) {
+            statusBarManager?.setConnected();
+          } else {
+            statusBarManager?.setError("Edit failed");
+            vscode.window.showErrorMessage("Failed to apply transformation");
+          }
+        } catch (error) {
+          logError("Transform failed", error);
+          const message = error instanceof Error ? error.message : "Unknown error";
+          statusBarManager?.setError(message);
+          vscode.window.showErrorMessage(`Transform failed: ${message}`);
+        }
       }
     )
   );

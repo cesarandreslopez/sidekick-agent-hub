@@ -288,6 +288,17 @@ export class MaxSubscriptionClient implements ClaudeClient {
     const timeoutMs = options?.timeout ?? 30000;
     const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
+    // Link external signal to our internal abort controller if provided
+    let externalAbortHandler: (() => void) | undefined;
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        clearTimeout(timeoutId);
+        throw new Error('Request was cancelled');
+      }
+      externalAbortHandler = () => abortController.abort();
+      options.signal.addEventListener('abort', externalAbortHandler);
+    }
+
     log(`MaxSubscriptionClient.complete called, model=${options?.model}, timeout=${timeoutMs}`);
 
     try {
@@ -328,11 +339,21 @@ export class MaxSubscriptionClient implements ClaudeClient {
     } catch (error) {
       logError('MaxSubscriptionClient.complete error', error);
       if (error instanceof Error && error.name === 'AbortError') {
+        // Check if external signal was aborted (user cancellation) vs timeout
+        if (options?.signal?.aborted) {
+          const abortError = new Error('Request was cancelled');
+          abortError.name = 'AbortError';
+          throw abortError;
+        }
         throw new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs);
       }
       throw error;
     } finally {
       clearTimeout(timeoutId);
+      // Clean up external signal listener
+      if (externalAbortHandler && options?.signal) {
+        options.signal.removeEventListener('abort', externalAbortHandler);
+      }
     }
   }
 

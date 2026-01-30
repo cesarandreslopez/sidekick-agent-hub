@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
+import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import type { ContentType, ComplexityLevel } from '../types/rsvp';
 
 /**
@@ -18,12 +19,16 @@ import type { ContentType, ComplexityLevel } from '../types/rsvp';
  * and complexity level (ELI5 to PhD). Uses configurable model (Sonnet default).
  */
 export class ExplanationService {
+  private timeoutManager: TimeoutManager;
+
   /**
    * Creates a new ExplanationService.
    *
    * @param authService - AuthService instance for Claude API access
    */
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) {
+    this.timeoutManager = getTimeoutManager();
+  }
 
   /**
    * Generate explanation for text.
@@ -46,26 +51,43 @@ export class ExplanationService {
     fileContext?: { fileName: string; languageId: string },
     extraInstructions?: string
   ): Promise<string> {
-    try {
-      // Read model from configuration (default: sonnet)
-      const config = vscode.workspace.getConfiguration('sidekick');
-      const model = config.get<string>('explanationModel') ?? 'sonnet';
+    // Read model from configuration (default: sonnet)
+    const config = vscode.workspace.getConfiguration('sidekick');
+    const model = config.get<string>('explanationModel') ?? 'sonnet';
 
-      // Build adaptive prompt
-      const prompt = this.buildPrompt(text, contentType, complexity, fileContext, extraInstructions);
+    // Build adaptive prompt
+    const prompt = this.buildPrompt(text, contentType, complexity, fileContext, extraInstructions);
+    const contextSize = new TextEncoder().encode(prompt).length;
 
-      // Request explanation
-      const explanation = await this.authService.complete(prompt, {
+    // Get timeout config for this operation
+    const timeoutConfig = this.timeoutManager.getTimeoutConfig('explanation');
+
+    // Execute with timeout management and retry support
+    const result = await this.timeoutManager.executeWithTimeout({
+      operation: 'Generating explanation',
+      task: (signal: AbortSignal) => this.authService.complete(prompt, {
         model,
         maxTokens: 2000,
-        timeout: 30000,
-      });
+        signal,
+      }),
+      config: timeoutConfig,
+      contextSize,
+      showProgress: true,
+      cancellable: true,
+      onTimeout: (timeoutMs: number, contextKb: number) =>
+        this.timeoutManager.promptRetry('Generating explanation', timeoutMs, contextKb),
+    });
 
-      return explanation;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to generate explanation: ${message}`);
+    if (result.success && result.result !== undefined) {
+      return result.result;
     }
+
+    if (result.timedOut) {
+      throw new Error(`Explanation timed out after ${result.timeoutMs}ms`);
+    }
+
+    const message = result.error?.message ?? 'Unknown error';
+    throw new Error(`Failed to generate explanation: ${message}`);
   }
 
   /**

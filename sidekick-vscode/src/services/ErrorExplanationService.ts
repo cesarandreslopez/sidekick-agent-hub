@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
+import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import type { ErrorContext, ErrorExplanation, FixSuggestion } from '../types/errorExplanation';
 import type { ComplexityLevel } from '../types/rsvp';
 import { getErrorExplanationPrompt, getErrorFixPrompt } from '../utils/prompts';
@@ -20,12 +21,16 @@ import { getErrorExplanationPrompt, getErrorFixPrompt } from '../utils/prompts';
  * code fixes using Claude. Uses configurable model (Sonnet default for accuracy).
  */
 export class ErrorExplanationService {
+  private readonly timeoutManager: TimeoutManager;
+
   /**
    * Creates a new ErrorExplanationService.
    *
    * @param authService - AuthService instance for Claude API access
    */
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) {
+    this.timeoutManager = getTimeoutManager();
+  }
 
   /**
    * Generate explanation for an error diagnostic.
@@ -44,27 +49,41 @@ export class ErrorExplanationService {
     errorContext: ErrorContext,
     complexity?: ComplexityLevel
   ): Promise<ErrorExplanation> {
-    try {
-      // Read model from configuration (default: sonnet)
-      const config = vscode.workspace.getConfiguration('sidekick');
-      const model = config.get<string>('errorModel') ?? 'sonnet';
+    // Read model from configuration (default: sonnet)
+    const config = vscode.workspace.getConfiguration('sidekick');
+    const model = config.get<string>('errorModel') ?? 'sonnet';
 
-      // Build prompt for error explanation
-      const prompt = getErrorExplanationPrompt(code, errorContext, complexity);
+    // Build prompt for error explanation
+    const prompt = getErrorExplanationPrompt(code, errorContext, complexity);
+    const contextSize = new TextEncoder().encode(prompt).length;
+    const timeoutConfig = this.timeoutManager.getTimeoutConfig('errorExplanation');
 
-      // Request explanation from Claude
-      const response = await this.authService.complete(prompt, {
+    // Execute with timeout management and retry support
+    const result = await this.timeoutManager.executeWithTimeout({
+      operation: 'Explaining error',
+      task: (signal: AbortSignal) => this.authService.complete(prompt, {
         model,
         maxTokens: 2000,
-        timeout: 30000,
-      });
+        signal,
+      }),
+      config: timeoutConfig,
+      contextSize,
+      showProgress: true,
+      cancellable: true,
+      onTimeout: (timeoutMs: number, contextKb: number) =>
+        this.timeoutManager.promptRetry('Explaining error', timeoutMs, contextKb),
+    });
 
-      // Parse response into ErrorExplanation structure
-      return this.parseExplanation(response);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to generate error explanation: ${message}`);
+    if (result.success && result.result !== undefined) {
+      return this.parseExplanation(result.result);
     }
+
+    if (result.timedOut) {
+      throw new Error(`Error explanation timed out after ${result.timeoutMs}ms`);
+    }
+
+    const message = result.error?.message ?? 'Unknown error';
+    throw new Error(`Failed to generate error explanation: ${message}`);
   }
 
   /**
@@ -82,48 +101,64 @@ export class ErrorExplanationService {
     code: string,
     errorContext: ErrorContext
   ): Promise<FixSuggestion | null> {
-    try {
-      // Read model from configuration (default: sonnet)
-      const config = vscode.workspace.getConfiguration('sidekick');
-      const model = config.get<string>('errorModel') ?? 'sonnet';
+    // Read model from configuration (default: sonnet)
+    const config = vscode.workspace.getConfiguration('sidekick');
+    const model = config.get<string>('errorModel') ?? 'sonnet';
 
-      // Build prompt for fix generation
-      const prompt = getErrorFixPrompt(code, errorContext);
+    // Build prompt for fix generation
+    const prompt = getErrorFixPrompt(code, errorContext);
+    const contextSize = new TextEncoder().encode(prompt).length;
+    const timeoutConfig = this.timeoutManager.getTimeoutConfig('errorExplanation');
 
-      // Request fix from Claude
-      const fixedCode = await this.authService.complete(prompt, {
+    // Execute with timeout management and retry support
+    const result = await this.timeoutManager.executeWithTimeout({
+      operation: 'Generating fix',
+      task: (signal: AbortSignal) => this.authService.complete(prompt, {
         model,
         maxTokens: 2000,
-        timeout: 30000,
-      });
+        signal,
+      }),
+      config: timeoutConfig,
+      contextSize,
+      showProgress: true,
+      cancellable: true,
+      onTimeout: (timeoutMs: number, contextKb: number) =>
+        this.timeoutManager.promptRetry('Generating fix', timeoutMs, contextKb),
+    });
 
-      // If response is empty or looks like refusal, return null
-      if (!fixedCode || fixedCode.trim().length === 0) {
-        return null;
+    if (!result.success) {
+      if (result.timedOut) {
+        throw new Error(`Fix generation timed out after ${result.timeoutMs}ms`);
       }
-
-      // Check if Claude refused to fix (common meta-response patterns)
-      const lowerResponse = fixedCode.toLowerCase();
-      if (
-        lowerResponse.includes('cannot') ||
-        lowerResponse.includes('unable to') ||
-        lowerResponse.includes('need more context')
-      ) {
-        return null;
-      }
-
-      // Build FixSuggestion from response
-      return {
-        documentUri: errorContext.fileName,
-        range: errorContext.range,
-        originalCode: code,
-        fixedCode: fixedCode.trim(),
-        explanation: `Fixed ${errorContext.severity}: ${errorContext.errorMessage}`,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = result.error?.message ?? 'Unknown error';
       throw new Error(`Failed to generate fix: ${message}`);
     }
+
+    const fixedCode = result.result!;
+
+    // If response is empty or looks like refusal, return null
+    if (!fixedCode || fixedCode.trim().length === 0) {
+      return null;
+    }
+
+    // Check if Claude refused to fix (common meta-response patterns)
+    const lowerResponse = fixedCode.toLowerCase();
+    if (
+      lowerResponse.includes('cannot') ||
+      lowerResponse.includes('unable to') ||
+      lowerResponse.includes('need more context')
+    ) {
+      return null;
+    }
+
+    // Build FixSuggestion from response
+    return {
+      documentUri: errorContext.fileName,
+      range: errorContext.range,
+      originalCode: code,
+      fixedCode: fixedCode.trim(),
+      explanation: `Fixed ${errorContext.severity}: ${errorContext.errorMessage}`,
+    };
   }
 
   /**

@@ -36,6 +36,13 @@ export interface CompletionOptions {
    * @default 30000
    */
   timeout?: number;
+
+  /**
+   * External AbortSignal for request cancellation.
+   * When provided, the request will be cancelled if this signal is aborted.
+   * This is in addition to internal timeout handling.
+   */
+  signal?: AbortSignal;
 }
 
 /**

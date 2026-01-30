@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
+import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import type { InlineChatRequest, InlineChatResponse, InlineChatResult } from '../types/inlineChat';
 import {
   getInlineChatSystemPrompt,
@@ -23,70 +24,82 @@ import {
  * Supports request cancellation via AbortController.
  */
 export class InlineChatService {
-  constructor(private authService: AuthService) {}
+  private readonly timeoutManager: TimeoutManager;
+
+  constructor(private authService: AuthService) {
+    this.timeoutManager = getTimeoutManager();
+  }
 
   /**
    * Process an inline chat request.
    *
    * @param request - The inline chat request with query and context
-   * @param abortSignal - Optional AbortSignal for cancellation
+   * @param abortSignal - Optional AbortSignal for cancellation (deprecated, use timeout manager instead)
    * @returns Promise resolving to InlineChatResult
    */
   async process(
     request: InlineChatRequest,
     abortSignal?: AbortSignal
   ): Promise<InlineChatResult> {
-    try {
-      // Check for early abort
-      if (abortSignal?.aborted) {
-        return { success: false, error: 'Request cancelled' };
-      }
+    // Check for early abort (legacy support)
+    if (abortSignal?.aborted) {
+      return { success: false, error: 'Request cancelled' };
+    }
 
-      // Get configured model
-      const config = vscode.workspace.getConfiguration('sidekick');
-      const model = config.get<string>('inlineChatModel') ?? 'sonnet';
+    // Get configured model
+    const config = vscode.workspace.getConfiguration('sidekick');
+    const model = config.get<string>('inlineChatModel') ?? 'sonnet';
 
-      // Build prompt
-      const systemPrompt = getInlineChatSystemPrompt();
-      const userPrompt = getInlineChatUserPrompt(
-        request.query,
-        request.selectedText,
-        request.languageId,
-        request.contextBefore,
-        request.contextAfter
-      );
+    // Build prompt
+    const systemPrompt = getInlineChatSystemPrompt();
+    const userPrompt = getInlineChatUserPrompt(
+      request.query,
+      request.selectedText,
+      request.languageId,
+      request.contextBefore,
+      request.contextAfter
+    );
 
-      const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+    const contextSize = new TextEncoder().encode(fullPrompt).length;
+    const timeoutConfig = this.timeoutManager.getTimeoutConfig('inlineChat');
 
-      // Make AI request
-      const rawResponse = await this.authService.complete(fullPrompt, {
+    // Execute with timeout management and retry support
+    const result = await this.timeoutManager.executeWithTimeout({
+      operation: 'Processing query',
+      task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
         model,
         maxTokens: 2000,
-        timeout: 60000, // Longer timeout for code generation
-      });
+        signal,
+      }),
+      config: timeoutConfig,
+      contextSize,
+      showProgress: true,
+      cancellable: true,
+      onTimeout: (timeoutMs: number, contextKb: number) =>
+        this.timeoutManager.promptRetry('Processing query', timeoutMs, contextKb),
+    });
 
-      // Check for abort after async operation
-      if (abortSignal?.aborted) {
+    if (!result.success) {
+      if (result.timedOut) {
+        return { success: false, error: `Request timed out after ${result.timeoutMs}ms` };
+      }
+      if (result.error?.name === 'AbortError') {
         return { success: false, error: 'Request cancelled' };
       }
-
-      // Parse response to detect mode
-      const parsed = parseInlineChatResponse(rawResponse);
-
-      const response: InlineChatResponse = {
-        mode: parsed.mode,
-        text: parsed.mode === 'question' ? parsed.content : '',
-        code: parsed.mode === 'edit' ? parsed.content : undefined,
-      };
-
-      return { success: true, response };
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        return { success: false, error: 'Request cancelled' };
-      }
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      return { success: false, error: result.error?.message ?? 'Unknown error' };
     }
+
+    // Parse response to detect mode
+    const parsed = parseInlineChatResponse(result.result!);
+
+    const response: InlineChatResponse = {
+      mode: parsed.mode,
+      text: parsed.mode === 'question' ? parsed.content : '',
+      code: parsed.mode === 'edit' ? parsed.content : undefined,
+    };
+
+    return { success: true, response };
   }
 
   /**

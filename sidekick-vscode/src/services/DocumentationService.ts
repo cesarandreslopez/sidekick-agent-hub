@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
+import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import {
   getDocGenerationSystemPrompt,
   getDocGenerationUserPrompt,
@@ -50,12 +51,16 @@ export interface DocumentationResult {
  * ```
  */
 export class DocumentationService implements vscode.Disposable {
+  private readonly timeoutManager: TimeoutManager;
+
   /**
    * Creates a new DocumentationService.
    *
    * @param authService - Auth service for Claude API access
    */
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) {
+    this.timeoutManager = getTimeoutManager();
+  }
 
   /**
    * Generates documentation for code at the current cursor position or selection.
@@ -107,12 +112,37 @@ export class DocumentationService implements vscode.Disposable {
       const userPrompt = getDocGenerationUserPrompt(code, language);
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
 
-      const result = await this.authService.complete(fullPrompt, {
-        model,
-        maxTokens: 1024,
-        timeout: 30000,
+      // Calculate context size for timeout scaling
+      const contextSize = new TextEncoder().encode(fullPrompt).length;
+      const timeoutConfig = this.timeoutManager.getTimeoutConfig('documentation');
+
+      // Execute with timeout management and retry support
+      const timeoutResult = await this.timeoutManager.executeWithTimeout({
+        operation: 'Generating documentation',
+        task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
+          model,
+          maxTokens: 1024,
+          signal,
+        }),
+        config: timeoutConfig,
+        contextSize,
+        showProgress: true,
+        cancellable: true,
+        onTimeout: (timeoutMs: number, contextKb: number) =>
+          this.timeoutManager.promptRetry('Generating documentation', timeoutMs, contextKb),
       });
 
+      if (!timeoutResult.success) {
+        if (timeoutResult.timedOut) {
+          return { error: `Request timed out after ${timeoutResult.timeoutMs}ms. Try again or increase timeout in settings.` };
+        }
+        if (timeoutResult.error?.name === 'AbortError') {
+          return { error: 'Request cancelled' };
+        }
+        return { error: timeoutResult.error?.message ?? 'Unknown error' };
+      }
+
+      const result = timeoutResult.result!;
       const cleaned = cleanDocResponse(result, language);
       if (!cleaned) {
         return { error: 'Could not generate valid documentation. Please try again.' };

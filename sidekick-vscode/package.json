@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick for Max",
   "description": "AI-powered code completions, transforms, commit messages, RSVP speed reading, and Claude Code session monitoring - all using your Claude Max subscription at no extra cost.",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -299,6 +299,78 @@
           "type": "boolean",
           "default": true,
           "description": "Enable Claude Code session monitoring for token usage tracking"
+        },
+        "sidekick.timeouts": {
+          "type": "object",
+          "default": {
+            "inlineCompletion": 15000,
+            "explanation": 30000,
+            "commitMessage": 30000,
+            "documentation": 45000,
+            "codeTransform": 60000,
+            "review": 45000,
+            "prDescription": 45000,
+            "inlineChat": 60000,
+            "errorExplanation": 30000
+          },
+          "description": "Timeout settings per operation type (milliseconds). Increase these values if you frequently experience timeouts.",
+          "properties": {
+            "inlineCompletion": {
+              "type": "number",
+              "description": "Timeout for inline code completions"
+            },
+            "explanation": {
+              "type": "number",
+              "description": "Timeout for RSVP explanations"
+            },
+            "commitMessage": {
+              "type": "number",
+              "description": "Timeout for commit message generation"
+            },
+            "documentation": {
+              "type": "number",
+              "description": "Timeout for documentation generation"
+            },
+            "codeTransform": {
+              "type": "number",
+              "description": "Timeout for code transformations"
+            },
+            "review": {
+              "type": "number",
+              "description": "Timeout for pre-commit review"
+            },
+            "prDescription": {
+              "type": "number",
+              "description": "Timeout for PR description generation"
+            },
+            "inlineChat": {
+              "type": "number",
+              "description": "Timeout for inline chat / quick ask"
+            },
+            "errorExplanation": {
+              "type": "number",
+              "description": "Timeout for error explanations"
+            }
+          }
+        },
+        "sidekick.timeoutPerKb": {
+          "type": "number",
+          "default": 500,
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Additional timeout per KB of context (milliseconds). Larger contexts get proportionally longer timeouts."
+        },
+        "sidekick.maxTimeout": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 30000,
+          "maximum": 300000,
+          "description": "Maximum timeout cap (milliseconds). No operation will wait longer than this."
+        },
+        "sidekick.autoRetryOnTimeout": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically retry with a longer timeout when an operation times out (instead of prompting user)"
         }
       }
     },
