@@ -20,7 +20,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { findActiveSession, findAllSessions, getSessionDirectory } from './SessionPathResolver';
+import { findActiveSession, findAllSessions, getSessionDirectory, discoverSessionDirectory } from './SessionPathResolver';
 import { JsonlParser, extractTokenUsage } from './JsonlParser';
 import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall } from '../types/claudeSession';
 import { log, logError } from './Logger';
@@ -258,7 +258,8 @@ export class SessionMonitor implements vscode.Disposable {
       this.watcher = undefined;
     }
 
-    const sessionDir = getSessionDirectory(this.workspacePath);
+    // Use discovery to find the actual session directory (handles subdirectory sessions)
+    const sessionDir = discoverSessionDirectory(this.workspacePath) || getSessionDirectory(this.workspacePath);
 
     // Create directory if it doesn't exist (Claude Code will create it anyway)
     try {
@@ -357,8 +358,8 @@ export class SessionMonitor implements vscode.Disposable {
       return;
     }
 
-    // Re-check if directory exists (might have been created)
-    const sessionDir = getSessionDirectory(this.workspacePath);
+    // Use discovery to find session directory (handles subdirectory sessions)
+    const sessionDir = discoverSessionDirectory(this.workspacePath) || getSessionDirectory(this.workspacePath);
     if (!fs.existsSync(sessionDir)) {
       return; // Still waiting for Claude Code to create directory
     }

@@ -72,7 +72,7 @@ The extension uses Haiku by default for inline completions - it's fast, responsi
 
 Monitor your Claude Code sessions in real-time with a comprehensive analytics dashboard. Click the Session Monitor icon in the activity bar to access all monitoring features.
 
-![Session Monitor demo](../assets/session-monitor-demo.gif)
+![Session Monitor demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/session-monitor-demo.gif)
 
 **Session Analytics Dashboard:**
 - Real-time token usage and cost tracking with model-specific pricing

@@ -5,6 +5,15 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2026-01-30
+
+### Fixed
+- **Subdirectory session discovery**: Session monitoring now finds Claude Code sessions started from subdirectories of the workspace ([#7](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/7))
+  - When VS Code workspace is `/project` but Claude Code starts from `/project/packages/app`, the extension now correctly discovers and monitors that session
+  - Uses prefix-based matching with most-recently-active selection when multiple subdirectory sessions exist
+  - Prevents false positives (e.g., `/project` won't match `/project-v2`)
+  - Added `subdirectoryMatches` and `selectedSubdirectoryMatch` to session diagnostics for debugging
+
 ## [0.7.4] - 2026-01-30
 
 ### Added

@@ -66,6 +66,112 @@ export function getSessionDirectory(workspacePath: string): string {
 const ACTIVE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
 
 /**
+ * Finds session directories for Claude Code sessions started from subdirectories
+ * of the given workspace path.
+ *
+ * When VS Code workspace is `/home/user/project` but Claude Code starts from
+ * a subdirectory like `/home/user/project/packages/app`, the session goes to
+ * `~/.claude/projects/-home-user-project-packages-app/` which we need to find.
+ *
+ * @param workspacePath - Absolute path to workspace directory
+ * @returns Array of matching session directory paths
+ *
+ * @example
+ * ```typescript
+ * // Workspace: /home/user/project
+ * // Claude started from: /home/user/project/packages/app
+ * findSubdirectorySessionDirs('/home/user/project');
+ * // => ["/home/user/.claude/projects/-home-user-project-packages-app"]
+ * ```
+ */
+export function findSubdirectorySessionDirs(workspacePath: string): string[] {
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+
+  try {
+    if (!fs.existsSync(projectsDir)) {
+      return [];
+    }
+
+    // Encode workspace path to get the prefix to match
+    const encodedPrefix = encodeWorkspacePath(workspacePath).toLowerCase();
+
+    // Get all directories in projects folder
+    const allDirs = fs.readdirSync(projectsDir).filter(name => {
+      const fullPath = path.join(projectsDir, name);
+      try {
+        return fs.statSync(fullPath).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+
+    // Find directories that start with the encoded workspace prefix followed by a hyphen
+    // The hyphen requirement prevents /project matching /project-v2
+    const matches: string[] = [];
+    for (const dir of allDirs) {
+      const dirLower = dir.toLowerCase();
+      // Must start with prefix AND have a hyphen after (indicating subdirectory)
+      if (dirLower.startsWith(encodedPrefix + '-')) {
+        matches.push(path.join(projectsDir, dir));
+      }
+    }
+
+    return matches;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Gets the most recently active session directory from a list of directories.
+ *
+ * For each directory, finds the most recent .jsonl file by modification time,
+ * then returns the directory containing the overall most recent session.
+ *
+ * @param sessionDirs - Array of session directory paths to check
+ * @returns Path to most recently active directory, or null if none have sessions
+ *
+ * @example
+ * ```typescript
+ * getMostRecentlyActiveSessionDir([
+ *   '/home/user/.claude/projects/-home-user-project-packages-app',
+ *   '/home/user/.claude/projects/-home-user-project-packages-lib'
+ * ]);
+ * // => "/home/user/.claude/projects/-home-user-project-packages-app"
+ * ```
+ */
+export function getMostRecentlyActiveSessionDir(sessionDirs: string[]): string | null {
+  let mostRecentDir: string | null = null;
+  let mostRecentMtime = 0;
+
+  for (const dir of sessionDirs) {
+    try {
+      // Find most recent .jsonl file in this directory
+      const files = fs.readdirSync(dir)
+        .filter(file => file.endsWith('.jsonl'));
+
+      for (const file of files) {
+        try {
+          const fullPath = path.join(dir, file);
+          const stats = fs.statSync(fullPath);
+          // Only consider non-empty files
+          if (stats.size > 0 && stats.mtime.getTime() > mostRecentMtime) {
+            mostRecentMtime = stats.mtime.getTime();
+            mostRecentDir = dir;
+          }
+        } catch {
+          // Skip files we can't stat
+        }
+      }
+    } catch {
+      // Skip directories we can't read
+    }
+  }
+
+  return mostRecentDir;
+}
+
+/**
  * Discovers the session directory for a workspace by trying multiple strategies.
  *
  * Strategy order:
@@ -79,10 +185,22 @@ const ACTIVE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
 export function discoverSessionDirectory(workspacePath: string): string | null {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
 
-  // Strategy 1: Try computed encoded path
+  // Strategy 1: Try computed encoded path (exact match)
   const computedDir = getSessionDirectory(workspacePath);
   if (fs.existsSync(computedDir)) {
     return computedDir;
+  }
+
+  // Strategy 1.5: Check for subdirectory sessions
+  // When Claude Code starts from a subdirectory of the workspace, the session
+  // is stored in a directory matching the subdirectory path. We find the most
+  // recently active one.
+  const subdirMatches = findSubdirectorySessionDirs(workspacePath);
+  if (subdirMatches.length > 0) {
+    const mostRecent = getMostRecentlyActiveSessionDir(subdirMatches);
+    if (mostRecent) {
+      return mostRecent;
+    }
   }
 
   // Strategy 2: Scan ~/.claude/projects/ for matching directories
@@ -311,6 +429,10 @@ export interface SessionDiagnostics {
   similarDirs: string[];
   /** Platform info */
   platform: string;
+  /** Subdirectory session matches (sessions started from subdirectories of workspace) */
+  subdirectoryMatches: string[];
+  /** Selected subdirectory match (most recently active) */
+  selectedSubdirectoryMatch: string | null;
 }
 
 /**
@@ -355,6 +477,12 @@ export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics
            workspaceBasename.includes(dirLower.split('-').pop() || '');
   });
 
+  // Find subdirectory session matches
+  const subdirectoryMatches = findSubdirectorySessionDirs(workspacePath);
+  const selectedSubdirectoryMatch = subdirectoryMatches.length > 0
+    ? getMostRecentlyActiveSessionDir(subdirectoryMatches)
+    : null;
+
   return {
     workspacePath,
     encodedPath,
@@ -363,6 +491,8 @@ export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics
     discoveredSessionDir,
     existingProjectDirs,
     similarDirs,
-    platform: process.platform
+    platform: process.platform,
+    subdirectoryMatches,
+    selectedSubdirectoryMatch
   };
 }
