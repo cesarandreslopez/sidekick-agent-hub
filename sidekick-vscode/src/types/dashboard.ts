@@ -22,6 +22,30 @@ export interface SessionInfo {
 }
 
 /**
+ * Quota data for a single time window (5-hour or 7-day).
+ */
+export interface QuotaWindow {
+  /** Utilization percentage (0-100) */
+  utilization: number;
+  /** ISO timestamp when the quota resets */
+  resetsAt: string;
+}
+
+/**
+ * Complete quota state for Claude Max subscription.
+ */
+export interface QuotaState {
+  /** 5-hour rolling quota */
+  fiveHour: QuotaWindow;
+  /** 7-day rolling quota */
+  sevenDay: QuotaWindow;
+  /** Whether quota data is available (false if no token or API key mode) */
+  available: boolean;
+  /** Error message if quota fetch failed */
+  error?: string;
+}
+
+/**
  * Messages from extension to webview.
  *
  * These messages update the dashboard UI with session data.
@@ -34,7 +58,8 @@ export type DashboardMessage =
   | { type: 'sessionStart'; sessionPath: string }
   | { type: 'sessionEnd' }
   | { type: 'updateSessionList'; sessions: SessionInfo[] }
-  | { type: 'discoveryModeChange'; inDiscoveryMode: boolean };
+  | { type: 'discoveryModeChange'; inDiscoveryMode: boolean }
+  | { type: 'updateQuota'; quota: QuotaState };
 
 /**
  * Messages from webview to extension.

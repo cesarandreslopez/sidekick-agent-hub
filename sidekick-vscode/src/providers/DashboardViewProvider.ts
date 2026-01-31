@@ -16,6 +16,8 @@
 
 import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
+import type { QuotaService } from '../services/QuotaService';
+import type { QuotaState as DashboardQuotaState } from '../types/dashboard';
 import type { TokenUsage, SessionStats, ToolAnalytics, TimelineEvent } from '../types/claudeSession';
 import type { DashboardMessage, WebviewMessage, DashboardState } from '../types/dashboard';
 import { ModelPricingService } from '../services/ModelPricingService';
@@ -65,16 +67,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Maximum timeline events to display */
   private readonly MAX_DISPLAY_TIMELINE = 20;
 
+  /** QuotaService for subscription quota data */
+  private readonly _quotaService?: QuotaService;
+
   /**
    * Creates a new DashboardViewProvider.
    *
    * @param _extensionUri - URI of the extension directory
    * @param _sessionMonitor - SessionMonitor instance for token events
+   * @param quotaService - Optional QuotaService for subscription quota
    */
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _sessionMonitor: SessionMonitor
+    private readonly _sessionMonitor: SessionMonitor,
+    quotaService?: QuotaService
   ) {
+    this._quotaService = quotaService;
     // Initialize empty state
     this._state = {
       totalInputTokens: 0,
@@ -115,6 +123,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._disposables.push(
       this._sessionMonitor.onDiscoveryModeChange(inDiscoveryMode => this._handleDiscoveryModeChange(inDiscoveryMode))
     );
+
+    // Subscribe to quota updates if service available
+    if (this._quotaService) {
+      this._disposables.push(
+        this._quotaService.onQuotaUpdate(quota => this._handleQuotaUpdate(quota))
+      );
+    }
 
     // Initialize state from existing session if active
     if (this._sessionMonitor.isActive()) {
@@ -160,16 +175,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._disposables
     );
 
-    // Resend state when view becomes visible
+    // Resend state when view becomes visible, manage quota refresh
     webviewView.onDidChangeVisibility(
       () => {
         if (webviewView.visible) {
           this._sendStateToWebview();
+          // Start quota refresh when visible
+          this._quotaService?.startRefresh();
+        } else {
+          // Stop quota refresh when hidden to save resources
+          this._quotaService?.stopRefresh();
         }
       },
       undefined,
       this._disposables
     );
+
+    // Start quota refresh if view is initially visible
+    if (webviewView.visible) {
+      this._quotaService?.startRefresh();
+    }
 
     log('Dashboard webview resolved');
   }
@@ -387,6 +412,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     });
     // Also refresh session list when entering/exiting discovery mode
     this._sendSessionList();
+  }
+
+  /**
+   * Handles quota updates from QuotaService.
+   * @param quota - Updated quota state
+   */
+  private _handleQuotaUpdate(quota: DashboardQuotaState): void {
+    this._postMessage({ type: 'updateQuota', quota });
   }
 
   /**
@@ -793,6 +826,114 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       color: var(--vscode-editorError-foreground);
     }
 
+    .gauge-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .gauge-row-item {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .gauge-row-item .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .gauge-row .context-item {
+      flex: 0 0 35%;
+    }
+
+    .gauge-row .quota-item {
+      flex: 1;
+    }
+
+    .gauge-row .context-gauge {
+      height: 90px;
+    }
+
+    .gauge-row .context-gauge canvas {
+      height: 70px !important;
+    }
+
+    .quota-section {
+      display: none;
+    }
+
+    .quota-section.visible {
+      display: block;
+    }
+
+    .quota-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .quota-card {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 6px;
+      text-align: center;
+    }
+
+    .quota-card .quota-label {
+      font-size: 9px;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 2px;
+    }
+
+    .quota-card .quota-gauge {
+      position: relative;
+      height: 55px;
+    }
+
+    .quota-card .quota-gauge canvas {
+      width: 100% !important;
+      height: 55px !important;
+    }
+
+    .quota-card .quota-percent {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 14px;
+      font-weight: bold;
+      font-family: var(--vscode-editor-font-family);
+    }
+
+    .quota-card .quota-percent.warning {
+      color: var(--vscode-editorWarning-foreground);
+    }
+
+    .quota-card .quota-percent.danger {
+      color: var(--vscode-editorError-foreground);
+    }
+
+    .quota-card .quota-reset {
+      font-size: 9px;
+      color: var(--vscode-descriptionForeground);
+      margin-top: 2px;
+    }
+
+    .quota-error {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 8px;
+      text-align: center;
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+    }
+
     .tool-list {
       display: flex;
       flex-direction: column;
@@ -1040,11 +1181,38 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       </div>
     </div>
 
-    <div class="section" title="How much of Claude's 200K token context window is currently in use">
-      <div class="section-title">Context Window</div>
-      <div class="context-gauge" title="Green: &lt;50% | Orange: 50-79% | Red: ≥80%. When full, older context is summarized.">
-        <canvas id="contextChart"></canvas>
-        <span class="context-percent" id="context-percent">0%</span>
+    <div class="gauge-row" id="gauge-row">
+      <div class="gauge-row-item context-item" title="How much of Claude's 200K token context window is currently in use">
+        <div class="section-title">Context Window</div>
+        <div class="context-gauge" title="Green: &lt;50% | Orange: 50-79% | Red: ≥80%. When full, older context is summarized.">
+          <canvas id="contextChart"></canvas>
+          <span class="context-percent" id="context-percent">0%</span>
+        </div>
+      </div>
+
+      <div class="gauge-row-item quota-item quota-section" id="quota-section" title="Claude Max subscription usage limits">
+        <div class="section-title">Subscription Quota</div>
+        <div id="quota-content">
+          <div class="quota-grid">
+            <div class="quota-card" title="Usage in the last 5 hours">
+              <div class="quota-label">5-Hour</div>
+              <div class="quota-gauge">
+                <canvas id="quota5hChart"></canvas>
+                <span class="quota-percent" id="quota-5h-percent">0%</span>
+              </div>
+              <div class="quota-reset" id="quota-5h-reset">-</div>
+            </div>
+            <div class="quota-card" title="Usage in the last 7 days">
+              <div class="quota-label">7-Day</div>
+              <div class="quota-gauge">
+                <canvas id="quota7dChart"></canvas>
+                <span class="quota-percent" id="quota-7d-percent">0%</span>
+              </div>
+              <div class="quota-reset" id="quota-7d-reset">-</div>
+            </div>
+          </div>
+        </div>
+        <div class="quota-error" id="quota-error" style="display: none;"></div>
       </div>
     </div>
 
@@ -1234,6 +1402,149 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           } else if (percent >= 50) {
             contextPercentEl.classList.add('warning');
           }
+        }
+      }
+
+      // Quota gauge charts
+      let quota5hChart = null;
+      let quota7dChart = null;
+
+      /**
+       * Creates a quota gauge chart.
+       */
+      function createQuotaGauge(canvasId) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !window.Chart) return null;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        return new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            datasets: [{
+              data: [0, 100],
+              backgroundColor: [GAUGE_COLORS.green, GAUGE_COLORS.background],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            circumference: 180,
+            rotation: 270,
+            cutout: '65%',
+            plugins: {
+              legend: { display: false },
+              tooltip: { enabled: false }
+            }
+          }
+        });
+      }
+
+      /**
+       * Initializes quota gauge charts.
+       */
+      function initQuotaGauges() {
+        quota5hChart = createQuotaGauge('quota5hChart');
+        quota7dChart = createQuotaGauge('quota7dChart');
+      }
+
+      /**
+       * Updates a quota gauge with new percentage.
+       */
+      function updateQuotaGauge(chart, percentEl, percent) {
+        const clampedPercent = Math.min(100, Math.max(0, percent));
+
+        if (chart) {
+          chart.data.datasets[0].data = [clampedPercent, 100 - clampedPercent];
+          chart.data.datasets[0].backgroundColor = [
+            getGaugeColor(clampedPercent),
+            GAUGE_COLORS.background
+          ];
+          chart.update('none');
+        }
+
+        if (percentEl) {
+          percentEl.textContent = Math.round(percent) + '%';
+          percentEl.className = 'quota-percent';
+          if (percent >= 80) {
+            percentEl.classList.add('danger');
+          } else if (percent >= 50) {
+            percentEl.classList.add('warning');
+          }
+        }
+      }
+
+      /**
+       * Formats a reset time as relative (e.g., "Resets in 2h 15m").
+       */
+      function formatResetTime(isoString) {
+        if (!isoString) return '-';
+
+        var resetDate = new Date(isoString);
+        var now = new Date();
+        var diffMs = resetDate - now;
+
+        if (diffMs <= 0) return 'Resetting...';
+
+        var diffMins = Math.floor(diffMs / 60000);
+        var diffHours = Math.floor(diffMins / 60);
+        var diffDays = Math.floor(diffHours / 24);
+
+        if (diffDays > 0) {
+          var remainingHours = diffHours % 24;
+          return 'Resets in ' + diffDays + 'd ' + remainingHours + 'h';
+        }
+        if (diffHours > 0) {
+          var remainingMins = diffMins % 60;
+          return 'Resets in ' + diffHours + 'h ' + remainingMins + 'm';
+        }
+        return 'Resets in ' + diffMins + 'm';
+      }
+
+      /**
+       * Updates the quota display with new data.
+       */
+      function updateQuota(quota) {
+        var sectionEl = document.getElementById('quota-section');
+        var contentEl = document.getElementById('quota-content');
+        var errorEl = document.getElementById('quota-error');
+
+        if (!sectionEl || !contentEl || !errorEl) return;
+
+        if (!quota.available) {
+          // Hide quota section or show error
+          if (quota.error) {
+            sectionEl.classList.add('visible');
+            contentEl.style.display = 'none';
+            errorEl.style.display = 'block';
+            errorEl.textContent = quota.error;
+          } else {
+            sectionEl.classList.remove('visible');
+          }
+          return;
+        }
+
+        // Show quota section with data
+        sectionEl.classList.add('visible');
+        contentEl.style.display = 'block';
+        errorEl.style.display = 'none';
+
+        // Update 5-hour gauge
+        var percent5hEl = document.getElementById('quota-5h-percent');
+        var reset5hEl = document.getElementById('quota-5h-reset');
+        updateQuotaGauge(quota5hChart, percent5hEl, quota.fiveHour.utilization);
+        if (reset5hEl) {
+          reset5hEl.textContent = formatResetTime(quota.fiveHour.resetsAt);
+        }
+
+        // Update 7-day gauge
+        var percent7dEl = document.getElementById('quota-7d-percent');
+        var reset7dEl = document.getElementById('quota-7d-reset');
+        updateQuotaGauge(quota7dChart, percent7dEl, quota.sevenDay.utilization);
+        if (reset7dEl) {
+          reset7dEl.textContent = formatResetTime(quota.sevenDay.resetsAt);
         }
       }
 
@@ -1512,6 +1823,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           case 'updateSessionList':
             updateSessionList(message.sessions);
             break;
+
+          case 'updateQuota':
+            updateQuota(message.quota);
+            break;
         }
       });
 
@@ -1531,8 +1846,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       }
 
-      // Initialize chart and signal ready
+      // Initialize charts and signal ready
       initContextGauge();
+      initQuotaGauges();
       vscode.postMessage({ type: 'webviewReady' });
     })();
   </script>

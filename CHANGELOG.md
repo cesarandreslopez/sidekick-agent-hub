@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.7.6] - 2026-01-31
+
+### Added
+- **Subscription Quota Display**: View Claude Max 5-hour and 7-day usage limits in the Session Analytics dashboard
+  - Color-coded gauges with reset countdown timers
+  - Auto-refreshes every 30 seconds when visible
+  - Uses OAuth token from Claude Code CLI credentials
+
 ## [0.7.5] - 2026-01-30
 
 ### Fixed

@@ -31,6 +31,7 @@ import { PrDescriptionService } from "./services/PrDescriptionService";
 import { getTimeoutManager } from "./services/TimeoutManager";
 import { SessionMonitor } from './services/SessionMonitor';
 import { MonitorStatusBar } from './services/MonitorStatusBar';
+import { QuotaService } from './services/QuotaService';
 import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
 import { InlineChatProvider } from "./providers/InlineChatProvider";
 import { RsvpViewProvider } from "./providers/RsvpViewProvider";
@@ -90,6 +91,9 @@ let sessionMonitor: SessionMonitor | undefined;
 
 /** Dashboard view provider for session analytics */
 let dashboardProvider: DashboardViewProvider | undefined;
+
+/** Quota service for Claude Max subscription limits */
+let quotaService: QuotaService | undefined;
 
 /**
  * Activates the extension.
@@ -193,8 +197,13 @@ export async function activate(context: vscode.ExtensionContext) {
       log(`Token usage: ${usage.inputTokens} in, ${usage.outputTokens} out, model: ${usage.model}`);
     });
 
-    // Register dashboard view provider (depends on sessionMonitor)
-    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor);
+    // Create quota service for subscription limits
+    quotaService = new QuotaService();
+    context.subscriptions.push(quotaService);
+    log('QuotaService initialized');
+
+    // Register dashboard view provider (depends on sessionMonitor and quotaService)
+    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService);
     context.subscriptions.push(dashboardProvider);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, dashboardProvider)
