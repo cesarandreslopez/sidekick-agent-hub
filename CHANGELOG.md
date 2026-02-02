@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.7.9] - 2026-02-02
+
+### Fixed
+- **Custom folder session auto-discovery**: Fixed automatic detection of new sessions (e.g., after `/clean`) when monitoring a custom folder
+
+## [0.7.8] - 2026-02-02
+
+### Added
+- **Mind Map: Directory & Command Nodes**: Grep/Glob and Bash tool calls now show their targets in the mind map
+
+### Fixed
+- **Custom folder new session detection**: Discovery polling now uses the custom directory instead of the workspace path
+- **Folder picker prioritization**: VS Code workspace now appears first in the "Browse Session Folders" list
+- **Session dropdown custom folder**: Correctly shows sessions from the selected custom folder
+
 ## [0.7.7] - 2026-02-02
 
 ### Added

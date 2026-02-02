@@ -987,8 +987,8 @@ export class SessionMonitor implements vscode.Disposable {
    * Actually performs the new session check after debounce.
    */
   private performNewSessionCheck(): void {
-    if (!this.workspacePath) {
-      log('performNewSessionCheck: missing workspacePath');
+    if (!this.customSessionDir && !this.workspacePath) {
+      log('performNewSessionCheck: no path configured');
       return;
     }
 
@@ -1007,8 +1007,16 @@ export class SessionMonitor implements vscode.Disposable {
 
     try {
       log(`performNewSessionCheck: checking for newer session (current: ${this.sessionPath})`);
-      const newSessionPath = findActiveSession(this.workspacePath);
-      log(`performNewSessionCheck: findActiveSession returned: ${newSessionPath}`);
+
+      // Use custom directory if set, otherwise use workspace discovery
+      let newSessionPath: string | null = null;
+      if (this.customSessionDir) {
+        const sessions = findSessionsInDirectory(this.customSessionDir);
+        newSessionPath = sessions.length > 0 ? sessions[0] : null;
+      } else {
+        newSessionPath = findActiveSession(this.workspacePath!);
+      }
+      log(`performNewSessionCheck: session lookup returned: ${newSessionPath}`);
 
       // If there's a different active session, switch to it
       if (newSessionPath && newSessionPath !== this.sessionPath) {

@@ -5,6 +5,12 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.9] - 2026-02-02
+
+### Fixed
+- **Custom folder session auto-discovery**: Fixed automatic detection of new sessions (e.g., after `/clean`) when monitoring a custom folder
+  - `performNewSessionCheck()` now respects the custom session directory instead of always using the workspace path
+
 ## [0.7.8] - 2026-02-02
 
 ### Added
