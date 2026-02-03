@@ -2,7 +2,7 @@
 
 Your Claude Max, working harder: completions, transforms, commits, code review, session monitoring, and more.
 
-![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/all_features.gif?v=2)
+![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/all_features.gif?v=3)
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
 
@@ -78,7 +78,7 @@ The extension uses Haiku by default for inline completions - it's fast, responsi
 
 Monitor your Claude Code sessions in real-time with a comprehensive analytics dashboard. Click the Session Monitor icon in the activity bar to access all monitoring features.
 
-![Session Monitor demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/session-monitor-demo.gif)
+![Session Monitor demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/cost_session_context_quotas_claude_code.gif)
 
 **Session Analytics Dashboard:**
 - Real-time token usage and cost tracking with model-specific pricing
@@ -89,10 +89,14 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
 - **Browse Session Folders**: Manually select any Claude project folder to monitor, even from different directories
 - Tool analytics with categorization (file operations, search, bash commands, etc.)
 
+![Activity timeline](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/session_activity_timeline.gif)
+
 **Mind Map Visualization:**
 - Interactive D3.js force-directed graph showing session structure
 - Visualizes conversation flow, tool usage, and file relationships
 - Real-time updates as the session progresses
+
+![Mind map visualization](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/node_visualization_graph.gif)
 
 **Tree Views:**
 - **Latest Files Touched** - Quick access to files modified during Claude Code sessions
@@ -108,13 +112,15 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
 - Generates best practices based on actual usage
 - Collapsible suggestions panel with progress indicators
 
+![CLAUDE.md suggestions](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/suggest_improvements_to_agent_claude_md.gif)
+
 The monitor automatically discovers Claude Code sessions and updates in real-time. If Claude Code is running in a different directory than your workspace (e.g., a subdirectory), use **Browse Session Folders** to manually select the session folder. Your selection persists across VS Code restarts. Perfect for understanding token usage, tracking costs, and seeing exactly what Claude is doing in your codebase.
 
 ### Inline Completions
 
 Get intelligent code suggestions as you type. Completions appear as ghost text that you can accept with Tab.
 
-![Inline completions](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/inline_transforms.gif?v=2)
+![Inline completions](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/inline_transforms.gif?v=3)
 
 - Automatic suggestions after a brief pause in typing
 - Manual trigger: `Ctrl+Shift+Space` (Cmd+Shift+Space on Mac)
@@ -124,7 +130,7 @@ Get intelligent code suggestions as you type. Completions appear as ghost text t
 
 Transform selected code using natural language instructions.
 
-![Code transforms](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/code_transforms.gif?v=2)
+![Code transforms](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/code_transforms.gif?v=3)
 
 1. Select the code you want to modify
 2. Press `Ctrl+Shift+M` (Cmd+Shift+M on Mac)
@@ -187,7 +193,7 @@ Understand and fix errors with AI assistance.
 
 Generate intelligent commit messages from your staged changes with a single click.
 
-![AI commit message generation](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/commit_generation.gif?v=2)
+![AI commit message generation](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/commit_generation.gif?v=3)
 
 1. Stage your changes in the Source Control panel
 2. Click the sparkle button in the Source Control toolbar
@@ -226,9 +232,9 @@ Generate pull request descriptions automatically. Click the PR icon in the Sourc
 
 Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visual Presentation)](https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation) displays words one at a time at a fixed focal point, eliminating eye movement and enabling reading speeds of 2-3x normal.
 
-![RSVP speed reading demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/document_rsvp_speed_reading.gif?v=2)
+![RSVP speed reading demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/document_rsvp_speed_reading.gif?v=3)
 
-![AI code explanation with RSVP](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/explain_code_plus_rsvp.gif?v=2)
+![AI code explanation with RSVP](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/explain_code_plus_rsvp.gif?v=3)
 
 1. Select the text you want to speed read
 2. Press `Ctrl+Shift+R` (Cmd+Shift+R on Mac) or right-click → "Sidekick: RSVP Reader"
@@ -281,7 +287,7 @@ Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visua
 
 Click "Sidekick" in the status bar to access:
 
-![Status bar menu](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/logs_and_configuration.gif?v=2)
+![Status bar menu](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/logs_and_configuration.gif?v=3)
 
 - Enable/Disable completions
 - Configure Extension settings

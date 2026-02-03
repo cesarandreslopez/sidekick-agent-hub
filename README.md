@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/all_features.gif?v=2" alt="Sidekick features demo" width="800">
+  <img src="assets/all_features.gif?v=3" alt="Sidekick features demo" width="800">
 </p>
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
@@ -57,7 +57,7 @@ The extension uses the Anthropic SDK directly to call Claude. If you have a Clau
 
 ### Setup
 
-![Installation demo](assets/installation.gif?v=2)
+![Installation demo](assets/installation.gif?v=3)
 
 1. Install and authenticate Claude Code CLI:
    ```bash
@@ -76,7 +76,7 @@ The extension uses the Anthropic SDK directly to call Claude. If you have a Clau
 ### Claude Code Session Monitor
 Monitor your Claude Code sessions in real-time with a comprehensive analytics dashboard. Click the Session Monitor icon in the activity bar to access all monitoring features.
 
-![Session Monitor demo](assets/session-monitor-demo.gif)
+![Session Monitor demo](assets/cost_session_context_quotas_claude_code.gif)
 
 - **Session Analytics Dashboard** - Track token usage, costs, and activity in real-time
   - Token usage with explanatory tooltips and quota projections showing estimated usage at reset
@@ -84,9 +84,15 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
   - Activity timeline with user prompts, tool calls, and errors
   - Session selector to switch between active sessions
   - Tool analytics showing what operations Claude is performing
+
+![Activity timeline](assets/session_activity_timeline.gif)
+
 - **Mind Map Visualization** - Interactive D3.js graph showing session structure
   - Visualizes conversation flow and file relationships
   - Real-time updates as the session progresses
+
+![Mind map visualization](assets/node_visualization_graph.gif)
+
 - **Latest Files Touched** - Tree view of files modified during sessions
 - **Subagents Tree** - Monitor spawned Task agents during complex operations
 - **Status Bar Metrics** - Quick session status in the VS Code status bar
@@ -95,17 +101,19 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
   - Generates best practices based on actual usage
   - Collapsible suggestions panel with progress indicators
 
+![CLAUDE.md suggestions](assets/suggest_improvements_to_agent_claude_md.gif)
+
 The monitor automatically discovers Claude Code sessions and updates in real-time as Claude works. Perfect for understanding token usage and keeping an eye on costs.
 
 ### Inline Completions
 Get intelligent code suggestions as you type. Uses Haiku by default for fast, lightweight completions that won't drain your quota.
 
-![Inline completions demo](assets/inline_transforms.gif?v=2)
+![Inline completions demo](assets/inline_transforms.gif?v=3)
 
 ### Code Transforms
 Select code, press `Ctrl+Shift+M`, and describe how to transform it. Uses Opus by default for high-quality refactoring.
 
-![Code transforms demo](assets/code_transforms.gif?v=2)
+![Code transforms demo](assets/code_transforms.gif?v=3)
 
 ### Quick Ask (Inline Chat)
 Ask questions about code or request changes without leaving your editor. Press `Ctrl+I` (Cmd+I on Mac) to open the quick input.
@@ -143,7 +151,7 @@ Understand and fix errors with AI assistance. Click the lightbulb on any diagnos
 ### AI Commit Messages
 Generate intelligent commit messages from your staged changes with a single click. Click the sparkle button in the Source Control toolbar to analyze your diff and create a contextual commit message.
 
-![AI commit message generation](assets/commit_generation.gif?v=2)
+![AI commit message generation](assets/commit_generation.gif?v=3)
 
 - **Conventional Commits** or simple description format
 - **Regenerate with guidance** - refine the message with instructions like "focus on the bug fix" or "make it shorter"
@@ -172,9 +180,9 @@ Generate pull request descriptions automatically. Click the PR icon in the Sourc
 ### RSVP Reader
 Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visual Presentation)](https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation) displays words one at a time at a fixed focal point, eliminating eye movement and enabling reading speeds of 2-3x normal. Select text, press `Ctrl+Shift+R`, and read faster with ORP (Optimal Recognition Point) highlighting.
 
-![RSVP speed reading demo](assets/document_rsvp_speed_reading.gif?v=2)
+![RSVP speed reading demo](assets/document_rsvp_speed_reading.gif?v=3)
 
-![AI code explanation with RSVP](assets/explain_code_plus_rsvp.gif?v=2)
+![AI code explanation with RSVP](assets/explain_code_plus_rsvp.gif?v=3)
 
 - **Word-by-word display** with ORP highlighting for reduced eye movement
 - **Adjustable speed** from 100-900 WPM
@@ -186,7 +194,7 @@ Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visua
 ### Status Bar Menu
 Click "Sidekick" in the status bar to access logs, test connection, configure settings, and more.
 
-![Logs and configuration](assets/logs_and_configuration.gif?v=2)
+![Logs and configuration](assets/logs_and_configuration.gif?v=3)
 
 ## Token Efficiency
 

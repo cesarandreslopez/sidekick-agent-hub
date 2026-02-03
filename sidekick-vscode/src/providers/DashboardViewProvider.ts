@@ -1506,11 +1506,65 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       color: var(--vscode-descriptionForeground);
     }
 
-    /* Progressive disclosure */
+    /* Unified collapsible section styling */
+    .collapsible-section {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--vscode-panel-border);
+    }
+
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+
+    .collapsible-header:hover {
+      opacity: 0.8;
+    }
+
+    .collapsible-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .collapsible-toggle-icon {
+      font-size: 10px;
+      transition: transform 0.2s;
+      color: var(--vscode-foreground);
+      opacity: 0.7;
+    }
+
+    .collapsible-section.expanded .collapsible-toggle-icon {
+      transform: rotate(90deg);
+    }
+
+    .collapsible-header h3 {
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+    }
+
+    .collapsible-body {
+      display: none;
+      margin-top: 12px;
+    }
+
+    .collapsible-section.expanded .collapsible-body {
+      display: block;
+    }
+
+    /* Legacy details-section classes for backwards compat */
     .details-section {
-      border: 1px solid var(--vscode-panel-border);
-      border-radius: 4px;
-      margin-bottom: 16px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--vscode-panel-border);
     }
 
     .details-toggle {
@@ -1518,20 +1572,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       align-items: center;
       gap: 8px;
       width: 100%;
-      padding: 8px 12px;
-      background: var(--vscode-input-background);
+      padding: 4px 0;
+      background: transparent;
       border: none;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
+      font-weight: 600;
       color: var(--vscode-foreground);
     }
 
     .details-toggle:hover {
-      background: var(--vscode-list-hoverBackground);
+      opacity: 0.8;
     }
 
     .toggle-icon {
+      font-size: 10px;
       transition: transform 0.2s;
+      opacity: 0.7;
     }
 
     .details-section.expanded .toggle-icon {
@@ -1540,12 +1597,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .details-content {
       display: none;
-      padding: 12px;
-      border-top: 1px solid var(--vscode-panel-border);
+      margin-top: 12px;
     }
 
     .details-section.expanded .details-content {
       display: block;
+    }
+
+    .details-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .details-title::before {
+      content: '📊';
+      font-size: 14px;
     }
 
     .section {
@@ -2646,9 +2716,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       </div>
 
       <div class="details-section" id="details-section">
-        <button class="details-toggle" id="details-toggle">
-          <span class="toggle-icon">▶</span> Show Details
-        </button>
+        <div class="details-toggle" id="details-toggle">
+          <span class="toggle-icon">▶</span>
+          <h3 class="details-title">Session Details</h3>
+        </div>
         <div class="details-content">
           <div class="section" id="file-changes-section" style="display: none;">
             <div class="section-title section-title-with-info">
@@ -3017,9 +3088,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       if (detailsToggle) {
         detailsToggle.addEventListener('click', function() {
           detailsSection.classList.toggle('expanded');
-          var icon = detailsToggle.querySelector('.toggle-icon');
-          var text = detailsSection.classList.contains('expanded') ? 'Hide Details' : 'Show Details';
-          detailsToggle.innerHTML = '<span class="toggle-icon">' + icon.textContent + '</span> ' + text;
         });
       }
 
