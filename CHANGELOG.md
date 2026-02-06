@@ -5,11 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
 ## [0.8.1] - 2026-02-07
 
 ### Fixed
+
 - **Mind map layout recovery for dense subagent graphs** ([#8](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/8))
   - Added a **Reset Layout** control to rebuild the D3 simulation and recenter on the main session node without refreshing the view
   - Tuned force behavior to keep clusters compact and readable (localized many-body repulsion, adaptive link distance/collision spacing, gentle x/y centering)
@@ -17,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.0] - 2026-02-04
 
 ### Added
+
 - **CLAUDE.md Suggestions**: AI-powered session analysis for optimizing Claude Code usage
   - Analyzes session patterns to detect recovery strategies (when Claude gets stuck and how it recovers)
   - Generates best practices and suggestions for your CLAUDE.md file
@@ -24,11 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Helps you learn from your own Claude Code sessions
 
 ### Changed
+
 - Refactored prompts to use XML tags for better AI instruction structure
 
 ## [0.7.10] - 2026-02-03
 
 ### Added
+
 - **Historical Analytics**: Retroactive data import from existing Claude Code sessions
 - **Response Latency Tracking**: Real-time latency metrics in dashboard
 - **Task Nodes in Mind Map**: Task tool calls visualized as distinct nodes
@@ -37,14 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.9] - 2026-02-02
 
 ### Fixed
+
 - **Custom folder session auto-discovery**: Fixed automatic detection of new sessions (e.g., after `/clean`) when monitoring a custom folder
 
 ## [0.7.8] - 2026-02-02
 
 ### Added
+
 - **Mind Map: Directory & Command Nodes**: Grep/Glob and Bash tool calls now show their targets in the mind map
 
 ### Fixed
+
 - **Custom folder new session detection**: Discovery polling now uses the custom directory instead of the workspace path
 - **Folder picker prioritization**: VS Code workspace now appears first in the "Browse Session Folders" list
 - **Session dropdown custom folder**: Correctly shows sessions from the selected custom folder
@@ -52,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.7] - 2026-02-02
 
 ### Added
+
 - **Browse Session Folders**: Manually select any Claude project folder to monitor, regardless of workspace path
 - **Token Usage Tooltips**: Hover over token metrics to see quota projections and estimated time to exhaustion
 - **Activity Timeline Enhancements**: Claude's text responses now visible in the activity timeline
@@ -61,11 +67,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Line Change Statistics**: Files Touched tree view and mind map now show +/- line change counts
 
 ### Fixed
+
 - **Git Repository Detection**: Improved detection for nested git repositories
 
 ## [0.7.6] - 2026-01-31
 
 ### Added
+
 - **Subscription Quota Display**: View Claude Max 5-hour and 7-day usage limits in the Session Analytics dashboard
   - Color-coded gauges with reset countdown timers
   - Auto-refreshes every 30 seconds when visible
@@ -74,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.5] - 2026-01-30
 
 ### Fixed
+
 - **Subdirectory session discovery**: Session monitoring now finds Claude Code sessions started from subdirectories of the workspace
   - Discovers sessions when Claude Code starts from a subdirectory (e.g., `/project/packages/app`)
   - Prefix-based matching with most-recently-active selection
@@ -82,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.4] - 2026-01-30
 
 ### Added
+
 - **Mind Map URL Nodes**: WebFetch and WebSearch calls now appear as clickable nodes
   - URLs display as cyan nodes showing hostname, click to open in browser
   - Search queries display truncated text, click to search Google
@@ -90,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.3] - 2026-01-29
 
 ### Added
+
 - **Timeout Manager**: Centralized, context-aware timeout handling across all AI operations
   - Configurable timeouts per operation type via settings
   - Auto-adjustment based on context/prompt size
@@ -99,19 +110,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.2] - 2026-01-29
 
 ### Fixed
+
 - **Session path encoding**: Fixed session monitoring on Windows/Mac with 3-strategy discovery fallback
 
 ## [0.7.1] - 2026-01-29
 
 ### Fixed
+
 - **Silent timeout on inline completions**: Now shows warning notification with options to open settings or view logs
 
 ### Added
+
 - New setting `sidekick.inlineTimeout` for configurable timeout (default: 15s)
 
 ## [0.7.0] - 2026-01-29
 
 ### Added
+
 - **Claude Code Session Monitor**: Real-time analytics dashboard for monitoring Claude Code sessions
   - Session analytics dashboard with token usage, costs, and activity timeline
   - Mind map visualization showing conversation flow and file relationships
@@ -123,6 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.0] - 2026-01-26
 
 ### Added
+
 - **Generate Documentation**: Auto-generate JSDoc/docstrings (`Ctrl+Shift+D`)
 - **Explain Code**: AI-powered explanations with 5 complexity levels (`Ctrl+Shift+E`)
 - **Error Explanations**: Lightbulb quick actions for error diagnosis and fixes
@@ -133,11 +149,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Completion hint visual indicator
 
 ### Fixed
+
 - Claude CLI path resolution for non-standard installations
 
 ## [0.5.0] - 2025-01-24
 
 ### Added
+
 - **RSVP Reader**: Speed reading with AI-powered explanations
   - Word-by-word display with ORP (Optimal Recognition Point) highlighting for faster reading
   - Adjustable reading speed (100-900 WPM)
@@ -152,6 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2025-01-21
 
 ### Added
+
 - **AI Commit Message Generation**: Generate commit messages from staged changes with one click
   - Sparkle button in Source Control toolbar
   - Analyzes git diff to create contextual messages
@@ -165,25 +184,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.2] - 2025-01-21
 
 ### Added
+
 - **Custom Claude CLI path setting** (`sidekick.claudePath`): Specify a custom path to the Claude CLI executable for non-standard installations (pnpm, yarn, volta, etc.)
 - **Auto-detection of common CLI paths**: Extension now checks common installation locations (pnpm, yarn, volta, npm global, Homebrew) before falling back to PATH
 
 ### Fixed
+
 - Fixed "Claude Code CLI not found" error for users who installed Claude CLI via pnpm, yarn, or other package managers ([#3](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/3))
 - Improved error message with instructions for setting custom CLI path
 
 ## [0.3.1] - 2025-01-21
 
 ### Added
+
 - Demo GIFs in README for better feature visibility
 - Social media preview image
 
 ### Fixed
+
 - Minor documentation improvements
 
 ## [0.3.0] - 2025-01-21
 
 ### Added
+
 - Status bar menu with quick access to all extension options
 - View Logs command for debugging completion issues
 - Test Connection command to verify API connectivity
@@ -191,12 +215,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Model indicator in status bar
 
 ### Changed
+
 - Increased default debounce from 300ms to 1000ms
 - Improved prompt engineering to reduce meta-responses
 - Higher character limits for prose files (2000/3000 chars vs 500/800 for code)
 - Better truncation logic using logical boundaries
 
 ### Fixed
+
 - Reduced meta-commentary in completions ("I'll complete this...")
 - Better code fence removal from responses
 - Improved handling of long responses
@@ -204,18 +230,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2025-01-10
 
 ### Added
+
 - Code transform feature (`Ctrl+Shift+M` / `Cmd+Shift+M`)
 - Independent model selection for inline completions and transforms
 - Transform uses Opus by default for highest quality
 - Context lines configuration for transforms
 
 ### Changed
+
 - Rebranded from "Claude Code Max" to "Sidekick for Max"
 - Optimized default context settings
 
 ## [0.1.0] - 2025-01-09
 
 ### Added
+
 - Initial release
 - Inline code completions with ghost text
 - VS Code extension with status bar toggle

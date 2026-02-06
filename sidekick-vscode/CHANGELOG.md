@@ -5,11 +5,10 @@ All notable changes to the Sidekick for Max VS Code extension will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
 ## [0.8.1] - 2026-02-07
 
 ### Fixed
+
 - **Mind map layout recovery for dense subagent graphs** ([#8](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/8))
   - Added a **Reset Layout** control to rebuild the D3 simulation and recenter on the main session node without refreshing the view
   - Tuned force behavior to keep clusters compact and readable (localized many-body repulsion, adaptive link distance/collision spacing, gentle x/y centering)
@@ -17,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.0] - 2026-02-04
 
 ### Added
+
 - **CLAUDE.md Suggestions**: AI-powered session analysis for optimizing Claude Code usage
   - Analyzes session patterns to detect recovery strategies (when Claude gets stuck and how it recovers)
   - Generates best practices and suggestions for your CLAUDE.md file
@@ -24,11 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Helps you learn from your own Claude Code sessions
 
 ### Changed
+
 - Refactored prompts to use XML tags for better AI instruction structure
 
 ## [0.7.10] - 2026-02-03
 
 ### Added
+
 - **Historical Analytics**: Retroactive data import from existing Claude Code sessions
   - Import token usage, costs, and tool statistics from completed sessions
   - Enables trend analysis across multiple sessions
@@ -45,12 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.9] - 2026-02-02
 
 ### Fixed
+
 - **Custom folder session auto-discovery**: Fixed automatic detection of new sessions (e.g., after `/clean`) when monitoring a custom folder
   - `performNewSessionCheck()` now respects the custom session directory instead of always using the workspace path
 
 ## [0.7.8] - 2026-02-02
 
 ### Added
+
 - **Mind Map: Directory & Command Nodes**: Grep/Glob and Bash tool calls now show their targets in the mind map
   - Directory nodes (brown) show paths searched by Grep/Glob tools
   - Command nodes (red) show command types executed by Bash (git, npm, docker, etc.)
@@ -64,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Smooth easing animation for comfortable viewing
 
 ### Fixed
+
 - **Custom folder new session detection**: Browsing to a custom folder now properly detects new sessions when Claude Code starts
   - Previously, discovery polling used the workspace path instead of the custom directory
   - Now correctly watches and polls the custom directory for new sessions
@@ -77,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.7] - 2026-02-02
 
 ### Added
+
 - **Browse Session Folders**: Manually select any Claude project folder to monitor, regardless of workspace path
   - New "Browse..." button in the Session Analytics dashboard next to the session dropdown
   - Command palette: "Sidekick: Browse Session Folders..." to browse all Claude project folders in `~/.claude/projects/`
@@ -93,11 +99,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Line Change Statistics**: Files Touched tree view and mind map now show +/- line change counts
 
 ### Fixed
+
 - **Git Repository Detection**: Improved detection for nested git repositories
 
 ## [0.7.6] - 2026-01-31
 
 ### Added
+
 - **Subscription Quota Display**: View Claude Max subscription usage limits directly in the Session Analytics dashboard
   - Two semi-circular gauges showing 5-hour and 7-day quota utilization
   - Color-coded thresholds: green (<50%), orange (50-79%), red (≥80%)
@@ -109,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.5] - 2026-01-30
 
 ### Fixed
+
 - **Subdirectory session discovery**: Session monitoring now finds Claude Code sessions started from subdirectories of the workspace ([#7](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/7))
   - When VS Code workspace is `/project` but Claude Code starts from `/project/packages/app`, the extension now correctly discovers and monitors that session
   - Uses prefix-based matching with most-recently-active selection when multiple subdirectory sessions exist
@@ -118,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.4] - 2026-01-30
 
 ### Added
+
 - **Mind Map URL Nodes**: WebFetch and WebSearch calls now appear as clickable nodes in the session mind map
   - URLs display as cyan nodes showing the hostname (e.g., `example.com`)
   - Search queries display truncated query text
@@ -129,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.3] - 2026-01-29
 
 ### Added
+
 - **Timeout Manager**: Centralized, context-aware timeout handling across all AI operations
   - Configurable timeouts per operation type (inline completion, transform, commit message, etc.)
   - Auto-adjustment based on context/prompt size
@@ -146,12 +157,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `sidekick.timeouts.prDescription`: Timeout for PR description generation (default: 45s)
 
 ### Changed
+
 - All AI services now use TimeoutManager for consistent timeout behavior
 - Added AbortSignal support to completion options for proper request cancellation
 
 ## [0.7.2] - 2026-01-29
 
 ### Fixed
+
 - **Session path encoding on Windows/Mac**: Fixed issue where session monitoring couldn't find Claude Code sessions on some systems ([#6](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/6))
   - Improved path encoding to handle colons, slashes, and underscores correctly
   - Added 3-strategy discovery fallback when computed path doesn't match
@@ -160,22 +173,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.1] - 2026-01-29
 
 ### Fixed
+
 - **Silent timeout on inline completions**: Completions that timed out would silently fail with no user feedback ([#5](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/5))
   - Now shows a warning notification when requests timeout, with options to open settings or view logs
   - Added `TimeoutError` class that survives the error chain for proper identification
   - Other completion errors now also show user-friendly messages
 
 ### Added
+
 - **New Setting**: `sidekick.inlineTimeout` - Configurable timeout for inline completions (default: 15s, was hardcoded 30s)
   - Increase if you frequently experience timeouts when Claude servers are slow
   - Range: 5-120 seconds
 
 ### Changed
+
 - Reduced default inline completion timeout from 30s to 15s for faster feedback when servers are slow
 
 ## [0.7.0] - 2026-01-29
 
 ### Added
+
 - **Claude Code Session Monitor**: A comprehensive real-time analytics dashboard for monitoring Claude Code sessions
   - **Session Analytics Dashboard**: Track token usage, costs, and session activity in a dedicated sidebar panel
     - Real-time token consumption and cost tracking with model-specific pricing
@@ -206,6 +223,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `sidekick.enableSessionMonitoring`: Enable/disable Claude Code session monitoring (default: true)
 
 ### Technical
+
 - Added JSONL parser with line buffering for efficient session log parsing
 - Added session path resolver for cross-platform Claude Code directory detection
 - Added model pricing service with accurate per-token cost calculation
@@ -214,66 +232,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.0] - 2026-01-26
 
 ### Added
+
 - **Generate Documentation**: Automatically generate JSDoc/docstrings for functions, classes, and methods
+
   - Press `Ctrl+Shift+D` (Cmd+Shift+D on Mac) with cursor in a function
   - Supports all major languages (TypeScript, JavaScript, Python, etc.)
   - Configurable model via `sidekick.docModel` (default: haiku)
-
 - **Explain Code**: Get AI-powered explanations for selected code
+
   - Press `Ctrl+Shift+E` (Cmd+Shift+E on Mac) with code selected
   - Five complexity levels: ELI5, Curious Amateur, Imposter Syndrome, Senior, PhD Mode
   - Rich webview panel with markdown rendering
   - Regenerate with custom instructions
   - Configurable model via `sidekick.explainModel` (default: sonnet)
-
 - **Error Explanations**: Understand and fix errors with AI assistance
+
   - Lightbulb quick action on diagnostics: "Explain Error with AI"
   - "Fix Error with AI" command applies suggested fixes directly
   - Five complexity levels for explanations
   - Configurable model via `sidekick.errorModel` (default: sonnet)
-
 - **Quick Ask (Inline Chat)**: Ask questions about code without leaving the editor
+
   - Press `Ctrl+I` (Cmd+I on Mac) to open quick input
   - Ask questions or request code changes
   - Diff preview for proposed changes with Accept/Reject
   - Context-aware: uses selected code or cursor context
   - Configurable model via `sidekick.inlineChatModel` (default: sonnet)
-
 - **Pre-commit AI Review**: Review your changes before committing
+
   - Click the eye icon in Source Control toolbar
   - AI analyzes staged/unstaged changes for issues
   - Highlights bugs, security concerns, code smells
   - Results shown as inline decorations in editor
   - Configurable model via `sidekick.reviewModel` (default: sonnet)
-
 - **PR Description Generation**: Generate pull request descriptions automatically
+
   - Click the PR icon in Source Control toolbar
   - Analyzes all commits on your branch vs base branch
   - Generates summary, change list, and test plan
   - Copies to clipboard, ready to paste
   - Configurable model via `sidekick.prDescriptionModel` (default: sonnet)
-
 - **Context Menu Submenu**: All Sidekick commands organized under "Sidekick" submenu
+
   - Quick Ask, Generate Docs, Explain Code, Explain Error, Fix Error, Transform, RSVP Reader
   - Complexity level submenus for Explain Code and RSVP Reader
-
 - **Completion Hint**: Visual indicator suggesting AI completion shortcut
+
   - Shows hint at cursor after typing stops
   - Configurable delay via `sidekick.completionHintDelayMs` (default: 1500ms)
   - Toggle via `sidekick.showCompletionHint` (default: true)
 
 ### Fixed
+
 - **Claude CLI path resolution**: Fixed "Claude Code native binary not found" error when Claude is in PATH but not in common installation directories ([#4](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/4))
   - Now uses `which` (Unix) or `where` (Windows) to resolve the absolute path
   - Better error messages with installation instructions
 
 ### Changed
+
 - Shortened "Explain Code" command title for cleaner context menus
 - Bidirectional integration between Explain Code and RSVP Reader (read explanations in RSVP mode)
 
 ## [0.5.0] - 2025-01-24
 
 ### Added
+
 - **RSVP Reader**: Speed reading with AI-powered explanations for selected text
   - Select text and press `Ctrl+Shift+R` (Cmd+Shift+R on Mac) to open the RSVP Reader panel
   - Word-by-word display with ORP (Optimal Recognition Point) highlighting reduces eye movement and increases reading speed
@@ -305,6 +328,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2025-01-21
 
 ### Added
+
 - **AI Commit Message Generation**: Generate commit messages from your staged changes with a single click
   - Sparkle button in Source Control toolbar triggers generation
   - Analyzes git diff to create contextual commit messages
@@ -320,29 +344,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `sidekick.commitMessageGuidance`: Default guidance applied to all commit messages
   - `sidekick.showCommitButton`: Toggle visibility of the commit message button
 
-
 ## [0.3.2] - 2025-01-21
 
 ### Added
+
 - **Custom Claude CLI path setting** (`sidekick.claudePath`): Specify a custom path to the Claude CLI executable for non-standard installations (pnpm, yarn, volta, etc.)
 - **Auto-detection of common CLI paths**: Extension now checks common installation locations (pnpm, yarn, volta, npm global, Homebrew) before falling back to PATH
 
 ### Fixed
+
 - Fixed "Claude Code CLI not found" error for users who installed Claude CLI via pnpm, yarn, or other package managers ([#3](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/3))
 - Improved error message with instructions for setting custom CLI path
 
 ## [0.3.1] - 2025-01-21
 
 ### Added
+
 - Demo GIFs in README for better feature visibility
 - Social media preview image
 
 ### Fixed
+
 - Minor documentation improvements
 
 ## [0.3.0] - 2025-01-21
 
 ### Added
+
 - **Status Bar Menu**: Click the status bar to access all extension options
   - Enable/Disable completions
   - Configure Extension settings
@@ -355,11 +383,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model display**: Status bar now shows the current inline model (e.g., "Sidekick haiku")
 
 ### Changed
+
 - **Debounce default**: Increased from 300ms to 1000ms for less aggressive completions
 - **Improved prompts**: Better prompt engineering to reduce meta-responses and improve completion quality
 - **Character limits**: Prose files allow up to 2000 chars (single-line) / 3000 chars (multiline); code files allow 500/800 chars
 
 ### Fixed
+
 - Reduced "I'll complete this..." and other meta-commentary in completions
 - Better handling of code fence removal in responses
 - Improved truncation logic for long responses (truncates at logical boundaries)
@@ -367,6 +397,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2025-01-10
 
 ### Added
+
 - **Code Transform feature**: Select code and press `Ctrl+Shift+M` / `Cmd+Shift+M` to transform it
 - Independent model selection for inline completions and transforms
 - Transform uses Opus by default for highest quality
@@ -374,6 +405,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API key authentication mode as alternative to Max subscription
 
 ### Changed
+
 - Rebranded from "Claude Code Max" to "Sidekick for Max"
 - Inline completions use Haiku by default (fastest)
 - Transforms use Opus by default (highest quality)
@@ -381,6 +413,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-01-09
 
 ### Added
+
 - Initial release
 - Inline code completions with ghost text
 - Accept completions with Tab, dismiss with Escape
