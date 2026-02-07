@@ -2,7 +2,7 @@
 
 Your Claude Max, working harder: completions, transforms, commits, code review, session monitoring, and more.
 
-![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/all_features.gif?v=3)
+![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/all_features.gif?v=4)
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
 
@@ -102,6 +102,8 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
 - TaskCreate/TaskUpdate tasks grouped by status in a dedicated view
 - Collapsible columns with hidden-task summaries
 - Real-time updates as tasks move through the workflow
+
+![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/kanban_style_monitoring.gif)
 
 **Tree Views:**
 - **Latest Files Touched** - Quick access to files modified during Claude Code sessions

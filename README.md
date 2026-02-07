@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/all_features.gif?v=3" alt="Sidekick features demo" width="800">
+  <img src="assets/all_features.gif?v=4" alt="Sidekick features demo" width="800">
 </p>
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
@@ -96,6 +96,8 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
 - **Kanban Board** - TaskCreate/TaskUpdate tasks grouped by status
   - Collapsible columns with hidden-task summaries
   - Real-time updates as tasks move through the workflow
+
+![Kanban board](assets/kanban_style_monitoring.gif)
 
 - **Latest Files Touched** - Tree view of files modified during sessions
 - **Subagents Tree** - Monitor spawned Task agents during complex operations
