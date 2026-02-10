@@ -88,6 +88,8 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
 - Session selector dropdown to switch between active and recent sessions
 - **Browse Session Folders**: Manually select any Claude project folder to monitor, even from different directories
 - Tool analytics with categorization (file operations, search, bash commands, etc.)
+- **Session Summary** with AI narrative generation (progress notification + inline spinner)
+- Organized Session tab with three collapsible groups: Session Activity, Performance & Cost, Tasks & Recovery
 
 ![Activity timeline](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/session_activity_timeline.gif)
 

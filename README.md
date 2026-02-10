@@ -84,6 +84,8 @@ Monitor your Claude Code sessions in real-time with a comprehensive analytics da
   - Activity timeline with user prompts, tool calls, and errors
   - Session selector to switch between active sessions
   - Tool analytics showing what operations Claude is performing
+  - **Session Summary** with AI narrative generation and progress feedback
+  - Organized Session tab with three collapsible groups: Session Activity, Performance & Cost, Tasks & Recovery
 
 ![Activity timeline](assets/session_activity_timeline.gif)
 

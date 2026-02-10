@@ -315,12 +315,21 @@ export async function activate(context: vscode.ExtensionContext) {
     log('SessionAnalyzer and ClaudeMdAdvisor initialized');
 
     // Register dashboard view provider (depends on sessionMonitor, quotaService, historicalDataService, and claudeMdAdvisor)
-    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, claudeMdAdvisor);
+    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, claudeMdAdvisor, sessionAnalyzer, authService);
     context.subscriptions.push(dashboardProvider);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, dashboardProvider)
     );
     log('Dashboard view provider registered');
+
+    // Register generate session summary command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('sidekick.generateSessionSummary', () => {
+        if (dashboardProvider) {
+          dashboardProvider.generateSummaryOnDemand();
+        }
+      })
+    );
 
     // Register mind map view provider (depends on sessionMonitor)
     const mindMapProvider = new MindMapViewProvider(context.extensionUri, sessionMonitor);

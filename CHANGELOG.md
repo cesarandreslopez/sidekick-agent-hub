@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-02-10
+
+### Improved
+
+- **Dashboard UX polish**: Improved layout and feedback for the Session Summary and Session tabs
+  - Moved "Generate AI Narrative" button to top of Summary tab, immediately after the metrics row, so it's visible without scrolling
+  - Added progress notification with time estimate when generating narratives (VS Code notification + inline spinner)
+  - Reorganized Session tab from one monolithic "Session Details" section into three thematic groups:
+    - **Session Activity** — Activity Timeline, File Changes, Errors
+    - **Performance & Cost** — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness, Advanced Burn Rate
+    - **Tasks & Recovery** — Task Performance, Recovery Patterns
+  - Promoted richer panels (Task Performance, Cache, Recovery, etc.) from nested collapsibles to always-visible sections within their group — one click to expand, no double-expand needed
+
 ## [0.8.2] - 2026-02-07
 
 ### Added

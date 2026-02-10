@@ -7,6 +7,15 @@
  * @module types/dashboard
  */
 
+import type {
+  SessionSummaryData,
+  TaskPerformanceData,
+  CacheEffectivenessData,
+  RecoveryPatternData,
+  AdvancedBurnRateData,
+  ToolEfficiencyData
+} from './sessionSummary';
+
 /**
  * Session info for the session selector dropdown.
  */
@@ -69,7 +78,16 @@ export type DashboardMessage =
   | { type: 'updateLatency'; latency: LatencyDisplay }
   | { type: 'showSuggestions'; suggestions: ClaudeMdSuggestionDisplay[] }
   | { type: 'suggestionsLoading'; loading: boolean }
-  | { type: 'suggestionsError'; error: string };
+  | { type: 'suggestionsError'; error: string }
+  | { type: 'updateSessionSummary'; summary: SessionSummaryData }
+  | { type: 'updateTaskPerformance'; data: TaskPerformanceData }
+  | { type: 'updateCacheEffectiveness'; data: CacheEffectivenessData }
+  | { type: 'updateRecoveryPatterns'; data: RecoveryPatternData }
+  | { type: 'updateAdvancedBurnRate'; data: AdvancedBurnRateData }
+  | { type: 'updateToolEfficiency'; data: ToolEfficiencyData[] }
+  | { type: 'sessionNarrative'; narrative: string }
+  | { type: 'narrativeLoading'; loading: boolean }
+  | { type: 'narrativeError'; error: string };
 
 /**
  * Messages from webview to extension.
@@ -89,7 +107,9 @@ export type WebviewMessage =
   | { type: 'importHistoricalData' }
   | { type: 'analyzeSession' }
   | { type: 'copySuggestion'; text: string }
-  | { type: 'openClaudeMd' };
+  | { type: 'openClaudeMd' }
+  | { type: 'generateNarrative' }
+  | { type: 'requestSessionSummary' };
 
 /**
  * Model usage breakdown entry.

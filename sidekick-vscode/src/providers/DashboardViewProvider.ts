@@ -24,9 +24,13 @@ import type { ClaudeMdAdvisor } from '../services/ClaudeMdAdvisor';
 import type { QuotaState as DashboardQuotaState, HistoricalSummary, HistoricalDataPoint, LatencyDisplay, ClaudeMdSuggestionDisplay } from '../types/dashboard';
 import type { TokenUsage, SessionStats, ToolAnalytics, TimelineEvent, ToolCall, LatencyStats } from '../types/claudeSession';
 import type { DashboardMessage, WebviewMessage, DashboardState } from '../types/dashboard';
+import type { SessionAnalyzer } from '../services/SessionAnalyzer';
+import type { AuthService } from '../services/AuthService';
+import type { SessionSummaryData } from '../types/sessionSummary';
 import { ModelPricingService } from '../services/ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { BurnRateCalculator } from '../services/BurnRateCalculator';
+import { SessionSummaryService } from '../services/SessionSummaryService';
 import { log, logError } from '../services/Logger';
 
 /**
@@ -87,6 +91,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** ClaudeMdAdvisor for generating CLAUDE.md suggestions */
   private _claudeMdAdvisor?: ClaudeMdAdvisor;
 
+  /** SessionAnalyzer for analysis data */
+  private _sessionAnalyzer?: SessionAnalyzer;
+
+  /** AuthService for AI narrative generation */
+  private _authService?: AuthService;
+
+  /** SessionSummaryService for aggregation */
+  private _summaryService = new SessionSummaryService();
+
+  /** Cached session summary for the Summary tab */
+  private _cachedSummary: SessionSummaryData | null = null;
+
+  /** Debounce timer for richer panel updates */
+  private _richerPanelTimer?: ReturnType<typeof setTimeout>;
+
   /**
    * Creates a new DashboardViewProvider.
    *
@@ -95,17 +114,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param quotaService - Optional QuotaService for subscription quota
    * @param historicalDataService - Optional HistoricalDataService for long-term analytics
    * @param claudeMdAdvisor - Optional ClaudeMdAdvisor for generating suggestions
+   * @param sessionAnalyzer - Optional SessionAnalyzer for richer panel data
+   * @param authService - Optional AuthService for AI narrative generation
    */
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _sessionMonitor: SessionMonitor,
     quotaService?: QuotaService,
     historicalDataService?: HistoricalDataService,
-    claudeMdAdvisor?: ClaudeMdAdvisor
+    claudeMdAdvisor?: ClaudeMdAdvisor,
+    sessionAnalyzer?: SessionAnalyzer,
+    authService?: AuthService
   ) {
     this._quotaService = quotaService;
     this._historicalDataService = historicalDataService;
     this._claudeMdAdvisor = claudeMdAdvisor;
+    this._sessionAnalyzer = sessionAnalyzer;
+    this._authService = authService;
     // Initialize empty state
     this._state = {
       totalInputTokens: 0,
@@ -313,6 +338,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       case 'openClaudeMd':
         this._handleOpenClaudeMd();
         break;
+
+      case 'generateNarrative':
+        this._handleGenerateNarrative().catch(err => {
+          logError('Dashboard: Unhandled error in _handleGenerateNarrative', err);
+        });
+        break;
+
+      case 'requestSessionSummary':
+        this._handleRequestSessionSummary();
+        break;
     }
   }
 
@@ -422,6 +457,108 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     return undefined;
+  }
+
+  /**
+   * Handles the generate narrative request from webview.
+   */
+  private async _handleGenerateNarrative(): Promise<void> {
+    if (!this._authService || !this._cachedSummary) {
+      this._postMessage({ type: 'narrativeError', error: 'Summary data or auth not available.' });
+      return;
+    }
+
+    this._postMessage({ type: 'narrativeLoading', loading: true });
+
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Generating session narrative',
+          cancellable: false,
+        },
+        async (progress) => {
+          progress.report({ message: 'This may take 15-30 seconds...' });
+          const narrative = await this._summaryService.generateNarrative(
+            this._cachedSummary!,
+            this._authService!
+          );
+          this._postMessage({ type: 'sessionNarrative', narrative });
+        }
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this._postMessage({ type: 'narrativeError', error: `Narrative generation failed: ${message}` });
+      logError('Dashboard: Narrative generation error', error);
+    } finally {
+      this._postMessage({ type: 'narrativeLoading', loading: false });
+    }
+  }
+
+  /**
+   * Handles session summary request from webview.
+   */
+  private _handleRequestSessionSummary(): void {
+    if (this._cachedSummary) {
+      this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
+      return;
+    }
+    // Build fresh summary if possible
+    this._buildAndSendSummary();
+  }
+
+  /**
+   * Builds full session summary and sends to webview.
+   */
+  private _buildAndSendSummary(): void {
+    if (!this._sessionAnalyzer) return;
+
+    const stats = this._sessionMonitor.getStats();
+    const analysisData = this._sessionAnalyzer.getCachedData();
+    this._cachedSummary = this._summaryService.generateSummary(stats, analysisData);
+    this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
+  }
+
+  /**
+   * Sends richer panel updates (debounced 2s).
+   * Called from _syncFromSessionMonitor and event handlers.
+   */
+  private _sendRicherPanelUpdates(): void {
+    if (this._richerPanelTimer) {
+      clearTimeout(this._richerPanelTimer);
+    }
+
+    this._richerPanelTimer = setTimeout(() => {
+      const stats = this._sessionMonitor.getStats();
+
+      // Task Performance
+      const taskPerf = this._summaryService.getTaskPerformance(stats.taskState);
+      this._postMessage({ type: 'updateTaskPerformance', data: taskPerf });
+
+      // Cache Effectiveness
+      const cacheData = this._summaryService.getCacheEffectiveness(stats);
+      this._postMessage({ type: 'updateCacheEffectiveness', data: cacheData });
+
+      // Recovery Patterns (needs analyzer)
+      if (this._sessionAnalyzer) {
+        const analysisData = this._sessionAnalyzer.getCachedData();
+        const recoveryData = this._summaryService.getRecoveryPatterns(analysisData);
+        this._postMessage({ type: 'updateRecoveryPatterns', data: recoveryData });
+      }
+
+      // Advanced Burn Rate
+      const quotaState = this._quotaService?.getCachedQuota() ?? undefined;
+      const burnData = this._summaryService.getAdvancedBurnRate(
+        stats,
+        this._burnRateCalculator,
+        quotaState
+      );
+      this._postMessage({ type: 'updateAdvancedBurnRate', data: burnData });
+
+      // Tool Efficiency
+      const toolEfficiency = this._summaryService.getToolEfficiency(stats);
+      this._postMessage({ type: 'updateToolEfficiency', data: toolEfficiency });
+    }, 2000);
   }
 
   /**
@@ -819,6 +956,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({ type: 'sessionEnd' });
     this._sendStateToWebview();
     this._sendSessionList();
+
+    // Build and cache full session summary on session end
+    this._buildAndSendSummary();
   }
 
   /**
@@ -977,6 +1117,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (stats.latencyStats) {
       this._state.latencyDisplay = this._formatLatencyDisplay(stats.latencyStats);
     }
+
+    // Send richer panel updates (debounced)
+    this._sendRicherPanelUpdates();
   }
 
   /**
@@ -1020,6 +1163,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _sendStateToWebview(): void {
     this._postMessage({ type: 'updateStats', state: this._state });
+  }
+
+  /**
+   * Public method to generate and send session summary on demand.
+   * Triggered by the sidekick.generateSessionSummary command.
+   */
+  generateSummaryOnDemand(): void {
+    this._buildAndSendSummary();
   }
 
   /**
@@ -1560,7 +1711,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       display: block;
     }
 
-    /* Legacy details-section classes for backwards compat */
+    /* Collapsible group section styling */
     .details-section {
       margin-top: 16px;
       padding-top: 16px;
@@ -1613,10 +1764,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       gap: 6px;
     }
 
-    .details-title::before {
-      content: '📊';
-      font-size: 14px;
-    }
 
     .section {
       margin-bottom: 16px;
@@ -2090,6 +2237,211 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .tool-item .tool-calls {
       font-size: 10px;
       color: var(--vscode-descriptionForeground);
+    }
+
+    /* Summary tab styles */
+    .summary-metrics-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .summary-metric-card {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+
+    .summary-metric-card .metric-val {
+      font-size: 18px;
+      font-weight: 700;
+      font-family: var(--vscode-editor-font-family);
+    }
+
+    .summary-metric-card .metric-lbl {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      margin-top: 2px;
+    }
+
+    .summary-section {
+      margin-bottom: 16px;
+    }
+
+    .summary-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--vscode-panel-border);
+    }
+
+    .summary-task-table, .summary-file-table, .summary-cost-table {
+      width: 100%;
+      font-size: 11px;
+      border-collapse: collapse;
+    }
+
+    .summary-task-table th, .summary-file-table th, .summary-cost-table th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--vscode-descriptionForeground);
+      padding: 4px 6px;
+      border-bottom: 1px solid var(--vscode-panel-border);
+      font-size: 10px;
+    }
+
+    .summary-task-table td, .summary-file-table td, .summary-cost-table td {
+      padding: 4px 6px;
+      border-bottom: 1px solid var(--vscode-panel-border);
+    }
+
+    .status-icon {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+    }
+
+    .status-icon.completed { background: var(--vscode-charts-green, #4caf50); }
+    .status-icon.in_progress { background: var(--vscode-charts-blue, #2196f3); }
+    .status-icon.pending { background: var(--vscode-charts-yellow, #ffeb3b); }
+
+    .narrative-area {
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    .narrative-loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+    }
+
+    .narrative-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--vscode-descriptionForeground);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: narrative-spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes narrative-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .narrative-btn {
+      padding: 8px 16px;
+      font-size: 12px;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .narrative-btn:hover {
+      background: var(--vscode-button-hoverBackground);
+    }
+
+    .narrative-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .narrative-text {
+      margin-top: 12px;
+      padding: 12px;
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .narrative-error {
+      margin-top: 8px;
+      color: var(--vscode-editorError-foreground);
+      font-size: 11px;
+    }
+
+    /* Richer panel styles */
+    .panel-metrics-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .panel-metric-card {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .panel-metric-card .val {
+      font-size: 16px;
+      font-weight: 600;
+      font-family: var(--vscode-editor-font-family);
+    }
+
+    .panel-metric-card .lbl {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .recovery-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .recovery-item {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+    }
+
+    .recovery-item .recovery-desc {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .recovery-item .recovery-detail {
+      color: var(--vscode-descriptionForeground);
+      font-size: 10px;
+    }
+
+    .trend-indicator {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .trend-indicator.increasing { color: var(--vscode-editorWarning-foreground); }
+    .trend-indicator.stable { color: var(--vscode-descriptionForeground); }
+    .trend-indicator.decreasing { color: var(--vscode-charts-green, #4caf50); }
+
+    .summary-empty {
+      text-align: center;
+      padding: 24px 12px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
     }
 
     .tool-item .tool-stats {
@@ -2596,6 +2948,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   <div class="tab-container">
     <button class="tab-btn active" data-tab="session">Session</button>
+    <button class="tab-btn" data-tab="summary">Summary</button>
     <button class="tab-btn" data-tab="history">History</button>
   </div>
 
@@ -2715,12 +3068,31 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         </div>
       </div>
 
-      <div class="details-section" id="details-section">
-        <div class="details-toggle" id="details-toggle">
+      <!-- Session Activity Group -->
+      <div class="details-section" id="session-activity-section">
+        <div class="details-toggle" data-group-toggle="session-activity-section">
           <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Session Details</h3>
+          <h3 class="details-title">Session Activity</h3>
         </div>
         <div class="details-content">
+          <div class="section">
+            <div class="section-title section-title-with-info">
+              Activity Timeline
+              <span class="info-icon">?<div class="tooltip">
+                <p>Chronological log of session events.</p>
+                <p><strong>User prompts:</strong> Messages you sent</p>
+                <p><strong>Tool calls:</strong> Actions Claude performed</p>
+                <p><strong>Results:</strong> Outcomes of tool executions</p>
+              </div></span>
+            </div>
+            <div class="timeline-list" id="timeline-list">
+              <div class="timeline-item">
+                <span class="time">--:--</span>
+                <span class="description">No activity yet</span>
+              </div>
+            </div>
+          </div>
+
           <div class="section" id="file-changes-section" style="display: none;">
             <div class="section-title section-title-with-info">
               File Changes
@@ -2740,6 +3112,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             </div>
           </div>
 
+          <div class="section" id="error-section" style="display: none;">
+            <div class="section-title section-title-with-info">
+              Errors
+              <span class="info-icon">?<div class="tooltip">
+                <p>Errors encountered during tool execution.</p>
+                <p>Click on an error type to expand and see details.</p>
+                <p>Common causes: file not found, permission denied, syntax errors.</p>
+              </div></span>
+            </div>
+            <div class="error-list" id="error-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Performance & Cost Group -->
+      <div class="details-section" id="perf-cost-section">
+        <div class="details-toggle" data-group-toggle="perf-cost-section">
+          <span class="toggle-icon">▶</span>
+          <h3 class="details-title">Performance &amp; Cost</h3>
+        </div>
+        <div class="details-content">
           <div class="section">
             <div class="section-title section-title-with-info">
               Model Breakdown
@@ -2770,34 +3163,38 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             </div>
           </div>
 
-          <div class="section">
-            <div class="section-title section-title-with-info">
-              Activity Timeline
-              <span class="info-icon">?<div class="tooltip">
-                <p>Chronological log of session events.</p>
-                <p><strong>User prompts:</strong> Messages you sent</p>
-                <p><strong>Tool calls:</strong> Actions Claude performed</p>
-                <p><strong>Results:</strong> Outcomes of tool executions</p>
-              </div></span>
-            </div>
-            <div class="timeline-list" id="timeline-list">
-              <div class="timeline-item">
-                <span class="time">--:--</span>
-                <span class="description">No activity yet</span>
-              </div>
-            </div>
+          <div class="section" id="tool-eff-section" style="display: none;">
+            <div class="section-title">Tool Efficiency</div>
+            <div id="tool-eff-body"></div>
           </div>
 
-          <div class="section" id="error-section" style="display: none;">
-            <div class="section-title section-title-with-info">
-              Errors
-              <span class="info-icon">?<div class="tooltip">
-                <p>Errors encountered during tool execution.</p>
-                <p>Click on an error type to expand and see details.</p>
-                <p>Common causes: file not found, permission denied, syntax errors.</p>
-              </div></span>
-            </div>
-            <div class="error-list" id="error-list"></div>
+          <div class="section" id="cache-eff-section" style="display: none;">
+            <div class="section-title">Cache Effectiveness</div>
+            <div id="cache-eff-body"></div>
+          </div>
+
+          <div class="section" id="burn-rate-section" style="display: none;">
+            <div class="section-title">Advanced Burn Rate</div>
+            <div id="burn-rate-body"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks & Recovery Group -->
+      <div class="details-section" id="tasks-recovery-section">
+        <div class="details-toggle" data-group-toggle="tasks-recovery-section">
+          <span class="toggle-icon">▶</span>
+          <h3 class="details-title">Tasks &amp; Recovery</h3>
+        </div>
+        <div class="details-content">
+          <div class="section" id="task-perf-section" style="display: none;">
+            <div class="section-title">Task Performance</div>
+            <div id="task-perf-body"></div>
+          </div>
+
+          <div class="section" id="recovery-section" style="display: none;">
+            <div class="section-title">Recovery Patterns</div>
+            <div id="recovery-body"></div>
           </div>
         </div>
       </div>
@@ -2805,6 +3202,54 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       <div class="last-updated">
         Last updated: <span id="last-updated">-</span>
       </div>
+    </div>
+  </div>
+
+  <div id="summary-tab" class="tab-content">
+    <div class="summary-empty" id="summary-empty">
+      <p>No session summary available yet.</p>
+      <p>A summary will be generated when a session ends, or you can request one during an active session.</p>
+    </div>
+    <div id="summary-content" style="display: none;">
+      <div class="summary-metrics-row" id="summary-metrics">
+        <div class="summary-metric-card"><div class="metric-val" id="sum-duration">-</div><div class="metric-lbl">Duration</div></div>
+        <div class="summary-metric-card"><div class="metric-val" id="sum-tokens">-</div><div class="metric-lbl">Tokens</div></div>
+        <div class="summary-metric-card"><div class="metric-val" id="sum-cost">-</div><div class="metric-lbl">Cost</div></div>
+        <div class="summary-metric-card"><div class="metric-val" id="sum-api-calls">-</div><div class="metric-lbl">API Calls</div></div>
+        <div class="summary-metric-card"><div class="metric-val" id="sum-context">-</div><div class="metric-lbl">Context Peak</div></div>
+        <div class="summary-metric-card"><div class="metric-val" id="sum-completion">-</div><div class="metric-lbl">Tasks Done</div></div>
+      </div>
+
+      <div class="narrative-area">
+        <button class="narrative-btn" id="generate-narrative-btn">Generate AI Narrative</button>
+        <div class="narrative-loading" id="narrative-loading" style="display: none;">
+          <span class="narrative-spinner"></span>
+          <span>Generating narrative, this usually takes ~15-30s...</span>
+        </div>
+        <div class="narrative-text" id="narrative-display" style="display: none;"></div>
+        <div class="narrative-error" id="narrative-error" style="display: none;"></div>
+      </div>
+
+      <div class="summary-section" id="sum-tasks-section">
+        <div class="summary-section-title">Tasks</div>
+        <div id="sum-tasks-content"></div>
+      </div>
+
+      <div class="summary-section" id="sum-files-section">
+        <div class="summary-section-title">Files Changed</div>
+        <div id="sum-files-content"></div>
+      </div>
+
+      <div class="summary-section" id="sum-cost-section">
+        <div class="summary-section-title">Cost Breakdown</div>
+        <div id="sum-cost-content"></div>
+      </div>
+
+      <div class="summary-section" id="sum-errors-section">
+        <div class="summary-section-title">Errors &amp; Recovery</div>
+        <div id="sum-errors-content"></div>
+      </div>
+
     </div>
   </div>
 
@@ -2896,9 +3341,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const primaryMetricSubtitle = document.getElementById('primary-metric-subtitle');
       const gaugeRow = document.getElementById('gauge-row');
 
-      // Details section elements
-      const detailsSection = document.getElementById('details-section');
-      const detailsToggle = document.getElementById('details-toggle');
+      // Group section toggle elements
+      const groupToggles = document.querySelectorAll('[data-group-toggle]');
 
       // Inline stats elements
       const inlineDuration = document.getElementById('inline-duration');
@@ -3067,9 +3511,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           btn.classList.add('active');
           document.getElementById(tab + '-tab').classList.add('active');
 
-          // Request historical data when switching to history tab
+          // Request data when switching tabs
           if (tab === 'history') {
             vscode.postMessage({ type: 'requestHistoricalData', range: currentRange, metric: 'tokens' });
+          } else if (tab === 'summary') {
+            vscode.postMessage({ type: 'requestSessionSummary' });
           }
         });
       });
@@ -3084,12 +3530,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       });
 
-      // Details toggle
-      if (detailsToggle) {
-        detailsToggle.addEventListener('click', function() {
-          detailsSection.classList.toggle('expanded');
+      // Group section toggles
+      groupToggles.forEach(function(toggle) {
+        toggle.addEventListener('click', function() {
+          var sectionId = toggle.getAttribute('data-group-toggle');
+          var section = document.getElementById(sectionId);
+          if (section) {
+            section.classList.toggle('expanded');
+          }
         });
-      }
+      });
 
       // History range buttons
       rangeBtns.forEach(function(btn) {
@@ -3991,6 +4441,60 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           case 'suggestionsError':
             showSuggestionsError(message.error);
             break;
+
+          case 'updateSessionSummary':
+            renderSessionSummary(message.summary);
+            break;
+
+          case 'updateTaskPerformance':
+            renderTaskPerformance(message.data);
+            break;
+
+          case 'updateCacheEffectiveness':
+            renderCacheEffectiveness(message.data);
+            break;
+
+          case 'updateRecoveryPatterns':
+            renderRecoveryPatterns(message.data);
+            break;
+
+          case 'updateAdvancedBurnRate':
+            renderAdvancedBurnRate(message.data);
+            break;
+
+          case 'updateToolEfficiency':
+            renderToolEfficiency(message.data);
+            break;
+
+          case 'sessionNarrative':
+            var narrativeEl = document.getElementById('narrative-display');
+            var narrativeErrEl = document.getElementById('narrative-error');
+            if (narrativeEl) {
+              narrativeEl.textContent = message.narrative;
+              narrativeEl.style.display = 'block';
+            }
+            if (narrativeErrEl) narrativeErrEl.style.display = 'none';
+            break;
+
+          case 'narrativeLoading':
+            var narrBtn = document.getElementById('generate-narrative-btn');
+            var narrSpinner = document.getElementById('narrative-loading');
+            if (narrBtn) {
+              narrBtn.disabled = message.loading;
+              narrBtn.textContent = message.loading ? 'Generating...' : 'Generate AI Narrative';
+            }
+            if (narrSpinner) {
+              narrSpinner.style.display = message.loading ? 'flex' : 'none';
+            }
+            break;
+
+          case 'narrativeError':
+            var narrErrEl = document.getElementById('narrative-error');
+            if (narrErrEl) {
+              narrErrEl.textContent = message.error;
+              narrErrEl.style.display = 'block';
+            }
+            break;
         }
       });
 
@@ -4059,6 +4563,256 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
           vscode.postMessage({ type: 'analyzeSession' });
         });
+      }
+
+      // ==== Collapsible panel toggles ====
+      document.querySelectorAll('[data-collapsible="true"]').forEach(function(header) {
+        header.addEventListener('click', function() {
+          header.parentElement.classList.toggle('expanded');
+        });
+      });
+
+      // ==== Summary tab + Richer panels ====
+
+      var narrativeBtn = document.getElementById('generate-narrative-btn');
+      if (narrativeBtn) {
+        narrativeBtn.addEventListener('click', function() {
+          vscode.postMessage({ type: 'generateNarrative' });
+        });
+      }
+
+      function formatDurationMs(ms) {
+        var sec = Math.floor(ms / 1000);
+        if (sec < 60) return sec + 's';
+        var min = Math.floor(sec / 60);
+        var hours = Math.floor(min / 60);
+        if (hours > 0) return hours + 'h ' + (min % 60) + 'm';
+        return min + 'm';
+      }
+
+      function renderSessionSummary(summary) {
+        var empty = document.getElementById('summary-empty');
+        var content = document.getElementById('summary-content');
+        if (!content) return;
+
+        if (empty) empty.style.display = 'none';
+        content.style.display = 'block';
+
+        // Metric cards
+        var durEl = document.getElementById('sum-duration');
+        var tokEl = document.getElementById('sum-tokens');
+        var costEl = document.getElementById('sum-cost');
+        var apiEl = document.getElementById('sum-api-calls');
+        var ctxEl = document.getElementById('sum-context');
+        var compEl = document.getElementById('sum-completion');
+
+        if (durEl) durEl.textContent = formatDurationMs(summary.duration);
+        if (tokEl) tokEl.textContent = formatNumber(summary.totalTokens);
+        if (costEl) costEl.textContent = formatCost(summary.totalCost);
+        if (apiEl) apiEl.textContent = formatNumber(summary.apiCalls);
+        if (ctxEl) ctxEl.textContent = Math.round(summary.contextPeak) + '%';
+        if (compEl) compEl.textContent = Math.round(summary.taskCompletionRate * 100) + '%';
+
+        // Tasks table
+        var tasksEl = document.getElementById('sum-tasks-content');
+        if (tasksEl) {
+          if (summary.tasks.length === 0) {
+            tasksEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No tasks tracked</div>';
+          } else {
+            var html = '<table class="summary-task-table"><tr><th>Task</th><th>Status</th><th>Duration</th><th>Tools</th></tr>';
+            summary.tasks.forEach(function(t) {
+              html += '<tr><td>' + escapeHtml(t.subject) + '</td>' +
+                '<td><span class="status-icon ' + t.status + '"></span>' + t.status + '</td>' +
+                '<td>' + formatDurationMs(t.duration) + '</td>' +
+                '<td>' + t.toolCallCount + '</td></tr>';
+            });
+            html += '</table>';
+            tasksEl.innerHTML = html;
+          }
+        }
+
+        // Files table
+        var filesEl = document.getElementById('sum-files-content');
+        if (filesEl) {
+          if (summary.filesChanged.length === 0) {
+            filesEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No files changed</div>';
+          } else {
+            var fhtml = '<div style="margin-bottom:6px;font-size:11px;">' + summary.totalFilesChanged + ' files | <span style="color:var(--vscode-charts-green,#4caf50)">+' + summary.totalAdditions + '</span> / <span style="color:var(--vscode-charts-red,#f44336)">-' + summary.totalDeletions + '</span></div>';
+            fhtml += '<table class="summary-file-table"><tr><th>File</th><th>+/-</th></tr>';
+            summary.filesChanged.slice(0, 15).forEach(function(f) {
+              fhtml += '<tr><td style="font-family:var(--vscode-editor-font-family)">' + escapeHtml(f.path) + '</td>' +
+                '<td><span style="color:var(--vscode-charts-green,#4caf50)">+' + f.additions + '</span>/<span style="color:var(--vscode-charts-red,#f44336)">-' + f.deletions + '</span></td></tr>';
+            });
+            fhtml += '</table>';
+            filesEl.innerHTML = fhtml;
+          }
+        }
+
+        // Cost breakdown
+        var costContentEl = document.getElementById('sum-cost-content');
+        if (costContentEl) {
+          var chtml = '';
+          if (summary.costByModel.length > 0) {
+            chtml += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;">By Model</div>';
+            chtml += '<table class="summary-cost-table"><tr><th>Model</th><th>Cost</th><th>%</th></tr>';
+            summary.costByModel.forEach(function(m) {
+              chtml += '<tr><td>' + escapeHtml(getShortModelName(m.model)) + '</td><td>' + formatCost(m.cost) + '</td><td>' + Math.round(m.percentage) + '%</td></tr>';
+            });
+            chtml += '</table>';
+          }
+          if (summary.costByTool.length > 0) {
+            chtml += '<div style="font-size:11px;font-weight:600;margin:8px 0 4px;">By Tool (estimated)</div>';
+            chtml += '<table class="summary-cost-table"><tr><th>Tool</th><th>Cost</th><th>Calls</th></tr>';
+            summary.costByTool.slice(0, 8).forEach(function(t) {
+              chtml += '<tr><td>' + escapeHtml(t.tool) + '</td><td>' + formatCost(t.estimatedCost) + '</td><td>' + t.calls + '</td></tr>';
+            });
+            chtml += '</table>';
+          }
+          costContentEl.innerHTML = chtml || '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No cost data</div>';
+        }
+
+        // Errors & Recovery
+        var errEl = document.getElementById('sum-errors-content');
+        if (errEl) {
+          if (summary.errors.length === 0) {
+            errEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No errors</div>';
+          } else {
+            var ehtml = '<div style="font-size:11px;margin-bottom:6px;">Recovery rate: <strong>' + Math.round(summary.recoveryRate * 100) + '%</strong></div>';
+            summary.errors.forEach(function(e) {
+              ehtml += '<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--vscode-panel-border);">' +
+                '<span style="font-weight:500;">' + escapeHtml(e.category) + '</span>: ' + e.count +
+                (e.recovered ? ' <span style="color:var(--vscode-charts-green,#4caf50);">(recovered)</span>' : '') + '</div>';
+            });
+            errEl.innerHTML = ehtml;
+          }
+        }
+      }
+
+      function renderTaskPerformance(data) {
+        var section = document.getElementById('task-perf-section');
+        var body = document.getElementById('task-perf-body');
+        if (!section || !body) return;
+
+        if (data.totalTasks === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+
+        var html = '<div class="panel-metrics-row">' +
+          '<div class="panel-metric-card"><div class="val">' + Math.round(data.completionRate * 100) + '%</div><div class="lbl">Completion</div></div>' +
+          '<div class="panel-metric-card"><div class="val">' + data.completedTasks + '/' + data.totalTasks + '</div><div class="lbl">Tasks</div></div>' +
+          '</div>';
+
+        if (data.tasks.length > 0) {
+          html += '<table class="summary-task-table"><tr><th>Task</th><th>Status</th><th>Tools</th></tr>';
+          data.tasks.forEach(function(t) {
+            html += '<tr><td>' + escapeHtml(t.subject) + '</td>' +
+              '<td><span class="status-icon ' + t.status + '"></span>' + t.status + '</td>' +
+              '<td>' + t.toolCallCount + '</td></tr>';
+          });
+          html += '</table>';
+        }
+        body.innerHTML = html;
+      }
+
+      function renderCacheEffectiveness(data) {
+        var section = document.getElementById('cache-eff-section');
+        var body = document.getElementById('cache-eff-body');
+        if (!section || !body) return;
+
+        if (data.cacheReadTokens === 0 && data.cacheWriteTokens === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+
+        body.innerHTML = '<div class="panel-metrics-row">' +
+          '<div class="panel-metric-card"><div class="val">' + Math.round(data.cacheHitRate * 100) + '%</div><div class="lbl">Cache Hit Rate</div></div>' +
+          '<div class="panel-metric-card"><div class="val">' + formatNumber(data.estimatedTokensSaved) + '</div><div class="lbl">Tokens Saved</div></div>' +
+          '<div class="panel-metric-card"><div class="val">' + formatCost(data.estimatedCostSaved) + '</div><div class="lbl">Cost Saved</div></div>' +
+          '<div class="panel-metric-card"><div class="val">' + formatNumber(data.cacheWriteTokens) + '</div><div class="lbl">Cache Writes</div></div>' +
+          '</div>';
+      }
+
+      function renderRecoveryPatterns(data) {
+        var section = document.getElementById('recovery-section');
+        var body = document.getElementById('recovery-body');
+        if (!section || !body) return;
+
+        if (data.patterns.length === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+
+        var html = '<div style="font-size:11px;margin-bottom:8px;">Recovery rate: <strong>' + Math.round(data.recoveryRate * 100) + '%</strong> (' + data.totalRecoveries + '/' + data.totalErrors + ' errors)</div>';
+        html += '<div class="recovery-list">';
+        data.patterns.forEach(function(p) {
+          html += '<div class="recovery-item">' +
+            '<div class="recovery-desc">' + escapeHtml(p.description) + ' <span style="color:var(--vscode-descriptionForeground)">(' + p.occurrences + 'x)</span></div>' +
+            '<div class="recovery-detail">' + escapeHtml(p.failedApproach) + ' → ' + escapeHtml(p.successfulApproach) + '</div>' +
+            '</div>';
+        });
+        html += '</div>';
+        body.innerHTML = html;
+      }
+
+      function renderAdvancedBurnRate(data) {
+        var section = document.getElementById('burn-rate-section');
+        var body = document.getElementById('burn-rate-body');
+        if (!section || !body) return;
+
+        if (data.currentRate === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+
+        var trendIcon = data.trendDirection === 'increasing' ? '↑' : data.trendDirection === 'decreasing' ? '↓' : '→';
+
+        var html = '<div class="panel-metrics-row">' +
+          '<div class="panel-metric-card"><div class="val">' + formatNumber(Math.round(data.currentRate)) + '</div><div class="lbl">tok/min</div></div>' +
+          '<div class="panel-metric-card"><div class="val"><span class="trend-indicator ' + data.trendDirection + '">' + trendIcon + ' ' + data.trendDirection + '</span></div><div class="lbl">Trend</div></div>' +
+          '</div>';
+
+        if (data.projectedQuotaExhaustion) {
+          var exDate = new Date(data.projectedQuotaExhaustion);
+          html += '<div style="font-size:11px;color:var(--vscode-editorWarning-foreground);margin-bottom:8px;">Projected quota exhaustion: ' + exDate.toLocaleTimeString() + '</div>';
+        }
+
+        if (data.rateByModel.length > 0) {
+          html += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;">By Model</div>';
+          data.rateByModel.forEach(function(m) {
+            html += '<div style="font-size:11px;padding:2px 0;">' + escapeHtml(getShortModelName(m.model)) + ': ' + formatNumber(m.tokensPerMin) + ' tok/min</div>';
+          });
+        }
+        body.innerHTML = html;
+      }
+
+      function renderToolEfficiency(data) {
+        var section = document.getElementById('tool-eff-section');
+        var body = document.getElementById('tool-eff-body');
+        if (!section || !body) return;
+
+        if (data.length === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+
+        var html = '<table class="summary-cost-table"><tr><th>Tool</th><th>Calls</th><th>Cost</th><th>Fail%</th><th>Avg</th></tr>';
+        data.forEach(function(t) {
+          html += '<tr>' +
+            '<td>' + escapeHtml(t.name) + '</td>' +
+            '<td>' + t.totalCalls + '</td>' +
+            '<td>' + formatCost(t.estimatedCost) + '</td>' +
+            '<td>' + Math.round(t.failureRate * 100) + '%</td>' +
+            '<td>' + t.avgDurationFormatted + '</td>' +
+            '</tr>';
+        });
+        html += '</table>';
+        body.innerHTML = html;
       }
 
       vscode.postMessage({ type: 'webviewReady' });

@@ -121,7 +121,31 @@ export interface SessionAnalysisData {
  * ```
  */
 export class SessionAnalyzer {
+  /** Cached analysis data */
+  private _cachedData: SessionAnalysisData | null = null;
+
+  /** Timestamp of last cache update */
+  private _cacheTimestamp: number = 0;
+
+  /** Cache TTL in milliseconds (30 seconds) */
+  private static readonly CACHE_TTL_MS = 30_000;
+
   constructor(private readonly sessionMonitor: SessionMonitor) {}
+
+  /**
+   * Returns cached analysis data if fresh (< 30s old), otherwise collects new data.
+   *
+   * @returns Cached or freshly computed session analysis data
+   */
+  getCachedData(): SessionAnalysisData {
+    const now = Date.now();
+    if (this._cachedData && (now - this._cacheTimestamp) < SessionAnalyzer.CACHE_TTL_MS) {
+      return this._cachedData;
+    }
+    this._cachedData = this.collectData();
+    this._cacheTimestamp = now;
+    return this._cachedData;
+  }
 
   /**
    * Collects and structures session data for analysis.
