@@ -7,7 +7,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 ### Prerequisites
 
 - Node.js 18+
-- Claude Max subscription with authenticated CLI (`claude auth`)
+- VS Code 1.85+
+- Claude Max subscription with authenticated CLI (`claude auth`), or an Anthropic API key
 
 ### Development Setup
 
@@ -26,7 +27,6 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 3. **Run tests to verify setup**
    ```bash
-   cd sidekick-vscode
    npm test
    ```
 
@@ -34,22 +34,88 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Running Locally
 
-1. In VS Code, open `sidekick-vscode/` and press `F5` to launch the Extension Development Host.
+1. Open `sidekick-vscode/` in VS Code and press `F5` to launch the Extension Development Host.
+
+### Available Commands
+
+All commands run from `sidekick-vscode/`:
+
+```bash
+npm run compile      # Dev build (with source maps)
+npm run build        # Production build (minified)
+npm run watch        # Watch mode for development
+npm test             # Run all tests (Vitest)
+npm run test:watch   # Watch mode for tests
+npm run lint         # Check for linting issues
+npm run lint:fix     # Auto-fix linting issues
+npm run package      # Create .vsix for distribution
+```
 
 ### Code Style
 
-**TypeScript (Extension)**
 - We use ESLint for linting
 - Run `npm run lint` before committing
 - Run `npm run lint:fix` to auto-fix issues
 
 ### Running Tests
 
+Tests use Vitest and are co-located with source files (e.g., `FooService.ts` / `FooService.test.ts`). When adding new functionality, add tests alongside the source.
+
 ```bash
-cd sidekick-vscode
-npm test                      # Run all tests
-npm run test:watch            # Watch mode
+npm test             # Run all tests
+npm run test:watch   # Watch mode
 ```
+
+## Project Structure
+
+```
+sidekick-vscode/src/
+├── extension.ts                 # Entry point: activate(), command registration
+├── types.ts                     # Shared interfaces (AuthMode, ClaudeClient, etc.)
+├── providers/
+│   ├── InlineCompletionProvider.ts  # VS Code InlineCompletionItemProvider
+│   ├── DashboardViewProvider.ts     # Session analytics webview
+│   ├── MindMapViewProvider.ts       # D3.js mind map visualization
+│   ├── TaskBoardViewProvider.ts     # Kanban board for task tracking
+│   ├── RsvpViewProvider.ts          # Webview panel for RSVP speed reading
+│   ├── ExplainViewProvider.ts       # Code explanation webview
+│   ├── ErrorViewProvider.ts         # Error explanation webview
+│   ├── InlineChatProvider.ts        # Inline chat / quick ask
+│   ├── TempFilesTreeProvider.ts     # Tree view for files touched by Claude
+│   └── SubagentTreeProvider.ts      # Tree view for subagent monitoring
+├── services/
+│   ├── AuthService.ts           # Central auth orchestration
+│   ├── MaxSubscriptionClient.ts # Claude Code CLI integration
+│   ├── ApiKeyClient.ts          # Direct Anthropic API client
+│   ├── CompletionService.ts     # Debouncing, caching, cancellation
+│   ├── CompletionCache.ts       # LRU cache for completions
+│   ├── CommitMessageService.ts  # AI commit messages from git diffs
+│   ├── GitService.ts            # Git operations (diff, staging)
+│   ├── SessionMonitor.ts        # Real-time JSONL session file monitoring
+│   ├── SessionPathResolver.ts   # Cross-platform Claude Code directory detection
+│   ├── JsonlParser.ts           # JSONL parser with line buffering
+│   ├── ModelPricingService.ts   # Token cost calculation by model
+│   ├── BurnRateCalculator.ts    # Token consumption tracking
+│   ├── TimeoutManager.ts        # Adaptive timeout logic
+│   └── ...                      # + explanation, documentation, review services
+├── types/                       # Type definitions per feature area
+├── utils/
+│   ├── prompts.ts               # System/user prompts for all features
+│   ├── diffFilter.ts            # Filters lockfiles/binaries from diffs
+│   └── tokenEstimator.ts        # Token usage estimation
+└── webview/                     # Browser-context UI code (IIFE bundles)
+    ├── dashboard.ts             # Dashboard UI with Chart.js
+    └── rsvp.ts                  # RSVP reader UI
+```
+
+### Key Architecture Concepts
+
+- **Build system:** esbuild bundles two targets -- CommonJS for the extension host (`out/extension.js`) and IIFE for webviews (`out/webview/*.js`).
+- **Dual auth modes:** Max subscription (default, no API cost) or API key (per-token billing). Both implement `ClaudeClient` in `types.ts`.
+- **Model tiers:** Haiku (fast inline completions), Sonnet (balanced), Opus (quality transforms). Each feature has its own configurable model setting.
+- **Request management:** Debouncing (configurable delay), LRU caching, AbortController for cancellation.
+- **Session monitoring:** `SessionMonitor` watches JSONL files and emits events consumed by the dashboard, mind map, kanban board, and tree providers.
+- **Prompt templates:** All prompts centralized in `utils/prompts.ts` and `utils/analysisPrompts.ts`.
 
 ## Making Changes
 
@@ -62,52 +128,41 @@ npm run test:watch            # Watch mode
 
 ### Commit Messages
 
-Write clear, concise commit messages:
+This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 
-- Use present tense ("Add feature" not "Added feature")
-- Use imperative mood ("Move cursor to..." not "Moves cursor to...")
+```
+feat(auth): add OAuth2 support
+fix(completion): handle empty responses gracefully
+docs: update README with troubleshooting section
+refactor(session): extract path resolution logic
+```
+
+Guidelines:
+- Use present tense, imperative mood ("add feature" not "added feature")
 - Keep the first line under 72 characters
-- Reference issues when applicable ("Fix #123")
-
-Good examples:
-```
-Add multi-line completion support
-Fix cache invalidation on model change
-Update README with troubleshooting section
-```
+- Reference issues when applicable (`Fix #123`)
 
 ### Pull Requests
 
-1. Create a feature branch from `master`
+1. Create a feature branch from `main`
 2. Make your changes with clear commits
-3. Ensure all tests pass
-4. Update documentation if needed
-5. Submit a PR with a clear description
-
-## Project Structure
-
-```
-sidekick-for-claude-max/
-├── sidekick-vscode/          # VS Code extension
-│   ├── src/
-│   │   └── extension.ts      # Extension entry point
-│   └── package.json          # Extension manifest
-│
-└── README.md                 # Main documentation
-```
+3. Ensure all tests pass (`npm test`)
+4. Ensure linting passes (`npm run lint`)
+5. Update documentation if needed
+6. Submit a PR with a clear description
 
 ## Areas for Contribution
 
 ### Good First Issues
 
-Look for issues labeled `good first issue` - these are suitable for newcomers.
+Look for issues labeled `good first issue` -- these are suitable for newcomers.
 
 ### Current Priorities
 
-- Performance improvements
-- Additional language support
-- Documentation improvements
-- Test coverage
+- Test coverage improvements (add tests alongside new or existing services)
+- Session monitoring enhancements (dashboard, mind map, kanban board)
+- Performance improvements for inline completions
+- Documentation and developer experience
 - Bug fixes
 
 ## Questions?
