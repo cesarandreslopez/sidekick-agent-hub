@@ -23,7 +23,7 @@ import type { HistoricalDataService } from '../services/HistoricalDataService';
 import type { ClaudeMdAdvisor } from '../services/ClaudeMdAdvisor';
 import type { QuotaState as DashboardQuotaState, HistoricalSummary, HistoricalDataPoint, LatencyDisplay, ClaudeMdSuggestionDisplay } from '../types/dashboard';
 import type { TokenUsage, SessionStats, ToolAnalytics, TimelineEvent, ToolCall, LatencyStats } from '../types/claudeSession';
-import type { DashboardMessage, WebviewMessage, DashboardState } from '../types/dashboard';
+import type { DashboardMessage, DashboardWebviewMessage, DashboardState } from '../types/dashboard';
 import type { SessionAnalyzer } from '../services/SessionAnalyzer';
 import type { AuthService } from '../services/AuthService';
 import type { SessionSummaryData } from '../types/sessionSummary';
@@ -32,6 +32,7 @@ import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { BurnRateCalculator } from '../services/BurnRateCalculator';
 import { SessionSummaryService } from '../services/SessionSummaryService';
 import { log, logError } from '../services/Logger';
+import { getNonce } from '../utils/nonce';
 
 /**
  * WebviewViewProvider for the session analytics dashboard.
@@ -222,7 +223,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Handle messages from webview
     webviewView.webview.onDidReceiveMessage(
-      (message: WebviewMessage) => this._handleWebviewMessage(message),
+      (message: DashboardWebviewMessage) => this._handleDashboardWebviewMessage(message),
       undefined,
       this._disposables
     );
@@ -257,7 +258,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    *
    * @param message - Message from webview
    */
-  private _handleWebviewMessage(message: WebviewMessage): void {
+  private _handleDashboardWebviewMessage(message: DashboardWebviewMessage): void {
     log(`Dashboard: received message from webview: ${message.type}`);
     switch (message.type) {
       case 'webviewReady':
@@ -1074,14 +1075,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      // Estimate cost based on total tokens (rough approximation - assume 50/50 split)
-      const estimatedInput = Math.floor(usage.tokens / 2);
-      const estimatedOutput = usage.tokens - estimatedInput;
       const cost = ModelPricingService.calculateCost({
-        inputTokens: estimatedInput,
-        outputTokens: estimatedOutput,
-        cacheWriteTokens: 0,
-        cacheReadTokens: 0
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        cacheReadTokens: usage.cacheReadTokens,
       }, pricing);
 
       this._state.modelBreakdown.push({
@@ -5039,21 +5037,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Disposes of all resources.
    */
   dispose(): void {
+    if (this._richerPanelTimer) {
+      clearTimeout(this._richerPanelTimer);
+    }
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
     log('DashboardViewProvider disposed');
   }
 }
 
-/**
- * Generates a random nonce for CSP.
- * @returns 32-character random string
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}

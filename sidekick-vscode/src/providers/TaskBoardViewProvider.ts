@@ -12,6 +12,7 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { TaskStatus, TrackedTask } from '../types/claudeSession';
 import type { TaskBoardState, TaskBoardMessage, WebviewTaskBoardMessage, TaskBoardColumn, TaskCard } from '../types/taskBoard';
 import { log } from '../services/Logger';
+import { getNonce } from '../utils/nonce';
 
 /**
  * WebviewViewProvider for the session task board.
@@ -546,7 +547,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     const summaryEl = document.getElementById('summary');
     const refreshBtn = document.getElementById('refresh');
 
-    const COLUMN_ORDER = ['pending', 'in_progress', 'completed', 'deleted'];
+    const COLUMN_ORDER = ['pending', 'in_progress', 'completed'];
 
     function formatTime(value) {
       if (!value) return '';
@@ -600,13 +601,11 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         const headerEl = document.createElement('div');
         headerEl.className = 'column-header';
         const isCollapsed = persisted['column:' + column.status] === true;
-        const collapseButton = true
-          ? '<button class="icon-button collapse" data-status="'
+        const collapseButton = '<button class="icon-button collapse" data-status="'
             + column.status
             + '">'
             + (isCollapsed ? 'Expand' : 'Collapse')
-            + '</button>'
-          : '';
+            + '</button>';
         headerEl.innerHTML = '<span class="title">'
           + column.label
           + '</span><span class="right"><span class="count">'
@@ -742,11 +741,3 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 }
 
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i += 1) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}

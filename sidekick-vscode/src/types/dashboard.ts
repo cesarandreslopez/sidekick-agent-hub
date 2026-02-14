@@ -112,7 +112,7 @@ export type DashboardMessage =
  *
  * These messages are sent by the webview to request data or signal state.
  */
-export type WebviewMessage =
+export type DashboardWebviewMessage =
   | { type: 'webviewReady' }
   | { type: 'requestStats' }
   | { type: 'selectSession'; sessionPath: string }

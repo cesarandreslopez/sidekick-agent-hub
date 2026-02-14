@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus } from '../types/claudeSession';
 import { log } from './Logger';
+import { extractTaskIdFromResult } from '../utils/taskHelpers';
 
 /**
  * Pattern for matching subagent JSONL files.
@@ -310,29 +311,6 @@ function handleTaskUpdate(
   }
 
   task.updatedAt = timestamp;
-}
-
-/**
- * Extracts task ID from TaskCreate result content.
- */
-function extractTaskIdFromResult(resultContent: unknown): string | null {
-  const resultStr = typeof resultContent === 'string'
-    ? resultContent
-    : JSON.stringify(resultContent || '');
-
-  // Try to match "Task #N" pattern
-  const taskIdMatch = resultStr.match(/Task #(\d+)/i);
-  if (taskIdMatch) {
-    return taskIdMatch[1];
-  }
-
-  // Try to match taskId in JSON-like content
-  const jsonIdMatch = resultStr.match(/"taskId"\s*:\s*"?(\d+)"?/i);
-  if (jsonIdMatch) {
-    return jsonIdMatch[1];
-  }
-
-  return null;
 }
 
 /**

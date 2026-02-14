@@ -13,8 +13,9 @@ import * as vscode from 'vscode';
 import { AuthService } from '../services/AuthService';
 import { ClassificationService } from '../services/ClassificationService';
 import { ExplanationService } from '../services/ExplanationService';
-import type { ExtensionMessage, WebviewMessage, ContentType, ComplexityLevel } from '../types/rsvp';
+import type { ExtensionMessage, RsvpWebviewMessage, ContentType, ComplexityLevel } from '../types/rsvp';
 import { COMPLEXITY_LABELS } from '../types/rsvp';
+import { getNonce } from '../utils/nonce';
 
 export class RsvpViewProvider implements vscode.Disposable {
   public static readonly viewType = 'sidekick.rsvpReader';
@@ -26,8 +27,6 @@ export class RsvpViewProvider implements vscode.Disposable {
   private pendingRequests = new Map<string, { type: 'classification' | 'explanation'; timestamp: number }>();
   private _pendingText: string | undefined;
   private _pendingOriginal: string | undefined;
-  private _pendingMode: 'direct' | 'explain-first' = 'direct';
-  private _pendingComplexity: ComplexityLevel | undefined;
   private _disposables: vscode.Disposable[] = [];
 
   // Context for regeneration
@@ -57,8 +56,6 @@ export class RsvpViewProvider implements vscode.Disposable {
     // Store text - will be sent when webview signals ready
     this._pendingText = text;
     this._pendingOriginal = undefined;
-    this._pendingMode = 'direct';
-    this._pendingComplexity = undefined;
 
     if (this._panel) {
       // Panel exists - reveal it, update title, and send text
@@ -106,8 +103,6 @@ export class RsvpViewProvider implements vscode.Disposable {
           // Step 3: Store both original and explanation - default to reading explanation
           this._pendingText = explanation;
           this._pendingOriginal = text;
-          this._pendingMode = 'explain-first';
-          this._pendingComplexity = complexity;
 
           const title = `RSVP Reader · ${COMPLEXITY_LABELS[complexity]}`;
 
@@ -150,7 +145,7 @@ export class RsvpViewProvider implements vscode.Disposable {
 
     // Handle messages from webview
     this._panel.webview.onDidReceiveMessage(
-      async (message: WebviewMessage) => {
+      async (message: RsvpWebviewMessage) => {
         switch (message.type) {
           case 'webviewReady':
             // Webview is ready to receive messages - send any pending text
@@ -208,7 +203,6 @@ export class RsvpViewProvider implements vscode.Disposable {
       } as ExtensionMessage);
       this._pendingText = undefined;
       this._pendingOriginal = undefined;
-      this._pendingMode = 'direct';
     }
   }
 
@@ -378,15 +372,3 @@ export class RsvpViewProvider implements vscode.Disposable {
   }
 }
 
-/**
- * Generate a random nonce for CSP.
- * @returns 32-character random string
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}

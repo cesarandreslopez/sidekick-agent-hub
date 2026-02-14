@@ -29,6 +29,7 @@ import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, 
 import { SessionSummary, ModelUsageRecord, ToolUsageRecord, createEmptyTokenTotals } from '../types/historicalData';
 import { ModelPricingService } from './ModelPricingService';
 import { log, logError } from './Logger';
+import { extractTaskIdFromResult } from '../utils/taskHelpers';
 
 /**
  * Session monitoring service for Claude Code sessions.
@@ -68,6 +69,11 @@ import { log, logError } from './Logger';
  */
 /** Storage key for persisted custom session path */
 const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
+
+/** Type guard for content blocks with a `type` string property */
+function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
+  return block !== null && typeof block === 'object' && typeof (block as Record<string, unknown>).type === 'string';
+}
 
 export class SessionMonitor implements vscode.Disposable {
   /** File watcher for session directory */
@@ -688,14 +694,11 @@ export class SessionMonitor implements vscode.Disposable {
     const modelUsage: ModelUsageRecord[] = [];
     this.stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      // Estimate cost based on total tokens (rough approximation - assume 50/50 split)
-      const estimatedInput = Math.floor(usage.tokens / 2);
-      const estimatedOutput = usage.tokens - estimatedInput;
       const cost = ModelPricingService.calculateCost({
-        inputTokens: estimatedInput,
-        outputTokens: estimatedOutput,
-        cacheWriteTokens: 0,
-        cacheReadTokens: 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        cacheReadTokens: usage.cacheReadTokens,
       }, pricing);
       modelUsage.push({
         model,
@@ -1103,14 +1106,14 @@ export class SessionMonitor implements vscode.Disposable {
           if (typeof content === 'string') {
             text = content.trim();
           } else if (Array.isArray(content)) {
-            const textBlock = content.find((block: any) =>
-              block && typeof block === 'object' &&
+            const textBlock = content.find((block: unknown) =>
+              isTypedBlock(block) &&
               block.type === 'text' &&
               typeof block.text === 'string' &&
-              block.text.trim().length > 0
+              (block.text as string).trim().length > 0
             );
-            if (textBlock) {
-              text = textBlock.text.trim();
+            if (textBlock && isTypedBlock(textBlock) && typeof textBlock.text === 'string') {
+              text = (textBlock.text as string).trim();
             }
           }
 
@@ -1473,10 +1476,11 @@ export class SessionMonitor implements vscode.Disposable {
       return true;
     }
 
-    // Prevent unbounded growth by pruning when limit reached
+    // Prevent unbounded growth by pruning oldest 25% when limit reached.
+    // V8 Sets maintain insertion order, so slicing keeps the most recent entries.
     if (this.seenHashes.size >= this.MAX_SEEN_HASHES) {
       const arr = Array.from(this.seenHashes);
-      this.seenHashes = new Set(arr.slice(Math.floor(arr.length / 2)));
+      this.seenHashes = new Set(arr.slice(Math.floor(arr.length / 4)));
     }
 
     this.seenHashes.add(hash);
@@ -1507,7 +1511,7 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     // Track latency: user events with actual prompt content start a pending request
-    if (event.type === 'user' && this.hasUserPromptContent(event)) {
+    if (event.type === 'user' && this.hasTextContent(event)) {
       // Check if we should discard a stale pending request
       if (this.pendingUserRequest) {
         const elapsed = Date.now() - this.pendingUserRequest.timestamp.getTime();
@@ -1526,8 +1530,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     // Track latency: first assistant event with text content marks first token
     if (event.type === 'assistant' && this.pendingUserRequest && !this.pendingUserRequest.firstResponseReceived) {
-      const hasTextContent = this.hasAssistantTextContent(event);
-      if (hasTextContent) {
+      if (this.hasTextContent(event)) {
         const responseTimestamp = new Date(event.timestamp);
         const firstTokenLatencyMs = responseTimestamp.getTime() - this.pendingUserRequest.timestamp.getTime();
 
@@ -1562,9 +1565,13 @@ export class SessionMonitor implements vscode.Disposable {
       this.stats.totalCacheReadTokens += usage.cacheReadTokens;
 
       // Update per-model usage
-      const modelStats = this.stats.modelUsage.get(usage.model) || { calls: 0, tokens: 0 };
+      const modelStats = this.stats.modelUsage.get(usage.model) || { calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 };
       modelStats.calls++;
       modelStats.tokens += usage.inputTokens + usage.outputTokens;
+      modelStats.inputTokens += usage.inputTokens;
+      modelStats.outputTokens += usage.outputTokens;
+      modelStats.cacheWriteTokens += usage.cacheWriteTokens;
+      modelStats.cacheReadTokens += usage.cacheReadTokens;
       this.stats.modelUsage.set(usage.model, modelStats);
 
       // Update current context window size
@@ -1606,7 +1613,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @param event - User session event
    * @returns True if event has user prompt text content
    */
-  private hasUserPromptContent(event: ClaudeSessionEvent): boolean {
+  private hasTextContent(event: ClaudeSessionEvent): boolean {
     const content = event.message?.content;
     if (!content) return false;
 
@@ -1615,41 +1622,11 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     if (Array.isArray(content)) {
-      // Check for text blocks that are actual user input, not tool_result
-      return content.some((block: any) =>
-        block && typeof block === 'object' &&
+      return content.some((block: unknown) =>
+        isTypedBlock(block) &&
         block.type === 'text' &&
         typeof block.text === 'string' &&
-        block.text.trim().length > 0
-      );
-    }
-
-    return false;
-  }
-
-  /**
-   * Checks if an assistant event contains text content (not just tool_use).
-   *
-   * We track first token latency to the first assistant response with text,
-   * since tool_use blocks don't represent user-visible output.
-   *
-   * @param event - Assistant session event
-   * @returns True if event has text content
-   */
-  private hasAssistantTextContent(event: ClaudeSessionEvent): boolean {
-    const content = event.message?.content;
-    if (!content) return false;
-
-    if (typeof content === 'string') {
-      return content.trim().length > 0;
-    }
-
-    if (Array.isArray(content)) {
-      return content.some((block: any) =>
-        block && typeof block === 'object' &&
-        block.type === 'text' &&
-        typeof block.text === 'string' &&
-        block.text.trim().length > 0
+        (block.text as string).trim().length > 0
       );
     }
 
@@ -1943,8 +1920,8 @@ export class SessionMonitor implements vscode.Disposable {
       text = content;
     } else if (Array.isArray(content)) {
       // Content may be array of content blocks
-      const textBlock = content.find((c: any) => c.type === 'text' && c.text);
-      text = textBlock?.text || '';
+      const textBlock = content.find((c: unknown) => isTypedBlock(c) && c.type === 'text' && typeof c.text === 'string');
+      text = (isTypedBlock(textBlock) && typeof textBlock.text === 'string') ? textBlock.text : '';
     } else {
       return null;
     }
@@ -1979,8 +1956,8 @@ export class SessionMonitor implements vscode.Disposable {
     } else if (Array.isArray(content)) {
       // Extract only text blocks, skip tool_use blocks
       for (const block of content) {
-        if (block && typeof block === 'object' && (block as any).type === 'text' && (block as any).text) {
-          textParts.push((block as any).text);
+        if (isTypedBlock(block) && block.type === 'text' && typeof block.text === 'string') {
+          textParts.push(block.text);
         }
       }
     }
@@ -2010,7 +1987,7 @@ export class SessionMonitor implements vscode.Disposable {
     if (!Array.isArray(content)) return;
 
     for (const block of content) {
-      if (block && typeof block === 'object' && (block as any).type === 'tool_use') {
+      if (isTypedBlock(block) && block.type === 'tool_use') {
         const toolUse = block as { type: string; id: string; name: string; input: Record<string, unknown> };
 
         // Store pending call for duration calculation
@@ -2178,7 +2155,7 @@ export class SessionMonitor implements vscode.Disposable {
     if (!Array.isArray(content)) return;
 
     for (const block of content) {
-      if (block && typeof block === 'object' && (block as any).type === 'tool_result') {
+      if (isTypedBlock(block) && block.type === 'tool_result') {
         const toolResult = block as { type: string; tool_use_id: string; content?: unknown; is_error?: boolean };
 
         const pending = this.pendingToolCalls.get(toolResult.tool_use_id);
@@ -2274,28 +2251,11 @@ export class SessionMonitor implements vscode.Disposable {
       return;
     }
 
-    // Extract task ID from result
-    // Result format is typically: "Task #1 created successfully: {subject}"
-    // or may contain the task ID in various formats
-    let taskId: string | null = null;
-
-    const resultStr = typeof resultContent === 'string'
-      ? resultContent
-      : JSON.stringify(resultContent || '');
-
-    // Try to match "Task #N" pattern
-    const taskIdMatch = resultStr.match(/Task #(\d+)/i);
-    if (taskIdMatch) {
-      taskId = taskIdMatch[1];
-    } else {
-      // Try to match taskId in JSON-like content
-      const jsonIdMatch = resultStr.match(/"taskId"\s*:\s*"?(\d+)"?/i);
-      if (jsonIdMatch) {
-        taskId = jsonIdMatch[1];
-      }
-    }
-
+    const taskId = extractTaskIdFromResult(resultContent);
     if (!taskId) {
+      const resultStr = typeof resultContent === 'string'
+        ? resultContent
+        : JSON.stringify(resultContent || '');
       log(`Could not extract task ID from TaskCreate result: ${resultStr.substring(0, 100)}`);
       return;
     }

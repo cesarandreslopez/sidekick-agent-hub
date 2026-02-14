@@ -294,16 +294,8 @@ export class DocumentationService implements vscode.Disposable {
    * @param language - The programming language
    * @returns The indented documentation string
    */
-  private indentDocumentation(doc: string, indent: string, language: string): string {
-    const lines = doc.split('\n');
-
-    // For Python docstrings, all lines get same indent
-    if (language === 'python') {
-      return lines.map(line => indent + line).join('\n');
-    }
-
-    // For JSDoc, apply indent to all lines
-    return lines.map(line => indent + line).join('\n');
+  private indentDocumentation(doc: string, indent: string, _language: string): string {
+    return doc.split('\n').map(line => indent + line).join('\n');
   }
 
   /**

@@ -121,8 +121,12 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       this.scanSubagentFiles();
     }
 
-    // Periodically scan for new subagent files (every 2 seconds)
-    const scanInterval = setInterval(() => this.scanSubagentFiles(), 2000);
+    // Periodically scan for new subagent files (every 2 seconds, only when session is active)
+    const scanInterval = setInterval(() => {
+      if (this.sessionMonitor.isActive()) {
+        this.scanSubagentFiles();
+      }
+    }, 2000);
     this.disposables.push({ dispose: () => clearInterval(scanInterval) });
 
     log('TempFilesTreeProvider initialized');

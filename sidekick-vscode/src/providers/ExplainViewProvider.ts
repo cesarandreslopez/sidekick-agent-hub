@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 import { ExplanationService } from '../services/ExplanationService';
 import type { ExplainExtensionMessage, ExplainWebviewMessage, FileContext } from '../types/explain';
 import type { ComplexityLevel } from '../types/rsvp';
+import { getNonce } from '../utils/nonce';
 
 export class ExplainViewProvider implements vscode.Disposable {
   public static readonly viewType = 'sidekick.explainCode';
@@ -293,15 +294,3 @@ export class ExplainViewProvider implements vscode.Disposable {
   }
 }
 
-/**
- * Generate a random nonce for CSP.
- * @returns 32-character random string
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}

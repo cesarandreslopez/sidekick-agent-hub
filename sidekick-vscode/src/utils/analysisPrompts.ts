@@ -7,7 +7,7 @@
  * @module utils/analysisPrompts
  */
 
-import type { SessionAnalysisData, AnalyzedError, ToolPattern, Inefficiency, RecoveryPattern } from '../services/SessionAnalyzer';
+import type { SessionAnalysisData, AnalyzedError, ToolPattern, Inefficiency, RecoveryPattern } from '../types/analysis';
 
 /**
  * Formats a duration in milliseconds to a human-readable string.

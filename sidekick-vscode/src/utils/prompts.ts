@@ -11,6 +11,7 @@ import { log } from '../services/Logger';
 import type { ErrorContext } from '../types/errorExplanation';
 import type { ComplexityLevel } from '../types/rsvp';
 import { COMPLEXITY_LABELS } from '../types/rsvp';
+import { stripMarkdownFences } from './markdownUtils';
 
 /**
  * Patterns that indicate a conversational response rather than code.
@@ -23,7 +24,7 @@ const CONVERSATIONAL_PATTERNS = [
   /^(Could|Would|Can) you/i,
   /cannot provide/i,
   /please provide/i,
-  /however/i,
+  /^However,/i,
   /without (additional|more)/i,
 ];
 
@@ -199,11 +200,7 @@ export function cleanCompletion(
   // Remove markdown code blocks (but not for markdown files)
   let cleaned = text;
   if (!isProse) {
-    cleaned = text
-      // Remove opening code block with optional language (```json, ```typescript, etc.)
-      .replace(/^\s*```[\w-]*\s*\n?/gm, '')
-      // Remove closing code block
-      .replace(/\n?\s*```\s*$/gm, '')
+    cleaned = stripMarkdownFences(text)
       // Also handle inline code blocks that wrap the entire response
       .replace(/^```[\w-]*\n([\s\S]*?)\n```$/m, '$1')
       .trim();
@@ -426,10 +423,7 @@ export function getTransformUserPrompt(
  */
 export function cleanTransformResponse(text: string): string | undefined {
   // Remove markdown code blocks (```language ... ```)
-  let cleaned = text
-    .replace(/^```[\w]*\n?/, '')
-    .replace(/\n?```$/, '')
-    .trim();
+  let cleaned = stripMarkdownFences(text).trim();
 
   // Check for conversational prefixes
   for (const pattern of TRANSFORM_CONVERSATIONAL_PATTERNS) {
@@ -439,10 +433,7 @@ export function cleanTransformResponse(text: string): string | undefined {
       if (newlineIndex !== -1) {
         cleaned = cleaned.slice(newlineIndex + 1).trim();
         // Remove any remaining markdown blocks after extraction
-        cleaned = cleaned
-          .replace(/^```[\w]*\n?/, '')
-          .replace(/\n?```$/, '')
-          .trim();
+        cleaned = stripMarkdownFences(cleaned).trim();
       } else {
         // No newline found, can't extract code
         return undefined;
@@ -531,11 +522,7 @@ COMMIT MESSAGE:`;
  * @returns Cleaned commit message, or null if invalid
  */
 export function cleanCommitMessage(text: string): string | null {
-  const cleaned = text
-    .trim()
-    // Remove markdown code blocks
-    .replace(/^```[\w-]*\n?/, '')
-    .replace(/\n?```$/, '')
+  const cleaned = stripMarkdownFences(text.trim())
     // Remove quotes if wrapped
     .replace(/^["']|["']$/g, '')
     .trim()
@@ -667,10 +654,7 @@ export function cleanDocResponse(text: string, language: string): string | undef
   const lang = language.toLowerCase();
 
   // Remove markdown code blocks
-  let cleaned = text
-    .replace(/^```[\w-]*\s*\n?/gm, '')
-    .replace(/\n?\s*```\s*$/gm, '')
-    .trim();
+  let cleaned = stripMarkdownFences(text).trim();
 
   // Remove conversational prefixes
   const conversationalPrefixes = [

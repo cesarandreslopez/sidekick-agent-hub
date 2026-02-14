@@ -62,7 +62,7 @@ export type ExtensionMessage =
 /**
  * Messages sent from webview to extension
  */
-export type WebviewMessage =
+export type RsvpWebviewMessage =
   | { type: 'stateUpdate'; state: RsvpState }
   | { type: 'requestClassification'; requestId: string; text: string }
   | { type: 'requestExplanation'; requestId: string; text: string; contentType: ContentType; complexity: ComplexityLevel }

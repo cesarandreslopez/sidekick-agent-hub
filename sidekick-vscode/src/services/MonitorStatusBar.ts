@@ -18,6 +18,7 @@
 
 import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
+import type { TokenUsage } from '../types/claudeSession';
 
 /**
  * Status bar service for Claude Code session monitoring.
@@ -112,7 +113,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    *
    * @param usage - Token usage event
    */
-  private handleTokenUsage(usage: any): void {
+  private handleTokenUsage(usage: TokenUsage): void {
     // Throttle updates
     const now = Date.now();
     if (now - this.lastUpdateTime < this.UPDATE_THROTTLE_MS) {

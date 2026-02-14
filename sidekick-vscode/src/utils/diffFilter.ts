@@ -60,7 +60,7 @@ const GENERATED_PATTERNS = [
  * extensions for additional safety.
  */
 const BINARY_EXTENSIONS = [
-  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.svg',
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp',
   '.pdf', '.zip', '.tar', '.gz', '.rar',
   '.exe', '.dll', '.so', '.dylib',
   '.woff', '.woff2', '.ttf', '.eot',

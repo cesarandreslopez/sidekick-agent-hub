@@ -18,6 +18,7 @@ import type {
   FixSuggestion,
 } from '../types/errorExplanation';
 import type { ComplexityLevel } from '../types/rsvp';
+import { getNonce } from '../utils/nonce';
 
 export class ErrorViewProvider implements vscode.Disposable {
   public static readonly viewType = 'sidekick.errorExplanation';
@@ -325,14 +326,3 @@ export class ErrorViewProvider implements vscode.Disposable {
   }
 }
 
-/**
- * Generate a random nonce for CSP.
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}

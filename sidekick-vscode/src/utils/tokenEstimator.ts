@@ -61,14 +61,14 @@ export function estimateTokens(text: string): number {
  * - Return truncated diff with only complete sections
  *
  * @param diff - Git diff output to truncate
- * @param maxTokens - Maximum token count (defaults to 3500)
+ * @param maxTokens - Maximum token count (defaults to 8000)
  * @returns Truncated diff with complete file sections only
  *
  * @example
  * ```typescript
  * const largeDiff = "...10,000 token diff...";
  * const truncated = truncateDiffIntelligently(largeDiff);
- * // Returns first ~3500 tokens worth of complete file sections
+ * // Returns first ~8000 tokens worth of complete file sections
  *
  * const smallDiff = "...500 token diff...";
  * const unchanged = truncateDiffIntelligently(smallDiff);

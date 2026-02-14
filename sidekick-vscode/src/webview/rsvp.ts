@@ -9,7 +9,7 @@
  * - Toggle between explanation and original content
  */
 
-import type { RsvpState, ExtensionMessage, WebviewMessage } from '../types/rsvp';
+import type { RsvpState, ExtensionMessage, RsvpWebviewMessage } from '../types/rsvp';
 import { DEFAULT_RSVP_STATE } from '../types/rsvp';
 
 // Acquire VS Code API (call once, cache result)
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateUI();
 
   // Signal to extension that webview is ready
-  vscode.postMessage({ type: 'webviewReady' } as WebviewMessage);
+  vscode.postMessage({ type: 'webviewReady' } as RsvpWebviewMessage);
 });
 
 /**
@@ -263,7 +263,7 @@ function requestRegenerate() {
   vscode.postMessage({
     type: 'requestRegenerate',
     instructions
-  } as WebviewMessage);
+  } as RsvpWebviewMessage);
 }
 
 /**
@@ -276,7 +276,7 @@ function openInExplainPanel() {
     type: 'openInExplain',
     explanation: currentText,
     code: originalText
-  } as WebviewMessage);
+  } as RsvpWebviewMessage);
 }
 
 /**
@@ -315,9 +315,17 @@ function displayWord(word: string) {
   const orp = word[orpIndex] || '';
   const after = word.slice(orpIndex + 1);
 
-  displayEl.innerHTML = `
-    <span class="word-before">${before}</span><span class="orp-char">${orp}</span><span class="word-after">${after}</span>
-  `.trim();
+  displayEl.textContent = '';
+  const beforeSpan = document.createElement('span');
+  beforeSpan.className = 'word-before';
+  beforeSpan.textContent = before;
+  const orpSpan = document.createElement('span');
+  orpSpan.className = 'orp-char';
+  orpSpan.textContent = orp;
+  const afterSpan = document.createElement('span');
+  afterSpan.className = 'word-after';
+  afterSpan.textContent = after;
+  displayEl.append(beforeSpan, orpSpan, afterSpan);
 }
 
 /**

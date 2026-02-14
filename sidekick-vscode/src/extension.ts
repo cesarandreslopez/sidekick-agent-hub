@@ -57,7 +57,7 @@ import {
 } from "./utils/prompts";
 
 /** Whether completions are currently enabled */
-let enabled = true;
+let enabled = vscode.workspace.getConfiguration('sidekick').get('enabled', true);
 
 /** Status bar manager for multi-state status display */
 let statusBarManager: StatusBarManager | undefined;
@@ -415,8 +415,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register commands
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.toggle", () => {
+    vscode.commands.registerCommand("sidekick.toggle", async () => {
       enabled = !enabled;
+      await vscode.workspace.getConfiguration('sidekick').update('enabled', enabled, true);
       if (enabled) {
         statusBarManager?.setConnected();
       } else {
@@ -489,7 +490,7 @@ export async function activate(context: vscode.ExtensionContext) {
       sessionMonitor.dispose();
 
       // Reinitialize for potential future use
-      sessionMonitor = new SessionMonitor();
+      sessionMonitor = new SessionMonitor(context.workspaceState);
 
       vscode.window.showInformationMessage('Session monitoring stopped');
       log('Session monitoring stopped by user');

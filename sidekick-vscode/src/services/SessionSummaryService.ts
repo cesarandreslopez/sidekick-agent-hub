@@ -300,13 +300,11 @@ export class SessionSummaryService {
     let cost = 0;
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      const estimatedInput = Math.floor(usage.tokens / 2);
-      const estimatedOutput = usage.tokens - estimatedInput;
       cost += ModelPricingService.calculateCost({
-        inputTokens: estimatedInput,
-        outputTokens: estimatedOutput,
-        cacheWriteTokens: 0,
-        cacheReadTokens: 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        cacheReadTokens: usage.cacheReadTokens,
       }, pricing);
     });
     return cost;
@@ -396,13 +394,11 @@ export class SessionSummaryService {
 
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      const estimatedInput = Math.floor(usage.tokens / 2);
-      const estimatedOutput = usage.tokens - estimatedInput;
       const cost = ModelPricingService.calculateCost({
-        inputTokens: estimatedInput,
-        outputTokens: estimatedOutput,
-        cacheWriteTokens: 0,
-        cacheReadTokens: 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        cacheReadTokens: usage.cacheReadTokens,
       }, pricing);
       entries.push({ model, cost });
       total += cost;
