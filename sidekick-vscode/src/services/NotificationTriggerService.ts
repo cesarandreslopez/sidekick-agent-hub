@@ -51,8 +51,17 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
     enabled: true,
     severity: 'error',
     matchTarget: 'command',
-    pattern: 'rm\\s+-rf|git\\s+push\\s+--force|git\\s+reset\\s+--hard|drop\\s+table|drop\\s+database',
+    pattern: 'rm\\s+-[a-zA-Z]*[rf]|git\\s+push\\s+(-f|--force)|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-zA-Z]*[fd]|drop\\s+(table|database)|chmod\\s+-R|chown\\s+-R|>\\s*/dev/',
     throttleSeconds: 10
+  },
+  {
+    id: 'sensitive-path-write',
+    name: 'Sensitive path modification',
+    enabled: true,
+    severity: 'warning',
+    matchTarget: 'file_path',
+    pattern: '^/(etc|boot|usr/(s?bin|lib))|/\\.ssh/|/\\.gnupg/',
+    throttleSeconds: 30
   },
   {
     id: 'tool-error',
@@ -244,9 +253,13 @@ export class NotificationTriggerService implements vscode.Disposable {
         try {
           const regex = new RegExp(trigger.pattern, 'i');
           if (regex.test(command)) {
+            const description = call.input?.description as string | undefined;
+            const body = description
+              ? `${description} (${command.substring(0, 60)})`
+              : `Command: ${command.substring(0, 80)}`;
             this.fireNotification(
               trigger.name,
-              `Command: ${command.substring(0, 80)}`,
+              body,
               trigger.severity
             );
             this.recordFire(trigger.id);
