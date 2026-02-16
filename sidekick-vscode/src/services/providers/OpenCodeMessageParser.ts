@@ -68,6 +68,18 @@ export function normalizeToolInput(input: Record<string, unknown>): Record<strin
   if ('filePath' in result && !('file_path' in result)) {
     result.file_path = result.filePath;
   }
+  // oldString → old_string (used by lineChangeCalculator, TempFilesTreeProvider, ToolInspectorProvider)
+  if ('oldString' in result && !('old_string' in result)) {
+    result.old_string = result.oldString;
+  }
+  // newString → new_string (used by lineChangeCalculator, TempFilesTreeProvider, ToolInspectorProvider)
+  if ('newString' in result && !('new_string' in result)) {
+    result.new_string = result.newString;
+  }
+  // replaceAll → replace_all (used by ToolInspectorProvider)
+  if ('replaceAll' in result && !('replace_all' in result)) {
+    result.replace_all = result.replaceAll;
+  }
   return result;
 }
 
@@ -184,12 +196,26 @@ function convertAssistantMessage(
         break;
 
       case 'patch':
-        content.push({
-          type: 'tool_use',
-          id: `patch-${part.id}`,
-          name: 'Patch',
-          input: { hash: part.hash, files: part.files }
-        });
+        // Emit per-file synthetic Write tool_use blocks so downstream code
+        // (TempFilesTreeProvider, MindMapDataService) picks up file touches
+        // via the standard file_path field extraction.
+        if (part.files && part.files.length > 0) {
+          for (let i = 0; i < part.files.length; i++) {
+            content.push({
+              type: 'tool_use',
+              id: `patch-${part.id}-${i}`,
+              name: 'Write',
+              input: { file_path: part.files[i] }
+            });
+          }
+        } else {
+          content.push({
+            type: 'tool_use',
+            id: `patch-${part.id}`,
+            name: 'Patch',
+            input: { hash: part.hash, files: part.files }
+          });
+        }
         break;
 
       case 'step-start':
@@ -235,6 +261,18 @@ function convertAssistantMessage(
         // Will add summary event below
         break;
     }
+  }
+
+  // Surface message-level errors as text blocks so they appear in the timeline.
+  // OpenCode messages can carry structured errors (AuthError, APIError, etc.)
+  if (message.error) {
+    const errType = message.error.type || 'Error';
+    const errMsg = message.error.message || 'Unknown error';
+    const errCode = message.error.code ? ` (code: ${message.error.code})` : '';
+    content.push({
+      type: 'text',
+      text: `[${errType}]${errCode} ${errMsg}`
+    });
   }
 
   // Sum cost from step-finish parts as fallback for reported_cost
@@ -366,6 +404,14 @@ export function parseDbMessageData(row: DbMessage): OpenCodeMessage {
   const cache = tokens?.cache as Record<string, unknown> | undefined;
   const summary = data.summary as Record<string, unknown> | undefined;
 
+  // Parse error field if present (AuthError, APIError, OutputLengthError, etc.)
+  const errorData = data.error as Record<string, unknown> | undefined;
+  const error = errorData ? {
+    type: (errorData.type as string) || undefined,
+    message: (errorData.message as string) || undefined,
+    code: errorData.code as string | number | undefined,
+  } : undefined;
+
   return {
     id: row.id,
     sessionID: row.session_id,
@@ -385,6 +431,7 @@ export function parseDbMessageData(row: DbMessage): OpenCodeMessage {
       created: (time?.created as number) || row.time_created,
       completed: (time?.completed as number) || undefined,
     },
+    error,
   };
 }
 

@@ -58,6 +58,12 @@ export interface OpenCodeMessage {
     name?: string;
     id?: string;
   };
+  /** Error reported by the provider (AuthError, APIError, OutputLengthError, etc.) */
+  error?: {
+    type?: string;
+    message?: string;
+    code?: string | number;
+  };
 }
 
 /**

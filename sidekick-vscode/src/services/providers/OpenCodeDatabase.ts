@@ -162,10 +162,10 @@ export class OpenCodeDatabase {
 
   // --- Sessions ---
 
-  /** Get all sessions for a project, ordered by most recent first. */
+  /** Get all sessions for a project, ordered by most recent first. Excludes subagent child sessions. */
   getSessionsForProject(projectId: string): DbSession[] {
     return this.query<DbSession>(
-      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? ORDER BY time_updated DESC',
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC',
       [projectId]
     );
   }
@@ -175,6 +175,14 @@ export class OpenCodeDatabase {
     return this.queryOne<DbSession>(
       'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC LIMIT 1',
       [projectId]
+    );
+  }
+
+  /** Get child sessions (subagents) whose parent_id matches the given session ID. */
+  getChildSessions(parentSessionId: string): DbSession[] {
+    return this.query<DbSession>(
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id = ? ORDER BY time_created ASC',
+      [parentSessionId]
     );
   }
 

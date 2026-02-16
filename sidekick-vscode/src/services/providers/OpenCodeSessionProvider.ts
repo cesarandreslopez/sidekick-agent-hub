@@ -19,7 +19,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { log } from '../Logger';
-import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData } from './OpenCodeMessageParser';
+import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput } from './OpenCodeMessageParser';
 import { OpenCodeDatabase } from './OpenCodeDatabase';
 import type { SessionProvider, SessionReader, ProjectFolderInfo, SearchHit } from '../../types/sessionProvider';
 import type { ClaudeSessionEvent, ContextAttribution, SubagentStats, TokenUsage } from '../../types/claudeSession';
@@ -1011,25 +1011,124 @@ export class OpenCodeSessionProvider implements SessionProvider {
     if (!db) return [];
 
     try {
+      // Get subtask parts from the parent session for metadata
       const parts = db.getPartsForSession(sessionId);
-      const results: SubagentStats[] = [];
+      const subtaskParts: Array<{ id: string; agent?: string; description?: string; timeCreated: number }> = [];
 
       for (const partRow of parts) {
         try {
           const data = JSON.parse(partRow.data) as Record<string, unknown>;
           if (data.type !== 'subtask') continue;
-
-          results.push({
-            agentId: partRow.id,
-            agentType: (data.agent as string) || undefined,
+          subtaskParts.push({
+            id: partRow.id,
+            agent: (data.agent as string) || undefined,
             description: (data.description as string) || undefined,
-            toolCalls: [],
-            inputTokens: 0,
-            outputTokens: 0,
-            startTime: new Date(partRow.time_created),
+            timeCreated: partRow.time_created,
           });
         } catch {
           // Skip malformed part data
+        }
+      }
+
+      // Query child sessions for real metrics
+      const childSessions = db.getChildSessions(sessionId);
+
+      // Build a lookup from child session index to subtask part metadata.
+      // Child sessions are ordered by time_created; subtask parts likewise.
+      // Match them positionally when counts align, otherwise fall back to
+      // child session data only.
+      const results: SubagentStats[] = [];
+
+      if (childSessions.length > 0) {
+        for (let i = 0; i < childSessions.length; i++) {
+          const child = childSessions[i];
+          const subtask = i < subtaskParts.length ? subtaskParts[i] : undefined;
+
+          // Aggregate tokens from child session messages
+          const childMessages = db.getMessagesForSession(child.id);
+          let inputTokens = 0;
+          let outputTokens = 0;
+
+          for (const msgRow of childMessages) {
+            try {
+              const msgData = JSON.parse(msgRow.data) as Record<string, unknown>;
+              const tokens = msgData.tokens as Record<string, unknown> | undefined;
+              if (tokens) {
+                inputTokens += (tokens.input as number) || 0;
+                outputTokens += (tokens.output as number) || 0;
+              }
+            } catch {
+              // Skip malformed messages
+            }
+          }
+
+          // Extract tool calls from child session parts
+          const childParts = db.getPartsForSession(child.id);
+          const toolCalls: import('../../types/claudeSession').ToolCall[] = [];
+
+          for (const childPart of childParts) {
+            try {
+              const partData = JSON.parse(childPart.data) as Record<string, unknown>;
+              if (partData.type !== 'tool' && partData.type !== 'tool-invocation') continue;
+              const state = partData.state as Record<string, unknown> | undefined;
+
+              let duration: number | undefined;
+              const timeInfo = state?.time as Record<string, unknown> | undefined;
+              if (timeInfo?.start && timeInfo?.end) {
+                const startMs = typeof timeInfo.start === 'number' ? timeInfo.start : new Date(timeInfo.start as string).getTime();
+                const endMs = typeof timeInfo.end === 'number' ? timeInfo.end : new Date(timeInfo.end as string).getTime();
+                if (endMs > startMs) duration = endMs - startMs;
+              }
+
+              toolCalls.push({
+                name: normalizeToolName((partData.tool as string) || ''),
+                input: normalizeToolInput((state?.input as Record<string, unknown>) || {}),
+                timestamp: new Date(childPart.time_created),
+                duration,
+                isError: state?.status === 'error',
+              });
+            } catch {
+              // Skip malformed parts
+            }
+          }
+
+          // Calculate duration from first/last message timestamps
+          let startTime: Date | undefined;
+          let endTime: Date | undefined;
+          let durationMs: number | undefined;
+
+          if (childMessages.length > 0) {
+            startTime = new Date(childMessages[0].time_created);
+            endTime = new Date(childMessages[childMessages.length - 1].time_created);
+            durationMs = endTime.getTime() - startTime.getTime();
+          } else {
+            startTime = new Date(child.time_created);
+          }
+
+          results.push({
+            agentId: subtask?.id || child.id,
+            agentType: subtask?.agent || (child.title || undefined),
+            description: subtask?.description || (child.title || undefined),
+            toolCalls,
+            inputTokens,
+            outputTokens,
+            startTime,
+            endTime,
+            durationMs,
+          });
+        }
+      } else {
+        // Fallback: no child sessions found, return stubs from subtask parts
+        for (const sp of subtaskParts) {
+          results.push({
+            agentId: sp.id,
+            agentType: sp.agent,
+            description: sp.description,
+            toolCalls: [],
+            inputTokens: 0,
+            outputTokens: 0,
+            startTime: new Date(sp.timeCreated),
+          });
         }
       }
 

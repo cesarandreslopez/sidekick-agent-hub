@@ -391,7 +391,7 @@ describe('OpenCodeMessageParser', () => {
       expect(content[0]).toEqual({ type: 'text', text: 'Hello' });
     });
 
-    it('should convert patch parts to tool_use blocks', () => {
+    it('should convert patch parts with files to per-file Write tool_use blocks', () => {
       const message: OpenCodeMessage = {
         id: 'msg-patch',
         sessionID: 'sess-1',
@@ -413,11 +413,47 @@ describe('OpenCodeMessageParser', () => {
 
       expect(events).toHaveLength(1);
       const content = events[0].message.content as unknown[];
+      expect(content).toHaveLength(2);
+      expect(content[0]).toEqual({
+        type: 'tool_use',
+        id: 'patch-part-1-0',
+        name: 'Write',
+        input: { file_path: '/src/foo.ts' }
+      });
+      expect(content[1]).toEqual({
+        type: 'tool_use',
+        id: 'patch-part-1-1',
+        name: 'Write',
+        input: { file_path: '/src/bar.ts' }
+      });
+    });
+
+    it('should fall back to Patch tool_use when patch has no files', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-patch-empty',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 200 },
+        time: { created: 1705312800000 }
+      };
+      const parts: OpenCodePart[] = [
+        {
+          id: 'part-1',
+          messageID: 'msg-patch-empty',
+          type: 'patch',
+          hash: 'abc123def',
+        }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      expect(events).toHaveLength(1);
+      const content = events[0].message.content as unknown[];
       expect(content[0]).toEqual({
         type: 'tool_use',
         id: 'patch-part-1',
         name: 'Patch',
-        input: { hash: 'abc123def', files: ['/src/foo.ts', '/src/bar.ts'] }
+        input: { hash: 'abc123def', files: undefined }
       });
     });
   });
@@ -917,6 +953,146 @@ describe('OpenCodeMessageParser', () => {
       const input = { command: 'ls', pattern: '*.ts' };
       const result = normalizeToolInput(input);
       expect(result).toEqual({ command: 'ls', pattern: '*.ts' });
+    });
+
+    it('should alias oldString to old_string', () => {
+      const input = { oldString: 'old code' };
+      const result = normalizeToolInput(input);
+      expect(result.old_string).toBe('old code');
+      expect(result.oldString).toBe('old code');
+    });
+
+    it('should alias newString to new_string', () => {
+      const input = { newString: 'new code' };
+      const result = normalizeToolInput(input);
+      expect(result.new_string).toBe('new code');
+      expect(result.newString).toBe('new code');
+    });
+
+    it('should alias replaceAll to replace_all', () => {
+      const input = { replaceAll: true };
+      const result = normalizeToolInput(input);
+      expect(result.replace_all).toBe(true);
+      expect(result.replaceAll).toBe(true);
+    });
+
+    it('should not overwrite existing old_string/new_string/replace_all', () => {
+      const input = { oldString: 'camel', old_string: 'snake', newString: 'camel2', new_string: 'snake2', replaceAll: true, replace_all: false };
+      const result = normalizeToolInput(input);
+      expect(result.old_string).toBe('snake');
+      expect(result.new_string).toBe('snake2');
+      expect(result.replace_all).toBe(false);
+    });
+
+    it('should normalize all Edit tool fields together', () => {
+      const input = { filePath: '/src/foo.ts', oldString: 'foo', newString: 'bar', replaceAll: false };
+      const result = normalizeToolInput(input);
+      expect(result.file_path).toBe('/src/foo.ts');
+      expect(result.old_string).toBe('foo');
+      expect(result.new_string).toBe('bar');
+      expect(result.replace_all).toBe(false);
+    });
+  });
+
+  describe('convertOpenCodeMessage with message-level errors', () => {
+    it('should emit error text block when message has error', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-err',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 100, output: 0 },
+        time: { created: '2025-01-15T10:00:01Z' },
+        error: { type: 'APIError', message: 'Rate limit exceeded', code: 429 }
+      };
+      const parts: OpenCodePart[] = [
+        { id: 'part-1', messageID: 'msg-err', type: 'text', text: 'Partial response' }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      expect(events).toHaveLength(1);
+      const content = events[0].message.content as { type: string; text: string }[];
+      // Text part + error block
+      expect(content).toHaveLength(2);
+      expect(content[0]).toEqual({ type: 'text', text: 'Partial response' });
+      expect(content[1]).toEqual({ type: 'text', text: '[APIError] (code: 429) Rate limit exceeded' });
+    });
+
+    it('should handle error without code', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-err2',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 100, output: 0 },
+        time: { created: '2025-01-15T10:00:01Z' },
+        error: { type: 'AuthError', message: 'Invalid API key' }
+      };
+      const parts: OpenCodePart[] = [];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      expect(events).toHaveLength(1);
+      const content = events[0].message.content as { type: string; text: string }[];
+      expect(content[0]).toEqual({ type: 'text', text: '[AuthError] Invalid API key' });
+    });
+
+    it('should handle error with minimal fields', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-err3',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 100, output: 0 },
+        time: { created: '2025-01-15T10:00:01Z' },
+        error: {}
+      };
+      const parts: OpenCodePart[] = [];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      expect(events).toHaveLength(1);
+      const content = events[0].message.content as { type: string; text: string }[];
+      expect(content[0]).toEqual({ type: 'text', text: '[Error] Unknown error' });
+    });
+  });
+
+  describe('parseDbMessageData with error field', () => {
+    it('should parse error from DB message data', () => {
+      const row: DbMessage = {
+        id: 'msg_err',
+        session_id: 'ses_xyz',
+        time_created: 1705312800000,
+        time_updated: 1705312810000,
+        data: JSON.stringify({
+          role: 'assistant',
+          time: { created: 1705312800000 },
+          tokens: { input: 100, output: 0 },
+          error: { type: 'OutputLengthError', message: 'Output too long', code: 'max_tokens' }
+        })
+      };
+
+      const msg = parseDbMessageData(row);
+
+      expect(msg.error).toBeDefined();
+      expect(msg.error!.type).toBe('OutputLengthError');
+      expect(msg.error!.message).toBe('Output too long');
+      expect(msg.error!.code).toBe('max_tokens');
+    });
+
+    it('should return undefined error when not present', () => {
+      const row: DbMessage = {
+        id: 'msg_ok',
+        session_id: 'ses_xyz',
+        time_created: 1705312800000,
+        time_updated: 1705312810000,
+        data: JSON.stringify({
+          role: 'assistant',
+          time: { created: 1705312800000 },
+          tokens: { input: 100, output: 50 }
+        })
+      };
+
+      const msg = parseDbMessageData(row);
+      expect(msg.error).toBeUndefined();
     });
   });
 
