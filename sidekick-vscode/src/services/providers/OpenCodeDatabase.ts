@@ -170,10 +170,10 @@ export class OpenCodeDatabase {
     );
   }
 
-  /** Get the most recently updated session for a project. */
+  /** Get the most recently updated session for a project (excludes subagent child sessions). */
   getMostRecentSession(projectId: string): DbSession | null {
     return this.queryOne<DbSession>(
-      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? ORDER BY time_updated DESC LIMIT 1',
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC LIMIT 1',
       [projectId]
     );
   }

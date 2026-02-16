@@ -160,7 +160,7 @@ export class SessionMonitor implements vscode.Disposable {
   }> = new Map();
 
   /** Task-related tool names */
-  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task'];
+  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task', 'TodoWrite', 'TodoRead'];
 
   /** Creates an empty context attribution object */
   private static emptyAttribution(): ContextAttribution {
@@ -2470,6 +2470,8 @@ export class SessionMonitor implements vscode.Disposable {
 
       this.taskState.tasks.set(agentTaskId, newTask);
       log(`Subagent spawned: ${agentTaskId} - "${description}" (${subagentType || 'unknown'})`);
+    } else if (toolUse.name === 'TodoWrite') {
+      this.handleTodoWriteToolUse(toolUse, now);
     } else if (toolUse.name === 'TaskUpdate') {
       const taskId = String(toolUse.input.taskId || '');
       const task = this.taskState.tasks.get(taskId);
@@ -2539,6 +2541,74 @@ export class SessionMonitor implements vscode.Disposable {
         }
       }
     }
+  }
+
+  /**
+   * Handles TodoWrite tool use (OpenCode's equivalent of TaskCreate/TaskUpdate).
+   *
+   * Replaces all non-subagent tracked tasks with the new todo list from the
+   * input's `todos` array. Each todo item has: content, status, priority.
+   *
+   * @param toolUse - Tool use block with input containing `todos` array
+   * @param now - Parsed timestamp
+   */
+  private handleTodoWriteToolUse(
+    toolUse: { id: string; name: string; input: Record<string, unknown> },
+    now: Date
+  ): void {
+    const todos = toolUse.input.todos as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(todos)) return;
+
+    // Remove all non-subagent tasks (subagent tasks should persist)
+    for (const [taskId, task] of this.taskState.tasks) {
+      if (!task.isSubagent) {
+        this.taskState.tasks.delete(taskId);
+      }
+    }
+
+    // Reset active task if it was a non-subagent task
+    if (this.taskState.activeTaskId && !this.taskState.tasks.has(this.taskState.activeTaskId)) {
+      this.taskState.activeTaskId = null;
+    }
+
+    for (let i = 0; i < todos.length; i++) {
+      const todo = todos[i];
+      const taskId = `todo-${i}`;
+      const content = String(todo.content || todo.subject || `Todo ${i + 1}`);
+      const rawStatus = String(todo.status || 'pending').toLowerCase();
+      const priority = todo.priority ? String(todo.priority) : undefined;
+
+      // Map OpenCode todo status values to TaskStatus
+      let status: TaskStatus;
+      if (rawStatus === 'completed' || rawStatus === 'done') {
+        status = 'completed';
+      } else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') {
+        status = 'in_progress';
+      } else {
+        status = 'pending';
+      }
+
+      const task: TrackedTask = {
+        taskId,
+        subject: content,
+        description: priority ? `Priority: ${priority}` : undefined,
+        status,
+        createdAt: now,
+        updatedAt: now,
+        blockedBy: [],
+        blocks: [],
+        associatedToolCalls: []
+      };
+
+      this.taskState.tasks.set(taskId, task);
+
+      // Track active task
+      if (status === 'in_progress') {
+        this.taskState.activeTaskId = taskId;
+      }
+    }
+
+    log(`TodoWrite: created ${todos.length} tasks from todo list`);
   }
 
   /**

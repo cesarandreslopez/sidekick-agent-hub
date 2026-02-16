@@ -268,6 +268,8 @@ export interface DbSession {
   directory: string;
   time_created: number;
   time_updated: number;
+  /** Non-null for subagent child sessions; references the parent session ID. */
+  parent_id?: string | null;
 }
 
 /** Raw message row from the SQLite database. */

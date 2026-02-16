@@ -13,6 +13,65 @@ import type { ClaudeSessionEvent } from '../../types/claudeSession';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../../types/opencode';
 
 /**
+ * OpenCode → Claude Code tool name mapping.
+ * OpenCode uses lowercase names; downstream code expects PascalCase.
+ */
+const TOOL_NAME_MAP: Record<string, string> = {
+  read: 'Read',
+  write: 'Write',
+  edit: 'Edit',
+  multiedit: 'MultiEdit',
+  bash: 'Bash',
+  glob: 'Glob',
+  grep: 'Grep',
+  webfetch: 'WebFetch',
+  websearch: 'WebSearch',
+  task: 'Task',
+  todowrite: 'TodoWrite',
+  todoread: 'TodoRead',
+  apply_patch: 'ApplyPatch',
+  list: 'List',
+  lsp: 'Lsp',
+  question: 'AskUserQuestion',
+  skill: 'Skill',
+  plan_enter: 'EnterPlanMode',
+  plan_exit: 'ExitPlanMode',
+};
+
+/**
+ * Normalizes an OpenCode tool name to PascalCase.
+ *
+ * Uses the known mapping table for common tools, and falls back to
+ * capitalizing the first letter for unknown names.
+ */
+export function normalizeToolName(name: string): string {
+  if (!name) return name;
+  // Check mapping (case-insensitive lookup via lowercase key)
+  const mapped = TOOL_NAME_MAP[name.toLowerCase()];
+  if (mapped) return mapped;
+  // Already PascalCase (starts with uppercase)? Pass through.
+  if (name[0] >= 'A' && name[0] <= 'Z') return name;
+  // Fallback: capitalize first letter
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
+ * Normalizes tool input fields for downstream compatibility.
+ *
+ * OpenCode uses camelCase field names (e.g. `filePath`); downstream code
+ * (MindMapDataService, SessionMonitor) expects snake_case (e.g. `file_path`).
+ * This adds snake_case aliases without removing the originals.
+ */
+export function normalizeToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...input };
+  // filePath → file_path (used by MindMapDataService.extractFiles, SessionMonitor.extractToolContext)
+  if ('filePath' in result && !('file_path' in result)) {
+    result.file_path = result.filePath;
+  }
+  return result;
+}
+
+/**
  * Converts a timestamp value (ISO string or Unix ms) to ISO string.
  */
 function toISOString(time: string | number | undefined): string {
@@ -110,8 +169,8 @@ function convertAssistantMessage(
         content.push({
           type: 'tool_use',
           id: part.callID,
-          name: part.tool,
-          input: part.state.input || {}
+          name: normalizeToolName(part.tool),
+          input: normalizeToolInput(part.state.input || {})
         });
         break;
 
@@ -119,8 +178,8 @@ function convertAssistantMessage(
         content.push({
           type: 'tool_use',
           id: part.callID,
-          name: part.tool,
-          input: part.state.input || {}
+          name: normalizeToolName(part.tool),
+          input: normalizeToolInput(part.state.input || {})
         });
         break;
 

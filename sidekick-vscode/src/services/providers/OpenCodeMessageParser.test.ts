@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData } from './OpenCodeMessageParser';
+import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput } from './OpenCodeMessageParser';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../../types/opencode';
 
 describe('OpenCodeMessageParser', () => {
@@ -351,7 +351,7 @@ describe('OpenCodeMessageParser', () => {
       expect(content[0]).toEqual({
         type: 'tool_use',
         id: 'call_abc',
-        name: 'glob',
+        name: 'Glob',
         input: { path: '/src', pattern: '*.ts' }
       });
 
@@ -859,6 +859,128 @@ describe('OpenCodeMessageParser', () => {
       expect(content[0]).toEqual({ type: 'text', text: 'Check this file' });
       expect(content[1]).toEqual({ type: 'text', text: '[File: screen.png (image/png)]' });
       expect(content[2]).toEqual({ type: 'text', text: '[Subtask: Run analysis]' });
+    });
+  });
+
+  describe('normalizeToolName', () => {
+    it('should map known lowercase tool names to PascalCase', () => {
+      expect(normalizeToolName('read')).toBe('Read');
+      expect(normalizeToolName('write')).toBe('Write');
+      expect(normalizeToolName('edit')).toBe('Edit');
+      expect(normalizeToolName('multiedit')).toBe('MultiEdit');
+      expect(normalizeToolName('bash')).toBe('Bash');
+      expect(normalizeToolName('glob')).toBe('Glob');
+      expect(normalizeToolName('grep')).toBe('Grep');
+      expect(normalizeToolName('webfetch')).toBe('WebFetch');
+      expect(normalizeToolName('websearch')).toBe('WebSearch');
+      expect(normalizeToolName('task')).toBe('Task');
+      expect(normalizeToolName('todowrite')).toBe('TodoWrite');
+      expect(normalizeToolName('todoread')).toBe('TodoRead');
+      expect(normalizeToolName('apply_patch')).toBe('ApplyPatch');
+      expect(normalizeToolName('question')).toBe('AskUserQuestion');
+      expect(normalizeToolName('skill')).toBe('Skill');
+      expect(normalizeToolName('plan_enter')).toBe('EnterPlanMode');
+      expect(normalizeToolName('plan_exit')).toBe('ExitPlanMode');
+    });
+
+    it('should pass through already-PascalCase names', () => {
+      expect(normalizeToolName('Read')).toBe('Read');
+      expect(normalizeToolName('Bash')).toBe('Bash');
+      expect(normalizeToolName('WebFetch')).toBe('WebFetch');
+    });
+
+    it('should capitalize first letter for unknown lowercase names', () => {
+      expect(normalizeToolName('codesearch')).toBe('Codesearch');
+      expect(normalizeToolName('myCustomTool')).toBe('MyCustomTool');
+    });
+
+    it('should handle empty string', () => {
+      expect(normalizeToolName('')).toBe('');
+    });
+  });
+
+  describe('normalizeToolInput', () => {
+    it('should alias filePath to file_path', () => {
+      const input = { filePath: '/tmp/test.ts' };
+      const result = normalizeToolInput(input);
+      expect(result.file_path).toBe('/tmp/test.ts');
+      expect(result.filePath).toBe('/tmp/test.ts');
+    });
+
+    it('should not overwrite existing file_path', () => {
+      const input = { filePath: '/tmp/camel.ts', file_path: '/tmp/snake.ts' };
+      const result = normalizeToolInput(input);
+      expect(result.file_path).toBe('/tmp/snake.ts');
+    });
+
+    it('should pass through inputs without filePath unchanged', () => {
+      const input = { command: 'ls', pattern: '*.ts' };
+      const result = normalizeToolInput(input);
+      expect(result).toEqual({ command: 'ls', pattern: '*.ts' });
+    });
+  });
+
+  describe('convertOpenCodeMessage with tool name normalization', () => {
+    it('should normalize lowercase tool names to PascalCase in tool_use blocks', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-norm',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 300 },
+        time: { created: 1705312800000, completed: 1705312803000 }
+      };
+      const parts: OpenCodePart[] = [
+        {
+          id: 'part-1',
+          messageID: 'msg-norm',
+          type: 'tool',
+          callID: 'call_norm',
+          tool: 'glob',
+          state: {
+            status: 'completed',
+            input: { path: '/src', pattern: '*.ts' },
+            output: 'file1.ts\nfile2.ts',
+            time: { start: 1705312801000, end: 1705312802000 }
+          }
+        }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      const content = events[0].message.content as Array<{ type: string; name: string }>;
+      expect(content[0].name).toBe('Glob');
+    });
+
+    it('should normalize tool-invocation names and add file_path alias', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-norm2',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 300 },
+        time: { created: '2025-01-15T10:00:01Z' }
+      };
+      const parts: OpenCodePart[] = [
+        {
+          id: 'part-1',
+          messageID: 'msg-norm2',
+          type: 'tool-invocation',
+          callID: 'call_read',
+          tool: 'read',
+          state: {
+            status: 'completed',
+            input: { filePath: '/tmp/test.ts' },
+            output: 'contents',
+            time: { start: '2025-01-15T10:00:01Z', end: '2025-01-15T10:00:02Z' }
+          }
+        }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      const content = events[0].message.content as Array<{ type: string; name: string; input: Record<string, unknown> }>;
+      expect(content[0].name).toBe('Read');
+      expect(content[0].input.file_path).toBe('/tmp/test.ts');
+      expect(content[0].input.filePath).toBe('/tmp/test.ts');
     });
   });
 });
