@@ -90,6 +90,7 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
 export class NotificationTriggerService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
   private triggers: NotificationTrigger[];
+  private compiledPatterns: Map<string, RegExp> = new Map();
   private lastFiredAt: Map<string, number> = new Map();
 
   /** Track consecutive tool errors for burst detection */
@@ -148,10 +149,23 @@ export class NotificationTriggerService implements vscode.Disposable {
     }
 
     // Use built-in triggers with per-trigger enable/disable from settings
-    return BUILT_IN_TRIGGERS.map(trigger => ({
+    const triggers = BUILT_IN_TRIGGERS.map(trigger => ({
       ...trigger,
       enabled: config.get<boolean>(`triggers.${trigger.id}`, trigger.enabled)
     }));
+
+    // Precompile regex patterns once instead of on every tool call event
+    this.compiledPatterns = new Map();
+    for (const trigger of triggers) {
+      if (!trigger.pattern) continue;
+      try {
+        this.compiledPatterns.set(trigger.id, new RegExp(trigger.pattern, 'i'));
+      } catch (e) {
+        log(`NotificationTriggerService: invalid regex for trigger '${trigger.id}': ${e}`);
+      }
+    }
+
+    return triggers;
   }
 
   /**
@@ -227,18 +241,15 @@ export class NotificationTriggerService implements vscode.Disposable {
         if (!trigger.enabled || trigger.matchTarget !== 'file_path') continue;
         if (this.isThrottled(trigger.id, trigger.throttleSeconds)) continue;
 
-        try {
-          const regex = new RegExp(trigger.pattern, 'i');
-          if (regex.test(filePath)) {
-            this.fireNotification(
-              trigger.name,
-              `${call.name} accessing: ${filePath}`,
-              trigger.severity
-            );
-            this.recordFire(trigger.id);
-          }
-        } catch {
-          // Invalid regex, skip
+        const regex = this.compiledPatterns.get(trigger.id);
+        if (!regex) continue;
+        if (regex.test(filePath)) {
+          this.fireNotification(
+            trigger.name,
+            `${call.name} accessing: ${filePath}`,
+            trigger.severity
+          );
+          this.recordFire(trigger.id);
         }
       }
     }
@@ -250,22 +261,19 @@ export class NotificationTriggerService implements vscode.Disposable {
         if (!trigger.enabled || trigger.matchTarget !== 'command') continue;
         if (this.isThrottled(trigger.id, trigger.throttleSeconds)) continue;
 
-        try {
-          const regex = new RegExp(trigger.pattern, 'i');
-          if (regex.test(command)) {
-            const description = call.input?.description as string | undefined;
-            const body = description
-              ? `${description} (${command.substring(0, 60)})`
-              : `Command: ${command.substring(0, 80)}`;
-            this.fireNotification(
-              trigger.name,
-              body,
-              trigger.severity
-            );
-            this.recordFire(trigger.id);
-          }
-        } catch {
-          // Invalid regex, skip
+        const regex = this.compiledPatterns.get(trigger.id);
+        if (!regex) continue;
+        if (regex.test(command)) {
+          const description = call.input?.description as string | undefined;
+          const body = description
+            ? `${description} (${command.substring(0, 60)})`
+            : `Command: ${command.substring(0, 80)}`;
+          this.fireNotification(
+            trigger.name,
+            body,
+            trigger.severity
+          );
+          this.recordFire(trigger.id);
         }
       }
     }
