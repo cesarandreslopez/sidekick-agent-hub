@@ -2552,7 +2552,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     for (const block of content) {
       if (isTypedBlock(block) && block.type === 'tool_result') {
-        const toolResult = block as { type: string; tool_use_id: string; content?: unknown; is_error?: boolean };
+        const toolResult = block as { type: string; tool_use_id: string; content?: unknown; is_error?: boolean; duration?: number };
 
         const pending = this.pendingToolCalls.get(toolResult.tool_use_id);
         if (pending) {
@@ -2573,9 +2573,13 @@ export class SessionMonitor implements vscode.Disposable {
             }
           }
 
-          // Calculate duration
+          // Prefer provider-supplied duration (from OpenCode tool parts) over
+          // calculated duration from event timestamps which can be inaccurate
+          // when both tool_use and tool_result are emitted in the same batch.
           const endTime = new Date(timestamp);
-          const duration = endTime.getTime() - pending.startTime.getTime();
+          const duration = (typeof toolResult.duration === 'number' && toolResult.duration > 0)
+            ? toolResult.duration
+            : endTime.getTime() - pending.startTime.getTime();
 
           // Update the corresponding ToolCall with result data
           const toolCall = this.stats.toolCalls.find(

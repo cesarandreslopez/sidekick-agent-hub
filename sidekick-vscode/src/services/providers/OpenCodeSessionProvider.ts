@@ -326,17 +326,93 @@ class OpenCodeDbReader implements SessionReader {
   ) {}
 
   readNew(): ClaudeSessionEvent[] {
+    // On first call, load the full session history so that attaching to an
+    // existing session populates the dashboard with all prior events.
+    // This matches the behavior of OpenCodeFileReader and the Claude Code
+    // JSONL reader where the first readNew() returns all existing data.
+    if (!this.hasReadOnce) {
+      this.hasReadOnce = true;
+      return this.readAllInternal();
+    }
+
+    return this.readIncremental();
+  }
+
+  /**
+   * Reads all messages and parts for the session, converting them to events.
+   * Used for initial history load and readAll().
+   */
+  private readAllInternal(): ClaudeSessionEvent[] {
     const events: ClaudeSessionEvent[] = [];
 
-    // Avoid expensive full-history scans on first attach.
-    // We start from the latest known cursor and stream only new updates.
-    if (!this.hasReadOnce) {
-      const latestMessageTime = this.db.getLatestMessageTimeUpdated(this.sessionId);
-      const latestPartTime = this.db.getLatestPartTimeUpdated(this.sessionId);
-      this.lastTimeUpdated = Math.max(this.lastTimeUpdated, latestMessageTime, latestPartTime);
-      this.hasReadOnce = true;
+    const messages = this.db.getMessagesForSession(this.sessionId);
+    const parts = this.db.getPartsForSession(this.sessionId);
+
+    if (messages.length === 0) {
       return [];
     }
+
+    // Group parts by message_id
+    const partsByMessage = new Map<string, typeof parts>();
+    for (const part of parts) {
+      const existing = partsByMessage.get(part.message_id);
+      if (existing) {
+        existing.push(part);
+      } else {
+        partsByMessage.set(part.message_id, [part]);
+      }
+    }
+
+    // Sort messages by creation time
+    messages.sort((a, b) => a.time_created - b.time_created);
+
+    // Filter user messages that haven't been processed yet
+    const userMessageIds = messages
+      .filter(m => extractRoleFromDbMessage(m) === 'user')
+      .map(m => m.id);
+    const processedUserMessageIds = new Set(
+      this.db.getProcessedUserMessageIds(this.sessionId, userMessageIds)
+    );
+
+    for (const msgRow of messages) {
+      try {
+        if (extractRoleFromDbMessage(msgRow) === 'user' && !processedUserMessageIds.has(msgRow.id)) {
+          continue;
+        }
+
+        const message = parseDbMessageData(msgRow);
+        const msgParts = (partsByMessage.get(msgRow.id) || []).map(row => {
+          try { return parseDbPartData(row); }
+          catch { return null; }
+        }).filter((p): p is OpenCodePart => p !== null);
+
+        events.push(...convertOpenCodeMessage(message, msgParts));
+      } catch {
+        // Skip malformed messages
+      }
+    }
+
+    // Set cursor to max time_updated across all results
+    let maxTimeUpdated = this.lastTimeUpdated;
+    for (const m of messages) {
+      if (m.time_updated > maxTimeUpdated) maxTimeUpdated = m.time_updated;
+    }
+    for (const p of parts) {
+      if (p.time_updated > maxTimeUpdated) maxTimeUpdated = p.time_updated;
+    }
+    this.lastTimeUpdated = maxTimeUpdated;
+
+    return events.sort((a, b) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  }
+
+  /**
+   * Reads only messages/parts newer than the last cursor position.
+   * Used for subsequent polling calls after the initial history load.
+   */
+  private readIncremental(): ClaudeSessionEvent[] {
+    const events: ClaudeSessionEvent[] = [];
 
     // Get messages and parts that are newer than what we've seen
     const messages = this.db.getMessagesNewerThan(this.sessionId, this.lastTimeUpdated);
@@ -437,7 +513,7 @@ class OpenCodeDbReader implements SessionReader {
 
   readAll(): ClaudeSessionEvent[] {
     this.reset();
-    return this.readNew();
+    return this.readAllInternal();
   }
 
   reset(): void {
@@ -1131,6 +1207,10 @@ export class OpenCodeSessionProvider implements SessionProvider {
     return null;
   }
 
+  /**
+   * Returns the latest assistant message's token snapshot for context window sizing.
+   * Cumulative session totals are derived from readNew() events processed by SessionMonitor.
+   */
   getCurrentUsageSnapshot(sessionPath: string): TokenUsage | null {
     const db = this.ensureDb();
     if (!db) return null;
@@ -1277,6 +1357,7 @@ export class OpenCodeSessionProvider implements SessionProvider {
     // DeepSeek models: 128K context
     if (id.startsWith('deepseek')) return 128_000;
 
+    log(`getContextWindowLimit: unrecognized model "${modelId}", using default 200K`);
     return 200_000;
   }
 

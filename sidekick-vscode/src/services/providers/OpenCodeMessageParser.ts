@@ -178,13 +178,27 @@ function convertAssistantMessage(
     }
   }
 
+  // Sum cost from step-finish parts as fallback for reported_cost
+  // when the message-level cost is unavailable. Step-finish parts carry
+  // per-step cost from the provider which can improve accuracy.
+  let stepFinishCost = 0;
+  for (const part of parts) {
+    if (part.type === 'step-finish' && part.cost && part.cost > 0) {
+      stepFinishCost += part.cost;
+    }
+  }
+
   // Build usage data from message tokens
+  const reportedCost = (message.cost && message.cost > 0)
+    ? message.cost
+    : (stepFinishCost > 0 ? stepFinishCost : undefined);
+
   const usage = {
     input_tokens: message.tokens.input || 0,
     output_tokens: message.tokens.output || 0,
     cache_creation_input_tokens: message.tokens.cacheWrite || 0,
     cache_read_input_tokens: message.tokens.cacheRead || 0,
-    reported_cost: message.cost && message.cost > 0 ? message.cost : undefined,
+    reported_cost: reportedCost,
     reasoning_tokens: message.tokens.reasoning || 0,
   };
 
@@ -212,11 +226,26 @@ function convertAssistantMessage(
     if ((part.type === 'tool-invocation' || part.type === 'tool') &&
         (part.state.status === 'completed' || part.state.status === 'error')) {
 
+      // Calculate duration from provider-supplied timestamps when available
+      let duration: number | undefined;
+      if (part.state.time?.start && part.state.time?.end) {
+        const startMs = typeof part.state.time.start === 'number'
+          ? part.state.time.start
+          : new Date(part.state.time.start).getTime();
+        const endMs = typeof part.state.time.end === 'number'
+          ? part.state.time.end
+          : new Date(part.state.time.end).getTime();
+        if (endMs > startMs) {
+          duration = endMs - startMs;
+        }
+      }
+
       const resultContent: unknown[] = [{
         type: 'tool_result',
         tool_use_id: part.callID,
         content: part.state.status === 'error' ? part.state.error : part.state.output,
-        is_error: part.state.status === 'error'
+        is_error: part.state.status === 'error',
+        ...(duration !== undefined && { duration }),
       }];
 
       const resultTimestamp = part.state.time?.end

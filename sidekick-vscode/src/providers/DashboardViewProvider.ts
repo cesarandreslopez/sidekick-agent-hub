@@ -925,11 +925,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Track model for dynamic context window limit
     this._lastModelId = usage.model;
 
-    // Use provider-reported cost when available, else calculate from pricing
+    // Use provider-reported cost when available, else calculate from pricing.
+    // For non-Claude models (GPT, Gemini, etc.) without reported cost, use 0
+    // rather than applying incorrect Claude pricing.
     let cost: number;
     if (usage.reportedCost !== undefined && usage.reportedCost > 0) {
       cost = usage.reportedCost;
-    } else {
+    } else if (ModelPricingService.parseModelId(usage.model)) {
       const pricing = ModelPricingService.getPricing(usage.model);
       cost = ModelPricingService.calculateCost({
         inputTokens: usage.inputTokens,
@@ -937,6 +939,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         cacheWriteTokens: usage.cacheWriteTokens,
         cacheReadTokens: usage.cacheReadTokens
       }, pricing);
+    } else {
+      cost = 0;
     }
 
     // Update totals
@@ -1266,13 +1270,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       });
     } else {
       stats.modelUsage.forEach((usage, model) => {
-        const pricing = ModelPricingService.getPricing(model);
-        const cost = ModelPricingService.calculateCost({
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-        }, pricing);
+        // Only calculate from pricing table for known Claude models.
+        // Non-Claude models (GPT, Gemini, etc.) get cost 0 to avoid
+        // applying incorrect Claude pricing.
+        let cost: number;
+        if (ModelPricingService.parseModelId(model)) {
+          const pricing = ModelPricingService.getPricing(model);
+          cost = ModelPricingService.calculateCost({
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+          }, pricing);
+        } else {
+          cost = 0;
+        }
 
         this._state.modelBreakdown.push({
           model,

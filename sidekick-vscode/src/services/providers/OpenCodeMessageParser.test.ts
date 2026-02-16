@@ -155,7 +155,8 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_result',
         tool_use_id: 'call-123',
         content: 'file contents here',
-        is_error: false
+        is_error: false,
+        duration: 1000
       });
     });
 
@@ -361,7 +362,8 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_result',
         tool_use_id: 'call_abc',
         content: 'file1.ts\nfile2.ts',
-        is_error: false
+        is_error: false,
+        duration: 1000
       });
     });
 
