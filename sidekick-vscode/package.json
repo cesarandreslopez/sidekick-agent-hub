@@ -1,7 +1,7 @@
 {
   "name": "sidekick-for-max",
   "displayName": "Sidekick for Max",
-  "description": "AI-powered code completions, transforms, commit messages, RSVP speed reading, and Claude Code session monitoring - all using your Claude Max subscription at no extra cost.",
+  "description": "AI-powered code completions, transforms, commit messages, and Claude Code session monitoring - all using your Claude Max subscription at no extra cost.",
   "version": "1.0.0",
   "publisher": "CesarAndresLopez",
   "author": {
@@ -34,8 +34,6 @@
     "claude-max",
     "ai-assistant",
     "code-transform",
-    "rsvp",
-    "speed-reading",
     "session-monitor",
     "token-usage",
     "claude-code",
@@ -265,19 +263,6 @@
           ],
           "description": "Format style for AI-generated commit messages"
         },
-        "sidekick.rsvpMode": {
-          "type": "string",
-          "enum": [
-            "direct",
-            "explain-first"
-          ],
-          "default": "direct",
-          "description": "RSVP reading mode",
-          "enumDescriptions": [
-            "Direct Read - Start RSVP immediately",
-            "Explain-First - Show AI explanation before reading"
-          ]
-        },
         "sidekick.explanationComplexity": {
           "type": "string",
           "enum": [
@@ -394,7 +379,7 @@
             },
             "explanation": {
               "type": "number",
-              "description": "Timeout for RSVP explanations"
+              "description": "Timeout for explanations"
             },
             "commitMessage": {
               "type": "number",
@@ -559,35 +544,6 @@
         "icon": "$(sparkle)"
       },
       {
-        "command": "sidekick.speedRead",
-        "title": "Sidekick: RSVP Reader",
-        "icon": "$(book)"
-      },
-      {
-        "command": "sidekick.speedRead.direct",
-        "title": "Direct Read"
-      },
-      {
-        "command": "sidekick.speedRead.eli5",
-        "title": "Explain: ELI5"
-      },
-      {
-        "command": "sidekick.speedRead.curiousAmateur",
-        "title": "Explain: Curious Amateur"
-      },
-      {
-        "command": "sidekick.speedRead.imposterSyndrome",
-        "title": "Explain: Imposter Syndrome"
-      },
-      {
-        "command": "sidekick.speedRead.senior",
-        "title": "Explain: Senior"
-      },
-      {
-        "command": "sidekick.speedRead.phd",
-        "title": "Explain: PhD Mode"
-      },
-      {
         "command": "sidekick.openDashboard",
         "title": "Sidekick: Open Session Dashboard"
       },
@@ -651,10 +607,6 @@
       {
         "id": "sidekick.explainErrorSubmenu",
         "label": "Explain Error with AI"
-      },
-      {
-        "id": "sidekick.speedReadSubmenu",
-        "label": "RSVP Reader"
       }
     ],
     "keybindings": [
@@ -680,12 +632,6 @@
         "command": "sidekick.explainCode",
         "key": "ctrl+shift+e",
         "mac": "cmd+shift+e",
-        "when": "editorTextFocus && editorHasSelection"
-      },
-      {
-        "command": "sidekick.speedRead",
-        "key": "ctrl+shift+r",
-        "mac": "cmd+shift+r",
         "when": "editorTextFocus && editorHasSelection"
       },
       {
@@ -750,11 +696,6 @@
           "command": "sidekick.transform",
           "group": "3_transform@1",
           "when": "editorHasSelection"
-        },
-        {
-          "submenu": "sidekick.speedReadSubmenu",
-          "group": "4_read@1",
-          "when": "editorHasSelection"
         }
       ],
       "sidekick.explainSubmenu": [
@@ -799,32 +740,6 @@
         {
           "command": "sidekick.explainError.phd",
           "group": "1_levels@5"
-        }
-      ],
-      "sidekick.speedReadSubmenu": [
-        {
-          "command": "sidekick.speedRead.direct",
-          "group": "1_direct"
-        },
-        {
-          "command": "sidekick.speedRead.eli5",
-          "group": "2_explain@1"
-        },
-        {
-          "command": "sidekick.speedRead.curiousAmateur",
-          "group": "2_explain@2"
-        },
-        {
-          "command": "sidekick.speedRead.imposterSyndrome",
-          "group": "2_explain@3"
-        },
-        {
-          "command": "sidekick.speedRead.senior",
-          "group": "2_explain@4"
-        },
-        {
-          "command": "sidekick.speedRead.phd",
-          "group": "2_explain@5"
         }
       ]
     },

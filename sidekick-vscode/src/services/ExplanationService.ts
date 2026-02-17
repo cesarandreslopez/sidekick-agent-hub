@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
-import type { ContentType, ComplexityLevel } from '../types/rsvp';
+import type { ContentType, ComplexityLevel } from '../types/explain';
 
 /**
  * ExplanationService - Adaptive explanation generation.
@@ -129,9 +129,7 @@ Content to explain:
 ${text}
 </content>
 
-Provide a clear, concise explanation appropriate for the audience level. Focus on helping them understand before they speed-read through it.
-
-IMPORTANT: Output plain text only. Do NOT use any markdown formatting (no **bold**, *italics*, # headers, - bullets, [links], or code blocks). The output will be displayed word-by-word in a speed reader where markdown syntax would appear as literal characters.`;
+Provide a clear, concise explanation appropriate for the audience level. Use markdown formatting for readability.`;
   }
 
   /**

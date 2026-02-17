@@ -1,27 +1,7 @@
 const esbuild = require('esbuild');
-const fs = require('fs');
-const path = require('path');
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
-
-/**
- * Copy CSS files to output directory
- */
-function copyWebviewAssets() {
-  const srcCss = path.join(__dirname, 'src', 'webview', 'styles.css');
-  const outDir = path.join(__dirname, 'out', 'webview');
-  const outCss = path.join(outDir, 'styles.css');
-
-  // Ensure output directory exists
-  if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir, { recursive: true });
-  }
-
-  // Copy CSS file
-  fs.copyFileSync(srcCss, outCss);
-  console.log('Copied styles.css to out/webview/');
-}
 
 async function main() {
   // Extension context (Node.js)
@@ -35,20 +15,6 @@ async function main() {
     platform: 'node',
     outfile: 'out/extension.js',
     external: ['vscode'],
-    logLevel: 'warning',
-  });
-
-  // Webview context - RSVP (Browser)
-  const webviewRsvpCtx = await esbuild.context({
-    entryPoints: ['src/webview/rsvp.ts'],
-    bundle: true,
-    format: 'iife',
-    minify: production,
-    sourcemap: !production,
-    sourcesContent: false,
-    platform: 'browser',
-    outfile: 'out/webview/rsvp.js',
-    target: ['es2020'],
     logLevel: 'warning',
   });
 
@@ -94,20 +60,15 @@ async function main() {
     logLevel: 'warning',
   });
 
-  // Copy webview assets (CSS files)
-  copyWebviewAssets();
-
   if (watch) {
-    await Promise.all([extensionCtx.watch(), webviewRsvpCtx.watch(), webviewExplainCtx.watch(), webviewErrorCtx.watch(), webviewDashboardCtx.watch()]);
+    await Promise.all([extensionCtx.watch(), webviewExplainCtx.watch(), webviewErrorCtx.watch(), webviewDashboardCtx.watch()]);
     console.log('Watching for changes...');
   } else {
     await extensionCtx.rebuild();
-    await webviewRsvpCtx.rebuild();
     await webviewExplainCtx.rebuild();
     await webviewErrorCtx.rebuild();
     await webviewDashboardCtx.rebuild();
     await extensionCtx.dispose();
-    await webviewRsvpCtx.dispose();
     await webviewExplainCtx.dispose();
     await webviewErrorCtx.dispose();
     await webviewDashboardCtx.dispose();

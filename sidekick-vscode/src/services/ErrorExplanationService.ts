@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import type { ErrorContext, ErrorExplanation, FixSuggestion } from '../types/errorExplanation';
-import type { ComplexityLevel } from '../types/rsvp';
+import type { ComplexityLevel } from '../types/explain';
 import { getErrorExplanationPrompt, getErrorFixPrompt } from '../utils/prompts';
 
 /**

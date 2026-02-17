@@ -6,13 +6,13 @@ Your Claude Max, working harder: completions, transforms, commits, code review, 
 
 **Claude Code is incredible for complex, multi-file refactoring and agentic workflows.** But sometimes you just want a quick inline completion while typing, or to transform a snippet of code without spinning up a full conversation. And you shouldn't have to pay for yet another subscription to get that.
 
-If you're already paying for Claude Max, Sidekick lets you use those tokens for inline completions, code transforms, AI commit messages, speed reading with AI explanations, and real-time session monitoring--no extra cost, no separate account.
+If you're already paying for Claude Max, Sidekick lets you use those tokens for inline completions, code transforms, AI commit messages, and real-time session monitoring--no extra cost, no separate account.
 
 ## Why Am I Building This?
 
-Claude Code and other AI agents have transformed how we build software. But some of us are still **control freaks** who want to *see*, *review*, and *understand* everything that our overly-enthusiastic robot assistant does with our code. We also enjoy writing actual code ourselves sometimes. And since agents love to be verbose, we need to **ingest their output faster** (hence RSVP speed reading).
+Claude Code and other AI agents have transformed how we build software. But some of us are still **control freaks** who want to *see*, *review*, and *understand* everything that our overly-enthusiastic robot assistant does with our code. We also enjoy writing actual code ourselves sometimes.
 
-Sidekick gives you visibility into what Claude is doing, quick AI assistance for the small stuff, and tools to read faster—all without leaving VS Code.
+Sidekick gives you visibility into what Claude is doing and quick AI assistance for the small stuff—all without leaving VS Code.
 
 ## Why Use This Extension?
 
@@ -213,7 +213,6 @@ Get AI-powered explanations for selected code.
 - Five complexity levels: ELI5, Curious Amateur, Imposter Syndrome, Senior, PhD Mode
 - Rich webview panel with markdown rendering
 - Regenerate with custom instructions
-- Read explanations in RSVP mode
 - Uses Sonnet by default
 
 ### Error Explanations & Fixes
@@ -264,34 +263,6 @@ Generate pull request descriptions automatically. Click the PR icon in the Sourc
 - Copies to clipboard - ready to paste into GitHub/GitLab
 - Uses Sonnet by default for comprehensive descriptions
 
-### RSVP Reader
-
-Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visual Presentation)](https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation) displays words one at a time at a fixed focal point, eliminating eye movement and enabling reading speeds of 2-3x normal.
-
-![RSVP speed reading demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/document_rsvp_speed_reading.gif?v=3)
-
-![AI code explanation with RSVP](https://raw.githubusercontent.com/cesarandreslopez/sidekick-for-claude-max/main/assets/explain_code_plus_rsvp.gif?v=3)
-
-1. Select the text you want to speed read
-2. Press `Ctrl+Shift+R` (Cmd+Shift+R on Mac) or right-click → "Sidekick: RSVP Reader"
-3. Choose direct read or an AI explanation complexity level
-4. Use playback controls to start reading
-
-**Features:**
-- **ORP Highlighting**: Optimal Recognition Point highlighting reduces eye movement for faster comprehension
-- **Adjustable Speed**: 100-900 WPM with real-time controls (up/down arrows)
-- **AI Explanations**: Five complexity levels tailored to your expertise:
-  - **ELI5** - Complete beginner, simple analogies, no jargon
-  - **Curious Amateur** - Learning mode, technical terms defined
-  - **Imposter Syndrome** - Fill knowledge gaps, assume basic familiarity
-  - **Senior** - High-level summary, skip basics
-  - **PhD Mode** - Expert-level analysis without simplification
-- **Dual Content**: Toggle between original text and AI explanation (O key)
-- **Two Reading Modes**: RSVP word-by-word or full-text scrollable view (F key)
-- **Keyboard Controls**: Space (play/pause), arrows (navigate/speed), R (restart)
-- **Smart Classification**: Automatically detects prose, technical content, or code for tailored explanations
-- Uses Sonnet by default for intelligent explanations
-
 ## Commands
 
 | Command | Keybinding | Description |
@@ -305,7 +276,6 @@ Speed read selected text with AI-powered explanations. [RSVP (Rapid Serial Visua
 | Explain Code | Ctrl+Shift+E | Explain selected code with AI |
 | Explain Error with AI | Lightbulb menu | Explain diagnostic error |
 | Fix Error with AI | Lightbulb menu | Apply AI-suggested fix |
-| Sidekick: RSVP Reader | Ctrl+Shift+R | Speed read selected text |
 | Sidekick: Generate Commit Message | Click sparkle in SCM | Generate commit message from staged changes |
 | Sidekick: Review My Changes | Click eye in SCM | AI review of staged changes |
 | Sidekick: Generate PR Description | Click PR icon in SCM | Generate pull request description |
@@ -357,9 +327,8 @@ Click "Sidekick" in the status bar to access:
 | `sidekick.commitMessageGuidance` | (empty) | Default guidance for all commit messages |
 | `sidekick.showCommitButton` | `true` | Show commit message button in Source Control |
 | `sidekick.claudePath` | (empty) | Custom path to Claude CLI (for pnpm/yarn/non-standard installs) |
-| `sidekick.rsvpMode` | `direct` | RSVP default mode: `direct` or `explain-first` |
 | `sidekick.explanationComplexity` | `imposter-syndrome` | AI explanation level: `eli5`, `curious-amateur`, `imposter-syndrome`, `senior`, `phd` |
-| `sidekick.explanationModel` | `sonnet` | Model for RSVP explanations: `haiku`, `sonnet`, or `opus` |
+| `sidekick.explanationModel` | `sonnet` | Model for explanations: `haiku`, `sonnet`, or `opus` |
 | `sidekick.showCompletionHint` | `true` | Show visual hint at cursor suggesting AI completion |
 | `sidekick.completionHintDelayMs` | `1500` | Delay before showing completion hint (ms) |
 | `sidekick.enableSessionMonitoring` | `true` | Enable Claude Code session monitoring |

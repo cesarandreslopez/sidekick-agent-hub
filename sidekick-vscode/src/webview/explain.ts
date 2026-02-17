@@ -12,8 +12,8 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { ExplainExtensionMessage, ExplainWebviewMessage, ExplainState, FileContext } from '../types/explain';
-import type { ComplexityLevel } from '../types/rsvp';
-import { COMPLEXITY_LABELS } from '../types/rsvp';
+import type { ComplexityLevel } from '../types/explain';
+import { COMPLEXITY_LABELS } from '../types/explain';
 import { DEFAULT_EXPLAIN_STATE } from '../types/explain';
 
 // Acquire VS Code API (call once, cache result)
@@ -99,29 +99,6 @@ body {
   margin-bottom: 20px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder));
-}
-
-.speed-read-btn {
-  padding: 6px 14px;
-  border: none;
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: var(--vscode-font-family);
-  white-space: nowrap;
-  display: none;
-}
-
-.speed-read-btn:hover {
-  background: var(--vscode-button-hoverBackground);
-}
-
-.speed-read-btn.visible {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 #explanation-content {
@@ -296,9 +273,6 @@ function initializeDOM() {
     <div class="explain-panel">
       <div class="toolbar">
         <div class="complexity-bar" id="complexity-bar"></div>
-        <button class="speed-read-btn" id="speed-read-btn" title="Open in RSVP Speed Reader">
-          ▶ Speed Read
-        </button>
       </div>
       <div class="loading-spinner" id="loading-spinner">
         <div class="spinner-icon"></div>
@@ -366,16 +340,6 @@ function setupEventListeners() {
     }
   });
 
-  // Speed Read button - open explanation in RSVP reader
-  const speedReadBtn = document.getElementById('speed-read-btn');
-  speedReadBtn?.addEventListener('click', () => {
-    if (state.currentExplanation) {
-      vscode.postMessage({
-        type: 'openInRsvp',
-        explanation: state.currentExplanation
-      } as ExplainWebviewMessage);
-    }
-  });
 }
 
 /**
@@ -537,14 +501,12 @@ function hideError() {
 function updateUI() {
   const contentEl = document.getElementById('explanation-content');
   const emptyState = document.getElementById('empty-state');
-  const speedReadBtn = document.getElementById('speed-read-btn');
 
   // Hide everything first
   hideLoading();
   hideError();
   if (contentEl) contentEl.innerHTML = '';
   if (emptyState) emptyState.classList.remove('visible');
-  if (speedReadBtn) speedReadBtn.classList.remove('visible');
 
   // Show appropriate content based on state
   if (state.isLoading) {
@@ -553,8 +515,6 @@ function updateUI() {
     showError(state.error);
   } else if (state.currentExplanation) {
     renderExplanation(state.currentExplanation);
-    // Show Speed Read button when we have an explanation
-    if (speedReadBtn) speedReadBtn.classList.add('visible');
   } else {
     // Empty state - no code loaded yet
     if (emptyState) emptyState.classList.add('visible');

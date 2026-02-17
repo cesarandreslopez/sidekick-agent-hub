@@ -9,8 +9,8 @@
 
 import { log } from '../services/Logger';
 import type { ErrorContext } from '../types/errorExplanation';
-import type { ComplexityLevel } from '../types/rsvp';
-import { COMPLEXITY_LABELS } from '../types/rsvp';
+import type { ComplexityLevel } from '../types/explain';
+import { COMPLEXITY_LABELS } from '../types/explain';
 import { stripMarkdownFences } from './markdownUtils';
 
 /**

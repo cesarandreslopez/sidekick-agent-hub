@@ -17,7 +17,7 @@ import type {
   ErrorContext,
   FixSuggestion,
 } from '../types/errorExplanation';
-import type { ComplexityLevel } from '../types/rsvp';
+import type { ComplexityLevel } from '../types/explain';
 import { getNonce } from '../utils/nonce';
 
 export class ErrorViewProvider implements vscode.Disposable {

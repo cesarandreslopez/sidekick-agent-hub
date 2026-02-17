@@ -5,7 +5,28 @@
  * Provides type-safe message passing for AI-powered code explanations.
  */
 
-import { ComplexityLevel } from './rsvp';
+/**
+ * Content Type Classification
+ * Determines the nature of content for adaptive explanation
+ */
+export type ContentType = 'prose' | 'technical' | 'code';
+
+/**
+ * Complexity Level
+ * Controls explanation depth and technical detail
+ */
+export type ComplexityLevel = 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd';
+
+/**
+ * Display labels for complexity levels
+ */
+export const COMPLEXITY_LABELS: Record<ComplexityLevel, string> = {
+  'eli5': 'ELI5',
+  'curious-amateur': 'Curious Amateur',
+  'imposter-syndrome': 'Imposter Syndrome',
+  'senior': 'Senior',
+  'phd': 'PhD Mode'
+};
 
 /**
  * File context for code explanations
@@ -45,7 +66,6 @@ export type ExplainWebviewMessage =
   | { type: 'webviewReady' }
   | { type: 'requestExplanation'; requestId: string; code: string; complexity: ComplexityLevel; fileContext?: FileContext }
   | { type: 'changeComplexity'; complexity: ComplexityLevel }
-  | { type: 'openInRsvp'; explanation: string }
   | { type: 'close' };
 
 /**

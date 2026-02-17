@@ -44,7 +44,6 @@ import { CrossSessionSearch } from './services/CrossSessionSearch';
 import { ToolInspectorProvider } from './providers/ToolInspectorProvider';
 import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
 import { InlineChatProvider } from "./providers/InlineChatProvider";
-import { RsvpViewProvider } from "./providers/RsvpViewProvider";
 import { ExplainViewProvider } from "./providers/ExplainViewProvider";
 import { ErrorExplanationProvider } from "./providers/ErrorExplanationProvider";
 import { ErrorViewProvider } from "./providers/ErrorViewProvider";
@@ -81,9 +80,6 @@ let commitMessageService: CommitMessageService | undefined;
 
 /** Documentation service for AI-powered doc generation */
 let documentationService: DocumentationService | undefined;
-
-/** RSVP view provider for speed reading */
-let rsvpProvider: RsvpViewProvider | undefined;
 
 /** Explain view provider for code explanations */
 let explainProvider: ExplainViewProvider | undefined;
@@ -421,10 +417,6 @@ export async function activate(context: vscode.ExtensionContext) {
     inlineProvider
   );
   context.subscriptions.push(inlineDisposable);
-
-  // Create RSVP provider (creates panel on demand, not a sidebar view)
-  rsvpProvider = new RsvpViewProvider(context.extensionUri, authService);
-  context.subscriptions.push(rsvpProvider);
 
   // Create ExplanationService for explain provider
   const explanationService = new ExplanationService(authService);
@@ -1274,19 +1266,6 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.explainCode.phd', () => explainCodeWithComplexity('phd'))
   );
 
-  // Open pre-generated explanation in Explain panel (from RSVP)
-  context.subscriptions.push(
-    vscode.commands.registerCommand('sidekick.openExplanationPanel', async (explanation: string, code?: string) => {
-      if (!explainProvider) {
-        vscode.window.showErrorMessage('Explain provider not initialized');
-        return;
-      }
-      if (explanation) {
-        explainProvider.showPreGeneratedExplanation(explanation, code);
-      }
-    })
-  );
-
   // Register inline chat command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.inlineChat', async () => {
@@ -1353,46 +1332,6 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Helper function for speed read commands
-  const speedReadWithMode = async (mode: 'direct' | 'explain', complexity?: 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd') => {
-    const editor = vscode.window.activeTextEditor;
-
-    if (!editor || editor.selection.isEmpty) {
-      vscode.window.showWarningMessage('Select text to speed read');
-      return;
-    }
-
-    const text = editor.document.getText(editor.selection);
-    const fileName = editor.document.fileName.split(/[/\\]/).pop() || '';
-    const languageId = editor.document.languageId;
-
-    if (!rsvpProvider) {
-      return;
-    }
-
-    if (mode === 'direct') {
-      await rsvpProvider.loadText(text);
-    } else if (complexity) {
-      await rsvpProvider.loadTextWithExplanation(text, complexity, { fileName, languageId });
-    }
-  };
-
-  // Register speed read commands for context menu
-  context.subscriptions.push(
-    vscode.commands.registerCommand('sidekick.speedRead', () => speedReadWithMode('direct')),
-    vscode.commands.registerCommand('sidekick.speedRead.direct', () => speedReadWithMode('direct')),
-    vscode.commands.registerCommand('sidekick.speedRead.eli5', () => speedReadWithMode('explain', 'eli5')),
-    vscode.commands.registerCommand('sidekick.speedRead.curiousAmateur', () => speedReadWithMode('explain', 'curious-amateur')),
-    vscode.commands.registerCommand('sidekick.speedRead.imposterSyndrome', () => speedReadWithMode('explain', 'imposter-syndrome')),
-    vscode.commands.registerCommand('sidekick.speedRead.senior', () => speedReadWithMode('explain', 'senior')),
-    vscode.commands.registerCommand('sidekick.speedRead.phd', () => speedReadWithMode('explain', 'phd')),
-    // Speed read pre-generated explanation (from Explain panel)
-    vscode.commands.registerCommand('sidekick.speedReadExplanation', async (explanation: string) => {
-      if (rsvpProvider && explanation) {
-        await rsvpProvider.loadText(explanation);
-      }
-    })
-  );
 }
 
 /**

@@ -12,7 +12,7 @@
 import * as vscode from 'vscode';
 import { ExplanationService } from '../services/ExplanationService';
 import type { ExplainExtensionMessage, ExplainWebviewMessage, FileContext } from '../types/explain';
-import type { ComplexityLevel } from '../types/rsvp';
+import type { ComplexityLevel } from '../types/explain';
 import { getNonce } from '../utils/nonce';
 
 export class ExplainViewProvider implements vscode.Disposable {
@@ -61,49 +61,6 @@ export class ExplainViewProvider implements vscode.Disposable {
   }
 
   /**
-   * Show a pre-generated explanation (from RSVP or other source).
-   * Skips AI generation and displays directly.
-   *
-   * @param explanation - The pre-generated explanation text
-   * @param code - Optional source code for context
-   */
-  public showPreGeneratedExplanation(
-    explanation: string,
-    code?: string
-  ): void {
-    // Store data for display
-    this._pendingCode = code || '';
-    this._pendingComplexity = 'imposter-syndrome'; // Default
-    this._pendingFileContext = { fileName: '', languageId: '' };
-
-    if (this._panel) {
-      this._panel.reveal(vscode.ViewColumn.Two);
-    } else {
-      this.createPanel();
-    }
-
-    // Wait for webview ready, then send the explanation directly
-    // We'll use a small delay to ensure webview is initialized
-    setTimeout(() => {
-      if (this._panel) {
-        // Send code context
-        this._panel.webview.postMessage({
-          type: 'loadCode',
-          code: code || '(Speed read content)',
-          fileContext: this._pendingFileContext
-        } as ExplainExtensionMessage);
-
-        // Send explanation result directly (bypass AI)
-        this._panel.webview.postMessage({
-          type: 'explanationResult',
-          requestId: 'pregenerated',
-          explanation
-        } as ExplainExtensionMessage);
-      }
-    }, 100);
-  }
-
-  /**
    * Create the webview panel beside the current editor.
    */
   private createPanel(): void {
@@ -149,10 +106,6 @@ export class ExplainViewProvider implements vscode.Disposable {
                 this._pendingFileContext
               );
             }
-            break;
-          case 'openInRsvp':
-            // Open explanation in RSVP speed reader
-            vscode.commands.executeCommand('sidekick.speedReadExplanation', message.explanation);
             break;
           case 'close':
             this._panel?.dispose();
