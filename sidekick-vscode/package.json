@@ -318,12 +318,14 @@
           "enum": [
             "auto",
             "claude-code",
-            "opencode"
+            "opencode",
+            "codex"
           ],
           "enumDescriptions": [
             "Auto-detect based on installed CLI agents",
             "Monitor Claude Code sessions (~/.claude/projects/)",
-            "Monitor OpenCode sessions (~/.local/share/opencode/)"
+            "Monitor OpenCode sessions (~/.local/share/opencode/)",
+            "Monitor Codex CLI sessions (~/.codex/sessions/)"
           ],
           "description": "Which CLI coding agent to monitor. 'auto' detects based on installed tools and recent activity."
         },

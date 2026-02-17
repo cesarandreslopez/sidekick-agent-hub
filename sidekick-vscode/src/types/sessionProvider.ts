@@ -88,7 +88,7 @@ export interface SessionReader {
  */
 export interface SessionProvider extends vscode.Disposable {
   /** Unique provider identifier */
-  readonly id: 'claude-code' | 'opencode';
+  readonly id: 'claude-code' | 'opencode' | 'codex';
   /** Human-readable display name */
   readonly displayName: string;
 

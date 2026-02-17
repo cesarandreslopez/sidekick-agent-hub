@@ -3574,6 +3574,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           <select id="session-provider-select">
             <option value="claude-code">Claude Code</option>
             <option value="opencode">OpenCode</option>
+            <option value="codex">Codex CLI</option>
           </select>
         </div>
         <button class="pin-btn" id="pin-session" title="Pin session to prevent auto-switching">Pin</button>
@@ -4693,7 +4694,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         if (!sectionEl || !contentEl || !errorEl) return;
 
-        if (currentProviderId === 'opencode') {
+        if (currentProviderId === 'opencode' || currentProviderId === 'codex') {
           sectionEl.classList.remove('visible');
           contentEl.style.display = 'none';
           errorEl.style.display = 'none';
@@ -5123,13 +5124,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         var quotaErrorEl = document.getElementById('quota-error');
 
         if (gaugeRow) {
-          gaugeRow.classList.toggle('opencode-provider', currentProviderId === 'opencode');
+          gaugeRow.classList.toggle('opencode-provider', currentProviderId === 'opencode' || currentProviderId === 'codex');
         }
 
         // For OpenCode: repurpose the Quota button as "Context" (no subscription quota)
         // For Claude Code: restore the Quota button label and show subscription quota
         var quotaBtn = document.querySelector('.metric-btn[data-metric="quota"]');
-        if (currentProviderId === 'opencode') {
+        if (currentProviderId === 'opencode' || currentProviderId === 'codex') {
           if (quotaSectionEl) quotaSectionEl.classList.remove('visible');
           if (quotaContentEl) quotaContentEl.style.display = 'none';
           if (quotaErrorEl) quotaErrorEl.style.display = 'none';

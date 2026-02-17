@@ -561,7 +561,7 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      if (providerId !== 'claude-code' && providerId !== 'opencode') {
+      if (providerId !== 'claude-code' && providerId !== 'opencode' && providerId !== 'codex') {
         vscode.window.showErrorMessage(`Unknown session provider: ${providerId}`);
         return;
       }

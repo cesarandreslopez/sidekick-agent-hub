@@ -2,7 +2,7 @@
  * @fileoverview Auto-detection of installed CLI coding agents.
  *
  * Determines which SessionProvider to use based on user configuration
- * or auto-detection of installed tools (Claude Code vs OpenCode).
+ * or auto-detection of installed tools (Claude Code vs OpenCode vs Codex).
  *
  * @module services/providers/ProviderDetector
  */
@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ClaudeCodeSessionProvider } from './ClaudeCodeSessionProvider';
 import { OpenCodeSessionProvider } from './OpenCodeSessionProvider';
+import { CodexSessionProvider } from './CodexSessionProvider';
 import type { SessionProvider } from '../../types/sessionProvider';
 import { log } from '../Logger';
 
@@ -29,6 +30,16 @@ function getOpenCodeDataDir(): string {
 
 function getOpenCodeStorageDir(): string {
   return path.join(getOpenCodeDataDir(), 'storage');
+}
+
+/**
+ * Gets the Codex home directory path for detection.
+ * Respects CODEX_HOME env var, defaults to ~/.codex/
+ */
+function getCodexHome(): string {
+  const envHome = process.env.CODEX_HOME;
+  if (envHome) return envHome;
+  return path.join(os.homedir(), '.codex');
 }
 
 /**
@@ -78,6 +89,22 @@ function getOpenCodeActivityMtime(storageDir: string): number {
 }
 
 /**
+ * Gets the most recent Codex activity timestamp.
+ * Checks state.sqlite mtime first, then falls back to sessions dir.
+ */
+function getCodexActivityMtime(codexHome: string): number {
+  const dbPath = path.join(codexHome, 'state.sqlite');
+  try {
+    const dbMtime = fs.statSync(dbPath).mtime.getTime();
+    if (dbMtime > 0) return dbMtime;
+  } catch {
+    // DB doesn't exist
+  }
+
+  return getMostRecentMtime(path.join(codexHome, 'sessions'));
+}
+
+/**
  * Detects which SessionProvider to use.
  *
  * Priority:
@@ -101,36 +128,64 @@ export function detectProvider(): SessionProvider {
     return new OpenCodeSessionProvider();
   }
 
-  // Auto-detect: check for session directories and database
+  if (preference === 'codex') {
+    log('Session provider: Codex CLI (configured)');
+    return new CodexSessionProvider();
+  }
+
+  // Auto-detect: check for session directories and databases
   const openCodeStorage = getOpenCodeStorageDir();
   const openCodeDbPath = path.join(getOpenCodeDataDir(), 'opencode.db');
   const claudeBase = path.join(os.homedir(), '.claude', 'projects');
+  const codexHome = getCodexHome();
+  const codexSessionsDir = path.join(codexHome, 'sessions');
+  const codexDbPath = path.join(codexHome, 'state.sqlite');
 
   const hasOpenCode = fs.existsSync(openCodeStorage) || fs.existsSync(openCodeDbPath);
   const hasClaude = fs.existsSync(claudeBase);
+  const hasCodex = fs.existsSync(codexSessionsDir) || fs.existsSync(codexDbPath);
 
-  log(`Auto-detecting session provider: Claude Code=${hasClaude}, OpenCode=${hasOpenCode}`);
+  log(`Auto-detecting session provider: Claude Code=${hasClaude}, OpenCode=${hasOpenCode}, Codex=${hasCodex}`);
 
-  if (hasOpenCode && hasClaude) {
-    // Both exist — prefer whichever has more recent activity
-    const claudeMtime = getMostRecentMtime(claudeBase);
-    const openCodeMtime = getOpenCodeActivityMtime(openCodeStorage);
+  // Count how many providers are available
+  const available: Array<{ name: string; mtime: number; create: () => SessionProvider }> = [];
 
-    if (openCodeMtime > claudeMtime) {
-      log('Session provider: OpenCode (auto-detected, more recent activity)');
-      return new OpenCodeSessionProvider();
-    }
-
-    log('Session provider: Claude Code (auto-detected, more recent activity)');
-    return new ClaudeCodeSessionProvider();
+  if (hasClaude) {
+    available.push({
+      name: 'Claude Code',
+      mtime: getMostRecentMtime(claudeBase),
+      create: () => new ClaudeCodeSessionProvider(),
+    });
   }
 
   if (hasOpenCode) {
-    log('Session provider: OpenCode (auto-detected)');
-    return new OpenCodeSessionProvider();
+    available.push({
+      name: 'OpenCode',
+      mtime: getOpenCodeActivityMtime(openCodeStorage),
+      create: () => new OpenCodeSessionProvider(),
+    });
   }
 
-  // Default to Claude Code
-  log('Session provider: Claude Code (default)');
-  return new ClaudeCodeSessionProvider();
+  if (hasCodex) {
+    available.push({
+      name: 'Codex CLI',
+      mtime: getCodexActivityMtime(codexHome),
+      create: () => new CodexSessionProvider(),
+    });
+  }
+
+  if (available.length === 0) {
+    log('Session provider: Claude Code (default, no agents detected)');
+    return new ClaudeCodeSessionProvider();
+  }
+
+  if (available.length === 1) {
+    log(`Session provider: ${available[0].name} (auto-detected)`);
+    return available[0].create();
+  }
+
+  // Multiple providers — pick the one with most recent activity
+  available.sort((a, b) => b.mtime - a.mtime);
+  log(`Session provider: ${available[0].name} (auto-detected, most recent activity)`);
+  return available[0].create();
 }
