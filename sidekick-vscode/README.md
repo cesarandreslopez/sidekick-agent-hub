@@ -81,7 +81,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ### Session Intelligence
 
-Sessions end and context is lost — the next one starts from zero. Session intelligence captures what happened so you can pick up where you left off.
+Claude Code, OpenCode, and Codex all share the same limitation: they forget everything between sessions. Context windows are finite, compaction loses detail mid-session, and nothing survives a session boundary. Without deliberate context management, every session re-discovers your project from scratch. These features bridge that gap. See the [Context Management guide](https://cesarandreslopez.github.io/sidekick-agent-hub/getting-started/context-management/) for the full picture.
 
 - **[Session Handoff](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-handoff/)** — automatic context documents for session continuity
 - **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions from sessions
