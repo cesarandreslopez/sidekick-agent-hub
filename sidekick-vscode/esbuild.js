@@ -14,7 +14,13 @@ async function main() {
     sourcesContent: false,
     platform: 'node',
     outfile: 'out/extension.js',
-    external: ['vscode', '@opencode-ai/sdk', '@openai/codex-sdk'],
+    external: ['vscode'],
+    conditions: ['import'],
+    // Polyfill import.meta.url for ESM deps bundled into CJS.
+    // Needed so createRequire(import.meta.url) inside bundled SDKs
+    // resolves to the bundle's filesystem path (not undefined).
+    banner: { js: 'var import_meta_url = require("url").pathToFileURL(__filename).href;' },
+    define: { 'import.meta.url': 'import_meta_url' },
     logLevel: 'warning',
   });
 

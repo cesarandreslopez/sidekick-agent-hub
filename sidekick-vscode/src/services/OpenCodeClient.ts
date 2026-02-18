@@ -39,7 +39,9 @@ export class OpenCodeClient implements ClaudeClient {
 
     if (!sdkModule) {
       try {
-        sdkModule = await import('@opencode-ai/sdk');
+        // Use require() so esbuild can statically bundle the SDK
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        sdkModule = require('@opencode-ai/sdk');
       } catch {
         throw new Error(
           'OpenCode SDK not installed. Install @opencode-ai/sdk or choose a different inference provider.'

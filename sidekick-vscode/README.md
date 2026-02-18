@@ -98,10 +98,9 @@ At least one of the following:
 
 1. Install the VS Code extension (same as above)
 
-2. Install the Codex SDK in the extension directory:
+2. Install the Codex CLI globally:
    ```bash
-   cd ~/.vscode/extensions/cesarandreslopez.sidekick-for-max-*
-   npm install @openai/codex-sdk
+   npm install -g @openai/codex
    ```
 
 3. Ensure your OpenAI API key is available (`OPENAI_API_KEY` or `CODEX_API_KEY` env var, or `~/.codex/.credentials.json`)
@@ -420,7 +419,7 @@ All model settings accept: `auto` (recommended), a tier (`fast`/`balanced`/`powe
 
 ### Codex connection issues
 - Ensure `OPENAI_API_KEY` or `CODEX_API_KEY` is set, or `~/.codex/.credentials.json` exists
-- The SDK must be installed: `npm install @openai/codex-sdk` in the extension directory
+- The Codex CLI must be installed globally: `npm install -g @openai/codex`
 
 ### Rate limited
 - Wait a moment and try again
@@ -433,7 +432,7 @@ The extension supports multiple inference providers:
 - **Claude Max** (`claude-max`): Uses Claude Agent SDK via the Claude Code CLI — no extra API cost
 - **Claude API** (`claude-api`): Uses Anthropic SDK with your API key — per-token billing
 - **OpenCode** (`opencode`): Uses `@opencode-ai/sdk` to connect to a local OpenCode server (requires `npm install @opencode-ai/sdk`)
-- **Codex** (`codex`): Uses `@openai/codex-sdk` for OpenAI Codex inference (requires `npm install @openai/codex-sdk`)
+- **Codex** (`codex`): Spawns the Codex CLI directly for OpenAI Codex inference (requires `npm install -g @openai/codex`)
 
 Provider auto-detection picks the most recently active agent based on filesystem timestamps. Model settings use a tier system (`fast`/`balanced`/`powerful`) that maps to provider-appropriate models automatically.
 

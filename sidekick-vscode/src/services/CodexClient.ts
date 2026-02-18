@@ -1,49 +1,96 @@
 /**
- * @fileoverview Inference client using OpenAI Codex SDK.
+ * @fileoverview Inference client using the Codex CLI directly.
  *
- * Implements ClaudeClient by delegating to the @openai/codex-sdk.
+ * Implements ClaudeClient by spawning `codex exec --experimental-json`
+ * and parsing JSONL events from stdout. This avoids bundling the
+ * @openai/codex-sdk, whose module-level createRequire(import.meta.url)
+ * and platform binary resolution break inside esbuild's CJS output.
+ *
  * Requires an OpenAI API key via OPENAI_API_KEY or CODEX_API_KEY env var,
  * or a credentials file at ~/.codex/.credentials.json.
  *
  * @module services/CodexClient
  */
 
+import { spawn, execSync } from 'child_process';
+import * as readline from 'readline';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { ClaudeClient, CompletionOptions, TimeoutError } from '../types';
 import { log, logError } from './Logger';
 
-// Lazy-loaded SDK reference
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let CodexClass: any = null;
+/**
+ * Resolves a command to its absolute path using which/where.
+ */
+function resolveCommand(command: string): string | null {
+  try {
+    const cmd = process.platform === 'win32' ? `where ${command}` : `which ${command}`;
+    const result = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+    const resolved = result.trim().split(/\r?\n/)[0];
+    if (resolved && fs.existsSync(resolved)) return resolved;
+  } catch { /* not found */ }
+  return null;
+}
 
 /**
- * Inference client that routes completions through OpenAI Codex CLI.
+ * Finds the Codex CLI executable path.
  *
- * Uses @openai/codex-sdk to create a Codex instance, start a thread
- * in read-only sandbox mode, and extract the final response.
+ * Checks common install locations then falls back to PATH resolution.
  */
-export class CodexClient implements ClaudeClient {
-  /**
-   * Lazily loads the Codex SDK class.
-   */
-  private async getCodexClass(): Promise<new (...args: unknown[]) => { startThread(opts: unknown): Promise<unknown> }> {
-    if (CodexClass) return CodexClass;
+function findCodexCli(): string {
+  const homeDir = os.homedir();
+  const isWindows = process.platform === 'win32';
+  const ext = isWindows ? '.cmd' : '';
 
-    try {
-      const mod = await import('@openai/codex-sdk');
-      CodexClass = mod.Codex ?? mod.default;
-      if (!CodexClass) throw new Error('Codex class not found in SDK exports');
-      log('CodexClient: SDK loaded');
-      return CodexClass;
-    } catch {
-      throw new Error(
-        'Codex SDK not installed. Install @openai/codex-sdk or choose a different inference provider.'
-      );
+  const candidates = [
+    // npm global
+    path.join(homeDir, '.npm-global', 'bin', `codex${ext}`),
+    // pnpm global
+    path.join(homeDir, '.local', 'share', 'pnpm', `codex${ext}`),
+    // yarn global
+    path.join(homeDir, '.yarn', 'bin', `codex${ext}`),
+    // volta
+    path.join(homeDir, '.volta', 'bin', `codex${ext}`),
+    // System paths
+    '/usr/local/bin/codex',
+    '/usr/bin/codex',
+    // Homebrew
+    '/opt/homebrew/bin/codex',
+    // Windows
+    ...(isWindows ? [
+      path.join(process.env.APPDATA || '', 'npm', 'codex.cmd'),
+      path.join(process.env.LOCALAPPDATA || '', 'pnpm', 'codex.cmd'),
+    ] : []),
+  ];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      log(`Found codex at: ${p}`);
+      return p;
     }
   }
 
+  // Fall back to PATH
+  const resolved = resolveCommand('codex');
+  if (resolved) {
+    log(`Resolved codex from PATH: ${resolved}`);
+    return resolved;
+  }
+
+  throw new Error(
+    'Codex CLI not found. Install it (npm install -g @openai/codex) or choose a different inference provider.'
+  );
+}
+
+/**
+ * Inference client that routes completions through the Codex CLI.
+ *
+ * Spawns `codex exec --experimental-json` as a child process,
+ * writes the prompt to stdin, and parses JSONL events from stdout
+ * to extract the final response.
+ */
+export class CodexClient implements ClaudeClient {
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
     if (options?.signal?.aborted) {
       const err = new Error('Request was cancelled');
@@ -52,39 +99,115 @@ export class CodexClient implements ClaudeClient {
     }
 
     const timeoutMs = options?.timeout ?? 30000;
-    const Codex = await this.getCodexClass();
+    const codexPath = findCodexCli();
 
-    const work = async (): Promise<string> => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const codex = new (Codex as any)({
-        ...(options?.model ? { model: options.model } : {}),
-      });
+    const args = ['exec', '--experimental-json', '--sandbox', 'read-only', '--skip-git-repo-check'];
+    if (options?.model) {
+      args.push('--model', options.model);
+    }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const thread = await (codex as any).startThread({
-        prompt,
-        sandboxMode: 'read-only',
-      });
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) env[key] = value;
+    }
+    if (!env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE) {
+      env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE = 'codex_sdk_ts';
+    }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const turn = await (thread as any).run(prompt);
-      const response = turn?.finalResponse ?? turn?.response ?? '';
-      return typeof response === 'string' ? response : JSON.stringify(response);
-    };
+    return new Promise<string>((resolve, reject) => {
+      // Internal controller unifies external abort + timeout
+      const controller = new AbortController();
+      let settled = false;
 
-    const timeout = new Promise<never>((_, reject) => {
-      const id = setTimeout(() => {
-        reject(new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs));
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        controller.abort();
+        fn();
+      };
+
+      // Timeout
+      const timer = setTimeout(() => {
+        settle(() => reject(new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs)));
       }, timeoutMs);
-      options?.signal?.addEventListener('abort', () => {
-        clearTimeout(id);
-        const err = new Error('Request was cancelled');
-        err.name = 'AbortError';
-        reject(err);
+
+      // External abort
+      const onAbort = () => {
+        clearTimeout(timer);
+        settle(() => {
+          const err = new Error('Request was cancelled');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      };
+      options?.signal?.addEventListener('abort', onAbort, { once: true });
+
+      // Spawn the CLI
+      const child = spawn(codexPath, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env,
+      });
+
+      // Kill child on abort
+      controller.signal.addEventListener('abort', () => {
+        if (!child.killed) child.kill('SIGTERM');
+      }, { once: true });
+
+      // Write prompt to stdin and close
+      child.stdin.write(prompt);
+      child.stdin.end();
+
+      // Collect stderr for error reporting
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+      // Parse JSONL from stdout
+      let response = '';
+      let errorMessage = '';
+
+      const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+      rl.on('line', (line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          const type = parsed.type;
+
+          // item.completed with agent_message carries the response text
+          if (type === 'item.completed' && parsed.item?.type === 'agent_message') {
+            response = parsed.item.text ?? '';
+          }
+
+          // turn.failed carries error info
+          if (type === 'turn.failed' && parsed.error?.message) {
+            errorMessage = parsed.error.message;
+          }
+        } catch {
+          // Skip non-JSON lines
+        }
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        options?.signal?.removeEventListener('abort', onAbort);
+        settle(() => reject(err));
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        options?.signal?.removeEventListener('abort', onAbort);
+
+        if (settled) return;
+
+        if (errorMessage) {
+          settle(() => reject(new Error(`Codex error: ${errorMessage}`)));
+        } else if (code !== 0 && code !== null) {
+          settle(() => reject(new Error(
+            `Codex exited with code ${code}${stderr ? ': ' + stderr.trim() : ''}`
+          )));
+        } else {
+          settle(() => resolve(response));
+        }
       });
     });
-
-    return Promise.race([work(), timeout]);
   }
 
   async isAvailable(): Promise<boolean> {
@@ -108,6 +231,6 @@ export class CodexClient implements ClaudeClient {
   }
 
   dispose(): void {
-    CodexClass = null;
+    // No cached state to clean up
   }
 }
