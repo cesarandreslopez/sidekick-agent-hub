@@ -52,6 +52,7 @@ import { DashboardViewProvider } from "./providers/DashboardViewProvider";
 import { MindMapViewProvider } from "./providers/MindMapViewProvider";
 import { TaskBoardViewProvider } from "./providers/TaskBoardViewProvider";
 import { TaskPersistenceService } from "./services/TaskPersistenceService";
+import { DecisionLogService } from "./services/DecisionLogService";
 import { encodeWorkspacePath } from "./services/SessionPathResolver";
 import { TempFilesTreeProvider } from "./providers/TempFilesTreeProvider";
 import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
@@ -336,8 +337,20 @@ export async function activate(context: vscode.ExtensionContext) {
     const claudeMdAdvisor = new ClaudeMdAdvisor(authService, sessionAnalyzer);
     log('SessionAnalyzer and ClaudeMdAdvisor initialized');
 
+    // Decision Log Service
+    let decisionLogService: DecisionLogService | undefined;
+    const decisionWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (decisionWorkspaceFolder) {
+      const decisionSlug = encodeWorkspacePath(decisionWorkspaceFolder.uri.fsPath);
+      decisionLogService = new DecisionLogService(decisionSlug);
+      decisionLogService.initialize().catch(error => {
+        logError('Failed to initialize DecisionLogService', error);
+      });
+      context.subscriptions.push(decisionLogService);
+    }
+
     // Register dashboard view provider (depends on sessionMonitor, quotaService, historicalDataService, and claudeMdAdvisor)
-    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, claudeMdAdvisor, sessionAnalyzer, authService);
+    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, claudeMdAdvisor, sessionAnalyzer, authService, decisionLogService);
     dashboardProvider.setEventLogger(eventLogger);
     context.subscriptions.push(dashboardProvider);
     context.subscriptions.push(

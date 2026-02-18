@@ -200,6 +200,11 @@ export class SessionMonitor implements vscode.Disposable {
   /** Optional event logger for JSONL audit trail */
   private eventLogger: SessionEventLogger | null = null;
 
+  /** Assistant text snippets for decision extraction (capped at 200) */
+  private assistantTexts: Array<{ text: string; timestamp: string }> = [];
+  private readonly MAX_ASSISTANT_TEXTS = 200;
+  private readonly MAX_ASSISTANT_TEXT_LENGTH = 500;
+
   // Event emitters for external consumers
   private readonly _onTokenUsage = new vscode.EventEmitter<TokenUsage>();
   private readonly _onToolCall = new vscode.EventEmitter<ToolCall>();
@@ -450,6 +455,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.pendingUserRequest = null;
     this.latencyRecords = [];
     this.compactionEvents = [];
+    this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
     this.previousContextSize = 0;
     this.stats = this.createEmptyStats();
@@ -770,6 +776,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.pendingUserRequest = null;
     this.latencyRecords = [];
     this.compactionEvents = [];
+    this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
     this.previousContextSize = 0;
 
@@ -924,6 +931,13 @@ export class SessionMonitor implements vscode.Disposable {
   private pruneOldUsageEvents(): void {
     const cutoff = new Date(Date.now() - this.USAGE_EVENT_WINDOW_MS);
     this.recentUsageEvents = this.recentUsageEvents.filter(e => e.timestamp >= cutoff);
+  }
+
+  /**
+   * Gets collected assistant text snippets for decision extraction.
+   */
+  getAssistantTexts(): Array<{ text: string; timestamp: string }> {
+    return [...this.assistantTexts];
   }
 
   /**
@@ -1446,6 +1460,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.pendingUserRequest = null;
     this.latencyRecords = [];
     this.compactionEvents = [];
+    this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
     this.previousContextSize = 0;
 
@@ -1905,6 +1920,18 @@ export class SessionMonitor implements vscode.Disposable {
     // Extract tool_use from assistant message content blocks
     if (event.type === 'assistant' && event.message?.content) {
       this.extractToolUsesFromContent(event.message.content, event.timestamp);
+
+      // Collect assistant text snippets for decision extraction
+      if (Array.isArray(event.message.content) && this.assistantTexts.length < this.MAX_ASSISTANT_TEXTS) {
+        for (const block of event.message.content) {
+          if (block && typeof block === 'object' && 'type' in block && block.type === 'text' && 'text' in block && typeof block.text === 'string') {
+            const text = block.text.length > this.MAX_ASSISTANT_TEXT_LENGTH
+              ? block.text.slice(0, this.MAX_ASSISTANT_TEXT_LENGTH)
+              : block.text;
+            this.assistantTexts.push({ text, timestamp: event.timestamp });
+          }
+        }
+      }
     }
 
     // Extract tool_result from user message content blocks

@@ -27,11 +27,13 @@ import type { DashboardMessage, DashboardWebviewMessage, DashboardState, Compact
 import type { SessionAnalyzer } from '../services/SessionAnalyzer';
 import type { AuthService } from '../services/AuthService';
 import type { SessionEventLogger } from '../services/SessionEventLogger';
+import type { DecisionLogService } from '../services/DecisionLogService';
 import type { SessionSummaryData } from '../types/sessionSummary';
 import { ModelPricingService } from '../services/ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { BurnRateCalculator } from '../services/BurnRateCalculator';
 import { SessionSummaryService } from '../services/SessionSummaryService';
+import { extractDecisions } from '../services/DecisionExtractor';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 
@@ -114,6 +116,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Event logger reference for toggling from the dashboard */
   private _eventLogger?: SessionEventLogger;
 
+  /** Decision log service for cross-session decision persistence */
+  private _decisionLogService?: DecisionLogService;
+
   /**
    * Sets the event logger instance used for dashboard toggle control.
    */
@@ -131,6 +136,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param claudeMdAdvisor - Optional ClaudeMdAdvisor for generating suggestions
    * @param sessionAnalyzer - Optional SessionAnalyzer for richer panel data
    * @param authService - Optional AuthService for AI narrative generation
+   * @param decisionLogService - Optional DecisionLogService for cross-session decisions
    */
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -139,13 +145,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     historicalDataService?: HistoricalDataService,
     claudeMdAdvisor?: ClaudeMdAdvisor,
     sessionAnalyzer?: SessionAnalyzer,
-    authService?: AuthService
+    authService?: AuthService,
+    decisionLogService?: DecisionLogService
   ) {
     this._quotaService = quotaService;
     this._historicalDataService = historicalDataService;
     this._claudeMdAdvisor = claudeMdAdvisor;
     this._sessionAnalyzer = sessionAnalyzer;
     this._authService = authService;
+    this._decisionLogService = decisionLogService;
     // Initialize empty state
     this._state = {
       totalInputTokens: 0,
@@ -417,6 +425,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
         break;
       }
+
+      case 'requestDecisions':
+        this._sendDecisionsToWebview();
+        break;
+
+      case 'searchDecisions':
+        this._sendDecisionsToWebview(message.query);
+        break;
+
+      case 'clearDecisions':
+        if (this._decisionLogService) {
+          this._decisionLogService.clearAll();
+          this._sendDecisionsToWebview();
+        }
+        break;
     }
   }
 
@@ -720,7 +743,46 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       if (this._state.contextAttribution && this._state.contextAttribution.length > 0) {
         this._postMessage({ type: 'updateContextAttribution', attribution: this._state.contextAttribution });
       }
+
+      // Decision extraction
+      this._extractAndPersistDecisions();
     }, 2000);
+  }
+
+  /**
+   * Extracts decisions from session data and persists them.
+   */
+  private _extractAndPersistDecisions(): void {
+    if (!this._decisionLogService) return;
+
+    try {
+      const analysisData = this._sessionAnalyzer?.getCachedData() ?? null;
+      const stats = this._sessionMonitor.getStats();
+      const assistantTexts = this._sessionMonitor.getAssistantTexts();
+      const sessionId = this._sessionMonitor.getSessionPath() ?? 'unknown';
+
+      const decisions = extractDecisions(analysisData, stats.toolCalls, assistantTexts, sessionId);
+
+      if (decisions.length > 0) {
+        this._decisionLogService.addEntries(decisions);
+        this._decisionLogService.setLastSessionId(sessionId);
+      }
+
+      this._sendDecisionsToWebview();
+    } catch (error) {
+      logError('Failed to extract/persist decisions', error);
+    }
+  }
+
+  /**
+   * Sends decision entries to the webview, optionally filtered by query.
+   */
+  private _sendDecisionsToWebview(query?: string): void {
+    if (!this._decisionLogService) return;
+
+    const entries = this._decisionLogService.getEntries(query);
+    const totalCount = this._decisionLogService.getEntryCount();
+    this._postMessage({ type: 'updateDecisions', decisions: entries, totalCount });
   }
 
   /**
@@ -1148,6 +1210,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({ type: 'sessionEnd' });
     this._sendStateToWebview();
     this._sendSessionList();
+
+    // Final decision extraction pass before session closes
+    this._extractAndPersistDecisions();
 
     // Build and cache full session summary on session end
     this._buildAndSendSummary();
@@ -2826,6 +2891,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .trend-indicator.stable { color: var(--vscode-descriptionForeground); }
     .trend-indicator.decreasing { color: var(--vscode-charts-green, #4caf50); }
 
+    .decision-item {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .decision-desc { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+    .decision-chosen { font-size: 11px; color: var(--vscode-textLink-foreground); }
+    .decision-rationale { font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 2px; }
+    .decision-meta { font-size: 10px; color: var(--vscode-descriptionForeground); margin-top: 4px; }
+    .decision-badge {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+    }
+
     .summary-empty {
       text-align: center;
       padding: 24px 12px;
@@ -3954,6 +4040,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           <div class="section" id="recovery-section" style="display: none;">
             <div class="section-title">Recovery Patterns</div>
             <div id="recovery-body"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Decisions Group -->
+      <div class="details-section" id="decisions-section-group">
+        <div class="details-toggle" data-group-toggle="decisions-section-group">
+          <span class="toggle-icon">▶</span>
+          <h3 class="details-title">Decisions</h3>
+        </div>
+        <div class="details-content">
+          <div class="section" id="decisions-section" style="display: none;">
+            <div style="margin-bottom:8px;">
+              <input type="text" id="decisions-search" placeholder="Search decisions..."
+                style="width:100%;padding:4px 8px;background:var(--vscode-input-background);
+                color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);
+                border-radius:3px;font-size:11px;box-sizing:border-box;" />
+            </div>
+            <div id="decisions-count" style="font-size:11px;margin-bottom:8px;color:var(--vscode-descriptionForeground);"></div>
+            <div id="decisions-list"></div>
           </div>
         </div>
       </div>
@@ -5533,6 +5639,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             renderRecoveryPatterns(message.data);
             break;
 
+          case 'updateDecisions':
+            renderDecisions(message.decisions, message.totalCount);
+            break;
+
           case 'updateAdvancedBurnRate':
             renderAdvancedBurnRate(message.data);
             break;
@@ -5928,6 +6038,67 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
         html += '</div>';
         body.innerHTML = html;
+      }
+
+      function renderDecisions(decisions, totalCount) {
+        var section = document.getElementById('decisions-section');
+        var listEl = document.getElementById('decisions-list');
+        var countEl = document.getElementById('decisions-count');
+        if (!section || !listEl) return;
+
+        if (totalCount === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+
+        if (countEl) {
+          var countText = decisions.length === totalCount
+            ? totalCount + ' decision' + (totalCount !== 1 ? 's' : '')
+            : decisions.length + ' of ' + totalCount + ' decisions';
+          countEl.textContent = countText;
+        }
+
+        var html = '';
+        decisions.forEach(function(d) {
+          var sourceLabel = d.source.replace(/_/g, ' ');
+          var timeAgo = formatRelativeTime(d.timestamp);
+          html += '<div class="decision-item">' +
+            '<div class="decision-desc">' + escapeHtml(d.description) + '</div>' +
+            '<div class="decision-chosen">Chosen: ' + escapeHtml(d.chosenOption) + '</div>' +
+            '<div class="decision-rationale">' + escapeHtml(d.rationale) + '</div>' +
+            (d.alternatives && d.alternatives.length > 0
+              ? '<div class="decision-rationale">Alternatives: ' + d.alternatives.map(escapeHtml).join(', ') + '</div>'
+              : '') +
+            '<div class="decision-meta"><span class="decision-badge">' + escapeHtml(sourceLabel) + '</span> ' + timeAgo + '</div>' +
+            '</div>';
+        });
+        listEl.innerHTML = html;
+      }
+
+      function formatRelativeTime(isoString) {
+        var now = Date.now();
+        var then = new Date(isoString).getTime();
+        var diffMs = now - then;
+        var diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return 'just now';
+        if (diffMin < 60) return diffMin + 'min ago';
+        var diffHours = Math.floor(diffMin / 60);
+        if (diffHours < 24) return diffHours + 'h ago';
+        var diffDays = Math.floor(diffHours / 24);
+        return diffDays + 'd ago';
+      }
+
+      // Decisions search handler (300ms debounce)
+      var decisionsSearchTimer = null;
+      var decisionsSearchEl = document.getElementById('decisions-search');
+      if (decisionsSearchEl) {
+        decisionsSearchEl.addEventListener('input', function() {
+          if (decisionsSearchTimer) clearTimeout(decisionsSearchTimer);
+          decisionsSearchTimer = setTimeout(function() {
+            vscode.postMessage({ type: 'searchDecisions', query: decisionsSearchEl.value });
+          }, 300);
+        });
       }
 
       function renderAdvancedBurnRate(data) {

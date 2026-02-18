@@ -1,8 +1,9 @@
 # Session Monitor Test Prompt
 
 > **Usage:** Copy everything below the line into a Claude Code or OpenCode session.
-> The prompt exercises every Sidekick monitoring view: Session Analytics,
-> Kanban Board, Mind Map, Latest Files Touched, and Subagents.
+> The prompt exercises every Sidekick monitoring view: Session Analytics
+> (including the Decisions panel), Kanban Board, Mind Map, Latest Files Touched,
+> and Subagents.
 
 ---
 
@@ -80,7 +81,31 @@ Create and manage tasks with dependencies:
 
 11. Use **TaskUpdate** to mark Task C as `completed`.
 
-### Section 4 — Bash Commands & Search (Mind Map command/URL nodes + Session Analytics)
+### Section 4 — Decision Extraction (Session Analytics → Decisions panel)
+
+Exercise all four decision extraction sources so the Decisions section populates:
+
+1. **Recovery pattern** — Trigger a failure-then-success recovery:
+   - Use **Bash** to run: `npm install --no-package-lock nonexistent-pkg-abc123` (will fail)
+   - Use **Bash** to run: `echo "Fallback: skipping nonexistent package"` (succeeds)
+
+2. **Plan mode** — Enter and exit plan mode:
+   - Use **EnterPlanMode** to start a planning session.
+   - After reviewing the codebase, use **ExitPlanMode** to complete the planning cycle.
+
+3. **User question** — Ask the user to choose between options:
+   - Use **AskUserQuestion** with:
+     - question: "Which test framework should we use?"
+     - options: `["Vitest", "Jest", "Mocha"]`
+
+4. **Text pattern** — In your next response, include a decision statement like:
+   "I'll use Vitest because it has native ESM support and faster execution."
+
+After completing these steps, open Session Analytics → scroll to the **Decisions** section.
+You should see entries with source badges: `recovery pattern`, `plan mode`, `user question`, and `text pattern`.
+Use the search box to filter by keyword (e.g., "vitest").
+
+### Section 5 — Bash Commands & Search (Mind Map command/URL nodes + Session Analytics)
 
 1. Use **Bash** to run: `wc -l src/*.ts`
 
@@ -95,7 +120,7 @@ Create and manage tasks with dependencies:
 
 5. Use **Read** to read `summary.txt`.
 
-### Section 5 — Subagents (Subagent Tree + Mind Map subagent nodes)
+### Section 6 — Subagents (Subagent Tree + Mind Map subagent nodes)
 
 Spawn three subagents using the **Task** tool. Each must use a different `subagent_type` so the Subagent Tree classifies them differently:
 
@@ -107,7 +132,7 @@ Spawn three subagents using the **Task** tool. Each must use a different `subage
 
 Wait for all three to complete before continuing.
 
-### Section 6 — Cleanup
+### Section 7 — Cleanup
 
 Delete the files created during this test:
 
@@ -125,11 +150,12 @@ Then say: "Session monitor test complete. All 5 Sidekick views should now have d
 | View | Sections that exercise it |
 |---|---|
 | **Session Analytics** | All sections (token usage, tool success/failure rates, timeline, context) |
+| **Session Analytics → Decisions** | Section 4 (recovery patterns, plan mode, user questions, text patterns) |
 | **Kanban Board** | Section 3 (TaskCreate, TaskUpdate lifecycle with blockedBy) |
-| **Mind Map** | Section 1 (file + directory nodes), Section 4 (command + URL nodes), Section 5 (subagent nodes) |
+| **Mind Map** | Section 1 (file + directory nodes), Section 5 (command + URL nodes), Section 6 (subagent nodes) |
 | **Latest Files Touched** | Section 1 (Write, Read, Edit), Section 2 (Write, Bash), Section 3 (Write) |
-| **Subagents** | Section 5 (Explore, Plan, Bash agent types) |
+| **Subagents** | Section 6 (Explore, Plan, Bash agent types) |
 
 ## Tools Used
 
-`Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`, `Task`, `TaskCreate`, `TaskUpdate`, `WebSearch`
+`Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`, `Task`, `TaskCreate`, `TaskUpdate`, `WebSearch`, `EnterPlanMode`, `ExitPlanMode`, `AskUserQuestion`

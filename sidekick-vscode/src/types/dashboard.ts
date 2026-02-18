@@ -15,6 +15,7 @@ import type {
   AdvancedBurnRateData,
   ToolEfficiencyData
 } from './sessionSummary';
+import type { DecisionEntryDisplay } from './decisionLog';
 
 /**
  * Session info for the session card navigator.
@@ -112,7 +113,8 @@ export type DashboardMessage =
   | { type: 'sessionsLoading'; loading: boolean }
   | { type: 'notification'; title: string; body: string; severity: 'info' | 'warning' | 'error' }
   | { type: 'toolCallDetails'; toolName: string; calls: ToolCallDetailDisplay[] }
-  | { type: 'syncEventLogState'; enabled: boolean };
+  | { type: 'syncEventLogState'; enabled: boolean }
+  | { type: 'updateDecisions'; decisions: DecisionEntryDisplay[]; totalCount: number };
 
 /**
  * Messages from webview to extension.
@@ -140,7 +142,10 @@ export type DashboardWebviewMessage =
   | { type: 'searchTimeline'; query: string }
   | { type: 'setTimelineFilter'; filters: TimelineFilterState }
   | { type: 'requestToolCallDetails'; toolName: string }
-  | { type: 'toggleEventLog'; enabled: boolean };
+  | { type: 'toggleEventLog'; enabled: boolean }
+  | { type: 'requestDecisions' }
+  | { type: 'searchDecisions'; query: string }
+  | { type: 'clearDecisions' };
 
 /**
  * Model usage breakdown entry.
