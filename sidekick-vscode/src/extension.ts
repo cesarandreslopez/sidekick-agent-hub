@@ -51,6 +51,8 @@ import { ErrorViewProvider } from "./providers/ErrorViewProvider";
 import { DashboardViewProvider } from "./providers/DashboardViewProvider";
 import { MindMapViewProvider } from "./providers/MindMapViewProvider";
 import { TaskBoardViewProvider } from "./providers/TaskBoardViewProvider";
+import { TaskPersistenceService } from "./services/TaskPersistenceService";
+import { encodeWorkspacePath } from "./services/SessionPathResolver";
 import { TempFilesTreeProvider } from "./providers/TempFilesTreeProvider";
 import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
@@ -395,8 +397,20 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     log('Mind map view provider registered');
 
-    // Register task board view provider (depends on sessionMonitor)
-    const taskBoardProvider = new TaskBoardViewProvider(context.extensionUri, sessionMonitor);
+    // Initialize task persistence service for cross-session task carry-over
+    let taskPersistenceService: TaskPersistenceService | undefined;
+    const taskWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (taskWorkspaceFolder) {
+      const projectSlug = encodeWorkspacePath(taskWorkspaceFolder.uri.fsPath);
+      taskPersistenceService = new TaskPersistenceService(projectSlug);
+      taskPersistenceService.initialize().catch(error => {
+        logError('Failed to initialize TaskPersistenceService', error);
+      });
+      context.subscriptions.push(taskPersistenceService);
+    }
+
+    // Register task board view provider (depends on sessionMonitor + taskPersistenceService)
+    const taskBoardProvider = new TaskBoardViewProvider(context.extensionUri, sessionMonitor, taskPersistenceService);
     context.subscriptions.push(taskBoardProvider);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(TaskBoardViewProvider.viewType, taskBoardProvider)
