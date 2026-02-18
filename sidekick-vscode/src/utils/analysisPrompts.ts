@@ -1,13 +1,15 @@
 /**
- * @fileoverview Prompt templates for CLAUDE.md analysis.
+ * @fileoverview Prompt templates for agent guidance analysis.
  *
  * Provides prompt generation functions for AI-powered analysis of
- * Claude Code session data to generate CLAUDE.md suggestions.
+ * session data to generate instruction file suggestions.
+ * Supports both CLAUDE.md and AGENTS.md depending on the active provider.
  *
  * @module utils/analysisPrompts
  */
 
 import type { SessionAnalysisData, AnalyzedError, ToolPattern, Inefficiency, RecoveryPattern } from '../types/analysis';
+import type { InstructionFileTarget } from '../types/instructionFile';
 
 /**
  * Formats a duration in milliseconds to a human-readable string.
@@ -108,14 +110,15 @@ function formatRecoveryPatterns(patterns: RecoveryPattern[]): string {
 }
 
 /**
- * Formats current CLAUDE.md content for the analysis prompt.
+ * Formats instruction file content for the analysis prompt.
  *
- * @param content - Current CLAUDE.md content or undefined
- * @returns Formatted CLAUDE.md section
+ * @param content - File content or undefined
+ * @param filename - Display name for the file
+ * @returns Formatted content section
  */
-function formatCurrentClaudeMd(content: string | undefined): string {
+function formatInstructionFileContent(content: string | undefined, filename: string): string {
   if (!content) {
-    return 'No CLAUDE.md file found in the project root.';
+    return `No ${filename} file found in the project root.`;
   }
   // Truncate if too long to keep prompt reasonable
   const maxLength = 4000;
@@ -126,25 +129,34 @@ function formatCurrentClaudeMd(content: string | undefined): string {
 }
 
 /**
- * Builds the CLAUDE.md analysis prompt from session data.
+ * Builds the provider-aware guidance analysis prompt from session data.
  *
- * The prompt instructs Claude to analyze session patterns and generate
- * specific, actionable suggestions for CLAUDE.md improvements.
+ * The prompt instructs the AI to analyze session patterns and generate
+ * specific, actionable suggestions for the target instruction file.
  *
  * @param data - Structured session analysis data
- * @returns Complete prompt for CLAUDE.md analysis
- *
- * @example
- * ```typescript
- * const data = sessionAnalyzer.collectData();
- * const prompt = buildClaudeMdAnalysisPrompt(data);
- * const response = await authService.complete(prompt, { model: 'sonnet' });
- * ```
+ * @param target - The instruction file target for the active provider
+ * @returns Complete prompt for guidance analysis
  */
-export function buildClaudeMdAnalysisPrompt(data: SessionAnalysisData): string {
-  return `You are analyzing a Claude Code session to suggest improvements for the user's CLAUDE.md file.
+export function buildGuidanceAnalysisPrompt(data: SessionAnalysisData, target: InstructionFileTarget): string {
+  const primaryContent = target.primaryFile === 'CLAUDE.md' ? data.currentClaudeMd : data.currentAgentsMd;
+  const secondaryContent = target.primaryFile === 'CLAUDE.md' ? data.currentAgentsMd : data.currentClaudeMd;
 
-CLAUDE.md gives Claude Code context about a project - coding conventions, important files, commands, things to avoid. Good CLAUDE.md content helps Claude work more efficiently.
+  let secondarySection = '';
+  if (secondaryContent) {
+    secondarySection = `
+<secondary_file>
+<filename>${target.secondaryFile}</filename>
+${formatInstructionFileContent(secondaryContent, target.secondaryFile)}
+</secondary_file>
+
+Note: The secondary file above is also read by the agent. Consider its content to avoid duplicating instructions that are already covered there. Only add NEW information to ${target.primaryFile}.
+`;
+  }
+
+  return `You are analyzing a coding agent session to suggest improvements for the user's ${target.primaryFile} file.
+
+${target.primaryFile} gives the agent context about a project - coding conventions, important files, commands, things to avoid. Good content helps the agent work more efficiently.
 
 <session_data>
 <project>${data.projectPath}</project>
@@ -152,10 +164,11 @@ CLAUDE.md gives Claude Code context about a project - coding conventions, import
 <tokens>${formatNumber(data.totalTokens)}</tokens>
 </session_data>
 
-<current_claude_md>
-${formatCurrentClaudeMd(data.currentClaudeMd)}
-</current_claude_md>
-
+<primary_file>
+<filename>${target.primaryFile}</filename>
+${formatInstructionFileContent(primaryContent, target.primaryFile)}
+</primary_file>
+${secondarySection}
 <errors>
 ${formatErrors(data.errors)}
 </errors>
@@ -178,12 +191,12 @@ ${data.recentActivity.join('\n')}
 
 ## Task
 
-Based on the session patterns above AND the current CLAUDE.md content (if any), suggest ONE consolidated block of text to APPEND to the end of the file.
+Based on the session patterns above AND the current ${target.primaryFile} content (if any), suggest ONE consolidated block of text to APPEND to the end of the file.
 
 IMPORTANT:
-- Do NOT repeat content that already exists in the current CLAUDE.md
+- Do NOT repeat content that already exists in the current ${target.primaryFile}
 - Focus only on NEW information discovered from this session
-- If the CLAUDE.md already covers a topic well, skip it
+- If the ${target.primaryFile} already covers a topic well, skip it
 - Organize related suggestions under logical headings
 
 Format your response EXACTLY as follows:
@@ -191,7 +204,7 @@ Format your response EXACTLY as follows:
 ### Recommended Addition
 **Summary:** [1-2 sentence overview of what you're adding and why]
 
-**Append this to CLAUDE.md:**
+**Append this to ${target.primaryFile}:**
 \`\`\`
 [Single consolidated block with all new suggestions organized by topic]
 \`\`\`
@@ -201,9 +214,9 @@ Format your response EXACTLY as follows:
 - [Why suggestion 2 helps - reference the specific observed pattern]
 - [Continue for each distinct suggestion in your block]
 
-Be specific. Reference actual files/commands from the session data. Avoid generic advice like "write good code". Each point in your rationale should directly address something observed in this session that isn't already covered in the existing CLAUDE.md.
+Be specific. Reference actual files/commands from the session data. Avoid generic advice like "write good code". Each point in your rationale should directly address something observed in this session that isn't already covered in the existing ${target.primaryFile}.
 
-Pay special attention to <recovery_patterns> - these show workarounds Claude discovered after failures. Document these solutions so future sessions know the right approach immediately, avoiding wasted attempts with the failed approach.
+Pay special attention to <recovery_patterns> - these show workarounds discovered after failures. Document these solutions so future sessions know the right approach immediately, avoiding wasted attempts with the failed approach.
 
 Common good additions include:
 - Documenting the package manager (npm vs pnpm vs yarn) based on recovery patterns
@@ -215,12 +228,27 @@ Common good additions include:
 }
 
 /**
- * Parses Claude's response into structured suggestions.
+ * @deprecated Use buildGuidanceAnalysisPrompt instead.
+ */
+export function buildClaudeMdAnalysisPrompt(data: SessionAnalysisData): string {
+  const defaultTarget = {
+    primaryFile: 'CLAUDE.md' as const,
+    secondaryFile: 'AGENTS.md' as const,
+    displayName: 'CLAUDE.md',
+    tip: '',
+    notFoundMessage: '',
+    docsUrl: '',
+  };
+  return buildGuidanceAnalysisPrompt(data, defaultTarget);
+}
+
+/**
+ * Parses the AI response into structured suggestions.
  *
- * Handles the new consolidated format:
+ * Handles the consolidated format with either CLAUDE.md or AGENTS.md:
  * ### Recommended Addition
  * **Summary:** [overview]
- * **Append this to CLAUDE.md:**
+ * **Append this to CLAUDE.md:** (or AGENTS.md)
  * ```
  * [content]
  * ```
@@ -228,10 +256,10 @@ Common good additions include:
  * - [reason 1]
  * - [reason 2]
  *
- * @param response - Raw response from Claude
+ * @param response - Raw response from the AI
  * @returns Array of parsed suggestions (single element for consolidated format)
  */
-export function parseClaudeMdSuggestions(response: string): Array<{
+export function parseGuidanceSuggestions(response: string): Array<{
   title: string;
   observed: string;
   suggestion: string;
@@ -244,9 +272,9 @@ export function parseClaudeMdSuggestions(response: string): Array<{
     reasoning: string;
   }> = [];
 
-  // Try new consolidated format first
+  // Try new consolidated format first — accept either file name
   const summaryMatch = response.match(/\*\*Summary:\*\*\s*([^\n]+)/);
-  const codeBlockMatch = response.match(/\*\*Append this to CLAUDE\.md:\*\*\s*\n```(?:\w*\n)?([\s\S]*?)\n```/);
+  const codeBlockMatch = response.match(/\*\*Append this to (?:CLAUDE\.md|AGENTS\.md):\*\*\s*\n```(?:\w*\n)?([\s\S]*?)\n```/);
   const rationaleMatch = response.match(/\*\*Rationale:\*\*\s*\n((?:[-•]\s*[^\n]+\n?)+)/);
 
   if (codeBlockMatch) {
@@ -272,7 +300,7 @@ export function parseClaudeMdSuggestions(response: string): Array<{
   }
 
   // Fallback: try old multi-suggestion format for backwards compatibility
-  const oldPattern = /### Suggestion \d+:\s*([^\n]+)\n\*\*Observed:\*\*\s*([^\n]+)\n\*\*Add to CLAUDE\.md:\*\*\s*\n```\n?([\s\S]*?)\n?```\n\*\*Why:\*\*\s*([^\n]+)/g;
+  const oldPattern = /### Suggestion \d+:\s*([^\n]+)\n\*\*Observed:\*\*\s*([^\n]+)\n\*\*Add to (?:CLAUDE\.md|AGENTS\.md):\*\*\s*\n```\n?([\s\S]*?)\n?```\n\*\*Why:\*\*\s*([^\n]+)/g;
 
   let match;
   while ((match = oldPattern.exec(response)) !== null) {
@@ -306,3 +334,8 @@ export function parseClaudeMdSuggestions(response: string): Array<{
 
   return suggestions;
 }
+
+/**
+ * @deprecated Use parseGuidanceSuggestions instead.
+ */
+export const parseClaudeMdSuggestions = parseGuidanceSuggestions;

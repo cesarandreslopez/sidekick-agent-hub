@@ -20,17 +20,25 @@ import * as path from 'path';
 import type { SessionMonitor } from '../services/SessionMonitor';
 import type { QuotaService } from '../services/QuotaService';
 import type { HistoricalDataService } from '../services/HistoricalDataService';
-import type { ClaudeMdAdvisor } from '../services/ClaudeMdAdvisor';
+import type { GuidanceAdvisor } from '../services/GuidanceAdvisor';
 import type { QuotaState as DashboardQuotaState, HistoricalSummary, HistoricalDataPoint, LatencyDisplay, ClaudeMdSuggestionDisplay } from '../types/dashboard';
+import { resolveInstructionTarget } from '../types/instructionFile';
+import type { HandoffService } from '../services/HandoffService';
+import { encodeWorkspacePath } from '../services/SessionPathResolver';
+import { resolveModel } from '../services/ModelResolver';
+import { TimeoutError } from '../types';
 import type { TokenUsage, SessionStats, ToolAnalytics, TimelineEvent, ToolCall, LatencyStats } from '../types/claudeSession';
 import type { DashboardMessage, DashboardWebviewMessage, DashboardState, CompactionEventDisplay, ToolCallDetailDisplay } from '../types/dashboard';
 import type { SessionAnalyzer } from '../services/SessionAnalyzer';
 import type { AuthService } from '../services/AuthService';
+import type { SessionEventLogger } from '../services/SessionEventLogger';
+import type { DecisionLogService } from '../services/DecisionLogService';
 import type { SessionSummaryData } from '../types/sessionSummary';
 import { ModelPricingService } from '../services/ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { BurnRateCalculator } from '../services/BurnRateCalculator';
 import { SessionSummaryService } from '../services/SessionSummaryService';
+import { extractDecisions } from '../services/DecisionExtractor';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 
@@ -65,8 +73,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Current context window size from session (actual context, not cumulative) */
   private _currentContextSize: number = 0;
 
-  /** Context window limit for Claude models (200K tokens) */
-  private readonly CONTEXT_WINDOW_LIMIT = 200_000;
+  /** Last observed model ID (for dynamic context window limit) */
+  private _lastModelId: string | undefined;
 
   /** Tool analytics by name */
   private _toolAnalytics: Map<string, ToolAnalytics> = new Map();
@@ -89,8 +97,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Current drill-down level for historical data */
   private _drillDownStack: Array<{ range: string; timestamp: string }> = [];
 
-  /** ClaudeMdAdvisor for generating CLAUDE.md suggestions */
-  private _claudeMdAdvisor?: ClaudeMdAdvisor;
+  /** GuidanceAdvisor for generating instruction file suggestions */
+  private _guidanceAdvisor?: GuidanceAdvisor;
 
   /** SessionAnalyzer for analysis data */
   private _sessionAnalyzer?: SessionAnalyzer;
@@ -107,6 +115,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Debounce timer for richer panel updates */
   private _richerPanelTimer?: ReturnType<typeof setTimeout>;
 
+  /** Suppresses session list updates during provider switches */
+  private _suppressSessionListUpdates = false;
+
+  /** Event logger reference for toggling from the dashboard */
+  private _eventLogger?: SessionEventLogger;
+
+  /** Decision log service for cross-session decision persistence */
+  private _decisionLogService?: DecisionLogService;
+
+  /** Handoff service for session context handoff */
+  private _handoffService?: HandoffService;
+
+  /**
+   * Sets the event logger instance used for dashboard toggle control.
+   */
+  setEventLogger(logger: SessionEventLogger): void {
+    this._eventLogger = logger;
+  }
+
+  /**
+   * Sets the handoff service instance for session context handoff generation.
+   */
+  setHandoffService(service: HandoffService): void {
+    this._handoffService = service;
+  }
+
   /**
    * Creates a new DashboardViewProvider.
    *
@@ -114,24 +148,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param _sessionMonitor - SessionMonitor instance for token events
    * @param quotaService - Optional QuotaService for subscription quota
    * @param historicalDataService - Optional HistoricalDataService for long-term analytics
-   * @param claudeMdAdvisor - Optional ClaudeMdAdvisor for generating suggestions
+   * @param guidanceAdvisor - Optional GuidanceAdvisor for generating suggestions
    * @param sessionAnalyzer - Optional SessionAnalyzer for richer panel data
    * @param authService - Optional AuthService for AI narrative generation
+   * @param decisionLogService - Optional DecisionLogService for cross-session decisions
    */
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _sessionMonitor: SessionMonitor,
     quotaService?: QuotaService,
     historicalDataService?: HistoricalDataService,
-    claudeMdAdvisor?: ClaudeMdAdvisor,
+    guidanceAdvisor?: GuidanceAdvisor,
     sessionAnalyzer?: SessionAnalyzer,
-    authService?: AuthService
+    authService?: AuthService,
+    decisionLogService?: DecisionLogService
   ) {
     this._quotaService = quotaService;
     this._historicalDataService = historicalDataService;
-    this._claudeMdAdvisor = claudeMdAdvisor;
+    this._guidanceAdvisor = guidanceAdvisor;
     this._sessionAnalyzer = sessionAnalyzer;
     this._authService = authService;
+    this._decisionLogService = decisionLogService;
     // Initialize empty state
     this._state = {
       totalInputTokens: 0,
@@ -188,6 +225,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       );
     }
 
+    // Subscribe to session-based quota updates (e.g., Codex rate_limits)
+    this._disposables.push(
+      this._sessionMonitor.onQuotaUpdate(quota => this._handleQuotaUpdate(quota))
+    );
+
     // Initialize state from existing session if active
     if (this._sessionMonitor.isActive()) {
       this._syncFromSessionMonitor();
@@ -238,6 +280,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         if (webviewView.visible) {
           this._sendStateToWebview();
           this._sendSessionList();
+          this._sendProviderInfo();
           // Start quota refresh when visible
           this._quotaService?.startRefresh();
         } else {
@@ -274,6 +317,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._sendStateToWebview();
         this._sendBurnRateUpdate();
         this._sendSessionList();
+        this._sendProviderInfo();
+        this._sendEventLogState();
+        // Send session-based quota if available (e.g., Codex rate_limits)
+        {
+          const sessionQuota = this._sessionMonitor.getProvider().getQuotaFromSession?.();
+          if (sessionQuota) {
+            this._handleQuotaUpdate(sessionQuota);
+          }
+        }
         break;
 
       case 'requestStats':
@@ -284,6 +336,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       case 'selectSession':
         log(`Dashboard: user selected session: ${message.sessionPath}`);
         this._sessionMonitor.switchToSession(message.sessionPath);
+        break;
+
+      case 'setSessionProvider':
+        log(`Dashboard: user selected session provider: ${message.providerId}`);
+        this._suppressSessionListUpdates = true;
+        vscode.commands.executeCommand('sidekick.setSessionProvider', message.providerId);
         break;
 
       case 'refreshSessions':
@@ -347,7 +405,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'openClaudeMd':
-        this._handleOpenClaudeMd();
+      case 'openInstructionFile':
+        this._handleOpenInstructionFile();
         break;
 
       case 'generateNarrative':
@@ -371,6 +430,37 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'requestToolCallDetails':
         this._handleToolCallDetails(message.toolName);
+        break;
+
+      case 'toggleEventLog': {
+        const enabled = message.enabled;
+        log(`Dashboard: event log toggled: ${enabled}`);
+        vscode.workspace.getConfiguration('sidekick').update('enableEventLog', enabled, vscode.ConfigurationTarget.Global);
+        if (this._eventLogger) {
+          this._sessionMonitor.setEventLogger(enabled ? this._eventLogger : null);
+        }
+        break;
+      }
+
+      case 'requestDecisions':
+        this._sendDecisionsToWebview();
+        break;
+
+      case 'searchDecisions':
+        this._sendDecisionsToWebview(message.query);
+        break;
+
+      case 'generateHandoff':
+        this._handleGenerateHandoff().catch(err => {
+          logError('Dashboard: Unhandled error in _handleGenerateHandoff', err);
+        });
+        break;
+
+      case 'clearDecisions':
+        if (this._decisionLogService) {
+          this._decisionLogService.clearAll();
+          this._sendDecisionsToWebview();
+        }
         break;
     }
   }
@@ -465,36 +555,46 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /**
    * Handles the analyze session request from webview.
-   * Calls ClaudeMdAdvisor and sends results to webview.
-   * Shows a progress notification to set latency expectations.
+   * Calls GuidanceAdvisor and sends results to webview.
+   * Shows a progress notification with provider/model info.
+   *
+   * @param timeoutOverride - Optional timeout override in ms (for retry after timeout)
    */
-  private async _handleAnalyzeSession(): Promise<void> {
+  private async _handleAnalyzeSession(timeoutOverride?: number): Promise<void> {
     log('Dashboard: _handleAnalyzeSession called');
-    if (!this._claudeMdAdvisor) {
-      log('Dashboard: _claudeMdAdvisor is not available');
+    if (!this._guidanceAdvisor) {
+      log('Dashboard: _guidanceAdvisor is not available');
       this._postMessage({
         type: 'suggestionsError',
-        error: 'CLAUDE.md analysis is not available. Please check extension configuration.'
+        error: 'Agent guidance analysis is not available. Please check extension configuration.'
       });
       return;
     }
+
+    const target = resolveInstructionTarget(this._sessionMonitor.getProvider().id);
 
     log('Dashboard: Starting session analysis');
     log(`Dashboard: _view exists: ${!!this._view}`);
     this._postMessage({ type: 'suggestionsLoading', loading: true });
 
     try {
-      // Show progress notification with latency expectation
+      const inferenceProvider = this._authService?.getProviderDisplayName() ?? 'AI';
+      const model = this._authService
+        ? resolveModel('balanced', this._authService.getProviderId(), 'explanationModel')
+        : 'unknown';
+
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Analyzing session for CLAUDE.md suggestions',
+          title: `Analyzing session for ${target.primaryFile} suggestions`,
           cancellable: false,
         },
         async (progress) => {
-          progress.report({ message: 'This may take 30-60 seconds...' });
+          progress.report({ message: `Using ${inferenceProvider} (${model})... This may take 30-60 seconds.` });
 
-          const result = await this._claudeMdAdvisor!.analyze();
+          const result = await this._guidanceAdvisor!.analyze(
+            timeoutOverride ? { timeout: timeoutOverride } : undefined
+          );
 
           if (result.success) {
             const suggestions: ClaudeMdSuggestionDisplay[] = result.suggestions.map(s => ({
@@ -515,6 +615,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       );
     } catch (error) {
+      if (error instanceof TimeoutError) {
+        const retry = await vscode.window.showWarningMessage(
+          `Analysis timed out after ${error.timeoutMs / 1000}s. Try again with a longer timeout?`,
+          'Retry (3 min)', 'Retry (5 min)', 'Cancel'
+        );
+        if (retry?.startsWith('Retry')) {
+          const newTimeout = retry.includes('3') ? 180000 : 300000;
+          return this._handleAnalyzeSession(newTimeout);
+        }
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown error';
       this._postMessage({
         type: 'suggestionsError',
@@ -535,36 +646,125 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
-   * Handles opening the project's CLAUDE.md file.
+   * Handles opening the project's instruction file (CLAUDE.md or AGENTS.md).
+   * If the file doesn't exist, offers to create it.
    */
-  private async _handleOpenClaudeMd(): Promise<void> {
-    const claudeMdPath = await this._findProjectClaudeMd();
-    if (claudeMdPath) {
-      const doc = await vscode.workspace.openTextDocument(claudeMdPath);
+  private async _handleOpenInstructionFile(): Promise<void> {
+    const target = resolveInstructionTarget(this._sessionMonitor.getProvider().id);
+    const existingPath = await this._findProjectInstructionFile(target.primaryFile);
+    if (existingPath) {
+      const doc = await vscode.workspace.openTextDocument(existingPath);
       await vscode.window.showTextDocument(doc);
     } else {
-      vscode.window.showInformationMessage(
-        'No CLAUDE.md found. Run /init in Claude Code to create one, or create it manually in your project root.'
+      const action = await vscode.window.showInformationMessage(
+        target.notFoundMessage,
+        `Create ${target.primaryFile}`
       );
+      if (action) {
+        const wsFolder = vscode.workspace.workspaceFolders?.[0];
+        if (wsFolder) {
+          const newPath = path.join(wsFolder.uri.fsPath, target.primaryFile);
+          await fs.promises.writeFile(newPath, `# ${target.primaryFile}\n\n`, 'utf-8');
+          const doc = await vscode.workspace.openTextDocument(newPath);
+          await vscode.window.showTextDocument(doc);
+        }
+      }
     }
   }
 
   /**
-   * Finds the CLAUDE.md file for the current workspace.
-   *
-   * @returns Path to CLAUDE.md if found, undefined otherwise
+   * Handles generating a session context handoff document.
+   * After generation, offers to add the pointer to the instruction file.
    */
-  private async _findProjectClaudeMd(): Promise<string | undefined> {
+  private async _handleGenerateHandoff(): Promise<void> {
+    if (!this._handoffService || !this._sessionAnalyzer) {
+      vscode.window.showWarningMessage('Handoff service is not available. Ensure a workspace is open.');
+      return;
+    }
+
+    const stats = this._sessionMonitor.getStats();
+    const analysisData = this._sessionAnalyzer.getCachedData();
+    const summaryData = this._summaryService.generateSummary(stats, analysisData, this._getContextWindowLimit());
+
+    try {
+      const handoffPath = await this._handoffService.generateHandoff(summaryData, analysisData, stats);
+
+      // Check if instruction file already has the pointer
+      const target = resolveInstructionTarget(this._sessionMonitor.getProvider().id);
+      const wsFolder = vscode.workspace.workspaceFolders?.[0];
+      const instructionFilePath = wsFolder
+        ? path.join(wsFolder.uri.fsPath, target.primaryFile)
+        : null;
+
+      let hasPointer = false;
+      if (instructionFilePath) {
+        try {
+          const content = await fs.promises.readFile(instructionFilePath, 'utf-8');
+          hasPointer = content.includes('sidekick/handoffs/');
+        } catch {
+          // File doesn't exist yet — no pointer
+        }
+      }
+
+      if (hasPointer) {
+        // Pointer already set up — just confirm
+        const action = await vscode.window.showInformationMessage(
+          `Handoff generated.`,
+          'Open Handoff'
+        );
+        if (action === 'Open Handoff') {
+          const doc = await vscode.workspace.openTextDocument(handoffPath);
+          await vscode.window.showTextDocument(doc);
+        }
+      } else {
+        // Offer to add pointer to instruction file
+        const action = await vscode.window.showInformationMessage(
+          `Handoff generated. Add a pointer to ${target.primaryFile} so your agent knows where to find it?`,
+          `Add to ${target.primaryFile}`,
+          'Open Handoff',
+          'Skip'
+        );
+        if (action === `Add to ${target.primaryFile}` && wsFolder) {
+          const slug = encodeWorkspacePath(wsFolder.uri.fsPath);
+          const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ~/.config/sidekick/handoffs/${slug}-latest.md\n`;
+
+          let existingContent = '';
+          try {
+            existingContent = await fs.promises.readFile(instructionFilePath!, 'utf-8');
+          } catch {
+            // File doesn't exist — will create
+          }
+
+          await fs.promises.writeFile(instructionFilePath!, existingContent + oneLiner, 'utf-8');
+          vscode.window.showInformationMessage(`Pointer added to ${target.primaryFile}.`);
+        } else if (action === 'Open Handoff') {
+          const doc = await vscode.workspace.openTextDocument(handoffPath);
+          await vscode.window.showTextDocument(doc);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      vscode.window.showErrorMessage(`Handoff generation failed: ${message}`);
+      logError('Dashboard: Handoff generation error', error);
+    }
+  }
+
+  /**
+   * Finds an instruction file for the current workspace.
+   *
+   * @param filename - The instruction file to look for
+   * @returns Path to the file if found, undefined otherwise
+   */
+  private async _findProjectInstructionFile(filename: string): Promise<string | undefined> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
       return undefined;
     }
 
-    // Check each workspace folder for CLAUDE.md
     for (const folder of workspaceFolders) {
-      const claudeMdPath = path.join(folder.uri.fsPath, 'CLAUDE.md');
-      if (fs.existsSync(claudeMdPath)) {
-        return claudeMdPath;
+      const filePath = path.join(folder.uri.fsPath, filename);
+      if (fs.existsSync(filePath)) {
+        return filePath;
       }
     }
 
@@ -573,8 +773,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /**
    * Handles the generate narrative request from webview.
+   *
+   * @param timeoutOverride - Optional timeout override in ms (for retry after timeout)
    */
-  private async _handleGenerateNarrative(): Promise<void> {
+  private async _handleGenerateNarrative(timeoutOverride?: number): Promise<void> {
     if (!this._authService || !this._cachedSummary) {
       this._postMessage({ type: 'narrativeError', error: 'Summary data or auth not available.' });
       return;
@@ -583,6 +785,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({ type: 'narrativeLoading', loading: true });
 
     try {
+      const inferenceProvider = this._authService.getProviderDisplayName();
+      const model = resolveModel('balanced', this._authService.getProviderId(), 'explanationModel');
+
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -590,15 +795,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           cancellable: false,
         },
         async (progress) => {
-          progress.report({ message: 'This may take 15-30 seconds...' });
+          progress.report({ message: `Using ${inferenceProvider} (${model})... This may take 15-30 seconds.` });
           const narrative = await this._summaryService.generateNarrative(
             this._cachedSummary!,
-            this._authService!
+            this._authService!,
+            timeoutOverride ? { timeout: timeoutOverride } : undefined
           );
           this._postMessage({ type: 'sessionNarrative', narrative });
         }
       );
     } catch (error) {
+      if (error instanceof TimeoutError) {
+        const retry = await vscode.window.showWarningMessage(
+          `Narrative generation timed out after ${error.timeoutMs / 1000}s. Try again with a longer timeout?`,
+          'Retry (3 min)', 'Retry (5 min)', 'Cancel'
+        );
+        if (retry?.startsWith('Retry')) {
+          const newTimeout = retry.includes('3') ? 180000 : 300000;
+          return this._handleGenerateNarrative(newTimeout);
+        }
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown error';
       this._postMessage({ type: 'narrativeError', error: `Narrative generation failed: ${message}` });
       logError('Dashboard: Narrative generation error', error);
@@ -627,7 +844,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     const stats = this._sessionMonitor.getStats();
     const analysisData = this._sessionAnalyzer.getCachedData();
-    this._cachedSummary = this._summaryService.generateSummary(stats, analysisData);
+    this._cachedSummary = this._summaryService.generateSummary(stats, analysisData, this._getContextWindowLimit());
     this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
   }
 
@@ -675,7 +892,46 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       if (this._state.contextAttribution && this._state.contextAttribution.length > 0) {
         this._postMessage({ type: 'updateContextAttribution', attribution: this._state.contextAttribution });
       }
+
+      // Decision extraction
+      this._extractAndPersistDecisions();
     }, 2000);
+  }
+
+  /**
+   * Extracts decisions from session data and persists them.
+   */
+  private _extractAndPersistDecisions(): void {
+    if (!this._decisionLogService) return;
+
+    try {
+      const analysisData = this._sessionAnalyzer?.getCachedData() ?? null;
+      const stats = this._sessionMonitor.getStats();
+      const assistantTexts = this._sessionMonitor.getAssistantTexts();
+      const sessionId = this._sessionMonitor.getSessionPath() ?? 'unknown';
+
+      const decisions = extractDecisions(analysisData, stats.toolCalls, assistantTexts, sessionId);
+
+      if (decisions.length > 0) {
+        this._decisionLogService.addEntries(decisions);
+        this._decisionLogService.setLastSessionId(sessionId);
+      }
+
+      this._sendDecisionsToWebview();
+    } catch (error) {
+      logError('Failed to extract/persist decisions', error);
+    }
+  }
+
+  /**
+   * Sends decision entries to the webview, optionally filtered by query.
+   */
+  private _sendDecisionsToWebview(query?: string): void {
+    if (!this._decisionLogService) return;
+
+    const entries = this._decisionLogService.getEntries(query);
+    const totalCount = this._decisionLogService.getEntryCount();
+    this._postMessage({ type: 'updateDecisions', decisions: entries, totalCount });
   }
 
   /**
@@ -915,14 +1171,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param usage - Token usage data
    */
   private _handleTokenUsage(usage: TokenUsage): void {
-    // Get pricing for the model
-    const pricing = ModelPricingService.getPricing(usage.model);
-    const cost = ModelPricingService.calculateCost({
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      cacheWriteTokens: usage.cacheWriteTokens,
-      cacheReadTokens: usage.cacheReadTokens
-    }, pricing);
+    // Track model for dynamic context window limit
+    this._lastModelId = usage.model;
+
+    // Use provider-reported cost when available, else calculate from pricing.
+    // For non-Claude models (GPT, Gemini, etc.) without reported cost, use 0
+    // rather than applying incorrect Claude pricing.
+    let cost: number;
+    if (usage.reportedCost !== undefined && usage.reportedCost > 0) {
+      cost = usage.reportedCost;
+    } else if (ModelPricingService.parseModelId(usage.model)) {
+      const pricing = ModelPricingService.getPricing(usage.model);
+      cost = ModelPricingService.calculateCost({
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        cacheReadTokens: usage.cacheReadTokens
+      }, pricing);
+    } else {
+      cost = 0;
+    }
 
     // Update totals
     this._state.totalInputTokens += usage.inputTokens;
@@ -952,8 +1220,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const totalTokens = usage.inputTokens + usage.outputTokens + usage.cacheWriteTokens;
     this._burnRateCalculator.addEvent(totalTokens, usage.timestamp);
 
-    // Update current context size (input + cache = actual context window usage)
-    this._currentContextSize = usage.inputTokens + usage.cacheWriteTokens + usage.cacheReadTokens;
+    // Update current context size (provider-specific formula).
+    // OpenCode emits some assistant step rows with zero token signal; those
+    // should not zero out the gauge between real updates.
+    const provider = this._sessionMonitor.getProvider();
+    const hasContextSignal = usage.inputTokens > 0
+      || usage.outputTokens > 0
+      || usage.cacheWriteTokens > 0
+      || usage.cacheReadTokens > 0
+      || (usage.reasoningTokens ?? 0) > 0;
+
+    if (hasContextSignal) {
+      this._currentContextSize = provider.computeContextSize
+        ? provider.computeContextSize(usage)
+        : usage.inputTokens + usage.cacheWriteTokens + usage.cacheReadTokens;
+    }
 
     // Update context usage
     this._updateContextUsage();
@@ -1079,6 +1360,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sendStateToWebview();
     this._sendSessionList();
 
+    // Final decision extraction pass before session closes
+    this._extractAndPersistDecisions();
+
     // Build and cache full session summary on session end
     this._buildAndSendSummary();
   }
@@ -1093,7 +1377,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       type: 'discoveryModeChange',
       inDiscoveryMode
     });
-    // Also refresh session list when entering/exiting discovery mode
     this._sendSessionList();
   }
 
@@ -1207,6 +1490,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.lastUpdated = stats.lastUpdated.toISOString();
     this._state.sessionActive = this._sessionMonitor.isActive();
 
+    if (stats.lastModelId) {
+      this._lastModelId = stats.lastModelId;
+    }
+
     // Sync context size from session BEFORE calculating usage percentage
     this._currentContextSize = stats.currentContextSize;
 
@@ -1214,24 +1501,52 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.modelBreakdown = [];
     this._state.totalCost = 0;
 
-    stats.modelUsage.forEach((usage, model) => {
-      const pricing = ModelPricingService.getPricing(model);
-      const cost = ModelPricingService.calculateCost({
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        cacheWriteTokens: usage.cacheWriteTokens,
-        cacheReadTokens: usage.cacheReadTokens,
-      }, pricing);
+    if (stats.totalReportedCost !== undefined && stats.totalReportedCost > 0) {
+      // Use provider-reported cost, distribute proportionally by token count
+      const totalTokens = Array.from(stats.modelUsage.values())
+        .reduce((sum, u) => sum + u.tokens, 0);
 
-      this._state.modelBreakdown.push({
-        model,
-        calls: usage.calls,
-        tokens: usage.tokens,
-        cost
+      stats.modelUsage.forEach((usage, model) => {
+        const proportion = totalTokens > 0 ? usage.tokens / totalTokens : 0;
+        const cost = stats.totalReportedCost! * proportion;
+
+        this._state.modelBreakdown.push({
+          model,
+          calls: usage.calls,
+          tokens: usage.tokens,
+          cost
+        });
+
+        this._state.totalCost += cost;
       });
+    } else {
+      stats.modelUsage.forEach((usage, model) => {
+        // Only calculate from pricing table for known Claude models.
+        // Non-Claude models (GPT, Gemini, etc.) get cost 0 to avoid
+        // applying incorrect Claude pricing.
+        let cost: number;
+        if (ModelPricingService.parseModelId(model)) {
+          const pricing = ModelPricingService.getPricing(model);
+          cost = ModelPricingService.calculateCost({
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+          }, pricing);
+        } else {
+          cost = 0;
+        }
 
-      this._state.totalCost += cost;
-    });
+        this._state.modelBreakdown.push({
+          model,
+          calls: usage.calls,
+          tokens: usage.tokens,
+          cost
+        });
+
+        this._state.totalCost += cost;
+      });
+    }
 
     // Calculate context window usage (uses _currentContextSize synced above)
     this._updateContextUsage();
@@ -1380,6 +1695,45 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
+   * Public method to refresh session-related panels and provider info.
+   */
+  refreshSessionView(): void {
+    this._suppressSessionListUpdates = false;
+    // Reset timeline and tool analytics for the new provider/session
+    this._timeline = [];
+    this._toolAnalytics.clear();
+    this._state.timeline = [];
+    this._state.toolAnalytics = [];
+    this._state.errorDetails = [];
+
+    this._syncFromSessionMonitor();
+    this._sendStateToWebview();
+    this._sendBurnRateUpdate();
+    this._sendTimelineToWebview();
+    this._sendToolAnalyticsToWebview();
+    this._sendSessionList();
+    this._sendProviderInfo();
+
+    // Send provider-appropriate quota data on switch
+    const provider = this._sessionMonitor.getProvider();
+    const sessionQuota = provider.getQuotaFromSession?.();
+    if (sessionQuota) {
+      // Codex: has session-based quota from rate_limits
+      this._handleQuotaUpdate(sessionQuota);
+    } else if (this._quotaService && provider.id === 'claude-code') {
+      // Claude Code: use cached quota from QuotaService, trigger refresh
+      const cached = this._quotaService.getCachedQuota();
+      if (cached) {
+        this._handleQuotaUpdate(cached);
+      }
+      this._quotaService.startRefresh();
+    } else {
+      // OpenCode or no data: clear quota in webview
+      this._handleQuotaUpdate({ fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false });
+    }
+  }
+
+  /**
    * Sends burn rate and session timing update to the webview.
    */
   private _sendBurnRateUpdate(): void {
@@ -1395,6 +1749,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Sends the list of available sessions to the webview.
    */
   private _sendSessionList(): void {
+    if (this._suppressSessionListUpdates) {
+      return;
+    }
+    if (this._sessionMonitor.isInDiscoveryMode()) {
+      this._postMessage({ type: 'sessionsLoading', loading: true });
+      return;
+    }
     const groups = this._sessionMonitor.getAllSessionsGrouped();
     const customPath = this._sessionMonitor.getCustomPath();
     this._postMessage({
@@ -1404,6 +1765,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       isUsingCustomPath: this._sessionMonitor.isUsingCustomPath(),
       customPathDisplay: customPath ? this._getShortPath(customPath) : null
     });
+  }
+
+  /**
+   * Sends the current session provider info to the webview.
+   */
+  private _sendProviderInfo(): void {
+    const provider = this._sessionMonitor.getProvider();
+    this._postMessage({
+      type: 'updateSessionProvider',
+      providerId: provider.id,
+      displayName: provider.displayName
+    });
+  }
+
+  /**
+   * Sends the current event log enabled state to the webview.
+   */
+  private _sendEventLogState(): void {
+    const enabled = vscode.workspace.getConfiguration('sidekick').get<boolean>('enableEventLog', false);
+    this._postMessage({ type: 'syncEventLogState', enabled });
   }
 
   /**
@@ -1433,13 +1814,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
+   * Gets the context window limit from the session provider.
+   */
+  private _getContextWindowLimit(): number {
+    const provider = this._sessionMonitor.getProvider();
+    return provider.getContextWindowLimit?.(this._lastModelId) ?? 200_000;
+  }
+
+  /**
    * Updates context window usage percentage.
    * Uses the actual context size from the most recent message, not cumulative tokens.
    */
   private _updateContextUsage(): void {
     // Context window = actual tokens in context from most recent message
     // This is input + cache_write + cache_read tokens
-    this._state.contextUsagePercent = (this._currentContextSize / this.CONTEXT_WINDOW_LIMIT) * 100;
+    this._state.contextUsagePercent = (this._currentContextSize / this._getContextWindowLimit()) * 100;
   }
 
   /**
@@ -1470,6 +1859,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const initialIsPinned = this._sessionMonitor.isPinned();
     const initialCustomPath = this._sessionMonitor.getCustomPath();
     const initialIsUsingCustomPath = this._sessionMonitor.isUsingCustomPath();
+    const initialProvider = this._sessionMonitor.getProvider();
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -2237,6 +2627,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       flex: 0 0 35%;
     }
 
+    .gauge-row.opencode-provider .context-item {
+      flex: 1;
+    }
+
     .gauge-row .quota-item {
       flex: 1;
     }
@@ -2646,6 +3040,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .trend-indicator.stable { color: var(--vscode-descriptionForeground); }
     .trend-indicator.decreasing { color: var(--vscode-charts-green, #4caf50); }
 
+    .decision-item {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .decision-desc { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+    .decision-chosen { font-size: 11px; color: var(--vscode-textLink-foreground); }
+    .decision-rationale { font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 2px; }
+    .decision-meta { font-size: 10px; color: var(--vscode-descriptionForeground); margin-top: 4px; }
+    .decision-badge {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+    }
+
     .summary-empty {
       text-align: center;
       padding: 24px 12px;
@@ -2712,6 +3127,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .filter-toggle input[type="checkbox"] {
       width: 12px;
       height: 12px;
+    }
+
+    .event-log-toggle {
+      margin-left: auto;
+      font-weight: 400;
     }
 
     /* Compaction display */
@@ -2994,6 +3414,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       gap: 4px;
     }
 
+    .session-provider {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-right: 4px;
+    }
+
+    .session-provider label {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .session-provider select {
+      font-size: 10px;
+      background: var(--vscode-dropdown-background);
+      color: var(--vscode-dropdown-foreground);
+      border: 1px solid var(--vscode-dropdown-border, transparent);
+      border-radius: 3px;
+      padding: 2px 6px;
+      outline: none;
+    }
+
+    .session-provider select:focus {
+      border-color: var(--vscode-focusBorder);
+    }
+
     .session-nav-actions .nav-btn,
     .session-nav-actions .pin-btn {
       padding: 2px 6px;
@@ -3100,6 +3546,28 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       text-align: center;
       font-size: 11px;
       color: var(--vscode-descriptionForeground);
+    }
+
+    .session-list-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 8px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .session-list-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--vscode-descriptionForeground);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: narrative-spin 0.8s linear infinite;
+      flex-shrink: 0;
     }
 
     .custom-path-indicator {
@@ -3380,6 +3848,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       font-size: 11px;
       line-height: 1.4;
     }
+
+    /* Session Handoff Button */
+    .handoff-section {
+      margin-top: 12px;
+      padding: 8px 0;
+    }
+
+    .handoff-btn {
+      width: 100%;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--vscode-button-secondaryForeground);
+      background: var(--vscode-button-secondaryBackground);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .handoff-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+    }
   </style>
 </head>
 <body>
@@ -3401,13 +3890,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         <span class="session-nav-title">Sessions</span>
       </div>
       <div class="session-nav-actions">
+        <div class="session-provider">
+          <label for="session-provider-select">Provider</label>
+          <select id="session-provider-select">
+            <option value="claude-code">Claude Code</option>
+            <option value="opencode">OpenCode</option>
+            <option value="codex">Codex CLI</option>
+          </select>
+        </div>
         <button class="pin-btn" id="pin-session" title="Pin session to prevent auto-switching">Pin</button>
         <button class="nav-btn" id="refresh-sessions" title="Refresh session list">↻</button>
-        <button class="nav-btn browse" id="browse-folders" title="Browse all Claude session folders">Browse...</button>
+        <button class="nav-btn browse" id="browse-folders" title="Browse session folders">Browse...</button>
       </div>
     </div>
     <div class="session-list" id="session-list">
-      <div class="session-list-empty">Loading sessions...</div>
+      <div class="session-list-loading">
+        <span class="session-list-spinner"></span>
+        Loading sessions\u2026
+      </div>
     </div>
   </div>
 
@@ -3420,8 +3920,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   <div id="session-tab" class="tab-content active">
     <div id="content">
       <div class="empty-state">
-        <p>No active Claude Code session detected.</p>
-        <p>Start a session to see analytics.</p>
+        <p id="empty-state-title">No active session detected.</p>
+        <p id="empty-state-hint">Start a session to see analytics.</p>
       </div>
     </div>
 
@@ -3513,19 +4013,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         </div>
       </div>
 
-      <!-- CLAUDE.md Suggestions Panel -->
+      <!-- Agent Guidance Suggestions Panel -->
       <div class="suggestions-section" id="suggestions-panel">
         <div class="suggestions-header" id="suggestions-header">
           <div class="suggestions-header-left">
             <span class="suggestions-toggle-icon">▶</span>
             <h3>Improve Agent Guidance</h3>
           </div>
-          <button id="analyze-btn" title="Analyze your session patterns to generate suggestions for your CLAUDE.md file. Better guidance helps Claude work more efficiently on your project.">Get Suggestions</button>
+          <button id="analyze-btn" title="Analyze your session patterns to generate suggestions for your agent's instruction file. Better guidance helps the agent work more efficiently on your project.">Get Suggestions</button>
         </div>
         <div class="suggestions-body">
           <p class="suggestions-intro">
-            Analyze your session to get AI-powered suggestions for improving your CLAUDE.md file.
-            <a href="https://docs.anthropic.com/en/docs/claude-code/memory#claudemd" target="_blank">Best practices →</a>
+            Analyze your session to get AI-powered suggestions for improving your agent's instruction file.
+            <a id="guidance-docs-link" href="https://docs.anthropic.com/en/docs/claude-code/memory#claudemd" target="_blank">Best practices →</a>
           </p>
           <div class="suggestions-content">
             <!-- Suggestions will be rendered here -->
@@ -3533,11 +4033,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         </div>
       </div>
 
+      <!-- Session Handoff -->
+      <div class="handoff-section">
+        <button id="generate-handoff-btn" class="handoff-btn" title="Generate a context handoff document so your next agent session can pick up where this one left off.">Generate Handoff</button>
+      </div>
+
       <!-- Session Activity Group -->
       <div class="details-section" id="session-activity-section">
         <div class="details-toggle" data-group-toggle="session-activity-section">
           <span class="toggle-icon">▶</span>
           <h3 class="details-title">Session Activity</h3>
+          <label class="filter-toggle event-log-toggle" title="Record all session events to ~/.config/sidekick/event-logs/ for debugging. Events are written in real-time as a JSONL audit trail." onclick="event.stopPropagation()">
+            <input type="checkbox" id="event-log-toggle" /> Event Log
+          </label>
         </div>
         <div class="details-content">
           <!-- Context Attribution -->
@@ -3711,6 +4219,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         </div>
       </div>
 
+      <!-- Decisions Group -->
+      <div class="details-section" id="decisions-section-group">
+        <div class="details-toggle" data-group-toggle="decisions-section-group">
+          <span class="toggle-icon">▶</span>
+          <h3 class="details-title">Decisions</h3>
+        </div>
+        <div class="details-content">
+          <div class="section" id="decisions-section" style="display: none;">
+            <div style="margin-bottom:8px;">
+              <input type="text" id="decisions-search" placeholder="Search decisions..."
+                style="width:100%;padding:4px 8px;background:var(--vscode-input-background);
+                color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);
+                border-radius:3px;font-size:11px;box-sizing:border-box;" />
+            </div>
+            <div id="decisions-count" style="font-size:11px;margin-bottom:8px;color:var(--vscode-descriptionForeground);"></div>
+            <div id="decisions-list"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="last-updated">
         Last updated: <span id="last-updated">-</span>
       </div>
@@ -3826,7 +4354,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       groups: initialGroups,
       isPinned: initialIsPinned,
       isUsingCustomPath: initialIsUsingCustomPath,
-      customPathDisplay: initialCustomPath ? this._getShortPath(initialCustomPath) : null
+      customPathDisplay: initialCustomPath ? this._getShortPath(initialCustomPath) : null,
+      providerId: initialProvider.id,
+      providerName: initialProvider.displayName
     })};
   </script>
   <script nonce="${nonce}">
@@ -3854,9 +4384,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const pinSessionBtn = document.getElementById('pin-session');
       const refreshSessionsBtn = document.getElementById('refresh-sessions');
       const browseFoldersBtn = document.getElementById('browse-folders');
+      const sessionProviderSelect = document.getElementById('session-provider-select');
       const customPathIndicator = document.getElementById('custom-path-indicator');
       const customPathText = document.getElementById('custom-path-text');
       const resetCustomPath = document.getElementById('reset-custom-path');
+      const emptyStateTitle = document.getElementById('empty-state-title');
+      const emptyStateHint = document.getElementById('empty-state-hint');
 
       // Tab elements
       const tabBtns = document.querySelectorAll('.tab-btn');
@@ -3901,6 +4434,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         burnRate: 0,
         sessionDuration: '0m'
       };
+
+      let currentProviderId = 'claude-code';
+      let currentProviderName = 'Claude Code';
+      let currentQuota = null;
+
+      // Provider-aware instruction file targeting
+      var targetFileName = 'CLAUDE.md';
+      var targetFileTip = 'After adding suggestions to your CLAUDE.md, run /init in Claude Code to consolidate and optimize the file.';
+      var targetDocsUrl = 'https://docs.anthropic.com/en/docs/claude-code/memory#claudemd';
 
       // Suggestions state
       let currentSuggestions = [];
@@ -3972,7 +4514,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           html = '<div class="suggestion-card suggestion-card-consolidated">' +
             '<div class="suggestion-header">' + escapeHtml(s.title) + '</div>' +
             '<div class="suggestion-summary"><span class="label">Summary:</span> ' + escapeHtml(s.observed) + '</div>' +
-            '<div class="suggestion-code-header">Append this to CLAUDE.md:</div>' +
+            '<div class="suggestion-code-header">Append this to ' + targetFileName + ':</div>' +
             '<pre class="suggestion-code">' + escapeHtml(s.suggestion) + '</pre>' +
             '<div class="suggestion-actions">' +
               '<button class="copy-btn" data-index="0">Copy to Clipboard</button>' +
@@ -3999,10 +4541,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         content.innerHTML = html +
           '<div class="suggestions-footer">' +
-            '<button class="open-claude-md-btn">Open CLAUDE.md</button>' +
+            '<button class="open-claude-md-btn">Open ' + targetFileName + '</button>' +
           '</div>' +
           '<div class="suggestions-tip">' +
-            '<strong>💡 Tip:</strong> After adding suggestions to your CLAUDE.md, run <code>/init</code> in Claude Code to consolidate and optimize the file.' +
+            '<strong>💡 Tip:</strong> ' + escapeHtml(targetFileTip) +
           '</div>';
 
         // Attach event listeners (CSP blocks inline onclick)
@@ -4021,7 +4563,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         var openBtn = content.querySelector('.open-claude-md-btn');
         if (openBtn) {
           openBtn.addEventListener('click', function() {
-            vscode.postMessage({ type: 'openClaudeMd' });
+            vscode.postMessage({ type: 'openInstructionFile' });
           });
         }
       }
@@ -4498,11 +5040,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Updates the quota display with new data.
        */
       function updateQuota(quota) {
+        currentQuota = quota;
+
         var sectionEl = document.getElementById('quota-section');
         var contentEl = document.getElementById('quota-content');
         var errorEl = document.getElementById('quota-error');
 
         if (!sectionEl || !contentEl || !errorEl) return;
+
+        if (currentProviderId === 'opencode') {
+          sectionEl.classList.remove('visible');
+          contentEl.style.display = 'none';
+          errorEl.style.display = 'none';
+          return;
+        }
+
+        if (!quota) {
+          sectionEl.classList.remove('visible');
+          contentEl.style.display = 'none';
+          errorEl.style.display = 'none';
+          return;
+        }
 
         if (!quota.available) {
           // Hide quota section or show error
@@ -4513,6 +5071,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             errorEl.textContent = quota.error;
           } else {
             sectionEl.classList.remove('visible');
+            contentEl.style.display = 'none';
+            errorEl.style.display = 'none';
           }
           return;
         }
@@ -4897,6 +5457,77 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         return div.innerHTML;
       }
 
+      function updateProviderDisplay(providerId, providerName) {
+        if (!providerId || !providerName) return;
+        currentQuota = null;
+        currentProviderId = providerId;
+        currentProviderName = providerName;
+
+        // Update instruction file targeting based on provider
+        var instructionTargets = {
+          'claude-code': {
+            file: 'CLAUDE.md',
+            tip: 'After adding suggestions to your CLAUDE.md, run /init in Claude Code to consolidate and optimize the file.',
+            docsUrl: 'https://docs.anthropic.com/en/docs/claude-code/memory#claudemd'
+          },
+          'opencode': {
+            file: 'AGENTS.md',
+            tip: 'OpenCode reads AGENTS.md for project-specific instructions. It falls back to CLAUDE.md if AGENTS.md is not found.',
+            docsUrl: 'https://github.com/opencode-ai/opencode'
+          },
+          'codex': {
+            file: 'AGENTS.md',
+            tip: 'Codex reads AGENTS.md for project-specific agent instructions.',
+            docsUrl: 'https://github.com/openai/codex'
+          }
+        };
+        var instrTarget = instructionTargets[providerId] || instructionTargets['claude-code'];
+        targetFileName = instrTarget.file;
+        targetFileTip = instrTarget.tip;
+        targetDocsUrl = instrTarget.docsUrl;
+
+        // Update docs link if present
+        var docsLink = document.getElementById('guidance-docs-link');
+        if (docsLink) docsLink.setAttribute('href', targetDocsUrl);
+
+        if (sessionProviderSelect) {
+          sessionProviderSelect.value = providerId;
+        }
+
+        if (emptyStateTitle) {
+          emptyStateTitle.textContent = 'No active ' + providerName + ' session detected.';
+        }
+        if (emptyStateHint) {
+          emptyStateHint.textContent = 'Start a ' + providerName + ' session to see analytics.';
+        }
+
+        var quotaSectionEl = document.getElementById('quota-section');
+        var quotaContentEl = document.getElementById('quota-content');
+        var quotaErrorEl = document.getElementById('quota-error');
+
+        if (gaugeRow) {
+          gaugeRow.classList.toggle('opencode-provider', currentProviderId === 'opencode');
+        }
+
+        // For OpenCode: repurpose the Quota button as "Context" (no subscription quota)
+        // For Claude Code: restore the Quota button label and show subscription quota
+        var quotaBtn = document.querySelector('.metric-btn[data-metric="quota"]');
+        if (currentProviderId === 'opencode') {
+          if (quotaSectionEl) quotaSectionEl.classList.remove('visible');
+          if (quotaContentEl) quotaContentEl.style.display = 'none';
+          if (quotaErrorEl) quotaErrorEl.style.display = 'none';
+          if (quotaBtn) quotaBtn.textContent = 'Context';
+          return;
+        }
+
+        // Restore for non-OpenCode providers
+        if (quotaBtn) quotaBtn.textContent = 'Quota';
+
+        if (currentQuota) {
+          updateQuota(currentQuota);
+        }
+      }
+
       /**
        * Updates the session card navigator.
        */
@@ -5157,6 +5788,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             updateSessionList(message.groups, message.isPinned, message.isUsingCustomPath, message.customPathDisplay);
             break;
 
+          case 'sessionsLoading':
+            if (message.loading && sessionListEl) {
+              sessionListEl.innerHTML = '<div class="session-list-loading">' +
+                '<span class="session-list-spinner"></span>' +
+                'Loading sessions\u2026' +
+                '</div>';
+            }
+            break;
+
+          case 'updateSessionProvider':
+            updateProviderDisplay(message.providerId, message.displayName);
+            break;
+
           case 'updateHistoricalData':
             if (historyLoading) historyLoading.style.display = 'none';
             updateHistoryChart(message.data);
@@ -5200,6 +5844,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           case 'updateRecoveryPatterns':
             renderRecoveryPatterns(message.data);
+            break;
+
+          case 'updateDecisions':
+            renderDecisions(message.decisions, message.totalCount);
             break;
 
           case 'updateAdvancedBurnRate':
@@ -5251,6 +5899,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           case 'toolCallDetails':
             renderToolCallDetails(message.toolName, message.calls);
             break;
+
+          case 'syncEventLogState':
+            var elToggle = document.getElementById('event-log-toggle');
+            if (elToggle) elToggle.checked = message.enabled;
+            break;
         }
       });
 
@@ -5290,6 +5943,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       }
 
+      // Event log toggle handler
+      var eventLogToggle = document.getElementById('event-log-toggle');
+      if (eventLogToggle) {
+        eventLogToggle.addEventListener('change', function() {
+          vscode.postMessage({ type: 'toggleEventLog', enabled: eventLogToggle.checked });
+        });
+      }
+
       // Session navigator event handlers
       if (sessionListEl) {
         sessionListEl.addEventListener('click', function(e) {
@@ -5318,6 +5979,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         refreshSessionsBtn.addEventListener('click', function(e) {
           e.stopPropagation();
           vscode.postMessage({ type: 'refreshSessions' });
+        });
+      }
+
+      if (sessionProviderSelect) {
+        sessionProviderSelect.addEventListener('change', function() {
+          var nextProvider = sessionProviderSelect.value;
+          if (nextProvider && nextProvider !== currentProviderId) {
+            var providerLabel = sessionProviderSelect.options[sessionProviderSelect.selectedIndex].text;
+            if (sessionListEl) {
+              sessionListEl.innerHTML = '<div class="session-list-loading">' +
+                '<span class="session-list-spinner"></span>' +
+                'Loading ' + escapeHtml(providerLabel) + ' sessions\u2026' +
+                '</div>';
+            }
+            vscode.postMessage({ type: 'setSessionProvider', providerId: nextProvider });
+          }
         });
       }
 
@@ -5374,6 +6051,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             suggestionsPanel.classList.add('expanded');
           }
           vscode.postMessage({ type: 'analyzeSession' });
+        });
+      }
+
+      // Set up handoff button
+      var handoffBtn = document.getElementById('generate-handoff-btn');
+      if (handoffBtn) {
+        handoffBtn.addEventListener('click', function() {
+          vscode.postMessage({ type: 'generateHandoff' });
         });
       }
 
@@ -5570,6 +6255,67 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         body.innerHTML = html;
       }
 
+      function renderDecisions(decisions, totalCount) {
+        var section = document.getElementById('decisions-section');
+        var listEl = document.getElementById('decisions-list');
+        var countEl = document.getElementById('decisions-count');
+        if (!section || !listEl) return;
+
+        if (totalCount === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+
+        if (countEl) {
+          var countText = decisions.length === totalCount
+            ? totalCount + ' decision' + (totalCount !== 1 ? 's' : '')
+            : decisions.length + ' of ' + totalCount + ' decisions';
+          countEl.textContent = countText;
+        }
+
+        var html = '';
+        decisions.forEach(function(d) {
+          var sourceLabel = d.source.replace(/_/g, ' ');
+          var timeAgo = formatRelativeTime(d.timestamp);
+          html += '<div class="decision-item">' +
+            '<div class="decision-desc">' + escapeHtml(d.description) + '</div>' +
+            '<div class="decision-chosen">Chosen: ' + escapeHtml(d.chosenOption) + '</div>' +
+            '<div class="decision-rationale">' + escapeHtml(d.rationale) + '</div>' +
+            (d.alternatives && d.alternatives.length > 0
+              ? '<div class="decision-rationale">Alternatives: ' + d.alternatives.map(escapeHtml).join(', ') + '</div>'
+              : '') +
+            '<div class="decision-meta"><span class="decision-badge">' + escapeHtml(sourceLabel) + '</span> ' + timeAgo + '</div>' +
+            '</div>';
+        });
+        listEl.innerHTML = html;
+      }
+
+      function formatRelativeTime(isoString) {
+        var now = Date.now();
+        var then = new Date(isoString).getTime();
+        var diffMs = now - then;
+        var diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return 'just now';
+        if (diffMin < 60) return diffMin + 'min ago';
+        var diffHours = Math.floor(diffMin / 60);
+        if (diffHours < 24) return diffHours + 'h ago';
+        var diffDays = Math.floor(diffHours / 24);
+        return diffDays + 'd ago';
+      }
+
+      // Decisions search handler (300ms debounce)
+      var decisionsSearchTimer = null;
+      var decisionsSearchEl = document.getElementById('decisions-search');
+      if (decisionsSearchEl) {
+        decisionsSearchEl.addEventListener('input', function() {
+          if (decisionsSearchTimer) clearTimeout(decisionsSearchTimer);
+          decisionsSearchTimer = setTimeout(function() {
+            vscode.postMessage({ type: 'searchDecisions', query: decisionsSearchEl.value });
+          }, 300);
+        });
+      }
+
       function renderAdvancedBurnRate(data) {
         var section = document.getElementById('burn-rate-section');
         var body = document.getElementById('burn-rate-body');
@@ -5632,6 +6378,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         try {
           var init = window.__initialSessionData;
           updateSessionList(init.groups, init.isPinned, init.isUsingCustomPath, init.customPathDisplay);
+          if (init.providerId && init.providerName) {
+            updateProviderDisplay(init.providerId, init.providerName);
+          }
         } catch (e) {
           var errEl = document.getElementById('session-list');
           if (errEl) errEl.innerHTML = '<div class="session-list-empty">Init error: ' + e.message + '</div>';
@@ -5649,6 +6398,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Disposes of all resources.
    */
   dispose(): void {
+    // Final decision extraction as safety net before teardown
+    try {
+      this._extractAndPersistDecisions();
+    } catch {
+      // Best-effort — don't block dispose
+    }
     if (this._richerPanelTimer) {
       clearTimeout(this._richerPanelTimer);
     }
@@ -5657,4 +6412,3 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     log('DashboardViewProvider disposed');
   }
 }
-

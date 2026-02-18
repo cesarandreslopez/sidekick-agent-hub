@@ -98,4 +98,7 @@ export interface SessionAnalysisData {
 
   /** Current CLAUDE.md content if it exists */
   currentClaudeMd?: string;
+
+  /** Current AGENTS.md content if it exists */
+  currentAgentsMd?: string;
 }

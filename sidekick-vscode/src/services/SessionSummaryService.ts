@@ -11,6 +11,7 @@ import type { SessionStats, TaskState, ToolCall } from '../types/claudeSession';
 import type { SessionAnalysisData } from './SessionAnalyzer';
 import type { QuotaState } from '../types/dashboard';
 import type { AuthService } from './AuthService';
+import { resolveModel } from './ModelResolver';
 import type { BurnRateCalculator } from './BurnRateCalculator';
 import type {
   SessionSummaryData,
@@ -46,13 +47,36 @@ const TOOL_COST_WEIGHTS: Record<string, number> = {
 const DEFAULT_TOOL_WEIGHT = 1;
 
 /**
+ * Computes a task's duration based on its status.
+ *
+ * - Completed: time between creation and last update
+ * - In progress: time from creation until now
+ * - Other (pending/deleted): 0
+ */
+function computeTaskDuration(
+  status: string,
+  createdAt: Date,
+  updatedAt: Date,
+  now: number
+): number {
+  switch (status) {
+    case 'completed':
+      return updatedAt.getTime() - createdAt.getTime();
+    case 'in_progress':
+      return now - createdAt.getTime();
+    default:
+      return 0;
+  }
+}
+
+/**
  * Service that aggregates session data into summary and panel formats.
  */
 export class SessionSummaryService {
   /**
    * Builds a complete session summary from stats and analysis data.
    */
-  generateSummary(stats: SessionStats, analysisData: SessionAnalysisData): SessionSummaryData {
+  generateSummary(stats: SessionStats, analysisData: SessionAnalysisData, contextWindowLimit: number = 200_000): SessionSummaryData {
     const duration = stats.sessionStartTime
       ? Date.now() - stats.sessionStartTime.getTime()
       : 0;
@@ -60,7 +84,7 @@ export class SessionSummaryService {
     const totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
     const totalCost = this._computeTotalCost(stats);
     const apiCalls = stats.messageCount;
-    const contextPeak = (stats.currentContextSize / 200_000) * 100;
+    const contextPeak = (stats.currentContextSize / contextWindowLimit) * 100;
 
     // Tasks
     const tasks = this._buildTaskSummaries(stats.taskState, totalCost, stats.toolCalls);
@@ -125,11 +149,7 @@ export class SessionSummaryService {
         taskId: t.taskId,
         subject: t.subject,
         status: t.status,
-        duration: t.status === 'completed'
-          ? t.updatedAt.getTime() - t.createdAt.getTime()
-          : t.status === 'in_progress'
-            ? now - t.createdAt.getTime()
-            : 0,
+        duration: computeTaskDuration(t.status, t.createdAt, t.updatedAt, now),
         toolCallCount: t.associatedToolCalls.length,
         blockedBy: [...t.blockedBy],
         blocks: [...t.blocks],
@@ -288,15 +308,27 @@ export class SessionSummaryService {
 
   /**
    * Generates an AI narrative summary of the session.
+   *
+   * @param summary - Session summary data
+   * @param authService - Auth service for inference
+   * @param options - Optional overrides (e.g. timeout)
    */
-  async generateNarrative(summary: SessionSummaryData, authService: AuthService): Promise<string> {
+  async generateNarrative(
+    summary: SessionSummaryData,
+    authService: AuthService,
+    options?: { timeout?: number }
+  ): Promise<string> {
     const prompt = buildNarrativePrompt(summary);
-    return authService.complete(prompt, { model: 'haiku', maxTokens: 1024 });
+    const model = resolveModel('fast', authService.getProviderId(), 'inlineModel');
+    return authService.complete(prompt, { model, maxTokens: 1024, ...options });
   }
 
   // ── Private helpers ──
 
   private _computeTotalCost(stats: SessionStats): number {
+    if (stats.totalReportedCost !== undefined && stats.totalReportedCost > 0) {
+      return stats.totalReportedCost;
+    }
     let cost = 0;
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
@@ -323,11 +355,7 @@ export class SessionSummaryService {
     return Array.from(taskState.tasks.values())
       .filter(t => t.status !== 'deleted')
       .map(t => {
-        const duration = t.status === 'completed'
-          ? t.updatedAt.getTime() - t.createdAt.getTime()
-          : t.status === 'in_progress'
-            ? now - t.createdAt.getTime()
-            : 0;
+        const duration = computeTaskDuration(t.status, t.createdAt, t.updatedAt, now);
         const toolCallCount = t.associatedToolCalls.length;
         const costShare = totalToolCalls > 0 ? toolCallCount / totalToolCalls : 0;
 

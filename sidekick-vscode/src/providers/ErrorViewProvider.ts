@@ -17,7 +17,7 @@ import type {
   ErrorContext,
   FixSuggestion,
 } from '../types/errorExplanation';
-import type { ComplexityLevel } from '../types/rsvp';
+import type { ComplexityLevel } from '../types/explain';
 import { getNonce } from '../utils/nonce';
 
 export class ErrorViewProvider implements vscode.Disposable {
@@ -155,29 +155,26 @@ export class ErrorViewProvider implements vscode.Disposable {
     this.pendingRequests.set(requestId, { timestamp: Date.now() });
 
     try {
-      // Call ErrorExplanationService
       const explanation = await this.errorExplanationService.explainError(code, errorContext, complexity);
 
-      // Only send if request still pending
       if (this.pendingRequests.has(requestId)) {
         this._panel?.webview.postMessage({
           type: 'explanationResult',
           requestId,
           explanation,
         } as ErrorExplainExtensionMessage);
-        this.pendingRequests.delete(requestId);
       }
     } catch (error) {
-      // Send error to webview if request still pending
       if (this.pendingRequests.has(requestId)) {
         this._panel?.webview.postMessage({
           type: 'explanationError',
           requestId,
           error: error instanceof Error ? error.message : 'Explanation failed',
         } as ErrorExplainExtensionMessage);
-        this.pendingRequests.delete(requestId);
       }
       console.error('Error explanation failed:', error);
+    } finally {
+      this.pendingRequests.delete(requestId);
     }
   }
 
@@ -190,36 +187,35 @@ export class ErrorViewProvider implements vscode.Disposable {
     this.pendingRequests.set(requestId, { timestamp: Date.now() });
 
     try {
-      // Call ErrorExplanationService to generate fix
       const fixSuggestion = await this.errorExplanationService.generateFix(code, errorContext);
 
-      if (fixSuggestion && this.pendingRequests.has(requestId)) {
-        // Send fix suggestion to webview
+      if (!this.pendingRequests.has(requestId)) {
+        return;
+      }
+
+      if (fixSuggestion) {
         this._panel?.webview.postMessage({
           type: 'fixReady',
           fixSuggestion,
         } as ErrorExplainExtensionMessage);
-        this.pendingRequests.delete(requestId);
-      } else if (this.pendingRequests.has(requestId)) {
-        // No fix available
+      } else {
         this._panel?.webview.postMessage({
           type: 'explanationError',
           requestId,
           error: 'Unable to generate automatic fix for this error',
         } as ErrorExplainExtensionMessage);
-        this.pendingRequests.delete(requestId);
       }
     } catch (error) {
-      // Send error to webview if request still pending
       if (this.pendingRequests.has(requestId)) {
         this._panel?.webview.postMessage({
           type: 'explanationError',
           requestId,
           error: error instanceof Error ? error.message : 'Fix generation failed',
         } as ErrorExplainExtensionMessage);
-        this.pendingRequests.delete(requestId);
       }
       console.error('Fix generation failed:', error);
+    } finally {
+      this.pendingRequests.delete(requestId);
     }
   }
 

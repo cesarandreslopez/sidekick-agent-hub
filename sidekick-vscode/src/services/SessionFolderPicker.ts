@@ -1,9 +1,9 @@
 /**
  * @fileoverview Session folder picker for manual session selection.
  *
- * This module provides UI for browsing and selecting Claude Code session folders
- * from ~/.claude/projects/, allowing users to monitor sessions that aren't
- * automatically detected based on the current workspace.
+ * This module provides UI for browsing and selecting session folders
+ * from the active session provider, allowing users to monitor sessions
+ * that aren't automatically detected based on the current workspace.
  *
  * @module services/SessionFolderPicker
  */
@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { SessionMonitor } from './SessionMonitor';
-import { getAllProjectFolders, findSessionsInDirectory, ProjectFolderInfo } from './SessionPathResolver';
+import type { ProjectFolderInfo } from '../types/sessionProvider';
 import { log } from './Logger';
 
 /**
@@ -59,40 +59,40 @@ export class SessionFolderPicker {
   ) {}
 
   /**
-   * Shows a quick pick of all Claude project folders.
+   * Shows a quick pick of all project folders for the active provider.
    *
-   * Displays folders from ~/.claude/projects/ with decoded human-readable paths,
-   * session counts, and last activity times. Prioritizes the current workspace
-   * and its subdirectories at the top of the list.
+   * Displays provider folders with session counts and last activity times.
+   * Prioritizes the current workspace and its subdirectories at the top of the list.
    *
    * @returns Selected folder path, or undefined if cancelled
    */
   async showFolderPicker(): Promise<string | undefined> {
     // Pass workspace path for prioritized sorting
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const folders = getAllProjectFolders(workspacePath);
+    const provider = this.sessionMonitor.getProvider();
+    const folders = provider.getAllProjectFolders(workspacePath);
 
     if (folders.length === 0) {
       vscode.window.showInformationMessage(
-        'No Claude Code sessions found. Start Claude Code in any directory to create sessions.'
+        `No ${provider.displayName} sessions found. Start ${provider.displayName} in any directory to create sessions.`
       );
       return undefined;
     }
 
     const items = folders.map((folder: ProjectFolderInfo) => ({
-      label: folder.decodedPath,
+      label: folder.name,
       description: `${folder.sessionCount} session${folder.sessionCount !== 1 ? 's' : ''}, active ${formatRelativeTime(folder.lastModified)}`,
-      detail: folder.encodedName,
+      detail: folder.encodedName || folder.dir,
       folder
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select a Claude Code project folder to monitor',
+      placeHolder: `Select a ${provider.displayName} project folder to monitor`,
       matchOnDescription: true,
       matchOnDetail: true
     });
 
-    return selected?.folder.path;
+    return selected?.folder.dir;
   }
 
   /**
@@ -102,7 +102,8 @@ export class SessionFolderPicker {
    * @returns Selected session file path, or undefined if cancelled
    */
   async showSessionPicker(folderPath: string): Promise<string | undefined> {
-    const sessions = findSessionsInDirectory(folderPath);
+    const provider = this.sessionMonitor.getProvider();
+    const sessions = provider.findSessionsInDirectory(folderPath);
 
     if (sessions.length === 0) {
       vscode.window.showInformationMessage('No sessions found in this folder.');
@@ -110,7 +111,7 @@ export class SessionFolderPicker {
     }
 
     const items = await Promise.all(sessions.map(async (sessionPath) => {
-      const filename = path.basename(sessionPath, '.jsonl');
+      const filename = provider.getSessionId(sessionPath);
       let modifiedTime: Date;
 
       try {

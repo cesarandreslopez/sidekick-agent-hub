@@ -21,12 +21,17 @@
  * - command: Command types executed by Bash (git, npm, etc.)
  * - task: Tasks from TaskCreate/TaskUpdate tools
  */
-export type NodeType = 'file' | 'tool' | 'todo' | 'subagent' | 'session' | 'url' | 'directory' | 'command' | 'task';
+export type NodeType = 'file' | 'tool' | 'todo' | 'subagent' | 'session' | 'url' | 'directory' | 'command' | 'task' | 'plan' | 'plan-step';
 
 /**
  * Task status values for visual differentiation.
  */
 export type TaskNodeStatus = 'pending' | 'in_progress' | 'completed';
+
+/**
+ * Plan step status values for visual differentiation.
+ */
+export type PlanStepStatus = 'pending' | 'in_progress' | 'completed';
 
 /**
  * Graph node for D3.js force simulation.
@@ -62,6 +67,9 @@ export interface GraphNode {
   /** Task ID for task nodes (correlates with TrackedTask.taskId) */
   taskId?: string;
 
+  /** Plan step status for plan-step nodes */
+  planStepStatus?: PlanStepStatus;
+
   // D3 simulation properties (added during simulation)
   x?: number;
   y?: number;
@@ -79,7 +87,7 @@ export interface GraphNode {
  * - task-action: Dashed link from task to tools/files used while task was in_progress
  * - task-dependency: Link showing task blockedBy relationships
  */
-export type LinkType = 'default' | 'task-action' | 'task-dependency';
+export type LinkType = 'default' | 'task-action' | 'task-dependency' | 'plan-sequence';
 
 /**
  * Graph link for D3.js force simulation.

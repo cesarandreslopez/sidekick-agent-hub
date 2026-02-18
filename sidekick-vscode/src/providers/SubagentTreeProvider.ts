@@ -325,6 +325,13 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
     }
     if (stats.agentType) {
       item.agentType = this.classifyAgentType(stats.agentType);
+      // If classification returned Unknown but we have a description, try keyword detection
+      if (item.agentType === 'Unknown' && stats.description) {
+        const detected = this.detectAgentType(stats.description);
+        if (detected !== 'Unknown') {
+          item.agentType = detected;
+        }
+      }
       item.label = `${item.id.substring(0, 8)} (${item.agentType})`;
     }
   }
@@ -385,20 +392,24 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       treeItem.iconPath = new vscode.ThemeIcon('check');
     }
 
-    // Build description with metrics
-    const descParts: string[] = [];
-    if (element.inputTokens || element.outputTokens) {
-      const totalK = Math.round(((element.inputTokens || 0) + (element.outputTokens || 0)) / 1000);
-      descParts.push(`${totalK}K tok`);
+    // Build description with metrics, falling back to status text
+    if (element.type === 'running') {
+      treeItem.description = 'Running...';
+    } else {
+      const descParts: string[] = [];
+      if (element.inputTokens || element.outputTokens) {
+        const totalK = Math.round(((element.inputTokens || 0) + (element.outputTokens || 0)) / 1000);
+        descParts.push(`${totalK}K tok`);
+      }
+      if (element.durationMs) {
+        const secs = Math.round(element.durationMs / 1000);
+        descParts.push(secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`);
+      }
+      if (element.isParallel) {
+        descParts.push('parallel');
+      }
+      treeItem.description = descParts.length > 0 ? descParts.join(' | ') : 'Completed';
     }
-    if (element.durationMs) {
-      const secs = Math.round(element.durationMs / 1000);
-      descParts.push(secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`);
-    }
-    if (element.isParallel) {
-      descParts.push('parallel');
-    }
-    treeItem.description = descParts.join(' | ');
 
     // Set click-to-open command if transcript exists
     if (element.transcriptPath && fs.existsSync(element.transcriptPath)) {
@@ -415,8 +426,6 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       treeItem.tooltip = element.description || 'Transcript not yet available';
     }
 
-    // Set description and context
-    treeItem.description = element.type === 'running' ? 'Running...' : 'Completed';
     treeItem.contextValue = element.type === 'running' ? 'runningSubagent' : 'completedSubagent';
 
     return treeItem;

@@ -100,7 +100,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       this.sessionMonitor.onSessionStart((sessionPath: string) => {
         this.clear();
         this.sessionDir = path.dirname(sessionPath);
-        this.sessionId = path.basename(sessionPath, '.jsonl');
+        this.sessionId = this.sessionMonitor.getProvider().getSessionId(sessionPath);
         this.scannedAgentFiles.clear();
         this.refresh();
       })
@@ -111,7 +111,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       const sessionPath = this.sessionMonitor.getSessionPath();
       if (sessionPath) {
         this.sessionDir = path.dirname(sessionPath);
-        this.sessionId = path.basename(sessionPath, '.jsonl');
+        this.sessionId = this.sessionMonitor.getProvider().getSessionId(sessionPath);
       }
       const stats = this.sessionMonitor.getStats();
       for (const call of stats.toolCalls) {
@@ -413,6 +413,11 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
    */
   private scanSubagentFiles(): void {
     if (!this.sessionDir || !this.sessionId) {
+      return;
+    }
+
+    // OpenCode does not expose Claude-style subagent JSONL directories.
+    if (this.sessionMonitor.getProvider().id !== 'claude-code') {
       return;
     }
 

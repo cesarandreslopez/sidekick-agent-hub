@@ -10,8 +10,6 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import { JsonlParser } from '../services/JsonlParser';
 import type { SessionMonitor } from '../services/SessionMonitor';
 import type { ClaudeSessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
@@ -77,7 +75,8 @@ export class ConversationViewProvider implements vscode.Disposable {
     }
 
     // Set title to session filename
-    const filename = targetPath.split('/').pop()?.replace('.jsonl', '') || 'Session';
+    const provider = this.sessionMonitor.getProvider();
+    const filename = provider.getSessionId(targetPath) || 'Session';
     this.panel.title = `Conversation: ${filename.substring(0, 8)}...`;
 
     // Parse and render
@@ -97,30 +96,19 @@ export class ConversationViewProvider implements vscode.Disposable {
     const chunks: ConversationChunk[] = [];
     const pendingTools = new Map<string, { name: string; input: string; timestamp: string }>();
 
-    return new Promise((resolve, reject) => {
-      let content: string;
-      try {
-        content = fs.readFileSync(filePath, 'utf8');
-      } catch (err) {
-        reject(err);
-        return;
+    const provider = this.sessionMonitor.getProvider();
+    const reader = provider.createReader(filePath);
+    const events = reader.readAll();
+    reader.flush();
+
+    for (const event of events) {
+      const chunk = this.eventToChunk(event, pendingTools);
+      if (chunk) {
+        chunks.push(chunk);
       }
+    }
 
-      const parser = new JsonlParser({
-        onEvent: (event: ClaudeSessionEvent) => {
-          const chunk = this.eventToChunk(event, pendingTools);
-          if (chunk) {
-            chunks.push(chunk);
-          }
-        },
-        onError: (err) => {
-          log(`ConversationViewProvider: parse error: ${err.message}`);
-        }
-      });
-
-      parser.processChunk(content);
-      resolve(chunks);
-    });
+    return chunks;
   }
 
   /**
@@ -305,7 +293,7 @@ export class ConversationViewProvider implements vscode.Disposable {
           ${modelTag}
           <span class="chunk-time">${time}</span>
         </div>
-        <div class="chunk-body">${this.formatContent(chunk.content)}</div>
+        <div class="chunk-body">${this.escapeHtml(chunk.content)}</div>
       </div>`;
     }).join('\n');
 
@@ -589,13 +577,6 @@ export class ConversationViewProvider implements vscode.Disposable {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-  }
-
-  /**
-   * Formats content text, preserving whitespace and escaping HTML.
-   */
-  private formatContent(text: string): string {
-    return this.escapeHtml(text);
   }
 
   /**

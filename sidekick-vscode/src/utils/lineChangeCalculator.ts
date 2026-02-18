@@ -28,15 +28,9 @@ export interface LineChanges {
  * @returns Number of lines
  */
 function countLines(str: string): number {
-  if (!str || typeof str !== 'string') return 0;
-  // Empty string has 0 lines, otherwise count newlines + 1
-  // e.g., "a" = 1 line, "a\nb" = 2 lines, "a\nb\n" = 2 lines (trailing newline doesn't add a line)
-  if (str.length === 0) return 0;
-  // Count occurrences of newline
+  if (!str || typeof str !== 'string' || str.length === 0) return 0;
   const newlines = (str.match(/\n/g) || []).length;
-  // If ends with newline, don't count the empty "line" after it
-  const endsWithNewline = str.endsWith('\n');
-  return endsWithNewline ? newlines : newlines + 1;
+  return str.endsWith('\n') ? newlines : newlines + 1;
 }
 
 /**

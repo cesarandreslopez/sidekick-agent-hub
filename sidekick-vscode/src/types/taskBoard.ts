@@ -51,6 +51,18 @@ export interface TaskCard {
 
   /** Subagent type (e.g. "Explore", "Plan", "Bash") */
   subagentType?: string;
+
+  /** Whether this task was carried over from a prior session */
+  carriedOver?: boolean;
+
+  /** Session ID where this task was created */
+  sessionOrigin?: string;
+
+  /** Number of session boundaries this task has crossed */
+  sessionAge?: number;
+
+  /** Tags for filtering */
+  tags?: string[];
 }
 
 /**
@@ -85,6 +97,9 @@ export interface TaskBoardState {
 
   /** Active task ID if any */
   activeTaskId: string | null;
+
+  /** Number of carried-over tasks from prior sessions */
+  carriedOverCount: number;
 }
 
 /**
@@ -100,4 +115,6 @@ export type TaskBoardMessage =
  */
 export type WebviewTaskBoardMessage =
   | { type: 'webviewReady' }
-  | { type: 'requestBoard' };
+  | { type: 'requestBoard' }
+  | { type: 'clearCompleted' }
+  | { type: 'archiveAll' };

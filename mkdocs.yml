@@ -1,0 +1,104 @@
+site_name: Sidekick Agent Hub
+site_description: Multi-provider AI coding assistant for VS Code
+site_url: https://cesarandreslopez.github.io/sidekick-agent-hub/
+repo_url: https://github.com/cesarandreslopez/sidekick-agent-hub
+repo_name: cesarandreslopez/sidekick-agent-hub
+
+theme:
+  name: material
+  logo: images/icon-128.png
+  favicon: images/icon-64.png
+  custom_dir: docs/overrides
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: JetBrains Mono
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+extra_css:
+  - overrides/assets/stylesheets/extra.css
+
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Context Management: getting-started/context-management.md
+    - Provider Setup: getting-started/provider-setup.md
+  - Features:
+    - Inline Completions: features/inline-completions.md
+    - Code Transforms: features/code-transforms.md
+    - Commit Messages: features/commit-messages.md
+    - Session Monitor: features/session-monitor.md
+    - Mind Map: features/mind-map.md
+    - Kanban Board: features/kanban-board.md
+    - Tool Inspector: features/tool-inspector.md
+    - Session Handoff: features/session-handoff.md
+    - Decision Log: features/decision-log.md
+    - Error Analysis: features/error-analysis.md
+    - Code Review: features/code-review.md
+    - Inline Chat: features/inline-chat.md
+    - PR Descriptions: features/pr-descriptions.md
+    - Explain Code: features/explain-code.md
+    - Generate Docs: features/generate-docs.md
+    - CLAUDE.md Suggestions: features/claude-md-suggestions.md
+  - Providers:
+    - Claude Max: providers/claude-max.md
+    - Claude API: providers/claude-api.md
+    - OpenCode: providers/opencode.md
+    - Codex CLI: providers/codex.md
+  - Configuration:
+    - Settings Reference: configuration/settings.md
+    - Model Resolution: configuration/model-resolution.md
+    - Event Logging: configuration/event-logging.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Session Pipeline: architecture/session-pipeline.md
+    - Provider System: architecture/provider-system.md
+  - Contributing: contributing.md

@@ -88,80 +88,44 @@ export class ErrorExplanationProvider implements vscode.CodeActionProvider {
   }
 
   /**
-   * Creates a CodeAction for explaining a diagnostic.
+   * Creates a CodeAction for a diagnostic with the given verb and command.
    *
    * The action title reflects the diagnostic severity (Error vs Warning).
-   * When selected, it triggers the sidekick.explainError command with the
-   * document URI and diagnostic as arguments.
+   * Pass document.uri (not document) for serialization.
    *
    * @param document - The text document containing the diagnostic
-   * @param diagnostic - The diagnostic to explain
-   * @returns CodeAction for explaining the diagnostic
+   * @param diagnostic - The diagnostic to act on
+   * @param verb - Action verb ("Explain" or "Fix")
+   * @param commandId - VS Code command to trigger
+   * @returns CodeAction for the diagnostic
    */
-  private createExplainAction(
+  private createAction(
     document: vscode.TextDocument,
-    diagnostic: vscode.Diagnostic
+    diagnostic: vscode.Diagnostic,
+    verb: string,
+    commandId: string
   ): vscode.CodeAction {
-    const isError = diagnostic.severity === vscode.DiagnosticSeverity.Error;
-    const title = isError
-      ? 'Explain Error with AI'
-      : 'Explain Warning with AI';
-
+    const severity = diagnostic.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
     const action = new vscode.CodeAction(
-      title,
+      `${verb} ${severity} with AI`,
       vscode.CodeActionKind.QuickFix
     );
 
-    // Set command to trigger - handler will be registered in extension.ts
-    // Pass document.uri (not document) for serialization
     action.command = {
-      command: 'sidekick.explainError',
-      title: 'Explain Error',
+      command: commandId,
+      title: `${verb} Error`,
       arguments: [document.uri, diagnostic],
     };
-
-    // Associate with diagnostic so VS Code knows this action addresses it
     action.diagnostics = [diagnostic];
 
     return action;
   }
 
-  /**
-   * Creates a CodeAction for fixing a diagnostic.
-   *
-   * The action title reflects the diagnostic severity (Error vs Warning).
-   * When selected, it triggers the sidekick.fixError command with the
-   * document URI and diagnostic as arguments.
-   *
-   * @param document - The text document containing the diagnostic
-   * @param diagnostic - The diagnostic to fix
-   * @returns CodeAction for fixing the diagnostic
-   */
-  private createFixAction(
-    document: vscode.TextDocument,
-    diagnostic: vscode.Diagnostic
-  ): vscode.CodeAction {
-    const isError = diagnostic.severity === vscode.DiagnosticSeverity.Error;
-    const title = isError
-      ? 'Fix Error with AI'
-      : 'Fix Warning with AI';
+  private createExplainAction(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction {
+    return this.createAction(document, diagnostic, 'Explain', 'sidekick.explainError');
+  }
 
-    const action = new vscode.CodeAction(
-      title,
-      vscode.CodeActionKind.QuickFix
-    );
-
-    // Set command to trigger - handler will be registered in extension.ts
-    // Pass document.uri (not document) for serialization
-    action.command = {
-      command: 'sidekick.fixError',
-      title: 'Fix Error',
-      arguments: [document.uri, diagnostic],
-    };
-
-    // Associate with diagnostic so VS Code knows this action addresses it
-    action.diagnostics = [diagnostic];
-
-    return action;
+  private createFixAction(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction {
+    return this.createAction(document, diagnostic, 'Fix', 'sidekick.fixError');
   }
 }

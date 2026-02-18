@@ -52,6 +52,9 @@ export class StatusBarManager implements vscode.Disposable {
   /** Currently configured model name */
   private currentModel: string = 'haiku';
 
+  /** Currently active inference provider display name */
+  private currentProvider: string = 'Claude';
+
   /** Error message when in error state */
   private errorMessage: string | undefined;
 
@@ -244,6 +247,16 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   /**
+   * Updates the current inference provider name displayed in status bar text.
+   *
+   * @param name - Provider display name (e.g., 'Claude', 'OpenCode', 'Codex')
+   */
+  setProvider(name: string): void {
+    this.currentProvider = name;
+    this.update();
+  }
+
+  /**
    * Gets the current connection state.
    *
    * @returns The current ConnectionState
@@ -265,8 +278,8 @@ export class StatusBarManager implements vscode.Disposable {
           this.statusBarItem.tooltip = `Press ${this._shortcut} for AI completion`;
           this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         } else {
-          this.statusBarItem.text = '$(sparkle) Sidekick';
-          this.statusBarItem.tooltip = `Sidekick (${this.currentModel}) · AI Complete: ${this._shortcut}`;
+          this.statusBarItem.text = `$(sparkle) Sidekick \u00B7 ${this.currentProvider}`;
+          this.statusBarItem.tooltip = `Sidekick (${this.currentProvider} \u00B7 ${this.currentModel}) \u00B7 AI Complete: ${this._shortcut}`;
           this.statusBarItem.backgroundColor = undefined;
         }
         break;

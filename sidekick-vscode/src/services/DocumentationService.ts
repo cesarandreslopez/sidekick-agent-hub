@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
+import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import {
   getDocGenerationSystemPrompt,
@@ -106,7 +107,7 @@ export class DocumentationService implements vscode.Disposable {
       log(`Generating documentation for ${language} code (${code.length} chars)`);
 
       const config = vscode.workspace.getConfiguration('sidekick');
-      const model = config.get<string>('docModel') ?? 'haiku';
+      const model = resolveModel(config.get<string>('docModel') ?? 'auto', this.authService.getProviderId(), 'docModel');
 
       const systemPrompt = getDocGenerationSystemPrompt(language);
       const userPrompt = getDocGenerationUserPrompt(code, language);
@@ -117,8 +118,9 @@ export class DocumentationService implements vscode.Disposable {
       const timeoutConfig = this.timeoutManager.getTimeoutConfig('documentation');
 
       // Execute with timeout management and retry support
+      const opLabel = `Generating documentation via ${this.authService.getProviderDisplayName()} · ${model}`;
       const timeoutResult = await this.timeoutManager.executeWithTimeout({
-        operation: 'Generating documentation',
+        operation: opLabel,
         task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
           model,
           maxTokens: 1024,
@@ -129,7 +131,7 @@ export class DocumentationService implements vscode.Disposable {
         showProgress: true,
         cancellable: true,
         onTimeout: (timeoutMs: number, contextKb: number) =>
-          this.timeoutManager.promptRetry('Generating documentation', timeoutMs, contextKb),
+          this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });
 
       if (!timeoutResult.success) {

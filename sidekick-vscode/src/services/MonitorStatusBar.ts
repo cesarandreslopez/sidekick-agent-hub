@@ -90,9 +90,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    * Resets state.
    */
   private handleSessionStart(): void {
-    this.totalTokens = 0;
-    this.contextPercent = 0;
-
+    this.syncFromMonitor();
     this.updateDisplay();
   }
 
@@ -114,6 +112,8 @@ export class MonitorStatusBar implements vscode.Disposable {
    * @param usage - Token usage event
    */
   private handleTokenUsage(usage: TokenUsage): void {
+    this.syncFromMonitor(usage);
+
     // Throttle updates
     const now = Date.now();
     if (now - this.lastUpdateTime < this.UPDATE_THROTTLE_MS) {
@@ -121,14 +121,28 @@ export class MonitorStatusBar implements vscode.Disposable {
     }
     this.lastUpdateTime = now;
 
-    // Update totals
-    this.totalTokens += usage.inputTokens + usage.outputTokens + usage.cacheWriteTokens + usage.cacheReadTokens;
-
-    // Calculate context % using actual context size from most recent message
-    const stats = this.monitor.getStats();
-    this.contextPercent = Math.round((stats.currentContextSize / 200000) * 100);
-
     this.updateDisplay();
+  }
+
+  /**
+   * Syncs display metrics from SessionMonitor stats.
+   *
+   * @param usageHint - Optional latest usage event to help with model fallback
+   */
+  private syncFromMonitor(usageHint?: TokenUsage): void {
+    const stats = this.monitor.getStats();
+    const provider = this.monitor.getProvider();
+
+    this.totalTokens = stats.totalInputTokens
+      + stats.totalOutputTokens
+      + stats.totalCacheWriteTokens
+      + stats.totalCacheReadTokens;
+
+    const modelId = stats.lastModelId ?? usageHint?.model;
+    const contextLimit = provider.getContextWindowLimit?.(modelId) ?? 200_000;
+    this.contextPercent = contextLimit > 0
+      ? Math.round((stats.currentContextSize / contextLimit) * 100)
+      : 0;
   }
 
   /**
@@ -155,10 +169,12 @@ export class MonitorStatusBar implements vscode.Disposable {
 
     // Build detailed tooltip
     const stats = this.monitor.getStats();
+    const provider = this.monitor.getProvider();
+    const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? 200_000;
     this.statusBarItem.tooltip = [
-      'Claude Code Session',
+      `${provider.displayName} Session`,
       `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,
-      `Context: ${this.contextPercent}% of 200K`,
+      `Context: ${this.contextPercent}% of ${this.formatTokenCount(contextLimit)}`,
       'Click to open dashboard'
     ].join('\n');
   }
@@ -168,7 +184,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   private updateNoSession(): void {
     this.statusBarItem.text = '$(pulse) --';
-    this.statusBarItem.tooltip = 'No Claude Code session';
+    this.statusBarItem.tooltip = 'No active session';
     this.statusBarItem.backgroundColor = undefined;
   }
 
@@ -179,15 +195,9 @@ export class MonitorStatusBar implements vscode.Disposable {
    * @returns Formatted string (e.g., "12.5K", "1.2M")
    */
   private formatTokenCount(tokens: number): string {
-    if (tokens === 0) {
-      return '0';
-    } else if (tokens < 1000) {
-      return tokens.toString();
-    } else if (tokens < 1_000_000) {
-      return `${(tokens / 1000).toFixed(1)}K`;
-    } else {
-      return `${(tokens / 1_000_000).toFixed(1)}M`;
-    }
+    if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+    if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`;
+    return tokens.toString();
   }
 
   /**

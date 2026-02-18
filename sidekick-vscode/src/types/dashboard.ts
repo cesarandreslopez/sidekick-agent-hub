@@ -15,6 +15,7 @@ import type {
   AdvancedBurnRateData,
   ToolEfficiencyData
 } from './sessionSummary';
+import type { DecisionEntryDisplay } from './decisionLog';
 
 /**
  * Session info for the session card navigator.
@@ -88,6 +89,7 @@ export type DashboardMessage =
   | { type: 'updateTimeline'; events: TimelineEventDisplay[] }
   | { type: 'sessionStart'; sessionPath: string }
   | { type: 'sessionEnd' }
+  | { type: 'updateSessionProvider'; providerId: 'claude-code' | 'opencode' | 'codex'; displayName: string }
   | { type: 'updateSessionList'; groups: SessionGroup[]; isPinned: boolean; isUsingCustomPath?: boolean; customPathDisplay?: string | null }
   | { type: 'discoveryModeChange'; inDiscoveryMode: boolean }
   | { type: 'updateQuota'; quota: QuotaState }
@@ -108,8 +110,11 @@ export type DashboardMessage =
   | { type: 'narrativeError'; error: string }
   | { type: 'updateCompactions'; compactions: CompactionEventDisplay[] }
   | { type: 'updateContextAttribution'; attribution: ContextAttributionDisplay[] }
+  | { type: 'sessionsLoading'; loading: boolean }
   | { type: 'notification'; title: string; body: string; severity: 'info' | 'warning' | 'error' }
-  | { type: 'toolCallDetails'; toolName: string; calls: ToolCallDetailDisplay[] };
+  | { type: 'toolCallDetails'; toolName: string; calls: ToolCallDetailDisplay[] }
+  | { type: 'syncEventLogState'; enabled: boolean }
+  | { type: 'updateDecisions'; decisions: DecisionEntryDisplay[]; totalCount: number };
 
 /**
  * Messages from webview to extension.
@@ -120,6 +125,7 @@ export type DashboardWebviewMessage =
   | { type: 'webviewReady' }
   | { type: 'requestStats' }
   | { type: 'selectSession'; sessionPath: string }
+  | { type: 'setSessionProvider'; providerId: 'claude-code' | 'opencode' | 'codex' }
   | { type: 'refreshSessions' }
   | { type: 'togglePin' }
   | { type: 'browseSessionFolders' }
@@ -131,11 +137,17 @@ export type DashboardWebviewMessage =
   | { type: 'analyzeSession' }
   | { type: 'copySuggestion'; text: string }
   | { type: 'openClaudeMd' }
+  | { type: 'openInstructionFile' }
   | { type: 'generateNarrative' }
   | { type: 'requestSessionSummary' }
   | { type: 'searchTimeline'; query: string }
   | { type: 'setTimelineFilter'; filters: TimelineFilterState }
-  | { type: 'requestToolCallDetails'; toolName: string };
+  | { type: 'requestToolCallDetails'; toolName: string }
+  | { type: 'toggleEventLog'; enabled: boolean }
+  | { type: 'requestDecisions' }
+  | { type: 'searchDecisions'; query: string }
+  | { type: 'clearDecisions' }
+  | { type: 'generateHandoff' };
 
 /**
  * Model usage breakdown entry.

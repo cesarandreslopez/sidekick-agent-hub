@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
+import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import type { InlineChatRequest, InlineChatResponse, InlineChatResult } from '../types/inlineChat';
 import {
@@ -48,7 +49,7 @@ export class InlineChatService {
 
     // Get configured model
     const config = vscode.workspace.getConfiguration('sidekick');
-    const model = config.get<string>('inlineChatModel') ?? 'sonnet';
+    const model = resolveModel(config.get<string>('inlineChatModel') ?? 'auto', this.authService.getProviderId(), 'inlineChatModel');
 
     // Build prompt
     const systemPrompt = getInlineChatSystemPrompt();
@@ -65,8 +66,9 @@ export class InlineChatService {
     const timeoutConfig = this.timeoutManager.getTimeoutConfig('inlineChat');
 
     // Execute with timeout management and retry support
+    const opLabel = `Processing query via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
-      operation: 'Processing query',
+      operation: opLabel,
       task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
         model,
         maxTokens: 2000,
@@ -77,7 +79,7 @@ export class InlineChatService {
       showProgress: true,
       cancellable: true,
       onTimeout: (timeoutMs: number, contextKb: number) =>
-        this.timeoutManager.promptRetry('Processing query', timeoutMs, contextKb),
+        this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
     });
 
     if (!result.success) {

@@ -145,6 +145,12 @@ export interface AllTimeStats {
   /** Last date with recorded data (YYYY-MM-DD) */
   lastDate: string;
 
+  /** Model usage breakdown */
+  modelUsage: ModelUsageRecord[];
+
+  /** Tool usage breakdown */
+  toolUsage: ToolUsageRecord[];
+
   /** ISO timestamp of last update */
   updatedAt: string;
 }
@@ -234,6 +240,8 @@ export function createEmptyDataStore(): HistoricalDataStore {
       sessionCount: 0,
       firstDate: '',
       lastDate: '',
+      modelUsage: [],
+      toolUsage: [],
       updatedAt: now,
     },
     lastSaved: now,

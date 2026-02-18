@@ -10,9 +10,9 @@
  */
 
 import * as vscode from 'vscode';
-import Anthropic from '@anthropic-ai/sdk';
 import { GitService } from './GitService';
 import { AuthService } from './AuthService';
+import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
@@ -129,7 +129,7 @@ export class CommitMessageService implements vscode.Disposable {
       // Read user's preferences
       const config = vscode.workspace.getConfiguration('sidekick');
       const style = config.get<'conventional' | 'simple'>('commitMessageStyle') ?? 'conventional';
-      const model = config.get<'haiku' | 'sonnet' | 'opus'>('commitMessageModel') ?? 'sonnet';
+      const model = resolveModel(config.get<string>('commitMessageModel') ?? 'auto', this.authService.getProviderId(), 'commitMessageModel');
       const defaultGuidance = config.get<string>('commitMessageGuidance') ?? '';
 
       // Combine default guidance with user-provided guidance
@@ -149,9 +149,10 @@ export class CommitMessageService implements vscode.Disposable {
       const contextSize = new TextEncoder().encode(fullPrompt).length;
       const timeoutConfig = this.timeoutManager.getTimeoutConfig('commitMessage');
 
-      // Call Claude API via AuthService with timeout management
+      // Call API via AuthService with timeout management
+      const opLabel = `Generating commit message via ${this.authService.getProviderDisplayName()} · ${model}`;
       const result = await this.timeoutManager.executeWithTimeout({
-        operation: 'Generating commit message',
+        operation: opLabel,
         task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
           model,
           maxTokens: 100,
@@ -162,7 +163,7 @@ export class CommitMessageService implements vscode.Disposable {
         showProgress: true,
         cancellable: true,
         onTimeout: (timeoutMs: number, contextKb: number) =>
-          this.timeoutManager.promptRetry('Generating commit message', timeoutMs, contextKb),
+          this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });
 
       if (!result.success) {
@@ -205,35 +206,25 @@ export class CommitMessageService implements vscode.Disposable {
       logError('CommitMessageService: Generation failed', error);
 
       // Distinguish error types for better user feedback
-      if (error instanceof Anthropic.RateLimitError) {
-        return {
-          message: null,
-          error: 'API rate limit exceeded. Please try again in a moment.',
-        };
-      } else if (error instanceof Anthropic.AuthenticationError) {
-        return {
-          message: null,
-          error: 'Authentication failed. Check your API key or Claude Code CLI setup.',
-        };
-      } else if (error instanceof Anthropic.InternalServerError) {
-        return {
-          message: null,
-          error: 'Claude API is experiencing issues. Please try again.',
-        };
-      } else if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          return { message: null }; // User cancelled
-        }
-        return {
-          message: null,
-          error: error.message,
-        };
+      if (error instanceof Error && error.name === 'AbortError') {
+        return { message: null };
       }
 
-      return {
-        message: null,
-        error: 'An unexpected error occurred.',
-      };
+      let errorMessage: string;
+      const msg = error instanceof Error ? error.message : '';
+      if (/rate.?limit/i.test(msg) || (error instanceof Error && error.name === 'RateLimitError')) {
+        errorMessage = 'API rate limit exceeded. Please try again in a moment.';
+      } else if (/auth/i.test(msg) || (error instanceof Error && error.name === 'AuthenticationError')) {
+        errorMessage = 'Authentication failed. Check your API key or provider setup.';
+      } else if (/internal.?server/i.test(msg) || (error instanceof Error && error.name === 'InternalServerError')) {
+        errorMessage = 'The AI provider is experiencing issues. Please try again.';
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      } else {
+        errorMessage = 'An unexpected error occurred.';
+      }
+
+      return { message: null, error: errorMessage };
     }
   }
 

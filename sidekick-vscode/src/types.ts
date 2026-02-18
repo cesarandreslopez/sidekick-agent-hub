@@ -7,13 +7,16 @@
  * @module types
  */
 
+import type { InferenceProviderId } from './types/inferenceProvider';
+
 /**
  * Authentication mode for connecting to Claude API.
- *
- * - 'api-key': Direct API key authentication via @anthropic-ai/sdk
- * - 'max-subscription': Use Claude Max subscription via @anthropic-ai/claude-agent-sdk
+ * @deprecated Use `InferenceProviderId` / `sidekick.inferenceProvider` instead.
  */
 export type AuthMode = 'api-key' | 'max-subscription';
+
+/** Alias — prefer using InferenceProviderId directly. */
+export type InferenceProvider = InferenceProviderId;
 
 /**
  * Options for completion requests.
@@ -21,7 +24,9 @@ export type AuthMode = 'api-key' | 'max-subscription';
 export interface CompletionOptions {
   /**
    * Model to use for completion.
-   * Accepts shorthand names: 'haiku', 'sonnet', 'opus'
+   * Accepts a tier ('fast', 'balanced', 'powerful'), a legacy name ('haiku',
+   * 'sonnet', 'opus'), or a full model ID. Consumers should resolve via
+   * `resolveModel()` before passing to the client.
    */
   model?: string;
 
@@ -103,3 +108,6 @@ export interface ClaudeClient {
    */
   dispose(): void;
 }
+
+/** Alias — ClaudeClient is the canonical name but InferenceClient is more accurate now. */
+export type InferenceClient = ClaudeClient;

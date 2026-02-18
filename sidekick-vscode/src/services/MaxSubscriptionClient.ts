@@ -36,32 +36,30 @@ function getWorkingDirectory(): string {
  */
 function getCommonClaudePaths(): string[] {
   const homeDir = os.homedir();
-  const isWindows = process.platform === 'win32';
+  const platform = process.platform;
+  const isWindows = platform === 'win32';
   const ext = isWindows ? '.cmd' : '';
 
-  const isMac = process.platform === 'darwin';
-  const isLinux = process.platform === 'linux';
+  const platformPaths: string[] = [];
+
+  // Native Claude Code installer paths (platform-specific) - check first as preferred
+  if (platform === 'linux') {
+    platformPaths.push(path.join(homeDir, '.local', 'bin', 'claude'));
+  } else if (platform === 'darwin') {
+    platformPaths.push('/usr/local/bin/claude');
+    platformPaths.push(path.join(homeDir, '.claude', 'local', 'claude'));
+  } else if (isWindows) {
+    platformPaths.push(path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Claude', 'claude.exe'));
+    platformPaths.push(path.join(process.env.LOCALAPPDATA || '', 'Claude', 'claude.exe'));
+  }
 
   return [
-    // Native Claude Code installer paths (platform-specific) - check first as preferred
-    ...(isLinux ? [
-      path.join(homeDir, '.local', 'bin', 'claude'),
-    ] : []),
-    ...(isMac ? [
-      '/usr/local/bin/claude',
-      path.join(homeDir, '.claude', 'local', 'claude'),
-    ] : []),
-    ...(isWindows ? [
-      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Claude', 'claude.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'Claude', 'claude.exe'),
-    ] : []),
-    // npm global (standard)
+    ...platformPaths,
+    // npm global
     path.join(homeDir, '.npm-global', 'bin', `claude${ext}`),
-    // npm global (alternative)
     path.join(homeDir, 'npm-global', 'bin', `claude${ext}`),
     // pnpm global
     path.join(homeDir, '.local', 'share', 'pnpm', `claude${ext}`),
-    // pnpm alternative location
     path.join(homeDir, 'Library', 'pnpm', `claude${ext}`),
     // yarn global
     path.join(homeDir, '.yarn', 'bin', `claude${ext}`),
@@ -69,13 +67,13 @@ function getCommonClaudePaths(): string[] {
     path.join(homeDir, '.volta', 'bin', `claude${ext}`),
     // nvm (common node versions)
     path.join(homeDir, '.nvm', 'versions', 'node', '**', 'bin', `claude${ext}`),
-    // Linux/macOS system paths
-    `/usr/local/bin/claude`,
-    `/usr/bin/claude`,
+    // System paths
+    '/usr/local/bin/claude',
+    '/usr/bin/claude',
     // macOS Homebrew
     '/opt/homebrew/bin/claude',
     '/usr/local/opt/node/bin/claude',
-    // Windows npm global
+    // Windows npm/pnpm global
     ...(isWindows ? [
       path.join(process.env.APPDATA || '', 'npm', 'claude.cmd'),
       path.join(process.env.LOCALAPPDATA || '', 'pnpm', 'claude.cmd'),
@@ -390,22 +388,15 @@ export class MaxSubscriptionClient implements ClaudeClient {
   /**
    * Maps shorthand model names for the Claude agent SDK.
    *
-   * The agent SDK uses simple names: 'haiku', 'sonnet', 'opus'
+   * The agent SDK uses simple names: 'haiku', 'sonnet', 'opus'.
+   * Unknown models default to 'haiku'.
    *
    * @param model - Shorthand model name or undefined
    * @returns Model name for agent SDK
    */
   private mapModel(model?: string): string {
-    switch (model) {
-      case 'haiku':
-        return 'haiku';
-      case 'sonnet':
-        return 'sonnet';
-      case 'opus':
-        return 'opus';
-      default:
-        return 'haiku';
-    }
+    const validModels = ['haiku', 'sonnet', 'opus'];
+    return model && validModels.includes(model) ? model : 'haiku';
   }
 
   /**

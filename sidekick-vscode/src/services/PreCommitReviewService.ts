@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { GitService } from './GitService';
 import { AuthService } from './AuthService';
+import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
@@ -104,7 +105,7 @@ export class PreCommitReviewService implements vscode.Disposable {
 
       // Get model preference
       const config = vscode.workspace.getConfiguration('sidekick');
-      const model = config.get<'haiku' | 'sonnet' | 'opus'>('reviewModel') ?? 'sonnet';
+      const model = resolveModel(config.get<string>('reviewModel') ?? 'auto', this.authService.getProviderId(), 'reviewModel');
 
       log(`PreCommitReviewService: Calling Claude (model: ${model})`);
 
@@ -113,8 +114,9 @@ export class PreCommitReviewService implements vscode.Disposable {
       const contextSize = new TextEncoder().encode(prompt).length;
       const timeoutConfig = this.timeoutManager.getTimeoutConfig('review');
 
+      const opLabel = `Reviewing changes via ${this.authService.getProviderDisplayName()} · ${model}`;
       const result = await this.timeoutManager.executeWithTimeout({
-        operation: 'Reviewing changes',
+        operation: opLabel,
         task: (signal: AbortSignal) => this.authService.complete(prompt, {
           model,
           maxTokens: 2000,
@@ -125,7 +127,7 @@ export class PreCommitReviewService implements vscode.Disposable {
         showProgress: true,
         cancellable: true,
         onTimeout: (timeoutMs: number, contextKb: number) =>
-          this.timeoutManager.promptRetry('Reviewing changes', timeoutMs, contextKb),
+          this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });
 
       if (!result.success) {

@@ -19,13 +19,16 @@ out/extension.test.js.map
 
 # Dependencies and build artifacts
 node_modules/**
-!node_modules/@anthropic-ai/**
 dist/**
 
 # Other
 *.vsix
 .npm
 *.tsbuildinfo
+
+# Documentation site (not part of extension)
+../docs/**
+../mkdocs.yml
 
 # Keep these for marketplace
 # README.md - Main extension documentation

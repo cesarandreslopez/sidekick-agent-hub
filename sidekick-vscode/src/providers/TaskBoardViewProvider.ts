@@ -9,7 +9,9 @@
 
 import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
+import type { TaskPersistenceService } from '../services/TaskPersistenceService';
 import type { TaskStatus, TrackedTask } from '../types/claudeSession';
+import type { PersistedTask } from '../types/taskPersistence';
 import type { TaskBoardState, TaskBoardMessage, WebviewTaskBoardMessage, TaskBoardColumn, TaskCard } from '../types/taskBoard';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
@@ -41,12 +43,22 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     deleted: 'Archived'
   };
 
+  /** Cached persisted tasks loaded from disk */
+  private _persistedTasks: PersistedTask[] = [];
+
+  /** Timestamp of last auto-persistence write */
+  private _lastPersistTime = 0;
+
+  /** Minimum interval between auto-persistence writes (ms) */
+  private readonly _PERSIST_INTERVAL_MS = 30_000;
+
   /**
    * Creates a new TaskBoardViewProvider.
    */
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _sessionMonitor: SessionMonitor
+    private readonly _sessionMonitor: SessionMonitor,
+    private readonly _taskPersistence?: TaskPersistenceService
   ) {
     this._state = {
       columns: TaskBoardViewProvider.COLUMN_ORDER.map(status => ({
@@ -57,7 +69,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       sessionActive: false,
       lastUpdated: new Date().toISOString(),
       totalTasks: 0,
-      activeTaskId: null
+      activeTaskId: null,
+      carriedOverCount: 0
     };
 
     this._disposables.push(
@@ -73,6 +86,10 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     );
 
     if (this._sessionMonitor.isActive()) {
+      this._syncFromSessionMonitor();
+    } else if (this._taskPersistence) {
+      // No active session but we have persistence — show carried-over tasks
+      this._persistedTasks = this._taskPersistence.loadPersistedTasks();
       this._syncFromSessionMonitor();
     }
 
@@ -122,6 +139,10 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
    * Disposes of provider resources.
    */
   dispose(): void {
+    // Save current tasks to persistence if session is active
+    if (this._taskPersistence && this._sessionMonitor.isActive()) {
+      this._saveCurrentTasksToPersistence();
+    }
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
   }
@@ -140,6 +161,24 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         this._syncFromSessionMonitor();
         this._sendStateToWebview();
         break;
+
+      case 'clearCompleted':
+        if (this._taskPersistence) {
+          this._taskPersistence.clearCompleted();
+          this._persistedTasks = this._taskPersistence.loadPersistedTasks();
+          this._syncFromSessionMonitor();
+          this._sendStateToWebview();
+        }
+        break;
+
+      case 'archiveAll':
+        if (this._taskPersistence) {
+          this._taskPersistence.archiveAll();
+          this._persistedTasks = this._taskPersistence.loadPersistedTasks();
+          this._syncFromSessionMonitor();
+          this._sendStateToWebview();
+        }
+        break;
     }
   }
 
@@ -149,6 +188,18 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   private _updateBoard(): void {
     this._syncFromSessionMonitor();
     this._sendStateToWebview();
+    this._maybePersistTasks();
+  }
+
+  /**
+   * Debounced auto-persistence during active sessions.
+   * Writes current tasks to disk at most once per PERSIST_INTERVAL_MS.
+   */
+  private _maybePersistTasks(): void {
+    if (!this._taskPersistence || !this._sessionMonitor.isActive()) return;
+    if (Date.now() - this._lastPersistTime < this._PERSIST_INTERVAL_MS) return;
+    this._lastPersistTime = Date.now();
+    this._saveCurrentTasksToPersistence();
   }
 
   /**
@@ -157,6 +208,12 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   private _handleSessionStart(sessionPath: string): void {
     log(`Task board: session started at ${sessionPath}`);
     this._state.sessionActive = true;
+
+    // Load persisted tasks for merging with new session
+    if (this._taskPersistence) {
+      this._persistedTasks = this._taskPersistence.loadPersistedTasks();
+    }
+
     this._syncFromSessionMonitor();
     this._postMessage({ type: 'sessionStart', sessionPath });
     this._sendStateToWebview();
@@ -167,13 +224,23 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _handleSessionEnd(): void {
     log('Task board: session ended');
+
+    // Save current tasks to persistence before ending
+    this._saveCurrentTasksToPersistence();
+
     this._state.sessionActive = false;
     this._postMessage({ type: 'sessionEnd' });
+
+    // Reload persisted tasks so board shows them post-session
+    if (this._taskPersistence) {
+      this._persistedTasks = this._taskPersistence.loadPersistedTasks();
+    }
+    this._syncFromSessionMonitor();
     this._sendStateToWebview();
   }
 
   /**
-   * Syncs state from SessionMonitor.
+   * Syncs state from SessionMonitor, merging in persisted tasks.
    */
   private _syncFromSessionMonitor(): void {
     const stats = this._sessionMonitor.getStats();
@@ -191,27 +258,53 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       columns.map(column => [column.status, column])
     );
 
+    // Add current session tasks
+    const currentTaskIds = new Set<string>();
     for (const task of tasks.values()) {
       const status = task.status ?? 'pending';
       if (status === 'deleted') {
         continue;
       }
+      currentTaskIds.add(task.taskId);
       const column = columnLookup.get(status) ?? columnLookup.get('pending');
       if (column) {
         column.tasks.push(this._toCard(task, activeTaskId));
       }
     }
 
-    for (const column of columns) {
-      column.tasks.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    // Merge persisted tasks not in the current session
+    let carriedOverCount = 0;
+    for (const persisted of this._persistedTasks) {
+      if (currentTaskIds.has(persisted.taskId)) {
+        continue;
+      }
+      const status = persisted.status === 'deleted' ? 'pending' : persisted.status;
+      const column = columnLookup.get(status) ?? columnLookup.get('pending');
+      if (column) {
+        column.tasks.push(this._persistedToCard(persisted));
+        carriedOverCount++;
+      }
     }
+
+    // Sort: current session tasks first, then carried-over, both by updatedAt desc
+    for (const column of columns) {
+      column.tasks.sort((a, b) => {
+        if (a.carriedOver !== b.carriedOver) {
+          return a.carriedOver ? 1 : -1;
+        }
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      });
+    }
+
+    const totalTasks = tasks.size + carriedOverCount;
 
     this._state = {
       columns,
       sessionActive: this._sessionMonitor.isActive(),
       lastUpdated: new Date().toISOString(),
-      totalTasks: tasks.size,
-      activeTaskId
+      totalTasks,
+      activeTaskId,
+      carriedOverCount
     };
   }
 
@@ -234,6 +327,58 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       isSubagent: task.isSubagent,
       subagentType: task.subagentType
     };
+  }
+
+  /**
+   * Converts a persisted task to a display card.
+   */
+  private _persistedToCard(task: PersistedTask): TaskCard {
+    const displayId = task.sessionOrigin
+      ? `${task.sessionOrigin.slice(0, 8)}:${task.taskId}`
+      : task.taskId;
+
+    return {
+      taskId: displayId,
+      subject: task.subject,
+      description: task.description,
+      status: task.status,
+      activeForm: task.activeForm,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      toolCallCount: task.toolCallCount,
+      blockedBy: task.blockedBy,
+      blocks: task.blocks,
+      isActive: false,
+      isSubagent: task.isSubagent,
+      subagentType: task.subagentType,
+      carriedOver: true,
+      sessionOrigin: task.sessionOrigin,
+      sessionAge: task.sessionAge,
+      tags: task.tags,
+    };
+  }
+
+  /**
+   * Saves current session tasks to the persistence service.
+   */
+  private _saveCurrentTasksToPersistence(): void {
+    if (!this._taskPersistence) {
+      return;
+    }
+
+    const sessionPath = this._sessionMonitor.getSessionPath();
+    if (!sessionPath) {
+      return;
+    }
+
+    const sessionId = this._sessionMonitor.getProvider().getSessionId(sessionPath);
+    const stats = this._sessionMonitor.getStats();
+    const taskState = stats.taskState;
+
+    if (taskState) {
+      this._taskPersistence.saveSessionTasks(sessionId, taskState);
+      log(`Task board: persisted tasks for session ${sessionId.slice(0, 8)}`);
+    }
   }
 
   /**
@@ -451,6 +596,17 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       box-shadow: 0 0 0 1px var(--vscode-focusBorder);
     }
 
+    .card.carried-over {
+      opacity: 0.85;
+      border-left: 3px solid var(--vscode-editorWarning-foreground, #cca700);
+    }
+
+    .chip.carried-over {
+      background: var(--vscode-editorWarning-foreground, #cca700);
+      color: var(--vscode-editor-background);
+      font-size: 9px;
+    }
+
     .card.subagent {
       border-left: 3px solid var(--vscode-terminal-ansiCyan, #4ec9b0);
     }
@@ -542,6 +698,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     <span id="status" class="status">Idle</span>
     <div class="header-actions">
       <span id="summary" class="summary"></span>
+      <button id="clearDone" class="icon-button" disabled>Clear Done</button>
+      <button id="archiveAll" class="icon-button" disabled>Archive All</button>
       <button id="refresh" class="icon-button">Refresh</button>
     </div>
   </div>
@@ -557,6 +715,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     const statusEl = document.getElementById('status');
     const summaryEl = document.getElementById('summary');
     const refreshBtn = document.getElementById('refresh');
+    const clearDoneBtn = document.getElementById('clearDone');
+    const archiveAllBtn = document.getElementById('archiveAll');
 
     const COLUMN_ORDER = ['pending', 'in_progress', 'completed'];
 
@@ -575,14 +735,22 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
       const allCards = (state.columns || []).flatMap(function(c) { return c.tasks || []; });
       const agentCount = allCards.filter(function(t) { return t.isSubagent; }).length;
+      const carriedCount = state.carriedOverCount || 0;
       const taskCount = state.totalTasks - agentCount;
       const parts = [];
       if (taskCount > 0) parts.push(taskCount + ' task' + (taskCount === 1 ? '' : 's'));
       if (agentCount > 0) parts.push(agentCount + ' agent' + (agentCount === 1 ? '' : 's'));
       if (parts.length === 0) parts.push('0 tasks');
+      if (carriedCount > 0) parts.push(carriedCount + ' carried over');
       summaryEl.textContent = parts.join(', ')
         + ' · Updated '
         + formatTime(state.lastUpdated);
+
+      // Update button states
+      const hasCompleted = allCards.some(function(t) { return t.status === 'completed' && t.carriedOver; });
+      const hasCarried = carriedCount > 0;
+      clearDoneBtn.disabled = !hasCompleted;
+      archiveAllBtn.disabled = !hasCarried;
 
       boardEl.innerHTML = '';
 
@@ -666,6 +834,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       const classes = ['card'];
       if (task.isActive) classes.push('active');
       if (task.isSubagent) classes.push('subagent');
+      if (task.carriedOver) classes.push('carried-over');
       card.className = classes.join(' ');
 
       const title = document.createElement('div');
@@ -684,6 +853,14 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
           + formatTime(task.updatedAt);
       }
       card.appendChild(meta);
+
+      if (task.carriedOver) {
+        const badge = document.createElement('span');
+        badge.className = 'chip carried-over';
+        var age = task.sessionAge || 0;
+        badge.textContent = age <= 1 ? 'from last session' : 'from ' + age + ' sessions ago';
+        card.appendChild(badge);
+      }
 
       if (task.isSubagent && task.subagentType) {
         const typeChip = document.createElement('span');
@@ -755,6 +932,14 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     refreshBtn.addEventListener('click', () => {
       vscode.postMessage({ type: 'requestBoard' });
+    });
+
+    clearDoneBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'clearCompleted' });
+    });
+
+    archiveAllBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'archiveAll' });
     });
 
     boardEl.addEventListener('click', event => {

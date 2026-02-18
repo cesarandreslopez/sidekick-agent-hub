@@ -157,13 +157,30 @@ export class HistoricalDataService implements vscode.Disposable {
   }
 
   /**
+   * Accumulates tokens, cost, message count, and usage from a summary into a bucket.
+   */
+  private accumulateSummary(
+    bucket: { tokens: TokenTotals; totalCost: number; messageCount: number; sessionCount: number; modelUsage: ModelUsageRecord[]; toolUsage: ToolUsageRecord[]; updatedAt: string },
+    summary: SessionSummary
+  ): void {
+    bucket.tokens.inputTokens += summary.tokens.inputTokens;
+    bucket.tokens.outputTokens += summary.tokens.outputTokens;
+    bucket.tokens.cacheWriteTokens += summary.tokens.cacheWriteTokens;
+    bucket.tokens.cacheReadTokens += summary.tokens.cacheReadTokens;
+    bucket.totalCost += summary.totalCost;
+    bucket.messageCount += summary.messageCount;
+    bucket.sessionCount += 1;
+    bucket.modelUsage = this.mergeModelUsage(bucket.modelUsage, summary.modelUsage);
+    bucket.toolUsage = this.mergeToolUsage(bucket.toolUsage, summary.toolUsage);
+    bucket.updatedAt = new Date().toISOString();
+  }
+
+  /**
    * Updates daily data with a session summary.
    */
   private updateDailyData(date: string, summary: SessionSummary): void {
-    let daily = this.store.daily[date];
-
-    if (!daily) {
-      daily = {
+    if (!this.store.daily[date]) {
+      this.store.daily[date] = {
         date,
         tokens: createEmptyTokenTotals(),
         totalCost: 0,
@@ -173,37 +190,17 @@ export class HistoricalDataService implements vscode.Disposable {
         toolUsage: [],
         updatedAt: new Date().toISOString(),
       };
-      this.store.daily[date] = daily;
     }
 
-    // Add tokens
-    daily.tokens.inputTokens += summary.tokens.inputTokens;
-    daily.tokens.outputTokens += summary.tokens.outputTokens;
-    daily.tokens.cacheWriteTokens += summary.tokens.cacheWriteTokens;
-    daily.tokens.cacheReadTokens += summary.tokens.cacheReadTokens;
-
-    // Add totals
-    daily.totalCost += summary.totalCost;
-    daily.messageCount += summary.messageCount;
-    daily.sessionCount += 1;
-
-    // Merge model usage
-    daily.modelUsage = this.mergeModelUsage(daily.modelUsage, summary.modelUsage);
-
-    // Merge tool usage
-    daily.toolUsage = this.mergeToolUsage(daily.toolUsage, summary.toolUsage);
-
-    daily.updatedAt = new Date().toISOString();
+    this.accumulateSummary(this.store.daily[date], summary);
   }
 
   /**
    * Updates monthly data with a session summary.
    */
   private updateMonthlyData(month: string, summary: SessionSummary): void {
-    let monthly = this.store.monthly[month];
-
-    if (!monthly) {
-      monthly = {
+    if (!this.store.monthly[month]) {
+      this.store.monthly[month] = {
         month,
         tokens: createEmptyTokenTotals(),
         totalCost: 0,
@@ -213,27 +210,9 @@ export class HistoricalDataService implements vscode.Disposable {
         toolUsage: [],
         updatedAt: new Date().toISOString(),
       };
-      this.store.monthly[month] = monthly;
     }
 
-    // Add tokens
-    monthly.tokens.inputTokens += summary.tokens.inputTokens;
-    monthly.tokens.outputTokens += summary.tokens.outputTokens;
-    monthly.tokens.cacheWriteTokens += summary.tokens.cacheWriteTokens;
-    monthly.tokens.cacheReadTokens += summary.tokens.cacheReadTokens;
-
-    // Add totals
-    monthly.totalCost += summary.totalCost;
-    monthly.messageCount += summary.messageCount;
-    monthly.sessionCount += 1;
-
-    // Merge model usage
-    monthly.modelUsage = this.mergeModelUsage(monthly.modelUsage, summary.modelUsage);
-
-    // Merge tool usage
-    monthly.toolUsage = this.mergeToolUsage(monthly.toolUsage, summary.toolUsage);
-
-    monthly.updatedAt = new Date().toISOString();
+    this.accumulateSummary(this.store.monthly[month], summary);
   }
 
   /**
@@ -242,16 +221,7 @@ export class HistoricalDataService implements vscode.Disposable {
   private updateAllTimeStats(date: string, summary: SessionSummary): void {
     const allTime = this.store.allTime;
 
-    // Add tokens
-    allTime.tokens.inputTokens += summary.tokens.inputTokens;
-    allTime.tokens.outputTokens += summary.tokens.outputTokens;
-    allTime.tokens.cacheWriteTokens += summary.tokens.cacheWriteTokens;
-    allTime.tokens.cacheReadTokens += summary.tokens.cacheReadTokens;
-
-    // Add totals
-    allTime.totalCost += summary.totalCost;
-    allTime.messageCount += summary.messageCount;
-    allTime.sessionCount += 1;
+    this.accumulateSummary(allTime, summary);
 
     // Update date range
     if (!allTime.firstDate || date < allTime.firstDate) {
@@ -260,8 +230,6 @@ export class HistoricalDataService implements vscode.Disposable {
     if (!allTime.lastDate || date > allTime.lastDate) {
       allTime.lastDate = date;
     }
-
-    allTime.updatedAt = new Date().toISOString();
   }
 
   /**

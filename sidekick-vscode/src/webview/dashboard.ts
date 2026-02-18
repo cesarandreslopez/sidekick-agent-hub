@@ -499,10 +499,17 @@ function copySuggestion(index: number): void {
 }
 
 /**
- * Opens the project's CLAUDE.md file.
+ * Opens the project's instruction file (CLAUDE.md or AGENTS.md).
+ */
+function openInstructionFile(): void {
+  vscode.postMessage({ type: 'openInstructionFile' });
+}
+
+/**
+ * @deprecated Use openInstructionFile instead.
  */
 function openClaudeMd(): void {
-  vscode.postMessage({ type: 'openClaudeMd' });
+  openInstructionFile();
 }
 
 /**
@@ -572,7 +579,7 @@ function renderSuggestions(suggestions: ClaudeMdSuggestion[]): void {
 
   content.innerHTML = html + `
     <div class="suggestions-footer">
-      <button class="open-claude-md-btn" onclick="openClaudeMd()">Open CLAUDE.md</button>
+      <button class="open-claude-md-btn" onclick="openInstructionFile()">Open Instruction File</button>
     </div>
   `;
 }
@@ -580,6 +587,7 @@ function renderSuggestions(suggestions: ClaudeMdSuggestion[]): void {
 // Expose functions to window for onclick handlers
 (window as unknown as Record<string, unknown>).copySuggestion = copySuggestion;
 (window as unknown as Record<string, unknown>).openClaudeMd = openClaudeMd;
+(window as unknown as Record<string, unknown>).openInstructionFile = openInstructionFile;
 (window as unknown as Record<string, unknown>).requestAnalysis = requestAnalysis;
 
 /**

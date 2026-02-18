@@ -158,7 +158,9 @@ export class ModelPricingService {
     const parsed = this.parseModelId(modelId);
 
     if (!parsed) {
-      console.warn(`[ModelPricingService] Unknown model "${modelId}", using sonnet-4.5 pricing`);
+      // Non-Claude models (GPT, Gemini, etc.) are expected in OpenCode sessions.
+      // Callers should check parseModelId() first and only call getPricing()
+      // for known Claude models.
       return this.PRICING_TABLE['sonnet-4.5'];
     }
 

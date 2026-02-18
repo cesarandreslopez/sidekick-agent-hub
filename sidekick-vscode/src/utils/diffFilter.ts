@@ -128,36 +128,16 @@ export function filterDiff(diff: string, options?: FilterOptions): string {
 
     const filepath = filepathMatch[1];
 
-    // Check for binary file indicator
-    if (opts.excludeBinary && section.includes('Binary files')) {
-      continue; // Exclude this section
+    // Check exclusion rules
+    const isBinaryContent = opts.excludeBinary && section.includes('Binary files');
+    const isBinaryExt = opts.excludeBinary && BINARY_EXTENSIONS.some(ext => filepath.endsWith(ext));
+    const isLockfile = opts.excludeLockfiles && LOCKFILE_PATTERNS.some(pattern => pattern.test(filepath));
+    const isGenerated = opts.excludeGenerated && GENERATED_PATTERNS.some(pattern => pattern.test(filepath));
+
+    if (isBinaryContent || isBinaryExt || isLockfile || isGenerated) {
+      continue;
     }
 
-    // Check for binary extension
-    if (opts.excludeBinary) {
-      const hasBinaryExt = BINARY_EXTENSIONS.some(ext => filepath.endsWith(ext));
-      if (hasBinaryExt) {
-        continue; // Exclude this section
-      }
-    }
-
-    // Check for lockfile
-    if (opts.excludeLockfiles) {
-      const isLockfile = LOCKFILE_PATTERNS.some(pattern => pattern.test(filepath));
-      if (isLockfile) {
-        continue; // Exclude this section
-      }
-    }
-
-    // Check for generated code
-    if (opts.excludeGenerated) {
-      const isGenerated = GENERATED_PATTERNS.some(pattern => pattern.test(filepath));
-      if (isGenerated) {
-        continue; // Exclude this section
-      }
-    }
-
-    // Section passed all filters, include it
     filteredSections.push(section);
   }
 

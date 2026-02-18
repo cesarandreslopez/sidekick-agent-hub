@@ -9,8 +9,9 @@
 
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
+import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
-import type { ContentType, ComplexityLevel } from '../types/rsvp';
+import type { ContentType, ComplexityLevel } from '../types/explain';
 
 /**
  * ExplanationService - Adaptive explanation generation.
@@ -53,7 +54,7 @@ export class ExplanationService {
   ): Promise<string> {
     // Read model from configuration (default: sonnet)
     const config = vscode.workspace.getConfiguration('sidekick');
-    const model = config.get<string>('explanationModel') ?? 'sonnet';
+    const model = resolveModel(config.get<string>('explanationModel') ?? 'auto', this.authService.getProviderId(), 'explanationModel');
 
     // Build adaptive prompt
     const prompt = this.buildPrompt(text, contentType, complexity, fileContext, extraInstructions);
@@ -63,8 +64,9 @@ export class ExplanationService {
     const timeoutConfig = this.timeoutManager.getTimeoutConfig('explanation');
 
     // Execute with timeout management and retry support
+    const opLabel = `Generating explanation via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
-      operation: 'Generating explanation',
+      operation: opLabel,
       task: (signal: AbortSignal) => this.authService.complete(prompt, {
         model,
         maxTokens: 2000,
@@ -75,7 +77,7 @@ export class ExplanationService {
       showProgress: true,
       cancellable: true,
       onTimeout: (timeoutMs: number, contextKb: number) =>
-        this.timeoutManager.promptRetry('Generating explanation', timeoutMs, contextKb),
+        this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
     });
 
     if (result.success && result.result !== undefined) {
@@ -129,9 +131,7 @@ Content to explain:
 ${text}
 </content>
 
-Provide a clear, concise explanation appropriate for the audience level. Focus on helping them understand before they speed-read through it.
-
-IMPORTANT: Output plain text only. Do NOT use any markdown formatting (no **bold**, *italics*, # headers, - bullets, [links], or code blocks). The output will be displayed word-by-word in a speed reader where markdown syntax would appear as literal characters.`;
+Provide a clear, concise explanation appropriate for the audience level. Use markdown formatting for readability.`;
   }
 
   /**

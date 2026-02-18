@@ -10,6 +10,7 @@
 import * as vscode from 'vscode';
 import { GitService } from './GitService';
 import { AuthService } from './AuthService';
+import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
@@ -109,7 +110,7 @@ export class PrDescriptionService implements vscode.Disposable {
 
       // Get model preference
       const config = vscode.workspace.getConfiguration('sidekick');
-      const model = config.get<'haiku' | 'sonnet' | 'opus'>('prDescriptionModel') ?? 'sonnet';
+      const model = resolveModel(config.get<string>('prDescriptionModel') ?? 'auto', this.authService.getProviderId(), 'prDescriptionModel');
 
       log(`PrDescriptionService: Calling Claude (model: ${model})`);
 
@@ -118,8 +119,9 @@ export class PrDescriptionService implements vscode.Disposable {
       const contextSize = new TextEncoder().encode(prompt).length;
       const timeoutConfig = this.timeoutManager.getTimeoutConfig('prDescription');
 
+      const opLabel = `Generating PR description via ${this.authService.getProviderDisplayName()} · ${model}`;
       const result = await this.timeoutManager.executeWithTimeout({
-        operation: 'Generating PR description',
+        operation: opLabel,
         task: (signal: AbortSignal) => this.authService.complete(prompt, {
           model,
           maxTokens: 1000,
@@ -130,7 +132,7 @@ export class PrDescriptionService implements vscode.Disposable {
         showProgress: true,
         cancellable: true,
         onTimeout: (timeoutMs: number, contextKb: number) =>
-          this.timeoutManager.promptRetry('Generating PR description', timeoutMs, contextKb),
+          this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });
 
       if (!result.success) {

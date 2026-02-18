@@ -621,7 +621,6 @@ export class SessionAnalyzer {
       case 'Edit':
         return call.input.file_path as string;
       case 'Glob':
-        return call.input.pattern as string;
       case 'Grep':
         return call.input.pattern as string;
       case 'Bash':

@@ -21,16 +21,17 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as os from 'os';
 import path from 'path';
-import { findActiveSession, findAllSessions, getSessionDirectory, discoverSessionDirectory, findSessionsInDirectory, getAllProjectFolders, encodeWorkspacePath } from './SessionPathResolver';
-import type { SessionGroup, SessionInfo } from '../types/dashboard';
-import { JsonlParser, extractTokenUsage } from './JsonlParser';
-import { scanSubagentDir } from './SubagentFileScanner';
-import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus, PendingUserRequest, ResponseLatency, LatencyStats, CompactionEvent, ContextAttribution } from '../types/claudeSession';
+import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
+import { extractTokenUsage } from './JsonlParser';
+import type { SessionProvider, SessionReader } from '../types/sessionProvider';
+import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus, PendingUserRequest, ResponseLatency, LatencyStats, CompactionEvent, ContextAttribution, PlanState, PlanStep } from '../types/claudeSession';
 import { SessionSummary, ModelUsageRecord, ToolUsageRecord, createEmptyTokenTotals } from '../types/historicalData';
 import { estimateTokens } from '../utils/tokenEstimator';
 import { ModelPricingService } from './ModelPricingService';
 import { log, logError } from './Logger';
 import { extractTaskIdFromResult } from '../utils/taskHelpers';
+import { parsePlanMarkdown, extractProposedPlan } from '../utils/planParser';
+import type { SessionEventLogger } from './SessionEventLogger';
 
 /**
  * Session monitoring service for Claude Code sessions.
@@ -76,6 +77,45 @@ function isTypedBlock(block: unknown): block is Record<string, unknown> & { type
   return block !== null && typeof block === 'object' && typeof (block as Record<string, unknown>).type === 'string';
 }
 
+/**
+ * Parses dependency references from a todo item's content text.
+ *
+ * Looks for patterns like "(blocked by Task A and Task B)" and maps
+ * referenced task names back to todo-{i} IDs by substring matching.
+ *
+ * @param content - The todo item's content text
+ * @param allTodos - All todo items from the TodoWrite input
+ * @returns Array of todo-{i} task IDs that this task depends on
+ */
+export function parseTodoDependencies(
+  content: string,
+  allTodos: Array<Record<string, unknown>>
+): string[] {
+  const depPattern = /(?:blocked by|depends on|waiting on|requires)\s+(.+?)(?:\)|$)/i;
+  const match = content.match(depPattern);
+  if (!match) return [];
+
+  // Split matched refs on common separators
+  const refs = match[1].split(/\s+and\s+|,\s*|&\s*/).map(r => r.trim()).filter(Boolean);
+  const result: string[] = [];
+
+  for (const ref of refs) {
+    const refLower = ref.toLowerCase();
+    // Try to match against other todos' content
+    for (let j = 0; j < allTodos.length; j++) {
+      const otherContent = String(allTodos[j].content || allTodos[j].subject || '').toLowerCase();
+      // Substring match: the reference should appear in the other task's content,
+      // or the other task's content should start with the reference
+      if (otherContent.includes(refLower) || refLower.includes(otherContent.split(':')[0].trim())) {
+        result.push(`todo-${j}`);
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
 export class SessionMonitor implements vscode.Disposable {
   /** File watcher for session directory */
   private watcher: fs.FSWatcher | undefined;
@@ -83,8 +123,11 @@ export class SessionMonitor implements vscode.Disposable {
   /** Current workspace path being monitored */
   private workspacePath: string | null = null;
 
-  /** JSONL parser for processing events */
-  private parser: JsonlParser;
+  /** Session provider for I/O operations */
+  private provider: SessionProvider;
+
+  /** Incremental reader for current session */
+  private reader: SessionReader | null = null;
 
   /** Path to current session file */
   private sessionPath: string | null = null;
@@ -94,9 +137,6 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Workspace state for persistence */
   private readonly workspaceState: vscode.Memento | undefined;
-
-  /** File read position for incremental reads */
-  private filePosition: number = 0;
 
   /** Accumulated session statistics */
   private stats: SessionStats;
@@ -118,6 +158,12 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Current context window size (from most recent assistant message) */
   private currentContextSize: number = 0;
+
+  /** Most recently observed model ID */
+  private lastModelId: string | null = null;
+
+  /** Accumulated cost reported by the provider (e.g., OpenCode per-message cost) */
+  private totalReportedCost: number = 0;
 
   /** Recent usage events for burn rate calculation (keeps last 5 minutes worth) */
   private recentUsageEvents: Array<{ timestamp: Date; tokens: number }> = [];
@@ -155,7 +201,7 @@ export class SessionMonitor implements vscode.Disposable {
   }> = new Map();
 
   /** Task-related tool names */
-  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task'];
+  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task', 'TodoWrite', 'TodoRead', 'UpdatePlan', 'EnterPlanMode', 'ExitPlanMode'];
 
   /** Creates an empty context attribution object */
   private static emptyAttribution(): ContextAttribution {
@@ -191,6 +237,20 @@ export class SessionMonitor implements vscode.Disposable {
   /** Previous context size (for compaction delta detection) */
   private previousContextSize: number = 0;
 
+  /** Optional event logger for JSONL audit trail */
+  private eventLogger: SessionEventLogger | null = null;
+
+  /** Assistant text snippets for decision extraction (capped at 200) */
+  private assistantTexts: Array<{ text: string; timestamp: string }> = [];
+  private readonly MAX_ASSISTANT_TEXTS = 200;
+  private readonly MAX_ASSISTANT_TEXT_LENGTH = 500;
+
+  /** Plan state tracking */
+  private planState: PlanState | null = null;
+  private planModeActive = false;
+  private planModeEnteredAt: Date | null = null;
+  private planAssistantTexts: string[] = [];
+
   // Event emitters for external consumers
   private readonly _onTokenUsage = new vscode.EventEmitter<TokenUsage>();
   private readonly _onToolCall = new vscode.EventEmitter<ToolCall>();
@@ -201,6 +261,7 @@ export class SessionMonitor implements vscode.Disposable {
   private readonly _onDiscoveryModeChange = new vscode.EventEmitter<boolean>();
   private readonly _onLatencyUpdate = new vscode.EventEmitter<LatencyStats>();
   private readonly _onCompaction = new vscode.EventEmitter<CompactionEvent>();
+  private readonly _onQuotaUpdate = new vscode.EventEmitter<QuotaState>();
 
   /** Fires when token usage is detected in session */
   readonly onTokenUsage = this._onTokenUsage.event;
@@ -229,6 +290,21 @@ export class SessionMonitor implements vscode.Disposable {
   /** Fires when a context compaction event is detected */
   readonly onCompaction = this._onCompaction.event;
 
+  /** Fires when subscription quota data is available from session provider */
+  readonly onQuotaUpdate = this._onQuotaUpdate.event;
+
+  /**
+   * Sets or clears the event logger for JSONL audit trail recording.
+   *
+   * @param logger - Logger instance to enable recording, or null to disable
+   */
+  setEventLogger(logger: SessionEventLogger | null): void {
+    if (this.eventLogger && !logger) {
+      this.eventLogger.endSession();
+    }
+    this.eventLogger = logger;
+  }
+
   /**
    * Creates a new SessionMonitor.
    *
@@ -236,12 +312,20 @@ export class SessionMonitor implements vscode.Disposable {
    *
    * @param workspaceState - Optional workspace state for persisting custom session path
    */
-  constructor(workspaceState?: vscode.Memento) {
+  constructor(provider: SessionProvider, workspaceState?: vscode.Memento) {
+    this.provider = provider;
     this.workspaceState = workspaceState;
     // Load saved custom path on construction
     this.customSessionDir = workspaceState?.get<string>(CUSTOM_SESSION_PATH_KEY) || null;
     // Initialize empty statistics
-    this.stats = {
+    this.stats = this.createEmptyStats();
+  }
+
+  /**
+   * Creates an empty stats object.
+   */
+  private createEmptyStats(): SessionStats {
+    return {
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCacheWriteTokens: 0,
@@ -254,18 +338,10 @@ export class SessionMonitor implements vscode.Disposable {
       timeline: [],
       errorDetails: new Map(),
       currentContextSize: 0,
+      lastModelId: undefined,
       recentUsageEvents: [],
       sessionStartTime: null
     };
-
-    // Create parser with event callback
-    this.parser = new JsonlParser({
-      onEvent: (event) => this.handleEvent(event),
-      onError: (error, line) => {
-        logError('JSONL parse error', error);
-        log(`Malformed line: ${line.substring(0, 100)}...`);
-      }
-    });
   }
 
   /**
@@ -296,34 +372,58 @@ export class SessionMonitor implements vscode.Disposable {
     this.workspacePath = workspacePath;
 
     // Log diagnostic information for debugging path resolution issues
-    const sessionDir = getSessionDirectory(workspacePath);
-    log(`Session monitoring starting for workspace: ${workspacePath}`);
+    const sessionDir = this.provider.getSessionDirectory(workspacePath);
+    log(`Session monitoring starting for workspace: ${workspacePath} (provider: ${this.provider.displayName})`);
     log(`Looking for sessions in: ${sessionDir}`);
 
     // Find active session
-    this.sessionPath = findActiveSession(workspacePath);
+    this.sessionPath = this.provider.findActiveSession(workspacePath);
 
     // Always set up directory watching, even without an active session
     await this.setupDirectoryWatcher();
 
     if (!this.sessionPath) {
-      log('No active Claude Code session detected, entering discovery mode');
+      log(`No active ${this.provider.displayName} session detected, entering discovery mode`);
       log(`Expected session directory: ${sessionDir}`);
-      log(`Tip: Check if ~/.claude/projects/ contains a directory matching your workspace path`);
+      if (this.provider.id === 'claude-code') {
+        log('Tip: Check if ~/.claude/projects/ contains a directory matching your workspace path');
+      }
       this.isWaitingForSession = true;
       this._onDiscoveryModeChange.fire(true);
       this.startDiscoveryPolling();
       return false;
     }
 
-    log(`Found Claude Code session: ${this.sessionPath}`);
+    log(`Found ${this.provider.displayName} session: ${this.sessionPath}`);
 
     try {
       this.isWaitingForSession = false;
-      this.sessionId = path.basename(this.sessionPath, '.jsonl');
+      this.sessionId = this.provider.getSessionId(this.sessionPath);
+      this.reader = this.provider.createReader(this.sessionPath);
+
+      const usageSnapshot = this.provider.getCurrentUsageSnapshot?.(this.sessionPath);
+      if (usageSnapshot) {
+        const snapshotContextSize = this.provider.computeContextSize
+          ? this.provider.computeContextSize(usageSnapshot)
+          : usageSnapshot.inputTokens + usageSnapshot.cacheWriteTokens + usageSnapshot.cacheReadTokens;
+        this.currentContextSize = snapshotContextSize;
+        this.previousContextSize = snapshotContextSize;
+        this.stats.currentContextSize = snapshotContextSize;
+        this.lastModelId = usageSnapshot.model;
+        this.stats.lastModelId = usageSnapshot.model;
+      }
+
+      // Seed context attribution from provider if available (e.g., OpenCode DB)
+      const providerAttribution = this.provider.getContextAttribution?.(this.sessionPath);
+      if (providerAttribution) {
+        this.contextAttribution = providerAttribution;
+      }
 
       // Read existing content
       await this.readInitialContent();
+
+      // Start activity polling for providers without file-level updates
+      this.startActivityPolling();
 
       log('Session monitoring active');
 
@@ -342,8 +442,91 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
+   * Switches the session provider and restarts monitoring.
+   *
+   * @param newProvider - The new session provider to use
+   * @returns True if a session was found and monitoring started
+   */
+  async switchProvider(newProvider: SessionProvider): Promise<boolean> {
+    if (this.provider.id === newProvider.id) {
+      // No change needed; dispose the unused provider instance.
+      newProvider.dispose();
+      return this.isActive();
+    }
+
+    log(`Switching session provider: ${this.provider.displayName} -> ${newProvider.displayName}`);
+
+    if (this.sessionPath) {
+      this.eventLogger?.endSession();
+      this._onSessionEnd.fire();
+    }
+
+    if (this.fileChangeDebounceTimer) {
+      clearTimeout(this.fileChangeDebounceTimer);
+      this.fileChangeDebounceTimer = null;
+    }
+    if (this.newSessionCheckTimer) {
+      clearTimeout(this.newSessionCheckTimer);
+      this.newSessionCheckTimer = null;
+    }
+
+    this.stopDiscoveryPolling();
+    this.stopActivityPolling();
+
+    if (this.watcher) {
+      this.watcher.close();
+      this.watcher = undefined;
+    }
+    if (this.dbWalWatcher) {
+      this.dbWalWatcher.close();
+      this.dbWalWatcher = undefined;
+    }
+
+    this.sessionPath = null;
+    this.sessionId = null;
+    this.reader = null;
+    this._isPinned = false;
+    this.pendingToolCalls.clear();
+    this.toolAnalyticsMap.clear();
+    this.timeline = [];
+    this.errorDetails.clear();
+    this.currentContextSize = 0;
+    this.lastModelId = null;
+    this.totalReportedCost = 0;
+    this.recentUsageEvents = [];
+    this.sessionStartTime = null;
+    this._subagentStats = [];
+    this.seenHashes.clear();
+    this.resetTaskState();
+    this.pendingUserRequest = null;
+    this.latencyRecords = [];
+    this.compactionEvents = [];
+    this.assistantTexts = [];
+    this.contextAttribution = SessionMonitor.emptyAttribution();
+    this.previousContextSize = 0;
+    this.stats = this.createEmptyStats();
+    this.isWaitingForSession = false;
+    this.fastDiscoveryStartTime = null;
+
+    await this.clearCustomPath();
+
+    const oldProvider = this.provider;
+    this.provider = newProvider;
+    oldProvider.dispose();
+
+    if (!this.workspacePath) {
+      return false;
+    }
+
+    return this.start(this.workspacePath);
+  }
+
+  /**
    * Sets up the directory watcher for the session directory.
    * Creates the watcher even if no session exists yet.
+   *
+   * For DB-backed providers (OpenCode), watches the database file instead
+   * of a session directory, since DB sessions use synthetic paths.
    */
   private async setupDirectoryWatcher(): Promise<void> {
     // Need either customSessionDir or workspacePath
@@ -351,10 +534,14 @@ export class SessionMonitor implements vscode.Disposable {
       return;
     }
 
-    // Close existing watcher if any
+    // Close existing watchers if any
     if (this.watcher) {
       this.watcher.close();
       this.watcher = undefined;
+    }
+    if (this.dbWalWatcher) {
+      this.dbWalWatcher.close();
+      this.dbWalWatcher = undefined;
     }
 
     // Use custom directory if set, otherwise discover from workspace
@@ -362,14 +549,18 @@ export class SessionMonitor implements vscode.Disposable {
     if (this.customSessionDir) {
       sessionDir = this.customSessionDir;
     } else {
-      sessionDir = discoverSessionDirectory(this.workspacePath!) || getSessionDirectory(this.workspacePath!);
+      sessionDir = this.provider.discoverSessionDirectory(this.workspacePath!) || this.provider.getSessionDirectory(this.workspacePath!);
     }
 
-    // Create directory if it doesn't exist (Claude Code will create it anyway)
+    // If directory doesn't exist, try watching the DB file for DB-backed providers
     try {
       if (!fs.existsSync(sessionDir)) {
+        // For DB-backed providers, watch the database file directly
+        if (this.tryWatchDbFile(sessionDir)) {
+          return;
+        }
         log(`Session directory doesn't exist yet: ${sessionDir}`);
-        // Still set up polling - directory will be created when Claude Code starts
+        // Still set up polling - directory will be created when CLI agent starts
         return;
       }
     } catch {
@@ -384,8 +575,8 @@ export class SessionMonitor implements vscode.Disposable {
         sessionDir,
         { persistent: false }, // Don't keep Node process alive
         (_eventType, filename) => {
-          // React to any .jsonl file in the workspace session directory
-          if (filename?.endsWith('.jsonl')) {
+          // React to any session file in the workspace session directory
+          if (filename && this.provider.isSessionFile(filename)) {
             if (this.isWaitingForSession) {
               // In discovery mode - any new session file triggers check
               log(`New session file detected while waiting: ${filename}`);
@@ -404,6 +595,135 @@ export class SessionMonitor implements vscode.Disposable {
       log(`Session directory watcher established: ${sessionDir}`);
     } catch (error) {
       logError('Failed to set up directory watcher', error);
+    }
+  }
+
+  /** Additional watcher for DB WAL file */
+  private dbWalWatcher: fs.FSWatcher | undefined;
+
+  /**
+   * Tries to watch a database file for DB-backed providers.
+   * Watches both the main DB and WAL file — WAL changes while OpenCode
+   * is running, and the main file updates on checkpoint/exit.
+   * Returns true if a watcher was successfully set up.
+   */
+  private tryWatchDbFile(sessionDir: string): boolean {
+    // Look for opencode.db in ancestor directories of the synthetic session path
+    // Synthetic paths look like: <dataDir>/db-sessions/<projectId>/
+    const dbSessionsIdx = sessionDir.indexOf(path.sep + 'db-sessions' + path.sep);
+    if (dbSessionsIdx < 0) return false;
+
+    const dataDir = sessionDir.substring(0, dbSessionsIdx);
+    const dbPath = path.join(dataDir, 'opencode.db');
+    const walPath = dbPath + '-wal';
+
+    if (!fs.existsSync(dbPath)) return false;
+
+    const onDbChange = () => {
+      if (this.isWaitingForSession) {
+        // In discovery mode — try to find a session in the DB
+        this.performSessionDiscovery();
+      } else {
+        // Session active — check for new events and session switches
+        this.handleFileChange();
+        this.checkForNewerSession();
+      }
+    };
+
+    try {
+      // Watch the main DB file (updates on checkpoint/exit)
+      this.watcher = fs.watch(dbPath, { persistent: false }, onDbChange);
+      log(`Database file watcher established: ${dbPath}`);
+
+      // Also watch the WAL file (updates while OpenCode is running)
+      if (fs.existsSync(walPath)) {
+        this.dbWalWatcher = fs.watch(walPath, { persistent: false }, onDbChange);
+        log(`Database WAL watcher established: ${walPath}`);
+      } else {
+        // WAL might not exist yet — watch the data directory for its creation
+        const dirWatcher = fs.watch(dataDir, { persistent: false }, (_event, filename) => {
+          if (filename === 'opencode.db-wal' && !this.dbWalWatcher) {
+            try {
+              this.dbWalWatcher = fs.watch(walPath, { persistent: false }, onDbChange);
+              log(`Database WAL watcher established (deferred): ${walPath}`);
+              dirWatcher.close();
+            } catch {
+              // WAL file may have been removed again
+            }
+          }
+        });
+        // Store dir watcher for cleanup — reuse dbWalWatcher field temporarily
+        this.dbWalWatcher = dirWatcher;
+      }
+
+      return true;
+    } catch (error) {
+      logError('Failed to set up database file watcher', error);
+      return false;
+    }
+  }
+
+  /**
+   * Starts polling for OpenCode session activity.
+   * OpenCode writes message/part files outside the session directory,
+   * so we poll periodically to pick up new events.
+   */
+  private startActivityPolling(): void {
+    this.stopActivityPolling();
+
+    if (this.provider.id !== 'opencode') {
+      return;
+    }
+
+    if (!this.sessionPath || !this.reader) {
+      return;
+    }
+
+    this._lastEventTime = Date.now();
+    this.opencodePollTimer = setInterval(() => {
+      if (!this.sessionPath || !this.reader) return;
+      const prevCount = this.stats.messageCount;
+      this.processFileChange();
+      // Track when we last saw new events
+      if (this.stats.messageCount > prevCount) {
+        this._lastEventTime = Date.now();
+      } else if (Date.now() - this._lastEventTime > this.OPENCODE_INACTIVITY_MS) {
+        // No new events for INACTIVITY threshold — check if a newer session exists
+        this._checkForNewerSession();
+      }
+    }, this.OPENCODE_POLL_INTERVAL_MS);
+  }
+
+  /**
+   * Stops OpenCode activity polling.
+   */
+  private stopActivityPolling(): void {
+    if (this.opencodePollTimer) {
+      clearInterval(this.opencodePollTimer);
+      this.opencodePollTimer = null;
+    }
+  }
+
+  /**
+   * Checks if a newer OpenCode session exists after inactivity.
+   * If a newer session is found, fires session end and switches to it.
+   * This ensures persistence handlers run even when OpenCode sessions
+   * don't explicitly signal termination.
+   */
+  private _checkForNewerSession(): void {
+    if (!this.sessionPath || !this.workspacePath) return;
+    try {
+      const latestPath = this.provider.findActiveSession(this.workspacePath);
+      if (latestPath && latestPath !== this.sessionPath) {
+        log(`Inactivity detected: newer session found, ending current session`);
+        this.eventLogger?.endSession();
+        this._onSessionEnd.fire();
+        this.stopActivityPolling();
+        // Switch to the new session
+        this.attachToSession(latestPath);
+      }
+    } catch {
+      // Ignore errors during discovery
     }
   }
 
@@ -468,11 +788,14 @@ export class SessionMonitor implements vscode.Disposable {
     if (this.customSessionDir) {
       sessionDir = this.customSessionDir;
     } else {
-      sessionDir = discoverSessionDirectory(this.workspacePath!) || getSessionDirectory(this.workspacePath!);
+      sessionDir = this.provider.discoverSessionDirectory(this.workspacePath!) || this.provider.getSessionDirectory(this.workspacePath!);
     }
 
-    if (!fs.existsSync(sessionDir)) {
-      return; // Still waiting for Claude Code to create directory
+    // For file-based providers, wait for the directory to be created on disk.
+    // For DB-backed providers (getSessionMetadata), skip this check since
+    // session directories are synthetic and never exist on disk.
+    if (!fs.existsSync(sessionDir) && !this.provider.getSessionMetadata) {
+      return; // Still waiting for CLI agent to create directory
     }
 
     // Re-setup watcher if we don't have one (directory just appeared)
@@ -484,11 +807,11 @@ export class SessionMonitor implements vscode.Disposable {
     let newSessionPath: string | null = null;
     if (this.customSessionDir) {
       // For custom directory, use direct directory scan
-      const sessions = findSessionsInDirectory(this.customSessionDir);
+      const sessions = this.provider.findSessionsInDirectory(this.customSessionDir);
       newSessionPath = sessions.length > 0 ? sessions[0] : null;
     } else {
       // For workspace-based, use standard discovery
-      newSessionPath = findActiveSession(this.workspacePath!);
+      newSessionPath = this.provider.findActiveSession(this.workspacePath!);
     }
 
     if (newSessionPath) {
@@ -504,7 +827,7 @@ export class SessionMonitor implements vscode.Disposable {
   private async attachToSession(sessionPath: string): Promise<void> {
     const wasWaiting = this.isWaitingForSession;
     this.sessionPath = sessionPath;
-    this.sessionId = path.basename(sessionPath, '.jsonl');
+    this.sessionId = this.provider.getSessionId(sessionPath);
     this.isWaitingForSession = false;
     this.fastDiscoveryStartTime = null;
     this.stopDiscoveryPolling();
@@ -515,13 +838,14 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     // Reset state for new session
-    this.filePosition = 0;
-    this.parser.reset();
+    this.reader = this.provider.createReader(sessionPath);
     this.pendingToolCalls.clear();
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
     this.currentContextSize = 0;
+    this.lastModelId = null;
+    this.totalReportedCost = 0;
     this.recentUsageEvents = [];
     this.sessionStartTime = null;
     this._subagentStats = [];
@@ -530,26 +854,30 @@ export class SessionMonitor implements vscode.Disposable {
     this.pendingUserRequest = null;
     this.latencyRecords = [];
     this.compactionEvents = [];
+    this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
     this.previousContextSize = 0;
 
     // Reset statistics
-    this.stats = {
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      totalCacheWriteTokens: 0,
-      totalCacheReadTokens: 0,
-      messageCount: 0,
-      toolCalls: [],
-      modelUsage: new Map(),
-      lastUpdated: new Date(),
-      toolAnalytics: new Map(),
-      timeline: [],
-      errorDetails: new Map(),
-      currentContextSize: 0,
-      recentUsageEvents: [],
-      sessionStartTime: null
-    };
+    this.stats = this.createEmptyStats();
+
+    const usageSnapshot = this.provider.getCurrentUsageSnapshot?.(sessionPath);
+    if (usageSnapshot) {
+      const snapshotContextSize = this.provider.computeContextSize
+        ? this.provider.computeContextSize(usageSnapshot)
+        : usageSnapshot.inputTokens + usageSnapshot.cacheWriteTokens + usageSnapshot.cacheReadTokens;
+      this.currentContextSize = snapshotContextSize;
+      this.previousContextSize = snapshotContextSize;
+      this.stats.currentContextSize = snapshotContextSize;
+      this.lastModelId = usageSnapshot.model;
+      this.stats.lastModelId = usageSnapshot.model;
+    }
+
+    // Seed context attribution from provider if available
+    const providerAttribution = this.provider.getContextAttribution?.(sessionPath);
+    if (providerAttribution) {
+      this.contextAttribution = providerAttribution;
+    }
 
     // Re-setup watcher to track the new session file
     await this.setupDirectoryWatcher();
@@ -557,6 +885,7 @@ export class SessionMonitor implements vscode.Disposable {
     // Read content from session
     try {
       await this.readInitialContent();
+      this.startActivityPolling();
       log(`Attached to session: ${sessionPath}`);
       this._onSessionStart.fire(sessionPath);
     } catch (error) {
@@ -581,7 +910,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     log('Manual session refresh triggered');
 
-    const newSessionPath = findActiveSession(this.workspacePath);
+    const newSessionPath = this.provider.findActiveSession(this.workspacePath);
 
     if (newSessionPath && newSessionPath !== this.sessionPath) {
       await this.attachToSession(newSessionPath);
@@ -634,6 +963,13 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
+   * Gets the session provider for this monitor.
+   */
+  getProvider(): SessionProvider {
+    return this.provider;
+  }
+
+  /**
    * Gets current session statistics.
    *
    * Returns a copy of accumulated statistics including token usage,
@@ -653,6 +989,7 @@ export class SessionMonitor implements vscode.Disposable {
       timeline: [...this.timeline],
       errorDetails: new Map(this.errorDetails),
       currentContextSize: this.currentContextSize,
+      lastModelId: this.lastModelId ?? undefined,
       recentUsageEvents: [...this.recentUsageEvents],
       sessionStartTime: this.sessionStartTime,
       taskState: this.taskState.tasks.size > 0 ? {
@@ -661,7 +998,9 @@ export class SessionMonitor implements vscode.Disposable {
       } : undefined,
       latencyStats: this.latencyRecords.length > 0 ? this.getLatencyStats() : undefined,
       compactionEvents: this.compactionEvents.length > 0 ? [...this.compactionEvents] : undefined,
-      contextAttribution: { ...this.contextAttribution }
+      contextAttribution: { ...this.contextAttribution },
+      totalReportedCost: this.totalReportedCost > 0 ? this.totalReportedCost : undefined,
+      planState: this.planState ? { ...this.planState, steps: [...this.planState.steps] } : undefined
     };
   }
 
@@ -671,6 +1010,13 @@ export class SessionMonitor implements vscode.Disposable {
   private pruneOldUsageEvents(): void {
     const cutoff = new Date(Date.now() - this.USAGE_EVENT_WINDOW_MS);
     this.recentUsageEvents = this.recentUsageEvents.filter(e => e.timestamp >= cutoff);
+  }
+
+  /**
+   * Gets collected assistant text snippets for decision extraction.
+   */
+  getAssistantTexts(): Array<{ text: string; timestamp: string }> {
+    return [...this.assistantTexts];
   }
 
   /**
@@ -706,7 +1052,7 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     const sessionDir = path.dirname(this.sessionPath);
-    this._subagentStats = scanSubagentDir(sessionDir, this.sessionId);
+    this._subagentStats = this.provider.scanSubagents(sessionDir, this.sessionId);
   }
 
   /**
@@ -799,25 +1145,32 @@ export class SessionMonitor implements vscode.Disposable {
       // Get sessions from appropriate directory
       let sessions: string[];
       if (this.customSessionDir) {
-        sessions = findSessionsInDirectory(this.customSessionDir);
+        sessions = this.provider.findSessionsInDirectory(this.customSessionDir);
       } else {
-        sessions = findAllSessions(this.workspacePath!);
+        sessions = this.provider.findAllSessions(this.workspacePath!);
       }
 
       const now = Date.now();
       const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
       return sessions.map(sessionPath => {
-        const stats = fs.statSync(sessionPath);
+        let mtime: Date;
+        try {
+          mtime = fs.statSync(sessionPath).mtime;
+        } catch {
+          const meta = this.provider.getSessionMetadata?.(sessionPath);
+          if (!meta) return null;
+          mtime = meta.mtime;
+        }
         return {
           path: sessionPath,
-          filename: path.basename(sessionPath, '.jsonl'),
-          modifiedTime: stats.mtime,
+          filename: this.provider.getSessionId(sessionPath),
+          modifiedTime: mtime,
           isCurrent: sessionPath === this.sessionPath,
-          label: SessionMonitor.extractSessionLabel(sessionPath),
-          isActive: (now - stats.mtime.getTime()) < ACTIVE_THRESHOLD_MS
+          label: this.provider.extractSessionLabel(sessionPath),
+          isActive: (now - mtime.getTime()) < ACTIVE_THRESHOLD_MS
         };
-      });
+      }).filter((s): s is NonNullable<typeof s> => s !== null);
     } catch (error) {
       logError('Error getting available sessions', error);
       return [];
@@ -835,7 +1188,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns True if switch was successful
    */
   async switchToSession(sessionPath: string): Promise<boolean> {
-    if (!fs.existsSync(sessionPath)) {
+    if (!fs.existsSync(sessionPath) && !this.provider.getSessionMetadata?.(sessionPath)) {
       logError(`Cannot switch to session: file not found: ${sessionPath}`);
       return false;
     }
@@ -861,7 +1214,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns True if a session was found and monitoring started
    */
   async startWithCustomPath(sessionDirectory: string): Promise<boolean> {
-    if (!fs.existsSync(sessionDirectory)) {
+    if (!fs.existsSync(sessionDirectory) && !this.provider.getSessionMetadata?.(sessionDirectory)) {
       logError(`Custom session directory not found: ${sessionDirectory}`);
       return false;
     }
@@ -876,7 +1229,7 @@ export class SessionMonitor implements vscode.Disposable {
     await this.setupDirectoryWatcher();
 
     // Find sessions in the custom directory
-    const sessions = findSessionsInDirectory(sessionDirectory);
+    const sessions = this.provider.findSessionsInDirectory(sessionDirectory);
     if (sessions.length === 0) {
       log('No sessions found in custom directory, entering discovery mode');
       this.isWaitingForSession = true;
@@ -909,21 +1262,28 @@ export class SessionMonitor implements vscode.Disposable {
     isActive: boolean;
   }> {
     try {
-      const sessions = findSessionsInDirectory(sessionDir);
+      const sessions = this.provider.findSessionsInDirectory(sessionDir);
       const now = Date.now();
       const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
 
       return sessions.map(sessionPath => {
-        const stats = fs.statSync(sessionPath);
+        let mtime: Date;
+        try {
+          mtime = fs.statSync(sessionPath).mtime;
+        } catch {
+          const meta = this.provider.getSessionMetadata?.(sessionPath);
+          if (!meta) return null;
+          mtime = meta.mtime;
+        }
         return {
           path: sessionPath,
-          filename: path.basename(sessionPath, '.jsonl'),
-          modifiedTime: stats.mtime,
+          filename: this.provider.getSessionId(sessionPath),
+          modifiedTime: mtime,
           isCurrent: sessionPath === this.sessionPath,
-          label: SessionMonitor.extractSessionLabel(sessionPath),
-          isActive: (now - stats.mtime.getTime()) < ACTIVE_THRESHOLD_MS
+          label: this.provider.extractSessionLabel(sessionPath),
+          isActive: (now - mtime.getTime()) < ACTIVE_THRESHOLD_MS
         };
-      });
+      }).filter((s): s is NonNullable<typeof s> => s !== null);
     } catch (error) {
       logError('Error getting sessions from directory', error);
       return [];
@@ -952,7 +1312,7 @@ export class SessionMonitor implements vscode.Disposable {
       // Custom directory overrides workspace-based discovery (same pattern as
       // performNewSessionCheck, performSessionDiscovery, getAvailableSessions)
       if (this.customSessionDir) {
-        const sessions = findSessionsInDirectory(this.customSessionDir);
+        const sessions = this.provider.findSessionsInDirectory(this.customSessionDir);
         const limited = sessions.slice(0, MAX_SESSIONS_PER_PROJECT);
         const sessionInfos = this.mapSessionPaths(limited, now, ACTIVE_THRESHOLD_MS);
         if (sessionInfos.length > 0) {
@@ -966,18 +1326,20 @@ export class SessionMonitor implements vscode.Disposable {
         return groups;
       }
 
-      const allFolders = getAllProjectFolders(this.workspacePath || undefined);
+      const allFolders = this.provider.getAllProjectFolders(this.workspacePath || undefined);
 
       // Use encoded workspace path for reliable matching
       // (decoded paths are lossy — hyphens in names become indistinguishable from separators)
       const encodedWorkspace = this.workspacePath
-        ? encodeWorkspacePath(this.workspacePath).toLowerCase()
+        ? this.provider.encodeWorkspacePath(this.workspacePath).toLowerCase()
         : '';
+
+      log(`getAllSessionsGrouped: ${allFolders.length} folders, encodedWorkspace=${encodedWorkspace}, workspacePath=${this.workspacePath}`);
 
       let otherProjectCount = 0;
 
       for (const folder of allFolders) {
-        const encodedLower = folder.encodedName.toLowerCase();
+        const encodedLower = (folder.encodedName || '').toLowerCase();
 
         // Determine proximity tier using encoded names (lossless comparison)
         let proximity: 'current' | 'related' | 'other';
@@ -996,18 +1358,22 @@ export class SessionMonitor implements vscode.Disposable {
         }
 
         // Get sessions for this project
-        const sessions = findSessionsInDirectory(folder.path);
+        const sessions = this.provider.findSessionsInDirectory(folder.dir);
         const limitedSessions = sessions.slice(0, MAX_SESSIONS_PER_PROJECT);
+
+        log(`getAllSessionsGrouped: folder=${folder.name}, encoded=${encodedLower}, proximity=${proximity}, sessions=${sessions.length}, limited=${limitedSessions.length}`);
 
         if (limitedSessions.length === 0) continue;
 
         const sessionInfos = this.mapSessionPaths(limitedSessions, now, ACTIVE_THRESHOLD_MS);
 
+        log(`getAllSessionsGrouped: mapped ${sessionInfos.length} session infos for ${folder.name}`);
+
         if (sessionInfos.length === 0) continue;
 
         groups.push({
-          projectPath: folder.decodedPath,
-          displayPath: SessionMonitor.shortenPathForDisplay(folder.decodedPath),
+          projectPath: folder.name,
+          displayPath: SessionMonitor.shortenPathForDisplay(folder.name),
           proximity,
           sessions: sessionInfos
         });
@@ -1036,19 +1402,26 @@ export class SessionMonitor implements vscode.Disposable {
    */
   private mapSessionPaths(sessionPaths: string[], now: number, activeThresholdMs: number): SessionInfo[] {
     return sessionPaths.map(sessionPath => {
+      let mtime: Date;
       try {
-        const fileStat = fs.statSync(sessionPath);
-        return {
-          path: sessionPath,
-          filename: path.basename(sessionPath, '.jsonl'),
-          modifiedTime: fileStat.mtime.toISOString(),
-          isCurrent: sessionPath === this.sessionPath,
-          label: SessionMonitor.extractSessionLabel(sessionPath),
-          isActive: (now - fileStat.mtime.getTime()) < activeThresholdMs
-        };
+        mtime = fs.statSync(sessionPath).mtime;
       } catch {
-        return null;
+        const meta = this.provider.getSessionMetadata?.(sessionPath);
+        if (!meta) {
+          log(`mapSessionPaths: no metadata for ${sessionPath}, filtering out`);
+          return null;
+        }
+        mtime = meta.mtime;
       }
+      log(`mapSessionPaths: ${path.basename(sessionPath)} mtime=${mtime.toISOString()}`);
+      return {
+        path: sessionPath,
+        filename: this.provider.getSessionId(sessionPath),
+        modifiedTime: mtime.toISOString(),
+        isCurrent: sessionPath === this.sessionPath,
+        label: this.provider.extractSessionLabel(sessionPath),
+        isActive: (now - mtime.getTime()) < activeThresholdMs
+      };
     }).filter((s): s is NonNullable<typeof s> => s !== null);
   }
 
@@ -1102,73 +1475,6 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Extracts the first user prompt text from a session file as a label.
-   *
-   * Reads the first 8KB of the JSONL file and finds the first user event
-   * with actual prompt content. Returns truncated text (max 60 chars).
-   *
-   * @param sessionPath - Path to the session JSONL file
-   * @returns First user prompt text (truncated), or null if not found
-   */
-  static extractSessionLabel(sessionPath: string): string | null {
-    try {
-      const fd = fs.openSync(sessionPath, 'r');
-      const buffer = Buffer.alloc(8192);
-      const bytesRead = fs.readSync(fd, buffer, 0, 8192, 0);
-      fs.closeSync(fd);
-
-      if (bytesRead === 0) return null;
-
-      const chunk = buffer.toString('utf-8', 0, bytesRead);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        try {
-          const event = JSON.parse(trimmed);
-          if (event.type !== 'user') continue;
-
-          const content = event.message?.content;
-          if (!content) continue;
-
-          let text: string | null = null;
-
-          if (typeof content === 'string') {
-            text = content.trim();
-          } else if (Array.isArray(content)) {
-            const textBlock = content.find((block: unknown) =>
-              isTypedBlock(block) &&
-              block.type === 'text' &&
-              typeof block.text === 'string' &&
-              (block.text as string).trim().length > 0
-            );
-            if (textBlock && isTypedBlock(textBlock) && typeof textBlock.text === 'string') {
-              text = (textBlock.text as string).trim();
-            }
-          }
-
-          if (text && text.length > 0) {
-            // Collapse whitespace and truncate
-            text = text.replace(/\s+/g, ' ');
-            if (text.length > 60) {
-              text = text.substring(0, 57) + '...';
-            }
-            return text;
-          }
-        } catch {
-          // Skip malformed lines
-        }
-      }
-
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Stops monitoring and cleans up resources.
    *
    * Closes file watcher, disposes event emitters, and resets state.
@@ -1187,11 +1493,16 @@ export class SessionMonitor implements vscode.Disposable {
 
     // Stop discovery polling
     this.stopDiscoveryPolling();
+    this.stopActivityPolling();
 
-    // Close file watcher
+    // Close file watchers
     if (this.watcher) {
       this.watcher.close();
       this.watcher = undefined;
+    }
+    if (this.dbWalWatcher) {
+      this.dbWalWatcher.close();
+      this.dbWalWatcher = undefined;
     }
 
     // Dispose event emitters
@@ -1204,18 +1515,19 @@ export class SessionMonitor implements vscode.Disposable {
     this._onDiscoveryModeChange.dispose();
     this._onLatencyUpdate.dispose();
     this._onCompaction.dispose();
+    this._onQuotaUpdate.dispose();
 
     // Reset state
     this.sessionPath = null;
     this.sessionId = null;
     this.workspacePath = null;
-    this.filePosition = 0;
-    this.parser.reset();
+    this.reader = null;
     this.pendingToolCalls.clear();
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
     this.currentContextSize = 0;
+    this.totalReportedCost = 0;
     this.recentUsageEvents = [];
     this.sessionStartTime = null;
     this._subagentStats = [];
@@ -1227,6 +1539,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.pendingUserRequest = null;
     this.latencyRecords = [];
     this.compactionEvents = [];
+    this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
     this.previousContextSize = 0;
 
@@ -1240,19 +1553,18 @@ export class SessionMonitor implements vscode.Disposable {
    * file position for incremental reads.
    */
   private async readInitialContent(): Promise<void> {
-    if (!this.sessionPath) {
+    if (!this.sessionPath || !this.reader) {
       return;
     }
 
     try {
-      const content = await fs.promises.readFile(this.sessionPath, 'utf-8');
-      const lineCount = content.split('\n').filter(l => l.trim()).length;
-      log(`Reading initial content: ${content.length} chars, ~${lineCount} lines`);
-      this.parser.processChunk(content);
-      this.parser.flush();
-      // Use byte length, not character length - fs.readSync uses byte offsets
-      this.filePosition = Buffer.byteLength(content, 'utf-8');
-      log(`Initial content parsed: ${this.filePosition} bytes, stats: input=${this.stats.totalInputTokens}, output=${this.stats.totalOutputTokens}`);
+      const events = this.reader.readNew();
+      log(`Reading initial content: ${events.length} events`);
+      for (const event of events) {
+        this.handleEvent(event);
+      }
+      this.reader.flush();
+      log(`Initial content parsed: ${this.reader.getPosition()} position, stats: input=${this.stats.totalInputTokens}, output=${this.stats.totalOutputTokens}`);
     } catch (error) {
       logError('Failed to read initial session content', error);
       throw error;
@@ -1286,30 +1598,29 @@ export class SessionMonitor implements vscode.Disposable {
    * Actually processes the file change after debounce.
    */
   private processFileChange(): void {
-    if (!this.sessionPath) {
+    if (!this.sessionPath || !this.reader) {
       return;
     }
 
     try {
       // Check if file still exists
-      if (!fs.existsSync(this.sessionPath)) {
+      if (!this.reader.exists()) {
         log('Session file deleted, entering fast discovery mode...');
+        this.eventLogger?.endSession();
         this._onSessionEnd.fire();
         this.sessionPath = null;
+        this.reader = null;
+        this.stopActivityPolling();
         // Enter fast discovery mode to quickly find new session
         this.enterFastDiscoveryMode();
         return;
       }
 
-      // Get current file size
-      const stats = fs.statSync(this.sessionPath);
-      const currentSize = stats.size;
+      const newEvents = this.reader.readNew();
 
-      // Handle file truncation (file was rewritten/smaller than before)
-      if (currentSize < this.filePosition) {
-        log(`Session file truncated (${this.filePosition} -> ${currentSize}), re-reading from start`);
-        this.filePosition = 0;
-        this.parser.reset();
+      // Handle file truncation detected by reader
+      if (this.reader.wasTruncated()) {
+        log('Session file truncated, resetting stats');
         // Reset stats for fresh read
         this.stats.totalInputTokens = 0;
         this.stats.totalOutputTokens = 0;
@@ -1317,29 +1628,22 @@ export class SessionMonitor implements vscode.Disposable {
         this.stats.totalCacheReadTokens = 0;
         this.stats.messageCount = 0;
         this.currentContextSize = 0;
+        this.totalReportedCost = 0;
         this.recentUsageEvents = [];
         this.sessionStartTime = null;
       }
 
-      // Check if file has grown
-      if (currentSize <= this.filePosition) {
-        return; // No new content
+      for (const event of newEvents) {
+        this.handleEvent(event);
       }
 
-      // Read new content from last position
-      const fd = fs.openSync(this.sessionPath, 'r');
-      const bufferSize = currentSize - this.filePosition;
-      const buffer = Buffer.alloc(bufferSize);
-
-      fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
-      fs.closeSync(fd);
-
-      const chunk = buffer.toString('utf-8');
-      this.parser.processChunk(chunk);
-
-      // Update file position
-      this.filePosition = currentSize;
-
+      // Propagate session-based quota data (e.g., Codex rate_limits)
+      if (newEvents.length > 0) {
+        const quota = this.provider.getQuotaFromSession?.();
+        if (quota) {
+          this._onQuotaUpdate.fire(quota);
+        }
+      }
     } catch (error) {
       logError('Error reading session file changes', error);
       // Don't throw - continue monitoring
@@ -1351,6 +1655,18 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Debounce delay for new session detection (ms) */
   private readonly NEW_SESSION_CHECK_DEBOUNCE_MS = 500;
+
+  /** Poll timer for OpenCode session activity */
+  private opencodePollTimer: NodeJS.Timeout | null = null;
+
+  /** OpenCode polling interval (ms) */
+  private readonly OPENCODE_POLL_INTERVAL_MS = 1500;
+
+  /** Timestamp of last event received during OpenCode polling */
+  private _lastEventTime = 0;
+
+  /** Inactivity threshold before triggering session end (ms) */
+  private readonly OPENCODE_INACTIVITY_MS = 60_000;
 
   /** Cooldown period after switching sessions (ms) - prevents rapid bouncing */
   private readonly SESSION_SWITCH_COOLDOWN_MS = 5000;
@@ -1429,10 +1745,10 @@ export class SessionMonitor implements vscode.Disposable {
       // Use custom directory if set, otherwise use workspace discovery
       let newSessionPath: string | null = null;
       if (this.customSessionDir) {
-        const sessions = findSessionsInDirectory(this.customSessionDir);
+        const sessions = this.provider.findSessionsInDirectory(this.customSessionDir);
         newSessionPath = sessions.length > 0 ? sessions[0] : null;
       } else {
-        newSessionPath = findActiveSession(this.workspacePath!);
+        newSessionPath = this.provider.findActiveSession(this.workspacePath!);
       }
       log(`performNewSessionCheck: session lookup returned: ${newSessionPath}`);
 
@@ -1443,6 +1759,7 @@ export class SessionMonitor implements vscode.Disposable {
       } else if (!newSessionPath && this.sessionPath) {
         // Current session gone and no new session found
         log('performNewSessionCheck: current session ended, entering fast discovery mode');
+        this.eventLogger?.endSession();
         this._onSessionEnd.fire();
         this.sessionPath = null;
         this.enterFastDiscoveryMode();
@@ -1464,6 +1781,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.lastSessionSwitchTime = Date.now();
 
     // End current session
+    this.eventLogger?.endSession();
     this._onSessionEnd.fire();
 
     // Use the common attach logic
@@ -1476,6 +1794,7 @@ export class SessionMonitor implements vscode.Disposable {
    */
   private enterFastDiscoveryMode(): void {
     log('Entering fast discovery mode after session end');
+    this.stopActivityPolling();
     this.isWaitingForSession = true;
     this.fastDiscoveryStartTime = Date.now();
     this._onDiscoveryModeChange.fire(true);
@@ -1537,8 +1856,22 @@ export class SessionMonitor implements vscode.Disposable {
       return;
     }
 
-    // Update message count
-    this.stats.messageCount++;
+    // Log event to JSONL audit trail (lazy-start on first event)
+    if (this.eventLogger) {
+      if (!this.eventLogger.isSessionActive() && this.sessionId) {
+        this.eventLogger.startSession(this.provider.id, this.sessionId);
+      }
+      this.eventLogger.logEvent(event);
+    }
+
+    // Exclude synthetic provider token-count events from user-facing message count.
+    const isSyntheticTokenCount = event.type === 'assistant' &&
+      typeof event.message?.id === 'string' &&
+      event.message.id.startsWith('token-count-');
+
+    if (!isSyntheticTokenCount) {
+      this.stats.messageCount++;
+    }
     this.stats.lastUpdated = new Date();
 
     // Track session start time (first event)
@@ -1594,6 +1927,8 @@ export class SessionMonitor implements vscode.Disposable {
       }
 
       log(`Token usage extracted - input: ${usage.inputTokens}, output: ${usage.outputTokens}, cacheWrite: ${usage.cacheWriteTokens}, cacheRead: ${usage.cacheReadTokens}`);
+      this.lastModelId = usage.model;
+      this.stats.lastModelId = usage.model;
       // Update statistics
       this.stats.totalInputTokens += usage.inputTokens;
       this.stats.totalOutputTokens += usage.outputTokens;
@@ -1610,42 +1945,51 @@ export class SessionMonitor implements vscode.Disposable {
       modelStats.cacheReadTokens += usage.cacheReadTokens;
       this.stats.modelUsage.set(usage.model, modelStats);
 
-      // Update current context window size
-      // Context = input tokens + cache write + cache read (total tokens in context)
-      const newContextSize = usage.inputTokens + usage.cacheWriteTokens + usage.cacheReadTokens;
+      // Update current context window size (provider-specific formula)
+      const newContextSize = this.provider.computeContextSize
+        ? this.provider.computeContextSize(usage)
+        : usage.inputTokens + usage.cacheWriteTokens + usage.cacheReadTokens;
 
-      // Detect compaction: significant context size drop (>20% decrease)
-      if (this.previousContextSize > 0 && newContextSize < this.previousContextSize * 0.8) {
-        const compactionEvent: CompactionEvent = {
-          timestamp: new Date(event.timestamp),
-          contextBefore: this.previousContextSize,
-          contextAfter: newContextSize,
-          tokensReclaimed: this.previousContextSize - newContextSize
-        };
-        this.compactionEvents.push(compactionEvent);
-        this._onCompaction.fire(compactionEvent);
-        log(`Compaction detected: ${this.previousContextSize} -> ${newContextSize} (reclaimed ${compactionEvent.tokensReclaimed} tokens)`);
+      const hasContextSignal = usage.inputTokens > 0
+        || usage.outputTokens > 0
+        || usage.cacheWriteTokens > 0
+        || usage.cacheReadTokens > 0
+        || (usage.reasoningTokens ?? 0) > 0;
 
-        // Add compaction marker to timeline
-        this.timeline.unshift({
-          type: 'compaction',
-          timestamp: event.timestamp,
-          description: `Context compacted: ${Math.round(this.previousContextSize / 1000)}K -> ${Math.round(newContextSize / 1000)}K tokens (reclaimed ${Math.round(compactionEvent.tokensReclaimed / 1000)}K)`,
-          noiseLevel: 'system',
-          metadata: {
+      if (hasContextSignal) {
+        // Detect compaction: significant context size drop (>20% decrease)
+        if (this.previousContextSize > 0 && newContextSize < this.previousContextSize * 0.8) {
+          const compactionEvent: CompactionEvent = {
+            timestamp: new Date(event.timestamp),
             contextBefore: this.previousContextSize,
             contextAfter: newContextSize,
-            tokensReclaimed: compactionEvent.tokensReclaimed
-          }
-        });
-        if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
-          this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
-        }
-        this._onTimelineEvent.fire(this.timeline[0]);
-      }
+            tokensReclaimed: this.previousContextSize - newContextSize
+          };
+          this.compactionEvents.push(compactionEvent);
+          this._onCompaction.fire(compactionEvent);
+          log(`Compaction detected: ${this.previousContextSize} -> ${newContextSize} (reclaimed ${compactionEvent.tokensReclaimed} tokens)`);
 
-      this.previousContextSize = newContextSize;
-      this.currentContextSize = newContextSize;
+          // Add compaction marker to timeline
+          this.timeline.unshift({
+            type: 'compaction',
+            timestamp: event.timestamp,
+            description: `Context compacted: ${Math.round(this.previousContextSize / 1000)}K -> ${Math.round(newContextSize / 1000)}K tokens (reclaimed ${Math.round(compactionEvent.tokensReclaimed / 1000)}K)`,
+            noiseLevel: 'system',
+            metadata: {
+              contextBefore: this.previousContextSize,
+              contextAfter: newContextSize,
+              tokensReclaimed: compactionEvent.tokensReclaimed
+            }
+          });
+          if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
+            this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
+          }
+          this._onTimelineEvent.fire(this.timeline[0]);
+        }
+
+        this.previousContextSize = newContextSize;
+        this.currentContextSize = newContextSize;
+      }
 
       // Track for burn rate calculation (include cache writes as they count toward quota)
       const totalTokensForBurn = usage.inputTokens + usage.outputTokens + usage.cacheWriteTokens;
@@ -1655,6 +1999,11 @@ export class SessionMonitor implements vscode.Disposable {
       });
       this.pruneOldUsageEvents();
 
+      // Accumulate provider-reported cost
+      if (usage.reportedCost !== undefined && usage.reportedCost > 0) {
+        this.totalReportedCost += usage.reportedCost;
+      }
+
       // Emit event
       this._onTokenUsage.fire(usage);
     }
@@ -1662,6 +2011,44 @@ export class SessionMonitor implements vscode.Disposable {
     // Extract tool_use from assistant message content blocks
     if (event.type === 'assistant' && event.message?.content) {
       this.extractToolUsesFromContent(event.message.content, event.timestamp);
+
+      // Collect assistant text snippets for decision extraction and plan extraction
+      if (Array.isArray(event.message.content)) {
+        for (const block of event.message.content) {
+          if (block && typeof block === 'object' && 'type' in block && block.type === 'text' && 'text' in block && typeof block.text === 'string') {
+            const fullText = block.text as string;
+
+            // Decision extraction (capped)
+            if (this.assistantTexts.length < this.MAX_ASSISTANT_TEXTS) {
+              const text = fullText.length > this.MAX_ASSISTANT_TEXT_LENGTH
+                ? fullText.slice(0, this.MAX_ASSISTANT_TEXT_LENGTH)
+                : fullText;
+              this.assistantTexts.push({ text, timestamp: event.timestamp });
+            }
+
+            // Plan mode: accumulate assistant text for later parsing
+            if (this.planModeActive) {
+              this.planAssistantTexts.push(fullText);
+            }
+
+            // Detect <proposed_plan> blocks (OpenCode / Codex)
+            const proposedPlan = extractProposedPlan(fullText);
+            if (proposedPlan) {
+              const parsed = parsePlanMarkdown(proposedPlan);
+              const source = this.provider.id === 'opencode' ? 'opencode' as const
+                : this.provider.id === 'codex' ? 'codex' as const
+                : 'claude-code' as const;
+              this.planState = {
+                active: false,
+                steps: parsed.steps,
+                title: parsed.title,
+                source,
+              };
+              log(`Proposed plan extracted: ${parsed.steps.length} steps (${source})`);
+            }
+          }
+        }
+      }
     }
 
     // Extract tool_result from user message content blocks
@@ -2188,8 +2575,14 @@ export class SessionMonitor implements vscode.Disposable {
         this._onTimelineEvent.fire(this.timeline[0]);
 
         // Build tool call object
+        const rawToolName = typeof toolUse.input?._sidekickRawToolName === 'string'
+          ? String(toolUse.input._sidekickRawToolName)
+          : undefined;
+
         const toolCall: ToolCall = {
           name: toolUse.name,
+          rawName: rawToolName,
+          providerId: this.provider.id,
           input: toolUse.input,
           timestamp: new Date(timestamp)
         };
@@ -2252,6 +2645,14 @@ export class SessionMonitor implements vscode.Disposable {
 
       this.taskState.tasks.set(agentTaskId, newTask);
       log(`Subagent spawned: ${agentTaskId} - "${description}" (${subagentType || 'unknown'})`);
+    } else if (toolUse.name === 'EnterPlanMode') {
+      this.handleEnterPlanMode(now);
+    } else if (toolUse.name === 'ExitPlanMode') {
+      this.handleExitPlanMode(now);
+    } else if (toolUse.name === 'TodoWrite') {
+      this.handleTodoWriteToolUse(toolUse, now);
+    } else if (toolUse.name === 'UpdatePlan') {
+      this.handleUpdatePlanToolUse(toolUse, now);
     } else if (toolUse.name === 'TaskUpdate') {
       const taskId = String(toolUse.input.taskId || '');
       const task = this.taskState.tasks.get(taskId);
@@ -2324,6 +2725,249 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
+   * Handles entering plan mode (Claude Code EnterPlanMode or OpenCode text detection).
+   *
+   * Starts accumulating assistant text for plan extraction.
+   */
+  private handleEnterPlanMode(now: Date): void {
+    this.planModeActive = true;
+    this.planModeEnteredAt = now;
+    this.planAssistantTexts = [];
+
+    // Initialize plan state
+    this.planState = {
+      active: true,
+      steps: [],
+      enteredAt: now,
+      source: this.provider.id === 'opencode' ? 'opencode' : 'claude-code',
+    };
+
+    log(`Plan mode entered at ${now.toISOString()} (${this.provider.id})`);
+  }
+
+  /**
+   * Handles exiting plan mode (Claude Code ExitPlanMode or OpenCode text detection).
+   *
+   * Parses accumulated assistant text into plan steps.
+   */
+  private handleExitPlanMode(now: Date): void {
+    if (this.planState) {
+      this.planState.active = false;
+      this.planState.exitedAt = now;
+
+      // Parse accumulated assistant text into steps (if no steps yet from proposed_plan)
+      if (this.planState.steps.length === 0 && this.planAssistantTexts.length > 0) {
+        const combined = this.planAssistantTexts.join('\n');
+        const parsed = parsePlanMarkdown(combined);
+        if (parsed.steps.length > 0) {
+          this.planState.steps = parsed.steps;
+          if (parsed.title) {
+            this.planState.title = parsed.title;
+          }
+        }
+      }
+    }
+
+    this.planModeActive = false;
+    this.planModeEnteredAt = null;
+    this.planAssistantTexts = [];
+
+    log(`Plan mode exited at ${now.toISOString()}, ${this.planState?.steps.length ?? 0} steps extracted`);
+  }
+
+  /**
+   * Handles Codex UpdatePlan snapshots by projecting them into tracked tasks.
+   *
+   * Each plan step is represented as a synthetic task (`plan-{index}`) so the
+   * Kanban view can render lifecycle transitions in a provider-agnostic way.
+   */
+  private handleUpdatePlanToolUse(
+    toolUse: { id: string; name: string; input: Record<string, unknown> },
+    now: Date
+  ): void {
+    const plan = toolUse.input.plan as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(plan)) return;
+
+    const seenPlanTaskIds = new Set<string>();
+    let activePlanTaskId: string | null = null;
+
+    for (let i = 0; i < plan.length; i++) {
+      const entry = plan[i];
+      const step = String(entry.step || '').trim();
+      if (!step) continue;
+
+      const rawStatus = String(entry.status || 'pending').toLowerCase();
+      let status: TaskStatus;
+      if (rawStatus === 'completed') status = 'completed';
+      else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') status = 'in_progress';
+      else status = 'pending';
+
+      const taskId = `plan-${i}`;
+      seenPlanTaskIds.add(taskId);
+
+      const existing = this.taskState.tasks.get(taskId);
+      if (existing) {
+        existing.subject = step;
+        existing.status = status;
+        existing.updatedAt = now;
+        if (!existing.activeForm) {
+          existing.activeForm = `Working on ${step}`;
+        }
+      } else {
+        const task: TrackedTask = {
+          taskId,
+          subject: step,
+          status,
+          createdAt: now,
+          updatedAt: now,
+          activeForm: `Working on ${step}`,
+          blockedBy: [],
+          blocks: [],
+          associatedToolCalls: []
+        };
+        this.taskState.tasks.set(taskId, task);
+      }
+
+      if (status === 'in_progress') {
+        activePlanTaskId = taskId;
+      }
+    }
+
+    // Mark missing synthetic plan tasks as deleted when absent from a new snapshot.
+    for (const [taskId, task] of this.taskState.tasks) {
+      if (!taskId.startsWith('plan-')) continue;
+      if (!seenPlanTaskIds.has(taskId) && task.status !== 'deleted') {
+        task.status = 'deleted';
+        task.updatedAt = now;
+      }
+    }
+
+    if (activePlanTaskId) {
+      this.taskState.activeTaskId = activePlanTaskId;
+    } else if (this.taskState.activeTaskId?.startsWith('plan-')) {
+      this.taskState.activeTaskId = null;
+    }
+
+    // Dual-write: populate planState for mind map plan visualization
+    const planSteps: PlanStep[] = [];
+    for (let i = 0; i < plan.length; i++) {
+      const entry = plan[i];
+      const step = String(entry.step || '').trim();
+      if (!step) continue;
+      const rawStatus = String(entry.status || 'pending').toLowerCase();
+      let stepStatus: 'pending' | 'in_progress' | 'completed';
+      if (rawStatus === 'completed') stepStatus = 'completed';
+      else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') stepStatus = 'in_progress';
+      else stepStatus = 'pending';
+      planSteps.push({ id: `step-${i}`, description: step, status: stepStatus });
+    }
+
+    const hasActive = planSteps.some(s => s.status === 'in_progress' || s.status === 'pending');
+    this.planState = {
+      active: hasActive,
+      steps: planSteps,
+      title: 'Plan',
+      source: 'codex',
+    };
+  }
+
+  /**
+   * Handles TodoWrite tool use (OpenCode's equivalent of TaskCreate/TaskUpdate).
+   *
+   * Replaces all non-subagent tracked tasks with the new todo list from the
+   * input's `todos` array. Each todo item has: content, status, priority.
+   *
+   * @param toolUse - Tool use block with input containing `todos` array
+   * @param now - Parsed timestamp
+   */
+  private handleTodoWriteToolUse(
+    toolUse: { id: string; name: string; input: Record<string, unknown> },
+    now: Date
+  ): void {
+    const todos = toolUse.input.todos as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(todos)) return;
+
+    // Remove all non-subagent tasks (subagent tasks should persist)
+    for (const [taskId, task] of this.taskState.tasks) {
+      if (!task.isSubagent) {
+        this.taskState.tasks.delete(taskId);
+      }
+    }
+
+    // Reset active task if it was a non-subagent task
+    if (this.taskState.activeTaskId && !this.taskState.tasks.has(this.taskState.activeTaskId)) {
+      this.taskState.activeTaskId = null;
+    }
+
+    for (let i = 0; i < todos.length; i++) {
+      const todo = todos[i];
+      const taskId = `todo-${i}`;
+      const content = String(todo.content || todo.subject || `Todo ${i + 1}`);
+      const rawStatus = String(todo.status || 'pending').toLowerCase();
+      const priority = todo.priority ? String(todo.priority) : undefined;
+
+      // Map OpenCode todo status values to TaskStatus
+      let status: TaskStatus;
+      if (rawStatus === 'completed' || rawStatus === 'done') {
+        status = 'completed';
+      } else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') {
+        status = 'in_progress';
+      } else {
+        status = 'pending';
+      }
+
+      const task: TrackedTask = {
+        taskId,
+        subject: content,
+        description: priority ? `Priority: ${priority}` : undefined,
+        status,
+        createdAt: now,
+        updatedAt: now,
+        blockedBy: [],
+        blocks: [],
+        associatedToolCalls: []
+      };
+
+      this.taskState.tasks.set(taskId, task);
+
+      // Track active task
+      if (status === 'in_progress') {
+        this.taskState.activeTaskId = taskId;
+      }
+    }
+
+    // Second pass: parse dependency info from content text
+    for (let i = 0; i < todos.length; i++) {
+      const task = this.taskState.tasks.get(`todo-${i}`);
+      if (!task) continue;
+
+      // Check for explicit blockedBy field (future-proofing)
+      if (Array.isArray(todos[i].blockedBy)) {
+        for (const ref of todos[i].blockedBy as string[]) {
+          const refStr = String(ref);
+          if (!task.blockedBy.includes(refStr)) {
+            task.blockedBy.push(refStr);
+          }
+        }
+      }
+
+      // Parse dependency references from content text
+      const deps = parseTodoDependencies(String(todos[i].content || ''), todos);
+      for (const depId of deps) {
+        if (depId !== `todo-${i}` && !task.blockedBy.includes(depId)) {
+          task.blockedBy.push(depId);
+          const depTask = this.taskState.tasks.get(depId);
+          if (depTask && !depTask.blocks.includes(`todo-${i}`)) {
+            depTask.blocks.push(`todo-${i}`);
+          }
+        }
+      }
+    }
+
+    log(`TodoWrite: created ${todos.length} tasks from todo list`);
+  }
+
+  /**
    * Extracts tool_result blocks from message content array.
    *
    * @param content - Message content array
@@ -2334,7 +2978,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     for (const block of content) {
       if (isTypedBlock(block) && block.type === 'tool_result') {
-        const toolResult = block as { type: string; tool_use_id: string; content?: unknown; is_error?: boolean };
+        const toolResult = block as { type: string; tool_use_id: string; content?: unknown; is_error?: boolean; duration?: number };
 
         const pending = this.pendingToolCalls.get(toolResult.tool_use_id);
         if (pending) {
@@ -2355,9 +2999,13 @@ export class SessionMonitor implements vscode.Disposable {
             }
           }
 
-          // Calculate duration
+          // Prefer provider-supplied duration (from OpenCode tool parts) over
+          // calculated duration from event timestamps which can be inaccurate
+          // when both tool_use and tool_result are emitted in the same batch.
           const endTime = new Date(timestamp);
-          const duration = endTime.getTime() - pending.startTime.getTime();
+          const duration = (typeof toolResult.duration === 'number' && toolResult.duration > 0)
+            ? toolResult.duration
+            : endTime.getTime() - pending.startTime.getTime();
 
           // Update the corresponding ToolCall with result data
           const toolCall = this.stats.toolCalls.find(
@@ -2540,5 +3188,9 @@ export class SessionMonitor implements vscode.Disposable {
       activeTaskId: null
     };
     this.pendingTaskCreates.clear();
+    this.planState = null;
+    this.planModeActive = false;
+    this.planModeEnteredAt = null;
+    this.planAssistantTexts = [];
   }
 }

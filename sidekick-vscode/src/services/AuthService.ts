@@ -1,18 +1,22 @@
 /**
- * @fileoverview Authentication service managing dual-auth abstraction.
+ * @fileoverview Authentication / inference provider service.
  *
- * AuthService is the main entry point for Claude API access. It manages
- * switching between API key authentication and Max subscription authentication,
- * handling configuration changes and client lifecycle.
+ * AuthService is the main entry point for AI inference. It manages
+ * switching between providers (Claude Max, Claude API, OpenCode, Codex),
+ * handles configuration changes, and manages client lifecycle.
  *
  * @module AuthService
  */
 
 import * as vscode from 'vscode';
 import { AuthMode, ClaudeClient, CompletionOptions } from '../types';
+import type { InferenceProviderId } from '../types/inferenceProvider';
+import { PROVIDER_DISPLAY_NAMES } from '../types/inferenceProvider';
 import { SecretsManager } from './SecretsManager';
 import { ApiKeyClient } from './ApiKeyClient';
 import { MaxSubscriptionClient } from './MaxSubscriptionClient';
+import { detectInferenceProvider } from './providers/ProviderDetector';
+import { log } from './Logger';
 
 /**
  * Result from testing the connection.
@@ -25,29 +29,23 @@ export interface ConnectionTestResult {
 }
 
 /**
- * Central authentication service managing Claude API access.
+ * Central authentication / inference provider service.
  *
  * This service:
- * - Manages switching between API key and Max subscription auth modes
+ * - Manages switching between inference providers
  * - Lazily initializes the appropriate client
  * - Listens for configuration changes and updates accordingly
  * - Implements Disposable for proper cleanup
- *
- * @example
- * ```typescript
- * const authService = new AuthService(context);
- * context.subscriptions.push(authService);
- *
- * const response = await authService.complete('Hello!');
- * const testResult = await authService.testConnection();
- * ```
  */
 export class AuthService implements vscode.Disposable {
-  /** Current Claude client instance (lazily initialized) */
+  /** Current inference client instance (lazily initialized) */
   private client: ClaudeClient | undefined;
 
-  /** Current authentication mode */
+  /** Current authentication mode (legacy, kept for backward compat) */
   private mode: AuthMode;
+
+  /** Resolved inference provider ID */
+  private providerId: InferenceProviderId;
 
   /** Disposables to clean up on dispose */
   private disposables: vscode.Disposable[] = [];
@@ -55,88 +53,113 @@ export class AuthService implements vscode.Disposable {
   /** Secrets manager for API key storage */
   private secretsManager: SecretsManager;
 
-  /**
-   * Creates a new AuthService.
-   *
-   * @param context - VS Code extension context for accessing secrets and configuration
-   */
   constructor(context: vscode.ExtensionContext) {
     this.secretsManager = new SecretsManager(context.secrets);
     this.mode = this.getConfiguredMode();
+    this.providerId = this.resolveProviderId();
+
+    log(`AuthService: provider=${this.providerId}, legacyMode=${this.mode}`);
 
     // Listen for configuration changes
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('sidekick.authMode')) {
-          this.handleModeChange();
+        if (
+          e.affectsConfiguration('sidekick.inferenceProvider') ||
+          e.affectsConfiguration('sidekick.authMode')
+        ) {
+          this.handleProviderChange();
         }
       })
     );
   }
 
   /**
-   * Gets the configured auth mode from VS Code settings.
+   * Resolves the effective InferenceProviderId.
    *
-   * @returns The currently configured AuthMode
+   * Priority:
+   * 1. sidekick.inferenceProvider (if not "auto")
+   * 2. Auto-detect via ProviderDetector filesystem heuristics
+   * 3. Legacy: sidekick.authMode mapping
+   * 4. Default: claude-max
    */
+  private resolveProviderId(): InferenceProviderId {
+    const config = vscode.workspace.getConfiguration('sidekick');
+    const explicit = config.get<string>('inferenceProvider');
+
+    if (explicit && explicit !== 'auto') {
+      return explicit as InferenceProviderId;
+    }
+
+    // If legacy authMode is explicitly set to api-key, honour it
+    const inspected = config.inspect<string>('authMode');
+    const authModeExplicit =
+      inspected?.workspaceValue ?? inspected?.globalValue ?? inspected?.workspaceFolderValue;
+    if (authModeExplicit === 'api-key') {
+      return 'claude-api';
+    }
+
+    // Auto-detect from filesystem
+    return detectInferenceProvider();
+  }
+
+  /** Gets the legacy auth mode (kept for backward compat). */
   private getConfiguredMode(): AuthMode {
     const config = vscode.workspace.getConfiguration('sidekick');
     return config.get<AuthMode>('authMode') ?? 'max-subscription';
   }
 
-  /**
-   * Handles auth mode configuration changes.
-   *
-   * Disposes the current client so a new one will be created
-   * with the new mode on next use.
-   */
-  private async handleModeChange(): Promise<void> {
+  /** Handles provider / auth mode configuration changes. */
+  private async handleProviderChange(): Promise<void> {
     const newMode = this.getConfiguredMode();
-    if (newMode !== this.mode) {
+    const newProvider = this.resolveProviderId();
+
+    if (newProvider !== this.providerId || newMode !== this.mode) {
+      log(`AuthService: provider changing from ${this.providerId} to ${newProvider}`);
       this.mode = newMode;
-      // Dispose old client so new one is created on next use
+      this.providerId = newProvider;
       this.client?.dispose();
       this.client = undefined;
     }
   }
 
   /**
-   * Gets or creates the appropriate Claude client for the current mode.
-   *
-   * Lazily initializes the client on first use. For API key mode,
-   * throws an error if no API key is configured.
-   *
-   * @returns Promise resolving to the ClaudeClient
-   * @throws Error if API key mode is selected but no key is configured
+   * Gets or creates the appropriate client for the current provider.
    */
   async getClient(): Promise<ClaudeClient> {
-    if (this.client) {
-      return this.client;
-    }
+    if (this.client) return this.client;
 
-    if (this.mode === 'api-key') {
-      const apiKey = await this.secretsManager.getApiKey();
-      if (!apiKey) {
-        throw new Error(
-          'API key not configured. Run "Sidekick: Set API Key" command.'
-        );
+    switch (this.providerId) {
+      case 'claude-api': {
+        const apiKey = await this.secretsManager.getApiKey();
+        if (!apiKey) {
+          throw new Error(
+            'API key not configured. Run "Sidekick: Set API Key" command.'
+          );
+        }
+        this.client = new ApiKeyClient(apiKey);
+        break;
       }
-      this.client = new ApiKeyClient(apiKey);
-    } else {
-      this.client = new MaxSubscriptionClient();
+      case 'opencode': {
+        const { OpenCodeClient } = await import('./OpenCodeClient');
+        this.client = new OpenCodeClient();
+        break;
+      }
+      case 'codex': {
+        const { CodexClient } = await import('./CodexClient');
+        this.client = new CodexClient();
+        break;
+      }
+      case 'claude-max':
+      default:
+        this.client = new MaxSubscriptionClient();
+        break;
     }
 
     return this.client;
   }
 
   /**
-   * Sends a prompt to Claude and returns the completion.
-   *
-   * Convenience method that gets the client and calls complete.
-   *
-   * @param prompt - The text prompt to send
-   * @param options - Optional completion configuration
-   * @returns Promise resolving to the completion text
+   * Sends a prompt and returns the completion.
    */
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
     const client = await this.getClient();
@@ -144,9 +167,7 @@ export class AuthService implements vscode.Disposable {
   }
 
   /**
-   * Tests the connection to Claude using the current auth mode.
-   *
-   * @returns Promise resolving to success status and message
+   * Tests the connection using the current provider.
    */
   async testConnection(): Promise<ConnectionTestResult> {
     try {
@@ -154,12 +175,15 @@ export class AuthService implements vscode.Disposable {
       const available = await client.isAvailable();
 
       if (available) {
+        const name = PROVIDER_DISPLAY_NAMES[this.providerId];
         return {
           success: true,
-          message: `Connected successfully using ${this.mode} authentication.`,
+          message: `Connected successfully via ${name}.`,
         };
-      } else {
-        if (this.mode === 'max-subscription') {
+      }
+
+      switch (this.providerId) {
+        case 'claude-max':
           return {
             success: false,
             message:
@@ -167,11 +191,21 @@ export class AuthService implements vscode.Disposable {
               'If already installed (e.g., via pnpm), set the path in Settings > Sidekick > Claude Path.\n' +
               'Find your claude path with: which claude (Linux/Mac) or where claude (Windows)',
           };
-        }
-        return {
-          success: false,
-          message: 'API key authentication failed. Please check your API key.',
-        };
+        case 'claude-api':
+          return {
+            success: false,
+            message: 'API key authentication failed. Please check your API key.',
+          };
+        case 'opencode':
+          return {
+            success: false,
+            message: 'OpenCode not found. Install it from https://opencode.ai',
+          };
+        case 'codex':
+          return {
+            success: false,
+            message: 'Codex CLI not found. Install it from https://github.com/openai/codex',
+          };
       }
     } catch (error) {
       const message =
@@ -180,29 +214,26 @@ export class AuthService implements vscode.Disposable {
     }
   }
 
-  /**
-   * Gets the current authentication mode.
-   *
-   * @returns The current AuthMode
-   */
+  /** Returns the current inference provider ID. */
+  getProviderId(): InferenceProviderId {
+    return this.providerId;
+  }
+
+  /** Returns a human-readable display name for the active provider. */
+  getProviderDisplayName(): string {
+    return PROVIDER_DISPLAY_NAMES[this.providerId];
+  }
+
+  /** @deprecated Use getProviderId(). Returns the legacy AuthMode. */
   getMode(): AuthMode {
     return this.mode;
   }
 
-  /**
-   * Gets the SecretsManager instance for API key management.
-   *
-   * @returns The SecretsManager instance
-   */
+  /** Gets the SecretsManager instance for API key management. */
   getSecretsManager(): SecretsManager {
     return this.secretsManager;
   }
 
-  /**
-   * Disposes of all resources.
-   *
-   * Cleans up the current client and any event listeners.
-   */
   dispose(): void {
     this.client?.dispose();
     this.disposables.forEach(d => d.dispose());

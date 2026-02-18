@@ -460,6 +460,34 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       50% { stroke-opacity: 0.4; }
     }
 
+    /* Plan step status styling */
+    .node.plan-step-pending {
+      stroke: var(--vscode-charts-yellow, #FFD700);
+      stroke-width: 2;
+    }
+
+    .node.plan-step-in_progress {
+      stroke: var(--vscode-charts-green, #4caf50);
+      stroke-width: 3;
+      animation: task-pulse 1.5s ease-in-out infinite;
+    }
+
+    .node.plan-step-completed {
+      opacity: 0.7;
+    }
+
+    .node.plan-active {
+      stroke: #00BCD4;
+      stroke-width: 3;
+      animation: task-pulse 2s ease-in-out infinite;
+    }
+
+    .link.plan-sequence {
+      stroke: #00BCD4;
+      stroke-opacity: 0.5;
+      stroke-dasharray: 3, 2;
+    }
+
     /* Tooltip */
     .tooltip {
       position: absolute;
@@ -572,6 +600,10 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       <span class="legend-dot" style="background: #FF6B6B;"></span>
       <span>Task</span>
     </div>
+    <div class="legend-item">
+      <span class="legend-dot" style="background: #00BCD4;"></span>
+      <span>Plan</span>
+    </div>
   </div>
 
   <script nonce="${nonce}" src="https://cdn.jsdelivr.net/npm/d3@7"></script>
@@ -589,7 +621,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         url: '#50E3C2',
         directory: '#8B572A',  // Brown - represents folders
         command: '#D0021B',    // Red - represents terminal commands
-        task: '#FF6B6B'        // Coral red - represents tasks
+        task: '#FF6B6B',       // Coral red - represents tasks
+        plan: '#00BCD4',       // Teal - plan root
+        'plan-step': '#26C6DA' // Lighter teal - plan steps
       };
 
       // Force tuning for sparse vs dense graph layouts
@@ -616,7 +650,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         url:       { base: 7,  min: 5,  max: 14, scale: 2 },     // Scales with accesses
         directory: { base: 7,  min: 5,  max: 14, scale: 2 },     // Scales with searches
         command:   { base: 7,  min: 5,  max: 14, scale: 2 },     // Scales with executions
-        task:      { base: 10, min: 8,  max: 16, scale: 2 }      // Scales with associated actions
+        task:        { base: 10, min: 8,  max: 16, scale: 2 },     // Scales with associated actions
+        plan:        { base: 14, min: 14, max: 14, scale: 0 },     // Fixed, prominent
+        'plan-step': { base: 8,  min: 6,  max: 12, scale: 2 }      // Scales with links
       };
 
       function calculateNodeSize(d) {
@@ -655,6 +691,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
             var distance = forceConfig.linkDistance;
             if (link.linkType === 'task-action') return distance * 0.75;
             if (link.linkType === 'task-dependency') return distance * 0.9;
+            if (link.linkType === 'plan-sequence') return distance * 0.6;
 
             var sourceType = link.source && typeof link.source === 'object' ? link.source.type : null;
             var targetType = link.target && typeof link.target === 'object' ? link.target.type : null;
@@ -950,6 +987,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           if (d.isLatest) classes.push('latest');
           if (d.linkType === 'task-action') classes.push('task-action');
           if (d.linkType === 'task-dependency') classes.push('task-dependency');
+          if (d.linkType === 'plan-sequence') classes.push('plan-sequence');
           return classes.join(' ');
         }
 
@@ -972,6 +1010,14 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           // Add task status class
           if (d.type === 'task' && d.taskStatus) {
             classes.push('task-' + d.taskStatus);
+          }
+          // Add plan step status class
+          if (d.type === 'plan-step' && d.planStepStatus) {
+            classes.push('plan-step-' + d.planStepStatus);
+          }
+          // Add plan active class
+          if (d.type === 'plan' && d.count > 0) {
+            classes.push('plan-active');
           }
           return classes.join(' ');
         }
@@ -1020,6 +1066,19 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
               tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' +
                 '<span style="color: ' + statusColor + '">● ' + statusLabel.replace('_', ' ') + '</span>' +
                 '<br>' + actionText;
+            } else if (d.type === 'plan') {
+              // For plan root, show title and step count
+              var stepCount = d.count || 0;
+              var stepText = stepCount === 1 ? '1 step' : stepCount + ' steps';
+              tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' + stepText;
+            } else if (d.type === 'plan-step') {
+              // For plan steps, show description and status
+              var planStatus = d.planStepStatus || 'pending';
+              var planStatusColor = planStatus === 'in_progress' ? 'var(--vscode-charts-green, #4caf50)'
+                                 : planStatus === 'pending' ? 'var(--vscode-charts-yellow, #FFD700)'
+                                 : 'var(--vscode-descriptionForeground)';
+              tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' +
+                '<span style="color: ' + planStatusColor + '">● ' + planStatus.replace('_', ' ') + '</span>';
             } else {
               // For other nodes, show count if available
               var count = d.count ? ' (' + d.count + ')' : '';

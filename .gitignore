@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 out/
+site/
 
 # VS Code extension package
 *.vsix
@@ -53,3 +54,4 @@ WHATS_NEXT.md
 tts-demo.html
 diagram-demo.html
 session-parsing-comparison.md
+orchestrator.md

@@ -1,8 +1,8 @@
 /**
  * @fileoverview Cross-session search service.
  *
- * Provides full-text search across all Claude Code session files in
- * ~/.claude/projects/. Uses VS Code QuickPick for interactive search
+ * Provides full-text search across all session files for the active provider.
+ * Uses VS Code QuickPick for interactive search
  * with context snippets and session navigation.
  *
  * @module services/CrossSessionSearch
@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { log } from './Logger';
+import type { SessionProvider } from '../types/sessionProvider';
 
 /** Search result with context */
 interface SearchResult {
@@ -35,7 +36,7 @@ export class CrossSessionSearch implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
   constructor(
-    private readonly _sessionMonitor: { getSessionPath(): string | null }
+    private readonly _sessionMonitor: { getSessionPath(): string | null; getProvider(): SessionProvider }
   ) {}
 
   /**
@@ -43,7 +44,8 @@ export class CrossSessionSearch implements vscode.Disposable {
    */
   async search(): Promise<void> {
     const quickPick = vscode.window.createQuickPick<SearchResultItem>();
-    quickPick.placeholder = 'Search across all Claude Code sessions...';
+    const provider = this._sessionMonitor.getProvider();
+    quickPick.placeholder = `Search across all ${provider.displayName} sessions...`;
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = true;
 
@@ -81,9 +83,10 @@ export class CrossSessionSearch implements vscode.Disposable {
    */
   private async performSearch(query: string): Promise<SearchResult[]> {
     const results: SearchResult[] = [];
-    const projectsDir = path.join(os.homedir(), '.claude', 'projects');
-    const queryLower = query.toLowerCase();
+    const provider = this._sessionMonitor.getProvider();
+    const projectsDir = provider.getProjectsBaseDir();
     const MAX_RESULTS = 50;
+    const MAX_FILES_PER_PROJECT = 20;
 
     try {
       if (!fs.existsSync(projectsDir)) return results;
@@ -94,65 +97,35 @@ export class CrossSessionSearch implements vscode.Disposable {
         if (results.length >= MAX_RESULTS) break;
 
         const projectPath = path.join(projectsDir, projectDir);
-        const stat = fs.statSync(projectPath);
-        if (!stat.isDirectory()) continue;
-
-        const decodedProject = this.decodeProjectPath(projectDir);
-
-        // Find .jsonl files in this project directory
-        let files: string[];
         try {
-          files = fs.readdirSync(projectPath)
-            .filter(f => f.endsWith('.jsonl'))
-            .slice(0, 20); // Limit per-project files to search
+          const stat = fs.statSync(projectPath);
+          if (!stat.isDirectory()) continue;
         } catch {
           continue;
         }
 
-        for (const file of files) {
+        // Find session files in this project directory
+        const sessionFiles = provider.findSessionsInDirectory(projectPath)
+          .slice(0, MAX_FILES_PER_PROJECT);
+
+        for (const filePath of sessionFiles) {
           if (results.length >= MAX_RESULTS) break;
 
-          const filePath = path.join(projectPath, file);
-          try {
-            const content = fs.readFileSync(filePath, 'utf8');
-            const lines = content.split('\n');
+          const remaining = MAX_RESULTS - results.length;
+          const hits = provider.searchInSession(filePath, query, remaining);
 
-            for (const line of lines) {
-              if (results.length >= MAX_RESULTS) break;
-              if (!line.trim()) continue;
+          for (const hit of hits) {
+            if (results.length >= MAX_RESULTS) break;
 
-              // Quick check before JSON parsing
-              if (!line.toLowerCase().includes(queryLower)) continue;
+            const displayPath = hit.projectPath || this.decodeProjectPath(projectDir);
 
-              try {
-                const event = JSON.parse(line);
-                const text = this.extractSearchableText(event);
-                if (!text) continue;
-
-                const textLower = text.toLowerCase();
-                const matchIdx = textLower.indexOf(queryLower);
-                if (matchIdx < 0) continue;
-
-                // Extract context snippet around match
-                const start = Math.max(0, matchIdx - 40);
-                const end = Math.min(text.length, matchIdx + query.length + 40);
-                const snippet = (start > 0 ? '...' : '') +
-                  text.substring(start, end) +
-                  (end < text.length ? '...' : '');
-
-                results.push({
-                  sessionPath: filePath,
-                  projectPath: decodedProject,
-                  snippet: snippet.replace(/\n/g, ' '),
-                  eventType: event.type || 'unknown',
-                  timestamp: event.timestamp || ''
-                });
-              } catch {
-                // Skip malformed JSON
-              }
-            }
-          } catch {
-            // Skip unreadable files
+            results.push({
+              sessionPath: hit.sessionPath,
+              projectPath: displayPath,
+              snippet: hit.line,
+              eventType: hit.eventType,
+              timestamp: hit.timestamp
+            });
           }
         }
       }
@@ -161,34 +134,6 @@ export class CrossSessionSearch implements vscode.Disposable {
     }
 
     return results;
-  }
-
-  /**
-   * Extracts searchable text from a session event.
-   */
-  private extractSearchableText(event: Record<string, unknown>): string {
-    const content = (event.message as Record<string, unknown>)?.content;
-    if (!content) return '';
-
-    if (typeof content === 'string') return content;
-
-    if (Array.isArray(content)) {
-      const parts: string[] = [];
-      for (const block of content) {
-        if (block && typeof block === 'object') {
-          const b = block as Record<string, unknown>;
-          if (typeof b.text === 'string') parts.push(b.text as string);
-          if (typeof b.thinking === 'string') parts.push(b.thinking as string);
-          if (typeof b.content === 'string') parts.push(b.content as string);
-          if (b.input && typeof b.input === 'object') {
-            parts.push(JSON.stringify(b.input));
-          }
-        }
-      }
-      return parts.join(' ');
-    }
-
-    return '';
   }
 
   /**

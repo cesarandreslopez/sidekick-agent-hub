@@ -15,7 +15,8 @@ import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
 import { CompletionCache } from './CompletionCache';
 import { CompletionContext, TimeoutError } from '../types';
-import { getSystemPrompt, getUserPrompt, cleanCompletion } from '../utils/prompts';
+import { resolveModel } from './ModelResolver';
+import { getSystemPrompt, getUserPrompt, cleanCompletion, PROSE_LANGUAGES } from '../utils/prompts';
 import { log } from './Logger';
 
 /**
@@ -78,13 +79,12 @@ export class CompletionService implements vscode.Disposable {
     const debounceMs = config.get<number>('debounceMs') ?? 300;
     const contextLines = config.get<number>('inlineContextLines') ?? 30;
     const multilineSetting = config.get<boolean>('multiline') ?? false;
-    const model = config.get<string>('inlineModel') ?? 'haiku';
+    const model = resolveModel(config.get<string>('inlineModel') ?? 'auto', this.authService.getProviderId(), 'inlineModel');
     const timeoutMs = config.get<number>('inlineTimeout') ?? 15000;
 
     // Prose files always use multiline mode
-    const proseLanguages = ['markdown', 'md', 'plaintext', 'text', 'txt', 'restructuredtext', 'asciidoc', 'latex', 'tex', 'html', 'xml'];
-    const isProse = proseLanguages.includes(document.languageId.toLowerCase());
-    const multiline = isProse ? true : multilineSetting;
+    const isProse = PROSE_LANGUAGES.includes(document.languageId.toLowerCase());
+    const multiline = isProse || multilineSetting;
 
     // Increment request ID for tracking
     const requestId = ++this.lastRequestId;

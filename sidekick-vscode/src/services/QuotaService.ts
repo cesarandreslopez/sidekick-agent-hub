@@ -139,9 +139,20 @@ export class QuotaService implements vscode.Disposable {
   readonly onQuotaError = this._onQuotaError.event;
 
   constructor() {
-    this._disposables.push(this._onQuotaUpdate);
-    this._disposables.push(this._onQuotaError);
+    this._disposables.push(this._onQuotaUpdate, this._onQuotaError);
     log('QuotaService initialized');
+  }
+
+  /**
+   * Creates an unavailable QuotaState with an error message.
+   */
+  private _unavailableState(error: string): QuotaState {
+    return {
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error,
+    };
   }
 
   /**
@@ -195,12 +206,7 @@ export class QuotaService implements vscode.Disposable {
     const token = await this._readAccessToken();
 
     if (!token) {
-      const state: QuotaState = {
-        fiveHour: { utilization: 0, resetsAt: '' },
-        sevenDay: { utilization: 0, resetsAt: '' },
-        available: false,
-        error: 'No OAuth token available'
-      };
+      const state = this._unavailableState('No OAuth token available');
       this._cachedQuota = state;
       this._onQuotaUpdate.fire(state);
       return state;
@@ -231,12 +237,7 @@ export class QuotaService implements vscode.Disposable {
           errorMessage = `API error: ${response.status}`;
         }
 
-        const state: QuotaState = {
-          fiveHour: { utilization: 0, resetsAt: '' },
-          sevenDay: { utilization: 0, resetsAt: '' },
-          available: false,
-          error: errorMessage
-        };
+        const state = this._unavailableState(errorMessage);
         this._cachedQuota = state;
         this._onQuotaUpdate.fire(state);
         this._onQuotaError.fire(errorMessage);
@@ -249,34 +250,23 @@ export class QuotaService implements vscode.Disposable {
       const fiveHourUtil = data.five_hour?.utilization ?? 0;
       const sevenDayUtil = data.seven_day?.utilization ?? 0;
 
-      // Track history for rate calculation
+      // Track history and calculate projections
       this._addToHistory(this._fiveHourHistory, fiveHourUtil);
       this._addToHistory(this._sevenDayHistory, sevenDayUtil);
 
-      // Calculate rates and projections
-      const fiveHourRate = this._calculateRate(this._fiveHourHistory);
-      const sevenDayRate = this._calculateRate(this._sevenDayHistory);
+      const fiveHourResetsAt = data.five_hour?.resets_at ?? '';
+      const sevenDayResetsAt = data.seven_day?.resets_at ?? '';
 
       const projectedFiveHour = this._calculateProjection(
-        fiveHourUtil,
-        data.five_hour?.resets_at ?? '',
-        fiveHourRate
+        fiveHourUtil, fiveHourResetsAt, this._calculateRate(this._fiveHourHistory)
       );
       const projectedSevenDay = this._calculateProjection(
-        sevenDayUtil,
-        data.seven_day?.resets_at ?? '',
-        sevenDayRate
+        sevenDayUtil, sevenDayResetsAt, this._calculateRate(this._sevenDayHistory)
       );
 
       const state: QuotaState = {
-        fiveHour: {
-          utilization: fiveHourUtil,
-          resetsAt: data.five_hour?.resets_at ?? ''
-        },
-        sevenDay: {
-          utilization: sevenDayUtil,
-          resetsAt: data.seven_day?.resets_at ?? ''
-        },
+        fiveHour: { utilization: fiveHourUtil, resetsAt: fiveHourResetsAt },
+        sevenDay: { utilization: sevenDayUtil, resetsAt: sevenDayResetsAt },
         available: true,
         projectedFiveHour,
         projectedSevenDay
@@ -297,12 +287,7 @@ export class QuotaService implements vscode.Disposable {
         return this._cachedQuota;
       }
 
-      const state: QuotaState = {
-        fiveHour: { utilization: 0, resetsAt: '' },
-        sevenDay: { utilization: 0, resetsAt: '' },
-        available: false,
-        error: errorMessage
-      };
+      const state = this._unavailableState(errorMessage);
       this._cachedQuota = state;
       this._onQuotaUpdate.fire(state);
       this._onQuotaError.fire(errorMessage);

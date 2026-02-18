@@ -9,8 +9,8 @@
 
 import { log } from '../services/Logger';
 import type { ErrorContext } from '../types/errorExplanation';
-import type { ComplexityLevel } from '../types/rsvp';
-import { COMPLEXITY_LABELS } from '../types/rsvp';
+import type { ComplexityLevel } from '../types/explain';
+import { COMPLEXITY_LABELS } from '../types/explain';
 import { stripMarkdownFences } from './markdownUtils';
 
 /**
@@ -166,7 +166,7 @@ OUTPUT (inserted at cursor):`;
 /**
  * File types where prose completions are valid.
  */
-const PROSE_LANGUAGES = [
+export const PROSE_LANGUAGES = [
   'markdown',
   'md',
   'plaintext',
@@ -188,12 +188,9 @@ export function cleanCompletion(
   const isProse = language && PROSE_LANGUAGES.includes(language.toLowerCase());
 
   // Limits must match what we tell Claude in getSystemPrompt
-  let maxLength: number;
-  if (multiline) {
-    maxLength = isProse ? 3000 : 800;
-  } else {
-    maxLength = isProse ? 2000 : 500;
-  }
+  const maxLength = isProse
+    ? (multiline ? 3000 : 2000)
+    : (multiline ? 800 : 500);
 
   log(`Clean: isProse=${isProse}, maxLength=${maxLength}`);
 
@@ -559,8 +556,9 @@ export function cleanCommitMessage(text: string): string | null {
  */
 export function getDocGenerationSystemPrompt(language: string): string {
   const lang = language.toLowerCase();
+  const isJsTs = lang === 'typescript' || lang === 'javascript';
 
-  if (lang === 'typescript' || lang === 'javascript') {
+  if (isJsTs) {
     return `You are a JSDoc documentation generator. Generate JSDoc comments for code.
 
 OUTPUT FORMAT - JSDoc block comment:
@@ -672,7 +670,8 @@ export function cleanDocResponse(text: string, language: string): string | undef
   }
 
   // Validate format based on language
-  if (lang === 'typescript' || lang === 'javascript') {
+  const isJsTs = lang === 'typescript' || lang === 'javascript';
+  if (isJsTs) {
     // Must start with /** and end with */
     if (!cleaned.startsWith('/**')) {
       // Try to find JSDoc block in response

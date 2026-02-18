@@ -9,7 +9,7 @@
 
 ## Security Model
 
-Sidekick for Max is designed with security in mind:
+Sidekick Agent Hub is designed with security in mind:
 
 - **No API keys stored**: Uses Claude Code CLI authentication, which manages credentials securely
 - **No telemetry**: No data is sent to external servers beyond Claude API calls

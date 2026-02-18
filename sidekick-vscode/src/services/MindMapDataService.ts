@@ -7,8 +7,8 @@
  * @module services/MindMapDataService
  */
 
-import { SessionStats, ToolCall, TimelineEvent, SubagentStats, TaskState, TrackedTask } from '../types/claudeSession';
-import { GraphNode, GraphLink, GraphData, TaskNodeStatus } from '../types/mindMap';
+import { SessionStats, ToolCall, TimelineEvent, SubagentStats, TaskState, TrackedTask, PlanState } from '../types/claudeSession';
+import { GraphNode, GraphLink, GraphData, TaskNodeStatus, PlanStepStatus } from '../types/mindMap';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { log } from './Logger';
 
@@ -39,7 +39,7 @@ export class MindMapDataService {
   private static readonly COMMAND_PATTERNS = /^(git|npm|npx|yarn|pnpm|node|python|pip|docker|make|cargo|go|rustc|tsc|eslint|prettier|vitest|jest|pytest)/i;
 
   /** Task-related tools (not visualized as separate nodes) */
-  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'];
+  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'TodoWrite', 'TodoRead', 'UpdatePlan'];
 
   /**
    * Builds complete graph from session statistics.
@@ -197,6 +197,11 @@ export class MindMapDataService {
     // Add task nodes from taskState
     if (stats.taskState) {
       this.addTaskNodes(stats.taskState, nodes, links, nodeIds);
+    }
+
+    // Add plan nodes from planState
+    if (stats.planState && stats.planState.steps.length > 0) {
+      this.addPlanNodes(stats.planState, nodes, links, nodeIds, stats.taskState);
     }
 
     // Add subagent nodes with hierarchical structure
@@ -436,140 +441,84 @@ export class MindMapDataService {
   }
 
   /**
-   * Creates links between files and the tools that touched them.
+   * Creates unique links between tool nodes and target nodes.
+   *
+   * Generic helper that iterates tool calls matching the given tool names,
+   * extracts a target node ID via the provided function, and adds unique
+   * tool-to-target links.
    *
    * @param toolCalls - Array of tool calls from session
+   * @param toolNames - Tool names to match
+   * @param getTargetId - Function to extract target node ID from a tool call (or null to skip)
    * @param existingNodeIds - Set of existing node IDs
    * @param links - Links array to add to
    */
-  private static addFileToolLinks(
+  private static addToolTargetLinks(
     toolCalls: ToolCall[],
+    toolNames: string[],
+    getTargetId: (call: ToolCall) => string | null,
     existingNodeIds: Set<string>,
     links: GraphLink[]
   ): void {
     const addedLinks = new Set<string>();
 
     for (const call of toolCalls) {
-      if (this.FILE_TOOLS.includes(call.name)) {
-        const filePath = call.input.file_path as string;
-        if (filePath && typeof filePath === 'string') {
-          const fileId = `file-${filePath}`;
-          const toolId = `tool-${call.name}`;
+      if (!toolNames.includes(call.name)) continue;
 
-          if (existingNodeIds.has(fileId) && existingNodeIds.has(toolId)) {
-            // Only add unique links (tool → file direction)
-            const linkKey = `${toolId}-${fileId}`;
-            if (!addedLinks.has(linkKey)) {
-              links.push({ source: toolId, target: fileId });
-              addedLinks.add(linkKey);
-            }
-          }
-        }
+      const targetId = getTargetId(call);
+      if (!targetId) continue;
+
+      const toolId = `tool-${call.name}`;
+      if (!existingNodeIds.has(targetId) || !existingNodeIds.has(toolId)) continue;
+
+      const linkKey = `${toolId}-${targetId}`;
+      if (!addedLinks.has(linkKey)) {
+        links.push({ source: toolId, target: targetId });
+        addedLinks.add(linkKey);
       }
     }
+  }
+
+  /**
+   * Creates links between files and the tools that touched them.
+   */
+  private static addFileToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
+    this.addToolTargetLinks(toolCalls, this.FILE_TOOLS, call => {
+      const filePath = call.input.file_path as string;
+      return filePath && typeof filePath === 'string' ? `file-${filePath}` : null;
+    }, existingNodeIds, links);
   }
 
   /**
    * Creates links between URLs/queries and the tools that accessed them.
-   *
-   * @param toolCalls - Array of tool calls from session
-   * @param existingNodeIds - Set of existing node IDs
-   * @param links - Links array to add to
    */
-  private static addUrlToolLinks(
-    toolCalls: ToolCall[],
-    existingNodeIds: Set<string>,
-    links: GraphLink[]
-  ): void {
-    const addedLinks = new Set<string>();
-
-    for (const call of toolCalls) {
-      if (this.URL_TOOLS.includes(call.name)) {
-        const url = (call.input.url as string) || (call.input.query as string);
-        if (url && typeof url === 'string') {
-          const urlId = `url-${url}`;
-          const toolId = `tool-${call.name}`;
-
-          if (existingNodeIds.has(urlId) && existingNodeIds.has(toolId)) {
-            const linkKey = `${toolId}-${urlId}`;
-            if (!addedLinks.has(linkKey)) {
-              links.push({ source: toolId, target: urlId });
-              addedLinks.add(linkKey);
-            }
-          }
-        }
-      }
-    }
+  private static addUrlToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
+    this.addToolTargetLinks(toolCalls, this.URL_TOOLS, call => {
+      const url = (call.input.url as string) || (call.input.query as string);
+      return url && typeof url === 'string' ? `url-${url}` : null;
+    }, existingNodeIds, links);
   }
 
   /**
    * Creates links between directories and the tools that searched them.
-   *
-   * @param toolCalls - Array of tool calls from session
-   * @param existingNodeIds - Set of existing node IDs
-   * @param links - Links array to add to
    */
-  private static addDirectoryToolLinks(
-    toolCalls: ToolCall[],
-    existingNodeIds: Set<string>,
-    links: GraphLink[]
-  ): void {
-    const addedLinks = new Set<string>();
-
-    for (const call of toolCalls) {
-      if (this.SEARCH_TOOLS.includes(call.name)) {
-        const path = call.input.path as string;
-        if (path && typeof path === 'string') {
-          const dirId = `directory-${path}`;
-          const toolId = `tool-${call.name}`;
-
-          if (existingNodeIds.has(dirId) && existingNodeIds.has(toolId)) {
-            const linkKey = `${toolId}-${dirId}`;
-            if (!addedLinks.has(linkKey)) {
-              links.push({ source: toolId, target: dirId });
-              addedLinks.add(linkKey);
-            }
-          }
-        }
-      }
-    }
+  private static addDirectoryToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
+    this.addToolTargetLinks(toolCalls, this.SEARCH_TOOLS, call => {
+      const dirPath = call.input.path as string;
+      return dirPath && typeof dirPath === 'string' ? `directory-${dirPath}` : null;
+    }, existingNodeIds, links);
   }
 
   /**
    * Creates links between command types and the Bash tool that ran them.
-   *
-   * @param toolCalls - Array of tool calls from session
-   * @param existingNodeIds - Set of existing node IDs
-   * @param links - Links array to add to
    */
-  private static addCommandToolLinks(
-    toolCalls: ToolCall[],
-    existingNodeIds: Set<string>,
-    links: GraphLink[]
-  ): void {
-    const addedLinks = new Set<string>();
-
-    for (const call of toolCalls) {
-      if (this.SHELL_TOOLS.includes(call.name)) {
-        const cmd = call.input.command as string;
-        if (cmd && typeof cmd === 'string') {
-          const match = cmd.match(this.COMMAND_PATTERNS);
-          if (match) {
-            const cmdName = match[1].toLowerCase();
-            const cmdId = `command-${cmdName}`;
-            const toolId = `tool-${call.name}`;
-
-            if (existingNodeIds.has(cmdId) && existingNodeIds.has(toolId)) {
-              const linkKey = `${toolId}-${cmdId}`;
-              if (!addedLinks.has(linkKey)) {
-                links.push({ source: toolId, target: cmdId });
-                addedLinks.add(linkKey);
-              }
-            }
-          }
-        }
-      }
-    }
+  private static addCommandToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
+    this.addToolTargetLinks(toolCalls, this.SHELL_TOOLS, call => {
+      const cmd = call.input.command as string;
+      if (!cmd || typeof cmd !== 'string') return null;
+      const match = cmd.match(this.COMMAND_PATTERNS);
+      return match ? `command-${match[1].toLowerCase()}` : null;
+    }, existingNodeIds, links);
   }
 
   /**
@@ -705,6 +654,115 @@ export class MindMapDataService {
           target: taskNodeId,
           linkType: 'task-dependency',
         });
+      }
+    }
+  }
+
+  /**
+   * Adds plan nodes from PlanState to the graph.
+   *
+   * Creates:
+   * - Plan root node linked from session-root
+   * - Plan-step nodes linked from plan root
+   * - Sequential links between consecutive steps
+   * - Cross-reference links from plan steps to matching task nodes
+   *
+   * @param planState - Plan state containing steps
+   * @param nodes - Nodes array to add to
+   * @param links - Links array to add to
+   * @param nodeIds - Set of existing node IDs
+   * @param taskState - Optional task state for cross-referencing
+   */
+  private static addPlanNodes(
+    planState: PlanState,
+    nodes: GraphNode[],
+    links: GraphLink[],
+    nodeIds: Set<string>,
+    taskState?: TaskState
+  ): void {
+    // Create plan root node
+    const planRootId = 'plan-root';
+    if (!nodeIds.has(planRootId)) {
+      nodes.push({
+        id: planRootId,
+        label: planState.title || 'Plan',
+        fullPath: `${planState.title || 'Plan'} (${planState.steps.length} steps)`,
+        type: 'plan',
+        count: planState.steps.length,
+      });
+      nodeIds.add(planRootId);
+      links.push({ source: 'session-root', target: planRootId });
+    }
+
+    // Create plan-step nodes
+    for (let i = 0; i < planState.steps.length; i++) {
+      const step = planState.steps[i];
+      const stepNodeId = `plan-step-${i}`;
+
+      if (!nodeIds.has(stepNodeId)) {
+        const stepStatus: PlanStepStatus = step.status;
+        const phaseLabel = step.phase ? `[${step.phase}] ` : '';
+        nodes.push({
+          id: stepNodeId,
+          label: this.truncateLabel(`${phaseLabel}${step.description}`, 30),
+          fullPath: step.description,
+          type: 'plan-step',
+          planStepStatus: stepStatus,
+        });
+        nodeIds.add(stepNodeId);
+
+        // Link step to plan root
+        links.push({ source: planRootId, target: stepNodeId });
+
+        // Sequential link to previous step
+        if (i > 0) {
+          links.push({
+            source: `plan-step-${i - 1}`,
+            target: stepNodeId,
+            linkType: 'plan-sequence',
+          });
+        }
+      }
+    }
+
+    // Cross-reference: link plan steps to matching task nodes
+    if (taskState) {
+      const tasks = Array.from(taskState.tasks.values()).filter(t => t.status !== 'deleted');
+
+      for (let i = 0; i < planState.steps.length; i++) {
+        const step = planState.steps[i];
+        const stepNodeId = `plan-step-${i}`;
+        if (!nodeIds.has(stepNodeId)) continue;
+
+        // For Codex: direct index mapping (plan-{i} task IDs correspond to step-{i})
+        if (planState.source === 'codex') {
+          const codexTaskId = `plan-${i}`;
+          const taskNodeId = `task-${codexTaskId}`;
+          if (nodeIds.has(taskNodeId)) {
+            links.push({
+              source: stepNodeId,
+              target: taskNodeId,
+              linkType: 'task-action',
+            });
+            continue;
+          }
+        }
+
+        // Fuzzy match: case-insensitive substring of step description against task subjects
+        const stepLower = step.description.toLowerCase();
+        for (const task of tasks) {
+          const taskNodeId = `task-${task.taskId}`;
+          if (!nodeIds.has(taskNodeId)) continue;
+          const subjectLower = task.subject.toLowerCase();
+          if (stepLower.includes(subjectLower) || subjectLower.includes(stepLower)) {
+            links.push({
+              source: stepNodeId,
+              target: taskNodeId,
+              linkType: 'task-action',
+            });
+            break; // One match per step
+          }
+        }
       }
     }
   }

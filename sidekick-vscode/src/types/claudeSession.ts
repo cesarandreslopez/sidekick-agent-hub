@@ -26,6 +26,12 @@ export interface MessageUsage {
 
   /** Number of tokens read from cache (0.1x input cost) */
   cache_read_input_tokens?: number;
+
+  /** Cost reported by the provider (used by OpenCode) */
+  reported_cost?: number;
+
+  /** Number of reasoning/thinking tokens (used by OpenCode) */
+  reasoning_tokens?: number;
 }
 
 /**
@@ -36,6 +42,9 @@ export interface MessageUsage {
 export interface SessionMessage {
   /** Message role (user, assistant, etc.) */
   role: string;
+
+  /** Optional message identifier (for deduplication) */
+  id?: string;
 
   /** Model identifier (e.g., "claude-opus-4-20250514") */
   model?: string;
@@ -104,6 +113,12 @@ export interface TokenUsage {
 
   /** When this usage occurred */
   timestamp: Date;
+
+  /** Cost reported by the provider (bypasses local pricing calculation) */
+  reportedCost?: number;
+
+  /** Number of reasoning/thinking tokens */
+  reasoningTokens?: number;
 }
 
 /**
@@ -115,6 +130,12 @@ export interface TokenUsage {
 export interface ToolCall {
   /** Tool name (e.g., "Read", "Write", "Bash") */
   name: string;
+
+  /** Provider-specific tool name before canonical normalization (if available) */
+  rawName?: string;
+
+  /** Provider ID that emitted this tool call */
+  providerId?: string;
 
   /** Tool input parameters */
   input: Record<string, unknown>;
@@ -378,6 +399,49 @@ export interface LatencyStats {
 }
 
 /**
+ * A single step in a plan extracted from plan mode.
+ */
+export interface PlanStep {
+  /** Step identifier (e.g., "step-0", "step-1") */
+  id: string;
+
+  /** Step text/description */
+  description: string;
+
+  /** Current step status */
+  status: 'pending' | 'in_progress' | 'completed';
+
+  /** Optional phase grouping (from markdown headers) */
+  phase?: string;
+}
+
+/**
+ * State of a plan extracted from plan mode.
+ *
+ * Captures the structured plan content from Claude Code's EnterPlanMode/ExitPlanMode,
+ * OpenCode's proposed_plan blocks, or Codex's UpdatePlan tool calls.
+ */
+export interface PlanState {
+  /** Whether plan mode is currently active */
+  active: boolean;
+
+  /** Extracted plan steps */
+  steps: PlanStep[];
+
+  /** Plan title (from first H1/H2 header) */
+  title?: string;
+
+  /** When plan mode was entered */
+  enteredAt?: Date;
+
+  /** When plan mode was exited */
+  exitedAt?: Date;
+
+  /** Which provider generated the plan */
+  source: 'claude-code' | 'opencode' | 'codex';
+}
+
+/**
  * Aggregated statistics for a Claude Code session.
  *
  * Provides rollup metrics for token consumption, model usage,
@@ -420,6 +484,9 @@ export interface SessionStats {
   /** Current context window size (from most recent assistant message) */
   currentContextSize: number;
 
+  /** Most recently observed model ID for context window estimation */
+  lastModelId?: string;
+
   /** Recent token usage events for burn rate calculation (timestamp, tokens) */
   recentUsageEvents: Array<{ timestamp: Date; tokens: number }>;
 
@@ -429,6 +496,9 @@ export interface SessionStats {
   /** Task tracking state for the session */
   taskState?: TaskState;
 
+  /** Plan state extracted from plan mode */
+  planState?: PlanState;
+
   /** Response latency statistics */
   latencyStats?: LatencyStats;
 
@@ -437,6 +507,9 @@ export interface SessionStats {
 
   /** Estimated context token attribution by content category */
   contextAttribution?: ContextAttribution;
+
+  /** Total cost reported by the provider (when available, e.g., OpenCode) */
+  totalReportedCost?: number;
 }
 
 /**
