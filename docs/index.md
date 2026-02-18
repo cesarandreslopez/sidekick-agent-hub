@@ -1,10 +1,12 @@
 # Sidekick Agent Hub
 
 <p align="center">
-  <img src="../images/icon-256.png" alt="Sidekick Agent Hub" width="128" height="128">
+  <img src="images/icon-128.png" alt="Sidekick Agent Hub" width="128" height="128">
 </p>
 
 **AI coding assistant with real-time agent monitoring for VS Code** — inline completions, code transforms, commit messages, and agent session monitoring.
+
+![Sidekick Agent Hub demo](images/sidekick-agent-hub.gif)
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/CesarAndresLopez.sidekick-for-max?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max)
 [![Open VSX](https://img.shields.io/open-vsx/v/cesarandreslopez/sidekick-for-max?label=Open%20VSX)](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max)
@@ -14,9 +16,15 @@
 
 **Code faster.** AI handles the mechanical work — boilerplate, commit messages, docs, PR descriptions, error explanations — so you focus on design and logic. Inline completions understand your project context, not just syntax.
 
+![Inline Completions demo](images/inference.gif)
+
 **Stay in control.** When AI agents run autonomously, tokens burn silently and context fills up without warning. Sidekick's real-time dashboards, mind maps, and notification triggers give you visibility into what your agent is doing, so you can catch problems before you hit limits.
 
+![Session Analytics Dashboard](images/session-analytics-dashboard.png)
+
 **Never lose context.** Sessions end and everything is lost — decisions, progress, architectural choices. Session handoff and decision logging preserve that context automatically, so your next session picks up where you left off instead of re-discovering everything.
+
+![CLAUDE.md Suggestions](images/claude-md-suggestions.png)
 
 ## Why Am I Building This?
 

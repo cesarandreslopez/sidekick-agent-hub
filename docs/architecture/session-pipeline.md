@@ -4,11 +4,23 @@ The session monitoring system follows a pipeline architecture from raw CLI data 
 
 ## Pipeline Flow
 
-```
-CLI agent writes JSONL/DB files
-  → SessionProvider (normalizes to ClaudeSessionEvent)
-    → SessionMonitor (watches files, aggregates stats, emits events)
-      → Dashboard / MindMap / KanbanBoard / TreeViews / Notifications
+```mermaid
+flowchart TD
+    CC["Claude Code<br/><small>JSONL files</small>"] --> SP
+    OC["OpenCode<br/><small>Database/files</small>"] --> SP
+    CX["Codex CLI<br/><small>Session files</small>"] --> SP
+
+    SP["SessionProvider<br/><small>Normalizes to ClaudeSessionEvent</small>"]
+    SP --> SM["SessionMonitor<br/><small>Watch files · Aggregate stats · Emit events</small>"]
+
+    SM --> Dashboard["DashboardViewProvider"]
+    SM --> MindMap["MindMapViewProvider"]
+    SM --> Kanban["TaskBoardViewProvider"]
+    SM --> Files["TempFilesTreeProvider"]
+    SM --> Agents["SubagentTreeProvider"]
+    SM --> StatusBar["MonitorStatusBar"]
+    SM --> Notify["NotificationTriggerService"]
+    SM --> Logger["SessionEventLogger"]
 ```
 
 ## SessionProvider

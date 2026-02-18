@@ -4,12 +4,20 @@
 
 esbuild produces four bundles:
 
-| Output | Format | Platform |
-|--------|--------|----------|
-| `out/extension.js` (from `src/extension.ts`) | CommonJS | Node.js |
-| `out/webview/explain.js` | IIFE | Browser |
-| `out/webview/error.js` | IIFE | Browser |
-| `out/webview/dashboard.js` | IIFE | Browser |
+```mermaid
+flowchart LR
+    subgraph Sources
+        EXT["src/extension.ts"]
+        EXP["src/webview/explain.ts"]
+        ERR["src/webview/error.ts"]
+        DSH["src/webview/dashboard.ts"]
+    end
+
+    EXT -->|CommonJS · Node.js| O1["out/extension.js"]
+    EXP -->|IIFE · Browser| O2["out/webview/explain.js"]
+    ERR -->|IIFE · Browser| O3["out/webview/error.js"]
+    DSH -->|IIFE · Browser| O4["out/webview/dashboard.js"]
+```
 
 Only `vscode` is externalized. All other dependencies (including `@anthropic-ai/claude-agent-sdk` and `@opencode-ai/sdk`) are bundled by esbuild.
 
@@ -29,6 +37,16 @@ Only `vscode` is externalized. All other dependencies (including `@anthropic-ai/
 | Webview UI | `src/webview/` (vanilla TS, bundled as IIFE) |
 
 ## Request Management
+
+```mermaid
+flowchart LR
+    K["Keystroke"] --> D["Debounce<br/><small>1000ms default</small>"]
+    D --> CC{"Cache\nhit?"}
+    CC -->|Yes| R["Return cached"]
+    CC -->|No| API["API Call<br/><small>AbortController · TimeoutManager</small>"]
+    API --> CS["Store in cache<br/><small>LRU · 100 entries · 30s TTL</small>"]
+    CS --> DI["Display completion"]
+```
 
 - **Debouncing**: Configurable delay (default 1000ms) before firing inline completion requests
 - **LRU cache**: `CompletionCache` — 100 entries, 30s TTL

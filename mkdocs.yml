@@ -37,13 +37,20 @@ theme:
 extra_css:
   - overrides/assets/stylesheets/extra.css
 
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
+
 plugins:
   - search
 
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.tabbed:

@@ -2,6 +2,23 @@
 
 AI agents are powerful, but they have a fundamental limitation: they forget everything between sessions. Understanding how context works — and how to preserve it — is the difference between an agent that rediscovers your project every time and one that builds on previous work.
 
+## Context Lifecycle
+
+```mermaid
+flowchart LR
+    Start["Session start"] --> Load["Load instruction files<br/><small>CLAUDE.md · AGENTS.md</small>"]
+    Load --> Work["Work<br/><small>Read files · Run commands · Generate</small>"]
+    Work --> Full{"Context\nfull?"}
+    Full -->|Yes| Compact["Compaction<br/><small>Compress older content</small>"]
+    Compact --> Work
+    Full -->|No| Work
+    Work --> End["Session end"]
+    End --> Handoff["Generate handoff doc"]
+
+    Handoff -.->|"Persists on disk"| Start
+    Load -.->|"Persists on disk"| Load
+```
+
 ## What Is Context?
 
 Context is your agent's working memory. It includes your code, conversation history, tool results, and instruction files. Every time your agent reads a file, runs a command, or generates a response, that information takes up space in the context window.

@@ -2,6 +2,30 @@
 
 Sidekick has two separate provider concepts that operate independently.
 
+```mermaid
+flowchart LR
+    subgraph Inference["Inference Providers"]
+        direction TB
+        CM["claude-max"] --> AS["AuthService"]
+        CA["claude-api"] --> AS
+        OCI["opencode"] --> AS
+        CXI["codex"] --> AS
+        AS --> Complete["complete()"]
+    end
+
+    subgraph Session["Session Providers"]
+        direction TB
+        CCS["claude-code"] --> SM["SessionMonitor"]
+        OCS["opencode"] --> SM
+        CXS["codex"] --> SM
+        SM --> UI["UI Components"]
+    end
+
+    PD["ProviderDetector<br/><small>Auto-detect via filesystem mtime</small>"]
+    PD -.-> Inference
+    PD -.-> Session
+```
+
 ## Inference Providers
 
 Defined as `InferenceProviderId` in `src/types/inferenceProvider.ts`:

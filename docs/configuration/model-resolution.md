@@ -4,12 +4,20 @@ Sidekick uses a tier-based model resolution system that maps abstract tiers to p
 
 ## Resolution Flow
 
-```
-Setting value → resolveModel()
-  ├── "auto" → per-feature default tier (from FEATURE_AUTO_TIERS) → provider-specific model ID
-  ├── "fast" / "balanced" / "powerful" → provider-specific model ID (from DEFAULT_MODEL_MAPPINGS)
-  ├── "haiku" / "sonnet" / "opus" → mapped through LEGACY_TIER_MAP → tier → provider-specific model ID
-  └── anything else → passed through as literal model ID
+```mermaid
+flowchart TD
+    Input["Setting value"] --> RM["resolveModel()"]
+    RM --> IsAuto{"'auto'?"}
+    IsAuto -->|Yes| FAT["FEATURE_AUTO_TIERS<br/><small>Per-feature default tier</small>"]
+    FAT --> DMM
+
+    IsAuto -->|No| IsTier{"'fast' / 'balanced'<br/>/ 'powerful'?"}
+    IsTier -->|Yes| DMM["DEFAULT_MODEL_MAPPINGS<br/><small>Provider-specific model ID</small>"]
+
+    IsTier -->|No| IsLegacy{"'haiku' / 'sonnet'<br/>/ 'opus'?"}
+    IsLegacy -->|Yes| LTM["LEGACY_TIER_MAP"] --> DMM
+
+    IsLegacy -->|No| Pass["Passthrough<br/><small>Use as literal model ID</small>"]
 ```
 
 ## Tiers

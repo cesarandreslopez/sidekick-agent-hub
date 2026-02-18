@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/icon-256.png" alt="Sidekick Agent Hub" width="128" height="128">
+  <img src="images/icon-128.png" alt="Sidekick Agent Hub" width="128" height="128">
 </p>
 
 <h1 align="center">Sidekick Agent Hub</h1>
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/all_features.gif?v=4" alt="Sidekick Agent Hub demo" width="800">
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-agent-hub.gif" alt="Sidekick Agent Hub demo" width="800">
 </p>
 
 AI coding agents are powerful but opaque — tokens burn silently, context fills up without warning, and everything is lost when a session ends. Sidekick gives you visibility into what your agent is doing, AI features that eliminate mechanical coding work, and session intelligence that preserves context across sessions. Works with your existing **Claude Max** subscription, **Claude API**, **OpenCode**, or **Codex CLI**.
@@ -25,10 +25,10 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 | Provider | Inference | Session Monitoring | Cost |
 |----------|-----------|-------------------|------|
-| **Claude Max** | Yes | Yes | Included in subscription |
-| **Claude API** | Yes | — | Per-token billing |
-| **OpenCode** | Yes | Yes | Depends on provider |
-| **Codex CLI** | Yes | Yes | OpenAI API billing |
+| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes | Yes | Included in subscription |
+| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes | — | Per-token billing |
+| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)** | Yes | Yes | Depends on provider |
+| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)** | Yes | Yes | OpenAI API billing |
 
 ## Why Am I Building This?
 
@@ -40,20 +40,39 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 
 ## Features
 
-- **Inline Completions** — context-aware code suggestions that understand your project
-- **Code Transforms** — select code, describe changes in natural language (`Ctrl+Shift+M`)
-- **AI Commit Messages** — meaningful messages generated from your actual diff
-- **Session Monitor** — see exactly where your tokens are going before you hit quota limits
-- **Mind Map** — trace how your agent navigated the codebase during a session
-- **Kanban Board** — track tasks and subagents at a glance during complex operations
-- **Quick Ask** — inline chat for questions and code changes without switching context (`Ctrl+I`)
-- **Code Review** — catch bugs and security concerns before they reach your team
-- **PR Descriptions** — structured summaries from branch diff, ready to paste
-- **Explain Code** — AI explanations calibrated to your experience level (`Ctrl+Shift+E`)
-- **Error Analysis** — understand what went wrong, why, and how to fix it
-- **Generate Docs** — JSDoc/docstrings based on implementation, not just signatures (`Ctrl+Shift+D`)
-- **Session Handoff** — pick up where you left off instead of re-discovering everything
-- **CLAUDE.md Suggestions** — learn from session patterns to improve agent effectiveness
+- **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware code suggestions that understand your project
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/inference.gif" alt="Inline Completions demo" width="800">
+- **[Code Transforms](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-transforms/)** — select code, describe changes in natural language (`Ctrl+Shift+M`)
+- **[AI Commit Messages](https://cesarandreslopez.github.io/sidekick-agent-hub/features/commit-messages/)** — meaningful messages generated from your actual diff
+- **[Session Monitor](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/)** — see exactly where your tokens are going before you hit quota limits
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session-analytics-dashboard.png" alt="Session Analytics Dashboard" width="480">
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session-activity-timeline.png" alt="Session Activity Timeline" width="480">
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/performance-and-cost.png" alt="Performance & Cost" width="480">
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/tasks-and-recovery.png" alt="Tasks & Recovery" width="480">
+- **[Mind Map](https://cesarandreslopez.github.io/sidekick-agent-hub/features/mind-map/)** — trace how your agent navigated the codebase during a session
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/mind-map.png" alt="Mind Map" width="480">
+- **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — track tasks and subagents at a glance during complex operations
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban-board.png" alt="Kanban Board" width="480">
+- **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes without switching context (`Ctrl+I`)
+- **[Code Review](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-review/)** — catch bugs and security concerns before they reach your team
+- **[PR Descriptions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/pr-descriptions/)** — structured summaries from branch diff, ready to paste
+- **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — AI explanations calibrated to your experience level (`Ctrl+Shift+E`)
+- **[Error Analysis](https://cesarandreslopez.github.io/sidekick-agent-hub/features/error-analysis/)** — understand what went wrong, why, and how to fix it
+- **[Generate Docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — JSDoc/docstrings based on implementation, not just signatures (`Ctrl+Shift+D`)
+- **[Session Handoff](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-handoff/)** — pick up where you left off instead of re-discovering everything
+- **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions and recovery patterns across sessions
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/decision-log.png" alt="Decision Log" width="480">
+- **[CLAUDE.md Suggestions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/claude-md-suggestions/)** — learn from session patterns to improve agent effectiveness
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/claude-md-suggestions.png" alt="CLAUDE.md Suggestions" width="480">
 
 ## Quick Install
 

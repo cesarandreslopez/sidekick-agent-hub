@@ -8,14 +8,14 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 | Provider | Inference | Session Monitoring | Cost |
 |----------|-----------|-------------------|------|
-| **Claude Max** | Yes | Yes | Included in subscription |
-| **Claude API** | Yes | — | Per-token billing |
-| **OpenCode** | Yes | Yes | Depends on provider |
-| **Codex CLI** | Yes | Yes | OpenAI API billing |
+| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes | Yes | Included in subscription |
+| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes | — | Per-token billing |
+| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)** | Yes | Yes | Depends on provider |
+| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)** | Yes | Yes | OpenAI API billing |
 
 ## Quick Start
 
-### Claude Max (Recommended)
+### [Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) (Recommended)
 
 1. Install and authenticate Claude Code CLI:
    ```bash
@@ -25,18 +25,18 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 2. Install the extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) or [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max)
 3. Start typing — completions appear as ghost text
 
-### Claude API
+### [Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)
 
 1. Install the extension
 2. Run **"Sidekick: Set API Key"** from the Command Palette
 3. Set `sidekick.inferenceProvider` to `claude-api`
 
-### OpenCode
+### [OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)
 
 1. Ensure OpenCode is running (`opencode` in a terminal)
 2. Set `sidekick.inferenceProvider` to `opencode`
 
-### Codex CLI
+### [Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)
 
 1. Install Codex CLI: `npm install -g @openai/codex`
 2. Set `OPENAI_API_KEY` or `CODEX_API_KEY`
@@ -48,34 +48,34 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 Let AI handle the mechanical work — boilerplate, commit messages, docs, PR descriptions — so you focus on design and logic.
 
-- **Inline Completions** — context-aware suggestions that understand your project, not just syntax (`Ctrl+Shift+Space` to trigger manually)
-- **Code Transforms** — select code, describe changes in natural language (`Ctrl+Shift+M`)
-- **Generate Documentation** — auto-generate JSDoc/docstrings from implementation, not just signatures (`Ctrl+Shift+D`)
-- **Explain Code** — five complexity levels from ELI5 to PhD Mode (`Ctrl+Shift+E`)
-- **Quick Ask** — inline chat for questions and code changes (`Ctrl+I`)
-- **AI Commit Messages** — generate meaningful messages from staged changes (sparkle icon in SCM toolbar)
-- **Pre-commit Review** — catch bugs, security concerns, and code smells before they reach your team (eye icon in SCM toolbar)
-- **PR Descriptions** — auto-generate structured summaries from branch diff (PR icon in SCM toolbar)
-- **Error Analysis** — AI-powered error explanations and one-click fixes
+- **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware suggestions that understand your project, not just syntax (`Ctrl+Shift+Space` to trigger manually)
+- **[Code Transforms](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-transforms/)** — select code, describe changes in natural language (`Ctrl+Shift+M`)
+- **[Generate Documentation](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — auto-generate JSDoc/docstrings from implementation, not just signatures (`Ctrl+Shift+D`)
+- **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — five complexity levels from ELI5 to PhD Mode (`Ctrl+Shift+E`)
+- **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes (`Ctrl+I`)
+- **[AI Commit Messages](https://cesarandreslopez.github.io/sidekick-agent-hub/features/commit-messages/)** — generate meaningful messages from staged changes (sparkle icon in SCM toolbar)
+- **[Pre-commit Review](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-review/)** — catch bugs, security concerns, and code smells before they reach your team (eye icon in SCM toolbar)
+- **[PR Descriptions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/pr-descriptions/)** — auto-generate structured summaries from branch diff (PR icon in SCM toolbar)
+- **[Error Analysis](https://cesarandreslopez.github.io/sidekick-agent-hub/features/error-analysis/)** — AI-powered error explanations and one-click fixes
 
 ### Agent Monitoring
 
 When your AI agent runs autonomously, you need to know what it's doing. Real-time dashboards, visualizations, and alerts keep you in control.
 
-- **Session Analytics Dashboard** — real-time token usage, costs, context attribution, activity timeline
+- **[Session Analytics Dashboard](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/)** — real-time token usage, costs, context attribution, activity timeline
 
 ![Session Monitor](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/cost_session_context_quotas_claude_code.gif)
 
-- **Mind Map** — interactive D3.js graph of session structure and file relationships
+- **[Mind Map](https://cesarandreslopez.github.io/sidekick-agent-hub/features/mind-map/)** — interactive D3.js graph of session structure and file relationships
 
 ![Mind map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/node_visualization_graph.gif)
 
-- **Kanban Board** — task and subagent tracking with real-time updates
+- **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — task and subagent tracking with real-time updates
 
 ![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban_style_monitoring.gif)
 
 - **Conversation Viewer** — full session conversation with search
-- **Tool Inspector** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
+- **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
 
@@ -83,13 +83,13 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 Sessions end and context is lost — the next one starts from zero. Session intelligence captures what happened so you can pick up where you left off.
 
-- **Session Handoff** — automatic context documents for session continuity
-- **Decision Log** — tracks architectural decisions from sessions
-- **CLAUDE.md Suggestions** — AI-powered session analysis for optimizing agent instructions
+- **[Session Handoff](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-handoff/)** — automatic context documents for session continuity
+- **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions from sessions
+- **[CLAUDE.md Suggestions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/claude-md-suggestions/)** — AI-powered session analysis for optimizing agent instructions
 
 ![CLAUDE.md suggestions](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/suggest_improvements_to_agent_claude_md.gif)
 
-- **Event Logging** — optional JSONL audit trail for debugging
+- **[Event Logging](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/event-logging/)** — optional JSONL audit trail for debugging
 
 ## Why Sidekick?
 
@@ -109,7 +109,7 @@ But they're also opaque. Tokens burn in the background with no visibility. Conte
 
 That bothers me. I want to see what my agent is doing. I want to review every tool call, understand where my tokens went, and carry context forward instead of losing it. Sidekick exists because I think the people using these agents deserve visibility into how they work — not just the output, but the process.
 
-## Key Settings
+## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -122,7 +122,7 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 | `sidekick.enableSessionMonitoring` | `true` | Enable agent session monitoring |
 | `sidekick.autoHandoff` | `off` | Session handoff: `off`, `generate-only`, `generate-and-notify` |
 
-Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID.
+Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
 ## Commands
 
