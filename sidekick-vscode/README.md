@@ -2,7 +2,7 @@
 
 Multi-provider AI coding assistant for VS Code — inline completions, code transforms, commit messages, and agent session monitoring.
 
-![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/all_features.gif?v=4)
+![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-agent-hub.gif)
 
 AI coding agents are powerful, but they run autonomously — tokens burn silently, context fills up without warning, and everything is lost when a session ends. Sidekick gives you real-time visibility into what your agent is doing, AI-powered coding features that eliminate mechanical work, and session intelligence that preserves context across sessions.
 
@@ -64,15 +64,15 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 - **[Session Analytics Dashboard](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/)** — real-time token usage, costs, context attribution, activity timeline
 
-![Session Monitor](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/cost_session_context_quotas_claude_code.gif)
+![Session Monitor](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session-analytics-dashboard.png)
 
 - **[Mind Map](https://cesarandreslopez.github.io/sidekick-agent-hub/features/mind-map/)** — interactive D3.js graph of session structure and file relationships
 
-![Mind map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/node_visualization_graph.gif)
+![Mind map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/mind-map.png)
 
 - **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — task and subagent tracking with real-time updates
 
-![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban_style_monitoring.gif)
+![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban-board.png)
 
 - **Conversation Viewer** — full session conversation with search
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
@@ -85,7 +85,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 - **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions from sessions
 - **[CLAUDE.md Suggestions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/claude-md-suggestions/)** — AI-powered session analysis for optimizing agent instructions
 
-![CLAUDE.md suggestions](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/suggest_improvements_to_agent_claude_md.gif)
+![CLAUDE.md suggestions](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/claude-md-suggestions.png)
 
 - **[Event Logging](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/event-logging/)** — optional JSONL audit trail for debugging
 
