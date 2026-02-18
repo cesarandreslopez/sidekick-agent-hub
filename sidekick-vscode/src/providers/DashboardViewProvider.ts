@@ -6183,6 +6183,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Disposes of all resources.
    */
   dispose(): void {
+    // Final decision extraction as safety net before teardown
+    try {
+      this._extractAndPersistDecisions();
+    } catch {
+      // Best-effort — don't block dispose
+    }
     if (this._richerPanelTimer) {
       clearTimeout(this._richerPanelTimer);
     }

@@ -46,6 +46,12 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Cached persisted tasks loaded from disk */
   private _persistedTasks: PersistedTask[] = [];
 
+  /** Timestamp of last auto-persistence write */
+  private _lastPersistTime = 0;
+
+  /** Minimum interval between auto-persistence writes (ms) */
+  private readonly _PERSIST_INTERVAL_MS = 30_000;
+
   /**
    * Creates a new TaskBoardViewProvider.
    */
@@ -182,6 +188,18 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   private _updateBoard(): void {
     this._syncFromSessionMonitor();
     this._sendStateToWebview();
+    this._maybePersistTasks();
+  }
+
+  /**
+   * Debounced auto-persistence during active sessions.
+   * Writes current tasks to disk at most once per PERSIST_INTERVAL_MS.
+   */
+  private _maybePersistTasks(): void {
+    if (!this._taskPersistence || !this._sessionMonitor.isActive()) return;
+    if (Date.now() - this._lastPersistTime < this._PERSIST_INTERVAL_MS) return;
+    this._lastPersistTime = Date.now();
+    this._saveCurrentTasksToPersistence();
   }
 
   /**

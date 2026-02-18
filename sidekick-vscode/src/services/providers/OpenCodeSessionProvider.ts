@@ -44,6 +44,51 @@ function getStorageDir(): string {
   return path.join(getOpenCodeDataDir(), 'storage');
 }
 
+/**
+ * Pattern matching model IDs and generic agent names that don't convey type info.
+ */
+const GENERIC_AGENT_RE = /^(gpt-|claude-|o[1-9]|gemini|default|agent|worker)/i;
+
+/**
+ * Returns true if the raw agent type is a model ID or generic name
+ * that doesn't convey meaningful type information.
+ */
+function isGenericAgentType(type: string): boolean {
+  return GENERIC_AGENT_RE.test(type);
+}
+
+/**
+ * Detects a meaningful agent type from the description using keyword matching.
+ * Returns undefined if no keywords match.
+ */
+function detectAgentTypeFromDescription(desc: string): string | undefined {
+  const lower = desc.toLowerCase();
+  if (lower.includes('explore') || lower.includes('research') || lower.includes('investigate')) {
+    return 'Explore';
+  }
+  if (lower.includes('plan') || lower.includes('architect') || lower.includes('design')) {
+    return 'Plan';
+  }
+  if (lower.includes('task') || lower.includes('execute') || lower.includes('implement') || lower.includes('build')) {
+    return 'Task';
+  }
+  return undefined;
+}
+
+/**
+ * Normalizes a raw agent type. If the raw type is a model ID or generic name,
+ * falls back to keyword detection from the description.
+ */
+function normalizeAgentType(rawType: string | undefined, description: string | undefined): string | undefined {
+  if (!rawType) return rawType;
+  if (!isGenericAgentType(rawType)) return rawType;
+  // Raw type is a model ID or generic name — try to detect from description
+  if (description) {
+    return detectAgentTypeFromDescription(description) || rawType;
+  }
+  return rawType;
+}
+
 /** Prefix for synthetic DB session paths */
 const DB_SESSION_PREFIX = 'db-sessions';
 
@@ -1105,10 +1150,12 @@ export class OpenCodeSessionProvider implements SessionProvider {
             startTime = new Date(child.time_created);
           }
 
+          const rawAgentType = subtask?.agent || (child.title || undefined);
+          const description = subtask?.description || (child.title || undefined);
           results.push({
             agentId: subtask?.id || child.id,
-            agentType: subtask?.agent || (child.title || undefined),
-            description: subtask?.description || (child.title || undefined),
+            agentType: normalizeAgentType(rawAgentType, description),
+            description,
             toolCalls,
             inputTokens,
             outputTokens,
@@ -1122,7 +1169,7 @@ export class OpenCodeSessionProvider implements SessionProvider {
         for (const sp of subtaskParts) {
           results.push({
             agentId: sp.id,
-            agentType: sp.agent,
+            agentType: normalizeAgentType(sp.agent, sp.description),
             description: sp.description,
             toolCalls: [],
             inputTokens: 0,

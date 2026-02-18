@@ -56,6 +56,30 @@ export function normalizeToolName(name: string): string {
 }
 
 /**
+ * Detects plan mode enter/exit from assistant text content.
+ *
+ * OpenCode models mention plan mode in text/thinking blocks but never emit
+ * plan_enter/plan_exit tool invocations. This heuristic detects those
+ * mentions and returns the appropriate direction.
+ *
+ * @param text - Text content to scan for plan mode mentions
+ * @returns 'enter' if entering plan mode, 'exit' if leaving, null if no match
+ */
+export function detectPlanModeFromText(text: string): 'enter' | 'exit' | null {
+  // Check exit first (more specific patterns)
+  if (/(exiting|leaving|deactivat(?:e|ing)|left) plan mode/i.test(text) ||
+      /plan mode (?:is )?(?:off|disabled|ended|complete)/i.test(text)) {
+    return 'exit';
+  }
+  // Check enter
+  if (/(entering|switch(?:ed|ing)? to|activat(?:e|ing)|now in) plan mode/i.test(text) ||
+      /plan mode (?:is )?(?:active|enabled|on)/i.test(text)) {
+    return 'enter';
+  }
+  return null;
+}
+
+/**
  * Normalizes tool input fields for downstream compatibility.
  *
  * OpenCode uses camelCase field names (e.g. `filePath`); downstream code
@@ -273,6 +297,35 @@ function convertAssistantMessage(
       type: 'text',
       text: `[${errType}]${errCode} ${errMsg}`
     });
+  }
+
+  // Detect plan mode mentions in text/thinking blocks and inject synthetic
+  // tool_use blocks (OpenCode doesn't emit plan_enter/plan_exit tools).
+  const hasExistingPlanMode = content.some(
+    (b: unknown) => {
+      const block = b as Record<string, unknown>;
+      return block.type === 'tool_use' &&
+        (block.name === 'EnterPlanMode' || block.name === 'ExitPlanMode');
+    }
+  );
+  if (!hasExistingPlanMode) {
+    for (const block of content) {
+      const b = block as Record<string, unknown>;
+      const text = (b.type === 'text' ? b.text : b.type === 'thinking' ? b.thinking : null) as string | null;
+      if (!text) continue;
+      const direction = detectPlanModeFromText(text);
+      if (direction) {
+        const toolName = direction === 'enter' ? 'EnterPlanMode' : 'ExitPlanMode';
+        const rawName = direction === 'enter' ? 'plan_enter' : 'plan_exit';
+        content.push({
+          type: 'tool_use',
+          id: `plan-${direction}-${message.id}`,
+          name: toolName,
+          input: { source: 'opencode_text_heuristic', _sidekickRawToolName: rawName }
+        });
+        break; // Only inject one plan mode block per message
+      }
+    }
   }
 
   // Sum cost from step-finish parts as fallback for reported_cost

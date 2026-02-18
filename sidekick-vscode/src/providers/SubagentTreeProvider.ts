@@ -325,6 +325,13 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
     }
     if (stats.agentType) {
       item.agentType = this.classifyAgentType(stats.agentType);
+      // If classification returned Unknown but we have a description, try keyword detection
+      if (item.agentType === 'Unknown' && stats.description) {
+        const detected = this.detectAgentType(stats.description);
+        if (detected !== 'Unknown') {
+          item.agentType = detected;
+        }
+      }
       item.label = `${item.id.substring(0, 8)} (${item.agentType})`;
     }
   }

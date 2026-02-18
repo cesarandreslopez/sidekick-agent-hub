@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput } from './OpenCodeMessageParser';
+import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput, detectPlanModeFromText } from './OpenCodeMessageParser';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../../types/opencode';
 
 describe('OpenCodeMessageParser', () => {
@@ -1157,6 +1157,158 @@ describe('OpenCodeMessageParser', () => {
       expect(content[0].name).toBe('Read');
       expect(content[0].input.file_path).toBe('/tmp/test.ts');
       expect(content[0].input.filePath).toBe('/tmp/test.ts');
+    });
+  });
+
+  describe('plan mode heuristic detection', () => {
+    describe('detectPlanModeFromText', () => {
+      it('should detect entering plan mode', () => {
+        expect(detectPlanModeFromText('I am entering plan mode to design the approach.')).toBe('enter');
+        expect(detectPlanModeFromText('Switching to plan mode.')).toBe('enter');
+        expect(detectPlanModeFromText('I switched to plan mode now.')).toBe('enter');
+        expect(detectPlanModeFromText('Activating plan mode for this task.')).toBe('enter');
+        expect(detectPlanModeFromText('I am now in plan mode.')).toBe('enter');
+        expect(detectPlanModeFromText('Plan mode is active.')).toBe('enter');
+        expect(detectPlanModeFromText('Plan mode is enabled.')).toBe('enter');
+        expect(detectPlanModeFromText('Plan mode is on.')).toBe('enter');
+      });
+
+      it('should detect exiting plan mode', () => {
+        expect(detectPlanModeFromText('Exiting plan mode to begin implementation.')).toBe('exit');
+        expect(detectPlanModeFromText('Leaving plan mode now.')).toBe('exit');
+        expect(detectPlanModeFromText('Deactivating plan mode.')).toBe('exit');
+        expect(detectPlanModeFromText('Plan mode is off.')).toBe('exit');
+        expect(detectPlanModeFromText('Plan mode is disabled.')).toBe('exit');
+        expect(detectPlanModeFromText('Plan mode is ended.')).toBe('exit');
+        expect(detectPlanModeFromText('Plan mode is complete.')).toBe('exit');
+        expect(detectPlanModeFromText('I left plan mode.')).toBe('exit');
+      });
+
+      it('should return null for non-matching text', () => {
+        expect(detectPlanModeFromText('Let me read this file.')).toBeNull();
+        expect(detectPlanModeFromText('I have a plan for this.')).toBeNull();
+        expect(detectPlanModeFromText('This is just normal text.')).toBeNull();
+        expect(detectPlanModeFromText('')).toBeNull();
+      });
+    });
+
+    it('should inject synthetic EnterPlanMode tool_use from text blocks', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-plan-enter',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 200 },
+        time: { created: '2025-01-15T10:00:01Z' }
+      };
+      const parts: OpenCodePart[] = [
+        { id: 'part-1', messageID: 'msg-plan-enter', type: 'text', text: 'I am entering plan mode to design the approach.' }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      expect(events).toHaveLength(1);
+      const content = events[0].message.content as Array<Record<string, unknown>>;
+      expect(content).toHaveLength(2); // text + synthetic tool_use
+      expect(content[1]).toEqual({
+        type: 'tool_use',
+        id: 'plan-enter-msg-plan-enter',
+        name: 'EnterPlanMode',
+        input: { source: 'opencode_text_heuristic', _sidekickRawToolName: 'plan_enter' }
+      });
+    });
+
+    it('should inject synthetic ExitPlanMode tool_use from text blocks', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-plan-exit',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 200 },
+        time: { created: '2025-01-15T10:00:01Z' }
+      };
+      const parts: OpenCodePart[] = [
+        { id: 'part-1', messageID: 'msg-plan-exit', type: 'text', text: 'Exiting plan mode to begin implementation.' }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      const content = events[0].message.content as Array<Record<string, unknown>>;
+      expect(content).toHaveLength(2);
+      expect(content[1]).toEqual({
+        type: 'tool_use',
+        id: 'plan-exit-msg-plan-exit',
+        name: 'ExitPlanMode',
+        input: { source: 'opencode_text_heuristic', _sidekickRawToolName: 'plan_exit' }
+      });
+    });
+
+    it('should detect plan mode from thinking/reasoning blocks', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-plan-think',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 200 },
+        time: { created: '2025-01-15T10:00:01Z' }
+      };
+      const parts: OpenCodePart[] = [
+        { id: 'part-1', messageID: 'msg-plan-think', type: 'reasoning', text: 'I should be entering plan mode for this task.' },
+        { id: 'part-2', messageID: 'msg-plan-think', type: 'text', text: 'Let me plan the approach.' }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      const content = events[0].message.content as Array<Record<string, unknown>>;
+      // thinking + text + synthetic tool_use
+      expect(content).toHaveLength(3);
+      expect(content[2].name).toBe('EnterPlanMode');
+    });
+
+    it('should not inject if EnterPlanMode tool_use already exists', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-plan-dup',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 200 },
+        time: { created: '2025-01-15T10:00:01Z' }
+      };
+      const parts: OpenCodePart[] = [
+        { id: 'part-1', messageID: 'msg-plan-dup', type: 'text', text: 'I am entering plan mode.' },
+        {
+          id: 'part-2',
+          messageID: 'msg-plan-dup',
+          type: 'tool-invocation',
+          callID: 'call-plan',
+          tool: 'plan_enter',
+          state: { status: 'completed', input: {} }
+        }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      const content = events[0].message.content as Array<Record<string, unknown>>;
+      // text + real tool_use — no synthetic duplicate
+      const planModeBlocks = content.filter(
+        (b) => b.type === 'tool_use' && (b.name === 'EnterPlanMode' || b.name === 'ExitPlanMode')
+      );
+      expect(planModeBlocks).toHaveLength(1);
+    });
+
+    it('should not inject for non-matching text', () => {
+      const message: OpenCodeMessage = {
+        id: 'msg-no-plan',
+        sessionID: 'sess-1',
+        role: 'assistant',
+        tokens: { input: 500, output: 200 },
+        time: { created: '2025-01-15T10:00:01Z' }
+      };
+      const parts: OpenCodePart[] = [
+        { id: 'part-1', messageID: 'msg-no-plan', type: 'text', text: 'Let me read the file and implement the changes.' }
+      ];
+
+      const events = convertOpenCodeMessage(message, parts);
+
+      const content = events[0].message.content as Array<Record<string, unknown>>;
+      expect(content).toHaveLength(1); // Just the text block
+      expect(content[0].type).toBe('text');
     });
   });
 });

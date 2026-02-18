@@ -76,6 +76,45 @@ function isTypedBlock(block: unknown): block is Record<string, unknown> & { type
   return block !== null && typeof block === 'object' && typeof (block as Record<string, unknown>).type === 'string';
 }
 
+/**
+ * Parses dependency references from a todo item's content text.
+ *
+ * Looks for patterns like "(blocked by Task A and Task B)" and maps
+ * referenced task names back to todo-{i} IDs by substring matching.
+ *
+ * @param content - The todo item's content text
+ * @param allTodos - All todo items from the TodoWrite input
+ * @returns Array of todo-{i} task IDs that this task depends on
+ */
+export function parseTodoDependencies(
+  content: string,
+  allTodos: Array<Record<string, unknown>>
+): string[] {
+  const depPattern = /(?:blocked by|depends on|waiting on|requires)\s+(.+?)(?:\)|$)/i;
+  const match = content.match(depPattern);
+  if (!match) return [];
+
+  // Split matched refs on common separators
+  const refs = match[1].split(/\s+and\s+|,\s*|&\s*/).map(r => r.trim()).filter(Boolean);
+  const result: string[] = [];
+
+  for (const ref of refs) {
+    const refLower = ref.toLowerCase();
+    // Try to match against other todos' content
+    for (let j = 0; j < allTodos.length; j++) {
+      const otherContent = String(allTodos[j].content || allTodos[j].subject || '').toLowerCase();
+      // Substring match: the reference should appear in the other task's content,
+      // or the other task's content should start with the reference
+      if (otherContent.includes(refLower) || refLower.includes(otherContent.split(':')[0].trim())) {
+        result.push(`todo-${j}`);
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
 export class SessionMonitor implements vscode.Disposable {
   /** File watcher for session directory */
   private watcher: fs.FSWatcher | undefined;
@@ -633,9 +672,18 @@ export class SessionMonitor implements vscode.Disposable {
       return;
     }
 
+    this._lastEventTime = Date.now();
     this.opencodePollTimer = setInterval(() => {
       if (!this.sessionPath || !this.reader) return;
+      const prevCount = this.stats.messageCount;
       this.processFileChange();
+      // Track when we last saw new events
+      if (this.stats.messageCount > prevCount) {
+        this._lastEventTime = Date.now();
+      } else if (Date.now() - this._lastEventTime > this.OPENCODE_INACTIVITY_MS) {
+        // No new events for INACTIVITY threshold — check if a newer session exists
+        this._checkForNewerSession();
+      }
     }, this.OPENCODE_POLL_INTERVAL_MS);
   }
 
@@ -646,6 +694,29 @@ export class SessionMonitor implements vscode.Disposable {
     if (this.opencodePollTimer) {
       clearInterval(this.opencodePollTimer);
       this.opencodePollTimer = null;
+    }
+  }
+
+  /**
+   * Checks if a newer OpenCode session exists after inactivity.
+   * If a newer session is found, fires session end and switches to it.
+   * This ensures persistence handlers run even when OpenCode sessions
+   * don't explicitly signal termination.
+   */
+  private _checkForNewerSession(): void {
+    if (!this.sessionPath || !this.workspacePath) return;
+    try {
+      const latestPath = this.provider.findActiveSession(this.workspacePath);
+      if (latestPath && latestPath !== this.sessionPath) {
+        log(`Inactivity detected: newer session found, ending current session`);
+        this.eventLogger?.endSession();
+        this._onSessionEnd.fire();
+        this.stopActivityPolling();
+        // Switch to the new session
+        this.attachToSession(latestPath);
+      }
+    } catch {
+      // Ignore errors during discovery
     }
   }
 
@@ -1582,6 +1653,12 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** OpenCode polling interval (ms) */
   private readonly OPENCODE_POLL_INTERVAL_MS = 1500;
+
+  /** Timestamp of last event received during OpenCode polling */
+  private _lastEventTime = 0;
+
+  /** Inactivity threshold before triggering session end (ms) */
+  private readonly OPENCODE_INACTIVITY_MS = 60_000;
 
   /** Cooldown period after switching sessions (ms) - prevents rapid bouncing */
   private readonly SESSION_SWITCH_COOLDOWN_MS = 5000;
@@ -2745,6 +2822,34 @@ export class SessionMonitor implements vscode.Disposable {
       // Track active task
       if (status === 'in_progress') {
         this.taskState.activeTaskId = taskId;
+      }
+    }
+
+    // Second pass: parse dependency info from content text
+    for (let i = 0; i < todos.length; i++) {
+      const task = this.taskState.tasks.get(`todo-${i}`);
+      if (!task) continue;
+
+      // Check for explicit blockedBy field (future-proofing)
+      if (Array.isArray(todos[i].blockedBy)) {
+        for (const ref of todos[i].blockedBy as string[]) {
+          const refStr = String(ref);
+          if (!task.blockedBy.includes(refStr)) {
+            task.blockedBy.push(refStr);
+          }
+        }
+      }
+
+      // Parse dependency references from content text
+      const deps = parseTodoDependencies(String(todos[i].content || ''), todos);
+      for (const depId of deps) {
+        if (depId !== `todo-${i}` && !task.blockedBy.includes(depId)) {
+          task.blockedBy.push(depId);
+          const depTask = this.taskState.tasks.get(depId);
+          if (depTask && !depTask.blocks.includes(`todo-${i}`)) {
+            depTask.blocks.push(`todo-${i}`);
+          }
+        }
       }
     }
 
