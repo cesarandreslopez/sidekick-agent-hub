@@ -1499,6 +1499,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sendToolAnalyticsToWebview();
     this._sendSessionList();
     this._sendProviderInfo();
+
+    // Send provider-appropriate quota data on switch
+    const provider = this._sessionMonitor.getProvider();
+    const sessionQuota = provider.getQuotaFromSession?.();
+    if (sessionQuota) {
+      // Codex: has session-based quota from rate_limits
+      this._handleQuotaUpdate(sessionQuota);
+    } else if (this._quotaService && provider.id === 'claude-code') {
+      // Claude Code: use cached quota from QuotaService, trigger refresh
+      const cached = this._quotaService.getCachedQuota();
+      if (cached) {
+        this._handleQuotaUpdate(cached);
+      }
+      this._quotaService.startRefresh();
+    } else {
+      // OpenCode or no data: clear quota in webview
+      this._handleQuotaUpdate({ fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false });
+    }
   }
 
   /**
@@ -5155,6 +5173,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       function updateProviderDisplay(providerId, providerName) {
         if (!providerId || !providerName) return;
+        currentQuota = null;
         currentProviderId = providerId;
         currentProviderName = providerName;
 
