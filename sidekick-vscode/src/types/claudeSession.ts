@@ -131,6 +131,12 @@ export interface ToolCall {
   /** Tool name (e.g., "Read", "Write", "Bash") */
   name: string;
 
+  /** Provider-specific tool name before canonical normalization (if available) */
+  rawName?: string;
+
+  /** Provider ID that emitted this tool call */
+  providerId?: string;
+
   /** Tool input parameters */
   input: Record<string, unknown>;
 

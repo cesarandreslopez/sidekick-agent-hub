@@ -166,6 +166,15 @@ export class ToolInspectorProvider implements vscode.Disposable {
       color: var(--vscode-charts-purple, #c678dd);
     }
 
+    .tool-raw-name {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      opacity: 0.85;
+    }
+
     .tool-time {
       color: var(--vscode-descriptionForeground);
       margin-left: auto;
@@ -298,6 +307,9 @@ export class ToolInspectorProvider implements vscode.Disposable {
       : '';
     const durationStr = call.duration ? `${Math.round(call.duration)}ms` : '';
     const errorBadge = call.isError ? '<span class="tool-error-badge">ERROR</span>' : '';
+    const rawNameBadge = call.rawName && call.rawName !== call.name
+      ? `<span class="tool-raw-name">raw: ${this.escapeHtml(call.rawName)}</span>`
+      : '';
 
     let bodyContent = '';
 
@@ -327,6 +339,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
       <div class="tool-call-header">
         <span class="toggle-arrow">+</span>
         <span class="tool-name">${this.escapeHtml(call.name)}</span>
+        ${rawNameBadge}
         ${errorBadge}
         ${durationStr ? `<span class="tool-duration">${durationStr}</span>` : ''}
         <span class="tool-time">${time}</span>

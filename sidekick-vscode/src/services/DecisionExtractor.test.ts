@@ -233,6 +233,19 @@ describe('DecisionExtractor', () => {
       expect(entries[0].source).toBe('text_pattern');
     });
 
+    it('matches Unicode apostrophe decision text ("I’ll use")', () => {
+      const texts = [
+        {
+          text: 'I’ll use Vitest because it has native ESM support and faster execution.',
+          timestamp: '2026-02-18T10:00:00Z',
+        },
+      ];
+
+      const entries = fromAssistantTexts(texts, SESSION_ID);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].chosenOption).toBe('Vitest');
+    });
+
     it('matches "decided on X over Y" pattern', () => {
       const texts = [
         {

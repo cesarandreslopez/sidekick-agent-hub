@@ -52,7 +52,7 @@ export function fromUserQuestions(
     const input = call.input as {
       questions?: Array<{
         question?: string;
-        options?: Array<{ label?: string }>;
+        options?: Array<{ label?: string } | string>;
       }>;
     };
 
@@ -62,7 +62,10 @@ export function fromUserQuestions(
       if (!q.question) continue;
 
       const alternatives = (q.options ?? [])
-        .map(o => o.label)
+        .map(o => {
+          if (typeof o === 'string') return o;
+          return o.label;
+        })
         .filter((l): l is string => typeof l === 'string' && l.length > 0);
 
       entries.push({
@@ -124,7 +127,7 @@ export function fromPlanMode(
 
 // Conservative regex patterns (high-precision, lower recall)
 const DECISION_PATTERNS = [
-  /(?:I'll|I will|Let's|We'll) (?:use|go with|opt for) (.{3,60}) (?:because|since|as) (.{5,100})/i,
+  /(?:I(?:'|’)?ll|I will|Let(?:'|’)s|We(?:'|’)?ll) (?:use|go with|opt for) (.{3,60}) (?:because|since|as) (.{5,100})/i,
   /(?:chose|choosing|decided on|going with) (.{3,60}) (?:over|instead of) (.{3,60})/i,
 ];
 

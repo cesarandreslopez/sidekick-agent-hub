@@ -63,7 +63,42 @@ function normalizeCodexToolName(name: string): string {
   if (!name) return name;
   const lower = name.toLowerCase();
   if (lower === 'local_shell' || lower === 'local_shell_call') return 'Bash';
+  if (lower === 'exec_command') return 'Bash';
+  if (lower === 'write_stdin') return 'Bash';
+  if (lower === 'request_user_input') return 'AskUserQuestion';
+  if (lower === 'update_plan') return 'UpdatePlan';
+  if (lower === 'web_search') return 'WebSearch';
   return normalizeToolName(name);
+}
+
+/**
+ * Normalizes Codex tool input fields for downstream monitor compatibility.
+ */
+function normalizeCodexToolInput(
+  canonicalToolName: string,
+  rawToolName: string,
+  input: Record<string, unknown>
+): Record<string, unknown> {
+  const normalized = { ...input };
+  normalized._sidekickRawToolName = rawToolName;
+
+  // Codex exec_command uses cmd; monitor expects command for Bash context extraction.
+  if (canonicalToolName === 'Bash' && typeof normalized.cmd === 'string' && normalized.command === undefined) {
+    normalized.command = normalized.cmd;
+  }
+
+  // request_user_input currently emits questions; keep as-is (compatible with AskUserQuestion extractor).
+  return normalized;
+}
+
+function parsePlainTextFailure(output: string): boolean {
+  if (!output) return false;
+  const exitCodeMatch = /Process exited with code\s+(-?\d+)/i.exec(output);
+  if (exitCodeMatch) {
+    return Number(exitCodeMatch[1]) !== 0;
+  }
+
+  return /(Permission denied|No such file|not found|SyntaxError|failed|error:)/i.test(output);
 }
 
 /**
@@ -109,6 +144,7 @@ export class CodexRolloutParser {
   private lastTokenUsage: CodexTokenUsage | null = null;
   private modelContextWindow: number | null = null;
   private lastRateLimits: CodexRateLimits | null = null;
+  private inPlanMode = false;
 
   /** Get stored session metadata. */
   getSessionMeta(): CodexSessionMeta | null {
@@ -164,6 +200,7 @@ export class CodexRolloutParser {
     this.lastTokenUsage = null;
     this.modelContextWindow = null;
     this.lastRateLimits = null;
+    this.inPlanMode = false;
   }
 
   // --- Handlers ---
@@ -256,6 +293,9 @@ export class CodexRolloutParser {
       parsedArgs = { raw: item.arguments };
     }
 
+    const canonicalName = normalizeCodexToolName(item.name);
+    const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedArgs);
+
     return [{
       type: 'assistant',
       message: {
@@ -265,8 +305,8 @@ export class CodexRolloutParser {
         content: [{
           type: 'tool_use',
           id: item.call_id,
-          name: normalizeCodexToolName(item.name),
-          input: parsedArgs,
+          name: canonicalName,
+          input: normalizedInput,
         }],
       },
       timestamp,
@@ -274,6 +314,7 @@ export class CodexRolloutParser {
   }
 
   private handleFunctionCallOutput(timestamp: string, item: CodexFunctionCallOutputItem): ClaudeSessionEvent[] {
+    const isError = parsePlainTextFailure(item.output);
     return [{
       type: 'user',
       message: {
@@ -283,7 +324,7 @@ export class CodexRolloutParser {
           type: 'tool_result',
           tool_use_id: item.call_id,
           content: item.output,
-          is_error: false,
+          is_error: isError,
         }],
       },
       timestamp,
@@ -302,7 +343,11 @@ export class CodexRolloutParser {
           type: 'tool_use',
           id: item.call_id,
           name: 'Bash',
-          input: { command, workdir: item.action?.workdir },
+          input: {
+            command,
+            workdir: item.action?.workdir,
+            _sidekickRawToolName: 'local_shell_call',
+          },
         }],
       },
       timestamp,
@@ -323,7 +368,10 @@ export class CodexRolloutParser {
             type: 'tool_use',
             id: `${item.call_id}-${fp}`,
             name: 'Edit',
-            input: { file_path: fp },
+            input: {
+              file_path: fp,
+              _sidekickRawToolName: 'apply_patch',
+            },
           }],
         },
         timestamp,
@@ -338,6 +386,9 @@ export class CodexRolloutParser {
       parsedInput = { raw: item.input };
     }
 
+    const canonicalName = normalizeCodexToolName(item.name);
+    const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedInput);
+
     return [{
       type: 'assistant',
       message: {
@@ -347,8 +398,8 @@ export class CodexRolloutParser {
         content: [{
           type: 'tool_use',
           id: item.call_id,
-          name: normalizeCodexToolName(item.name),
-          input: parsedInput,
+          name: canonicalName,
+          input: normalizedInput,
         }],
       },
       timestamp,
@@ -364,7 +415,9 @@ export class CodexRolloutParser {
       if (parsed?.metadata?.duration_seconds) {
         duration = Math.round(parsed.metadata.duration_seconds * 1000);
       }
-    } catch { /* use raw output */ }
+    } catch {
+      isError = parsePlainTextFailure(item.output);
+    }
 
     return [{
       type: 'user',
@@ -453,7 +506,11 @@ export class CodexRolloutParser {
               type: 'tool_use',
               id: e.call_id,
               name: 'Bash',
-              input: { command, workdir: pending?.workdir },
+              input: {
+                command,
+                workdir: pending?.workdir,
+                _sidekickRawToolName: 'exec_command',
+              },
             }],
           },
           timestamp: pending?.timestamp || timestamp,
@@ -508,7 +565,10 @@ export class CodexRolloutParser {
               type: 'tool_use',
               id: e.call_id,
               name: normalizeCodexToolName(toolName),
-              input: pendingMcp?.arguments || {},
+              input: {
+                ...(pendingMcp?.arguments || {}),
+                _sidekickRawToolName: toolName,
+              },
             }],
           },
           timestamp: pendingMcp?.timestamp || timestamp,
@@ -578,6 +638,7 @@ export class CodexRolloutParser {
                 file_path: e.file_path,
                 additions: e.additions ?? 0,
                 deletions: e.deletions ?? 0,
+                _sidekickRawToolName: 'patch_applied',
               },
             }],
           },
@@ -588,7 +649,52 @@ export class CodexRolloutParser {
       case 'turn_started':
       case 'turn_complete':
       case 'task_started':
+      {
+        const collaborationMode = (event as CodexTaskStartedEvent).collaboration_mode_kind;
+        if (collaborationMode !== 'plan' || this.inPlanMode) return [];
+        this.inPlanMode = true;
+        return [{
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            id: `plan-enter-${timestamp}`,
+            model: this.currentModel || undefined,
+            content: [{
+              type: 'tool_use',
+              id: `plan-enter-${timestamp}`,
+              name: 'EnterPlanMode',
+              input: {
+                source: 'codex_task_started',
+                _sidekickRawToolName: 'task_started',
+              },
+            }],
+          },
+          timestamp,
+        }];
+      }
+
       case 'task_complete':
+        if (!this.inPlanMode) return [];
+        this.inPlanMode = false;
+        return [{
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            id: `plan-exit-${timestamp}`,
+            model: this.currentModel || undefined,
+            content: [{
+              type: 'tool_use',
+              id: `plan-exit-${timestamp}`,
+              name: 'ExitPlanMode',
+              input: {
+                source: 'codex_task_complete',
+                _sidekickRawToolName: 'task_complete',
+              },
+            }],
+          },
+          timestamp,
+        }];
+
       case 'turn_aborted':
       case 'agent_reasoning':
       case 'agent_message':

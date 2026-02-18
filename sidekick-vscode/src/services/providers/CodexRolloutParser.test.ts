@@ -209,7 +209,10 @@ describe('CodexRolloutParser', () => {
       expect(content[0].type).toBe('tool_use');
       expect(content[0].id).toBe('call-abc');
       expect(content[0].name).toBe('Read');
-      expect(content[0].input).toEqual({ file_path: '/tmp/test.txt' });
+      expect(content[0].input).toEqual({
+        file_path: '/tmp/test.txt',
+        _sidekickRawToolName: 'read',
+      });
     });
 
     it('should handle malformed JSON arguments gracefully', () => {
@@ -228,7 +231,29 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       const content = events[0].message.content as Array<{ type: string; input: Record<string, unknown> }>;
-      expect(content[0].input).toEqual({ raw: 'not json' });
+      expect(content[0].input).toEqual({ raw: 'not json', _sidekickRawToolName: 'bash' });
+    });
+
+    it('should normalize Exec_command to Bash with command field', () => {
+      const line: CodexRolloutLine = {
+        timestamp: '2025-01-15T10:03:00Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          id: 'fc-exec',
+          call_id: 'call-exec',
+          name: 'Exec_command',
+          arguments: '{"cmd":"ls -la src"}',
+        },
+      };
+
+      const events = parser.convertLine(line);
+      expect(events).toHaveLength(1);
+      const content = events[0].message.content as Array<{ name: string; input: Record<string, unknown> }>;
+      expect(content[0].name).toBe('Bash');
+      expect(content[0].input.cmd).toBe('ls -la src');
+      expect(content[0].input.command).toBe('ls -la src');
+      expect(content[0].input._sidekickRawToolName).toBe('Exec_command');
     });
   });
 
@@ -253,6 +278,22 @@ describe('CodexRolloutParser', () => {
       expect(content[0].type).toBe('tool_result');
       expect(content[0].tool_use_id).toBe('call-abc');
       expect(content[0].content).toBe('file contents here');
+    });
+
+    it('should infer error from plain-text non-zero exit code', () => {
+      const line: CodexRolloutLine = {
+        timestamp: '2025-01-15T10:04:00Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-abc',
+          output: 'Process exited with code 42',
+        },
+      };
+
+      const events = parser.convertLine(line);
+      const content = events[0].message.content as Array<{ is_error?: boolean }>;
+      expect(content[0].is_error).toBe(true);
     });
   });
 
@@ -282,6 +323,7 @@ describe('CodexRolloutParser', () => {
       expect(content[0].name).toBe('Bash');
       expect(content[0].input.command).toBe('ls -la /tmp');
       expect(content[0].input.workdir).toBe('/home/user');
+      expect(content[0].input._sidekickRawToolName).toBe('local_shell_call');
     });
   });
 
@@ -646,6 +688,49 @@ describe('CodexRolloutParser', () => {
     });
   });
 
+  // --- event_msg/task_started + task_complete (plan mode) ---
+
+  describe('event_msg/task_started + task_complete', () => {
+    it('should emit EnterPlanMode/ExitPlanMode for plan collaboration mode', () => {
+      const enter = parser.convertLine({
+        timestamp: '2025-01-15T10:14:10Z',
+        type: 'event_msg',
+        payload: {
+          type: 'task_started',
+          collaboration_mode_kind: 'plan',
+        },
+      });
+
+      expect(enter).toHaveLength(1);
+      const enterContent = enter[0].message.content as Array<{ name: string }>;
+      expect(enterContent[0].name).toBe('EnterPlanMode');
+
+      const exit = parser.convertLine({
+        timestamp: '2025-01-15T10:14:20Z',
+        type: 'event_msg',
+        payload: {
+          type: 'task_complete',
+        },
+      });
+
+      expect(exit).toHaveLength(1);
+      const exitContent = exit[0].message.content as Array<{ name: string }>;
+      expect(exitContent[0].name).toBe('ExitPlanMode');
+    });
+
+    it('should ignore non-plan task_started events', () => {
+      const events = parser.convertLine({
+        timestamp: '2025-01-15T10:14:10Z',
+        type: 'event_msg',
+        payload: {
+          type: 'task_started',
+          collaboration_mode_kind: 'default',
+        },
+      });
+      expect(events).toHaveLength(0);
+    });
+  });
+
   // --- event_msg/patch_applied ---
 
   describe('event_msg/patch_applied', () => {
@@ -890,8 +975,8 @@ describe('CodexRolloutParser', () => {
       expect(events[0].type).toBe('assistant');
       const content = events[0].message.content as Array<{ type: string; name: string; input: Record<string, unknown> }>;
       expect(content[0].type).toBe('tool_use');
-      expect(content[0].name).toBe('Web_search');
-      expect(content[0].input).toEqual({ query: 'vitest testing' });
+      expect(content[0].name).toBe('WebSearch');
+      expect(content[0].input).toEqual({ query: 'vitest testing', _sidekickRawToolName: 'web_search' });
     });
 
     it('should wrap non-JSON input as { raw: ... } for generic custom tool', () => {
@@ -908,7 +993,10 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(1);
       const content = events[0].message.content as Array<{ input: Record<string, unknown> }>;
-      expect(content[0].input).toEqual({ raw: 'not json at all' });
+      expect(content[0].input).toEqual({
+        raw: 'not json at all',
+        _sidekickRawToolName: 'some_tool',
+      });
     });
   });
 

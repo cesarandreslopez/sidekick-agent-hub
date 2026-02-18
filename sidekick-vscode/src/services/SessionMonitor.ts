@@ -161,7 +161,7 @@ export class SessionMonitor implements vscode.Disposable {
   }> = new Map();
 
   /** Task-related tool names */
-  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task', 'TodoWrite', 'TodoRead'];
+  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task', 'TodoWrite', 'TodoRead', 'UpdatePlan'];
 
   /** Creates an empty context attribution object */
   private static emptyAttribution(): ContextAttribution {
@@ -1779,8 +1779,14 @@ export class SessionMonitor implements vscode.Disposable {
       this.eventLogger.logEvent(event);
     }
 
-    // Update message count
-    this.stats.messageCount++;
+    // Exclude synthetic provider token-count events from user-facing message count.
+    const isSyntheticTokenCount = event.type === 'assistant' &&
+      typeof event.message?.id === 'string' &&
+      event.message.id.startsWith('token-count-');
+
+    if (!isSyntheticTokenCount) {
+      this.stats.messageCount++;
+    }
     this.stats.lastUpdated = new Date();
 
     // Track session start time (first event)
@@ -2458,8 +2464,14 @@ export class SessionMonitor implements vscode.Disposable {
         this._onTimelineEvent.fire(this.timeline[0]);
 
         // Build tool call object
+        const rawToolName = typeof toolUse.input?._sidekickRawToolName === 'string'
+          ? String(toolUse.input._sidekickRawToolName)
+          : undefined;
+
         const toolCall: ToolCall = {
           name: toolUse.name,
+          rawName: rawToolName,
+          providerId: this.provider.id,
           input: toolUse.input,
           timestamp: new Date(timestamp)
         };
@@ -2524,6 +2536,8 @@ export class SessionMonitor implements vscode.Disposable {
       log(`Subagent spawned: ${agentTaskId} - "${description}" (${subagentType || 'unknown'})`);
     } else if (toolUse.name === 'TodoWrite') {
       this.handleTodoWriteToolUse(toolUse, now);
+    } else if (toolUse.name === 'UpdatePlan') {
+      this.handleUpdatePlanToolUse(toolUse, now);
     } else if (toolUse.name === 'TaskUpdate') {
       const taskId = String(toolUse.input.taskId || '');
       const task = this.taskState.tasks.get(taskId);
@@ -2592,6 +2606,80 @@ export class SessionMonitor implements vscode.Disposable {
           this.taskState.activeTaskId = taskId;
         }
       }
+    }
+  }
+
+  /**
+   * Handles Codex UpdatePlan snapshots by projecting them into tracked tasks.
+   *
+   * Each plan step is represented as a synthetic task (`plan-{index}`) so the
+   * Kanban view can render lifecycle transitions in a provider-agnostic way.
+   */
+  private handleUpdatePlanToolUse(
+    toolUse: { id: string; name: string; input: Record<string, unknown> },
+    now: Date
+  ): void {
+    const plan = toolUse.input.plan as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(plan)) return;
+
+    const seenPlanTaskIds = new Set<string>();
+    let activePlanTaskId: string | null = null;
+
+    for (let i = 0; i < plan.length; i++) {
+      const entry = plan[i];
+      const step = String(entry.step || '').trim();
+      if (!step) continue;
+
+      const rawStatus = String(entry.status || 'pending').toLowerCase();
+      let status: TaskStatus;
+      if (rawStatus === 'completed') status = 'completed';
+      else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') status = 'in_progress';
+      else status = 'pending';
+
+      const taskId = `plan-${i}`;
+      seenPlanTaskIds.add(taskId);
+
+      const existing = this.taskState.tasks.get(taskId);
+      if (existing) {
+        existing.subject = step;
+        existing.status = status;
+        existing.updatedAt = now;
+        if (!existing.activeForm) {
+          existing.activeForm = `Working on ${step}`;
+        }
+      } else {
+        const task: TrackedTask = {
+          taskId,
+          subject: step,
+          status,
+          createdAt: now,
+          updatedAt: now,
+          activeForm: `Working on ${step}`,
+          blockedBy: [],
+          blocks: [],
+          associatedToolCalls: []
+        };
+        this.taskState.tasks.set(taskId, task);
+      }
+
+      if (status === 'in_progress') {
+        activePlanTaskId = taskId;
+      }
+    }
+
+    // Mark missing synthetic plan tasks as deleted when absent from a new snapshot.
+    for (const [taskId, task] of this.taskState.tasks) {
+      if (!taskId.startsWith('plan-')) continue;
+      if (!seenPlanTaskIds.has(taskId) && task.status !== 'deleted') {
+        task.status = 'deleted';
+        task.updatedAt = now;
+      }
+    }
+
+    if (activePlanTaskId) {
+      this.taskState.activeTaskId = activePlanTaskId;
+    } else if (this.taskState.activeTaskId?.startsWith('plan-')) {
+      this.taskState.activeTaskId = null;
     }
   }
 
