@@ -1,9 +1,71 @@
 # Changelog
 
-All notable changes to the Sidekick for Max VS Code extension will be documented in this file.
+All notable changes to the Sidekick Agent Hub VS Code extension will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.10.3] - 2026-02-18
+
+### Changed
+
+- Rebranded from "Sidekick for Max" to "Sidekick Agent Hub"
+- Updated repository URLs and metadata for new repo name
+
+### Added
+
+- Material for MkDocs documentation site with GitHub Pages deployment
+- Asset cleanup in preparation for new release
+
+## [0.10.2] - 2026-02-17
+
+### Added
+
+- **Provider-Aware Instruction File Targeting**: Session handoff now targets the correct instruction file per provider (CLAUDE.md, AGENTS.md, etc.)
+- **Session Handoff System**: Auto-generates context handoff documents at session end for seamless continuation
+  - Configurable via `sidekick.autoHandoff` setting: off, generate-only, generate-and-notify
+  - Stored in `~/.config/sidekick/handoffs/`
+  - "Setup Handoff" command adds reference to your agent instruction file
+
+## [0.10.1] - 2026-02-16
+
+### Fixed
+
+- **Codex CLI Integration**: Replaced `@openai/codex-sdk` with direct CLI spawning for reliable Codex inference
+  - SDK dependency removed; Codex CLI is now invoked as a subprocess
+  - Resolves compatibility issues with the Codex SDK package
+
+## [0.10.0] - 2026-02-16
+
+### Added
+
+- **Multi-Provider Inference**: Support for OpenCode and Codex CLI as inference providers alongside Claude Max and Claude API
+  - New `sidekick.inferenceProvider` setting with auto-detection based on installed CLI agents
+  - Provider auto-detection picks the most recently active agent via filesystem timestamps
+  - "Switch Inference Provider" command and status bar quick-pick
+- **Multi-Provider Session Monitoring**: Monitor sessions from OpenCode (`~/.local/share/opencode/`) and Codex CLI (`~/.codex/sessions/`)
+  - New `sidekick.sessionProvider` setting with auto-detection
+  - Each provider normalizes raw data into a common `ClaudeSessionEvent` format
+- **Model Resolver with Tier System**: Unified model selection via tiers (fast/balanced/powerful) with auto-detection per feature
+  - `"auto"` resolves to a per-feature default tier (e.g., inline completions → fast, transforms → powerful)
+  - Legacy names (haiku/sonnet/opus) map through `LEGACY_TIER_MAP`
+  - Tiers map to provider-specific model IDs via `DEFAULT_MODEL_MAPPINGS`
+- **Cross-Session Task Persistence**: Tasks from Kanban board persist across sessions in `~/.config/sidekick/tasks/{projectSlug}.json`
+- **Decision Log Extraction**: Tracks and persists architectural decisions from sessions in `~/.config/sidekick/decisions/{projectSlug}.json`
+- **Event Logging Audit Trail**: Optional JSONL event logging for debugging
+  - New settings: `sidekick.enableEventLog`, `sidekick.eventLogMaxSizeMB`, `sidekick.eventLogMaxAgeDays`
+  - Stored in `~/.config/sidekick/event-logs/`
+- **Plan Visualization**: Step nodes with status indicators in mind map view
+- **Dashboard Loading Spinner**: Visual feedback during provider switches
+
+### Changed
+
+- Removed RSVP Speed Reader feature
+- Deprecated `sidekick.authMode` in favor of `sidekick.inferenceProvider` (auto-migration on first activation)
+
+### Fixed
+
+- Multiple provider parity fixes for OpenCode and Codex CLI
 
 ## [0.9.1] - 2026-02-15
 
@@ -127,7 +189,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Mind map layout recovery for dense subagent graphs** ([#8](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/8))
+- **Mind map layout recovery for dense subagent graphs** ([#8](https://github.com/cesarandreslopez/sidekick-agent-hub/issues/8))
   - Added a **Reset Layout** control to rebuild the D3 simulation and recenter on the main session node without refreshing the view
   - Tuned force behavior to keep clusters compact and readable (localized many-body repulsion, adaptive link distance/collision spacing, gentle x/y centering)
 
@@ -236,7 +298,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Subdirectory session discovery**: Session monitoring now finds Claude Code sessions started from subdirectories of the workspace ([#7](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/7))
+- **Subdirectory session discovery**: Session monitoring now finds Claude Code sessions started from subdirectories of the workspace ([#7](https://github.com/cesarandreslopez/sidekick-agent-hub/issues/7))
   - When VS Code workspace is `/project` but Claude Code starts from `/project/packages/app`, the extension now correctly discovers and monitors that session
   - Uses prefix-based matching with most-recently-active selection when multiple subdirectory sessions exist
   - Prevents false positives (e.g., `/project` won't match `/project-v2`)
@@ -283,7 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Session path encoding on Windows/Mac**: Fixed issue where session monitoring couldn't find Claude Code sessions on some systems ([#6](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/6))
+- **Session path encoding on Windows/Mac**: Fixed issue where session monitoring couldn't find Claude Code sessions on some systems ([#6](https://github.com/cesarandreslopez/sidekick-agent-hub/issues/6))
   - Improved path encoding to handle colons, slashes, and underscores correctly
   - Added 3-strategy discovery fallback when computed path doesn't match
   - Added session directory to diagnostics command for debugging
@@ -292,7 +354,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Silent timeout on inline completions**: Completions that timed out would silently fail with no user feedback ([#5](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/5))
+- **Silent timeout on inline completions**: Completions that timed out would silently fail with no user feedback ([#5](https://github.com/cesarandreslopez/sidekick-agent-hub/issues/5))
   - Now shows a warning notification when requests timeout, with options to open settings or view logs
   - Added `TimeoutError` class that survives the error chain for proper identification
   - Other completion errors now also show user-friendly messages
@@ -402,7 +464,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Claude CLI path resolution**: Fixed "Claude Code native binary not found" error when Claude is in PATH but not in common installation directories ([#4](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/4))
+- **Claude CLI path resolution**: Fixed "Claude Code native binary not found" error when Claude is in PATH but not in common installation directories ([#4](https://github.com/cesarandreslopez/sidekick-agent-hub/issues/4))
   - Now uses `which` (Unix) or `where` (Windows) to resolve the absolute path
   - Better error messages with installation instructions
 
@@ -471,7 +533,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed "Claude Code CLI not found" error for users who installed Claude CLI via pnpm, yarn, or other package managers ([#3](https://github.com/cesarandreslopez/sidekick-for-claude-max/issues/3))
+- Fixed "Claude Code CLI not found" error for users who installed Claude CLI via pnpm, yarn, or other package managers ([#3](https://github.com/cesarandreslopez/sidekick-agent-hub/issues/3))
 - Improved error message with instructions for setting custom CLI path
 
 ## [0.3.1] - 2025-01-21

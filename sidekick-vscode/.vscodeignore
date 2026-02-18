@@ -26,6 +26,10 @@ dist/**
 .npm
 *.tsbuildinfo
 
+# Documentation site (not part of extension)
+../docs/**
+../mkdocs.yml
+
 # Keep these for marketplace
 # README.md - Main extension documentation
 # CHANGELOG.md - Version history

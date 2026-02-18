@@ -1,7 +1,7 @@
 {
   "name": "sidekick-for-max",
-  "displayName": "Sidekick for Max",
-  "description": "AI-powered code completions, transforms, commit messages, and Claude Code session monitoring - all using your Claude Max subscription at no extra cost.",
+  "displayName": "Sidekick Agent Hub",
+  "description": "Multi-provider AI coding assistant for VS Code — inline completions, code transforms, commit messages, and agent session monitoring for Claude Max, Claude API, OpenCode, and Codex CLI.",
   "version": "0.10.3",
   "publisher": "CesarAndresLopez",
   "author": {
@@ -16,11 +16,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cesarandreslopez/sidekick-for-claude-max"
+    "url": "https://github.com/cesarandreslopez/sidekick-agent-hub"
   },
-  "homepage": "https://github.com/cesarandreslopez/sidekick-for-claude-max#readme",
+  "homepage": "https://github.com/cesarandreslopez/sidekick-agent-hub#readme",
   "bugs": {
-    "url": "https://github.com/cesarandreslopez/sidekick-for-claude-max/issues"
+    "url": "https://github.com/cesarandreslopez/sidekick-agent-hub/issues"
   },
   "keywords": [
     "ai",
@@ -37,7 +37,11 @@
     "session-monitor",
     "token-usage",
     "claude-code",
-    "analytics"
+    "analytics",
+    "opencode",
+    "codex",
+    "multi-provider",
+    "agent-hub"
   ],
   "engines": {
     "vscode": "^1.85.0"

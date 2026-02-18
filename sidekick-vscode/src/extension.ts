@@ -1,5 +1,5 @@
 /**
- * @fileoverview VS Code extension providing Sidekick for Max inline completions.
+ * @fileoverview VS Code extension providing Sidekick Agent Hub inline completions.
  *
  * This extension uses Claude via the Agent SDK (Max subscription) or API key
  * to provide intelligent code suggestions as you type. It registers an inline
@@ -133,7 +133,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initialize logger first
   const outputChannel = initLogger();
   context.subscriptions.push(outputChannel);
-  log("Sidekick for Max extension activated");
+  log("Sidekick Agent Hub extension activated");
 
   // Create status bar manager
   statusBarManager = new StatusBarManager();

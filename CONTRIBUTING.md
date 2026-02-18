@@ -1,4 +1,4 @@
-# Contributing to Sidekick for Max
+# Contributing to Sidekick Agent Hub
 
 Thank you for your interest in contributing! This document provides guidelines and instructions for contributing.
 
@@ -14,8 +14,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/cesarandreslopez/sidekick-for-claude-max.git
-   cd sidekick-for-claude-max
+   git clone https://github.com/cesarandreslopez/sidekick-agent-hub.git
+   cd sidekick-agent-hub
    ```
 
 2. **Set up the VS Code extension**
@@ -77,7 +77,6 @@ sidekick-vscode/src/
 │   ├── DashboardViewProvider.ts     # Session analytics webview
 │   ├── MindMapViewProvider.ts       # D3.js mind map visualization
 │   ├── TaskBoardViewProvider.ts     # Kanban board for task tracking
-│   ├── RsvpViewProvider.ts          # Webview panel for RSVP speed reading
 │   ├── ExplainViewProvider.ts       # Code explanation webview
 │   ├── ErrorViewProvider.ts         # Error explanation webview
 │   ├── InlineChatProvider.ts        # Inline chat / quick ask
@@ -104,8 +103,7 @@ sidekick-vscode/src/
 │   ├── diffFilter.ts            # Filters lockfiles/binaries from diffs
 │   └── tokenEstimator.ts        # Token usage estimation
 └── webview/                     # Browser-context UI code (IIFE bundles)
-    ├── dashboard.ts             # Dashboard UI with Chart.js
-    └── rsvp.ts                  # RSVP reader UI
+    └── dashboard.ts             # Dashboard UI with Chart.js
 ```
 
 ### Key Architecture Concepts

@@ -11,7 +11,7 @@ let outputChannel: vscode.OutputChannel | undefined;
  */
 export function initLogger(): vscode.OutputChannel {
   if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel('Sidekick for Max');
+    outputChannel = vscode.window.createOutputChannel('Sidekick Agent Hub');
   }
   return outputChannel;
 }
