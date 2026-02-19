@@ -102,3 +102,4 @@ nav:
     - Session Pipeline: architecture/session-pipeline.md
     - Provider System: architecture/provider-system.md
   - Contributing: contributing.md
+  - Changelog: changelog.md
