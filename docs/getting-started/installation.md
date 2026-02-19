@@ -2,6 +2,10 @@
 
 Get AI completions, agent monitoring, and session intelligence working in under two minutes.
 
+## Open VSX (Cursor, VSCodium, and other forks)
+
+Install from [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max) — the open marketplace used by Cursor, VSCodium, and other VS Code forks.
+
 ## VS Code Marketplace
 
 Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max):
@@ -10,10 +14,6 @@ Install directly from the [VS Code Marketplace](https://marketplace.visualstudio
 2. Go to Extensions (`Ctrl+Shift+X`)
 3. Search for "Sidekick Agent Hub"
 4. Click Install
-
-## Open VSX (Cursor, VSCodium, and other forks)
-
-Install from [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max) — the open marketplace used by Cursor, VSCodium, and other VS Code forks.
 
 ## Download from GitHub Releases
 
