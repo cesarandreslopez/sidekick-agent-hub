@@ -56,10 +56,14 @@ import { ErrorViewProvider } from "./providers/ErrorViewProvider";
 import { DashboardViewProvider } from "./providers/DashboardViewProvider";
 import { MindMapViewProvider } from "./providers/MindMapViewProvider";
 import { TaskBoardViewProvider } from "./providers/TaskBoardViewProvider";
+import { ProjectTimelineViewProvider } from "./providers/ProjectTimelineViewProvider";
 import { TaskPersistenceService } from "./services/TaskPersistenceService";
 import { DecisionLogService } from "./services/DecisionLogService";
+import { KnowledgeNoteService } from "./services/KnowledgeNoteService";
 import { encodeWorkspacePath } from "./services/SessionPathResolver";
 import { TempFilesTreeProvider } from "./providers/TempFilesTreeProvider";
+import { KnowledgeNoteTreeProvider } from "./providers/KnowledgeNoteTreeProvider";
+import { KnowledgeNoteDecorationProvider } from "./providers/KnowledgeNoteDecorationProvider";
 import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
 import { initLogger, log, logError, showLog } from "./services/Logger";
@@ -373,6 +377,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Create SessionAnalyzer and GuidanceAdvisor for instruction file suggestions
     const sessionAnalyzer = new SessionAnalyzer(sessionMonitor);
     const guidanceAdvisor = new GuidanceAdvisor(authService, sessionAnalyzer, sessionMonitor);
+    // Knowledge note injection happens after knowledgeNoteService is created (below)
     log('SessionAnalyzer and GuidanceAdvisor initialized');
 
     // Decision Log Service
@@ -385,6 +390,21 @@ export async function activate(context: vscode.ExtensionContext) {
         logError('Failed to initialize DecisionLogService', error);
       });
       context.subscriptions.push(decisionLogService);
+    }
+
+    // Knowledge Note Service
+    let knowledgeNoteService: KnowledgeNoteService | undefined;
+    const knowledgeWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (knowledgeWorkspaceFolder) {
+      const knowledgeSlug = encodeWorkspacePath(knowledgeWorkspaceFolder.uri.fsPath);
+      knowledgeNoteService = new KnowledgeNoteService(knowledgeSlug);
+      knowledgeNoteService.initialize().catch(error => {
+        logError('Failed to initialize KnowledgeNoteService', error);
+      });
+      context.subscriptions.push(knowledgeNoteService);
+
+      // Wire knowledge notes into GuidanceAdvisor for auto-surfacing in analysis prompts
+      guidanceAdvisor.setKnowledgeNoteService(knowledgeNoteService);
     }
 
     // Handoff Service
@@ -482,6 +502,9 @@ export async function activate(context: vscode.ExtensionContext) {
     if (handoffService) {
       dashboardProvider.setHandoffService(handoffService);
     }
+    if (knowledgeNoteService) {
+      dashboardProvider.setKnowledgeNoteService(knowledgeNoteService);
+    }
     context.subscriptions.push(dashboardProvider);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, dashboardProvider)
@@ -534,6 +557,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register mind map view provider (depends on sessionMonitor)
     const mindMapProvider = new MindMapViewProvider(context.extensionUri, sessionMonitor);
+    if (knowledgeNoteService) {
+      mindMapProvider.setKnowledgeNoteService(knowledgeNoteService);
+    }
     context.subscriptions.push(mindMapProvider);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(MindMapViewProvider.viewType, mindMapProvider)
@@ -560,6 +586,14 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     log('Task board view provider registered');
 
+    // Register project timeline view provider (depends on sessionMonitor)
+    const timelineProvider = new ProjectTimelineViewProvider(context.extensionUri, sessionMonitor);
+    context.subscriptions.push(timelineProvider);
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(ProjectTimelineViewProvider.viewType, timelineProvider)
+    );
+    log('Project timeline view provider registered');
+
     // Register temp files tree provider (depends on sessionMonitor)
     const tempFilesProvider = new TempFilesTreeProvider(sessionMonitor);
     context.subscriptions.push(tempFilesProvider);
@@ -575,6 +609,220 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.registerTreeDataProvider('sidekick.subagents', subagentProvider)
     );
     log('Subagent tree provider registered');
+
+    // Register knowledge notes tree provider + decoration provider (depends on knowledgeNoteService)
+    if (knowledgeNoteService) {
+      const knowledgeNoteTreeProvider = new KnowledgeNoteTreeProvider(knowledgeNoteService);
+      context.subscriptions.push(knowledgeNoteTreeProvider);
+      const knowledgeNoteTreeView = vscode.window.createTreeView('sidekick.knowledgeNotes', {
+        treeDataProvider: knowledgeNoteTreeProvider,
+      });
+      knowledgeNoteTreeProvider.setTreeView(knowledgeNoteTreeView);
+      context.subscriptions.push(knowledgeNoteTreeView);
+
+      const knowledgeNoteDecorationProvider = new KnowledgeNoteDecorationProvider(
+        knowledgeNoteService,
+        context.extensionUri
+      );
+      context.subscriptions.push(knowledgeNoteDecorationProvider);
+
+      log('Knowledge notes tree + decoration providers registered');
+    }
+
+    // Register addKnowledgeNote command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('sidekick.addKnowledgeNote', async () => {
+        if (!knowledgeNoteService) {
+          vscode.window.showWarningMessage('Knowledge notes service not initialized.');
+          return;
+        }
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+          vscode.window.showWarningMessage('No active editor.');
+          return;
+        }
+
+        // Pick note type
+        const typeItems = [
+          { label: '$(warning) Gotcha', description: 'Something that can trip you up', value: 'gotcha' as const },
+          { label: '$(symbol-misc) Pattern', description: 'A recurring code pattern to follow', value: 'pattern' as const },
+          { label: '$(law) Guideline', description: 'A rule or convention to adhere to', value: 'guideline' as const },
+          { label: '$(lightbulb) Tip', description: 'A helpful insight or shortcut', value: 'tip' as const },
+        ];
+
+        const selectedType = await vscode.window.showQuickPick(typeItems, {
+          placeHolder: 'Select note type',
+        });
+        if (!selectedType) return;
+
+        // Get content
+        const content = await vscode.window.showInputBox({
+          prompt: 'Enter note content',
+          placeHolder: 'e.g., This file requires manual cache invalidation after editing',
+          ignoreFocusOut: true,
+        });
+        if (!content) return;
+
+        const relativePath = vscode.workspace.asRelativePath(editor.document.uri);
+        const selection = editor.selection;
+        const lineRange = selection.isEmpty
+          ? undefined
+          : { start: selection.start.line + 1, end: selection.end.line + 1 };
+        const codeSnippet = selection.isEmpty
+          ? undefined
+          : editor.document.getText(selection).slice(0, 500);
+
+        knowledgeNoteService.addNote({
+          noteType: selectedType.value,
+          content,
+          filePath: relativePath,
+          lineRange,
+          codeSnippet,
+        });
+
+        vscode.window.showInformationMessage(`Knowledge note added to ${relativePath}`);
+      })
+    );
+
+    // Register injectKnowledgeNotes command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('sidekick.injectKnowledgeNotes', async () => {
+        if (!knowledgeNoteService) {
+          vscode.window.showWarningMessage('Knowledge notes service not initialized.');
+          return;
+        }
+
+        const activeNotes = knowledgeNoteService.getActiveNotes();
+        if (activeNotes.length === 0) {
+          vscode.window.showInformationMessage('No active knowledge notes to inject.');
+          return;
+        }
+
+        // Build markdown section
+        const notesByFile = new Map<string, typeof activeNotes>();
+        for (const note of activeNotes) {
+          const existing = notesByFile.get(note.filePath) || [];
+          existing.push(note);
+          notesByFile.set(note.filePath, existing);
+        }
+
+        let markdown = '\n## File-Specific Knowledge\n\n';
+        for (const [filePath, notes] of notesByFile) {
+          markdown += `### ${filePath}\n`;
+          for (const note of notes) {
+            const icon = note.noteType === 'gotcha' ? '⚠️' :
+                         note.noteType === 'pattern' ? '🔄' :
+                         note.noteType === 'guideline' ? '📏' : '💡';
+            markdown += `- ${icon} **${note.noteType}**: ${note.content}\n`;
+          }
+          markdown += '\n';
+        }
+
+        // Resolve which instruction file to use
+        const providerId = sessionMonitor!.getProvider().id;
+        const target = resolveInstructionTarget(providerId);
+        const wsFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!wsFolder) {
+          vscode.window.showWarningMessage('No workspace folder open.');
+          return;
+        }
+
+        const filePath = path.join(wsFolder.uri.fsPath, target.primaryFile);
+        let existingContent = '';
+        try {
+          existingContent = await fs.promises.readFile(filePath, 'utf-8');
+        } catch {
+          // File doesn't exist, will create it
+        }
+
+        // Check if knowledge section already exists
+        if (existingContent.includes('## File-Specific Knowledge')) {
+          const action = await vscode.window.showWarningMessage(
+            `${target.primaryFile} already has a "File-Specific Knowledge" section. Replace it?`,
+            'Replace',
+            'Cancel'
+          );
+          if (action !== 'Replace') return;
+
+          // Remove existing section (from header to next ## or end)
+          existingContent = existingContent.replace(
+            /\n## File-Specific Knowledge\n[\s\S]*?(?=\n## |\n*$)/,
+            ''
+          );
+        }
+
+        await fs.promises.writeFile(filePath, existingContent + markdown, 'utf-8');
+        vscode.window.showInformationMessage(
+          `Injected ${activeNotes.length} knowledge note${activeNotes.length === 1 ? '' : 's'} into ${target.primaryFile}`
+        );
+      })
+    );
+
+    // Register knowledge note management commands (delete, edit, confirm)
+    context.subscriptions.push(
+      vscode.commands.registerCommand('sidekick.deleteKnowledgeNote', async (item: { kind: string; note?: { id: string; content: string } }) => {
+        if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete this note?\n\n"${item.note.content.slice(0, 80)}"`,
+          { modal: true },
+          'Delete'
+        );
+        if (confirm !== 'Delete') return;
+
+        knowledgeNoteService.deleteNote(item.note.id);
+      }),
+
+      vscode.commands.registerCommand('sidekick.editKnowledgeNote', async (item: { kind: string; note?: { id: string; content: string; noteType: string; importance: string } }) => {
+        if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
+
+        const content = await vscode.window.showInputBox({
+          prompt: 'Edit note content',
+          value: item.note.content,
+          placeHolder: 'Enter updated note content',
+        });
+        if (content === undefined) return;
+
+        const typeItems = [
+          { label: 'Gotcha', value: 'gotcha' as const, description: 'Something surprising or error-prone' },
+          { label: 'Pattern', value: 'pattern' as const, description: 'A recurring approach or convention' },
+          { label: 'Guideline', value: 'guideline' as const, description: 'A rule or constraint' },
+          { label: 'Tip', value: 'tip' as const, description: 'A useful shortcut or technique' },
+        ];
+        const currentType = typeItems.find(t => t.value === item.note!.noteType);
+        const selectedType = await vscode.window.showQuickPick(typeItems, {
+          placeHolder: `Note type (current: ${currentType?.label ?? item.note.noteType})`,
+        });
+        if (!selectedType) return;
+
+        const importanceItems = [
+          { label: 'Critical', value: 'critical' as const },
+          { label: 'High', value: 'high' as const },
+          { label: 'Medium', value: 'medium' as const },
+          { label: 'Low', value: 'low' as const },
+        ];
+        const currentImportance = importanceItems.find(i => i.value === item.note!.importance);
+        const selectedImportance = await vscode.window.showQuickPick(importanceItems, {
+          placeHolder: `Importance (current: ${currentImportance?.label ?? item.note.importance})`,
+        });
+        if (!selectedImportance) return;
+
+        knowledgeNoteService.updateNote(item.note.id, {
+          content,
+          noteType: selectedType.value,
+          importance: selectedImportance.value,
+        });
+        vscode.window.showInformationMessage('Knowledge note updated.');
+      }),
+
+      vscode.commands.registerCommand('sidekick.confirmKnowledgeNote', async (item: { kind: string; note?: { id: string } }) => {
+        if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
+
+        knowledgeNoteService.confirmNote(item.note.id);
+        vscode.window.showInformationMessage('Note confirmed — marked as reviewed and active.');
+      }),
+    );
 
     // Create monitor status bar (depends on sessionMonitor)
     const monitorStatusBar = new MonitorStatusBar(sessionMonitor);

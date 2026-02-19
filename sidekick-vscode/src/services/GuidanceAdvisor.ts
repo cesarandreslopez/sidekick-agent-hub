@@ -18,6 +18,7 @@ import type { SessionMonitor } from './SessionMonitor';
 import type { InstructionFileName, InstructionFileTarget } from '../types/instructionFile';
 import { resolveInstructionTarget } from '../types/instructionFile';
 import { buildGuidanceAnalysisPrompt, parseGuidanceSuggestions } from '../utils/analysisPrompts';
+import type { KnowledgeNoteService } from './KnowledgeNoteService';
 import { log, logError } from './Logger';
 
 /**
@@ -81,11 +82,20 @@ export interface AnalyzeOptions {
  * ```
  */
 export class GuidanceAdvisor {
+  private _knowledgeNoteService?: KnowledgeNoteService;
+
   constructor(
     private readonly authService: AuthService,
     private readonly sessionAnalyzer: SessionAnalyzer,
     private readonly sessionMonitor: SessionMonitor
   ) {}
+
+  /**
+   * Sets the optional KnowledgeNoteService for injecting active notes into analysis.
+   */
+  setKnowledgeNoteService(service: KnowledgeNoteService): void {
+    this._knowledgeNoteService = service;
+  }
 
   /**
    * Reads an instruction file from the workspace root.
@@ -150,6 +160,15 @@ export class GuidanceAdvisor {
           sessionData,
           target
         };
+      }
+
+      // 3b. Inject active knowledge notes for context
+      if (this._knowledgeNoteService) {
+        const activeNotes = this._knowledgeNoteService.getActiveNotes();
+        if (activeNotes.length > 0) {
+          sessionData.knowledgeNotes = activeNotes;
+          log(`GuidanceAdvisor: Injected ${activeNotes.length} active knowledge notes`);
+        }
       }
 
       // 4. Build the analysis prompt

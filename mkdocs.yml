@@ -79,6 +79,8 @@ nav:
     - Session Monitor: features/session-monitor.md
     - Mind Map: features/mind-map.md
     - Kanban Board: features/kanban-board.md
+    - Project Timeline: features/project-timeline.md
+    - Knowledge Notes: features/knowledge-notes.md
     - Tool Inspector: features/tool-inspector.md
     - Session Handoff: features/session-handoff.md
     - Decision Log: features/decision-log.md

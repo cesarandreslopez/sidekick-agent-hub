@@ -9,6 +9,7 @@
 
 import { SessionStats, ToolCall, TimelineEvent, SubagentStats, TaskState, TrackedTask, PlanState } from '../types/claudeSession';
 import { GraphNode, GraphLink, GraphData, TaskNodeStatus, PlanStepStatus } from '../types/mindMap';
+import type { KnowledgeNoteDisplay } from '../types/knowledgeNote';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { log } from './Logger';
 
@@ -57,7 +58,7 @@ export class MindMapDataService {
    * @param subagents - Optional subagent statistics for expanded visualization
    * @returns Graph data with nodes and links
    */
-  static buildGraph(stats: SessionStats, subagents?: SubagentStats[]): GraphData {
+  static buildGraph(stats: SessionStats, subagents?: SubagentStats[], knowledgeNotes?: KnowledgeNoteDisplay[]): GraphData {
     // Debug logging for subagent data
     if (subagents && subagents.length > 0) {
       log(`[MindMap] Building graph with ${subagents.length} subagents:`);
@@ -202,6 +203,11 @@ export class MindMapDataService {
     // Add plan nodes from planState
     if (stats.planState && stats.planState.steps.length > 0) {
       this.addPlanNodes(stats.planState, nodes, links, nodeIds, stats.taskState);
+    }
+
+    // Add knowledge note nodes
+    if (knowledgeNotes && knowledgeNotes.length > 0) {
+      this.addKnowledgeNoteNodes(knowledgeNotes, nodes, links, nodeIds);
     }
 
     // Add subagent nodes with hierarchical structure
@@ -765,6 +771,83 @@ export class MindMapDataService {
         }
       }
     }
+  }
+
+  /**
+   * Adds knowledge note nodes to the graph.
+   *
+   * Each active note becomes a node linked to its file node (if present)
+   * or to the session root. Groups notes by file to avoid clutter.
+   *
+   * @param notes - Active knowledge notes from KnowledgeNoteService
+   * @param nodes - Nodes array to add to
+   * @param links - Links array to add to
+   * @param nodeIds - Set of existing node IDs
+   */
+  private static addKnowledgeNoteNodes(
+    notes: KnowledgeNoteDisplay[],
+    nodes: GraphNode[],
+    links: GraphLink[],
+    nodeIds: Set<string>
+  ): void {
+    for (const note of notes) {
+      const noteNodeId = `knowledge-note-${note.id}`;
+
+      if (nodeIds.has(noteNodeId)) continue;
+
+      // Build label: type icon + truncated content
+      const typePrefix = note.noteType === 'gotcha' ? '!' :
+                         note.noteType === 'pattern' ? '~' :
+                         note.noteType === 'guideline' ? '#' : '*';
+      const label = `${typePrefix} ${this.truncateLabel(note.content, 22)}`;
+
+      nodes.push({
+        id: noteNodeId,
+        label,
+        fullPath: `[${note.noteType}] ${note.content}\n\nFile: ${note.filePath}\nStatus: ${note.status}\nImportance: ${note.importance}`,
+        type: 'knowledge-note',
+      });
+      nodeIds.add(noteNodeId);
+
+      // Try to link to the file node
+      const fileNodeId = this.findFileNodeId(note.filePath, nodeIds);
+      if (fileNodeId) {
+        links.push({
+          source: fileNodeId,
+          target: noteNodeId,
+          linkType: 'knowledge-note',
+        });
+      } else {
+        // Link to session root if file not in graph
+        links.push({
+          source: 'session-root',
+          target: noteNodeId,
+          linkType: 'knowledge-note',
+        });
+      }
+    }
+  }
+
+  /**
+   * Finds a file node ID matching a relative path.
+   *
+   * File nodes use absolute paths as IDs, so this checks if any existing
+   * file node's ID ends with the given relative path.
+   *
+   * @param relativePath - Relative file path from the knowledge note
+   * @param nodeIds - Set of existing node IDs
+   * @returns Matching file node ID, or null if not found
+   */
+  private static findFileNodeId(relativePath: string, nodeIds: Set<string>): string | null {
+    // Normalize path separators
+    const normalized = relativePath.replace(/\\/g, '/');
+
+    for (const id of nodeIds) {
+      if (id.startsWith('file-') && id.endsWith(normalized)) {
+        return id;
+      }
+    }
+    return null;
   }
 
   /**

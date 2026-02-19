@@ -5,6 +5,33 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-02-19
+
+### Added
+
+- **Knowledge Notes System**: Capture reusable knowledge (gotchas, patterns, guidelines, tips) attached to files with lifecycle tracking
+  - **Manual Notes**: Select code, right-click → "Add Knowledge Note", choose type (gotcha, pattern, guideline, tip), enter content
+  - **Gutter Icons**: Distinct SVG icons per note type appear in the editor gutter next to annotated lines
+  - **Hover Tooltips**: Hover over gutter icons to see note content, type, status, and importance
+  - **Tree View**: "Knowledge Notes" panel in the Session Monitor sidebar groups notes by file with click-to-navigate
+  - **Staleness Lifecycle**: Notes transition through active → needs review (30 days) → stale (90 days) → obsolete (file deleted), with importance-weighted decay
+  - **Auto-Extraction**: Repeated errors on the same file, recovery patterns, and file-specific guidance suggestions automatically generate candidate notes in the dashboard for review
+  - **Auto-Surfacing**: Active knowledge notes for touched files are injected into GuidanceAdvisor analysis prompts to avoid duplicate suggestions
+  - **Mind Map Integration**: Active notes appear as amber nodes linked to their file nodes (or session root if file not in graph)
+  - **CLAUDE.md Injection**: New command `Sidekick: Inject Knowledge Notes` appends a `## File-Specific Knowledge` section to your instruction file
+  - **Note Management**: Right-click notes in the tree view to edit (content, type, importance), delete, or confirm (reset staleness)
+  - Persisted in `~/.config/sidekick/knowledge-notes/{projectSlug}.json`
+  - New commands: `Sidekick: Add Knowledge Note`, `Edit Knowledge Note`, `Delete Knowledge Note`, `Confirm Knowledge Note`
+- **Multi-Session Project Timeline**: Chronological view of all sessions in the current project
+  - **Session Cards**: Each session displayed as a card with label, relative time, duration, and message count
+  - **Duration Bars**: Visual bar proportional to session length relative to the longest session
+  - **Metadata Badges**: Token count, task count, error count, and model name shown as color-coded badges
+  - **Time Range Filtering**: Toggle between 24h, 7d, 30d, and All ranges
+  - **Expandable Details**: Click a session card to load and display tool usage breakdown, task list, and error summaries
+  - **Open in Dashboard**: Click the open button on any session to load it in the Session Analytics dashboard
+  - **Auto-Refresh**: Timeline updates on session start/end and debounced (10s) on token usage events
+  - Registered as "Project Timeline" webview in the Session Monitor sidebar
+
 ## [0.10.3] - 2026-02-19
 
 ### Added

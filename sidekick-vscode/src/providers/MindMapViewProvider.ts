@@ -18,6 +18,7 @@ import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
 import { MindMapDataService } from '../services/MindMapDataService';
 import type { MindMapState, MindMapMessage, WebviewMindMapMessage } from '../types/mindMap';
+import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 
@@ -45,6 +46,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
   /** Current mind map state */
   private _state: MindMapState;
+
+  /** Optional knowledge note service for note nodes */
+  private _knowledgeNoteService?: KnowledgeNoteService;
 
   /**
    * Creates a new MindMapViewProvider.
@@ -86,6 +90,13 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
 
     log('MindMapViewProvider initialized');
+  }
+
+  /**
+   * Sets the optional KnowledgeNoteService for rendering note nodes.
+   */
+  setKnowledgeNoteService(service: KnowledgeNoteService): void {
+    this._knowledgeNoteService = service;
   }
 
   /**
@@ -230,7 +241,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   private _syncFromSessionMonitor(): void {
     const stats = this._sessionMonitor.getStats();
     const subagents = this._sessionMonitor.getSubagentStats();
-    this._state.graph = MindMapDataService.buildGraph(stats, subagents);
+    const knowledgeNotes = this._knowledgeNoteService?.getActiveNotes();
+    this._state.graph = MindMapDataService.buildGraph(stats, subagents, knowledgeNotes);
     this._state.sessionActive = this._sessionMonitor.isActive();
     this._state.lastUpdated = new Date().toISOString();
   }
@@ -488,6 +500,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       stroke-dasharray: 3, 2;
     }
 
+    .link.knowledge-note {
+      stroke: #FFB74D;
+      stroke-opacity: 0.5;
+      stroke-dasharray: 2, 2;
+    }
+
     /* Tooltip */
     .tooltip {
       position: absolute;
@@ -583,6 +601,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       stroke-dasharray: 3, 2;
     }
 
+    .link-path.knowledge-note {
+      stroke: #FFB74D;
+      stroke-opacity: 0.5;
+      stroke-dasharray: 2, 2;
+    }
+
     .node.circular-mode {
       cursor: default;
     }
@@ -651,6 +675,10 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       <span class="legend-dot" style="background: #00BCD4;"></span>
       <span>Plan</span>
     </div>
+    <div class="legend-item">
+      <span class="legend-dot" style="background: #FFB74D;"></span>
+      <span>Note</span>
+    </div>
   </div>
 
   <script nonce="${nonce}" src="https://cdn.jsdelivr.net/npm/d3@7"></script>
@@ -670,7 +698,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         command: '#D0021B',    // Red - represents terminal commands
         task: '#FF6B6B',       // Coral red - represents tasks
         plan: '#00BCD4',       // Teal - plan root
-        'plan-step': '#26C6DA' // Lighter teal - plan steps
+        'plan-step': '#26C6DA', // Lighter teal - plan steps
+        'knowledge-note': '#FFB74D' // Amber - knowledge notes
       };
 
       // Force tuning for sparse vs dense graph layouts
@@ -699,7 +728,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         command:   { base: 7,  min: 5,  max: 14, scale: 2 },     // Scales with executions
         task:        { base: 10, min: 8,  max: 16, scale: 2 },     // Scales with associated actions
         plan:        { base: 14, min: 14, max: 14, scale: 0 },     // Fixed, prominent
-        'plan-step': { base: 8,  min: 6,  max: 12, scale: 2 }      // Scales with links
+        'plan-step': { base: 8,  min: 6,  max: 12, scale: 2 },     // Scales with links
+        'knowledge-note': { base: 7, min: 6, max: 10, scale: 0 }   // Fixed, small
       };
 
       function calculateNodeSize(d) {
@@ -802,7 +832,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       /**
        * Node type order for grouping on the circle.
        */
-      var CIRCULAR_TYPE_ORDER = ['tool', 'file', 'directory', 'command', 'url', 'subagent', 'task', 'plan', 'plan-step', 'todo'];
+      var CIRCULAR_TYPE_ORDER = ['tool', 'file', 'directory', 'command', 'url', 'subagent', 'task', 'plan', 'plan-step', 'knowledge-note', 'todo'];
 
       /**
        * Calculates circular positions for all nodes.
@@ -888,6 +918,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         if (d.linkType === 'task-action') classes.push('task-action');
         if (d.linkType === 'task-dependency') classes.push('task-dependency');
         if (d.linkType === 'plan-sequence') classes.push('plan-sequence');
+        if (d.linkType === 'knowledge-note') classes.push('knowledge-note');
         return classes.join(' ');
       }
 
@@ -1320,6 +1351,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           if (d.linkType === 'task-action') classes.push('task-action');
           if (d.linkType === 'task-dependency') classes.push('task-dependency');
           if (d.linkType === 'plan-sequence') classes.push('plan-sequence');
+          if (d.linkType === 'knowledge-note') classes.push('knowledge-note');
           return classes.join(' ');
         }
 
@@ -1411,6 +1443,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
                                  : 'var(--vscode-descriptionForeground)';
               tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' +
                 '<span style="color: ' + planStatusColor + '">● ' + planStatus.replace('_', ' ') + '</span>';
+            } else if (d.type === 'knowledge-note') {
+              // For knowledge notes, show full content from fullPath
+              tooltipEl.textContent = label;
             } else {
               // For other nodes, show count if available
               var count = d.count ? ' (' + d.count + ')' : '';

@@ -24,6 +24,14 @@
 
 ![Session Analytics Dashboard](images/session-analytics-dashboard.png)
 
+**Track project momentum.** The Project Timeline shows every session your agent has run — durations, token costs, tasks completed — so you can see progress at a glance and understand how your project is evolving across sessions.
+
+![Project Timeline](images/project-timeline.png)
+
+**Build a knowledge base.** Capture gotchas, patterns, guidelines, and tips attached to specific files. Knowledge notes persist across sessions and can be injected into your agent's instruction file so it stops rediscovering the same things.
+
+![Knowledge Notes](images/knowledge-notes.gif)
+
 **Never lose context.** Sessions end and everything is lost — decisions, progress, architectural choices. Session handoff and decision logging preserve that context automatically, so your next session picks up where you left off instead of re-discovering everything.
 
 ![CLAUDE.md Suggestions](images/claude-md-suggestions.png)
@@ -53,6 +61,8 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Session Monitor** — see exactly where your tokens are going before you hit quota limits
 - **Mind Map** — trace how your agent navigated the codebase during a session
 - **Kanban Board** — track tasks and subagents at a glance during complex operations
+- **Project Timeline** — chronological view of all sessions with duration, token usage, and expandable details
+- **Knowledge Notes** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking
 - **Quick Ask** — inline chat for questions and code changes without switching context
 - **Code Review** — catch bugs and security concerns before they reach your team
 - **PR Descriptions** — structured summaries from branch diff, ready to paste

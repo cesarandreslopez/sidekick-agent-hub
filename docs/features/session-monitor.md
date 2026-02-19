@@ -48,6 +48,18 @@ For Claude Max users, the dashboard shows 5-hour and 7-day quota utilization wit
 - Countdown timers showing reset times
 - Auto-refresh every 30 seconds
 
+## Project Timeline
+
+![Project Timeline](../images/project-timeline.png)
+
+See every session your agent has run in the current project at a glance. Each session appears as a card showing its label, duration, token usage, task and error counts, and which model was used. Filter by time range (24h, 7d, 30d, or all) and click any card to expand tool breakdowns, task lists, and error summaries. See the [Project Timeline](project-timeline.md) page for full details.
+
+## Knowledge Notes
+
+![Knowledge Notes](../images/knowledge-notes.gif)
+
+Capture reusable knowledge — gotchas, patterns, guidelines, and tips — attached to specific files in your codebase. Notes appear as gutter icons in the editor and in a dedicated tree view. Right-click notes to edit, confirm, or delete them. Use "Inject Knowledge Notes" to append them to your instruction file so your agent benefits from what you've learned. See the [Knowledge Notes](knowledge-notes.md) page for full details.
+
 ## Session Discovery
 
 The monitor automatically discovers sessions based on your configured provider. If the session is in a different directory:

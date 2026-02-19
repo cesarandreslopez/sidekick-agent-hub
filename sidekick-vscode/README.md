@@ -74,12 +74,20 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban-board.png)
 
+- **[Project Timeline](https://cesarandreslopez.github.io/sidekick-agent-hub/features/project-timeline/)** — chronological view of all sessions with duration, token usage, and expandable details
+
+![Project Timeline](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/project-timeline.png)
+
 - **Conversation Viewer** — full session conversation with search
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
 
 ### Session Intelligence
+
+- **[Knowledge Notes](https://cesarandreslopez.github.io/sidekick-agent-hub/features/knowledge-notes/)** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking and instruction file injection
+
+![Knowledge Notes](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/knowledge-notes.gif)
 
 - **[Session Handoff](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-handoff/)** — automatic context documents for session continuity
 - **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions from sessions

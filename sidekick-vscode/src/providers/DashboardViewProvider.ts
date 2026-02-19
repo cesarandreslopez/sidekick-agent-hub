@@ -39,6 +39,8 @@ import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { BurnRateCalculator } from '../services/BurnRateCalculator';
 import { SessionSummaryService } from '../services/SessionSummaryService';
 import { extractDecisions } from '../services/DecisionExtractor';
+import { extractKnowledgeCandidates } from '../services/KnowledgeCandidateExtractor';
+import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 
@@ -127,6 +129,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Handoff service for session context handoff */
   private _handoffService?: HandoffService;
 
+  /** Knowledge note service for knowledge note persistence and extraction */
+  private _knowledgeNoteService?: KnowledgeNoteService;
+
   /**
    * Sets the event logger instance used for dashboard toggle control.
    */
@@ -139,6 +144,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   setHandoffService(service: HandoffService): void {
     this._handoffService = service;
+  }
+
+  /**
+   * Sets the knowledge note service instance for knowledge note persistence.
+   */
+  setKnowledgeNoteService(service: KnowledgeNoteService): void {
+    this._knowledgeNoteService = service;
   }
 
   /**
@@ -461,6 +473,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           this._decisionLogService.clearAll();
           this._sendDecisionsToWebview();
         }
+        break;
+
+      case 'requestKnowledgeNotes':
+        this._sendKnowledgeNotesToWebview();
+        break;
+
+      case 'acceptKnowledgeCandidate':
+        if (this._knowledgeNoteService) {
+          this._knowledgeNoteService.addNote({
+            noteType: message.candidate.noteType,
+            content: message.candidate.content,
+            filePath: message.candidate.filePath,
+            source: message.candidate.source,
+          });
+          this._sendKnowledgeNotesToWebview();
+        }
+        break;
+
+      case 'rejectKnowledgeCandidate':
+        // Just dismiss — candidates are not persisted unless accepted
         break;
     }
   }
@@ -893,8 +925,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._postMessage({ type: 'updateContextAttribution', attribution: this._state.contextAttribution });
       }
 
-      // Decision extraction
+      // Decision + knowledge note extraction
       this._extractAndPersistDecisions();
+      this._extractAndSurfaceKnowledgeCandidates();
     }, 2000);
   }
 
@@ -932,6 +965,46 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const entries = this._decisionLogService.getEntries(query);
     const totalCount = this._decisionLogService.getEntryCount();
     this._postMessage({ type: 'updateDecisions', decisions: entries, totalCount });
+  }
+
+  /**
+   * Extracts knowledge note candidates from session data and sends them to webview.
+   */
+  private _extractAndSurfaceKnowledgeCandidates(): void {
+    if (!this._knowledgeNoteService) return;
+
+    try {
+      const analysisData = this._sessionAnalyzer?.getCachedData() ?? null;
+      const stats = this._sessionMonitor.getStats();
+      const projectPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+
+      const candidates = extractKnowledgeCandidates(
+        analysisData?.errors ?? [],
+        analysisData?.recoveryPatterns ?? [],
+        stats.toolCalls,
+        [], // suggestions - populated during guidance analysis
+        projectPath
+      );
+
+      if (candidates.length > 0) {
+        this._postMessage({ type: 'updateKnowledgeCandidates', candidates });
+      }
+
+      this._sendKnowledgeNotesToWebview();
+    } catch (error) {
+      logError('Failed to extract knowledge candidates', error);
+    }
+  }
+
+  /**
+   * Sends knowledge notes to the webview.
+   */
+  private _sendKnowledgeNotesToWebview(): void {
+    if (!this._knowledgeNoteService) return;
+
+    const notes = this._knowledgeNoteService.getAllNotes({ status: ['active', 'needs_review'] });
+    const totalCount = this._knowledgeNoteService.getNoteCount();
+    this._postMessage({ type: 'updateKnowledgeNotes', notes, totalCount });
   }
 
   /**
@@ -1360,8 +1433,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sendStateToWebview();
     this._sendSessionList();
 
-    // Final decision extraction pass before session closes
+    // Final decision + knowledge extraction pass before session closes
     this._extractAndPersistDecisions();
+    this._extractAndSurfaceKnowledgeCandidates();
 
     // Build and cache full session summary on session end
     this._buildAndSendSummary();
@@ -6398,9 +6472,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Disposes of all resources.
    */
   dispose(): void {
-    // Final decision extraction as safety net before teardown
+    // Final extraction as safety net before teardown
     try {
       this._extractAndPersistDecisions();
+      this._extractAndSurfaceKnowledgeCandidates();
     } catch {
       // Best-effort — don't block dispose
     }

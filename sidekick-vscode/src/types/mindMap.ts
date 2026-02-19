@@ -21,7 +21,7 @@
  * - command: Command types executed by Bash (git, npm, etc.)
  * - task: Tasks from TaskCreate/TaskUpdate tools
  */
-export type NodeType = 'file' | 'tool' | 'todo' | 'subagent' | 'session' | 'url' | 'directory' | 'command' | 'task' | 'plan' | 'plan-step';
+export type NodeType = 'file' | 'tool' | 'todo' | 'subagent' | 'session' | 'url' | 'directory' | 'command' | 'task' | 'plan' | 'plan-step' | 'knowledge-note';
 
 /**
  * Task status values for visual differentiation.
@@ -87,7 +87,7 @@ export interface GraphNode {
  * - task-action: Dashed link from task to tools/files used while task was in_progress
  * - task-dependency: Link showing task blockedBy relationships
  */
-export type LinkType = 'default' | 'task-action' | 'task-dependency' | 'plan-sequence';
+export type LinkType = 'default' | 'task-action' | 'task-dependency' | 'plan-sequence' | 'knowledge-note';
 
 /**
  * Graph link for D3.js force simulation.

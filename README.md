@@ -66,6 +66,12 @@ Claude Code, OpenCode, and Codex all share the same fundamental limitation: they
 - **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — track tasks and subagents at a glance during complex operations
 
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban-board.png" alt="Kanban Board" width="480">
+- **[Project Timeline](https://cesarandreslopez.github.io/sidekick-agent-hub/features/project-timeline/)** — chronological view of all sessions with duration, token usage, and expandable details
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/project-timeline.png" alt="Project Timeline" width="480">
+- **[Knowledge Notes](https://cesarandreslopez.github.io/sidekick-agent-hub/features/knowledge-notes/)** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking and instruction file injection
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/knowledge-notes.gif" alt="Knowledge Notes" width="480">
 - **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes without switching context (`Ctrl+I`)
 - **[Code Review](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-review/)** — catch bugs and security concerns before they reach your team
 - **[PR Descriptions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/pr-descriptions/)** — structured summaries from branch diff, ready to paste

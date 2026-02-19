@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.10.3",
+  "version": "0.11.0",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -647,6 +647,30 @@
       {
         "command": "sidekick.setupHandoff",
         "title": "Sidekick: Setup Handoff"
+      },
+      {
+        "command": "sidekick.addKnowledgeNote",
+        "title": "Add Knowledge Note",
+        "icon": "$(note)"
+      },
+      {
+        "command": "sidekick.editKnowledgeNote",
+        "title": "Edit Note",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "sidekick.deleteKnowledgeNote",
+        "title": "Delete Note",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "sidekick.confirmKnowledgeNote",
+        "title": "Confirm Note (Mark as Reviewed)",
+        "icon": "$(check)"
+      },
+      {
+        "command": "sidekick.injectKnowledgeNotes",
+        "title": "Sidekick: Inject Knowledge Notes into CLAUDE.md"
       }
     ],
     "submenus": [
@@ -727,6 +751,11 @@
           "when": "editorTextFocus"
         },
         {
+          "command": "sidekick.addKnowledgeNote",
+          "group": "0_ask@2",
+          "when": "editorTextFocus"
+        },
+        {
           "command": "sidekick.generateDocs",
           "group": "1_docs@1",
           "when": "editorTextFocus"
@@ -795,6 +824,23 @@
           "command": "sidekick.explainError.phd",
           "group": "1_levels@5"
         }
+      ],
+      "view/item/context": [
+        {
+          "command": "sidekick.editKnowledgeNote",
+          "when": "viewItem == knowledgeNote",
+          "group": "1_manage@1"
+        },
+        {
+          "command": "sidekick.confirmKnowledgeNote",
+          "when": "viewItem == knowledgeNote && viewItem != knowledgeNoteActive",
+          "group": "1_manage@2"
+        },
+        {
+          "command": "sidekick.deleteKnowledgeNote",
+          "when": "viewItem == knowledgeNote",
+          "group": "2_destructive@1"
+        }
       ]
     },
     "viewsContainers": {
@@ -824,8 +870,17 @@
           "name": "Kanban Board"
         },
         {
+          "type": "webview",
+          "id": "sidekick.projectTimeline",
+          "name": "Project Timeline"
+        },
+        {
           "id": "sidekick.tempFiles",
           "name": "Latest Files Touched"
+        },
+        {
+          "id": "sidekick.knowledgeNotes",
+          "name": "Knowledge Notes"
         },
         {
           "id": "sidekick.subagents",

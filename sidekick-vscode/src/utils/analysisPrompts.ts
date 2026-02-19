@@ -110,6 +110,27 @@ function formatRecoveryPatterns(patterns: RecoveryPattern[]): string {
 }
 
 /**
+ * Formats knowledge notes for the analysis prompt.
+ */
+function formatKnowledgeNotes(notes?: SessionAnalysisData['knowledgeNotes']): string {
+  if (!notes || notes.length === 0) {
+    return '';
+  }
+
+  const formatted = notes.map(n =>
+    `- [${n.noteType}] ${n.filePath}: ${n.content} (${n.importance}, ${n.status})`
+  ).join('\n');
+
+  return `
+<existing_knowledge_notes>
+${formatted}
+</existing_knowledge_notes>
+
+Note: The knowledge notes above have already been captured for this project. Reference them where relevant and avoid suggesting content that duplicates existing notes.
+`;
+}
+
+/**
  * Formats instruction file content for the analysis prompt.
  *
  * @param content - File content or undefined
@@ -188,7 +209,7 @@ ${formatRecoveryPatterns(data.recoveryPatterns)}
 <recent_activity>
 ${data.recentActivity.join('\n')}
 </recent_activity>
-
+${formatKnowledgeNotes(data.knowledgeNotes)}
 ## Task
 
 Based on the session patterns above AND the current ${target.primaryFile} content (if any), suggest ONE consolidated block of text to APPEND to the end of the file.

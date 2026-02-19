@@ -16,6 +16,7 @@ import type {
   ToolEfficiencyData
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
+import type { KnowledgeNoteDisplay, KnowledgeCandidateDisplay } from './knowledgeNote';
 
 /**
  * Session info for the session card navigator.
@@ -114,7 +115,9 @@ export type DashboardMessage =
   | { type: 'notification'; title: string; body: string; severity: 'info' | 'warning' | 'error' }
   | { type: 'toolCallDetails'; toolName: string; calls: ToolCallDetailDisplay[] }
   | { type: 'syncEventLogState'; enabled: boolean }
-  | { type: 'updateDecisions'; decisions: DecisionEntryDisplay[]; totalCount: number };
+  | { type: 'updateDecisions'; decisions: DecisionEntryDisplay[]; totalCount: number }
+  | { type: 'updateKnowledgeNotes'; notes: KnowledgeNoteDisplay[]; totalCount: number }
+  | { type: 'updateKnowledgeCandidates'; candidates: KnowledgeCandidateDisplay[] };
 
 /**
  * Messages from webview to extension.
@@ -147,7 +150,10 @@ export type DashboardWebviewMessage =
   | { type: 'requestDecisions' }
   | { type: 'searchDecisions'; query: string }
   | { type: 'clearDecisions' }
-  | { type: 'generateHandoff' };
+  | { type: 'generateHandoff' }
+  | { type: 'requestKnowledgeNotes' }
+  | { type: 'acceptKnowledgeCandidate'; candidate: KnowledgeCandidateDisplay }
+  | { type: 'rejectKnowledgeCandidate'; candidate: KnowledgeCandidateDisplay };
 
 /**
  * Model usage breakdown entry.

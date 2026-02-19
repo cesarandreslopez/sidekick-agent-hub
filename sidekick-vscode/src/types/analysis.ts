@@ -101,4 +101,13 @@ export interface SessionAnalysisData {
 
   /** Current AGENTS.md content if it exists */
   currentAgentsMd?: string;
+
+  /** Active knowledge notes for context injection (from KnowledgeNoteService) */
+  knowledgeNotes?: Array<{
+    noteType: string;
+    content: string;
+    filePath: string;
+    importance: string;
+    status: string;
+  }>;
 }

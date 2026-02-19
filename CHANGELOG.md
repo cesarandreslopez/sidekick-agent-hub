@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-02-19
+
+### Added
+
+- **Knowledge Notes System**: Capture reusable knowledge (gotchas, patterns, guidelines, tips) attached to files
+  - Manual note creation via editor context menu with four note types
+  - Gutter icons per note type with hover tooltips showing content and status
+  - Tree view in sidebar grouped by file
+  - Lifecycle staleness tracking: active → needs review → stale → obsolete
+  - Auto-extraction of candidates from repeated errors, recovery patterns, and guidance suggestions
+  - Auto-surfacing in GuidanceAdvisor analysis and mind map visualization
+  - "Inject Knowledge Notes" command to append notes to CLAUDE.md/AGENTS.md
+  - Note management: right-click to edit, delete, or confirm notes in the tree view
+  - Persisted in `~/.config/sidekick/knowledge-notes/`
+- **Multi-Session Project Timeline**: Chronological view of all sessions in the current project
+  - Card-based layout with session labels, duration bars, and metadata badges (tokens, tasks, errors, model)
+  - Time range filtering (24h, 7d, 30d, all)
+  - Expandable detail panels showing tool usage breakdown, tasks, and error summaries
+  - Click to open any past session in the dashboard
+  - Auto-refreshes on session start/end and token usage
+- **Mind Map Knowledge Note Nodes**: Active knowledge notes appear as amber nodes linked to their file nodes
+
 ## [0.10.3] - 2026-02-19
 
 ### Added
