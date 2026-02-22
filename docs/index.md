@@ -38,6 +38,8 @@
 
 **Monitor from the terminal.** The [Sidekick CLI](features/cli.md) provides a full-screen TUI dashboard for monitoring agent sessions without leaving the terminal. Browse sessions, tasks, decisions, knowledge notes, and more — all rendered in an Ink-based terminal UI. Install with `npm install -g sidekick-agent-hub` and run `sidekick dashboard`. Works with Claude Code, OpenCode, and Codex sessions.
 
+![Sidekick CLI Dashboard](images/sidekick-cli.gif)
+
 ## Why Am I Building This?
 
 AI coding agents are the most transformative tools I've used in my career. They can scaffold entire features, debug problems across files, and handle the mechanical parts of software engineering that used to eat hours of every day.
@@ -57,24 +59,30 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 
 ## Feature Highlights
 
+### VS Code Extension
+
 - **Inline Completions** — context-aware suggestions that understand your project, not just syntax
 - **Code Transforms** — select code, describe changes in natural language
 - **AI Commit Messages** — meaningful messages generated from your actual diff
-- **Session Monitor** — see exactly where your tokens are going before you hit quota limits
-- **Context Health** — track how much information your agent has lost to context compaction
-- **Truncation Detection** — know when tool outputs are silently cut short
-- **Cycle Detection** — get alerted when your agent enters repetitive loops
-- **Mind Map** — trace how your agent navigated the codebase, with cycling file and goal-gate indicators
-- **Kanban Board** — track tasks and subagents at a glance, with goal-gate badges on critical tasks
-- **Project Timeline** — chronological view of all sessions with duration, token usage, and expandable details
-- **Knowledge Notes** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking
 - **Quick Ask** — inline chat for questions and code changes without switching context
 - **Code Review** — catch bugs and security concerns before they reach your team
 - **PR Descriptions** — structured summaries from branch diff, ready to paste
 - **Error Analysis** — understand what went wrong, why, and how to fix it
 - **Session Handoff** — pick up where you left off instead of re-discovering everything
 - **CLAUDE.md Suggestions** — learn from session patterns to improve agent effectiveness
-- **Sidekick CLI** — full-screen TUI dashboard for monitoring agent sessions from the terminal
+- **Context Health** — track how much information your agent has lost to context compaction
+- **Truncation Detection** — know when tool outputs are silently cut short
+- **Cycle Detection** — get alerted when your agent enters repetitive loops
+
+### VS Code + CLI
+
+Available in the VS Code extension and the [Sidekick CLI](features/cli.md) terminal dashboard. The CLI works standalone — no VS Code extension required.
+
+- **Session Monitor** — see exactly where your tokens are going before you hit quota limits
+- **Mind Map** — trace how your agent navigated the codebase, with cycling file and goal-gate indicators
+- **Kanban Board** — track tasks and subagents at a glance, with goal-gate badges on critical tasks
+- **Project Timeline** — chronological view of all sessions with duration, token usage, and expandable details
+- **Knowledge Notes** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking
 
 ## Quick Install
 

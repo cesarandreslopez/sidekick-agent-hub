@@ -97,6 +97,17 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 - **[Event Logging](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/event-logging/)** — optional JSONL audit trail for debugging
 
+## Terminal Dashboard
+
+All monitoring and intelligence features are also available from the terminal via the [Sidekick CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/):
+
+```bash
+npm install -g sidekick-agent-hub
+sidekick dashboard
+```
+
+The CLI works standalone — no VS Code extension required. Browse sessions, tasks, decisions, knowledge notes, and more in a full-screen TUI.
+
 ## Why Sidekick?
 
 **Works with what you already have.** If you're on Claude Max, you're already paying for the AI — Sidekick uses that subscription for inline completions, code transforms, and more. No extra API costs, no separate accounts. It also supports Claude API, OpenCode, and Codex CLI, so you're never locked into one provider.

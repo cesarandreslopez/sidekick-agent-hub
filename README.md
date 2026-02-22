@@ -46,11 +46,30 @@ Claude Code, OpenCode, and Codex all share the same fundamental limitation: they
 
 ## Features
 
+### VS Code Extension
+
 - **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware code suggestions that understand your project
 
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/inference.gif" alt="Inline Completions demo" width="800">
 - **[Code Transforms](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-transforms/)** — select code, describe changes in natural language (`Ctrl+Shift+M`)
 - **[AI Commit Messages](https://cesarandreslopez.github.io/sidekick-agent-hub/features/commit-messages/)** — meaningful messages generated from your actual diff
+- **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes without switching context (`Ctrl+I`)
+- **[Code Review](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-review/)** — catch bugs and security concerns before they reach your team
+- **[PR Descriptions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/pr-descriptions/)** — structured summaries from branch diff, ready to paste
+- **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — AI explanations calibrated to your experience level (`Ctrl+Shift+E`)
+- **[Error Analysis](https://cesarandreslopez.github.io/sidekick-agent-hub/features/error-analysis/)** — understand what went wrong, why, and how to fix it
+- **[Generate Docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — JSDoc/docstrings based on implementation, not just signatures (`Ctrl+Shift+D`)
+- **[Session Handoff](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-handoff/)** — pick up where you left off instead of re-discovering everything
+- **[CLAUDE.md Suggestions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/claude-md-suggestions/)** — learn from session patterns to improve agent effectiveness
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/claude-md-suggestions.png" alt="CLAUDE.md Suggestions" width="480">
+
+### VS Code + CLI
+
+These features are available in the VS Code extension and the [Sidekick CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) terminal dashboard. The CLI works standalone — no VS Code extension required. Install with `npm install -g sidekick-agent-hub`.
+
+  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif" alt="Sidekick CLI Dashboard demo" width="800">
+
 - **[Session Monitor](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/)** — see exactly where your tokens are going before you hit quota limits
 
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session-analytics-dashboard.png" alt="Session Analytics Dashboard" width="480">
@@ -72,20 +91,9 @@ Claude Code, OpenCode, and Codex all share the same fundamental limitation: they
 - **[Knowledge Notes](https://cesarandreslopez.github.io/sidekick-agent-hub/features/knowledge-notes/)** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking and instruction file injection
 
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/knowledge-notes.gif" alt="Knowledge Notes" width="480">
-- **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes without switching context (`Ctrl+I`)
-- **[Code Review](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-review/)** — catch bugs and security concerns before they reach your team
-- **[PR Descriptions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/pr-descriptions/)** — structured summaries from branch diff, ready to paste
-- **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — AI explanations calibrated to your experience level (`Ctrl+Shift+E`)
-- **[Error Analysis](https://cesarandreslopez.github.io/sidekick-agent-hub/features/error-analysis/)** — understand what went wrong, why, and how to fix it
-- **[Generate Docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — JSDoc/docstrings based on implementation, not just signatures (`Ctrl+Shift+D`)
-- **[Session Handoff](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-handoff/)** — pick up where you left off instead of re-discovering everything
 - **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions and recovery patterns across sessions
 
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/decision-log.png" alt="Decision Log" width="480">
-- **[Sidekick CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/)** — full-screen TUI dashboard for monitoring agent sessions from the terminal — install with `npm install -g sidekick-agent-hub`
-- **[CLAUDE.md Suggestions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/claude-md-suggestions/)** — learn from session patterns to improve agent effectiveness
-
-  <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/claude-md-suggestions.png" alt="CLAUDE.md Suggestions" width="480">
 
 ## Quick Install
 

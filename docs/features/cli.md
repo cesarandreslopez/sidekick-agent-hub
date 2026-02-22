@@ -2,6 +2,8 @@
 
 The Sidekick CLI provides a full-screen TUI dashboard for monitoring agent sessions directly from the terminal. It reads from the same `~/.config/sidekick/` data files the VS Code extension writes — no VS Code instance or server required.
 
+![Sidekick CLI Dashboard](../images/sidekick-cli.gif)
+
 ## Installation
 
 ```bash
