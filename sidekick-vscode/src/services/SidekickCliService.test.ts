@@ -136,11 +136,14 @@ describe('SidekickCliService', () => {
 
       openCliDashboard({ workspacePath: '/my/project', providerId: 'claude-code' });
 
-      expect(mockCreateTerminal).toHaveBeenCalledWith({
-        name: 'Sidekick Dashboard',
-        shellPath: '/usr/local/bin/sidekick',
-        shellArgs: ['dashboard', '--project', '/my/project', '--provider', 'claude-code'],
-      });
+      expect(mockCreateTerminal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Sidekick Dashboard',
+          shellPath: '/usr/local/bin/sidekick',
+          shellArgs: ['dashboard', '--project', '/my/project', '--provider', 'claude-code'],
+          env: expect.objectContaining({ PATH: expect.stringContaining('/usr/local/bin') }),
+        }),
+      );
     });
 
     it('omits optional args when not provided', () => {
@@ -151,11 +154,14 @@ describe('SidekickCliService', () => {
 
       openCliDashboard();
 
-      expect(mockCreateTerminal).toHaveBeenCalledWith({
-        name: 'Sidekick Dashboard',
-        shellPath: '/usr/local/bin/sidekick',
-        shellArgs: ['dashboard'],
-      });
+      expect(mockCreateTerminal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Sidekick Dashboard',
+          shellPath: '/usr/local/bin/sidekick',
+          shellArgs: ['dashboard'],
+          env: expect.objectContaining({ PATH: expect.stringContaining('/usr/local/bin') }),
+        }),
+      );
     });
 
     it('reuses existing terminal if still alive', () => {

@@ -30,7 +30,23 @@ function getCommonSidekickPaths(): string[] {
   const ext = isWindows ? '.cmd' : '';
   const bin = `sidekick${ext}`;
 
+  // nvm: detect current node version directory
+  const nvmPaths: string[] = [];
+  const nvmDir = path.join(homeDir, '.nvm', 'versions', 'node');
+  if (!isWindows && fs.existsSync(nvmDir)) {
+    try {
+      const versions = fs.readdirSync(nvmDir).sort().reverse();
+      for (const v of versions) {
+        nvmPaths.push(path.join(nvmDir, v, 'bin', bin));
+      }
+    } catch {
+      // nvm dir not readable
+    }
+  }
+
   return [
+    // nvm (most recent versions first)
+    ...nvmPaths,
     // npm global
     path.join(homeDir, '.npm-global', 'bin', bin),
     path.join(homeDir, 'npm-global', 'bin', bin),
@@ -157,10 +173,20 @@ export function openCliDashboard(options?: OpenCliDashboardOptions): void {
     args.push('--provider', options.providerId);
   }
 
+  // Inject the CLI's directory into PATH so the node binary (co-located in
+  // nvm/volta/etc. bin dirs) is found when the shim uses #!/usr/bin/env node.
+  // Without this, shellPath bypasses shell init and node may not be in PATH.
+  const cliDir = path.dirname(cliPath);
+  const env: Record<string, string> = {};
+  if (cliDir && cliDir !== '.') {
+    env['PATH'] = `${cliDir}${path.delimiter}${process.env.PATH || ''}`;
+  }
+
   dashboardTerminal = vscode.window.createTerminal({
     name: TERMINAL_NAME,
     shellPath: cliPath,
     shellArgs: args,
+    env,
   });
   dashboardTerminal.show();
 }

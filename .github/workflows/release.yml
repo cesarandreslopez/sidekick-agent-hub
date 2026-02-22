@@ -72,8 +72,17 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Package .vsix
+        run: npx @vscode/vsce package -o sidekick-for-max-${{ needs.validate.outputs.version }}.vsix
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: sidekick-vscode/sidekick-for-max-${{ needs.validate.outputs.version }}.vsix
+
       - name: Publish to Open VSX
-        run: npx ovsx publish || echo "Already published — continuing"
+        run: npx ovsx publish sidekick-for-max-${{ needs.validate.outputs.version }}.vsix || echo "Already published — continuing"
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
@@ -126,10 +135,15 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [validate, publish-npm]
+    needs: [validate, publish-extension, publish-npm]
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download .vsix artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
 
       - name: Extract changelog section
         id: changelog
@@ -157,10 +171,12 @@ jobs:
 
             ## Install
 
-            **VS Code extension**: Install from [Open VSX](https://open-vsx.org/extension/CesarAndresLopez/sidekick-for-max).
+            **VS Code extension**: Download the `.vsix` below or install from [Open VSX](https://open-vsx.org/extension/CesarAndresLopez/sidekick-for-max).
 
             **CLI via npm** (requires Node.js 20+):
             ```
             npm i -g sidekick-agent-hub
             ```
+          files: |
+            sidekick-for-max-${{ needs.validate.outputs.version }}.vsix
           fail_on_unmatched_files: false
