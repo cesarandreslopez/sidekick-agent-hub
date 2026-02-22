@@ -118,6 +118,10 @@ Cross-session data stored in `~/.config/sidekick/`:
 
 The CLI reads from `~/.config/sidekick/` (same data as the VS Code extension). Build with `bash scripts/build-all.sh`. Source in `sidekick-shared/` (pure TS library) and `sidekick-cli/` (esbuild-bundled binary).
 
+- **npm package**: `sidekick-agent-hub` — the **binary name** is `sidekick` (defined in `sidekick-cli/package.json` `bin` field), not `sidekick-agent-hub`
+- **CLI discovery**: `SidekickCliService.ts` searches configured path → common paths (including nvm) → `which sidekick`
+- **VS Code terminal launch gotcha**: `vscode.window.createTerminal({ shellPath })` bypasses shell init (`.bashrc`/`.zshrc`), so nvm/volta `node` is not in PATH. The service injects the CLI's bin directory into the terminal `env.PATH` to fix this.
+
 ## Testing
 
 Tests use **Vitest** with co-located files (`Foo.ts` / `Foo.test.ts`). The `vscode` module must be mocked in test files using `vi.mock("vscode", ...)` since VS Code is not available in the test runner.
@@ -130,3 +134,24 @@ Tests use **Vitest** with co-located files (`Foo.ts` / `Foo.test.ts`). The `vsco
 - **Branches**: `feature/`, `fix/`, `docs/`, `refactor/` prefixes
 - **File naming**: PascalCase for classes/services, camelCase for utilities
 - **Settings prefix**: All VS Code settings use `sidekick.*`
+
+## Release Process
+
+Releases are triggered by pushing a `v*` tag to `main`. The CI workflow (`.github/workflows/release.yml`) runs four jobs:
+
+1. **Validate Version** — verifies tag is on `main` and all three `package.json` versions match the tag
+2. **Publish VS Code Extension** — lint, test, package `.vsix`, upload as artifact, publish to Open VSX
+3. **Publish CLI to npm** — build shared lib, test CLI, build CLI, publish to npm (skips if version already published)
+4. **Create GitHub Release** — downloads `.vsix` artifact, extracts changelog section, creates release with `.vsix` attached
+
+**Version bump checklist** (all must match the tag):
+- `sidekick-vscode/package.json`
+- `sidekick-cli/package.json`
+- `sidekick-shared/package.json`
+- `sidekick-cli/package-lock.json` and `sidekick-shared/package-lock.json` (run `npm install --package-lock-only` in each)
+
+**Changelogs to update** (four total):
+- `CHANGELOG.md` (root — full project)
+- `sidekick-vscode/CHANGELOG.md` (extension-specific)
+- `sidekick-cli/CHANGELOG.md` (CLI-specific)
+- `docs/changelog.md` (documentation site)
