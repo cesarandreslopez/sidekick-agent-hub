@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -59,7 +59,13 @@
         "properties": {
           "sidekick.inferenceProvider": {
             "type": "string",
-            "enum": ["auto", "claude-max", "claude-api", "opencode", "codex"],
+            "enum": [
+              "auto",
+              "claude-max",
+              "claude-api",
+              "opencode",
+              "codex"
+            ],
             "default": "auto",
             "description": "AI provider for inference features (completions, transforms, explanations). 'auto' detects the most recently used coding agent.",
             "enumDescriptions": [
@@ -74,6 +80,11 @@
             "type": "string",
             "default": "",
             "description": "Custom path to the Claude CLI executable. Leave empty to auto-detect. Useful when claude is installed via pnpm or in a non-standard location."
+          },
+          "sidekick.sidekickCliPath": {
+            "type": "string",
+            "default": "",
+            "description": "Custom path to the Sidekick CLI executable (sidekick-agent-hub). Leave empty to auto-detect."
           }
         }
       },
@@ -83,7 +94,15 @@
         "properties": {
           "sidekick.inlineModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for inline completions. Use 'auto' (recommended), a tier (fast/balanced/powerful), a legacy name (haiku/sonnet/opus), or an exact model ID.",
             "enumDescriptions": [
@@ -98,7 +117,15 @@
           },
           "sidekick.transformModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for code transformations. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -113,7 +140,15 @@
           },
           "sidekick.commitMessageModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for commit message generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -128,7 +163,15 @@
           },
           "sidekick.docModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for documentation generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -143,7 +186,15 @@
           },
           "sidekick.explanationModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for generating explanations. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -158,7 +209,15 @@
           },
           "sidekick.errorModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for error explanations and fixes. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -173,7 +232,15 @@
           },
           "sidekick.inlineChatModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for inline chat / quick ask. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -188,7 +255,15 @@
           },
           "sidekick.reviewModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for pre-commit code review. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -203,7 +278,15 @@
           },
           "sidekick.prDescriptionModel": {
             "type": "string",
-            "enum": ["auto", "fast", "balanced", "powerful", "haiku", "sonnet", "opus"],
+            "enum": [
+              "auto",
+              "fast",
+              "balanced",
+              "powerful",
+              "haiku",
+              "sonnet",
+              "opus"
+            ],
             "default": "auto",
             "description": "Model for PR description generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
             "enumDescriptions": [
@@ -278,7 +361,12 @@
           "sidekick.sessionProvider": {
             "type": "string",
             "default": "auto",
-            "enum": ["auto", "claude-code", "opencode", "codex"],
+            "enum": [
+              "auto",
+              "claude-code",
+              "opencode",
+              "codex"
+            ],
             "enumDescriptions": [
               "Auto-detect based on installed CLI agents",
               "Monitor Claude Code sessions (~/.claude/projects/)",
@@ -295,7 +383,10 @@
         "properties": {
           "sidekick.commitMessageStyle": {
             "type": "string",
-            "enum": ["conventional", "simple"],
+            "enum": [
+              "conventional",
+              "simple"
+            ],
             "default": "conventional",
             "markdownEnumDescriptions": [
               "**Conventional Commits** - Structured format: `type(scope): description` (e.g., `feat(auth): add OAuth2 support`)",
@@ -321,7 +412,13 @@
         "properties": {
           "sidekick.explanationComplexity": {
             "type": "string",
-            "enum": ["eli5", "curious-amateur", "imposter-syndrome", "senior", "phd"],
+            "enum": [
+              "eli5",
+              "curious-amateur",
+              "imposter-syndrome",
+              "senior",
+              "phd"
+            ],
             "default": "imposter-syndrome",
             "description": "Explanation complexity level for Explain-First mode",
             "enumDescriptions": [
@@ -390,15 +487,42 @@
             },
             "description": "Timeout settings per operation type (milliseconds). Increase these values if you frequently experience timeouts.",
             "properties": {
-              "inlineCompletion": { "type": "number", "description": "Timeout for inline code completions" },
-              "explanation": { "type": "number", "description": "Timeout for explanations" },
-              "commitMessage": { "type": "number", "description": "Timeout for commit message generation" },
-              "documentation": { "type": "number", "description": "Timeout for documentation generation" },
-              "codeTransform": { "type": "number", "description": "Timeout for code transformations" },
-              "review": { "type": "number", "description": "Timeout for pre-commit review" },
-              "prDescription": { "type": "number", "description": "Timeout for PR description generation" },
-              "inlineChat": { "type": "number", "description": "Timeout for inline chat / quick ask" },
-              "errorExplanation": { "type": "number", "description": "Timeout for error explanations" }
+              "inlineCompletion": {
+                "type": "number",
+                "description": "Timeout for inline code completions"
+              },
+              "explanation": {
+                "type": "number",
+                "description": "Timeout for explanations"
+              },
+              "commitMessage": {
+                "type": "number",
+                "description": "Timeout for commit message generation"
+              },
+              "documentation": {
+                "type": "number",
+                "description": "Timeout for documentation generation"
+              },
+              "codeTransform": {
+                "type": "number",
+                "description": "Timeout for code transformations"
+              },
+              "review": {
+                "type": "number",
+                "description": "Timeout for pre-commit review"
+              },
+              "prDescription": {
+                "type": "number",
+                "description": "Timeout for PR description generation"
+              },
+              "inlineChat": {
+                "type": "number",
+                "description": "Timeout for inline chat / quick ask"
+              },
+              "errorExplanation": {
+                "type": "number",
+                "description": "Timeout for error explanations"
+              }
             }
           },
           "sidekick.timeoutPerKb": {
@@ -449,7 +573,11 @@
         "properties": {
           "sidekick.autoHandoff": {
             "type": "string",
-            "enum": ["off", "generate-only", "generate-and-notify"],
+            "enum": [
+              "off",
+              "generate-only",
+              "generate-and-notify"
+            ],
             "default": "off",
             "description": "Controls automatic session context handoff generation.",
             "enumDescriptions": [
@@ -466,7 +594,10 @@
         "properties": {
           "sidekick.authMode": {
             "type": "string",
-            "enum": ["api-key", "max-subscription"],
+            "enum": [
+              "api-key",
+              "max-subscription"
+            ],
             "default": "max-subscription",
             "description": "Authentication mode for Claude API",
             "deprecationMessage": "Use 'sidekick.inferenceProvider' instead. 'max-subscription' maps to 'claude-max', 'api-key' maps to 'claude-api'.",
@@ -592,6 +723,11 @@
       {
         "command": "sidekick.openDashboard",
         "title": "Sidekick: Open Session Dashboard"
+      },
+      {
+        "command": "sidekick.openCliDashboard",
+        "title": "Sidekick: Open CLI Dashboard",
+        "icon": "$(terminal)"
       },
       {
         "command": "sidekick.openConversation",

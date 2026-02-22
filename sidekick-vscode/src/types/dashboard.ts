@@ -117,7 +117,14 @@ export type DashboardMessage =
   | { type: 'syncEventLogState'; enabled: boolean }
   | { type: 'updateDecisions'; decisions: DecisionEntryDisplay[]; totalCount: number }
   | { type: 'updateKnowledgeNotes'; notes: KnowledgeNoteDisplay[]; totalCount: number }
-  | { type: 'updateKnowledgeCandidates'; candidates: KnowledgeCandidateDisplay[] };
+  | { type: 'updateKnowledgeCandidates'; candidates: KnowledgeCandidateDisplay[] }
+  | { type: 'updateContextHealth'; score: number; compactionCount: number }
+  | { type: 'updateTruncations'; count: number; byTool: Array<{ tool: string; count: number }> }
+  | { type: 'updateTurnAttributions'; turns: TurnAttributionDisplay[] }
+  | { type: 'updateContextWaterfall'; waterfall: ContextWaterfallDisplay }
+  | { type: 'updateNotificationHistory'; notifications: NotificationHistoryDisplay[]; unreadCount: number }
+  | { type: 'updatePhrase'; phrase: string }
+  | { type: 'updateEmptyPhrase'; phrase: string };
 
 /**
  * Messages from webview to extension.
@@ -153,7 +160,12 @@ export type DashboardWebviewMessage =
   | { type: 'generateHandoff' }
   | { type: 'requestKnowledgeNotes' }
   | { type: 'acceptKnowledgeCandidate'; candidate: KnowledgeCandidateDisplay }
-  | { type: 'rejectKnowledgeCandidate'; candidate: KnowledgeCandidateDisplay };
+  | { type: 'rejectKnowledgeCandidate'; candidate: KnowledgeCandidateDisplay }
+  | { type: 'requestNotificationHistory' }
+  | { type: 'markNotificationRead'; id: string }
+  | { type: 'markAllNotificationsRead' }
+  | { type: 'clearNotificationHistory' }
+  | { type: 'openCliDashboard' };
 
 /**
  * Model usage breakdown entry.
@@ -437,4 +449,54 @@ export interface TimelineFilterState {
   showSystem: boolean;
   /** Show sidechain events */
   showSidechain: boolean;
+}
+
+/**
+ * Per-turn attribution data formatted for display.
+ */
+export interface TurnAttributionDisplay {
+  /** Turn index within the session */
+  turnIndex: number;
+  /** Formatted time string */
+  time: string;
+  /** Message role */
+  role: 'user' | 'assistant';
+  /** Input tokens for this turn */
+  inputTokens: number;
+  /** Output tokens for this turn */
+  outputTokens: number;
+  /** Per-category breakdown for chart rendering */
+  categories: ContextAttributionDisplay[];
+}
+
+/**
+ * Context waterfall chart data for display.
+ */
+export interface ContextWaterfallDisplay {
+  /** Context size data points over time */
+  points: Array<{ time: string; tokens: number; turnIndex: number }>;
+  /** Compaction event markers */
+  compactions: Array<{ time: string; before: number; after: number }>;
+}
+
+/**
+ * Notification history entry formatted for display.
+ */
+export interface NotificationHistoryDisplay {
+  /** Unique notification ID */
+  id: string;
+  /** Trigger that fired this notification */
+  triggerId: string;
+  /** Human-readable trigger name */
+  triggerName: string;
+  /** Notification severity */
+  severity: 'info' | 'warning' | 'error';
+  /** Notification title */
+  title: string;
+  /** Notification body */
+  body: string;
+  /** Formatted time string */
+  time: string;
+  /** Whether this notification has been read */
+  isRead: boolean;
 }

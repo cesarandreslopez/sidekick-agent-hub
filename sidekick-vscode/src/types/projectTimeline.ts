@@ -102,7 +102,9 @@ export interface ProjectTimelineState {
 export type ProjectTimelineMessage =
   | { type: 'updateTimeline'; state: ProjectTimelineState }
   | { type: 'sessionDetail'; detail: TimelineSessionDetail }
-  | { type: 'loading'; loading: boolean };
+  | { type: 'loading'; loading: boolean }
+  | { type: 'updatePhrase'; phrase: string }
+  | { type: 'updateEmptyPhrase'; phrase: string };
 
 /**
  * Messages from webview to extension.

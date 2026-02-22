@@ -1,0 +1,59 @@
+{
+  "name": "sidekick-agent-hub",
+  "version": "0.12.0",
+  "description": "CLI for querying Sidekick project intelligence",
+  "type": "module",
+  "bin": {
+    "sidekick": "./dist/sidekick-cli.mjs"
+  },
+  "files": [
+    "dist/sidekick-cli.mjs"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cesarandreslopez/sidekick-agent-hub"
+  },
+  "homepage": "https://cesarandreslopez.github.io/sidekick-agent-hub/",
+  "bugs": {
+    "url": "https://github.com/cesarandreslopez/sidekick-agent-hub/issues"
+  },
+  "keywords": [
+    "cli",
+    "ai-coding-assistant",
+    "claude-code",
+    "opencode",
+    "codex-cli",
+    "session-monitor",
+    "agent-hub"
+  ],
+  "author": {
+    "name": "Cesar Andres Lopez",
+    "email": "cesarandreslopez@gmail.com"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node esbuild.cjs",
+    "build:sea": "node esbuild-sea.cjs",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "commander": "^13.0.0",
+    "esbuild": "^0.24.0",
+    "ink": "^6.8.0",
+    "react": "^19.2.4",
+    "sidekick-shared": "file:../sidekick-shared",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  },
+  "license": "MIT"
+}

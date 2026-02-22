@@ -24,13 +24,14 @@ import path from 'path';
 import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
 import { extractTokenUsage } from './JsonlParser';
 import type { SessionProvider, SessionReader } from '../types/sessionProvider';
-import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus, PendingUserRequest, ResponseLatency, LatencyStats, CompactionEvent, ContextAttribution, PlanState, PlanStep } from '../types/claudeSession';
+import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus, PendingUserRequest, ResponseLatency, LatencyStats, CompactionEvent, TruncationEvent, ContextAttribution, PlanState, PlanStep, TurnAttribution, ContextSizePoint } from '../types/claudeSession';
 import { SessionSummary, ModelUsageRecord, ToolUsageRecord, createEmptyTokenTotals } from '../types/historicalData';
 import { estimateTokens } from '../utils/tokenEstimator';
 import { ModelPricingService } from './ModelPricingService';
 import { log, logError } from './Logger';
 import { extractTaskIdFromResult } from '../utils/taskHelpers';
 import { parsePlanMarkdown, extractProposedPlan } from '../utils/planParser';
+import { detectCycle } from '../utils/cycleDetector';
 import type { SessionEventLogger } from './SessionEventLogger';
 
 /**
@@ -231,8 +232,34 @@ export class SessionMonitor implements vscode.Disposable {
   /** Compaction events detected during session */
   private compactionEvents: CompactionEvent[] = [];
 
+  /** Context health score (0-100) — degrades with compactions */
+  private contextHealthScore: number = 100;
+
+  /** Truncation events detected during session */
+  private truncationEvents: TruncationEvent[] = [];
+
+  /** Number of truncated tool outputs */
+  private truncationCount: number = 0;
+
+  /** Timestamp of last cycle notification (for throttling) */
+  private lastCycleNotificationTime: number = 0;
+
+  /** Minimum interval between cycle notifications (ms) */
+  private static readonly CYCLE_THROTTLE_MS = 60_000;
+
   /** Context token attribution breakdown */
   private contextAttribution: ContextAttribution = SessionMonitor.emptyAttribution();
+
+  /** Per-turn attribution history (capped at MAX_TURN_ATTRIBUTIONS) */
+  private turnAttributions: TurnAttribution[] = [];
+  private readonly MAX_TURN_ATTRIBUTIONS = 200;
+
+  /** Current turn index (incremented on each user or assistant event with content) */
+  private currentTurnIndex: number = 0;
+
+  /** Context size timeline for waterfall chart (capped at MAX_CONTEXT_TIMELINE) */
+  private contextTimeline: ContextSizePoint[] = [];
+  private readonly MAX_CONTEXT_TIMELINE = 500;
 
   /** Previous context size (for compaction delta detection) */
   private previousContextSize: number = 0;
@@ -269,6 +296,8 @@ export class SessionMonitor implements vscode.Disposable {
   private readonly _onDiscoveryModeChange = new vscode.EventEmitter<boolean>();
   private readonly _onLatencyUpdate = new vscode.EventEmitter<LatencyStats>();
   private readonly _onCompaction = new vscode.EventEmitter<CompactionEvent>();
+  private readonly _onTruncation = new vscode.EventEmitter<TruncationEvent>();
+  private readonly _onCycleDetected = new vscode.EventEmitter<import('../types/analysis').CycleDetection>();
   private readonly _onQuotaUpdate = new vscode.EventEmitter<QuotaState>();
 
   /** Fires when token usage is detected in session */
@@ -297,6 +326,12 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Fires when a context compaction event is detected */
   readonly onCompaction = this._onCompaction.event;
+
+  /** Fires when a tool output truncation is detected */
+  readonly onTruncation = this._onTruncation.event;
+
+  /** Fires when a tool call cycle is detected */
+  readonly onCycleDetected = this._onCycleDetected.event;
 
   /** Fires when subscription quota data is available from session provider */
   readonly onQuotaUpdate = this._onQuotaUpdate.event;
@@ -348,7 +383,9 @@ export class SessionMonitor implements vscode.Disposable {
       currentContextSize: 0,
       lastModelId: undefined,
       recentUsageEvents: [],
-      sessionStartTime: null
+      sessionStartTime: null,
+      truncationCount: 0,
+      contextHealth: 100,
     };
   }
 
@@ -511,6 +548,9 @@ export class SessionMonitor implements vscode.Disposable {
     this.compactionEvents = [];
     this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
+    this.turnAttributions = [];
+    this.currentTurnIndex = 0;
+    this.contextTimeline = [];
     this.previousContextSize = 0;
     this.stats = this.createEmptyStats();
     this.isWaitingForSession = false;
@@ -864,6 +904,9 @@ export class SessionMonitor implements vscode.Disposable {
     this.compactionEvents = [];
     this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
+    this.turnAttributions = [];
+    this.currentTurnIndex = 0;
+    this.contextTimeline = [];
     this.previousContextSize = 0;
 
     // Reset statistics
@@ -1007,8 +1050,13 @@ export class SessionMonitor implements vscode.Disposable {
       latencyStats: this.latencyRecords.length > 0 ? this.getLatencyStats() : undefined,
       compactionEvents: this.compactionEvents.length > 0 ? [...this.compactionEvents] : undefined,
       contextAttribution: { ...this.contextAttribution },
+      turnAttributions: this.turnAttributions.length > 0 ? [...this.turnAttributions] : undefined,
+      contextTimeline: this.contextTimeline.length > 0 ? [...this.contextTimeline] : undefined,
       totalReportedCost: this.totalReportedCost > 0 ? this.totalReportedCost : undefined,
-      planState: this.planState ? { ...this.planState, steps: [...this.planState.steps] } : undefined
+      planState: this.planState ? { ...this.planState, steps: [...this.planState.steps] } : undefined,
+      contextHealth: this.contextHealthScore,
+      truncationCount: this.truncationCount,
+      truncationEvents: this.truncationEvents.length > 0 ? [...this.truncationEvents] : undefined,
     };
   }
 
@@ -1018,6 +1066,108 @@ export class SessionMonitor implements vscode.Disposable {
   private pruneOldUsageEvents(): void {
     const cutoff = new Date(Date.now() - this.USAGE_EVENT_WINDOW_MS);
     this.recentUsageEvents = this.recentUsageEvents.filter(e => e.timestamp >= cutoff);
+  }
+
+  /**
+   * Calculates context health score based on compaction history.
+   * Score degrades with each compaction and the total percentage of tokens reclaimed.
+   */
+  private calculateContextHealth(): void {
+    if (this.compactionEvents.length === 0) {
+      this.contextHealthScore = 100;
+      return;
+    }
+
+    const compactionCount = this.compactionEvents.length;
+
+    // Calculate total reclaimed percentage relative to peak context
+    let totalReclaimedPercent = 0;
+    for (const event of this.compactionEvents) {
+      if (event.contextBefore > 0) {
+        totalReclaimedPercent += (event.tokensReclaimed / event.contextBefore) * 100;
+      }
+    }
+
+    this.contextHealthScore = Math.max(0, Math.round(100 - (compactionCount * 15) - (totalReclaimedPercent * 0.3)));
+  }
+
+  /** Regex for goal gate keyword detection */
+  private static readonly GOAL_GATE_REGEX = /\b(CRITICAL|MUST|blocker|required|must.?complete|goal.?gate|essential|do.?not.?skip|blocking)\b/i;
+
+  /**
+   * Checks whether a task qualifies as a goal gate.
+   * A task is a goal gate if it matches critical keywords or blocks 3+ tasks.
+   */
+  private isGoalGateTask(task: TrackedTask): boolean {
+    // Criterion 1: subject or description matches keyword regex
+    if (SessionMonitor.GOAL_GATE_REGEX.test(task.subject)) return true;
+    if (task.description && SessionMonitor.GOAL_GATE_REGEX.test(task.description)) return true;
+    // Criterion 2: blocks 3+ other tasks
+    if (task.blocks.length >= 3) return true;
+    return false;
+  }
+
+  /** Patterns that indicate tool output was truncated */
+  private static readonly TRUNCATION_PATTERNS: Array<{ regex: RegExp; name: string }> = [
+    { regex: /\[Response truncated/, name: 'Response truncated' },
+    { regex: /\[WARNING: Tool output was truncated/, name: 'Tool output truncated' },
+    { regex: /content_too_long/, name: 'Content too long' },
+    { regex: /<response clipped>/, name: 'Response clipped' },
+    { regex: /\[Content truncated/, name: 'Content truncated' },
+    { regex: /\[\.\.\.truncated/, name: 'Truncated' },
+  ];
+
+  /**
+   * Scans tool output content for truncation markers.
+   * On match, records the event, increments count, and fires the event.
+   */
+  private detectTruncation(content: string, toolName: string, timestamp: string): void {
+    for (const pattern of SessionMonitor.TRUNCATION_PATTERNS) {
+      if (pattern.regex.test(content)) {
+        const event: TruncationEvent = {
+          timestamp: new Date(timestamp),
+          toolName,
+          marker: pattern.name,
+        };
+        this.truncationEvents.push(event);
+        this.truncationCount++;
+        this._onTruncation.fire(event);
+
+        // Add timeline event
+        this.timeline.unshift({
+          type: 'tool_result',
+          timestamp,
+          description: `Truncated output from ${toolName}: ${pattern.name}`,
+          noiseLevel: 'system',
+          metadata: { toolName, isError: false },
+        });
+        if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
+          this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
+        }
+
+        break; // Only count one truncation per output
+      }
+    }
+  }
+
+  /**
+   * Checks recent tool calls for repeating cycles.
+   * Fires onCycleDetected event if found (throttled to 60s intervals).
+   */
+  private checkForCycles(): void {
+    if (this._isReplaying) return;
+
+    const now = Date.now();
+    if (now - this.lastCycleNotificationTime < SessionMonitor.CYCLE_THROTTLE_MS) return;
+
+    const calls = this.stats.toolCalls;
+    // Check windows of 6 and 10
+    const cycle = detectCycle(calls, 6) || detectCycle(calls, 10);
+    if (cycle) {
+      this.lastCycleNotificationTime = now;
+      this._onCycleDetected.fire(cycle);
+      log(`Cycle detected: ${cycle.description}`);
+    }
   }
 
   /**
@@ -1549,6 +1699,9 @@ export class SessionMonitor implements vscode.Disposable {
     this.compactionEvents = [];
     this.assistantTexts = [];
     this.contextAttribution = SessionMonitor.emptyAttribution();
+    this.turnAttributions = [];
+    this.currentTurnIndex = 0;
+    this.contextTimeline = [];
     this.previousContextSize = 0;
 
     log('SessionMonitor disposed');
@@ -1977,8 +2130,9 @@ export class SessionMonitor implements vscode.Disposable {
             tokensReclaimed: this.previousContextSize - newContextSize
           };
           this.compactionEvents.push(compactionEvent);
+          this.calculateContextHealth();
           this._onCompaction.fire(compactionEvent);
-          log(`Compaction detected: ${this.previousContextSize} -> ${newContextSize} (reclaimed ${compactionEvent.tokensReclaimed} tokens)`);
+          log(`Compaction detected: ${this.previousContextSize} -> ${newContextSize} (reclaimed ${compactionEvent.tokensReclaimed} tokens, health: ${this.contextHealthScore}%)`);
 
           // Add compaction marker to timeline
           this.timeline.unshift({
@@ -2000,6 +2154,9 @@ export class SessionMonitor implements vscode.Disposable {
 
         this.previousContextSize = newContextSize;
         this.currentContextSize = newContextSize;
+
+        // Track context size for waterfall chart
+        this.addContextTimelinePoint(event.timestamp, newContextSize, this.currentTurnIndex);
       }
 
       // Track for burn rate calculation (include cache writes as they count toward quota)
@@ -2114,6 +2271,9 @@ export class SessionMonitor implements vscode.Disposable {
     const content = event.message?.content;
     if (!content) return;
 
+    // Per-turn breakdown accumulator
+    const turnBreakdown: ContextAttribution = SessionMonitor.emptyAttribution();
+
     if (event.type === 'user') {
       // User events may contain: user prompts, tool_results, system-reminders
       if (Array.isArray(content)) {
@@ -2125,24 +2285,49 @@ export class SessionMonitor implements vscode.Disposable {
             const resultText = typeof block.content === 'string'
               ? block.content
               : JSON.stringify(block.content || '');
-            this.contextAttribution.toolOutputs += estimateTokens(resultText);
+            const tokens = estimateTokens(resultText);
+            this.contextAttribution.toolOutputs += tokens;
+            turnBreakdown.toolOutputs += tokens;
           } else if (block.type === 'text' && typeof block.text === 'string') {
             const text = block.text as string;
             // Detect system prompt patterns
             if (text.includes('<system-reminder>') || text.includes('CLAUDE.md') ||
                 text.includes('# System') || text.includes('<claude_code_instructions>')) {
-              this.contextAttribution.systemPrompt += estimateTokens(text);
+              const tokens = estimateTokens(text);
+              this.contextAttribution.systemPrompt += tokens;
+              turnBreakdown.systemPrompt += tokens;
             } else {
-              this.contextAttribution.userMessages += estimateTokens(text);
+              const tokens = estimateTokens(text);
+              this.contextAttribution.userMessages += tokens;
+              turnBreakdown.userMessages += tokens;
             }
           }
         }
       } else if (typeof content === 'string') {
         if (content.includes('<system-reminder>') || content.includes('CLAUDE.md')) {
-          this.contextAttribution.systemPrompt += estimateTokens(content);
+          const tokens = estimateTokens(content);
+          this.contextAttribution.systemPrompt += tokens;
+          turnBreakdown.systemPrompt += tokens;
         } else {
-          this.contextAttribution.userMessages += estimateTokens(content);
+          const tokens = estimateTokens(content);
+          this.contextAttribution.userMessages += tokens;
+          turnBreakdown.userMessages += tokens;
         }
+      }
+
+      // Record per-turn attribution for user events
+      const totalEstimated = turnBreakdown.systemPrompt + turnBreakdown.userMessages +
+        turnBreakdown.toolOutputs + turnBreakdown.toolInputs +
+        turnBreakdown.assistantResponses + turnBreakdown.thinking + turnBreakdown.other;
+      if (totalEstimated > 0) {
+        this.addTurnAttribution({
+          turnIndex: this.currentTurnIndex++,
+          timestamp: event.timestamp,
+          role: 'user',
+          inputTokens: totalEstimated,
+          outputTokens: 0,
+          breakdown: turnBreakdown,
+        });
       }
     } else if (event.type === 'assistant') {
       if (Array.isArray(content)) {
@@ -2150,21 +2335,72 @@ export class SessionMonitor implements vscode.Disposable {
           if (!isTypedBlock(block)) continue;
 
           if (block.type === 'thinking' && typeof block.thinking === 'string') {
-            this.contextAttribution.thinking += estimateTokens(block.thinking as string);
+            const tokens = estimateTokens(block.thinking as string);
+            this.contextAttribution.thinking += tokens;
+            turnBreakdown.thinking += tokens;
           } else if (block.type === 'tool_use') {
             const inputText = JSON.stringify(block.input || {});
-            this.contextAttribution.toolInputs += estimateTokens(inputText);
+            const tokens = estimateTokens(inputText);
+            this.contextAttribution.toolInputs += tokens;
+            turnBreakdown.toolInputs += tokens;
           } else if (block.type === 'text' && typeof block.text === 'string') {
-            this.contextAttribution.assistantResponses += estimateTokens(block.text as string);
+            const tokens = estimateTokens(block.text as string);
+            this.contextAttribution.assistantResponses += tokens;
+            turnBreakdown.assistantResponses += tokens;
           }
         }
       } else if (typeof content === 'string') {
-        this.contextAttribution.assistantResponses += estimateTokens(content);
+        const tokens = estimateTokens(content);
+        this.contextAttribution.assistantResponses += tokens;
+        turnBreakdown.assistantResponses += tokens;
+      }
+
+      // For assistant turns, use actual API token counts if available
+      const usage = event.message?.usage;
+      const actualInput = usage?.input_tokens ?? 0;
+      const actualOutput = usage?.output_tokens ?? 0;
+
+      const totalEstimated = turnBreakdown.systemPrompt + turnBreakdown.userMessages +
+        turnBreakdown.toolOutputs + turnBreakdown.toolInputs +
+        turnBreakdown.assistantResponses + turnBreakdown.thinking + turnBreakdown.other;
+      if (totalEstimated > 0 || actualInput > 0 || actualOutput > 0) {
+        this.addTurnAttribution({
+          turnIndex: this.currentTurnIndex++,
+          timestamp: event.timestamp,
+          role: 'assistant',
+          inputTokens: actualInput > 0 ? actualInput : totalEstimated,
+          outputTokens: actualOutput,
+          breakdown: turnBreakdown,
+        });
       }
     } else if (event.type === 'summary') {
       // Summary events are compaction markers
       const summaryText = typeof content === 'string' ? content : JSON.stringify(content);
-      this.contextAttribution.other += estimateTokens(summaryText);
+      const tokens = estimateTokens(summaryText);
+      this.contextAttribution.other += tokens;
+    }
+  }
+
+  /**
+   * Adds a turn attribution entry, capping at MAX_TURN_ATTRIBUTIONS.
+   */
+  private addTurnAttribution(turn: TurnAttribution): void {
+    this.turnAttributions.push(turn);
+    if (this.turnAttributions.length > this.MAX_TURN_ATTRIBUTIONS) {
+      this.turnAttributions = this.turnAttributions.slice(-this.MAX_TURN_ATTRIBUTIONS);
+    }
+  }
+
+  /**
+   * Adds a context size data point for waterfall chart.
+   */
+  private addContextTimelinePoint(timestamp: string, inputTokens: number, turnIndex: number): void {
+    this.contextTimeline.push({ timestamp, inputTokens, turnIndex });
+    if (this.contextTimeline.length > this.MAX_CONTEXT_TIMELINE) {
+      // Thin older points: keep every other point from the first half
+      const half = Math.floor(this.contextTimeline.length / 2);
+      const thinned = this.contextTimeline.filter((_p, i) => i >= half || i % 2 === 0);
+      this.contextTimeline = thinned;
     }
   }
 
@@ -2609,6 +2845,9 @@ export class SessionMonitor implements vscode.Disposable {
         // Emit tool call event
         this._onToolCall.fire(toolCall);
         this.stats.toolCalls.push(toolCall);
+
+        // Check for repeating cycles after each new tool call
+        this.checkForCycles();
       }
     }
   }
@@ -2710,6 +2949,8 @@ export class SessionMonitor implements vscode.Disposable {
           }
         }
         task.updatedAt = now;
+        // Re-evaluate goal gate status after any update
+        task.isGoalGate = this.isGoalGateTask(task);
       } else {
         // TaskUpdate for unknown task - create placeholder
         log(`TaskUpdate for unknown task ${taskId}, creating placeholder`);
@@ -2725,6 +2966,7 @@ export class SessionMonitor implements vscode.Disposable {
           blocks: [],
           associatedToolCalls: []
         };
+        newTask.isGoalGate = this.isGoalGateTask(newTask);
         this.taskState.tasks.set(taskId, newTask);
 
         // Set active if in_progress
@@ -3048,6 +3290,13 @@ export class SessionMonitor implements vscode.Disposable {
               this.errorDetails.set(errorType, messages);
             } else {
               analytics.successCount++;
+
+              // Check non-error results for truncation markers
+              if (toolResult.content) {
+                const contentStr = typeof toolResult.content === 'string'
+                  ? toolResult.content : JSON.stringify(toolResult.content);
+                this.detectTruncation(contentStr, pending.name, timestamp);
+              }
             }
 
             this._onToolAnalytics.fire({ ...analytics });
@@ -3125,8 +3374,11 @@ export class SessionMonitor implements vscode.Disposable {
       associatedToolCalls: []
     };
 
+    // Check if this task qualifies as a goal gate
+    task.isGoalGate = this.isGoalGateTask(task);
+
     this.taskState.tasks.set(taskId, task);
-    log(`Created TrackedTask: ${taskId} - "${task.subject}"`);
+    log(`Created TrackedTask: ${taskId} - "${task.subject}"${task.isGoalGate ? ' [GOAL GATE]' : ''}`);
   }
 
   /**

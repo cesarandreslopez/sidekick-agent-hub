@@ -12,6 +12,7 @@
 import * as vscode from 'vscode';
 import type { SessionMonitor } from './SessionMonitor';
 import type { ToolCall, CompactionEvent } from '../types/claudeSession';
+import type { NotificationPersistenceService } from './NotificationPersistenceService';
 import { log } from './Logger';
 
 /**
@@ -103,9 +104,14 @@ export class NotificationTriggerService implements vscode.Disposable {
   /** Total tokens seen, used for threshold crossing */
   private lastNotifiedTokenTotal: number = 0;
 
+  /** Optional persistence service for notification history */
+  private notificationPersistence?: NotificationPersistenceService;
+
   constructor(
-    private readonly sessionMonitor: SessionMonitor
+    private readonly sessionMonitor: SessionMonitor,
+    notificationPersistence?: NotificationPersistenceService
   ) {
+    this.notificationPersistence = notificationPersistence;
     // Load triggers from settings, falling back to built-in defaults
     this.triggers = this.loadTriggers();
     this.tokenThreshold = this.getTokenThreshold();
@@ -121,6 +127,10 @@ export class NotificationTriggerService implements vscode.Disposable {
 
     this.disposables.push(
       this.sessionMonitor.onTokenUsage(usage => this.handleTokenUsage(usage))
+    );
+
+    this.disposables.push(
+      this.sessionMonitor.onCycleDetected(cycle => this.handleCycleDetected(cycle))
     );
 
     // Listen for settings changes
@@ -193,9 +203,41 @@ export class NotificationTriggerService implements vscode.Disposable {
   }
 
   /**
-   * Fires a VS Code notification.
+   * Handles cycle detection events from SessionMonitor.
+   * SessionMonitor already throttles to 60s, so no additional throttle needed.
    */
-  private fireNotification(title: string, body: string, severity: 'info' | 'warning' | 'error'): void {
+  private handleCycleDetected(cycle: { description: string; affectedFiles: string[] }): void {
+    if (this.sessionMonitor.isReplaying) return;
+    const files = cycle.affectedFiles.length > 0
+      ? cycle.affectedFiles.map(f => f.split('/').pop()).join(', ')
+      : 'unknown files';
+    this.fireNotification('Sidekick', `Agent cycling on ${files}: ${cycle.description}`, 'warning', {
+      triggerId: 'cycle-detected',
+      triggerName: 'Agent Cycle Detected',
+    });
+  }
+
+  /**
+   * Fires a VS Code notification and persists it to history.
+   */
+  private fireNotification(
+    title: string,
+    body: string,
+    severity: 'info' | 'warning' | 'error',
+    persistParams?: {
+      triggerId: string;
+      triggerName: string;
+      wasThrottled?: boolean;
+      context?: {
+        filePath?: string;
+        command?: string;
+        toolName?: string;
+        tokenCount?: number;
+        compactionBefore?: number;
+        compactionAfter?: number;
+      };
+    }
+  ): void {
     const message = `${title}: ${body}`;
 
     switch (severity) {
@@ -208,6 +250,19 @@ export class NotificationTriggerService implements vscode.Disposable {
       default:
         vscode.window.showInformationMessage(message);
         break;
+    }
+
+    // Persist to notification history
+    if (this.notificationPersistence && persistParams) {
+      this.notificationPersistence.addNotification({
+        triggerId: persistParams.triggerId,
+        triggerName: persistParams.triggerName,
+        severity,
+        title,
+        body,
+        wasThrottled: persistParams.wasThrottled,
+        context: persistParams.context,
+      });
     }
   }
 
@@ -226,7 +281,8 @@ export class NotificationTriggerService implements vscode.Disposable {
           this.fireNotification(
             'Tool Error Burst',
             `${this.recentToolErrors} consecutive tool errors detected`,
-            trigger.severity
+            trigger.severity,
+            { triggerId: trigger.id, triggerName: trigger.name }
           );
           this.recordFire(trigger.id);
           this.recentToolErrors = 0;
@@ -249,7 +305,8 @@ export class NotificationTriggerService implements vscode.Disposable {
           this.fireNotification(
             trigger.name,
             `${call.name} accessing: ${filePath}`,
-            trigger.severity
+            trigger.severity,
+            { triggerId: trigger.id, triggerName: trigger.name, context: { filePath, toolName: call.name } }
           );
           this.recordFire(trigger.id);
         }
@@ -273,7 +330,8 @@ export class NotificationTriggerService implements vscode.Disposable {
           this.fireNotification(
             trigger.name,
             body,
-            trigger.severity
+            trigger.severity,
+            { triggerId: trigger.id, triggerName: trigger.name, context: { command } }
           );
           this.recordFire(trigger.id);
         }
@@ -298,7 +356,12 @@ export class NotificationTriggerService implements vscode.Disposable {
     this.fireNotification(
       'Context Compacted',
       `${beforeK}K -> ${afterK}K tokens (reclaimed ${reclaimedK}K)`,
-      trigger.severity
+      trigger.severity,
+      {
+        triggerId: trigger.id,
+        triggerName: trigger.name,
+        context: { compactionBefore: event.contextBefore, compactionAfter: event.contextAfter }
+      }
     );
     this.recordFire(trigger.id);
   }
@@ -323,7 +386,8 @@ export class NotificationTriggerService implements vscode.Disposable {
       this.fireNotification(
         'High Token Usage',
         `Session has consumed ${totalK}K tokens`,
-        'warning'
+        'warning',
+        { triggerId: 'high-token-usage', triggerName: 'High Token Usage', context: { tokenCount: totalTokens } }
       );
       this.lastNotifiedTokenTotal = totalTokens;
     }

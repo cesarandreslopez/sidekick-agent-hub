@@ -25,7 +25,12 @@ Thank you for your interest in contributing! This document provides guidelines a
    npm run compile
    ```
 
-3. **Run tests to verify setup**
+3. **Build the shared library and CLI** (optional)
+   ```bash
+   bash scripts/build-all.sh
+   ```
+
+4. **Run tests to verify setup**
    ```bash
    npm test
    ```
@@ -67,6 +72,18 @@ npm run test:watch   # Watch mode
 ```
 
 ## Project Structure
+
+```
+sidekick-for-claude-max/
+├── sidekick-vscode/    # VS Code extension
+├── sidekick-shared/    # Pure TS library (readers, types, providers)
+├── sidekick-cli/       # CLI binary (TUI dashboard)
+├── scripts/            # Build scripts
+├── docs/               # Documentation site
+└── ...
+```
+
+### Extension Source
 
 ```
 sidekick-vscode/src/

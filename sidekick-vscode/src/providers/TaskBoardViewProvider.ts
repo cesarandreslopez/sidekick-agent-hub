@@ -15,6 +15,7 @@ import type { PersistedTask } from '../types/taskPersistence';
 import type { TaskBoardState, TaskBoardMessage, WebviewTaskBoardMessage, TaskBoardColumn, TaskCard } from '../types/taskBoard';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { getRandomPhrase } from '../utils/phrases';
 
 /**
  * WebviewViewProvider for the session task board.
@@ -51,6 +52,12 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Minimum interval between auto-persistence writes (ms) */
   private readonly _PERSIST_INTERVAL_MS = 30_000;
+
+  /** Interval for rotating header phrase */
+  private _phraseInterval?: ReturnType<typeof setInterval>;
+
+  /** Interval for rotating empty-state phrase */
+  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
 
   /**
    * Creates a new TaskBoardViewProvider.
@@ -132,7 +139,25 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       this._disposables
     );
 
+    this._startPhraseTimers();
     log('Task board webview resolved');
+  }
+
+  private _startPhraseTimers(): void {
+    this._clearPhraseTimers();
+    this._phraseInterval = setInterval(() => {
+      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
+    }, 60_000);
+    this._emptyPhraseInterval = setInterval(() => {
+      if (!this._state.sessionActive) {
+        this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
+      }
+    }, 30_000);
+  }
+
+  private _clearPhraseTimers(): void {
+    if (this._phraseInterval) { clearInterval(this._phraseInterval); this._phraseInterval = undefined; }
+    if (this._emptyPhraseInterval) { clearInterval(this._emptyPhraseInterval); this._emptyPhraseInterval = undefined; }
   }
 
   /**
@@ -143,6 +168,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._taskPersistence && this._sessionMonitor.isActive()) {
       this._saveCurrentTasksToPersistence();
     }
+    this._clearPhraseTimers();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
   }
@@ -325,7 +351,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       blocks: task.blocks,
       isActive: task.isSubagent ? false : activeTaskId === task.taskId,
       isSubagent: task.isSubagent,
-      subagentType: task.subagentType
+      subagentType: task.subagentType,
+      isGoalGate: task.isGoalGate,
     };
   }
 
@@ -355,6 +382,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       sessionOrigin: task.sessionOrigin,
       sessionAge: task.sessionAge,
       tags: task.tags,
+      isGoalGate: task.isGoalGate,
     };
   }
 
@@ -457,6 +485,17 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     .header h1 {
       font-size: 13px;
       font-weight: 600;
+    }
+
+    .header-phrase, .empty-state-phrase {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+      margin: 0;
+    }
+
+    .header-phrase {
+      padding: 2px 12px 6px 40px;
     }
 
     .status {
@@ -611,6 +650,15 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       border-left: 3px solid var(--vscode-terminal-ansiCyan, #4ec9b0);
     }
 
+    .card.goal-gate {
+      border-left: 3px solid var(--vscode-errorForeground, #f14c4c);
+    }
+
+    .card.goal-gate .card-title::before {
+      content: '\u26A0 ';
+      color: var(--vscode-errorForeground, #f14c4c);
+    }
+
     .chip.agent-type {
       background: var(--vscode-terminal-ansiCyan, #4ec9b0);
       color: var(--vscode-editor-background);
@@ -703,9 +751,11 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       <button id="refresh" class="icon-button">Refresh</button>
     </div>
   </div>
+  <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
   <div id="board" class="board"></div>
   <div id="empty" class="empty-state" hidden>
     <p>No tasks yet. Tasks appear when Claude Code creates tasks or spawns subagents.</p>
+    <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 
   <script nonce="${nonce}">
@@ -835,6 +885,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (task.isActive) classes.push('active');
       if (task.isSubagent) classes.push('subagent');
       if (task.carriedOver) classes.push('carried-over');
+      if (task.isGoalGate) classes.push('goal-gate');
       card.className = classes.join(' ');
 
       const title = document.createElement('div');
@@ -926,6 +977,14 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
           break;
         case 'sessionStart':
         case 'sessionEnd':
+          break;
+        case 'updatePhrase':
+          var hp = document.getElementById('header-phrase');
+          if (hp) hp.textContent = message.phrase;
+          break;
+        case 'updateEmptyPhrase':
+          var ep = document.getElementById('empty-state-phrase');
+          if (ep) ep.textContent = message.phrase;
           break;
       }
     });

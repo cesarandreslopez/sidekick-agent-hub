@@ -91,6 +91,7 @@ nav:
     - Explain Code: features/explain-code.md
     - Generate Docs: features/generate-docs.md
     - CLAUDE.md Suggestions: features/claude-md-suggestions.md
+    - Sidekick CLI: features/cli.md
   - Providers:
     - Claude Max: providers/claude-max.md
     - Claude API: providers/claude-api.md

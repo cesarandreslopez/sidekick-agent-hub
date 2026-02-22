@@ -23,6 +23,8 @@ export interface TaskSummaryItem {
   toolCallCount: number;
   /** Estimated cost attributed to this task */
   estimatedCost: number;
+  /** Whether this task is a critical goal gate */
+  isGoalGate?: boolean;
 }
 
 /**

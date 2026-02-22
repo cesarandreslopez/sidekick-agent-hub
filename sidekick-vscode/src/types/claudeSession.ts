@@ -285,6 +285,9 @@ export interface TrackedTask {
 
   /** Tool use ID for correlating spawn with completion */
   toolUseId?: string;
+
+  /** Whether this task is a critical goal gate (blocking or high-priority) */
+  isGoalGate?: boolean;
 }
 
 /**
@@ -508,8 +511,23 @@ export interface SessionStats {
   /** Estimated context token attribution by content category */
   contextAttribution?: ContextAttribution;
 
+  /** Per-turn token attribution breakdown */
+  turnAttributions?: TurnAttribution[];
+
+  /** Context size over time for waterfall chart */
+  contextTimeline?: ContextSizePoint[];
+
   /** Total cost reported by the provider (when available, e.g., OpenCode) */
   totalReportedCost?: number;
+
+  /** Truncation events detected during the session */
+  truncationEvents?: TruncationEvent[];
+
+  /** Number of truncated tool outputs detected */
+  truncationCount: number;
+
+  /** Context health score (0-100, based on compaction severity) */
+  contextHealth: number;
 }
 
 /**
@@ -531,6 +549,29 @@ export interface CompactionEvent {
 
   /** Tokens reclaimed (contextBefore - contextAfter) */
   tokensReclaimed: number;
+}
+
+/**
+ * Record of a tool output truncation event.
+ *
+ * Truncation occurs when a tool's output exceeds size limits and is
+ * clipped, losing potentially important information.
+ */
+export interface TruncationEvent {
+  /** When the truncation was detected */
+  timestamp: Date;
+
+  /** The tool that produced the truncated output */
+  toolName: string;
+
+  /** File path involved, if applicable */
+  filePath?: string;
+
+  /** Estimated characters removed by truncation */
+  estimatedCharsRemoved?: number;
+
+  /** The truncation marker pattern that was matched */
+  marker: string;
 }
 
 /**
@@ -559,4 +600,47 @@ export interface ContextAttribution {
 
   /** Unclassified tokens */
   other: number;
+}
+
+/**
+ * Per-turn token attribution breakdown.
+ *
+ * Tracks token usage for each conversation turn, using actual API
+ * token counts from assistant messages and estimates for user messages.
+ */
+export interface TurnAttribution {
+  /** Turn index within the session (0-based) */
+  turnIndex: number;
+
+  /** ISO 8601 timestamp of the turn */
+  timestamp: string;
+
+  /** Message role */
+  role: 'user' | 'assistant';
+
+  /** Input tokens (from message.usage for assistant, estimated for user) */
+  inputTokens: number;
+
+  /** Output tokens (from message.usage for assistant, 0 for user) */
+  outputTokens: number;
+
+  /** Per-category token split for this turn */
+  breakdown: ContextAttribution;
+}
+
+/**
+ * A single data point in the context size timeline.
+ *
+ * Tracks cumulative context window size at each assistant turn
+ * for rendering the compaction waterfall chart.
+ */
+export interface ContextSizePoint {
+  /** ISO 8601 timestamp */
+  timestamp: string;
+
+  /** Cumulative context size in tokens at this point */
+  inputTokens: number;
+
+  /** Turn index within the session */
+  turnIndex: number;
 }

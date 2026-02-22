@@ -21,6 +21,7 @@ import type { MindMapState, MindMapMessage, WebviewMindMapMessage } from '../typ
 import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { getRandomPhrase } from '../utils/phrases';
 
 /**
  * WebviewViewProvider for the session mind map visualization.
@@ -49,6 +50,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
   /** Optional knowledge note service for note nodes */
   private _knowledgeNoteService?: KnowledgeNoteService;
+
+  /** Interval for rotating header phrase */
+  private _phraseInterval?: ReturnType<typeof setInterval>;
+
+  /** Interval for rotating empty-state phrase */
+  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
 
   /**
    * Creates a new MindMapViewProvider.
@@ -145,7 +152,25 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       this._disposables
     );
 
+    this._startPhraseTimers();
     log('Mind map webview resolved');
+  }
+
+  private _startPhraseTimers(): void {
+    this._clearPhraseTimers();
+    this._phraseInterval = setInterval(() => {
+      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
+    }, 60_000);
+    this._emptyPhraseInterval = setInterval(() => {
+      if (!this._state.sessionActive) {
+        this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
+      }
+    }, 30_000);
+  }
+
+  private _clearPhraseTimers(): void {
+    if (this._phraseInterval) { clearInterval(this._phraseInterval); this._phraseInterval = undefined; }
+    if (this._emptyPhraseInterval) { clearInterval(this._emptyPhraseInterval); this._emptyPhraseInterval = undefined; }
   }
 
   /**
@@ -210,6 +235,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   private _updateGraph(): void {
     this._syncFromSessionMonitor();
     this._sendStateToWebview();
+    this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
   }
 
   /**
@@ -318,6 +344,17 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     .header h1 {
       font-size: 13px;
       font-weight: 600;
+    }
+
+    .header-phrase, .empty-state-phrase {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+      margin: 0;
+    }
+
+    .header-phrase {
+      padding: 2px 12px 6px 40px;
     }
 
     .status {
@@ -626,10 +663,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       <span id="status" class="status">No Session</span>
     </div>
   </div>
+  <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 
   <div id="empty-state" class="empty-state">
     <p>No active Claude Code session detected.</p>
     <p>Start a session to see the mind map.</p>
+    <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 
   <div id="graph-container" style="display: none;">
@@ -1659,6 +1698,16 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           case 'sessionEnd':
             updateStatus(false);
             break;
+
+          case 'updatePhrase':
+            var hp = document.getElementById('header-phrase');
+            if (hp) hp.textContent = message.phrase;
+            break;
+
+          case 'updateEmptyPhrase':
+            var ep = document.getElementById('empty-state-phrase');
+            if (ep) ep.textContent = message.phrase;
+            break;
         }
       });
 
@@ -1714,6 +1763,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    * Disposes of all resources.
    */
   dispose(): void {
+    this._clearPhraseTimers();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
     log('MindMapViewProvider disposed');

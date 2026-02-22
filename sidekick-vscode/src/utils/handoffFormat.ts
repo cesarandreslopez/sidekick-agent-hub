@@ -29,6 +29,21 @@ export interface HandoffInput {
   recoveryPatterns: RecoveryPattern[];
   /** Commands/paths that consistently failed */
   failedCommands: string[];
+
+  /** Context health score (0-100) */
+  contextHealth?: number;
+
+  /** Number of compaction events */
+  compactionCount?: number;
+
+  /** Number of truncation events */
+  truncationCount?: number;
+
+  /** Per-tool truncation breakdown */
+  truncationsByTool?: Array<{ tool: string; count: number }>;
+
+  /** Incomplete goal gate task names */
+  goalGates?: string[];
 }
 
 /**
@@ -63,6 +78,34 @@ export function buildHandoffMarkdown(input: HandoffInput): string {
   lines.push(`# Session Handoff: ${projectName}`);
   lines.push(`**Date:** ${input.date} | **Duration:** ${formatDuration(input.duration)}`);
   lines.push('');
+
+  // Context Health Warning
+  if (input.contextHealth !== undefined && input.contextHealth < 50) {
+    lines.push('## Context Health Warning');
+    lines.push(`Context at ${input.contextHealth}% fidelity after ${input.compactionCount ?? 0} compactions. Decisions in the latter half of this session should be re-verified.`);
+    lines.push('');
+  }
+
+  // Truncation Summary
+  if (input.truncationCount && input.truncationCount > 0) {
+    lines.push('## Truncated Outputs');
+    lines.push(`Session had ${input.truncationCount} truncated tool output${input.truncationCount === 1 ? '' : 's'}.`);
+    if (input.truncationsByTool && input.truncationsByTool.length > 0) {
+      for (const { tool, count } of input.truncationsByTool) {
+        lines.push(`- **${tool}**: ${count}`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Incomplete Goal Gates
+  if (input.goalGates && input.goalGates.length > 0) {
+    lines.push('## CRITICAL: Incomplete Goal Gates');
+    for (const gate of input.goalGates) {
+      lines.push(`- **${gate}** was NOT completed`);
+    }
+    lines.push('');
+  }
 
   // Pending Tasks
   if (input.pendingTasks.length > 0) {

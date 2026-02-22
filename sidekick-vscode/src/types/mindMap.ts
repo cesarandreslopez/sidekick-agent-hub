@@ -70,6 +70,12 @@ export interface GraphNode {
   /** Plan step status for plan-step nodes */
   planStepStatus?: PlanStepStatus;
 
+  /** Whether this task node is a critical goal gate */
+  isGoalGate?: boolean;
+
+  /** Whether this file node is part of a detected cycle */
+  isCycling?: boolean;
+
   // D3 simulation properties (added during simulation)
   x?: number;
   y?: number;
@@ -148,7 +154,9 @@ export interface MindMapState {
 export type MindMapMessage =
   | { type: 'updateGraph'; state: MindMapState }
   | { type: 'sessionStart'; sessionPath: string }
-  | { type: 'sessionEnd' };
+  | { type: 'sessionEnd' }
+  | { type: 'updatePhrase'; phrase: string }
+  | { type: 'updateEmptyPhrase'; phrase: string };
 
 /**
  * Messages from webview to extension.

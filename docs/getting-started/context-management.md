@@ -17,6 +17,7 @@ flowchart LR
 
     Handoff -.->|"Persists on disk"| Start
     Load -.->|"Persists on disk"| Load
+    CLI["sidekick CLI"] -.->|"Reads persisted data"| Handoff
 ```
 
 ## What Is Context?
@@ -56,8 +57,13 @@ Your next session reads the handoff document and starts with context instead of 
 
 Sidekick can [generate handoff documents automatically](../features/session-handoff.md) at the end of each session, and the [decision log](../features/decision-log.md) persistently tracks architectural decisions across sessions.
 
+## CLI Access
+
+The [Sidekick CLI](../features/cli.md) provides a full-screen TUI dashboard for browsing persisted context without VS Code. Run `sidekick dashboard` to view sessions, tasks, decisions, knowledge notes, and more in an interactive terminal UI. The CLI reads from the same `~/.config/sidekick/` data files the extension writes.
+
 ## Learn More
 
 - [Session Handoff](../features/session-handoff.md) — automatic context capture between sessions
 - [Decision Log](../features/decision-log.md) — persistent tracking of architectural decisions
 - [CLAUDE.md Suggestions](../features/claude-md-suggestions.md) — AI-powered improvements to your instruction file
+- [Sidekick CLI](../features/cli.md) — query project intelligence from the terminal

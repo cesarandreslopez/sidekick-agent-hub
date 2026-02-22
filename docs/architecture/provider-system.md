@@ -72,3 +72,9 @@ Both provider types support auto-detection via `ProviderDetector`, which checks:
 ## Independence
 
 Inference and session providers are independent — you can use Claude Max for inference while monitoring OpenCode sessions, or any other combination.
+
+## Shared Provider Library
+
+The `sidekick-shared` package ports the session provider implementations for use outside VS Code. It uses the same auto-detection algorithm — checking filesystem presence and most-recent modification time — minus the VS Code setting fallback.
+
+The CLI's `--provider` flag serves as an explicit override when auto-detection isn't appropriate. Providers read session data in the same formats (JSONL, SQLite, JSON) as the extension, so the CLI produces identical results from the same data files.

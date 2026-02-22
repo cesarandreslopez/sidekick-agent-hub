@@ -1,0 +1,73 @@
+name: CLI CI
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'sidekick-cli/**'
+      - 'sidekick-shared/**'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'sidekick-cli/**'
+      - 'sidekick-shared/**'
+
+jobs:
+  shared-tests:
+    name: Shared Library Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: sidekick-shared
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: sidekick-shared/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  cli-tests:
+    name: CLI Tests & Build
+    runs-on: ubuntu-latest
+    needs: shared-tests
+
+    defaults:
+      run:
+        working-directory: sidekick-cli
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: sidekick-cli/package-lock.json
+
+      - name: Build shared library
+        working-directory: sidekick-shared
+        run: npm ci && npm run build
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Verify binary runs
+        run: node dist/sidekick-cli.mjs --version

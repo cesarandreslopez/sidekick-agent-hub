@@ -15,6 +15,8 @@ Interactive D3.js force-directed graph showing session structure and relationshi
 - **Directory & Command Nodes** — Grep/Glob targets and Bash commands shown
 - **Subagent Visibility** — spawned Task agents appear as distinct nodes
 - **Plan Nodes** — plan steps with status indicators
+- **Cycling File Indicators** — files caught in agent loops are visually marked so you can spot stuck behavior at a glance
+- **Goal Gate Tasks** — critical tasks are distinguished from regular task nodes
 - **Dynamic Node Sizing** — nodes scale based on content length
 - **Latest Link Highlighting** — most recent connections are visually emphasized
 - **Auto-Focus on Activity** — map pans to show new activity while preserving zoom

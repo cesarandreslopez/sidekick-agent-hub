@@ -74,6 +74,7 @@ When the session analytics dashboard detects patterns that could be useful as kn
 - **Repeated errors** on the same file suggest a gotcha
 - **Recovery patterns** (tried approach A, switched to B) suggest a pattern note
 - **Guidance suggestions** mentioning specific files suggest a guideline
+- **Repeated truncation** — files that produce 3 or more truncated tool outputs likely have non-obvious size or structure issues worth documenting as a gotcha
 
 Candidates appear in the dashboard for you to accept or dismiss.
 

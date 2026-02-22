@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths: ['docs/**', 'mkdocs.yml']
   workflow_dispatch:
+    branches: [main]
 permissions:
   contents: read
   pages: write

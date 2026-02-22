@@ -20,6 +20,9 @@ The main dashboard panel provides:
 - **Token Usage Tooltips** — hover for quota projections and estimated time to exhaustion
 - **Context Window Gauge** — input/output token usage vs. limits
 - **Compaction Detection** — timeline markers showing when context was compressed and how much was lost
+- **Context Health** — real-time fidelity score showing how much context degradation has occurred from compactions, with a color-coded gauge (green/yellow/red)
+- **Truncation Tracking** — detects when tool outputs are truncated by the agent, with per-tool breakdown and total count
+- **Cycle Detection** — alerts when your agent enters repetitive loops (e.g., Read → Edit → Read → Edit on the same file)
 - **Activity Timeline** — user prompts, tool calls, errors, and subagent spawns with full-text search
 - **Timeline Search & Filtering** — filter by event type, noise classification (system reminders, sidechains)
 - **Session Navigator** — collapsible panel to switch between active and recent sessions
@@ -39,6 +42,32 @@ The dashboard organizes information into three collapsible groups:
 - **Tasks & Recovery** — Task Performance, Recovery Patterns
 
 ![Tasks & Recovery — Task Performance and Completion Tracking](../images/tasks-and-recovery.png)
+
+## Session Intelligence
+
+Three detection systems run continuously during a session to surface problems that are otherwise invisible.
+
+### Context Health
+
+As your agent's context window fills up, the runtime compresses (compacts) the conversation to make room. Each compaction loses information. The context health gauge tracks this degradation as a percentage — starting at 100% and dropping with each compaction event.
+
+- **Green (70-100%)** — context is mostly intact, decisions and earlier work are reliable
+- **Yellow (40-69%)** — noticeable degradation, earlier decisions may have been lost
+- **Red (below 40%)** — significant information loss, consider starting a fresh session
+
+The gauge appears in the dashboard's Session Activity section. If context health drops below 50%, session handoffs automatically include a warning so the next session knows to re-verify earlier decisions.
+
+### Truncation Detection
+
+When tool outputs exceed size limits, the agent runtime silently truncates them — your agent sees partial results but keeps going as if nothing happened. Sidekick scans every tool result for truncation markers and tracks which tools are affected.
+
+The dashboard shows the total truncation count and a per-tool breakdown. Files that produce repeated truncated output are automatically surfaced as knowledge note candidates, since they likely contain gotchas worth capturing.
+
+### Cycle Detection
+
+Sometimes agents get stuck in loops — reading a file, editing it, reading it again, editing it again — burning tokens without making progress. Sidekick uses a sliding-window algorithm to detect repeating patterns of tool calls.
+
+When a cycle is detected, a VS Code notification fires with the affected files so you can intervene. The mind map also highlights cycling files with a distinct visual indicator.
 
 ## Subscription Quota Display
 

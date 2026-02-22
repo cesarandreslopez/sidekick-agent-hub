@@ -9,6 +9,11 @@ site/
 # VS Code extension package
 *.vsix
 
+# Node.js SEA artifacts
+*.blob
+sea-config-target.json
+dist/sidekick-sea.mjs
+
 # TypeScript
 *.tsbuildinfo
 
@@ -18,6 +23,7 @@ site/
 
 # Claude Code
 .claude/
+!.claude/commands/
 
 # OS files
 .DS_Store
@@ -49,9 +55,9 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-CLAUDE.md
 WHATS_NEXT.md
 tts-demo.html
 diagram-demo.html
 session-parsing-comparison.md
 orchestrator.md
+development-pipeline.md

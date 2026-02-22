@@ -162,6 +162,7 @@ export class TaskPersistenceService implements vscode.Disposable {
         sessionOrigin: sessionId,
         carriedOver: false,
         sessionAge: 0,
+        isGoalGate: task.isGoalGate,
       };
 
       this.store.tasks[taskId] = persisted;
@@ -201,6 +202,11 @@ export class TaskPersistenceService implements vscode.Disposable {
       // Can't still be running from a prior session
       if (copy.status === 'in_progress') {
         copy.status = 'pending';
+      }
+
+      // Criterion 3: auto-flag old pending tasks as goal gates
+      if (copy.sessionAge >= 2 && copy.status === 'pending' && !copy.isGoalGate) {
+        copy.isGoalGate = true;
       }
 
       return copy;

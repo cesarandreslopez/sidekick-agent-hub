@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-02-22
+
+### Added
+
+- **Truncation Detection**: Detects when agent tool outputs are silently truncated by the runtime
+  - Scans every tool result for 6 known truncation markers
+  - Dashboard shows total truncation count and per-tool breakdown with warning indicator
+  - Files with 3+ truncated outputs automatically surfaced as knowledge note candidates
+- **Context Health Monitoring**: Tracks context fidelity as compactions degrade the conversation
+  - Fidelity score starts at 100% and decreases with each compaction event
+  - Color-coded dashboard gauge: green (70-100%), yellow (40-69%), red (below 40%)
+  - Handoffs include a "Context Health Warning" section when fidelity drops below 50%
+- **Goal Gates**: Automatic detection and visual flagging of critical tasks
+  - Tasks flagged when matching critical keywords or blocking 3+ other tasks
+  - Kanban board: red left border and warning badge on goal-gate cards
+  - Incomplete goal gates get a dedicated section in handoff documents
+- **Cycle Detection**: Identifies when agents enter repetitive tool-call loops
+  - Sliding-window algorithm with configurable window size (default: 10 calls)
+  - VS Code warning notification with affected file list when cycles are detected
+  - Mind map marks cycling files with `isCycling` indicator
+- **"Open CLI Dashboard" VS Code Command**: Launches the Sidekick TUI dashboard in a VS Code terminal — install the CLI with `npm install -g sidekick-agent-hub`
+
+### Fixed
+
+- **`retry_loop` inefficiency detection**: Now properly emits when consecutive fail-retry pairs are detected on the same tool and target
+- **`command_failure` inefficiency detection**: Now correctly filters to only failed Bash calls and emits when the same base command fails 3+ times
+
 ## [0.11.0] - 2026-02-19
 
 ### Added
@@ -19,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - "Inject Knowledge Notes" command to append notes to CLAUDE.md/AGENTS.md
   - Note management: right-click to edit, delete, or confirm notes in the tree view
   - Persisted in `~/.config/sidekick/knowledge-notes/`
+- **Sidekick CLI**: Full-screen TUI dashboard for monitoring agent sessions from the terminal
+  - Ink-based terminal UI with panels for sessions, tasks, kanban, mind map, notes, decisions, search, files, and git diff
+  - Multi-provider support: auto-detects Claude Code, OpenCode, and Codex sessions
+  - Usage: `sidekick dashboard [--project <path>] [--provider <id>]`
+- **Shared Data Access Layer** (`sidekick-shared`): Pure TypeScript library extracting readers, types, and session providers from the extension — no VS Code dependencies
 - **Multi-Session Project Timeline**: Chronological view of all sessions in the current project
   - Card-based layout with session labels, duration bars, and metadata badges (tokens, tasks, errors, model)
   - Time range filtering (24h, 7d, 30d, all)

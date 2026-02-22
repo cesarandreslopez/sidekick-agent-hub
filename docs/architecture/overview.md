@@ -25,6 +25,16 @@ Only `vscode` is externalized. All other dependencies (including `@anthropic-ai/
 
 `src/extension.ts` contains the `activate()` function which registers all commands, providers, and services.
 
+## Package Structure
+
+| Package | Purpose | Build |
+|---------|---------|-------|
+| `sidekick-vscode/` | VS Code extension (UI, monitoring, inference) | esbuild |
+| `sidekick-shared/` | Pure TS library — readers, types, session providers (no VS Code deps) | tsc |
+| `sidekick-cli/` | CLI binary — 8 subcommands, markdown/JSON output | esbuild |
+
+`sidekick-shared` extracts the data access layer from the extension so it can be consumed by the CLI (and future integrations). The extension itself is not modified — `sidekick-shared` is a parallel implementation with no VS Code dependencies.
+
 ## Key Source Locations
 
 | Area | Location |
@@ -35,6 +45,7 @@ Only `vscode` is externalized. All other dependencies (including `@anthropic-ai/
 | Inference clients | `src/services/AuthService.ts`, `MaxSubscriptionClient.ts`, `ApiKeyClient.ts`, `OpenCodeClient.ts`, `CodexClient.ts` |
 | Session providers | `src/services/providers/ClaudeCodeSessionProvider.ts`, `OpenCodeSessionProvider.ts`, `CodexSessionProvider.ts` |
 | Webview UI | `src/webview/` (vanilla TS, bundled as IIFE) |
+| Session analysis | `src/services/SessionAnalyzer.ts`, `src/utils/cycleDetector.ts` |
 
 ## Request Management
 
@@ -63,4 +74,7 @@ Cross-session data stored in `~/.config/sidekick/`:
 | `tasks/{projectSlug}.json` | Kanban board carry-over |
 | `decisions/{projectSlug}.json` | Decision log |
 | `handoffs/` | Session handoff documents |
+| `knowledge-notes/{projectSlug}.json` | Knowledge notes per project |
 | `event-logs/` | Optional JSONL audit trail |
+
+The Sidekick CLI reads from these same files, providing terminal access to persisted data without VS Code.

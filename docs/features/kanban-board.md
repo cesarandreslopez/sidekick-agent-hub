@@ -15,6 +15,17 @@ Tasks and subagent spawns grouped by status in a dedicated Kanban view.
 - **Cross-Session Persistence** — tasks persist across sessions in `~/.config/sidekick/tasks/`
 - **Header Summary** — shows separate counts (e.g., "3 tasks, 2 agents")
 
+## Goal Gates
+
+Some tasks are more critical than others. Sidekick automatically flags tasks as goal gates when they match critical keywords (like "CRITICAL", "MUST", "blocker", "required") or when they block three or more other tasks in the dependency graph.
+
+Goal-gate tasks get a distinct visual treatment on the board:
+
+- **Red left border** — immediately distinguishable from regular tasks
+- **Warning badge** — prepended to the task title
+
+If a goal-gate task is still pending when a session ends, the handoff document includes it in a dedicated "Incomplete Goal Gates" section so the next session prioritizes it. Tasks that remain pending across multiple sessions are also auto-flagged as goal gates, since their persistence suggests they're important.
+
 ## Subagent Tracking
 
 When your agent spawns subagents via the Task tool:

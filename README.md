@@ -82,6 +82,7 @@ Claude Code, OpenCode, and Codex all share the same fundamental limitation: they
 - **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions and recovery patterns across sessions
 
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/decision-log.png" alt="Decision Log" width="480">
+- **[Sidekick CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/)** — full-screen TUI dashboard for monitoring agent sessions from the terminal — install with `npm install -g sidekick-agent-hub`
 - **[CLAUDE.md Suggestions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/claude-md-suggestions/)** — learn from session patterns to improve agent effectiveness
 
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/claude-md-suggestions.png" alt="CLAUDE.md Suggestions" width="480">

@@ -591,6 +591,45 @@ function renderSuggestions(suggestions: ClaudeMdSuggestion[]): void {
 (window as unknown as Record<string, unknown>).requestAnalysis = requestAnalysis;
 
 /**
+ * Updates context health indicator display.
+ * Green >= 70%, yellow 40-69%, red < 40%.
+ */
+function updateContextHealthDisplay(score: number, compactionCount: number): void {
+  const el = document.getElementById('context-health');
+  if (!el) return;
+
+  const color = score >= 70 ? 'var(--vscode-charts-green, #4ec9b0)'
+    : score >= 40 ? 'var(--vscode-charts-yellow, #cca700)'
+    : 'var(--vscode-charts-red, #f14c4c)';
+
+  el.innerHTML = `
+    <span style="color: ${color}; font-weight: bold;">${score}%</span>
+    <span style="opacity: 0.7; font-size: 0.85em;"> · ${compactionCount} compaction${compactionCount === 1 ? '' : 's'}</span>
+  `;
+  el.style.display = 'flex';
+}
+
+/**
+ * Updates truncation count badge and per-tool breakdown.
+ */
+function updateTruncationDisplay(count: number, byTool: Array<{ tool: string; count: number }>): void {
+  const el = document.getElementById('truncation-info');
+  if (!el) return;
+
+  if (count === 0) {
+    el.style.display = 'none';
+    return;
+  }
+
+  const breakdown = byTool.map(t => `${t.tool}: ${t.count}`).join(', ');
+  el.innerHTML = `
+    <span style="color: var(--vscode-charts-yellow, #cca700);">⚠ ${count} truncated</span>
+    ${breakdown ? `<span style="opacity: 0.7; font-size: 0.85em;"> (${breakdown})</span>` : ''}
+  `;
+  el.style.display = 'flex';
+}
+
+/**
  * Handles messages from the extension.
  */
 function handleMessage(event: MessageEvent): void {
@@ -626,6 +665,12 @@ function handleMessage(event: MessageEvent): void {
       break;
     case 'suggestionsError':
       showSuggestionsError(message.error);
+      break;
+    case 'updateContextHealth':
+      updateContextHealthDisplay(message.score, message.compactionCount);
+      break;
+    case 'updateTruncations':
+      updateTruncationDisplay(message.count, message.byTool);
       break;
   }
 }

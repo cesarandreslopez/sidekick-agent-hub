@@ -59,6 +59,7 @@ import { TaskBoardViewProvider } from "./providers/TaskBoardViewProvider";
 import { ProjectTimelineViewProvider } from "./providers/ProjectTimelineViewProvider";
 import { TaskPersistenceService } from "./services/TaskPersistenceService";
 import { DecisionLogService } from "./services/DecisionLogService";
+import { NotificationPersistenceService } from "./services/NotificationPersistenceService";
 import { KnowledgeNoteService } from "./services/KnowledgeNoteService";
 import { encodeWorkspacePath } from "./services/SessionPathResolver";
 import { TempFilesTreeProvider } from "./providers/TempFilesTreeProvider";
@@ -66,6 +67,7 @@ import { KnowledgeNoteTreeProvider } from "./providers/KnowledgeNoteTreeProvider
 import { KnowledgeNoteDecorationProvider } from "./providers/KnowledgeNoteDecorationProvider";
 import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
+import { openCliDashboard, disposeDashboardTerminal } from "./services/SidekickCliService";
 import { initLogger, log, logError, showLog } from "./services/Logger";
 import {
   getTransformSystemPrompt,
@@ -74,6 +76,7 @@ import {
 } from "./utils/prompts";
 import { resolveModel } from "./services/ModelResolver";
 import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
+import { getRandomPhrase } from "./utils/phrases";
 
 /** Whether completions are currently enabled */
 let enabled = vscode.workspace.getConfiguration('sidekick').get('enabled', true);
@@ -392,6 +395,18 @@ export async function activate(context: vscode.ExtensionContext) {
       context.subscriptions.push(decisionLogService);
     }
 
+    // Notification Persistence Service
+    let notificationPersistenceService: NotificationPersistenceService | undefined;
+    const notificationWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (notificationWorkspaceFolder) {
+      const notificationSlug = encodeWorkspacePath(notificationWorkspaceFolder.uri.fsPath);
+      notificationPersistenceService = new NotificationPersistenceService(notificationSlug);
+      notificationPersistenceService.initialize().catch(error => {
+        logError('Failed to initialize NotificationPersistenceService', error);
+      });
+      context.subscriptions.push(notificationPersistenceService);
+    }
+
     // Knowledge Note Service
     let knowledgeNoteService: KnowledgeNoteService | undefined;
     const knowledgeWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -497,7 +512,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Register dashboard view provider (depends on sessionMonitor, quotaService, historicalDataService, and guidanceAdvisor)
-    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, guidanceAdvisor, sessionAnalyzer, authService, decisionLogService);
+    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, guidanceAdvisor, sessionAnalyzer, authService, decisionLogService, notificationPersistenceService);
     dashboardProvider.setEventLogger(eventLogger);
     if (handoffService) {
       dashboardProvider.setHandoffService(handoffService);
@@ -512,7 +527,7 @@ export async function activate(context: vscode.ExtensionContext) {
     log('Dashboard view provider registered');
 
     // Initialize notification trigger service for session monitoring alerts
-    const notificationTriggerService = new NotificationTriggerService(sessionMonitor);
+    const notificationTriggerService = new NotificationTriggerService(sessionMonitor, notificationPersistenceService);
     context.subscriptions.push(notificationTriggerService);
     log('NotificationTriggerService initialized');
 
@@ -901,6 +916,15 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Register open CLI dashboard command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.openCliDashboard', () => {
+      const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const providerId = sessionMonitor?.getProvider().id;
+      openCliDashboard({ workspacePath, providerId });
+    })
+  );
+
   // Register start monitoring command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.startMonitoring', async () => {
@@ -966,7 +990,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const found = await sessionMonitor.refreshSession();
       if (found) {
-        vscode.window.showInformationMessage('Session found and attached');
+        vscode.window.showInformationMessage(`Session found and attached — ${getRandomPhrase()}`);
         log(`Session refreshed: ${sessionMonitor.getSessionPath()}`);
       } else {
         vscode.window.showInformationMessage('No active session found. Still searching...');
@@ -1135,6 +1159,11 @@ export async function activate(context: vscode.ExtensionContext) {
           description: "Verify provider connection",
           action: "test",
         },
+        {
+          label: "$(terminal) Open CLI Dashboard",
+          description: "Launch Sidekick TUI in terminal",
+          action: "cliDashboard",
+        },
       ];
 
       // Only show Set API Key when using claude-api provider
@@ -1169,6 +1198,9 @@ export async function activate(context: vscode.ExtensionContext) {
             break;
           case "apiKey":
             vscode.commands.executeCommand("sidekick.setApiKey");
+            break;
+          case "cliDashboard":
+            vscode.commands.executeCommand("sidekick.openCliDashboard");
             break;
         }
       }
@@ -1806,4 +1838,5 @@ export async function activate(context: vscode.ExtensionContext) {
  */
 export function deactivate(): void {
   // Cleanup handled via context.subscriptions (AuthService, CompletionService)
+  disposeDashboardTerminal();
 }

@@ -112,7 +112,7 @@ export class HandoffService implements vscode.Disposable {
   private extractHandoffInput(
     summary: SessionSummaryData,
     analysis: SessionAnalysisData,
-    _stats: SessionStats
+    stats: SessionStats
   ): HandoffInput {
     // Pending tasks: only unfinished ones
     const pendingTasks = summary.tasks
@@ -133,6 +133,28 @@ export class HandoffService implements vscode.Disposable {
       .filter(e => e.category === 'exit_code' || e.category === 'command_failure')
       .flatMap(e => e.examples.slice(0, 2));
 
+    // Context health and truncation data from stats
+    const contextHealth = stats.contextHealth;
+    const compactionCount = stats.compactionEvents?.length ?? 0;
+    const truncationCount = stats.truncationCount;
+
+    // Build per-tool truncation breakdown
+    const truncationsByTool: Array<{ tool: string; count: number }> = [];
+    if (stats.truncationEvents && stats.truncationEvents.length > 0) {
+      const toolCounts = new Map<string, number>();
+      for (const te of stats.truncationEvents) {
+        toolCounts.set(te.toolName, (toolCounts.get(te.toolName) || 0) + 1);
+      }
+      for (const [tool, count] of toolCounts) {
+        truncationsByTool.push({ tool, count });
+      }
+    }
+
+    // Goal gates: incomplete tasks flagged as critical
+    const goalGates = summary.tasks
+      .filter(t => t.status !== 'completed' && t.status !== 'done' && t.isGoalGate)
+      .map(t => t.subject);
+
     return {
       projectPath: analysis.projectPath,
       date: new Date().toISOString(),
@@ -141,6 +163,11 @@ export class HandoffService implements vscode.Disposable {
       filesInProgress,
       recoveryPatterns,
       failedCommands,
+      contextHealth,
+      compactionCount,
+      truncationCount,
+      truncationsByTool: truncationsByTool.length > 0 ? truncationsByTool : undefined,
+      goalGates: goalGates.length > 0 ? goalGates : undefined,
     };
   }
 

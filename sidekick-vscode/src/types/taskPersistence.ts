@@ -68,6 +68,9 @@ export interface PersistedTask {
 
   /** Tags for filtering (forward-looking, from project-orchestrator) */
   tags?: string[];
+
+  /** Whether this task is a critical goal gate */
+  isGoalGate?: boolean;
 }
 
 /**

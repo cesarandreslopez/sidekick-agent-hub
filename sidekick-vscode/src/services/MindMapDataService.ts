@@ -11,6 +11,7 @@ import { SessionStats, ToolCall, TimelineEvent, SubagentStats, TaskState, Tracke
 import { GraphNode, GraphLink, GraphData, TaskNodeStatus, PlanStepStatus } from '../types/mindMap';
 import type { KnowledgeNoteDisplay } from '../types/knowledgeNote';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
+import { detectCycle } from '../utils/cycleDetector';
 import { log } from './Logger';
 
 /**
@@ -86,6 +87,16 @@ export class MindMapDataService {
     nodes.push(sessionNode);
     nodeIds.add(sessionNode.id);
 
+    // Detect cycling files for visual indicator
+    const cyclingFiles = new Set<string>();
+    const cycle6 = detectCycle(stats.toolCalls, 6);
+    const cycle10 = detectCycle(stats.toolCalls, 10);
+    for (const cycle of [cycle6, cycle10]) {
+      if (cycle) {
+        for (const f of cycle.affectedFiles) cyclingFiles.add(f);
+      }
+    }
+
     // Add file nodes (linked to tools, not directly to session)
     const files = this.extractFiles(stats.toolCalls);
     files.forEach((stats, filePath) => {
@@ -99,6 +110,7 @@ export class MindMapDataService {
           count: stats.touchCount,
           additions: stats.additions,
           deletions: stats.deletions,
+          isCycling: cyclingFiles.has(filePath),
         });
         nodeIds.add(id);
         // Note: files are linked to tools via addFileToolLinks, not to session directly
@@ -567,6 +579,7 @@ export class MindMapDataService {
           count: task.associatedToolCalls.length,
           taskStatus,
           taskId: task.taskId,
+          isGoalGate: task.isGoalGate,
         });
         nodeIds.add(taskNodeId);
 

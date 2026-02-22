@@ -16,6 +16,8 @@ Fixes #(issue number)
 ## Component
 
 - [ ] VS Code Extension (`sidekick-vscode/`)
+- [ ] CLI (`sidekick-cli/`)
+- [ ] Shared Library (`sidekick-shared/`)
 - [ ] Other (docs, CI, etc.)
 
 ## Checklist

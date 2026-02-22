@@ -10,6 +10,7 @@
 import * as path from 'path';
 import type { SessionMonitor } from './SessionMonitor';
 import type { ToolCall, ToolAnalytics, TimelineEvent } from '../types/claudeSession';
+import { detectCycle } from '../utils/cycleDetector';
 
 // Re-export analysis types so existing consumers don't break
 export type { AnalyzedError, ToolPattern, Inefficiency, RecoveryPattern, SessionAnalysisData } from '../types/analysis';
@@ -545,16 +546,49 @@ export class SessionAnalyzer {
       }
     }
 
-    // Detect Bash command failures (same command type failing repeatedly)
-    const bashFailures = new Map<string, number>();
-    for (const call of toolCalls.filter(c => c.name === 'Bash')) {
+    // Detect Bash command failures (same base command failing 3+ times)
+    const bashFailureCounts = new Map<string, number>();
+    for (const call of toolCalls.filter(c => c.name === 'Bash' && c.isError === true)) {
       const command = call.input.command as string;
       if (command) {
-        // Extract the base command (first word)
         const baseCommand = command.trim().split(/\s+/)[0];
-        // This is an approximation - we'd need tool_result data for actual failures
-        // For now, count the command types
-        bashFailures.set(baseCommand, (bashFailures.get(baseCommand) || 0) + 1);
+        bashFailureCounts.set(baseCommand, (bashFailureCounts.get(baseCommand) || 0) + 1);
+      }
+    }
+    for (const [cmd, count] of bashFailureCounts) {
+      if (count >= 3) {
+        inefficiencies.push({
+          type: 'command_failure',
+          description: `\`${cmd}\` failed ${count} times`,
+          occurrences: count,
+        });
+      }
+    }
+
+    // Detect retry loops (consecutive fail-retry pairs on same tool+target)
+    const sorted = [...toolCalls].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    const retryKeys = new Map<string, number>();
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      if (prev.isError && curr.isError && prev.name === curr.name) {
+        const prevTarget = this.extractTarget(prev) ?? '';
+        const currTarget = this.extractTarget(curr) ?? '';
+        if (prevTarget && prevTarget === currTarget) {
+          const key = `${prev.name}::${prevTarget}`;
+          retryKeys.set(key, (retryKeys.get(key) || 0) + 1);
+        }
+      }
+    }
+    for (const [key, count] of retryKeys) {
+      if (count >= 2) {
+        const [tool, target] = key.split('::');
+        const shortTarget = target.length > 40 ? '...' + target.slice(-37) : target;
+        inefficiencies.push({
+          type: 'retry_loop',
+          description: `${tool} retried on ${shortTarget} ${count + 1} times consecutively`,
+          occurrences: count + 1,
+        });
       }
     }
 
@@ -590,6 +624,16 @@ export class SessionAnalyzer {
           occurrences: similarPatterns.length
         });
       }
+    }
+
+    // Detect tool call cycles via sliding-window algorithm
+    const cycle = detectCycle(toolCalls);
+    if (cycle) {
+      inefficiencies.push({
+        type: 'cycle_detected',
+        description: cycle.description,
+        occurrences: cycle.repetitions,
+      });
     }
 
     return inefficiencies;

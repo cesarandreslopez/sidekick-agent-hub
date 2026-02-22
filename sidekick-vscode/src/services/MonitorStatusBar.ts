@@ -18,6 +18,7 @@
 
 import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
+import { getRandomPhrase } from '../utils/phrases';
 import type { TokenUsage } from '../types/claudeSession';
 
 /**
@@ -175,6 +176,9 @@ export class MonitorStatusBar implements vscode.Disposable {
       `${provider.displayName} Session`,
       `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,
       `Context: ${this.contextPercent}% of ${this.formatTokenCount(contextLimit)}`,
+      '',
+      getRandomPhrase(),
+      '',
       'Click to open dashboard'
     ].join('\n');
   }
@@ -184,7 +188,13 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   private updateNoSession(): void {
     this.statusBarItem.text = '$(pulse) --';
-    this.statusBarItem.tooltip = 'No active session';
+    this.statusBarItem.tooltip = [
+      'No active session',
+      '',
+      getRandomPhrase(),
+      '',
+      'Click to open dashboard'
+    ].join('\n');
     this.statusBarItem.backgroundColor = undefined;
   }
 

@@ -36,6 +36,7 @@ If applicable, add screenshots to help explain your problem.
 ## Component
 
 - [ ] Extension (VS Code / VSCodium / compatible editors)
+- [ ] CLI (sidekick-cli)
 - [ ] Documentation
 
 ## Logs

@@ -37,7 +37,7 @@ export interface ToolPattern {
  */
 export interface Inefficiency {
   /** Inefficiency type */
-  type: 'repeated_read' | 'glob_overlap' | 'retry_loop' | 'command_failure' | 'search_spam';
+  type: 'repeated_read' | 'glob_overlap' | 'retry_loop' | 'command_failure' | 'search_spam' | 'cycle_detected';
   /** Human-readable description */
   description: string;
   /** Number of occurrences */
@@ -63,6 +63,37 @@ export interface RecoveryPattern {
   successfulApproach: string;
   /** How many times this pattern occurred */
   occurrences: number;
+}
+
+/**
+ * Signature of a single tool call for cycle detection.
+ */
+export interface CycleSignature {
+  /** Canonical tool name */
+  toolName: string;
+
+  /** Hash/key derived from tool arguments (e.g., file path, command) */
+  argHash: string;
+}
+
+/**
+ * A detected repeating cycle of tool calls.
+ */
+export interface CycleDetection {
+  /** The repeating pattern of tool signatures */
+  pattern: CycleSignature[];
+
+  /** How many times the pattern repeated */
+  repetitions: number;
+
+  /** Human-readable description of the cycle */
+  description: string;
+
+  /** Files involved in the cycle */
+  affectedFiles: string[];
+
+  /** When the cycle was detected */
+  detectedAt: Date;
 }
 
 /**

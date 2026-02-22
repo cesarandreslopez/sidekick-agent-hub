@@ -1,0 +1,7 @@
+{
+  "main": "dist/sidekick-sea.mjs",
+  "output": "dist/sea-prep.blob",
+  "disableExperimentalSEAWarning": true,
+  "useCodeCache": false,
+  "useSnapshot": false
+}

@@ -18,6 +18,7 @@ import type {
 } from '../types/projectTimeline';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { getRandomPhrase } from '../utils/phrases';
 
 /**
  * WebviewViewProvider for the multi-session project timeline.
@@ -30,6 +31,12 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   private _dataService: ProjectTimelineDataService;
   private _currentRange: TimelineRange = '7d';
   private _refreshTimer?: ReturnType<typeof setTimeout>;
+
+  /** Interval for rotating header phrase */
+  private _phraseInterval?: ReturnType<typeof setInterval>;
+
+  /** Interval for rotating empty-state phrase */
+  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -80,7 +87,23 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       this._disposables
     );
 
+    this._startPhraseTimers();
     log('Project timeline webview resolved');
+  }
+
+  private _startPhraseTimers(): void {
+    this._clearPhraseTimers();
+    this._phraseInterval = setInterval(() => {
+      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
+    }, 60_000);
+    this._emptyPhraseInterval = setInterval(() => {
+      this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
+    }, 30_000);
+  }
+
+  private _clearPhraseTimers(): void {
+    if (this._phraseInterval) { clearInterval(this._phraseInterval); this._phraseInterval = undefined; }
+    if (this._emptyPhraseInterval) { clearInterval(this._emptyPhraseInterval); this._emptyPhraseInterval = undefined; }
   }
 
   private _handleWebviewMessage(message: WebviewTimelineMessage): void {
@@ -222,6 +245,17 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 
     .header img { width: 20px; height: 20px; }
     .header h1 { font-size: 13px; font-weight: 600; }
+
+    .header-phrase, .empty-state-phrase {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+      margin: 0;
+    }
+
+    .header-phrase {
+      padding: 2px 12px 6px 40px;
+    }
 
     .range-controls {
       margin-left: auto;
@@ -409,10 +443,12 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       <button class="range-btn" data-range="all">All</button>
     </div>
   </div>
+  <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 
   <div id="empty" class="empty-state" style="display: none;">
     <p>No sessions found in selected time range.</p>
     <p>Start a session or expand the time range.</p>
+    <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 
   <div id="loading" class="loading" style="display: none;">Loading sessions...</div>
@@ -619,6 +655,14 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
         case 'loading':
           loadingEl.style.display = message.loading ? 'block' : 'none';
           break;
+        case 'updatePhrase':
+          var hp = document.getElementById('header-phrase');
+          if (hp) hp.textContent = message.phrase;
+          break;
+        case 'updateEmptyPhrase':
+          var ep = document.getElementById('empty-state-phrase');
+          if (ep) ep.textContent = message.phrase;
+          break;
       }
     });
 
@@ -632,6 +676,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 
   dispose(): void {
     if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    this._clearPhraseTimers();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
     log('ProjectTimelineViewProvider disposed');

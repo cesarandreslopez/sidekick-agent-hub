@@ -90,4 +90,55 @@ describe('buildHandoffMarkdown', () => {
     const md = buildHandoffMarkdown(makeInput({ duration: 45000 }));
     expect(md).toContain('45s');
   });
+
+  it('includes context health warning when health is low', () => {
+    const md = buildHandoffMarkdown(makeInput({
+      contextHealth: 35,
+      compactionCount: 4,
+    }));
+    expect(md).toContain('## Context Health Warning');
+    expect(md).toContain('35% fidelity');
+    expect(md).toContain('4 compactions');
+  });
+
+  it('omits context health warning when health is adequate', () => {
+    const md = buildHandoffMarkdown(makeInput({
+      contextHealth: 80,
+      compactionCount: 1,
+    }));
+    expect(md).not.toContain('## Context Health Warning');
+  });
+
+  it('includes truncation summary', () => {
+    const md = buildHandoffMarkdown(makeInput({
+      truncationCount: 5,
+      truncationsByTool: [
+        { tool: 'Read', count: 3 },
+        { tool: 'Bash', count: 2 },
+      ],
+    }));
+    expect(md).toContain('## Truncated Outputs');
+    expect(md).toContain('5 truncated tool outputs');
+    expect(md).toContain('**Read**: 3');
+    expect(md).toContain('**Bash**: 2');
+  });
+
+  it('omits truncation section when count is zero', () => {
+    const md = buildHandoffMarkdown(makeInput({ truncationCount: 0 }));
+    expect(md).not.toContain('## Truncated Outputs');
+  });
+
+  it('includes incomplete goal gates', () => {
+    const md = buildHandoffMarkdown(makeInput({
+      goalGates: ['Fix auth system', 'Deploy to prod'],
+    }));
+    expect(md).toContain('## CRITICAL: Incomplete Goal Gates');
+    expect(md).toContain('**Fix auth system** was NOT completed');
+    expect(md).toContain('**Deploy to prod** was NOT completed');
+  });
+
+  it('omits goal gates section when empty', () => {
+    const md = buildHandoffMarkdown(makeInput());
+    expect(md).not.toContain('Goal Gates');
+  });
 });

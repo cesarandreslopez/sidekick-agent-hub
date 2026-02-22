@@ -63,6 +63,9 @@ export interface TaskCard {
 
   /** Tags for filtering */
   tags?: string[];
+
+  /** Whether this task is a critical goal gate */
+  isGoalGate?: boolean;
 }
 
 /**
@@ -108,7 +111,9 @@ export interface TaskBoardState {
 export type TaskBoardMessage =
   | { type: 'updateBoard'; state: TaskBoardState }
   | { type: 'sessionStart'; sessionPath: string }
-  | { type: 'sessionEnd' };
+  | { type: 'sessionEnd' }
+  | { type: 'updatePhrase'; phrase: string }
+  | { type: 'updateEmptyPhrase'; phrase: string };
 
 /**
  * Messages from webview to extension.

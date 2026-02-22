@@ -33,6 +33,7 @@ import type { SessionAnalyzer } from '../services/SessionAnalyzer';
 import type { AuthService } from '../services/AuthService';
 import type { SessionEventLogger } from '../services/SessionEventLogger';
 import type { DecisionLogService } from '../services/DecisionLogService';
+import type { NotificationPersistenceService } from '../services/NotificationPersistenceService';
 import type { SessionSummaryData } from '../types/sessionSummary';
 import { ModelPricingService } from '../services/ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
@@ -43,6 +44,7 @@ import { extractKnowledgeCandidates } from '../services/KnowledgeCandidateExtrac
 import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { getRandomPhrase } from '../utils/phrases';
 
 /**
  * WebviewViewProvider for the session analytics dashboard.
@@ -132,6 +134,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Knowledge note service for knowledge note persistence and extraction */
   private _knowledgeNoteService?: KnowledgeNoteService;
 
+  /** Interval for rotating header phrase */
+  private _phraseInterval?: ReturnType<typeof setInterval>;
+
+  /** Interval for rotating empty-state phrase */
+  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
+
   /**
    * Sets the event logger instance used for dashboard toggle control.
    */
@@ -173,7 +181,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     guidanceAdvisor?: GuidanceAdvisor,
     sessionAnalyzer?: SessionAnalyzer,
     authService?: AuthService,
-    decisionLogService?: DecisionLogService
+    decisionLogService?: DecisionLogService,
+    private readonly _notificationPersistence?: NotificationPersistenceService
   ) {
     this._quotaService = quotaService;
     this._historicalDataService = historicalDataService;
@@ -230,6 +239,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._sessionMonitor.onCompaction(event => this._handleCompaction(event))
     );
 
+    this._disposables.push(
+      this._sessionMonitor.onTruncation(() => this._handleTruncation())
+    );
+
     // Subscribe to quota updates if service available
     if (this._quotaService) {
       this._disposables.push(
@@ -241,6 +254,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._disposables.push(
       this._sessionMonitor.onQuotaUpdate(quota => this._handleQuotaUpdate(quota))
     );
+
+    // Subscribe to notification persistence changes
+    if (this._notificationPersistence) {
+      this._disposables.push(
+        this._notificationPersistence.onDidChange(() => this._sendNotificationHistoryToWebview())
+      );
+    }
 
     // Initialize state from existing session if active
     if (this._sessionMonitor.isActive()) {
@@ -309,7 +329,41 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._quotaService?.startRefresh();
     }
 
+    // Start phrase rotation timers
+    this._startPhraseTimers();
+
     log('Dashboard webview resolved');
+  }
+
+  /**
+   * Starts phrase rotation timers for header (60s) and empty state (30s).
+   */
+  private _startPhraseTimers(): void {
+    this._clearPhraseTimers();
+
+    this._phraseInterval = setInterval(() => {
+      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
+    }, 60_000);
+
+    this._emptyPhraseInterval = setInterval(() => {
+      if (!this._state.sessionActive) {
+        this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
+      }
+    }, 30_000);
+  }
+
+  /**
+   * Clears phrase rotation timers.
+   */
+  private _clearPhraseTimers(): void {
+    if (this._phraseInterval) {
+      clearInterval(this._phraseInterval);
+      this._phraseInterval = undefined;
+    }
+    if (this._emptyPhraseInterval) {
+      clearInterval(this._emptyPhraseInterval);
+      this._emptyPhraseInterval = undefined;
+    }
   }
 
   /**
@@ -493,6 +547,33 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'rejectKnowledgeCandidate':
         // Just dismiss — candidates are not persisted unless accepted
+        break;
+
+      case 'requestNotificationHistory':
+        this._sendNotificationHistoryToWebview();
+        break;
+
+      case 'markNotificationRead':
+        if (this._notificationPersistence) {
+          this._notificationPersistence.markRead(message.id);
+        }
+        break;
+
+      case 'markAllNotificationsRead':
+        if (this._notificationPersistence) {
+          this._notificationPersistence.markAllRead();
+        }
+        break;
+
+      case 'clearNotificationHistory':
+        if (this._notificationPersistence) {
+          this._notificationPersistence.clearAll();
+          this._sendNotificationHistoryToWebview();
+        }
+        break;
+
+      case 'openCliDashboard':
+        vscode.commands.executeCommand('sidekick.openCliDashboard');
         break;
     }
   }
@@ -983,7 +1064,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         analysisData?.recoveryPatterns ?? [],
         stats.toolCalls,
         [], // suggestions - populated during guidance analysis
-        projectPath
+        projectPath,
+        stats.truncationEvents
       );
 
       if (candidates.length > 0) {
@@ -1496,6 +1578,37 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       type: 'updateCompactions',
       compactions: this._state.compactions
     });
+
+    // Also update context health after each compaction
+    const stats = this._sessionMonitor.getStats();
+    this._postMessage({
+      type: 'updateContextHealth',
+      score: stats.contextHealth,
+      compactionCount: stats.compactionEvents?.length ?? 0,
+    });
+  }
+
+  /**
+   * Handles truncation events from SessionMonitor.
+   * Posts truncation count and per-tool breakdown to the dashboard.
+   */
+  private _handleTruncation(): void {
+    const stats = this._sessionMonitor.getStats();
+    const byTool: Array<{ tool: string; count: number }> = [];
+    if (stats.truncationEvents) {
+      const toolCounts = new Map<string, number>();
+      for (const te of stats.truncationEvents) {
+        toolCounts.set(te.toolName, (toolCounts.get(te.toolName) || 0) + 1);
+      }
+      for (const [tool, count] of toolCounts) {
+        byTool.push({ tool, count });
+      }
+    }
+    this._postMessage({
+      type: 'updateTruncations',
+      count: stats.truncationCount,
+      byTool,
+    });
   }
 
   /**
@@ -1703,8 +1816,96 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
     }
 
+    // Sync turn attributions
+    if (stats.turnAttributions && stats.turnAttributions.length > 0) {
+      const COLORS: Record<string, string> = {
+        systemPrompt: '#e06c75',
+        userMessages: '#61afef',
+        assistantResponses: '#98c379',
+        toolInputs: '#c678dd',
+        toolOutputs: '#d19a66',
+        thinking: '#56b6c2',
+        other: '#abb2bf'
+      };
+      const LABELS: Record<string, string> = {
+        systemPrompt: 'System Prompt',
+        userMessages: 'User Messages',
+        assistantResponses: 'Assistant',
+        toolInputs: 'Tool Inputs',
+        toolOutputs: 'Tool Outputs',
+        thinking: 'Thinking',
+        other: 'Other'
+      };
+
+      const turnDisplays = stats.turnAttributions.map(turn => {
+        const bd = turn.breakdown;
+        const turnTotal = bd.systemPrompt + bd.userMessages + bd.assistantResponses +
+          bd.toolInputs + bd.toolOutputs + bd.thinking + bd.other;
+        const categories = Object.entries(bd)
+          .filter(([, tokens]) => tokens > 0)
+          .map(([cat, tokens]) => ({
+            category: LABELS[cat] || cat,
+            tokens,
+            percent: turnTotal > 0 ? Math.round((tokens / turnTotal) * 100) : 0,
+            color: COLORS[cat as keyof typeof COLORS] || '#abb2bf'
+          }));
+
+        return {
+          turnIndex: turn.turnIndex,
+          time: new Date(turn.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          role: turn.role,
+          inputTokens: turn.inputTokens,
+          outputTokens: turn.outputTokens,
+          categories,
+        };
+      });
+
+      this._postMessage({ type: 'updateTurnAttributions', turns: turnDisplays });
+    }
+
+    // Sync context waterfall
+    if (stats.contextTimeline && stats.contextTimeline.length > 0) {
+      const waterfallDisplay = {
+        points: stats.contextTimeline.map(p => ({
+          time: new Date(p.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          tokens: p.inputTokens,
+          turnIndex: p.turnIndex,
+        })),
+        compactions: (stats.compactionEvents || []).map(c => ({
+          time: c.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          before: c.contextBefore,
+          after: c.contextAfter,
+        })),
+      };
+
+      this._postMessage({ type: 'updateContextWaterfall', waterfall: waterfallDisplay });
+    }
+
     // Send richer panel updates (debounced)
     this._sendRicherPanelUpdates();
+  }
+
+  /**
+   * Sends notification history to webview.
+   */
+  private _sendNotificationHistoryToWebview(): void {
+    if (!this._notificationPersistence) return;
+
+    const notifications = this._notificationPersistence.getNotifications(50);
+    const unreadCount = this._notificationPersistence.getUnreadCount();
+
+    const displays = notifications.map(n => ({
+      id: n.id,
+      triggerId: n.triggerId,
+      triggerName: n.triggerName,
+      severity: n.severity,
+      title: n.title,
+      body: n.body,
+      time: new Date(n.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      isRead: n.isRead,
+    }));
+
+    this._postMessage({ type: 'updateNotificationHistory', notifications: displays, unreadCount });
   }
 
   /**
@@ -1748,6 +1949,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _sendStateToWebview(): void {
     this._postMessage({ type: 'updateStats', state: this._state });
+    this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
   }
 
   /**
@@ -1978,6 +2180,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .header h1 {
       font-size: 14px;
       font-weight: 600;
+    }
+
+    .header-phrase, .empty-state-phrase {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+      margin: 0;
+    }
+
+    .header-phrase {
+      margin: -12px 0 12px 0;
+      padding: 0 0 0 32px;
     }
 
     .status {
@@ -3280,6 +3494,123 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       white-space: nowrap;
     }
 
+    /* Chart containers */
+    .chart-container {
+      position: relative;
+      margin: 4px 0;
+    }
+
+    /* Notification history */
+    .notification-badge {
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    .notification-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .notification-actions .small-btn {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+      border: none;
+      padding: 2px 8px;
+      font-size: 11px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .notification-actions .small-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+    }
+
+    .notification-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .notification-item {
+      display: flex;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+    }
+
+    .notification-item:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+
+    .notification-unread {
+      background: rgba(97, 175, 239, 0.08);
+    }
+
+    .notification-read {
+      opacity: 0.7;
+    }
+
+    .notification-error {
+      border-left-color: var(--vscode-editorError-foreground);
+    }
+
+    .notification-warning {
+      border-left-color: var(--vscode-editorWarning-foreground);
+    }
+
+    .notification-info {
+      border-left-color: var(--vscode-editorInfo-foreground);
+    }
+
+    .notification-icon {
+      flex-shrink: 0;
+      font-size: 12px;
+      margin-top: 1px;
+    }
+
+    .notification-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .notification-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .notification-title {
+      font-weight: 500;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .notification-time {
+      color: var(--vscode-descriptionForeground);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .notification-body {
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     /* Timeline item noise classification */
     .timeline-item.compaction {
       background: var(--vscode-inputValidation-warningBackground);
@@ -3951,6 +4282,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     <h1>Session Analytics</h1>
     <span id="status" class="status inactive">No Session</span>
   </div>
+  <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 
   <div class="custom-path-indicator" id="custom-path-indicator" title="Using a manually selected session folder">
     <span class="path-text" id="custom-path-text">Custom: /path/to/folder</span>
@@ -3975,6 +4307,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         <button class="pin-btn" id="pin-session" title="Pin session to prevent auto-switching">Pin</button>
         <button class="nav-btn" id="refresh-sessions" title="Refresh session list">↻</button>
         <button class="nav-btn browse" id="browse-folders" title="Browse session folders">Browse...</button>
+        <button class="nav-btn" id="open-cli-dashboard" title="Open Sidekick CLI dashboard in terminal">⌨ CLI</button>
       </div>
     </div>
     <div class="session-list" id="session-list">
@@ -3996,6 +4329,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       <div class="empty-state">
         <p id="empty-state-title">No active session detected.</p>
         <p id="empty-state-hint">Start a session to see analytics.</p>
+        <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
       </div>
     </div>
 
@@ -4014,6 +4348,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             <canvas id="contextChart"></canvas>
             <span class="context-percent" id="context-percent">0%</span>
           </div>
+          <div id="context-health" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 4px;"></div>
+          <div id="truncation-info" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 2px;"></div>
         </div>
 
         <div class="gauge-row-item quota-item quota-section" id="quota-section" title="Claude Max subscription usage limits">
@@ -4139,6 +4475,34 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             <div class="attribution-legend" id="attribution-legend"></div>
           </div>
 
+          <!-- Per-Turn Attribution Chart -->
+          <div class="section" id="turn-attribution-section" style="display: none;">
+            <div class="section-title section-title-with-info">
+              Per-Turn Token Breakdown
+              <span class="info-icon">?<div class="tooltip">
+                <p>Token usage per conversation turn, stacked by category.</p>
+                <p>Uses actual API token counts for assistant turns.</p>
+              </div></span>
+            </div>
+            <div class="chart-container" style="height: 180px;">
+              <canvas id="turnAttributionChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Context Waterfall Chart -->
+          <div class="section" id="context-waterfall-section" style="display: none;">
+            <div class="section-title section-title-with-info">
+              Context Size Over Time
+              <span class="info-icon">?<div class="tooltip">
+                <p>Tracks how the context window fills and compacts over time.</p>
+                <p>Red vertical lines indicate compaction events.</p>
+              </div></span>
+            </div>
+            <div class="chart-container" style="height: 160px;">
+              <canvas id="contextWaterfallChart"></canvas>
+            </div>
+          </div>
+
           <!-- Compaction Events -->
           <div class="section" id="compaction-section" style="display: none;">
             <div class="section-title section-title-with-info">
@@ -4151,6 +4515,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               </div></span>
             </div>
             <div class="compaction-list" id="compaction-list"></div>
+          </div>
+
+          <!-- Notification History -->
+          <div class="section" id="notification-history-section" style="display: none;">
+            <div class="section-title section-title-with-info">
+              Notification History <span class="notification-badge" id="notification-badge" style="display: none;">0</span>
+              <span class="info-icon">?<div class="tooltip">
+                <p>History of notifications fired during sessions.</p>
+                <p>Persisted across extension reloads.</p>
+              </div></span>
+            </div>
+            <div class="notification-actions" id="notification-actions" style="display: none;">
+              <button class="small-btn" id="mark-all-read-btn">Mark All Read</button>
+              <button class="small-btn" id="clear-notifications-btn">Clear</button>
+            </div>
+            <div class="notification-list" id="notification-list"></div>
           </div>
 
           <div class="section">
@@ -4458,6 +4838,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const pinSessionBtn = document.getElementById('pin-session');
       const refreshSessionsBtn = document.getElementById('refresh-sessions');
       const browseFoldersBtn = document.getElementById('browse-folders');
+      const openCliDashboardBtn = document.getElementById('open-cli-dashboard');
       const sessionProviderSelect = document.getElementById('session-provider-select');
       const customPathIndicator = document.getElementById('custom-path-indicator');
       const customPathText = document.getElementById('custom-path-text');
@@ -5485,6 +5866,251 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         return String(tokens);
       }
 
+      // Per-turn attribution stacked area chart
+      var turnAttributionChart = null;
+
+      function updateTurnAttributions(turns) {
+        var sectionEl = document.getElementById('turn-attribution-section');
+        if (!sectionEl) return;
+
+        if (!turns || turns.length === 0) {
+          sectionEl.style.display = 'none';
+          return;
+        }
+
+        sectionEl.style.display = 'block';
+
+        var canvas = document.getElementById('turnAttributionChart');
+        if (!canvas || !window.Chart) return;
+
+        var labels = turns.map(function(t) { return '#' + t.turnIndex; });
+
+        // Build datasets per category
+        var categoryMap = {};
+        var COLORS = {
+          'System Prompt': '#e06c75',
+          'User Messages': '#61afef',
+          'Assistant': '#98c379',
+          'Tool Inputs': '#c678dd',
+          'Tool Outputs': '#d19a66',
+          'Thinking': '#56b6c2',
+          'Other': '#abb2bf'
+        };
+
+        turns.forEach(function(turn) {
+          turn.categories.forEach(function(cat) {
+            if (!categoryMap[cat.category]) {
+              categoryMap[cat.category] = new Array(turns.length).fill(0);
+            }
+          });
+        });
+
+        turns.forEach(function(turn, i) {
+          turn.categories.forEach(function(cat) {
+            if (categoryMap[cat.category]) {
+              categoryMap[cat.category][i] = cat.tokens;
+            }
+          });
+        });
+
+        var datasets = Object.keys(categoryMap).map(function(cat) {
+          return {
+            label: cat,
+            data: categoryMap[cat],
+            backgroundColor: (COLORS[cat] || '#abb2bf') + '99',
+            borderColor: COLORS[cat] || '#abb2bf',
+            borderWidth: 1,
+            fill: true,
+            pointRadius: 0
+          };
+        });
+
+        if (turnAttributionChart) {
+          turnAttributionChart.data.labels = labels;
+          turnAttributionChart.data.datasets = datasets;
+          turnAttributionChart.update('none');
+        } else {
+          var ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          turnAttributionChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: labels, datasets: datasets },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: 'rgba(100,100,100,0.15)' } },
+                y: {
+                  stacked: true,
+                  ticks: {
+                    color: '#888',
+                    callback: function(v) { return formatTokensShort(v); }
+                  },
+                  grid: { color: 'rgba(100,100,100,0.15)' }
+                }
+              },
+              plugins: {
+                legend: { display: true, position: 'bottom', labels: { color: '#ccc', boxWidth: 10, padding: 6, font: { size: 10 } } },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) { return ctx.dataset.label + ': ' + formatTokensShort(ctx.parsed.y); }
+                  }
+                }
+              },
+              interaction: { mode: 'index', intersect: false }
+            }
+          });
+        }
+      }
+
+      // Context waterfall chart
+      var waterfallChart = null;
+
+      function updateContextWaterfall(waterfall) {
+        var sectionEl = document.getElementById('context-waterfall-section');
+        if (!sectionEl) return;
+
+        if (!waterfall || !waterfall.points || waterfall.points.length === 0) {
+          sectionEl.style.display = 'none';
+          return;
+        }
+
+        sectionEl.style.display = 'block';
+
+        var canvas = document.getElementById('contextWaterfallChart');
+        if (!canvas || !window.Chart) return;
+
+        var labels = waterfall.points.map(function(p) { return '#' + p.turnIndex; });
+        var data = waterfall.points.map(function(p) { return p.tokens; });
+
+        // Build compaction annotation lines
+        var compactionIndices = [];
+        if (waterfall.compactions && waterfall.compactions.length > 0) {
+          waterfall.compactions.forEach(function(c) {
+            // Find closest point index by matching time
+            for (var i = 0; i < waterfall.points.length; i++) {
+              if (waterfall.points[i].time === c.time) {
+                compactionIndices.push(i);
+                break;
+              }
+            }
+          });
+        }
+
+        // Segment colors: red after compaction points
+        var segmentColor = function(ctx) {
+          if (compactionIndices.length === 0) return 'rgba(97, 175, 239, 0.6)';
+          for (var i = 0; i < compactionIndices.length; i++) {
+            if (ctx.p0DataIndex === compactionIndices[i]) return 'rgba(224, 108, 117, 0.8)';
+          }
+          return 'rgba(97, 175, 239, 0.6)';
+        };
+
+        if (waterfallChart) {
+          waterfallChart.data.labels = labels;
+          waterfallChart.data.datasets[0].data = data;
+          waterfallChart.data.datasets[0].segment = { borderColor: segmentColor };
+          waterfallChart.update('none');
+        } else {
+          var ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          waterfallChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Context Size',
+                data: data,
+                borderColor: 'rgba(97, 175, 239, 0.8)',
+                backgroundColor: 'rgba(97, 175, 239, 0.15)',
+                fill: true,
+                tension: 0.2,
+                pointRadius: 1,
+                pointHoverRadius: 4,
+                segment: { borderColor: segmentColor }
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: 'rgba(100,100,100,0.15)' } },
+                y: {
+                  ticks: {
+                    color: '#888',
+                    callback: function(v) { return formatTokensShort(v); }
+                  },
+                  grid: { color: 'rgba(100,100,100,0.15)' }
+                }
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) { return 'Context: ' + formatTokensShort(ctx.parsed.y); }
+                  }
+                }
+              }
+            }
+          });
+        }
+      }
+
+      // Notification history
+      function updateNotificationHistory(notifications, unreadCount) {
+        var sectionEl = document.getElementById('notification-history-section');
+        var listEl = document.getElementById('notification-list');
+        var actionsEl = document.getElementById('notification-actions');
+        var badgeEl = document.getElementById('notification-badge');
+        if (!sectionEl || !listEl) return;
+
+        if (!notifications || notifications.length === 0) {
+          sectionEl.style.display = 'none';
+          return;
+        }
+
+        sectionEl.style.display = 'block';
+        if (actionsEl) actionsEl.style.display = 'flex';
+
+        if (badgeEl) {
+          if (unreadCount > 0) {
+            badgeEl.textContent = String(unreadCount);
+            badgeEl.style.display = 'inline-block';
+          } else {
+            badgeEl.style.display = 'none';
+          }
+        }
+
+        var severityIcons = { error: '\u26A0', warning: '\u26A0', info: '\u2139' };
+
+        listEl.innerHTML = notifications.map(function(n) {
+          var icon = severityIcons[n.severity] || '\u2139';
+          var readClass = n.isRead ? 'notification-read' : 'notification-unread';
+          return '<div class="notification-item ' + readClass + ' notification-' + n.severity + '" data-id="' + n.id + '">' +
+            '<span class="notification-icon">' + icon + '</span>' +
+            '<div class="notification-content">' +
+              '<div class="notification-header">' +
+                '<span class="notification-title">' + escapeHtml(n.title) + '</span>' +
+                '<span class="notification-time">' + n.time + '</span>' +
+              '</div>' +
+              '<div class="notification-body">' + escapeHtml(n.body) + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+        // Click to mark read
+        listEl.querySelectorAll('.notification-item').forEach(function(item) {
+          item.addEventListener('click', function() {
+            var id = item.getAttribute('data-id');
+            if (id) {
+              vscode.postMessage({ type: 'markNotificationRead', id: id });
+              item.classList.remove('notification-unread');
+              item.classList.add('notification-read');
+            }
+          });
+        });
+      }
+
       /**
        * Updates error display with foldable groups.
        */
@@ -5974,9 +6600,31 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             renderToolCallDetails(message.toolName, message.calls);
             break;
 
+          case 'updateTurnAttributions':
+            updateTurnAttributions(message.turns);
+            break;
+
+          case 'updateContextWaterfall':
+            updateContextWaterfall(message.waterfall);
+            break;
+
+          case 'updateNotificationHistory':
+            updateNotificationHistory(message.notifications, message.unreadCount);
+            break;
+
           case 'syncEventLogState':
             var elToggle = document.getElementById('event-log-toggle');
             if (elToggle) elToggle.checked = message.enabled;
+            break;
+
+          case 'updatePhrase':
+            var headerPhrase = document.getElementById('header-phrase');
+            if (headerPhrase) headerPhrase.textContent = message.phrase;
+            break;
+
+          case 'updateEmptyPhrase':
+            var emptyPhrase = document.getElementById('empty-state-phrase');
+            if (emptyPhrase) emptyPhrase.textContent = message.phrase;
             break;
         }
       });
@@ -6079,6 +6727,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       }
 
+      if (openCliDashboardBtn) {
+        openCliDashboardBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          vscode.postMessage({ type: 'openCliDashboard' });
+        });
+      }
+
       if (resetCustomPath) {
         resetCustomPath.addEventListener('click', function() {
           vscode.postMessage({ type: 'clearCustomPath' });
@@ -6135,6 +6790,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           vscode.postMessage({ type: 'generateHandoff' });
         });
       }
+
+      // Notification history buttons
+      var markAllReadBtn = document.getElementById('mark-all-read-btn');
+      if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', function() {
+          vscode.postMessage({ type: 'markAllNotificationsRead' });
+        });
+      }
+      var clearNotificationsBtn = document.getElementById('clear-notifications-btn');
+      if (clearNotificationsBtn) {
+        clearNotificationsBtn.addEventListener('click', function() {
+          vscode.postMessage({ type: 'clearNotificationHistory' });
+        });
+      }
+
+      // Request notification history on load
+      vscode.postMessage({ type: 'requestNotificationHistory' });
 
       // ==== Collapsible panel toggles ====
       document.querySelectorAll('[data-collapsible="true"]').forEach(function(header) {
@@ -6482,6 +7154,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._richerPanelTimer) {
       clearTimeout(this._richerPanelTimer);
     }
+    this._clearPhraseTimers();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
     log('DashboardViewProvider disposed');

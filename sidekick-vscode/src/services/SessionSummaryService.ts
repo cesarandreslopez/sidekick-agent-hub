@@ -365,6 +365,7 @@ export class SessionSummaryService {
           duration,
           toolCallCount,
           estimatedCost: totalCost * costShare,
+          isGoalGate: t.isGoalGate,
         };
       });
   }

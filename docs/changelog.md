@@ -5,6 +5,43 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-02-19
+
+### Added
+
+- **Truncation Detection**: Detects when agent tool outputs are silently truncated by the runtime
+  - Scans every tool result for 6 known truncation markers (`[Response truncated`, `content_too_long`, `<response clipped>`, etc.)
+  - Dashboard shows total truncation count and per-tool breakdown with warning indicator
+  - Truncation events recorded on `SessionStats` for handoff and summary consumption
+  - Files with 3+ truncated outputs automatically surfaced as knowledge note candidates (gotcha type)
+- **Context Health Monitoring**: Tracks context fidelity as compactions degrade the conversation
+  - Fidelity score starts at 100% and decreases with each compaction event based on count and reclaimed percentage
+  - Color-coded dashboard gauge: green (70-100%), yellow (40-69%), red (below 40%)
+  - Handoffs include a "Context Health Warning" section when fidelity drops below 50%
+  - Score available on `SessionStats.contextHealth` for downstream consumers
+- **Goal Gates**: Automatic detection and visual flagging of critical tasks
+  - Tasks flagged when matching critical keywords (CRITICAL, MUST, blocker, required, etc.) or blocking 3+ other tasks
+  - `isGoalGate` property on `TaskCard`, `PersistedTask`, and `TaskSummaryItem`
+  - Kanban board: red left border and warning badge on goal-gate cards
+  - Mind map: `isGoalGate` property on task nodes for distinct visual treatment
+  - Tasks pending across multiple sessions auto-flagged as goal gates in `TaskPersistenceService`
+  - Incomplete goal gates get a dedicated section in handoff documents
+- **Cycle Detection**: Identifies when agents enter repetitive tool-call loops
+  - Sliding-window algorithm (`cycleDetector.ts`) with configurable window size (default: 10 calls)
+  - Detects repeating patterns of length 1-3 with 2+ repetitions via signature hashing
+  - VS Code warning notification with affected file list when cycles are detected
+  - Throttled to 60-second intervals to avoid notification spam
+  - `SessionAnalyzer` emits `cycle_detected` inefficiency type
+  - Mind map marks cycling files with `isCycling` indicator (checked at 6 and 10-call windows)
+  - Comprehensive test suite for the detection algorithm
+- **"Open CLI Dashboard" VS Code Command**: New command `Sidekick: Open CLI Dashboard` launches the Sidekick TUI dashboard in a VS Code terminal, providing quick access to session monitoring without leaving the editor
+  - Install the CLI separately with `npm install -g sidekick-agent-hub`
+
+### Fixed
+
+- **`retry_loop` inefficiency detection**: Now properly emits when consecutive fail-retry pairs are detected on the same tool and target (previously counted failures but never produced inefficiency entries)
+- **`command_failure` inefficiency detection**: Now correctly filters to only failed Bash calls and emits when the same base command fails 3+ times
+
 ## [0.11.0] - 2026-02-19
 
 ### Added

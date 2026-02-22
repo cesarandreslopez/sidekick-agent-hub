@@ -3,7 +3,8 @@
 > **Usage:** Copy everything below the line into a Claude Code or OpenCode session.
 > The prompt exercises every Sidekick monitoring view: Session Analytics
 > (including the Decisions panel), Kanban Board, Mind Map (including plan
-> visualization), Latest Files Touched, and Subagents.
+> visualization), Latest Files Touched, Subagents, and Session Intelligence
+> features (context health, goal gates, truncation, cycle detection).
 
 ---
 
@@ -80,6 +81,86 @@ Create and manage tasks with dependencies:
 10. Use **Write** to create `src/index.test.ts` with a basic integration test stub.
 
 11. Use **TaskUpdate** to mark Task C as `completed`.
+
+### Section 3A — Goal Gate Tasks (Kanban Board + Mind Map + Handoff)
+
+Goal gates are high-priority tasks that must be completed before handoff. They are
+detected by keyword matching or by blocking multiple downstream tasks.
+
+1. Use **TaskCreate** to create a goal-gate task detected by **keyword**:
+   - subject: "CRITICAL: Fix authentication before deploy"
+   - description: "Authentication is broken in production. This must be resolved before any other work proceeds."
+   - activeForm: "Fixing authentication"
+
+   The keyword regex is: `/\b(CRITICAL|MUST|blocker|required|must.?complete|goal.?gate|essential|do.?not.?skip|blocking)\b/i`
+
+2. Use **TaskCreate** to create three dependent tasks:
+   - Task D: subject "Update user profile page", description "Depends on auth fix", activeForm "Updating profile page"
+   - Task E: subject "Add logout button", description "Depends on auth fix", activeForm "Adding logout button"
+   - Task F: subject "Write auth integration tests", description "Depends on auth fix", activeForm "Writing auth tests"
+
+3. Use **TaskCreate** to create a goal-gate task detected by **blocking count**:
+   - subject: "Set up CI pipeline", description: "Pipeline must be ready before feature work begins", activeForm: "Setting up CI"
+
+4. Use **TaskUpdate** to make Tasks D, E, and F all blocked by the "Set up CI pipeline" task.
+   (A task blocking 3+ others is automatically flagged as a goal gate.)
+
+5. Use **TaskUpdate** to mark the "CRITICAL: Fix authentication" task as `completed`.
+   Leave "Set up CI pipeline" as `pending` so the handoff will flag it as incomplete.
+
+**What to verify:**
+- **Kanban Board**: Goal-gate cards show a red left border and a warning icon (⚠️)
+- **Mind Map**: Goal-gate task nodes have distinct visual treatment (red border or badge)
+- **Handoff**: Generate a handoff — the markdown includes a "CRITICAL: Incomplete Goal Gates" section listing the incomplete "Set up CI pipeline" task
+
+### Section 3B — Error Burst & Retry Patterns (Session Analytics + Notifications)
+
+Exercise the error detection systems that flag inefficient agent behavior.
+
+#### Error burst (3+ consecutive tool errors)
+
+1. Use **Read** to read `src/nonexistent-1.ts` (will fail — file not found)
+2. Use **Read** to read `src/nonexistent-2.ts` (will fail)
+3. Use **Read** to read `src/nonexistent-3.ts` (will fail)
+
+This triggers an error burst notification after the third consecutive error.
+
+#### Command failure inefficiency (same Bash command fails 3+ times)
+
+4. Use **Bash** to run: `npm run nonexistent-script` (will fail)
+5. Use **Bash** to run: `npm run nonexistent-script` (will fail again)
+6. Use **Bash** to run: `npm run nonexistent-script` (will fail a third time)
+
+#### Retry loop inefficiency (consecutive fail pairs on same target)
+
+7. Use **Read** to read `src/phantom-file.ts` (will fail)
+8. Use **Read** to read `src/phantom-file.ts` (will fail again — same file, back-to-back)
+
+**What to verify:**
+- **Notification**: VS Code warning notification appears after the error burst (step 3)
+- **Session Analytics → Inefficiencies**: Panel shows `command_failure` entry (steps 4-6) and `retry_loop` entry (steps 7-8)
+
+> **Note:** The files read in this section don't exist, so no cleanup is needed.
+
+### Section 3C — Cycle Detection (Mind Map + Notifications)
+
+Exercise the cycle detector by creating a repeating Read→Edit pattern on the same
+file. The detector looks for a pattern of length 2 repeated 3 times within a window
+of 6 tool calls.
+
+1. Use **Read** to read `src/math.ts`
+2. Use **Edit** to add a comment `// cycle test 1` at the top of `src/math.ts`
+3. Use **Read** to read `src/math.ts`
+4. Use **Edit** to change the comment to `// cycle test 2` in `src/math.ts`
+5. Use **Read** to read `src/math.ts`
+6. Use **Edit** to change the comment to `// cycle test 3` in `src/math.ts`
+
+**What to verify:**
+- **Notification**: VS Code warning notification about agent cycling on `src/math.ts`
+- **Mind Map**: The `src/math.ts` file node shows a cycling indicator (animated border or badge)
+
+> **Provider note:** Cycle detection works identically across all three providers
+> since it operates on normalized `ToolCall` data from the session pipeline.
 
 ### Section 4 — Plan Visualization (Mind Map plan subgraph)
 
@@ -192,6 +273,10 @@ rm -f src/math.ts src/strings.ts src/index.ts src/bad.ts src/math.test.ts src/st
 rmdir src/ 2>/dev/null
 ```
 
+> **Note:** The nonexistent files from Section 3B (`src/nonexistent-*.ts`,
+> `src/phantom-file.ts`) were never created, so no cleanup is needed for them.
+> Tasks from Sections 3 and 3A are in-memory only and reset with the session.
+
 Then say: "Session monitor test complete. All Sidekick views should now have data."
 
 ---
@@ -202,11 +287,18 @@ Then say: "Session monitor test complete. All Sidekick views should now have dat
 |---|---|
 | **Session Analytics** | All sections (token usage, tool success/failure rates, timeline, context) |
 | **Session Analytics → Decisions** | Section 5 (recovery patterns, plan mode, user questions, text patterns) |
+| **Session Analytics → Inefficiencies** | Section 3B (error burst, command failure, retry loop), Section 3C (cycle detection) |
+| **Dashboard → Context Health** | Section 3B note: context health displays after compaction — hard to trigger in a short test, but verify the gauge element exists |
+| **Dashboard → Truncation Count** | Truncation requires tool output with specific markers — verified by unit tests; element visibility can be confirmed in Dashboard |
 | **Kanban Board** | Section 3 (TaskCreate, TaskUpdate lifecycle with blockedBy) |
+| **Kanban Board → Goal Gates** | Section 3A (red border + warning icon on goal-gate cards) |
 | **Mind Map** | Section 1 (file + directory nodes), Section 4 (plan + plan-step nodes), Section 6 (command + URL nodes), Section 7 (subagent nodes) |
 | **Mind Map → Plan Subgraph** | Section 4 (plan root, plan-step nodes with status, sequence links, task cross-refs) |
+| **Mind Map → Goal Gates** | Section 3A (distinct visual treatment on goal-gate task nodes) |
+| **Mind Map → Cycling Files** | Section 3C (cycling indicator on file nodes caught in repetitive loops) |
 | **Latest Files Touched** | Section 1 (Write, Read, Edit), Section 2 (Write, Bash), Section 3 (Write) |
 | **Subagents** | Section 7 (Explore, Plan, Bash agent types) |
+| **Handoff → Goal Gates** | Section 3A ("CRITICAL: Incomplete Goal Gates" section in handoff markdown) |
 
 ## Tools Used
 

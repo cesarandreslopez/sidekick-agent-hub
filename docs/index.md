@@ -36,6 +36,8 @@
 
 ![CLAUDE.md Suggestions](images/claude-md-suggestions.png)
 
+**Monitor from the terminal.** The [Sidekick CLI](features/cli.md) provides a full-screen TUI dashboard for monitoring agent sessions without leaving the terminal. Browse sessions, tasks, decisions, knowledge notes, and more — all rendered in an Ink-based terminal UI. Install with `npm install -g sidekick-agent-hub` and run `sidekick dashboard`. Works with Claude Code, OpenCode, and Codex sessions.
+
 ## Why Am I Building This?
 
 AI coding agents are the most transformative tools I've used in my career. They can scaffold entire features, debug problems across files, and handle the mechanical parts of software engineering that used to eat hours of every day.
@@ -59,8 +61,11 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Code Transforms** — select code, describe changes in natural language
 - **AI Commit Messages** — meaningful messages generated from your actual diff
 - **Session Monitor** — see exactly where your tokens are going before you hit quota limits
-- **Mind Map** — trace how your agent navigated the codebase during a session
-- **Kanban Board** — track tasks and subagents at a glance during complex operations
+- **Context Health** — track how much information your agent has lost to context compaction
+- **Truncation Detection** — know when tool outputs are silently cut short
+- **Cycle Detection** — get alerted when your agent enters repetitive loops
+- **Mind Map** — trace how your agent navigated the codebase, with cycling file and goal-gate indicators
+- **Kanban Board** — track tasks and subagents at a glance, with goal-gate badges on critical tasks
 - **Project Timeline** — chronological view of all sessions with duration, token usage, and expandable details
 - **Knowledge Notes** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking
 - **Quick Ask** — inline chat for questions and code changes without switching context
@@ -69,6 +74,7 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Error Analysis** — understand what went wrong, why, and how to fix it
 - **Session Handoff** — pick up where you left off instead of re-discovering everything
 - **CLAUDE.md Suggestions** — learn from session patterns to improve agent effectiveness
+- **Sidekick CLI** — full-screen TUI dashboard for monitoring agent sessions from the terminal
 
 ## Quick Install
 

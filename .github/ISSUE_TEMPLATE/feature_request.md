@@ -23,6 +23,7 @@ A clear and concise description of any alternative solutions or features you've 
 Which part of the project does this affect?
 
 - [ ] Extension (VS Code / VSCodium / compatible editors)
+- [ ] CLI (sidekick-cli)
 - [ ] Documentation
 
 ## Additional Context

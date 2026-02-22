@@ -12,7 +12,7 @@
  */
 
 import type { AnalyzedError, RecoveryPattern } from '../types/analysis';
-import type { ToolCall } from '../types/claudeSession';
+import type { ToolCall, TruncationEvent } from '../types/claudeSession';
 import type { KnowledgeCandidateDisplay } from '../types/knowledgeNote';
 
 /**
@@ -131,6 +131,43 @@ export function extractGuidelineCandidates(
 }
 
 /**
+ * Extracts truncation candidates from files that frequently produce truncated output.
+ *
+ * Files with 3+ truncation events become gotcha candidates suggesting
+ * the agent should read them in chunks.
+ */
+export function extractTruncationCandidates(
+  truncationEvents: TruncationEvent[],
+  projectPath: string
+): KnowledgeCandidateDisplay[] {
+  const candidates: KnowledgeCandidateDisplay[] = [];
+
+  // Group truncation events by file path
+  const fileCounts = new Map<string, number>();
+  for (const event of truncationEvents) {
+    if (!event.filePath) continue;
+    const relPath = toRelativePath(event.filePath, projectPath);
+    if (!relPath) continue;
+    fileCounts.set(relPath, (fileCounts.get(relPath) || 0) + 1);
+  }
+
+  // Files with 3+ truncations become candidates
+  for (const [filePath, count] of fileCounts) {
+    if (count < 3) continue;
+    candidates.push({
+      noteType: 'gotcha',
+      content: `This file produces truncated output. Consider reading in chunks or targeting specific sections.`,
+      filePath,
+      source: 'auto_error',
+      confidence: Math.min(0.9, 0.5 + count * 0.1),
+      evidence: `${count} truncation events on this file`,
+    });
+  }
+
+  return candidates;
+}
+
+/**
  * Top-level extraction combining all sources.
  */
 export function extractKnowledgeCandidates(
@@ -138,13 +175,17 @@ export function extractKnowledgeCandidates(
   recoveryPatterns: RecoveryPattern[],
   toolCalls: ToolCall[],
   suggestions: Array<{ title: string; observed: string; suggestion: string; reasoning: string }>,
-  projectPath: string
+  projectPath: string,
+  truncationEvents?: TruncationEvent[]
 ): KnowledgeCandidateDisplay[] {
   const all: KnowledgeCandidateDisplay[] = [];
 
   all.push(...extractGotchaCandidates(errors, toolCalls, projectPath));
   all.push(...extractPatternCandidates(recoveryPatterns, toolCalls, projectPath));
   all.push(...extractGuidelineCandidates(suggestions, projectPath));
+  if (truncationEvents && truncationEvents.length > 0) {
+    all.push(...extractTruncationCandidates(truncationEvents, projectPath));
+  }
 
   // Deduplicate by filePath + noteType
   const seen = new Set<string>();
