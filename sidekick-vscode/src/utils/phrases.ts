@@ -1246,6 +1246,35 @@ export const INTERVIEW_HELL: string[] = [
   'You can mass-solve any LeetCode problem. You cannot mass-solve the anxiety of waiting for the offer.',
 ];
 
+/** Tongue twisters for developers, AI agents, and sidekick enthusiasts. */
+export const TONGUE_TWISTERS: string[] = [
+  'Six sidekicks shipped six sketchy shell scripts.',
+  'Claude\'s Claude Code client claimed clean completions consistently.',
+  'Prompt providers promptly propagate parallel predictions.',
+  'Bigger buffer batches bring better bundled builds.',
+  'She sells shell sessions by the session shore.',
+  'Token tracking tools took twelve troubled tries to type.',
+  'Red refactor, read reactor, reed reflector.',
+  'Inline inference instantly infers incorrect imports.',
+  'Peter\'s pipeline picked a peck of parsed pull requests.',
+  'Clever Claude cached code completions, causing curious context collisions.',
+  'Six streaming sockets served seven stale suggestions swiftly.',
+  'How much code could a code agent chuck if a code agent could chuck code?',
+  'Fast fetch, fresh cache, free crash.',
+  'Betty\'s bot built better batch builds before breakfast.',
+  'Specific Pacific API spec specifics.',
+  'Truly rural plural neural network layer nomenclature.',
+  'The thirty-three throttled threads thought through three thousand throughput thresholds.',
+  'Which watcher watched which webpack while Webpack watched which watcher?',
+  'Fuzzy was a function. Fuzzy had no body. Fuzzy wasn\'t really a function, was he?',
+  'A proper prompt provider promptly provides properly prompted provisions.',
+  'Fresh French fetch request refresh frequencies.',
+  'If a sidekick could kick side effects, how many side effects would a sidekick kick?',
+  'Many an agentic AI ably auto-applies ample annotations.',
+  'Eleven elegant element event emitters emitted elemental errors.',
+  'Selfish shellfish self-host shell sessions in shelf-stable shell scripts.',
+];
+
 export const ALL_PHRASES: string[] = [
   ...SIDEKICK_ENERGY,
   ...AI_COMMENTARY,
@@ -1267,6 +1296,7 @@ export const ALL_PHRASES: string[] = [
   ...COMMIT_SINS,
   ...FORTUNE_COOKIE,
   ...INTERVIEW_HELL,
+  ...TONGUE_TWISTERS,
 ];
 
 /** Pick a random phrase from all categories. */
