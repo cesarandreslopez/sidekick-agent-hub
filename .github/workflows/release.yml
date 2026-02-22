@@ -75,7 +75,7 @@ jobs:
         run: npm test
 
       - name: Publish to Open VSX
-        run: npx ovsx publish
+        run: npx ovsx publish || echo "Already published or publish failed — continuing"
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
@@ -251,6 +251,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    if: always() && needs.validate.result == 'success'
     needs: [validate, publish-npm, build-binaries]
 
     steps:

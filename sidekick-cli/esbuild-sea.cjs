@@ -15,7 +15,7 @@ const stubDevtools = {
   },
 };
 
-// SEA build: ESM format (Node.js 22+ SEA supports ESM), no shebang banner,
+// SEA build: ESM format (Ink requires top-level await). No shebang banner,
 // minified for smaller binary size. Includes require polyfill for bundled CJS deps.
 build({
   entryPoints: ['src/cli.ts'],
@@ -26,7 +26,6 @@ build({
   outfile: 'dist/sidekick-sea.mjs',
   banner: {
     js: [
-      // Polyfill CommonJS globals for bundled CJS deps in ESM output
       'import { createRequire as __createRequire } from "module";',
       'const require = __createRequire(import.meta.url);',
     ].join('\n'),
