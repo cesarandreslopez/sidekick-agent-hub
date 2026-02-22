@@ -6,8 +6,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   validate:
@@ -75,37 +73,9 @@ jobs:
         run: npm test
 
       - name: Publish to Open VSX
-        run: npx ovsx publish || echo "Already published or publish failed — continuing"
+        run: npx ovsx publish || echo "Already published — continuing"
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-
-  deploy-docs:
-    name: Deploy Documentation
-    runs-on: ubuntu-latest
-    needs: validate
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - run: pip install zensical
-
-      - run: zensical build
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
 
   publish-npm:
     name: Publish CLI to npm
@@ -153,128 +123,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  build-binaries:
-    name: Build ${{ matrix.target }} Binary
-    runs-on: ${{ matrix.os }}
-    needs: validate
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x64
-            ext: ''
-          - os: ubuntu-24.04-arm
-            target: linux-arm64
-            ext: ''
-          - os: macos-latest
-            target: darwin-arm64
-            ext: ''
-          - os: macos-13
-            target: darwin-x64
-            ext: ''
-          - os: windows-latest
-            target: win-x64
-            ext: '.exe'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Build shared library
-        working-directory: sidekick-shared
-        run: npm ci && npm run build
-
-      - name: Install CLI dependencies
-        working-directory: sidekick-cli
-        run: npm ci
-
-      - name: Build CJS bundle for SEA
-        working-directory: sidekick-cli
-        run: node esbuild-sea.cjs
-
-      - name: Generate SEA blob
-        working-directory: sidekick-cli
-        run: node --experimental-sea-config sea-config.json
-
-      - name: Create SEA binary (Linux/macOS)
-        if: runner.os != 'Windows'
-        working-directory: sidekick-cli
-        run: |
-          cp "$(command -v node)" "dist/sidekick${{ matrix.ext }}"
-          npx postject "dist/sidekick${{ matrix.ext }}" NODE_SEA_BLOB dist/sea-prep.blob \
-            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
-            $(if [[ "$(uname)" == "Darwin" ]]; then echo "--macho-segment-name NODE_SEA"; fi)
-
-      - name: Create SEA binary (Windows)
-        if: runner.os == 'Windows'
-        working-directory: sidekick-cli
-        shell: pwsh
-        run: |
-          $nodePath = (Get-Command node).Source
-          Copy-Item $nodePath "dist/sidekick.exe"
-          # Remove signature so postject can modify the binary
-          signtool remove /s "dist/sidekick.exe" 2>$null; $true
-          npx postject "dist/sidekick.exe" NODE_SEA_BLOB dist/sea-prep.blob `
-            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
-
-      - name: Verify binary runs
-        working-directory: sidekick-cli
-        run: ./dist/sidekick${{ matrix.ext }} --version
-
-      - name: Compress binary (Linux/macOS)
-        if: runner.os != 'Windows'
-        working-directory: sidekick-cli
-        run: |
-          tar -czf "dist/sidekick-${{ matrix.target }}.tar.gz" -C dist "sidekick${{ matrix.ext }}"
-
-      - name: Compress binary (Windows)
-        if: runner.os == 'Windows'
-        working-directory: sidekick-cli
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "dist/sidekick.exe" -DestinationPath "dist/sidekick-${{ matrix.target }}.zip"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: binary-${{ matrix.target }}
-          path: |
-            sidekick-cli/dist/sidekick-*.tar.gz
-            sidekick-cli/dist/sidekick-*.zip
-          retention-days: 1
-
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    if: always() && needs.validate.result == 'success'
-    needs: [validate, publish-npm, build-binaries]
+    needs: [validate, publish-npm]
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download all binary artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: binary-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: Generate checksums
-        working-directory: release-assets
-        run: |
-          sha256sum sidekick-* > SHA256SUMS.txt
-          cat SHA256SUMS.txt
 
       - name: Extract changelog section
         id: changelog
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          # Try to extract section for this version from CHANGELOG.md
           if [[ -f CHANGELOG.md ]]; then
             SECTION=$(sed -n "/^## .*${VERSION}/,/^## /p" CHANGELOG.md | head -n -1)
             if [[ -n "$SECTION" ]]; then
@@ -297,20 +157,10 @@ jobs:
 
             ## Install
 
-            **npm** (requires Node.js 20+):
+            **VS Code extension**: Install from [Open VSX](https://open-vsx.org/extension/CesarAndresLopez/sidekick-for-max).
+
+            **CLI via npm** (requires Node.js 20+):
             ```
             npm i -g sidekick-agent-hub
             ```
-
-            **Standalone binary** (no Node.js required):
-            Download the binary for your platform below, extract, and add to your PATH.
-
-            ## Checksums
-            ```
-            $(cat release-assets/SHA256SUMS.txt)
-            ```
-          files: |
-            release-assets/sidekick-*.tar.gz
-            release-assets/sidekick-*.zip
-            release-assets/SHA256SUMS.txt
           fail_on_unmatched_files: false
