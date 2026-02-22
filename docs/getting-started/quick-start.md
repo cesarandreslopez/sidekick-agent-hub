@@ -46,3 +46,15 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 
 !!! tip
     Click "Sidekick" in the status bar for quick access to settings, logs, and provider switching.
+
+## CLI Dashboard
+
+If you installed the [CLI](installation.md#cli-terminal-dashboard), you can monitor agent sessions from any terminal:
+
+```bash
+sidekick dashboard
+```
+
+The dashboard auto-detects your project and provider (Claude Code, OpenCode, or Codex). Use number keys **1–6** to switch panels and **Tab** to cycle through detail tabs. You'll see live session activity, token usage, tasks, a mind map, and more.
+
+See [CLI reference](../features/cli.md) for the full command list.

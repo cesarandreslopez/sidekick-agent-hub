@@ -32,6 +32,30 @@ npm run package
 
 Then install the generated `.vsix` file as above.
 
+## CLI (Terminal Dashboard)
+
+The Sidekick CLI provides a terminal-based dashboard for monitoring agent sessions — no VS Code required. It works with any editor (Zed, Neovim, etc.) or on its own.
+
+```bash
+npm install -g sidekick-agent-hub
+```
+
+Requires **Node.js >= 20**. The npm package name is `sidekick-agent-hub`, but the binary is called `sidekick`.
+
+Verify the installation:
+
+```bash
+sidekick --help
+```
+
+### Build CLI from Source
+
+```bash
+git clone https://github.com/cesarandreslopez/sidekick-agent-hub.git
+cd sidekick-agent-hub
+bash scripts/build-all.sh
+```
+
 ## Cursor-Specific Notes
 
 Cursor has its own AI features that may conflict with Sidekick completions. To use Sidekick in Cursor:
