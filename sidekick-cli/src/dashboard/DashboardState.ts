@@ -6,6 +6,7 @@
 import type { FollowEvent } from 'sidekick-shared';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
+import type { UpdateInfo } from './UpdateCheckService';
 
 // ── Public metric types ──
 
@@ -141,6 +142,7 @@ export interface DashboardMetrics {
   todos: string[];
   plan: PlanInfo | null;
   contextAttribution: ContextAttribution;
+  updateInfo: UpdateInfo | null;
 }
 
 // ── Constants ──
@@ -223,6 +225,9 @@ export class DashboardState {
   // Quota
   private _quota: QuotaState | null = null;
 
+  // Update availability
+  private _updateInfo: UpdateInfo | null = null;
+
   // Compaction tracking
   private _compactionCount = 0;
   private _compactionEvents: CompactionEvent[] = [];
@@ -264,6 +269,7 @@ export class DashboardState {
       toolInputs: 0, toolOutputs: 0, thinking: 0, other: 0,
     };
     this._quota = null;
+    this._updateInfo = null;
     this._compactionCount = 0;
     this._compactionEvents = [];
     this._previousContextSize = 0;
@@ -399,6 +405,11 @@ export class DashboardState {
     this._quota = quota;
   }
 
+  /** Set update availability info from UpdateCheckService. */
+  setUpdateInfo(info: UpdateInfo): void {
+    this._updateInfo = info;
+  }
+
   /** Get the current snapshot of all metrics. */
   getMetrics(): DashboardMetrics {
     this.detectParallelSubagents();
@@ -428,6 +439,7 @@ export class DashboardState {
       todos: [...this._todos],
       plan: this._plan,
       contextAttribution: { ...this._contextAttribution },
+      updateInfo: this._updateInfo,
     };
   }
 

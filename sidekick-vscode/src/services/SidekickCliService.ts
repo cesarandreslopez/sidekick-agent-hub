@@ -17,8 +17,10 @@ import { log } from './Logger';
 const TERMINAL_NAME = 'Sidekick Dashboard';
 const DOCS_URL = 'https://github.com/cesarandreslopez/sidekick-agent-hub';
 const NPM_PACKAGE = 'sidekick-agent-hub';
+const EXTENSION_ID = 'CesarAndresLopez.sidekick-for-max';
 
 let dashboardTerminal: vscode.Terminal | undefined;
+let versionCheckDone = false;
 
 /**
  * Common installation paths for the Sidekick CLI on different platforms.
@@ -138,6 +140,58 @@ export function findSidekickCli(): string | null {
   return null;
 }
 
+export interface CliVersionCheck {
+  cliVersion: string;
+  extensionVersion: string;
+  needsUpdate: boolean;
+}
+
+/**
+ * Checks the installed CLI version against the extension version.
+ * Returns null on any error (CLI not found, version parse failure, etc.).
+ */
+export function checkCliVersion(cliPath: string): CliVersionCheck | null {
+  try {
+    const output = execSync(`"${cliPath}" --version`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 5000,
+    }).trim();
+
+    // Parse version — output may be just "0.12.0" or "sidekick/0.12.0"
+    const match = output.match(/(\d+\.\d+\.\d+)/);
+    if (!match) return null;
+    const cliVersion = match[1];
+
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    const extensionVersion: string = ext?.packageJSON?.version;
+    if (!extensionVersion) return null;
+
+    return {
+      cliVersion,
+      extensionVersion,
+      needsUpdate: isNewer(extensionVersion, cliVersion),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns true if version `a` is newer than version `b` (simple semver).
+ */
+export function isNewer(a: string, b: string): boolean {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const va = pa[i] || 0;
+    const vb = pb[i] || 0;
+    if (va > vb) return true;
+    if (va < vb) return false;
+  }
+  return false;
+}
+
 export interface OpenCliDashboardOptions {
   workspacePath?: string;
   providerId?: string;
@@ -162,6 +216,27 @@ export function openCliDashboard(options?: OpenCliDashboardOptions): void {
   if (dashboardTerminal && dashboardTerminal.exitStatus === undefined) {
     dashboardTerminal.show();
     return;
+  }
+
+  // One-time version check per session (non-blocking)
+  if (!versionCheckDone) {
+    versionCheckDone = true;
+    const result = checkCliVersion(cliPath);
+    if (result?.needsUpdate) {
+      vscode.window
+        .showInformationMessage(
+          `Sidekick CLI v${result.cliVersion} is outdated (extension is v${result.extensionVersion}). Update for the best experience.`,
+          'Update Now',
+          'Later',
+        )
+        .then((choice) => {
+          if (choice === 'Update Now') {
+            const t = vscode.window.createTerminal({ name: 'Update Sidekick CLI' });
+            t.sendText(`npm install -g ${NPM_PACKAGE}`);
+            t.show();
+          }
+        });
+    }
   }
 
   // Build args
@@ -222,4 +297,5 @@ export function disposeDashboardTerminal(): void {
     dashboardTerminal.dispose();
     dashboardTerminal = undefined;
   }
+  versionCheckDone = false;
 }

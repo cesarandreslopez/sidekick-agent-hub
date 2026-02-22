@@ -843,6 +843,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
           filterString={state.filterString}
           matchCount={currentItems.length}
           totalCount={panel.getItems(metrics, staticData).length}
+          updateInfo={metrics.updateInfo}
         />
 
         {/* Overlays */}

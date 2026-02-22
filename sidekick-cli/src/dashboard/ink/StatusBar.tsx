@@ -6,6 +6,7 @@ declare const __CLI_VERSION__: string;
 
 import React from 'react';
 import { Box, Text } from 'ink';
+import type { UpdateInfo } from '../UpdateCheckService';
 
 interface StatusBarProps {
   eventCount: number;
@@ -16,6 +17,7 @@ interface StatusBarProps {
   filterString: string;
   matchCount?: number;
   totalCount?: number;
+  updateInfo?: UpdateInfo | null;
 }
 
 export function StatusBar({
@@ -27,6 +29,7 @@ export function StatusBar({
   filterString,
   matchCount,
   totalCount,
+  updateInfo,
 }: StatusBarProps): React.ReactElement {
   const evtLabel = eventCount > 0 ? `${eventCount} events` : 'waiting...';
 
@@ -35,6 +38,11 @@ export function StatusBar({
       {/* Brand + version */}
       <Text bold color="magenta">⚡ SIDEKICK</Text>
       <Text color="gray"> v{__CLI_VERSION__}</Text>
+
+      {/* Update available */}
+      {updateInfo && (
+        <Text color="yellow"> (v{updateInfo.latest} available — npm i -g sidekick-agent-hub)</Text>
+      )}
 
       {/* Provider */}
       {providerName && (

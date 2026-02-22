@@ -8,16 +8,22 @@ import * as os from 'os';
 // Mock vscode
 const mockCreateTerminal = vi.fn();
 const mockShowErrorMessage = vi.fn().mockResolvedValue(undefined);
+const mockShowInformationMessage = vi.fn().mockResolvedValue(undefined);
 const mockGetConfiguration = vi.fn();
+const mockGetExtension = vi.fn();
 
 vi.mock('vscode', () => ({
   default: {},
   window: {
     createTerminal: (...args: unknown[]) => mockCreateTerminal(...args),
     showErrorMessage: (...args: unknown[]) => mockShowErrorMessage(...args),
+    showInformationMessage: (...args: unknown[]) => mockShowInformationMessage(...args),
   },
   workspace: {
     getConfiguration: (...args: unknown[]) => mockGetConfiguration(...args),
+  },
+  extensions: {
+    getExtension: (...args: unknown[]) => mockGetExtension(...args),
   },
   env: {
     openExternal: vi.fn(),
@@ -41,7 +47,7 @@ vi.mock('./Logger', () => ({
   log: vi.fn(),
 }));
 
-import { findSidekickCli, openCliDashboard, disposeDashboardTerminal } from './SidekickCliService';
+import { findSidekickCli, openCliDashboard, disposeDashboardTerminal, checkCliVersion, isNewer } from './SidekickCliService';
 import { execSync } from 'child_process';
 
 describe('SidekickCliService', () => {
@@ -231,6 +237,133 @@ describe('SidekickCliService', () => {
         'Install in Terminal',
         'Learn More'
       );
+    });
+
+    it('shows update notification when CLI version is outdated', () => {
+      mockGetConfiguration.mockReturnValue({
+        get: vi.fn().mockReturnValue('/usr/local/bin/sidekick'),
+      });
+      mockExistsSync.mockReturnValue(true);
+      vi.mocked(execSync).mockReturnValue('0.11.0\n');
+      mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
+
+      openCliDashboard();
+
+      expect(mockShowInformationMessage).toHaveBeenCalledWith(
+        expect.stringContaining('v0.11.0 is outdated'),
+        'Update Now',
+        'Later',
+      );
+      // Terminal still created (non-blocking)
+      expect(mockCreateTerminal).toHaveBeenCalled();
+    });
+
+    it('does not show update notification when versions match', () => {
+      mockGetConfiguration.mockReturnValue({
+        get: vi.fn().mockReturnValue('/usr/local/bin/sidekick'),
+      });
+      mockExistsSync.mockReturnValue(true);
+      vi.mocked(execSync).mockReturnValue('0.12.0\n');
+      mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
+
+      openCliDashboard();
+
+      expect(mockShowInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it('only checks version once per session', () => {
+      mockGetConfiguration.mockReturnValue({
+        get: vi.fn().mockReturnValue('/usr/local/bin/sidekick'),
+      });
+      mockExistsSync.mockReturnValue(true);
+      vi.mocked(execSync).mockReturnValue('0.11.0\n');
+      mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
+
+      const exitedTerminal = {
+        show: vi.fn(),
+        dispose: vi.fn(),
+        exitStatus: { code: 0 },
+      };
+      mockCreateTerminal.mockReturnValue(exitedTerminal);
+
+      openCliDashboard();
+      openCliDashboard();
+
+      // execSync called twice for --version? No — once for version check, findSidekickCli doesn't call it when config path exists
+      expect(mockShowInformationMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('isNewer', () => {
+    it('returns true when a > b', () => {
+      expect(isNewer('1.2.0', '1.1.0')).toBe(true);
+      expect(isNewer('2.0.0', '1.9.9')).toBe(true);
+      expect(isNewer('1.0.1', '1.0.0')).toBe(true);
+    });
+
+    it('returns false when equal', () => {
+      expect(isNewer('1.0.0', '1.0.0')).toBe(false);
+    });
+
+    it('returns false when a < b', () => {
+      expect(isNewer('1.0.0', '1.0.1')).toBe(false);
+    });
+  });
+
+  describe('checkCliVersion', () => {
+    it('returns version info when CLI outputs a version', () => {
+      vi.mocked(execSync).mockReturnValue('0.11.0\n');
+      mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
+
+      const result = checkCliVersion('/usr/local/bin/sidekick');
+
+      expect(result).toEqual({
+        cliVersion: '0.11.0',
+        extensionVersion: '0.12.0',
+        needsUpdate: true,
+      });
+    });
+
+    it('returns needsUpdate false when versions match', () => {
+      vi.mocked(execSync).mockReturnValue('0.12.0\n');
+      mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
+
+      const result = checkCliVersion('/usr/local/bin/sidekick');
+
+      expect(result).toEqual({
+        cliVersion: '0.12.0',
+        extensionVersion: '0.12.0',
+        needsUpdate: false,
+      });
+    });
+
+    it('parses version from prefixed output like "sidekick/0.12.0"', () => {
+      vi.mocked(execSync).mockReturnValue('sidekick/0.11.0\n');
+      mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
+
+      const result = checkCliVersion('/usr/local/bin/sidekick');
+
+      expect(result?.cliVersion).toBe('0.11.0');
+    });
+
+    it('returns null when execSync throws', () => {
+      vi.mocked(execSync).mockImplementation(() => { throw new Error('not found'); });
+
+      expect(checkCliVersion('/usr/local/bin/sidekick')).toBeNull();
+    });
+
+    it('returns null when output has no version pattern', () => {
+      vi.mocked(execSync).mockReturnValue('unknown\n');
+      mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
+
+      expect(checkCliVersion('/usr/local/bin/sidekick')).toBeNull();
+    });
+
+    it('returns null when extension version is unavailable', () => {
+      vi.mocked(execSync).mockReturnValue('0.12.0\n');
+      mockGetExtension.mockReturnValue(undefined);
+
+      expect(checkCliVersion('/usr/local/bin/sidekick')).toBeNull();
     });
   });
 });

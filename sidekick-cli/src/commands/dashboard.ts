@@ -14,6 +14,7 @@ import { DashboardState } from '../dashboard/DashboardState';
 import { loadStaticData } from '../dashboard/StaticDataLoader';
 import type { StaticData } from '../dashboard/StaticDataLoader';
 import { QuotaService } from '../dashboard/QuotaService';
+import { UpdateCheckService } from '../dashboard/UpdateCheckService';
 import { SessionsPanel } from '../dashboard/panels/SessionsPanel';
 import { TasksPanel } from '../dashboard/panels/TasksPanel';
 import { KanbanPanel } from '../dashboard/panels/KanbanPanel';
@@ -104,6 +105,15 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Subscription quota polling
   const quotaService = new QuotaService();
+
+  // One-shot update check
+  const updateCheckService = new UpdateCheckService();
+  updateCheckService.onResult((info) => {
+    if (info) {
+      state.setUpdateInfo(info);
+      scheduleRender();
+    }
+  });
 
   // ── New session detection + auto-switch ──
   let lastNotifiedSessionPath: string | null = null;
@@ -247,8 +257,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     // No active session — still show dashboard with static data
   }
 
-  // Start quota polling
+  // Start quota polling + update check
   quotaService.start();
+  updateCheckService.check();
 
   // Initial render
   scheduleRender();
