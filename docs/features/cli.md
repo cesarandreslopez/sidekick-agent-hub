@@ -16,7 +16,7 @@ Or build from source:
 bash scripts/build-all.sh
 ```
 
-This compiles `sidekick-shared` (the data access library) and `sidekick-cli` (the binary). The CLI is output to `sidekick-cli/dist/sidekick-cli.js`.
+This compiles `sidekick-shared` (the data access library) and `sidekick-cli` (the binary). The CLI is output to `sidekick-cli/dist/sidekick-cli.mjs`.
 
 ## Usage
 
