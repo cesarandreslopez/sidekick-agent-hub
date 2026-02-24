@@ -11,7 +11,21 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
+
+import {
+  encodeWorkspacePath,
+  getSessionDirectory,
+  discoverSessionDirectory,
+  findActiveSession,
+  findAllSessions,
+  findSessionsInDirectory,
+  findSubdirectorySessionDirs,
+  getMostRecentlyActiveSessionDir,
+  decodeEncodedPath,
+  getAllProjectFolders,
+} from 'sidekick-shared/dist/parsers/sessionPathResolver';
 
 export {
   encodeWorkspacePath,
@@ -24,7 +38,7 @@ export {
   getMostRecentlyActiveSessionDir,
   decodeEncodedPath,
   getAllProjectFolders,
-} from 'sidekick-shared/dist/parsers/sessionPathResolver';
+};
 
 // Re-export ProjectFolderInfo from the shared type (used by session providers)
 export type { ProjectFolderInfo } from 'sidekick-shared/dist/providers/types';
@@ -51,18 +65,9 @@ export interface SessionDiagnostics {
  * VS Code extension-only (used by debug commands).
  */
 export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics {
-  // Import from shared at runtime to avoid circular dependencies
-  const {
-    encodeWorkspacePath,
-    getSessionDirectory,
-    discoverSessionDirectory,
-    findSubdirectorySessionDirs,
-    getMostRecentlyActiveSessionDir,
-  } = require('sidekick-shared/dist/parsers/sessionPathResolver');
-
   const encodedPath = encodeWorkspacePath(workspacePath);
   const expectedSessionDir = getSessionDirectory(workspacePath);
-  const projectsDir = path.join(require('os').homedir(), '.claude', 'projects');
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
 
   let existingProjectDirs: string[] = [];
   let expectedDirExists = false;
