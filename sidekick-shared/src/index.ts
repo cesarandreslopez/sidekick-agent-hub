@@ -2,7 +2,102 @@
  * Public API for sidekick-shared.
  */
 
-// Types
+// Session Event Types (canonical, shared across VS Code extension and CLI)
+export type {
+  SessionEvent,
+  ClaudeSessionEvent,
+  MessageUsage,
+  SessionMessage,
+  TokenUsage,
+  ToolCall,
+  ToolAnalytics,
+  TimelineEvent,
+  PendingToolCall,
+  TaskStatus as SessionTaskStatus,
+  TrackedTask,
+  TaskState,
+  SubagentStats,
+  PendingUserRequest,
+  ResponseLatency,
+  LatencyStats,
+  PlanStep,
+  PlanState,
+  SessionStats,
+  CompactionEvent,
+  TruncationEvent,
+  ContextAttribution,
+  TurnAttribution,
+  ContextSizePoint,
+} from './types/sessionEvent';
+
+// OpenCode format types
+export type {
+  OpenCodeSession,
+  OpenCodeMessage,
+  OpenCodePart,
+  OpenCodeTextPart,
+  OpenCodeReasoningPart,
+  OpenCodeToolInvocationPart,
+  OpenCodeCompactionPart,
+  OpenCodeDbToolPart,
+  OpenCodeStepStartPart,
+  OpenCodeStepFinishPart,
+  OpenCodePatchPart,
+  OpenCodeSubtaskPart,
+  OpenCodeAgentPart,
+  OpenCodeFilePart,
+  OpenCodeRetryPart,
+  OpenCodeSnapshotPart,
+  OpenCodeProject,
+  DbProject as OpenCodeDbProject,
+  DbSession as OpenCodeDbSession,
+  DbMessage as OpenCodeDbMessage,
+  DbPart as OpenCodeDbPart,
+} from './types/opencode';
+
+// Codex format types
+export type {
+  CodexRolloutLine,
+  CodexSessionMeta,
+  CodexResponseItem,
+  CodexMessageItem,
+  CodexContentPart,
+  CodexReasoningItem,
+  CodexFunctionCallItem,
+  CodexFunctionCallOutputItem,
+  CodexLocalShellCallItem,
+  CodexWebSearchCallItem,
+  CodexCustomToolCallItem,
+  CodexCustomToolCallOutputItem,
+  CodexCompacted,
+  CodexTurnContext,
+  CodexEventMsg,
+  CodexEvent,
+  CodexTurnStartedEvent,
+  CodexTurnCompleteEvent,
+  CodexTaskStartedEvent,
+  CodexTaskCompleteEvent,
+  CodexTurnAbortedEvent,
+  CodexTokenCountEvent,
+  CodexTokenUsage,
+  CodexRateLimits,
+  CodexAgentMessageEvent,
+  CodexAgentReasoningEvent,
+  CodexUserMessageEvent,
+  CodexExecCommandBeginEvent,
+  CodexExecCommandEndEvent,
+  CodexMcpToolCallBeginEvent,
+  CodexMcpToolCallEndEvent,
+  CodexErrorEvent,
+  CodexContextCompactedEvent,
+  CodexPatchAppliedEvent,
+  CodexBackgroundEvent,
+  CodexGenericEvent,
+  CodexDbThread,
+  CodexReasoningSummary,
+} from './types/codex';
+
+// Persistence types
 export type { PersistedTask, TaskPersistenceStore, TaskStatus } from './types/taskPersistence';
 export { TASK_PERSISTENCE_SCHEMA_VERSION } from './types/taskPersistence';
 export type { DecisionEntry, DecisionLogStore, DecisionSource } from './types/decisionLog';
@@ -30,11 +125,49 @@ export { readPlans, getLatestPlan, writePlans, getPlanAnalytics } from './reader
 export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 
 // Providers
-export type { ProviderId, SessionProvider, SessionFileStats, SearchHit, ProjectFolderInfo } from './providers/types';
+export type { ProviderId, SessionProvider, SessionProviderBase, SessionFileStats, SessionFileInfo, SearchHit, ProjectFolderInfo, SessionReader } from './providers/types';
 export { detectProvider, getAllDetectedProviders } from './providers/detect';
 export { ClaudeCodeProvider } from './providers/claudeCode';
 export { OpenCodeProvider } from './providers/openCode';
 export { CodexProvider } from './providers/codex';
+
+// Parsers — JSONL
+export { JsonlParser, TRUNCATION_PATTERNS } from './parsers/jsonl';
+export type { RawSessionEvent, JsonlParserCallbacks } from './parsers/jsonl';
+
+// Parsers — OpenCode
+export {
+  normalizeToolName,
+  normalizeToolInput,
+  detectPlanModeFromText,
+  convertOpenCodeMessage,
+  parseDbMessageData,
+  parseDbPartData,
+} from './parsers/openCodeParser';
+
+// Parsers — Codex
+export { CodexRolloutParser, extractPatchFilePaths, normalizeCodexToolName, normalizeCodexToolInput } from './parsers/codexParser';
+
+// Parsers — Subagent scanning
+export { scanSubagentDir, extractTaskInfo } from './parsers/subagentScanner';
+
+// Parsers — Session path resolution (Claude Code)
+export {
+  encodeWorkspacePath as encodeClaudeWorkspacePath,
+  getSessionDirectory as getClaudeSessionDirectory,
+  discoverSessionDirectory,
+  findActiveSession as findActiveClaudeSession,
+  findAllSessions as findAllClaudeSessions,
+  findSessionsInDirectory,
+  findSubdirectorySessionDirs,
+  getMostRecentlyActiveSessionDir,
+  decodeEncodedPath,
+  getAllProjectFolders as getAllClaudeProjectFolders,
+} from './parsers/sessionPathResolver';
+
+// Database wrappers
+export { OpenCodeDatabase } from './providers/openCodeDatabase';
+export { CodexDatabase } from './providers/codexDatabase';
 
 // Search
 export { searchSessions } from './search/sessionSearch';
@@ -56,3 +189,18 @@ export type { ChangelogEntry } from './parsers/changelogParser';
 export type { FollowEvent, FollowEventType, SessionWatcher, SessionWatcherCallbacks } from './watchers/types';
 export { createWatcher } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
+export { toFollowEvents } from './watchers/eventBridge';
+
+// Aggregation
+export { EventAggregator } from './aggregation/EventAggregator';
+export type { SerializedAggregatorState } from './aggregation/EventAggregator';
+export { saveSnapshot, loadSnapshot, deleteSnapshot, isSnapshotValid, getSnapshotPath } from './aggregation/snapshot';
+export type { SessionSnapshot } from './aggregation/snapshot';
+export type {
+  EventAggregatorOptions,
+  AggregatedTokens,
+  ModelUsageStats,
+  BurnRateInfo,
+  SubagentLifecycle,
+  AggregatedMetrics,
+} from './aggregation/types';

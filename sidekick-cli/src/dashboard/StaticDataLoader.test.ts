@@ -8,10 +8,11 @@ vi.mock('sidekick-shared', () => ({
   readTasks: vi.fn(),
   readDecisions: vi.fn(),
   readNotes: vi.fn(),
+  readPlans: vi.fn(),
 }));
 
 import { loadStaticData } from './StaticDataLoader';
-import { readHistory, readTasks, readDecisions, readNotes } from 'sidekick-shared';
+import { readHistory, readTasks, readDecisions, readNotes, readPlans } from 'sidekick-shared';
 
 describe('StaticDataLoader', () => {
   it('returns empty data when no files exist', async () => {
@@ -19,6 +20,7 @@ describe('StaticDataLoader', () => {
     vi.mocked(readTasks).mockResolvedValue([]);
     vi.mocked(readDecisions).mockResolvedValue([]);
     vi.mocked(readNotes).mockResolvedValue([]);
+    vi.mocked(readPlans).mockResolvedValue([]);
 
     const data = await loadStaticData('/test');
     expect(data.sessions).toEqual([]);
@@ -60,6 +62,7 @@ describe('StaticDataLoader', () => {
     vi.mocked(readTasks).mockResolvedValue([]);
     vi.mocked(readDecisions).mockResolvedValue([]);
     vi.mocked(readNotes).mockResolvedValue([]);
+    vi.mocked(readPlans).mockResolvedValue([]);
 
     const data = await loadStaticData('/test');
     expect(data.sessions).toHaveLength(1);
@@ -73,6 +76,7 @@ describe('StaticDataLoader', () => {
 
   it('passes through tasks, decisions, notes from readers', async () => {
     vi.mocked(readHistory).mockResolvedValue(null);
+    vi.mocked(readPlans).mockResolvedValue([]);
     vi.mocked(readTasks).mockResolvedValue([
       {
         taskId: '1', subject: 'Test task', status: 'pending',
@@ -107,6 +111,7 @@ describe('StaticDataLoader', () => {
     vi.mocked(readTasks).mockRejectedValue(new Error('ENOENT'));
     vi.mocked(readDecisions).mockRejectedValue(new Error('ENOENT'));
     vi.mocked(readNotes).mockRejectedValue(new Error('ENOENT'));
+    vi.mocked(readPlans).mockRejectedValue(new Error('ENOENT'));
 
     const data = await loadStaticData('/test');
     expect(data.sessions).toEqual([]);

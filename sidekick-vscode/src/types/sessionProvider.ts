@@ -6,79 +6,35 @@
  * Providers handle I/O and format-specific logic while SessionMonitor
  * retains all event processing, stats aggregation, and business logic.
  *
+ * The base types (SessionReader, ProjectFolderInfo, SearchHit, SessionProviderBase)
+ * are defined in sidekick-shared and re-exported here. The VS Code SessionProvider
+ * interface extends SessionProviderBase with vscode.Disposable and optional
+ * VS Code-specific methods.
+ *
  * @module types/sessionProvider
  */
 
 import type * as vscode from 'vscode';
-import type { ClaudeSessionEvent, ContextAttribution, SubagentStats, TokenUsage } from './claudeSession';
 import type { QuotaState } from './dashboard';
 
-/**
- * Information about a single session file.
- */
-export interface SessionFileInfo {
-  /** Absolute path to the session file */
-  path: string;
-  /** Last modification time */
-  mtime: Date;
-  /** Optional human-readable label (e.g., first user prompt) */
-  label?: string;
-}
+// Re-export shared types
+export type {
+  SessionReader,
+  ProjectFolderInfo,
+  SearchHit,
+  SessionFileInfo,
+  SessionFileStats,
+  SessionProviderBase,
+  ProviderId,
+} from 'sidekick-shared/dist/providers/types';
 
-/**
- * Information about a project folder containing sessions.
- */
-export interface ProjectFolderInfo {
-  /** Absolute path to the session directory */
-  dir: string;
-  /** Human-readable project name or decoded path */
-  name: string;
-  /** Raw encoded directory name (for reliable comparison) */
-  encodedName?: string;
-  /** Number of session files in this directory */
-  sessionCount: number;
-  /** Most recent session modification time */
-  lastModified: Date;
-}
-
-/**
- * A single search hit within a session file.
- */
-export interface SearchHit {
-  /** Path to the session file */
-  sessionPath: string;
-  /** The matching line or text snippet */
-  line: string;
-  /** Event type of the match */
-  eventType: string;
-  /** Timestamp of the matching event */
-  timestamp: string;
-  /** Decoded project path */
-  projectPath: string;
-}
-
-/**
- * Incremental reader for session data.
- *
- * Abstracts the difference between JSONL incremental byte reading (Claude Code)
- * and JSON file enumeration (OpenCode). Returns events in ClaudeSessionEvent format.
- */
-export interface SessionReader {
-  /** Read new events since last call. */
-  readNew(): ClaudeSessionEvent[];
-  /** Read all events from start. */
-  readAll(): ClaudeSessionEvent[];
-  /** Reset read state (for truncation or re-read). */
-  reset(): void;
-  /** Whether the session source still exists. */
-  exists(): boolean;
-  /** Flush any buffered data. */
-  flush(): void;
-  /** Get current byte/file position for size tracking. */
-  getPosition(): number;
-  /** Check if file was truncated (size < position). */
-  wasTruncated(): boolean;
-}
+// Re-export session event types used by providers
+export type {
+  ClaudeSessionEvent,
+  ContextAttribution,
+  SubagentStats,
+  TokenUsage,
+} from './claudeSession';
 
 /**
  * Session provider interface for CLI agent integrations.
@@ -86,6 +42,9 @@ export interface SessionReader {
  * Each supported CLI agent (Claude Code, OpenCode, etc.) implements this
  * interface to provide session discovery, file identification, and data reading.
  * SessionMonitor delegates all I/O to the provider and retains event processing.
+ *
+ * Extends SessionProviderBase from sidekick-shared with vscode.Disposable
+ * and optional VS Code-specific methods.
  */
 export interface SessionProvider extends vscode.Disposable {
   /** Unique provider identifier */
@@ -113,7 +72,7 @@ export interface SessionProvider extends vscode.Disposable {
   findSessionsInDirectory(dir: string): string[];
 
   /** Gets all project folders with session data. */
-  getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[];
+  getAllProjectFolders(workspacePath?: string): import('sidekick-shared/dist/providers/types').ProjectFolderInfo[];
 
   // --- File identification ---
 
@@ -132,17 +91,17 @@ export interface SessionProvider extends vscode.Disposable {
   // --- Data reading ---
 
   /** Creates an incremental reader for a session file. */
-  createReader(sessionPath: string): SessionReader;
+  createReader(sessionPath: string): import('sidekick-shared/dist/providers/types').SessionReader;
 
   // --- Subagent support ---
 
   /** Scans for subagent data associated with a session. */
-  scanSubagents(sessionDir: string, sessionId: string): SubagentStats[];
+  scanSubagents(sessionDir: string, sessionId: string): import('sidekick-shared/dist/types/sessionEvent').SubagentStats[];
 
   // --- Cross-session search ---
 
   /** Searches for text within a session file. */
-  searchInSession(sessionPath: string, query: string, maxResults: number): SearchHit[];
+  searchInSession(sessionPath: string, query: string, maxResults: number): import('sidekick-shared/dist/providers/types').SearchHit[];
 
   /** Gets the base projects directory path for cross-session search. */
   getProjectsBaseDir(): string;
@@ -154,13 +113,13 @@ export interface SessionProvider extends vscode.Disposable {
   getContextWindowLimit?(modelId?: string): number;
 
   /** Computes context window size from token usage. Provider-specific formula. */
-  computeContextSize?(usage: TokenUsage): number;
+  computeContextSize?(usage: import('sidekick-shared/dist/types/sessionEvent').TokenUsage): number;
 
   /** Gets latest assistant usage snapshot for an active session, if available. */
-  getCurrentUsageSnapshot?(sessionPath: string): TokenUsage | null;
+  getCurrentUsageSnapshot?(sessionPath: string): import('sidekick-shared/dist/types/sessionEvent').TokenUsage | null;
 
   /** Gets context attribution breakdown from provider data, if available. */
-  getContextAttribution?(sessionPath: string): ContextAttribution | null;
+  getContextAttribution?(sessionPath: string): import('sidekick-shared/dist/types/sessionEvent').ContextAttribution | null;
 
   /** Gets subscription quota state from session data (e.g., Codex rate_limits). */
   getQuotaFromSession?(): QuotaState | null;

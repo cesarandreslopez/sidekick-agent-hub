@@ -1,10 +1,15 @@
 /**
  * Live event aggregator for the TUI dashboard.
- * Processes FollowEvent stream and maintains all derived metrics.
+ * Delegates core aggregation (tokens, models, tools, tasks, subagents, plan,
+ * context attribution, compaction, burn rate) to the shared EventAggregator,
+ * and maintains CLI-specific extractions (files, URLs, directories, commands,
+ * TODOs) inline.
  */
 
 import type { FollowEvent } from 'sidekick-shared';
-import { PlanExtractor } from 'sidekick-shared';
+import { EventAggregator } from 'sidekick-shared';
+import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared';
+import type { SessionSnapshot } from 'sidekick-shared';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
 import type { UpdateInfo } from './UpdateCheckService';
@@ -166,132 +171,70 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 };
 
 const TIMELINE_RING_SIZE = 200;
-const BURN_RATE_POINTS = 30;
-const BURN_RATE_SAMPLE_MS = 10_000;
-const BURN_RATE_WINDOW_MS = 5 * 60_000;
 
 // ── State class ──
 
 export class DashboardState {
-  // Token totals
-  private _tokens: TokenStats = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  // Shared aggregator — handles tokens, models, tools, tasks, subagents,
+  // plan, context attribution, compaction, burn rate
+  private _aggregator = new EventAggregator();
 
-  // Context tracking — full context = input + cache_read + cache_write
-  private _lastContextSize = 0;
-  private _currentModel: string | undefined;
-
-  // Burn rate: sliding window of (timestamp, tokenDelta) samples
-  private _burnSamples: Array<{ time: number; tokens: number }> = [];
-  private _burnRatePoints: number[] = [];
-  private _lastBurnSampleTime = 0;
-  private _tokensSinceLastSample = 0;
-
-  // Tool stats
-  private _toolMap = new Map<string, ToolStats>();
-  private _pendingTools = new Map<string, string>(); // toolUseId → toolName
-
-  // Model stats
-  private _modelMap = new Map<string, ModelStats>();
-
-  // Timeline ring buffer
+  // Timeline ring buffer (FollowEvent[] for CLI display — different from aggregator's TimelineEvent[])
   private _timeline: FollowEvent[] = [];
 
-  // Tasks (extracted from raw tool events)
-  private _taskMap = new Map<string, TaskItem>();
-  // Pending TaskCreate calls awaiting result (tool_use_id → TaskCreate input)
-  private _pendingTaskCreates = new Map<string, { subject: string; activeForm?: string; subagentType?: string; isGoalGate?: boolean }>();
-
-  // File touches
+  // CLI-specific: file touches
   private _fileMap = new Map<string, FileTouch>();
 
-  // Subagent lifecycle
-  private _subagents: SubagentInfo[] = [];
-  private _pendingSubagents = new Map<string, number>(); // tool_use_id → index in _subagents
-
-  // Provider (from first event)
-  private _providerId: string | undefined;
-  private _providerName: string | undefined;
-
-  // URL touches
+  // CLI-specific: URL touches
   private _urlMap = new Map<string, UrlTouch>();
 
-  // Directory searches
+  // CLI-specific: directory searches
   private _dirMap = new Map<string, DirSearch>();
 
-  // Command executions
+  // CLI-specific: command executions
   private _cmdMap = new Map<string, CommandExec>();
 
-  // TODOs extracted from summaries
+  // CLI-specific: TODOs extracted from summaries
   private _todos: string[] = [];
   private _todoSeen = new Set<string>();
 
-  // Plan state (shared extractor handles all providers)
-  private _planExtractor = new PlanExtractor();
-  private _plan: PlanInfo | null = null;
+  // Provider display name (aggregator tracks providerId, we add display name)
+  private _providerName: string | undefined;
 
-  // Context attribution
-  private _contextAttribution: ContextAttribution = {
-    systemPrompt: 0, userMessages: 0, assistantResponses: 0,
-    toolInputs: 0, toolOutputs: 0, thinking: 0, other: 0,
-  };
-
-  // Quota
+  // Quota (external state from OAuth API or Codex rate limits)
   private _quota: QuotaState | null = null;
 
-  // Update availability
+  // Update availability (external state)
   private _updateInfo: UpdateInfo | null = null;
 
-  // Compaction tracking
-  private _compactionCount = 0;
-  private _compactionEvents: CompactionEvent[] = [];
-  private _previousContextSize = 0; // for drop detection
-  private _pendingSummaryCompaction = false; // true after explicit summary, suppresses drop detection
-
-  // Counters
-  private _eventCount = 0;
-  private _sessionStartTime: string | undefined;
+  // Session ID (for plan persistence)
   private _sessionId: string | undefined;
+
+  // Track previous compaction count to detect new compactions for timeline injection
+  private _lastKnownCompactionCount = 0;
+
+  // CLI-specific: per-task tool call counts (aggregator doesn't track this)
+  private _taskToolCallCounts = new Map<string, number>();
+
+  // Task management tools that don't count towards task tool call counts
+  private static readonly TASK_MGMT_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'];
 
   /** Reset all accumulated metrics to prepare for a new session. */
   reset(): void {
-    this._tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
-    this._lastContextSize = 0;
-    this._currentModel = undefined;
-    this._burnSamples = [];
-    this._burnRatePoints = [];
-    this._lastBurnSampleTime = 0;
-    this._tokensSinceLastSample = 0;
-    this._toolMap.clear();
-    this._pendingTools.clear();
-    this._modelMap.clear();
+    this._aggregator.reset();
     this._timeline = [];
-    this._taskMap.clear();
-    this._pendingTaskCreates.clear();
     this._fileMap.clear();
-    this._subagents = [];
-    this._pendingSubagents.clear();
-    this._providerId = undefined;
-    this._providerName = undefined;
     this._urlMap.clear();
     this._dirMap.clear();
     this._cmdMap.clear();
     this._todos = [];
     this._todoSeen.clear();
-    this._planExtractor.reset();
-    this._plan = null;
-    this._contextAttribution = {
-      systemPrompt: 0, userMessages: 0, assistantResponses: 0,
-      toolInputs: 0, toolOutputs: 0, thinking: 0, other: 0,
-    };
+    this._providerName = undefined;
     this._quota = null;
     this._updateInfo = null;
-    this._compactionCount = 0;
-    this._compactionEvents = [];
-    this._previousContextSize = 0;
-    this._pendingSummaryCompaction = false;
-    this._eventCount = 0;
-    this._sessionStartTime = undefined;
     this._sessionId = undefined;
+    this._lastKnownCompactionCount = 0;
+    this._taskToolCallCounts.clear();
   }
 
   /** Set the session ID for plan persistence. */
@@ -299,122 +242,147 @@ export class DashboardState {
     this._sessionId = id;
   }
 
+  /**
+   * Attempts to restore state from a snapshot sidecar file.
+   * Returns the reader position to seek to, or null if no valid snapshot.
+   */
+  tryRestoreFromSnapshot(sessionId: string, providerId: string, sourceSize: number): number | null {
+    const snapshot = loadSnapshot(sessionId);
+    if (!snapshot) return null;
+    if (snapshot.providerId !== providerId) {
+      deleteSnapshot(sessionId);
+      return null;
+    }
+    if (!isSnapshotValid(snapshot, sourceSize)) {
+      deleteSnapshot(sessionId);
+      return null;
+    }
+
+    // Restore aggregator state
+    this._aggregator.restore(snapshot.aggregator);
+
+    // Restore CLI-specific state
+    const c = snapshot.consumer;
+    if (Array.isArray(c.timeline)) {
+      this._timeline = c.timeline as FollowEvent[];
+    }
+    if (Array.isArray(c.fileMap)) {
+      this._fileMap = new Map(c.fileMap as Array<[string, FileTouch]>);
+    }
+    if (Array.isArray(c.urlMap)) {
+      this._urlMap = new Map(c.urlMap as Array<[string, UrlTouch]>);
+    }
+    if (Array.isArray(c.dirMap)) {
+      this._dirMap = new Map(c.dirMap as Array<[string, DirSearch]>);
+    }
+    if (Array.isArray(c.cmdMap)) {
+      this._cmdMap = new Map(c.cmdMap as Array<[string, CommandExec]>);
+    }
+    if (Array.isArray(c.todos)) {
+      this._todos = c.todos as string[];
+      this._todoSeen = new Set(this._todos);
+    }
+    if (typeof c.providerName === 'string') {
+      this._providerName = c.providerName;
+    }
+    if (typeof c.lastKnownCompactionCount === 'number') {
+      this._lastKnownCompactionCount = c.lastKnownCompactionCount;
+    }
+    if (Array.isArray(c.taskToolCallCounts)) {
+      this._taskToolCallCounts = new Map(c.taskToolCallCounts as Array<[string, number]>);
+    }
+
+    this._sessionId = sessionId;
+    return snapshot.readerPosition;
+  }
+
+  /**
+   * Persists the current state as a snapshot sidecar file.
+   */
+  persistSnapshot(readerPosition: number, sourceSize: number): void {
+    if (!this._sessionId) return;
+
+    const snapshot: SessionSnapshot = {
+      version: 1,
+      sessionId: this._sessionId,
+      providerId: this._aggregator.getMetrics().providerId || 'claude-code',
+      readerPosition,
+      sourceSize,
+      createdAt: new Date().toISOString(),
+      aggregator: this._aggregator.serialize(),
+      consumer: {
+        timeline: this._timeline,
+        fileMap: Array.from(this._fileMap.entries()),
+        urlMap: Array.from(this._urlMap.entries()),
+        dirMap: Array.from(this._dirMap.entries()),
+        cmdMap: Array.from(this._cmdMap.entries()),
+        todos: this._todos,
+        providerName: this._providerName,
+        lastKnownCompactionCount: this._lastKnownCompactionCount,
+        taskToolCallCounts: Array.from(this._taskToolCallCounts.entries()),
+      },
+    };
+
+    saveSnapshot(snapshot);
+  }
+
   /** Process a single FollowEvent and update all metrics. */
   processEvent(event: FollowEvent): void {
-    this._eventCount++;
+    // Delegate shared aggregation first
+    this._aggregator.processFollowEvent(event);
 
-    if (!this._sessionStartTime) {
-      this._sessionStartTime = event.timestamp;
-    }
-
-    // Extract provider from first event
-    if (!this._providerId && event.providerId) {
-      this._providerId = event.providerId;
+    // Extract provider display name from first event
+    if (!this._providerName && event.providerId) {
       this._providerName = PROVIDER_DISPLAY_NAMES[event.providerId] || event.providerId;
     }
-
-    // Update model
-    if (event.model) {
-      this._currentModel = event.model;
-    }
-
-    // Token accumulation
-    if (event.tokens) {
-      this._tokens.input += event.tokens.input;
-      this._tokens.output += event.tokens.output;
-      this._tokensSinceLastSample += event.tokens.input + event.tokens.output;
-
-      // Context window usage = all input-side tokens (billed + cached)
-      // With prompt caching, tokens.input is only the uncached portion;
-      // the full context is input + cache_read + cache_write.
-      let contextSize = event.tokens.input;
-      if (event.cacheTokens) {
-        contextSize += event.cacheTokens.read + event.cacheTokens.write;
-      }
-
-      // Detect compaction via >20% context size drop (matches VS Code extension heuristic).
-      // If we already saw a summary event, update that compaction with real after-size
-      // instead of creating a duplicate.
-      if (this._previousContextSize > 0 && contextSize < this._previousContextSize * 0.8) {
-        if (this._pendingSummaryCompaction && this._compactionEvents.length > 0) {
-          // Update the existing compaction with actual after-size
-          const last = this._compactionEvents[this._compactionEvents.length - 1];
-          last.contextAfter = contextSize;
-          last.tokensReclaimed = last.contextBefore - contextSize;
-          // Update the synthetic timeline entry too
-          this.updateLastCompactionTimeline(last);
-        } else {
-          // No summary event preceded this — detect compaction purely from the drop
-          this.recordCompaction(event.timestamp, this._previousContextSize, contextSize);
-        }
-        this._pendingSummaryCompaction = false;
-      }
-
-      this._previousContextSize = contextSize;
-      this._lastContextSize = contextSize;
-    }
-    if (event.cacheTokens) {
-      this._tokens.cacheRead += event.cacheTokens.read;
-      this._tokens.cacheWrite += event.cacheTokens.write;
-    }
-    if (event.cost) {
-      this._tokens.cost += event.cost;
-    }
-
-    // Burn rate sampling
-    this.updateBurnRate(event.timestamp);
-
-    // Tool stats
-    if (event.type === 'tool_use' && event.toolName) {
-      this.recordToolUse(event);
-    } else if (event.type === 'tool_result') {
-      this.recordToolResult(event);
-    }
-
-    // Model stats
-    if (event.type === 'assistant' && event.model && event.tokens) {
-      this.recordModelUsage(event);
-    }
-
-    // Explicit compaction event (summary type)
-    if (event.type === 'summary') {
-      this.recordCompaction(event.timestamp, this._previousContextSize, 0);
-      this._pendingSummaryCompaction = true;
-    }
-
-    // Extract task state from raw tool events
-    this.extractTaskState(event);
-
-    // Extract file touches
-    this.extractFileTouch(event);
-
-    // Extract subagent spawns
-    this.extractSubagent(event);
-
-    // Extract URLs from WebFetch/WebSearch
-    this.extractUrl(event);
-
-    // Extract directories from Grep/Glob
-    this.extractDirectory(event);
-
-    // Extract commands from Bash
-    this.extractCommand(event);
-
-    // Extract TODOs from summaries
-    this.extractTodo(event);
-
-    // Extract plan from UpdatePlan
-    this.extractPlan(event);
-
-    // Context attribution
-    this.updateContextAttribution(event);
 
     // Extract Codex rate limits as quota
     if (event.rateLimits) {
       this.extractCodexQuota(event);
     }
 
-    // Timeline (ring buffer)
+    // Count non-task-management tool_use events against in-progress tasks
+    if (event.type === 'tool_use' && event.toolName &&
+        !DashboardState.TASK_MGMT_TOOLS.includes(event.toolName)) {
+      const taskState = this._aggregator.getTaskState();
+      for (const [taskId, task] of taskState.tasks) {
+        if (task.status === 'in_progress') {
+          this._taskToolCallCounts.set(taskId, (this._taskToolCallCounts.get(taskId) || 0) + 1);
+        }
+      }
+    }
+
+    // CLI-specific extractions
+    this.extractFileTouch(event);
+    this.extractUrl(event);
+    this.extractDirectory(event);
+    this.extractCommand(event);
+    this.extractTodo(event);
+
+    // Inject synthetic compaction entries into FollowEvent timeline.
+    // The aggregator detects compaction events. Check if new ones appeared.
+    const currentCompactionCount = this._aggregator.getCompactionEvents().length;
+    if (currentCompactionCount > this._lastKnownCompactionCount) {
+      // Inject synthetic timeline entries for each new compaction
+      for (let i = this._lastKnownCompactionCount; i < currentCompactionCount; i++) {
+        const ce = this._aggregator.getCompactionEvents()[i];
+        const ts = ce.timestamp instanceof Date ? ce.timestamp.toISOString() : String(ce.timestamp);
+        this._timeline.push({
+          providerId: 'claude-code',
+          type: 'summary',
+          timestamp: ts,
+          summary: ce.contextBefore > 0 && ce.contextAfter > 0
+            ? `Context compacted: ${fmtTokens(ce.contextBefore)} \u2192 ${fmtTokens(ce.contextAfter)} (${fmtTokens(ce.tokensReclaimed)} reclaimed)`
+            : 'Context compacted',
+        });
+        if (this._timeline.length > TIMELINE_RING_SIZE) {
+          this._timeline.shift();
+        }
+      }
+      this._lastKnownCompactionCount = currentCompactionCount;
+    }
+
+    // Timeline ring buffer (FollowEvent for display)
     this._timeline.push(event);
     if (this._timeline.length > TIMELINE_RING_SIZE) {
       this._timeline.shift();
@@ -433,33 +401,135 @@ export class DashboardState {
 
   /** Get the current snapshot of all metrics. */
   getMetrics(): DashboardMetrics {
-    this.detectParallelSubagents();
+    const m = this._aggregator.getMetrics();
+
+    // Map subagents from aggregator's SubagentLifecycle to CLI's SubagentInfo
+    const subagents: SubagentInfo[] = m.subagents.map(s => ({
+      id: s.id,
+      description: s.description,
+      subagentType: s.subagentType,
+      spawnTime: s.spawnTime,
+      completionTime: s.completionTime,
+      status: s.status,
+      durationMs: s.durationMs,
+      isParallel: false,
+    }));
+    this.detectParallelSubagents(subagents);
+
+    // Map tool stats from aggregator's ToolAnalytics to CLI's ToolStats
+    const toolStats: ToolStats[] = m.toolStats.map(t => ({
+      name: t.name,
+      calls: t.successCount + t.failureCount + t.pendingCount,
+      pending: t.pendingCount,
+      lastCallTime: undefined,
+    }));
+
+    // Map model stats from aggregator's ModelUsageStats to CLI's ModelStats
+    const modelStats: ModelStats[] = m.modelStats.map(ms => ({
+      model: ms.model,
+      calls: ms.calls,
+      tokens: ms.tokens,
+      cost: ms.cost,
+    }));
+
+    // Map tasks from aggregator's TrackedTask to CLI's TaskItem
+    const taskMap = new Map<string, TaskItem>();
+    for (const t of m.taskState.tasks.values()) {
+      taskMap.set(t.taskId, {
+        taskId: t.taskId,
+        subject: t.subject,
+        status: t.status as TaskItem['status'],
+        blockedBy: t.blockedBy,
+        blocks: t.blocks,
+        subagentType: t.subagentType,
+        isGoalGate: t.isGoalGate,
+        toolCallCount: this._taskToolCallCounts.get(t.taskId) || 0,
+        activeForm: t.activeForm,
+      });
+    }
+
+    // Include subagent spawns as tasks (matches VS Code SessionMonitor behavior)
+    for (const s of m.subagents) {
+      if (!taskMap.has(s.id)) {
+        taskMap.set(s.id, {
+          taskId: s.id,
+          subject: s.description || `${s.subagentType} agent`,
+          status: s.status === 'completed' ? 'completed' : 'in_progress',
+          blockedBy: [],
+          blocks: [],
+          subagentType: s.subagentType,
+          toolCallCount: 0,
+          activeForm: s.status === 'running' ? `Running ${s.subagentType}` : undefined,
+        });
+      }
+    }
+
+    // Include plan steps as synthetic tasks (matches VS Code SessionMonitor behavior)
+    if (m.plan) {
+      for (const step of m.plan.steps) {
+        const planTaskId = `plan-${step.id}`;
+        if (!taskMap.has(planTaskId)) {
+          const stepStatus = step.status === 'completed' ? 'completed'
+            : step.status === 'in_progress' ? 'in_progress'
+            : 'pending';
+          taskMap.set(planTaskId, {
+            taskId: planTaskId,
+            subject: step.description,
+            status: stepStatus,
+            blockedBy: [],
+            blocks: [],
+            toolCallCount: 0,
+            activeForm: step.status === 'in_progress' ? `Working on ${step.description}` : undefined,
+          });
+        }
+      }
+    }
+
+    const tasks = Array.from(taskMap.values());
+
+    // Map compaction events (Date timestamps to string)
+    const compactionEvents: CompactionEvent[] = m.compactionEvents.map(ce => ({
+      timestamp: ce.timestamp instanceof Date ? ce.timestamp.toISOString() : String(ce.timestamp),
+      contextBefore: ce.contextBefore,
+      contextAfter: ce.contextAfter,
+      tokensReclaimed: ce.tokensReclaimed,
+    }));
+
+    // Convert plan from aggregator's PlanState to CLI's PlanInfo
+    const plan = this.convertPlan(m.plan);
+
     return {
-      tokens: { ...this._tokens },
-      context: this.computeContextGauge(),
-      burnRate: [...this._burnRatePoints],
-      toolStats: Array.from(this._toolMap.values()).sort((a, b) => b.calls - a.calls),
-      modelStats: Array.from(this._modelMap.values()).sort((a, b) => b.calls - a.calls),
+      tokens: {
+        input: m.tokens.inputTokens,
+        output: m.tokens.outputTokens,
+        cacheRead: m.tokens.cacheReadTokens,
+        cacheWrite: m.tokens.cacheWriteTokens,
+        cost: m.tokens.reportedCost,
+      },
+      context: this.computeContextGauge(m.currentContextSize, m.currentModel),
+      burnRate: m.burnRate.points,
+      toolStats,
+      modelStats,
       timeline: [...this._timeline],
-      tasks: Array.from(this._taskMap.values()),
+      tasks,
       fileTouches: Array.from(this._fileMap.values()).sort((a, b) =>
         (b.reads + b.writes + b.edits) - (a.reads + a.writes + a.edits)
       ),
-      subagents: [...this._subagents],
-      compactionCount: this._compactionCount,
-      compactionEvents: [...this._compactionEvents],
+      subagents,
+      compactionCount: m.compactionCount,
+      compactionEvents,
       quota: this._quota,
-      eventCount: this._eventCount,
-      sessionStartTime: this._sessionStartTime,
-      currentModel: this._currentModel,
-      providerId: this._providerId,
+      eventCount: m.eventCount,
+      sessionStartTime: m.sessionStartTime ?? undefined,
+      currentModel: m.currentModel ?? undefined,
+      providerId: m.providerId ?? undefined,
       providerName: this._providerName,
       urls: Array.from(this._urlMap.values()).sort((a, b) => b.count - a.count),
       directories: Array.from(this._dirMap.values()).sort((a, b) => b.count - a.count),
       commands: Array.from(this._cmdMap.values()).sort((a, b) => b.count - a.count),
       todos: [...this._todos],
-      plan: this._plan,
-      contextAttribution: { ...this._contextAttribution },
+      plan,
+      contextAttribution: { ...m.contextAttribution },
       updateInfo: this._updateInfo,
       sessionId: this._sessionId,
     };
@@ -468,18 +538,15 @@ export class DashboardState {
   // ── Private helpers ──
 
   /** Mark agents whose lifetimes overlap as parallel. */
-  private detectParallelSubagents(): void {
-    // Reset all flags first
-    for (const a of this._subagents) a.isParallel = false;
-
-    for (let i = 0; i < this._subagents.length; i++) {
-      const a = this._subagents[i];
+  private detectParallelSubagents(subagents: SubagentInfo[]): void {
+    for (let i = 0; i < subagents.length; i++) {
+      const a = subagents[i];
       const aStart = new Date(a.spawnTime).getTime();
       const aEnd = a.completionTime ? new Date(a.completionTime).getTime() : Date.now();
       if (isNaN(aStart)) continue;
 
-      for (let j = i + 1; j < this._subagents.length; j++) {
-        const b = this._subagents[j];
+      for (let j = i + 1; j < subagents.length; j++) {
+        const b = subagents[j];
         const bStart = new Date(b.spawnTime).getTime();
         const bEnd = b.completionTime ? new Date(b.completionTime).getTime() : Date.now();
         if (isNaN(bStart)) continue;
@@ -493,238 +560,33 @@ export class DashboardState {
     }
   }
 
-  private recordCompaction(timestamp: string, before: number, after: number): void {
-    // Avoid double-counting: if we just recorded a compaction for this timestamp, skip
-    const last = this._compactionEvents[this._compactionEvents.length - 1];
-    if (last && last.timestamp === timestamp) return;
-
-    this._compactionCount++;
-    this._compactionEvents.push({
-      timestamp,
-      contextBefore: before,
-      contextAfter: after,
-      tokensReclaimed: before > after ? before - after : 0,
-    });
-
-    // Inject a synthetic timeline event so compaction is visible in the log
-    this._timeline.push({
-      providerId: 'claude-code',
-      type: 'summary',
-      timestamp,
-      summary: before > 0 && after > 0
-        ? `Context compacted: ${fmtTokens(before)} → ${fmtTokens(after)} (${fmtTokens(before - after)} reclaimed)`
-        : 'Context compacted',
-    });
-    if (this._timeline.length > TIMELINE_RING_SIZE) {
-      this._timeline.shift();
-    }
-  }
-
-  private updateLastCompactionTimeline(ce: CompactionEvent): void {
-    // Find the synthetic compaction entry in the timeline and update its summary
-    for (let i = this._timeline.length - 1; i >= 0; i--) {
-      const entry = this._timeline[i];
-      if (entry.type === 'summary' && entry.summary.startsWith('Context compacted')) {
-        entry.summary = ce.contextBefore > 0 && ce.contextAfter > 0
-          ? `Context compacted: ${fmtTokens(ce.contextBefore)} → ${fmtTokens(ce.contextAfter)} (${fmtTokens(ce.tokensReclaimed)} reclaimed)`
-          : 'Context compacted';
-        break;
-      }
-    }
-  }
-
-  private computeContextGauge(): ContextGauge {
-    const limit = getContextWindowSize(this._currentModel);
-    const used = this._lastContextSize;
+  private computeContextGauge(contextSize: number, currentModel: string | null): ContextGauge {
+    const limit = getContextWindowSize(currentModel ?? undefined);
+    const used = contextSize;
     const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
     return { used, limit, percent };
   }
 
-  private updateBurnRate(timestamp: string): void {
-    const now = new Date(timestamp).getTime();
-    if (isNaN(now)) return;
-
-    if (this._lastBurnSampleTime === 0) {
-      this._lastBurnSampleTime = now;
-      return;
-    }
-
-    const elapsed = now - this._lastBurnSampleTime;
-    if (elapsed >= BURN_RATE_SAMPLE_MS) {
-      // Tokens per minute for this sample
-      const tokPerMin = elapsed > 0 ? Math.round((this._tokensSinceLastSample / elapsed) * 60_000) : 0;
-      this._burnSamples.push({ time: now, tokens: tokPerMin });
-      this._tokensSinceLastSample = 0;
-      this._lastBurnSampleTime = now;
-
-      // Trim to window
-      const cutoff = now - BURN_RATE_WINDOW_MS;
-      this._burnSamples = this._burnSamples.filter(s => s.time >= cutoff);
-
-      // Build points array
-      this._burnRatePoints = this._burnSamples.map(s => s.tokens);
-      while (this._burnRatePoints.length > BURN_RATE_POINTS) {
-        this._burnRatePoints.shift();
-      }
-    }
+  /** Convert aggregator PlanState to CLI PlanInfo. */
+  private convertPlan(planState: ReturnType<EventAggregator['getPlan']>): PlanInfo | null {
+    if (!planState) return null;
+    return {
+      title: planState.title ?? 'Plan',
+      steps: planState.steps.map(s => ({
+        id: s.id,
+        description: s.description,
+        status: s.status,
+        phase: s.phase,
+        complexity: s.complexity,
+      })),
+      source: planState.source,
+      completionRate: planState.completionRate,
+      totalDurationMs: planState.totalDurationMs,
+      rawMarkdown: planState.rawMarkdown,
+    };
   }
 
-  private recordToolUse(event: FollowEvent): void {
-    const name = event.toolName!;
-    const stats = this._toolMap.get(name) || { name, calls: 0, pending: 0 };
-    stats.calls++;
-    stats.pending++;
-    stats.lastCallTime = event.timestamp;
-    this._toolMap.set(name, stats);
-
-    // Track pending by tool_use block ID if available
-    const raw = event.raw as Record<string, unknown> | undefined;
-    if (raw?.id) {
-      this._pendingTools.set(raw.id as string, name);
-    }
-  }
-
-  private recordToolResult(event: FollowEvent): void {
-    // Try to match by tool_use_id in raw.
-    // The JSONL normalizer emits tool_result events where raw IS the tool_result block:
-    // { type: 'tool_result', tool_use_id: 'toolu_xxx', content: '...' }
-    const raw = event.raw as Record<string, unknown> | undefined;
-    if (!raw) return;
-
-    let matchedName: string | undefined;
-    const toolUseId = raw.tool_use_id as string | undefined;
-    if (toolUseId) {
-      matchedName = this._pendingTools.get(toolUseId);
-      if (matchedName) {
-        this._pendingTools.delete(toolUseId);
-      }
-    }
-
-    if (matchedName) {
-      const stats = this._toolMap.get(matchedName);
-      if (stats && stats.pending > 0) {
-        stats.pending--;
-      }
-    }
-  }
-
-  private recordModelUsage(event: FollowEvent): void {
-    const model = event.model!;
-    const stats = this._modelMap.get(model) || { model, calls: 0, tokens: 0, cost: 0 };
-    stats.calls++;
-    if (event.tokens) {
-      stats.tokens += event.tokens.input + event.tokens.output;
-    }
-    if (event.cost) {
-      stats.cost += event.cost;
-    }
-    this._modelMap.set(model, stats);
-  }
-
-  private extractTaskState(event: FollowEvent): void {
-    if (event.type === 'tool_use' && event.toolName) {
-      this.handleTaskToolUse(event);
-    } else if (event.type === 'tool_result') {
-      this.handleTaskToolResult(event);
-    }
-
-    // Count tool calls for active tasks — only for non-task-management tool_use events
-    if (event.type === 'tool_use' && event.toolName &&
-        !['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'].includes(event.toolName)) {
-      const activeTasks = Array.from(this._taskMap.values()).filter(t => t.status === 'in_progress');
-      for (const task of activeTasks) {
-        task.toolCallCount++;
-      }
-    }
-  }
-
-  private handleTaskToolUse(event: FollowEvent): void {
-    const raw = event.raw as Record<string, unknown> | undefined;
-    if (!raw?.input) return;
-    const input = raw.input as Record<string, unknown>;
-
-    if (event.toolName === 'TaskCreate') {
-      // Store pending create — the real task ID comes from the tool result
-      const toolUseId = raw.id as string;
-      if (toolUseId) {
-        this._pendingTaskCreates.set(toolUseId, {
-          subject: (input.subject as string) || 'Untitled',
-          activeForm: input.activeForm as string | undefined,
-          subagentType: input.subagentType as string | undefined,
-          isGoalGate: input.isGoalGate as boolean | undefined,
-        });
-      }
-    } else if (event.toolName === 'TaskUpdate') {
-      const taskId = input.taskId as string;
-      if (!taskId) return;
-
-      const existing = this._taskMap.get(taskId);
-      if (existing) {
-        if (input.status) {
-          const newStatus = input.status as string;
-          if (newStatus === 'deleted') {
-            this._taskMap.delete(taskId);
-            return;
-          }
-          existing.status = newStatus as TaskItem['status'];
-        }
-        if (input.subject) existing.subject = input.subject as string;
-        if (input.activeForm) existing.activeForm = input.activeForm as string;
-        if (input.addBlockedBy && Array.isArray(input.addBlockedBy)) {
-          existing.blockedBy.push(...(input.addBlockedBy as string[]));
-        }
-        if (input.addBlocks && Array.isArray(input.addBlocks)) {
-          existing.blocks.push(...(input.addBlocks as string[]));
-        }
-      } else {
-        // TaskUpdate for unknown task — create placeholder
-        const status = (input.status as string) || 'pending';
-        if (status === 'deleted') return;
-        this._taskMap.set(taskId, {
-          taskId,
-          subject: (input.subject as string) || `Task ${taskId}`,
-          status: status as TaskItem['status'],
-          blockedBy: [],
-          blocks: [],
-          toolCallCount: 0,
-          activeForm: input.activeForm as string | undefined,
-        });
-      }
-    }
-  }
-
-  private handleTaskToolResult(event: FollowEvent): void {
-    if (this._pendingTaskCreates.size === 0) return;
-
-    // Each tool_result FollowEvent has raw = the tool_result content block
-    // { type: 'tool_result', tool_use_id: 'toolu_abc', content: 'Task #1 created...' }
-    const raw = event.raw as Record<string, unknown> | undefined;
-    if (!raw || raw.type !== 'tool_result') return;
-
-    const toolUseId = raw.tool_use_id as string;
-    if (!toolUseId) return;
-
-    const pending = this._pendingTaskCreates.get(toolUseId);
-    if (!pending) return;
-
-    this._pendingTaskCreates.delete(toolUseId);
-
-    // Extract task ID from result content (e.g., "Task #1 created")
-    const taskId = extractTaskIdFromResult(raw.content);
-    if (taskId) {
-      this._taskMap.set(taskId, {
-        taskId,
-        subject: pending.subject,
-        status: 'pending',
-        blockedBy: [],
-        blocks: [],
-        subagentType: pending.subagentType,
-        isGoalGate: pending.isGoalGate,
-        toolCallCount: 0,
-        activeForm: pending.activeForm,
-      });
-    }
-  }
+  // ── CLI-specific extraction helpers ──
 
   private extractFileTouch(event: FollowEvent): void {
     if (event.type !== 'tool_use' || !event.toolName) return;
@@ -746,44 +608,6 @@ export class DashboardState {
       touch.edits++;
     }
     this._fileMap.set(filePath, touch);
-  }
-
-  private extractSubagent(event: FollowEvent): void {
-    if (event.type === 'tool_use' && event.toolName === 'Task') {
-      const raw = event.raw as Record<string, unknown> | undefined;
-      if (!raw?.input) return;
-      const input = raw.input as Record<string, unknown>;
-      const toolUseId = (raw.id as string) || '';
-      const info: SubagentInfo = {
-        id: toolUseId,
-        description: (input.description as string) || 'Unknown task',
-        subagentType: (input.subagent_type as string) || (input.subagentType as string) || 'general',
-        spawnTime: event.timestamp,
-        status: 'running',
-      };
-      const idx = this._subagents.length;
-      this._subagents.push(info);
-      if (toolUseId) {
-        this._pendingSubagents.set(toolUseId, idx);
-      }
-    } else if (event.type === 'tool_result') {
-      // Complete a pending subagent
-      const raw = event.raw as Record<string, unknown> | undefined;
-      if (!raw) return;
-      const toolUseId = raw.tool_use_id as string | undefined;
-      if (!toolUseId) return;
-      const idx = this._pendingSubagents.get(toolUseId);
-      if (idx === undefined) return;
-      this._pendingSubagents.delete(toolUseId);
-      const agent = this._subagents[idx];
-      agent.status = 'completed';
-      agent.completionTime = event.timestamp;
-      const start = new Date(agent.spawnTime).getTime();
-      const end = new Date(event.timestamp).getTime();
-      if (!isNaN(start) && !isNaN(end) && end >= start) {
-        agent.durationMs = end - start;
-      }
-    }
   }
 
   private static readonly URL_TOOLS = ['WebFetch', 'WebSearch'];
@@ -871,96 +695,6 @@ export class DashboardState {
     return null;
   }
 
-  private extractPlan(event: FollowEvent): void {
-    const updated = this._planExtractor.processEvent(event);
-    if (updated) {
-      const extracted = this._planExtractor.plan;
-      if (extracted) {
-        this._plan = {
-          title: extracted.title,
-          steps: extracted.steps.map(s => ({
-            id: s.id,
-            description: s.description,
-            status: s.status,
-            phase: s.phase,
-            complexity: s.complexity,
-          })),
-          source: extracted.source,
-          rawMarkdown: extracted.rawMarkdown,
-        };
-      }
-    }
-  }
-
-  private updateContextAttribution(event: FollowEvent): void {
-    const raw = event.raw as Record<string, unknown> | undefined;
-    const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
-
-    if (event.type === 'user') {
-      // Parse content blocks from raw message
-      const message = raw?.message as Record<string, unknown> | undefined;
-      const content = message?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          const b = block as Record<string, unknown>;
-          if (b.type === 'tool_result') {
-            const text = typeof b.content === 'string' ? b.content : JSON.stringify(b.content || '');
-            this._contextAttribution.toolOutputs += estimateTokens(text);
-          } else if (b.type === 'text') {
-            const text = (b.text as string) || '';
-            if (text.includes('<system-reminder>') || text.includes('CLAUDE.md')) {
-              this._contextAttribution.systemPrompt += estimateTokens(text);
-            } else {
-              this._contextAttribution.userMessages += estimateTokens(text);
-            }
-          }
-        }
-      } else if (typeof content === 'string') {
-        if (content.includes('<system-reminder>') || content.includes('CLAUDE.md')) {
-          this._contextAttribution.systemPrompt += estimateTokens(content);
-        } else {
-          this._contextAttribution.userMessages += estimateTokens(content);
-        }
-      } else if (event.summary) {
-        this._contextAttribution.userMessages += estimateTokens(event.summary);
-      }
-    } else if (event.type === 'assistant') {
-      const message = raw?.message as Record<string, unknown> | undefined;
-      const content = message?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          const b = block as Record<string, unknown>;
-          if (b.type === 'thinking') {
-            this._contextAttribution.thinking += estimateTokens((b.thinking as string) || '');
-          } else if (b.type === 'tool_use') {
-            const input = typeof b.input === 'string' ? b.input : JSON.stringify(b.input || '');
-            this._contextAttribution.toolInputs += estimateTokens(input);
-          } else if (b.type === 'text') {
-            this._contextAttribution.assistantResponses += estimateTokens((b.text as string) || '');
-          }
-        }
-      } else if (event.summary) {
-        this._contextAttribution.assistantResponses += estimateTokens(event.summary);
-      }
-    } else if (event.type === 'tool_use') {
-      // Try raw input first for accurate token count (summary truncated to 80 chars)
-      const rawInput = (raw?.input != null) ? JSON.stringify(raw.input) : null;
-      const text = rawInput || event.summary || '';
-      if (text) this._contextAttribution.toolInputs += estimateTokens(text);
-    } else if (event.type === 'tool_result') {
-      // Try raw content first (summary truncated to 120 chars)
-      const rawContent = raw?.content;
-      const text = (typeof rawContent === 'string') ? rawContent
-        : rawContent ? JSON.stringify(rawContent)
-        : event.summary || '';
-      if (text) this._contextAttribution.toolOutputs += estimateTokens(text);
-    } else if (event.type === 'summary') {
-      if (event.summary) {
-        this._contextAttribution.other += estimateTokens(event.summary);
-      }
-    }
-  }
-
   private extractCodexQuota(event: FollowEvent): void {
     const rl = event.rateLimits;
     if (!rl?.primary && !rl?.secondary) return;
@@ -982,17 +716,4 @@ function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
-}
-
-/**
- * Extract task ID from TaskCreate result content.
- * Matches "Task #N" or JSON taskId patterns (same logic as VS Code extension).
- */
-function extractTaskIdFromResult(content: unknown): string | null {
-  const str = typeof content === 'string' ? content : JSON.stringify(content || '');
-  const taskMatch = str.match(/Task #(\d+)/i);
-  if (taskMatch) return taskMatch[1];
-  const jsonMatch = str.match(/"taskId"\s*:\s*"?(\d+)"?/i);
-  if (jsonMatch) return jsonMatch[1];
-  return null;
 }

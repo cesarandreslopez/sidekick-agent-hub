@@ -24,7 +24,7 @@ import path from 'path';
 import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
 import { extractTokenUsage } from './JsonlParser';
 import type { SessionProvider, SessionReader } from '../types/sessionProvider';
-import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus, PendingUserRequest, ResponseLatency, LatencyStats, CompactionEvent, TruncationEvent, ContextAttribution, PlanState, PlanStep, TurnAttribution, ContextSizePoint } from '../types/claudeSession';
+import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus, LatencyStats, CompactionEvent, TruncationEvent, ContextAttribution, PlanState, PlanStep, TurnAttribution, ContextSizePoint } from '../types/claudeSession';
 import { SessionSummary, ModelUsageRecord, ToolUsageRecord, createEmptyTokenTotals } from '../types/historicalData';
 import { estimateTokens } from '../utils/tokenEstimator';
 import { ModelPricingService } from './ModelPricingService';
@@ -33,6 +33,9 @@ import { extractTaskIdFromResult } from '../utils/taskHelpers';
 import { parsePlanMarkdown, extractProposedPlan } from '../utils/planParser';
 import { detectCycle } from '../utils/cycleDetector';
 import type { SessionEventLogger } from './SessionEventLogger';
+import { EventAggregator } from 'sidekick-shared/dist/aggregation/EventAggregator';
+import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared/dist/aggregation/snapshot';
+import type { SessionSnapshot } from 'sidekick-shared/dist/aggregation/snapshot';
 
 /**
  * Session monitoring service for Claude Code sessions.
@@ -139,6 +142,9 @@ export class SessionMonitor implements vscode.Disposable {
   /** Workspace state for persistence */
   private readonly workspaceState: vscode.Memento | undefined;
 
+  /** Shared aggregation engine (tokens, model stats, context, compaction, latency, etc.) */
+  private aggregator: EventAggregator;
+
   /** Accumulated session statistics */
   private stats: SessionStats;
 
@@ -157,20 +163,8 @@ export class SessionMonitor implements vscode.Disposable {
   /** Maximum timeline events to store */
   private readonly MAX_TIMELINE_EVENTS = 100;
 
-  /** Current context window size (from most recent assistant message) */
-  private currentContextSize: number = 0;
-
   /** Most recently observed model ID */
   private lastModelId: string | null = null;
-
-  /** Accumulated cost reported by the provider (e.g., OpenCode per-message cost) */
-  private totalReportedCost: number = 0;
-
-  /** Recent usage events for burn rate calculation (keeps last 5 minutes worth) */
-  private recentUsageEvents: Array<{ timestamp: Date; tokens: number }> = [];
-
-  /** How long to keep usage events for burn rate (5 minutes) */
-  private readonly USAGE_EVENT_WINDOW_MS = 5 * 60 * 1000;
 
   /** When the session started (first event timestamp) */
   private sessionStartTime: Date | null = null;
@@ -217,38 +211,11 @@ export class SessionMonitor implements vscode.Disposable {
     };
   }
 
-  /** Pending user request awaiting assistant response */
-  private pendingUserRequest: PendingUserRequest | null = null;
-
-  /** Recent latency records (capped at MAX_LATENCY_RECORDS) */
-  private latencyRecords: ResponseLatency[] = [];
-
-  /** Maximum number of latency records to keep */
-  private readonly MAX_LATENCY_RECORDS = 100;
-
-  /** Timeout for stale pending requests (10 minutes) */
-  private readonly STALE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
-
-  /** Compaction events detected during session */
-  private compactionEvents: CompactionEvent[] = [];
-
-  /** Context health score (0-100) — degrades with compactions */
-  private contextHealthScore: number = 100;
-
-  /** Truncation events detected during session */
-  private truncationEvents: TruncationEvent[] = [];
-
-  /** Number of truncated tool outputs */
-  private truncationCount: number = 0;
-
   /** Timestamp of last cycle notification (for throttling) */
   private lastCycleNotificationTime: number = 0;
 
   /** Minimum interval between cycle notifications (ms) */
   private static readonly CYCLE_THROTTLE_MS = 60_000;
-
-  /** Context token attribution breakdown */
-  private contextAttribution: ContextAttribution = SessionMonitor.emptyAttribution();
 
   /** Per-turn attribution history (capped at MAX_TURN_ATTRIBUTIONS) */
   private turnAttributions: TurnAttribution[] = [];
@@ -260,9 +227,6 @@ export class SessionMonitor implements vscode.Disposable {
   /** Context size timeline for waterfall chart (capped at MAX_CONTEXT_TIMELINE) */
   private contextTimeline: ContextSizePoint[] = [];
   private readonly MAX_CONTEXT_TIMELINE = 500;
-
-  /** Previous context size (for compaction delta detection) */
-  private previousContextSize: number = 0;
 
   /** Optional event logger for JSONL audit trail */
   private eventLogger: SessionEventLogger | null = null;
@@ -306,6 +270,7 @@ export class SessionMonitor implements vscode.Disposable {
   private readonly _onTruncation = new vscode.EventEmitter<TruncationEvent>();
   private readonly _onCycleDetected = new vscode.EventEmitter<import('../types/analysis').CycleDetection>();
   private readonly _onQuotaUpdate = new vscode.EventEmitter<QuotaState>();
+  private readonly _onReplayStateChange = new vscode.EventEmitter<boolean>();
 
   /** Fires when token usage is detected in session */
   readonly onTokenUsage = this._onTokenUsage.event;
@@ -343,6 +308,9 @@ export class SessionMonitor implements vscode.Disposable {
   /** Fires when subscription quota data is available from session provider */
   readonly onQuotaUpdate = this._onQuotaUpdate.event;
 
+  /** Fires when replay state changes (true = replaying historical events, false = live) */
+  readonly onReplayStateChange = this._onReplayStateChange.event;
+
   /**
    * Sets or clears the event logger for JSONL audit trail recording.
    *
@@ -367,6 +335,13 @@ export class SessionMonitor implements vscode.Disposable {
     this.workspaceState = workspaceState;
     // Load saved custom path on construction
     this.customSessionDir = workspaceState?.get<string>(CUSTOM_SESSION_PATH_KEY) || null;
+    // Initialize shared aggregation engine
+    this.aggregator = new EventAggregator({
+      computeContextSize: provider.computeContextSize
+        ? (usage) => provider.computeContextSize!(usage as TokenUsage)
+        : undefined,
+      providerId: provider.id as 'claude-code' | 'opencode' | 'codex',
+    });
     // Initialize empty statistics
     this.stats = this.createEmptyStats();
   }
@@ -458,8 +433,7 @@ export class SessionMonitor implements vscode.Disposable {
         const snapshotContextSize = this.provider.computeContextSize
           ? this.provider.computeContextSize(usageSnapshot)
           : usageSnapshot.inputTokens + usageSnapshot.cacheWriteTokens + usageSnapshot.cacheReadTokens;
-        this.currentContextSize = snapshotContextSize;
-        this.previousContextSize = snapshotContextSize;
+        this.aggregator.seedContextSize(snapshotContextSize);
         this.stats.currentContextSize = snapshotContextSize;
         this.lastModelId = usageSnapshot.model;
         this.stats.lastModelId = usageSnapshot.model;
@@ -468,7 +442,7 @@ export class SessionMonitor implements vscode.Disposable {
       // Seed context attribution from provider if available (e.g., OpenCode DB)
       const providerAttribution = this.provider.getContextAttribution?.(this.sessionPath);
       if (providerAttribution) {
-        this.contextAttribution = providerAttribution;
+        this.aggregator.seedContextAttribution(providerAttribution);
       }
 
       // Read existing content
@@ -542,23 +516,16 @@ export class SessionMonitor implements vscode.Disposable {
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
-    this.currentContextSize = 0;
     this.lastModelId = null;
-    this.totalReportedCost = 0;
-    this.recentUsageEvents = [];
     this.sessionStartTime = null;
     this._subagentStats = [];
     this.seenHashes.clear();
     this.resetTaskState();
-    this.pendingUserRequest = null;
-    this.latencyRecords = [];
-    this.compactionEvents = [];
     this.assistantTexts = [];
-    this.contextAttribution = SessionMonitor.emptyAttribution();
     this.turnAttributions = [];
     this.currentTurnIndex = 0;
     this.contextTimeline = [];
-    this.previousContextSize = 0;
+    this.aggregator.reset();
     this.stats = this.createEmptyStats();
     this.isWaitingForSession = false;
     this.fastDiscoveryStartTime = null;
@@ -567,6 +534,13 @@ export class SessionMonitor implements vscode.Disposable {
 
     const oldProvider = this.provider;
     this.provider = newProvider;
+    // Re-create aggregator for new provider
+    this.aggregator = new EventAggregator({
+      computeContextSize: newProvider.computeContextSize
+        ? (usage) => newProvider.computeContextSize!(usage as TokenUsage)
+        : undefined,
+      providerId: newProvider.id as 'claude-code' | 'opencode' | 'codex',
+    });
     oldProvider.dispose();
 
     if (!this.workspacePath) {
@@ -898,53 +872,54 @@ export class SessionMonitor implements vscode.Disposable {
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
-    this.currentContextSize = 0;
     this.lastModelId = null;
-    this.totalReportedCost = 0;
-    this.recentUsageEvents = [];
     this.sessionStartTime = null;
     this._subagentStats = [];
     this.seenHashes.clear();
     this.resetTaskState();
-    this.pendingUserRequest = null;
-    this.latencyRecords = [];
-    this.compactionEvents = [];
     this.assistantTexts = [];
-    this.contextAttribution = SessionMonitor.emptyAttribution();
     this.turnAttributions = [];
     this.currentTurnIndex = 0;
     this.contextTimeline = [];
-    this.previousContextSize = 0;
+    this.aggregator.reset();
 
     // Reset statistics
     this.stats = this.createEmptyStats();
 
-    const usageSnapshot = this.provider.getCurrentUsageSnapshot?.(sessionPath);
-    if (usageSnapshot) {
-      const snapshotContextSize = this.provider.computeContextSize
-        ? this.provider.computeContextSize(usageSnapshot)
-        : usageSnapshot.inputTokens + usageSnapshot.cacheWriteTokens + usageSnapshot.cacheReadTokens;
-      this.currentContextSize = snapshotContextSize;
-      this.previousContextSize = snapshotContextSize;
-      this.stats.currentContextSize = snapshotContextSize;
-      this.lastModelId = usageSnapshot.model;
-      this.stats.lastModelId = usageSnapshot.model;
-    }
-
-    // Seed context attribution from provider if available
-    const providerAttribution = this.provider.getContextAttribution?.(sessionPath);
-    if (providerAttribution) {
-      this.contextAttribution = providerAttribution;
-    }
-
     // Re-setup watcher to track the new session file
     await this.setupDirectoryWatcher();
 
-    // Read content from session
+    // Try to restore from snapshot for fast resume
+    const restored = this.tryRestoreFromSnapshot(sessionPath);
+
+    if (!restored) {
+      // No valid snapshot — seed from provider and do full replay
+      const usageSnapshot = this.provider.getCurrentUsageSnapshot?.(sessionPath);
+      if (usageSnapshot) {
+        const snapshotContextSize = this.provider.computeContextSize
+          ? this.provider.computeContextSize(usageSnapshot)
+          : usageSnapshot.inputTokens + usageSnapshot.cacheWriteTokens + usageSnapshot.cacheReadTokens;
+        this.aggregator.seedContextSize(snapshotContextSize);
+        this.stats.currentContextSize = snapshotContextSize;
+        this.lastModelId = usageSnapshot.model;
+        this.stats.lastModelId = usageSnapshot.model;
+      }
+
+      const providerAttribution = this.provider.getContextAttribution?.(sessionPath);
+      if (providerAttribution) {
+        this.aggregator.seedContextAttribution(providerAttribution);
+      }
+    }
+
+    // Read content from session (full replay if no snapshot, incremental if restored)
     try {
       await this.readInitialContent();
+
+      // Save snapshot after initial replay for future fast resume
+      this.persistSnapshot();
+
       this.startActivityPolling();
-      log(`Attached to session: ${sessionPath}`);
+      log(`Attached to session: ${sessionPath}${restored ? ' (restored from snapshot)' : ''}`);
       this._onSessionStart.fire(sessionPath);
     } catch (error) {
       logError('Failed to attach to session', error);
@@ -1036,8 +1011,11 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns Copy of current session statistics
    */
   getStats(): SessionStats {
-    // Prune old usage events before returning
-    this.pruneOldUsageEvents();
+    const aggTokens = this.aggregator.getAggregatedTokens();
+    const aggCompactions = this.aggregator.getCompactionEvents();
+    const aggTruncations = this.aggregator.getTruncationEvents();
+    const aggLatency = this.aggregator.getLatencyStats();
+    const aggMetrics = this.aggregator.getMetrics();
 
     return {
       ...this.stats,
@@ -1046,56 +1024,43 @@ export class SessionMonitor implements vscode.Disposable {
       toolAnalytics: new Map(this.toolAnalyticsMap),
       timeline: [...this.timeline],
       errorDetails: new Map(this.errorDetails),
-      currentContextSize: this.currentContextSize,
+      currentContextSize: aggMetrics.currentContextSize,
       lastModelId: this.lastModelId ?? undefined,
-      recentUsageEvents: [...this.recentUsageEvents],
+      recentUsageEvents: [],
       sessionStartTime: this.sessionStartTime,
       taskState: this.taskState.tasks.size > 0 ? {
         tasks: new Map(this.taskState.tasks),
         activeTaskId: this.taskState.activeTaskId
       } : undefined,
-      latencyStats: this.latencyRecords.length > 0 ? this.getLatencyStats() : undefined,
-      compactionEvents: this.compactionEvents.length > 0 ? [...this.compactionEvents] : undefined,
-      contextAttribution: { ...this.contextAttribution },
+      latencyStats: aggLatency ?? undefined,
+      compactionEvents: aggCompactions.length > 0 ? aggCompactions : undefined,
+      contextAttribution: this.aggregator.getContextAttribution(),
       turnAttributions: this.turnAttributions.length > 0 ? [...this.turnAttributions] : undefined,
       contextTimeline: this.contextTimeline.length > 0 ? [...this.contextTimeline] : undefined,
-      totalReportedCost: this.totalReportedCost > 0 ? this.totalReportedCost : undefined,
+      totalReportedCost: aggTokens.reportedCost > 0 ? aggTokens.reportedCost : undefined,
       planState: this.planState ? { ...this.planState, steps: [...this.planState.steps] } : undefined,
-      contextHealth: this.contextHealthScore,
-      truncationCount: this.truncationCount,
-      truncationEvents: this.truncationEvents.length > 0 ? [...this.truncationEvents] : undefined,
+      contextHealth: this.calculateContextHealth(),
+      truncationCount: aggTruncations.length,
+      truncationEvents: aggTruncations.length > 0 ? aggTruncations : undefined,
     };
-  }
-
-  /**
-   * Removes usage events older than the window (5 minutes).
-   */
-  private pruneOldUsageEvents(): void {
-    const cutoff = new Date(Date.now() - this.USAGE_EVENT_WINDOW_MS);
-    this.recentUsageEvents = this.recentUsageEvents.filter(e => e.timestamp >= cutoff);
   }
 
   /**
    * Calculates context health score based on compaction history.
    * Score degrades with each compaction and the total percentage of tokens reclaimed.
    */
-  private calculateContextHealth(): void {
-    if (this.compactionEvents.length === 0) {
-      this.contextHealthScore = 100;
-      return;
-    }
+  private calculateContextHealth(): number {
+    const compactions = this.aggregator.getCompactionEvents();
+    if (compactions.length === 0) return 100;
 
-    const compactionCount = this.compactionEvents.length;
-
-    // Calculate total reclaimed percentage relative to peak context
     let totalReclaimedPercent = 0;
-    for (const event of this.compactionEvents) {
+    for (const event of compactions) {
       if (event.contextBefore > 0) {
         totalReclaimedPercent += (event.tokensReclaimed / event.contextBefore) * 100;
       }
     }
 
-    this.contextHealthScore = Math.max(0, Math.round(100 - (compactionCount * 15) - (totalReclaimedPercent * 0.3)));
+    return Math.max(0, Math.round(100 - (compactions.length * 15) - (totalReclaimedPercent * 0.3)));
   }
 
   /** Regex for goal gate keyword detection */
@@ -1114,48 +1079,8 @@ export class SessionMonitor implements vscode.Disposable {
     return false;
   }
 
-  /** Patterns that indicate tool output was truncated */
-  private static readonly TRUNCATION_PATTERNS: Array<{ regex: RegExp; name: string }> = [
-    { regex: /\[Response truncated/, name: 'Response truncated' },
-    { regex: /\[WARNING: Tool output was truncated/, name: 'Tool output truncated' },
-    { regex: /content_too_long/, name: 'Content too long' },
-    { regex: /<response clipped>/, name: 'Response clipped' },
-    { regex: /\[Content truncated/, name: 'Content truncated' },
-    { regex: /\[\.\.\.truncated/, name: 'Truncated' },
-  ];
-
-  /**
-   * Scans tool output content for truncation markers.
-   * On match, records the event, increments count, and fires the event.
-   */
-  private detectTruncation(content: string, toolName: string, timestamp: string): void {
-    for (const pattern of SessionMonitor.TRUNCATION_PATTERNS) {
-      if (pattern.regex.test(content)) {
-        const event: TruncationEvent = {
-          timestamp: new Date(timestamp),
-          toolName,
-          marker: pattern.name,
-        };
-        this.truncationEvents.push(event);
-        this.truncationCount++;
-        this._onTruncation.fire(event);
-
-        // Add timeline event
-        this.timeline.unshift({
-          type: 'tool_result',
-          timestamp,
-          description: `Truncated output from ${toolName}: ${pattern.name}`,
-          noiseLevel: 'system',
-          metadata: { toolName, isError: false },
-        });
-        if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
-          this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
-        }
-
-        break; // Only count one truncation per output
-      }
-    }
-  }
+  // Truncation detection is now handled by the shared aggregator.
+  // VS Code event firing for truncations happens in handleEvent after processEvent().
 
   /**
    * Checks recent tool calls for repeating cycles.
@@ -1646,6 +1571,11 @@ export class SessionMonitor implements vscode.Disposable {
    * Safe to call multiple times.
    */
   dispose(): void {
+    // Save final snapshot before teardown
+    if (this.sessionId && this.reader) {
+      this.persistSnapshot();
+    }
+
     // Clear debounce timers
     if (this.fileChangeDebounceTimer) {
       clearTimeout(this.fileChangeDebounceTimer);
@@ -1691,9 +1621,6 @@ export class SessionMonitor implements vscode.Disposable {
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
-    this.currentContextSize = 0;
-    this.totalReportedCost = 0;
-    this.recentUsageEvents = [];
     this.sessionStartTime = null;
     this._subagentStats = [];
     this.seenHashes.clear();
@@ -1701,15 +1628,11 @@ export class SessionMonitor implements vscode.Disposable {
     this.fastDiscoveryStartTime = null;
     this._isPinned = false;
     this.resetTaskState();
-    this.pendingUserRequest = null;
-    this.latencyRecords = [];
-    this.compactionEvents = [];
     this.assistantTexts = [];
-    this.contextAttribution = SessionMonitor.emptyAttribution();
     this.turnAttributions = [];
     this.currentTurnIndex = 0;
     this.contextTimeline = [];
-    this.previousContextSize = 0;
+    this.aggregator.reset();
 
     log('SessionMonitor disposed');
   }
@@ -1726,6 +1649,7 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     this._isReplaying = true;
+    this._onReplayStateChange.fire(true);
     try {
       const events = this.reader.readNew();
       log(`Reading initial content: ${events.length} events`);
@@ -1739,7 +1663,154 @@ export class SessionMonitor implements vscode.Disposable {
       throw error;
     } finally {
       this._isReplaying = false;
+      this._onReplayStateChange.fire(false);
     }
+  }
+
+  /**
+   * Attempts to restore session state from a snapshot sidecar file.
+   *
+   * If a valid snapshot exists for this session, restores the aggregator state,
+   * local stats, and seeks the reader past already-processed content.
+   * Returns true if restoration succeeded (readInitialContent will only
+   * process new events), false if full replay is needed.
+   */
+  private tryRestoreFromSnapshot(sessionPath: string): boolean {
+    if (!this.sessionId || !this.reader) return false;
+
+    const snapshot = loadSnapshot(this.sessionId);
+    if (!snapshot) return false;
+
+    // Verify provider matches
+    if (snapshot.providerId !== this.provider.id) {
+      deleteSnapshot(this.sessionId);
+      return false;
+    }
+
+    // Validate against source file
+    let sourceSize = 0;
+    try {
+      const stat = fs.statSync(sessionPath);
+      sourceSize = stat.size;
+    } catch {
+      // DB-backed providers may not have a real file — sourceSize stays 0
+    }
+
+    if (!isSnapshotValid(snapshot, sourceSize)) {
+      log(`Snapshot invalidated for ${this.sessionId} (source changed)`);
+      deleteSnapshot(this.sessionId);
+      return false;
+    }
+
+    // Restore aggregator state
+    this.aggregator.restore(snapshot.aggregator);
+
+    // Restore consumer-specific state
+    const c = snapshot.consumer;
+    if (c.stats && typeof c.stats === 'object') {
+      const s = c.stats as Record<string, unknown>;
+      this.stats.totalInputTokens = (s.totalInputTokens as number) || 0;
+      this.stats.totalOutputTokens = (s.totalOutputTokens as number) || 0;
+      this.stats.totalCacheWriteTokens = (s.totalCacheWriteTokens as number) || 0;
+      this.stats.totalCacheReadTokens = (s.totalCacheReadTokens as number) || 0;
+      this.stats.messageCount = (s.messageCount as number) || 0;
+      this.stats.currentContextSize = (s.currentContextSize as number) || 0;
+      this.stats.lastModelId = (s.lastModelId as string) || undefined;
+      this.stats.truncationCount = (s.truncationCount as number) || 0;
+      this.stats.contextHealth = (s.contextHealth as number) ?? 100;
+
+      // Restore Maps from serialized arrays
+      if (Array.isArray(s.modelUsage)) {
+        this.stats.modelUsage = new Map(s.modelUsage as Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number }]>);
+      }
+      if (Array.isArray(s.toolCalls)) {
+        this.stats.toolCalls = s.toolCalls as ToolCall[];
+      }
+    }
+
+    if (typeof c.lastModelId === 'string') {
+      this.lastModelId = c.lastModelId;
+    }
+    if (c.sessionStartTime) {
+      this.sessionStartTime = new Date(c.sessionStartTime as string);
+    }
+    if (typeof c.currentTurnIndex === 'number') {
+      this.currentTurnIndex = c.currentTurnIndex;
+    }
+    if (Array.isArray(c.turnAttributions)) {
+      this.turnAttributions = c.turnAttributions as TurnAttribution[];
+    }
+    if (Array.isArray(c.contextTimeline)) {
+      this.contextTimeline = c.contextTimeline as ContextSizePoint[];
+    }
+    if (Array.isArray(c.timeline)) {
+      this.timeline = c.timeline as TimelineEvent[];
+    }
+    if (Array.isArray(c.toolAnalyticsMap)) {
+      this.toolAnalyticsMap = new Map(c.toolAnalyticsMap as Array<[string, ToolAnalytics]>);
+    }
+    if (Array.isArray(c.seenHashes)) {
+      this.seenHashes = new Set(c.seenHashes as string[]);
+    }
+
+    // Seek reader past already-processed content
+    this.reader.seekTo(snapshot.readerPosition);
+
+    log(`Restored snapshot for ${this.sessionId}: position=${snapshot.readerPosition}, events=${snapshot.aggregator.eventCount}`);
+    return true;
+  }
+
+  /**
+   * Persists the current session state as a snapshot sidecar file.
+   * Called after initial content replay and periodically during monitoring.
+   */
+  private persistSnapshot(): void {
+    if (!this.sessionId || !this.reader) return;
+
+    let sourceSize = 0;
+    if (this.sessionPath) {
+      try {
+        const stat = fs.statSync(this.sessionPath);
+        sourceSize = stat.size;
+      } catch {
+        // DB-backed — leave as 0
+      }
+    }
+
+    const snapshot: SessionSnapshot = {
+      version: 1,
+      sessionId: this.sessionId,
+      providerId: this.provider.id,
+      readerPosition: this.reader.getPosition(),
+      sourceSize,
+      createdAt: new Date().toISOString(),
+      aggregator: this.aggregator.serialize(),
+      consumer: {
+        stats: {
+          totalInputTokens: this.stats.totalInputTokens,
+          totalOutputTokens: this.stats.totalOutputTokens,
+          totalCacheWriteTokens: this.stats.totalCacheWriteTokens,
+          totalCacheReadTokens: this.stats.totalCacheReadTokens,
+          messageCount: this.stats.messageCount,
+          currentContextSize: this.stats.currentContextSize,
+          lastModelId: this.stats.lastModelId,
+          truncationCount: this.stats.truncationCount,
+          contextHealth: this.stats.contextHealth,
+          modelUsage: Array.from(this.stats.modelUsage.entries()),
+          toolCalls: this.stats.toolCalls,
+        },
+        lastModelId: this.lastModelId,
+        sessionStartTime: this.sessionStartTime?.toISOString() ?? null,
+        currentTurnIndex: this.currentTurnIndex,
+        turnAttributions: this.turnAttributions,
+        contextTimeline: this.contextTimeline,
+        timeline: this.timeline,
+        toolAnalyticsMap: Array.from(this.toolAnalyticsMap.entries()),
+        seenHashes: Array.from(this.seenHashes),
+      },
+    };
+
+    saveSnapshot(snapshot);
   }
 
   /** Debounce timer for file changes */
@@ -1798,9 +1869,7 @@ export class SessionMonitor implements vscode.Disposable {
         this.stats.totalCacheWriteTokens = 0;
         this.stats.totalCacheReadTokens = 0;
         this.stats.messageCount = 0;
-        this.currentContextSize = 0;
-        this.totalReportedCost = 0;
-        this.recentUsageEvents = [];
+        this.aggregator.reset();
         this.sessionStartTime = null;
       }
 
@@ -1814,11 +1883,29 @@ export class SessionMonitor implements vscode.Disposable {
         if (quota) {
           this._onQuotaUpdate.fire(quota);
         }
+
+        // Periodically update snapshot (throttled to avoid excessive writes)
+        this.throttledSnapshotSave();
       }
     } catch (error) {
       logError('Error reading session file changes', error);
       // Don't throw - continue monitoring
     }
+  }
+
+  /** Minimum interval between snapshot writes (30 seconds). */
+  private readonly SNAPSHOT_SAVE_INTERVAL_MS = 30_000;
+  /** When the last snapshot was saved. */
+  private lastSnapshotSaveTime = 0;
+
+  /** Saves a snapshot if enough time has passed since the last save. */
+  private throttledSnapshotSave(): void {
+    const now = Date.now();
+    if (now - this.lastSnapshotSaveTime < this.SNAPSHOT_SAVE_INTERVAL_MS) {
+      return;
+    }
+    this.lastSnapshotSaveTime = now;
+    this.persistSnapshot();
   }
 
   /** Debounce timer for new session checks */
@@ -2035,6 +2122,74 @@ export class SessionMonitor implements vscode.Disposable {
       this.eventLogger.logEvent(event);
     }
 
+    // ── Delegate shared aggregation (tokens, model, context, compaction,
+    //    latency, burn rate, tool analytics, truncation, context attribution) ──
+    const prevCompactionCount = this.aggregator.getCompactionEvents().length;
+    const prevTruncationCount = this.aggregator.getTruncationEvents().length;
+    this.aggregator.processEvent(event);
+
+    // During replay, skip expensive VS Code event firing — views will get
+    // a batch update via onSessionStart after replay completes.
+    if (!this._isReplaying) {
+      // Fire VS Code events for newly detected compactions
+      const compactions = this.aggregator.getCompactionEvents();
+      if (compactions.length > prevCompactionCount) {
+        const newCompaction = compactions[compactions.length - 1];
+        this._onCompaction.fire(newCompaction);
+        log(`Compaction detected: ${newCompaction.contextBefore} -> ${newCompaction.contextAfter} (reclaimed ${newCompaction.tokensReclaimed} tokens, health: ${this.calculateContextHealth()}%)`);
+      }
+
+      // Fire VS Code events for newly detected truncations
+      const truncations = this.aggregator.getTruncationEvents();
+      if (truncations.length > prevTruncationCount) {
+        const newTruncation = truncations[truncations.length - 1];
+        this._onTruncation.fire(newTruncation);
+      }
+
+      // Fire latency update if aggregator has data
+      const latencyStats = this.aggregator.getLatencyStats();
+      if (latencyStats) {
+        this._onLatencyUpdate.fire(latencyStats);
+      }
+    }
+
+    // Add compaction/truncation markers to timeline (always, to keep state consistent)
+    const compactions = this.aggregator.getCompactionEvents();
+    if (compactions.length > prevCompactionCount) {
+      const newCompaction = compactions[compactions.length - 1];
+      this.timeline.unshift({
+        type: 'compaction',
+        timestamp: event.timestamp,
+        description: `Context compacted: ${Math.round(newCompaction.contextBefore / 1000)}K -> ${Math.round(newCompaction.contextAfter / 1000)}K tokens (reclaimed ${Math.round(newCompaction.tokensReclaimed / 1000)}K)`,
+        noiseLevel: 'system',
+        metadata: {
+          contextBefore: newCompaction.contextBefore,
+          contextAfter: newCompaction.contextAfter,
+          tokensReclaimed: newCompaction.tokensReclaimed
+        }
+      });
+      if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
+        this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
+      }
+    }
+
+    const truncations = this.aggregator.getTruncationEvents();
+    if (truncations.length > prevTruncationCount) {
+      const newTruncation = truncations[truncations.length - 1];
+      this.timeline.unshift({
+        type: 'tool_result',
+        timestamp: event.timestamp,
+        description: `Truncated output from ${newTruncation.toolName}: ${newTruncation.marker}`,
+        noiseLevel: 'system',
+        metadata: { toolName: newTruncation.toolName, isError: false },
+      });
+      if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
+        this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
+      }
+    }
+
+    // ── VS Code-specific processing below ──
+
     // Exclude synthetic provider token-count events from user-facing message count.
     const isSyntheticTokenCount = event.type === 'assistant' &&
       typeof event.message?.id === 'string' &&
@@ -2050,66 +2205,24 @@ export class SessionMonitor implements vscode.Disposable {
       this.sessionStartTime = new Date(event.timestamp);
     }
 
-    // Track latency: user events with actual prompt content start a pending request
+    // Capture user prompt text for plan context
     if (event.type === 'user' && this.hasTextContent(event)) {
-      // Check if we should discard a stale pending request
-      if (this.pendingUserRequest) {
-        const elapsed = Date.now() - this.pendingUserRequest.timestamp.getTime();
-        if (elapsed > this.STALE_REQUEST_TIMEOUT_MS) {
-          log(`Discarding stale pending request after ${elapsed}ms`);
-          this.pendingUserRequest = null;
-        }
-      }
-
-      // Create new pending request for latency tracking
-      this.pendingUserRequest = {
-        timestamp: new Date(event.timestamp),
-        firstResponseReceived: false
-      };
-
-      // Capture user prompt text for plan context
       this.lastUserPromptForPlan = this.extractUserText(event);
     }
 
-    // Track latency: first assistant event with text content marks first token
-    if (event.type === 'assistant' && this.pendingUserRequest && !this.pendingUserRequest.firstResponseReceived) {
-      if (this.hasTextContent(event)) {
-        const responseTimestamp = new Date(event.timestamp);
-        const firstTokenLatencyMs = responseTimestamp.getTime() - this.pendingUserRequest.timestamp.getTime();
-
-        this.pendingUserRequest.firstResponseReceived = true;
-        this.pendingUserRequest.firstResponseTimestamp = responseTimestamp;
-        this.pendingUserRequest.firstTokenLatencyMs = firstTokenLatencyMs;
-      }
-    }
-
-    // Track latency: assistant event with usage data marks cycle completion
+    // Extract token usage for stats and event emission
     const usage = extractTokenUsage(event);
     if (usage) {
-      // Complete latency cycle if we have a pending request with first response
-      if (this.pendingUserRequest && this.pendingUserRequest.firstResponseReceived) {
-        const totalResponseTimeMs = new Date(event.timestamp).getTime() - this.pendingUserRequest.timestamp.getTime();
-
-        this.recordLatency({
-          firstTokenLatencyMs: this.pendingUserRequest.firstTokenLatencyMs!,
-          totalResponseTimeMs,
-          requestTimestamp: this.pendingUserRequest.timestamp
-        });
-
-        // Clear pending request after recording
-        this.pendingUserRequest = null;
-      }
-
       log(`Token usage extracted - input: ${usage.inputTokens}, output: ${usage.outputTokens}, cacheWrite: ${usage.cacheWriteTokens}, cacheRead: ${usage.cacheReadTokens}`);
       this.lastModelId = usage.model;
       this.stats.lastModelId = usage.model;
-      // Update statistics
+      // Update local stats (kept for SessionSummary and model pricing)
       this.stats.totalInputTokens += usage.inputTokens;
       this.stats.totalOutputTokens += usage.outputTokens;
       this.stats.totalCacheWriteTokens += usage.cacheWriteTokens;
       this.stats.totalCacheReadTokens += usage.cacheReadTokens;
 
-      // Update per-model usage
+      // Update per-model usage (kept for SessionSummary cost calculation)
       const modelStats = this.stats.modelUsage.get(usage.model) || { calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 };
       modelStats.calls++;
       modelStats.tokens += usage.inputTokens + usage.outputTokens;
@@ -2119,11 +2232,8 @@ export class SessionMonitor implements vscode.Disposable {
       modelStats.cacheReadTokens += usage.cacheReadTokens;
       this.stats.modelUsage.set(usage.model, modelStats);
 
-      // Update current context window size (provider-specific formula)
-      const newContextSize = this.provider.computeContextSize
-        ? this.provider.computeContextSize(usage)
-        : usage.inputTokens + usage.cacheWriteTokens + usage.cacheReadTokens;
-
+      // Track context size for waterfall chart
+      const newContextSize = this.aggregator.getMetrics().currentContextSize;
       const hasContextSignal = usage.inputTokens > 0
         || usage.outputTokens > 0
         || usage.cacheWriteTokens > 0
@@ -2131,55 +2241,7 @@ export class SessionMonitor implements vscode.Disposable {
         || (usage.reasoningTokens ?? 0) > 0;
 
       if (hasContextSignal) {
-        // Detect compaction: significant context size drop (>20% decrease)
-        if (this.previousContextSize > 0 && newContextSize < this.previousContextSize * 0.8) {
-          const compactionEvent: CompactionEvent = {
-            timestamp: new Date(event.timestamp),
-            contextBefore: this.previousContextSize,
-            contextAfter: newContextSize,
-            tokensReclaimed: this.previousContextSize - newContextSize
-          };
-          this.compactionEvents.push(compactionEvent);
-          this.calculateContextHealth();
-          this._onCompaction.fire(compactionEvent);
-          log(`Compaction detected: ${this.previousContextSize} -> ${newContextSize} (reclaimed ${compactionEvent.tokensReclaimed} tokens, health: ${this.contextHealthScore}%)`);
-
-          // Add compaction marker to timeline
-          this.timeline.unshift({
-            type: 'compaction',
-            timestamp: event.timestamp,
-            description: `Context compacted: ${Math.round(this.previousContextSize / 1000)}K -> ${Math.round(newContextSize / 1000)}K tokens (reclaimed ${Math.round(compactionEvent.tokensReclaimed / 1000)}K)`,
-            noiseLevel: 'system',
-            metadata: {
-              contextBefore: this.previousContextSize,
-              contextAfter: newContextSize,
-              tokensReclaimed: compactionEvent.tokensReclaimed
-            }
-          });
-          if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
-            this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
-          }
-          this._onTimelineEvent.fire(this.timeline[0]);
-        }
-
-        this.previousContextSize = newContextSize;
-        this.currentContextSize = newContextSize;
-
-        // Track context size for waterfall chart
         this.addContextTimelinePoint(event.timestamp, newContextSize, this.currentTurnIndex);
-      }
-
-      // Track for burn rate calculation (include cache writes as they count toward quota)
-      const totalTokensForBurn = usage.inputTokens + usage.outputTokens + usage.cacheWriteTokens;
-      this.recentUsageEvents.push({
-        timestamp: usage.timestamp,
-        tokens: totalTokensForBurn
-      });
-      this.pruneOldUsageEvents();
-
-      // Accumulate provider-reported cost
-      if (usage.reportedCost !== undefined && usage.reportedCost > 0) {
-        this.totalReportedCost += usage.reportedCost;
       }
 
       // Attribute tokens to active plan step
@@ -2192,8 +2254,10 @@ export class SessionMonitor implements vscode.Disposable {
         }
       }
 
-      // Emit event
-      this._onTokenUsage.fire(usage);
+      // Emit event (suppressed during replay — views get batch update after)
+      if (!this._isReplaying) {
+        this._onTokenUsage.fire(usage);
+      }
     }
 
     // Extract tool_use from assistant message content blocks
@@ -2245,8 +2309,8 @@ export class SessionMonitor implements vscode.Disposable {
       this.extractToolResultsFromContent(event.message.content, event.timestamp);
     }
 
-    // Track context token attribution by content category
-    this.updateContextAttribution(event);
+    // Track per-turn context attribution (VS Code-specific — aggregator handles cumulative)
+    this.updateTurnAttribution(event);
 
     // Add to timeline
     this.addTimelineEvent(event);
@@ -2254,12 +2318,6 @@ export class SessionMonitor implements vscode.Disposable {
 
   /**
    * Checks if a user event contains actual prompt content (not just tool_result).
-   *
-   * User events that are only tool_result continuations should not start
-   * a new latency tracking cycle.
-   *
-   * @param event - User session event
-   * @returns True if event has user prompt text content
    */
   private hasTextContent(event: ClaudeSessionEvent): boolean {
     const content = event.message?.content;
@@ -2282,61 +2340,46 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Updates context token attribution based on event content.
+   * Updates per-turn context attribution breakdown.
    *
-   * Classifies event content into categories (system prompt, user messages,
-   * assistant responses, tool I/O, thinking) using heuristics and estimates
-   * token counts for each category.
+   * The cumulative contextAttribution is now handled by the aggregator.
+   * This method only tracks the per-turn breakdown for the waterfall chart.
    */
-  private updateContextAttribution(event: ClaudeSessionEvent): void {
+  private updateTurnAttribution(event: ClaudeSessionEvent): void {
     const content = event.message?.content;
     if (!content) return;
 
-    // Per-turn breakdown accumulator
+    // Per-turn breakdown accumulator (cumulative attribution is handled by aggregator)
     const turnBreakdown: ContextAttribution = SessionMonitor.emptyAttribution();
 
     if (event.type === 'user') {
-      // User events may contain: user prompts, tool_results, system-reminders
       if (Array.isArray(content)) {
         for (const block of content) {
           if (!isTypedBlock(block)) continue;
 
           if (block.type === 'tool_result') {
-            // Tool result content sent back in user message
             const resultText = typeof block.content === 'string'
               ? block.content
               : JSON.stringify(block.content || '');
-            const tokens = estimateTokens(resultText);
-            this.contextAttribution.toolOutputs += tokens;
-            turnBreakdown.toolOutputs += tokens;
+            turnBreakdown.toolOutputs += estimateTokens(resultText);
           } else if (block.type === 'text' && typeof block.text === 'string') {
             const text = block.text as string;
-            // Detect system prompt patterns
             if (text.includes('<system-reminder>') || text.includes('CLAUDE.md') ||
                 text.includes('# System') || text.includes('<claude_code_instructions>')) {
-              const tokens = estimateTokens(text);
-              this.contextAttribution.systemPrompt += tokens;
-              turnBreakdown.systemPrompt += tokens;
+              turnBreakdown.systemPrompt += estimateTokens(text);
             } else {
-              const tokens = estimateTokens(text);
-              this.contextAttribution.userMessages += tokens;
-              turnBreakdown.userMessages += tokens;
+              turnBreakdown.userMessages += estimateTokens(text);
             }
           }
         }
       } else if (typeof content === 'string') {
         if (content.includes('<system-reminder>') || content.includes('CLAUDE.md')) {
-          const tokens = estimateTokens(content);
-          this.contextAttribution.systemPrompt += tokens;
-          turnBreakdown.systemPrompt += tokens;
+          turnBreakdown.systemPrompt += estimateTokens(content);
         } else {
-          const tokens = estimateTokens(content);
-          this.contextAttribution.userMessages += tokens;
-          turnBreakdown.userMessages += tokens;
+          turnBreakdown.userMessages += estimateTokens(content);
         }
       }
 
-      // Record per-turn attribution for user events
       const totalEstimated = turnBreakdown.systemPrompt + turnBreakdown.userMessages +
         turnBreakdown.toolOutputs + turnBreakdown.toolInputs +
         turnBreakdown.assistantResponses + turnBreakdown.thinking + turnBreakdown.other;
@@ -2356,27 +2399,17 @@ export class SessionMonitor implements vscode.Disposable {
           if (!isTypedBlock(block)) continue;
 
           if (block.type === 'thinking' && typeof block.thinking === 'string') {
-            const tokens = estimateTokens(block.thinking as string);
-            this.contextAttribution.thinking += tokens;
-            turnBreakdown.thinking += tokens;
+            turnBreakdown.thinking += estimateTokens(block.thinking as string);
           } else if (block.type === 'tool_use') {
-            const inputText = JSON.stringify(block.input || {});
-            const tokens = estimateTokens(inputText);
-            this.contextAttribution.toolInputs += tokens;
-            turnBreakdown.toolInputs += tokens;
+            turnBreakdown.toolInputs += estimateTokens(JSON.stringify(block.input || {}));
           } else if (block.type === 'text' && typeof block.text === 'string') {
-            const tokens = estimateTokens(block.text as string);
-            this.contextAttribution.assistantResponses += tokens;
-            turnBreakdown.assistantResponses += tokens;
+            turnBreakdown.assistantResponses += estimateTokens(block.text as string);
           }
         }
       } else if (typeof content === 'string') {
-        const tokens = estimateTokens(content);
-        this.contextAttribution.assistantResponses += tokens;
-        turnBreakdown.assistantResponses += tokens;
+        turnBreakdown.assistantResponses += estimateTokens(content);
       }
 
-      // For assistant turns, use actual API token counts if available
       const usage = event.message?.usage;
       const actualInput = usage?.input_tokens ?? 0;
       const actualOutput = usage?.output_tokens ?? 0;
@@ -2394,12 +2427,8 @@ export class SessionMonitor implements vscode.Disposable {
           breakdown: turnBreakdown,
         });
       }
-    } else if (event.type === 'summary') {
-      // Summary events are compaction markers
-      const summaryText = typeof content === 'string' ? content : JSON.stringify(content);
-      const tokens = estimateTokens(summaryText);
-      this.contextAttribution.other += tokens;
     }
+    // Summary events: cumulative attribution handled by aggregator, no per-turn breakdown needed
   }
 
   /**
@@ -2426,57 +2455,17 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Records a completed latency measurement.
-   *
-   * Adds to the latency records array (capped at MAX_LATENCY_RECORDS)
-   * and emits a latency update event.
-   *
-   * @param latency - Response latency data to record
-   */
-  private recordLatency(latency: ResponseLatency): void {
-    this.latencyRecords.push(latency);
-
-    // Cap at MAX_LATENCY_RECORDS
-    if (this.latencyRecords.length > this.MAX_LATENCY_RECORDS) {
-      this.latencyRecords = this.latencyRecords.slice(-this.MAX_LATENCY_RECORDS);
-    }
-
-    // Emit update
-    this._onLatencyUpdate.fire(this.getLatencyStats());
-  }
-
-  /**
    * Gets current latency statistics.
-   *
-   * Calculates aggregated latency metrics from recorded data.
-   *
-   * @returns Aggregated latency statistics
+   * Delegates to the shared aggregator.
    */
   getLatencyStats(): LatencyStats {
-    if (this.latencyRecords.length === 0) {
-      return {
-        recentLatencies: [],
-        avgFirstTokenLatencyMs: 0,
-        maxFirstTokenLatencyMs: 0,
-        avgTotalResponseTimeMs: 0,
-        lastFirstTokenLatencyMs: null,
-        completedCycles: 0
-      };
-    }
-
-    const firstTokenLatencies = this.latencyRecords.map(r => r.firstTokenLatencyMs);
-    const totalResponseTimes = this.latencyRecords.map(r => r.totalResponseTimeMs);
-
-    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
-    const max = (arr: number[]) => Math.max(...arr);
-
-    return {
-      recentLatencies: [...this.latencyRecords],
-      avgFirstTokenLatencyMs: avg(firstTokenLatencies),
-      maxFirstTokenLatencyMs: max(firstTokenLatencies),
-      avgTotalResponseTimeMs: avg(totalResponseTimes),
-      lastFirstTokenLatencyMs: firstTokenLatencies[firstTokenLatencies.length - 1],
-      completedCycles: this.latencyRecords.length
+    return this.aggregator.getLatencyStats() ?? {
+      recentLatencies: [],
+      avgFirstTokenLatencyMs: 0,
+      maxFirstTokenLatencyMs: 0,
+      avgTotalResponseTimeMs: 0,
+      lastFirstTokenLatencyMs: null,
+      completedCycles: 0
     };
   }
 
@@ -2626,7 +2615,9 @@ export class SessionMonitor implements vscode.Disposable {
       this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
     }
 
-    this._onTimelineEvent.fire(timelineEvent);
+    if (!this._isReplaying) {
+      this._onTimelineEvent.fire(timelineEvent);
+    }
   }
 
   /**
@@ -2840,7 +2831,9 @@ export class SessionMonitor implements vscode.Disposable {
         if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
           this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
         }
-        this._onTimelineEvent.fire(this.timeline[0]);
+        if (!this._isReplaying) {
+          this._onTimelineEvent.fire(this.timeline[0]);
+        }
 
         // Build tool call object
         const rawToolName = typeof toolUse.input?._sidekickRawToolName === 'string'
@@ -2872,12 +2865,16 @@ export class SessionMonitor implements vscode.Disposable {
           }
         }
 
-        // Emit tool call event
-        this._onToolCall.fire(toolCall);
+        // Emit tool call event (suppressed during replay)
+        if (!this._isReplaying) {
+          this._onToolCall.fire(toolCall);
+        }
         this.stats.toolCalls.push(toolCall);
 
-        // Check for repeating cycles after each new tool call
-        this.checkForCycles();
+        // Check for repeating cycles after each new tool call (skip during replay)
+        if (!this._isReplaying) {
+          this.checkForCycles();
+        }
       }
     }
   }
@@ -3417,8 +3414,10 @@ export class SessionMonitor implements vscode.Disposable {
             if (agentTask) {
               agentTask.status = toolResult.is_error ? 'deleted' : 'completed';
               agentTask.updatedAt = new Date(timestamp);
-              // Fire event so the board refreshes immediately
-              this._onToolCall.fire({ name: 'Task', input: {}, timestamp: new Date(timestamp) });
+              // Fire event so the board refreshes immediately (suppressed during replay)
+              if (!this._isReplaying) {
+                this._onToolCall.fire({ name: 'Task', input: {}, timestamp: new Date(timestamp) });
+              }
             }
           }
 
@@ -3460,13 +3459,7 @@ export class SessionMonitor implements vscode.Disposable {
               this.errorDetails.set(errorType, messages);
             } else {
               analytics.successCount++;
-
-              // Check non-error results for truncation markers
-              if (toolResult.content) {
-                const contentStr = typeof toolResult.content === 'string'
-                  ? toolResult.content : JSON.stringify(toolResult.content);
-                this.detectTruncation(contentStr, pending.name, timestamp);
-              }
+              // Truncation detection is handled by the shared aggregator
             }
 
             this._onToolAnalytics.fire({ ...analytics });
@@ -3482,7 +3475,9 @@ export class SessionMonitor implements vscode.Disposable {
           if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
             this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
           }
-          this._onTimelineEvent.fire(this.timeline[0]);
+          if (!this._isReplaying) {
+            this._onTimelineEvent.fire(this.timeline[0]);
+          }
 
           // Remove from pending
           this.pendingToolCalls.delete(toolResult.tool_use_id);
@@ -3596,20 +3591,18 @@ export class SessionMonitor implements vscode.Disposable {
 
   /**
    * Gets compaction events that occurred during the session.
-   *
-   * @returns Array of compaction events
+   * Delegates to the shared aggregator.
    */
   getCompactionEvents(): CompactionEvent[] {
-    return [...this.compactionEvents];
+    return this.aggregator.getCompactionEvents();
   }
 
   /**
    * Gets context token attribution breakdown.
-   *
-   * @returns Current context attribution
+   * Delegates to the shared aggregator.
    */
   getContextAttribution(): ContextAttribution {
-    return { ...this.contextAttribution };
+    return this.aggregator.getContextAttribution();
   }
 
   /**

@@ -72,17 +72,33 @@ export class MonitorStatusBar implements vscode.Disposable {
     this.disposables.push(
       this.monitor.onSessionStart(() => this.handleSessionStart()),
       this.monitor.onSessionEnd(() => this.handleSessionEnd()),
-      this.monitor.onTokenUsage(usage => this.handleTokenUsage(usage))
+      this.monitor.onTokenUsage(usage => this.handleTokenUsage(usage)),
+      this.monitor.onReplayStateChange(replaying => this.handleReplayState(replaying))
     );
 
     // Initialize display
-    if (this.monitor.isActive()) {
+    if (this.monitor.isReplaying) {
+      this.updateLoading();
+    } else if (this.monitor.isActive()) {
       this.handleSessionStart();
     } else {
       this.updateNoSession();
     }
 
     this.statusBarItem.show();
+  }
+
+  /**
+   * Handles replay state change.
+   * Shows loading indicator during initial session replay.
+   */
+  private handleReplayState(replaying: boolean): void {
+    if (replaying) {
+      this.updateLoading();
+    } else {
+      this.syncFromMonitor();
+      this.updateDisplay();
+    }
   }
 
   /**
@@ -181,6 +197,15 @@ export class MonitorStatusBar implements vscode.Disposable {
       '',
       'Click to open dashboard'
     ].join('\n');
+  }
+
+  /**
+   * Updates status bar to show loading state during replay.
+   */
+  private updateLoading(): void {
+    this.statusBarItem.text = '$(sync~spin) Loading session...';
+    this.statusBarItem.tooltip = 'Replaying session history — this will be faster next time';
+    this.statusBarItem.backgroundColor = undefined;
   }
 
   /**

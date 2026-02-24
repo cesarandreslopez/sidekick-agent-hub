@@ -88,6 +88,22 @@ export class OpenCodeDatabase {
     );
   }
 
+  /** Get the most recently updated session for a project (excludes subagent child sessions). */
+  getMostRecentSession(projectId: string): DbSession | null {
+    return this.queryOne<DbSession>(
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC LIMIT 1',
+      [projectId]
+    );
+  }
+
+  /** Get child sessions (subagents) whose parent_id matches the given session ID. */
+  getChildSessions(parentSessionId: string): DbSession[] {
+    return this.query<DbSession>(
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id = ? ORDER BY time_created ASC',
+      [parentSessionId]
+    );
+  }
+
   getSession(sessionId: string): DbSession | null {
     return this.queryOne<DbSession>('SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE id = ?', [sessionId]);
   }
@@ -98,16 +114,147 @@ export class OpenCodeDatabase {
     );
   }
 
+  /** Get specific messages for a session by message IDs. */
+  getMessagesByIds(sessionId: string, messageIds: string[]): DbMessage[] {
+    if (messageIds.length === 0) return [];
+    const placeholders = messageIds.map(() => '?').join(', ');
+    return this.query<DbMessage>(
+      `SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? AND id IN (${placeholders}) ORDER BY time_created ASC`,
+      [sessionId, ...messageIds]
+    );
+  }
+
+  /** Get messages newer than a given time_updated timestamp (ms epoch). */
+  getMessagesNewerThan(sessionId: string, afterTimeUpdated: number): DbMessage[] {
+    return this.query<DbMessage>(
+      'SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? AND time_updated > ? ORDER BY time_created ASC',
+      [sessionId, afterTimeUpdated]
+    );
+  }
+
+  /** Get the latest message time_updated for a session. */
+  getLatestMessageTimeUpdated(sessionId: string): number {
+    const row = this.queryOne<{ maxTimeUpdated: number }>(
+      'SELECT COALESCE(MAX(time_updated), 0) AS maxTimeUpdated FROM message WHERE session_id = ?',
+      [sessionId]
+    );
+    return row?.maxTimeUpdated ?? 0;
+  }
+
+  /** Get user message IDs that already have an assistant child message. */
+  getProcessedUserMessageIds(sessionId: string, userMessageIds: string[]): string[] {
+    if (userMessageIds.length === 0) return [];
+    const placeholders = userMessageIds.map(() => '?').join(', ');
+    const rows = this.query<{ parentId: string }>(
+      `SELECT DISTINCT json_extract(data, '$.parentID') AS parentId
+       FROM message
+       WHERE session_id = ?
+         AND json_extract(data, '$.role') = 'assistant'
+         AND json_extract(data, '$.parentID') IN (${placeholders})`,
+      [sessionId, ...userMessageIds]
+    );
+    return rows
+      .map(r => r.parentId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  }
+
+  /** Get the latest assistant token usage row with non-zero context signal. */
+  getLatestAssistantContextUsage(sessionId: string): {
+    timeCreated: number;
+    modelId: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+  } | null {
+    return this.queryOne<{
+      timeCreated: number;
+      modelId: string;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      reasoningTokens: number;
+    }>(
+      `SELECT
+         time_created AS timeCreated,
+         COALESCE(json_extract(data, '$.modelID'), 'unknown') AS modelId,
+         COALESCE(json_extract(data, '$.tokens.input'), 0) AS inputTokens,
+         COALESCE(json_extract(data, '$.tokens.output'), 0) AS outputTokens,
+         COALESCE(json_extract(data, '$.tokens.cache.read'), 0) AS cacheReadTokens,
+         COALESCE(json_extract(data, '$.tokens.cache.write'), 0) AS cacheWriteTokens,
+         COALESCE(json_extract(data, '$.tokens.reasoning'), 0) AS reasoningTokens
+       FROM message
+       WHERE session_id = ?
+         AND json_extract(data, '$.role') = 'assistant'
+         AND (
+           COALESCE(json_extract(data, '$.tokens.input'), 0) > 0
+           OR COALESCE(json_extract(data, '$.tokens.output'), 0) > 0
+           OR COALESCE(json_extract(data, '$.tokens.cache.read'), 0) > 0
+           OR COALESCE(json_extract(data, '$.tokens.cache.write'), 0) > 0
+           OR COALESCE(json_extract(data, '$.tokens.reasoning'), 0) > 0
+         )
+       ORDER BY time_created DESC
+       LIMIT 1`,
+      [sessionId]
+    );
+  }
+
+  /** Get all parts for a message. */
+  getPartsForMessage(messageId: string): DbPart[] {
+    return this.query<DbPart>(
+      'SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE message_id = ? ORDER BY time_created ASC',
+      [messageId]
+    );
+  }
+
+  /** Get all parts for a set of messages in one query. */
+  getPartsForMessages(sessionId: string, messageIds: string[]): DbPart[] {
+    if (messageIds.length === 0) return [];
+    const placeholders = messageIds.map(() => '?').join(', ');
+    return this.query<DbPart>(
+      `SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? AND message_id IN (${placeholders}) ORDER BY time_created ASC`,
+      [sessionId, ...messageIds]
+    );
+  }
+
   getPartsForSession(sessionId: string): DbPart[] {
     return this.query<DbPart>(
       'SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? ORDER BY time_created ASC', [sessionId]
     );
   }
 
+  /** Get parts newer than a given time_updated timestamp (ms epoch). */
+  getPartsNewerThan(sessionId: string, afterTimeUpdated: number): DbPart[] {
+    return this.query<DbPart>(
+      'SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? AND time_updated > ? ORDER BY time_created ASC',
+      [sessionId, afterTimeUpdated]
+    );
+  }
+
+  /** Get the latest part time_updated for a session. */
+  getLatestPartTimeUpdated(sessionId: string): number {
+    const row = this.queryOne<{ maxTimeUpdated: number }>(
+      'SELECT COALESCE(MAX(time_updated), 0) AS maxTimeUpdated FROM part WHERE session_id = ?',
+      [sessionId]
+    );
+    return row?.maxTimeUpdated ?? 0;
+  }
+
   getProjectSessionStats(): Array<{ projectId: string; sessionCount: number; maxTimeUpdated: number }> {
     return this.query<{ projectId: string; sessionCount: number; maxTimeUpdated: number }>(
       'SELECT project_id AS projectId, COUNT(*) AS sessionCount, MAX(time_updated) AS maxTimeUpdated FROM session GROUP BY project_id'
     );
+  }
+
+  /** Get the database file's mtime (ms epoch). Returns 0 if unavailable. */
+  getDbMtime(): number {
+    try {
+      return fs.statSync(this.dbPath).mtime.getTime();
+    } catch {
+      return 0;
+    }
   }
 }
 

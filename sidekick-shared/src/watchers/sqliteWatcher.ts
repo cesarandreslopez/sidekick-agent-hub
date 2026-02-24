@@ -109,6 +109,17 @@ export class SqliteSessionWatcher implements SessionWatcher {
 
   get isActive(): boolean { return this._isActive; }
 
+  /** Seek to a timestamp position. Must be called before start(). */
+  seekTo(position: number): void {
+    this.lastMessageTime = position;
+    this.lastPartTime = position;
+  }
+
+  /** Get the current cursor position (max timestamp seen). */
+  getPosition(): number {
+    return Math.max(this.lastMessageTime, this.lastPartTime);
+  }
+
   start(replay: boolean): void {
     if (this._isActive) return;
     this._isActive = true;

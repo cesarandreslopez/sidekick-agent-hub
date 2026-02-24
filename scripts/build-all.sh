@@ -6,6 +6,11 @@ cd "$(dirname "$0")/../sidekick-shared"
 npm install
 npm run build
 
+echo "Building sidekick-vscode..."
+cd ../sidekick-vscode
+npm install
+npm run compile
+
 echo "Building sidekick-cli..."
 cd ../sidekick-cli
 npm install

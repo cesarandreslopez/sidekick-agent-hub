@@ -37,6 +37,10 @@ export interface SessionWatcher {
   start(replay: boolean): void;
   stop(): void;
   readonly isActive: boolean;
+  /** Seek to a position (byte offset for JSONL, timestamp for DB). Must be called before start(). */
+  seekTo?(position: number): void;
+  /** Get current reader position (byte offset or timestamp). */
+  getPosition?(): number;
 }
 
 export interface CreateWatcherOptions {

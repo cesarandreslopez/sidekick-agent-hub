@@ -52,6 +52,9 @@ const ANSI: Record<string, string> = {
   bold:    '\x1b[1m',
 };
 
+/** Marker appended to the latest (most recently active) node. */
+const LATEST_MARKER = ' {yellow-fg}\u25C4{/yellow-fg}';      // ◄ in yellow
+
 // ── Status icons ──
 
 const STATUS_ICON: Record<string, string> = {
@@ -78,9 +81,10 @@ export function buildMindMapTree(metrics: DashboardMetrics, staticData: StaticDa
   const rootLabel = tag('session', `SESSION [${sessionId}] \u2014 claude-code`);
 
   const children: Record<string, TreeData> = {};
+  const latestPath = findLatestFilePath(metrics);
 
   // ── Tools section (with files, URLs, dirs, commands nested under their tool) ──
-  addToolsSection(children, metrics, diffStats);
+  addToolsSection(children, metrics, diffStats, latestPath);
 
   // ── Tasks section ──
   addTasksSection(children, metrics);
@@ -146,9 +150,35 @@ export function renderMindMapAnsi(metrics: DashboardMetrics, staticData: StaticD
   return lines;
 }
 
+// ── Latest-node detection ──
+
+/** File-operation tool names (mirrors VS Code MindMapDataService). */
+const FILE_TOOLS = ['Read', 'Write', 'Edit', 'MultiEdit'];
+const URL_TOOLS  = ['WebFetch', 'WebSearch'];
+
+/**
+ * Determine the short path of the most recently touched file or URL
+ * from the timeline, so we can mark it as "latest" in the tree.
+ * Returns the shortened path (matching the label used in the tree).
+ */
+function findLatestFilePath(metrics: DashboardMetrics): string | null {
+  // Walk timeline backwards to find the last file/URL tool_use event
+  for (let i = metrics.timeline.length - 1; i >= 0; i--) {
+    const ev = metrics.timeline[i];
+    if (ev.type !== 'tool_use' || !ev.toolName) continue;
+    if (FILE_TOOLS.includes(ev.toolName) && ev.toolInput) {
+      return shortenPath(ev.toolInput.trim());
+    }
+    if (URL_TOOLS.includes(ev.toolName) && ev.toolInput) {
+      return ev.toolInput.trim();
+    }
+  }
+  return null;
+}
+
 // ── Section builders ──
 
-function addToolsSection(children: Record<string, TreeData>, metrics: DashboardMetrics, diffStats?: Map<string, DiffStat>): void {
+function addToolsSection(children: Record<string, TreeData>, metrics: DashboardMetrics, diffStats?: Map<string, DiffStat>, latestPath?: string | null): void {
   if (metrics.toolStats.length === 0) return;
 
   const totalCalls = metrics.toolStats.reduce((s, t) => s + t.calls, 0);
@@ -183,7 +213,8 @@ function addToolsSection(children: Record<string, TreeData>, metrics: DashboardM
         const shortPath = shortenPath(f.path);
         const ds = diffStats?.get(f.path) ?? diffStats?.get(shortPath);
         const diffSuffix = ds ? ` {green-fg}+${ds.additions}{/green-fg} {red-fg}-${ds.deletions}{/red-fg}` : '';
-        toolLeaves[tag('file', shortPath) + ` (${total}\u00D7, ${parts.join('/')})${diffSuffix}`] = {};
+        const latestSuffix = latestPath === shortPath ? LATEST_MARKER : '';
+        toolLeaves[tag('file', shortPath) + ` (${total}\u00D7, ${parts.join('/')})${diffSuffix}${latestSuffix}`] = {};
       }
     }
 
@@ -191,7 +222,8 @@ function addToolsSection(children: Record<string, TreeData>, metrics: DashboardM
     const urls = urlsByTool.get(t.name);
     if (urls) {
       for (const u of urls) {
-        toolLeaves[tag('url', getUrlLabel(u.url)) + ` (${u.count}\u00D7)`] = {};
+        const urlLatest = latestPath === u.url.trim() ? LATEST_MARKER : '';
+        toolLeaves[tag('url', getUrlLabel(u.url)) + ` (${u.count}\u00D7)${urlLatest}`] = {};
       }
     }
 
@@ -699,7 +731,7 @@ function indentBox(boxLines: string[], boxW: number, center: boolean, columns?: 
 
 // ── Section content builders (for boxed renderer) ──
 
-function buildToolsBoxSection(metrics: DashboardMetrics): BoxSection | null {
+function buildToolsBoxSection(metrics: DashboardMetrics, latestPath?: string | null): BoxSection | null {
   if (metrics.toolStats.length === 0) return null;
 
   const totalCalls = metrics.toolStats.reduce((s, t) => s + t.calls, 0);
@@ -720,7 +752,8 @@ function buildToolsBoxSection(metrics: DashboardMetrics): BoxSection | null {
         if (f.writes > 0) parts.push(`${f.writes}W`);
         if (f.edits > 0) parts.push(`${f.edits}E`);
         const short = shortenPath(f.path).split('/').pop() || shortenPath(f.path);
-        lines.push(`  ├ ${short} (${total}×, ${parts.join('/')})`);
+        const marker = latestPath === shortenPath(f.path) ? ' \u25C4' : '';
+        lines.push(`  ├ ${short} (${total}×, ${parts.join('/')})${marker}`);
       }
       if (files.length > 3) {
         lines.push(`  └ ...${files.length - 3} more`);
@@ -960,8 +993,9 @@ export function renderMindMapBoxed(
 
   // ── Build sections ──
   const inner = boxW - 6;
+  const latestPath = findLatestFilePath(metrics);
   const sections: BoxSection[] = [];
-  const toolsSection = buildToolsBoxSection(metrics);
+  const toolsSection = buildToolsBoxSection(metrics, latestPath);
   if (toolsSection) sections.push(toolsSection);
   const tasksSection = buildTasksBoxSection(metrics, inner);
   if (tasksSection) sections.push(tasksSection);

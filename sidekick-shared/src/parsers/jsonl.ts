@@ -23,17 +23,17 @@ export interface RawSessionEvent {
   tool?: { name: string; input: Record<string, unknown> };
 }
 
-export interface JsonlParserCallbacks {
-  onEvent: (event: RawSessionEvent) => void;
+export interface JsonlParserCallbacks<T = RawSessionEvent> {
+  onEvent: (event: T) => void;
   onError?: (error: Error, line: string) => void;
 }
 
-export class JsonlParser {
+export class JsonlParser<T = RawSessionEvent> {
   private buffer = '';
-  private readonly onEvent: (event: RawSessionEvent) => void;
+  private readonly onEvent: (event: T) => void;
   private readonly onError?: (error: Error, line: string) => void;
 
-  constructor(callbacks: JsonlParserCallbacks) {
+  constructor(callbacks: JsonlParserCallbacks<T>) {
     this.onEvent = callbacks.onEvent;
     this.onError = callbacks.onError;
   }
@@ -62,7 +62,7 @@ export class JsonlParser {
     const trimmed = line.trim();
     if (!trimmed || !trimmed.startsWith('{')) return;
     try {
-      const event = JSON.parse(trimmed) as RawSessionEvent;
+      const event = JSON.parse(trimmed) as T;
       this.onEvent(event);
     } catch (error) {
       if (this.onError) {

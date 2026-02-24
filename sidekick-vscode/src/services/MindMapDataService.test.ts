@@ -34,6 +34,8 @@ function makeEmptyStats(overrides?: Partial<SessionStats>): SessionStats {
     currentContextSize: 0,
     recentUsageEvents: [],
     sessionStartTime: new Date(),
+    truncationCount: 0,
+    contextHealth: 100,
     ...overrides,
   };
 }

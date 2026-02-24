@@ -266,6 +266,17 @@ export class JsonlSessionWatcher implements SessionWatcher {
 
   get isActive(): boolean { return this._isActive; }
 
+  /** Seek to a byte offset. Must be called before start(). */
+  seekTo(position: number): void {
+    this.filePosition = position;
+    this.parser.reset();
+  }
+
+  /** Get the current byte position. */
+  getPosition(): number {
+    return this.filePosition;
+  }
+
   start(replay: boolean): void {
     if (this._isActive) return;
     this._isActive = true;

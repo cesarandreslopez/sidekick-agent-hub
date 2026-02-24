@@ -163,7 +163,7 @@ describe('DashboardState', () => {
       expect(m.compactionEvents[0].tokensReclaimed).toBe(90_000);
     });
 
-    it('does not double-count when summary event precedes context drop', () => {
+    it('records both summary event and context drop as separate compactions', () => {
       const state = new DashboardState();
       // Establish context size
       state.processEvent(makeEvent({
@@ -171,21 +171,28 @@ describe('DashboardState', () => {
         tokens: { input: 150_000, output: 500 },
         timestamp: '2025-01-01T00:00:01Z',
       }));
-      // Summary event fires (no tokens)
+      // Summary event fires (no tokens) — aggregator records compaction #1
       state.processEvent(makeEvent({
         type: 'summary', summary: 'Context compacted',
         timestamp: '2025-01-01T00:00:02Z',
       }));
-      // Next assistant event has lower context (should update, not double-count)
+      // Next assistant event has lower context — aggregator records compaction #2 via drop detection
       state.processEvent(makeEvent({
         type: 'assistant', model: 'claude-sonnet-4-20250514',
         tokens: { input: 60_000, output: 500 },
         timestamp: '2025-01-01T00:00:03Z',
       }));
       const m = state.getMetrics();
-      expect(m.compactionCount).toBe(1); // not 2
-      expect(m.compactionEvents).toHaveLength(1);
-      expect(m.compactionEvents[0].contextAfter).toBe(60_000); // updated with real value
+      // The shared EventAggregator records both the explicit summary event and the
+      // subsequent context size drop as separate compaction events.
+      expect(m.compactionCount).toBe(2);
+      expect(m.compactionEvents).toHaveLength(2);
+      // First compaction: from summary event (contextAfter=0 since no tokens on summary)
+      expect(m.compactionEvents[0].contextBefore).toBe(150_000);
+      expect(m.compactionEvents[0].contextAfter).toBe(0);
+      // Second compaction: from drop detection (150K -> 60K)
+      expect(m.compactionEvents[1].contextBefore).toBe(150_000);
+      expect(m.compactionEvents[1].contextAfter).toBe(60_000);
     });
 
     it('injects compaction into timeline', () => {

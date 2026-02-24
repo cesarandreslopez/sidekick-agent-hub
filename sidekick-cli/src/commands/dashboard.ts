@@ -6,6 +6,7 @@
 import React from 'react';
 import * as path from 'path';
 import type { Command } from 'commander';
+import * as fs from 'fs';
 import { createWatcher, getAllDetectedProviders, readPlans, writePlans, getProjectSlug } from 'sidekick-shared';
 import type { FollowEvent, ProviderId, PersistedPlan, PersistedPlanStep } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
@@ -193,6 +194,13 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   let pendingSessionPath: string | null = null;
 
   function switchToSession(newSessionPath: string) {
+    // Save snapshot for current session before switching
+    if (watcher?.getPosition && sessionPath) {
+      let sourceSize = 0;
+      try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+      state.persistSnapshot(watcher.getPosition(), sourceSize);
+    }
+
     // Stop current watcher
     try { watcher?.stop(); } catch { /* ignore */ }
 
@@ -221,13 +229,44 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
               persistPlan(state, workspacePath).catch(() => {});
             }
 
+            // Periodically save snapshot
+            const now = Date.now();
+            if (now - lastSnapshotTime > SNAPSHOT_INTERVAL_MS && watcher?.getPosition) {
+              lastSnapshotTime = now;
+              let ss = 0;
+              try { if (sessionPath) ss = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+              state.persistSnapshot(watcher.getPosition(), ss);
+            }
+
             scheduleRender();
           },
           onError: (_err: Error) => { /* non-fatal */ },
         },
       });
       watcher = result.watcher;
-      watcher.start(true); // replay events
+      sessionPath = result.sessionPath;
+
+      // Try snapshot restore
+      let switchRestored = false;
+      if (watcher.seekTo) {
+        let sourceSize = 0;
+        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* DB-backed */ }
+        const seekPos = state.tryRestoreFromSnapshot(newSessionId, activeProvider.id, sourceSize);
+        if (seekPos !== null) {
+          watcher.seekTo(seekPos);
+          switchRestored = true;
+        }
+      }
+
+      watcher.start(true); // replay from current position (snapshot or start)
+
+      // Save snapshot after catching up
+      if (!switchRestored && watcher.getPosition) {
+        let sourceSize = 0;
+        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+        state.persistSnapshot(watcher.getPosition(), sourceSize);
+        lastSnapshotTime = Date.now();
+      }
     } catch { /* ignore */ }
 
     lastNotifiedSessionPath = newSessionPath;
@@ -317,11 +356,17 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Create watcher
   let watcher: ReturnType<typeof createWatcher>['watcher'] | null = null;
+  let sessionPath: string | undefined;
+  let restoredFromSnapshot = false;
 
   // Set session ID for plan persistence
   if (sessionId) {
     state.setSessionId(sessionId);
   }
+
+  // Snapshot-based throttled save (every 30s during live events)
+  let lastSnapshotTime = 0;
+  const SNAPSHOT_INTERVAL_MS = 30_000;
 
   try {
     const result = createWatcher({
@@ -338,6 +383,15 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
             persistPlan(state, workspacePath).catch(() => {});
           }
 
+          // Periodically save snapshot
+          const now = Date.now();
+          if (now - lastSnapshotTime > SNAPSHOT_INTERVAL_MS && watcher?.getPosition) {
+            lastSnapshotTime = now;
+            let sourceSize = 0;
+            try { if (sessionPath) sourceSize = fs.statSync(sessionPath).size; } catch { /* DB-backed */ }
+            state.persistSnapshot(watcher.getPosition(), sourceSize);
+          }
+
           scheduleRender();
         },
         onError: (_err: Error) => {
@@ -346,6 +400,18 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       },
     });
     watcher = result.watcher;
+    sessionPath = result.sessionPath;
+
+    // Try snapshot restore before starting the watcher
+    if (sessionId && replay && watcher.seekTo) {
+      let sourceSize = 0;
+      try { sourceSize = fs.statSync(sessionPath).size; } catch { /* DB-backed */ }
+      const seekPosition = state.tryRestoreFromSnapshot(sessionId, activeProvider.id, sourceSize);
+      if (seekPosition !== null) {
+        watcher.seekTo(seekPosition);
+        restoredFromSnapshot = true;
+      }
+    }
   } catch {
     // No active session — still show dashboard with static data
   }
@@ -359,7 +425,26 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Start the watcher
   if (watcher) {
-    watcher.start(replay);
+    if (restoredFromSnapshot) {
+      // Start with replay=true to pick up events after the snapshot position
+      watcher.start(true);
+      // Save updated snapshot after catching up
+      if (watcher.getPosition && sessionPath) {
+        let sourceSize = 0;
+        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+        state.persistSnapshot(watcher.getPosition(), sourceSize);
+        lastSnapshotTime = Date.now();
+      }
+    } else {
+      watcher.start(replay);
+      // Save initial snapshot after full replay
+      if (replay && watcher.getPosition && sessionPath) {
+        let sourceSize = 0;
+        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+        state.persistSnapshot(watcher.getPosition(), sourceSize);
+        lastSnapshotTime = Date.now();
+      }
+    }
   }
 
   // Wait for exit

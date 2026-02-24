@@ -88,6 +88,9 @@ export interface GraphNode {
   /** Whether this file node is part of a detected cycle */
   isCycling?: boolean;
 
+  /** Whether this is the most recently active node */
+  isLatest?: boolean;
+
   // D3 simulation properties (added during simulation)
   x?: number;
   y?: number;

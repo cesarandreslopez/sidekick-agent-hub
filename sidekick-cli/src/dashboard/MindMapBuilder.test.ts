@@ -28,6 +28,8 @@ function emptyMetrics(): DashboardMetrics {
     commands: [],
     todos: [],
     plan: null,
+    contextAttribution: { systemPrompt: 0, userMessages: 0, assistantResponses: 0, toolInputs: 0, toolOutputs: 0, thinking: 0, other: 0 },
+    updateInfo: null,
   };
 }
 
@@ -37,6 +39,7 @@ function emptyStaticData(): StaticData {
     tasks: [],
     decisions: [],
     notes: [],
+    plans: [],
     totalTokens: 0,
     totalCost: 0,
     totalSessions: 0,
@@ -124,16 +127,16 @@ describe('buildMindMapTree', () => {
     m.plan = {
       title: 'Feature Implementation',
       steps: [
-        { description: 'Design API schema', status: 'completed' },
-        { description: 'Implement endpoints', status: 'in_progress' },
-        { description: 'Integration tests', status: 'pending' },
+        { id: 's0', description: 'Design API schema', status: 'completed' },
+        { id: 's1', description: 'Implement endpoints', status: 'in_progress' },
+        { id: 's2', description: 'Integration tests', status: 'pending' },
       ],
     };
     const tree = buildMindMapTree(m, emptyStaticData());
     const rootChildren = Object.values(tree.children || {})[0]?.children || {};
     const planKey = Object.keys(rootChildren).find(k => k.includes('Plan'))!;
     expect(planKey).toContain('Feature Implementation');
-    expect(planKey).toContain('3 steps');
+    expect(planKey).toContain('(1/3 33%)');
     const stepChildren = rootChildren[planKey].children || {};
     const stepKeys = Object.keys(stepChildren);
     expect(stepKeys.length).toBe(3);
@@ -145,7 +148,7 @@ describe('buildMindMapTree', () => {
     const m = emptyMetrics();
     m.plan = {
       title: 'Plan',
-      steps: [{ description: 'Implement auth', status: 'in_progress' }],
+      steps: [{ id: 's0', description: 'Implement auth', status: 'in_progress' }],
     };
     m.tasks = [
       { taskId: '1', subject: 'Implement auth', status: 'in_progress', blockedBy: [], blocks: [], toolCallCount: 2 },
@@ -189,8 +192,8 @@ describe('buildMindMapTree', () => {
   it('includes Knowledge Notes section grouped by file', () => {
     const sd = emptyStaticData();
     sd.notes = [
-      { filePath: 'src/auth.ts', noteType: 'gotcha', content: 'Watch for token expiry race condition', status: 'active', importance: 'high', id: '1', projectSlug: 'test', createdAt: '' },
-      { filePath: 'src/auth.ts', noteType: 'pattern', content: 'Uses singleton pattern', status: 'active', importance: 'medium', id: '2', projectSlug: 'test', createdAt: '' },
+      { filePath: 'src/auth.ts', noteType: 'gotcha', content: 'Watch for token expiry race condition', status: 'active', importance: 'high', id: '1', source: 'manual', createdAt: '', updatedAt: '', lastReviewedAt: '' },
+      { filePath: 'src/auth.ts', noteType: 'pattern', content: 'Uses singleton pattern', status: 'active', importance: 'medium', id: '2', source: 'manual', createdAt: '', updatedAt: '', lastReviewedAt: '' },
     ] as StaticData['notes'];
     const tree = buildMindMapTree(emptyMetrics(), sd);
     const rootChildren = Object.values(tree.children || {})[0]?.children || {};
@@ -363,8 +366,8 @@ describe('renderMindMapBoxed', () => {
     m.plan = {
       title: 'Feature Implementation',
       steps: [
-        { description: 'Design API', status: 'completed' },
-        { description: 'Implement auth', status: 'in_progress' },
+        { id: 's0', description: 'Design API', status: 'completed' },
+        { id: 's1', description: 'Implement auth', status: 'in_progress' },
       ],
     };
     m.tasks = [
@@ -374,7 +377,7 @@ describe('renderMindMapBoxed', () => {
     const joined = lines.join('\n');
     expect(joined).toContain('PLAN');
     expect(joined).toContain('Feature Implement'); // truncated in subtitle
-    expect(joined).toContain('Task #1');
+    expect(joined).toContain('T#1');
   });
 
   it('renders subagents section with status and duration', () => {
@@ -404,7 +407,7 @@ describe('renderMindMapBoxed', () => {
   it('renders knowledge notes section', () => {
     const sd = emptyStaticData();
     sd.notes = [
-      { filePath: 'src/auth.ts', noteType: 'gotcha', content: 'Token expiry race condition', status: 'active', importance: 'high', id: '1', projectSlug: 'test', createdAt: '' },
+      { filePath: 'src/auth.ts', noteType: 'gotcha', content: 'Token expiry race condition', status: 'active', importance: 'high', id: '1', source: 'manual', createdAt: '', updatedAt: '', lastReviewedAt: '' },
     ] as StaticData['notes'];
     const lines = renderMindMapBoxed(emptyMetrics(), sd);
     const joined = lines.join('\n');

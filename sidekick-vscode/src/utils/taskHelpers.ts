@@ -1,4 +1,15 @@
 /**
+ * @fileoverview Re-exports task helper utilities.
+ *
+ * The extractTaskIdFromResult function is now inlined in
+ * sidekick-shared/src/parsers/subagentScanner.ts. This file
+ * provides a standalone export for VS Code extension code that
+ * imports it directly.
+ *
+ * @module utils/taskHelpers
+ */
+
+/**
  * Extracts task ID from TaskCreate result content.
  *
  * Looks for "Task #N" or JSON taskId patterns in the result string.

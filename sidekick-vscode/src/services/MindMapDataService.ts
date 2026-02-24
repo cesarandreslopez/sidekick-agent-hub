@@ -278,6 +278,9 @@ export class MindMapDataService {
       if (targetId) {
         const latestLink = links.find(l => l.source === toolId && l.target === targetId);
         if (latestLink) latestLink.isLatest = true;
+        // Mark the target node as latest too
+        const latestNode = nodes.find(n => n.id === targetId);
+        if (latestNode) latestNode.isLatest = true;
       }
     }
 

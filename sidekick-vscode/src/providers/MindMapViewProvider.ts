@@ -509,6 +509,15 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       50% { stroke-opacity: 0.4; }
     }
 
+    @keyframes latest-pulse {
+      0%, 100% { filter: drop-shadow(0 0 3px var(--vscode-charts-yellow, #FFD700)); opacity: 1; }
+      50% { filter: drop-shadow(0 0 8px var(--vscode-charts-yellow, #FFD700)); opacity: 0.8; }
+    }
+
+    .node.latest {
+      animation: latest-pulse 2s ease-in-out infinite;
+    }
+
     /* Plan step status styling */
     .node.plan-step-pending {
       stroke: var(--vscode-charts-yellow, #FFD700);
@@ -1479,6 +1488,10 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           // Add plan active class
           if (d.type === 'plan' && d.count > 0) {
             classes.push('plan-active');
+          }
+          // Mark the most recently active node
+          if (d.isLatest) {
+            classes.push('latest');
           }
           return classes.join(' ');
         }
