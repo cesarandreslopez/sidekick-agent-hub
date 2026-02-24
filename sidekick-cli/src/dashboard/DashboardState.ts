@@ -6,6 +6,7 @@
  * TODOs) inline.
  */
 
+import * as fs from 'fs';
 import type { FollowEvent } from 'sidekick-shared';
 import { EventAggregator } from 'sidekick-shared';
 import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared';
@@ -177,7 +178,9 @@ const TIMELINE_RING_SIZE = 200;
 export class DashboardState {
   // Shared aggregator — handles tokens, models, tools, tasks, subagents,
   // plan, context attribution, compaction, burn rate
-  private _aggregator = new EventAggregator();
+  private _aggregator = new EventAggregator({
+    readPlanFile: (p) => { try { return fs.readFileSync(p, 'utf-8'); } catch { return null; } },
+  });
 
   // Timeline ring buffer (FollowEvent[] for CLI display — different from aggregator's TimelineEvent[])
   private _timeline: FollowEvent[] = [];

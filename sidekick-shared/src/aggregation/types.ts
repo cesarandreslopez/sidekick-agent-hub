@@ -61,6 +61,8 @@ export interface EventAggregatorOptions {
   }) => number;
   /** Provider ID for timeline events. */
   providerId?: 'claude-code' | 'opencode' | 'codex';
+  /** Read a plan file from disk (fallback when Edit tool is used instead of Write). */
+  readPlanFile?: (path: string) => string | null;
 }
 
 /** Token accumulation totals (aggregation-specific, includes reportedCost). */

@@ -590,9 +590,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         vscode.commands.executeCommand('sidekick.openCliDashboard');
         break;
 
-      case 'requestPlanHistory':
-        this._sendPlanHistory();
-        break;
+      // TODO: Plan history disabled — plan file content capture not working yet.
+      // case 'requestPlanHistory':
+      //   this._sendPlanHistory();
+      //   break;
 
       case 'openExternal':
         if (message.url) {
@@ -1975,28 +1976,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({ type: 'updateStats', state: this._state });
     this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
 
-    // Send plan data if available
-    const stats = this._sessionMonitor.getStats();
-    if (stats.planState && stats.planState.steps.length > 0) {
-      this._postMessage({ type: 'updatePlan', plan: {
-        title: stats.planState.title || 'Plan',
-        active: stats.planState.active,
-        completionRate: stats.planState.completionRate ?? 0,
-        totalDurationMs: stats.planState.totalDurationMs,
-        steps: stats.planState.steps.map(s => ({
-          id: s.id,
-          description: s.description,
-          status: s.status,
-          phase: s.phase,
-          complexity: s.complexity,
-          durationMs: s.durationMs,
-          tokensUsed: s.tokensUsed,
-          toolCalls: s.toolCalls,
-          errorMessage: s.errorMessage,
-        })),
-        rawMarkdown: stats.planState.rawMarkdown,
-      }});
-    }
+    // TODO: Plan data messages disabled — plan file content capture not working yet.
+    // Re-enable when EnterPlanMode/ExitPlanMode + Edit tool capture is fixed.
   }
 
   /**

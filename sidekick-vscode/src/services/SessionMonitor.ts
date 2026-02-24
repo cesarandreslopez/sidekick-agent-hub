@@ -250,6 +250,7 @@ export class SessionMonitor implements vscode.Disposable {
   private planModeEnteredAt: Date | null = null;
   private planAssistantTexts: string[] = [];
   private planFileContent: string | null = null;
+  private planFilePath: string | null = null;
 
   /** Step-level metrics tracking for active plan */
   private planStepTokens = 0;
@@ -341,6 +342,7 @@ export class SessionMonitor implements vscode.Disposable {
         ? (usage) => provider.computeContextSize!(usage as TokenUsage)
         : undefined,
       providerId: provider.id as 'claude-code' | 'opencode' | 'codex',
+      readPlanFile: (p) => { try { return fs.readFileSync(p, 'utf-8'); } catch { return null; } },
     });
     // Initialize empty statistics
     this.stats = this.createEmptyStats();
@@ -540,6 +542,7 @@ export class SessionMonitor implements vscode.Disposable {
         ? (usage) => newProvider.computeContextSize!(usage as TokenUsage)
         : undefined,
       providerId: newProvider.id as 'claude-code' | 'opencode' | 'codex',
+      readPlanFile: (p) => { try { return fs.readFileSync(p, 'utf-8'); } catch { return null; } },
     });
     oldProvider.dispose();
 
@@ -2927,6 +2930,13 @@ export class SessionMonitor implements vscode.Disposable {
       const content = toolUse.input?.content as string | undefined;
       if (filePath && content && filePath.includes('.claude/plans/')) {
         this.planFileContent = content;
+        this.planFilePath = filePath;
+      }
+    } else if (toolUse.name === 'Edit' && this.planModeActive) {
+      // Edit contains a diff, not full content — capture path for disk-read fallback
+      const filePath = toolUse.input?.file_path as string | undefined;
+      if (filePath?.includes('.claude/plans/')) {
+        this.planFilePath = filePath;
       }
     } else if (toolUse.name === 'EnterPlanMode') {
       this.handleEnterPlanMode(now);
@@ -3033,6 +3043,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.planModeEnteredAt = now;
     this.planAssistantTexts = [];
     this.planFileContent = null;
+    this.planFilePath = null;
     this.planStepTokens = 0;
     this.planStepToolCalls = 0;
 
@@ -3066,10 +3077,12 @@ export class SessionMonitor implements vscode.Disposable {
       this.planState.active = false;
       this.planState.exitedAt = now;
 
-      // Prefer plan file content (from Write tool to .claude/plans/) over accumulated assistant text
+      // Prefer plan file content (from Write tool) → accumulated assistant text → disk read fallback
       const source = this.planFileContent
-        || (this.planAssistantTexts.length > 0 ? this.planAssistantTexts.join('\n') : null);
+        || (this.planAssistantTexts.length > 0 ? this.planAssistantTexts.join('\n') : null)
+        || this.readPlanFileFromDisk();
       this.planFileContent = null;
+      this.planFilePath = null;
 
       // Parse into steps (if no steps yet from proposed_plan)
       if (this.planState.steps.length === 0 && source) {
@@ -3606,6 +3619,18 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
+   * Reads a plan file from disk as a fallback when Edit tool was used instead of Write.
+   */
+  private readPlanFileFromDisk(): string | null {
+    if (!this.planFilePath) return null;
+    try {
+      return fs.readFileSync(this.planFilePath, 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Resets task state. Called when session resets or switches.
    */
   private resetTaskState(): void {
@@ -3619,6 +3644,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.planModeEnteredAt = null;
     this.planAssistantTexts = [];
     this.planFileContent = null;
+    this.planFilePath = null;
     this.planStepTokens = 0;
     this.planStepToolCalls = 0;
     this.planRevisionCount = 0;

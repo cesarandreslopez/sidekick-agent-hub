@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { OpenCodeDatabase } from '../providers/openCodeDatabase';
 import type { DbMessage, DbPart } from '../providers/openCodeDatabase';
+import { normalizeToolName, detectPlanModeFromText } from '../parsers/openCodeParser';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
 
 const DEBOUNCE_MS = 200;
@@ -53,23 +54,43 @@ function normalizePart(part: DbPart): FollowEvent[] {
     const data = JSON.parse(part.data) as Record<string, unknown>;
     const type = data.type as string;
     if (type === 'tool' || type === 'tool-invocation') {
-      const toolName = (data.tool as string) || 'unknown';
-      const state = data.state as string | undefined;
+      const rawToolName = (data.tool as string) || 'unknown';
+      const toolName = normalizeToolName(rawToolName);
+      const state = data.state as Record<string, unknown> | undefined;
+      const stateStatus = state?.status as string | undefined;
       // tool-invocation with state=result is a tool_result
-      const eventType = state === 'result' ? 'tool_result' : 'tool_use';
+      const eventType = stateStatus === 'result' ? 'tool_result' : 'tool_use';
+      const toolInput = state?.input as Record<string, unknown> | undefined;
       const input = data.args ? truncate(JSON.stringify(data.args), 80) : '';
+      // Include input in raw so PlanExtractor can access raw.input
+      const toolRaw = eventType === 'tool_use'
+        ? { ...data, input: toolInput || {} }
+        : data;
       events.push({
         providerId: 'opencode', type: eventType, timestamp: ts,
         summary: input ? `${toolName} ${input}` : toolName,
-        toolName, toolInput: input || undefined, raw: data,
+        toolName, toolInput: input || undefined, raw: toolRaw,
       });
     } else if (type === 'text') {
       const text = (data.text as string) || '';
       if (text) {
+        // Wrap raw to include message.content for <proposed_plan> extraction
         events.push({
           providerId: 'opencode', type: 'assistant', timestamp: ts,
-          summary: truncate(text, 200), raw: data,
+          summary: truncate(text, 200),
+          raw: { ...data, message: { content: [{ type: 'text', text }] } },
         });
+        // Detect plan mode enter/exit from text heuristics
+        const direction = detectPlanModeFromText(text);
+        if (direction) {
+          const syntheticToolName = direction === 'enter' ? 'EnterPlanMode' : 'ExitPlanMode';
+          events.push({
+            providerId: 'opencode', type: 'tool_use', timestamp: ts,
+            summary: syntheticToolName,
+            toolName: syntheticToolName,
+            raw: { input: { source: 'opencode_text_heuristic' } },
+          });
+        }
       }
     }
   } catch { /* skip malformed */ }

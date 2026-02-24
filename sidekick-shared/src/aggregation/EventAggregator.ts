@@ -27,6 +27,7 @@ import type {
 import type { FollowEvent } from '../watchers/types';
 import { TRUNCATION_PATTERNS } from '../parsers/jsonl';
 import { PlanExtractor } from '../parsers/planExtractor';
+import { toFollowEvents } from '../watchers/eventBridge';
 import type {
   EventAggregatorOptions,
   AggregatedTokens,
@@ -157,7 +158,7 @@ export class EventAggregator {
   private pendingSubagents = new Map<string, number>(); // toolUseId -> index
 
   // Plan state
-  private planExtractor = new PlanExtractor();
+  private planExtractor!: PlanExtractor;
 
   // Context attribution
   private contextAttribution: ContextAttribution = {
@@ -193,6 +194,7 @@ export class EventAggregator {
     this.computeContextSize = options?.computeContextSize ?? null;
     this.providerId = options?.providerId ?? null;
     this._providerId = this.providerId;
+    this.planExtractor = new PlanExtractor(options?.readPlanFile);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1167,35 +1169,15 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private extractPlanFromSessionEvent(event: SessionEvent): void {
-    // Convert to a minimal FollowEvent shape for the PlanExtractor
-    const followEvent: FollowEvent = {
-      providerId: (this._providerId as FollowEvent['providerId']) ?? 'claude-code',
-      type: event.type as FollowEvent['type'],
-      timestamp: event.timestamp,
-      summary: this.extractTextContent(event) ?? '',
-      model: event.message.model,
-      toolName: event.tool?.name,
-      raw: this.buildRawForPlanExtractor(event),
-    };
-    this.planExtractor.processEvent(followEvent);
-  }
-
-  private buildRawForPlanExtractor(event: SessionEvent): unknown {
-    // PlanExtractor needs raw.input for tool_use events, and raw.message.content for assistant events.
-    if (event.type === 'tool_use' && event.tool) {
-      return {
-        id: event.message.id,
-        input: event.tool.input,
-      };
+    // Use toFollowEvents to properly split assistant messages into
+    // per-content-block FollowEvents (one per tool_use + one for text).
+    // This ensures PlanExtractor sees type:'tool_use' for plan tools
+    // like EnterPlanMode, with raw.input set correctly.
+    const providerId = (this._providerId as FollowEvent['providerId']) ?? 'claude-code';
+    const followEvents = toFollowEvents(event, providerId);
+    for (const fe of followEvents) {
+      this.planExtractor.processEvent(fe);
     }
-    if (event.type === 'assistant' || event.type === 'user') {
-      return {
-        message: {
-          content: event.message.content,
-        },
-      };
-    }
-    return undefined;
   }
 
   private convertExtractedPlanToPlanState(extracted: {

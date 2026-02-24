@@ -160,6 +160,12 @@ export class PlanExtractor {
   private _planModeActive = false;
   private _planTexts: string[] = [];
   private _planFileContent: string | null = null;
+  private _planFilePath: string | null = null;
+  private readonly _readFile: ((path: string) => string | null) | null;
+
+  constructor(readFile?: (path: string) => string | null) {
+    this._readFile = readFile ?? null;
+  }
 
   get plan(): ExtractedPlan | null {
     return this._plan;
@@ -170,6 +176,7 @@ export class PlanExtractor {
     this._planModeActive = false;
     this._planTexts = [];
     this._planFileContent = null;
+    this._planFilePath = null;
   }
 
   /**
@@ -187,6 +194,7 @@ export class PlanExtractor {
       this._planModeActive = true;
       this._planTexts = [];
       this._planFileContent = null;
+      this._planFilePath = null;
       return false;
     }
 
@@ -195,14 +203,23 @@ export class PlanExtractor {
       return this.finalizePlanMode();
     }
 
-    // Capture Write tool calls to plan files during plan mode
-    if (this._planModeActive && event.type === 'tool_use' && event.toolName === 'Write') {
+    // Capture Write/Edit tool calls to plan files during plan mode
+    if (this._planModeActive && event.type === 'tool_use') {
       const raw = event.raw as Record<string, unknown> | undefined;
       const input = raw?.input as Record<string, unknown> | undefined;
       const filePath = input?.file_path as string | undefined;
-      const content = input?.content as string | undefined;
-      if (filePath && content && filePath.includes('.claude/plans/')) {
-        this._planFileContent = content;
+
+      if (event.toolName === 'Write') {
+        const content = input?.content as string | undefined;
+        if (filePath && content && filePath.includes('.claude/plans/')) {
+          this._planFileContent = content;
+          this._planFilePath = filePath;
+        }
+      } else if (event.toolName === 'Edit') {
+        // Edit contains a diff, not full content — capture path for disk-read fallback
+        if (filePath && filePath.includes('.claude/plans/')) {
+          this._planFilePath = filePath;
+        }
       }
     }
 
@@ -302,9 +319,12 @@ export class PlanExtractor {
   private finalizePlanMode(): boolean {
     this._planModeActive = false;
 
-    // Prefer plan file content (from Write tool to .claude/plans/) over accumulated assistant text
-    const markdown = this._planFileContent || (this._planTexts.length > 0 ? this._planTexts.join('\n') : null);
+    // Prefer plan file content (from Write tool) → accumulated assistant text → disk read fallback
+    const markdown = this._planFileContent
+      || (this._planTexts.length > 0 ? this._planTexts.join('\n') : null)
+      || (this._planFilePath && this._readFile ? this._readFile(this._planFilePath) : null);
     this._planFileContent = null;
+    this._planFilePath = null;
     this._planTexts = [];
 
     if (!markdown) return false;

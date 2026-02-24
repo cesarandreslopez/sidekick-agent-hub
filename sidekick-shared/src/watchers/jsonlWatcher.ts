@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import { JsonlParser } from '../parsers/jsonl';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { ProviderId } from '../providers/types';
+import { normalizeCodexToolName } from '../parsers/codexParser';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
 
 const DEBOUNCE_MS = 100;
@@ -95,87 +96,7 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
   return events;
 }
 
-function normalizeCodexEvent(raw: Record<string, unknown>): FollowEvent[] {
-  const events: FollowEvent[] = [];
-  const ts = (raw.timestamp as string) || new Date().toISOString();
-  const type = raw.type as string;
-
-  if (type === 'session_meta') {
-    events.push({
-      providerId: 'codex', type: 'system', timestamp: ts,
-      summary: `Session started in ${(raw.payload as Record<string, unknown>)?.cwd || '?'}`, raw,
-    });
-  } else if (type === 'turn_context') {
-    const payload = raw.payload as Record<string, unknown> | undefined;
-    if (payload?.model) {
-      events.push({
-        providerId: 'codex', type: 'system', timestamp: ts,
-        summary: `Model: ${payload.model}`, model: payload.model as string, raw,
-      });
-    }
-  } else if (type === 'response_item') {
-    const p = raw.payload as Record<string, unknown>;
-    if (!p) return events;
-    if (p.role === 'user') {
-      const text = extractPayloadContent(p);
-      events.push({
-        providerId: 'codex', type: 'user', timestamp: ts,
-        summary: text || '(user message)', raw,
-      });
-    } else if (p.role === 'assistant' || p.type === 'message') {
-      const text = extractPayloadContent(p);
-      events.push({
-        providerId: 'codex', type: 'assistant', timestamp: ts,
-        summary: text || '(thinking...)', raw,
-      });
-    } else if (p.type === 'function_call' || p.type === 'custom_tool_call') {
-      const name = (p.name as string) || 'unknown';
-      const args = typeof p.arguments === 'string' ? truncate(p.arguments, 80) : '';
-      events.push({
-        providerId: 'codex', type: 'tool_use', timestamp: ts,
-        summary: args ? `${name} ${args}` : name,
-        toolName: name, toolInput: args, raw,
-      });
-    } else if (p.type === 'local_shell_call') {
-      const cmd = truncate(JSON.stringify(p.command ?? p.arguments ?? ''), 80);
-      events.push({
-        providerId: 'codex', type: 'tool_use', timestamp: ts,
-        summary: `Bash ${cmd}`, toolName: 'Bash', toolInput: cmd, raw,
-      });
-    } else if (p.type === 'function_call_output') {
-      events.push({
-        providerId: 'codex', type: 'tool_result', timestamp: ts,
-        summary: truncate(String(p.output ?? ''), 120), raw,
-      });
-    }
-  } else if (type === 'event_msg') {
-    const payload = raw.payload as Record<string, unknown> | undefined;
-    const evtType = payload?.type as string | undefined;
-    if (evtType === 'token_count') {
-      const info = payload?.info as Record<string, unknown> | undefined;
-      const usage = (info?.last_token_usage || info?.total_token_usage) as Record<string, unknown> | undefined;
-      if (usage) {
-        // Extract rate limits if present
-        const rl = payload?.rate_limits as Record<string, unknown> | undefined;
-        const rateLimits = rl ? extractRateLimits(rl) : undefined;
-        events.push({
-          providerId: 'codex', type: 'system', timestamp: ts,
-          summary: `Tokens: ${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out`,
-          tokens: { input: (usage.input_tokens as number) || 0, output: (usage.output_tokens as number) || 0 },
-          rateLimits,
-          raw,
-        });
-      }
-    }
-  } else if (type === 'compacted') {
-    events.push({
-      providerId: 'codex', type: 'summary', timestamp: ts,
-      summary: 'Context compacted', raw,
-    });
-  }
-
-  return events;
-}
+// normalizeCodexEvent is now a method on JsonlSessionWatcher for plan mode state tracking
 
 // ── Helpers ──
 
@@ -249,6 +170,7 @@ export class JsonlSessionWatcher implements SessionWatcher {
   private fsWatcher: fs.FSWatcher | null = null;
   private catchupTimer: ReturnType<typeof setInterval> | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private codexInPlanMode = false;
   private readonly parser: JsonlParser;
   private readonly providerId: ProviderId;
   private readonly sessionPath: string;
@@ -322,6 +244,7 @@ export class JsonlSessionWatcher implements SessionWatcher {
     if (this.catchupTimer) { clearInterval(this.catchupTimer); this.catchupTimer = null; }
 
     this.parser.flush();
+    this.codexInPlanMode = false;
   }
 
   private debouncedRead(): void {
@@ -367,10 +290,113 @@ export class JsonlSessionWatcher implements SessionWatcher {
     // For codex, raw events don't match RawSessionEvent shape exactly, but
     // JsonlParser parses any JSON object. Cast to Record for codex normalizer.
     const followEvents = this.providerId === 'codex'
-      ? normalizeCodexEvent(event as unknown as Record<string, unknown>)
+      ? this.normalizeCodexEvent(event as unknown as Record<string, unknown>)
       : normalizeClaudeCodeEvent(event);
     for (const fe of followEvents) {
       this.callbacks.onEvent(fe);
     }
+  }
+
+  private normalizeCodexEvent(raw: Record<string, unknown>): FollowEvent[] {
+    const events: FollowEvent[] = [];
+    const ts = (raw.timestamp as string) || new Date().toISOString();
+    const type = raw.type as string;
+
+    if (type === 'session_meta') {
+      events.push({
+        providerId: 'codex', type: 'system', timestamp: ts,
+        summary: `Session started in ${(raw.payload as Record<string, unknown>)?.cwd || '?'}`, raw,
+      });
+    } else if (type === 'turn_context') {
+      const payload = raw.payload as Record<string, unknown> | undefined;
+      if (payload?.model) {
+        events.push({
+          providerId: 'codex', type: 'system', timestamp: ts,
+          summary: `Model: ${payload.model}`, model: payload.model as string, raw,
+        });
+      }
+    } else if (type === 'response_item') {
+      const p = raw.payload as Record<string, unknown>;
+      if (!p) return events;
+      if (p.role === 'user') {
+        const text = extractPayloadContent(p);
+        events.push({
+          providerId: 'codex', type: 'user', timestamp: ts,
+          summary: text || '(user message)', raw,
+        });
+      } else if (p.role === 'assistant' || p.type === 'message') {
+        const text = extractPayloadContent(p);
+        events.push({
+          providerId: 'codex', type: 'assistant', timestamp: ts,
+          summary: text || '(thinking...)', raw,
+        });
+      } else if (p.type === 'function_call' || p.type === 'custom_tool_call') {
+        const rawName = (p.name as string) || 'unknown';
+        const name = normalizeCodexToolName(rawName);
+        let parsedArgs: Record<string, unknown> = {};
+        try { parsedArgs = JSON.parse(p.arguments as string); } catch { /* keep empty */ }
+        const args = typeof p.arguments === 'string' ? truncate(p.arguments, 80) : '';
+        events.push({
+          providerId: 'codex', type: 'tool_use', timestamp: ts,
+          summary: args ? `${name} ${args}` : name,
+          toolName: name, toolInput: args, raw: { input: parsedArgs },
+        });
+      } else if (p.type === 'local_shell_call') {
+        const cmd = truncate(JSON.stringify(p.command ?? p.arguments ?? ''), 80);
+        events.push({
+          providerId: 'codex', type: 'tool_use', timestamp: ts,
+          summary: `Bash ${cmd}`, toolName: 'Bash', toolInput: cmd, raw,
+        });
+      } else if (p.type === 'function_call_output') {
+        events.push({
+          providerId: 'codex', type: 'tool_result', timestamp: ts,
+          summary: truncate(String(p.output ?? ''), 120), raw,
+        });
+      }
+    } else if (type === 'event_msg') {
+      const payload = raw.payload as Record<string, unknown> | undefined;
+      const evtType = payload?.type as string | undefined;
+      if (evtType === 'token_count') {
+        const info = payload?.info as Record<string, unknown> | undefined;
+        const usage = (info?.last_token_usage || info?.total_token_usage) as Record<string, unknown> | undefined;
+        if (usage) {
+          const rl = payload?.rate_limits as Record<string, unknown> | undefined;
+          const rateLimits = rl ? extractRateLimits(rl) : undefined;
+          events.push({
+            providerId: 'codex', type: 'system', timestamp: ts,
+            summary: `Tokens: ${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out`,
+            tokens: { input: (usage.input_tokens as number) || 0, output: (usage.output_tokens as number) || 0 },
+            rateLimits,
+            raw,
+          });
+        }
+      } else if (evtType === 'task_started') {
+        const collaboration = payload?.collaboration_mode_kind as string | undefined;
+        if (collaboration === 'plan' && !this.codexInPlanMode) {
+          this.codexInPlanMode = true;
+          events.push({
+            providerId: 'codex', type: 'tool_use', timestamp: ts,
+            summary: 'EnterPlanMode', toolName: 'EnterPlanMode',
+            raw: { input: { source: 'codex_task_started' } },
+          });
+        }
+      } else if (evtType === 'task_complete') {
+        if (this.codexInPlanMode) {
+          this.codexInPlanMode = false;
+          events.push({
+            providerId: 'codex', type: 'tool_use', timestamp: ts,
+            summary: 'ExitPlanMode', toolName: 'ExitPlanMode',
+            raw: { input: { source: 'codex_task_complete' } },
+          });
+        }
+      }
+    } else if (type === 'compacted') {
+      events.push({
+        providerId: 'codex', type: 'summary', timestamp: ts,
+        summary: 'Context compacted', raw,
+      });
+    }
+
+    return events;
   }
 }
