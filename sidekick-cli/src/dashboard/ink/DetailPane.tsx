@@ -49,7 +49,7 @@ export function DetailPane({
 
       {/* Content lines */}
       {visibleLines.map((line, i) => (
-        <Text key={scrollOffset + i} wrap="truncate">
+        <Text key={scrollOffset + i} wrap="wrap">
           {parseBlessedTags(line)}
         </Text>
       ))}

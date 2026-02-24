@@ -7,7 +7,7 @@
 import type { SidePanel, PanelItem, PanelAction, DetailTab, KeyBinding } from './types';
 import type { DashboardMetrics, ContextAttribution } from '../DashboardState';
 import type { StaticData, SessionRecord } from '../StaticDataLoader';
-import { fmtNum, formatDuration, formatElapsed, formatTime, makeBar, shortenPath, wordWrap, detailWidth } from '../formatters';
+import { fmtNum, formatDuration, formatElapsed, formatTime, makeBar, shortenPath, wordWrap, detailWidth, visibleLength, truncate } from '../formatters';
 import { buildMindMapTree, renderMindMapBoxed, renderTreeToText } from '../MindMapBuilder';
 import { GitDiffCache } from '../GitDiffCache';
 import { CliInferenceClient } from '../../inference/CliInferenceClient';
@@ -15,12 +15,15 @@ import { buildNarrativePrompt } from '../../inference/narrativePrompt';
 import type { ProviderId } from 'sidekick-shared';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
+type MindMapFilter = 'all' | 'file' | 'tool' | 'task' | 'subagent' | 'command' | 'plan' | 'knowledge-note';
+const MINDMAP_FILTERS: MindMapFilter[] = ['all', 'file', 'tool', 'task', 'subagent', 'command', 'plan', 'knowledge-note'];
 
 export class SessionsPanel implements SidePanel {
   readonly id = 'sessions';
   readonly title = 'Sessions';
   readonly shortcutKey = 1;
   private mindMapView: MindMapView = 'tree';
+  private mindMapFilter: MindMapFilter = 'all';
   private diffCache: GitDiffCache | null;
   private inferenceClient: CliInferenceClient | null = null;
   private narrativeText: string | null = null;
@@ -112,6 +115,16 @@ export class SessionsPanel implements SidePanel {
           const modes: MindMapView[] = ['tree', 'boxed', 'flow'];
           const idx = modes.indexOf(this.mindMapView);
           this.mindMapView = modes[(idx + 1) % modes.length];
+        },
+        // Only active when Mind Map tab is selected (tab index 2)
+        condition: () => this.activeDetailTabIndex === 2,
+      },
+      {
+        keys: ['f'],
+        label: 'filter nodes',
+        handler: () => {
+          const idx = MINDMAP_FILTERS.indexOf(this.mindMapFilter);
+          this.mindMapFilter = MINDMAP_FILTERS[(idx + 1) % MINDMAP_FILTERS.length];
         },
         // Only active when Mind Map tab is selected (tab index 2)
         condition: () => this.activeDetailTabIndex === 2,
@@ -243,7 +256,11 @@ export class SessionsPanel implements SidePanel {
         e => e.type !== 'user' && e.type !== 'tool_result'
       );
       const recentLine = recentEvent
-        ? `{yellow-fg}[${formatTime(recentEvent.timestamp)}] ${recentEvent.type.padEnd(12)} ${(recentEvent.summary || '').substring(0, 60)}{/yellow-fg}`
+        ? (() => {
+            const prefix = `[${formatTime(recentEvent.timestamp)}] ${recentEvent.type.padEnd(12)} `;
+            const maxSummary = Math.max(20, detailWidth() - prefix.length);
+            return `{yellow-fg}${prefix}${truncate(recentEvent.summary || '', maxSummary)}{/yellow-fg}`;
+          })()
         : '{grey-fg}(no events yet){/grey-fg}';
 
       const lines = [
@@ -356,15 +373,24 @@ export class SessionsPanel implements SidePanel {
     const events = metrics.timeline.slice(-50);
     if (events.length === 0) return '{grey-fg}(no events yet){/grey-fg}';
 
+    const w = detailWidth();
     return events.map(ev => {
       const time = formatTime(ev.timestamp);
       const color = EVENT_COLORS[ev.type] || 'white';
       const label = ev.type.padEnd(12);
-      let line = `{${color}-fg}[${time}] ${label}{/${color}-fg} ${ev.summary}`;
+      // Build suffix first so we know how much space is left for the summary
+      let suffix = '';
       if (ev.tokens) {
-        line += `  {grey-fg}(${fmtNum(ev.tokens.input)} in / ${fmtNum(ev.tokens.output)} out)`;
-        if (ev.cost) line += ` $${ev.cost.toFixed(4)}`;
-        line += '{/grey-fg}';
+        suffix = `  (${fmtNum(ev.tokens.input)} in / ${fmtNum(ev.tokens.output)} out)`;
+        if (ev.cost) suffix += ` $${ev.cost.toFixed(4)}`;
+      }
+      // Prefix visible width: "[HH:MM:SS] event_type   " = ~23 chars
+      const prefixLen = 1 + time.length + 2 + 12; // [time] + space + label
+      const summaryMax = Math.max(10, w - prefixLen - suffix.length);
+      const summary = truncate(ev.summary || '', summaryMax);
+      let line = `{${color}-fg}[${time}] ${label}{/${color}-fg} ${summary}`;
+      if (suffix) {
+        line += `  {grey-fg}${suffix.trimStart()}{/grey-fg}`;
       }
       return line;
     }).join('\n');
@@ -377,17 +403,18 @@ export class SessionsPanel implements SidePanel {
     }
 
     const diffStats = this.diffCache?.getStats() ?? new Map();
-    const viewLabel = `{grey-fg}[v: ${this.mindMapView}]{/grey-fg}`;
+    const filterLabel = this.mindMapFilter !== 'all' ? ` {yellow-fg}[f: ${this.mindMapFilter}]{/yellow-fg}` : ' {grey-fg}[f: all]{/grey-fg}';
+    const viewLabel = `{grey-fg}[v: ${this.mindMapView}]{/grey-fg}${filterLabel}`;
 
     if (this.mindMapView === 'boxed') {
-      return viewLabel + '\n' + renderMindMapBoxed(metrics, staticData, { blessedTags: true, center: false }).join('\n');
+      return viewLabel + '\n' + renderMindMapBoxed(metrics, staticData, { blessedTags: true, center: false, filter: this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined }).join('\n');
     }
 
     if (this.mindMapView === 'flow') {
       return viewLabel + '\n' + this.renderTimeFlow(metrics);
     }
 
-    const tree = buildMindMapTree(metrics, staticData, diffStats);
+    const tree = buildMindMapTree(metrics, staticData, diffStats, this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined);
     return viewLabel + '\n' + renderTreeToText(tree, 0).join('\n');
   }
 
@@ -412,9 +439,13 @@ export class SessionsPanel implements SidePanel {
       for (const ev of evts) {
         const sec = formatTime(ev.timestamp).substring(6, 8);
         const color = EVENT_COLORS[ev.type] || 'white';
-        const toolAnnotation = ev.toolName ? ` {green-fg}[${ev.toolName}]{/green-fg}` : '';
-        const summary = (ev.summary || '').substring(0, 60);
-        lines.push(`  {grey-fg}:${sec}{/grey-fg} {${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}${toolAnnotation} ${summary}`);
+        const toolAnnotation = ev.toolName ? ` [${ev.toolName}]` : '';
+        // Prefix visible width: "  :SS type       [toolName] "
+        const prefixLen = 2 + 1 + 2 + 1 + 10 + toolAnnotation.length + 1;
+        const summaryMax = Math.max(10, detailWidth() - prefixLen);
+        const summary = truncate(ev.summary || '', summaryMax);
+        const toolTag = ev.toolName ? ` {green-fg}[${ev.toolName}]{/green-fg}` : '';
+        lines.push(`  {grey-fg}:${sec}{/grey-fg} {${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}${toolTag} ${summary}`);
       }
     }
 
@@ -466,10 +497,12 @@ export class SessionsPanel implements SidePanel {
       );
     }
 
+    // Stats columns: " R:nn W:nn E:nn  +nn -nn" ≈ 30 chars
+    const pathColWidth = Math.max(20, detailWidth() - 30);
     for (const f of files.slice(0, 40)) {
       const short = shortenPath(f.path);
       const r = f.reads > 0 ? `{green-fg}R:${f.reads}{/green-fg}` : `{grey-fg}R:0{/grey-fg}`;
-      const w = f.writes > 0 ? `{yellow-fg}W:${f.writes}{/yellow-fg}` : `{grey-fg}W:0{/grey-fg}`;
+      const wr = f.writes > 0 ? `{yellow-fg}W:${f.writes}{/yellow-fg}` : `{grey-fg}W:0{/grey-fg}`;
       const e = f.edits > 0 ? `{red-fg}E:${f.edits}{/red-fg}` : `{grey-fg}E:0{/grey-fg}`;
 
       // Look up diff stats by repo-relative path
@@ -479,7 +512,7 @@ export class SessionsPanel implements SidePanel {
         ? `  {green-fg}+${ds.additions}{/green-fg} {red-fg}-${ds.deletions}{/red-fg}`
         : '';
 
-      lines.push(`{cyan-fg}${short.padEnd(40)}{/cyan-fg} ${r} ${w} ${e}${diffSuffix}`);
+      lines.push(`{cyan-fg}${short.padEnd(pathColWidth)}{/cyan-fg} ${r} ${wr} ${e}${diffSuffix}`);
     }
 
     return lines.join('\n');
@@ -516,9 +549,18 @@ export class SessionsPanel implements SidePanel {
       const durationSuffix = duration ? `  {grey-fg}${duration}{/grey-fg}` : '';
       const parallelFlag = a.isParallel && a.status === 'completed' ? ' {magenta-fg}(parallel){/magenta-fg}' : '';
 
+      // Compute available width for description, accounting for suffix on first line
+      const prefixVisible = 2 + visibleLength(a.subagentType) + 1; // "icon type "
+      const suffixVisible = visibleLength(durationSuffix) + visibleLength(parallelFlag);
+      const descWidth = Math.max(20, detailWidth() - prefixVisible - suffixVisible);
+      const indent = ' '.repeat(prefixVisible);
+      const wrapped = wordWrap(a.description, descWidth, indent);
+      const firstLine = wrapped.split('\n')[0];
+      const restLines = wrapped.split('\n').slice(1);
       lines.push(
-        `${icon} {magenta-fg}${a.subagentType}{/magenta-fg} ${wordWrap(a.description, detailWidth() - 20)}${durationSuffix}${parallelFlag}`
+        `${icon} {magenta-fg}${a.subagentType}{/magenta-fg} ${firstLine}${durationSuffix}${parallelFlag}`
       );
+      for (const rl of restLines) lines.push(rl);
     }
 
     // Cross-reference: tasks created by subagents
@@ -527,7 +569,9 @@ export class SessionsPanel implements SidePanel {
       lines.push('', '{bold}Tasks from Subagents{/bold}', '');
       for (const t of subagentTasks) {
         const statusIcon = t.status === 'completed' ? '\u2713' : t.status === 'in_progress' ? '\u2192' : '\u25CB';
-        lines.push(`  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${t.taskId}: ${wordWrap(t.subject, detailWidth() - 16)}`);
+        const taskPrefix = `  ${statusIcon} ${t.subagentType} #${t.taskId}: `;
+        const taskIndent = ' '.repeat(taskPrefix.length);
+        lines.push(`  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${t.taskId}: ${wordWrap(t.subject, detailWidth() - taskPrefix.length, taskIndent)}`);
       }
     }
 

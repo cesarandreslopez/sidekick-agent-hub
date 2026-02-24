@@ -148,7 +148,7 @@ describe('MindMapDataService', () => {
       expect(planRoot!.label).toBe('Plan');
     });
 
-    it('should include phase in step labels', () => {
+    it('should include phase in step tooltip', () => {
       const stats = makeEmptyStats({
         planState: makePlanState({
           steps: [
@@ -159,7 +159,8 @@ describe('MindMapDataService', () => {
       const graph = MindMapDataService.buildGraph(stats);
 
       const step = graph.nodes.find(n => n.id === 'plan-step-0');
-      expect(step!.label).toBe('[Init] Setup');
+      expect(step!.label).toBe('Setup');
+      expect(step!.fullPath).toContain('Phase: Init');
     });
   });
 

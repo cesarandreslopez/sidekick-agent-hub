@@ -155,6 +155,30 @@ export class HandoffService implements vscode.Disposable {
       .filter(t => t.status !== 'completed' && t.status !== 'done' && t.isGoalGate)
       .map(t => t.subject);
 
+    // Plan progress
+    let planProgress: HandoffInput['planProgress'];
+    if (stats.planState && stats.planState.steps.length > 0) {
+      const ps = stats.planState;
+      const completedSteps = ps.steps.filter(s => s.status === 'completed').map(s => s.description);
+      const remainingSteps = ps.steps.filter(s => s.status !== 'completed' && s.status !== 'skipped').map(s => s.description);
+      const failedStep = ps.steps.find(s => s.status === 'failed');
+      const inProgressStep = ps.steps.find(s => s.status === 'in_progress');
+      const lastActive = failedStep || inProgressStep;
+      const completedCount = completedSteps.length;
+      const totalCount = ps.steps.length;
+
+      planProgress = {
+        title: ps.title || 'Plan',
+        completedCount,
+        totalCount,
+        completionPercent: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+        completedSteps,
+        remainingSteps,
+        lastActiveStep: lastActive?.description,
+        lastActiveStepError: lastActive?.errorMessage,
+      };
+    }
+
     return {
       projectPath: analysis.projectPath,
       date: new Date().toISOString(),
@@ -168,6 +192,7 @@ export class HandoffService implements vscode.Disposable {
       truncationCount,
       truncationsByTool: truncationsByTool.length > 0 ? truncationsByTool : undefined,
       goalGates: goalGates.length > 0 ? goalGates : undefined,
+      planProgress,
     };
   }
 

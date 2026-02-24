@@ -36,6 +36,8 @@ import type { DecisionLogService } from '../services/DecisionLogService';
 import type { NotificationPersistenceService } from '../services/NotificationPersistenceService';
 import type { SessionSummaryData } from '../types/sessionSummary';
 import { ModelPricingService } from '../services/ModelPricingService';
+import { parseChangelog } from '../utils/changelogParser';
+import type { ChangelogEntry } from '../utils/changelogParser';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { BurnRateCalculator } from '../services/BurnRateCalculator';
 import { SessionSummaryService } from '../services/SessionSummaryService';
@@ -140,6 +142,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Interval for rotating empty-state phrase */
   private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
 
+  /** Plan persistence service for historical plan data */
+  private _planPersistenceService?: import('../services/PlanPersistenceService').PlanPersistenceService;
+
   /**
    * Sets the event logger instance used for dashboard toggle control.
    */
@@ -159,6 +164,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   setKnowledgeNoteService(service: KnowledgeNoteService): void {
     this._knowledgeNoteService = service;
+  }
+
+  /**
+   * Sets the plan persistence service for historical plan analytics.
+   */
+  setPlanPersistenceService(service: import('../services/PlanPersistenceService').PlanPersistenceService): void {
+    this._planPersistenceService = service;
   }
 
   /**
@@ -392,6 +404,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             this._handleQuotaUpdate(sessionQuota);
           }
         }
+        // Send plan history if available
+        this._sendPlanHistory();
         break;
 
       case 'requestStats':
@@ -574,6 +588,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'openCliDashboard':
         vscode.commands.executeCommand('sidekick.openCliDashboard');
+        break;
+
+      case 'requestPlanHistory':
+        this._sendPlanHistory();
+        break;
+
+      case 'openExternal':
+        if (message.url) {
+          vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
         break;
     }
   }
@@ -1950,6 +1974,84 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _sendStateToWebview(): void {
     this._postMessage({ type: 'updateStats', state: this._state });
     this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
+
+    // Send plan data if available
+    const stats = this._sessionMonitor.getStats();
+    if (stats.planState && stats.planState.steps.length > 0) {
+      this._postMessage({ type: 'updatePlan', plan: {
+        title: stats.planState.title || 'Plan',
+        active: stats.planState.active,
+        completionRate: stats.planState.completionRate ?? 0,
+        totalDurationMs: stats.planState.totalDurationMs,
+        steps: stats.planState.steps.map(s => ({
+          id: s.id,
+          description: s.description,
+          status: s.status,
+          phase: s.phase,
+          complexity: s.complexity,
+          durationMs: s.durationMs,
+          tokensUsed: s.tokensUsed,
+          toolCalls: s.toolCalls,
+          errorMessage: s.errorMessage,
+        })),
+        rawMarkdown: stats.planState.rawMarkdown,
+      }});
+    }
+  }
+
+  /**
+   * Sends historical plan analytics to the webview.
+   */
+  private _sendPlanHistory(): void {
+    if (!this._planPersistenceService) return;
+
+    const plans = this._planPersistenceService.getPlans();
+    if (plans.length === 0) return;
+
+    const completedPlans = plans.filter(p => p.status === 'completed').length;
+    const failedPlans = plans.filter(p => p.status === 'failed').length;
+    const avgCompletionRate = plans.reduce((s, p) => s + p.completionRate, 0) / plans.length;
+
+    const plansWithDuration = plans.filter(p => p.totalDurationMs != null && p.totalDurationMs > 0);
+    const avgDurationMs = plansWithDuration.length > 0
+      ? plansWithDuration.reduce((s, p) => s + (p.totalDurationMs || 0), 0) / plansWithDuration.length
+      : 0;
+
+    const avgStepsPerPlan = plans.reduce((s, p) => s + p.steps.length, 0) / plans.length;
+
+    const plansWithTokens = plans.filter(p => p.totalTokensUsed != null && p.totalTokensUsed > 0);
+    const avgTokensPerPlan = plansWithTokens.length > 0
+      ? plansWithTokens.reduce((s, p) => s + (p.totalTokensUsed || 0), 0) / plansWithTokens.length
+      : 0;
+
+    const plansWithCost = plans.filter(p => p.totalCostUsd != null && p.totalCostUsd > 0);
+    const avgCostPerPlan = plansWithCost.length > 0
+      ? plansWithCost.reduce((s, p) => s + (p.totalCostUsd || 0), 0) / plansWithCost.length
+      : 0;
+
+    const recentPlans = plans.slice(0, 10).map(p => ({
+      title: p.title,
+      status: p.status,
+      completionRate: p.completionRate,
+      createdAt: p.createdAt,
+      source: p.source,
+      stepCount: p.steps.length,
+    }));
+
+    this._postMessage({
+      type: 'updatePlanHistory',
+      history: {
+        totalPlans: plans.length,
+        completedPlans,
+        failedPlans,
+        avgCompletionRate,
+        avgDurationMs,
+        avgStepsPerPlan,
+        avgTokensPerPlan,
+        avgCostPerPlan,
+        recentPlans,
+      },
+    });
   }
 
   /**
@@ -2129,6 +2231,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const iconUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
     );
+
+    // Read and parse changelog for version badge + modal
+    const changelogPath = path.join(this._extensionUri.fsPath, 'CHANGELOG.md');
+    let changelogEntries: ChangelogEntry[] = [];
+    try {
+      const raw = fs.readFileSync(changelogPath, 'utf-8');
+      changelogEntries = parseChangelog(raw, 5);
+    } catch { /* graceful fallback — no modal available */ }
+
+    const extVersion = vscode.extensions.getExtension('CesarAndresLopez.sidekick-for-max')?.packageJSON?.version || changelogEntries[0]?.version || '?';
+    const extDate = changelogEntries[0]?.date || '';
 
     // Pre-compute session groups for initial render (avoids reliance on postMessage)
     const initialGroups = this._sessionMonitor.getAllSessionsGrouped();
@@ -2542,6 +2655,174 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .latency-count {
       color: var(--vscode-descriptionForeground);
+    }
+
+    /* Plan analytics section */
+    .plan-section {
+      margin-bottom: 16px;
+      padding: 8px 12px;
+      background: var(--vscode-input-background);
+      border-radius: 4px;
+      border: 1px solid var(--vscode-input-border);
+    }
+
+    .plan-section .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .plan-progress-bar {
+      height: 6px;
+      background: var(--vscode-progressBar-background, #0e70c0);
+      border-radius: 3px;
+      margin: 6px 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .plan-progress-bar-bg {
+      height: 6px;
+      background: var(--vscode-input-border);
+      border-radius: 3px;
+    }
+
+    .plan-progress-fill {
+      height: 100%;
+      background: var(--vscode-testing-iconPassed, #73c991);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .plan-stats {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 8px;
+    }
+
+    .plan-steps-list {
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .plan-step-item {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 2px 0;
+      line-height: 1.4;
+    }
+
+    .plan-step-icon {
+      flex-shrink: 0;
+      width: 14px;
+      text-align: center;
+    }
+
+    .plan-step-desc {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .plan-step-meta {
+      flex-shrink: 0;
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .plan-step-item.completed .plan-step-desc {
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .plan-step-item.failed .plan-step-desc {
+      color: var(--vscode-charts-red, #f14c4c);
+    }
+
+    .plan-step-item.skipped .plan-step-desc {
+      color: var(--vscode-descriptionForeground);
+      text-decoration: line-through;
+    }
+
+    .plan-view-toggle {
+      font-size: 10px;
+      color: var(--vscode-textLink-foreground);
+      cursor: pointer;
+      margin-left: 8px;
+      opacity: 0.8;
+    }
+    .plan-view-toggle:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
+
+    .plan-markdown-view {
+      max-height: 400px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .plan-markdown-view h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 8px 0 4px;
+    }
+    .plan-markdown-view h2 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 6px 0 4px;
+    }
+    .plan-markdown-view h3 {
+      font-size: 12px;
+      font-weight: 600;
+      margin: 4px 0 2px;
+    }
+
+    .plan-md-phase {
+      border-left: 2px solid var(--vscode-charts-blue, #00BCD4);
+      padding-left: 8px;
+      margin: 6px 0;
+    }
+
+    .plan-md-step {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 1px 0;
+    }
+    .plan-md-step-icon {
+      flex-shrink: 0;
+      width: 14px;
+      text-align: center;
+    }
+    .plan-md-step-desc {
+      flex: 1;
+      min-width: 0;
+    }
+    .plan-md-step-meta {
+      flex-shrink: 0;
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .plan-md-context {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      padding: 1px 0 1px 20px;
+      font-style: italic;
+    }
+
+    .plan-md-text {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      padding: 2px 0;
     }
 
     /* Unified collapsible section styling */
@@ -4274,12 +4555,59 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .handoff-btn:hover {
       background: var(--vscode-button-secondaryHoverBackground);
     }
+
+    /* Version badge */
+    .version-badge {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      cursor: pointer;
+      padding: 1px 6px;
+      border-radius: 3px;
+      transition: background 0.2s;
+    }
+    .version-badge:hover {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+    }
+
+    /* Changelog modal */
+    .changelog-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .changelog-modal {
+      background: var(--vscode-sideBar-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      width: 90%; max-width: 480px; max-height: 80vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .changelog-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--vscode-panel-border); }
+    .changelog-title { font-weight: 600; font-size: 13px; }
+    .changelog-close { cursor: pointer; font-size: 18px; color: var(--vscode-descriptionForeground); padding: 0 4px; }
+    .changelog-close:hover { color: var(--vscode-foreground); }
+    .changelog-version-info { padding: 8px 16px; display: flex; gap: 8px; align-items: center; }
+    .changelog-current-version { font-weight: 600; font-size: 13px; color: var(--vscode-textLink-foreground); }
+    .changelog-date { font-size: 11px; color: var(--vscode-descriptionForeground); }
+    .changelog-body { padding: 0 16px 12px; overflow-y: auto; flex: 1; font-size: 12px; line-height: 1.6; }
+    .changelog-entry { margin-bottom: 12px; }
+    .changelog-entry-version { font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+    .changelog-entry-section { margin: 4px 0; }
+    .changelog-entry-heading { font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground); text-transform: uppercase; margin: 4px 0 2px; }
+    .changelog-entry-item { margin: 2px 0 2px 12px; font-size: 12px; color: var(--vscode-foreground); }
+    .changelog-footer { padding: 8px 16px; border-top: 1px solid var(--vscode-panel-border); text-align: center; }
+    .changelog-link { font-size: 11px; color: var(--vscode-textLink-foreground); text-decoration: none; }
+    .changelog-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="header">
     <img src="${iconUri}" alt="Sidekick" />
     <h1>Session Analytics</h1>
+    <span class="version-badge" id="version-badge" title="What's New">v${extVersion}</span>
     <span id="status" class="status inactive">No Session</span>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
@@ -4421,6 +4749,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             <span class="latency-count">· <span id="latency-count">0</span> requests</span>
           </div>
         </div>
+      </div>
+
+      <!-- Plan Analytics Section -->
+      <div class="plan-section" id="plan-section" style="display: none;">
+        <div class="section-title">Plan Progress <span class="plan-view-toggle" id="plan-view-toggle" style="display: none;">Show Details</span></div>
+        <div id="plan-title" style="font-size: 12px; font-weight: 500; margin-bottom: 4px;"></div>
+        <div class="plan-progress-bar-bg">
+          <div class="plan-progress-fill" id="plan-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div class="plan-stats" id="plan-stats"></div>
+        <div class="plan-steps-list" id="plan-steps-list"></div>
+        <div class="plan-markdown-view" id="plan-markdown-view"></div>
+      </div>
+
+      <!-- Plan History Section -->
+      <div class="plan-section" id="plan-history-section" style="display: none;">
+        <div class="section-title">Plan History</div>
+        <div class="plan-stats" id="plan-history-stats"></div>
+        <div class="plan-steps-list" id="plan-history-list"></div>
       </div>
 
       <!-- Agent Guidance Suggestions Panel -->
@@ -4801,6 +5148,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     </div>
   </div>
 
+  <!-- Changelog Modal -->
+  <div id="changelog-backdrop" class="changelog-backdrop" style="display: none;">
+    <div class="changelog-modal">
+      <div class="changelog-header">
+        <span class="changelog-title">What's New</span>
+        <span class="changelog-close" id="changelog-close">&times;</span>
+      </div>
+      <div class="changelog-version-info">
+        <span class="changelog-current-version">v${extVersion}</span>
+        <span class="changelog-date">${extDate}</span>
+      </div>
+      <div class="changelog-body" id="changelog-body"></div>
+      <div class="changelog-footer">
+        <a class="changelog-link" href="https://cesarandreslopez.github.io/sidekick-agent-hub/changelog/" id="changelog-full-link">View full changelog &#8594;</a>
+      </div>
+    </div>
+  </div>
+
   <script nonce="${nonce}" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script nonce="${nonce}">
     // Initial session data embedded at HTML generation time (no postMessage needed)
@@ -4909,6 +5274,58 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         var div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+      }
+
+      // ==== Changelog Modal ====
+
+      var changelogData = ${JSON.stringify(changelogEntries)};
+
+      function renderChangelog(entries) {
+        var body = document.getElementById('changelog-body');
+        if (!body || !entries.length) return;
+        body.innerHTML = entries.map(function(entry, i) {
+          var isFirst = i === 0;
+          var sections = entry.sections.map(function(s) {
+            var items = s.items.map(function(item) {
+              return '<div class="changelog-entry-item">' + escapeHtml(item) + '</div>';
+            }).join('');
+            return '<div class="changelog-entry-section"><div class="changelog-entry-heading">' + escapeHtml(s.heading) + '</div>' + items + '</div>';
+          }).join('');
+          return '<div class="changelog-entry">' +
+            (isFirst ? '' : '<div class="changelog-entry-version">v' + escapeHtml(entry.version) + ' — ' + escapeHtml(entry.date) + '</div>') +
+            sections + '</div>';
+        }).join('');
+      }
+
+      var versionBadge = document.getElementById('version-badge');
+      var changelogBackdrop = document.getElementById('changelog-backdrop');
+      var changelogClose = document.getElementById('changelog-close');
+      var changelogFullLink = document.getElementById('changelog-full-link');
+
+      if (versionBadge) {
+        versionBadge.addEventListener('click', function() {
+          renderChangelog(changelogData);
+          if (changelogBackdrop) changelogBackdrop.style.display = 'flex';
+        });
+      }
+
+      if (changelogClose) {
+        changelogClose.addEventListener('click', function() {
+          if (changelogBackdrop) changelogBackdrop.style.display = 'none';
+        });
+      }
+
+      if (changelogBackdrop) {
+        changelogBackdrop.addEventListener('click', function(e) {
+          if (e.target === changelogBackdrop) changelogBackdrop.style.display = 'none';
+        });
+      }
+
+      if (changelogFullLink) {
+        changelogFullLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          vscode.postMessage({ type: 'openExternal', url: this.href });
+        });
       }
 
       function setSuggestionsLoading(loading) {
@@ -6444,6 +6861,154 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       }
 
+      // Plan markdown renderer
+      function renderPlanMarkdown(raw, steps) {
+        var lines = raw.split('\\n');
+        var html = '';
+        var inPhase = false;
+        var phasePattern = /^#{2,4}\\s+(?:Phase|Step|Stage)\\s*\\d*[:.](.*)/i;
+        var titlePattern = /^#{1,2}\\s+(.+)/;
+        var headerPattern = /^#{3,4}\\s+(.+)/;
+        var checkboxPattern = /^[-*]\\s+\\[([ xX])\\]\\s+(.+)/;
+        var numberedPattern = /^\\d+[.)\\s]+(.+)/;
+        var bulletPattern = /^[-*]\\s+(.+)/;
+
+        // Build step lookup by description for status matching
+        var stepMap = {};
+        for (var si = 0; si < steps.length; si++) {
+          stepMap[steps[si].description.toLowerCase().trim()] = steps[si];
+        }
+
+        function findStep(desc) {
+          var key = desc.toLowerCase().trim();
+          if (stepMap[key]) return stepMap[key];
+          // Fuzzy: find step whose description is contained in or contains desc
+          for (var k in stepMap) {
+            if (key.indexOf(k) >= 0 || k.indexOf(key) >= 0) return stepMap[k];
+          }
+          return null;
+        }
+
+        function stepIcon(status) {
+          if (status === 'completed') return '\\u2713';
+          if (status === 'in_progress') return '\\u2192';
+          if (status === 'failed') return '\\u2717';
+          if (status === 'skipped') return '\\u2013';
+          return '\\u25CB';
+        }
+
+        function stepMeta(s) {
+          var parts = [];
+          if (s.durationMs) {
+            var sec = Math.round(s.durationMs / 1000);
+            var min = Math.floor(sec / 60);
+            parts.push(min > 0 ? min + 'm ' + (sec % 60) + 's' : sec + 's');
+          }
+          if (s.tokensUsed) parts.push(s.tokensUsed >= 1000 ? (s.tokensUsed / 1000).toFixed(1) + 'k' : s.tokensUsed + '');
+          if (s.toolCalls) parts.push(s.toolCalls + ' calls');
+          return parts.length > 0 ? '<span class="plan-md-step-meta">' + parts.join(' \\u00B7 ') + '</span>' : '';
+        }
+
+        function esc(text) {
+          return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          var trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Phase headers
+          var pm = trimmed.match(phasePattern);
+          if (pm) {
+            if (inPhase) html += '</div>';
+            html += '<div class="plan-md-phase"><h2>' + esc(pm[1].trim()) + '</h2>';
+            inPhase = true;
+            continue;
+          }
+
+          // Title headers
+          var tm = trimmed.match(titlePattern);
+          if (tm && !trimmed.match(phasePattern)) {
+            var level = trimmed.indexOf('## ') === 0 ? 'h2' : 'h1';
+            html += '<' + level + '>' + esc(tm[1].trim()) + '</' + level + '>';
+            continue;
+          }
+
+          // Sub-headers
+          var hm = trimmed.match(headerPattern);
+          if (hm) {
+            html += '<h3>' + esc(hm[1].trim()) + '</h3>';
+            continue;
+          }
+
+          // Checkbox items → match to plan steps
+          var cm = trimmed.match(checkboxPattern);
+          if (cm) {
+            var desc = cm[2].trim();
+            var matched = findStep(desc);
+            if (matched) {
+              html += '<div class="plan-md-step"><span class="plan-md-step-icon">' + stepIcon(matched.status)
+                + '</span><span class="plan-md-step-desc">' + esc(desc) + '</span>' + stepMeta(matched) + '</div>';
+            } else {
+              var chk = cm[1].toLowerCase() === 'x' ? '\\u2713' : '\\u25CB';
+              html += '<div class="plan-md-step"><span class="plan-md-step-icon">' + chk
+                + '</span><span class="plan-md-step-desc">' + esc(desc) + '</span></div>';
+            }
+            continue;
+          }
+
+          // Numbered items → match to plan steps
+          var nm = trimmed.match(numberedPattern);
+          if (nm) {
+            var ndesc = nm[1].trim();
+            var nmatched = findStep(ndesc);
+            if (nmatched) {
+              html += '<div class="plan-md-step"><span class="plan-md-step-icon">' + stepIcon(nmatched.status)
+                + '</span><span class="plan-md-step-desc">' + esc(ndesc) + '</span>' + stepMeta(nmatched) + '</div>';
+            } else {
+              html += '<div class="plan-md-step"><span class="plan-md-step-icon">\\u25CB</span><span class="plan-md-step-desc">' + esc(ndesc) + '</span></div>';
+            }
+            continue;
+          }
+
+          // Context bullets
+          var bm = trimmed.match(bulletPattern);
+          if (bm) {
+            html += '<div class="plan-md-context">\\u2022 ' + esc(bm[1].trim()) + '</div>';
+            continue;
+          }
+
+          // Plain text (rationale/descriptions)
+          html += '<div class="plan-md-text">' + esc(trimmed) + '</div>';
+        }
+
+        if (inPhase) html += '</div>';
+        return html;
+      }
+
+      // Plan view toggle
+      var planViewShowing = 'steps'; // 'steps' | 'details'
+      var pvToggle = document.getElementById('plan-view-toggle');
+      if (pvToggle) {
+        pvToggle.addEventListener('click', function() {
+          var stepsList = document.getElementById('plan-steps-list');
+          var mdView = document.getElementById('plan-markdown-view');
+          if (!stepsList || !mdView) return;
+          if (planViewShowing === 'steps') {
+            stepsList.style.display = 'none';
+            mdView.style.display = 'block';
+            pvToggle.textContent = 'Show Steps';
+            planViewShowing = 'details';
+          } else {
+            stepsList.style.display = '';
+            mdView.style.display = 'none';
+            pvToggle.textContent = 'Show Details';
+            planViewShowing = 'steps';
+          }
+        });
+      }
+
       // Handle messages from extension
       window.addEventListener('message', function(event) {
         const message = event.data;
@@ -6625,6 +7190,143 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           case 'updateEmptyPhrase':
             var emptyPhrase = document.getElementById('empty-state-phrase');
             if (emptyPhrase) emptyPhrase.textContent = message.phrase;
+            break;
+
+          case 'updatePlan':
+            var planSection = document.getElementById('plan-section');
+            if (!planSection) break;
+            var plan = message.plan;
+            if (!plan || !plan.steps || plan.steps.length === 0) {
+              planSection.style.display = 'none';
+              break;
+            }
+            planSection.style.display = '';
+
+            var planTitle = document.getElementById('plan-title');
+            if (planTitle) planTitle.textContent = plan.title || 'Plan';
+
+            var planFill = document.getElementById('plan-progress-fill');
+            if (planFill) {
+              var pct = Math.round((plan.completionRate || 0) * 100);
+              planFill.style.width = pct + '%';
+            }
+
+            var planStats = document.getElementById('plan-stats');
+            if (planStats) {
+              var completed = plan.steps.filter(function(s) { return s.status === 'completed'; }).length;
+              var total = plan.steps.length;
+              var statParts = [completed + '/' + total + ' steps'];
+              if (plan.completionRate != null) statParts[0] += ' (' + Math.round(plan.completionRate * 100) + '%)';
+              if (plan.totalDurationMs) {
+                var durSec = Math.round(plan.totalDurationMs / 1000);
+                var durMin = Math.floor(durSec / 60);
+                var durRemSec = durSec % 60;
+                statParts.push(durMin > 0 ? durMin + 'm ' + durRemSec + 's' : durSec + 's');
+              }
+              var totalTokens = plan.steps.reduce(function(sum, s) { return sum + (s.tokensUsed || 0); }, 0);
+              if (totalTokens > 0) {
+                statParts.push(totalTokens >= 1000 ? (totalTokens / 1000).toFixed(1) + 'k tokens' : totalTokens + ' tokens');
+              }
+              planStats.textContent = statParts.join(' · ');
+            }
+
+            var planStepsList = document.getElementById('plan-steps-list');
+            if (planStepsList) {
+              var stepsHtml = '';
+              for (var si = 0; si < plan.steps.length; si++) {
+                var step = plan.steps[si];
+                var icon = '○';
+                var statusClass = 'pending';
+                if (step.status === 'completed') { icon = '✓'; statusClass = 'completed'; }
+                else if (step.status === 'in_progress') { icon = '→'; statusClass = 'in_progress'; }
+                else if (step.status === 'failed') { icon = '✗'; statusClass = 'failed'; }
+                else if (step.status === 'skipped') { icon = '–'; statusClass = 'skipped'; }
+
+                var metaParts = [];
+                if (step.durationMs) {
+                  var sSec = Math.round(step.durationMs / 1000);
+                  var sMin = Math.floor(sSec / 60);
+                  var sRemSec = sSec % 60;
+                  metaParts.push(sMin > 0 ? sMin + 'm ' + sRemSec + 's' : sSec + 's');
+                }
+                if (step.tokensUsed) {
+                  metaParts.push(step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed + '');
+                }
+                if (step.toolCalls) metaParts.push(step.toolCalls + ' calls');
+                if (step.complexity) metaParts.push(step.complexity);
+
+                var metaHtml = metaParts.length > 0 ? '<span class="plan-step-meta">' + metaParts.join(' · ') + '</span>' : '';
+                var errorHtml = step.errorMessage ? '<div style="color: var(--vscode-charts-red, #f14c4c); font-size: 10px; margin-left: 20px;">' + step.errorMessage.substring(0, 100) + '</div>' : '';
+
+                stepsHtml += '<div class="plan-step-item ' + statusClass + '">'
+                  + '<span class="plan-step-icon">' + icon + '</span>'
+                  + '<span class="plan-step-desc">' + step.description + '</span>'
+                  + metaHtml
+                  + '</div>'
+                  + errorHtml;
+              }
+              planStepsList.innerHTML = stepsHtml;
+            }
+
+            // Render raw markdown view if available
+            var planViewToggle = document.getElementById('plan-view-toggle');
+            var planMarkdownView = document.getElementById('plan-markdown-view');
+            if (planViewToggle && planMarkdownView) {
+              if (plan.rawMarkdown) {
+                planViewToggle.style.display = '';
+                planMarkdownView.innerHTML = renderPlanMarkdown(plan.rawMarkdown, plan.steps);
+              } else {
+                planViewToggle.style.display = 'none';
+                planMarkdownView.style.display = 'none';
+                planMarkdownView.innerHTML = '';
+              }
+            }
+            break;
+
+          case 'updatePlanHistory':
+            var phSection = document.getElementById('plan-history-section');
+            if (!phSection) break;
+            var history = message.history;
+            if (!history || history.totalPlans === 0) {
+              phSection.style.display = 'none';
+              break;
+            }
+            phSection.style.display = '';
+
+            var phStats = document.getElementById('plan-history-stats');
+            if (phStats) {
+              var phParts = [
+                history.totalPlans + ' plans',
+                history.completedPlans + ' completed',
+                Math.round(history.avgCompletionRate * 100) + '% avg completion'
+              ];
+              if (history.avgDurationMs > 0) {
+                var dSec = Math.round(history.avgDurationMs / 1000);
+                var dMin = Math.floor(dSec / 60);
+                phParts.push('avg ' + (dMin > 0 ? dMin + 'm' : dSec + 's'));
+              }
+              if (history.avgTokensPerPlan > 0) {
+                phParts.push('avg ' + (history.avgTokensPerPlan >= 1000 ? (history.avgTokensPerPlan / 1000).toFixed(1) + 'k' : Math.round(history.avgTokensPerPlan)) + ' tokens');
+              }
+              phStats.textContent = phParts.join(' · ');
+            }
+
+            var phList = document.getElementById('plan-history-list');
+            if (phList && history.recentPlans) {
+              var phHtml = '';
+              for (var pi = 0; pi < history.recentPlans.length; pi++) {
+                var rp = history.recentPlans[pi];
+                var rpIcon = rp.status === 'completed' ? '✓' : rp.status === 'failed' ? '✗' : rp.status === 'abandoned' ? '–' : '→';
+                var rpPct = Math.round(rp.completionRate * 100);
+                var rpDate = new Date(rp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                phHtml += '<div class="plan-step-item ' + rp.status + '">'
+                  + '<span class="plan-step-icon">' + rpIcon + '</span>'
+                  + '<span class="plan-step-desc">' + rp.title + '</span>'
+                  + '<span class="plan-step-meta">' + rpPct + '% · ' + rp.stepCount + ' steps · ' + rpDate + '</span>'
+                  + '</div>';
+              }
+              phList.innerHTML = phHtml;
+            }
             break;
         }
       });

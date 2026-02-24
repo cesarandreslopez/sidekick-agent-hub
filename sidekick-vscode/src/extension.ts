@@ -56,8 +56,10 @@ import { ErrorViewProvider } from "./providers/ErrorViewProvider";
 import { DashboardViewProvider } from "./providers/DashboardViewProvider";
 import { MindMapViewProvider } from "./providers/MindMapViewProvider";
 import { TaskBoardViewProvider } from "./providers/TaskBoardViewProvider";
+import { PlanBoardViewProvider } from "./providers/PlanBoardViewProvider";
 import { ProjectTimelineViewProvider } from "./providers/ProjectTimelineViewProvider";
 import { TaskPersistenceService } from "./services/TaskPersistenceService";
+import { PlanPersistenceService } from "./services/PlanPersistenceService";
 import { DecisionLogService } from "./services/DecisionLogService";
 import { NotificationPersistenceService } from "./services/NotificationPersistenceService";
 import { KnowledgeNoteService } from "./services/KnowledgeNoteService";
@@ -354,6 +356,17 @@ export async function activate(context: vscode.ExtensionContext) {
         historicalDataService.saveSessionSummary(summary);
         log(`Session summary saved for ${summary.sessionId.slice(0, 8)}`);
       }
+
+      // Persist plan data on session end
+      const stats = sessionMonitor?.getStats();
+      if (stats?.planState && planPersistenceService) {
+        sessionMonitor?.finalizePlanOnSessionEnd();
+        const finalStats = sessionMonitor?.getStats();
+        if (finalStats?.planState) {
+          const sessionId = summary?.sessionId ?? `unknown-${Date.now()}`;
+          planPersistenceService.savePlan(sessionId, finalStats.planState);
+        }
+      }
     });
 
     // Create quota service for subscription limits (only for Claude Code provider)
@@ -583,6 +596,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Initialize task persistence service for cross-session task carry-over
     let taskPersistenceService: TaskPersistenceService | undefined;
+    let planPersistenceService: PlanPersistenceService | undefined;
     const taskWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (taskWorkspaceFolder) {
       const projectSlug = encodeWorkspacePath(taskWorkspaceFolder.uri.fsPath);
@@ -591,6 +605,13 @@ export async function activate(context: vscode.ExtensionContext) {
         logError('Failed to initialize TaskPersistenceService', error);
       });
       context.subscriptions.push(taskPersistenceService);
+
+      planPersistenceService = new PlanPersistenceService(projectSlug);
+      planPersistenceService.initialize().catch(error => {
+        logError('Failed to initialize PlanPersistenceService', error);
+      });
+      context.subscriptions.push(planPersistenceService);
+      dashboardProvider.setPlanPersistenceService(planPersistenceService);
     }
 
     // Register task board view provider (depends on sessionMonitor + taskPersistenceService)
@@ -600,6 +621,14 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.registerWebviewViewProvider(TaskBoardViewProvider.viewType, taskBoardProvider)
     );
     log('Task board view provider registered');
+
+    // Register plan board view provider (depends on sessionMonitor + planPersistenceService)
+    const planBoardProvider = new PlanBoardViewProvider(context.extensionUri, sessionMonitor, planPersistenceService);
+    context.subscriptions.push(planBoardProvider);
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(PlanBoardViewProvider.viewType, planBoardProvider)
+    );
+    log('Plan board view provider registered');
 
     // Register project timeline view provider (depends on sessionMonitor)
     const timelineProvider = new ProjectTimelineViewProvider(context.extensionUri, sessionMonitor);

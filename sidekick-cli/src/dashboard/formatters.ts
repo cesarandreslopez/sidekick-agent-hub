@@ -27,6 +27,16 @@ export function formatDuration(ms: number): string {
   return `${mins}m${remSecs}s`;
 }
 
+/** Strip blessed-style tags like `{cyan-fg}` or `{/bold}` from text. */
+export function stripBlessedTags(text: string): string {
+  return text.replace(/\{[^}]*\}/g, '');
+}
+
+/** Return the visible (non-tag) length of text containing blessed tags. */
+export function visibleLength(text: string): number {
+  return stripBlessedTags(text).length;
+}
+
 /** Truncate text to maxLength, appending "..." if truncated. */
 export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
@@ -60,29 +70,42 @@ export function makeBar(percent: number, width: number): string {
   return '\u2588'.repeat(filled) + '\u2591'.repeat(width - filled);
 }
 
-/** Estimate the detail pane width (terminal minus side panel and borders). */
+/** Estimate the detail pane width (terminal minus side panel and borders).
+ *  Side panel 26 + border 2 + padding 1 = 29. Fallback to 80 cols when unknown. */
 export function detailWidth(): number {
-  return Math.max(40, (process.stdout.columns || 120) - 30);
+  return Math.max(40, (process.stdout.columns || 80) - 29);
 }
 
-/** Word-wrap plain text to a given column width, preserving existing line breaks. */
-export function wordWrap(text: string, width: number): string {
+/** Word-wrap text to a given column width, preserving existing line breaks.
+ *  Tag-aware: blessed tags like `{cyan-fg}` are not counted toward visible width.
+ *  @param continuationIndent Optional string prepended to continuation lines (hanging indent). */
+export function wordWrap(text: string, width: number, continuationIndent = ''): string {
+  const indentLen = visibleLength(continuationIndent);
   return text.split('\n').map(line => {
-    if (line.length <= width) return line;
+    if (visibleLength(line) <= width) return line;
     const words = line.split(' ');
     const wrapped: string[] = [];
     let current = '';
+    let currentVisible = 0;
+    const isFirst = () => wrapped.length === 0;
     for (const word of words) {
-      if (current.length === 0) {
+      const wordVisible = visibleLength(word);
+      if (currentVisible === 0) {
         current = word;
-      } else if (current.length + 1 + word.length <= width) {
-        current += ' ' + word;
+        currentVisible = wordVisible;
       } else {
-        wrapped.push(current);
-        current = word;
+        const limit = isFirst() ? width : width - indentLen;
+        if (currentVisible + 1 + wordVisible <= limit) {
+          current += ' ' + word;
+          currentVisible += 1 + wordVisible;
+        } else {
+          wrapped.push(current);
+          current = word;
+          currentVisible = wordVisible;
+        }
       }
     }
     if (current) wrapped.push(current);
-    return wrapped.join('\n');
+    return wrapped.map((l, i) => i === 0 ? l : continuationIndent + l).join('\n');
   }).join('\n');
 }

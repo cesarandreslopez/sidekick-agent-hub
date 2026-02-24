@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-02-23
+
+### Added
+
+- **Plan analytics in mind map**: Tree and boxed views now display plan progress and per-step metrics
+  - Tree view: plan header shows completion stats; steps show complexity, duration, tokens, tool calls, and errors in metadata brackets
+  - Box view: progress bar with completion percentage; steps show right-aligned metrics; subtitle shows step count and total duration
+- **Cross-provider plan extraction**: Shared `PlanExtractor` now handles Claude Code (EnterPlanMode/ExitPlanMode) and OpenCode (`<proposed_plan>` XML) plans — previously only Codex plans were shown
+- **Enriched plan data model**: Plan steps include duration, token count, tool call count, and error messages
+- **Phase-grouped plan display**: When a plan has phase structure, tree and boxed views group steps under phase headers with context lines from the original plan markdown
+- **Node type filter**: Press `f` on the Mind Map tab to cycle through node type filters (file, tool, task, subagent, command, plan, knowledge-note) — non-matching sections render dimmed in grey
+
 ## [0.12.2] - 2026-02-23
 
 ### Added

@@ -31,7 +31,7 @@ export type TaskNodeStatus = 'pending' | 'in_progress' | 'completed';
 /**
  * Plan step status values for visual differentiation.
  */
-export type PlanStepStatus = 'pending' | 'in_progress' | 'completed';
+export type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
 
 /**
  * Graph node for D3.js force simulation.
@@ -69,6 +69,18 @@ export interface GraphNode {
 
   /** Plan step status for plan-step nodes */
   planStepStatus?: PlanStepStatus;
+
+  /** Plan step complexity for color coding */
+  planStepComplexity?: 'low' | 'medium' | 'high';
+
+  /** Tokens used by this plan step (for size scaling) */
+  planStepTokens?: number;
+
+  /** Duration in ms for this plan step (for tooltip) */
+  planStepDurationMs?: number;
+
+  /** Error message for failed plan steps (for tooltip) */
+  planStepError?: string;
 
   /** Whether this task node is a critical goal gate */
   isGoalGate?: boolean;

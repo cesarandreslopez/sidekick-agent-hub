@@ -285,6 +285,13 @@ export class SessionMonitor implements vscode.Disposable {
   private planModeActive = false;
   private planModeEnteredAt: Date | null = null;
   private planAssistantTexts: string[] = [];
+  private planFileContent: string | null = null;
+
+  /** Step-level metrics tracking for active plan */
+  private planStepTokens = 0;
+  private planStepToolCalls = 0;
+  private planRevisionCount = 0;
+  private lastUserPromptForPlan: string | undefined;
 
   // Event emitters for external consumers
   private readonly _onTokenUsage = new vscode.EventEmitter<TokenUsage>();
@@ -2059,6 +2066,9 @@ export class SessionMonitor implements vscode.Disposable {
         timestamp: new Date(event.timestamp),
         firstResponseReceived: false
       };
+
+      // Capture user prompt text for plan context
+      this.lastUserPromptForPlan = this.extractUserText(event);
     }
 
     // Track latency: first assistant event with text content marks first token
@@ -2172,6 +2182,16 @@ export class SessionMonitor implements vscode.Disposable {
         this.totalReportedCost += usage.reportedCost;
       }
 
+      // Attribute tokens to active plan step
+      if (this.planState && !this.planState.active) {
+        const activeStep = this.planState.steps.find(s => s.status === 'in_progress');
+        if (activeStep) {
+          const stepTokens = usage.inputTokens + usage.outputTokens;
+          activeStep.tokensUsed = (activeStep.tokensUsed ?? 0) + stepTokens;
+          this.planStepTokens += stepTokens;
+        }
+      }
+
       // Emit event
       this._onTokenUsage.fire(usage);
     }
@@ -2211,6 +2231,7 @@ export class SessionMonitor implements vscode.Disposable {
                 steps: parsed.steps,
                 title: parsed.title,
                 source,
+                rawMarkdown: proposedPlan,
               };
               log(`Proposed plan extracted: ${parsed.steps.length} steps (${source})`);
             }
@@ -2842,6 +2863,15 @@ export class SessionMonitor implements vscode.Disposable {
           }
         }
 
+        // Attribute tool calls to active plan step
+        if (this.planState && !this.planState.active) {
+          const activeStep = this.planState.steps.find(s => s.status === 'in_progress');
+          if (activeStep) {
+            activeStep.toolCalls = (activeStep.toolCalls ?? 0) + 1;
+            this.planStepToolCalls++;
+          }
+        }
+
         // Emit tool call event
         this._onToolCall.fire(toolCall);
         this.stats.toolCalls.push(toolCall);
@@ -2895,6 +2925,12 @@ export class SessionMonitor implements vscode.Disposable {
 
       this.taskState.tasks.set(agentTaskId, newTask);
       log(`Subagent spawned: ${agentTaskId} - "${description}" (${subagentType || 'unknown'})`);
+    } else if (toolUse.name === 'Write' && this.planModeActive) {
+      const filePath = toolUse.input?.file_path as string | undefined;
+      const content = toolUse.input?.content as string | undefined;
+      if (filePath && content && filePath.includes('.claude/plans/')) {
+        this.planFileContent = content;
+      }
     } else if (toolUse.name === 'EnterPlanMode') {
       this.handleEnterPlanMode(now);
     } else if (toolUse.name === 'ExitPlanMode') {
@@ -2951,6 +2987,19 @@ export class SessionMonitor implements vscode.Disposable {
         task.updatedAt = now;
         // Re-evaluate goal gate status after any update
         task.isGoalGate = this.isGoalGateTask(task);
+
+        // Sync plan step status for plan-linked tasks (plan-0 → step-0)
+        if (taskId.startsWith('plan-') && toolUse.input.status) {
+          const stepIndex = taskId.replace('plan-', '');
+          const stepId = `step-${stepIndex}`;
+          const rawStatus = String(toolUse.input.status).toLowerCase();
+          let planStatus: PlanStep['status'];
+          if (rawStatus === 'completed') planStatus = 'completed';
+          else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') planStatus = 'in_progress';
+          else if (rawStatus === 'deleted') planStatus = 'skipped';
+          else planStatus = 'pending';
+          this.transitionPlanStep(stepId, planStatus, now);
+        }
       } else {
         // TaskUpdate for unknown task - create placeholder
         log(`TaskUpdate for unknown task ${taskId}, creating placeholder`);
@@ -2986,6 +3035,16 @@ export class SessionMonitor implements vscode.Disposable {
     this.planModeActive = true;
     this.planModeEnteredAt = now;
     this.planAssistantTexts = [];
+    this.planFileContent = null;
+    this.planStepTokens = 0;
+    this.planStepToolCalls = 0;
+
+    // If this is a new plan (not a revision), initialize fresh
+    if (!this.planState || !this.planState.active) {
+      this.planRevisionCount = 0;
+    } else {
+      this.planRevisionCount++;
+    }
 
     // Initialize plan state
     this.planState = {
@@ -2993,9 +3052,11 @@ export class SessionMonitor implements vscode.Disposable {
       steps: [],
       enteredAt: now,
       source: this.provider.id === 'opencode' ? 'opencode' : 'claude-code',
+      prompt: this.lastUserPromptForPlan,
+      revision: this.planRevisionCount > 0 ? this.planRevisionCount : undefined,
     };
 
-    log(`Plan mode entered at ${now.toISOString()} (${this.provider.id})`);
+    log(`Plan mode entered at ${now.toISOString()} (${this.provider.id}), revision: ${this.planRevisionCount}`);
   }
 
   /**
@@ -3008,17 +3069,29 @@ export class SessionMonitor implements vscode.Disposable {
       this.planState.active = false;
       this.planState.exitedAt = now;
 
-      // Parse accumulated assistant text into steps (if no steps yet from proposed_plan)
-      if (this.planState.steps.length === 0 && this.planAssistantTexts.length > 0) {
-        const combined = this.planAssistantTexts.join('\n');
-        const parsed = parsePlanMarkdown(combined);
+      // Prefer plan file content (from Write tool to .claude/plans/) over accumulated assistant text
+      const source = this.planFileContent
+        || (this.planAssistantTexts.length > 0 ? this.planAssistantTexts.join('\n') : null);
+      this.planFileContent = null;
+
+      // Parse into steps (if no steps yet from proposed_plan)
+      if (this.planState.steps.length === 0 && source) {
+        const parsed = parsePlanMarkdown(source);
         if (parsed.steps.length > 0) {
           this.planState.steps = parsed.steps;
           if (parsed.title) {
             this.planState.title = parsed.title;
           }
         }
+        // Store the raw markdown for rich rendering
+        this.planState.rawMarkdown = source;
       }
+
+      // Compute plan-level metrics
+      if (this.planState.enteredAt) {
+        this.planState.totalDurationMs = now.getTime() - this.planState.enteredAt.getTime();
+      }
+      this.updatePlanCompletionRate();
     }
 
     this.planModeActive = false;
@@ -3122,6 +3195,103 @@ export class SessionMonitor implements vscode.Disposable {
       title: 'Plan',
       source: 'codex',
     };
+
+    this.updatePlanCompletionRate();
+  }
+
+  /**
+   * Updates the completion rate on the current plan state.
+   */
+  private updatePlanCompletionRate(): void {
+    if (!this.planState || this.planState.steps.length === 0) return;
+    const completed = this.planState.steps.filter(s => s.status === 'completed').length;
+    this.planState.completionRate = completed / this.planState.steps.length;
+  }
+
+  /**
+   * Transitions a plan step to a new status with timing metadata.
+   *
+   * Called by task status changes (TaskUpdate) that map to plan steps,
+   * or inferred from sequential plan execution.
+   */
+  private transitionPlanStep(stepId: string, newStatus: PlanStep['status'], now: Date, output?: string, errorMessage?: string): void {
+    if (!this.planState) return;
+    const step = this.planState.steps.find(s => s.id === stepId);
+    if (!step) return;
+
+    if (newStatus === 'in_progress' && step.status === 'pending') {
+      step.startedAt = now.toISOString();
+    }
+
+    if ((newStatus === 'completed' || newStatus === 'failed') && step.status === 'in_progress') {
+      step.completedAt = now.toISOString();
+      if (step.startedAt) {
+        step.durationMs = now.getTime() - new Date(step.startedAt).getTime();
+      }
+      if (output) {
+        step.output = output.length > 200 ? output.slice(0, 200) + '...' : output;
+      }
+      if (errorMessage) {
+        step.errorMessage = errorMessage.length > 200 ? errorMessage.slice(0, 200) + '...' : errorMessage;
+      }
+    }
+
+    step.status = newStatus;
+    this.updatePlanCompletionRate();
+  }
+
+  /**
+   * Finalizes plan state when a session ends.
+   *
+   * Marks in_progress steps as failed and pending steps as skipped
+   * if the session ends with an incomplete plan.
+   */
+  finalizePlanOnSessionEnd(lastErrorMessage?: string): void {
+    if (!this.planState) return;
+
+    const now = new Date();
+    for (const step of this.planState.steps) {
+      if (step.status === 'in_progress') {
+        step.status = 'failed';
+        step.completedAt = now.toISOString();
+        if (step.startedAt) {
+          step.durationMs = now.getTime() - new Date(step.startedAt).getTime();
+        }
+        if (lastErrorMessage) {
+          step.errorMessage = lastErrorMessage.length > 200 ? lastErrorMessage.slice(0, 200) + '...' : lastErrorMessage;
+        }
+      } else if (step.status === 'pending') {
+        step.status = 'skipped';
+      }
+    }
+
+    // Compute final plan duration
+    if (this.planState.enteredAt) {
+      this.planState.totalDurationMs = now.getTime() - this.planState.enteredAt.getTime();
+    }
+    this.updatePlanCompletionRate();
+  }
+
+  /**
+   * Extracts user text content from a user event.
+   */
+  private extractUserText(event: ClaudeSessionEvent): string | undefined {
+    const content = event.message?.content;
+    if (!content) return undefined;
+
+    if (typeof content === 'string') return content.trim() || undefined;
+
+    if (Array.isArray(content)) {
+      const texts: string[] = [];
+      for (const block of content) {
+        if (block && typeof block === 'object' && 'type' in block && block.type === 'text' && 'text' in block && typeof block.text === 'string') {
+          texts.push(block.text as string);
+        }
+      }
+      const combined = texts.join('\n').trim();
+      return combined || undefined;
+    }
+    return undefined;
   }
 
   /**
@@ -3455,5 +3625,10 @@ export class SessionMonitor implements vscode.Disposable {
     this.planModeActive = false;
     this.planModeEnteredAt = null;
     this.planAssistantTexts = [];
+    this.planFileContent = null;
+    this.planStepTokens = 0;
+    this.planStepToolCalls = 0;
+    this.planRevisionCount = 0;
+    this.lastUserPromptForPlan = undefined;
   }
 }

@@ -412,10 +412,37 @@ export interface PlanStep {
   description: string;
 
   /** Current step status */
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
 
   /** Optional phase grouping (from markdown headers) */
   phase?: string;
+
+  /** Estimated complexity of this step */
+  complexity?: 'low' | 'medium' | 'high';
+
+  /** ISO timestamp when step went in_progress */
+  startedAt?: string;
+
+  /** ISO timestamp when step completed/failed */
+  completedAt?: string;
+
+  /** Duration in milliseconds (completedAt - startedAt) */
+  durationMs?: number;
+
+  /** Summary of what the step produced (truncated to ~200 chars) */
+  output?: string;
+
+  /** Tokens consumed during this step's execution */
+  tokensUsed?: number;
+
+  /** Tool calls made during this step */
+  toolCalls?: number;
+
+  /** Error message if status is 'failed' */
+  errorMessage?: string;
+
+  /** Dollar cost for this step (from ModelPricingService) */
+  costUsd?: number;
 }
 
 /**
@@ -442,6 +469,21 @@ export interface PlanState {
 
   /** Which provider generated the plan */
   source: 'claude-code' | 'opencode' | 'codex';
+
+  /** The user prompt that triggered this plan */
+  prompt?: string;
+
+  /** Total plan execution time in milliseconds */
+  totalDurationMs?: number;
+
+  /** Completed steps / total steps (0-1) */
+  completionRate?: number;
+
+  /** Plan revision count (incremented when agent modifies plan) */
+  revision?: number;
+
+  /** Raw plan markdown content for rich rendering */
+  rawMarkdown?: string;
 }
 
 /**

@@ -21,10 +21,15 @@ import { SplashOverlay } from './SplashOverlay';
 import { HelpOverlay } from './HelpOverlay';
 import { ContextMenuOverlay } from './ContextMenuOverlay';
 import { FilterOverlay } from './FilterOverlay';
+import { ChangelogOverlay } from './ChangelogOverlay';
 import { TooSmallOverlay } from './TooSmallOverlay';
 import { ToastNotification } from './ToastNotification';
 import { MouseProvider } from './mouse';
 import type { TerminalMouseEvent } from './mouse';
+import changelogMd from '../../../CHANGELOG.md';
+import { parseChangelog } from 'sidekick-shared';
+
+const changelogEntries = parseChangelog(changelogMd, 5);
 
 // ── Constants ──
 
@@ -35,7 +40,7 @@ const MIN_SCREEN_HEIGHT = 15;
 const WIDE_SIDE_WIDTH = 40;
 
 type LayoutMode = 'normal' | 'expanded' | 'wide-side';
-type OverlayKind = null | 'help' | 'context-menu' | 'filter';
+type OverlayKind = null | 'help' | 'context-menu' | 'filter' | 'changelog';
 type FocusTarget = 'side' | 'detail';
 
 // ── Types ──
@@ -68,6 +73,7 @@ interface DashboardUIState {
   toasts: ToastEntry[];
   hasReceivedEvents: boolean;
   contextMenuIndex: number;
+  changelogScrollOffset: number;
   renderTick: number;
 }
 
@@ -90,6 +96,7 @@ type Action =
   | { type: 'CONTEXT_MENU_NAV'; delta: number; itemCount: number }
   | { type: 'CONTEXT_MENU_SELECT' }
   | { type: 'SCROLL_SIDE'; delta: number; itemCount: number }
+  | { type: 'CHANGELOG_SCROLL'; delta: number }
   | { type: 'TICK' };
 
 function reducer(state: DashboardUIState, action: Action): DashboardUIState {
@@ -144,7 +151,7 @@ function reducer(state: DashboardUIState, action: Action): DashboardUIState {
       return { ...state, focusTarget: action.target };
 
     case 'SET_OVERLAY':
-      return { ...state, overlay: action.overlay, contextMenuIndex: 0 };
+      return { ...state, overlay: action.overlay, contextMenuIndex: 0, changelogScrollOffset: 0 };
 
     case 'SET_FILTER':
       return { ...state, filterString: action.value };
@@ -191,6 +198,9 @@ function reducer(state: DashboardUIState, action: Action): DashboardUIState {
       return { ...state, selectedItemIndex: next, detailTabIndex: 0, detailScrollOffset: 0 };
     }
 
+    case 'CHANGELOG_SCROLL':
+      return { ...state, changelogScrollOffset: Math.max(0, state.changelogScrollOffset + action.delta) };
+
     case 'TICK':
       return { ...state, renderTick: state.renderTick + 1 };
 
@@ -212,6 +222,7 @@ const initialState: DashboardUIState = {
   toasts: [],
   hasReceivedEvents: false,
   contextMenuIndex: 0,
+  changelogScrollOffset: 0,
   renderTick: 0,
 };
 
@@ -299,7 +310,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     let items = panel.getItems(metrics, staticData);
 
     // Session filter
-    if (state.sessionFilter && ['tasks', 'kanban', 'notes', 'decisions'].includes(panel.id)) {
+    if (state.sessionFilter && ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)) {
       if (panel.id === 'kanban') {
         items = items.map(it => filterKanbanColumn(it, state.sessionFilter!));
       } else {
@@ -357,7 +368,10 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     const prefix = skipPhrase ? '' : getRandomPhraseBlessedTag() + '\n';
     detailContent = prefix + tab.render(selectedItem, metrics, staticData);
   } else if (!selectedItem) {
-    detailContent = '{grey-fg}(no item selected){/grey-fg}';
+    const filterablePanel = ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id);
+    detailContent = state.sessionFilter && filterablePanel
+      ? '{grey-fg}No items in this session — press {/grey-fg}{magenta-fg}f{/magenta-fg}{grey-fg} to see all{/grey-fg}'
+      : '{grey-fg}(no item selected){/grey-fg}';
   }
 
   const detailLines = detailContent.split('\n');
@@ -401,7 +415,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     if (panel.getActions().length > 0 && state.focusTarget === 'side') {
       parts.push('x actions');
     }
-    if (['tasks', 'kanban', 'notes', 'decisions'].includes(panel.id) && state.focusTarget === 'side') {
+    if (['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id) && state.focusTarget === 'side') {
       parts.push('f session');
     }
     return parts.length > 0 ? parts.join('  ') + '  ' : '';
@@ -603,6 +617,18 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       return;
     }
 
+    // Changelog overlay
+    if (state.overlay === 'changelog') {
+      if (key.escape || input === 'V') {
+        dispatch({ type: 'SET_OVERLAY', overlay: null });
+      } else if (input === 'j' || key.downArrow) {
+        dispatch({ type: 'CHANGELOG_SCROLL', delta: 1 });
+      } else if (input === 'k' || key.upArrow) {
+        dispatch({ type: 'CHANGELOG_SCROLL', delta: -1 });
+      }
+      return;
+    }
+
     // ── Global keys (no overlay) ──
 
     // Escape
@@ -621,6 +647,12 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     // Help toggle
     if (input === '?') {
       dispatch({ type: 'SET_OVERLAY', overlay: 'help' });
+      return;
+    }
+
+    // Changelog toggle
+    if (input === 'V') {
+      dispatch({ type: 'SET_OVERLAY', overlay: 'changelog' });
       return;
     }
 
@@ -803,37 +835,51 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
   return (
     <MouseProvider onMouse={handleMouse}>
       <Box flexDirection="column" height={rows} width={columns}>
-        {/* Tab bar */}
-        <TabBar panels={panels} activeIndex={state.activePanelIndex} layoutMode={state.layoutMode} />
+        {/* Tab bar (hidden when full-screen overlay is active) */}
+        {state.overlay !== 'help' && state.overlay !== 'changelog' && (
+          <TabBar panels={panels} activeIndex={state.activePanelIndex} layoutMode={state.layoutMode} />
+        )}
 
-        {/* Main content area */}
-        <Box flexGrow={1} flexDirection="row">
-          {/* Side list (hidden in expanded mode) */}
-          {sideWidth > 0 && (
-            <SideList
-              items={currentItems}
-              selectedIndex={clampedSelection}
-              scrollOffset={sideScroll.scrollOffset}
-              focused={state.focusTarget === 'side'}
-              width={sideWidth}
-              viewportHeight={sideViewportHeight}
-              panelTitle={panel.title}
-            />
-          )}
+        {/* Main content area (hidden when full-screen overlay is active) */}
+        {state.overlay !== 'help' && state.overlay !== 'changelog' && (
+          <Box flexGrow={1} flexDirection="row">
+            {/* Side list (hidden in expanded mode) */}
+            {sideWidth > 0 && (
+              <SideList
+                items={currentItems}
+                selectedIndex={clampedSelection}
+                scrollOffset={sideScroll.scrollOffset}
+                focused={state.focusTarget === 'side'}
+                width={sideWidth}
+                viewportHeight={sideViewportHeight}
+                panelTitle={panel.title}
+                sessionFilterActive={!!state.sessionFilter && ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)}
+              />
+            )}
 
-          {/* Detail area */}
-          <Box flexDirection="column" flexGrow={1}>
-            <DetailTabBar tabs={detailTabs} activeIndex={state.detailTabIndex} />
-            <DetailPane
-              content={detailContent}
-              scrollOffset={state.detailScrollOffset}
-              viewportHeight={detailViewportHeight}
-              focused={state.focusTarget === 'detail'}
-            />
+            {/* Detail area */}
+            <Box flexDirection="column" flexGrow={1}>
+              <DetailTabBar tabs={detailTabs} activeIndex={state.detailTabIndex} />
+              <DetailPane
+                content={detailContent}
+                scrollOffset={state.detailScrollOffset}
+                viewportHeight={detailViewportHeight}
+                focused={state.focusTarget === 'detail'}
+              />
+            </Box>
           </Box>
-        </Box>
+        )}
 
-        {/* Status bar */}
+        {/* Full-screen overlays (replace main content) */}
+        {state.overlay === 'help' && (
+          <HelpOverlay panels={panels} activePanelIndex={state.activePanelIndex} />
+        )}
+
+        {state.overlay === 'changelog' && (
+          <ChangelogOverlay entries={changelogEntries} scrollOffset={state.changelogScrollOffset} />
+        )}
+
+        {/* Status bar — always visible */}
         <StatusBar
           eventCount={metrics.eventCount}
           providerName={metrics.providerName}
@@ -846,11 +892,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
           updateInfo={metrics.updateInfo}
         />
 
-        {/* Overlays */}
-        {state.overlay === 'help' && (
-          <HelpOverlay panels={panels} activePanelIndex={state.activePanelIndex} />
-        )}
-
+        {/* Inline overlays (render on top of content) */}
         {state.overlay === 'context-menu' && (
           <ContextMenuOverlay
             actions={contextActions}

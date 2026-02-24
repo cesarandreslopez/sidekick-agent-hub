@@ -6,8 +6,8 @@
 import React from 'react';
 import * as path from 'path';
 import type { Command } from 'commander';
-import { createWatcher, getAllDetectedProviders } from 'sidekick-shared';
-import type { FollowEvent, ProviderId } from 'sidekick-shared';
+import { createWatcher, getAllDetectedProviders, readPlans, writePlans, getProjectSlug } from 'sidekick-shared';
+import type { FollowEvent, ProviderId, PersistedPlan, PersistedPlanStep } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { DashboardState } from '../dashboard/DashboardState';
@@ -20,6 +20,7 @@ import { TasksPanel } from '../dashboard/panels/TasksPanel';
 import { KanbanPanel } from '../dashboard/panels/KanbanPanel';
 import { NotesPanel } from '../dashboard/panels/NotesPanel';
 import { DecisionsPanel } from '../dashboard/panels/DecisionsPanel';
+import { PlansPanel } from '../dashboard/panels/PlansPanel';
 import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
@@ -31,6 +32,74 @@ function createProviderById(id: ProviderId) {
     case 'codex': return new CodexProvider();
     case 'claude-code':
     default: return new ClaudeCodeProvider();
+  }
+}
+
+import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
+
+function inferPlanStatus(plan: PlanInfo): 'in_progress' | 'completed' | 'failed' | 'abandoned' {
+  const hasCompleted = plan.steps.some(s => s.status === 'completed');
+  const hasFailed = plan.steps.some(s => s.status === 'failed');
+  const hasPending = plan.steps.some(s => s.status === 'pending' || s.status === 'in_progress');
+  if (hasFailed) return 'failed';
+  if (!hasPending && hasCompleted) return 'completed';
+  if (hasCompleted && hasPending) return 'in_progress';
+  return 'abandoned';
+}
+
+function toPersistedStep(step: PlanStep): PersistedPlanStep {
+  return {
+    id: step.id,
+    description: step.description,
+    status: step.status as PersistedPlanStep['status'],
+    phase: step.phase,
+    complexity: step.complexity,
+    durationMs: step.durationMs,
+    tokensUsed: step.tokensUsed,
+    toolCalls: step.toolCalls,
+    errorMessage: step.errorMessage,
+  };
+}
+
+async function persistPlan(state: DashboardState, workspacePath: string): Promise<void> {
+  const metrics = state.getMetrics();
+  if (!metrics.plan || metrics.plan.steps.length === 0) return;
+
+  const slug = getProjectSlug(workspacePath);
+  let existing: PersistedPlan[];
+  try {
+    existing = await readPlans(slug);
+  } catch {
+    existing = [];
+  }
+
+  const sessionId = metrics.sessionId || `unknown-${Date.now()}`;
+  const persisted: PersistedPlan = {
+    id: `cli-${Date.now()}`,
+    projectSlug: slug,
+    sessionId,
+    title: metrics.plan.title,
+    source: metrics.plan.source || 'claude-code',
+    createdAt: new Date().toISOString(),
+    status: inferPlanStatus(metrics.plan),
+    steps: metrics.plan.steps.map(toPersistedStep),
+    completionRate: metrics.plan.completionRate || 0,
+    totalDurationMs: metrics.plan.totalDurationMs,
+    rawMarkdown: metrics.plan.rawMarkdown,
+  };
+
+  // Upsert: avoid duplicating if same session
+  const idx = existing.findIndex(p => p.sessionId === persisted.sessionId && p.title === persisted.title);
+  if (idx >= 0) {
+    existing[idx] = persisted;
+  } else {
+    existing.unshift(persisted);
+  }
+
+  try {
+    await writePlans(slug, existing);
+  } catch {
+    // Non-fatal: don't crash dashboard on write failure
   }
 }
 
@@ -84,7 +153,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     staticData = await loadStaticData(workspacePath);
   } catch {
     staticData = {
-      sessions: [], tasks: [], decisions: [], notes: [],
+      sessions: [], tasks: [], decisions: [], notes: [], plans: [],
       totalTokens: 0, totalCost: 0, totalSessions: 0,
     };
   }
@@ -98,6 +167,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     new KanbanPanel(),
     new NotesPanel(),
     new DecisionsPanel(),
+    new PlansPanel(),
   ];
 
   // Wire up narrative completion callback to trigger re-render
@@ -126,12 +196,16 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     // Stop current watcher
     try { watcher?.stop(); } catch { /* ignore */ }
 
+    // Persist any plan from current session before resetting
+    persistPlan(state, workspacePath).catch(() => {});
+
     // Reset state
     state.reset();
     pendingSessionPath = null;
 
     // Create new watcher for the new session
     const newSessionId = path.basename(newSessionPath, path.extname(newSessionPath));
+    state.setSessionId(newSessionId);
     try {
       const result = createWatcher({
         provider: activeProvider,
@@ -141,6 +215,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           onEvent: (event: FollowEvent) => {
             if (stopped) return;
             state.processEvent(event);
+
+            // Persist plan on session end
+            if (event.type === 'system' && event.summary === 'Session ended') {
+              persistPlan(state, workspacePath).catch(() => {});
+            }
+
             scheduleRender();
           },
           onError: (_err: Error) => { /* non-fatal */ },
@@ -219,6 +299,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   function cleanup() {
     if (stopped) return;
     stopped = true;
+    // Persist any active plan before exiting
+    persistPlan(state, workspacePath).catch(() => {});
     try { clearInterval(sessionPollInterval); } catch { /* ignore */ }
     try { quotaService.stop(); } catch { /* ignore */ }
     try { watcher?.stop(); } catch { /* ignore */ }
@@ -236,6 +318,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // Create watcher
   let watcher: ReturnType<typeof createWatcher>['watcher'] | null = null;
 
+  // Set session ID for plan persistence
+  if (sessionId) {
+    state.setSessionId(sessionId);
+  }
+
   try {
     const result = createWatcher({
       provider: activeProvider,
@@ -245,6 +332,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         onEvent: (event: FollowEvent) => {
           if (stopped) return;
           state.processEvent(event);
+
+          // Persist plan on session end
+          if (event.type === 'system' && event.summary === 'Session ended') {
+            persistPlan(state, workspacePath).catch(() => {});
+          }
+
           scheduleRender();
         },
         onError: (_err: Error) => {

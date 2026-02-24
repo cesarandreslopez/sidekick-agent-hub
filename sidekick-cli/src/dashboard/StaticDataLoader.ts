@@ -7,6 +7,7 @@ import {
   readTasks,
   readDecisions,
   readNotes,
+  readPlans,
   getProjectSlug,
   getProjectSlugRaw,
 } from 'sidekick-shared';
@@ -16,6 +17,7 @@ import type {
   PersistedTask,
   DecisionEntry,
   KnowledgeNote,
+  PersistedPlan,
 } from 'sidekick-shared';
 
 // ── Public types ──
@@ -37,6 +39,7 @@ export interface StaticData {
   tasks: PersistedTask[];
   decisions: DecisionEntry[];
   notes: KnowledgeNote[];
+  plans: PersistedPlan[];
   totalTokens: number;
   totalCost: number;
   totalSessions: number;
@@ -58,16 +61,19 @@ export async function loadStaticData(workspacePath?: string): Promise<StaticData
   let tasks: PersistedTask[] = [];
   let decisions: DecisionEntry[] = [];
   let notes: KnowledgeNote[] = [];
+  let plans: PersistedPlan[] = [];
 
   for (const slug of slugs) {
-    const [t, d, n] = await Promise.all([
+    const [t, d, n, p] = await Promise.all([
       tasks.length === 0 ? readTasks(slug, { status: 'all' }).catch(() => []) : tasks,
       decisions.length === 0 ? readDecisions(slug).catch(() => []) : decisions,
       notes.length === 0 ? readNotes(slug).catch(() => []) : notes,
+      plans.length === 0 ? readPlans(slug).catch(() => []) : plans,
     ]);
     if (tasks.length === 0) tasks = t;
     if (decisions.length === 0) decisions = d;
     if (notes.length === 0) notes = n;
+    if (plans.length === 0) plans = p;
   }
 
   const sessions = extractSessions(history);
@@ -78,6 +84,7 @@ export async function loadStaticData(workspacePath?: string): Promise<StaticData
     tasks,
     decisions,
     notes,
+    plans,
     totalTokens: totals.tokens,
     totalCost: totals.cost,
     totalSessions: totals.sessions,

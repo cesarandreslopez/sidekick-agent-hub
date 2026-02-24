@@ -124,7 +124,55 @@ export type DashboardMessage =
   | { type: 'updateContextWaterfall'; waterfall: ContextWaterfallDisplay }
   | { type: 'updateNotificationHistory'; notifications: NotificationHistoryDisplay[]; unreadCount: number }
   | { type: 'updatePhrase'; phrase: string }
-  | { type: 'updateEmptyPhrase'; phrase: string };
+  | { type: 'updateEmptyPhrase'; phrase: string }
+  | { type: 'updatePlan'; plan: PlanDisplay }
+  | { type: 'updatePlanHistory'; history: PlanHistoryDisplay };
+
+/**
+ * Plan history analytics display data.
+ */
+export interface PlanHistoryDisplay {
+  totalPlans: number;
+  completedPlans: number;
+  failedPlans: number;
+  avgCompletionRate: number;
+  avgDurationMs: number;
+  avgStepsPerPlan: number;
+  avgTokensPerPlan: number;
+  avgCostPerPlan: number;
+  recentPlans: Array<{
+    title: string;
+    status: string;
+    completionRate: number;
+    createdAt: string;
+    source: string;
+    stepCount: number;
+  }>;
+}
+
+/**
+ * Plan display data sent to the dashboard webview.
+ */
+export interface PlanStepDisplay {
+  id: string;
+  description: string;
+  status: string;
+  phase?: string;
+  complexity?: 'low' | 'medium' | 'high';
+  durationMs?: number;
+  tokensUsed?: number;
+  toolCalls?: number;
+  errorMessage?: string;
+}
+
+export interface PlanDisplay {
+  title: string;
+  active: boolean;
+  completionRate: number;
+  totalDurationMs?: number;
+  steps: PlanStepDisplay[];
+  rawMarkdown?: string;
+}
 
 /**
  * Messages from webview to extension.
@@ -165,7 +213,9 @@ export type DashboardWebviewMessage =
   | { type: 'markNotificationRead'; id: string }
   | { type: 'markAllNotificationsRead' }
   | { type: 'clearNotificationHistory' }
-  | { type: 'openCliDashboard' };
+  | { type: 'openCliDashboard' }
+  | { type: 'requestPlanHistory' }
+  | { type: 'openExternal'; url: string };
 
 /**
  * Model usage breakdown entry.

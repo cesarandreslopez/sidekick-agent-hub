@@ -8,7 +8,7 @@
  * annotations — since a force-directed graph can't render in a terminal.
  */
 
-import type { DashboardMetrics, TaskItem, FileTouch } from './DashboardState';
+import type { DashboardMetrics, TaskItem, FileTouch, PlanStep } from './DashboardState';
 import type { DiffStat } from './GitDiffCache';
 
 /** Tree structure for mind map rendering (previously from blessed-contrib). */
@@ -73,7 +73,7 @@ const BOX_STATUS_ICON: Record<string, string> = {
  * Build a blessed-contrib TreeData structure for the MindMap page.
  * Labels use blessed `{color-fg}...{/color-fg}` tags for color.
  */
-export function buildMindMapTree(metrics: DashboardMetrics, staticData: StaticData, diffStats?: Map<string, DiffStat>): TreeData {
+export function buildMindMapTree(metrics: DashboardMetrics, staticData: StaticData, diffStats?: Map<string, DiffStat>, filter?: string): TreeData {
   const sessionId = (metrics.sessionStartTime || 'unknown').substring(0, 8);
   const rootLabel = tag('session', `SESSION [${sessionId}] \u2014 claude-code`);
 
@@ -96,6 +96,33 @@ export function buildMindMapTree(metrics: DashboardMetrics, staticData: StaticDa
 
   // ── Knowledge Notes section ──
   addKnowledgeNotesSection(children, staticData);
+
+  // Apply filter: dim non-matching sections
+  if (filter) {
+    const sectionTypeMap: Record<string, string[]> = {
+      file: ['file', 'tool'],
+      tool: ['tool'],
+      task: ['task'],
+      subagent: ['subagent'],
+      command: ['command', 'tool'],
+      plan: ['plan', 'plan-step'],
+      'knowledge-note': ['knowledge-note'],
+    };
+    const matchTypes = sectionTypeMap[filter] || [filter];
+    const dimmedChildren: Record<string, TreeData> = {};
+    for (const [key, value] of Object.entries(children)) {
+      // Check if this section's color tag matches the filter
+      const sectionMatches = matchTypes.some(t => key.includes(`{${COLORS[t as keyof typeof COLORS]}-fg}`));
+      if (sectionMatches) {
+        dimmedChildren[key] = value;
+      } else {
+        // Wrap label in grey to indicate it's dimmed
+        dimmedChildren[`{grey-fg}${stripTags(key)}{/grey-fg}`] = value;
+      }
+    }
+    Object.keys(children).forEach(k => delete children[k]);
+    Object.assign(children, dimmedChildren);
+  }
 
   return {
     extended: true,
@@ -215,20 +242,109 @@ function addTasksSection(children: Record<string, TreeData>, metrics: DashboardM
 function addPlanSection(children: Record<string, TreeData>, metrics: DashboardMetrics): void {
   if (!metrics.plan) return;
 
-  const label = tag('plan', `Plan: "${metrics.plan.title}" (${metrics.plan.steps.length} steps)`);
+  const completed = metrics.plan.steps.filter(s => s.status === 'completed').length;
+  const total = metrics.plan.steps.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const durationSuffix = metrics.plan.totalDurationMs
+    ? ` ${formatDuration(metrics.plan.totalDurationMs)}`
+    : '';
+  const label = tag('plan', `Plan: "${metrics.plan.title}" (${completed}/${total} ${pct}%${durationSuffix})`);
+
+  // If rawMarkdown is available, render phase-grouped with context lines
+  if (metrics.plan.rawMarkdown) {
+    const phaseChildren: Record<string, TreeData> = {};
+    const phaseHeaderPattern = /^#{2,4}\s+(?:Phase|Step|Stage)\s*\d*[:.]\s*(.+)/i;
+    const contextBulletPattern = /^[-*]\s+(?!\[[ xX]\])(.+)/;
+    const lines = metrics.plan.rawMarkdown.split('\n');
+
+    // Group steps by phase
+    const phaseMap = new Map<string, typeof metrics.plan.steps>();
+    const noPhaseSteps: typeof metrics.plan.steps = [];
+    for (const step of metrics.plan.steps) {
+      if (step.phase) {
+        if (!phaseMap.has(step.phase)) phaseMap.set(step.phase, []);
+        phaseMap.get(step.phase)!.push(step);
+      } else {
+        noPhaseSteps.push(step);
+      }
+    }
+
+    // Extract context lines per phase from raw markdown
+    const phaseContexts = new Map<string, string[]>();
+    let currentPhaseName: string | undefined;
+    for (const rawLine of lines) {
+      const trimmed = rawLine.trim();
+      if (!trimmed) continue;
+      const pm = trimmed.match(phaseHeaderPattern);
+      if (pm) {
+        currentPhaseName = pm[1].trim();
+        if (!phaseContexts.has(currentPhaseName)) phaseContexts.set(currentPhaseName, []);
+        continue;
+      }
+      if (currentPhaseName) {
+        const cm = trimmed.match(contextBulletPattern);
+        if (cm) {
+          const contexts = phaseContexts.get(currentPhaseName)!;
+          if (contexts.length < 2) {
+            contexts.push(cm[1].trim());
+          }
+        }
+      }
+    }
+
+    // Render phases with their steps
+    for (const [phaseName, phaseSteps] of phaseMap) {
+      const phaseCompleted = phaseSteps.filter(s => s.status === 'completed').length;
+      const phasePct = phaseSteps.length > 0 ? Math.round((phaseCompleted / phaseSteps.length) * 100) : 0;
+      const phaseLabel = tag('plan', `${phaseName} (${phaseCompleted}/${phaseSteps.length} ${phasePct}%)`);
+      const phaseStepChildren: Record<string, TreeData> = {};
+
+      // Add context lines
+      const contexts = phaseContexts.get(phaseName) || [];
+      for (const ctx of contexts) {
+        phaseStepChildren[`{grey-fg}${truncate(ctx, 70)}{/grey-fg}`] = {};
+      }
+
+      // Add steps
+      for (const step of phaseSteps) {
+        phaseStepChildren[formatPlanStepEntry(step, metrics.tasks)] = {};
+      }
+
+      phaseChildren[phaseLabel] = { extended: true, children: phaseStepChildren };
+    }
+
+    // Render ungrouped steps
+    for (const step of noPhaseSteps) {
+      phaseChildren[formatPlanStepEntry(step, metrics.tasks)] = {};
+    }
+
+    children[label] = { extended: true, children: phaseChildren };
+    return;
+  }
+
+  // Fallback: flat list when no rawMarkdown
   const stepChildren: Record<string, TreeData> = {};
 
-  for (let i = 0; i < metrics.plan.steps.length; i++) {
-    const step = metrics.plan.steps[i];
-    const icon = STATUS_ICON[step.status] || '\u25CB';
-    const phaseLabel = step.phase ? `[${step.phase}] ` : '';
-    // Try to cross-reference to a matching task
-    const taskXref = findMatchingTask(step.description, metrics.tasks);
-    const xrefSuffix = taskXref ? ` \u2192 Task #${taskXref.taskId}` : '';
-    stepChildren[`[${icon}] ${tag('plan-step', `${phaseLabel}${truncate(step.description, 50)}`)}${xrefSuffix}`] = {};
+  for (const step of metrics.plan.steps) {
+    stepChildren[formatPlanStepEntry(step, metrics.tasks)] = {};
   }
 
   children[label] = { extended: true, children: stepChildren };
+}
+
+function formatPlanStepEntry(step: PlanStep, tasks: TaskItem[]): string {
+  const icon = STATUS_ICON[step.status] || '\u25CB';
+  const phaseLabel = step.phase ? `[${step.phase}] ` : '';
+  const taskXref = findMatchingTask(step.description, tasks);
+  const xrefSuffix = taskXref ? ` \u2192 Task #${taskXref.taskId}` : '';
+  const metaParts: string[] = [];
+  if (step.complexity) metaParts.push(step.complexity);
+  if (step.durationMs) metaParts.push(formatDuration(step.durationMs));
+  if (step.tokensUsed) metaParts.push(`${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed} tok`);
+  if (step.toolCalls) metaParts.push(`${step.toolCalls} calls`);
+  const metaSuffix = metaParts.length > 0 ? ` [${metaParts.join(', ')}]` : '';
+  const errorSuffix = step.errorMessage ? ` {red-fg}(${truncate(step.errorMessage, 40)}){/red-fg}` : '';
+  return `[${icon}] ${tag('plan-step', `${phaseLabel}${truncate(step.description, 50)}`)}${metaSuffix}${errorSuffix}${xrefSuffix}`;
 }
 
 function addSubagentsSection(children: Record<string, TreeData>, metrics: DashboardMetrics): void {
@@ -353,6 +469,11 @@ function findMatchingTask(description: string, tasks: TaskItem[]): TaskItem | un
 function tag(nodeType: keyof typeof COLORS, text: string): string {
   const color = COLORS[nodeType];
   return `{${color}-fg}${text}{/${color}-fg}`;
+}
+
+/** Strip blessed `{color-fg}...{/color-fg}` tags from text. */
+function stripTags(text: string): string {
+  return text.replace(/\{[^}]*-fg\}/g, '').replace(/\{\/[^}]*-fg\}/g, '');
 }
 
 function getUrlLabel(urlOrQuery: string): string {
@@ -487,6 +608,8 @@ export interface BoxedRenderOptions {
   columns?: number;
   /** Center boxes horizontally. Default: true. */
   center?: boolean;
+  /** Filter to highlight a specific node type; non-matching sections render dimmed. */
+  filter?: string;
 }
 
 /**
@@ -647,22 +770,94 @@ function buildTasksBoxSection(metrics: DashboardMetrics, w: number): BoxSection 
 function buildPlanBoxSection(metrics: DashboardMetrics, w: number): BoxSection | null {
   if (!metrics.plan) return null;
 
+  const completed = metrics.plan.steps.filter(s => s.status === 'completed').length;
+  const total = metrics.plan.steps.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
   const lines: string[] = [];
-  for (const step of metrics.plan.steps) {
-    const icon = BOX_STATUS_ICON[step.status] || 'o';
-    const left = `[${icon}] ${step.description}`;
-    const taskXref = findMatchingTask(step.description, metrics.tasks);
-    const right = taskXref ? `Task #${taskXref.taskId}` : '';
-    lines.push(twoCols(left, right, w));
+
+  // Progress bar
+  const barWidth = Math.min(w - 12, 30);
+  const filled = Math.round((pct / 100) * barWidth);
+  const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barWidth - filled);
+  lines.push(`[${bar}] ${pct}%`);
+
+  // Phase-grouped rendering when rawMarkdown is available
+  if (metrics.plan.rawMarkdown) {
+    const phaseMap = new Map<string, typeof metrics.plan.steps>();
+    const noPhaseSteps: typeof metrics.plan.steps = [];
+    for (const step of metrics.plan.steps) {
+      if (step.phase) {
+        if (!phaseMap.has(step.phase)) phaseMap.set(step.phase, []);
+        phaseMap.get(step.phase)!.push(step);
+      } else {
+        noPhaseSteps.push(step);
+      }
+    }
+
+    // Extract context lines from raw markdown
+    const phaseHeaderPattern = /^#{2,4}\s+(?:Phase|Step|Stage)\s*\d*[:.]\s*(.+)/i;
+    const contextBulletPattern = /^[-*]\s+(?!\[[ xX]\])(.+)/;
+    const phaseContexts = new Map<string, string[]>();
+    let curPhase: string | undefined;
+    for (const rawLine of metrics.plan.rawMarkdown.split('\n')) {
+      const trimmed = rawLine.trim();
+      if (!trimmed) continue;
+      const pm = trimmed.match(phaseHeaderPattern);
+      if (pm) { curPhase = pm[1].trim(); if (!phaseContexts.has(curPhase)) phaseContexts.set(curPhase, []); continue; }
+      if (curPhase) {
+        const cm = trimmed.match(contextBulletPattern);
+        if (cm && (phaseContexts.get(curPhase)?.length ?? 0) < 2) {
+          phaseContexts.get(curPhase)!.push(cm[1].trim());
+        }
+      }
+    }
+
+    for (const [phaseName, phaseSteps] of phaseMap) {
+      const phCompleted = phaseSteps.filter(s => s.status === 'completed').length;
+      lines.push(`--- ${phaseName} (${phCompleted}/${phaseSteps.length}) ---`);
+      const contexts = phaseContexts.get(phaseName) || [];
+      for (const ctx of contexts) {
+        lines.push(`  ${truncate(ctx, w - 4)}`);
+      }
+      for (const step of phaseSteps) {
+        lines.push(formatPlanStepBox(step, metrics.tasks, w));
+      }
+    }
+    for (const step of noPhaseSteps) {
+      lines.push(formatPlanStepBox(step, metrics.tasks, w));
+    }
+  } else {
+    // Flat list fallback
+    for (const step of metrics.plan.steps) {
+      lines.push(formatPlanStepBox(step, metrics.tasks, w));
+    }
   }
+
+  const durationSuffix = metrics.plan.totalDurationMs
+    ? ` ${formatDuration(metrics.plan.totalDurationMs)}`
+    : '';
 
   return {
     icon: '\u25C6', // ◆
     title: 'PLAN',
-    subtitle: `"${truncate(metrics.plan.title, 30)}" (${metrics.plan.steps.length} steps)`,
+    subtitle: `"${truncate(metrics.plan.title, 30)}" ${completed}/${total}${durationSuffix}`,
     color: 'cyan',
     lines,
   };
+}
+
+function formatPlanStepBox(step: PlanStep, tasks: TaskItem[], w: number): string {
+  const icon = BOX_STATUS_ICON[step.status] || 'o';
+  const metaParts: string[] = [];
+  if (step.durationMs) metaParts.push(formatDuration(step.durationMs));
+  if (step.tokensUsed) metaParts.push(`${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed}`);
+  if (step.toolCalls) metaParts.push(`${step.toolCalls}c`);
+  const taskXref = findMatchingTask(step.description, tasks);
+  if (taskXref) metaParts.push(`T#${taskXref.taskId}`);
+  const left = `[${icon}] ${step.description}`;
+  const right = metaParts.join(' ');
+  return twoCols(left, right, w);
 }
 
 function buildSubagentsBoxSection(metrics: DashboardMetrics): BoxSection | null {
@@ -779,17 +974,35 @@ export function renderMindMapBoxed(
   const notesSection = buildKnowledgeNotesBoxSection(staticData);
   if (notesSection) sections.push(notesSection);
 
+  // Map section titles to filter types for dimming
+  const filterTypeMap: Record<string, string> = {
+    'TOOLS': 'tool', 'TASKS': 'task', 'PLAN': 'plan',
+    'SUBAGENTS': 'subagent', 'TODOs': 'todo', 'KNOWLEDGE NOTES': 'knowledge-note',
+  };
+  const activeFilter = options?.filter;
+
   // ── Render each section with stem connector ──
   for (const section of sections) {
     out.push(...indentBox(renderStem(boxW), boxW, doCenter, cols));
-    const colorOpen = options?.blessedTags
-      ? `{${section.color}-fg}`
-      : (ANSI[section.color] || '');
-    const colorClose = options?.blessedTags
-      ? `{/${section.color}-fg}`
-      : ANSI.reset;
+
+    // Determine if this section matches the filter
+    const sectionType = filterTypeMap[section.title] || '';
+    const isDimmed = activeFilter && sectionType !== activeFilter &&
+      !(activeFilter === 'file' && sectionType === 'tool') &&
+      !(activeFilter === 'command' && sectionType === 'tool');
+
+    const colorOpen = isDimmed
+      ? (options?.blessedTags ? '{grey-fg}' : ANSI.dim)
+      : (options?.blessedTags ? `{${section.color}-fg}` : (ANSI[section.color] || ''));
+    const colorClose = isDimmed
+      ? (options?.blessedTags ? '{/grey-fg}' : ANSI.reset)
+      : (options?.blessedTags ? `{/${section.color}-fg}` : ANSI.reset);
+
     const header = `${section.icon} ${colorOpen}${section.title}${colorClose} ─── ${section.subtitle}`;
-    const sectionBox = renderSingleBox(header, section.lines, boxW);
+    const dimmedLines = isDimmed
+      ? section.lines.map(l => options?.blessedTags ? `{grey-fg}${stripTags(l)}{/grey-fg}` : `${ANSI.dim}${l}${ANSI.reset}`)
+      : section.lines;
+    const sectionBox = renderSingleBox(header, dimmedLines, boxW);
     out.push(...indentBox(sectionBox, boxW, doCenter, cols));
   }
 

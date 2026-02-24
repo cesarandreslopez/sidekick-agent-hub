@@ -525,6 +525,16 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       opacity: 0.7;
     }
 
+    .node.plan-step-failed {
+      stroke: var(--vscode-charts-red, #f14c4c);
+      stroke-width: 2;
+    }
+
+    .node.plan-step-skipped {
+      opacity: 0.4;
+      stroke-dasharray: 3, 2;
+    }
+
     .node.plan-active {
       stroke: #00BCD4;
       stroke-width: 3;
@@ -588,6 +598,23 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       align-items: center;
       gap: 6px;
       margin-bottom: 4px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .legend-item:hover {
+      opacity: 1 !important;
+    }
+
+    .legend-item.dimmed {
+      opacity: 0.35;
+    }
+
+    .legend-item.locked {
+      outline: 1px solid var(--vscode-focusBorder);
+      border-radius: 3px;
+      padding: 1px 3px;
+      margin-left: -3px;
     }
 
     .legend-item:last-child {
@@ -598,6 +625,22 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       width: 10px;
       height: 10px;
       border-radius: 50%;
+    }
+
+    circle.node {
+      transition: opacity 0.3s, filter 0.3s;
+    }
+    line.link, path.link-path {
+      transition: opacity 0.3s;
+    }
+    circle.node.faded {
+      opacity: 0.08;
+    }
+    line.link.faded, path.link-path.faded {
+      opacity: 0.05;
+    }
+    circle.node.highlighted {
+      filter: brightness(1.3) drop-shadow(0 0 6px currentColor);
     }
 
     .layout-active {
@@ -773,9 +816,24 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
       function calculateNodeSize(d) {
         var config = SIZING_CONFIG[d.type] || SIZING_CONFIG.file;
+        // For plan steps, scale by token usage if available
+        if (d.type === 'plan-step' && d.planStepTokens) {
+          var tokenScale = config.base + 2 * Math.log2(d.planStepTokens / 1000 + 1);
+          return Math.min(config.max, Math.max(config.min, tokenScale));
+        }
         if (!d.count || config.scale === 0) return config.base;
         var scaled = config.base + config.scale * Math.log2(d.count + 1);
         return Math.min(config.max, Math.max(config.min, scaled));
+      }
+
+      function getNodeFillColor(d) {
+        // For plan-step nodes, color by complexity
+        if (d.type === 'plan-step' && d.planStepComplexity) {
+          if (d.planStepComplexity === 'high') return '#f14c4c';
+          if (d.planStepComplexity === 'medium') return '#FFD700';
+          if (d.planStepComplexity === 'low') return '#73c991';
+        }
+        return NODE_COLORS[d.type];
       }
 
       function getForceConfig(nodeCount) {
@@ -1435,7 +1493,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           .append('circle')
           .attr('class', function(d) { return getNodeClass(d); })
           .attr('r', function(d) { return calculateNodeSize(d); })
-          .attr('fill', function(d) { return NODE_COLORS[d.type]; })
+          .attr('fill', function(d) { return getNodeFillColor(d); })
           .call(drag(simulation))
           .on('click', function(event, d) {
             vscode.postMessage({ type: 'nodeClicked', nodeId: d.id });
@@ -1475,13 +1533,30 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
               var stepText = stepCount === 1 ? '1 step' : stepCount + ' steps';
               tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' + stepText;
             } else if (d.type === 'plan-step') {
-              // For plan steps, show description and status
+              // For plan steps, show description, status, and enriched metadata
               var planStatus = d.planStepStatus || 'pending';
               var planStatusColor = planStatus === 'in_progress' ? 'var(--vscode-charts-green, #4caf50)'
                                  : planStatus === 'pending' ? 'var(--vscode-charts-yellow, #FFD700)'
+                                 : planStatus === 'failed' ? 'var(--vscode-charts-red, #f14c4c)'
                                  : 'var(--vscode-descriptionForeground)';
-              tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' +
+              var planTooltipHtml = '<strong>' + label + '</strong><br>' +
                 '<span style="color: ' + planStatusColor + '">● ' + planStatus.replace('_', ' ') + '</span>';
+              if (d.planStepComplexity) {
+                var cxColor = d.planStepComplexity === 'high' ? '#f14c4c' : d.planStepComplexity === 'medium' ? '#FFD700' : '#73c991';
+                planTooltipHtml += '<br>Complexity: <span style="color:' + cxColor + '">' + d.planStepComplexity + '</span>';
+              }
+              if (d.planStepDurationMs) {
+                var dSec = Math.round(d.planStepDurationMs / 1000);
+                var dMin = Math.floor(dSec / 60);
+                planTooltipHtml += '<br>Duration: ' + (dMin > 0 ? dMin + 'm ' + (dSec % 60) + 's' : dSec + 's');
+              }
+              if (d.planStepTokens) {
+                planTooltipHtml += '<br>Tokens: ' + (d.planStepTokens >= 1000 ? (d.planStepTokens / 1000).toFixed(1) + 'k' : d.planStepTokens);
+              }
+              if (d.planStepError) {
+                planTooltipHtml += '<br><span style="color:var(--vscode-charts-red, #f14c4c)">Error: ' + d.planStepError.substring(0, 80) + '</span>';
+              }
+              tooltipEl.innerHTML = planTooltipHtml;
             } else if (d.type === 'knowledge-note') {
               // For knowledge notes, show full content from fullPath
               tooltipEl.textContent = label;
@@ -1534,7 +1609,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         nodeGroup.selectAll('circle')
           .attr('class', function(d) { return getNodeClass(d); })
           .attr('r', function(d) { return calculateNodeSize(d); })
-          .attr('fill', function(d) { return NODE_COLORS[d.type]; });
+          .attr('fill', function(d) { return getNodeFillColor(d); });
 
         labelGroup.selectAll('text')
           .text(function(d) { return d.label; });
@@ -1749,6 +1824,88 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           }
         });
       }
+
+      // Legend hover-to-highlight and click-to-lock
+      var legendTypeMap = ['session','file','tool','todo','subagent','directory','command','task','plan','knowledge-note'];
+      var lockedLegendType = null;
+      var legendItems = document.querySelectorAll('.legend-item');
+
+      function applyLegendHighlight(nodeType) {
+        // Dim non-active legend items
+        legendItems.forEach(function(li, i) {
+          if (legendTypeMap[i] !== nodeType) {
+            li.classList.add('dimmed');
+          } else {
+            li.classList.remove('dimmed');
+          }
+        });
+
+        if (!nodeGroup || !linkGroup || !labelGroup) return;
+
+        // Highlight matching nodes, fade others
+        nodeGroup.selectAll('circle').each(function(d) {
+          var match = (d.type === nodeType) ||
+            (nodeType === 'plan' && d.type === 'plan-step');
+          d3.select(this).classed('highlighted', match).classed('faded', !match);
+        });
+
+        // Highlight links connected to matching nodes, fade others
+        linkGroup.selectAll('line, path').each(function(d) {
+          var src = typeof d.source === 'object' ? d.source : { type: '' };
+          var tgt = typeof d.target === 'object' ? d.target : { type: '' };
+          var srcMatch = (src.type === nodeType) || (nodeType === 'plan' && src.type === 'plan-step');
+          var tgtMatch = (tgt.type === nodeType) || (nodeType === 'plan' && tgt.type === 'plan-step');
+          d3.select(this).classed('faded', !(srcMatch || tgtMatch));
+        });
+
+        // Show labels only on matching nodes
+        labelGroup.selectAll('text').each(function(d) {
+          var match = (d.type === nodeType) ||
+            (nodeType === 'plan' && d.type === 'plan-step');
+          d3.select(this).style('opacity', match ? 1 : 0.1);
+        });
+      }
+
+      function clearLegendHighlight() {
+        legendItems.forEach(function(li) {
+          li.classList.remove('dimmed');
+        });
+        if (!nodeGroup || !linkGroup || !labelGroup) return;
+        nodeGroup.selectAll('circle').classed('highlighted', false).classed('faded', false);
+        linkGroup.selectAll('line, path').classed('faded', false);
+        labelGroup.selectAll('text').style('opacity', null);
+      }
+
+      legendItems.forEach(function(item, idx) {
+        var nodeType = legendTypeMap[idx];
+
+        item.addEventListener('mouseenter', function() {
+          if (lockedLegendType && lockedLegendType !== nodeType) return;
+          applyLegendHighlight(nodeType);
+        });
+
+        item.addEventListener('mouseleave', function() {
+          if (lockedLegendType) return;
+          clearLegendHighlight();
+        });
+
+        item.addEventListener('click', function() {
+          if (lockedLegendType === nodeType) {
+            // Unlock
+            lockedLegendType = null;
+            item.classList.remove('locked');
+            clearLegendHighlight();
+          } else {
+            // Lock to this type
+            if (lockedLegendType !== null) {
+              legendItems.forEach(function(li) { li.classList.remove('locked'); });
+            }
+            lockedLegendType = nodeType;
+            item.classList.add('locked');
+            applyLegendHighlight(nodeType);
+          }
+        });
+      });
 
       // Initialize and signal ready
       initGraph();

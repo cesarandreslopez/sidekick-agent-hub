@@ -44,6 +44,18 @@ export interface HandoffInput {
 
   /** Incomplete goal gate task names */
   goalGates?: string[];
+
+  /** Plan progress data */
+  planProgress?: {
+    title: string;
+    completedCount: number;
+    totalCount: number;
+    completionPercent: number;
+    completedSteps: string[];
+    remainingSteps: string[];
+    lastActiveStep?: string;
+    lastActiveStepError?: string;
+  };
 }
 
 /**
@@ -103,6 +115,24 @@ export function buildHandoffMarkdown(input: HandoffInput): string {
     lines.push('## CRITICAL: Incomplete Goal Gates');
     for (const gate of input.goalGates) {
       lines.push(`- **${gate}** was NOT completed`);
+    }
+    lines.push('');
+  }
+
+  // Plan Progress
+  if (input.planProgress) {
+    const pp = input.planProgress;
+    lines.push('## Plan Progress');
+    lines.push(`**Plan:** "${pp.title}" (${pp.completedCount}/${pp.totalCount} steps completed, ${pp.completionPercent}%)`);
+    if (pp.completedSteps.length > 0) {
+      lines.push(`**Completed:** ${pp.completedSteps.join(', ')}`);
+    }
+    if (pp.remainingSteps.length > 0) {
+      lines.push(`**Remaining:** ${pp.remainingSteps.join(', ')}`);
+    }
+    if (pp.lastActiveStep) {
+      const errorSuffix = pp.lastActiveStepError ? ` (${pp.lastActiveStepError})` : '';
+      lines.push(`**Last active step:** "${pp.lastActiveStep}"${errorSuffix}`);
     }
     lines.push('');
   }

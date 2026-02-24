@@ -162,18 +162,18 @@ of 6 tool calls.
 > **Provider note:** Cycle detection works identically across all three providers
 > since it operates on normalized `ToolCall` data from the session pipeline.
 
-### Section 4 — Plan Visualization (Mind Map plan subgraph)
+### Section 4 — Plan Analytics (Dashboard plan section + Mind Map plan subgraph)
 
-Exercise plan mode so the Mind Map renders a plan root node with plan-step children.
-The assistant text during plan mode is parsed for checkboxes, numbered lists, and
-phase headers. After exiting plan mode, check the Mind Map for teal-colored plan
-nodes connected by dashed sequence links.
+Exercise plan mode so the Dashboard shows the Plan Progress section and the Mind Map
+renders enriched plan nodes. The plan markdown uses complexity keywords that trigger
+automatic complexity detection, and the tool calls made between EnterPlanMode and
+ExitPlanMode are attributed to plan steps for token/tool call tracking.
 
 1. Use **EnterPlanMode** to start a planning session.
 
 2. While in plan mode, output a structured plan using checkbox markdown. Write it
    as your assistant response (do **not** use a tool — the plan content comes from
-   your text output). Use this exact format:
+   your text output). Use this exact format — note the complexity keywords:
 
    ```
    ## Refactor Plan
@@ -183,27 +183,58 @@ nodes connected by dashed sequence links.
    - [ ] Identify shared utility functions
 
    ### Phase 2: Implementation
-   - [ ] Extract shared utilities into src/utils.ts
+   - [ ] Refactor and extract shared utilities into src/utils.ts [high]
    - [ ] Update math.ts imports
    - [ ] Update strings.ts imports
 
    ### Phase 3: Validation
    - [x] Run existing tests
-   - [ ] Add tests for new utils module
+   - [ ] Fix any broken import paths
    ```
 
 3. Use **ExitPlanMode** to complete the planning cycle.
 
+4. Now simulate plan step execution by doing real work that gets attributed to the
+   plan. Use **Read** to read `src/math.ts`, then use **Read** to read `src/strings.ts`,
+   then use **Grep** to search for `export` in `src/`. These tool calls generate
+   token usage and tool call counts that are attributed to the active plan.
+
+5. Use **Write** to create `src/utils.ts` with a shared utility function:
+   ```typescript
+   export function clamp(value: number, min: number, max: number): number {
+     return Math.min(max, Math.max(min, value));
+   }
+   ```
+
+**What to verify in Dashboard (Plan Progress section):**
+- **Plan Progress** section appears between latency stats and "Improve Agent Guidance"
+- Plan title shows "Refactor Plan"
+- Progress bar shows completion percentage (1/7 = ~14% since "Run existing tests" is pre-checked)
+- Step list shows status icons: ✓ for completed, ○ for pending
+- Steps show metadata: complexity indicator ("high" for the refactor step), and
+  after step 4-5, token counts and tool call counts appear on steps
+- Stats line shows step count, completion percentage
+
 **What to verify in Mind Map:**
-- A teal **Plan** root node labeled "Refactor Plan" connected to session root
-- Seven **plan-step** nodes (one per checkbox item) connected to the plan root
-- Dashed teal **sequence links** between consecutive steps (step-0 → step-1 → … → step-6)
-- Steps carry status coloring: completed steps (step 5, "Run existing tests") appear
-  dimmed; pending steps have a yellow stroke
-- Hovering a step node shows its description and status in the tooltip
-- The legend includes a "Plan" entry with a teal dot
+- A teal **Plan** root node labeled "Refactor Plan" with completion stats in tooltip
+  (e.g., "Refactor Plan (1/7 steps, 14%)")
+- Seven **plan-step** nodes connected to the plan root
+- **Complexity color coding**: the "Refactor and extract..." step renders in **red**
+  (high complexity); the "Fix any broken..." step renders in **green** (low complexity,
+  since "fix" is a low-complexity keyword); other steps remain default teal
+- **Token-based sizing**: steps with more attributed tokens appear slightly larger
+- **Enriched tooltips**: hover a plan-step node to see complexity, duration, and
+  token count in addition to status
+- Dashed teal **sequence links** between consecutive steps
+- Steps carry status coloring: completed steps appear dimmed; pending steps have
+  a yellow stroke; failed steps (if any) show red stroke
 - If tasks from Section 3 are still visible, plan steps whose descriptions match
   task subjects will have cross-reference links (dashed orange) to those task nodes
+
+**What to verify in Plan History (below Plan Progress):**
+- If this is not your first test session, a **Plan History** section appears showing
+  stats from previous sessions' plans (total plans, completion rate, avg duration)
+- Recent plans listed with title, status, completion %, step count, and date
 
 > **OpenCode note:** In OpenCode, plan content appears inside `<proposed_plan>` XML
 > tags in assistant messages rather than via `EnterPlanMode`/`ExitPlanMode` tool calls.
@@ -293,12 +324,15 @@ Then say: "Session monitor test complete. All Sidekick views should now have dat
 | **Kanban Board** | Section 3 (TaskCreate, TaskUpdate lifecycle with blockedBy) |
 | **Kanban Board → Goal Gates** | Section 3A (red border + warning icon on goal-gate cards) |
 | **Mind Map** | Section 1 (file + directory nodes), Section 4 (plan + plan-step nodes), Section 6 (command + URL nodes), Section 7 (subagent nodes) |
-| **Mind Map → Plan Subgraph** | Section 4 (plan root, plan-step nodes with status, sequence links, task cross-refs) |
+| **Dashboard → Plan Progress** | Section 4 (progress bar, step list with status/complexity/tokens, plan stats) |
+| **Dashboard → Plan History** | Section 4 note: appears on subsequent test runs showing historical plan stats |
+| **Mind Map → Plan Subgraph** | Section 4 (plan root, plan-step nodes with complexity colors, token sizing, enriched tooltips, sequence links, task cross-refs) |
 | **Mind Map → Goal Gates** | Section 3A (distinct visual treatment on goal-gate task nodes) |
 | **Mind Map → Cycling Files** | Section 3C (cycling indicator on file nodes caught in repetitive loops) |
 | **Latest Files Touched** | Section 1 (Write, Read, Edit), Section 2 (Write, Bash), Section 3 (Write) |
 | **Subagents** | Section 7 (Explore, Plan, Bash agent types) |
 | **Handoff → Goal Gates** | Section 3A ("CRITICAL: Incomplete Goal Gates" section in handoff markdown) |
+| **Handoff → Plan Progress** | Section 4 (handoff includes "Plan Progress" section with completed/remaining steps) |
 
 ## Tools Used
 

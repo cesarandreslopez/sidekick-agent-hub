@@ -701,11 +701,22 @@ export class MindMapDataService {
   ): void {
     // Create plan root node
     const planRootId = 'plan-root';
+    const completedSteps = planState.steps.filter(s => s.status === 'completed').length;
+    const completionPct = planState.steps.length > 0
+      ? Math.round((completedSteps / planState.steps.length) * 100)
+      : 0;
     if (!nodeIds.has(planRootId)) {
+      const totalTokens = planState.steps.reduce((sum, s) => sum + (s.tokensUsed || 0), 0);
+      const durationStr = planState.totalDurationMs
+        ? ` · ${Math.round(planState.totalDurationMs / 1000)}s`
+        : '';
+      const tokenStr = totalTokens > 0
+        ? ` · ${totalTokens >= 1000 ? (totalTokens / 1000).toFixed(1) + 'k' : totalTokens} tokens`
+        : '';
       nodes.push({
         id: planRootId,
         label: planState.title || 'Plan',
-        fullPath: `${planState.title || 'Plan'} (${planState.steps.length} steps)`,
+        fullPath: `${planState.title || 'Plan'} (${completedSteps}/${planState.steps.length} steps, ${completionPct}%${durationStr}${tokenStr})`,
         type: 'plan',
         count: planState.steps.length,
       });
@@ -713,28 +724,100 @@ export class MindMapDataService {
       links.push({ source: 'session-root', target: planRootId });
     }
 
-    // Create plan-step nodes
+    // Group steps by phase for intermediate phase nodes
+    const phaseGroups = new Map<string, number[]>();
+    const noPhaseIndices: number[] = [];
+    for (let i = 0; i < planState.steps.length; i++) {
+      const phase = planState.steps[i].phase;
+      if (phase) {
+        if (!phaseGroups.has(phase)) phaseGroups.set(phase, []);
+        phaseGroups.get(phase)!.push(i);
+      } else {
+        noPhaseIndices.push(i);
+      }
+    }
+
+    // Create intermediate phase nodes for phases with 2+ steps
+    const stepParentMap = new Map<number, string>(); // stepIndex → parent node id
+    let prevPhaseNodeId: string | null = null;
+
+    for (const [phaseName, indices] of phaseGroups) {
+      if (indices.length >= 2) {
+        const phaseNodeId = `plan-phase-${phaseName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+        if (!nodeIds.has(phaseNodeId)) {
+          const phaseCompleted = indices.filter(i => planState.steps[i].status === 'completed').length;
+          nodes.push({
+            id: phaseNodeId,
+            label: phaseName,
+            fullPath: `${phaseName} (${phaseCompleted}/${indices.length} steps)`,
+            type: 'plan',
+            count: indices.length,
+          });
+          nodeIds.add(phaseNodeId);
+          links.push({ source: planRootId, target: phaseNodeId });
+
+          // Sequential links between phase nodes
+          if (prevPhaseNodeId) {
+            links.push({ source: prevPhaseNodeId, target: phaseNodeId, linkType: 'plan-sequence' });
+          }
+          prevPhaseNodeId = phaseNodeId;
+        }
+        for (const idx of indices) {
+          stepParentMap.set(idx, phaseNodeId);
+        }
+      } else {
+        // Single-step phases link directly to plan root
+        for (const idx of indices) {
+          stepParentMap.set(idx, planRootId);
+        }
+      }
+    }
+    for (const idx of noPhaseIndices) {
+      stepParentMap.set(idx, planRootId);
+    }
+
+    // Create plan-step nodes with enriched metadata
     for (let i = 0; i < planState.steps.length; i++) {
       const step = planState.steps[i];
       const stepNodeId = `plan-step-${i}`;
 
       if (!nodeIds.has(stepNodeId)) {
         const stepStatus: PlanStepStatus = step.status;
-        const phaseLabel = step.phase ? `[${step.phase}] ` : '';
+
+        // Build enriched tooltip
+        const tooltipParts = [step.description];
+        if (step.phase) tooltipParts.push(`Phase: ${step.phase}`);
+        if (step.complexity) tooltipParts.push(`Complexity: ${step.complexity}`);
+        if (step.durationMs) {
+          const sec = Math.round(step.durationMs / 1000);
+          const min = Math.floor(sec / 60);
+          tooltipParts.push(`Duration: ${min > 0 ? min + 'm ' + (sec % 60) + 's' : sec + 's'}`);
+        }
+        if (step.tokensUsed) {
+          tooltipParts.push(`Tokens: ${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed}`);
+        }
+        if (step.toolCalls) tooltipParts.push(`Tool calls: ${step.toolCalls}`);
+        if (step.errorMessage) tooltipParts.push(`Error: ${step.errorMessage.substring(0, 100)}`);
+
         nodes.push({
           id: stepNodeId,
-          label: this.truncateLabel(`${phaseLabel}${step.description}`, 30),
-          fullPath: step.description,
+          label: this.truncateLabel(step.description, 30),
+          fullPath: tooltipParts.join('\n'),
           type: 'plan-step',
           planStepStatus: stepStatus,
+          planStepComplexity: step.complexity,
+          planStepTokens: step.tokensUsed,
+          planStepDurationMs: step.durationMs,
+          planStepError: step.errorMessage,
         });
         nodeIds.add(stepNodeId);
 
-        // Link step to plan root
-        links.push({ source: planRootId, target: stepNodeId });
+        // Link step to its parent (phase node or plan root)
+        const parentId = stepParentMap.get(i) || planRootId;
+        links.push({ source: parentId, target: stepNodeId });
 
-        // Sequential link to previous step
-        if (i > 0) {
+        // Sequential link to previous step within the same parent
+        if (i > 0 && stepParentMap.get(i) === stepParentMap.get(i - 1)) {
           links.push({
             source: `plan-step-${i - 1}`,
             target: stepNodeId,

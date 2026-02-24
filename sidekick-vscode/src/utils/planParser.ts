@@ -23,6 +23,35 @@ const PHASE_HEADER_PATTERN = /^#{2,4}\s+(?:Phase|Step|Stage)\s*\d*[:.]\s*(.+)/i;
 /** Generic H1/H2 header for title extraction */
 const TITLE_HEADER_PATTERN = /^#{1,2}\s+(.+)/;
 
+/** Explicit complexity markers: `[high]`, `[medium]`, `[low]`, `(complex)`, `(simple)` */
+const EXPLICIT_COMPLEXITY_PATTERN = /\[(high|medium|low)\]|\((complex|simple)\)/i;
+
+/** Keywords suggesting high complexity */
+const HIGH_COMPLEXITY_KEYWORDS = /\b(refactor|migrate|rewrite|redesign|overhaul|rearchitect)\b/i;
+
+/** Keywords suggesting low complexity */
+const LOW_COMPLEXITY_KEYWORDS = /\b(update|fix|tweak|rename|adjust|bump|typo)\b/i;
+
+/**
+ * Infers step complexity from its description.
+ *
+ * Priority: explicit markers → keyword heuristics → undefined (caller decides default)
+ */
+export function inferComplexity(description: string): 'low' | 'medium' | 'high' | undefined {
+  const explicitMatch = description.match(EXPLICIT_COMPLEXITY_PATTERN);
+  if (explicitMatch) {
+    const marker = (explicitMatch[1] || explicitMatch[2]).toLowerCase();
+    if (marker === 'high' || marker === 'complex') return 'high';
+    if (marker === 'low' || marker === 'simple') return 'low';
+    return 'medium';
+  }
+
+  if (HIGH_COMPLEXITY_KEYWORDS.test(description)) return 'high';
+  if (LOW_COMPLEXITY_KEYWORDS.test(description)) return 'low';
+
+  return undefined;
+}
+
 /**
  * Parses plan markdown into structured plan steps.
  *
@@ -75,6 +104,7 @@ export function parsePlanMarkdown(markdown: string): { title?: string; steps: Pl
         description,
         status: checked ? 'completed' : 'pending',
         phase: currentPhase,
+        complexity: inferComplexity(description),
       });
       stepIndex++;
       continue;
@@ -89,6 +119,7 @@ export function parsePlanMarkdown(markdown: string): { title?: string; steps: Pl
         description,
         status: 'pending',
         phase: currentPhase,
+        complexity: inferComplexity(description),
       });
       stepIndex++;
       continue;

@@ -41,6 +41,7 @@ interface SideListProps {
   width: number;
   viewportHeight: number;
   panelTitle: string;
+  sessionFilterActive?: boolean;
 }
 
 export function SideList({
@@ -51,6 +52,7 @@ export function SideList({
   width,
   viewportHeight,
   panelTitle,
+  sessionFilterActive,
 }: SideListProps): React.ReactElement {
   const borderColor = focused ? 'magenta' : 'gray';
   // Inner width minus border (2) and padding (1)
@@ -103,9 +105,24 @@ export function SideList({
         );
       })}
 
+      {/* Empty-state hint */}
+      {items.length === 0 && viewportHeight >= 3 && (
+        <>
+          <Box key="empty-hint-pad" width={innerWidth}><Text> </Text></Box>
+          <Box key="empty-hint-1" justifyContent="center" width={innerWidth}>
+            <Text color="gray">{sessionFilterActive ? 'No items in this session' : 'No items yet'}</Text>
+          </Box>
+          {sessionFilterActive && (
+            <Box key="empty-hint-2" justifyContent="center" width={innerWidth}>
+              <Text color="gray">Press </Text><Text color="magenta" bold>f</Text><Text color="gray"> to see all</Text>
+            </Box>
+          )}
+        </>
+      )}
+
       {/* Fill remaining space */}
       {visibleItems.length < viewportHeight &&
-        Array.from({ length: viewportHeight - visibleItems.length }, (_, i) => (
+        Array.from({ length: Math.max(0, viewportHeight - visibleItems.length - (items.length === 0 && viewportHeight >= 3 ? (sessionFilterActive ? 3 : 2) : 0)) }, (_, i) => (
           <Box key={`empty-${i}`} width={innerWidth}>
             <Text> </Text>
           </Box>

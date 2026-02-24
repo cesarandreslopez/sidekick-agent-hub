@@ -11,6 +11,8 @@ export type { KnowledgeNote, KnowledgeNoteStore, KnowledgeNoteType, KnowledgeNot
 export { KNOWLEDGE_NOTE_SCHEMA_VERSION, IMPORTANCE_DECAY_FACTORS, STALENESS_THRESHOLDS } from './types/knowledgeNote';
 export type { HistoricalDataStore, DailyData, MonthlyData, AllTimeStats, TokenTotals, ModelUsageRecord, ToolUsageRecord, SessionSummary } from './types/historicalData';
 export { HISTORICAL_DATA_SCHEMA_VERSION, createEmptyTokenTotals } from './types/historicalData';
+export type { PersistedPlan, PersistedPlanStep, PlanHistoryStore, PlanStepStatus, PlanStatus, PlanSource, PlanStepComplexity } from './types/plan';
+export { PLAN_SCHEMA_VERSION, MAX_PLANS_PER_PROJECT } from './types/plan';
 
 // Paths
 export { getConfigDir, getProjectDataPath, getGlobalDataPath, encodeWorkspacePath, getProjectSlug, getProjectSlugRaw } from './paths';
@@ -24,6 +26,8 @@ export { readNotes } from './readers/notes';
 export type { ReadNotesOptions } from './readers/notes';
 export { readHistory } from './readers/history';
 export { readLatestHandoff } from './readers/handoff';
+export { readPlans, getLatestPlan, writePlans, getPlanAnalytics } from './readers/plans';
+export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 
 // Providers
 export type { ProviderId, SessionProvider, SessionFileStats, SearchHit, ProjectFolderInfo } from './providers/types';
@@ -39,6 +43,14 @@ export type { SearchResult } from './search/sessionSearch';
 // Context
 export { composeContext } from './context/composer';
 export type { Fidelity, ContextResult } from './context/composer';
+
+// Plan Extraction
+export { PlanExtractor, parsePlanMarkdown as parsePlanMarkdownShared, extractProposedPlan as extractProposedPlanShared } from './parsers/planExtractor';
+export type { ExtractedPlan, ExtractedPlanStep } from './parsers/planExtractor';
+
+// Changelog Parsing
+export { parseChangelog } from './parsers/changelogParser';
+export type { ChangelogEntry } from './parsers/changelogParser';
 
 // Watchers
 export type { FollowEvent, FollowEventType, SessionWatcher, SessionWatcherCallbacks } from './watchers/types';

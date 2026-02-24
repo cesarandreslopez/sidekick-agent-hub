@@ -1,6 +1,6 @@
 {
   "name": "sidekick-agent-hub",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "Terminal dashboard for monitoring AI coding agent sessions",
   "type": "module",
   "bin": {

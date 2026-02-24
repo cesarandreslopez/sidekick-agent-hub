@@ -33,6 +33,7 @@ build({
   define: {
     '__CLI_VERSION__': JSON.stringify(pkg.version),
   },
+  loader: { '.md': 'text' },
   plugins: [stubDevtools],
   jsx: 'automatic',
   jsxImportSource: 'react',

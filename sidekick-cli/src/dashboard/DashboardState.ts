@@ -4,6 +4,7 @@
  */
 
 import type { FollowEvent } from 'sidekick-shared';
+import { PlanExtractor } from 'sidekick-shared';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
 import type { UpdateInfo } from './UpdateCheckService';
@@ -98,14 +99,24 @@ export interface CommandExec {
 }
 
 export interface PlanStep {
+  id: string;
   description: string;
   status: string;
   phase?: string;
+  complexity?: 'low' | 'medium' | 'high';
+  durationMs?: number;
+  tokensUsed?: number;
+  toolCalls?: number;
+  errorMessage?: string;
 }
 
 export interface PlanInfo {
   title: string;
   steps: PlanStep[];
+  source?: 'claude-code' | 'opencode' | 'codex';
+  completionRate?: number;
+  totalDurationMs?: number;
+  rawMarkdown?: string;
 }
 
 export interface ContextAttribution {
@@ -143,6 +154,7 @@ export interface DashboardMetrics {
   plan: PlanInfo | null;
   contextAttribution: ContextAttribution;
   updateInfo: UpdateInfo | null;
+  sessionId?: string;
 }
 
 // ── Constants ──
@@ -213,7 +225,8 @@ export class DashboardState {
   private _todos: string[] = [];
   private _todoSeen = new Set<string>();
 
-  // Plan state
+  // Plan state (shared extractor handles all providers)
+  private _planExtractor = new PlanExtractor();
   private _plan: PlanInfo | null = null;
 
   // Context attribution
@@ -237,6 +250,7 @@ export class DashboardState {
   // Counters
   private _eventCount = 0;
   private _sessionStartTime: string | undefined;
+  private _sessionId: string | undefined;
 
   /** Reset all accumulated metrics to prepare for a new session. */
   reset(): void {
@@ -263,6 +277,7 @@ export class DashboardState {
     this._cmdMap.clear();
     this._todos = [];
     this._todoSeen.clear();
+    this._planExtractor.reset();
     this._plan = null;
     this._contextAttribution = {
       systemPrompt: 0, userMessages: 0, assistantResponses: 0,
@@ -276,6 +291,12 @@ export class DashboardState {
     this._pendingSummaryCompaction = false;
     this._eventCount = 0;
     this._sessionStartTime = undefined;
+    this._sessionId = undefined;
+  }
+
+  /** Set the session ID for plan persistence. */
+  setSessionId(id: string): void {
+    this._sessionId = id;
   }
 
   /** Process a single FollowEvent and update all metrics. */
@@ -440,6 +461,7 @@ export class DashboardState {
       plan: this._plan,
       contextAttribution: { ...this._contextAttribution },
       updateInfo: this._updateInfo,
+      sessionId: this._sessionId,
     };
   }
 
@@ -819,8 +841,9 @@ export class DashboardState {
   }
 
   private extractTodo(event: FollowEvent): void {
-    if (!event.summary) return;
-    const matches = event.summary.matchAll(DashboardState.TODO_PATTERN);
+    const text = this.extractFullTextFromEvent(event) || event.summary;
+    if (!text) return;
+    const matches = text.matchAll(DashboardState.TODO_PATTERN);
     for (const match of matches) {
       const todo = match[1].trim();
       if (todo && !this._todoSeen.has(todo.toLowerCase())) {
@@ -830,20 +853,43 @@ export class DashboardState {
     }
   }
 
-  private extractPlan(event: FollowEvent): void {
-    if (event.type !== 'tool_use' || event.toolName !== 'UpdatePlan') return;
+  /** Extract full text content from event.raw message content blocks. */
+  private extractFullTextFromEvent(event: FollowEvent): string | null {
     const raw = event.raw as Record<string, unknown> | undefined;
-    if (!raw?.input) return;
-    const input = raw.input as Record<string, unknown>;
-    const approach = input.approach as string[] | undefined;
-    if (!approach || !Array.isArray(approach)) return;
-    this._plan = {
-      title: (input.title as string) || 'Plan',
-      steps: approach.map(desc => ({
-        description: typeof desc === 'string' ? desc : String(desc),
-        status: 'pending',
-      })),
-    };
+    const message = raw?.message as Record<string, unknown> | undefined;
+    const content = message?.content;
+    if (Array.isArray(content)) {
+      const texts: string[] = [];
+      for (const block of content) {
+        const b = block as Record<string, unknown>;
+        if (b.type === 'text' && typeof b.text === 'string') {
+          texts.push(b.text);
+        }
+      }
+      if (texts.length > 0) return texts.join('\n');
+    }
+    return null;
+  }
+
+  private extractPlan(event: FollowEvent): void {
+    const updated = this._planExtractor.processEvent(event);
+    if (updated) {
+      const extracted = this._planExtractor.plan;
+      if (extracted) {
+        this._plan = {
+          title: extracted.title,
+          steps: extracted.steps.map(s => ({
+            id: s.id,
+            description: s.description,
+            status: s.status,
+            phase: s.phase,
+            complexity: s.complexity,
+          })),
+          source: extracted.source,
+          rawMarkdown: extracted.rawMarkdown,
+        };
+      }
+    }
   }
 
   private updateContextAttribution(event: FollowEvent): void {
@@ -897,13 +943,17 @@ export class DashboardState {
         this._contextAttribution.assistantResponses += estimateTokens(event.summary);
       }
     } else if (event.type === 'tool_use') {
-      if (event.summary) {
-        this._contextAttribution.toolInputs += estimateTokens(event.summary);
-      }
+      // Try raw input first for accurate token count (summary truncated to 80 chars)
+      const rawInput = (raw?.input != null) ? JSON.stringify(raw.input) : null;
+      const text = rawInput || event.summary || '';
+      if (text) this._contextAttribution.toolInputs += estimateTokens(text);
     } else if (event.type === 'tool_result') {
-      if (event.summary) {
-        this._contextAttribution.toolOutputs += estimateTokens(event.summary);
-      }
+      // Try raw content first (summary truncated to 120 chars)
+      const rawContent = raw?.content;
+      const text = (typeof rawContent === 'string') ? rawContent
+        : rawContent ? JSON.stringify(rawContent)
+        : event.summary || '';
+      if (text) this._contextAttribution.toolOutputs += estimateTokens(text);
     } else if (event.type === 'summary') {
       if (event.summary) {
         this._contextAttribution.other += estimateTokens(event.summary);

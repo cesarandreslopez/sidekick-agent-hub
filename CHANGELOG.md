@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-02-23
+
+### Added
+
+- **Plan Analytics**: Agent plans are now a first-class, persistent, analytically-rich data type
+  - **Enriched plan data model**: Plan steps track complexity (low/medium/high), timing, token usage, tool call counts, cost, and error messages
+  - **Complexity detection**: Automatic complexity classification from explicit markers (`[high]`, `[low]`) and keyword heuristics (refactor → high, fix → low)
+  - **Plan persistence**: Plans saved to `~/.config/sidekick/plans/{projectSlug}.json` with full execution metrics, surviving across sessions
+  - **Dashboard Plan Progress**: New section showing plan title, progress bar, step list with status icons, duration, tokens, tool calls, and complexity indicators
+  - **Dashboard Plan History**: Historical analytics across sessions — completion rates, average duration, tokens per plan, cost per plan, and recent plan list
+  - **Mind Map enrichments**: Plan step nodes color-coded by complexity (red=high, yellow=medium, green=low), sized by token usage, with enriched tooltips showing duration/tokens/errors
+  - **CLI plan display**: Tree and boxed mind map views show plan progress bars, per-step metrics (duration, tokens, tool calls, cost), and completion stats
+  - **Cross-provider plan extraction**: Shared `PlanExtractor` handles Claude Code (EnterPlanMode/ExitPlanMode), OpenCode (`<proposed_plan>` XML), and Codex (UpdatePlan tool) — CLI no longer ignores Claude Code and OpenCode plans
+  - **Handoff integration**: Session handoff documents include a "Plan Progress" section with completed/remaining steps and last active step status
+  - **Plan-to-cost attribution**: Per-step dollar cost computed via ModelPricingService, aggregated on plan totals
+- **Plan Content Visibility**: Full plan markdown is now preserved and rendered with rich formatting
+  - VS Code dashboard "Show Details" toggle reveals the full plan with phase groupings, rationale text, and context bullets alongside step status icons and per-step metrics
+  - CLI tree and boxed views group steps under phase headers with context lines when phase structure is available
+  - Raw markdown stored on `PlanState.rawMarkdown`, persisted to `~/.config/sidekick/plans/` for cross-session access
+- **Mind Map Legend Interaction** (VS Code): Legend items are now interactive — hover to highlight all nodes of that category (fading everything else), click to lock the highlight in place
+- **Mind Map Phase Grouping** (VS Code): Plan steps with phase assignments are grouped under intermediate phase nodes in the force-directed graph, with sequential links between phases
+- **CLI Node Type Filter**: Press `f` on the Mind Map tab to cycle through node type filters (file, tool, task, subagent, command, plan, knowledge-note) — non-matching sections render dimmed in grey
+
 ## [0.12.2] - 2026-02-23
 
 ### Added

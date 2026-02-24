@@ -17,6 +17,7 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
   const bindings = panel.getKeybindings?.() || [];
 
   return (
+    <Box flexGrow={1} alignItems="center" justifyContent="center">
     <Box
       flexDirection="column"
       borderStyle="single"
@@ -24,9 +25,6 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
       paddingX={1}
       paddingY={1}
       width={60}
-      position="absolute"
-      marginLeft={Math.floor((process.stdout.columns - 60) / 2)}
-      marginTop={2}
     >
       {/* Logo */}
       <Text>          <Text color="yellow">⚡</Text></Text>
@@ -78,9 +76,11 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
 
       <Text> </Text>
       <Text bold>  General</Text>
+      <Text>  <Text bold>V</Text>              Version & changelog</Text>
       <Text>  <Text bold>?</Text>              Toggle this help</Text>
       <Text>  <Text bold>Esc</Text>            Close overlay / clear filter / back</Text>
       <Text>  <Text bold>q / Ctrl+C</Text>     Quit</Text>
+    </Box>
     </Box>
   );
 }

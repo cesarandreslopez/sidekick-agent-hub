@@ -5,6 +5,31 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-02-23
+
+### Added
+
+- **Plan Analytics**: Agent plans are now a first-class, persistent, analytically-rich data type across the VS Code extension and CLI
+  - **Enriched plan data model**: Plan steps track complexity (low/medium/high), timing, token usage, tool call counts, cost, and error messages
+  - **Complexity detection**: Automatic classification from explicit markers (`[high]`, `[low]`) and keyword heuristics (refactor → high, fix → low)
+  - **Plan persistence**: Plans saved to `~/.config/sidekick/plans/{projectSlug}.json` with full execution metrics, surviving across sessions
+  - **Dashboard Plan Progress** (VS Code): Progress bar, step list with status icons, per-step duration/tokens/tool calls/complexity/cost
+  - **Dashboard Plan History** (VS Code): Historical analytics — completion rates, average duration, tokens per plan, cost per plan, recent plan list
+  - **Mind Map enrichments** (VS Code): Plan step nodes color-coded by complexity (red=high, yellow=medium, green=low), sized by token usage, enriched tooltips
+  - **CLI plan display**: Tree and boxed mind map views show progress bars, per-step metrics, and completion stats
+  - **Cross-provider plan extraction**: Shared `PlanExtractor` handles Claude Code, OpenCode, and Codex plans — CLI no longer ignores Claude Code and OpenCode plans
+  - **Handoff integration**: Session handoff documents include a "Plan Progress" section with completed/remaining steps
+  - **Plan-to-cost attribution**: Per-step dollar cost via ModelPricingService
+- **Plan Content Visibility**: Full plan markdown is preserved and displayed with rich formatting
+  - VS Code dashboard "Show Details" toggle reveals the full plan with phase groupings, rationale, and context bullets alongside step status and metrics
+  - CLI tree and boxed views group steps under phase headers with context lines when phase structure is available
+  - Raw markdown persisted to disk for cross-session access
+- **Mind Map Legend Interaction** (VS Code): Legend items are now clickable and hoverable
+  - Hover highlights all nodes of that category; everything else fades
+  - Click locks the highlight in place; click again to clear
+- **Mind Map Phase Grouping** (VS Code): Plan steps with phases are grouped under intermediate phase nodes with sequential inter-phase links
+- **CLI Node Type Filter**: Press `f` on the Mind Map tab to cycle through node type filters — non-matching sections render dimmed
+
 ## [0.12.2] - 2026-02-23
 
 ### Added
