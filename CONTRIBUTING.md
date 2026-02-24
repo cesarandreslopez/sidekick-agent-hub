@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - VS Code 1.85+
 - Claude Max subscription with authenticated CLI (`claude auth`), or an Anthropic API key
 
@@ -74,7 +74,7 @@ npm run test:watch   # Watch mode
 ## Project Structure
 
 ```
-sidekick-for-claude-max/
+sidekick-agent-hub/
 ├── sidekick-vscode/    # VS Code extension
 ├── sidekick-shared/    # Pure TS library (readers, types, providers)
 ├── sidekick-cli/       # CLI binary (TUI dashboard)
@@ -126,11 +126,24 @@ sidekick-vscode/src/
 ### Key Architecture Concepts
 
 - **Build system:** esbuild bundles two targets -- CommonJS for the extension host (`out/extension.js`) and IIFE for webviews (`out/webview/*.js`).
-- **Dual auth modes:** Max subscription (default, no API cost) or API key (per-token billing). Both implement `ClaudeClient` in `types.ts`.
-- **Model tiers:** Haiku (fast inline completions), Sonnet (balanced), Opus (quality transforms). Each feature has its own configurable model setting.
+- **Four inference providers:** Claude Max (subscription), Claude API (per-token), OpenCode, and Codex CLI. All implement `ClaudeClient` from `src/types.ts`.
+- **Model tiers:** Fast, balanced, and powerful tiers mapped to provider-specific models. Legacy names (`haiku`/`sonnet`/`opus`) map through `LEGACY_TIER_MAP`. Each feature has its own configurable model setting.
 - **Request management:** Debouncing (configurable delay), LRU caching, AbortController for cancellation.
 - **Session monitoring:** `SessionMonitor` watches JSONL files and emits events consumed by the dashboard, mind map, kanban board, and tree providers.
 - **Prompt templates:** All prompts centralized in `utils/prompts.ts` and `utils/analysisPrompts.ts`.
+
+### Building the CLI and Shared Library
+
+```bash
+bash scripts/build-all.sh    # Build both sidekick-shared and sidekick-cli
+```
+
+Or build individually:
+
+```bash
+cd sidekick-shared && npm install && npm run build
+cd sidekick-cli && npm install && npm run build
+```
 
 ## Making Changes
 

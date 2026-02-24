@@ -99,36 +99,18 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ## Terminal Dashboard
 
-All monitoring and intelligence features are also available from the terminal via the [Sidekick CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/):
+All monitoring and intelligence features are also available as a standalone terminal dashboard — no VS Code required.
+
+> **Note:** The npm package is `sidekick-agent-hub`, but the binary is called **`sidekick`**.
 
 ```bash
-npm install -g sidekick-agent-hub
+npm install -g sidekick-agent-hub    # requires Node.js 20+
 sidekick dashboard
 ```
 
-The CLI works standalone — no VS Code extension required. Browse sessions, tasks, decisions, knowledge notes, and more in a full-screen TUI.
+![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
-## Why Sidekick?
-
-**Works with what you already have.** If you're on Claude Max, you're already paying for the AI — Sidekick uses that subscription for inline completions, code transforms, and more. No extra API costs, no separate accounts. It also supports Claude API, OpenCode, and Codex CLI, so you're never locked into one provider.
-
-**See what your agent is doing.** When Claude Code or Codex runs autonomously, tokens burn silently and context fills up without warning. Sidekick's dashboards show real-time token usage, cost breakdowns, and quota projections — so you catch problems before you hit limits.
-
-**Never lose session context.** Long sessions produce valuable context — decisions, progress, architectural choices — that vanishes when the session ends. Session handoff and decision logging preserve that context, so your next session picks up where you left off instead of re-discovering everything.
-
-**Understand how your agent works.** Mind maps, tool inspectors, and conversation viewers let you trace exactly what happened during a session. Useful for debugging sessions that went off track, or learning from ones that went well.
-
-## Why Am I Building This?
-
-AI coding agents are the most transformative tools I've used in my career. They can scaffold entire features, debug problems across files, and handle the mechanical parts of software engineering that used to eat hours of every day.
-
-But they're also opaque. Tokens burn in the background with no visibility. Context fills up silently until your agent starts forgetting things. And when a session ends, everything it learned — your architecture, your conventions, the decisions you made together — is just gone. The next session starts from zero.
-
-That bothers me. I want to see what my agent is doing. I want to review every tool call, understand where my tokens went, and carry context forward instead of losing it. Sidekick exists because I think the people using these agents deserve visibility into how they work — not just the output, but the process.
-
-## Context Management Matters
-
-Claude Code, OpenCode, and Codex all share the same limitation: they forget everything between sessions. Context windows are finite, compaction loses detail mid-session, and nothing survives a session boundary. Without deliberate context management, every session re-discovers your project from scratch. Sidekick's session intelligence features bridge that gap. See the [Context Management guide](https://cesarandreslopez.github.io/sidekick-agent-hub/getting-started/context-management/) for the full picture.
+Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in a full-screen TUI. Press `?` for keybindings. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 

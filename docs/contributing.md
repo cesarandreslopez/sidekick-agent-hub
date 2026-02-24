@@ -6,7 +6,7 @@ Contributions are welcome! Whether it's bug fixes, new features, or documentatio
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - VS Code 1.85+
 - At least one provider set up (Claude Max recommended)
 
@@ -47,6 +47,19 @@ npm run test:watch   # Watch mode for tests
 npm run lint         # Check for linting issues
 npm run lint:fix     # Auto-fix linting issues
 npm run package      # Create .vsix for distribution
+```
+
+### Building the CLI and Shared Library
+
+```bash
+bash scripts/build-all.sh    # Build both sidekick-shared and sidekick-cli
+```
+
+Or build individually:
+
+```bash
+cd sidekick-shared && npm install && npm run build
+cd sidekick-cli && npm install && npm run build
 ```
 
 ## Code Style

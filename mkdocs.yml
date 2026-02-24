@@ -1,5 +1,5 @@
 site_name: Sidekick Agent Hub
-site_description: Multi-provider AI coding assistant for VS Code
+site_description: AI coding assistant with real-time agent monitoring — VS Code extension and terminal dashboard
 site_url: https://cesarandreslopez.github.io/sidekick-agent-hub/
 repo_url: https://github.com/cesarandreslopez/sidekick-agent-hub
 repo_name: cesarandreslopez/sidekick-agent-hub
@@ -72,7 +72,8 @@ nav:
     - Quick Start: getting-started/quick-start.md
     - Context Management: getting-started/context-management.md
     - Provider Setup: getting-started/provider-setup.md
-  - Features:
+  - CLI Dashboard: features/cli.md
+  - VS Code Features:
     - Inline Completions: features/inline-completions.md
     - Code Transforms: features/code-transforms.md
     - Commit Messages: features/commit-messages.md
@@ -91,7 +92,6 @@ nav:
     - Explain Code: features/explain-code.md
     - Generate Docs: features/generate-docs.md
     - CLAUDE.md Suggestions: features/claude-md-suggestions.md
-    - Sidekick CLI: features/cli.md
   - Providers:
     - Claude Max: providers/claude-max.md
     - Claude API: providers/claude-api.md

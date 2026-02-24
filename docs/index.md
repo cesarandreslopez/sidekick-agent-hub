@@ -4,7 +4,7 @@
   <img src="images/social-preview.png" alt="Sidekick Agent Hub — AI coding assistant with real-time agent monitoring" width="100%" style="max-width: 800px; border-radius: 8px;">
 </p>
 
-**Inline completions, code transforms, commit messages, and agent session monitoring for VS Code.**
+**AI coding assistant with real-time agent monitoring — VS Code extension and terminal dashboard.**
 
 ![Sidekick Agent Hub demo](images/sidekick-agent-hub.gif)
 
@@ -74,9 +74,9 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Truncation Detection** — know when tool outputs are silently cut short
 - **Cycle Detection** — get alerted when your agent enters repetitive loops
 
-### VS Code + CLI
+### VS Code + [CLI Dashboard](features/cli.md)
 
-Available in the VS Code extension and the [Sidekick CLI](features/cli.md) terminal dashboard. The CLI works standalone — no VS Code extension required.
+Available in the VS Code extension and the [CLI Dashboard](features/cli.md). The CLI works standalone — no VS Code extension required.
 
 - **Session Monitor** — see exactly where your tokens are going before you hit quota limits
 - **Mind Map** — trace how your agent navigated the codebase, with cycling file and goal-gate indicators
@@ -86,9 +86,20 @@ Available in the VS Code extension and the [Sidekick CLI](features/cli.md) termi
 
 ## Quick Install
 
-Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) or [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max).
+### VS Code Extension
 
-Then see [Getting Started](getting-started/installation.md) for provider setup.
+Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) or [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max). Then see [Getting Started](getting-started/installation.md) for provider setup.
+
+### CLI Terminal Dashboard
+
+> **Note:** The npm package is `sidekick-agent-hub`, but the binary is called **`sidekick`**.
+
+```bash
+npm install -g sidekick-agent-hub
+sidekick dashboard
+```
+
+Requires Node.js 20+. Works standalone — no VS Code required. See [CLI Dashboard](features/cli.md) for the full guide.
 
 ## Contributing
 
