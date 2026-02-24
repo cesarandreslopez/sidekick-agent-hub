@@ -1,6 +1,6 @@
 /**
  * One-shot npm registry check for CLI updates.
- * Fetches latest version from npm, compares with current, caches result for 24h.
+ * Fetches latest version from npm, compares with current, caches result for 4h.
  */
 
 declare const __CLI_VERSION__: string;
@@ -25,7 +25,7 @@ interface UpdateCache {
 
 const REGISTRY_URL = 'https://registry.npmjs.org/sidekick-agent-hub/latest';
 const CACHE_FILE = 'update-check.json';
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000;  // 4 hours
 
 // ── Service ──
 
