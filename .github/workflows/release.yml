@@ -63,6 +63,10 @@ jobs:
           cache: 'npm'
           cache-dependency-path: sidekick-vscode/package-lock.json
 
+      - name: Build shared library
+        working-directory: sidekick-shared
+        run: npm ci && npm run build
+
       - name: Install dependencies
         run: npm ci
 
