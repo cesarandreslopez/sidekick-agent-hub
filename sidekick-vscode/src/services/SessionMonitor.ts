@@ -1727,7 +1727,10 @@ export class SessionMonitor implements vscode.Disposable {
         this.stats.modelUsage = new Map(s.modelUsage as Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number }]>);
       }
       if (Array.isArray(s.toolCalls)) {
-        this.stats.toolCalls = s.toolCalls as ToolCall[];
+        this.stats.toolCalls = (s.toolCalls as ToolCall[]).map(tc => ({
+          ...tc,
+          timestamp: new Date(tc.timestamp),
+        }));
       }
     }
 
