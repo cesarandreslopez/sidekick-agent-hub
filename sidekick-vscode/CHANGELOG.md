@@ -5,18 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.12.3] - 2026-02-23
+## [0.12.3] - 2026-02-24
 
 ### Added
 
-- **Plan Analytics — Dashboard**: New "Plan Progress" section in the session dashboard
-  - Progress bar with completion percentage and step count
-  - Step list with status icons (✓ completed, → in progress, ○ pending, ✗ failed, – skipped)
-  - Per-step metadata: duration, token count, tool call count, complexity indicator, cost
-  - Error messages displayed inline for failed steps
-- **Plan Analytics — Plan History**: New "Plan History" section below Plan Progress
-  - Aggregated stats across sessions: total plans, completion rate, average duration, average tokens, average cost
-  - Recent plans list with title, status, completion percentage, source, and date
+- **Loading indicator**: Status bar shows a loading spinner during initial session replay so it's clear the dashboard is catching up
+- **Latest-node pulse**: The most recently added node in the D3 mind map now has a subtle pulse animation, making it easy to spot new activity
 - **Plan Analytics — Mind Map**: Enriched plan visualization
   - Plan step nodes color-coded by complexity: red (high), yellow (medium), green (low)
   - Token-based node sizing — steps consuming more tokens render larger
@@ -25,14 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Plan root node tooltip shows completion stats and total duration
 - **Plan Analytics — Handoff**: Session handoff documents now include a "Plan Progress" section with completed/remaining steps and last active step with error context
 - **Enriched plan data model**: `PlanStep` tracks complexity, timing, tokens, tool calls, cost, and error messages; `PlanState` tracks completion rate and total duration
-- **Plan persistence**: Plans saved to `~/.config/sidekick/plans/` with full execution metrics for cross-session history
-- **Plan content visibility**: Full plan markdown is now preserved and renderable
-  - "Show Details" toggle in the Plan Progress section reveals the full plan with phase groupings, rationale text, and context bullets alongside step status icons and metrics
-  - Raw markdown stored on `PlanState.rawMarkdown` and persisted across sessions
 - **Mind Map phase grouping**: Plan steps with phase assignments are grouped under intermediate phase nodes in the force-directed graph, with sequential links between phases
 - **Mind Map legend interaction**: Legend items are now interactive
   - Hover a legend item to highlight all nodes of that category and fade everything else
   - Click to lock the highlight — stays visible after the mouse leaves; click again to clear
+
+### Fixed
+
+- **Kanban board regression**: Subagent and plan-step tasks now correctly appear in the kanban board — previously they were lost during the aggregation refactor
+- **First-load performance**: Suppressed hundreds of wasteful VS Code event-firing calls during initial session replay, making the first load noticeably faster
+
+### Changed
+
+- **Plan UI surfaces temporarily disabled**: Dashboard Plan Progress/History sections, Plans sidebar panel, and plan persistence are disabled until plan-mode event capture is reliably working end-to-end. Plan nodes in the mind map remain active.
+- Session providers now delegate to the shared aggregation layer (`sidekick-shared`) instead of maintaining independent parsing and aggregation logic
 
 ## [0.12.2] - 2026-02-23
 

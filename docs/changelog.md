@@ -5,30 +5,41 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.12.3] - 2026-02-23
+## [0.12.3] - 2026-02-24
 
 ### Added
 
-- **Plan Analytics**: Agent plans are now a first-class, persistent, analytically-rich data type across the VS Code extension and CLI
+- **Unified Session Aggregation Layer**: Types, parsers, DB wrappers, and aggregation logic extracted from the VS Code extension into `sidekick-shared`, so both the extension and CLI consume a single implementation
+  - `EventAggregator` provides tokens, tools, tasks, subagents, plans, context attribution, compaction, burn rate, and latency tracking for any consumer
+  - Snapshot sidecar persistence for fast session resume — avoids replaying the full event log on reconnect
+  - Net reduction of ~4,100 lines of duplicated code across the three packages
+- **Loading Indicator**: Status bar shows a loading spinner during initial session replay so it's clear the dashboard is catching up
+- **Latest-Node Indicator**: The most recently added node is visually marked
+  - VS Code mind map: subtle pulse animation on the latest D3 node
+  - CLI mind map: yellow marker on the latest tree/boxed node
+- **Plan Analytics**: Agent plans are now a first-class, analytically-rich data type across the VS Code extension and CLI
   - **Enriched plan data model**: Plan steps track complexity (low/medium/high), timing, token usage, tool call counts, cost, and error messages
   - **Complexity detection**: Automatic classification from explicit markers (`[high]`, `[low]`) and keyword heuristics (refactor → high, fix → low)
-  - **Plan persistence**: Plans saved to `~/.config/sidekick/plans/{projectSlug}.json` with full execution metrics, surviving across sessions
-  - **Dashboard Plan Progress** (VS Code): Progress bar, step list with status icons, per-step duration/tokens/tool calls/complexity/cost
-  - **Dashboard Plan History** (VS Code): Historical analytics — completion rates, average duration, tokens per plan, cost per plan, recent plan list
   - **Mind Map enrichments** (VS Code): Plan step nodes color-coded by complexity (red=high, yellow=medium, green=low), sized by token usage, enriched tooltips
   - **CLI plan display**: Tree and boxed mind map views show progress bars, per-step metrics, and completion stats
   - **Cross-provider plan extraction**: Shared `PlanExtractor` handles Claude Code, OpenCode, and Codex plans — CLI no longer ignores Claude Code and OpenCode plans
   - **Handoff integration**: Session handoff documents include a "Plan Progress" section with completed/remaining steps
   - **Plan-to-cost attribution**: Per-step dollar cost via ModelPricingService
-- **Plan Content Visibility**: Full plan markdown is preserved and displayed with rich formatting
-  - VS Code dashboard "Show Details" toggle reveals the full plan with phase groupings, rationale, and context bullets alongside step status and metrics
-  - CLI tree and boxed views group steps under phase headers with context lines when phase structure is available
-  - Raw markdown persisted to disk for cross-session access
 - **Mind Map Legend Interaction** (VS Code): Legend items are now clickable and hoverable
   - Hover highlights all nodes of that category; everything else fades
   - Click locks the highlight in place; click again to clear
 - **Mind Map Phase Grouping** (VS Code): Plan steps with phases are grouped under intermediate phase nodes with sequential inter-phase links
 - **CLI Node Type Filter**: Press `f` on the Mind Map tab to cycle through node type filters — non-matching sections render dimmed
+
+### Fixed
+
+- **Kanban board regression**: Subagent and plan-step tasks now correctly appear in the kanban board — previously they were lost during the aggregation refactor
+- **First-load performance** (VS Code): Suppressed hundreds of wasteful UI update events during initial session replay, making the first load noticeably faster
+
+### Changed
+
+- **Plan UI surfaces temporarily disabled**: Dashboard Plan Progress/History sections, Plans sidebar panel (VS Code), Plans panel (CLI), and plan persistence are disabled until plan-mode event capture is reliably working end-to-end. Plan nodes in the mind map remain active.
+- CLI `DashboardState` now delegates to shared `EventAggregator` instead of maintaining its own aggregation logic
 
 ## [0.12.2] - 2026-02-23
 
