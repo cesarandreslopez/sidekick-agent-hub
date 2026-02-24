@@ -26,6 +26,9 @@ dist/**
 .npm
 *.tsbuildinfo
 
+# Shared library (bundled by esbuild, not needed at runtime)
+../sidekick-shared/**
+
 # Documentation site (not part of extension)
 ../docs/**
 ../mkdocs.yml
