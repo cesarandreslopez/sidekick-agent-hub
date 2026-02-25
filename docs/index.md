@@ -12,6 +12,8 @@
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/cesarandreslopez/sidekick-for-max?label=Open%20VSX%20Downloads)](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max)
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/CesarAndresLopez.sidekick-for-max?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max)
 [![VS Code Installs](https://img.shields.io/visual-studio-marketplace/i/CesarAndresLopez.sidekick-for-max?label=VS%20Code%20Installs)](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max)
+[![npm](https://img.shields.io/npm/v/sidekick-agent-hub?label=npm)](https://www.npmjs.com/package/sidekick-agent-hub)
+[![npm Downloads](https://img.shields.io/npm/dt/sidekick-agent-hub?label=npm%20Downloads)](https://www.npmjs.com/package/sidekick-agent-hub)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/LICENSE)
 
 ## What Sidekick Does For You
