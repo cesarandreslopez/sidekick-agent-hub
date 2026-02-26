@@ -161,6 +161,8 @@ export interface DashboardMetrics {
   contextAttribution: ContextAttribution;
   updateInfo: UpdateInfo | null;
   sessionId?: string;
+  permissionMode?: string | null;
+  contextTimeline: Array<{ timestamp: string; inputTokens: number; turnIndex: number }>;
 }
 
 // ── Constants ──
@@ -535,6 +537,8 @@ export class DashboardState {
       contextAttribution: { ...m.contextAttribution },
       updateInfo: this._updateInfo,
       sessionId: this._sessionId,
+      permissionMode: m.permissionMode ?? null,
+      contextTimeline: m.contextTimeline ?? [],
     };
   }
 

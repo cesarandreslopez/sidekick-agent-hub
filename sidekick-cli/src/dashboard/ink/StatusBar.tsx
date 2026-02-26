@@ -11,6 +11,7 @@ import type { UpdateInfo } from '../UpdateCheckService';
 interface StatusBarProps {
   eventCount: number;
   providerName?: string;
+  permissionMode?: string | null;
   focusTarget: 'side' | 'detail';
   panelHints: string;
   sessionFilter: string | null;
@@ -23,6 +24,7 @@ interface StatusBarProps {
 export function StatusBar({
   eventCount,
   providerName,
+  permissionMode,
   focusTarget,
   panelHints,
   sessionFilter,
@@ -32,6 +34,15 @@ export function StatusBar({
   updateInfo,
 }: StatusBarProps): React.ReactElement {
   const evtLabel = eventCount > 0 ? `${eventCount} events` : 'waiting...';
+
+  const permissionColor = permissionMode === 'bypassPermissions' ? 'red'
+    : permissionMode === 'acceptEdits' ? 'magenta'
+    : permissionMode === 'plan' ? 'green'
+    : undefined;
+  const permissionLabel = permissionMode === 'bypassPermissions' ? 'BYPASS'
+    : permissionMode === 'acceptEdits' ? 'EDITS'
+    : permissionMode === 'plan' ? 'PLAN'
+    : undefined;
 
   return (
     <Box height={1} width="100%">
@@ -49,6 +60,14 @@ export function StatusBar({
         <>
           <Text color="gray"> | </Text>
           <Text color="cyan">{providerName}</Text>
+        </>
+      )}
+
+      {/* Permission mode */}
+      {permissionMode && permissionMode !== 'default' && (
+        <>
+          <Text color="gray"> | </Text>
+          <Text color={permissionColor}>{permissionLabel}</Text>
         </>
       )}
 

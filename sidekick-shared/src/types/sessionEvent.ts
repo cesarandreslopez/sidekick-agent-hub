@@ -75,6 +75,9 @@ export interface SessionEvent {
   /** Whether this is a subagent/sidechain event */
   isSidechain?: boolean;
 
+  /** Permission mode active when this event occurred */
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
   /** Tool use details (when type is 'tool_use') */
   tool?: {
     name: string;
@@ -87,6 +90,23 @@ export interface SessionEvent {
     output?: unknown;
     is_error?: boolean;
   };
+}
+
+/**
+ * Permission mode values from Claude Code JSONL.
+ */
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
+/**
+ * A permission mode change event in the session timeline.
+ */
+export interface PermissionModeChange {
+  /** When the mode changed */
+  timestamp: string;
+  /** The new permission mode */
+  mode: PermissionMode;
+  /** The previous permission mode (null for first observation) */
+  previousMode: PermissionMode | null;
 }
 
 /**
@@ -209,6 +229,12 @@ export interface TimelineEvent {
   /** Whether this event is from a sidechain/subagent */
   isSidechain?: boolean;
 
+  /** Soft noise reason if event is classified as soft noise */
+  softNoiseReason?: string;
+
+  /** Semantic message classification from noise classifier */
+  messageClassification?: 'user' | 'ai' | 'system' | 'teammate' | 'compact';
+
   /** Optional metadata for filtering/display */
   metadata?: {
     model?: string;
@@ -222,6 +248,8 @@ export interface TimelineEvent {
     contextAfter?: number;
     /** Tokens reclaimed by compaction */
     tokensReclaimed?: number;
+    /** Permission mode active at this event */
+    permissionMode?: string;
   };
 }
 

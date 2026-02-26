@@ -1888,6 +1888,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._postMessage({ type: 'updateTurnAttributions', turns: turnDisplays });
     }
 
+    // Sync permission mode and context timeline into state
+    const aggregatedMetrics = this._sessionMonitor.getAggregatedMetrics?.();
+    if (aggregatedMetrics) {
+      this._state.permissionMode = aggregatedMetrics.permissionMode ?? undefined;
+      this._state.contextTimeline = aggregatedMetrics.contextTimeline ?? [];
+    }
+
     // Sync context waterfall
     if (stats.contextTimeline && stats.contextTimeline.length > 0) {
       const waterfallDisplay = {

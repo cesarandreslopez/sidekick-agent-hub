@@ -20,6 +20,7 @@ import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
 import { getRandomPhrase } from '../utils/phrases';
 import type { TokenUsage } from '../types/claudeSession';
+import type { PermissionMode } from 'sidekick-shared/dist/types/sessionEvent';
 
 /**
  * Status bar service for Claude Code session monitoring.
@@ -45,6 +46,9 @@ export class MonitorStatusBar implements vscode.Disposable {
   /** Accumulated session state */
   private totalTokens: number = 0;
   private contextPercent: number = 0;
+  private permissionMode: PermissionMode | null = null;
+  private previousContextSize: number = 0;
+  private contextTrend: 'up' | 'down' | 'stable' = 'stable';
 
   /** Update throttling */
   private lastUpdateTime: number = 0;
@@ -160,6 +164,26 @@ export class MonitorStatusBar implements vscode.Disposable {
     this.contextPercent = contextLimit > 0
       ? Math.round((stats.currentContextSize / contextLimit) * 100)
       : 0;
+
+    // Context trend detection
+    const currentSize = stats.currentContextSize;
+    if (this.previousContextSize > 0) {
+      const delta = (currentSize - this.previousContextSize) / (this.previousContextSize || 1);
+      if (delta > 0.05) {
+        this.contextTrend = 'up';
+      } else if (delta < -0.05) {
+        this.contextTrend = 'down';
+      } else {
+        this.contextTrend = 'stable';
+      }
+    }
+    this.previousContextSize = currentSize;
+
+    // Permission mode from aggregator metrics
+    const metrics = this.monitor.getAggregatedMetrics?.();
+    if (metrics) {
+      this.permissionMode = metrics.permissionMode ?? null;
+    }
   }
 
   /**
@@ -168,15 +192,29 @@ export class MonitorStatusBar implements vscode.Disposable {
   private updateDisplay(): void {
     // Format: "$(pulse) 12.5K | 15%"
     const tokensFormatted = this.formatTokenCount(this.totalTokens);
-    const contextFormatted = `${this.contextPercent}%`;
+
+    // Context trend indicator
+    const trendIcon = this.contextTrend === 'up' ? '$(arrow-up)'
+      : this.contextTrend === 'down' ? '$(arrow-down)'
+      : '';
+    const contextFormatted = `${this.contextPercent}%${trendIcon}`;
+
+    // Permission mode indicator
+    let permissionIndicator = '';
+    if (this.permissionMode === 'bypassPermissions') {
+      permissionIndicator = ' $(warning)';
+    } else if (this.permissionMode === 'plan') {
+      permissionIndicator = ' $(note)';
+    }
 
     // Add skull emoji when context is critically high (>= 80%)
     const icon = this.contextPercent >= 80 ? '💀' : '$(pulse)';
-    this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}`;
+    this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}`;
 
-    // Color code based on context usage (matching Claude Code statusline)
-    // >= 80%: red (danger), 50-79%: yellow/orange (warning), < 50%: normal
-    if (this.contextPercent >= 80) {
+    // Color code based on context usage and permission mode
+    if (this.permissionMode === 'bypassPermissions') {
+      this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    } else if (this.contextPercent >= 80) {
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     } else if (this.contextPercent >= 50) {
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -188,15 +226,23 @@ export class MonitorStatusBar implements vscode.Disposable {
     const stats = this.monitor.getStats();
     const provider = this.monitor.getProvider();
     const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? 200_000;
-    this.statusBarItem.tooltip = [
+    const tooltipLines = [
       `${provider.displayName} Session`,
       `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,
       `Context: ${this.contextPercent}% of ${this.formatTokenCount(contextLimit)}`,
-      '',
-      getRandomPhrase(),
-      '',
-      'Click to open dashboard'
-    ].join('\n');
+    ];
+
+    if (this.permissionMode && this.permissionMode !== 'default') {
+      const modeLabels: Record<string, string> = {
+        bypassPermissions: '⚠️ Bypass Permissions (dangerous)',
+        acceptEdits: '📝 Accept Edits',
+        plan: '📋 Plan Mode',
+      };
+      tooltipLines.push(`Permission: ${modeLabels[this.permissionMode] || this.permissionMode}`);
+    }
+
+    tooltipLines.push('', getRandomPhrase(), '', 'Click to open dashboard');
+    this.statusBarItem.tooltip = tooltipLines.join('\n');
   }
 
   /**

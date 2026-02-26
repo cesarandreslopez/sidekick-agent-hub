@@ -23,6 +23,7 @@ import type { ToolCall } from '../types/claudeSession';
 import { scanSubagentDir } from '../services/SubagentFileScanner';
 import { log } from '../services/Logger';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
+import { formatToolSummary } from 'sidekick-shared/dist/formatters/toolSummary';
 
 /**
  * Represents a file touched during the Claude Code session.
@@ -45,6 +46,9 @@ export interface TempFileItem {
 
   /** Number of lines deleted from this file */
   deletions: number;
+
+  /** Rich tool summary for display */
+  toolSummary?: string;
 }
 
 /**
@@ -139,6 +143,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
    */
   private handleToolCall(call: ToolCall): void {
     const toolName = call.name;
+    const toolSummary = formatToolSummary(toolName, call.input);
 
     // Only process file-related tools
     if (!['Read', 'Write', 'Edit', 'MultiEdit', 'Bash'].includes(toolName)) {
@@ -153,7 +158,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       if (command) {
         const filePaths = this.extractFilePathsFromBash(command);
         for (const filePath of filePaths) {
-          this.addFile(filePath, 'write', timestamp, 0, 0);
+          this.addFile(filePath, 'write', timestamp, 0, 0, toolSummary);
         }
       }
       return;
@@ -181,7 +186,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       }
 
       for (const [filePath, changes] of fileChanges) {
-        this.addFile(filePath, 'edit', timestamp, changes.additions, changes.deletions);
+        this.addFile(filePath, 'edit', timestamp, changes.additions, changes.deletions, toolSummary);
       }
       return;
     }
@@ -212,7 +217,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
         return;
     }
 
-    this.addFile(filePath, operation, timestamp, lineChanges.additions, lineChanges.deletions);
+    this.addFile(filePath, operation, timestamp, lineChanges.additions, lineChanges.deletions, toolSummary);
   }
 
   /**
@@ -352,13 +357,15 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
    * @param timestamp - When the file was touched
    * @param additions - Number of lines added (default 0)
    * @param deletions - Number of lines deleted (default 0)
+   * @param toolSummary - Rich tool summary for display
    */
   private addFile(
     filePath: string,
     operation: 'read' | 'write' | 'edit',
     timestamp: Date,
     additions: number = 0,
-    deletions: number = 0
+    deletions: number = 0,
+    toolSummary?: string
   ): void {
     // Check if file already exists
     if (this.seenFiles.has(filePath)) {
@@ -373,6 +380,10 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
         // Upgrade operation if needed (read -> edit/write)
         if (operation !== 'read') {
           existingItem.operation = operation;
+        }
+        // Update tool summary if provided
+        if (toolSummary) {
+          existingItem.toolSummary = toolSummary;
         }
         this.refresh();
       }
@@ -389,7 +400,8 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       timestamp,
       operation,
       additions,
-      deletions
+      deletions,
+      toolSummary
     };
 
     this.tempFiles.push(item);
@@ -474,6 +486,9 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
     const hasChanges = element.additions > 0 || element.deletions > 0;
     const changeInfo = hasChanges ? `\n+${element.additions} / -${element.deletions} lines` : '';
     item.tooltip = `${element.path}\n${element.operation} at ${formattedTime}${changeInfo}`;
+    if (element.toolSummary) {
+      item.tooltip += `\n${element.toolSummary}`;
+    }
 
     // Set description with line changes (for write/edit) and relative timestamp
     const relativeTime = this.formatRelativeTime(element.timestamp);

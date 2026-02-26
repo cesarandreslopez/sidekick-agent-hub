@@ -14,6 +14,7 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { ClaudeSessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log, logError } from '../services/Logger';
+import { formatToolSummary } from 'sidekick-shared/dist/formatters/toolSummary';
 
 /** Parsed message chunk for display */
 interface ConversationChunk {
@@ -23,6 +24,7 @@ interface ConversationChunk {
   model?: string;
   toolName?: string;
   toolInput?: string;
+  toolSummary?: string;
   toolOutput?: string;
   isError?: boolean;
   isSidechain?: boolean;
@@ -162,6 +164,7 @@ export class ConversationViewProvider implements vscode.Disposable {
       case 'tool_use': {
         const toolName = event.tool?.name || 'unknown';
         const toolInput = JSON.stringify(event.tool?.input || {}, null, 2);
+        const toolSummary = formatToolSummary(toolName, (event.tool?.input || {}) as Record<string, unknown>);
         // Store for matching with result
         if (event.tool?.input) {
           const toolId = (event as unknown as Record<string, unknown>).tool_use_id as string || `tool_${Date.now()}`;
@@ -172,6 +175,7 @@ export class ConversationViewProvider implements vscode.Disposable {
           timestamp: event.timestamp,
           content: '',
           toolName,
+          toolSummary,
           toolInput: this.truncateForDisplay(toolInput, 2000)
         };
       }
@@ -274,6 +278,7 @@ export class ConversationViewProvider implements vscode.Disposable {
           <div class="tool-header" data-toggle="tool-body-${i}">
             <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
             <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
+            ${chunk.toolSummary ? `<span class="tool-summary">${this.escapeHtml(chunk.toolSummary)}</span>` : ''}
             <span class="chunk-time">${time}</span>
             <span class="toggle-arrow">+</span>
           </div>
@@ -440,6 +445,13 @@ export class ConversationViewProvider implements vscode.Disposable {
 
     .tool-name {
       font-weight: 500;
+    }
+
+    .tool-summary {
+      font-weight: normal;
+      color: var(--vscode-descriptionForeground);
+      margin-left: 6px;
+      font-size: 11px;
     }
 
     .toggle-arrow {

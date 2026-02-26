@@ -20,14 +20,19 @@ import type {
   CompactionEvent,
   TruncationEvent,
   ContextAttribution,
+  ContextSizePoint,
   PendingUserRequest,
   ResponseLatency,
   LatencyStats,
+  PermissionMode,
+  PermissionModeChange,
 } from '../types/sessionEvent';
 import type { FollowEvent } from '../watchers/types';
 import { TRUNCATION_PATTERNS } from '../parsers/jsonl';
 import { PlanExtractor } from '../parsers/planExtractor';
 import { toFollowEvents } from '../watchers/eventBridge';
+import { formatToolSummary } from '../formatters/toolSummary';
+import { isHardNoise, isHardNoiseFollowEvent, getSoftNoiseReason, classifyMessage, classifyFollowEvent } from '../formatters/noiseClassifier';
 import type {
   EventAggregatorOptions,
   AggregatedTokens,
@@ -69,6 +74,10 @@ export interface SerializedAggregatorState {
   tasks: Array<[string, TrackedTask]>;
   activeTaskId: string | null;
   subagents: SubagentLifecycle[];
+  permissionMode?: PermissionMode | null;
+  permissionModeHistory?: PermissionModeChange[];
+  contextTimeline?: ContextSizePoint[];
+  contextTurnIndex?: number;
   timeline: TimelineEvent[];
   messageCount: number;
   eventCount: number;
@@ -171,6 +180,14 @@ export class EventAggregator {
     other: 0,
   };
 
+  // Permission mode
+  private currentPermissionMode: PermissionMode | null = null;
+  private permissionModeHistory: PermissionModeChange[] = [];
+
+  // Context timeline
+  private contextTimeline: ContextSizePoint[] = [];
+  private contextTurnIndex = 0;
+
   // Timeline
   private timeline: TimelineEvent[] = [];
 
@@ -248,7 +265,10 @@ export class EventAggregator {
     // 10. Context attribution
     this.attributeContextFromEvent(event);
 
-    // 11. Timeline
+    // 11. Permission mode tracking
+    this.trackPermissionMode(event);
+
+    // 12. Timeline
     this.addTimelineFromSessionEvent(event);
   }
 
@@ -496,6 +516,11 @@ export class EventAggregator {
       subagents: this.getSubagents(),
       plan: this.getPlan(),
 
+      permissionMode: this.currentPermissionMode,
+      permissionModeHistory: [...this.permissionModeHistory],
+
+      contextTimeline: [...this.contextTimeline],
+
       timeline: this.getTimeline(),
       latencyStats: this.getLatencyStats(),
     };
@@ -527,6 +552,10 @@ export class EventAggregator {
     this.subagents = [];
     this.pendingSubagents.clear();
     this.planExtractor.reset();
+    this.currentPermissionMode = null;
+    this.permissionModeHistory = [];
+    this.contextTimeline = [];
+    this.contextTurnIndex = 0;
     this.contextAttribution = {
       systemPrompt: 0,
       userMessages: 0,
@@ -591,6 +620,10 @@ export class EventAggregator {
       tasks: Array.from(this.tasks.entries()),
       activeTaskId: this.activeTaskId,
       subagents: [...this.subagents],
+      permissionMode: this.currentPermissionMode,
+      permissionModeHistory: [...this.permissionModeHistory],
+      contextTimeline: [...this.contextTimeline],
+      contextTurnIndex: this.contextTurnIndex,
       timeline: [...this.timeline],
       messageCount: this.messageCount,
       eventCount: this.eventCount,
@@ -628,6 +661,10 @@ export class EventAggregator {
     this.tasks = new Map(state.tasks);
     this.activeTaskId = state.activeTaskId;
     this.subagents = [...state.subagents];
+    this.currentPermissionMode = state.permissionMode ?? null;
+    this.permissionModeHistory = state.permissionModeHistory ? [...state.permissionModeHistory] : [];
+    this.contextTimeline = state.contextTimeline ? [...state.contextTimeline] : [];
+    this.contextTurnIndex = state.contextTurnIndex ?? 0;
     this.timeline = [...state.timeline];
 
     this.messageCount = state.messageCount;
@@ -689,6 +726,13 @@ export class EventAggregator {
     }
     this.previousContextSize = contextSize;
     this.currentContextSize = contextSize;
+
+    // Context timeline tracking
+    this.contextTimeline.push({
+      timestamp,
+      inputTokens: contextSize,
+      turnIndex: this.contextTurnIndex++,
+    });
 
     // Per-model usage
     const modelKey = model ?? this.currentModel ?? 'unknown';
@@ -1322,10 +1366,30 @@ export class EventAggregator {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // Private: Permission Mode
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private trackPermissionMode(event: SessionEvent): void {
+    if (!event.permissionMode) return;
+    const mode = event.permissionMode;
+    if (mode !== this.currentPermissionMode) {
+      this.permissionModeHistory.push({
+        timestamp: event.timestamp,
+        mode,
+        previousMode: this.currentPermissionMode,
+      });
+      this.currentPermissionMode = mode;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Private: Timeline
   // ═══════════════════════════════════════════════════════════════════════
 
   private addTimelineFromSessionEvent(event: SessionEvent): void {
+    // Hard noise: skip entirely
+    if (isHardNoise(event)) return;
+
     let tlType: TimelineEvent['type'];
     let description: string;
     let noiseLevel: TimelineEvent['noiseLevel'] = 'system';
@@ -1346,12 +1410,18 @@ export class EventAggregator {
           metadata.tokenCount = event.message.usage.input_tokens + event.message.usage.output_tokens;
         }
         break;
-      case 'tool_use':
+      case 'tool_use': {
         tlType = 'tool_call';
-        description = event.tool ? `${event.tool.name}` : 'Tool call';
+        // Use rich tool summary formatter
+        const toolName = event.tool?.name ?? 'unknown';
+        const toolSummary = event.tool?.input
+          ? formatToolSummary(toolName, event.tool.input)
+          : '';
+        description = toolSummary ? `${toolName}: ${toolSummary}` : toolName;
         noiseLevel = 'system';
         if (event.tool) metadata.toolName = event.tool.name;
         break;
+      }
       case 'tool_result':
         tlType = 'tool_result';
         description = event.result ? `Result for tool call` : 'Tool result';
@@ -1374,11 +1444,17 @@ export class EventAggregator {
       description = description.substring(0, 197) + '...';
     }
 
+    // Classify noise
+    const softNoiseReason = getSoftNoiseReason(event);
+    const messageClassification = classifyMessage(event);
+
     this.timeline.push({
       type: tlType,
       timestamp: event.timestamp,
       description,
       noiseLevel,
+      softNoiseReason: softNoiseReason ?? undefined,
+      messageClassification,
       isSidechain: event.isSidechain,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
@@ -1390,6 +1466,9 @@ export class EventAggregator {
   }
 
   private addTimelineFromFollowEvent(event: FollowEvent): void {
+    // Hard noise: skip entirely
+    if (isHardNoiseFollowEvent(event)) return;
+
     let tlType: TimelineEvent['type'];
     let description = event.summary || '';
     let noiseLevel: TimelineEvent['noiseLevel'] = 'system';
@@ -1429,11 +1508,15 @@ export class EventAggregator {
       description = description.substring(0, 197) + '...';
     }
 
+    // Classify message
+    const messageClassification = classifyFollowEvent(event);
+
     this.timeline.push({
       type: tlType,
       timestamp: event.timestamp,
       description,
       noiseLevel,
+      messageClassification,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
 

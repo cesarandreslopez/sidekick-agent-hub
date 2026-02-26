@@ -11,6 +11,7 @@
 import type { SessionEvent } from '../types/sessionEvent';
 import type { ProviderId } from '../providers/types';
 import type { FollowEvent } from './types';
+import { formatToolSummary } from '../formatters/toolSummary';
 
 /**
  * Converts a single SessionEvent to one or more FollowEvents.
@@ -21,6 +22,7 @@ import type { FollowEvent } from './types';
 export function toFollowEvents(event: SessionEvent, providerId: ProviderId): FollowEvent[] {
   const events: FollowEvent[] = [];
   const ts = event.timestamp || new Date().toISOString();
+  const permissionMode = event.permissionMode;
   const usage = event.message?.usage;
   const tokens = usage
     ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 }
@@ -65,7 +67,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
         for (const block of content as Array<Record<string, unknown>>) {
           if (block.type === 'tool_use' && typeof block.name === 'string') {
             const input = block.input
-              ? summarizeToolInput(block.input as Record<string, unknown>)
+              ? summarizeToolInput(block.name as string, block.input as Record<string, unknown>)
               : '';
             events.push({
               providerId, type: 'tool_use', timestamp: ts,
@@ -95,7 +97,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
     case 'tool_use': {
       const name = event.tool?.name || 'unknown';
       const input = event.tool?.input
-        ? summarizeToolInput(event.tool.input)
+        ? summarizeToolInput(name, event.tool.input)
         : '';
       events.push({
         providerId, type: 'tool_use', timestamp: ts,
@@ -136,6 +138,13 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
     }
   }
 
+  // Propagate permission mode to all generated events
+  if (permissionMode) {
+    for (const e of events) {
+      e.permissionMode = permissionMode;
+    }
+  }
+
   return events;
 }
 
@@ -154,17 +163,8 @@ function extractTextContent(content: unknown): string {
   return '';
 }
 
-function summarizeToolInput(input: Record<string, unknown>): string {
-  if (typeof input.command === 'string') return truncate(input.command, 80);
-  if (typeof input.file_path === 'string') return truncate(input.file_path, 80);
-  if (typeof input.pattern === 'string') return truncate(input.pattern, 80);
-  if (typeof input.query === 'string') return truncate(input.query, 80);
-  if (typeof input.path === 'string') return truncate(input.path, 80);
-  if (typeof input.url === 'string') return truncate(input.url, 80);
-  for (const val of Object.values(input)) {
-    if (typeof val === 'string' && val.length > 0) return truncate(val, 80);
-  }
-  return '';
+function summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
+  return formatToolSummary(toolName, input);
 }
 
 function truncate(text: string, maxLen: number): string {

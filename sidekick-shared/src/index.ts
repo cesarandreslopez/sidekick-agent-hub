@@ -28,6 +28,8 @@ export type {
   ContextAttribution,
   TurnAttribution,
   ContextSizePoint,
+  PermissionMode,
+  PermissionModeChange,
 } from './types/sessionEvent';
 
 // OpenCode format types
@@ -151,6 +153,10 @@ export { CodexRolloutParser, extractPatchFilePaths, normalizeCodexToolName, norm
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo } from './parsers/subagentScanner';
 
+// Parsers — Session activity detection
+export { detectSessionActivity } from './parsers/sessionActivityDetector';
+export type { SessionActivityState, SessionActivityResult } from './parsers/sessionActivityDetector';
+
 // Parsers — Session path resolution (Claude Code)
 export {
   encodeWorkspacePath as encodeClaudeWorkspacePath,
@@ -163,7 +169,23 @@ export {
   getMostRecentlyActiveSessionDir,
   decodeEncodedPath,
   getAllProjectFolders as getAllClaudeProjectFolders,
+  resolveWorktreeMainRepo,
+  discoverWorktreeSiblings,
+  findAllSessionsWithWorktrees,
 } from './parsers/sessionPathResolver';
+
+// Parsers — Subagent traces
+export { scanSubagentTraces } from './parsers/subagentTraceParser';
+export type { SubagentTrace, SubagentTraceEvent } from './parsers/subagentTraceParser';
+
+// Parsers — Debug log parsing
+export {
+  parseDebugLog,
+  filterByLevel,
+  collapseDuplicates,
+  discoverDebugLogs,
+} from './parsers/debugLogParser';
+export type { DebugLogEntry, DebugLogFile, DebugLogLevel } from './parsers/debugLogParser';
 
 // Database wrappers
 export { OpenCodeDatabase } from './providers/openCodeDatabase';
@@ -190,6 +212,19 @@ export type { FollowEvent, FollowEventType, SessionWatcher, SessionWatcherCallba
 export { createWatcher } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
 export { toFollowEvents } from './watchers/eventBridge';
+
+// Formatters
+export { formatToolSummary } from './formatters/toolSummary';
+export {
+  isHardNoise,
+  isHardNoiseFollowEvent,
+  getSoftNoiseReason,
+  classifyMessage,
+  classifyFollowEvent,
+  shouldMergeWithPrevious,
+  classifyNoise,
+} from './formatters/noiseClassifier';
+export type { MessageClassification, NoiseResult } from './formatters/noiseClassifier';
 
 // Aggregation
 export { EventAggregator } from './aggregation/EventAggregator';

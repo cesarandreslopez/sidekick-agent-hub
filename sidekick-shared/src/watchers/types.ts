@@ -18,6 +18,8 @@ export interface FollowEvent {
   cost?: number;
   toolName?: string;
   toolInput?: string;
+  /** Permission mode active when this event occurred. */
+  permissionMode?: string;
   /** Subscription rate limits (Codex token_count events). */
   rateLimits?: {
     primary?: { usedPercent: number; windowMinutes: number; resetsAt: number };

@@ -287,10 +287,31 @@ export class SessionsPanel implements SidePanel {
         '{bold}Context{/bold}',
         `  {${contextColor}-fg}${bar}{/${contextColor}-fg}`,
         `  {bold}${c.percent}%{/bold}  ${fmtNum(c.used)} / ${fmtNum(c.limit)}`,
+      ];
+
+      // Context history sparkline
+      if (m.contextTimeline && m.contextTimeline.length > 1) {
+        const ctxPoints = m.contextTimeline.slice(-25);
+        const ctxMax = Math.max(...ctxPoints.map(p => p.inputTokens), 1);
+        const sparkChars = [' ', '\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'];
+        const ctxSpark = ctxPoints.map(p => sparkChars[Math.min(8, Math.round((p.inputTokens / ctxMax) * 8))]).join('');
+        lines.push(`  {grey-fg}${ctxSpark}{/grey-fg}  history`);
+      }
+
+      // Permission mode
+      if (m.permissionMode && m.permissionMode !== 'default') {
+        const modeColors: Record<string, string> = { bypassPermissions: 'red', acceptEdits: 'magenta', plan: 'green' };
+        const modeLabels: Record<string, string> = { bypassPermissions: 'Bypass Permissions', acceptEdits: 'Accept Edits', plan: 'Plan Mode' };
+        const modeColor = modeColors[m.permissionMode] || 'grey';
+        const modeLabel = modeLabels[m.permissionMode] || m.permissionMode;
+        lines.push('', `{bold}Permission:{/bold}  {${modeColor}-fg}${modeLabel}{/${modeColor}-fg}`);
+      }
+
+      lines.push(
         '',
         '{bold}Burn Rate{/bold}',
         `  {cyan-fg}${spark}{/cyan-fg}  {bold}${fmtNum(latest)}{/bold} tok/min`,
-      ];
+      );
 
       // Task completion summary
       if (m.tasks.length > 0) {

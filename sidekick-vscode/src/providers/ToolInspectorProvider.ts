@@ -15,6 +15,7 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { ToolCall } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log } from '../services/Logger';
+import { formatToolSummary } from 'sidekick-shared/dist/formatters/toolSummary';
 
 /**
  * Opens a tool inspector panel for the current session.
@@ -247,6 +248,16 @@ export class ToolInspectorProvider implements vscode.Disposable {
       color: var(--vscode-descriptionForeground);
       width: 12px;
     }
+
+    .tool-summary {
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      font-weight: normal;
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -310,6 +321,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     const rawNameBadge = call.rawName && call.rawName !== call.name
       ? `<span class="tool-raw-name">raw: ${this.escapeHtml(call.rawName)}</span>`
       : '';
+    const toolSummary = formatToolSummary(call.name, call.input);
 
     let bodyContent = '';
 
@@ -339,6 +351,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
       <div class="tool-call-header">
         <span class="toggle-arrow">+</span>
         <span class="tool-name">${this.escapeHtml(call.name)}</span>
+        <span class="tool-summary">${this.escapeHtml(toolSummary)}</span>
         ${rawNameBadge}
         ${errorBadge}
         ${durationStr ? `<span class="tool-duration">${durationStr}</span>` : ''}

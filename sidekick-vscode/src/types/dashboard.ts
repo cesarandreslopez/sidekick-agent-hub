@@ -469,6 +469,12 @@ export interface DashboardState {
 
   /** Context token attribution breakdown */
   contextAttribution?: ContextAttributionDisplay[];
+
+  /** Current permission mode (default, acceptEdits, bypassPermissions, plan) */
+  permissionMode?: string;
+
+  /** Context window size history per turn for timeline visualization */
+  contextTimeline?: Array<{ timestamp: string; inputTokens: number; turnIndex: number }>;
 }
 
 /**

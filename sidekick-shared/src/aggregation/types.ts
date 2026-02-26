@@ -28,10 +28,13 @@ export type {
   ResponseLatency,
   LatencyStats,
   SessionStats,
+  PermissionMode,
+  PermissionModeChange,
 } from '../types/sessionEvent';
 
 import type {
   ContextAttribution,
+  ContextSizePoint,
   CompactionEvent,
   TruncationEvent,
   ToolAnalytics,
@@ -39,6 +42,8 @@ import type {
   TaskState,
   PlanState,
   LatencyStats,
+  PermissionMode,
+  PermissionModeChange,
 } from '../types/sessionEvent';
 
 /** Configuration options for EventAggregator. */
@@ -132,6 +137,14 @@ export interface AggregatedMetrics {
   taskState: TaskState;
   subagents: SubagentLifecycle[];
   plan: PlanState | null;
+
+  /** Current permission mode (default | acceptEdits | bypassPermissions | plan) */
+  permissionMode: PermissionMode | null;
+  /** History of permission mode changes */
+  permissionModeHistory: PermissionModeChange[];
+
+  /** Context size over time for visualization */
+  contextTimeline: ContextSizePoint[];
 
   timeline: TimelineEvent[];
   latencyStats: LatencyStats | null;

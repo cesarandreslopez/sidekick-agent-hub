@@ -8,6 +8,7 @@ import { JsonlParser } from '../parsers/jsonl';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { ProviderId } from '../providers/types';
 import { normalizeCodexToolName } from '../parsers/codexParser';
+import { formatToolSummary } from '../formatters/toolSummary';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
 
 const DEBOUNCE_MS = 100;
@@ -18,6 +19,7 @@ const CATCHUP_INTERVAL_MS = 30_000;
 function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
   const events: FollowEvent[] = [];
   const ts = raw.timestamp || new Date().toISOString();
+  const permissionMode = (raw as unknown as Record<string, unknown>).permissionMode as string | undefined;
   const usage = raw.message?.usage;
   const tokens = usage ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 } : undefined;
   const cacheTokens = usage && (usage.cache_read_input_tokens || usage.cache_creation_input_tokens)
@@ -55,7 +57,7 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
     if (Array.isArray(content)) {
       for (const block of content as Array<Record<string, unknown>>) {
         if (block.type === 'tool_use' && typeof block.name === 'string') {
-          const input = block.input ? summarizeToolInput(block.input as Record<string, unknown>) : '';
+          const input = block.input ? summarizeToolInput(block.name as string, block.input as Record<string, unknown>) : '';
           events.push({
             providerId: 'claude-code', type: 'tool_use', timestamp: ts,
             summary: input ? `${block.name} ${input}` : block.name,
@@ -93,6 +95,13 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
     }
   }
 
+  // Propagate permission mode to all generated events
+  if (permissionMode) {
+    for (const e of events) {
+      e.permissionMode = permissionMode;
+    }
+  }
+
   return events;
 }
 
@@ -124,19 +133,8 @@ function extractPayloadContent(payload: Record<string, unknown>): string {
   return '';
 }
 
-function summarizeToolInput(input: Record<string, unknown>): string {
-  // For common tools, extract the most useful field
-  if (typeof input.command === 'string') return truncate(input.command, 80);
-  if (typeof input.file_path === 'string') return truncate(input.file_path, 80);
-  if (typeof input.pattern === 'string') return truncate(input.pattern, 80);
-  if (typeof input.query === 'string') return truncate(input.query, 80);
-  if (typeof input.path === 'string') return truncate(input.path, 80);
-  if (typeof input.url === 'string') return truncate(input.url, 80);
-  // Fallback: first string value
-  for (const val of Object.values(input)) {
-    if (typeof val === 'string' && val.length > 0) return truncate(val, 80);
-  }
-  return '';
+function summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
+  return formatToolSummary(toolName, input);
 }
 
 function extractRateLimits(rl: Record<string, unknown>): FollowEvent['rateLimits'] {

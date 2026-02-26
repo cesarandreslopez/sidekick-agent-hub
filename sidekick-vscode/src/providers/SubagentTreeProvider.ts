@@ -150,24 +150,36 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       return;
     }
 
-    const description = event.description.toLowerCase();
-
-    // Check for subagent-related keywords (only for tool_call events)
+    // Only detect subagents from tool_call events
     if (event.type !== 'tool_call') {
       return;
     }
 
-    if (!description.includes('subagent') &&
-        !description.includes('sidechain') &&
-        !description.includes('spawned')) {
+    // Detect Task tool calls — the new rich formatters produce "Task: [Explore] description"
+    const isTaskTool = event.metadata?.toolName === 'Task';
+    const description = event.description.toLowerCase();
+    const isSubagentKeyword = description.includes('subagent') ||
+        description.includes('sidechain') ||
+        description.includes('spawned');
+
+    if (!isTaskTool && !isSubagentKeyword) {
       return;
     }
 
-    // Generate sequential worker ID (don't try to extract from description)
+    // Generate sequential worker ID
     const agentId = `worker-${this.subagents.size + 1}`;
 
-    // Detect agent type from description
-    const agentType = this.detectAgentType(event.description);
+    // Extract agent type — prefer from rich formatted description (e.g., "Task: [Explore] search auth")
+    let agentType = this.detectAgentType(event.description);
+    let agentDescription: string | undefined;
+
+    // Parse rich Task tool summary format: "Task: [Type] description"
+    const taskMatch = event.description.match(/Task:\s*\[(\w+)\]\s*(.*)/);
+    if (taskMatch) {
+      const rawType = taskMatch[1];
+      agentType = this.classifyAgentType(rawType);
+      agentDescription = taskMatch[2] || undefined;
+    }
 
     // Create subagent item (always starts as running)
     const item: SubagentItem = {
@@ -176,7 +188,8 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       type: 'running',
       agentType,
       transcriptPath: undefined,
-      timestamp: new Date(event.timestamp)
+      timestamp: new Date(event.timestamp),
+      description: agentDescription,
     };
 
     this.subagents.set(agentId, item);

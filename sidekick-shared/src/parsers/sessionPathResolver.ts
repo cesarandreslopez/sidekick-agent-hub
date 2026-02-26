@@ -606,3 +606,144 @@ export function findSessionsInDirectory(sessionDir: string): string[] {
     return [];
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Multi-worktree session discovery
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Detects if a workspace is a git worktree and resolves the main repo path.
+ *
+ * Git worktrees have a .git file (not directory) containing a gitdir: pointer.
+ * This function reads that file and resolves the main repo path.
+ *
+ * @param workspacePath - Absolute path to workspace directory
+ * @returns Main repository path, or null if not a worktree
+ */
+export function resolveWorktreeMainRepo(workspacePath: string): string | null {
+  const gitPath = path.join(workspacePath, '.git');
+  try {
+    const stat = fs.statSync(gitPath);
+    if (stat.isDirectory()) {
+      // Regular repo, not a worktree
+      return null;
+    }
+    // It's a file — this is a worktree
+    const content = fs.readFileSync(gitPath, 'utf-8').trim();
+    const match = content.match(/^gitdir:\s*(.+)$/m);
+    if (!match) return null;
+
+    const gitdir = match[1].trim();
+    // gitdir points to something like /main-repo/.git/worktrees/<name>
+    // Resolve to absolute path
+    const resolvedGitdir = path.isAbsolute(gitdir)
+      ? gitdir
+      : path.resolve(workspacePath, gitdir);
+
+    // Navigate up from .git/worktrees/<name> to the main repo
+    const worktreesDir = path.dirname(resolvedGitdir);
+    if (path.basename(worktreesDir) !== 'worktrees') return null;
+    const dotGit = path.dirname(worktreesDir);
+    if (path.basename(dotGit) !== '.git') return null;
+    return path.dirname(dotGit);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Discovers all worktree sibling paths for a main repository.
+ *
+ * Reads .git/worktrees/{name}/gitdir to find all worktree paths.
+ *
+ * @param mainRepoPath - Absolute path to the main repository
+ * @returns Array of absolute paths to worktree working directories
+ */
+export function discoverWorktreeSiblings(mainRepoPath: string): string[] {
+  const worktreesDir = path.join(mainRepoPath, '.git', 'worktrees');
+  const siblings: string[] = [];
+
+  try {
+    if (!fs.existsSync(worktreesDir)) return siblings;
+    const entries = fs.readdirSync(worktreesDir);
+
+    for (const entry of entries) {
+      const gitdirFile = path.join(worktreesDir, entry, 'gitdir');
+      try {
+        const content = fs.readFileSync(gitdirFile, 'utf-8').trim();
+        // gitdir file contains path to the worktree's .git file
+        // which is the worktree working directory + /.git
+        const worktreeGit = path.isAbsolute(content)
+          ? content
+          : path.resolve(worktreesDir, entry, content);
+        const worktreeDir = path.dirname(worktreeGit);
+        if (fs.existsSync(worktreeDir)) {
+          siblings.push(worktreeDir);
+        }
+      } catch {
+        // Skip entries without gitdir
+      }
+    }
+  } catch {
+    // worktrees dir doesn't exist or isn't readable
+  }
+
+  return siblings;
+}
+
+/**
+ * Finds all sessions across the main repo and all its worktrees.
+ *
+ * When monitoring from a worktree, sessions started from the main repo
+ * or other worktrees are normally invisible. This function consolidates
+ * sessions from all related workspaces.
+ *
+ * @param workspacePath - Absolute path to workspace directory (may be worktree or main repo)
+ * @returns Sorted array of session file paths from all related workspaces
+ */
+export function findAllSessionsWithWorktrees(workspacePath: string): string[] {
+  const allPaths = new Set<string>();
+
+  // Start with sessions from the given workspace
+  for (const s of findAllSessions(workspacePath)) {
+    allPaths.add(s);
+  }
+
+  // Check if this is a worktree
+  const mainRepo = resolveWorktreeMainRepo(workspacePath);
+  if (mainRepo) {
+    // Add sessions from the main repo
+    for (const s of findAllSessions(mainRepo)) {
+      allPaths.add(s);
+    }
+    // Add sessions from sibling worktrees
+    for (const sibling of discoverWorktreeSiblings(mainRepo)) {
+      if (sibling !== workspacePath) {
+        for (const s of findAllSessions(sibling)) {
+          allPaths.add(s);
+        }
+      }
+    }
+  } else {
+    // This might be the main repo — check for worktrees
+    const siblings = discoverWorktreeSiblings(workspacePath);
+    for (const sibling of siblings) {
+      for (const s of findAllSessions(sibling)) {
+        allPaths.add(s);
+      }
+    }
+  }
+
+  // Sort by mtime (most recent first)
+  return Array.from(allPaths)
+    .map(sessionPath => {
+      try {
+        const stat = fs.statSync(sessionPath);
+        return { path: sessionPath, mtime: stat.mtime.getTime() };
+      } catch {
+        return { path: sessionPath, mtime: 0 };
+      }
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+    .map(f => f.path);
+}

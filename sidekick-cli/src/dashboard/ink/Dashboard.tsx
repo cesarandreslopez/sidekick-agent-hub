@@ -883,6 +883,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
         <StatusBar
           eventCount={metrics.eventCount}
           providerName={metrics.providerName}
+          permissionMode={metrics.permissionMode}
           focusTarget={state.focusTarget}
           panelHints={buildPanelHints()}
           sessionFilter={state.sessionFilter?.label ?? null}

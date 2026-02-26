@@ -1136,6 +1136,16 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
+   * Returns the full aggregated metrics from the EventAggregator.
+   *
+   * Includes permission mode tracking, context timeline, noise-classified
+   * timeline events, and all other aggregation outputs.
+   */
+  getAggregatedMetrics() {
+    return this.aggregator.getMetrics();
+  }
+
+  /**
    * Scans subagent directory and updates cached stats.
    */
   private scanSubagents(): void {

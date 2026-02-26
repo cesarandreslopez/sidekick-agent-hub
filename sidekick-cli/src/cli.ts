@@ -39,4 +39,17 @@ const dashCmd = new Command('dashboard')
   });
 program.addCommand(dashCmd);
 
+// Dump command — static session dump in text, JSON, or markdown format
+const dumpCmd = new Command('dump')
+  .description('Dump session data as text timeline, JSON metrics, or markdown report')
+  .option('--session <id>', 'Target a specific session (default: most recent)')
+  .option('--width <cols>', 'Terminal width for text output (default: auto-detect)')
+  .option('--expand', 'Show all events including noise')
+  .option('--format <fmt>', 'Output format: text, json, markdown (default: text)')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { dumpAction } = await import('./commands/dump');
+    return dumpAction(_opts, cmd);
+  });
+program.addCommand(dumpCmd);
+
 program.parse();
