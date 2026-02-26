@@ -3,10 +3,13 @@
  */
 
 import * as fs from 'fs';
-import type { PersistedPlan, PlanHistoryStore } from '../types/plan';
+import * as path from 'path';
+import * as os from 'os';
+import type { PersistedPlan, PersistedPlanStep, PlanHistoryStore } from '../types/plan';
 import { PLAN_SCHEMA_VERSION, MAX_PLANS_PER_PROJECT } from '../types/plan';
-import { getProjectDataPath } from '../paths';
+import { getProjectDataPath, encodeWorkspacePath } from '../paths';
 import { readJsonStore } from './helpers';
+import { parsePlanMarkdown } from '../parsers/planExtractor';
 
 export interface ReadPlansOptions {
   status?: 'in_progress' | 'completed' | 'failed' | 'abandoned' | 'all';
@@ -159,4 +162,97 @@ export async function writePlans(slug: string, plans: PersistedPlan[]): Promise<
   await fs.promises.mkdir(dir, { recursive: true });
 
   await fs.promises.writeFile(filePath, JSON.stringify(store, null, 2), 'utf-8');
+}
+
+/**
+ * Reads raw plan markdown files from ~/.claude/plans/ that belong to
+ * sessions in the given workspace. Maps session JSONL slugs to plan filenames.
+ */
+export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<PersistedPlan[]> {
+  const claudePlansDir = path.join(os.homedir(), '.claude', 'plans');
+  const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
+
+  // Find the project directory in ~/.claude/projects/
+  const cwd = workspacePath || process.cwd();
+  const encoded = encodeWorkspacePath(path.resolve(cwd));
+  const projectDir = path.join(claudeProjectsDir, encoded);
+
+  if (!fs.existsSync(projectDir) || !fs.existsSync(claudePlansDir)) {
+    return [];
+  }
+
+  // Extract unique slugs from session JSONL files (read first match per file)
+  const slugSet = new Set<string>();
+  let jsonlFiles: string[];
+  try {
+    jsonlFiles = (await fs.promises.readdir(projectDir))
+      .filter(f => f.endsWith('.jsonl'));
+  } catch {
+    return [];
+  }
+
+  // Read slugs in parallel (grep first "slug" field from each JSONL)
+  const SLUG_RE = /"slug":"([^"]+)"/;
+  await Promise.all(jsonlFiles.map(async (f) => {
+    try {
+      const filePath = path.join(projectDir, f);
+      const handle = await fs.promises.open(filePath, 'r');
+      try {
+        // Read first 32KB — slug is always in the first few lines
+        const buf = Buffer.alloc(32768);
+        const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+        const chunk = buf.toString('utf-8', 0, bytesRead);
+        for (const line of chunk.split('\n')) {
+          const m = line.match(SLUG_RE);
+          if (m) {
+            slugSet.add(m[1]);
+            break;
+          }
+        }
+      } finally {
+        await handle.close();
+      }
+    } catch { /* skip unreadable files */ }
+  }));
+
+  if (slugSet.size === 0) return [];
+
+  // Read matching plan files
+  const plans: PersistedPlan[] = [];
+  for (const slug of slugSet) {
+    const planPath = path.join(claudePlansDir, `${slug}.md`);
+    try {
+      const stat = await fs.promises.stat(planPath);
+      const content = await fs.promises.readFile(planPath, 'utf-8');
+      const parsed = parsePlanMarkdown(content);
+
+      const steps: PersistedPlanStep[] = parsed.steps.map(s => ({
+        id: s.id,
+        description: s.description,
+        status: s.status,
+        phase: s.phase,
+        complexity: s.complexity,
+      }));
+
+      const completed = steps.filter(s => s.status === 'completed').length;
+      const total = steps.length;
+
+      plans.push({
+        id: `claude-plan-${slug}`,
+        projectSlug: encoded,
+        sessionId: slug,
+        title: parsed.title || slug,
+        source: 'claude-code',
+        createdAt: stat.mtime.toISOString(),
+        status: total > 0 && completed === total ? 'completed' : 'in_progress',
+        steps,
+        completionRate: total > 0 ? completed / total : 0,
+        rawMarkdown: content,
+      });
+    } catch { /* plan file missing or unreadable */ }
+  }
+
+  // Sort by createdAt descending
+  plans.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return plans;
 }

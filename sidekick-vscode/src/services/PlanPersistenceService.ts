@@ -66,7 +66,7 @@ export class PlanPersistenceService implements vscode.Disposable {
    * Persists a plan from the current session.
    */
   savePlan(sessionId: string, planState: PlanState): void {
-    if (!planState.steps.length) return;
+    if (!planState.steps.length && !planState.rawMarkdown) return;
 
     const planId = `${sessionId.slice(0, 8)}-${Date.now()}`;
     const completedSteps = planState.steps.filter(s => s.status === 'completed').length;

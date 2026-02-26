@@ -21,8 +21,7 @@ import { TasksPanel } from '../dashboard/panels/TasksPanel';
 import { KanbanPanel } from '../dashboard/panels/KanbanPanel';
 import { NotesPanel } from '../dashboard/panels/NotesPanel';
 import { DecisionsPanel } from '../dashboard/panels/DecisionsPanel';
-// TODO: PlansPanel disabled — plan file content capture not working yet.
-// import { PlansPanel } from '../dashboard/panels/PlansPanel';
+import { PlansPanel } from '../dashboard/panels/PlansPanel';
 import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
@@ -108,8 +107,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     new KanbanPanel(),
     new NotesPanel(),
     new DecisionsPanel(),
-    // TODO: PlansPanel disabled — plan file content capture not working yet.
-    // new PlansPanel(),
+    new PlansPanel(),
   ];
 
   // Wire up narrative completion callback to trigger re-render

@@ -15,6 +15,9 @@ const CHECKBOX_PATTERN = /^[-*]\s+\[([ xX])\]\s+(.+)/;
 /** Numbered list pattern: `1. text` or `1) text` */
 const NUMBERED_PATTERN = /^\d+[.)]\s+(.+)/;
 
+/** Bullet point pattern: `- Step` or `* Step` (excluding checkboxes) */
+const BULLET_PATTERN = /^[-*]\s+(?!\[[ xX]\])(.+)/;
+
 /** Phase header pattern: `## Phase 1: Setup` */
 const PHASE_HEADER_PATTERN = /^#{2,4}\s+(?:Phase|Step|Stage)\s*\d*[:.]\s*(.+)/i;
 
@@ -102,6 +105,23 @@ export function parsePlanMarkdown(markdown: string): { title?: string; steps: Ex
     const numberedMatch = line.match(NUMBERED_PATTERN);
     if (numberedMatch) {
       const description = numberedMatch[1].trim();
+      steps.push({
+        id: `step-${stepIndex}`,
+        description,
+        status: 'pending',
+        phase: currentPhase,
+        complexity: inferComplexity(description),
+      });
+      stepIndex++;
+      continue;
+    }
+
+    const bulletMatch = line.match(BULLET_PATTERN);
+    if (bulletMatch) {
+      const raw = bulletMatch[1].trim();
+      if (raw.length <= 3) continue; // skip trivially short lines
+      // Normalize bold-colon patterns: **Setup**: desc → Setup: desc
+      const description = raw.replace(/\*\*(.+?)\*\*:\s*/, '$1: ');
       steps.push({
         id: `step-${stepIndex}`,
         description,
@@ -333,7 +353,6 @@ export class PlanExtractor {
 
   private extractFromMarkdown(markdown: string, source: 'claude-code' | 'opencode' | 'codex'): boolean {
     const parsed = parsePlanMarkdown(markdown);
-    if (parsed.steps.length === 0) return false;
 
     this._plan = {
       title: parsed.title || 'Plan',

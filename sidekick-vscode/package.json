@@ -1019,6 +1019,11 @@
         },
         {
           "type": "webview",
+          "id": "sidekick.planBoard",
+          "name": "Plans"
+        },
+        {
+          "type": "webview",
           "id": "sidekick.projectTimeline",
           "name": "Project Timeline"
         },

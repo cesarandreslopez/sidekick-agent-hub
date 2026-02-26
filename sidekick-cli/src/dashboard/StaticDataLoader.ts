@@ -8,6 +8,7 @@ import {
   readDecisions,
   readNotes,
   readPlans,
+  readClaudeCodePlanFiles,
   getProjectSlug,
   getProjectSlugRaw,
 } from 'sidekick-shared';
@@ -74,6 +75,12 @@ export async function loadStaticData(workspacePath?: string): Promise<StaticData
     if (decisions.length === 0) decisions = d;
     if (notes.length === 0) notes = n;
     if (plans.length === 0) plans = p;
+  }
+
+  // Supplement with raw plan files from ~/.claude/plans/ (always available,
+  // even before the persistence pipeline runs)
+  if (plans.length === 0) {
+    plans = await readClaudeCodePlanFiles(workspacePath).catch(() => []);
   }
 
   const sessions = extractSessions(history);

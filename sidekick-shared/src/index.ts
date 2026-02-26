@@ -123,7 +123,7 @@ export { readNotes } from './readers/notes';
 export type { ReadNotesOptions } from './readers/notes';
 export { readHistory } from './readers/history';
 export { readLatestHandoff } from './readers/handoff';
-export { readPlans, getLatestPlan, writePlans, getPlanAnalytics } from './readers/plans';
+export { readPlans, getLatestPlan, writePlans, getPlanAnalytics, readClaudeCodePlanFiles } from './readers/plans';
 export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 
 // Providers

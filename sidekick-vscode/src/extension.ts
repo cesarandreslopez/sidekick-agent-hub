@@ -56,8 +56,7 @@ import { ErrorViewProvider } from "./providers/ErrorViewProvider";
 import { DashboardViewProvider } from "./providers/DashboardViewProvider";
 import { MindMapViewProvider } from "./providers/MindMapViewProvider";
 import { TaskBoardViewProvider } from "./providers/TaskBoardViewProvider";
-// TODO: Plan board disabled — plan file content capture not working yet.
-// import { PlanBoardViewProvider } from "./providers/PlanBoardViewProvider";
+import { PlanBoardViewProvider } from "./providers/PlanBoardViewProvider";
 import { ProjectTimelineViewProvider } from "./providers/ProjectTimelineViewProvider";
 import { TaskPersistenceService } from "./services/TaskPersistenceService";
 import { PlanPersistenceService } from "./services/PlanPersistenceService";
@@ -358,17 +357,15 @@ export async function activate(context: vscode.ExtensionContext) {
         log(`Session summary saved for ${summary.sessionId.slice(0, 8)}`);
       }
 
-      // TODO: Plan persistence disabled — plan file content capture not working yet.
-      // Re-enable when EnterPlanMode/ExitPlanMode + Edit tool capture is fixed.
-      // const stats = sessionMonitor?.getStats();
-      // if (stats?.planState && planPersistenceService) {
-      //   sessionMonitor?.finalizePlanOnSessionEnd();
-      //   const finalStats = sessionMonitor?.getStats();
-      //   if (finalStats?.planState) {
-      //     const sessionId = summary?.sessionId ?? `unknown-${Date.now()}`;
-      //     planPersistenceService.savePlan(sessionId, finalStats.planState);
-      //   }
-      // }
+      const stats = sessionMonitor?.getStats();
+      if (stats?.planState && planPersistenceService) {
+        sessionMonitor?.finalizePlanOnSessionEnd();
+        const finalStats = sessionMonitor?.getStats();
+        if (finalStats?.planState) {
+          const sessionId = summary?.sessionId ?? `unknown-${Date.now()}`;
+          planPersistenceService.savePlan(sessionId, finalStats.planState);
+        }
+      }
     });
 
     // Create quota service for subscription limits (only for Claude Code provider)
@@ -624,14 +621,12 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     log('Task board view provider registered');
 
-    // TODO: Plan board view disabled — plan file content capture not working yet.
-    // Re-enable when EnterPlanMode/ExitPlanMode + Edit tool capture is fixed.
-    // const planBoardProvider = new PlanBoardViewProvider(context.extensionUri, sessionMonitor, planPersistenceService);
-    // context.subscriptions.push(planBoardProvider);
-    // context.subscriptions.push(
-    //   vscode.window.registerWebviewViewProvider(PlanBoardViewProvider.viewType, planBoardProvider)
-    // );
-    // log('Plan board view provider registered');
+    const planBoardProvider = new PlanBoardViewProvider(context.extensionUri, sessionMonitor, planPersistenceService);
+    context.subscriptions.push(planBoardProvider);
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(PlanBoardViewProvider.viewType, planBoardProvider)
+    );
+    log('Plan board view provider registered');
 
     // Register project timeline view provider (depends on sessionMonitor)
     const timelineProvider = new ProjectTimelineViewProvider(context.extensionUri, sessionMonitor);

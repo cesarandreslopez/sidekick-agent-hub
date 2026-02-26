@@ -13,6 +13,7 @@ import type { PlanPersistenceService } from '../services/PlanPersistenceService'
 import type { PlanBoardState, PlanBoardMessage, WebviewPlanBoardMessage, ActivePlanDisplay, PlanHistoryEntry, PlanStepCard } from '../types/planBoard';
 import type { PlanState } from '../types/claudeSession';
 import type { PersistedPlan } from '../types/plan';
+import { readClaudeCodePlanFiles } from 'sidekick-shared';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 
@@ -25,6 +26,8 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _state: PlanBoardState;
+  private _claudeCodePlans: PersistedPlan[] = [];
+  private _claudeCodePlansLoaded = false;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -63,6 +66,9 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     } else {
       this._syncFromSessionMonitor();
     }
+
+    // Load raw plan files from ~/.claude/plans/ asynchronously
+    this._loadClaudeCodePlans();
 
     log('PlanBoardViewProvider initialized');
   }
@@ -138,6 +144,18 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     return hist?.rawMarkdown;
   }
 
+  private async _loadClaudeCodePlans(): Promise<void> {
+    try {
+      const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      this._claudeCodePlans = await readClaudeCodePlanFiles(workspacePath);
+      this._claudeCodePlansLoaded = true;
+      this._syncFromSessionMonitor();
+      this._sendStateToWebview();
+    } catch {
+      this._claudeCodePlansLoaded = true;
+    }
+  }
+
   private _updateBoard(): void {
     this._syncFromSessionMonitor();
     this._sendStateToWebview();
@@ -149,19 +167,29 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Active plan from current session
     let activePlan: ActivePlanDisplay | null = null;
-    if (planState && planState.steps.length > 0) {
+    if (planState && (planState.steps.length > 0 || planState.rawMarkdown)) {
       activePlan = this._planStateToDisplay(planState);
     }
 
-    // Historical plans from persistence
+    // Historical plans from persistence + raw Claude Code plan files
     let historicalPlans: PlanHistoryEntry[] = [];
+    const activeSessionId = this._getActiveSessionPrefix();
+    const seenIds = new Set<string>();
+
     if (this._planPersistence) {
       const persisted = this._planPersistence.getPlans();
-      const activeSessionId = this._getActiveSessionPrefix();
+      for (const p of persisted) {
+        if (activeSessionId && p.sessionId.startsWith(activeSessionId)) continue;
+        seenIds.add(p.id);
+        historicalPlans.push(this._persistedToHistoryEntry(p));
+      }
+    }
 
-      historicalPlans = persisted
-        .filter(p => !activeSessionId || !p.sessionId.startsWith(activeSessionId))
-        .map(p => this._persistedToHistoryEntry(p));
+    // Merge raw Claude Code plan files (deduplicate by sessionId)
+    for (const p of this._claudeCodePlans) {
+      if (seenIds.has(p.id)) continue;
+      if (activeSessionId && p.sessionId.startsWith(activeSessionId)) continue;
+      historicalPlans.push(this._persistedToHistoryEntry(p));
     }
 
     this._state = {
