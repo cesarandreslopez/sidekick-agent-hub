@@ -807,6 +807,11 @@
       {
         "command": "sidekick.injectKnowledgeNotes",
         "title": "Sidekick: Inject Knowledge Notes into CLAUDE.md"
+      },
+      {
+        "command": "sidekick.dumpSession",
+        "title": "Sidekick: Dump Session Report",
+        "icon": "$(output)"
       }
     ],
     "submenus": [
@@ -959,6 +964,13 @@
         {
           "command": "sidekick.explainError.phd",
           "group": "1_levels@5"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "sidekick.dumpSession",
+          "when": "view == sidekick.dashboard",
+          "group": "navigation"
         }
       ],
       "view/item/context": [

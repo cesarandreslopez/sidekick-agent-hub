@@ -1161,6 +1161,58 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Register dump session report command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.dumpSession', async () => {
+      if (!sessionMonitor) {
+        vscode.window.showErrorMessage('Session monitor not initialized');
+        return;
+      }
+
+      const sessionPath = sessionMonitor.getSessionPath();
+      if (!sessionPath) {
+        vscode.window.showErrorMessage('No active session to dump');
+        return;
+      }
+
+      const formatPick = await vscode.window.showQuickPick(
+        [
+          { label: 'Markdown', description: 'Structured report with tables', value: 'markdown' as const },
+          { label: 'Text', description: 'Plain text timeline', value: 'text' as const },
+          { label: 'JSON', description: 'Raw metrics object', value: 'json' as const },
+        ],
+        { placeHolder: 'Select output format' },
+      );
+
+      if (!formatPick) return;
+
+      const { formatSessionText, formatSessionMarkdown, formatSessionJson } = await import('sidekick-shared');
+      const metrics = sessionMonitor.getAggregatedMetrics();
+      const sessionFileName = path.basename(sessionPath);
+
+      let content: string;
+      let language: string;
+      switch (formatPick.value) {
+        case 'markdown':
+          content = formatSessionMarkdown(metrics, { sessionFileName });
+          language = 'markdown';
+          break;
+        case 'json':
+          content = formatSessionJson(metrics);
+          language = 'json';
+          break;
+        case 'text':
+        default:
+          content = formatSessionText(metrics, { width: 120 });
+          language = 'plaintext';
+          break;
+      }
+
+      const doc = await vscode.workspace.openTextDocument({ content, language });
+      await vscode.window.showTextDocument(doc);
+    })
+  );
+
   // Register status bar menu command
   context.subscriptions.push(
     vscode.commands.registerCommand("sidekick.showMenu", async () => {
@@ -1195,6 +1247,11 @@ export async function activate(context: vscode.ExtensionContext) {
           label: "$(terminal) Open CLI Dashboard",
           description: "Launch Sidekick TUI in terminal",
           action: "cliDashboard",
+        },
+        {
+          label: "$(output) Dump Session Report",
+          description: "Export session as text, markdown, or JSON",
+          action: "dumpSession",
         },
       ];
 
@@ -1233,6 +1290,9 @@ export async function activate(context: vscode.ExtensionContext) {
             break;
           case "cliDashboard":
             vscode.commands.executeCommand("sidekick.openCliDashboard");
+            break;
+          case "dumpSession":
+            vscode.commands.executeCommand("sidekick.dumpSession");
             break;
         }
       }

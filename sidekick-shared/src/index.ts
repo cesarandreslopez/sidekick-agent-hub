@@ -225,6 +225,8 @@ export {
   classifyNoise,
 } from './formatters/noiseClassifier';
 export type { MessageClassification, NoiseResult } from './formatters/noiseClassifier';
+export { formatSessionText, formatSessionMarkdown, formatSessionJson } from './formatters/sessionDump';
+export type { SessionDumpOptions } from './formatters/sessionDump';
 
 // Phrases
 export { ALL_PHRASES, getRandomPhrase } from './phrases';
