@@ -18,7 +18,7 @@
 
 import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
-import { getRandomPhrase } from '../utils/phrases';
+import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import type { TokenUsage } from '../types/claudeSession';
 import type { PermissionMode } from 'sidekick-shared/dist/types/sessionEvent';
 

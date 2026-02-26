@@ -8,7 +8,7 @@ declare const __CLI_VERSION__: string;
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useSpinner } from './useSpinner';
-import { getRandomPhrase } from '../../phrases';
+import { getRandomPhrase } from 'sidekick-shared';
 
 export function SplashOverlay(): React.ReactElement {
   const spinner = useSpinner();

@@ -79,7 +79,7 @@ import {
 } from "./utils/prompts";
 import { resolveModel } from "./services/ModelResolver";
 import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
-import { getRandomPhrase } from "./utils/phrases";
+import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /** Whether completions are currently enabled */
 let enabled = vscode.workspace.getConfiguration('sidekick').get('enabled', true);

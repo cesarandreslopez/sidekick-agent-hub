@@ -18,7 +18,7 @@ import type {
 } from '../types/projectTimeline';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
-import { getRandomPhrase } from '../utils/phrases';
+import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /**
  * WebviewViewProvider for the multi-session project timeline.

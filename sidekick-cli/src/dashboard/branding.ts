@@ -9,7 +9,7 @@
  *   - </> sits left of the body on the top row
  */
 
-import { getRandomPhraseBlessedTag } from '../phrases';
+import { getRandomPhraseBlessedTag } from '../phraseFormatters';
 
 export const LOGO_ART = [
   '          {yellow-fg}⚡{/yellow-fg}',

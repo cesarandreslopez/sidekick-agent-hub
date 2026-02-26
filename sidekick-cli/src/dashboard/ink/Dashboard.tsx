@@ -9,7 +9,7 @@ import type { DashboardMetrics } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { SidePanel, PanelItem, PanelAction } from '../panels/types';
 // FocusStack logic is now handled by the useReducer state
-import { getRandomPhraseBlessedTag } from '../../phrases';
+import { getRandomPhraseBlessedTag } from '../../phraseFormatters';
 import { useTerminalSize } from './useTerminalSize';
 import { useWindowedScroll } from './useWindowedScroll';
 import { TabBar } from './TabBar';

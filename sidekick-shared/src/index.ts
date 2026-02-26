@@ -226,6 +226,9 @@ export {
 } from './formatters/noiseClassifier';
 export type { MessageClassification, NoiseResult } from './formatters/noiseClassifier';
 
+// Phrases
+export { ALL_PHRASES, getRandomPhrase } from './phrases';
+
 // Aggregation
 export { EventAggregator } from './aggregation/EventAggregator';
 export type { SerializedAggregatorState } from './aggregation/EventAggregator';

@@ -46,7 +46,7 @@ import { extractKnowledgeCandidates } from '../services/KnowledgeCandidateExtrac
 import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
-import { getRandomPhrase } from '../utils/phrases';
+import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /**
  * WebviewViewProvider for the session analytics dashboard.

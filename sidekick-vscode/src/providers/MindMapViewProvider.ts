@@ -21,7 +21,7 @@ import type { MindMapState, MindMapMessage, WebviewMindMapMessage } from '../typ
 import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
-import { getRandomPhrase } from '../utils/phrases';
+import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /**
  * WebviewViewProvider for the session mind map visualization.

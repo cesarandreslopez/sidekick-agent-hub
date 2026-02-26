@@ -15,7 +15,7 @@ import type { PersistedTask } from '../types/taskPersistence';
 import type { TaskBoardState, TaskBoardMessage, WebviewTaskBoardMessage, TaskBoardColumn, TaskCard } from '../types/taskBoard';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
-import { getRandomPhrase } from '../utils/phrases';
+import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /**
  * WebviewViewProvider for the session task board.

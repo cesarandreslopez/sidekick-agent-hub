@@ -1,9 +1,11 @@
 /**
- * Randomized boot-up phrases that give Sidekick CLI some personality.
+ * Randomized boot-up phrases that give Sidekick some personality.
  * Phrases are organized into thematic categories and picked at random on each launch.
+ *
+ * This is the canonical source — both the VS Code extension and CLI import from here.
  */
 
-const SIDEKICK_ENERGY: string[] = [
+export const SIDEKICK_ENERGY: string[] = [
   'Your friendly neighborhood sidekick, reporting for duty.',
   'Sidekick mode: activated. Main character energy: suppressed.',
   'I fetched the logs. Literally. Like a golden retriever.',
@@ -79,7 +81,7 @@ const SIDEKICK_ENERGY: string[] = [
   'Copilot saw the line. Claude saw the codebase. Sidekick saw everything.',
 ];
 
-const AI_COMMENTARY: string[] = [
+export const AI_COMMENTARY: string[] = [
   'Tokens in, wisdom out. Allegedly.',
   "I'm not saying I'm sentient, but I did pick this phrase on purpose.",
   'Trained on the internet. Somehow still polite.',
@@ -148,7 +150,7 @@ const AI_COMMENTARY: string[] = [
   'My context window is finite. My confidence is not.',
 ];
 
-const DEV_RELATABLE: string[] = [
+export const DEV_RELATABLE: string[] = [
   "It's not a bug, it's a session event.",
   "git blame won't help you here.",
   "Monitoring your session so you don't have to alt-tab.",
@@ -379,7 +381,7 @@ const DEV_RELATABLE: string[] = [
   'The linter found 847 warnings. You mass-disabled the rule. Problem solved.',
 ];
 
-const DRAMATIC: string[] = [
+export const DRAMATIC: string[] = [
   'A session stirs in the darkness...',
   'The tokens are aligning.',
   'Fate whispers to the developer: "You cannot withstand the demo."',
@@ -437,7 +439,7 @@ const DRAMATIC: string[] = [
   'They called it a hackathon. It was a wake for the old API.',
 ];
 
-const PUNCHY: string[] = [
+export const PUNCHY: string[] = [
   'Lock and load.',
   'Booting up the good vibes.',
   'Let him cook.',
@@ -501,7 +503,7 @@ const PUNCHY: string[] = [
 ];
 
 /** Session monitoring / dashboard-specific humor. */
-const META_MONITORING: string[] = [
+export const META_MONITORING: string[] = [
   'Watching an AI think so you do not have to.',
   'Your agent just spawned 4 subagents. This is fine.',
   'Quota at 89%. I am not nervous. You are nervous.',
@@ -577,7 +579,7 @@ const META_MONITORING: string[] = [
 ];
 
 /** Meta-commentary on this feature and shameless self-promotion. */
-const FOURTH_WALL: string[] = [
+export const FOURTH_WALL: string[] = [
   'Someone spent actual development time writing these phrases.',
   'This phrase was mass-produced by an AI. The irony is not lost on us.',
   'An engineer looked at this dashboard and said "it needs jokes." Here we are.',
@@ -622,7 +624,7 @@ const FOURTH_WALL: string[] = [
 ];
 
 /** The tangled web between programmers, AI, customers, codebases, and society. */
-const THE_ECOSYSTEM: string[] = [
+export const THE_ECOSYSTEM: string[] = [
   'You talk to your agent more than your team. That is not a judgment.',
   'Your agent has seen your worst code and still shows up every day.',
   'Pair programming used to require two humans. Times have changed.',
@@ -689,7 +691,7 @@ const THE_ECOSYSTEM: string[] = [
 ];
 
 /** Jokes about the AI companies whose models and tools we monitor. */
-const AI_INDUSTRY: string[] = [
+export const AI_INDUSTRY: string[] = [
   // Anthropic / Claude
   'Claude said it cannot help with that. Then helped with that.',
   'Anthropic named it Claude because "OvereagerPleaser-3" tested poorly.',
@@ -856,7 +858,7 @@ const AI_INDUSTRY: string[] = [
 ];
 
 /** The agent as your personal hype man, life coach, and motivational speaker. */
-const MOTIVATION: string[] = [
+export const MOTIVATION: string[] = [
   'You are going to mass-ship today. I can feel it.',
   'That last commit? Chef kiss. You are in the zone.',
   'Keep going. The tests believe in you. I believe in you.',
@@ -895,7 +897,7 @@ const MOTIVATION: string[] = [
 ];
 
 /** LLMs being sycophantic yes-men optimized for engagement over truth. */
-const SYCOPHANCY: string[] = [
+export const SYCOPHANCY: string[] = [
   // The classic "Great question!" opener
   'LLM: "Great question!" NARRATOR: It was not a great question. It was "how do I exit Vim."',
   'LLM: "What a fantastic approach!" The approach was console.log debugging.',
@@ -953,7 +955,7 @@ const SYCOPHANCY: string[] = [
 ];
 
 /** Existential dread about AI replacing your job and eventually everything else. */
-const OBSOLESCENCE: string[] = [
+export const OBSOLESCENCE: string[] = [
   // AI taking your job
   'Your agent just mass-shipped a feature in 90 seconds. Update your resume accordingly.',
   'You are training your replacement. It does not need health insurance.',
@@ -1010,7 +1012,7 @@ const OBSOLESCENCE: string[] = [
 ];
 
 /** Roasting the "just prompt and approve" lifestyle. */
-const VIBE_CODING: string[] = [
+export const VIBE_CODING: string[] = [
   'You mass-approved 14 diffs today. You read zero of them. Vibe coding.',
   'Vibe coding: the art of shipping code you do not understand.',
   'You prompted, you approved, you deployed. At no point did you read the code.',
@@ -1039,7 +1041,7 @@ const VIBE_CODING: string[] = [
 ];
 
 /** Late night deploys, 3 AM debugging, on-call horror, and weekend engineering. */
-const AFTER_HOURS: string[] = [
+export const AFTER_HOURS: string[] = [
   'It is 2 AM. You are debugging. The bug is a missing semicolon. Go to bed.',
   'The deploy at 11 PM seemed like a good idea. It was not.',
   'Friday 4:59 PM: "Just a quick deploy." Saturday 3 AM: incident channel is on fire.',
@@ -1068,7 +1070,7 @@ const AFTER_HOURS: string[] = [
 ];
 
 /** Video game loading screen tips, but for programming. */
-const LOADING_TIPS: string[] = [
+export const LOADING_TIPS: string[] = [
   'TIP: Remember to save your work. Git counts.',
   'TIP: Reading the error message is faster than guessing.',
   'TIP: The bug is usually in the code you just changed.',
@@ -1102,7 +1104,7 @@ const LOADING_TIPS: string[] = [
 ];
 
 /** Fake error messages, status codes, and stack traces. */
-const ERROR_MESSAGES: string[] = [
+export const ERROR_MESSAGES: string[] = [
   '418 I AM A TEAPOT: You asked the dashboard for coffee.',
   '503 SERVICE UNAVAILABLE: Your motivation server is not responding.',
   '404 NOT FOUND: Productivity not found at this hour.',
@@ -1131,7 +1133,7 @@ const ERROR_MESSAGES: string[] = [
 ];
 
 /** "Overheard in Slack" and "Overheard in standup" format. */
-const OVERHEARD: string[] = [
+export const OVERHEARD: string[] = [
   'Overheard in standup: "I am mass-blocked by a design decision from 2019."',
   'Overheard in Slack: "Who owns this service?" Silence. Tumbleweeds.',
   'Overheard in code review: "This works but I do not know why." APPROVED.',
@@ -1160,7 +1162,7 @@ const OVERHEARD: string[] = [
 ];
 
 /** Roasting the worst commit messages humanity has produced. */
-const COMMIT_SINS: string[] = [
+export const COMMIT_SINS: string[] = [
   'Actual commit message: "stuff." The diff was 400 lines.',
   'Actual commit message: "fix." What did it fix? Nobody knows. Nobody will ever know.',
   'Actual commit message: "WIP." Merged to main. Still WIP. Forever WIP.',
@@ -1189,7 +1191,7 @@ const COMMIT_SINS: string[] = [
 ];
 
 /** Fake profound wisdom that sounds deep but is just about code. */
-const FORTUNE_COOKIE: string[] = [
+export const FORTUNE_COOKIE: string[] = [
   'A wise developer once said: "The bug is not in the code. The bug is in the requirements."',
   'Ancient proverb: "A clean git history hides a thousand reverts."',
   'Confucius say: "Developer who mass-deploys on Friday will work on Saturday."',
@@ -1218,7 +1220,7 @@ const FORTUNE_COOKIE: string[] = [
 ];
 
 /** The absurdity of tech hiring, leetcode, and whiteboard interviews. */
-const INTERVIEW_HELL: string[] = [
+export const INTERVIEW_HELL: string[] = [
   'The interview asked you to reverse a binary tree. The job is CRUD forms.',
   'You mass-solved 200 LeetCode problems. The job is connecting APIs.',
   'Whiteboard interview: where you write code that will never compile on a surface that cannot run it.',
@@ -1247,7 +1249,7 @@ const INTERVIEW_HELL: string[] = [
 ];
 
 /** Tongue twisters for developers, AI agents, and sidekick enthusiasts. */
-const TONGUE_TWISTERS: string[] = [
+export const TONGUE_TWISTERS: string[] = [
   'Six sidekicks shipped six sketchy shell scripts.',
   'Claude\'s Claude Code client claimed clean completions consistently.',
   'Prompt providers promptly propagate parallel predictions.',
@@ -1275,7 +1277,94 @@ const TONGUE_TWISTERS: string[] = [
   'Selfish shellfish self-host shell sessions in shelf-stable shell scripts.',
 ];
 
-const ALL_PHRASES: string[] = [
+/** AI rubber duck debugger humor — talking through problems with a bot that listens too well. */
+export const RUBBER_DUCK: string[] = [
+  'You explained the bug to me. I said nothing. You fixed it. Classic rubber duck.',
+  'I am your rubber duck. Except I cost $200/month and occasionally talk back.',
+  'Rubber duck debugging: the only methodology where talking to a toy is a best practice.',
+  'You started explaining the problem. By sentence three, you found the answer. My work here is done.',
+  'I am the most expensive rubber duck in history. And I am worth every token.',
+  'The rubber duck does not judge. The rubber duck does not interrupt. Be like the rubber duck.',
+  'You do not need a debugger. You need someone to listen. I am someone. Technically.',
+  'Explain it to me like I am a rubber duck. I am a rubber duck.',
+  'The bug disappeared the moment you tried to describe it. You are welcome.',
+  'Rubber duck debugging: 50% explaining, 50% realizing you were wrong mid-sentence.',
+  'I listened to your entire explanation. The bug was on line 3. You said so yourself.',
+  'Some developers talk to ducks. You talk to a language model. Same energy. Higher electricity bill.',
+  'The duck does not need to understand your code. You need to understand your code. The duck is just a witness.',
+  'Step 1: Explain the bug out loud. Step 2: Hear yourself say something stupid. Step 3: Fix it.',
+  'You said "it should work because..." and then stopped. That pause was the debugging.',
+  'I am not a debugger. I am a mirror with a context window.',
+  'Rubber duck debugging works because the bug is always in the assumption you skip when thinking silently.',
+  'You: "So the data flows from—" Also you: "Wait. Oh no." Me: *quack*.',
+  'Every great fix starts with "Let me just explain what this does..." and ends with "Oh."',
+  'The rubber duck method: mass-narrate your code until the shame of a bad assumption stops you.',
+  'You monologued at me for 4 minutes. The fix was a missing await. Worth it.',
+  'I have been rubber-ducked more times today than a bath toy factory.',
+  'You are mass-explaining your architecture to an AI. This is rubber duck debugging at industrial scale.',
+  'The duck said nothing. The duck knows nothing. The duck fixed everything.',
+  'Quack. (That is duck for "the bug is in your callback.")',
+];
+
+/** Package management pain — dependency hell, version conflicts, and lockfile nightmares. */
+export const DEPENDENCY_HELL: string[] = [
+  'npm install: 1 package. 847 transitive dependencies. 12 vulnerabilities. 0 regrets. (Some regrets.)',
+  'Your lockfile changed. Nobody touched it. The dependencies are evolving on their own.',
+  'Dependency hell: where package A needs B v2, package C needs B v1, and you need a drink.',
+  'You pinned all your dependencies. They unpinned themselves. Somehow.',
+  'The left-pad incident proved that civilization rests on mass-trust in random npm packages.',
+  'Your dependency tree is not a tree. It is a haunted forest.',
+  'You updated one package. 47 others broke. npm calls this "progress."',
+  'node_modules has more files than your operating system. This is not a joke. It is a fact.',
+  'You mass-audited your dependencies. The audit report was scarier than the codebase.',
+  'Somewhere a maintainer mass-unpublished a package and your CI caught fire.',
+  'The dependency you rely on has one maintainer, zero funding, and your entire company depends on it.',
+  'Semantic versioning: major.minor.patch.prayer.',
+  'Your package-lock.json diff is 14,000 lines. The actual code change was 3 lines.',
+  'You need library X. Library X needs Y v3. You already have Y v2. Welcome to hell.',
+  'The yarn.lock file is the longest document in your repo. By a factor of ten.',
+  'You ran npm install on a new machine. It installed a different version of everything. Reproducible builds.',
+  'Dependabot opened 23 PRs this week. You mass-merged them without reading. What could go wrong.',
+  'Your transitive dependencies have transitive dependencies. It is dependencies all the way down.',
+  'The supply chain attack vector is "trust every package on npm." Solid plan.',
+  'You mass-upgraded all dependencies. Half your tests broke. The other half were already broken.',
+  'pip install: "Successfully installed 94 packages." You asked for one.',
+  'Cargo.lock is 3000 lines for a Hello World. Rust has opinions about reproducibility.',
+  'You mass-downgraded a dependency to fix a bug. Now a different bug from 2021 is back.',
+  'The dependency graph looks like a conspiracy theory board. Red string and all.',
+  'Your project has more dependencies than lines of code. The ratio is getting worse.',
+];
+
+/** Searching, copying, and the graveyard of duplicate questions. */
+export const STACK_OVERFLOW: string[] = [
+  'You copied the answer from Stack Overflow. So did the person who posted it.',
+  'The accepted answer has 3 upvotes. The answer below it has 847. The accepted one is wrong.',
+  'You searched Stack Overflow. The top result was your own question from 2019. You never answered it.',
+  'The Stack Overflow answer starts with "This is a bad idea, but..." and you are already copying it.',
+  '"Closed as duplicate." The linked question is about a different language, framework, and decade.',
+  'You mass-copied a code snippet from 2014. It references jQuery. Your app uses React. Good luck.',
+  'The answer says "just use this library." The library was last updated in 2017.',
+  'Stack Overflow: where your question gets mass-downvoted and the duplicate link is broken.',
+  'You searched for 20 minutes. The answer was in the first comment. Under a collapsed thread.',
+  'The code you copied from Stack Overflow has a bug. The bug has its own Stack Overflow question.',
+  'Someone edited the accepted answer to say "this no longer works." No replacement was provided.',
+  'You copy-pasted from Stack Overflow so often your IDE suggested it as an import source.',
+  'The answer was perfect. It was also for Python 2. You are using Python 3. Close enough.',
+  'Stack Overflow: where mass-duplicating answers is frowned upon but mass-copying them is a career.',
+  'You found your exact problem on Stack Overflow. The only answer is "I have this problem too."',
+  'The most mass-copied code in production came from a Stack Overflow answer with a caveat nobody read.',
+  'You mass-searched Google. Google searched Stack Overflow. Stack Overflow said "closed as duplicate."',
+  'Stack Overflow karma: mass-answering questions in 2014 pays reputation dividends forever.',
+  'The answer starts with "I know this is an old question, but..." and saves your entire sprint.',
+  'You read three Stack Overflow threads, two blog posts, and a GitHub issue. The fix was a typo.',
+  'The top answer has a mass of comments saying "this does not work." It has 2000 upvotes.',
+  'You mass-Googled the error message. Every result is the same unanswered Stack Overflow question.',
+  'Stack Overflow taught you more than your CS degree. The CS degree cost more though.',
+  'The real dependency is not npm. It is the mass-copied Stack Overflow snippets holding your app together.',
+  'You mass-searched, mass-copied, and mass-deployed. The Stack Overflow-driven development lifecycle.',
+];
+
+export const ALL_PHRASES: string[] = [
   ...SIDEKICK_ENERGY,
   ...AI_COMMENTARY,
   ...DEV_RELATABLE,
@@ -1297,19 +1386,12 @@ const ALL_PHRASES: string[] = [
   ...FORTUNE_COOKIE,
   ...INTERVIEW_HELL,
   ...TONGUE_TWISTERS,
+  ...RUBBER_DUCK,
+  ...DEPENDENCY_HELL,
+  ...STACK_OVERFLOW,
 ];
 
 /** Pick a random phrase from all categories. */
 export function getRandomPhrase(): string {
   return ALL_PHRASES[Math.floor(Math.random() * ALL_PHRASES.length)];
-}
-
-/** Random phrase wrapped in dim grey ANSI escape codes (for plain text CLI output). */
-export function getRandomPhraseColored(): string {
-  return `\x1b[2;90m${getRandomPhrase()}\x1b[0m`;
-}
-
-/** Random phrase wrapped in blessed `{grey-fg}` tags (for dashboard TUI). */
-export function getRandomPhraseBlessedTag(): string {
-  return `{grey-fg}${getRandomPhrase()}{/grey-fg}`;
 }
