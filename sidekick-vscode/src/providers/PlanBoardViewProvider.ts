@@ -172,7 +172,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     // Historical plans from persistence + raw Claude Code plan files
-    let historicalPlans: PlanHistoryEntry[] = [];
+    const historicalPlans: PlanHistoryEntry[] = [];
     const activeSessionId = this._getActiveSessionPrefix();
     const seenIds = new Set<string>();
 

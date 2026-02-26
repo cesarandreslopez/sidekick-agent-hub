@@ -9,6 +9,7 @@ vi.mock('sidekick-shared', () => ({
   readDecisions: vi.fn(),
   readNotes: vi.fn(),
   readPlans: vi.fn(),
+  readClaudeCodePlanFiles: vi.fn().mockResolvedValue([]),
 }));
 
 import { loadStaticData } from './StaticDataLoader';
