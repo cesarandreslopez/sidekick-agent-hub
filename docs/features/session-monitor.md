@@ -28,6 +28,7 @@ The main dashboard panel provides:
 - **Session Navigator** — collapsible panel to switch between active and recent sessions
 - **Tool Analytics** — categorized tool usage with drill-down to individual calls
 - **Session Summary** — AI narrative generation with progress notification
+- **Session Dump** — export the current session as text, markdown, or JSON via `Sidekick: Dump Session Report` (Command Palette, status bar menu, or Session Analytics toolbar)
 
 ### Dashboard Sections
 

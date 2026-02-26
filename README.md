@@ -50,6 +50,12 @@ sidekick dashboard
 
 Browse sessions, tasks, decisions, knowledge notes, mind maps, and more. Auto-detects your project and session provider. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for keybindings and full usage.
 
+Export session data for sharing or archiving:
+
+```bash
+sidekick dump --format markdown > session-report.md
+```
+
 ## Provider Support
 
 | Provider | Inference | Session Monitoring | Cost |

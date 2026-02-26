@@ -61,6 +61,36 @@ sidekick dashboard --provider claude-code
 sidekick dashboard --session abc123 --replay
 ```
 
+## Session Dump
+
+```bash
+sidekick dump [options]
+```
+
+Dump session data as a text timeline, JSON metrics, or markdown report for sharing or archiving.
+
+| Flag | Description |
+|------|-------------|
+| `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
+| `--width <cols>` | Terminal width for text output (default: auto-detect) |
+| `--expand` | Show all events including noise |
+| `--session <id>` | Target a specific session (default: most recent) |
+
+Global flags `--project` and `--provider` also apply (see above).
+
+### Examples
+
+```bash
+# Dump the latest session as plain text
+sidekick dump
+
+# Export as markdown for sharing
+sidekick dump --format markdown > session-report.md
+
+# Full JSON export for tooling
+sidekick dump --format json > session.json
+```
+
 ## Dashboard Overview
 
 The dashboard is a two-pane Ink-based terminal UI. The left pane shows a navigable list of items (sessions, tasks, notes, etc.), and the right pane shows details for the selected item.
@@ -79,7 +109,7 @@ Minimum terminal size: 60 columns wide, 15 rows tall.
 
 ## Dashboard Panels
 
-Switch panels with number keys `1`–`5`.
+Switch panels with number keys `1`–`6`.
 
 ### Sessions (1)
 
@@ -111,13 +141,17 @@ Knowledge notes attached to files. Each note has Content and Related detail tabs
 
 Architectural decisions extracted from sessions. Stored in `~/.config/sidekick/decisions/`.
 
+### Plans (6)
+
+Discovered agent plans from `~/.claude/plans/`. Shows plan steps with completion status. Plans are matched to the current session via slug cross-reference.
+
 ## Keybindings
 
 ### Navigation
 
 | Key | Action |
 |-----|--------|
-| `1`–`5` | Switch panel |
+| `1`–`6` | Switch panel |
 | `Tab` | Toggle focus between side list and detail pane |
 | `j` / `↓` | Next item (side list) or scroll down (detail pane) |
 | `k` / `↑` | Previous item (side list) or scroll up (detail pane) |

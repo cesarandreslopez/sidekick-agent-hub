@@ -36,6 +36,23 @@ sidekick dashboard [options]
 | `--session <id>` | Follow a specific session by ID |
 | `--replay` | Replay existing events from the beginning before streaming live |
 
+## Session Dump
+
+```bash
+sidekick dump [options]
+```
+
+Export session data as text, markdown, or JSON.
+
+| Flag | Description |
+|------|-------------|
+| `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
+| `--width <cols>` | Terminal width for text output (default: auto-detect) |
+| `--expand` | Show all events including noise |
+| `--session <id>` | Target a specific session (default: most recent) |
+
+Global flags `--project` and `--provider` also apply.
+
 ## Dashboard Panels
 
 The dashboard is a two-pane terminal UI. The left side shows a navigable list, the right side shows details for the selected item.
@@ -47,6 +64,7 @@ The dashboard is a two-pane terminal UI. The left side shows a navigable list, t
 | 3 | **Kanban** | Task board with status columns |
 | 4 | **Notes** | Knowledge notes attached to files |
 | 5 | **Decisions** | Architectural decisions from sessions |
+| 6 | **Plans** | Discovered agent plans from `~/.claude/plans/` |
 
 ## Layout Modes
 
@@ -64,7 +82,7 @@ Press `z` to cycle through layout modes:
 
 | Key | Action |
 |-----|--------|
-| `1`–`5` | Switch panel |
+| `1`–`6` | Switch panel |
 | `Tab` | Toggle focus between side list and detail pane |
 | `j` / `↓` | Next item (side) or scroll down (detail) |
 | `k` / `↑` | Previous item (side) or scroll up (detail) |

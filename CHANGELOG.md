@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.6] - 2026-02-26
+
+### Added
+
+- **Session Introspection Pipeline**: New analysis layer for deep session inspection
+  - Noise classifier filters irrelevant tool events (system reminders, sidechains) from analysis
+  - Tool summarizer aggregates tool events into concise summaries
+  - Debug log parser extracts structured data from Claude Code debug logs
+  - Session activity detector classifies session state (active, idle, stalled)
+  - Subagent trace parser for analyzing subagent execution chains
+  - Session path resolver discovers related files (debug logs, plan files, JSONL) for a session
+- **Session Dump Command**: Export session data in text, markdown, or JSON format
+  - VS Code: `Sidekick: Dump Session` command (Command Palette, status bar, toolbar)
+  - CLI: `sidekick dump` command with `--format`, `--width`, and `--expand` options
+  - Shared formatters ensure identical output between VS Code and CLI
+- **Plans Panel Re-enabled**: Plans UI restored in both VS Code and CLI
+  - `parsePlanMarkdown()` now handles simple bullet points (`- Step`, `* Step`)
+  - Plan file discovery reads from `~/.claude/plans/` via session slug cross-reference
+  - Plans panel re-enabled in CLI dashboard as fallback data source
+- **OpenCode & Codex Provider Improvements**:
+  - OpenCode model tier mapping (tiers resolve to concrete model IDs instead of being dropped)
+  - Codex subagent scanning via `forked_from_id` (database + filesystem)
+  - `getCurrentUsageSnapshot()` for real-time token tracking on Codex and Claude Code
+- **New Phrase Categories**: 3 new categories (25 phrases each) — Rubber Duck, Dependency Hell, Stack Overflow
+
+### Fixed
+
+- **Destructive command false positives**: `/dev/null`, `/dev/stdout`, `/dev/stderr` redirects no longer trigger destructive command alerts
+- **Old snapshot format migration**: Restoring sessions from pre-0.12.3 snapshots no longer shows empty timeline entries — field names are now migrated from old format
+
+### Changed
+
+- **Phrase library deduplicated**: Moved ~1,300 lines of identical phrase content from CLI and VS Code into `sidekick-shared` as a single source of truth (net -1,231 lines of duplication)
+
 ## [0.12.5] - 2026-02-24
 
 ### Fixed

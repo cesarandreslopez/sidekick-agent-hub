@@ -142,6 +142,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Generate PR Description | SCM PR icon | Auto-generate PR description |
 | Switch Provider | — | Change inference provider |
 | Open Dashboard | — | Open session analytics |
+| Dump Session Report | — | Export session data as text/markdown/JSON |
 | Browse Session Folders | — | Select session folder to monitor |
 
 ## Troubleshooting

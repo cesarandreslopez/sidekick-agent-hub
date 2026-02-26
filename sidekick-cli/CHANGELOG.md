@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.6] - 2026-02-26
+
+### Added
+
+- **Session Dump Command**: `sidekick dump` exports session data in text, markdown, or JSON format with `--format`, `--width`, and `--expand` options
+- **Plans Panel Re-enabled**: Plans panel restored in CLI dashboard with plan file discovery from `~/.claude/plans/`
+- **Enhanced Status Bar**: Session info display improved with richer metadata
+
+### Fixed
+
+- **Old snapshot format migration**: Restoring pre-0.12.3 session snapshots no longer shows empty timeline entries
+
+### Changed
+
+- **Phrase library moved to shared**: CLI-specific phrase formatting kept local, all phrase content now from `sidekick-shared`
+
 ## [0.12.5] - 2026-02-24
 
 ### Fixed

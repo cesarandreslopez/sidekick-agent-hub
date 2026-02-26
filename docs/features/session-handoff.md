@@ -15,6 +15,7 @@ When a session ends, Sidekick can generate a handoff document summarizing:
 - **Truncation stats** — how many tool outputs were truncated and which tools were affected
 - **Context health warning** — if the session's context degraded below 50% fidelity, the handoff flags that earlier decisions may need re-verification
 - **Incomplete goal gates** — critical tasks that weren't completed get a dedicated section so the next session prioritizes them
+- **Plan progress** — completed and remaining plan steps with last active step status
 
 On the next session start, Sidekick can notify you that a handoff is available.
 
