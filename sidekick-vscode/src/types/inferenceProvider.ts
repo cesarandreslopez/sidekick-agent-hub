@@ -33,7 +33,11 @@ export const DEFAULT_MODEL_MAPPINGS: Record<InferenceProviderId, ModelMapping> =
     balanced: 'claude-sonnet-4-20250514',
     powerful: 'claude-opus-4-20250514',
   },
-  opencode: { fast: 'fast', balanced: 'balanced', powerful: 'powerful' },
+  opencode: {
+    fast: 'anthropic/claude-3-5-haiku-20241022',
+    balanced: 'anthropic/claude-sonnet-4-20250514',
+    powerful: 'anthropic/claude-opus-4-20250514',
+  },
   codex: {
     fast: 'gpt-5-codex-mini',
     balanced: 'gpt-5.3-codex',

@@ -319,6 +319,7 @@ class CodexReader implements SessionReader {
     private readonly rolloutPath: string,
     private readonly onContextWindowLimit?: (limit: number) => void,
     private readonly onRateLimits?: (limits: CodexRateLimits) => void,
+    private readonly onTokenUsage?: (usage: TokenUsage) => void,
   ) {
     this.parser = new CodexRolloutParser();
   }
@@ -389,6 +390,20 @@ class CodexReader implements SessionReader {
       if (rateLimits && this.onRateLimits) {
         this.onRateLimits(rateLimits);
       }
+
+      // Propagate last token usage snapshot to the provider
+      const lastUsage = this.parser.getLastTokenUsage();
+      if (lastUsage && this.onTokenUsage) {
+        this.onTokenUsage({
+          inputTokens: lastUsage.input_tokens || 0,
+          outputTokens: lastUsage.output_tokens || 0,
+          cacheWriteTokens: 0,
+          cacheReadTokens: lastUsage.cached_input_tokens || 0,
+          reasoningTokens: lastUsage.reasoning_output_tokens || 0,
+          model: this.parser.getCurrentModel() || 'unknown',
+          timestamp: new Date(),
+        });
+      }
     } catch {
       // Skip read errors
     }
@@ -456,6 +471,7 @@ export class CodexProvider implements SessionProviderBase {
   private dbInitialized = false;
   private dynamicContextWindowLimit: number | null = null;
   private lastRateLimitsData: CodexRateLimits | null = null;
+  private lastTokenUsageData: TokenUsage | null = null;
 
   // --- Database ---
 
@@ -683,16 +699,114 @@ export class CodexProvider implements SessionProviderBase {
       sessionPath,
       (limit) => { this.dynamicContextWindowLimit = limit; },
       (limits) => { this.lastRateLimitsData = limits; },
+      (usage) => { this.lastTokenUsageData = usage; },
     );
   }
 
   // --- Subagent support ---
 
-  scanSubagents(_sessionDir: string, _sessionId: string): SubagentStats[] {
+  scanSubagents(_sessionDir: string, sessionId: string): SubagentStats[] {
     // Codex tracks forked sessions via forked_from_id in session_meta.
-    // For now, return empty — fork scanning requires either DB or
-    // traversing all rollout files which is expensive.
-    return [];
+    // Use DB when available, fall back to filesystem scanning.
+    const subagents: SubagentStats[] = [];
+
+    // DB approach: query threads table for forked children
+    const db = this.ensureDb();
+    if (db) {
+      const forkedThreads = db.getThreadsByForkedFromId(sessionId);
+      for (const thread of forkedThreads) {
+        const stats = this.buildSubagentStats(thread.id, thread.rollout_path, thread.title);
+        if (stats) subagents.push(stats);
+      }
+      if (forkedThreads.length > 0) return subagents;
+    }
+
+    // Filesystem fallback: scan all rollout files for matching forked_from_id.
+    // Limited to recent files (last 50) to avoid excessive I/O.
+    const sessionsDir = getSessionsDir();
+    if (!fs.existsSync(sessionsDir)) return subagents;
+
+    const files = findRolloutFiles(sessionsDir);
+    files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+    const filesToCheck = files.slice(0, 50);
+    for (const file of filesToCheck) {
+      const meta = readSessionMeta(file.path);
+      if (meta?.forked_from_id === sessionId) {
+        const childId = extractSessionId(path.basename(file.path));
+        const stats = this.buildSubagentStats(childId, file.path, meta.source);
+        if (stats) subagents.push(stats);
+      }
+    }
+
+    return subagents;
+  }
+
+  /**
+   * Builds SubagentStats for a forked session by reading its rollout file.
+   */
+  private buildSubagentStats(
+    agentId: string,
+    rolloutPath: string,
+    description?: string | null,
+  ): SubagentStats | null {
+    if (!rolloutPath || !fs.existsSync(rolloutPath)) return null;
+
+    const stats: SubagentStats = {
+      agentId,
+      description: description || undefined,
+      toolCalls: [],
+      inputTokens: 0,
+      outputTokens: 0,
+    };
+
+    try {
+      const parser = new CodexRolloutParser();
+      const content = fs.readFileSync(rolloutPath, 'utf8');
+      const lines = content.split('\n');
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const parsed = JSON.parse(trimmed) as CodexRolloutLine;
+
+          // Track timestamps
+          if (parsed.timestamp) {
+            const ts = new Date(parsed.timestamp);
+            if (!stats.startTime || ts < stats.startTime) stats.startTime = ts;
+            if (!stats.endTime || ts > stats.endTime) stats.endTime = ts;
+          }
+
+          const events = parser.convertLine(parsed);
+          for (const event of events) {
+            // Collect tool calls
+            if (event.type === 'assistant' && Array.isArray(event.message.content)) {
+              for (const block of event.message.content as Array<Record<string, unknown>>) {
+                if (block.type === 'tool_use' && typeof block.name === 'string') {
+                  stats.toolCalls.push({
+                    name: block.name as string,
+                    input: (block.input as Record<string, unknown>) || {},
+                    timestamp: new Date(event.timestamp),
+                  });
+                }
+              }
+            }
+            // Accumulate tokens from usage events
+            if (event.message.usage) {
+              stats.inputTokens += event.message.usage.input_tokens || 0;
+              stats.outputTokens += event.message.usage.output_tokens || 0;
+            }
+          }
+        } catch { /* skip malformed lines */ }
+      }
+
+      if (stats.startTime && stats.endTime) {
+        stats.durationMs = stats.endTime.getTime() - stats.startTime.getTime();
+      }
+    } catch { /* skip unreadable files */ }
+
+    return stats;
   }
 
   // --- Cross-session search ---
@@ -843,8 +957,17 @@ export class CodexProvider implements SessionProviderBase {
     return 128_000;
   }
 
+  getCurrentUsageSnapshot(_sessionPath: string): TokenUsage | null {
+    // Return the last token usage snapshot received via the CodexReader callback.
+    // This is populated in real-time as token_count events arrive during active monitoring.
+    return this.lastTokenUsageData;
+  }
+
   computeContextSize(usage: TokenUsage): number {
-    // OpenAI's input_tokens already includes cached_input_tokens (it's a subset, not additive)
+    // OpenAI's input_tokens already includes cached_input_tokens (it's a subset,
+    // not additive like Anthropic's model). So inputTokens alone represents the
+    // full context window usage. This differs from OpenCode's formula which adds
+    // cacheWrite + cacheRead because Anthropic reports them separately.
     return usage.inputTokens;
   }
 
@@ -863,5 +986,6 @@ export class CodexProvider implements SessionProviderBase {
     this.dbInitialized = false;
     this.dynamicContextWindowLimit = null;
     this.lastRateLimitsData = null;
+    this.lastTokenUsageData = null;
   }
 }

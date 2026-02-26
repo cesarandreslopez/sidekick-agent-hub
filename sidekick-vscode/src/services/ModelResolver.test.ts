@@ -20,7 +20,7 @@ describe('ModelResolver', () => {
     });
 
     it('resolves "auto" for opencode provider', () => {
-      expect(resolveModel('auto', 'opencode', 'inlineModel')).toBe('fast');
+      expect(resolveModel('auto', 'opencode', 'inlineModel')).toBe('anthropic/claude-3-5-haiku-20241022');
     });
 
     it('resolves "auto" for codex provider', () => {
@@ -42,7 +42,7 @@ describe('ModelResolver', () => {
     });
 
     it('maps haiku -> fast -> provider model (opencode)', () => {
-      expect(resolveModel('haiku', 'opencode', 'inlineModel')).toBe('fast');
+      expect(resolveModel('haiku', 'opencode', 'inlineModel')).toBe('anthropic/claude-3-5-haiku-20241022');
     });
 
     it('maps opus -> powerful -> provider model (codex)', () => {

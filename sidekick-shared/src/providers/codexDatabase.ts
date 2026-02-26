@@ -16,6 +16,7 @@ export interface CodexDbThread {
   title?: string;
   tokens_used?: number;
   first_user_message?: string;
+  forked_from_id?: string;
 }
 
 export class CodexDatabase {
@@ -96,6 +97,14 @@ export class CodexDatabase {
 
   getThread(id: string): CodexDbThread | null {
     return this.queryOne<CodexDbThread>('SELECT * FROM threads WHERE id = ?', [id]);
+  }
+
+  /** Get all threads forked from a given session ID. */
+  getThreadsByForkedFromId(parentId: string): CodexDbThread[] {
+    return this.query<CodexDbThread>(
+      'SELECT * FROM threads WHERE forked_from_id = ? ORDER BY created_at ASC',
+      [parentId]
+    );
   }
 
   /** Get the database file's mtime (ms epoch). Returns 0 if unavailable. */

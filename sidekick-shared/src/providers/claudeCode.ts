@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { JsonlParser, TRUNCATION_PATTERNS } from '../parsers/jsonl';
 import type { RawSessionEvent } from '../parsers/jsonl';
-import type { SessionEvent, SubagentStats } from '../types/sessionEvent';
+import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type {
   SessionProviderBase,
   SessionReader,
@@ -436,6 +436,56 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   getContextWindowLimit(_modelId?: string): number {
     return 200_000;
+  }
+
+  /**
+   * Returns the latest assistant message's token usage snapshot.
+   *
+   * Reads the session JSONL file backwards to find the most recent assistant
+   * message with usage data, avoiding the need to parse the entire file.
+   */
+  getCurrentUsageSnapshot(sessionPath: string): TokenUsage | null {
+    try {
+      if (!fs.existsSync(sessionPath)) return null;
+
+      // Read the last portion of the file to find the most recent assistant message
+      const stats = fs.statSync(sessionPath);
+      const readSize = Math.min(stats.size, 64 * 1024); // Last 64KB
+      const fd = fs.openSync(sessionPath, 'r');
+      const buffer = Buffer.alloc(readSize);
+      fs.readSync(fd, buffer, 0, readSize, stats.size - readSize);
+      fs.closeSync(fd);
+
+      const chunk = buffer.toString('utf-8');
+      const lines = chunk.split('\n').reverse();
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('{')) continue;
+
+        try {
+          const event = JSON.parse(trimmed) as RawSessionEvent;
+          if (event.type === 'assistant' && event.message?.usage) {
+            const u = event.message.usage;
+            return {
+              inputTokens: u.input_tokens || 0,
+              outputTokens: u.output_tokens || 0,
+              cacheWriteTokens: u.cache_creation_input_tokens || 0,
+              cacheReadTokens: u.cache_read_input_tokens || 0,
+              model: event.message.model || 'unknown',
+              timestamp: new Date(event.timestamp || Date.now()),
+              reportedCost: u.reported_cost,
+            };
+          }
+        } catch {
+          // Skip malformed lines
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   // --- Lifecycle ---

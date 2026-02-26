@@ -102,19 +102,17 @@ export class OpenCodeClient implements ClaudeClient {
         parts: [{ type: 'text', text: prompt }],
       };
 
-      // Pass model only if it's a concrete provider/model identifier.
-      // Tier names (fast/balanced/powerful) are Sidekick-internal and have no
-      // meaning to OpenCode — omit them so OpenCode uses its own configured model.
+      // Pass model if it's in provider/model format (e.g., "anthropic/claude-sonnet-4-20250514").
+      // ModelResolver maps tiers to concrete provider/model pairs via DEFAULT_MODEL_MAPPINGS.
+      // Bare model IDs without a provider prefix are logged and skipped since OpenCode
+      // requires the providerID to route to the correct backend.
       if (options?.model) {
         const m = options.model;
         if (m.includes('/')) {
-          // Explicit provider/model format (e.g., "anthropic/claude-sonnet-4-20250514")
           const [providerID, modelID] = m.split('/', 2);
           body.model = { providerID, modelID };
-        } else if (m !== 'fast' && m !== 'balanced' && m !== 'powerful') {
-          // Specific model ID without provider — skip, as OpenCode requires providerID.
-          // Users who want to target a specific model should use "provider/model" format.
-          log(`OpenCodeClient: model "${m}" has no providerID, using OpenCode default`);
+        } else {
+          log(`OpenCodeClient: model "${m}" has no provider prefix (expected "provider/model"), using OpenCode default`);
         }
       }
 
