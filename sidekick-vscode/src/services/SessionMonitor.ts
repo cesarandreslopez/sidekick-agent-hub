@@ -1761,6 +1761,22 @@ export class SessionMonitor implements vscode.Disposable {
     }
     if (Array.isArray(c.timeline)) {
       this.timeline = c.timeline as TimelineEvent[];
+      // Backfill empty descriptions from older snapshots
+      for (const ev of this.timeline) {
+        if (!ev.description) {
+          if (ev.metadata?.toolName) {
+            ev.description = ev.metadata.toolName;
+          } else {
+            const fallbacks: Record<string, string> = {
+              user_prompt: '(user message)', assistant_response: '(assistant)',
+              tool_call: '(tool call)', tool_result: '(tool result)',
+              compaction: 'Context compacted', error: '(error)',
+              session_start: 'Session started', session_end: 'Session ended',
+            };
+            ev.description = fallbacks[ev.type] || ev.type;
+          }
+        }
+      }
     }
     if (Array.isArray(c.toolAnalyticsMap)) {
       this.toolAnalyticsMap = new Map(c.toolAnalyticsMap as Array<[string, ToolAnalytics]>);

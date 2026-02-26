@@ -270,6 +270,42 @@ export class DashboardState {
     const c = snapshot.consumer;
     if (Array.isArray(c.timeline)) {
       this._timeline = c.timeline as FollowEvent[];
+      // Re-enrich events restored from older snapshots.
+      // Old snapshots may contain TimelineEvent objects (with `description` and
+      // `metadata.toolName`) mixed with proper FollowEvents (`summary`, `toolName`).
+      for (const ev of this._timeline) {
+        // Normalize old type names
+        if (ev.type === 'tool_call' as string) ev.type = 'tool_use';
+        if (ev.type === 'assistant_response' as string) ev.type = 'assistant';
+
+        // Migrate TimelineEvent fields → FollowEvent fields
+        const anyEv = ev as unknown as Record<string, unknown>;
+        if (!ev.summary && typeof anyEv.description === 'string') {
+          ev.summary = anyEv.description as string;
+        }
+        if (!ev.toolName && anyEv.metadata) {
+          const meta = anyEv.metadata as Record<string, unknown>;
+          if (typeof meta.toolName === 'string') {
+            ev.toolName = meta.toolName;
+          }
+        }
+
+        // Backfill still-empty summaries
+        if (!ev.summary) {
+          if (ev.toolName) {
+            ev.summary = ev.toolInput
+              ? `${ev.toolName} ${ev.toolInput}`
+              : ev.toolName;
+          } else {
+            const fallbacks: Record<string, string> = {
+              user: '(user message)', assistant: '(assistant)',
+              tool_result: '(tool result)', summary: 'Context compacted',
+              system: '(system)',
+            };
+            ev.summary = fallbacks[ev.type] || ev.type;
+          }
+        }
+      }
     }
     if (Array.isArray(c.fileMap)) {
       this._fileMap = new Map(c.fileMap as Array<[string, FileTouch]>);
