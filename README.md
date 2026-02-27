@@ -54,6 +54,7 @@ Export session data for sharing or archiving:
 
 ```bash
 sidekick dump --format markdown > session-report.md
+sidekick report                                     # HTML report → browser
 ```
 
 ## Provider Support

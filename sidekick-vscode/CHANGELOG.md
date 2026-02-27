@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.7] - 2026-02-27
+
+### Added
+
+- **HTML Session Report**: `Sidekick: Generate HTML Report` command opens a self-contained HTML report in a webview panel with full transcript, token/cost stats, model breakdown, and tool-use summary
+  - Also available as "HTML Report" format option in the existing `Dump Session` command
+  - Report toolbar button added to the Dashboard view
+
+### Changed
+
+- **DashboardViewProvider and MindMapViewProvider refactored**: Simplified ternary expressions, replaced `var` with `const`/`let`, deduplicated repeated logic
+
 ## [0.12.6] - 2026-02-26
 
 ### Added

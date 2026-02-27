@@ -78,6 +78,10 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Project Timeline](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/project-timeline.png)
 
+- **[HTML Session Report](#html-session-report)** — self-contained HTML report with full transcript, token/cost stats, model breakdown, and tool-use summary — opens in a webview panel or browser
+
+![HTML Session Report](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session_html_report.png)
+
 - **Conversation Viewer** — full session conversation with search
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
 - **Cross-Session Search** — search across all sessions
@@ -142,7 +146,8 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Generate PR Description | SCM PR icon | Auto-generate PR description |
 | Switch Provider | — | Change inference provider |
 | Open Dashboard | — | Open session analytics |
-| Dump Session Report | — | Export session data as text/markdown/JSON |
+| Dump Session Report | — | Export session data as text/markdown/JSON/HTML |
+| Generate HTML Report | — | Full transcript report in a webview panel |
 | Browse Session Folders | — | Select session folder to monitor |
 
 ## Troubleshooting

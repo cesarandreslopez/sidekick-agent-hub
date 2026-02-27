@@ -53,6 +53,26 @@ Export session data as text, markdown, or JSON.
 
 Global flags `--project` and `--provider` also apply.
 
+## HTML Report
+
+```bash
+sidekick report [options]
+```
+
+Generate a self-contained HTML session report and open it in the default browser. Includes full transcript, token/cost stats, model breakdown, and tool-use summary.
+
+| Flag | Description |
+|------|-------------|
+| `--session <id>` | Target a specific session (default: most recent) |
+| `--output <path>` | Write to a specific file (default: temp file) |
+| `--theme <theme>` | Color theme: `dark` (default) or `light` |
+| `--no-open` | Write the file without opening the browser |
+| `--no-thinking` | Omit thinking blocks from the transcript |
+
+Global flags `--project` and `--provider` also apply.
+
+You can also press `r` in the TUI dashboard to generate a report for the current session.
+
 ## Dashboard Panels
 
 The dashboard is a two-pane terminal UI. The left side shows a navigable list, the right side shows details for the selected item.
@@ -127,6 +147,7 @@ Press `z` to cycle through layout modes:
 | `/` | Open filter overlay |
 | `x` | Open context menu for selected item |
 | `?` | Show help |
+| `r` | Generate HTML report for the current session |
 | `V` | Show version / changelog |
 | `q` / `Ctrl+C` | Quit |
 

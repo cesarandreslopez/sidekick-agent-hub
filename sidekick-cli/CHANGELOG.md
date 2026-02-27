@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.7] - 2026-02-27
+
+### Added
+
+- **HTML Session Report**: `sidekick report` command generates a self-contained HTML report and opens it in the default browser
+  - Options: `--session`, `--output`, `--theme` (dark/light), `--no-open`, `--no-thinking`
+  - TUI Dashboard: press `r` to generate and open an HTML report for the current session
+
 ## [0.12.6] - 2026-02-26
 
 ### Added

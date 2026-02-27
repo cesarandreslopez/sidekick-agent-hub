@@ -91,6 +91,41 @@ sidekick dump --format markdown > session-report.md
 sidekick dump --format json > session.json
 ```
 
+## HTML Report
+
+```bash
+sidekick report [options]
+```
+
+Generate a self-contained HTML session report and open it in the default browser. Includes full transcript with collapsible thinking blocks and tool detail, token/cost stats, model breakdown, and tool-use summary — zero external dependencies.
+
+![HTML Session Report](../images/session_html_report.png)
+
+| Flag | Description |
+|------|-------------|
+| `--session <id>` | Target a specific session (default: most recent) |
+| `--output <path>` | Write to a specific file (default: temp file) |
+| `--theme <theme>` | Color theme: `dark` (default) or `light` |
+| `--no-open` | Write the file without opening the browser |
+| `--no-thinking` | Omit thinking blocks from the transcript |
+
+Global flags `--project` and `--provider` also apply (see above).
+
+### Examples
+
+```bash
+# Generate report for the latest session and open in browser
+sidekick report
+
+# Light theme, save to a specific file
+sidekick report --theme light --output ~/reports/session.html
+
+# Generate without opening browser
+sidekick report --no-open --output session.html
+```
+
+You can also press `r` in the TUI dashboard to generate and open a report for the current session.
+
 ## Dashboard Overview
 
 The dashboard is a two-pane Ink-based terminal UI. The left pane shows a navigable list of items (sessions, tasks, notes, etc.), and the right pane shows details for the selected item.
@@ -192,6 +227,7 @@ Discovered agent plans from `~/.claude/plans/`. Shows plan steps with completion
 
 | Key | Action |
 |-----|--------|
+| `r` | Generate HTML report for the current session and open in browser |
 | `/` | Open filter overlay — type to filter the side list |
 | `x` | Open context menu for the selected item |
 | `z` | Cycle layout mode (Normal → Expanded → Wide Side) |

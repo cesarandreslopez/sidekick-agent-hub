@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.7] - 2026-02-27
+
+### Added
+
+- **HTML Session Report**: Self-contained HTML report with full transcript, token/cost stats, model breakdown, and tool-use summary — zero external dependencies
+  - Transcript parser extracts user/assistant/system messages with thinking blocks, tool calls, and tool results from JSONL session files
+  - Stats cards show total tokens, cost, duration, and model usage at a glance
+  - Collapsible thinking blocks and tool detail sections for readability
+  - Dark/light theme support
+  - VS Code: `Sidekick: Generate HTML Report` command, also available as "HTML Report" option in `Dump Session`
+  - CLI: `sidekick report` command with `--output`, `--theme`, `--no-open`, and `--no-thinking` flags
+  - TUI Dashboard: press `r` to generate and open an HTML report for the current session
+
+### Changed
+
+- **Code quality pass**: Simplified ternary expressions, replaced `var` with `const`/`let`, deduplicated repeated logic across `DashboardViewProvider`, `MindMapViewProvider`, and shared library modules
+
 ## [0.12.6] - 2026-02-26
 
 ### Added

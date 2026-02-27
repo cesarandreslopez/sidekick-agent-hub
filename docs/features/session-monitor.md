@@ -28,7 +28,8 @@ The main dashboard panel provides:
 - **Session Navigator** — collapsible panel to switch between active and recent sessions
 - **Tool Analytics** — categorized tool usage with drill-down to individual calls
 - **Session Summary** — AI narrative generation with progress notification
-- **Session Dump** — export the current session as text, markdown, or JSON via `Sidekick: Dump Session Report` (Command Palette, status bar menu, or Session Analytics toolbar)
+- **Session Dump** — export the current session as text, markdown, JSON, or HTML via `Sidekick: Dump Session Report` (Command Palette, status bar menu, or Session Analytics toolbar)
+- **HTML Session Report** — self-contained HTML report with full transcript, token/cost stats, model breakdown, and tool-use summary via `Sidekick: Generate HTML Report` (Command Palette or Session Analytics toolbar). Also available in the [CLI](cli.md#html-report) as `sidekick report` or by pressing `r` in the TUI dashboard
 
 ### Dashboard Sections
 
