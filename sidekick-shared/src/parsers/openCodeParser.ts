@@ -313,7 +313,9 @@ function convertAssistantMessage(
   if (!hasExistingPlanMode) {
     for (const block of content) {
       const b = block as Record<string, unknown>;
-      const text = (b.type === 'text' ? b.text : b.type === 'thinking' ? b.thinking : null) as string | null;
+      let text: string | null = null;
+      if (b.type === 'text') text = b.text as string;
+      else if (b.type === 'thinking') text = b.thinking as string;
       if (!text) continue;
       const direction = detectPlanModeFromText(text);
       if (direction) {

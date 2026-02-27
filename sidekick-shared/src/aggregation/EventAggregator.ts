@@ -883,7 +883,10 @@ export class EventAggregator {
 
   private detectTruncationInContent(block: Record<string, unknown>, timestamp: string): void {
     const content = block.content;
-    const text = typeof content === 'string' ? content : (content ? JSON.stringify(content) : '');
+    let text: string;
+    if (typeof content === 'string') text = content;
+    else if (content) text = JSON.stringify(content);
+    else text = '';
     if (!text) return;
 
     for (const pattern of TRUNCATION_PATTERNS) {
@@ -963,7 +966,10 @@ export class EventAggregator {
     if (!raw) return;
 
     const content = raw.content;
-    const text = typeof content === 'string' ? content : (content ? JSON.stringify(content) : '');
+    let text: string;
+    if (typeof content === 'string') text = content;
+    else if (content) text = JSON.stringify(content);
+    else text = '';
     if (!text) return;
 
     for (const pattern of TRUNCATION_PATTERNS) {

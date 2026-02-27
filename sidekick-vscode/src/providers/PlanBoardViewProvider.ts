@@ -61,11 +61,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       })
     );
 
-    if (this._sessionMonitor.isActive()) {
-      this._syncFromSessionMonitor();
-    } else {
-      this._syncFromSessionMonitor();
-    }
+    this._syncFromSessionMonitor();
 
     // Load raw plan files from ~/.claude/plans/ asynchronously
     this._loadClaudeCodePlans();

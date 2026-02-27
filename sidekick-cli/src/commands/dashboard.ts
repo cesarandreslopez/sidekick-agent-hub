@@ -5,9 +5,10 @@
 
 import React from 'react';
 import * as path from 'path';
+import * as os from 'os';
 import type { Command } from 'commander';
 import * as fs from 'fs';
-import { createWatcher, getAllDetectedProviders } from 'sidekick-shared';
+import { createWatcher, getAllDetectedProviders, EventAggregator, generateHtmlReport, parseTranscript, openInBrowser } from 'sidekick-shared';
 import type { FollowEvent, ProviderId } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -234,6 +235,34 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // ── Render with Ink ──
   const { render } = await import('ink');
 
+  const generateReport = () => {
+    if (!sessionPath) return;
+    const events: FollowEvent[] = [];
+    const replayResult = createWatcher({
+      provider: activeProvider,
+      workspacePath,
+      sessionId: path.basename(sessionPath, path.extname(sessionPath)),
+      callbacks: { onEvent: (e: FollowEvent) => events.push(e), onError: () => {} },
+    });
+    replayResult.watcher.start(true);
+    replayResult.watcher.stop();
+
+    const aggregator = new EventAggregator({ providerId: activeProvider.id as 'claude-code' | 'opencode' | 'codex' });
+    for (const e of events) aggregator.processFollowEvent(e);
+
+    const metrics = aggregator.getMetrics();
+    const transcript = parseTranscript(sessionPath);
+    const html = generateHtmlReport(metrics, transcript, {
+      sessionFileName: path.basename(sessionPath),
+      includeThinking: true,
+      includeToolDetail: true,
+      theme: 'dark',
+    });
+    const outFile = path.join(os.tmpdir(), `sidekick-report-${Date.now()}.html`);
+    fs.writeFileSync(outFile, html, 'utf-8');
+    openInBrowser(outFile);
+  };
+
   const instance = render(
     React.createElement(Dashboard, {
       panels,
@@ -243,6 +272,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       pendingSessionPath,
       onSessionSwitch: switchToSession,
       onTogglePin: () => { isPinned = !isPinned; scheduleRender(); },
+      onGenerateReport: generateReport,
     }),
   );
 
@@ -261,6 +291,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           pendingSessionPath,
           onSessionSwitch: switchToSession,
           onTogglePin: () => { isPinned = !isPinned; scheduleRender(); },
+          onGenerateReport: generateReport,
         }),
       );
     }, 100);

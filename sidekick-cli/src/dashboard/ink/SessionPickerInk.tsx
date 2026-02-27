@@ -59,12 +59,8 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
       {/* Logo */}
       <Box justifyContent="center" marginTop={1}>
         <Box flexDirection="column" width={50}>
-          <Text>          <Text color="yellow">⚡</Text></Text>
-          <Text>          <Text color="magenta">│</Text></Text>
-          <Text>  <Text color="white">{'</>'}</Text>  <Text color="white">╭──┴──╮</Text>   <Text bold color="magenta">S I D E K I C K</Text></Text>
-          <Text>       <Text color="white">│</Text> <Text color="cyan">●</Text> <Text color="cyan">●</Text> <Text color="white">│</Text>   <Text bold>Agent Hub</Text></Text>
-          <Text>       <Text color="white">│</Text>  <Text color="green">◡</Text>  <Text color="white">│</Text>   <Text color="gray">Terminal Dashboard</Text></Text>
-          <Text>       <Text color="white">╰─────╯</Text></Text>
+          <Text bold color="magenta">  S I D E K I C K</Text>
+          <Text bold>  Agent Hub</Text>
         </Box>
       </Box>
 
@@ -114,7 +110,7 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
 
       {/* Status bar */}
       <Box height={1}>
-        <Text> <Text bold color="magenta">⚡ SIDEKICK</Text> <Text color="gray">Session Picker</Text>  <Text bold>↑/↓</Text> navigate  <Text bold>Enter</Text> select  <Text bold>q</Text> quit</Text>
+        <Text> <Text bold color="magenta">SIDEKICK</Text> <Text color="gray">Session Picker</Text>  <Text bold>↑/↓</Text> navigate  <Text bold>Enter</Text> select  <Text bold>q</Text> quit</Text>
       </Box>
     </Box>
   );

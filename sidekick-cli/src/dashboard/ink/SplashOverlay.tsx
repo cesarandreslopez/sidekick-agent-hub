@@ -23,12 +23,9 @@ export function SplashOverlay(): React.ReactElement {
       width={60}
     >
       {/* Logo */}
-      <Text>          <Text color="yellow">⚡</Text></Text>
-      <Text>          <Text color="magenta">│</Text></Text>
-      <Text>  <Text color="white">{'</>'}</Text>  <Text color="white">╭──┴──╮</Text>   <Text bold color="magenta">S I D E K I C K</Text></Text>
-      <Text>       <Text color="white">│</Text> <Text color="cyan">●</Text> <Text color="cyan">●</Text> <Text color="white">│</Text>   <Text bold>Agent Hub</Text></Text>
-      <Text>       <Text color="white">│</Text>  <Text color="green">◡</Text>  <Text color="white">│</Text>   <Text color="gray">Terminal Dashboard v{__CLI_VERSION__}</Text></Text>
-      <Text>       <Text color="white">╰─────╯</Text></Text>
+      <Text bold color="magenta">  S I D E K I C K</Text>
+      <Text bold>  Agent Hub</Text>
+      <Text color="gray">  Terminal Dashboard{__CLI_VERSION__ ? ` v${__CLI_VERSION__}` : ''}</Text>
       <Text> </Text>
       <Text color="gray">  {getRandomPhrase()}</Text>
       <Text> </Text>

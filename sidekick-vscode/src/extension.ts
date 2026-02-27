@@ -1175,11 +1175,18 @@ export async function activate(context: vscode.ExtensionContext) {
           { label: 'Markdown', description: 'Structured report with tables', value: 'markdown' as const },
           { label: 'Text', description: 'Plain text timeline', value: 'text' as const },
           { label: 'JSON', description: 'Raw metrics object', value: 'json' as const },
+          { label: 'HTML Report', description: 'Full transcript report in browser', value: 'html' as const },
         ],
         { placeHolder: 'Select output format' },
       );
 
       if (!formatPick) return;
+
+      // HTML report opens in browser instead of editor
+      if (formatPick.value === 'html') {
+        await vscode.commands.executeCommand('sidekick.generateReport');
+        return;
+      }
 
       const { formatSessionText, formatSessionMarkdown, formatSessionJson } = await import('sidekick-shared');
       const metrics = sessionMonitor.getAggregatedMetrics();
@@ -1205,6 +1212,37 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const doc = await vscode.workspace.openTextDocument({ content, language });
       await vscode.window.showTextDocument(doc);
+    })
+  );
+
+  // Register HTML report generation command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.generateReport', async () => {
+      if (!sessionMonitor) {
+        vscode.window.showErrorMessage('Session monitor not initialized');
+        return;
+      }
+
+      const sessionPath = sessionMonitor.getSessionPath();
+      if (!sessionPath) {
+        vscode.window.showErrorMessage('No active session to generate report from');
+        return;
+      }
+
+      const { generateHtmlReport, parseTranscript } = await import('sidekick-shared');
+
+      const metrics = sessionMonitor.getAggregatedMetrics();
+      const transcript = parseTranscript(sessionPath);
+      const sessionFileName = path.basename(sessionPath);
+      const html = generateHtmlReport(metrics, transcript, { sessionFileName });
+
+      const panel = vscode.window.createWebviewPanel(
+        'sidekick.htmlReport',
+        `Session Report — ${sessionFileName}`,
+        vscode.ViewColumn.One,
+        { enableScripts: true },
+      );
+      panel.webview.html = html;
     })
   );
 

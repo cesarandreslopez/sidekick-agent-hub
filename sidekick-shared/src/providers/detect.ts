@@ -64,18 +64,24 @@ function getCodexActivityMtime(): number {
   return getMostRecentMtime(path.join(codexHome, 'sessions'));
 }
 
+function getProviderPaths() {
+  const claudeBase = path.join(os.homedir(), '.claude', 'projects');
+  const openCodeDataDir = getOpenCodeDataDir();
+  return {
+    claudeBase,
+    openCodeDbPath: path.join(openCodeDataDir, 'opencode.db'),
+    openCodeStorageDir: path.join(openCodeDataDir, 'storage'),
+    codexSessionsDir: path.join(getCodexHome(), 'sessions'),
+    codexDbPath: path.join(getCodexHome(), 'state.sqlite'),
+  };
+}
+
 /**
  * Returns all provider IDs whose data directories exist on the filesystem.
  * Ordered by most-recent activity first.
  */
 export function getAllDetectedProviders(): ProviderId[] {
-  const claudeBase = path.join(os.homedir(), '.claude', 'projects');
-  const openCodeDataDir = getOpenCodeDataDir();
-  const openCodeDbPath = path.join(openCodeDataDir, 'opencode.db');
-  const openCodeStorageDir = path.join(openCodeDataDir, 'storage');
-  const codexHome = getCodexHome();
-  const codexSessionsDir = path.join(codexHome, 'sessions');
-  const codexDbPath = path.join(codexHome, 'state.sqlite');
+  const { claudeBase, openCodeDbPath, openCodeStorageDir, codexSessionsDir, codexDbPath } = getProviderPaths();
 
   const hasClaude = fs.existsSync(claudeBase);
   const hasOpenCode = fs.existsSync(openCodeStorageDir) || fs.existsSync(openCodeDbPath);
@@ -97,13 +103,7 @@ export function getAllDetectedProviders(): ProviderId[] {
 export function detectProvider(override?: ProviderId | 'auto'): ProviderId {
   if (override && override !== 'auto') return override;
 
-  const claudeBase = path.join(os.homedir(), '.claude', 'projects');
-  const openCodeDataDir = getOpenCodeDataDir();
-  const openCodeDbPath = path.join(openCodeDataDir, 'opencode.db');
-  const openCodeStorageDir = path.join(openCodeDataDir, 'storage');
-  const codexHome = getCodexHome();
-  const codexSessionsDir = path.join(codexHome, 'sessions');
-  const codexDbPath = path.join(codexHome, 'state.sqlite');
+  const { claudeBase, openCodeDbPath, openCodeStorageDir, codexSessionsDir, codexDbPath } = getProviderPaths();
 
   const hasClaude = fs.existsSync(claudeBase);
   const hasOpenCode = fs.existsSync(openCodeStorageDir) || fs.existsSync(openCodeDbPath);

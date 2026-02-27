@@ -236,11 +236,12 @@ interface DashboardProps {
   pendingSessionPath?: string | null;
   onSessionSwitch?: (sessionPath: string) => void;
   onTogglePin?: () => void;
+  onGenerateReport?: () => void;
 }
 
 // ── Component ──
 
-export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessionPath, onSessionSwitch, onTogglePin }: DashboardProps): React.ReactElement {
+export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessionPath, onSessionSwitch, onTogglePin, onGenerateReport }: DashboardProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { exit } = useApp();
   const { columns, rows } = useTerminalSize();
@@ -653,6 +654,12 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     // Changelog toggle
     if (input === 'V') {
       dispatch({ type: 'SET_OVERLAY', overlay: 'changelog' });
+      return;
+    }
+
+    // Generate HTML report
+    if (input === 'r') {
+      onGenerateReport?.();
       return;
     }
 

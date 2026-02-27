@@ -101,7 +101,7 @@ export type {
 
 // Persistence types
 export type { PersistedTask, TaskPersistenceStore, TaskStatus } from './types/taskPersistence';
-export { TASK_PERSISTENCE_SCHEMA_VERSION } from './types/taskPersistence';
+export { TASK_PERSISTENCE_SCHEMA_VERSION, normalizeTaskStatus } from './types/taskPersistence';
 export type { DecisionEntry, DecisionLogStore, DecisionSource } from './types/decisionLog';
 export { DECISION_LOG_SCHEMA_VERSION } from './types/decisionLog';
 export type { KnowledgeNote, KnowledgeNoteStore, KnowledgeNoteType, KnowledgeNoteSource, KnowledgeNoteStatus, KnowledgeNoteImportance } from './types/knowledgeNote';
@@ -244,3 +244,7 @@ export type {
   SubagentLifecycle,
   AggregatedMetrics,
 } from './aggregation/types';
+
+// Report — HTML session report generation
+export { generateHtmlReport, parseTranscript, openInBrowser } from './report';
+export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './report';

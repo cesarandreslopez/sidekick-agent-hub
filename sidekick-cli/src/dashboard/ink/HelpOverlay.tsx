@@ -27,12 +27,8 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
       width={60}
     >
       {/* Logo */}
-      <Text>          <Text color="yellow">⚡</Text></Text>
-      <Text>          <Text color="magenta">│</Text></Text>
-      <Text>  <Text color="white">{'</>'}</Text>  <Text color="white">╭──┴──╮</Text>   <Text bold color="magenta">S I D E K I C K</Text></Text>
-      <Text>       <Text color="white">│</Text> <Text color="cyan">●</Text> <Text color="cyan">●</Text> <Text color="white">│</Text>   <Text bold>Agent Hub</Text></Text>
-      <Text>       <Text color="white">│</Text>  <Text color="green">◡</Text>  <Text color="white">│</Text>   <Text color="gray">Terminal Dashboard</Text></Text>
-      <Text>       <Text color="white">╰─────╯</Text></Text>
+      <Text bold color="magenta">  S I D E K I C K</Text>
+      <Text bold>  Agent Hub</Text>
       <Text> </Text>
 
       {/* Panels */}
@@ -76,6 +72,7 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
 
       <Text> </Text>
       <Text bold>  General</Text>
+      <Text>  <Text bold>r</Text>              Generate HTML report</Text>
       <Text>  <Text bold>V</Text>              Version & changelog</Text>
       <Text>  <Text bold>?</Text>              Toggle this help</Text>
       <Text>  <Text bold>Esc</Text>            Close overlay / clear filter / back</Text>

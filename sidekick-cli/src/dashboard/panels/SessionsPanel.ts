@@ -8,6 +8,12 @@ import type { SidePanel, PanelItem, PanelAction, DetailTab, KeyBinding } from '.
 import type { DashboardMetrics, ContextAttribution } from '../DashboardState';
 import type { StaticData, SessionRecord } from '../StaticDataLoader';
 import { fmtNum, formatDuration, formatElapsed, formatTime, makeBar, shortenPath, wordWrap, detailWidth, visibleLength, truncate } from '../formatters';
+
+function getUtilizationColor(percent: number): string {
+  if (percent < 60) return 'green';
+  if (percent < 80) return 'yellow';
+  return 'red';
+}
 import { buildMindMapTree, renderMindMapBoxed, renderTreeToText } from '../MindMapBuilder';
 import { GitDiffCache } from '../GitDiffCache';
 import { CliInferenceClient } from '../../inference/CliInferenceClient';
@@ -230,7 +236,7 @@ export class SessionsPanel implements SidePanel {
       const m = metrics;
       const t = m.tokens;
       const c = m.context;
-      const contextColor = c.percent < 60 ? 'green' : c.percent < 80 ? 'yellow' : 'red';
+      const contextColor = getUtilizationColor(c.percent);
       const barWidth = 30;
       const filled = Math.round((c.percent / 100) * barWidth);
       const empty = barWidth - filled;
@@ -347,10 +353,10 @@ export class SessionsPanel implements SidePanel {
       if (m.quota?.available) {
         const q = m.quota;
         lines.push('', '{bold}Quota{/bold}');
-        const fiveColor = q.fiveHour.utilization < 60 ? 'green' : q.fiveHour.utilization < 80 ? 'yellow' : 'red';
+        const fiveColor = getUtilizationColor(q.fiveHour.utilization);
         const fiveBar = makeBar(q.fiveHour.utilization, 18);
         lines.push(`  5h:  {${fiveColor}-fg}${fiveBar}{/${fiveColor}-fg} ${q.fiveHour.utilization.toFixed(0)}%`);
-        const sevenColor = q.sevenDay.utilization < 60 ? 'green' : q.sevenDay.utilization < 80 ? 'yellow' : 'red';
+        const sevenColor = getUtilizationColor(q.sevenDay.utilization);
         const sevenBar = makeBar(q.sevenDay.utilization, 18);
         lines.push(`  7d:  {${sevenColor}-fg}${sevenBar}{/${sevenColor}-fg} ${q.sevenDay.utilization.toFixed(0)}%`);
       }

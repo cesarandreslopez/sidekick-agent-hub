@@ -5172,7 +5172,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // Catch uncaught errors
       window.onerror = function(msg, url, line) {
-        var el = document.getElementById('session-list');
+        const el = document.getElementById('session-list');
         if (el) el.innerHTML = '<div class="session-list-empty">JS Error: ' + msg + ' (line ' + line + ')</div>';
       };
 
@@ -5248,9 +5248,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       let currentQuota = null;
 
       // Provider-aware instruction file targeting
-      var targetFileName = 'CLAUDE.md';
-      var targetFileTip = 'After adding suggestions to your CLAUDE.md, run /init in Claude Code to consolidate and optimize the file.';
-      var targetDocsUrl = 'https://docs.anthropic.com/en/docs/claude-code/memory#claudemd';
+      let targetFileName = 'CLAUDE.md';
+      let targetFileTip = 'After adding suggestions to your CLAUDE.md, run /init in Claude Code to consolidate and optimize the file.';
+      let targetDocsUrl = 'https://docs.anthropic.com/en/docs/claude-code/memory#claudemd';
 
       // Suggestions state
       let currentSuggestions = [];
@@ -5259,22 +5259,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // ==== CLAUDE.md Suggestions Functions ====
 
       function escapeHtml(text) {
-        var div = document.createElement('div');
+        const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
       }
 
       // ==== Changelog Modal ====
 
-      var changelogData = ${JSON.stringify(changelogEntries)};
+      const changelogData = ${JSON.stringify(changelogEntries)};
 
       function renderChangelog(entries) {
-        var body = document.getElementById('changelog-body');
+        const body = document.getElementById('changelog-body');
         if (!body || !entries.length) return;
         body.innerHTML = entries.map(function(entry, i) {
-          var isFirst = i === 0;
-          var sections = entry.sections.map(function(s) {
-            var items = s.items.map(function(item) {
+          const isFirst = i === 0;
+          const sections = entry.sections.map(function(s) {
+            const items = s.items.map(function(item) {
               return '<div class="changelog-entry-item">' + escapeHtml(item) + '</div>';
             }).join('');
             return '<div class="changelog-entry-section"><div class="changelog-entry-heading">' + escapeHtml(s.heading) + '</div>' + items + '</div>';
@@ -5285,10 +5285,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }).join('');
       }
 
-      var versionBadge = document.getElementById('version-badge');
-      var changelogBackdrop = document.getElementById('changelog-backdrop');
-      var changelogClose = document.getElementById('changelog-close');
-      var changelogFullLink = document.getElementById('changelog-full-link');
+      const versionBadge = document.getElementById('version-badge');
+      const changelogBackdrop = document.getElementById('changelog-backdrop');
+      const changelogClose = document.getElementById('changelog-close');
+      const changelogFullLink = document.getElementById('changelog-full-link');
 
       if (versionBadge) {
         versionBadge.addEventListener('click', function() {
@@ -5318,8 +5318,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       function setSuggestionsLoading(loading) {
         suggestionsLoading = loading;
-        var panel = document.getElementById('suggestions-panel');
-        var analyzeBtn = document.getElementById('analyze-btn');
+        const panel = document.getElementById('suggestions-panel');
+        const analyzeBtn = document.getElementById('analyze-btn');
 
         if (analyzeBtn) {
           analyzeBtn.disabled = loading;
@@ -5327,7 +5327,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         if (panel && loading) {
-          var content = panel.querySelector('.suggestions-content');
+          const content = panel.querySelector('.suggestions-content');
           if (content) {
             content.innerHTML = '<div class="suggestions-loading">Analyzing session data...</div>';
           }
@@ -5335,10 +5335,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function showSuggestionsError(error) {
-        var panel = document.getElementById('suggestions-panel');
+        const panel = document.getElementById('suggestions-panel');
         if (!panel) return;
 
-        var content = panel.querySelector('.suggestions-content');
+        const content = panel.querySelector('.suggestions-content');
         if (content) {
           content.innerHTML = '<div class="suggestions-error">' + escapeHtml(error) + '</div>';
         }
@@ -5346,10 +5346,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       function renderSuggestions(suggestions) {
         currentSuggestions = suggestions;
-        var panel = document.getElementById('suggestions-panel');
+        const panel = document.getElementById('suggestions-panel');
         if (!panel) return;
 
-        var content = panel.querySelector('.suggestions-content');
+        const content = panel.querySelector('.suggestions-content');
         if (!content) return;
 
         if (suggestions.length === 0) {
@@ -5358,12 +5358,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         // Handle single consolidated suggestion (new format) or multiple suggestions (old format)
-        var html;
+        let html;
         if (suggestions.length === 1 && suggestions[0].title === 'Recommended Addition') {
           // New consolidated format - single card with summary, code block, and rationale
-          var s = suggestions[0];
-          var rationaleItems = s.reasoning.split(' | ').filter(function(item) { return item.trim(); });
-          var rationaleHtml = rationaleItems.length > 0
+          const s = suggestions[0];
+          const rationaleItems = s.reasoning.split(' | ').filter(function(item) { return item.trim(); });
+          const rationaleHtml = rationaleItems.length > 0
             ? '<ul class="suggestion-rationale-list">' +
                 rationaleItems.map(function(item) {
                   return '<li>' + escapeHtml(item) + '</li>';
@@ -5410,7 +5410,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Attach event listeners (CSP blocks inline onclick)
         content.querySelectorAll('.copy-btn').forEach(function(btn) {
           btn.addEventListener('click', function() {
-            var index = parseInt(btn.getAttribute('data-index'), 10);
+            const index = parseInt(btn.getAttribute('data-index'), 10);
             if (index >= 0 && index < currentSuggestions.length) {
               vscode.postMessage({
                 type: 'copySuggestion',
@@ -5420,7 +5420,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           });
         });
 
-        var openBtn = content.querySelector('.open-claude-md-btn');
+        const openBtn = content.querySelector('.open-claude-md-btn');
         if (openBtn) {
           openBtn.addEventListener('click', function() {
             vscode.postMessage({ type: 'openInstructionFile' });
@@ -5433,7 +5433,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Tab switching
       tabBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
-          var tab = btn.getAttribute('data-tab');
+          const tab = btn.getAttribute('data-tab');
 
           tabBtns.forEach(function(b) { b.classList.remove('active'); });
           tabContents.forEach(function(c) { c.classList.remove('active'); });
@@ -5463,8 +5463,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Group section toggles
       groupToggles.forEach(function(toggle) {
         toggle.addEventListener('click', function() {
-          var sectionId = toggle.getAttribute('data-group-toggle');
-          var section = document.getElementById(sectionId);
+          const sectionId = toggle.getAttribute('data-group-toggle');
+          const section = document.getElementById(sectionId);
           if (section) {
             section.classList.toggle('expanded');
           }
@@ -5518,12 +5518,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               primaryMetricSubtitle.textContent = 'Estimated session cost';
               break;
             case 'tokens':
-              var totalTokens = sessionState.totalInputTokens + sessionState.totalOutputTokens;
+              const totalTokens = sessionState.totalInputTokens + sessionState.totalOutputTokens;
               primaryMetricValue.textContent = formatNumber(totalTokens);
               primaryMetricSubtitle.textContent = formatNumber(sessionState.totalInputTokens) + ' in / ' + formatNumber(sessionState.totalOutputTokens) + ' out';
               break;
             case 'cache':
-              var totalCache = sessionState.totalCacheWriteTokens + sessionState.totalCacheReadTokens;
+              const totalCache = sessionState.totalCacheWriteTokens + sessionState.totalCacheReadTokens;
               primaryMetricValue.textContent = formatNumber(totalCache);
               primaryMetricSubtitle.textContent = formatNumber(sessionState.totalCacheWriteTokens) + ' write / ' + formatNumber(sessionState.totalCacheReadTokens) + ' read';
               break;
@@ -5547,10 +5547,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Initializes the history bar chart.
        */
       function initHistoryChart() {
-        var canvas = document.getElementById('historyChart');
+        const canvas = document.getElementById('historyChart');
         if (!canvas || !window.Chart) return;
 
-        var ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
         historyChart = new Chart(ctx, {
@@ -5570,8 +5570,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             maintainAspectRatio: false,
             onClick: function(event, elements) {
               if (elements.length > 0 && currentHistoryData) {
-                var index = elements[0].index;
-                var dataPoint = currentHistoryData.dataPoints[index];
+                const index = elements[0].index;
+                const dataPoint = currentHistoryData.dataPoints[index];
                 if (dataPoint && (currentRange === 'all' || currentRange === 'month' || currentRange === 'week')) {
                   vscode.postMessage({
                     type: 'drillDown',
@@ -5586,7 +5586,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               tooltip: {
                 callbacks: {
                   label: function(context) {
-                    var metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
+                    const metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
                     if (metric === 'cost') {
                       return formatCost(context.raw);
                     }
@@ -5600,7 +5600,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                 beginAtZero: true,
                 ticks: {
                   callback: function(value) {
-                    var metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
+                    const metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
                     if (metric === 'cost') {
                       return formatCost(value);
                     }
@@ -5624,9 +5624,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
         if (!historyChart) return;
 
-        var metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
-        var labels = data.dataPoints.map(function(d) { return d.label; });
-        var values = data.dataPoints.map(function(d) {
+        const metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
+        const labels = data.dataPoints.map(function(d) { return d.label; });
+        const values = data.dataPoints.map(function(d) {
           switch (metric) {
             case 'cost': return d.totalCost;
             case 'messages': return d.messageCount;
@@ -5634,15 +5634,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
         });
 
-        var color = metric === 'cost' ? 'rgb(76, 175, 80)' :
-                    metric === 'messages' ? 'rgb(33, 150, 243)' :
-                    'rgb(75, 192, 192)';
+        const METRIC_COLORS = { cost: 'rgb(76, 175, 80)', messages: 'rgb(33, 150, 243)', tokens: 'rgb(75, 192, 192)' };
+        const METRIC_LABELS = { cost: 'Cost', messages: 'Messages', tokens: 'Tokens' };
+        const color = METRIC_COLORS[metric] || 'rgb(75, 192, 192)';
 
         historyChart.data.labels = labels;
         historyChart.data.datasets[0].data = values;
         historyChart.data.datasets[0].backgroundColor = color.replace('rgb', 'rgba').replace(')', ', 0.7)');
         historyChart.data.datasets[0].borderColor = color;
-        historyChart.data.datasets[0].label = metric === 'cost' ? 'Cost' : metric === 'messages' ? 'Messages' : 'Tokens';
+        historyChart.data.datasets[0].label = METRIC_LABELS[metric] || 'Tokens';
         historyChart.update();
 
         // Update summary
@@ -5846,22 +5846,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       function formatResetTime(isoString) {
         if (!isoString) return '-';
 
-        var resetDate = new Date(isoString);
-        var now = new Date();
-        var diffMs = resetDate - now;
+        const resetDate = new Date(isoString);
+        const now = new Date();
+        const diffMs = resetDate - now;
 
         if (diffMs <= 0) return 'Resetting...';
 
-        var diffMins = Math.floor(diffMs / 60000);
-        var diffHours = Math.floor(diffMins / 60);
-        var diffDays = Math.floor(diffHours / 24);
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
 
         if (diffDays > 0) {
-          var remainingHours = diffHours % 24;
+          const remainingHours = diffHours % 24;
           return 'Resets in ' + diffDays + 'd ' + remainingHours + 'h';
         }
         if (diffHours > 0) {
-          var remainingMins = diffMins % 60;
+          const remainingMins = diffMins % 60;
           return 'Resets in ' + diffHours + 'h ' + remainingMins + 'm';
         }
         return 'Resets in ' + diffMins + 'm';
@@ -5902,9 +5902,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       function updateQuota(quota) {
         currentQuota = quota;
 
-        var sectionEl = document.getElementById('quota-section');
-        var contentEl = document.getElementById('quota-content');
-        var errorEl = document.getElementById('quota-error');
+        const sectionEl = document.getElementById('quota-section');
+        const contentEl = document.getElementById('quota-content');
+        const errorEl = document.getElementById('quota-error');
 
         if (!sectionEl || !contentEl || !errorEl) return;
 
@@ -5943,9 +5943,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         errorEl.style.display = 'none';
 
         // Update 5-hour gauge
-        var percent5hEl = document.getElementById('quota-5h-percent');
-        var reset5hEl = document.getElementById('quota-5h-reset');
-        var projection5hEl = document.getElementById('quota-5h-projection');
+        const percent5hEl = document.getElementById('quota-5h-percent');
+        const reset5hEl = document.getElementById('quota-5h-reset');
+        const projection5hEl = document.getElementById('quota-5h-projection');
         updateQuotaGauge(quota5hChart, percent5hEl, quota.fiveHour.utilization);
         if (reset5hEl) {
           reset5hEl.textContent = formatResetTime(quota.fiveHour.resetsAt);
@@ -5953,9 +5953,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         updateProjectionDisplay(projection5hEl, quota.projectedFiveHour);
 
         // Update 7-day gauge
-        var percent7dEl = document.getElementById('quota-7d-percent');
-        var reset7dEl = document.getElementById('quota-7d-reset');
-        var projection7dEl = document.getElementById('quota-7d-projection');
+        const percent7dEl = document.getElementById('quota-7d-percent');
+        const reset7dEl = document.getElementById('quota-7d-reset');
+        const projection7dEl = document.getElementById('quota-7d-projection');
         updateQuotaGauge(quota7dChart, percent7dEl, quota.sevenDay.utilization);
         if (reset7dEl) {
           reset7dEl.textContent = formatResetTime(quota.sevenDay.resetsAt);
@@ -5967,7 +5967,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Updates the latency display with new data.
        */
       function updateLatency(latency) {
-        var sectionEl = document.getElementById('latency-section');
+        const sectionEl = document.getElementById('latency-section');
         if (!sectionEl) return;
 
         if (!latency || !latency.hasData) {
@@ -5977,11 +5977,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         sectionEl.style.display = 'block';
 
-        var lastEl = document.getElementById('latency-last');
-        var avgEl = document.getElementById('latency-avg');
-        var maxEl = document.getElementById('latency-max');
-        var totalAvgEl = document.getElementById('latency-total-avg');
-        var countEl = document.getElementById('latency-count');
+        const lastEl = document.getElementById('latency-last');
+        const avgEl = document.getElementById('latency-avg');
+        const maxEl = document.getElementById('latency-max');
+        const totalAvgEl = document.getElementById('latency-total-avg');
+        const countEl = document.getElementById('latency-count');
 
         if (lastEl) lastEl.textContent = latency.lastFirstToken;
         if (avgEl) avgEl.textContent = latency.avgFirstToken;
@@ -6028,8 +6028,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Add click handlers for drill-down
         toolListEl.querySelectorAll('.tool-item[data-tool-name]').forEach(function(item) {
           item.addEventListener('click', function() {
-            var toolName = item.getAttribute('data-tool-name');
-            var drilldown = item.querySelector('.tool-drilldown');
+            const toolName = item.getAttribute('data-tool-name');
+            const drilldown = item.querySelector('.tool-drilldown');
             if (!drilldown) return;
 
             if (drilldown.style.display === 'none') {
@@ -6048,13 +6048,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Renders tool call details in the drill-down area.
        */
       function renderToolCallDetails(toolName, calls) {
-        var toolListEl = document.getElementById('tool-list');
+        const toolListEl = document.getElementById('tool-list');
         if (!toolListEl) return;
 
-        var item = toolListEl.querySelector('.tool-item[data-tool-name="' + escapeHtml(toolName) + '"]');
+        const item = toolListEl.querySelector('.tool-item[data-tool-name="' + escapeHtml(toolName) + '"]');
         if (!item) return;
 
-        var drilldown = item.querySelector('.tool-drilldown');
+        const drilldown = item.querySelector('.tool-drilldown');
         if (!drilldown) return;
 
         if (!calls || calls.length === 0) {
@@ -6063,7 +6063,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         drilldown.innerHTML = calls.slice(0, 20).map(function(call) {
-          var errorStyle = call.isError ? 'color: var(--vscode-errorForeground);' : '';
+          const errorStyle = call.isError ? 'color: var(--vscode-errorForeground);' : '';
           return '<div style="display: flex; gap: 6px; padding: 2px 4px; font-size: 10px; border-bottom: 1px solid var(--vscode-panel-border); ' + errorStyle + '">' +
             '<span style="min-width: 45px; color: var(--vscode-descriptionForeground);">' + call.time + '</span>' +
             '<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + escapeHtml(call.description) + '</span>' +
@@ -6074,10 +6074,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Current timeline events cache for client-side filtering
-      var currentTimelineEvents = [];
+      let currentTimelineEvents = [];
 
       // Current filter state
-      var timelineFilters = { showUser: true, showAi: true, showSystem: false, showSidechain: false };
+      const timelineFilters = { showUser: true, showAi: true, showSystem: false, showSidechain: false };
 
       /**
        * Updates timeline display with search and filter support.
@@ -6094,17 +6094,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const timelineEl = document.getElementById('timeline-list');
         if (!timelineEl) return;
 
-        var events = currentTimelineEvents;
-        var searchQuery = '';
-        var searchEl = document.getElementById('timeline-search');
+        const events = currentTimelineEvents;
+        let searchQuery = '';
+        const searchEl = document.getElementById('timeline-search');
         if (searchEl) {
           searchQuery = searchEl.value.trim().toLowerCase();
         }
 
         // Apply filters
-        var filtered = events.filter(function(event) {
+        const filtered = events.filter(function(event) {
           // Noise-level filtering
-          var noise = event.noiseLevel || 'ai';
+          const noise = event.noiseLevel || 'ai';
           if (noise === 'user' && !timelineFilters.showUser) return false;
           if (noise === 'ai' && !timelineFilters.showAi) return false;
           if ((noise === 'system' || noise === 'noise') && !timelineFilters.showSystem) return false;
@@ -6112,8 +6112,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           // Search filtering
           if (searchQuery) {
-            var desc = (event.description || '').toLowerCase();
-            var full = (event.fullText || '').toLowerCase();
+            const desc = (event.description || '').toLowerCase();
+            const full = (event.fullText || '').toLowerCase();
             if (desc.indexOf(searchQuery) === -1 && full.indexOf(searchQuery) === -1) {
               return false;
             }
@@ -6131,7 +6131,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         // Show result count when searching
-        var countHtml = '';
+        let countHtml = '';
         if (searchQuery) {
           countHtml = '<div class="timeline-search-count">Showing ' + filtered.length + ' of ' + events.length + ' events</div>';
         }
@@ -6147,7 +6147,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         timelineEl.innerHTML = countHtml + filtered.map(function(event, idx) {
           const icon = iconMap[event.type] || '\u25CF';
-          var classes = 'timeline-item';
+          let classes = 'timeline-item';
           if (event.isError) classes += ' error';
           if (event.type === 'assistant_response') classes += ' assistant';
           if (event.type === 'compaction') classes += ' compaction';
@@ -6156,11 +6156,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           if (event.noiseLevel === 'system') classes += ' system-event';
 
           // Highlight search matches
-          var desc = escapeHtml(event.description);
+          let desc = escapeHtml(event.description);
           if (searchQuery) {
             try {
-              var escaped = searchQuery.replace(/[-\\/^$*+?.()|[\\]{}]/g, String.fromCharCode(92) + '$&');
-              var re = new RegExp('(' + escaped + ')', 'gi');
+              const escaped = searchQuery.replace(/[-\\/^$*+?.()|[\\]{}]/g, String.fromCharCode(92) + '$&');
+              const re = new RegExp('(' + escaped + ')', 'gi');
               desc = desc.replace(re, '<mark>$1</mark>');
             } catch(ex) { /* invalid regex, skip highlighting */ }
           }
@@ -6211,8 +6211,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Updates compaction events display.
        */
       function updateCompactions(compactions) {
-        var sectionEl = document.getElementById('compaction-section');
-        var listEl = document.getElementById('compaction-list');
+        const sectionEl = document.getElementById('compaction-section');
+        const listEl = document.getElementById('compaction-list');
         if (!sectionEl || !listEl) return;
 
         if (!compactions || compactions.length === 0) {
@@ -6222,9 +6222,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         sectionEl.style.display = 'block';
         listEl.innerHTML = compactions.map(function(c) {
-          var beforeK = Math.round(c.contextBefore / 1000);
-          var afterK = Math.round(c.contextAfter / 1000);
-          var reclaimedK = Math.round(c.tokensReclaimed / 1000);
+          const beforeK = Math.round(c.contextBefore / 1000);
+          const afterK = Math.round(c.contextAfter / 1000);
+          const reclaimedK = Math.round(c.tokensReclaimed / 1000);
           return '<div class="compaction-item">' +
             '<span class="compaction-time">' + c.time + '</span>' +
             '<span class="compaction-delta">' + beforeK + 'K → ' + afterK + 'K</span>' +
@@ -6237,9 +6237,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Updates context attribution stacked bar + legend.
        */
       function updateContextAttribution(attribution) {
-        var sectionEl = document.getElementById('context-attribution-section');
-        var chartEl = document.getElementById('context-attribution-chart');
-        var legendEl = document.getElementById('attribution-legend');
+        const sectionEl = document.getElementById('context-attribution-section');
+        const chartEl = document.getElementById('context-attribution-chart');
+        const legendEl = document.getElementById('attribution-legend');
         if (!sectionEl || !chartEl || !legendEl) return;
 
         if (!attribution || attribution.length === 0) {
@@ -6272,10 +6272,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Per-turn attribution stacked area chart
-      var turnAttributionChart = null;
+      let turnAttributionChart = null;
 
       function updateTurnAttributions(turns) {
-        var sectionEl = document.getElementById('turn-attribution-section');
+        const sectionEl = document.getElementById('turn-attribution-section');
         if (!sectionEl) return;
 
         if (!turns || turns.length === 0) {
@@ -6285,14 +6285,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         sectionEl.style.display = 'block';
 
-        var canvas = document.getElementById('turnAttributionChart');
+        const canvas = document.getElementById('turnAttributionChart');
         if (!canvas || !window.Chart) return;
 
-        var labels = turns.map(function(t) { return '#' + t.turnIndex; });
+        const labels = turns.map(function(t) { return '#' + t.turnIndex; });
 
         // Build datasets per category
-        var categoryMap = {};
-        var COLORS = {
+        const categoryMap = {};
+        const COLORS = {
           'System Prompt': '#e06c75',
           'User Messages': '#61afef',
           'Assistant': '#98c379',
@@ -6318,7 +6318,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           });
         });
 
-        var datasets = Object.keys(categoryMap).map(function(cat) {
+        const datasets = Object.keys(categoryMap).map(function(cat) {
           return {
             label: cat,
             data: categoryMap[cat],
@@ -6335,7 +6335,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           turnAttributionChart.data.datasets = datasets;
           turnAttributionChart.update('none');
         } else {
-          var ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d');
           if (!ctx) return;
           turnAttributionChart = new Chart(ctx, {
             type: 'line',
@@ -6369,10 +6369,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Context waterfall chart
-      var waterfallChart = null;
+      let waterfallChart = null;
 
       function updateContextWaterfall(waterfall) {
-        var sectionEl = document.getElementById('context-waterfall-section');
+        const sectionEl = document.getElementById('context-waterfall-section');
         if (!sectionEl) return;
 
         if (!waterfall || !waterfall.points || waterfall.points.length === 0) {
@@ -6382,18 +6382,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         sectionEl.style.display = 'block';
 
-        var canvas = document.getElementById('contextWaterfallChart');
+        const canvas = document.getElementById('contextWaterfallChart');
         if (!canvas || !window.Chart) return;
 
-        var labels = waterfall.points.map(function(p) { return '#' + p.turnIndex; });
-        var data = waterfall.points.map(function(p) { return p.tokens; });
+        const labels = waterfall.points.map(function(p) { return '#' + p.turnIndex; });
+        const data = waterfall.points.map(function(p) { return p.tokens; });
 
         // Build compaction annotation lines
-        var compactionIndices = [];
+        const compactionIndices = [];
         if (waterfall.compactions && waterfall.compactions.length > 0) {
           waterfall.compactions.forEach(function(c) {
             // Find closest point index by matching time
-            for (var i = 0; i < waterfall.points.length; i++) {
+            for (let i = 0; i < waterfall.points.length; i++) {
               if (waterfall.points[i].time === c.time) {
                 compactionIndices.push(i);
                 break;
@@ -6403,9 +6403,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         // Segment colors: red after compaction points
-        var segmentColor = function(ctx) {
+        const segmentColor = function(ctx) {
           if (compactionIndices.length === 0) return 'rgba(97, 175, 239, 0.6)';
-          for (var i = 0; i < compactionIndices.length; i++) {
+          for (let i = 0; i < compactionIndices.length; i++) {
             if (ctx.p0DataIndex === compactionIndices[i]) return 'rgba(224, 108, 117, 0.8)';
           }
           return 'rgba(97, 175, 239, 0.6)';
@@ -6417,7 +6417,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           waterfallChart.data.datasets[0].segment = { borderColor: segmentColor };
           waterfallChart.update('none');
         } else {
-          var ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d');
           if (!ctx) return;
           waterfallChart = new Chart(ctx, {
             type: 'line',
@@ -6463,10 +6463,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // Notification history
       function updateNotificationHistory(notifications, unreadCount) {
-        var sectionEl = document.getElementById('notification-history-section');
-        var listEl = document.getElementById('notification-list');
-        var actionsEl = document.getElementById('notification-actions');
-        var badgeEl = document.getElementById('notification-badge');
+        const sectionEl = document.getElementById('notification-history-section');
+        const listEl = document.getElementById('notification-list');
+        const actionsEl = document.getElementById('notification-actions');
+        const badgeEl = document.getElementById('notification-badge');
         if (!sectionEl || !listEl) return;
 
         if (!notifications || notifications.length === 0) {
@@ -6486,11 +6486,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
         }
 
-        var severityIcons = { error: '\u26A0', warning: '\u26A0', info: '\u2139' };
+        const severityIcons = { error: '\u26A0', warning: '\u26A0', info: '\u2139' };
 
         listEl.innerHTML = notifications.map(function(n) {
-          var icon = severityIcons[n.severity] || '\u2139';
-          var readClass = n.isRead ? 'notification-read' : 'notification-unread';
+          const icon = severityIcons[n.severity] || '\u2139';
+          const readClass = n.isRead ? 'notification-read' : 'notification-unread';
           return '<div class="notification-item ' + readClass + ' notification-' + n.severity + '" data-id="' + n.id + '">' +
             '<span class="notification-icon">' + icon + '</span>' +
             '<div class="notification-content">' +
@@ -6506,7 +6506,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Click to mark read
         listEl.querySelectorAll('.notification-item').forEach(function(item) {
           item.addEventListener('click', function() {
-            var id = item.getAttribute('data-id');
+            const id = item.getAttribute('data-id');
             if (id) {
               vscode.postMessage({ type: 'markNotificationRead', id: id });
               item.classList.remove('notification-unread');
@@ -6531,7 +6531,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         sectionEl.style.display = 'block';
         listEl.innerHTML = errorDetails.map(function(group, idx) {
-          var messagesHtml = group.messages.map(function(msg) {
+          const messagesHtml = group.messages.map(function(msg) {
             return '<li>' + escapeHtml(msg) + '</li>';
           }).join('');
 
@@ -6557,7 +6557,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Escapes HTML to prevent XSS.
        */
       function escapeHtml(str) {
-        var div = document.createElement('div');
+        const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
       }
@@ -6569,7 +6569,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         currentProviderName = providerName;
 
         // Update instruction file targeting based on provider
-        var instructionTargets = {
+        const instructionTargets = {
           'claude-code': {
             file: 'CLAUDE.md',
             tip: 'After adding suggestions to your CLAUDE.md, run /init in Claude Code to consolidate and optimize the file.',
@@ -6586,13 +6586,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             docsUrl: 'https://github.com/openai/codex'
           }
         };
-        var instrTarget = instructionTargets[providerId] || instructionTargets['claude-code'];
+        const instrTarget = instructionTargets[providerId] || instructionTargets['claude-code'];
         targetFileName = instrTarget.file;
         targetFileTip = instrTarget.tip;
         targetDocsUrl = instrTarget.docsUrl;
 
         // Update docs link if present
-        var docsLink = document.getElementById('guidance-docs-link');
+        const docsLink = document.getElementById('guidance-docs-link');
         if (docsLink) docsLink.setAttribute('href', targetDocsUrl);
 
         if (sessionProviderSelect) {
@@ -6606,9 +6606,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           emptyStateHint.textContent = 'Start a ' + providerName + ' session to see analytics.';
         }
 
-        var quotaSectionEl = document.getElementById('quota-section');
-        var quotaContentEl = document.getElementById('quota-content');
-        var quotaErrorEl = document.getElementById('quota-error');
+        const quotaSectionEl = document.getElementById('quota-section');
+        const quotaContentEl = document.getElementById('quota-content');
+        const quotaErrorEl = document.getElementById('quota-error');
 
         if (gaugeRow) {
           gaugeRow.classList.toggle('opencode-provider', currentProviderId === 'opencode');
@@ -6616,7 +6616,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         // For OpenCode: repurpose the Quota button as "Context" (no subscription quota)
         // For Claude Code: restore the Quota button label and show subscription quota
-        var quotaBtn = document.querySelector('.metric-btn[data-metric="quota"]');
+        const quotaBtn = document.querySelector('.metric-btn[data-metric="quota"]');
         if (currentProviderId === 'opencode') {
           if (quotaSectionEl) quotaSectionEl.classList.remove('visible');
           if (quotaContentEl) quotaContentEl.style.display = 'none';
@@ -6669,11 +6669,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           return;
         }
 
-        var totalSessions = 0;
+        let totalSessions = 0;
         groups.forEach(function(group) {
           // Add group header for non-current groups
           if (group.proximity !== 'current') {
-            var header = document.createElement('div');
+            const header = document.createElement('div');
             header.className = 'session-group-header';
             header.textContent = group.displayPath || group.projectPath;
             sessionListEl.appendChild(header);
@@ -6681,26 +6681,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           // Add session cards
           group.sessions.forEach(function(session, index) {
-            var card = document.createElement('div');
+            const card = document.createElement('div');
             card.className = 'session-card' + (session.isCurrent ? ' current' : '');
             card.setAttribute('data-path', session.path);
 
-            var statusDiv = document.createElement('div');
+            const statusDiv = document.createElement('div');
             statusDiv.className = 'session-card-status';
-            var dot = document.createElement('span');
+            const dot = document.createElement('span');
             dot.className = 'status-dot' + (session.isActive ? ' active' : '');
             statusDiv.appendChild(dot);
 
-            var contentDiv = document.createElement('div');
+            const contentDiv = document.createElement('div');
             contentDiv.className = 'session-card-content';
 
-            var labelDiv = document.createElement('div');
+            const labelDiv = document.createElement('div');
             labelDiv.className = 'session-card-label';
             labelDiv.textContent = session.label || session.filename.slice(0, 8) + '...';
 
-            var metaDiv = document.createElement('div');
+            const metaDiv = document.createElement('div');
             metaDiv.className = 'session-card-meta';
-            var date = new Date(session.modifiedTime);
+            const date = new Date(session.modifiedTime);
             metaDiv.textContent = (index === 0 && group.proximity === 'current') ? 'Latest' : formatRelativeTime(date);
 
             contentDiv.appendChild(labelDiv);
@@ -6723,11 +6723,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Formats a date as relative time (e.g., "5m ago", "2h ago").
        */
       function formatRelativeTime(date) {
-        var now = new Date();
-        var diffMs = now - date;
-        var diffMins = Math.floor(diffMs / 60000);
-        var diffHours = Math.floor(diffMins / 60);
-        var diffDays = Math.floor(diffHours / 24);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
 
         if (diffMins < 1) return 'Just now';
         if (diffMins < 60) return diffMins + 'm ago';
@@ -6739,10 +6739,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Updates the file changes display.
        */
       function updateFileChanges(summary) {
-        var sectionEl = document.getElementById('file-changes-section');
-        var fileCountEl = document.getElementById('file-count');
-        var additionsEl = document.getElementById('file-additions');
-        var deletionsEl = document.getElementById('file-deletions');
+        const sectionEl = document.getElementById('file-changes-section');
+        const fileCountEl = document.getElementById('file-count');
+        const additionsEl = document.getElementById('file-additions');
+        const deletionsEl = document.getElementById('file-deletions');
 
         if (!sectionEl || !fileCountEl || !additionsEl || !deletionsEl) return;
 
@@ -6754,7 +6754,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         // Show section with data
         sectionEl.style.display = 'block';
-        var fileCount = summary.totalFilesChanged || 0;
+        const fileCount = summary.totalFilesChanged || 0;
         fileCountEl.textContent = fileCount + ' file' + (fileCount !== 1 ? 's' : '');
         additionsEl.textContent = '+' + formatNumber(summary.totalAdditions || 0);
         deletionsEl.textContent = '-' + formatNumber(summary.totalDeletions || 0);
@@ -6851,27 +6851,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // Plan markdown renderer
       function renderPlanMarkdown(raw, steps) {
-        var lines = raw.split('\\n');
-        var html = '';
-        var inPhase = false;
-        var phasePattern = /^#{2,4}\\s+(?:Phase|Step|Stage)\\s*\\d*[:.](.*)/i;
-        var titlePattern = /^#{1,2}\\s+(.+)/;
-        var headerPattern = /^#{3,4}\\s+(.+)/;
-        var checkboxPattern = /^[-*]\\s+\\[([ xX])\\]\\s+(.+)/;
-        var numberedPattern = /^\\d+[.)\\s]+(.+)/;
-        var bulletPattern = /^[-*]\\s+(.+)/;
+        const lines = raw.split('\\n');
+        let html = '';
+        let inPhase = false;
+        const phasePattern = /^#{2,4}\\s+(?:Phase|Step|Stage)\\s*\\d*[:.](.*)/i;
+        const titlePattern = /^#{1,2}\\s+(.+)/;
+        const headerPattern = /^#{3,4}\\s+(.+)/;
+        const checkboxPattern = /^[-*]\\s+\\[([ xX])\\]\\s+(.+)/;
+        const numberedPattern = /^\\d+[.)\\s]+(.+)/;
+        const bulletPattern = /^[-*]\\s+(.+)/;
 
         // Build step lookup by description for status matching
-        var stepMap = {};
-        for (var si = 0; si < steps.length; si++) {
+        const stepMap = {};
+        for (let si = 0; si < steps.length; si++) {
           stepMap[steps[si].description.toLowerCase().trim()] = steps[si];
         }
 
         function findStep(desc) {
-          var key = desc.toLowerCase().trim();
+          const key = desc.toLowerCase().trim();
           if (stepMap[key]) return stepMap[key];
           // Fuzzy: find step whose description is contained in or contains desc
-          for (var k in stepMap) {
+          for (const k in stepMap) {
             if (key.indexOf(k) >= 0 || k.indexOf(key) >= 0) return stepMap[k];
           }
           return null;
@@ -6886,10 +6886,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         function stepMeta(s) {
-          var parts = [];
+          const parts = [];
           if (s.durationMs) {
-            var sec = Math.round(s.durationMs / 1000);
-            var min = Math.floor(sec / 60);
+            const sec = Math.round(s.durationMs / 1000);
+            const min = Math.floor(sec / 60);
             parts.push(min > 0 ? min + 'm ' + (sec % 60) + 's' : sec + 's');
           }
           if (s.tokensUsed) parts.push(s.tokensUsed >= 1000 ? (s.tokensUsed / 1000).toFixed(1) + 'k' : s.tokensUsed + '');
@@ -6901,13 +6901,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        for (var i = 0; i < lines.length; i++) {
-          var line = lines[i];
-          var trimmed = line.trim();
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const trimmed = line.trim();
           if (!trimmed) continue;
 
           // Phase headers
-          var pm = trimmed.match(phasePattern);
+          const pm = trimmed.match(phasePattern);
           if (pm) {
             if (inPhase) html += '</div>';
             html += '<div class="plan-md-phase"><h2>' + esc(pm[1].trim()) + '</h2>';
@@ -6916,30 +6916,30 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
 
           // Title headers
-          var tm = trimmed.match(titlePattern);
+          const tm = trimmed.match(titlePattern);
           if (tm && !trimmed.match(phasePattern)) {
-            var level = trimmed.indexOf('## ') === 0 ? 'h2' : 'h1';
+            const level = trimmed.indexOf('## ') === 0 ? 'h2' : 'h1';
             html += '<' + level + '>' + esc(tm[1].trim()) + '</' + level + '>';
             continue;
           }
 
           // Sub-headers
-          var hm = trimmed.match(headerPattern);
+          const hm = trimmed.match(headerPattern);
           if (hm) {
             html += '<h3>' + esc(hm[1].trim()) + '</h3>';
             continue;
           }
 
           // Checkbox items → match to plan steps
-          var cm = trimmed.match(checkboxPattern);
+          const cm = trimmed.match(checkboxPattern);
           if (cm) {
-            var desc = cm[2].trim();
-            var matched = findStep(desc);
+            const desc = cm[2].trim();
+            const matched = findStep(desc);
             if (matched) {
               html += '<div class="plan-md-step"><span class="plan-md-step-icon">' + stepIcon(matched.status)
                 + '</span><span class="plan-md-step-desc">' + esc(desc) + '</span>' + stepMeta(matched) + '</div>';
             } else {
-              var chk = cm[1].toLowerCase() === 'x' ? '\\u2713' : '\\u25CB';
+              const chk = cm[1].toLowerCase() === 'x' ? '\\u2713' : '\\u25CB';
               html += '<div class="plan-md-step"><span class="plan-md-step-icon">' + chk
                 + '</span><span class="plan-md-step-desc">' + esc(desc) + '</span></div>';
             }
@@ -6947,10 +6947,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
 
           // Numbered items → match to plan steps
-          var nm = trimmed.match(numberedPattern);
+          const nm = trimmed.match(numberedPattern);
           if (nm) {
-            var ndesc = nm[1].trim();
-            var nmatched = findStep(ndesc);
+            const ndesc = nm[1].trim();
+            const nmatched = findStep(ndesc);
             if (nmatched) {
               html += '<div class="plan-md-step"><span class="plan-md-step-icon">' + stepIcon(nmatched.status)
                 + '</span><span class="plan-md-step-desc">' + esc(ndesc) + '</span>' + stepMeta(nmatched) + '</div>';
@@ -6961,7 +6961,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
 
           // Context bullets
-          var bm = trimmed.match(bulletPattern);
+          const bm = trimmed.match(bulletPattern);
           if (bm) {
             html += '<div class="plan-md-context">\\u2022 ' + esc(bm[1].trim()) + '</div>';
             continue;
@@ -6976,12 +6976,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Plan view toggle
-      var planViewShowing = 'steps'; // 'steps' | 'details'
-      var pvToggle = document.getElementById('plan-view-toggle');
+      let planViewShowing = 'steps'; // 'steps' | 'details'
+      const pvToggle = document.getElementById('plan-view-toggle');
       if (pvToggle) {
         pvToggle.addEventListener('click', function() {
-          var stepsList = document.getElementById('plan-steps-list');
-          var mdView = document.getElementById('plan-markdown-view');
+          const stepsList = document.getElementById('plan-steps-list');
+          const mdView = document.getElementById('plan-markdown-view');
           if (!stepsList || !mdView) return;
           if (planViewShowing === 'steps') {
             stepsList.style.display = 'none';
@@ -7027,11 +7027,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           case 'updateBurnRate':
             sessionState.burnRate = Math.round(message.burnRate);
             if (message.sessionStartTime) {
-              var start = new Date(message.sessionStartTime);
-              var now = new Date();
-              var minutes = Math.floor((now - start) / 60000);
-              var hours = Math.floor(minutes / 60);
-              var mins = minutes % 60;
+              const start = new Date(message.sessionStartTime);
+              const now = new Date();
+              const minutes = Math.floor((now - start) / 60000);
+              const hours = Math.floor(minutes / 60);
+              const mins = minutes % 60;
               sessionState.sessionDuration = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
             }
             updateInlineStats();
@@ -7111,19 +7111,20 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             renderToolEfficiency(message.data);
             break;
 
-          case 'sessionNarrative':
-            var narrativeEl = document.getElementById('narrative-display');
-            var narrativeErrEl = document.getElementById('narrative-error');
+          case 'sessionNarrative': {
+            const narrativeEl = document.getElementById('narrative-display');
+            const narrativeErrEl = document.getElementById('narrative-error');
             if (narrativeEl) {
               narrativeEl.textContent = message.narrative;
               narrativeEl.style.display = 'block';
             }
             if (narrativeErrEl) narrativeErrEl.style.display = 'none';
             break;
+          }
 
-          case 'narrativeLoading':
-            var narrBtn = document.getElementById('generate-narrative-btn');
-            var narrSpinner = document.getElementById('narrative-loading');
+          case 'narrativeLoading': {
+            const narrBtn = document.getElementById('generate-narrative-btn');
+            const narrSpinner = document.getElementById('narrative-loading');
             if (narrBtn) {
               narrBtn.disabled = message.loading;
               narrBtn.textContent = message.loading ? 'Generating...' : 'Generate AI Narrative';
@@ -7132,14 +7133,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               narrSpinner.style.display = message.loading ? 'flex' : 'none';
             }
             break;
+          }
 
-          case 'narrativeError':
-            var narrErrEl = document.getElementById('narrative-error');
+          case 'narrativeError': {
+            const narrErrEl = document.getElementById('narrative-error');
             if (narrErrEl) {
               narrErrEl.textContent = message.error;
               narrErrEl.style.display = 'block';
             }
             break;
+          }
 
           case 'updateCompactions':
             updateCompactions(message.compactions);
@@ -7165,76 +7168,79 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             updateNotificationHistory(message.notifications, message.unreadCount);
             break;
 
-          case 'syncEventLogState':
-            var elToggle = document.getElementById('event-log-toggle');
+          case 'syncEventLogState': {
+            const elToggle = document.getElementById('event-log-toggle');
             if (elToggle) elToggle.checked = message.enabled;
             break;
+          }
 
-          case 'updatePhrase':
-            var headerPhrase = document.getElementById('header-phrase');
+          case 'updatePhrase': {
+            const headerPhrase = document.getElementById('header-phrase');
             if (headerPhrase) headerPhrase.textContent = message.phrase;
             break;
+          }
 
-          case 'updateEmptyPhrase':
-            var emptyPhrase = document.getElementById('empty-state-phrase');
+          case 'updateEmptyPhrase': {
+            const emptyPhrase = document.getElementById('empty-state-phrase');
             if (emptyPhrase) emptyPhrase.textContent = message.phrase;
             break;
+          }
 
-          case 'updatePlan':
-            var planSection = document.getElementById('plan-section');
+          case 'updatePlan': {
+            const planSection = document.getElementById('plan-section');
             if (!planSection) break;
-            var plan = message.plan;
+            const plan = message.plan;
             if (!plan || !plan.steps || plan.steps.length === 0) {
               planSection.style.display = 'none';
               break;
             }
             planSection.style.display = '';
 
-            var planTitle = document.getElementById('plan-title');
+            const planTitle = document.getElementById('plan-title');
             if (planTitle) planTitle.textContent = plan.title || 'Plan';
 
-            var planFill = document.getElementById('plan-progress-fill');
+            const planFill = document.getElementById('plan-progress-fill');
             if (planFill) {
-              var pct = Math.round((plan.completionRate || 0) * 100);
+              const pct = Math.round((plan.completionRate || 0) * 100);
               planFill.style.width = pct + '%';
             }
 
-            var planStats = document.getElementById('plan-stats');
+            const planStats = document.getElementById('plan-stats');
             if (planStats) {
-              var completed = plan.steps.filter(function(s) { return s.status === 'completed'; }).length;
-              var total = plan.steps.length;
-              var statParts = [completed + '/' + total + ' steps'];
+              const completed = plan.steps.filter(function(s) { return s.status === 'completed'; }).length;
+              const total = plan.steps.length;
+              const statParts = [completed + '/' + total + ' steps'];
               if (plan.completionRate != null) statParts[0] += ' (' + Math.round(plan.completionRate * 100) + '%)';
               if (plan.totalDurationMs) {
-                var durSec = Math.round(plan.totalDurationMs / 1000);
-                var durMin = Math.floor(durSec / 60);
-                var durRemSec = durSec % 60;
+                const durSec = Math.round(plan.totalDurationMs / 1000);
+                const durMin = Math.floor(durSec / 60);
+                const durRemSec = durSec % 60;
                 statParts.push(durMin > 0 ? durMin + 'm ' + durRemSec + 's' : durSec + 's');
               }
-              var totalTokens = plan.steps.reduce(function(sum, s) { return sum + (s.tokensUsed || 0); }, 0);
+              const totalTokens = plan.steps.reduce(function(sum, s) { return sum + (s.tokensUsed || 0); }, 0);
               if (totalTokens > 0) {
                 statParts.push(totalTokens >= 1000 ? (totalTokens / 1000).toFixed(1) + 'k tokens' : totalTokens + ' tokens');
               }
               planStats.textContent = statParts.join(' · ');
             }
 
-            var planStepsList = document.getElementById('plan-steps-list');
+            const planStepsList = document.getElementById('plan-steps-list');
             if (planStepsList) {
-              var stepsHtml = '';
-              for (var si = 0; si < plan.steps.length; si++) {
-                var step = plan.steps[si];
-                var icon = '○';
-                var statusClass = 'pending';
+              let stepsHtml = '';
+              for (let si = 0; si < plan.steps.length; si++) {
+                const step = plan.steps[si];
+                let icon = '○';
+                let statusClass = 'pending';
                 if (step.status === 'completed') { icon = '✓'; statusClass = 'completed'; }
                 else if (step.status === 'in_progress') { icon = '→'; statusClass = 'in_progress'; }
                 else if (step.status === 'failed') { icon = '✗'; statusClass = 'failed'; }
                 else if (step.status === 'skipped') { icon = '–'; statusClass = 'skipped'; }
 
-                var metaParts = [];
+                const metaParts = [];
                 if (step.durationMs) {
-                  var sSec = Math.round(step.durationMs / 1000);
-                  var sMin = Math.floor(sSec / 60);
-                  var sRemSec = sSec % 60;
+                  const sSec = Math.round(step.durationMs / 1000);
+                  const sMin = Math.floor(sSec / 60);
+                  const sRemSec = sSec % 60;
                   metaParts.push(sMin > 0 ? sMin + 'm ' + sRemSec + 's' : sSec + 's');
                 }
                 if (step.tokensUsed) {
@@ -7243,8 +7249,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                 if (step.toolCalls) metaParts.push(step.toolCalls + ' calls');
                 if (step.complexity) metaParts.push(step.complexity);
 
-                var metaHtml = metaParts.length > 0 ? '<span class="plan-step-meta">' + metaParts.join(' · ') + '</span>' : '';
-                var errorHtml = step.errorMessage ? '<div style="color: var(--vscode-charts-red, #f14c4c); font-size: 10px; margin-left: 20px;">' + step.errorMessage.substring(0, 100) + '</div>' : '';
+                const metaHtml = metaParts.length > 0 ? '<span class="plan-step-meta">' + metaParts.join(' · ') + '</span>' : '';
+                const errorHtml = step.errorMessage ? '<div style="color: var(--vscode-charts-red, #f14c4c); font-size: 10px; margin-left: 20px;">' + step.errorMessage.substring(0, 100) + '</div>' : '';
 
                 stepsHtml += '<div class="plan-step-item ' + statusClass + '">'
                   + '<span class="plan-step-icon">' + icon + '</span>'
@@ -7257,8 +7263,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             }
 
             // Render raw markdown view if available
-            var planViewToggle = document.getElementById('plan-view-toggle');
-            var planMarkdownView = document.getElementById('plan-markdown-view');
+            const planViewToggle = document.getElementById('plan-view-toggle');
+            const planMarkdownView = document.getElementById('plan-markdown-view');
             if (planViewToggle && planMarkdownView) {
               if (plan.rawMarkdown) {
                 planViewToggle.style.display = '';
@@ -7270,27 +7276,28 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               }
             }
             break;
+          }
 
-          case 'updatePlanHistory':
-            var phSection = document.getElementById('plan-history-section');
+          case 'updatePlanHistory': {
+            const phSection = document.getElementById('plan-history-section');
             if (!phSection) break;
-            var history = message.history;
+            const history = message.history;
             if (!history || history.totalPlans === 0) {
               phSection.style.display = 'none';
               break;
             }
             phSection.style.display = '';
 
-            var phStats = document.getElementById('plan-history-stats');
+            const phStats = document.getElementById('plan-history-stats');
             if (phStats) {
-              var phParts = [
+              const phParts = [
                 history.totalPlans + ' plans',
                 history.completedPlans + ' completed',
                 Math.round(history.avgCompletionRate * 100) + '% avg completion'
               ];
               if (history.avgDurationMs > 0) {
-                var dSec = Math.round(history.avgDurationMs / 1000);
-                var dMin = Math.floor(dSec / 60);
+                const dSec = Math.round(history.avgDurationMs / 1000);
+                const dMin = Math.floor(dSec / 60);
                 phParts.push('avg ' + (dMin > 0 ? dMin + 'm' : dSec + 's'));
               }
               if (history.avgTokensPerPlan > 0) {
@@ -7299,14 +7306,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               phStats.textContent = phParts.join(' · ');
             }
 
-            var phList = document.getElementById('plan-history-list');
+            const phList = document.getElementById('plan-history-list');
             if (phList && history.recentPlans) {
-              var phHtml = '';
-              for (var pi = 0; pi < history.recentPlans.length; pi++) {
-                var rp = history.recentPlans[pi];
-                var rpIcon = rp.status === 'completed' ? '✓' : rp.status === 'failed' ? '✗' : rp.status === 'abandoned' ? '–' : '→';
-                var rpPct = Math.round(rp.completionRate * 100);
-                var rpDate = new Date(rp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+              let phHtml = '';
+              for (let pi = 0; pi < history.recentPlans.length; pi++) {
+                const rp = history.recentPlans[pi];
+                const PLAN_STATUS_ICONS = { completed: '✓', failed: '✗', abandoned: '–' };
+                const rpIcon = PLAN_STATUS_ICONS[rp.status] || '→';
+                const rpPct = Math.round(rp.completionRate * 100);
+                const rpDate = new Date(rp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                 phHtml += '<div class="plan-step-item ' + rp.status + '">'
                   + '<span class="plan-step-icon">' + rpIcon + '</span>'
                   + '<span class="plan-step-desc">' + rp.title + '</span>'
@@ -7316,17 +7324,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               phList.innerHTML = phHtml;
             }
             break;
+          }
         }
       });
 
       // Timeline search input handler (debounced)
-      var searchTimer = null;
-      var searchInput = document.getElementById('timeline-search');
+      let searchTimer = null;
+      const searchInput = document.getElementById('timeline-search');
       if (searchInput) {
         searchInput.addEventListener('input', function() {
           if (searchTimer) clearTimeout(searchTimer);
           searchTimer = setTimeout(function() {
-            var query = searchInput.value.trim();
+            const query = searchInput.value.trim();
             if (query.length > 0) {
               // Request all events from extension for search
               vscode.postMessage({ type: 'searchTimeline', query: query });
@@ -7339,11 +7348,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Timeline filter checkbox handlers
-      var filtersEl = document.getElementById('timeline-filters');
+      const filtersEl = document.getElementById('timeline-filters');
       if (filtersEl) {
         filtersEl.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
           cb.addEventListener('change', function() {
-            var filterName = cb.getAttribute('data-filter');
+            const filterName = cb.getAttribute('data-filter');
             if (filterName === 'user') timelineFilters.showUser = cb.checked;
             if (filterName === 'ai') timelineFilters.showAi = cb.checked;
             if (filterName === 'system') {
@@ -7356,7 +7365,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Event log toggle handler
-      var eventLogToggle = document.getElementById('event-log-toggle');
+      const eventLogToggle = document.getElementById('event-log-toggle');
       if (eventLogToggle) {
         eventLogToggle.addEventListener('change', function() {
           vscode.postMessage({ type: 'toggleEventLog', enabled: eventLogToggle.checked });
@@ -7366,10 +7375,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Session navigator event handlers
       if (sessionListEl) {
         sessionListEl.addEventListener('click', function(e) {
-          var target = e.target;
+          let target = e.target;
           while (target && target !== sessionListEl) {
             if (target.classList && target.classList.contains('session-card')) {
-              var sessionPath = target.getAttribute('data-path');
+              const sessionPath = target.getAttribute('data-path');
               if (sessionPath) {
                 vscode.postMessage({ type: 'selectSession', sessionPath: sessionPath });
               }
@@ -7396,9 +7405,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       if (sessionProviderSelect) {
         sessionProviderSelect.addEventListener('change', function() {
-          var nextProvider = sessionProviderSelect.value;
+          const nextProvider = sessionProviderSelect.value;
           if (nextProvider && nextProvider !== currentProviderId) {
-            var providerLabel = sessionProviderSelect.options[sessionProviderSelect.selectedIndex].text;
+            const providerLabel = sessionProviderSelect.options[sessionProviderSelect.selectedIndex].text;
             if (sessionListEl) {
               sessionListEl.innerHTML = '<div class="session-list-loading">' +
                 '<span class="session-list-spinner"></span>' +
@@ -7431,7 +7440,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Import historical data button
-      var importHistoricalBtn = document.getElementById('import-historical-btn');
+      const importHistoricalBtn = document.getElementById('import-historical-btn');
       if (importHistoricalBtn) {
         importHistoricalBtn.addEventListener('click', function() {
           vscode.postMessage({ type: 'importHistoricalData' });
@@ -7448,9 +7457,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Set up event listeners for CLAUDE.md suggestions (CSP blocks inline onclick)
-      var suggestionsPanel = document.getElementById('suggestions-panel');
-      var suggestionsHeader = document.getElementById('suggestions-header');
-      var analyzeBtn = document.getElementById('analyze-btn');
+      const suggestionsPanel = document.getElementById('suggestions-panel');
+      const suggestionsHeader = document.getElementById('suggestions-header');
+      const analyzeBtn = document.getElementById('analyze-btn');
 
       if (suggestionsHeader && suggestionsPanel) {
         suggestionsHeader.addEventListener('click', function(e) {
@@ -7474,7 +7483,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Set up handoff button
-      var handoffBtn = document.getElementById('generate-handoff-btn');
+      const handoffBtn = document.getElementById('generate-handoff-btn');
       if (handoffBtn) {
         handoffBtn.addEventListener('click', function() {
           vscode.postMessage({ type: 'generateHandoff' });
@@ -7482,13 +7491,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       // Notification history buttons
-      var markAllReadBtn = document.getElementById('mark-all-read-btn');
+      const markAllReadBtn = document.getElementById('mark-all-read-btn');
       if (markAllReadBtn) {
         markAllReadBtn.addEventListener('click', function() {
           vscode.postMessage({ type: 'markAllNotificationsRead' });
         });
       }
-      var clearNotificationsBtn = document.getElementById('clear-notifications-btn');
+      const clearNotificationsBtn = document.getElementById('clear-notifications-btn');
       if (clearNotificationsBtn) {
         clearNotificationsBtn.addEventListener('click', function() {
           vscode.postMessage({ type: 'clearNotificationHistory' });
@@ -7507,7 +7516,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // ==== Summary tab + Richer panels ====
 
-      var narrativeBtn = document.getElementById('generate-narrative-btn');
+      const narrativeBtn = document.getElementById('generate-narrative-btn');
       if (narrativeBtn) {
         narrativeBtn.addEventListener('click', function() {
           vscode.postMessage({ type: 'generateNarrative' });
@@ -7515,29 +7524,29 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function formatDurationMs(ms) {
-        var sec = Math.floor(ms / 1000);
+        const sec = Math.floor(ms / 1000);
         if (sec < 60) return sec + 's';
-        var min = Math.floor(sec / 60);
-        var hours = Math.floor(min / 60);
+        const min = Math.floor(sec / 60);
+        const hours = Math.floor(min / 60);
         if (hours > 0) return hours + 'h ' + (min % 60) + 'm';
         return min + 'm';
       }
 
       function renderSessionSummary(summary) {
-        var empty = document.getElementById('summary-empty');
-        var content = document.getElementById('summary-content');
+        const empty = document.getElementById('summary-empty');
+        const content = document.getElementById('summary-content');
         if (!content) return;
 
         if (empty) empty.style.display = 'none';
         content.style.display = 'block';
 
         // Metric cards
-        var durEl = document.getElementById('sum-duration');
-        var tokEl = document.getElementById('sum-tokens');
-        var costEl = document.getElementById('sum-cost');
-        var apiEl = document.getElementById('sum-api-calls');
-        var ctxEl = document.getElementById('sum-context');
-        var compEl = document.getElementById('sum-completion');
+        const durEl = document.getElementById('sum-duration');
+        const tokEl = document.getElementById('sum-tokens');
+        const costEl = document.getElementById('sum-cost');
+        const apiEl = document.getElementById('sum-api-calls');
+        const ctxEl = document.getElementById('sum-context');
+        const compEl = document.getElementById('sum-completion');
 
         if (durEl) durEl.textContent = formatDurationMs(summary.duration);
         if (tokEl) tokEl.textContent = formatNumber(summary.totalTokens);
@@ -7547,12 +7556,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         if (compEl) compEl.textContent = Math.round(summary.taskCompletionRate * 100) + '%';
 
         // Tasks table
-        var tasksEl = document.getElementById('sum-tasks-content');
+        const tasksEl = document.getElementById('sum-tasks-content');
         if (tasksEl) {
           if (summary.tasks.length === 0) {
             tasksEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No tasks tracked</div>';
           } else {
-            var html = '<table class="summary-task-table"><tr><th>Task</th><th>Status</th><th>Duration</th><th>Tools</th></tr>';
+            let html = '<table class="summary-task-table"><tr><th>Task</th><th>Status</th><th>Duration</th><th>Tools</th></tr>';
             summary.tasks.forEach(function(t) {
               html += '<tr><td>' + escapeHtml(t.subject) + '</td>' +
                 '<td><span class="status-icon ' + t.status + '"></span>' + t.status + '</td>' +
@@ -7565,12 +7574,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         // Files table
-        var filesEl = document.getElementById('sum-files-content');
+        const filesEl = document.getElementById('sum-files-content');
         if (filesEl) {
           if (summary.filesChanged.length === 0) {
             filesEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No files changed</div>';
           } else {
-            var fhtml = '<div style="margin-bottom:6px;font-size:11px;">' + summary.totalFilesChanged + ' files | <span style="color:var(--vscode-charts-green,#4caf50)">+' + summary.totalAdditions + '</span> / <span style="color:var(--vscode-charts-red,#f44336)">-' + summary.totalDeletions + '</span></div>';
+            let fhtml = '<div style="margin-bottom:6px;font-size:11px;">' + summary.totalFilesChanged + ' files | <span style="color:var(--vscode-charts-green,#4caf50)">+' + summary.totalAdditions + '</span> / <span style="color:var(--vscode-charts-red,#f44336)">-' + summary.totalDeletions + '</span></div>';
             fhtml += '<table class="summary-file-table"><tr><th>File</th><th>+/-</th></tr>';
             summary.filesChanged.slice(0, 15).forEach(function(f) {
               fhtml += '<tr><td style="font-family:var(--vscode-editor-font-family)">' + escapeHtml(f.path) + '</td>' +
@@ -7582,9 +7591,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         // Cost breakdown
-        var costContentEl = document.getElementById('sum-cost-content');
+        const costContentEl = document.getElementById('sum-cost-content');
         if (costContentEl) {
-          var chtml = '';
+          let chtml = '';
           if (summary.costByModel.length > 0) {
             chtml += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;">By Model</div>';
             chtml += '<table class="summary-cost-table"><tr><th>Model</th><th>Cost</th><th>%</th></tr>';
@@ -7605,12 +7614,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         // Errors & Recovery
-        var errEl = document.getElementById('sum-errors-content');
+        const errEl = document.getElementById('sum-errors-content');
         if (errEl) {
           if (summary.errors.length === 0) {
             errEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No errors</div>';
           } else {
-            var ehtml = '<div style="font-size:11px;margin-bottom:6px;">Recovery rate: <strong>' + Math.round(summary.recoveryRate * 100) + '%</strong></div>';
+            let ehtml = '<div style="font-size:11px;margin-bottom:6px;">Recovery rate: <strong>' + Math.round(summary.recoveryRate * 100) + '%</strong></div>';
             summary.errors.forEach(function(e) {
               ehtml += '<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--vscode-panel-border);">' +
                 '<span style="font-weight:500;">' + escapeHtml(e.category) + '</span>: ' + e.count +
@@ -7622,8 +7631,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function renderTaskPerformance(data) {
-        var section = document.getElementById('task-perf-section');
-        var body = document.getElementById('task-perf-body');
+        const section = document.getElementById('task-perf-section');
+        const body = document.getElementById('task-perf-body');
         if (!section || !body) return;
 
         if (data.totalTasks === 0) {
@@ -7632,7 +7641,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
         section.style.display = 'block';
 
-        var html = '<div class="panel-metrics-row">' +
+        let html = '<div class="panel-metrics-row">' +
           '<div class="panel-metric-card"><div class="val">' + Math.round(data.completionRate * 100) + '%</div><div class="lbl">Completion</div></div>' +
           '<div class="panel-metric-card"><div class="val">' + data.completedTasks + '/' + data.totalTasks + '</div><div class="lbl">Tasks</div></div>' +
           '</div>';
@@ -7650,8 +7659,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function renderCacheEffectiveness(data) {
-        var section = document.getElementById('cache-eff-section');
-        var body = document.getElementById('cache-eff-body');
+        const section = document.getElementById('cache-eff-section');
+        const body = document.getElementById('cache-eff-body');
         if (!section || !body) return;
 
         if (data.cacheReadTokens === 0 && data.cacheWriteTokens === 0) {
@@ -7669,8 +7678,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function renderRecoveryPatterns(data) {
-        var section = document.getElementById('recovery-section');
-        var body = document.getElementById('recovery-body');
+        const section = document.getElementById('recovery-section');
+        const body = document.getElementById('recovery-body');
         if (!section || !body) return;
 
         if (data.patterns.length === 0) {
@@ -7679,7 +7688,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
         section.style.display = 'block';
 
-        var html = '<div style="font-size:11px;margin-bottom:8px;">Recovery rate: <strong>' + Math.round(data.recoveryRate * 100) + '%</strong> (' + data.totalRecoveries + '/' + data.totalErrors + ' errors)</div>';
+        let html = '<div style="font-size:11px;margin-bottom:8px;">Recovery rate: <strong>' + Math.round(data.recoveryRate * 100) + '%</strong> (' + data.totalRecoveries + '/' + data.totalErrors + ' errors)</div>';
         html += '<div class="recovery-list">';
         data.patterns.forEach(function(p) {
           html += '<div class="recovery-item">' +
@@ -7692,9 +7701,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function renderDecisions(decisions, totalCount) {
-        var section = document.getElementById('decisions-section');
-        var listEl = document.getElementById('decisions-list');
-        var countEl = document.getElementById('decisions-count');
+        const section = document.getElementById('decisions-section');
+        const listEl = document.getElementById('decisions-list');
+        const countEl = document.getElementById('decisions-count');
         if (!section || !listEl) return;
 
         if (totalCount === 0) {
@@ -7704,16 +7713,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         section.style.display = 'block';
 
         if (countEl) {
-          var countText = decisions.length === totalCount
+          const countText = decisions.length === totalCount
             ? totalCount + ' decision' + (totalCount !== 1 ? 's' : '')
             : decisions.length + ' of ' + totalCount + ' decisions';
           countEl.textContent = countText;
         }
 
-        var html = '';
+        let html = '';
         decisions.forEach(function(d) {
-          var sourceLabel = d.source.replace(/_/g, ' ');
-          var timeAgo = formatRelativeTime(d.timestamp);
+          const sourceLabel = d.source.replace(/_/g, ' ');
+          const timeAgo = formatRelativeTime(d.timestamp);
           html += '<div class="decision-item">' +
             '<div class="decision-desc">' + escapeHtml(d.description) + '</div>' +
             '<div class="decision-chosen">Chosen: ' + escapeHtml(d.chosenOption) + '</div>' +
@@ -7728,21 +7737,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function formatRelativeTime(isoString) {
-        var now = Date.now();
-        var then = new Date(isoString).getTime();
-        var diffMs = now - then;
-        var diffMin = Math.floor(diffMs / 60000);
+        const now = Date.now();
+        const then = new Date(isoString).getTime();
+        const diffMs = now - then;
+        const diffMin = Math.floor(diffMs / 60000);
         if (diffMin < 1) return 'just now';
         if (diffMin < 60) return diffMin + 'min ago';
-        var diffHours = Math.floor(diffMin / 60);
+        const diffHours = Math.floor(diffMin / 60);
         if (diffHours < 24) return diffHours + 'h ago';
-        var diffDays = Math.floor(diffHours / 24);
+        const diffDays = Math.floor(diffHours / 24);
         return diffDays + 'd ago';
       }
 
       // Decisions search handler (300ms debounce)
-      var decisionsSearchTimer = null;
-      var decisionsSearchEl = document.getElementById('decisions-search');
+      let decisionsSearchTimer = null;
+      const decisionsSearchEl = document.getElementById('decisions-search');
       if (decisionsSearchEl) {
         decisionsSearchEl.addEventListener('input', function() {
           if (decisionsSearchTimer) clearTimeout(decisionsSearchTimer);
@@ -7753,8 +7762,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function renderAdvancedBurnRate(data) {
-        var section = document.getElementById('burn-rate-section');
-        var body = document.getElementById('burn-rate-body');
+        const section = document.getElementById('burn-rate-section');
+        const body = document.getElementById('burn-rate-body');
         if (!section || !body) return;
 
         if (data.currentRate === 0) {
@@ -7763,15 +7772,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
         section.style.display = 'block';
 
-        var trendIcon = data.trendDirection === 'increasing' ? '↑' : data.trendDirection === 'decreasing' ? '↓' : '→';
+        const TREND_ICONS = { increasing: '↑', decreasing: '↓' };
+        const trendIcon = TREND_ICONS[data.trendDirection] || '→';
 
-        var html = '<div class="panel-metrics-row">' +
+        let html = '<div class="panel-metrics-row">' +
           '<div class="panel-metric-card"><div class="val">' + formatNumber(Math.round(data.currentRate)) + '</div><div class="lbl">tok/min</div></div>' +
           '<div class="panel-metric-card"><div class="val"><span class="trend-indicator ' + data.trendDirection + '">' + trendIcon + ' ' + data.trendDirection + '</span></div><div class="lbl">Trend</div></div>' +
           '</div>';
 
         if (data.projectedQuotaExhaustion) {
-          var exDate = new Date(data.projectedQuotaExhaustion);
+          const exDate = new Date(data.projectedQuotaExhaustion);
           html += '<div style="font-size:11px;color:var(--vscode-editorWarning-foreground);margin-bottom:8px;">Projected quota exhaustion: ' + exDate.toLocaleTimeString() + '</div>';
         }
 
@@ -7785,8 +7795,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       function renderToolEfficiency(data) {
-        var section = document.getElementById('tool-eff-section');
-        var body = document.getElementById('tool-eff-body');
+        const section = document.getElementById('tool-eff-section');
+        const body = document.getElementById('tool-eff-body');
         if (!section || !body) return;
 
         if (data.length === 0) {
@@ -7795,7 +7805,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
         section.style.display = 'block';
 
-        var html = '<table class="summary-cost-table"><tr><th>Tool</th><th>Calls</th><th>Cost</th><th>Fail%</th><th>Avg</th></tr>';
+        let html = '<table class="summary-cost-table"><tr><th>Tool</th><th>Calls</th><th>Cost</th><th>Fail%</th><th>Avg</th></tr>';
         data.forEach(function(t) {
           html += '<tr>' +
             '<td>' + escapeHtml(t.name) + '</td>' +
@@ -7812,13 +7822,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Render initial session data embedded at HTML generation time
       if (window.__initialSessionData) {
         try {
-          var init = window.__initialSessionData;
+          const init = window.__initialSessionData;
           updateSessionList(init.groups, init.isPinned, init.isUsingCustomPath, init.customPathDisplay);
           if (init.providerId && init.providerName) {
             updateProviderDisplay(init.providerId, init.providerName);
           }
         } catch (e) {
-          var errEl = document.getElementById('session-list');
+          const errEl = document.getElementById('session-list');
           if (errEl) errEl.innerHTML = '<div class="session-list-empty">Init error: ' + e.message + '</div>';
         }
       }

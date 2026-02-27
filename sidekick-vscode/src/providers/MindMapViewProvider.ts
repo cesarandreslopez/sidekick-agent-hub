@@ -824,14 +824,14 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       };
 
       function calculateNodeSize(d) {
-        var config = SIZING_CONFIG[d.type] || SIZING_CONFIG.file;
+        const config = SIZING_CONFIG[d.type] || SIZING_CONFIG.file;
         // For plan steps, scale by token usage if available
         if (d.type === 'plan-step' && d.planStepTokens) {
-          var tokenScale = config.base + 2 * Math.log2(d.planStepTokens / 1000 + 1);
+          const tokenScale = config.base + 2 * Math.log2(d.planStepTokens / 1000 + 1);
           return Math.min(config.max, Math.max(config.min, tokenScale));
         }
         if (!d.count || config.scale === 0) return config.base;
-        var scaled = config.base + config.scale * Math.log2(d.count + 1);
+        const scaled = config.base + config.scale * Math.log2(d.count + 1);
         return Math.min(config.max, Math.max(config.min, scaled));
       }
 
@@ -846,7 +846,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       }
 
       function getForceConfig(nodeCount) {
-        var density = Math.min(1, Math.max(0, (nodeCount - 10) / 40));
+        const density = Math.min(1, Math.max(0, (nodeCount - 10) / 40));
         return {
           linkDistance: FORCE_CONFIG.baseLinkDistance + (FORCE_CONFIG.denseLinkDistance - FORCE_CONFIG.baseLinkDistance) * density,
           chargeStrength: FORCE_CONFIG.baseCharge + (FORCE_CONFIG.denseCharge - FORCE_CONFIG.baseCharge) * density,
@@ -862,22 +862,22 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           return;
         }
 
-        var forceConfig = getForceConfig(nodeCount);
-        var linkForce = simulation.force('link');
-        var chargeForce = simulation.force('charge');
-        var collideForce = simulation.force('collide');
-        var xForce = simulation.force('x');
-        var yForce = simulation.force('y');
+        const forceConfig = getForceConfig(nodeCount);
+        const linkForce = simulation.force('link');
+        const chargeForce = simulation.force('charge');
+        const collideForce = simulation.force('collide');
+        const xForce = simulation.force('x');
+        const yForce = simulation.force('y');
 
         if (linkForce) {
           linkForce.distance(function(link) {
-            var distance = forceConfig.linkDistance;
+            const distance = forceConfig.linkDistance;
             if (link.linkType === 'task-action') return distance * 0.75;
             if (link.linkType === 'task-dependency') return distance * 0.9;
             if (link.linkType === 'plan-sequence') return distance * 0.6;
 
-            var sourceType = link.source && typeof link.source === 'object' ? link.source.type : null;
-            var targetType = link.target && typeof link.target === 'object' ? link.target.type : null;
+            const sourceType = link.source && typeof link.source === 'object' ? link.source.type : null;
+            const targetType = link.target && typeof link.target === 'object' ? link.target.type : null;
 
             if (sourceType === 'tool' || targetType === 'tool') return distance * 0.78;
             if (sourceType === 'subagent' || targetType === 'subagent') return distance * 0.84;
@@ -938,22 +938,22 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       /**
        * Node type order for grouping on the circle.
        */
-      var CIRCULAR_TYPE_ORDER = ['tool', 'file', 'directory', 'command', 'url', 'subagent', 'task', 'plan', 'plan-step', 'knowledge-note', 'todo'];
+      const CIRCULAR_TYPE_ORDER = ['tool', 'file', 'directory', 'command', 'url', 'subagent', 'task', 'plan', 'plan-step', 'knowledge-note', 'todo'];
 
       /**
        * Calculates circular positions for all nodes.
        * Session node goes to center, others on a circle grouped by type.
        */
       function calculateCircularPositions(nodes) {
-        var width = containerEl.clientWidth;
-        var height = containerEl.clientHeight;
-        var centerX = width / 2;
-        var centerY = height / 2;
-        var radius = Math.max(80, Math.min(width, height) * 0.35);
-        var positions = {};
+        const width = containerEl.clientWidth;
+        const height = containerEl.clientHeight;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.max(80, Math.min(width, height) * 0.35);
+        const positions = {};
 
-        var sessionNode = nodes.find(function(n) { return n.type === 'session'; });
-        var peripheralNodes = nodes.filter(function(n) { return n.type !== 'session'; });
+        const sessionNode = nodes.find(function(n) { return n.type === 'session'; });
+        const peripheralNodes = nodes.filter(function(n) { return n.type !== 'session'; });
 
         if (sessionNode) {
           positions[sessionNode.id] = { x: centerX, y: centerY };
@@ -961,17 +961,17 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
         // Sort by type group then alphabetically by label within each group
         peripheralNodes.sort(function(a, b) {
-          var aIdx = CIRCULAR_TYPE_ORDER.indexOf(a.type);
-          var bIdx = CIRCULAR_TYPE_ORDER.indexOf(b.type);
+          let aIdx = CIRCULAR_TYPE_ORDER.indexOf(a.type);
+          let bIdx = CIRCULAR_TYPE_ORDER.indexOf(b.type);
           if (aIdx === -1) aIdx = CIRCULAR_TYPE_ORDER.length;
           if (bIdx === -1) bIdx = CIRCULAR_TYPE_ORDER.length;
           if (aIdx !== bIdx) return aIdx - bIdx;
           return a.label.localeCompare(b.label);
         });
 
-        var total = peripheralNodes.length;
+        const total = peripheralNodes.length;
         peripheralNodes.forEach(function(node, i) {
-          var angle = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, total);
+          const angle = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, total);
           positions[node.id] = {
             x: centerX + Math.cos(angle) * radius,
             y: centerY + Math.sin(angle) * radius
@@ -986,16 +986,16 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
        * Session-to-peripheral links are straight; peripheral-to-peripheral use quadratic bezier.
        */
       function computeCurvedPath(link, positions) {
-        var sourceId = link.source.id || link.source;
-        var targetId = link.target.id || link.target;
-        var s = positions[sourceId];
-        var t = positions[targetId];
+        const sourceId = link.source.id || link.source;
+        const targetId = link.target.id || link.target;
+        const s = positions[sourceId];
+        const t = positions[targetId];
         if (!s || !t) return '';
 
-        var sourceNode = currentNodes.find(function(n) { return n.id === sourceId; });
-        var targetNode = currentNodes.find(function(n) { return n.id === targetId; });
-        var sourceIsSession = sourceNode && sourceNode.type === 'session';
-        var targetIsSession = targetNode && targetNode.type === 'session';
+        const sourceNode = currentNodes.find(function(n) { return n.id === sourceId; });
+        const targetNode = currentNodes.find(function(n) { return n.id === targetId; });
+        const sourceIsSession = sourceNode && sourceNode.type === 'session';
+        const targetIsSession = targetNode && targetNode.type === 'session';
 
         if (sourceIsSession || targetIsSession) {
           // Straight line for session-to-peripheral
@@ -1003,14 +1003,14 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         }
 
         // Quadratic bezier: control point pulled 50% toward center
-        var width = containerEl.clientWidth;
-        var height = containerEl.clientHeight;
-        var cx = width / 2;
-        var cy = height / 2;
-        var midX = (s.x + t.x) / 2;
-        var midY = (s.y + t.y) / 2;
-        var ctrlX = midX + (cx - midX) * 0.5;
-        var ctrlY = midY + (cy - midY) * 0.5;
+        const width = containerEl.clientWidth;
+        const height = containerEl.clientHeight;
+        const cx = width / 2;
+        const cy = height / 2;
+        const midX = (s.x + t.x) / 2;
+        const midY = (s.y + t.y) / 2;
+        const ctrlX = midX + (cx - midX) * 0.5;
+        const ctrlY = midY + (cy - midY) * 0.5;
 
         return 'M ' + s.x + ' ' + s.y + ' Q ' + ctrlX + ' ' + ctrlY + ' ' + t.x + ' ' + t.y;
       }
@@ -1019,7 +1019,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
        * Gets CSS class for a link path based on its type and properties.
        */
       function getLinkPathClass(d) {
-        var classes = ['link-path'];
+        const classes = ['link-path'];
         if (d.isLatest) classes.push('latest');
         if (d.linkType === 'task-action') classes.push('task-action');
         if (d.linkType === 'task-dependency') classes.push('task-dependency');
@@ -1041,8 +1041,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         // Create <path> elements
         linkGroup.selectAll('path')
           .data(currentLinks, function(d) {
-            var sid = d.source.id || d.source;
-            var tid = d.target.id || d.target;
+            const sid = d.source.id || d.source;
+            const tid = d.target.id || d.target;
             return sid + '-' + tid;
           })
           .enter()
@@ -1069,10 +1069,10 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         linkGroup.selectAll('path').remove();
 
         // Create paths starting from current node positions (straight lines from source)
-        var paths = linkGroup.selectAll('path')
+        const paths = linkGroup.selectAll('path')
           .data(currentLinks, function(d) {
-            var sid = d.source.id || d.source;
-            var tid = d.target.id || d.target;
+            const sid = d.source.id || d.source;
+            const tid = d.target.id || d.target;
             return sid + '-' + tid;
           })
           .enter()
@@ -1085,14 +1085,14 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           })
           .attr('d', function(d) {
             // Start at current node positions (straight line)
-            var sourceId = d.source.id || d.source;
-            var targetId = d.target.id || d.target;
-            var sNode = currentNodes.find(function(n) { return n.id === sourceId; });
-            var tNode = currentNodes.find(function(n) { return n.id === targetId; });
-            var sx = sNode ? sNode.x : 0;
-            var sy = sNode ? sNode.y : 0;
-            var tx = tNode ? tNode.x : 0;
-            var ty = tNode ? tNode.y : 0;
+            const sourceId = d.source.id || d.source;
+            const targetId = d.target.id || d.target;
+            const sNode = currentNodes.find(function(n) { return n.id === sourceId; });
+            const tNode = currentNodes.find(function(n) { return n.id === targetId; });
+            const sx = sNode ? sNode.x : 0;
+            const sy = sNode ? sNode.y : 0;
+            const tx = tNode ? tNode.x : 0;
+            const ty = tNode ? tNode.y : 0;
             return 'M ' + sx + ' ' + sy + ' L ' + tx + ' ' + ty;
           });
 
@@ -1112,8 +1112,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         if (!simulation || currentNodes.length === 0) return;
 
         simulation.stop();
-        var positions = calculateCircularPositions(currentNodes);
-        var duration = animate ? 600 : 0;
+        const positions = calculateCircularPositions(currentNodes);
+        const duration = animate ? 600 : 0;
 
         // Add circular-mode class to nodes
         nodeGroup.selectAll('circle').classed('circular-mode', true);
@@ -1265,17 +1265,17 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         }
 
         options = options || {};
-        var duration = options.duration || 0;
-        var preserveZoom = options.preserveZoom !== false;
-        var width = svg.node().clientWidth;
-        var height = svg.node().clientHeight;
-        var currentTransform = d3.zoomTransform(svg.node());
-        var scale = preserveZoom ? currentTransform.k : (options.scale || 1);
-        var sessionNode = currentNodes.find(function(node) { return node.type === 'session'; }) || currentNodes[0];
-        var focusX = sessionNode && sessionNode.x != null ? sessionNode.x : width / 2;
-        var focusY = sessionNode && sessionNode.y != null ? sessionNode.y : height / 2;
+        const duration = options.duration || 0;
+        const preserveZoom = options.preserveZoom !== false;
+        const width = svg.node().clientWidth;
+        const height = svg.node().clientHeight;
+        const currentTransform = d3.zoomTransform(svg.node());
+        const scale = preserveZoom ? currentTransform.k : (options.scale || 1);
+        const sessionNode = currentNodes.find(function(node) { return node.type === 'session'; }) || currentNodes[0];
+        const focusX = sessionNode && sessionNode.x != null ? sessionNode.x : width / 2;
+        const focusY = sessionNode && sessionNode.y != null ? sessionNode.y : height / 2;
 
-        var transform = d3.zoomIdentity
+        const transform = d3.zoomIdentity
           .translate(width / 2 - focusX * scale, height / 2 - focusY * scale)
           .scale(scale);
 
@@ -1303,14 +1303,14 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           return;
         }
 
-        var width = containerEl.clientWidth;
-        var height = containerEl.clientHeight;
-        var centerX = width / 2;
-        var centerY = height / 2;
-        var sessionNode = currentNodes.find(function(node) { return node.type === 'session'; }) || null;
-        var orbitNodes = currentNodes.filter(function(node) { return node !== sessionNode; });
-        var radius = Math.max(50, Math.min(width, height) * 0.2);
-        var total = Math.max(1, orbitNodes.length);
+        const width = containerEl.clientWidth;
+        const height = containerEl.clientHeight;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const sessionNode = currentNodes.find(function(node) { return node.type === 'session'; }) || null;
+        const orbitNodes = currentNodes.filter(function(node) { return node !== sessionNode; });
+        const radius = Math.max(50, Math.min(width, height) * 0.2);
+        const total = Math.max(1, orbitNodes.length);
 
         currentNodes.forEach(function(node) {
           node.fx = null;
@@ -1325,8 +1325,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         }
 
         orbitNodes.forEach(function(node, index) {
-          var angle = (Math.PI * 2 * index) / total;
-          var jitter = 10 * Math.sin(index * 1.7);
+          const angle = (Math.PI * 2 * index) / total;
+          const jitter = 10 * Math.sin(index * 1.7);
           node.x = centerX + Math.cos(angle) * (radius + jitter);
           node.y = centerY + Math.sin(angle) * (radius + jitter);
           node.vx = 0;
@@ -1452,7 +1452,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
          * Gets CSS class for a link based on its type and properties.
          */
         function getLinkClass(d) {
-          var classes = ['link'];
+          const classes = ['link'];
           if (d.isLatest) classes.push('latest');
           if (d.linkType === 'task-action') classes.push('task-action');
           if (d.linkType === 'task-dependency') classes.push('task-dependency');
@@ -1474,8 +1474,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
          * Gets CSS class for a node based on its type and properties.
          */
         function getNodeClass(d) {
-          var classes = ['node'];
-          var isClickable = d.type === 'file' || d.type === 'url';
+          const classes = ['node'];
+          const isClickable = d.type === 'file' || d.type === 'url';
           if (isClickable) classes.push('clickable');
           // Add task status class
           if (d.type === 'task' && d.taskStatus) {
@@ -1512,55 +1512,56 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
             vscode.postMessage({ type: 'nodeClicked', nodeId: d.id });
           })
           .on('mouseover', function(event, d) {
-            var label = d.fullPath || d.label;
+            const label = d.fullPath || d.label;
             // Build tooltip content
             if (d.type === 'file') {
               // For files, show touches and line changes
-              var firstLine = label;
+              let firstLine = label;
               if (d.count) {
                 firstLine += ' (' + d.count + ' touch' + (d.count > 1 ? 'es' : '') + ')';
               }
               // Show line changes if any exist
-              var hasChanges = (d.additions && d.additions > 0) || (d.deletions && d.deletions > 0);
+              const hasChanges = (d.additions && d.additions > 0) || (d.deletions && d.deletions > 0);
               if (hasChanges) {
-                var adds = d.additions || 0;
-                var dels = d.deletions || 0;
+                const adds = d.additions || 0;
+                const dels = d.deletions || 0;
                 tooltipEl.innerHTML = firstLine + '<br><span class="additions">+' + adds + '</span> / <span class="deletions">-' + dels + '</span> lines';
               } else {
                 tooltipEl.textContent = firstLine;
               }
             } else if (d.type === 'task') {
               // For tasks, show subject, status, and action count
-              var statusLabel = d.taskStatus || 'unknown';
-              var statusColor = statusLabel === 'in_progress' ? 'var(--vscode-charts-green, #4caf50)'
+              const statusLabel = d.taskStatus || 'unknown';
+              const statusColor = statusLabel === 'in_progress' ? 'var(--vscode-charts-green, #4caf50)'
                               : statusLabel === 'pending' ? 'var(--vscode-charts-yellow, #FFD700)'
                               : 'var(--vscode-descriptionForeground)';
-              var actionCount = d.count || 0;
-              var actionText = actionCount === 1 ? '1 action' : actionCount + ' actions';
+              const actionCount = d.count || 0;
+              const actionText = actionCount === 1 ? '1 action' : actionCount + ' actions';
               tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' +
                 '<span style="color: ' + statusColor + '">● ' + statusLabel.replace('_', ' ') + '</span>' +
                 '<br>' + actionText;
             } else if (d.type === 'plan') {
               // For plan root, show title and step count
-              var stepCount = d.count || 0;
-              var stepText = stepCount === 1 ? '1 step' : stepCount + ' steps';
+              const stepCount = d.count || 0;
+              const stepText = stepCount === 1 ? '1 step' : stepCount + ' steps';
               tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' + stepText;
             } else if (d.type === 'plan-step') {
               // For plan steps, show description, status, and enriched metadata
-              var planStatus = d.planStepStatus || 'pending';
-              var planStatusColor = planStatus === 'in_progress' ? 'var(--vscode-charts-green, #4caf50)'
+              const planStatus = d.planStepStatus || 'pending';
+              const planStatusColor = planStatus === 'in_progress' ? 'var(--vscode-charts-green, #4caf50)'
                                  : planStatus === 'pending' ? 'var(--vscode-charts-yellow, #FFD700)'
                                  : planStatus === 'failed' ? 'var(--vscode-charts-red, #f14c4c)'
                                  : 'var(--vscode-descriptionForeground)';
-              var planTooltipHtml = '<strong>' + label + '</strong><br>' +
+              let planTooltipHtml = '<strong>' + label + '</strong><br>' +
                 '<span style="color: ' + planStatusColor + '">● ' + planStatus.replace('_', ' ') + '</span>';
               if (d.planStepComplexity) {
-                var cxColor = d.planStepComplexity === 'high' ? '#f14c4c' : d.planStepComplexity === 'medium' ? '#FFD700' : '#73c991';
+                const COMPLEXITY_COLORS = { high: '#f14c4c', medium: '#FFD700', low: '#73c991' };
+                const cxColor = COMPLEXITY_COLORS[d.planStepComplexity] || '#73c991';
                 planTooltipHtml += '<br>Complexity: <span style="color:' + cxColor + '">' + d.planStepComplexity + '</span>';
               }
               if (d.planStepDurationMs) {
-                var dSec = Math.round(d.planStepDurationMs / 1000);
-                var dMin = Math.floor(dSec / 60);
+                const dSec = Math.round(d.planStepDurationMs / 1000);
+                const dMin = Math.floor(dSec / 60);
                 planTooltipHtml += '<br>Duration: ' + (dMin > 0 ? dMin + 'm ' + (dSec % 60) + 's' : dSec + 's');
               }
               if (d.planStepTokens) {
@@ -1575,7 +1576,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
               tooltipEl.textContent = label;
             } else {
               // For other nodes, show count if available
-              var count = d.count ? ' (' + d.count + ')' : '';
+              const count = d.count ? ' (' + d.count + ')' : '';
               tooltipEl.textContent = label + count;
             }
             tooltipEl.classList.add('visible');
@@ -1600,11 +1601,11 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           .text(function(d) { return d.label; });
 
         // Update change labels (for file nodes with +/- changes)
-        var fileNodesWithChanges = nodes.filter(function(d) {
+        const fileNodesWithChanges = nodes.filter(function(d) {
           return d.type === 'file' && ((d.additions && d.additions > 0) || (d.deletions && d.deletions > 0));
         });
 
-        var changeLabel = changeGroup.selectAll('text')
+        const changeLabel = changeGroup.selectAll('text')
           .data(fileNodesWithChanges, function(d) { return d.id; });
 
         changeLabel.exit().remove();
@@ -1613,8 +1614,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           .append('text')
           .attr('class', 'change-label')
           .html(function(d) {
-            var adds = d.additions || 0;
-            var dels = d.deletions || 0;
+            const adds = d.additions || 0;
+            const dels = d.deletions || 0;
             return '<tspan class="add">+' + adds + '</tspan> <tspan class="del">-' + dels + '</tspan>';
           });
 
@@ -1629,8 +1630,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
         changeGroup.selectAll('text')
           .html(function(d) {
-            var adds = d.additions || 0;
-            var dels = d.deletions || 0;
+            const adds = d.additions || 0;
+            const dels = d.deletions || 0;
             return '<tspan class="add">+' + adds + '</tspan> <tspan class="del">-' + dels + '</tspan>';
           });
 
@@ -1662,36 +1663,36 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         if (!svg || !zoom) return;
 
         // Build current IDs
-        var currentNodeIds = new Set(nodes.map(function(n) { return n.id; }));
-        var currentLinkIds = new Set(links.map(function(l) {
-          var sourceId = l.source.id || l.source;
-          var targetId = l.target.id || l.target;
+        const currentNodeIds = new Set(nodes.map(function(n) { return n.id; }));
+        const currentLinkIds = new Set(links.map(function(l) {
+          const sourceId = l.source.id || l.source;
+          const targetId = l.target.id || l.target;
           return sourceId + '-' + targetId;
         }));
 
         // Find new nodes (excluding session root which is always present)
-        var newNodes = nodes.filter(function(n) {
+        const newNodes = nodes.filter(function(n) {
           return !previousNodeIds.has(n.id) && n.type !== 'session';
         });
 
         // Find new links
-        var newLinkIds = [];
+        const newLinkIds = [];
         currentLinkIds.forEach(function(id) {
           if (!previousLinkIds.has(id)) newLinkIds.push(id);
         });
 
         // Find latest link
-        var latestLink = links.find(function(l) { return l.isLatest; });
-        var latestLinkId = null;
+        const latestLink = links.find(function(l) { return l.isLatest; });
+        let latestLinkId = null;
         if (latestLink) {
-          var sourceId = latestLink.source.id || latestLink.source;
-          var targetId = latestLink.target.id || latestLink.target;
+          const sourceId = latestLink.source.id || latestLink.source;
+          const targetId = latestLink.target.id || latestLink.target;
           latestLinkId = sourceId + '-' + targetId;
         }
 
         // Determine if we should focus
-        var hasNewActivity = newNodes.length > 0 || newLinkIds.length > 0;
-        var latestLinkChanged = latestLinkId && latestLinkId !== previousLatestLinkId;
+        const hasNewActivity = newNodes.length > 0 || newLinkIds.length > 0;
+        const latestLinkChanged = latestLinkId && latestLinkId !== previousLatestLinkId;
 
         // Update tracking for next time
         previousNodeIds = currentNodeIds;
@@ -1702,19 +1703,19 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         if (!hasNewActivity && !latestLinkChanged) return;
 
         // Determine focus target
-        var focusX, focusY;
+        let focusX, focusY;
 
         if (latestLink && latestLinkChanged) {
           // Focus on latest link (midpoint)
-          var source = typeof latestLink.source === 'object' ? latestLink.source : nodes.find(function(n) { return n.id === latestLink.source; });
-          var target = typeof latestLink.target === 'object' ? latestLink.target : nodes.find(function(n) { return n.id === latestLink.target; });
+          const source = typeof latestLink.source === 'object' ? latestLink.source : nodes.find(function(n) { return n.id === latestLink.source; });
+          const target = typeof latestLink.target === 'object' ? latestLink.target : nodes.find(function(n) { return n.id === latestLink.target; });
           if (source && target && source.x != null && target.x != null) {
             focusX = (source.x + target.x) / 2;
             focusY = (source.y + target.y) / 2;
           }
         } else if (newNodes.length > 0) {
           // Focus on newest node (last in array, typically most recent)
-          var newestNode = newNodes[newNodes.length - 1];
+          const newestNode = newNodes[newNodes.length - 1];
           if (newestNode.x != null) {
             focusX = newestNode.x;
             focusY = newestNode.y;
@@ -1724,13 +1725,13 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         if (focusX == null || focusY == null) return;
 
         // Get viewport dimensions and current zoom state
-        var width = svg.node().clientWidth;
-        var height = svg.node().clientHeight;
-        var currentTransform = d3.zoomTransform(svg.node());
+        const width = svg.node().clientWidth;
+        const height = svg.node().clientHeight;
+        const currentTransform = d3.zoomTransform(svg.node());
 
         // Preserve user's zoom level, only change pan position
-        var scale = currentTransform.k;
-        var transform = d3.zoomIdentity
+        const scale = currentTransform.k;
+        const transform = d3.zoomIdentity
           .translate(width / 2 - focusX * scale, height / 2 - focusY * scale)
           .scale(scale);
 
@@ -1788,12 +1789,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
             break;
 
           case 'updatePhrase':
-            var hp = document.getElementById('header-phrase');
+            const hp = document.getElementById('header-phrase');
             if (hp) hp.textContent = message.phrase;
             break;
 
           case 'updateEmptyPhrase':
-            var ep = document.getElementById('empty-state-phrase');
+            const ep = document.getElementById('empty-state-phrase');
             if (ep) ep.textContent = message.phrase;
             break;
         }
@@ -1839,9 +1840,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       }
 
       // Legend hover-to-highlight and click-to-lock
-      var legendTypeMap = ['session','file','tool','todo','subagent','directory','command','task','plan','knowledge-note'];
-      var lockedLegendType = null;
-      var legendItems = document.querySelectorAll('.legend-item');
+      const legendTypeMap = ['session','file','tool','todo','subagent','directory','command','task','plan','knowledge-note'];
+      let lockedLegendType = null;
+      const legendItems = document.querySelectorAll('.legend-item');
 
       function applyLegendHighlight(nodeType) {
         // Dim non-active legend items
@@ -1857,23 +1858,23 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
         // Highlight matching nodes, fade others
         nodeGroup.selectAll('circle').each(function(d) {
-          var match = (d.type === nodeType) ||
+          const match = (d.type === nodeType) ||
             (nodeType === 'plan' && d.type === 'plan-step');
           d3.select(this).classed('highlighted', match).classed('faded', !match);
         });
 
         // Highlight links connected to matching nodes, fade others
         linkGroup.selectAll('line, path').each(function(d) {
-          var src = typeof d.source === 'object' ? d.source : { type: '' };
-          var tgt = typeof d.target === 'object' ? d.target : { type: '' };
-          var srcMatch = (src.type === nodeType) || (nodeType === 'plan' && src.type === 'plan-step');
-          var tgtMatch = (tgt.type === nodeType) || (nodeType === 'plan' && tgt.type === 'plan-step');
+          const src = typeof d.source === 'object' ? d.source : { type: '' };
+          const tgt = typeof d.target === 'object' ? d.target : { type: '' };
+          const srcMatch = (src.type === nodeType) || (nodeType === 'plan' && src.type === 'plan-step');
+          const tgtMatch = (tgt.type === nodeType) || (nodeType === 'plan' && tgt.type === 'plan-step');
           d3.select(this).classed('faded', !(srcMatch || tgtMatch));
         });
 
         // Show labels only on matching nodes
         labelGroup.selectAll('text').each(function(d) {
-          var match = (d.type === nodeType) ||
+          const match = (d.type === nodeType) ||
             (nodeType === 'plan' && d.type === 'plan-step');
           d3.select(this).style('opacity', match ? 1 : 0.1);
         });
@@ -1890,7 +1891,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       }
 
       legendItems.forEach(function(item, idx) {
-        var nodeType = legendTypeMap[idx];
+        const nodeType = legendTypeMap[idx];
 
         item.addEventListener('mouseenter', function() {
           if (lockedLegendType && lockedLegendType !== nodeType) return;

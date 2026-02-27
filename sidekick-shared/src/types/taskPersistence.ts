@@ -27,6 +27,12 @@ export interface PersistedTask {
   isGoalGate?: boolean;
 }
 
+export function normalizeTaskStatus(status: string): 'pending' | 'in_progress' | 'completed' {
+  if (status === 'in_progress') return 'in_progress';
+  if (status === 'completed') return 'completed';
+  return 'pending';
+}
+
 export interface TaskPersistenceStore {
   schemaVersion: number;
   tasks: Record<string, PersistedTask>;

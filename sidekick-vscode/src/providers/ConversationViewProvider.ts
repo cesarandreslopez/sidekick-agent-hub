@@ -289,7 +289,8 @@ export class ConversationViewProvider implements vscode.Disposable {
         </div>`;
       }
 
-      const roleLabel = chunk.role === 'user' ? 'You' : chunk.role === 'assistant' ? 'Claude' : 'System';
+      const ROLE_LABELS: Record<string, string> = { user: 'You', assistant: 'Claude' };
+      const roleLabel = ROLE_LABELS[chunk.role] ?? 'System';
       const modelTag = chunk.model ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>` : '';
 
       return `<div class="chunk ${chunk.role}-chunk${sidechain}" id="chunk-${i}">

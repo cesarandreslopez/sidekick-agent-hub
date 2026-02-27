@@ -6,6 +6,7 @@
 import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
 import type { DashboardMetrics, TaskItem } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
+import { normalizeTaskStatus } from 'sidekick-shared';
 import type { PersistedTask } from 'sidekick-shared';
 import { wordWrap, detailWidth } from '../formatters';
 
@@ -52,7 +53,7 @@ export class TasksPanel implements SidePanel {
       map.set(p.taskId, {
         taskId: p.taskId,
         subject: p.subject,
-        status: p.status === 'in_progress' ? 'in_progress' : p.status === 'completed' ? 'completed' : 'pending',
+        status: normalizeTaskStatus(p.status),
         blockedBy: p.blockedBy || [],
         blocks: p.blocks || [],
         subagentType: p.subagentType,

@@ -52,4 +52,18 @@ const dumpCmd = new Command('dump')
   });
 program.addCommand(dumpCmd);
 
+// Report command — generate self-contained HTML session report
+const reportCmd = new Command('report')
+  .description('Generate a self-contained HTML session report and open in browser')
+  .option('--session <id>', 'Target a specific session (default: most recent)')
+  .option('--output <path>', 'Write report to a specific file path (default: temp file)')
+  .option('--no-open', 'Do not auto-open the report in the browser')
+  .option('--theme <theme>', 'Color theme: dark, light (default: dark)')
+  .option('--no-thinking', 'Exclude thinking blocks from the transcript')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { reportAction } = await import('./commands/report');
+    return reportAction(_opts, cmd);
+  });
+program.addCommand(reportCmd);
+
 program.parse();

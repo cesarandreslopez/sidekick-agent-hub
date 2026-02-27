@@ -46,7 +46,8 @@ export async function composeContext(
   let sessionSummaries: SessionFileStats[] = [];
 
   // Read stats for session files based on fidelity
-  const sessionLimit = fidelity === 'full' ? 5 : fidelity === 'compact' ? 2 : 1;
+  const FIDELITY_SESSION_LIMIT: Record<Fidelity, number> = { full: 5, compact: 2, brief: 1 };
+  const sessionLimit = FIDELITY_SESSION_LIMIT[fidelity];
   const sessionPaths = sessionFiles.slice(0, sessionLimit);
   for (const sp of sessionPaths) {
     try {

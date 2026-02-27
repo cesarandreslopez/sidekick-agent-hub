@@ -11,6 +11,8 @@
 import type { DashboardMetrics, TaskItem, FileTouch, PlanStep } from './DashboardState';
 import type { DiffStat } from './GitDiffCache';
 
+const NOTE_TYPE_ICON: Record<string, string> = { gotcha: '[!]', pattern: '[~]' };
+
 /** Tree structure for mind map rendering (previously from blessed-contrib). */
 export interface TreeData {
   extended?: boolean;
@@ -426,7 +428,7 @@ function addKnowledgeNotesSection(children: Record<string, TreeData>, staticData
   for (const [file, notes] of byFile) {
     const noteItems: Record<string, TreeData> = {};
     for (const n of notes.slice(0, 5)) {
-      const icon = n.type === 'gotcha' ? '[!]' : n.type === 'pattern' ? '[~]' : '[#]';
+      const icon = NOTE_TYPE_ICON[n.type] ?? '[#]';
       noteItems[tag('knowledge-note', `${icon} ${truncate(n.content, 50)}`)] = {};
     }
     noteChildren[tag('file', file)] = { extended: false, children: noteItems };
@@ -949,7 +951,7 @@ function buildKnowledgeNotesBoxSection(staticData: StaticData): BoxSection | nul
   for (const [file, notes] of byFile) {
     lines.push(file);
     for (const n of notes.slice(0, 3)) {
-      const icon = n.type === 'gotcha' ? '[!]' : n.type === 'pattern' ? '[~]' : '[#]';
+      const icon = NOTE_TYPE_ICON[n.type] ?? '[#]';
       lines.push(`  ${icon} ${truncate(n.content, 38)}`);
     }
   }
