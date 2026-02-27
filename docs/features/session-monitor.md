@@ -45,6 +45,15 @@ The dashboard organizes information into three collapsible groups:
 
 ![Tasks & Recovery — Task Performance and Completion Tracking](../images/tasks-and-recovery.png)
 
+## HTML Session Report
+
+![HTML Session Report](../images/session_html_report.png)
+
+Generate a self-contained HTML report for any session — full transcript with collapsible thinking blocks and tool detail, token/cost stats, model breakdown, and tool-use summary. The output file has zero external dependencies and can be shared or archived as a single `.html` file.
+
+- **VS Code**: Run `Sidekick: Generate HTML Report` from the Command Palette or the Session Analytics toolbar. The report opens in a webview panel. Also available as the "HTML Report" format option in `Sidekick: Dump Session Report`.
+- **CLI**: Run `sidekick report` to generate and open in the default browser, or press `r` in the TUI dashboard. See the [CLI HTML Report docs](cli.md#html-report) for flags and examples.
+
 ## Session Intelligence
 
 Three detection systems run continuously during a session to surface problems that are otherwise invisible.

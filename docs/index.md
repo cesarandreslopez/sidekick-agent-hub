@@ -85,6 +85,7 @@ Available in the VS Code extension and the [CLI Dashboard](features/cli.md). The
 - **Kanban Board** — track tasks and subagents at a glance, with goal-gate badges on critical tasks
 - **Project Timeline** — chronological view of all sessions with duration, token usage, and expandable details
 - **Knowledge Notes** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking
+- **HTML Session Report** — self-contained HTML report with full transcript, token/cost stats, and tool-use breakdown
 
 ## Quick Install
 
