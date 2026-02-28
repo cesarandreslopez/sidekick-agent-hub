@@ -170,6 +170,10 @@ Auto-detects the most recently active session provider:
 
 Override with `--provider claude-code`, `--provider opencode`, or `--provider codex`.
 
+## See Also
+
+**[Sidekick Docker](https://github.com/cesarandreslopez/sidekick-docker)** — the same TUI dashboard experience for Docker management. Monitor containers, Compose projects, images, and volumes from a keyboard-driven terminal. Install with `npm install -g sidekick-docker`.
+
 ## Documentation
 
 Full documentation at [cesarandreslopez.github.io/sidekick-agent-hub](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/).

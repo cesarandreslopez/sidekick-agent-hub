@@ -104,6 +104,10 @@ sidekick dashboard
 
 Requires Node.js 20+. Works standalone — no VS Code required. See [CLI Dashboard](features/cli.md) for the full guide.
 
+## See Also
+
+**[Sidekick Docker](https://github.com/cesarandreslopez/sidekick-docker)** — a sibling project that brings the same real-time dashboard experience to Docker management. Monitor containers, Compose projects, images, volumes, and networks from a keyboard-driven TUI or VS Code panel. Available as a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-docker-vscode), [Open VSX extension](https://open-vsx.org/extension/CesarAndresLopez/sidekick-docker-vscode), and [CLI](https://www.npmjs.com/package/sidekick-docker).
+
 ## Contributing
 
 Contributions welcome! See the [Contributing Guide](contributing.md).
