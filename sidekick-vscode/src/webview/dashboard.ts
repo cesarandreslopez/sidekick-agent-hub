@@ -124,6 +124,18 @@ const GAUGE_COLORS = {
 };
 
 /**
+ * Applies a brief flash animation to an element when its value changes.
+ * Uses the sk-value-updated class defined in designTokens shared styles.
+ */
+function pulseValue(el: Element | null): void {
+  if (!el) return;
+  el.classList.remove('sk-value-updated');
+  // Force reflow to restart animation
+  void (el as HTMLElement).offsetWidth;
+  el.classList.add('sk-value-updated');
+}
+
+/**
  * Formats a number with thousands separators.
  * @param num - Number to format
  * @returns Formatted string (e.g., "12,345")
@@ -258,10 +270,10 @@ function updateTokenCards(state: DashboardState): void {
   const cacheWriteEl = document.querySelector('#cache-write-tokens .value');
   const cacheReadEl = document.querySelector('#cache-read-tokens .value');
 
-  if (inputEl) inputEl.textContent = formatTokenCount(state.totalInputTokens);
-  if (outputEl) outputEl.textContent = formatTokenCount(state.totalOutputTokens);
-  if (cacheWriteEl) cacheWriteEl.textContent = formatTokenCount(state.totalCacheWriteTokens);
-  if (cacheReadEl) cacheReadEl.textContent = formatTokenCount(state.totalCacheReadTokens);
+  if (inputEl) { inputEl.textContent = formatTokenCount(state.totalInputTokens); pulseValue(inputEl); }
+  if (outputEl) { outputEl.textContent = formatTokenCount(state.totalOutputTokens); pulseValue(outputEl); }
+  if (cacheWriteEl) { cacheWriteEl.textContent = formatTokenCount(state.totalCacheWriteTokens); pulseValue(cacheWriteEl); }
+  if (cacheReadEl) { cacheReadEl.textContent = formatTokenCount(state.totalCacheReadTokens); pulseValue(cacheReadEl); }
 }
 
 /**
@@ -272,6 +284,7 @@ function updateCostDisplay(state: DashboardState): void {
   const totalCostEl = document.getElementById('total-cost');
   if (totalCostEl) {
     totalCostEl.textContent = formatCost(state.totalCost);
+    pulseValue(totalCostEl);
   }
 }
 
@@ -283,6 +296,7 @@ function updateBurnRateDisplay(burnRate: number): void {
   const burnRateEl = document.getElementById('burn-rate');
   if (burnRateEl) {
     burnRateEl.textContent = Math.round(burnRate).toLocaleString();
+    pulseValue(burnRateEl);
   }
 }
 

@@ -18,6 +18,7 @@ import type {
 } from '../types/projectTimeline';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /**
@@ -221,6 +222,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
                  img-src ${webview.cspSource};
                  script-src 'nonce-${nonce}';">
   <title>Project Timeline</title>
+  ${getDesignTokenCSS()}
+  ${getSharedStyles()}
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -234,43 +237,44 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     .header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--vscode-panel-border);
+      gap: var(--sk-space-2);
+      padding: var(--sk-space-2) var(--sk-space-3);
+      border-bottom: 1px solid var(--sk-border-primary);
       position: sticky;
       top: 0;
-      background: var(--vscode-sideBar-background);
+      background: var(--sk-surface-primary);
       z-index: 10;
     }
 
     .header img { width: 20px; height: 20px; }
-    .header h1 { font-size: 13px; font-weight: 600; }
+    .header h1 { font-size: var(--sk-font-lg); font-weight: 600; }
 
     .header-phrase, .empty-state-phrase {
-      font-size: 11px;
+      font-size: var(--sk-font-base);
       color: var(--vscode-descriptionForeground);
       font-style: italic;
       margin: 0;
     }
 
     .header-phrase {
-      padding: 2px 12px 6px 40px;
+      padding: 2px var(--sk-space-3) var(--sk-space-2) 40px;
     }
 
     .range-controls {
       margin-left: auto;
       display: flex;
-      gap: 4px;
+      gap: var(--sk-space-1);
     }
 
     .range-btn {
       border: 1px solid var(--vscode-button-border, transparent);
       background: var(--vscode-button-secondaryBackground);
       color: var(--vscode-button-secondaryForeground);
-      font-size: 10px;
-      padding: 3px 8px;
-      border-radius: 3px;
+      font-size: var(--sk-font-sm);
+      padding: 3px var(--sk-space-2);
+      border-radius: var(--sk-radius-sm);
       cursor: pointer;
+      transition: background var(--sk-transition-fast);
     }
 
     .range-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
@@ -284,10 +288,10 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 200px;
+      min-height: 200px;
       color: var(--vscode-descriptionForeground);
       text-align: center;
-      padding: 20px;
+      padding: var(--sk-space-5);
     }
 
     .empty-state p { margin-top: 8px; font-size: 12px; }
@@ -295,17 +299,26 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     .session-list { padding: 8px; }
 
     .session-card {
-      background: var(--vscode-editor-background);
-      border: 1px solid var(--vscode-panel-border);
-      border-radius: 6px;
-      margin-bottom: 8px;
+      background: var(--sk-surface-raised);
+      border: 1px solid var(--sk-border-primary);
+      border-radius: var(--sk-radius-lg);
+      margin-bottom: var(--sk-space-2);
       overflow: hidden;
-      transition: border-color 0.15s;
+      transition: border-color var(--sk-transition-fast),
+                  transform var(--sk-transition-fast),
+                  box-shadow var(--sk-transition-fast);
     }
 
-    .session-card:hover { border-color: var(--vscode-focusBorder); }
-    .session-card.current { border-left: 3px solid var(--vscode-charts-green, #4caf50); }
-    .session-card.active-session { border-left: 3px solid var(--vscode-charts-blue, #2196F3); }
+    .session-card:hover {
+      border-color: var(--vscode-focusBorder);
+      transform: translateY(-1px);
+      box-shadow: var(--sk-shadow-sm);
+    }
+    .session-card.current { border-left: 3px solid var(--sk-accent-success); }
+    .session-card.active-session {
+      border-left: 3px solid var(--sk-accent-info);
+      box-shadow: 0 0 8px color-mix(in srgb, var(--sk-accent-info) 15%, transparent);
+    }
 
     .session-header {
       padding: 10px 12px;

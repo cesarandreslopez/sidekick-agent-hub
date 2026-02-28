@@ -46,6 +46,7 @@ import { extractKnowledgeCandidates } from '../services/KnowledgeCandidateExtrac
 import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /**
@@ -2249,6 +2250,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                  img-src ${webview.cspSource};
                  script-src 'nonce-${nonce}' https://cdn.jsdelivr.net;">
   <title>Session Analytics</title>
+  ${getDesignTokenCSS()}
+  ${getSharedStyles()}
   <style>
     * {
       box-sizing: border-box;
@@ -2267,39 +2270,39 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 16px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--vscode-panel-border);
+      gap: var(--sk-space-2);
+      margin-bottom: var(--sk-space-4);
+      padding-bottom: var(--sk-space-2);
+      border-bottom: 1px solid var(--sk-border-primary);
     }
 
     .header img {
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
     }
 
     .header h1 {
-      font-size: 14px;
+      font-size: var(--sk-font-lg);
       font-weight: 600;
     }
 
     .header-phrase, .empty-state-phrase {
-      font-size: 11px;
+      font-size: var(--sk-font-base);
       color: var(--vscode-descriptionForeground);
       font-style: italic;
       margin: 0;
     }
 
     .header-phrase {
-      margin: -12px 0 12px 0;
-      padding: 0 0 0 32px;
+      margin: -12px 0 var(--sk-space-3) 0;
+      padding: 0 0 0 28px;
     }
 
     .status {
       margin-left: auto;
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 3px;
+      font-size: var(--sk-font-base);
+      padding: 2px var(--sk-space-2);
+      border-radius: var(--sk-radius-sm);
       background: var(--vscode-badge-background);
       color: var(--vscode-badge-foreground);
     }
@@ -2307,6 +2310,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .status.active {
       background: var(--vscode-testing-iconPassed);
       color: var(--vscode-editor-background);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .status.active::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: sk-pulse-dot 2s ease-in-out infinite;
     }
 
     .status.inactive {
@@ -2347,10 +2363,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .tab-content {
       display: none;
+      opacity: 0;
     }
 
     .tab-content.active {
       display: block;
+      opacity: 1;
+      animation: sk-fade-in 0.2s ease-out;
     }
 
     /* History tab styles */
@@ -2683,6 +2702,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       background: var(--vscode-testing-iconPassed, #73c991);
       border-radius: 3px;
       transition: width 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .plan-progress-fill::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.15) 50%,
+        transparent 100%
+      );
+      background-size: 200% 100%;
+      animation: sk-progress-shimmer 1.5s ease-in-out infinite;
     }
 
     .plan-stats {
@@ -2813,6 +2848,92 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       padding: 2px 0;
     }
 
+    /* ── Visual Hierarchy Tiers ── */
+    .tier-divider {
+      border-top: 1px solid var(--sk-border-primary);
+      margin-top: var(--sk-space-4);
+      padding-top: var(--sk-space-4);
+    }
+
+    .primary-metric-display {
+      border-left: 3px solid var(--sk-accent-primary);
+      padding-left: var(--sk-space-3);
+    }
+
+    /* Group summary line (shown when collapsed) */
+    .group-summary {
+      font-size: var(--sk-font-base);
+      color: var(--vscode-descriptionForeground);
+      margin-left: auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 55%;
+      opacity: 0.8;
+      transition: opacity var(--sk-transition-fast);
+    }
+
+    .details-section.expanded .group-summary {
+      opacity: 0;
+      width: 0;
+      max-width: 0;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Count badge in group header */
+    .group-count-badge {
+      font-size: var(--sk-font-xs);
+      padding: 1px 5px;
+      border-radius: var(--sk-radius-sm);
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      font-weight: 400;
+      min-width: 16px;
+      text-align: center;
+      transition: opacity var(--sk-transition-fast);
+    }
+
+    .details-section.expanded .group-count-badge {
+      opacity: 0.5;
+    }
+
+    /* Section content fade-in */
+    .details-content {
+      animation: sk-fade-in 0.2s ease-out;
+    }
+
+    /* Expanded group accent border */
+    .details-section.expanded {
+      border-left: 2px solid color-mix(in srgb, var(--sk-accent-primary) 35%, transparent);
+      padding-left: var(--sk-space-3);
+      transition: border-color var(--sk-transition-base), padding-left var(--sk-transition-base);
+    }
+
+    .details-section:not(.expanded) {
+      border-left: 2px solid transparent;
+      padding-left: 0;
+      transition: border-color var(--sk-transition-base), padding-left var(--sk-transition-base);
+    }
+
+    /* Smooth collapse/expand for details-content */
+    .details-content {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height var(--sk-transition-slow),
+                  opacity var(--sk-transition-base),
+                  margin var(--sk-transition-base);
+      margin-top: 0;
+    }
+
+    .details-section.expanded .details-content {
+      max-height: 5000px;
+      opacity: 1;
+      margin-top: var(--sk-space-3);
+    }
+
     /* Unified collapsible section styling */
     .collapsible-section {
       margin-top: 16px;
@@ -2859,12 +2980,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .collapsible-body {
-      display: none;
-      margin-top: 12px;
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+      transition: max-height var(--sk-transition-slow),
+                  opacity var(--sk-transition-base),
+                  margin var(--sk-transition-base);
     }
 
     .collapsible-section.expanded .collapsible-body {
-      display: block;
+      max-height: 5000px;
+      opacity: 1;
+      margin-top: 12px;
     }
 
     /* Collapsible group section styling */
@@ -2902,15 +3030,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       transform: rotate(90deg);
     }
 
-    .details-content {
-      display: none;
-      margin-top: 12px;
-    }
-
-    .details-section.expanded .details-content {
-      display: block;
-    }
-
     .details-title {
       font-size: 13px;
       font-weight: 600;
@@ -2926,12 +3045,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .section-title {
-      font-size: 11px;
+      font-size: var(--sk-font-base);
       font-weight: 600;
       text-transform: uppercase;
       color: var(--vscode-descriptionForeground);
-      margin-bottom: 8px;
+      margin-bottom: var(--sk-space-2);
       letter-spacing: 0.5px;
+      opacity: 0.85;
     }
 
     .token-grid {
@@ -3922,6 +4042,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       font-size: 11px;
       background: var(--vscode-input-background);
       border-radius: 3px;
+      animation: sk-slide-in-left 0.25s ease-out;
     }
 
     .timeline-item .time {
@@ -4758,6 +4879,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         <div class="plan-steps-list" id="plan-history-list"></div>
       </div>
 
+      <!-- ── Tier 2/3: Progressive Disclosure ── -->
+      <div class="tier-divider"></div>
+
       <!-- Agent Guidance Suggestions Panel -->
       <div class="suggestions-section" id="suggestions-panel">
         <div class="suggestions-header" id="suggestions-header">
@@ -4787,7 +4911,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       <div class="details-section" id="session-activity-section">
         <div class="details-toggle" data-group-toggle="session-activity-section">
           <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Session Activity</h3>
+          <h3 class="details-title">Session Activity <span class="group-count-badge" id="activity-count-badge" style="display:none;">0</span></h3>
+          <span class="group-summary" id="session-activity-summary"></span>
           <label class="filter-toggle event-log-toggle" title="Record all session events to ~/.config/sidekick/event-logs/ for debugging. Events are written in real-time as a JSONL audit trail." onclick="event.stopPropagation()">
             <input type="checkbox" id="event-log-toggle" /> Event Log
           </label>
@@ -4940,6 +5065,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         <div class="details-toggle" data-group-toggle="perf-cost-section">
           <span class="toggle-icon">▶</span>
           <h3 class="details-title">Performance &amp; Cost</h3>
+          <span class="group-summary" id="perf-cost-summary"></span>
         </div>
         <div class="details-content">
           <div class="section">
@@ -4994,6 +5120,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         <div class="details-toggle" data-group-toggle="tasks-recovery-section">
           <span class="toggle-icon">▶</span>
           <h3 class="details-title">Tasks &amp; Recovery</h3>
+          <span class="group-summary" id="tasks-recovery-summary"></span>
         </div>
         <div class="details-content">
           <div class="section" id="task-perf-section" style="display: none;">
@@ -5012,7 +5139,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       <div class="details-section" id="decisions-section-group">
         <div class="details-toggle" data-group-toggle="decisions-section-group">
           <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Decisions</h3>
+          <h3 class="details-title">Decisions <span class="group-count-badge" id="decisions-count-badge" style="display:none;">0</span></h3>
+          <span class="group-summary" id="decisions-summary"></span>
         </div>
         <div class="details-content">
           <div class="section" id="decisions-section" style="display: none;">
@@ -5132,7 +5260,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     </div>
 
     <div class="history-loading" id="history-loading" style="display: none;">
-      Loading historical data...
+      <div style="padding: 12px 0;">
+        <div class="sk-skeleton sk-skeleton-card" style="width: 100%; height: 120px; margin-bottom: 12px;"></div>
+        <div style="display: flex; gap: 8px;">
+          <div class="sk-skeleton sk-skeleton-card" style="flex: 1; height: 60px;"></div>
+          <div class="sk-skeleton sk-skeleton-card" style="flex: 1; height: 60px;"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -5329,7 +5463,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         if (panel && loading) {
           const content = panel.querySelector('.suggestions-content');
           if (content) {
-            content.innerHTML = '<div class="suggestions-loading">Analyzing session data...</div>';
+            content.innerHTML = '<div class="suggestions-loading" style="padding: 8px 0;"><div class="sk-skeleton sk-skeleton-line" style="width: 85%;"></div><div class="sk-skeleton sk-skeleton-line" style="width: 70%;"></div><div class="sk-skeleton sk-skeleton-line" style="width: 55%;"></div></div>';
           }
         }
       }
@@ -6035,7 +6169,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             if (drilldown.style.display === 'none') {
               // Request details from extension
               vscode.postMessage({ type: 'requestToolCallDetails', toolName: toolName });
-              drilldown.innerHTML = '<div style="padding: 4px; font-size: 10px; color: var(--vscode-descriptionForeground);">Loading...</div>';
+              drilldown.innerHTML = '<div style="padding: 4px;"><div class="sk-skeleton sk-skeleton-line" style="width: 80%;"></div><div class="sk-skeleton sk-skeleton-line" style="width: 60%;"></div></div>';
               drilldown.style.display = 'block';
             } else {
               drilldown.style.display = 'none';
@@ -6846,6 +6980,59 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         if (state.lastUpdated && lastUpdatedEl) {
           const date = new Date(state.lastUpdated);
           lastUpdatedEl.textContent = date.toLocaleTimeString();
+        }
+
+        // ── Update group summaries ──
+        updateGroupSummaries(state);
+      }
+
+      function updateGroupSummaries(state) {
+        // Session Activity summary
+        var actSummary = document.getElementById('session-activity-summary');
+        if (actSummary) {
+          var parts = [];
+          var totalToolCalls = (state.toolAnalytics || []).reduce(function(s, t) { return s + (t.count || 0); }, 0);
+          if (totalToolCalls > 0) parts.push(totalToolCalls + ' tool calls');
+          var errorCount = (state.errorDetails || []).reduce(function(s, e) { return s + (e.count || 0); }, 0);
+          if (errorCount > 0) parts.push(errorCount + ' error' + (errorCount !== 1 ? 's' : ''));
+          var fileCount = state.fileChangeSummary ? (state.fileChangeSummary.totalFilesChanged || 0) : 0;
+          if (fileCount > 0) parts.push(fileCount + ' file' + (fileCount !== 1 ? 's' : '') + ' changed');
+          actSummary.textContent = parts.length ? parts.join(', ') : '';
+        }
+        // Activity count badge
+        var actBadge = document.getElementById('activity-count-badge');
+        if (actBadge) {
+          var timelineCount = document.querySelectorAll('#timeline-list .timeline-item').length;
+          if (timelineCount > 0 && !(timelineCount === 1 && document.querySelector('#timeline-list .timeline-item .description') && document.querySelector('#timeline-list .timeline-item .description').textContent === 'No activity yet')) {
+            actBadge.textContent = timelineCount;
+            actBadge.style.display = 'inline';
+          }
+        }
+
+        // Performance & Cost summary
+        var perfSummary = document.getElementById('perf-cost-summary');
+        if (perfSummary) {
+          var perfParts = [];
+          var modelCount = (state.modelBreakdown || []).length;
+          if (modelCount > 0) perfParts.push(modelCount + ' model' + (modelCount !== 1 ? 's' : ''));
+          var toolCount = (state.toolAnalytics || []).length;
+          if (toolCount > 0) perfParts.push(toolCount + ' tool' + (toolCount !== 1 ? 's' : ''));
+          if (state.totalCost > 0) perfParts.push(formatCost(state.totalCost));
+          perfSummary.textContent = perfParts.length ? perfParts.join(', ') : '';
+        }
+
+        // Decisions count badge
+        var decBadge = document.getElementById('decisions-count-badge');
+        var decSummary = document.getElementById('decisions-summary');
+        var decCountEl = document.getElementById('decisions-count');
+        if (decCountEl && decBadge) {
+          var decText = decCountEl.textContent || '';
+          var decMatch = decText.match(/(\\d+)/);
+          if (decMatch && parseInt(decMatch[1]) > 0) {
+            decBadge.textContent = decMatch[1];
+            decBadge.style.display = 'inline';
+            if (decSummary) decSummary.textContent = decMatch[1] + ' decisions logged';
+          }
         }
       }
 

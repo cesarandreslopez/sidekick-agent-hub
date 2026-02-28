@@ -15,6 +15,7 @@ import type { PersistedTask } from '../types/taskPersistence';
 import type { TaskBoardState, TaskBoardMessage, WebviewTaskBoardMessage, TaskBoardColumn, TaskCard } from '../types/taskBoard';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /**
@@ -444,6 +445,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
                  img-src ${webview.cspSource};
                  script-src 'nonce-${nonce}';">
   <title>Kanban Board</title>
+  ${getDesignTokenCSS()}
+  ${getSharedStyles()}
   <style>
     :root {
       --board-gap: 10px;
@@ -472,9 +475,9 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     .header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--vscode-panel-border);
+      gap: var(--sk-space-2);
+      padding: var(--sk-space-2) var(--sk-space-3);
+      border-bottom: 1px solid var(--sk-border-primary);
     }
 
     .header img {
@@ -483,31 +486,31 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .header h1 {
-      font-size: 13px;
+      font-size: var(--sk-font-lg);
       font-weight: 600;
     }
 
     .header-phrase, .empty-state-phrase {
-      font-size: 11px;
+      font-size: var(--sk-font-base);
       color: var(--vscode-descriptionForeground);
       font-style: italic;
       margin: 0;
     }
 
     .header-phrase {
-      padding: 2px 12px 6px 40px;
+      padding: 2px var(--sk-space-3) var(--sk-space-2) 40px;
     }
 
     .status {
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 3px;
+      font-size: var(--sk-font-sm);
+      padding: 2px var(--sk-space-2);
+      border-radius: var(--sk-radius-sm);
       background: var(--vscode-badge-background);
       color: var(--vscode-badge-foreground);
     }
 
     .status.active {
-      background: var(--vscode-testing-iconPassed);
+      background: var(--sk-accent-success);
       color: var(--vscode-editor-background);
     }
 
@@ -522,11 +525,12 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       border: 1px solid var(--vscode-button-border, transparent);
       background: var(--vscode-button-secondaryBackground);
       color: var(--vscode-button-secondaryForeground);
-      font-size: 10px;
+      font-size: var(--sk-font-sm);
       line-height: 1;
-      padding: 4px 7px;
-      border-radius: 3px;
+      padding: var(--sk-space-1) 7px;
+      border-radius: var(--sk-radius-sm);
       cursor: pointer;
+      transition: background var(--sk-transition-fast);
     }
 
     .icon-button:hover:enabled {
@@ -622,12 +626,18 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     .card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 8px;
-      box-shadow: 0 2px 4px var(--card-shadow);
+      border-radius: var(--sk-radius-xl);
+      padding: var(--sk-space-2);
+      box-shadow: var(--sk-shadow-sm);
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: var(--sk-space-2);
+      transition: transform var(--sk-transition-fast), box-shadow var(--sk-transition-fast);
+    }
+
+    .card:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--sk-shadow-md);
     }
 
     .card.active {
