@@ -208,6 +208,8 @@ export class NotificationTriggerService implements vscode.Disposable {
    */
   private handleCycleDetected(cycle: { description: string; affectedFiles: string[] }): void {
     if (this.sessionMonitor.isReplaying) return;
+    const config = vscode.workspace.getConfiguration('sidekick.notifications');
+    if (!config.get<boolean>('triggers.cycle-detected', true)) return;
     const files = cycle.affectedFiles.length > 0
       ? cycle.affectedFiles.map(f => f.split('/').pop()).join(', ')
       : 'unknown files';

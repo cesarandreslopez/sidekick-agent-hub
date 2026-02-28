@@ -42,13 +42,15 @@ export class ErrorExplanationService {
    * @param code - The code snippet containing the error
    * @param errorContext - Context about the error (message, code, location, etc.)
    * @param complexity - Optional complexity level for explanation depth
+   * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to structured error explanation
    * @throws Error if explanation generation fails
    */
   async explainError(
     code: string,
     errorContext: ErrorContext,
-    complexity?: ComplexityLevel
+    complexity?: ComplexityLevel,
+    signal?: AbortSignal
   ): Promise<ErrorExplanation> {
     // Read model from configuration (default: sonnet)
     const config = vscode.workspace.getConfiguration('sidekick');
@@ -63,15 +65,16 @@ export class ErrorExplanationService {
     const opLabel = `Explaining error via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
       operation: opLabel,
-      task: (signal: AbortSignal) => this.authService.complete(prompt, {
+      task: (taskSignal: AbortSignal) => this.authService.complete(prompt, {
         model,
         maxTokens: 2000,
-        signal,
+        signal: taskSignal,
       }),
       config: timeoutConfig,
       contextSize,
       showProgress: true,
       cancellable: true,
+      externalSignal: signal,
       onTimeout: (timeoutMs: number, contextKb: number) =>
         this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
     });
@@ -96,12 +99,14 @@ export class ErrorExplanationService {
    *
    * @param code - The code snippet containing the error
    * @param errorContext - Context about the error (message, code, location, etc.)
+   * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to fix suggestion or null if unfixable
    * @throws Error if fix generation fails
    */
   async generateFix(
     code: string,
-    errorContext: ErrorContext
+    errorContext: ErrorContext,
+    signal?: AbortSignal
   ): Promise<FixSuggestion | null> {
     // Read model from configuration (default: sonnet)
     const config = vscode.workspace.getConfiguration('sidekick');
@@ -116,15 +121,16 @@ export class ErrorExplanationService {
     const fixLabel = `Generating fix via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
       operation: fixLabel,
-      task: (signal: AbortSignal) => this.authService.complete(prompt, {
+      task: (taskSignal: AbortSignal) => this.authService.complete(prompt, {
         model,
         maxTokens: 2000,
-        signal,
+        signal: taskSignal,
       }),
       config: timeoutConfig,
       contextSize,
       showProgress: true,
       cancellable: true,
+      externalSignal: signal,
       onTimeout: (timeoutMs: number, contextKb: number) =>
         this.timeoutManager.promptRetry(fixLabel, timeoutMs, contextKb),
     });

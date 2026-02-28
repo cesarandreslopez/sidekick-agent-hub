@@ -596,7 +596,8 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       if (key.return) {
         const action = contextActions[state.contextMenuIndex];
         if (action && selectedItem) {
-          action.handler(selectedItem);
+          const msg = action.handler(selectedItem);
+          if (typeof msg === 'string') addToast(msg, msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable') ? 'error' : 'info');
           dispatch({ type: 'CONTEXT_MENU_SELECT' });
         }
         return;
@@ -604,7 +605,8 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       // Direct key shortcut
       const match = contextActions.find(a => a.key === input);
       if (match && selectedItem) {
-        match.handler(selectedItem);
+        const msg = match.handler(selectedItem);
+        if (typeof msg === 'string') addToast(msg, msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable') ? 'error' : 'info');
         dispatch({ type: 'CONTEXT_MENU_SELECT' });
       }
       return;
@@ -809,7 +811,8 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       const actions = panel.getActions();
       const actionMatch = actions.find(a => a.key === input && (!a.condition || a.condition(selectedItem)));
       if (actionMatch) {
-        actionMatch.handler(selectedItem);
+        const msg = actionMatch.handler(selectedItem);
+        if (typeof msg === 'string') addToast(msg, msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable') ? 'error' : 'info');
       }
     }
   });

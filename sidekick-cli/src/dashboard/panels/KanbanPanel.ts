@@ -6,9 +6,8 @@
 import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
 import type { DashboardMetrics, TaskItem } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
-import { normalizeTaskStatus } from 'sidekick-shared';
-import type { PersistedTask } from 'sidekick-shared';
 import { wordWrap, detailWidth } from '../formatters';
+import { mergeTasks } from '../utils/taskMerger';
 
 const STATUS_ICON: Record<string, string> = {
   pending: '{yellow-fg}\u25CB{/yellow-fg}',
@@ -32,7 +31,7 @@ export class KanbanPanel implements SidePanel {
   ];
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
-    const tasks = this.mergeTasks(metrics.tasks, staticData.tasks);
+    const tasks = mergeTasks(metrics.tasks, staticData.tasks);
 
     const pending = tasks.filter(t => t.status === 'pending');
     const active = tasks.filter(t => t.status === 'in_progress');
@@ -67,33 +66,6 @@ export class KanbanPanel implements SidePanel {
   getSearchableText(item: PanelItem): string {
     const col = item.data as ColumnData;
     return col.tasks.map(t => t.subject).join(' ');
-  }
-
-  private mergeTasks(live: TaskItem[], persisted: PersistedTask[]): TaskItem[] {
-    const map = new Map<string, TaskItem>();
-
-    for (const p of persisted) {
-      if (p.status === 'deleted') continue;
-      map.set(p.taskId, {
-        taskId: p.taskId,
-        subject: p.subject,
-        status: normalizeTaskStatus(p.status),
-        blockedBy: p.blockedBy || [],
-        blocks: p.blocks || [],
-        subagentType: p.subagentType,
-        isGoalGate: p.isGoalGate,
-        toolCallCount: p.toolCallCount,
-        activeForm: p.activeForm,
-        sessionOrigin: p.sessionOrigin,
-        createdAt: p.createdAt,
-      });
-    }
-
-    for (const t of live) {
-      map.set(t.taskId, t);
-    }
-
-    return Array.from(map.values());
   }
 
   // ── Detail renderer ──

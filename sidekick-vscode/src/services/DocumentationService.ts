@@ -70,9 +70,10 @@ export class DocumentationService implements vscode.Disposable {
    * If no selection, attempts to detect a function or class at the cursor position.
    *
    * @param editor - The active text editor
+   * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to result with documentation text and insert position, or error
    */
-  async generateDocumentation(editor: vscode.TextEditor): Promise<DocumentationResult> {
+  async generateDocumentation(editor: vscode.TextEditor, signal?: AbortSignal): Promise<DocumentationResult> {
     const document = editor.document;
     const selection = editor.selection;
     const language = document.languageId;
@@ -121,15 +122,16 @@ export class DocumentationService implements vscode.Disposable {
       const opLabel = `Generating documentation via ${this.authService.getProviderDisplayName()} · ${model}`;
       const timeoutResult = await this.timeoutManager.executeWithTimeout({
         operation: opLabel,
-        task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
+        task: (taskSignal: AbortSignal) => this.authService.complete(fullPrompt, {
           model,
           maxTokens: 1024,
-          signal,
+          signal: taskSignal,
         }),
         config: timeoutConfig,
         contextSize,
         showProgress: true,
         cancellable: true,
+        externalSignal: signal,
         onTimeout: (timeoutMs: number, contextKb: number) =>
           this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });

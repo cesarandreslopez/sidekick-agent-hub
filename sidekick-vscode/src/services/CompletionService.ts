@@ -18,6 +18,7 @@ import { CompletionContext, TimeoutError } from '../types';
 import { resolveModel } from './ModelResolver';
 import { getSystemPrompt, getUserPrompt, cleanCompletion, PROSE_LANGUAGES } from '../utils/prompts';
 import { log } from './Logger';
+import { getTimeoutManager, DEFAULT_TIMEOUTS } from './TimeoutManager';
 
 /**
  * Service for managing code completion requests.
@@ -60,6 +61,17 @@ export class CompletionService implements vscode.Disposable {
   }
 
   /**
+   * Cancels any pending completion request.
+   * Can be called externally (e.g., from a progress notification cancel button).
+   */
+  cancelPending(): void {
+    if (this.pendingController) {
+      log('Service: externally cancelled pending request');
+      this.pendingController.abort();
+    }
+  }
+
+  /**
    * Gets a completion for the given document position.
    *
    * Handles debouncing, caching, cancellation, and API calls.
@@ -80,7 +92,14 @@ export class CompletionService implements vscode.Disposable {
     const contextLines = config.get<number>('inlineContextLines') ?? 30;
     const multilineSetting = config.get<boolean>('multiline') ?? false;
     const model = resolveModel(config.get<string>('inlineModel') ?? 'auto', this.authService.getProviderId(), 'inlineModel');
-    const timeoutMs = config.get<number>('inlineTimeout') ?? 15000;
+    // Resolve inline completion timeout:
+    // 1. Check legacy `sidekick.inlineTimeout` (deprecated) — honour if user explicitly set it
+    // 2. Otherwise use TimeoutManager which reads `sidekick.timeouts.inlineCompletion`
+    const legacyTimeout = config.get<number>('inlineTimeout');
+    const legacyIsCustom = legacyTimeout !== undefined && legacyTimeout !== DEFAULT_TIMEOUTS.inlineCompletion;
+    const timeoutMs = legacyIsCustom
+      ? legacyTimeout
+      : getTimeoutManager().getTimeoutConfig('inlineCompletion').baseTimeout;
 
     // Prose files always use multiline mode
     const isProse = PROSE_LANGUAGES.includes(document.languageId.toLowerCase());

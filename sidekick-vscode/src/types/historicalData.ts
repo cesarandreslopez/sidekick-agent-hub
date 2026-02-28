@@ -95,6 +95,26 @@ export interface DailyData {
 }
 
 /**
+ * Aggregated data for a single hour within a day.
+ */
+export interface HourlyData {
+  /** Hour of the day (0-23) */
+  hour: number;
+
+  /** Token usage totals for the hour */
+  tokens: TokenTotals;
+
+  /** Total estimated cost in USD */
+  totalCost: number;
+
+  /** Number of messages (API calls) */
+  messageCount: number;
+
+  /** Number of sessions that contributed data */
+  sessionCount: number;
+}
+
+/**
  * Aggregated data for a single month.
  */
 export interface MonthlyData {
@@ -164,6 +184,9 @@ export interface HistoricalDataStore {
 
   /** Daily data keyed by YYYY-MM-DD */
   daily: Record<string, DailyData>;
+
+  /** Hourly data keyed by YYYY-MM-DD, each containing an array of HourlyData buckets */
+  hourly?: Record<string, HourlyData[]>;
 
   /** Monthly data keyed by YYYY-MM */
   monthly: Record<string, MonthlyData>;

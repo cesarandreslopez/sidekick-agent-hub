@@ -325,7 +325,8 @@
             "default": 15000,
             "minimum": 5000,
             "maximum": 120000,
-            "description": "Timeout in milliseconds for inline completions. Increase if you frequently get timeouts (default: 15000ms = 15s)"
+            "description": "Timeout in milliseconds for inline completions. Increase if you frequently get timeouts (default: 15000ms = 15s)",
+            "markdownDeprecationMessage": "Deprecated: use `#sidekick.timeouts.inlineCompletion#` instead. This setting is only honoured as a fallback when set to a non-default value."
           },
           "sidekick.multiline": {
             "type": "boolean",
@@ -459,6 +460,16 @@
             "type": "boolean",
             "default": true,
             "description": "Notify when context window is compacted (conversation summarized)"
+          },
+          "sidekick.notifications.triggers.sensitive-path-write": {
+            "type": "boolean",
+            "default": true,
+            "description": "Notify when Claude modifies files in sensitive system paths (/etc, /boot, .ssh, .gnupg, etc.)"
+          },
+          "sidekick.notifications.triggers.cycle-detected": {
+            "type": "boolean",
+            "default": true,
+            "description": "Notify when the agent appears to be cycling (repeating the same actions without progress)"
           },
           "sidekick.notifications.tokenThreshold": {
             "type": "number",

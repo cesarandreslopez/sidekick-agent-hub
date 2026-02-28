@@ -65,6 +65,12 @@ export interface ExecuteOptions<T> {
   cancellable?: boolean;
   /** Callback when timeout occurs, returns whether to retry */
   onTimeout?: (timeoutMs: number, contextKb: number) => Promise<'retry' | 'cancel'>;
+  /**
+   * External AbortSignal for cancellation from an outer context
+   * (e.g., a VS Code CancellationToken wired to an AbortController).
+   * When aborted, the internal AbortController is also aborted.
+   */
+  externalSignal?: AbortSignal;
 }
 
 /**
@@ -181,6 +187,7 @@ export class TimeoutManager {
       showProgress = true,
       cancellable = true,
       onTimeout,
+      externalSignal,
     } = options;
 
     const contextSizeKb = contextSize / 1024;
@@ -196,7 +203,8 @@ export class TimeoutManager {
         timeoutMs,
         contextSizeKb,
         showProgress,
-        cancellable
+        cancellable,
+        externalSignal
       );
 
       // If successful or non-timeout error, return
@@ -241,9 +249,21 @@ export class TimeoutManager {
     timeoutMs: number,
     contextSizeKb: number,
     showProgress: boolean,
-    cancellable: boolean
+    cancellable: boolean,
+    externalSignal?: AbortSignal
   ): Promise<TimeoutResult<T>> {
     const abortController = new AbortController();
+
+    // Link external signal (e.g., from outer CancellationToken) to internal controller
+    let externalAbortHandler: (() => void) | undefined;
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        abortController.abort();
+      } else {
+        externalAbortHandler = () => abortController.abort();
+        externalSignal.addEventListener('abort', externalAbortHandler);
+      }
+    }
 
     // Set up timeout
     const timeoutId = setTimeout(() => {
@@ -322,6 +342,9 @@ export class TimeoutManager {
       };
     } finally {
       clearTimeout(timeoutId);
+      if (externalSignal && externalAbortHandler) {
+        externalSignal.removeEventListener('abort', externalAbortHandler);
+      }
     }
   }
 

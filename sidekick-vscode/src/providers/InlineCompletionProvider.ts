@@ -84,9 +84,14 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
       {
         location: vscode.ProgressLocation.Notification,
         title: 'Generating completion...',
-        cancellable: false,
+        cancellable: true,
       },
-      async () => {
+      async (_progress, progressToken) => {
+        // Link progress cancel button to CompletionService's abort mechanism
+        progressToken.onCancellationRequested(() => {
+          this.completionService.cancelPending();
+        });
+
         try {
           // Delegate to CompletionService
           const completion = await this.completionService.getCompletion(

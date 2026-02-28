@@ -42,6 +42,7 @@ export class ExplanationService {
    * @param complexity - User-selected complexity level
    * @param fileContext - Optional file context (fileName, languageId)
    * @param extraInstructions - Optional extra instructions for regeneration
+   * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to explanation text
    * @throws Error if explanation generation fails
    */
@@ -50,7 +51,8 @@ export class ExplanationService {
     contentType: ContentType,
     complexity: ComplexityLevel,
     fileContext?: { fileName: string; languageId: string },
-    extraInstructions?: string
+    extraInstructions?: string,
+    signal?: AbortSignal
   ): Promise<string> {
     // Read model from configuration (default: sonnet)
     const config = vscode.workspace.getConfiguration('sidekick');
@@ -67,15 +69,16 @@ export class ExplanationService {
     const opLabel = `Generating explanation via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
       operation: opLabel,
-      task: (signal: AbortSignal) => this.authService.complete(prompt, {
+      task: (taskSignal: AbortSignal) => this.authService.complete(prompt, {
         model,
         maxTokens: 2000,
-        signal,
+        signal: taskSignal,
       }),
       config: timeoutConfig,
       contextSize,
       showProgress: true,
       cancellable: true,
+      externalSignal: signal,
       onTimeout: (timeoutMs: number, contextKb: number) =>
         this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
     });

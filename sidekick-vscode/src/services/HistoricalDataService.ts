@@ -19,6 +19,7 @@ import * as os from 'os';
 import {
   HistoricalDataStore,
   DailyData,
+  HourlyData,
   MonthlyData,
   SessionSummary,
   ModelUsageRecord,
@@ -144,6 +145,9 @@ export class HistoricalDataService implements vscode.Disposable {
     // Update daily data
     this.updateDailyData(date, summary);
 
+    // Update hourly data
+    this.updateHourlyData(date, summary);
+
     // Update monthly data
     this.updateMonthlyData(month, summary);
 
@@ -193,6 +197,49 @@ export class HistoricalDataService implements vscode.Disposable {
     }
 
     this.accumulateSummary(this.store.daily[date], summary);
+  }
+
+  /**
+   * Updates hourly data with a session summary.
+   *
+   * Extracts the hour from the session start time and accumulates
+   * into the corresponding hourly bucket for that day.
+   */
+  private updateHourlyData(date: string, summary: SessionSummary): void {
+    // Initialize hourly store if needed
+    if (!this.store.hourly) {
+      this.store.hourly = {};
+    }
+
+    if (!this.store.hourly[date]) {
+      this.store.hourly[date] = [];
+    }
+
+    // Extract hour from session start time
+    const startDate = new Date(summary.startTime);
+    const hour = startDate.getHours();
+
+    // Find or create the hourly bucket
+    let bucket = this.store.hourly[date].find(h => h.hour === hour);
+    if (!bucket) {
+      bucket = {
+        hour,
+        tokens: createEmptyTokenTotals(),
+        totalCost: 0,
+        messageCount: 0,
+        sessionCount: 0,
+      };
+      this.store.hourly[date].push(bucket);
+    }
+
+    // Accumulate into the hourly bucket
+    bucket.tokens.inputTokens += summary.tokens.inputTokens;
+    bucket.tokens.outputTokens += summary.tokens.outputTokens;
+    bucket.tokens.cacheWriteTokens += summary.tokens.cacheWriteTokens;
+    bucket.tokens.cacheReadTokens += summary.tokens.cacheReadTokens;
+    bucket.totalCost += summary.totalCost;
+    bucket.messageCount += summary.messageCount;
+    bucket.sessionCount += 1;
   }
 
   /**
@@ -298,6 +345,40 @@ export class HistoricalDataService implements vscode.Disposable {
 
     // Sort by date ascending
     return results.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * Gets hourly data for a specific date.
+   *
+   * Returns hourly buckets for the given date, sorted by hour (0-23).
+   * If no hourly data was recorded (older data without hourly tracking),
+   * falls back to distributing the day's daily totals as a single
+   * aggregated bucket covering the whole day.
+   *
+   * @param date - Date in YYYY-MM-DD format
+   * @returns Array of hourly data buckets for that date, sorted by hour ascending
+   */
+  getHourlyData(date: string): HourlyData[] {
+    // Check for stored hourly data first
+    if (this.store.hourly?.[date] && this.store.hourly[date].length > 0) {
+      return [...this.store.hourly[date]].sort((a, b) => a.hour - b.hour);
+    }
+
+    // Fall back: synthesize from daily data if available
+    // Distribute the daily total evenly across a single "all-day" bucket at hour 12
+    // so the chart shows something meaningful for legacy data
+    const dailyData = this.store.daily[date];
+    if (dailyData) {
+      return [{
+        hour: 12,
+        tokens: { ...dailyData.tokens },
+        totalCost: dailyData.totalCost,
+        messageCount: dailyData.messageCount,
+        sessionCount: dailyData.sessionCount,
+      }];
+    }
+
+    return [];
   }
 
   /**

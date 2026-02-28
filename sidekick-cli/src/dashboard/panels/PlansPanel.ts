@@ -3,12 +3,12 @@
  * Shows plan steps, metrics, and raw markdown across three detail tabs.
  */
 
-import { execSync } from 'child_process';
 import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
 import type { DashboardMetrics, PlanInfo } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { PersistedPlan, PlanSource } from 'sidekick-shared';
 import { wordWrap, detailWidth, makeBar, fmtNum, formatDuration, truncate } from '../formatters';
+import { copyToClipboard } from '../clipboard';
 
 const STATUS_ICONS: Record<string, string> = {
   completed: '{green-fg}\u2713{/green-fg}',
@@ -286,20 +286,13 @@ export class PlansPanel implements SidePanel {
 
   // ── Actions ──
 
-  private copyMarkdown(item: PanelItem): void {
+  private copyMarkdown(item: PanelItem): string {
     const d = item.data as { type: string; plan: PlanInfo | PersistedPlan };
     const raw = d.plan.rawMarkdown;
-    if (!raw) return;
+    if (!raw) return 'No markdown available';
 
-    try {
-      if (process.platform === 'darwin') {
-        execSync('pbcopy', { input: raw });
-      } else {
-        execSync('xclip -selection clipboard', { input: raw });
-      }
-    } catch {
-      // Clipboard not available
-    }
+    const result = copyToClipboard(raw);
+    return result.message;
   }
 
   private cycleSource(): void {

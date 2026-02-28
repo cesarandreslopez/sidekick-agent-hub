@@ -18,7 +18,8 @@ export interface PanelItem {
 export interface PanelAction {
   key: string;           // single char shortcut
   label: string;         // display label (e.g. "Mark completed")
-  handler: (item: PanelItem) => void;
+  /** Return a string to show it as a toast notification. */
+  handler: (item: PanelItem) => string | void;
   /** If provided, action only appears when this returns true. */
   condition?: (item: PanelItem) => boolean;
 }

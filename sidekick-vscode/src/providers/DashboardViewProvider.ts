@@ -1307,28 +1307,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           totals,
         };
       } else {
-        // Drilling down from daily to hourly - not supported yet
-        // Just return the day's data as a single point
-        const days = this._historicalDataService.getDailyData(timestamp, timestamp);
-        const dataPoints: HistoricalDataPoint[] = days.map(day => ({
-          timestamp: day.date,
-          label: 'Today',
-          inputTokens: day.tokens.inputTokens,
-          outputTokens: day.tokens.outputTokens,
-          cacheWriteTokens: day.tokens.cacheWriteTokens,
-          cacheReadTokens: day.tokens.cacheReadTokens,
-          totalCost: day.totalCost,
-          messageCount: day.messageCount,
-          sessionCount: day.sessionCount,
-        }));
+        // Drilling down from daily to hourly — show hourly breakdown for the day
+        const hourlyBuckets = this._historicalDataService.getHourlyData(timestamp);
+        const dataPoints: HistoricalDataPoint[] = hourlyBuckets.map(bucket => {
+          const hour = bucket.hour;
+          const ampm = hour < 12 ? 'AM' : 'PM';
+          const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+          return {
+            timestamp: `${timestamp}T${hour.toString().padStart(2, '0')}:00:00`,
+            label: `${displayHour}${ampm}`,
+            inputTokens: bucket.tokens.inputTokens,
+            outputTokens: bucket.tokens.outputTokens,
+            cacheWriteTokens: bucket.tokens.cacheWriteTokens,
+            cacheReadTokens: bucket.tokens.cacheReadTokens,
+            totalCost: bucket.totalCost,
+            messageCount: bucket.messageCount,
+            sessionCount: bucket.sessionCount,
+          };
+        });
 
-        const totals = dataPoints.length > 0 ? {
-          inputTokens: dataPoints[0].inputTokens,
-          outputTokens: dataPoints[0].outputTokens,
-          totalCost: dataPoints[0].totalCost,
-          messageCount: dataPoints[0].messageCount,
-          sessionCount: dataPoints[0].sessionCount,
-        } : { inputTokens: 0, outputTokens: 0, totalCost: 0, messageCount: 0, sessionCount: 0 };
+        const totals = {
+          inputTokens: dataPoints.reduce((sum, d) => sum + d.inputTokens, 0),
+          outputTokens: dataPoints.reduce((sum, d) => sum + d.outputTokens, 0),
+          totalCost: dataPoints.reduce((sum, d) => sum + d.totalCost, 0),
+          messageCount: dataPoints.reduce((sum, d) => sum + d.messageCount, 0),
+          sessionCount: dataPoints.reduce((sum, d) => sum + d.sessionCount, 0),
+        };
 
         summary = {
           range: 'today',

@@ -42,12 +42,14 @@ export class ErrorViewProvider implements vscode.Disposable {
    * @param diagnostic - VS Code diagnostic with error info
    * @param mode - 'explain' for explanation, 'fix' for fix suggestion
    * @param complexity - Optional complexity level for explanation depth
+   * @param signal - Optional AbortSignal for external cancellation
    */
   async showErrorExplanation(
     document: vscode.TextDocument,
     diagnostic: vscode.Diagnostic,
     mode: 'explain' | 'fix',
-    complexity?: ComplexityLevel
+    complexity?: ComplexityLevel,
+    signal?: AbortSignal
   ): Promise<void> {
     // Store code context
     this._code = document.getText(diagnostic.range);
@@ -88,9 +90,9 @@ export class ErrorViewProvider implements vscode.Disposable {
 
     // Request AI explanation or fix
     if (mode === 'explain') {
-      await this.handleExplanationRequest(this._code, errorContext, complexity);
+      await this.handleExplanationRequest(this._code, errorContext, complexity, signal);
     } else {
-      await this.handleFixRequest(this._code, errorContext);
+      await this.handleFixRequest(this._code, errorContext, signal);
     }
   }
 
@@ -149,13 +151,14 @@ export class ErrorViewProvider implements vscode.Disposable {
   private async handleExplanationRequest(
     code: string,
     errorContext: ErrorContext,
-    complexity?: ComplexityLevel
+    complexity?: ComplexityLevel,
+    signal?: AbortSignal
   ): Promise<void> {
     const requestId = this.generateRequestId();
     this.pendingRequests.set(requestId, { timestamp: Date.now() });
 
     try {
-      const explanation = await this.errorExplanationService.explainError(code, errorContext, complexity);
+      const explanation = await this.errorExplanationService.explainError(code, errorContext, complexity, signal);
 
       if (this.pendingRequests.has(requestId)) {
         this._panel?.webview.postMessage({
@@ -182,12 +185,12 @@ export class ErrorViewProvider implements vscode.Disposable {
    * Handle fix request.
    * Calls ErrorExplanationService and sends fix suggestion back.
    */
-  private async handleFixRequest(code: string, errorContext: ErrorContext): Promise<void> {
+  private async handleFixRequest(code: string, errorContext: ErrorContext, signal?: AbortSignal): Promise<void> {
     const requestId = this.generateRequestId();
     this.pendingRequests.set(requestId, { timestamp: Date.now() });
 
     try {
-      const fixSuggestion = await this.errorExplanationService.generateFix(code, errorContext);
+      const fixSuggestion = await this.errorExplanationService.generateFix(code, errorContext, signal);
 
       if (!this.pendingRequests.has(requestId)) {
         return;

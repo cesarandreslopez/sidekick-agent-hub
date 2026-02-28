@@ -1419,10 +1419,28 @@ export async function activate(context: vscode.ExtensionContext) {
         {
           location: vscode.ProgressLocation.Notification,
           title: "Testing connection...",
-          cancellable: false,
+          cancellable: true,
         },
-        async () => authService!.testConnection()
-      );
+        async (_progress, token) => {
+          const testResult = authService!.testConnection();
+          return new Promise<Awaited<ReturnType<typeof authService.testConnection>>>((resolve, reject) => {
+            token.onCancellationRequested(() => {
+              reject(new Error('Cancelled'));
+            });
+            testResult.then(resolve, reject);
+          });
+        }
+      ).catch((error: Error) => {
+        if (error.message === 'Cancelled') {
+          return null;
+        }
+        throw error;
+      });
+
+      if (!result) {
+        statusBarManager?.setConnected();
+        return;
+      }
 
       if (result.success) {
         statusBarManager?.setConnected();
@@ -1449,13 +1467,17 @@ export async function activate(context: vscode.ExtensionContext) {
       {
         location: vscode.ProgressLocation.SourceControl,
         title: isRegenerate ? "Regenerating commit message" : "Generating commit message",
-        cancellable: false,
+        cancellable: true,
       },
-      async (progress) => {
+      async (progress, token) => {
+        // Wire VS Code CancellationToken to AbortController for the service
+        const abortController = new AbortController();
+        token.onCancellationRequested(() => abortController.abort());
+
         try {
           progress.report({ message: "Reading changes..." });
 
-          const result = await commitMessageService!.generateCommitMessage(guidance);
+          const result = await commitMessageService!.generateCommitMessage(guidance, abortController.signal);
 
           if (result.error) {
             statusBarManager?.setError(result.error);
@@ -1803,11 +1825,15 @@ export async function activate(context: vscode.ExtensionContext) {
         {
           location: vscode.ProgressLocation.Notification,
           title: 'Generating documentation...',
-          cancellable: false,
+          cancellable: true,
         },
-        async () => {
+        async (_progress, token) => {
+          // Wire VS Code CancellationToken to AbortController for the service
+          const abortController = new AbortController();
+          token.onCancellationRequested(() => abortController.abort());
+
           try {
-            const result = await documentationService!.generateDocumentation(originalEditor);
+            const result = await documentationService!.generateDocumentation(originalEditor, abortController.signal);
 
             if (result.error) {
               statusBarManager?.setError(result.error);
@@ -1873,9 +1899,9 @@ export async function activate(context: vscode.ExtensionContext) {
       {
         location: vscode.ProgressLocation.Notification,
         title: 'Generating explanation...',
-        cancellable: false,
+        cancellable: true,
       },
-      async () => {
+      async (_progress, _token) => {
         explainProvider!.showExplanation(
           selectedText,
           complexity,
@@ -1918,10 +1944,12 @@ export async function activate(context: vscode.ExtensionContext) {
       {
         location: vscode.ProgressLocation.Notification,
         title: 'Explaining error...',
-        cancellable: false,
+        cancellable: true,
       },
-      async () => {
-        await errorViewProvider.showErrorExplanation(document, diagnostic, 'explain', complexity);
+      async (_progress, token) => {
+        const abortController = new AbortController();
+        token.onCancellationRequested(() => abortController.abort());
+        await errorViewProvider.showErrorExplanation(document, diagnostic, 'explain', complexity, abortController.signal);
       }
     );
   };
@@ -1956,10 +1984,12 @@ export async function activate(context: vscode.ExtensionContext) {
         {
           location: vscode.ProgressLocation.Notification,
           title: 'Generating fix...',
-          cancellable: false,
+          cancellable: true,
         },
-        async () => {
-          await errorViewProvider.showErrorExplanation(document, diagnostic, 'fix');
+        async (_progress, token) => {
+          const abortController = new AbortController();
+          token.onCancellationRequested(() => abortController.abort());
+          await errorViewProvider.showErrorExplanation(document, diagnostic, 'fix', undefined, abortController.signal);
         }
       );
     })

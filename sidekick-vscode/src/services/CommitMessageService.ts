@@ -87,9 +87,10 @@ export class CommitMessageService implements vscode.Disposable {
    * 6. Cleans and validates the response
    *
    * @param guidance - Optional user guidance for regeneration (e.g., "focus on the bug fix")
+   * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to commit message result
    */
-  async generateCommitMessage(guidance?: string): Promise<CommitMessageResult> {
+  async generateCommitMessage(guidance?: string, signal?: AbortSignal): Promise<CommitMessageResult> {
     try {
       log('CommitMessageService: Starting commit message generation');
 
@@ -153,15 +154,16 @@ export class CommitMessageService implements vscode.Disposable {
       const opLabel = `Generating commit message via ${this.authService.getProviderDisplayName()} · ${model}`;
       const result = await this.timeoutManager.executeWithTimeout({
         operation: opLabel,
-        task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
+        task: (taskSignal: AbortSignal) => this.authService.complete(fullPrompt, {
           model,
           maxTokens: 100,
-          signal,
+          signal: taskSignal,
         }),
         config: timeoutConfig,
         contextSize,
         showProgress: true,
         cancellable: true,
+        externalSignal: signal,
         onTimeout: (timeoutMs: number, contextKb: number) =>
           this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });
