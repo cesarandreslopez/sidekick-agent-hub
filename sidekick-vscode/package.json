@@ -781,6 +781,11 @@
         "title": "Sidekick: Switch Inference Provider"
       },
       {
+        "command": "sidekick.setSessionProvider",
+        "title": "Set Session Provider",
+        "category": "Sidekick"
+      },
+      {
         "command": "sidekick.setupHandoff",
         "title": "Sidekick: Setup Handoff"
       },

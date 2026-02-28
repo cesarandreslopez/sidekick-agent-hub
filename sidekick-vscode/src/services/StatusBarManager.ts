@@ -79,6 +79,12 @@ export class StatusBarManager implements vscode.Disposable {
   /** Keyboard shortcut text */
   private _shortcut: string;
 
+  /** Whether to show the completion hint (from settings) */
+  private _showCompletionHint: boolean;
+
+  /** Delay in ms before showing the completion hint (from settings) */
+  private _completionHintDelayMs: number;
+
   /**
    * Creates a new StatusBarManager.
    *
@@ -94,6 +100,11 @@ export class StatusBarManager implements vscode.Disposable {
 
     const isMac = process.platform === 'darwin';
     this._shortcut = isMac ? '\u2318\u21E7Space' : 'Ctrl+Shift+Space';
+
+    // Read completion hint settings
+    const config = vscode.workspace.getConfiguration('sidekick');
+    this._showCompletionHint = config.get<boolean>('showCompletionHint', true);
+    this._completionHintDelayMs = config.get<number>('completionHintDelayMs', 1500);
 
     this.update();
     this.statusBarItem.show();
@@ -117,6 +128,22 @@ export class StatusBarManager implements vscode.Disposable {
         this.clearHighlight();
       })
     );
+
+    // Listen for configuration changes
+    this._disposables.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('sidekick.showCompletionHint') || e.affectsConfiguration('sidekick.completionHintDelayMs')) {
+          const updated = vscode.workspace.getConfiguration('sidekick');
+          this._showCompletionHint = updated.get<boolean>('showCompletionHint', true);
+          this._completionHintDelayMs = updated.get<number>('completionHintDelayMs', 1500);
+
+          // If hint was disabled, clear any active highlight
+          if (!this._showCompletionHint) {
+            this.clearHighlight();
+          }
+        }
+      })
+    );
   }
 
   /**
@@ -132,8 +159,8 @@ export class StatusBarManager implements vscode.Disposable {
       this.update();
     }
 
-    // Don't highlight if not in connected state
-    if (this.state !== 'connected') {
+    // Don't highlight if not in connected state or if hint is disabled
+    if (this.state !== 'connected' || !this._showCompletionHint) {
       return;
     }
 
@@ -143,7 +170,7 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    // Schedule highlight after 1 second of no typing
+    // Schedule highlight after configured delay of no typing
     this._highlightTimer = setTimeout(() => {
       this._highlightTimer = undefined;
       this.highlightActive = true;
@@ -155,7 +182,7 @@ export class StatusBarManager implements vscode.Disposable {
         this.highlightActive = false;
         this.update();
       }, 4000);
-    }, 1000);
+    }, this._completionHintDelayMs);
   }
 
   /**

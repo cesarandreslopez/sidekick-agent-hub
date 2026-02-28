@@ -70,14 +70,8 @@ async function main() {
     await Promise.all([extensionCtx.watch(), webviewExplainCtx.watch(), webviewErrorCtx.watch(), webviewDashboardCtx.watch()]);
     console.log('Watching for changes...');
   } else {
-    await extensionCtx.rebuild();
-    await webviewExplainCtx.rebuild();
-    await webviewErrorCtx.rebuild();
-    await webviewDashboardCtx.rebuild();
-    await extensionCtx.dispose();
-    await webviewExplainCtx.dispose();
-    await webviewErrorCtx.dispose();
-    await webviewDashboardCtx.dispose();
+    await Promise.all([extensionCtx.rebuild(), webviewExplainCtx.rebuild(), webviewErrorCtx.rebuild(), webviewDashboardCtx.rebuild()]);
+    await Promise.all([extensionCtx.dispose(), webviewExplainCtx.dispose(), webviewErrorCtx.dispose(), webviewDashboardCtx.dispose()]);
   }
 }
 

@@ -78,6 +78,7 @@ import {
 } from "./utils/prompts";
 import { resolveModel } from "./services/ModelResolver";
 import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
+import { getNonce } from "./utils/nonce";
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /** Whether completions are currently enabled */
@@ -995,12 +996,15 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      // Dispose old provider before tearing down the monitor (monitor.dispose() doesn't do it)
+      const oldProvider = sessionMonitor.getProvider();
       sessionMonitor.dispose();
+      oldProvider.dispose();
 
       // Reinitialize for potential future use
       const newProvider = detectProvider();
-      context.subscriptions.push(newProvider);
       sessionMonitor = new SessionMonitor(newProvider, context.workspaceState);
+      context.subscriptions.push(newProvider, sessionMonitor);
 
       vscode.window.showInformationMessage('Session monitoring stopped');
       log('Session monitoring stopped by user');
@@ -1050,7 +1054,6 @@ export async function activate(context: vscode.ExtensionContext) {
       await config.update('sessionProvider', providerId, target);
 
       const newProvider = detectProvider();
-      context.subscriptions.push(newProvider);
 
       const switched = await sessionMonitor.switchProvider(newProvider);
       if (!switched) {
@@ -1242,7 +1245,16 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.ViewColumn.One,
         { enableScripts: true },
       );
-      panel.webview.html = html;
+
+      // Inject CSP nonce into the generated HTML
+      const nonce = getNonce();
+      const cspSource = panel.webview.cspSource;
+      const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}'; img-src ${cspSource} data:;">`;
+      const securedHtml = html
+        .replace('<head>', `<head>\n${cspMeta}`)
+        .replace(/<style>/g, `<style nonce="${nonce}">`)
+        .replace(/<script>/g, `<script nonce="${nonce}">`);
+      panel.webview.html = securedHtml;
     })
   );
 

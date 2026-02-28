@@ -35,55 +35,59 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
   let sessionPath: string;
 
   try {
-    const result = createWatcher({
-      provider,
-      workspacePath,
-      sessionId,
-      callbacks: {
-        onEvent: (event: FollowEvent) => {
-          events.push(event);
+    try {
+      const result = createWatcher({
+        provider,
+        workspacePath,
+        sessionId,
+        callbacks: {
+          onEvent: (event: FollowEvent) => {
+            events.push(event);
+          },
+          onError: (_err: Error) => { /* ignore */ },
         },
-        onError: (_err: Error) => { /* ignore */ },
-      },
-    });
-    sessionPath = result.sessionPath;
+      });
+      sessionPath = result.sessionPath;
 
-    // Synchronous replay of all existing events
-    result.watcher.start(true);
-    result.watcher.stop();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
-  }
+      // Synchronous replay of all existing events
+      result.watcher.start(true);
+      result.watcher.stop();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Error: ${msg}\n`);
+      process.exit(1);
+    }
 
-  // Process events through the aggregator for stats
-  const aggregator = new EventAggregator({ providerId: provider.id as 'claude-code' | 'opencode' | 'codex' });
-  for (const event of events) {
-    aggregator.processFollowEvent(event);
-  }
-  const metrics = aggregator.getMetrics();
+    // Process events through the aggregator for stats
+    const aggregator = new EventAggregator({ providerId: provider.id as 'claude-code' | 'opencode' | 'codex' });
+    for (const event of events) {
+      aggregator.processFollowEvent(event);
+    }
+    const metrics = aggregator.getMetrics();
 
-  // Parse transcript for full content
-  const transcript = parseTranscript(sessionPath);
+    // Parse transcript for full content
+    const transcript = parseTranscript(sessionPath);
 
-  // Generate HTML report
-  const sessionFileName = path.basename(sessionPath);
-  const reportOptions: HtmlReportOptions = {
-    sessionFileName,
-    includeThinking: !noThinking,
-    includeToolDetail: true,
-    theme,
-  };
-  const html = generateHtmlReport(metrics, transcript, reportOptions);
+    // Generate HTML report
+    const sessionFileName = path.basename(sessionPath);
+    const reportOptions: HtmlReportOptions = {
+      sessionFileName,
+      includeThinking: !noThinking,
+      includeToolDetail: true,
+      theme,
+    };
+    const html = generateHtmlReport(metrics, transcript, reportOptions);
 
-  // Write to output file
-  const outFile = outputPath || path.join(os.tmpdir(), `sidekick-report-${Date.now()}.html`);
-  fs.writeFileSync(outFile, html, 'utf-8');
-  process.stderr.write(`Report written to: ${outFile}\n`);
+    // Write to output file
+    const outFile = outputPath || path.join(os.tmpdir(), `sidekick-report-${Date.now()}.html`);
+    fs.writeFileSync(outFile, html, 'utf-8');
+    process.stderr.write(`Report written to: ${outFile}\n`);
 
-  // Open in browser unless --no-open
-  if (!noOpen) {
-    openInBrowser(outFile);
+    // Open in browser unless --no-open
+    if (!noOpen) {
+      openInBrowser(outFile);
+    }
+  } finally {
+    try { provider.dispose(); } catch { /* ignore */ }
   }
 }

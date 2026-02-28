@@ -13,7 +13,7 @@ const NOTE_ICON: Record<string, string> = {
   gotcha: '{red-fg}!{/red-fg}',
   pattern: '{cyan-fg}~{/cyan-fg}',
   guideline: '{green-fg}#{/green-fg}',
-  convention: '{yellow-fg}@{/yellow-fg}',
+  tip: '{yellow-fg}@{/yellow-fg}',
 };
 
 export class NotesPanel implements SidePanel {

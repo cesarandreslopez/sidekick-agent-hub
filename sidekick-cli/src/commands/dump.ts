@@ -34,47 +34,51 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
   let sessionPath: string;
 
   try {
-    const result = createWatcher({
-      provider,
-      workspacePath,
-      sessionId,
-      callbacks: {
-        onEvent: (event: FollowEvent) => {
-          events.push(event);
+    try {
+      const result = createWatcher({
+        provider,
+        workspacePath,
+        sessionId,
+        callbacks: {
+          onEvent: (event: FollowEvent) => {
+            events.push(event);
+          },
+          onError: (_err: Error) => { /* ignore */ },
         },
-        onError: (_err: Error) => { /* ignore */ },
-      },
-    });
-    sessionPath = result.sessionPath;
+      });
+      sessionPath = result.sessionPath;
 
-    // Synchronous replay of all existing events
-    result.watcher.start(true);
-    result.watcher.stop();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
-  }
+      // Synchronous replay of all existing events
+      result.watcher.start(true);
+      result.watcher.stop();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Error: ${msg}\n`);
+      process.exit(1);
+    }
 
-  // Process all events through the aggregator
-  const aggregator = new EventAggregator({ providerId: provider.id as 'claude-code' | 'opencode' | 'codex' });
-  for (const event of events) {
-    aggregator.processFollowEvent(event);
-  }
+    // Process all events through the aggregator
+    const aggregator = new EventAggregator({ providerId: provider.id as 'claude-code' | 'opencode' | 'codex' });
+    for (const event of events) {
+      aggregator.processFollowEvent(event);
+    }
 
-  const metrics = aggregator.getMetrics();
-  const sessionFileName = path.basename(sessionPath);
+    const metrics = aggregator.getMetrics();
+    const sessionFileName = path.basename(sessionPath);
 
-  switch (format) {
-    case 'json':
-      process.stdout.write(formatSessionJson(metrics));
-      break;
-    case 'markdown':
-      process.stdout.write(formatSessionMarkdown(metrics, { expand, sessionFileName }));
-      break;
-    case 'text':
-    default:
-      process.stdout.write(formatSessionText(metrics, { width: termWidth, expand }));
-      break;
+    switch (format) {
+      case 'json':
+        process.stdout.write(formatSessionJson(metrics));
+        break;
+      case 'markdown':
+        process.stdout.write(formatSessionMarkdown(metrics, { expand, sessionFileName }));
+        break;
+      case 'text':
+      default:
+        process.stdout.write(formatSessionText(metrics, { width: termWidth, expand }));
+        break;
+    }
+  } finally {
+    try { provider.dispose(); } catch { /* ignore */ }
   }
 }
