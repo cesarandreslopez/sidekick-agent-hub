@@ -27,7 +27,10 @@ Requires **Node.js 20+**.
 
 ```bash
 sidekick dashboard [options]
+sidekick tasks|decisions|notes|stats|handoff|search|context [options]
 ```
+
+The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
 
 | Flag | Description |
 |------|-------------|
@@ -50,6 +53,7 @@ Export session data as text, markdown, or JSON.
 | `--width <cols>` | Terminal width for text output (default: auto-detect) |
 | `--expand` | Show all events including noise |
 | `--session <id>` | Target a specific session (default: most recent) |
+| `--list` | List available sessions and exit |
 
 Global flags `--project` and `--provider` also apply.
 
@@ -85,6 +89,7 @@ The dashboard is a two-pane terminal UI. The left side shows a navigable list, t
 | 4 | **Notes** | Knowledge notes attached to files |
 | 5 | **Decisions** | Architectural decisions from sessions |
 | 6 | **Plans** | Discovered agent plans from `~/.claude/plans/` |
+| 7 | **Search** | Cross-session full-text search |
 
 ## Layout Modes
 
@@ -102,7 +107,7 @@ Press `z` to cycle through layout modes:
 
 | Key | Action |
 |-----|--------|
-| `1`–`6` | Switch panel |
+| `1`–`7` | Switch panel |
 | `Tab` | Toggle focus between side list and detail pane |
 | `j` / `↓` | Next item (side) or scroll down (detail) |
 | `k` / `↑` | Previous item (side) or scroll up (detail) |

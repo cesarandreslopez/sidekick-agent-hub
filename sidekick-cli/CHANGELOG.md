@@ -5,6 +5,27 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.9] - 2026-02-28
+
+### Added
+
+- **Standalone Data Commands**: `sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff` for accessing project data without launching the TUI
+- **`sidekick search <query>`**: Cross-session full-text search from the terminal
+- **`sidekick context`**: Composite output of tasks, decisions, notes, and handoff for piping into other tools
+- **`--list` flag on `sidekick dump`**: Discover available session IDs before requiring `--session <id>`
+- **Search Panel**: Search panel (panel 7) wired into the TUI dashboard
+
+### Changed
+
+- **`taskMerger` utility**: Duplicate `mergeTasks` logic extracted into shared `taskMerger` utility
+- **Model constants**: Hardcoded model IDs extracted to named constants
+
+### Fixed
+
+- **`convention` icon**: Notes panel icon replaced with valid `tip` type
+- **Linux clipboard**: Now supports Wayland (`wl-copy`) and `xsel` fallbacks, with error messages instead of silent failure
+- **`provider.dispose()`**: Added to `dump` and `report` commands (prevents SQLite connection leaks)
+
 ## [0.12.8] - 2026-02-28
 
 ### Changed

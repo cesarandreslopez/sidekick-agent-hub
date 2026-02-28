@@ -5,6 +5,32 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.9] - 2026-02-28
+
+### Added
+
+- **Hourly Drill-Down**: Clicking a day bar in the dashboard historical chart now shows per-hour token/cost breakdown
+- **Content Security Policy Nonce**: CSP nonce added to the Generate HTML Report webview (security hardening)
+- **`setSessionProvider` in Command Palette**: `sidekick.setSessionProvider` command now discoverable in the Command Palette
+- **Notification Trigger Toggles**: New toggles for `sensitive-path-write` and `cycle-detected` in Settings
+- **Offline Chart Assets**: Chart.js and D3.js bundled locally — dashboard and mind map now work offline (no CDN dependency)
+- **ARIA Accessibility**: ARIA attributes across 6 webview panels (Dashboard, MindMap, ToolInspector, TaskBoard, PlanBoard, ProjectTimeline) — tab roles, live regions, toggle states, and labeled icon buttons
+- **17 tests for CompletionCache**
+- **19 tests for BurnRateCalculator**
+- **18 tests for tokenEstimator**
+- **57 tests for diffFilter**
+
+### Changed
+
+- **Cancellable AI Operations**: Long-running AI operations (test connection, commit message, docs, explain, error analysis, inline completions) are now cancellable via the progress notification
+- **`sidekick.inlineTimeout` deprecated**: Use `sidekick.timeouts.inlineCompletion` instead (legacy setting still honored as fallback)
+- **Completion Hint Settings Wired**: `showCompletionHint` and `completionHintDelayMs` settings now properly wired (were previously ignored)
+
+### Fixed
+
+- **`stopMonitoring` disposable leak**: Fixed disposable leak on repeated stop/restart cycles
+- **Production esbuild builds**: Now run in parallel (faster builds)
+
 ## [0.12.8] - 2026-02-28
 
 ### Added

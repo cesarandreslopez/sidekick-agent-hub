@@ -5,6 +5,44 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.9] - 2026-02-28
+
+### Added
+
+- **VS Code Hourly Drill-Down**: Clicking a day bar in the dashboard historical chart now shows per-hour token/cost breakdown
+- **VS Code Content Security Policy**: CSP nonce added to the Generate HTML Report webview (security hardening)
+- **VS Code `setSessionProvider` Command**: `sidekick.setSessionProvider` now discoverable in the Command Palette
+- **VS Code Notification Toggles**: New notification trigger toggles for `sensitive-path-write` and `cycle-detected` in Settings
+- **VS Code Offline Assets**: Chart.js and D3.js bundled locally — dashboard and mind map now work offline (no CDN dependency)
+- **VS Code ARIA Accessibility**: ARIA attributes across 6 webview panels (Dashboard, MindMap, ToolInspector, TaskBoard, PlanBoard, ProjectTimeline) — tab roles, live regions, toggle states, and labeled icon buttons
+- **CLI Standalone Data Commands**: `sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff` for accessing project data without launching the TUI
+- **CLI `sidekick search <query>`**: Cross-session full-text search from the terminal
+- **CLI `sidekick context`**: Composite output of tasks, decisions, notes, and handoff for piping into other tools
+- **CLI `--list` flag on `sidekick dump`**: Discover available session IDs before requiring `--session <id>`
+- **CLI Search Panel**: Search panel (panel 7) wired into the TUI dashboard
+- **Shared `HourlyData` type and `getHourlyData()`**: New method in HistoricalDataService for hourly breakdowns
+- **125 tests for EventAggregator** (1,579 lines of core logic, previously 0 test coverage)
+- **17 tests for CompletionCache**
+- **19 tests for BurnRateCalculator**
+- **18 tests for tokenEstimator**
+- **57 tests for diffFilter**
+
+### Changed
+
+- **VS Code Cancellable AI Operations**: Long-running AI operations (test connection, commit message, docs, explain, error analysis, inline completions) are now cancellable via the progress notification
+- **VS Code `sidekick.inlineTimeout` deprecated**: Use `sidekick.timeouts.inlineCompletion` instead (legacy setting still honored as fallback)
+- **VS Code Completion Hint Settings**: `showCompletionHint` and `completionHintDelayMs` settings now properly wired (were previously ignored)
+- **CLI `taskMerger` utility**: Duplicate `mergeTasks` logic extracted into shared `taskMerger` utility
+- **CLI Model Constants**: Hardcoded model IDs extracted to named constants
+
+### Fixed
+
+- **VS Code `stopMonitoring` disposable leak**: Fixed disposable leak on repeated stop/restart cycles
+- **VS Code Production Build**: esbuild production builds now run in parallel (faster builds)
+- **CLI `convention` icon**: Notes panel icon replaced with valid `tip` type
+- **CLI Linux Clipboard**: Now supports Wayland (`wl-copy`) and `xsel` fallbacks, with error messages instead of silent failure
+- **CLI `provider.dispose()`**: Added to `dump` and `report` commands (prevents SQLite connection leaks)
+
 ## [0.12.8] - 2026-02-28
 
 ### Added

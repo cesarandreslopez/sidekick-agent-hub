@@ -114,7 +114,7 @@ sidekick dashboard
 
 ![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
-Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in a full-screen TUI. Press `?` for keybindings. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
+Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in a full-screen TUI. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick context`) jump directly to a specific panel or run one-shot queries. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 
@@ -148,6 +148,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Open Dashboard | — | Open session analytics |
 | Dump Session Report | — | Export session data as text/markdown/JSON/HTML |
 | Generate HTML Report | — | Full transcript report in a webview panel |
+| Set Session Provider | — | Switch session monitoring provider |
 | Browse Session Folders | — | Select session folder to monitor |
 
 ## Troubleshooting

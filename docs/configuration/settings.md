@@ -69,7 +69,12 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 | `sidekick.notifications.triggers.destructive-cmd` | `true` | Alert on destructive commands |
 | `sidekick.notifications.triggers.tool-error` | `true` | Alert on tool error bursts |
 | `sidekick.notifications.triggers.compaction` | `true` | Alert on context compaction |
+| `sidekick.notifications.triggers.sensitive-path-write` | `true` | Alert on writes to sensitive paths |
+| `sidekick.notifications.triggers.cycle-detected` | `true` | Alert on detected agent retry cycles |
 | `sidekick.notifications.tokenThreshold` | `500000` | Token usage alert threshold (0 = disabled) |
+
+!!! warning "Deprecated"
+    `sidekick.inlineTimeout` is deprecated and will be removed in a future release. Use `sidekick.timeouts.inlineCompletion` instead.
 
 ## Timeouts
 

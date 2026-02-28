@@ -71,12 +71,13 @@ Dump session data as a text timeline, JSON metrics, or markdown report for shari
 
 | Flag | Description |
 |------|-------------|
+| `--list` | List available session IDs for the current project |
 | `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
 | `--width <cols>` | Terminal width for text output (default: auto-detect) |
 | `--expand` | Show all events including noise |
 | `--session <id>` | Target a specific session (default: most recent) |
 
-Global flags `--project` and `--provider` also apply (see above).
+Global flags `--project`, `--provider`, and `--json` also apply (see above).
 
 ### Examples
 
@@ -126,6 +127,181 @@ sidekick report --no-open --output session.html
 
 You can also press `r` in the TUI dashboard to generate and open a report for the current session.
 
+## Data Commands
+
+Standalone commands that query Sidekick's persisted project data without launching the TUI dashboard. All accept the global flags `--project`, `--provider`, and `--json`.
+
+### Tasks
+
+```bash
+sidekick tasks [options]
+```
+
+List persisted tasks for the current project. Tasks carry over across sessions from `~/.config/sidekick/tasks/`.
+
+| Flag | Description |
+|------|-------------|
+| `--status <status>` | Filter by status: `pending`, `completed`, or `all` (default: `all`) |
+
+#### Examples
+
+```bash
+# List all tasks
+sidekick tasks
+
+# Show only pending tasks
+sidekick tasks --status pending
+
+# JSON output for scripting
+sidekick tasks --json
+```
+
+### Decisions
+
+```bash
+sidekick decisions [options]
+```
+
+List architectural decisions extracted from sessions. Stored in `~/.config/sidekick/decisions/`.
+
+| Flag | Description |
+|------|-------------|
+| `--search <query>` | Filter decisions by keyword |
+| `--limit <n>` | Maximum number of decisions to show |
+
+#### Examples
+
+```bash
+# List all decisions
+sidekick decisions
+
+# Search for decisions about database choices
+sidekick decisions --search "database"
+
+# Show the 5 most recent decisions as JSON
+sidekick decisions --limit 5 --json
+```
+
+### Notes
+
+```bash
+sidekick notes [options]
+```
+
+List knowledge notes (gotchas, patterns, guidelines, tips) attached to files in the current project.
+
+| Flag | Description |
+|------|-------------|
+| `--file <path>` | Filter notes by file path |
+| `--type <type>` | Filter by type: `gotcha`, `pattern`, `guideline`, or `tip` |
+| `--status <status>` | Filter by status: `active`, `needs_review`, `stale`, or `obsolete` |
+
+#### Examples
+
+```bash
+# List all notes
+sidekick notes
+
+# Show only gotchas
+sidekick notes --type gotcha
+
+# Notes for a specific file
+sidekick notes --file src/services/AuthService.ts
+
+# Active tips as JSON
+sidekick notes --type tip --status active --json
+```
+
+### Stats
+
+```bash
+sidekick stats [options]
+```
+
+Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`.
+
+No command-specific flags. Use `--json` for machine-readable output.
+
+#### Examples
+
+```bash
+# Print a formatted stats summary
+sidekick stats
+
+# Export raw historical data as JSON
+sidekick stats --json
+```
+
+### Handoff
+
+```bash
+sidekick handoff [options]
+```
+
+Show the latest session handoff document for the current project. Handoff documents are continuity notes left by an agent at the end of a session.
+
+No command-specific flags. Use `--json` for machine-readable output.
+
+#### Examples
+
+```bash
+# Display the latest handoff
+sidekick handoff
+
+# Pipe handoff content into another tool
+sidekick handoff --json | jq -r '.content'
+```
+
+### Search
+
+```bash
+sidekick search <query> [options]
+```
+
+Full-text search across all sessions. Results include matched snippets with highlighted terms, event types, timestamps, and session/project paths.
+
+| Flag | Description |
+|------|-------------|
+| `--limit <n>` | Maximum number of results (default: 50) |
+
+#### Examples
+
+```bash
+# Search for mentions of a function
+sidekick search "resolveModel"
+
+# Limit results and output as JSON
+sidekick search "database migration" --limit 10 --json
+
+# Search within a specific project
+sidekick search "auth bug" --project ~/code/my-app
+```
+
+### Context
+
+```bash
+sidekick context [options]
+```
+
+Output composite project context — tasks, decisions, notes, handoff, stats, and recent sessions in a single document. Useful for piping into LLM prompts or other tools.
+
+| Flag | Description |
+|------|-------------|
+| `--fidelity <level>` | Detail level: `full` (default), `compact`, or `brief` |
+
+#### Examples
+
+```bash
+# Full context for the current project
+sidekick context
+
+# Compact summary for LLM prompts
+sidekick context --fidelity compact
+
+# Brief context as JSON
+sidekick context --fidelity brief --json
+```
+
 ## Dashboard Overview
 
 The dashboard is a two-pane Ink-based terminal UI. The left pane shows a navigable list of items (sessions, tasks, notes, etc.), and the right pane shows details for the selected item.
@@ -144,7 +320,7 @@ Minimum terminal size: 60 columns wide, 15 rows tall.
 
 ## Dashboard Panels
 
-Switch panels with number keys `1`–`6`.
+Switch panels with number keys `1`–`7`.
 
 ### Sessions (1)
 
@@ -180,13 +356,22 @@ Architectural decisions extracted from sessions. Stored in `~/.config/sidekick/d
 
 Discovered agent plans from `~/.claude/plans/`. Shows plan steps with completion status. Plans are matched to the current session via slug cross-reference.
 
+### Search (7)
+
+Full-text search across sessions. Press `/` to enter a search query — results appear in the side list with matched snippets. The detail pane has two tabs:
+
+| Tab | Description |
+|-----|-------------|
+| **Match** | Event type, timestamp, and full matched content |
+| **Session** | Session path and project path for the matched result |
+
 ## Keybindings
 
 ### Navigation
 
 | Key | Action |
 |-----|--------|
-| `1`–`6` | Switch panel |
+| `1`–`7` | Switch panel |
 | `Tab` | Toggle focus between side list and detail pane |
 | `j` / `↓` | Next item (side list) or scroll down (detail pane) |
 | `k` / `↑` | Previous item (side list) or scroll up (detail pane) |
