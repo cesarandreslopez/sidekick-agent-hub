@@ -21,6 +21,7 @@ export function DetailPane({
   focused,
 }: DetailPaneProps): React.ReactElement {
   const borderColor = focused ? 'magenta' : 'gray';
+  const borderStyle = focused ? 'double' : 'single';
 
   const lines = content ? content.split('\n') : [];
   const totalLines = lines.length;
@@ -36,7 +37,7 @@ export function DetailPane({
     <Box
       flexDirection="column"
       flexGrow={1}
-      borderStyle="single"
+      borderStyle={borderStyle}
       borderColor={borderColor}
       paddingLeft={1}
     >

@@ -861,6 +861,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
                 viewportHeight={sideViewportHeight}
                 panelTitle={panel.title}
                 sessionFilterActive={!!state.sessionFilter && ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)}
+                emptyStateHint={panel.emptyStateHint}
               />
             )}
 

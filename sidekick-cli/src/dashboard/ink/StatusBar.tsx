@@ -1,5 +1,6 @@
 /**
- * Status bar (bottom row) showing brand, version, event count, keybinding hints.
+ * Status bar (bottom row) with segmented zones:
+ * Left: brand + version | Center: provider, permission, events | Right: keybinding hints
  */
 
 declare const __CLI_VERSION__: string;
@@ -46,56 +47,56 @@ export function StatusBar({
 
   return (
     <Box height={1} width="100%">
-      {/* Brand + version */}
-      <Text bold color="magenta">⚡ SIDEKICK</Text>
-      <Text color="gray"> v{__CLI_VERSION__}</Text>
+      {/* Left zone: brand + version */}
+      <Box>
+        <Text bold color="magenta">{'\u26A1'} SIDEKICK</Text>
+        <Text dimColor> v{__CLI_VERSION__}</Text>
+        {updateInfo && (
+          <Text color="yellow"> (v{updateInfo.latest})</Text>
+        )}
+      </Box>
 
-      {/* Update available */}
-      {updateInfo && (
-        <Text color="yellow"> (v{updateInfo.latest} available — npm i -g sidekick-agent-hub)</Text>
-      )}
+      {/* Center zone: provider, permission, events, filters */}
+      <Box flexGrow={1} justifyContent="center">
+        {providerName && (
+          <><Text dimColor> {'\u2502'} </Text><Text color="cyan">{providerName}</Text></>
+        )}
+        {permissionMode && permissionMode !== 'default' && (
+          <><Text dimColor> {'\u2502'} </Text><Text color={permissionColor}>{permissionLabel}</Text></>
+        )}
+        <Text dimColor> {'\u2502'} </Text>
+        <Text>{evtLabel}</Text>
+        {filterString && (
+          <Text color="yellow">  filter: "{filterString}" ({matchCount ?? 0}/{totalCount ?? 0})</Text>
+        )}
+        {sessionFilter && (
+          <Text color="magenta">  {sessionFilter}</Text>
+        )}
+      </Box>
 
-      {/* Provider */}
-      {providerName && (
-        <>
-          <Text color="gray"> | </Text>
-          <Text color="cyan">{providerName}</Text>
-        </>
-      )}
-
-      {/* Permission mode */}
-      {permissionMode && permissionMode !== 'default' && (
-        <>
-          <Text color="gray"> | </Text>
-          <Text color={permissionColor}>{permissionLabel}</Text>
-        </>
-      )}
-
-      <Text color="gray"> | </Text>
-      <Text>{evtLabel}</Text>
-
-      {/* Filter status */}
-      {filterString && (
-        <Text color="yellow">  filter: "{filterString}" ({matchCount ?? 0} of {totalCount ?? 0})</Text>
-      )}
-
-      {/* Session filter */}
-      {sessionFilter && (
-        <Text color="magenta">  {sessionFilter}</Text>
-      )}
-
-      <Text color="gray"> | </Text>
-
-      {/* Focus hints */}
-      {focusTarget === 'side' ? (
-        <Text>
-          <Text bold>↑↓</Text> navigate  <Text bold>Tab</Text> detail  {panelHints}<Text bold>/</Text> filter  <Text bold>?</Text> help  <Text bold>q</Text> quit
-        </Text>
-      ) : (
-        <Text>
-          <Text bold>j/k</Text> scroll  <Text bold>[]</Text> tab  <Text bold>Tab</Text> side  {panelHints}<Text bold>?</Text> help  <Text bold>q</Text> quit
-        </Text>
-      )}
+      {/* Right zone: keybinding hints */}
+      <Box>
+        <Text dimColor>{'\u2502'} </Text>
+        {focusTarget === 'side' ? (
+          <Text>
+            <Text bold>{'\u2191\u2193'}</Text><Text dimColor> nav </Text>
+            <Text bold>Tab</Text><Text dimColor> detail </Text>
+            {panelHints}
+            <Text bold>/</Text><Text dimColor> filter </Text>
+            <Text bold>?</Text><Text dimColor> help </Text>
+            <Text bold>q</Text><Text dimColor> quit</Text>
+          </Text>
+        ) : (
+          <Text>
+            <Text bold>j/k</Text><Text dimColor> scroll </Text>
+            <Text bold>[]</Text><Text dimColor> tab </Text>
+            <Text bold>Tab</Text><Text dimColor> side </Text>
+            {panelHints}
+            <Text bold>?</Text><Text dimColor> help </Text>
+            <Text bold>q</Text><Text dimColor> quit</Text>
+          </Text>
+        )}
+      </Box>
     </Box>
   );
 }

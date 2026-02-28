@@ -20,6 +20,7 @@ export class NotesPanel implements SidePanel {
   readonly id = 'notes';
   readonly title = 'Notes';
   readonly shortcutKey = 4;
+  readonly emptyStateHint = 'Knowledge notes saved by your agent appear here.';
 
   readonly detailTabs: DetailTab[] = [
     { label: 'Content', render: (item) => this.renderContent(item) },

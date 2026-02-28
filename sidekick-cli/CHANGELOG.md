@@ -5,6 +5,24 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.8] - 2026-02-28
+
+### Changed
+
+- **Dashboard UI/UX Polish**: Visual overhaul for better hierarchy, consistency, and readability
+  - Splash screen and help overlay now display the robot ASCII logo
+  - Toast notifications show severity icons (✘ error, ⚠ warning, ● info) with inner padding
+  - Focused pane uses double-border for clear focus indication
+  - Section dividers (`── Title ────`) replace bare bold headers in summary, agents, and context attribution
+  - Tab bar: active tab underlined in magenta, inactive tabs dimmed, bracket syntax removed
+  - Status bar: segmented layout with `│` separators; keys bold, labels dim
+  - Summary metrics condensed: elapsed/events/compactions on one line, tokens on one line with cache rate and cost
+  - Sparklines display peak metadata annotations
+  - Progress bars use blessed color tags for consistent coloring
+  - Help overlay uses dot-leader alignment for all keybinding rows
+  - Empty state hints per panel (e.g. "Tasks appear as your agent works.")
+  - Session picker groups sessions by provider with section headers when multiple providers are present
+
 ## [0.12.7] - 2026-02-27
 
 ### Added

@@ -5,6 +5,33 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.8] - 2026-02-28
+
+### Added
+
+- **VS Code Design Token System**: Shared design tokens (`getDesignTokenCSS()`, `getSharedStyles()`) providing consistent spacing, typography, radius, color, transition, and elevation variables across all 5 webview panels
+  - Micro-interactions: tab fade-in, timeline slide-in, progress bar shimmer, active status pulse, value update flash animation
+  - Dashboard visual hierarchy: tier dividers, group summaries when collapsed, count badges, accent borders on expanded sections
+  - Card hover micro-lift, active plan/session glow, section title opacity treatment
+  - Skeleton loading states replacing text-only loading messages
+  - Shared component tokens applied to headers, status badges, icon buttons, and cards across Dashboard, MindMap, TaskBoard, PlanBoard, and ProjectTimeline providers
+
+### Changed
+
+- **CLI Dashboard UI/UX Polish**: Visual overhaul of the TUI dashboard for better hierarchy, consistency, and readability
+  - Splash screen and help overlay now display the robot ASCII logo (matching the changelog overlay)
+  - Toast notifications show severity icons (✘ error, ⚠ warning, ● info) with inner padding
+  - Focused pane uses double-border (`╔═╗║╚═╝`) for clear focus indication
+  - Section dividers (`── Title ────`) replace bare bold headers throughout the summary, agents, and context attribution views
+  - Tab bar: active tab underlined in magenta, inactive tabs dimmed, bracket syntax removed
+  - Status bar: segmented layout with left (brand), center (provider/events), and right (keybindings) zones using `│` separators; keys bold, labels dim
+  - Summary metrics condensed: elapsed/events/compactions on one line, tokens on one line with cache rate and cost, bold values with dim labels
+  - Sparklines now display peak metadata annotations
+  - Progress bars use blessed color tags for consistent coloring
+  - Help overlay uses dot-leader alignment (`key ···· description`) for all keybinding rows
+  - Empty state hints per panel (e.g. "Tasks appear as your agent works.")
+  - Session picker groups sessions by provider with section headers when multiple providers are present
+
 ## [0.12.7] - 2026-02-27
 
 ### Added

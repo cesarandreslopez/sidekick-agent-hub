@@ -1,14 +1,29 @@
 /**
  * Help overlay showing all keybindings, centered over the dashboard.
+ * Dot-leader alignment for consistent visual hierarchy.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { SidePanel } from '../panels/types';
+import { LOGO_ART } from '../branding';
+import { parseBlessedTags } from './parseBlessedTags';
 
 interface HelpOverlayProps {
   panels: SidePanel[];
   activePanelIndex: number;
+}
+
+/** Render a key-description row with dot-leader fill. */
+function helpRow(key: string, desc: string, keyWidth = 14, totalWidth = 54): React.ReactElement {
+  const padding = keyWidth - key.length;
+  const dotCount = Math.max(1, totalWidth - keyWidth - desc.length);
+  const dots = '\u00B7'.repeat(dotCount);
+  return (
+    <Text>
+      {'  '}<Text bold>{key}</Text>{' '.repeat(Math.max(0, padding))} <Text dimColor>{dots}</Text> {desc}
+    </Text>
+  );
 }
 
 export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): React.ReactElement {
@@ -26,35 +41,34 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
       paddingY={1}
       width={60}
     >
-      {/* Logo */}
-      <Text bold color="magenta">  S I D E K I C K</Text>
-      <Text bold>  Agent Hub</Text>
+      {/* Robot Logo */}
+      {LOGO_ART.map((line, i) => (
+        <Text key={`logo-${i}`}>{parseBlessedTags(line)}</Text>
+      ))}
       <Text> </Text>
 
       {/* Panels */}
       <Text bold>  Panels</Text>
-      {panels.map(p => (
-        <Text key={p.id}>  <Text bold>{p.shortcutKey}</Text>           {p.title}</Text>
-      ))}
+      {panels.map(p => helpRow(String(p.shortcutKey), p.title))}
       <Text> </Text>
 
       {/* Navigation */}
       <Text bold>  Navigation</Text>
-      <Text>  <Text bold>Tab</Text>            Toggle side ↔ detail focus</Text>
-      <Text>  <Text bold>j / ↓</Text>          Next item (side) / scroll (detail)</Text>
-      <Text>  <Text bold>k / ↑</Text>          Prev item (side) / scroll (detail)</Text>
-      <Text>  <Text bold>g / G</Text>           First / last item</Text>
-      <Text>  <Text bold>Enter</Text>          Focus detail pane</Text>
-      <Text>  <Text bold>h / ←</Text>          Return to side</Text>
-      <Text>  <Text bold>[ / ]</Text>          Cycle detail tabs</Text>
-      <Text>  <Text bold>z</Text>              Cycle layout mode</Text>
+      {helpRow('Tab', 'Toggle side / detail focus')}
+      {helpRow('j / \u2193', 'Next item / scroll down')}
+      {helpRow('k / \u2191', 'Prev item / scroll up')}
+      {helpRow('g / G', 'First / last item')}
+      {helpRow('Enter', 'Focus detail pane')}
+      {helpRow('h / \u2190', 'Return to side')}
+      {helpRow('[ / ]', 'Cycle detail tabs')}
+      {helpRow('z', 'Cycle layout mode')}
       <Text> </Text>
 
       {/* Actions */}
       <Text bold>  Actions</Text>
-      <Text>  <Text bold>x</Text>              Context menu</Text>
-      <Text>  <Text bold>/</Text>              Filter side list</Text>
-      <Text>  <Text bold>f</Text>              Toggle session filter</Text>
+      {helpRow('x', 'Context menu')}
+      {helpRow('/', 'Filter side list')}
+      {helpRow('f', 'Toggle session filter')}
 
       {/* Panel-specific */}
       {(actions.length > 0 || bindings.length > 0) && (
@@ -62,21 +76,21 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
           <Text> </Text>
           <Text bold>  {panel.title} Actions</Text>
           {actions.map(a => (
-            <Text key={a.key}>  <Text bold>{a.key}</Text>              {a.label}</Text>
+            <React.Fragment key={a.key}>{helpRow(a.key, a.label)}</React.Fragment>
           ))}
           {bindings.map(b => (
-            <Text key={b.keys[0]}>  <Text bold>{b.keys.join('/')}</Text>              {b.label}</Text>
+            <React.Fragment key={b.keys[0]}>{helpRow(b.keys.join('/'), b.label)}</React.Fragment>
           ))}
         </>
       )}
 
       <Text> </Text>
       <Text bold>  General</Text>
-      <Text>  <Text bold>r</Text>              Generate HTML report</Text>
-      <Text>  <Text bold>V</Text>              Version & changelog</Text>
-      <Text>  <Text bold>?</Text>              Toggle this help</Text>
-      <Text>  <Text bold>Esc</Text>            Close overlay / clear filter / back</Text>
-      <Text>  <Text bold>q / Ctrl+C</Text>     Quit</Text>
+      {helpRow('r', 'Generate HTML report')}
+      {helpRow('V', 'Version & changelog')}
+      {helpRow('?', 'Toggle this help')}
+      {helpRow('Esc', 'Close overlay / clear filter')}
+      {helpRow('q / Ctrl+C', 'Quit')}
     </Box>
     </Box>
   );

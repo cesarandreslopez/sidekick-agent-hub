@@ -43,6 +43,7 @@ export class PlansPanel implements SidePanel {
   readonly id = 'plans';
   readonly title = 'Plans';
   readonly shortcutKey = 6;
+  readonly emptyStateHint = 'Plans created by your agent appear here.';
 
   private sourceFilter: PlanSource | 'all' = 'all';
 

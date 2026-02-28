@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.8] - 2026-02-28
+
+### Added
+
+- **Design Token System**: Shared design tokens (`getDesignTokenCSS()`, `getSharedStyles()`) providing consistent spacing, typography, radius, color, transition, and elevation variables across all 5 webview panels
+  - Micro-interactions: tab fade-in, timeline slide-in, progress bar shimmer, active status pulse, value update flash animation
+  - Dashboard: tier dividers, group summaries when collapsed, count badges, accent borders on expanded sections
+  - Card hover micro-lift, active plan/session glow, section title opacity treatment
+  - Skeleton loading states replacing text-only loading messages
+  - Shared component tokens applied to headers, status badges, icon buttons, and cards across Dashboard, MindMap, TaskBoard, PlanBoard, and ProjectTimeline providers
+
 ## [0.12.7] - 2026-02-27
 
 ### Added

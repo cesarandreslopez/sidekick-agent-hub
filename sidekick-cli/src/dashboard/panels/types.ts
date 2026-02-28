@@ -56,6 +56,8 @@ export interface SidePanel {
   readonly shortcutKey: number;
   /** Detail tabs for the selected item. */
   readonly detailTabs: DetailTab[];
+  /** Hint shown in side list when no items are available. */
+  readonly emptyStateHint?: string;
 
   /** Build the list of items to display. */
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[];

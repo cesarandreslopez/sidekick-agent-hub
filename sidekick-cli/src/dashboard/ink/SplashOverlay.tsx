@@ -1,6 +1,6 @@
 /**
  * Splash screen shown when waiting for session events.
- * Displays logo, version, random phrase, spinner, and usage hints.
+ * Displays robot logo, version, random phrase, spinner, and usage hints.
  */
 
 declare const __CLI_VERSION__: string;
@@ -9,6 +9,8 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { useSpinner } from './useSpinner';
 import { getRandomPhrase } from 'sidekick-shared';
+import { LOGO_ART } from '../branding';
+import { parseBlessedTags } from './parseBlessedTags';
 
 export function SplashOverlay(): React.ReactElement {
   const spinner = useSpinner();
@@ -22,10 +24,10 @@ export function SplashOverlay(): React.ReactElement {
       paddingY={1}
       width={60}
     >
-      {/* Logo */}
-      <Text bold color="magenta">  S I D E K I C K</Text>
-      <Text bold>  Agent Hub</Text>
-      <Text color="gray">  Terminal Dashboard{__CLI_VERSION__ ? ` v${__CLI_VERSION__}` : ''}</Text>
+      {/* Robot Logo */}
+      {LOGO_ART.map((line, i) => (
+        <Text key={i}>{parseBlessedTags(line)}</Text>
+      ))}
       <Text> </Text>
       <Text color="gray">  {getRandomPhrase()}</Text>
       <Text> </Text>

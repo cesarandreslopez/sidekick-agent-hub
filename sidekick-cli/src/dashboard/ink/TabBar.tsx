@@ -1,6 +1,6 @@
 /**
- * Tab bar showing panel shortcuts: [1] Sessions  [2] Tasks  ...
- * Active panel highlighted with magenta.
+ * Tab bar showing panel shortcuts with clean styling.
+ * Active panel underlined in magenta, inactive tabs dimmed.
  */
 
 import React from 'react';
@@ -19,15 +19,8 @@ const MODE_LABELS: Record<string, string> = {
   'wide-side': 'Wide Side',
 };
 
-const MODE_COLORS: Record<string, string> = {
-  normal: 'gray',
-  expanded: 'cyan',
-  'wide-side': 'yellow',
-};
-
 export function TabBar({ panels, activeIndex, layoutMode }: TabBarProps): React.ReactElement {
   const modeLabel = MODE_LABELS[layoutMode] || layoutMode;
-  const modeColor = MODE_COLORS[layoutMode] || 'gray';
 
   return (
     <Box height={1} width="100%">
@@ -35,15 +28,15 @@ export function TabBar({ panels, activeIndex, layoutMode }: TabBarProps): React.
         {panels.map((p, i) => (
           <Box key={p.id} marginRight={1}>
             {i === activeIndex ? (
-              <Text bold color="magenta">[{p.shortcutKey}] {p.title}</Text>
+              <Text bold underline color="magenta">{p.shortcutKey} {p.title}</Text>
             ) : (
-              <Text color="gray">[{p.shortcutKey}] {p.title}</Text>
+              <><Text dimColor>{p.shortcutKey}</Text><Text color="gray"> {p.title}</Text></>
             )}
           </Box>
         ))}
       </Box>
       <Box>
-        <Text color={modeColor}>z: {modeLabel} ▸</Text>
+        <Text dimColor>z: {modeLabel} {'\u25B8'}</Text>
       </Box>
     </Box>
   );

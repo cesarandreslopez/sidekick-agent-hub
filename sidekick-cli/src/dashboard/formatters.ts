@@ -63,6 +63,37 @@ export function formatElapsed(startTime: string): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+/** Build a section divider line: ── Title ──────── */
+export function sectionHeader(title: string, width = 40): string {
+  const prefix = '\u2500\u2500 ';
+  const suffix = ' ';
+  const fillLen = Math.max(0, width - prefix.length - title.length - suffix.length);
+  const fill = '\u2500'.repeat(fillLen);
+  return `{grey-fg}${prefix}{/grey-fg}{bold}${title}{/bold}{grey-fg}${suffix}${fill}{/grey-fg}`;
+}
+
+/** Build a progress bar with blessed color tags. */
+export function makeColorBar(percent: number, width: number, color = 'green'): string {
+  const clamped = Math.max(0, Math.min(100, percent));
+  const filled = Math.round((clamped / 100) * width);
+  const empty = width - filled;
+  return `{${color}-fg}${'\u2588'.repeat(filled)}{/${color}-fg}{grey-fg}${'\u2591'.repeat(empty)}{/grey-fg}`;
+}
+
+/**
+ * Build a sparkline from numeric data and return metadata.
+ * Returns { spark, max, latest } for inline display with annotations.
+ */
+export function makeSparkline(data: number[], maxWidth = 25): { spark: string; max: number; latest: number } {
+  const trimmed = data.slice(-maxWidth);
+  if (trimmed.length === 0) return { spark: '', max: 0, latest: 0 };
+  const max = Math.max(...trimmed, 1);
+  const latest = trimmed[trimmed.length - 1];
+  const chars = [' ', '\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'];
+  const spark = trimmed.map(v => chars[Math.min(8, Math.round((v / max) * 8))]).join('');
+  return { spark, max, latest };
+}
+
 /** Build a progress bar of given width. */
 export function makeBar(percent: number, width: number): string {
   const clamped = Math.max(0, Math.min(100, percent));

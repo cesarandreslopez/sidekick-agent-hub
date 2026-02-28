@@ -7,7 +7,7 @@
 import type { SidePanel, PanelItem, PanelAction, DetailTab, KeyBinding } from './types';
 import type { DashboardMetrics, ContextAttribution } from '../DashboardState';
 import type { StaticData, SessionRecord } from '../StaticDataLoader';
-import { fmtNum, formatDuration, formatElapsed, formatTime, makeBar, shortenPath, wordWrap, detailWidth, visibleLength, truncate } from '../formatters';
+import { fmtNum, formatDuration, formatElapsed, formatTime, makeColorBar, makeSparkline, sectionHeader, shortenPath, wordWrap, detailWidth, visibleLength, truncate } from '../formatters';
 
 function getUtilizationColor(percent: number): string {
   if (percent < 60) return 'green';
@@ -28,6 +28,7 @@ export class SessionsPanel implements SidePanel {
   readonly id = 'sessions';
   readonly title = 'Sessions';
   readonly shortcutKey = 1;
+  readonly emptyStateHint = 'Start an agent session in another terminal.';
   private mindMapView: MindMapView = 'tree';
   private mindMapFilter: MindMapFilter = 'all';
   private diffCache: GitDiffCache | null;
@@ -237,25 +238,9 @@ export class SessionsPanel implements SidePanel {
       const t = m.tokens;
       const c = m.context;
       const contextColor = getUtilizationColor(c.percent);
-      const barWidth = 30;
-      const filled = Math.round((c.percent / 100) * barWidth);
-      const empty = barWidth - filled;
-      const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
+      const w = detailWidth();
 
       const elapsed = m.sessionStartTime ? formatElapsed(m.sessionStartTime) : '--:--:--';
-
-      // Burn rate sparkline
-      const burnData = m.burnRate.length > 0 ? m.burnRate : [0];
-      const latest = burnData[burnData.length - 1];
-      const max = Math.max(...burnData, 1);
-      const chars = [' ', '\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'];
-      const spark = burnData.slice(-25).map(v => chars[Math.min(8, Math.round((v / max) * 8))]).join('');
-
-      const runningAgents = m.subagents.filter(a => a.status === 'running').length;
-      const completedAgents = m.subagents.filter(a => a.status === 'completed').length;
-      const agentSummary = m.subagents.length > 0
-        ? `${m.subagents.length} (${runningAgents} running, ${completedAgents} done)`
-        : '0';
 
       // Most recent non-user, non-tool_result timeline event
       const recentEvent = [...m.timeline].reverse().find(
@@ -264,71 +249,82 @@ export class SessionsPanel implements SidePanel {
       const recentLine = recentEvent
         ? (() => {
             const prefix = `[${formatTime(recentEvent.timestamp)}] ${recentEvent.type.padEnd(12)} `;
-            const maxSummary = Math.max(20, detailWidth() - prefix.length);
+            const maxSummary = Math.max(20, w - prefix.length);
             return `{yellow-fg}${prefix}${truncate(recentEvent.summary || '', maxSummary)}{/yellow-fg}`;
           })()
         : '{grey-fg}(no events yet){/grey-fg}';
 
+      // Compact top line: elapsed, events, compactions
+      const compactionSuffix = m.compactionCount > 0 ? `  {bold}${m.compactionCount}{/bold}{grey-fg} compaction${m.compactionCount !== 1 ? 's' : ''}{/grey-fg}` : '';
       const lines = [
-        '{bold}Active Session{/bold}',
+        `{bold}${elapsed}{/bold}{grey-fg} elapsed{/grey-fg}  {bold}${m.eventCount}{/bold}{grey-fg} events{/grey-fg}${compactionSuffix}`,
+        `{grey-fg}Provider{/grey-fg} {bold}${m.providerName || 'unknown'}{/bold}  {grey-fg}Model{/grey-fg} {bold}${m.currentModel || 'unknown'}{/bold}`,
         recentLine,
-        '',
-        `{bold}Elapsed:{/bold}      ${elapsed}`,
-        `{bold}Provider:{/bold}     ${m.providerName || 'unknown'}`,
-        `{bold}Model:{/bold}        ${m.currentModel || 'unknown'}`,
-        `{bold}Events:{/bold}       ${m.eventCount}`,
-        `{bold}Compactions:{/bold}  ${m.compactionCount}`,
-        `{bold}Subagents:{/bold}   ${agentSummary}`,
-        '',
-        '{bold}Tokens{/bold}',
-        `  Input:       ${fmtNum(t.input)}`,
-        `  Output:      ${fmtNum(t.output)}`,
-        `  Cache Read:  ${fmtNum(t.cacheRead)}`,
-        `  Cache Write: ${fmtNum(t.cacheWrite)}`,
-        ...(t.cacheRead + t.input > 0
-          ? [`  Hit Rate:    ${((t.cacheRead / (t.cacheRead + t.input)) * 100).toFixed(1)}%`]
-          : []),
-        `  Cost:        {green-fg}$${t.cost.toFixed(4)}{/green-fg}`,
-        '',
-        '{bold}Context{/bold}',
-        `  {${contextColor}-fg}${bar}{/${contextColor}-fg}`,
-        `  {bold}${c.percent}%{/bold}  ${fmtNum(c.used)} / ${fmtNum(c.limit)}`,
       ];
 
-      // Context history sparkline
-      if (m.contextTimeline && m.contextTimeline.length > 1) {
-        const ctxPoints = m.contextTimeline.slice(-25);
-        const ctxMax = Math.max(...ctxPoints.map(p => p.inputTokens), 1);
-        const sparkChars = [' ', '\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'];
-        const ctxSpark = ctxPoints.map(p => sparkChars[Math.min(8, Math.round((p.inputTokens / ctxMax) * 8))]).join('');
-        lines.push(`  {grey-fg}${ctxSpark}{/grey-fg}  history`);
-      }
-
-      // Permission mode
+      // Permission mode (inline)
       if (m.permissionMode && m.permissionMode !== 'default') {
         const modeColors: Record<string, string> = { bypassPermissions: 'red', acceptEdits: 'magenta', plan: 'green' };
         const modeLabels: Record<string, string> = { bypassPermissions: 'Bypass Permissions', acceptEdits: 'Accept Edits', plan: 'Plan Mode' };
         const modeColor = modeColors[m.permissionMode] || 'grey';
         const modeLabel = modeLabels[m.permissionMode] || m.permissionMode;
-        lines.push('', `{bold}Permission:{/bold}  {${modeColor}-fg}${modeLabel}{/${modeColor}-fg}`);
+        lines.push(`{grey-fg}Permission{/grey-fg} {${modeColor}-fg}{bold}${modeLabel}{/bold}{/${modeColor}-fg}`);
       }
 
+      // Subagents (inline if present)
+      if (m.subagents.length > 0) {
+        const runningAgents = m.subagents.filter(a => a.status === 'running').length;
+        const completedAgents = m.subagents.filter(a => a.status === 'completed').length;
+        lines.push(`{grey-fg}Subagents{/grey-fg} {bold}${m.subagents.length}{/bold} ({green-fg}${runningAgents} running{/green-fg}, ${completedAgents} done)`);
+      }
+
+      // ── Tokens section
+      const cacheRate = t.cacheRead + t.input > 0
+        ? `{grey-fg}Cache{/grey-fg} {bold}${((t.cacheRead / (t.cacheRead + t.input)) * 100).toFixed(1)}%{/bold}`
+        : '';
       lines.push(
         '',
-        '{bold}Burn Rate{/bold}',
-        `  {cyan-fg}${spark}{/cyan-fg}  {bold}${fmtNum(latest)}{/bold} tok/min`,
+        sectionHeader('Tokens', w),
+        `{grey-fg}In{/grey-fg} {bold}${fmtNum(t.input)}{/bold}  {grey-fg}Out{/grey-fg} {bold}${fmtNum(t.output)}{/bold}  ${cacheRate}  {green-fg}$${t.cost.toFixed(4)}{/green-fg}`,
       );
 
-      // Task completion summary
+      // ── Context section
+      const contextBar = makeColorBar(c.percent, 30, contextColor);
+      lines.push(
+        '',
+        sectionHeader('Context', w),
+        `  ${contextBar} {bold}${c.percent}%{/bold}  ${fmtNum(c.used)} / ${fmtNum(c.limit)}`,
+      );
+
+      // Context history sparkline with metadata
+      if (m.contextTimeline && m.contextTimeline.length > 1) {
+        const ctxData = m.contextTimeline.slice(-25).map(p => p.inputTokens);
+        const ctxSpark = makeSparkline(ctxData);
+        lines.push(`  {grey-fg}${ctxSpark.spark}{/grey-fg}  {grey-fg}peak ${fmtNum(ctxSpark.max)}{/grey-fg}`);
+      }
+
+      // ── Burn Rate section
+      const burnData = m.burnRate.length > 0 ? m.burnRate : [0];
+      const burnSpark = makeSparkline(burnData);
+      lines.push(
+        '',
+        sectionHeader('Burn Rate', w),
+        `  {cyan-fg}${burnSpark.spark}{/cyan-fg}  {bold}${fmtNum(burnSpark.latest)}{/bold}{grey-fg} tok/min{/grey-fg}  {grey-fg}peak ${fmtNum(burnSpark.max)}{/grey-fg}`,
+      );
+
+      // ── Tasks section
       if (m.tasks.length > 0) {
         const completed = m.tasks.filter(t => t.status === 'completed').length;
         const active = m.tasks.filter(t => t.status === 'in_progress').length;
         const pending = m.tasks.filter(t => t.status === 'pending').length;
-        lines.push('', '{bold}Tasks{/bold}');
-        lines.push(`  ${completed}/${m.tasks.length} completed  ${active} active  ${pending} pending`);
+        lines.push(
+          '',
+          sectionHeader('Tasks', w),
+          `  {bold}${completed}{/bold}/{m.tasks.length}{grey-fg} completed{/grey-fg}  {bold}${active}{/bold}{grey-fg} active{/grey-fg}  {bold}${pending}{/bold}{grey-fg} pending{/grey-fg}`,
+        );
       }
 
-      // File change summary
+      // ── File Changes section
       const diffStats = this.diffCache?.getStats() ?? new Map();
       if (diffStats.size > 0) {
         let totalAdd = 0, totalDel = 0;
@@ -336,32 +332,35 @@ export class SessionsPanel implements SidePanel {
           totalAdd += s.additions;
           totalDel += s.deletions;
         }
-        lines.push('', '{bold}File Changes{/bold}');
-        lines.push(`  ${diffStats.size} files touched  {green-fg}+${totalAdd}{/green-fg} {red-fg}-${totalDel}{/red-fg} lines`);
+        lines.push(
+          '',
+          sectionHeader('File Changes', w),
+          `  {bold}${diffStats.size}{/bold}{grey-fg} files{/grey-fg}  {green-fg}+${totalAdd}{/green-fg} {red-fg}-${totalDel}{/red-fg}`,
+        );
       }
 
-      // Model cost breakdown
+      // ── Model Usage section
       if (m.modelStats.length > 0) {
-        lines.push('', '{bold}Model Usage{/bold}');
+        lines.push('', sectionHeader('Model Usage', w));
         for (const ms of m.modelStats) {
           const modelName = ms.model.length > 20 ? ms.model.substring(0, 17) + '...' : ms.model;
-          lines.push(`  ${modelName.padEnd(20)} ${String(ms.calls).padStart(4)} calls  {green-fg}$${ms.cost.toFixed(4)}{/green-fg}`);
+          lines.push(`  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  {green-fg}$${ms.cost.toFixed(4)}{/green-fg}`);
         }
       }
 
-      // Quota
+      // ── Quota section
       if (m.quota?.available) {
         const q = m.quota;
-        lines.push('', '{bold}Quota{/bold}');
+        lines.push('', sectionHeader('Quota', w));
         const fiveColor = getUtilizationColor(q.fiveHour.utilization);
-        const fiveBar = makeBar(q.fiveHour.utilization, 18);
-        lines.push(`  5h:  {${fiveColor}-fg}${fiveBar}{/${fiveColor}-fg} ${q.fiveHour.utilization.toFixed(0)}%`);
+        const fiveBar = makeColorBar(q.fiveHour.utilization, 18, fiveColor);
+        lines.push(`  {grey-fg}5h{/grey-fg}  ${fiveBar} {bold}${q.fiveHour.utilization.toFixed(0)}%{/bold}`);
         const sevenColor = getUtilizationColor(q.sevenDay.utilization);
-        const sevenBar = makeBar(q.sevenDay.utilization, 18);
-        lines.push(`  7d:  {${sevenColor}-fg}${sevenBar}{/${sevenColor}-fg} ${q.sevenDay.utilization.toFixed(0)}%`);
+        const sevenBar = makeColorBar(q.sevenDay.utilization, 18, sevenColor);
+        lines.push(`  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}`);
       }
 
-      // Context Attribution
+      // ── Context Attribution section
       const attrLines = renderContextAttribution(m.contextAttribution);
       if (attrLines.length > 0) {
         lines.push('', ...attrLines);
@@ -372,21 +371,18 @@ export class SessionsPanel implements SidePanel {
 
     // Historical session
     const s = d.session!;
+    const w = detailWidth();
     const totalTokens = s.inputTokens + s.outputTokens;
     return [
-      `{bold}${s.date}{/bold}`,
+      `{bold}${s.date}{/bold}  {bold}${s.sessionCount}{/bold}{grey-fg} sessions{/grey-fg}  {bold}${s.messageCount}{/bold}{grey-fg} messages{/grey-fg}`,
+      `{grey-fg}Tokens{/grey-fg} {bold}${fmtNum(totalTokens)}{/bold} ({grey-fg}In{/grey-fg} ${fmtNum(s.inputTokens)}  {grey-fg}Out{/grey-fg} ${fmtNum(s.outputTokens)})  {green-fg}$${s.totalCost.toFixed(4)}{/green-fg}`,
       '',
-      `{bold}Sessions:{/bold}   ${s.sessionCount}`,
-      `{bold}Tokens:{/bold}     ${fmtNum(totalTokens)} (${fmtNum(s.inputTokens)} in / ${fmtNum(s.outputTokens)} out)`,
-      `{bold}Cost:{/bold}       {green-fg}$${s.totalCost.toFixed(4)}{/green-fg}`,
-      `{bold}Messages:{/bold}   ${s.messageCount}`,
+      sectionHeader('Models', w),
+      ...s.modelUsage.map(u => `  ${u.model}: {bold}${u.calls}{/bold} calls`),
       '',
-      '{bold}Models{/bold}',
-      ...s.modelUsage.map(u => `  ${u.model}: ${u.calls} calls`),
-      '',
-      '{bold}Tools{/bold}',
+      sectionHeader('Tools', w),
       ...s.toolUsage.sort((a, b) => b.calls - a.calls).slice(0, 10).map(u =>
-        `  ${u.tool.padEnd(16)} ${u.calls} calls`
+        `  ${u.tool.padEnd(16)} {bold}${u.calls}{/bold} calls`
       ),
     ].join('\n');
   }
@@ -556,12 +552,12 @@ export class SessionsPanel implements SidePanel {
     const running = agents.filter(a => a.status === 'running').length;
     const completed = agents.filter(a => a.status === 'completed').length;
     const parallel = agents.filter(a => a.isParallel).length;
+    const w = detailWidth();
 
     const lines: string[] = [
-      '{bold}Subagents{/bold}',
-      '',
-      `  Total: ${agents.length}  Running: {green-fg}${running}{/green-fg}  Completed: {cyan-fg}${completed}{/cyan-fg}` +
-        (parallel > 0 ? `  Parallel: {magenta-fg}${parallel}{/magenta-fg}` : ''),
+      sectionHeader('Subagents', w),
+      `  {bold}${agents.length}{/bold}{grey-fg} total{/grey-fg}  {green-fg}{bold}${running}{/bold} running{/green-fg}  {cyan-fg}{bold}${completed}{/bold} done{/cyan-fg}` +
+        (parallel > 0 ? `  {magenta-fg}{bold}${parallel}{/bold} parallel{/magenta-fg}` : ''),
       '',
     ];
 
@@ -593,7 +589,7 @@ export class SessionsPanel implements SidePanel {
     // Cross-reference: tasks created by subagents
     const subagentTasks = metrics.tasks.filter(t => t.subagentType);
     if (subagentTasks.length > 0) {
-      lines.push('', '{bold}Tasks from Subagents{/bold}', '');
+      lines.push('', sectionHeader('Tasks from Subagents', w), '');
       for (const t of subagentTasks) {
         const statusIcon = t.status === 'completed' ? '\u2713' : t.status === 'in_progress' ? '\u2192' : '\u25CB';
         const taskPrefix = `  ${statusIcon} ${t.subagentType} #${t.taskId}: `;
@@ -628,7 +624,7 @@ function renderContextAttribution(attr: ContextAttribution): string[] {
   if (total === 0) return [];
 
   const barWidth = 30;
-  const lines: string[] = ['{bold}Context Attribution{/bold}', ''];
+  const lines: string[] = [sectionHeader('Context Attribution', 40), ''];
 
   // Stacked bar
   let bar = '  ';

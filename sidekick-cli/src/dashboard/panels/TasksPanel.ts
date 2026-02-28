@@ -26,6 +26,7 @@ export class TasksPanel implements SidePanel {
   readonly id = 'tasks';
   readonly title = 'Tasks';
   readonly shortcutKey = 2;
+  readonly emptyStateHint = 'Tasks appear as your agent works.';
 
   readonly detailTabs: DetailTab[] = [
     { label: 'Detail', render: (item, m) => this.renderDetail(item, m) },

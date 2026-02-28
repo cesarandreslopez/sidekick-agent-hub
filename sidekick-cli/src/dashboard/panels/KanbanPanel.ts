@@ -25,6 +25,7 @@ export class KanbanPanel implements SidePanel {
   readonly id = 'kanban';
   readonly title = 'Kanban';
   readonly shortcutKey = 3;
+  readonly emptyStateHint = 'Task board populates from active sessions.';
 
   readonly detailTabs: DetailTab[] = [
     { label: 'Board', render: (item, m) => this.renderBoard(item, m) },
