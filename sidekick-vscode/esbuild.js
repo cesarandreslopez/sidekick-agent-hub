@@ -66,12 +66,42 @@ async function main() {
     logLevel: 'warning',
   });
 
+  // Webview vendor bundle - Chart.js (Browser)
+  const webviewChartjsCtx = await esbuild.context({
+    entryPoints: ['src/webview/chartjs-vendor.ts'],
+    bundle: true,
+    format: 'iife',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'browser',
+    outfile: 'out/webview/chartjs-vendor.js',
+    target: ['es2020'],
+    logLevel: 'warning',
+  });
+
+  // Webview vendor bundle - D3.js (Browser)
+  const webviewD3Ctx = await esbuild.context({
+    entryPoints: ['src/webview/d3-vendor.ts'],
+    bundle: true,
+    format: 'iife',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'browser',
+    outfile: 'out/webview/d3-vendor.js',
+    target: ['es2020'],
+    logLevel: 'warning',
+  });
+
+  const allContexts = [extensionCtx, webviewExplainCtx, webviewErrorCtx, webviewDashboardCtx, webviewChartjsCtx, webviewD3Ctx];
+
   if (watch) {
-    await Promise.all([extensionCtx.watch(), webviewExplainCtx.watch(), webviewErrorCtx.watch(), webviewDashboardCtx.watch()]);
+    await Promise.all(allContexts.map(ctx => ctx.watch()));
     console.log('Watching for changes...');
   } else {
-    await Promise.all([extensionCtx.rebuild(), webviewExplainCtx.rebuild(), webviewErrorCtx.rebuild(), webviewDashboardCtx.rebuild()]);
-    await Promise.all([extensionCtx.dispose(), webviewExplainCtx.dispose(), webviewErrorCtx.dispose(), webviewDashboardCtx.dispose()]);
+    await Promise.all(allContexts.map(ctx => ctx.rebuild()));
+    await Promise.all(allContexts.map(ctx => ctx.dispose()));
   }
 }
 

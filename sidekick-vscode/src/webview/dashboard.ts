@@ -10,6 +10,11 @@
  * @module webview/dashboard
  */
 
+import { Chart, registerables } from 'chart.js';
+
+// Register all built-in Chart.js components
+Chart.register(...registerables);
+
 // VS Code API types
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -17,43 +22,8 @@ declare function acquireVsCodeApi(): {
   setState(state: unknown): void;
 };
 
-// Chart.js loaded from CDN
-declare const Chart: {
-  new (ctx: CanvasRenderingContext2D, config: ChartConfig): ChartInstance;
-};
-
-interface ChartConfig {
-  type: string;
-  data: {
-    datasets: Array<{
-      data: number[];
-      backgroundColor: string[];
-      borderWidth: number;
-    }>;
-  };
-  options: {
-    responsive: boolean;
-    maintainAspectRatio: boolean;
-    circumference: number;
-    rotation: number;
-    cutout: string;
-    plugins: {
-      legend: { display: boolean };
-      tooltip: { enabled: boolean };
-    };
-  };
-}
-
-interface ChartInstance {
-  data: {
-    datasets: Array<{
-      data: number[];
-      backgroundColor: string[];
-    }>;
-  };
-  update(mode?: string): void;
-  destroy(): void;
-}
+// Type alias for the Chart instance used throughout this file
+type ChartInstance = InstanceType<typeof Chart>;
 
 /**
  * Model breakdown entry from extension.

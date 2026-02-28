@@ -449,11 +449,11 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   <div class="header">
     <img src="${iconUri}" alt="Sidekick" />
     <h1>Timeline</h1>
-    <div class="range-controls">
-      <button class="range-btn" data-range="24h">24h</button>
-      <button class="range-btn active" data-range="7d">7d</button>
-      <button class="range-btn" data-range="30d">30d</button>
-      <button class="range-btn" data-range="all">All</button>
+    <div class="range-controls" role="toolbar" aria-label="Time range">
+      <button class="range-btn" data-range="24h" aria-pressed="false">24h</button>
+      <button class="range-btn active" data-range="7d" aria-pressed="true">7d</button>
+      <button class="range-btn" data-range="30d" aria-pressed="false">30d</button>
+      <button class="range-btn" data-range="all" aria-pressed="false">All</button>
     </div>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
@@ -480,8 +480,9 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     // Range button handlers
     rangeButtons.forEach(function(btn) {
       btn.addEventListener('click', function() {
-        rangeButtons.forEach(function(b) { b.classList.remove('active'); });
+        rangeButtons.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
         btn.classList.add('active');
+        btn.setAttribute('aria-pressed', 'true');
         vscode.postMessage({ type: 'setRange', range: btn.dataset.range });
       });
     });

@@ -299,6 +299,11 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   private _getHtmlForWebview(webview: vscode.Webview): string {
     const nonce = getNonce();
 
+    // Build URI for bundled D3.js vendor script
+    const d3Uri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'd3-vendor.js')
+    );
+
     const iconUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
     );
@@ -312,7 +317,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         content="default-src 'none';
                  style-src ${webview.cspSource} 'unsafe-inline';
                  img-src ${webview.cspSource};
-                 script-src 'nonce-${nonce}' https://cdn.jsdelivr.net;">
+                 script-src 'nonce-${nonce}' ${webview.cspSource};">
   <title>Session Mind Map</title>
   ${getDesignTokenCSS()}
   ${getSharedStyles()}
@@ -714,9 +719,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     <img src="${iconUri}" alt="Sidekick" />
     <h1>Mind Map</h1>
     <div class="header-actions">
-      <button id="toggle-layout" class="icon-button" type="button" title="Toggle circular layout" disabled>Circular</button>
+      <button id="toggle-layout" class="icon-button" type="button" title="Toggle circular layout" aria-pressed="false" disabled>Circular</button>
       <button id="reset-layout" class="icon-button" type="button" title="Reset graph layout" disabled>Reset Layout</button>
-      <span id="status" class="status">No Session</span>
+      <span id="status" class="status" aria-live="polite">No Session</span>
     </div>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
@@ -776,7 +781,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     </div>
   </div>
 
-  <script nonce="${nonce}" src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script nonce="${nonce}" src="${d3Uri}"></script>
   <script nonce="${nonce}">
     (function() {
       const vscode = acquireVsCodeApi();
@@ -1833,11 +1838,13 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
             layoutMode = 'circular';
             toggleLayoutEl.textContent = 'Force';
             toggleLayoutEl.classList.add('layout-active');
+            toggleLayoutEl.setAttribute('aria-pressed', 'true');
             applyCircularLayout(true);
           } else {
             layoutMode = 'force';
             toggleLayoutEl.textContent = 'Circular';
             toggleLayoutEl.classList.remove('layout-active');
+            toggleLayoutEl.setAttribute('aria-pressed', 'false');
             applyForceLayout(true);
           }
         });

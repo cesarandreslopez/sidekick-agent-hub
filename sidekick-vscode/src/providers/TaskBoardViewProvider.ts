@@ -753,7 +753,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   <div class="header">
     <img src="${iconUri}" alt="Sidekick icon" />
     <h1>Kanban Board</h1>
-    <span id="status" class="status">Idle</span>
+    <span id="status" class="status" aria-live="polite">Idle</span>
     <div class="header-actions">
       <span id="summary" class="summary"></span>
       <button id="clearDone" class="icon-button" disabled>Clear Done</button>

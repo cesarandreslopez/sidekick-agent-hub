@@ -577,7 +577,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   <div class="header">
     <img src="${iconUri}" alt="Sidekick icon" />
     <h1>Plans</h1>
-    <span id="status" class="status">Idle</span>
+    <span id="status" class="status" aria-live="polite">Idle</span>
     <div class="header-actions">
       <button id="refresh" class="icon-button">Refresh</button>
     </div>

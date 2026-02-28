@@ -2220,6 +2220,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _getHtmlForWebview(webview: vscode.Webview): string {
     const nonce = getNonce();
 
+    // Build URI for bundled Chart.js vendor script
+    const chartjsUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'chartjs-vendor.js')
+    );
+
     // Get icon URI for branding
     const iconUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
@@ -2252,7 +2257,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         content="default-src 'none';
                  style-src ${webview.cspSource} 'unsafe-inline';
                  img-src ${webview.cspSource};
-                 script-src 'nonce-${nonce}' https://cdn.jsdelivr.net;">
+                 script-src 'nonce-${nonce}' ${webview.cspSource};">
   <title>Session Analytics</title>
   ${getDesignTokenCSS()}
   ${getSharedStyles()}
@@ -4721,7 +4726,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     <img src="${iconUri}" alt="Sidekick" />
     <h1>Session Analytics</h1>
     <span class="version-badge" id="version-badge" title="What's New">v${extVersion}</span>
-    <span id="status" class="status inactive">No Session</span>
+    <span id="status" class="status inactive" aria-live="polite">No Session</span>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 
@@ -4745,8 +4750,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             <option value="codex">Codex CLI</option>
           </select>
         </div>
-        <button class="pin-btn" id="pin-session" title="Pin session to prevent auto-switching">Pin</button>
-        <button class="nav-btn" id="refresh-sessions" title="Refresh session list">↻</button>
+        <button class="pin-btn" id="pin-session" title="Pin session to prevent auto-switching" aria-pressed="false">Pin</button>
+        <button class="nav-btn" id="refresh-sessions" title="Refresh session list" aria-label="Refresh session list">↻</button>
         <button class="nav-btn browse" id="browse-folders" title="Browse session folders">Browse...</button>
         <button class="nav-btn" id="open-cli-dashboard" title="Open Sidekick CLI dashboard in terminal">⌨ CLI</button>
       </div>
@@ -4759,13 +4764,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     </div>
   </div>
 
-  <div class="tab-container">
-    <button class="tab-btn active" data-tab="session">Session</button>
-    <button class="tab-btn" data-tab="summary">Summary</button>
-    <button class="tab-btn" data-tab="history">History</button>
+  <div class="tab-container" role="tablist" aria-label="Dashboard tabs">
+    <button class="tab-btn active" data-tab="session" role="tab" aria-selected="true" aria-controls="session-tab">Session</button>
+    <button class="tab-btn" data-tab="summary" role="tab" aria-selected="false" aria-controls="summary-tab">Summary</button>
+    <button class="tab-btn" data-tab="history" role="tab" aria-selected="false" aria-controls="history-tab">History</button>
   </div>
 
-  <div id="session-tab" class="tab-content active">
+  <div id="session-tab" class="tab-content active" role="tabpanel" aria-label="Session">
     <div id="content">
       <div class="empty-state">
         <p id="empty-state-title">No active session detected.</p>
@@ -4775,11 +4780,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     </div>
 
     <div id="dashboard" style="display: none;">
-      <div class="metric-toggles">
-        <button class="metric-btn active" data-metric="quota">Quota</button>
-        <button class="metric-btn" data-metric="cost">Cost</button>
-        <button class="metric-btn" data-metric="tokens">Tokens</button>
-        <button class="metric-btn" data-metric="cache">Cache</button>
+      <div class="metric-toggles" role="toolbar" aria-label="Metric toggles">
+        <button class="metric-btn active" data-metric="quota" aria-pressed="true">Quota</button>
+        <button class="metric-btn" data-metric="cost" aria-pressed="false">Cost</button>
+        <button class="metric-btn" data-metric="tokens" aria-pressed="false">Tokens</button>
+        <button class="metric-btn" data-metric="cache" aria-pressed="false">Cache</button>
       </div>
 
       <div class="gauge-row" id="gauge-row">
@@ -4787,7 +4792,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           <div class="section-title">Context Window</div>
           <div class="context-gauge" title="Green: &lt;50% | Orange: 50-79% | Red: ≥80%. When full, older context is summarized.">
             <canvas id="contextChart"></canvas>
-            <span class="context-percent" id="context-percent">0%</span>
+            <span class="context-percent" id="context-percent" aria-live="polite">0%</span>
           </div>
           <div id="context-health" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 4px;"></div>
           <div id="truncation-info" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 2px;"></div>
@@ -4821,12 +4826,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         </div>
       </div>
 
-      <div class="primary-metric-display" data-metric="cost" id="primary-metric-display" style="display: none;">
+      <div class="primary-metric-display" data-metric="cost" id="primary-metric-display" style="display: none;" aria-live="polite">
         <div class="metric-value" id="primary-metric-value">$0.00</div>
         <div class="metric-subtitle" id="primary-metric-subtitle">Estimated session cost</div>
       </div>
 
-      <div class="inline-stats">
+      <div class="inline-stats" aria-live="polite">
         <div class="inline-stat">
           <div class="stat-value" id="inline-duration">0m</div>
           <div class="stat-label">Duration</div>
@@ -5161,12 +5166,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       </div>
 
       <div class="last-updated">
-        Last updated: <span id="last-updated">-</span>
+        Last updated: <span id="last-updated" aria-live="polite">-</span>
       </div>
     </div>
   </div>
 
-  <div id="summary-tab" class="tab-content">
+  <div id="summary-tab" class="tab-content" role="tabpanel" aria-label="Summary">
     <div class="summary-empty" id="summary-empty">
       <p>No session summary available yet.</p>
       <p>A summary will be generated when a session ends, or you can request one during an active session.</p>
@@ -5214,13 +5219,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     </div>
   </div>
 
-  <div id="history-tab" class="tab-content">
+  <div id="history-tab" class="tab-content" role="tabpanel" aria-label="History">
     <div class="history-controls">
-      <div class="range-selector">
-        <button class="range-btn" data-range="today">Today</button>
-        <button class="range-btn active" data-range="week">This Week</button>
-        <button class="range-btn" data-range="month">This Month</button>
-        <button class="range-btn" data-range="all">All Time</button>
+      <div class="range-selector" role="toolbar" aria-label="Time range">
+        <button class="range-btn" data-range="today" aria-pressed="false">Today</button>
+        <button class="range-btn active" data-range="week" aria-pressed="true">This Week</button>
+        <button class="range-btn" data-range="month" aria-pressed="false">This Month</button>
+        <button class="range-btn" data-range="all" aria-pressed="false">All Time</button>
       </div>
       <select class="metric-select" id="history-metric-select">
         <option value="tokens">Tokens</option>
@@ -5279,7 +5284,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     <div class="changelog-modal">
       <div class="changelog-header">
         <span class="changelog-title">What's New</span>
-        <span class="changelog-close" id="changelog-close">&times;</span>
+        <span class="changelog-close" id="changelog-close" role="button" aria-label="Close changelog">&times;</span>
       </div>
       <div class="changelog-version-info">
         <span class="changelog-current-version">v${extVersion}</span>
@@ -5292,7 +5297,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     </div>
   </div>
 
-  <script nonce="${nonce}" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script nonce="${nonce}" src="${chartjsUri}"></script>
   <script nonce="${nonce}">
     // Initial session data embedded at HTML generation time (no postMessage needed)
     var __initialSessionData = ${this._safeJsonForScript({
@@ -5573,10 +5578,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         btn.addEventListener('click', function() {
           const tab = btn.getAttribute('data-tab');
 
-          tabBtns.forEach(function(b) { b.classList.remove('active'); });
+          tabBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
           tabContents.forEach(function(c) { c.classList.remove('active'); });
 
           btn.classList.add('active');
+          btn.setAttribute('aria-selected', 'true');
           document.getElementById(tab + '-tab').classList.add('active');
 
           // Request data when switching tabs
@@ -5592,8 +5598,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       metricBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
           currentMetric = btn.getAttribute('data-metric');
-          metricBtns.forEach(function(b) { b.classList.remove('active'); });
+          metricBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
           btn.classList.add('active');
+          btn.setAttribute('aria-pressed', 'true');
           updatePrimaryMetric();
         });
       });
@@ -5613,8 +5620,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       rangeBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
           currentRange = btn.getAttribute('data-range');
-          rangeBtns.forEach(function(b) { b.classList.remove('active'); });
+          rangeBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
           btn.classList.add('active');
+          btn.setAttribute('aria-pressed', 'true');
           vscode.postMessage({ type: 'requestHistoricalData', range: currentRange, metric: historyMetricSelect.value });
         });
       });
@@ -6790,6 +6798,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Update pin button
         if (pinSessionBtn) {
           pinSessionBtn.textContent = isPinned ? 'Unpin' : 'Pin';
+          pinSessionBtn.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
           if (isPinned) {
             pinSessionBtn.classList.add('pinned');
             pinSessionBtn.title = 'Unpin session to allow auto-switching';

@@ -84,7 +84,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     const filterButtons = Array.from(toolCounts.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([name, count]) =>
-        `<button class="filter-btn" data-tool="${this.escapeHtml(name)}">${this.escapeHtml(name)} (${count})</button>`
+        `<button class="filter-btn" data-tool="${this.escapeHtml(name)}" aria-pressed="false">${this.escapeHtml(name)} (${count})</button>`
       ).join('');
 
     // Render tool calls
@@ -265,8 +265,8 @@ export class ToolInspectorProvider implements vscode.Disposable {
     <h2>Tool Inspector</h2>
     <span style="color:var(--vscode-descriptionForeground);font-size:12px">${calls.length} calls</span>
   </div>
-  <div class="filter-bar">
-    <button class="filter-btn active" data-tool="all">All (${allCalls.length})</button>
+  <div class="filter-bar" role="toolbar" aria-label="Filter by tool type">
+    <button class="filter-btn active" data-tool="all" aria-pressed="true">All (${allCalls.length})</button>
     ${filterButtons}
   </div>
   <div id="calls">
@@ -282,7 +282,9 @@ export class ToolInspectorProvider implements vscode.Disposable {
         if (!body) return;
         var arrow = header.querySelector('.toggle-arrow');
         body.classList.toggle('expanded');
-        if (arrow) arrow.textContent = body.classList.contains('expanded') ? '-' : '+';
+        var isExpanded = body.classList.contains('expanded');
+        if (arrow) arrow.textContent = isExpanded ? '-' : '+';
+        header.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
       });
 
       // Filter buttons (visual only - server-side filtering)
@@ -291,8 +293,9 @@ export class ToolInspectorProvider implements vscode.Disposable {
         btn.addEventListener('click', function() {
           var toolName = btn.getAttribute('data-tool');
           var calls = document.querySelectorAll('.tool-call');
-          filterBtns.forEach(function(b) { b.classList.remove('active'); });
+          filterBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
           btn.classList.add('active');
+          btn.setAttribute('aria-pressed', 'true');
 
           calls.forEach(function(call) {
             if (toolName === 'all') {
@@ -348,7 +351,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     }
 
     return `<div class="tool-call" data-tool="${this.escapeHtml(call.name)}" id="call-${index}">
-      <div class="tool-call-header">
+      <div class="tool-call-header" role="button" aria-expanded="false" aria-label="${this.escapeHtml(call.name)} ${this.escapeHtml(toolSummary)}">
         <span class="toggle-arrow">+</span>
         <span class="tool-name">${this.escapeHtml(call.name)}</span>
         <span class="tool-summary">${this.escapeHtml(toolSummary)}</span>
