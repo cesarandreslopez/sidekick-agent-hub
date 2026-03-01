@@ -1918,6 +1918,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._postMessage({ type: 'updateContextWaterfall', waterfall: waterfallDisplay });
     }
 
+    // Send analytics data (tool frequency, patterns, heatmap)
+    if (aggregatedMetrics) {
+      this._postMessage({
+        type: 'updateAnalytics',
+        analytics: {
+          toolFrequency: aggregatedMetrics.toolFrequency ?? [],
+          wordFrequency: aggregatedMetrics.wordFrequency ?? [],
+          patterns: aggregatedMetrics.patterns ?? [],
+          heatmapBuckets: aggregatedMetrics.heatmapBuckets ?? [],
+        },
+      });
+    }
+
     // Send richer panel updates (debounced)
     this._sendRicherPanelUpdates();
   }
@@ -4719,6 +4732,80 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     .changelog-footer { padding: 8px 16px; border-top: 1px solid var(--vscode-panel-border); text-align: center; }
     .changelog-link { font-size: 11px; color: var(--vscode-textLink-foreground); text-decoration: none; }
     .changelog-link:hover { text-decoration: underline; }
+
+    /* Analytics: Chart containers — prevent Chart.js infinite growth */
+    .chart-container {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .chart-container canvas {
+      max-width: 100% !important;
+    }
+
+    /* Analytics: Heatmap grid */
+    .heatmap-grid {
+      display: flex;
+      gap: 1px;
+      flex-wrap: wrap;
+      margin: 4px 0;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .heatmap-cell {
+      width: 8px;
+      height: 18px;
+      border-radius: 2px;
+      transition: opacity 0.2s;
+    }
+    .heatmap-cell:hover {
+      opacity: 0.8;
+      outline: 1px solid var(--vscode-foreground);
+    }
+    .heatmap-cell[title] { cursor: default; }
+
+    /* Analytics: Pattern list */
+    .pattern-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: 11px;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .pattern-bar {
+      flex-shrink: 0;
+      height: 10px;
+      border-radius: 2px;
+      background: var(--vscode-charts-purple, #b180d7);
+    }
+    .pattern-count {
+      flex-shrink: 0;
+      width: 28px;
+      text-align: right;
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+    }
+    .pattern-template {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 10px;
+    }
+    .pattern-example {
+      font-size: 9px;
+      color: var(--vscode-descriptionForeground);
+      padding-left: 34px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
   </style>
 </head>
 <body>
@@ -5161,6 +5248,41 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             </div>
             <div id="decisions-count" style="font-size:11px;margin-bottom:8px;color:var(--vscode-descriptionForeground);"></div>
             <div id="decisions-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analytics Group (Gonzo/Lazyjournal integration) -->
+      <div class="details-section" id="analytics-section-group">
+        <div class="details-toggle" data-group-toggle="analytics-section-group">
+          <span class="toggle-icon">▶</span>
+          <h3 class="details-title">Analytics</h3>
+          <span class="group-summary" id="analytics-summary"></span>
+        </div>
+        <div class="details-content">
+          <div class="section" id="tool-freq-section" style="display: none;">
+            <div class="section-title">Tool Frequency</div>
+            <div class="chart-container" style="height:160px;">
+              <canvas id="toolFreqChart"></canvas>
+            </div>
+          </div>
+
+          <div class="section" id="event-dist-section" style="display: none;">
+            <div class="section-title">Event Distribution</div>
+            <div class="chart-container" style="height:140px;">
+              <canvas id="eventDistChart"></canvas>
+            </div>
+          </div>
+
+          <div class="section" id="heatmap-section" style="display: none;">
+            <div class="section-title">Activity Heatmap <span style="font-weight:normal;font-size:10px;opacity:0.7;">(60 min)</span></div>
+            <div id="heatmap-grid"></div>
+            <div id="heatmap-stats" style="font-size:10px;color:var(--vscode-descriptionForeground);margin-top:4px;"></div>
+          </div>
+
+          <div class="section" id="patterns-section" style="display: none;">
+            <div class="section-title">Event Patterns</div>
+            <div id="patterns-list"></div>
           </div>
         </div>
       </div>
@@ -7175,6 +7297,244 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         return html;
       }
 
+      // Analytics charts (tool frequency + event distribution)
+      var toolFreqChart = null;
+      var eventDistChart = null;
+      var pendingToolFreq = null;
+      var pendingEventDist = null;
+
+      function cssVar(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+      }
+
+      function updateAnalyticsCharts(analytics) {
+        if (!analytics) return;
+
+        var summaryParts = [];
+
+        // Tool frequency horizontal bar chart
+        var toolFreqSection = document.getElementById('tool-freq-section');
+        if (toolFreqSection) {
+          var tf = analytics.toolFrequency;
+          if (tf && tf.length > 0) {
+            toolFreqSection.style.display = '';
+            summaryParts.push(tf.length + ' tools');
+
+            var top = tf.slice(0, 10);
+            var tfLabels = top.map(function(t) { return t.name; });
+            var tfData = top.map(function(t) { return t.count; });
+
+            if (toolFreqChart) {
+              toolFreqChart.data.labels = tfLabels;
+              toolFreqChart.data.datasets[0].data = tfData;
+              toolFreqChart.update('none');
+            } else {
+              // Defer creation to next frame so container has non-zero dimensions
+              pendingToolFreq = { labels: tfLabels, data: tfData };
+              requestAnimationFrame(function() {
+                if (!pendingToolFreq) return;
+                var ptf = pendingToolFreq;
+                pendingToolFreq = null;
+                var c = document.getElementById('toolFreqChart');
+                if (!c || !window.Chart) return;
+                var cx = c.getContext('2d');
+                if (!cx) return;
+                toolFreqChart = new Chart(cx, {
+                  type: 'bar',
+                  data: {
+                    labels: ptf.labels,
+                    datasets: [{
+                      data: ptf.data,
+                      backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                      borderColor: 'rgba(75, 192, 192, 1)',
+                      borderWidth: 1
+                    }]
+                  },
+                  options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: { enabled: true }
+                    },
+                    scales: {
+                      x: {
+                        beginAtZero: true,
+                        ticks: { color: cssVar('--vscode-descriptionForeground'), font: { size: 10 } },
+                        grid: { color: 'rgba(128,128,128,0.15)' }
+                      },
+                      y: {
+                        ticks: { color: cssVar('--vscode-foreground'), font: { size: 10 } },
+                        grid: { display: false }
+                      }
+                    }
+                  }
+                });
+              });
+            }
+          } else {
+            toolFreqSection.style.display = 'none';
+          }
+        }
+
+        // Event type distribution doughnut chart
+        var eventDistSection = document.getElementById('event-dist-section');
+        if (eventDistSection) {
+          var wf = analytics.wordFrequency;
+          if (wf && wf.length > 0) {
+            eventDistSection.style.display = '';
+
+            var topWords = wf.slice(0, 8);
+            var wLabels = topWords.map(function(w) { return w.name; });
+            var wData = topWords.map(function(w) { return w.count; });
+            var wColors = [
+              'rgba(75, 192, 192, 0.7)',
+              'rgba(54, 162, 235, 0.7)',
+              'rgba(255, 206, 86, 0.7)',
+              'rgba(153, 102, 255, 0.7)',
+              'rgba(255, 99, 132, 0.7)',
+              'rgba(255, 159, 64, 0.7)',
+              'rgba(75, 192, 75, 0.7)',
+              'rgba(201, 203, 207, 0.7)'
+            ];
+
+            if (eventDistChart) {
+              eventDistChart.data.labels = wLabels;
+              eventDistChart.data.datasets[0].data = wData;
+              eventDistChart.data.datasets[0].backgroundColor = wColors.slice(0, wLabels.length);
+              eventDistChart.update('none');
+            } else {
+              // Defer creation to next frame so container has non-zero dimensions
+              pendingEventDist = { labels: wLabels, data: wData, colors: wColors };
+              requestAnimationFrame(function() {
+                if (!pendingEventDist) return;
+                var ped = pendingEventDist;
+                pendingEventDist = null;
+                var dc = document.getElementById('eventDistChart');
+                if (!dc || !window.Chart) return;
+                var dcx = dc.getContext('2d');
+                if (!dcx) return;
+                eventDistChart = new Chart(dcx, {
+                  type: 'doughnut',
+                  data: {
+                    labels: ped.labels,
+                    datasets: [{
+                      data: ped.data,
+                      backgroundColor: ped.colors.slice(0, ped.labels.length),
+                      borderWidth: 0
+                    }]
+                  },
+                  options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'right',
+                        labels: {
+                          color: cssVar('--vscode-foreground'),
+                          font: { size: 10 },
+                          boxWidth: 10
+                        }
+                      },
+                      tooltip: { enabled: true }
+                    }
+                  }
+                });
+              });
+            }
+          } else {
+            eventDistSection.style.display = 'none';
+          }
+        }
+
+        // Activity heatmap (CSS grid of colored cells)
+        var heatmapSection = document.getElementById('heatmap-section');
+        if (heatmapSection) {
+          var buckets = analytics.heatmapBuckets;
+          if (buckets && buckets.length > 0) {
+            heatmapSection.style.display = '';
+
+            var maxCount = 0;
+            var totalEvents = 0;
+            var activeMins = 0;
+            for (var bi = 0; bi < buckets.length; bi++) {
+              if (buckets[bi].count > maxCount) maxCount = buckets[bi].count;
+              totalEvents += buckets[bi].count;
+              if (buckets[bi].count > 0) activeMins++;
+            }
+
+            var gridEl = document.getElementById('heatmap-grid');
+            if (gridEl) {
+              var cellsHtml = '';
+              for (var ci = 0; ci < buckets.length; ci++) {
+                var b = buckets[ci];
+                var intensity = maxCount > 0 ? b.count / maxCount : 0;
+                var alpha = Math.max(0.08, intensity * 0.9 + 0.1);
+                var bgColor = 'rgba(75, 192, 192, ' + alpha.toFixed(2) + ')';
+                if (b.count === 0) bgColor = 'rgba(128, 128, 128, 0.1)';
+                var time = b.timestamp ? new Date(b.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                cellsHtml += '<div class="heatmap-cell" style="background:' + bgColor + ';" title="' + time + ': ' + b.count + ' events"></div>';
+              }
+              gridEl.innerHTML = '<div class="heatmap-grid">' + cellsHtml + '</div>';
+            }
+
+            var statsEl = document.getElementById('heatmap-stats');
+            if (statsEl) {
+              statsEl.textContent = 'Peak: ' + maxCount + '/min · Total: ' + totalEvents + ' · Active: ' + activeMins + '/' + buckets.length + ' min';
+            }
+
+            summaryParts.push(activeMins + ' active min');
+          } else {
+            heatmapSection.style.display = 'none';
+          }
+        }
+
+        // Event patterns
+        var patternsSection = document.getElementById('patterns-section');
+        if (patternsSection) {
+          var patterns = analytics.patterns;
+          if (patterns && patterns.length > 0) {
+            patternsSection.style.display = '';
+            summaryParts.push(patterns.length + ' patterns');
+
+            var topPatterns = patterns.slice(0, 8);
+            var pMaxCount = topPatterns[0] ? topPatterns[0].count : 1;
+            var pListEl = document.getElementById('patterns-list');
+            if (pListEl) {
+              var pHtml = '';
+              for (var pi = 0; pi < topPatterns.length; pi++) {
+                var p = topPatterns[pi];
+                var pPct = Math.round((p.count / pMaxCount) * 100);
+                var barW = Math.max(4, Math.round(pPct * 0.6));
+                pHtml += '<div class="pattern-item">'
+                  + '<div class="pattern-bar" style="width:' + barW + 'px;"></div>'
+                  + '<span class="pattern-count">' + p.count + '</span>'
+                  + '<span class="pattern-template">' + escapeForHtml(p.template) + '</span>'
+                  + '</div>';
+                if (p.examples && p.examples.length > 0) {
+                  pHtml += '<div class="pattern-example">e.g. ' + escapeForHtml(p.examples[0].substring(0, 60)) + '</div>';
+                }
+              }
+              pListEl.innerHTML = pHtml;
+            }
+          } else {
+            patternsSection.style.display = 'none';
+          }
+        }
+
+        // Update group summary
+        var analyticsSummary = document.getElementById('analytics-summary');
+        if (analyticsSummary) {
+          analyticsSummary.textContent = summaryParts.join(' · ');
+        }
+      }
+
+      function escapeForHtml(text) {
+        if (!text) return '';
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
       // Plan view toggle
       let planViewShowing = 'steps'; // 'steps' | 'details'
       const pvToggle = document.getElementById('plan-view-toggle');
@@ -7523,6 +7883,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               }
               phList.innerHTML = phHtml;
             }
+            break;
+          }
+
+          case 'updateAnalytics': {
+            var analytics = message.analytics;
+            updateAnalyticsCharts(analytics);
             break;
           }
         }

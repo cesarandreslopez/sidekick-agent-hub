@@ -163,6 +163,14 @@ export interface DashboardMetrics {
   sessionId?: string;
   permissionMode?: string | null;
   contextTimeline: Array<{ timestamp: string; inputTokens: number; turnIndex: number }>;
+  /** Top tool names by usage frequency (from FrequencyTracker). */
+  toolFrequency: Array<{ name: string; count: number }>;
+  /** Top words from event summaries (from FrequencyTracker). */
+  wordFrequency: Array<{ name: string; count: number }>;
+  /** Detected event patterns from summary clustering (from PatternExtractor). */
+  patterns: Array<{ template: string; count: number; examples: string[] }>;
+  /** Rolling activity heatmap buckets (from HeatmapTracker). */
+  heatmapBuckets: Array<{ timestamp: string; count: number }>;
 }
 
 // ── Constants ──
@@ -575,6 +583,10 @@ export class DashboardState {
       sessionId: this._sessionId,
       permissionMode: m.permissionMode ?? null,
       contextTimeline: m.contextTimeline ?? [],
+      toolFrequency: m.toolFrequency ?? [],
+      wordFrequency: m.wordFrequency ?? [],
+      patterns: m.patterns ?? [],
+      heatmapBuckets: m.heatmapBuckets ?? [],
     };
   }
 

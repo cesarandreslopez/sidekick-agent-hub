@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.12.9",
+  "version": "0.12.10",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -1064,6 +1064,10 @@
         {
           "id": "sidekick.subagents",
           "name": "Subagents"
+        },
+        {
+          "id": "sidekick.eventStream",
+          "name": "Event Stream"
         }
       ]
     }

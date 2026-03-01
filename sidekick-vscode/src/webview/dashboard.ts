@@ -656,6 +656,9 @@ function handleMessage(event: MessageEvent): void {
     case 'updateTruncations':
       updateTruncationDisplay(message.count, message.byTool);
       break;
+    case 'updateAnalytics':
+      // Handled by inline script in DashboardViewProvider
+      break;
   }
 }
 

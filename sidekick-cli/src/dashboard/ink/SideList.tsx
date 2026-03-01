@@ -43,6 +43,27 @@ interface SideListProps {
   panelTitle: string;
   sessionFilterActive?: boolean;
   emptyStateHint?: string;
+  /** Active filter string for search-term highlighting. */
+  filterString?: string;
+}
+
+/** Apply search-term highlighting to a blessed-tagged label. */
+function applySearchHighlight(label: string, filterString: string): string {
+  if (!filterString) return label;
+  // Escape regex special chars in the search string
+  const escaped = filterString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let pattern: RegExp;
+  try {
+    pattern = new RegExp(`(${escaped})`, 'gi');
+  } catch {
+    return label;
+  }
+  // Split on blessed tags, only highlight within non-tag segments
+  const parts = label.split(/(\{\/?\w[\w-]*\})/g);
+  return parts.map(part => {
+    if (part.startsWith('{') && part.endsWith('}')) return part;
+    return part.replace(pattern, '{blue-bg}{white-fg}$1{/white-fg}{/blue-bg}');
+  }).join('');
 }
 
 export function SideList({
@@ -55,6 +76,7 @@ export function SideList({
   panelTitle,
   sessionFilterActive,
   emptyStateHint,
+  filterString,
 }: SideListProps): React.ReactElement {
   const borderColor = focused ? 'magenta' : 'gray';
   const borderStyle = focused ? 'double' : 'single';
@@ -91,7 +113,8 @@ export function SideList({
         const realIndex = scrollOffset + i;
         const isSelected = realIndex === selectedIndex;
         const marker = isSelected ? '▸' : ' ';
-        const label = truncateTaggedLabel(item.label, innerWidth - 2);
+        let label = truncateTaggedLabel(item.label, innerWidth - 2);
+        if (filterString) label = applySearchHighlight(label, filterString);
 
         return (
           <Box key={item.id} width={innerWidth}>

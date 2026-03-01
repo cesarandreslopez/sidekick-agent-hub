@@ -94,6 +94,33 @@ export function makeSparkline(data: number[], maxWidth = 25): { spark: string; m
   return { spark, max, latest };
 }
 
+/**
+ * Build an ASCII heatmap from count data.
+ * Uses ░▒▓█ intensity characters, with time labels every 5 columns.
+ */
+export function makeHeatmap(buckets: { timestamp: string; count: number }[], maxWidth = 60): string {
+  if (buckets.length === 0) return '{grey-fg}(no activity data){/grey-fg}';
+  const maxCount = Math.max(...buckets.map(b => b.count), 1);
+  const chars = [' ', '\u2591', '\u2592', '\u2593', '\u2588'];
+  const trimmed = buckets.slice(-maxWidth);
+
+  const heatLine = trimmed.map(b => {
+    const intensity = Math.min(4, Math.round((b.count / maxCount) * 4));
+    return chars[intensity];
+  }).join('');
+
+  // Time labels every 5 columns
+  const labels: string[] = [];
+  for (let i = 0; i < trimmed.length; i += 5) {
+    const ts = new Date(trimmed[i].timestamp);
+    const hh = ts.getHours().toString().padStart(2, '0');
+    const mm = ts.getMinutes().toString().padStart(2, '0');
+    labels.push(`${hh}:${mm}`);
+  }
+
+  return `{cyan-fg}${heatLine}{/cyan-fg}\n{grey-fg}${labels.join(' ')}{/grey-fg}`;
+}
+
 /** Build a progress bar of given width. */
 export function makeBar(percent: number, width: number): string {
   const clamped = Math.max(0, Math.min(100, percent));

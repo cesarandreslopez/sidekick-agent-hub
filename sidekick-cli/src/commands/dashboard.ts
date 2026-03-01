@@ -23,7 +23,8 @@ import { KanbanPanel } from '../dashboard/panels/KanbanPanel';
 import { NotesPanel } from '../dashboard/panels/NotesPanel';
 import { DecisionsPanel } from '../dashboard/panels/DecisionsPanel';
 import { PlansPanel } from '../dashboard/panels/PlansPanel';
-import { SearchPanel } from '../dashboard/panels/SearchPanel';
+import { EventStreamPanel } from '../dashboard/panels/EventStreamPanel';
+import { ChartsPanel } from '../dashboard/panels/ChartsPanel';
 import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
@@ -110,7 +111,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     new NotesPanel(),
     new DecisionsPanel(),
     new PlansPanel(),
-    new SearchPanel(),
+    new EventStreamPanel(),
+    new ChartsPanel(),
   ];
 
   // Wire up narrative completion callback to trigger re-render

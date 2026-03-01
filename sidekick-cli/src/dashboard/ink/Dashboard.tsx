@@ -68,6 +68,8 @@ interface DashboardUIState {
   focusTarget: FocusTarget;
   overlay: OverlayKind;
   filterString: string;
+  filterMode: 'substring' | 'fuzzy' | 'regex' | 'date';
+  filterError: string | null;
   sessionFilter: SessionFilter | null;
   detailScrollOffset: number;
   toasts: ToastEntry[];
@@ -87,6 +89,8 @@ type Action =
   | { type: 'SET_FOCUS'; target: FocusTarget }
   | { type: 'SET_OVERLAY'; overlay: OverlayKind }
   | { type: 'SET_FILTER'; value: string }
+  | { type: 'CYCLE_FILTER_MODE' }
+  | { type: 'SET_FILTER_ERROR'; error: string | null }
   | { type: 'SET_SESSION_FILTER'; filter: SessionFilter | null }
   | { type: 'SCROLL_DETAIL'; offset: number }
   | { type: 'SCROLL_DETAIL_DELTA'; delta: number; totalLines: number; viewportHeight: number }
@@ -108,6 +112,8 @@ function reducer(state: DashboardUIState, action: Action): DashboardUIState {
         selectedItemIndex: 0,
         detailTabIndex: 0,
         filterString: '',
+        filterMode: 'substring',
+        filterError: null,
         focusTarget: 'side',
         overlay: null,
         detailScrollOffset: 0,
@@ -153,8 +159,29 @@ function reducer(state: DashboardUIState, action: Action): DashboardUIState {
     case 'SET_OVERLAY':
       return { ...state, overlay: action.overlay, contextMenuIndex: 0, changelogScrollOffset: 0 };
 
-    case 'SET_FILTER':
-      return { ...state, filterString: action.value };
+    case 'SET_FILTER': {
+      // Validate regex if in regex mode
+      let error: string | null = null;
+      if (state.filterMode === 'regex' && action.value) {
+        try { new RegExp(action.value); } catch (e) { error = e instanceof Error ? e.message : 'Invalid regex'; }
+      }
+      return { ...state, filterString: action.value, filterError: error };
+    }
+
+    case 'CYCLE_FILTER_MODE': {
+      const modes: Array<'substring' | 'fuzzy' | 'regex' | 'date'> = ['substring', 'fuzzy', 'regex', 'date'];
+      const idx = modes.indexOf(state.filterMode);
+      const next = modes[(idx + 1) % modes.length];
+      // Re-validate filter string for new mode
+      let error: string | null = null;
+      if (next === 'regex' && state.filterString) {
+        try { new RegExp(state.filterString); } catch (e) { error = e instanceof Error ? e.message : 'Invalid regex'; }
+      }
+      return { ...state, filterMode: next, filterError: error };
+    }
+
+    case 'SET_FILTER_ERROR':
+      return { ...state, filterError: action.error };
 
     case 'SET_SESSION_FILTER':
       return { ...state, sessionFilter: action.filter };
@@ -217,6 +244,8 @@ const initialState: DashboardUIState = {
   focusTarget: 'side',
   overlay: null,
   filterString: '',
+  filterMode: 'substring',
+  filterError: null,
   sessionFilter: null,
   detailScrollOffset: 0,
   toasts: [],
@@ -319,20 +348,32 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       }
     }
 
-    // Text filter
+    // Text filter (supports substring, fuzzy, regex modes)
     if (state.filterString) {
-      const f = state.filterString.toLowerCase();
+      const f = state.filterString;
+      const mode = state.filterMode;
       items = items.filter(it => {
         const searchText = panel.getSearchableText?.(it)
           ?? it.label.replace(/\{[^}]*\}/g, '');
-        return searchText.toLowerCase().includes(f);
+        switch (mode) {
+          case 'fuzzy': {
+            const lower = searchText.toLowerCase();
+            return f.toLowerCase().split(/\s+/).filter(w => w).every(w => lower.includes(w));
+          }
+          case 'regex': {
+            try { return new RegExp(f).test(searchText); } catch { return false; }
+          }
+          case 'substring':
+          default:
+            return searchText.toLowerCase().includes(f.toLowerCase());
+        }
       });
     }
 
     // Sort
     items.sort((a, b) => a.sortKey - b.sortKey);
     return items;
-  }, [panel, metrics, staticData, state.sessionFilter, state.filterString]);
+  }, [panel, metrics, staticData, state.sessionFilter, state.filterString, state.filterMode]);
 
   const currentItems = getFilteredItems();
 
@@ -566,6 +607,10 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       }
       if (key.return) {
         dispatch({ type: 'SET_OVERLAY', overlay: null });
+        return;
+      }
+      if (key.tab) {
+        dispatch({ type: 'CYCLE_FILTER_MODE' });
         return;
       }
       if (key.backspace || key.delete) {
@@ -865,6 +910,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
                 panelTitle={panel.title}
                 sessionFilterActive={!!state.sessionFilter && ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)}
                 emptyStateHint={panel.emptyStateHint}
+                filterString={state.filterString}
               />
             )}
 
@@ -913,7 +959,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
         )}
 
         {state.overlay === 'filter' && (
-          <FilterOverlay filterString={state.filterString} />
+          <FilterOverlay filterString={state.filterString} filterMode={state.filterMode} filterError={state.filterError} />
         )}
 
         {/* Toasts */}

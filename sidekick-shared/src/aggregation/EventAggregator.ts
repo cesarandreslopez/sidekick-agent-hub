@@ -41,6 +41,12 @@ import type {
   SubagentLifecycle,
   AggregatedMetrics,
 } from './types';
+import { FrequencyTracker } from './FrequencyTracker';
+import type { SerializedFrequencyState } from './FrequencyTracker';
+import { HeatmapTracker } from './HeatmapTracker';
+import type { SerializedHeatmapState } from './HeatmapTracker';
+import { PatternExtractor } from './PatternExtractor';
+import type { SerializedPatternState } from './PatternExtractor';
 
 // ── Defaults ──
 
@@ -84,6 +90,11 @@ export interface SerializedAggregatorState {
   sessionStartTime: string | null;
   lastEventTime: string | null;
   currentModel: string | null;
+  // Gonzo/Lazyjournal analytics
+  toolFrequency?: SerializedFrequencyState;
+  wordFrequency?: SerializedFrequencyState;
+  patternState?: SerializedPatternState;
+  heatmapState?: SerializedHeatmapState;
 }
 
 // ── Internal per-model accumulator ──
@@ -203,6 +214,12 @@ export class EventAggregator {
   private currentModel: string | null = null;
   private _providerId: string | null = null;
 
+  // Gonzo/Lazyjournal analytics
+  private toolFrequency = new FrequencyTracker();
+  private wordFrequency = new FrequencyTracker();
+  private patternExtractor = new PatternExtractor();
+  private heatmapTracker = new HeatmapTracker();
+
   constructor(options?: EventAggregatorOptions) {
     this.timelineCap = options?.timelineCap ?? DEFAULT_TIMELINE_CAP;
     this.latencyCap = options?.latencyCap ?? DEFAULT_LATENCY_CAP;
@@ -270,6 +287,11 @@ export class EventAggregator {
 
     // 12. Timeline
     this.addTimelineFromSessionEvent(event);
+
+    // 13. Gonzo/Lazyjournal analytics
+    const summary = this.extractTextContent(event) ?? '';
+    const toolName = this.extractToolNameFromEvent(event);
+    this.feedAnalytics(event.timestamp, summary, toolName);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -397,6 +419,9 @@ export class EventAggregator {
     // 11. Timeline
     this.addTimelineFromFollowEvent(event);
 
+    // 12. Gonzo/Lazyjournal analytics
+    this.feedAnalytics(event.timestamp, event.summary, event.toolName);
+
     // Message count (skip system events)
     if (event.type !== 'system') {
       this.messageCount++;
@@ -523,6 +548,11 @@ export class EventAggregator {
 
       timeline: this.getTimeline(),
       latencyStats: this.getLatencyStats(),
+
+      toolFrequency: this.toolFrequency.getTopN(20).map(e => ({ name: e.key, count: e.count })),
+      wordFrequency: this.wordFrequency.getTopN(20).map(e => ({ name: e.key, count: e.count })),
+      patterns: this.patternExtractor.getPatterns().slice(0, 20),
+      heatmapBuckets: this.heatmapTracker.getBuckets(),
     };
   }
 
@@ -568,6 +598,10 @@ export class EventAggregator {
     this.timeline = [];
     this.pendingUserRequest = null;
     this.latencyRecords = [];
+    this.toolFrequency.reset();
+    this.wordFrequency.reset();
+    this.patternExtractor.reset();
+    this.heatmapTracker.reset();
     this.messageCount = 0;
     this.eventCount = 0;
     this.sessionStartTime = null;
@@ -630,6 +664,10 @@ export class EventAggregator {
       sessionStartTime: this.sessionStartTime,
       lastEventTime: this.lastEventTime,
       currentModel: this.currentModel,
+      toolFrequency: this.toolFrequency.serialize(),
+      wordFrequency: this.wordFrequency.serialize(),
+      patternState: this.patternExtractor.serialize(),
+      heatmapState: this.heatmapTracker.serialize(),
     };
   }
 
@@ -672,6 +710,12 @@ export class EventAggregator {
     this.sessionStartTime = state.sessionStartTime;
     this.lastEventTime = state.lastEventTime;
     this.currentModel = state.currentModel;
+
+    // Gonzo/Lazyjournal analytics restore
+    if (state.toolFrequency) this.toolFrequency.restore(state.toolFrequency);
+    if (state.wordFrequency) this.wordFrequency.restore(state.wordFrequency);
+    if (state.patternState) this.patternExtractor.restore(state.patternState);
+    if (state.heatmapState) this.heatmapTracker.restore(state.heatmapState);
 
     // Clear transient state — pending calls won't survive a snapshot boundary
     this.pendingToolCalls.clear();
@@ -1575,5 +1619,42 @@ export class EventAggregator {
 
   private isSystemPromptContent(text: string): boolean {
     return text.includes('<system-reminder>') || text.includes('CLAUDE.md');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Private: Gonzo/Lazyjournal analytics
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private extractToolNameFromEvent(event: SessionEvent): string | undefined {
+    const content = event.message.content;
+    if (!Array.isArray(content)) return undefined;
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (block.type === 'tool_use' && typeof block.name === 'string') {
+        return block.name as string;
+      }
+    }
+    return undefined;
+  }
+
+  /** Feed event data into frequency trackers, pattern extractor, and heatmap. */
+  private feedAnalytics(timestamp: string, summary: string, toolName?: string): void {
+    // Heatmap: record every event
+    this.heatmapTracker.record(timestamp);
+
+    // Tool frequency
+    if (toolName) {
+      this.toolFrequency.increment(toolName, timestamp);
+    }
+
+    // Word frequency: extract significant words from summary
+    if (summary) {
+      const words = summary.split(/\s+/).filter(w => w.length > 2);
+      for (const word of words) {
+        this.wordFrequency.increment(word.toLowerCase(), timestamp);
+      }
+
+      // Pattern extraction
+      this.patternExtractor.add(summary);
+    }
   }
 }

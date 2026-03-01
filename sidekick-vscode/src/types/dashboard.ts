@@ -126,7 +126,8 @@ export type DashboardMessage =
   | { type: 'updatePhrase'; phrase: string }
   | { type: 'updateEmptyPhrase'; phrase: string }
   | { type: 'updatePlan'; plan: PlanDisplay }
-  | { type: 'updatePlanHistory'; history: PlanHistoryDisplay };
+  | { type: 'updatePlanHistory'; history: PlanHistoryDisplay }
+  | { type: 'updateAnalytics'; analytics: AnalyticsDisplay };
 
 /**
  * Plan history analytics display data.
@@ -555,4 +556,15 @@ export interface NotificationHistoryDisplay {
   time: string;
   /** Whether this notification has been read */
   isRead: boolean;
+}
+
+/**
+ * Analytics display data from Gonzo/Lazyjournal integration.
+ * Includes tool frequency, event patterns, and activity heatmap.
+ */
+export interface AnalyticsDisplay {
+  toolFrequency: Array<{ name: string; count: number }>;
+  wordFrequency: Array<{ name: string; count: number }>;
+  patterns: Array<{ template: string; count: number; examples: string[] }>;
+  heatmapBuckets: Array<{ timestamp: string; count: number }>;
 }

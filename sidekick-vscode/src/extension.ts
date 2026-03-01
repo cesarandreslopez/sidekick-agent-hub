@@ -68,6 +68,7 @@ import { TempFilesTreeProvider } from "./providers/TempFilesTreeProvider";
 import { KnowledgeNoteTreeProvider } from "./providers/KnowledgeNoteTreeProvider";
 import { KnowledgeNoteDecorationProvider } from "./providers/KnowledgeNoteDecorationProvider";
 import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
+import { EventStreamTreeProvider } from "./providers/EventStreamTreeProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
 import { openCliDashboard, disposeDashboardTerminal } from "./services/SidekickCliService";
 import { initLogger, log, logError, showLog } from "./services/Logger";
@@ -652,6 +653,14 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.registerTreeDataProvider('sidekick.subagents', subagentProvider)
     );
     log('Subagent tree provider registered');
+
+    // Register event stream tree provider (depends on sessionMonitor)
+    const eventStreamProvider = new EventStreamTreeProvider(sessionMonitor);
+    context.subscriptions.push(eventStreamProvider);
+    context.subscriptions.push(
+      vscode.window.registerTreeDataProvider('sidekick.eventStream', eventStreamProvider)
+    );
+    log('Event stream tree provider registered');
 
     // Register knowledge notes tree provider + decoration provider (depends on knowledgeNoteService)
     if (knowledgeNoteService) {

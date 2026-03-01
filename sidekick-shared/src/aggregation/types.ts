@@ -112,6 +112,25 @@ export interface SubagentLifecycle {
   durationMs?: number;
 }
 
+/** Frequency entry for tool/word frequency tracking. */
+export interface FrequencyMetric {
+  name: string;
+  count: number;
+}
+
+/** Pattern cluster from event summary clustering. */
+export interface PatternMetric {
+  template: string;
+  count: number;
+  examples: string[];
+}
+
+/** Heatmap bucket for activity visualization. */
+export interface HeatmapBucketMetric {
+  timestamp: string;
+  count: number;
+}
+
 /** Full aggregated metrics snapshot. */
 export interface AggregatedMetrics {
   sessionStartTime: string | null;
@@ -148,4 +167,13 @@ export interface AggregatedMetrics {
 
   timeline: TimelineEvent[];
   latencyStats: LatencyStats | null;
+
+  /** Top tool names by usage frequency. */
+  toolFrequency: FrequencyMetric[];
+  /** Top words from event summaries. */
+  wordFrequency: FrequencyMetric[];
+  /** Detected event patterns from summary clustering. */
+  patterns: PatternMetric[];
+  /** Rolling activity heatmap buckets (minute resolution). */
+  heatmapBuckets: HeatmapBucketMetric[];
 }

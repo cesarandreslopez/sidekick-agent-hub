@@ -194,6 +194,8 @@ export { CodexDatabase } from './providers/codexDatabase';
 // Search
 export { searchSessions } from './search/sessionSearch';
 export type { SearchResult } from './search/sessionSearch';
+export { FilterEngine } from './search/advancedFilter';
+export type { FilterMode, FilterState, HighlightFormat as FilterHighlightFormat } from './search/advancedFilter';
 
 // Context
 export { composeContext } from './context/composer';
@@ -227,6 +229,8 @@ export {
 export type { MessageClassification, NoiseResult } from './formatters/noiseClassifier';
 export { formatSessionText, formatSessionMarkdown, formatSessionJson } from './formatters/sessionDump';
 export type { SessionDumpOptions } from './formatters/sessionDump';
+export { highlight as highlightEvent, clearHighlightCache, HIGHLIGHT_CSS } from './formatters/eventHighlighter';
+export type { HighlightFormat } from './formatters/eventHighlighter';
 
 // Phrases
 export { ALL_PHRASES, getRandomPhrase } from './phrases';
@@ -243,7 +247,18 @@ export type {
   BurnRateInfo,
   SubagentLifecycle,
   AggregatedMetrics,
+  FrequencyMetric,
+  PatternMetric,
+  HeatmapBucketMetric,
 } from './aggregation/types';
+
+// Aggregation — analytics engines
+export { FrequencyTracker } from './aggregation/FrequencyTracker';
+export type { FrequencyEntry, SerializedFrequencyState } from './aggregation/FrequencyTracker';
+export { HeatmapTracker } from './aggregation/HeatmapTracker';
+export type { HeatmapBucket, SerializedHeatmapState } from './aggregation/HeatmapTracker';
+export { PatternExtractor } from './aggregation/PatternExtractor';
+export type { PatternCluster, SerializedPatternState } from './aggregation/PatternExtractor';
 
 // Report — HTML session report generation
 export { generateHtmlReport, parseTranscript, openInBrowser } from './report';

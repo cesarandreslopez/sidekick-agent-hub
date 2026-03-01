@@ -19,6 +19,7 @@ import { GitDiffCache } from '../GitDiffCache';
 import { CliInferenceClient } from '../../inference/CliInferenceClient';
 import { buildNarrativePrompt } from '../../inference/narrativePrompt';
 import type { ProviderId } from 'sidekick-shared';
+import { highlightEvent } from 'sidekick-shared';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
 type MindMapFilter = 'all' | 'file' | 'tool' | 'task' | 'subagent' | 'command' | 'plan' | 'knowledge-note';
@@ -410,7 +411,8 @@ export class SessionsPanel implements SidePanel {
       // Prefix visible width: "[HH:MM:SS] event_type   " = ~23 chars
       const prefixLen = 1 + time.length + 2 + 12; // [time] + space + label
       const summaryMax = Math.max(10, w - prefixLen - suffix.length);
-      const summary = truncate(ev.summary || '', summaryMax);
+      const rawSummary = truncate(ev.summary || '', summaryMax);
+      const summary = highlightEvent(rawSummary, 'blessed');
       let line = `{${color}-fg}[${time}] ${label}{/${color}-fg} ${summary}`;
       if (suffix) {
         line += `  {grey-fg}${suffix.trimStart()}{/grey-fg}`;
