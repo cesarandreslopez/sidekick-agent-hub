@@ -89,7 +89,8 @@ The dashboard is a two-pane terminal UI. The left side shows a navigable list, t
 | 4 | **Notes** | Knowledge notes attached to files |
 | 5 | **Decisions** | Architectural decisions from sessions |
 | 6 | **Plans** | Discovered agent plans from `~/.claude/plans/` |
-| 7 | **Search** | Cross-session full-text search |
+| 7 | **Events** | Live event stream with type badges, timestamps, and keyword-highlighted summaries |
+| 8 | **Charts** | Tool frequency bars, event distribution, activity heatmap, and pattern analysis |
 
 ## Layout Modes
 
@@ -107,7 +108,7 @@ Press `z` to cycle through layout modes:
 
 | Key | Action |
 |-----|--------|
-| `1`–`7` | Switch panel |
+| `1`–`8` | Switch panel |
 | `Tab` | Toggle focus between side list and detail pane |
 | `j` / `↓` | Next item (side) or scroll down (detail) |
 | `k` / `↑` | Previous item (side) or scroll up (detail) |
@@ -149,7 +150,7 @@ Press `z` to cycle through layout modes:
 | Key | Action |
 |-----|--------|
 | `z` | Cycle layout mode |
-| `/` | Open filter overlay |
+| `/` | Open filter overlay (supports substring, fuzzy, regex, and date modes — Tab cycles modes) |
 | `x` | Open context menu for selected item |
 | `?` | Show help |
 | `r` | Generate HTML report for the current session |

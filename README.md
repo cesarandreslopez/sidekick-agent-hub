@@ -48,7 +48,9 @@ sidekick dashboard
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif" alt="Sidekick CLI Dashboard" width="800">
 </p>
 
-Browse sessions, tasks, decisions, knowledge notes, mind maps, and more. Auto-detects your project and session provider. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for keybindings and full usage.
+Browse sessions, tasks, decisions, knowledge notes, charts, and live event streams. Auto-detects your project and session provider. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for keybindings and full usage.
+
+Eight panels: Sessions, Tasks, Kanban, Notes, Decisions, Plans, Events, and Charts. The Events panel streams live session activity with colored type badges. The Charts panel shows tool frequency bars, event distribution, a 60-minute activity heatmap, and pattern analysis. Press `/` to filter with substring, fuzzy, regex, or date modes.
 
 Standalone commands jump directly to a specific panel or run one-shot queries:
 

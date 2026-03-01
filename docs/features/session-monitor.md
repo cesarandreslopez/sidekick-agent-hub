@@ -41,6 +41,10 @@ The dashboard organizes information into three collapsible groups:
 - **Performance & Cost** — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness, Advanced Burn Rate
 
 ![Performance & Cost — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness](../images/performance-and-cost.png)
+- **Analytics** — Tool Frequency chart, Event Distribution doughnut, Activity Heatmap grid, and Event Patterns with template clustering
+
+![Analytics — Tool Frequency, Event Distribution, Activity Heatmap, Event Patterns](../images/analytics_vscode_extension.png)
+
 - **Tasks & Recovery** — Task Performance, Recovery Patterns
 
 ![Tasks & Recovery — Task Performance and Completion Tracking](../images/tasks-and-recovery.png)
@@ -53,6 +57,12 @@ Generate a self-contained HTML report for any session — full transcript with c
 
 - **VS Code**: Run `Sidekick: Generate HTML Report` from the Command Palette or the Session Analytics toolbar. The report opens in a webview panel. Also available as the "HTML Report" format option in `Sidekick: Dump Session Report`.
 - **CLI**: Run `sidekick report` to generate and open in the default browser, or press `r` in the TUI dashboard. See the [CLI HTML Report docs](cli.md#html-report) for flags and examples.
+
+## Event Stream
+
+![Event Stream](../images/event_stream_vscode_extension.png)
+
+A sidebar tree view showing live session events as they happen. Each event displays a color-coded icon by type (user prompt, assistant response, tool use, tool result), a summary, and a timestamp. The view maintains a ring buffer of the 200 most recent events and updates in real-time as your agent works.
 
 ## Session Intelligence
 

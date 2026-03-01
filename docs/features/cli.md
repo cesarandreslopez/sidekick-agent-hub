@@ -320,7 +320,7 @@ Minimum terminal size: 60 columns wide, 15 rows tall.
 
 ## Dashboard Panels
 
-Switch panels with number keys `1`–`7`.
+Switch panels with number keys `1`–`8`.
 
 ### Sessions (1)
 
@@ -356,14 +356,31 @@ Architectural decisions extracted from sessions. Stored in `~/.config/sidekick/d
 
 Discovered agent plans from `~/.claude/plans/`. Shows plan steps with completion status. Plans are matched to the current session via slug cross-reference.
 
-### Search (7)
+### Events (7)
 
-Full-text search across sessions. Press `/` to enter a search query — results appear in the side list with matched snippets. The detail pane has two tabs:
+Live scrollable stream of session events. Each event shows a timestamp, colored type badge (`[USR]`, `[AST]`, `[TOOL]`, `[RES]`), and keyword-highlighted summary text. Events are listed in reverse chronological order with auto-tailing.
+
+![Events Panel](../images/events_cli.png)
+
+The detail pane has two tabs:
 
 | Tab | Description |
 |-----|-------------|
-| **Match** | Event type, timestamp, and full matched content |
-| **Session** | Session path and project path for the matched result |
+| **Full Event** | Event metadata (type, timestamp, tool name) plus the raw JSON payload |
+| **Context** | Three events before and after the selected event for surrounding context |
+
+### Charts (8)
+
+Session analytics visualized as ASCII charts. The side list shows a single "Session Analytics" item; the detail tabs contain the charts.
+
+![Charts Panel](../images/charts_cli.png)
+
+| Tab | Description |
+|-----|-------------|
+| **Tools** | Horizontal bar chart of the top 10 most-used tools with counts |
+| **Events** | Event type distribution (user, assistant, tool_use, tool_result) with percentage bars |
+| **Heatmap** | 60-minute rolling activity heatmap using `░▒▓█` intensity characters — one column per minute with peak rate and active minute count |
+| **Patterns** | Detected event patterns from template clustering (e.g. `Read src/<*>.ts`) with frequency bars and example summaries |
 
 ## Keybindings
 
@@ -371,7 +388,7 @@ Full-text search across sessions. Press `/` to enter a search query — results 
 
 | Key | Action |
 |-----|--------|
-| `1`–`7` | Switch panel |
+| `1`–`8` | Switch panel |
 | `Tab` | Toggle focus between side list and detail pane |
 | `j` / `↓` | Next item (side list) or scroll down (detail pane) |
 | `k` / `↑` | Previous item (side list) or scroll up (detail pane) |
@@ -413,7 +430,7 @@ Full-text search across sessions. Press `/` to enter a search query — results 
 | Key | Action |
 |-----|--------|
 | `r` | Generate HTML report for the current session and open in browser |
-| `/` | Open filter overlay — type to filter the side list |
+| `/` | Open filter overlay — supports substring, fuzzy, regex, and date modes (Tab cycles modes) |
 | `x` | Open context menu for the selected item |
 | `z` | Cycle layout mode (Normal → Expanded → Wide Side) |
 
