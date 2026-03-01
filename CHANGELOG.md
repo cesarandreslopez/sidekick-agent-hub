@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.10] - 2026-03-01
+
+### Added
+
+- **Shared FrequencyTracker**: Generic LRU-bounded frequency counter for tracking tool name, event type, and keyword frequency across sessions
+- **Shared HeatmapTracker**: 60-minute rolling circular buffer tracking event activity intensity per minute
+- **Shared PatternExtractor**: Simplified Drain-style algorithm that clusters event summaries into templates (e.g. `Read src/<*>.ts`) to surface repetitive tool patterns
+- **Shared EventHighlighter**: Keyword-based semantic syntax highlighting for event content — errors red, success green, warnings yellow, actions cyan, file paths magenta, HTTP status/method coloring — with blessed, ANSI, and HTML output formats
+- **Shared AdvancedFilter**: Four filter modes — substring (case-insensitive), fuzzy (space-separated multi-word), regex (with validation), and date range (since/until) — with search-term highlighting
+- **CLI Events Panel** (key 7): Scrollable live event stream with type badges, timestamps, and highlighted summaries; detail tabs for full event JSON and surrounding context
+- **CLI Charts Panel** (key 8): Tool frequency bars, event distribution, 60-minute activity heatmap (`░▒▓█`), and pattern analysis with frequency bars
+- **CLI Multi-Mode Filter**: `/` filter overlay now supports substring, fuzzy, regex, and date modes — Tab cycles modes, regex mode shows validation errors
+- **CLI Search Term Highlighting**: Active filter terms highlighted in side list items
+- **VS Code Analytics Charts**: Tool frequency bar chart, event distribution doughnut chart, activity heatmap grid, and event patterns section in the dashboard webview — theme-safe with runtime CSS variable resolution
+- **VS Code Event Stream Tree View**: Live sidebar tree showing color-coded session events with type icons, timestamps, and ring buffer of 200 events
+- **Tests for FrequencyTracker, HeatmapTracker, PatternExtractor, EventHighlighter, and AdvancedFilter**
+
+### Changed
+
+- **Shared EventAggregator**: Now tracks tool frequency, word frequency, event patterns, and heatmap buckets via the new aggregation primitives
+- **CLI Timeline Highlighting**: Event summaries in the Sessions panel Timeline tab now use semantic keyword coloring
+
+### Removed
+
+- **CLI Search Panel**: Removed redundant Search panel (previously key 7) — the `/` filter serves the same purpose with better multi-mode support
+
 ## [0.12.9] - 2026-02-28
 
 ### Added

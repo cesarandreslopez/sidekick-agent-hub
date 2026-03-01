@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.10] - 2026-03-01
+
+### Added
+
+- **Analytics Charts**: Tool frequency bar chart, event distribution doughnut chart, activity heatmap grid, and event patterns section in the dashboard webview — uses Chart.js with runtime CSS variable resolution for full light/dark theme support
+- **Event Stream Tree View**: New sidebar tree view showing live color-coded session events with type-specific icons, timestamps, and a ring buffer of 200 events
+
 ## [0.12.9] - 2026-02-28
 
 ### Added

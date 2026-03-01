@@ -5,6 +5,20 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.10] - 2026-03-01
+
+### Added
+
+- **Events Panel** (key 7): Scrollable live event stream with colored type badges (`[USR]`, `[AST]`, `[TOOL]`, `[RES]`), timestamps, and keyword-highlighted summaries; detail tabs for full event JSON and surrounding context
+- **Charts Panel** (key 8): Tool frequency horizontal bars, event type distribution, 60-minute activity heatmap using `░▒▓█` intensity characters, and pattern analysis with frequency bars and template text
+- **Multi-Mode Filter**: `/` filter overlay now supports four modes — substring, fuzzy, regex, and date range — Tab cycles modes, regex mode shows red validation errors
+- **Search Term Highlighting**: Active filter terms highlighted in blue within side list items
+- **Timeline Keyword Coloring**: Event summaries in the Sessions panel Timeline tab now use semantic keyword coloring — errors red, success green, tool names cyan, file paths magenta
+
+### Removed
+
+- **Search Panel**: Removed redundant Search panel (previously key 7) — the `/` filter with multi-mode support serves the same purpose
+
 ## [0.12.9] - 2026-02-28
 
 ### Added
