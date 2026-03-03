@@ -43,6 +43,9 @@ coverage/
 .coverage
 htmlcov/
 
+# External/local
+contextful-tlap/
+
 # Python
 __pycache__/
 *.py[cod]
