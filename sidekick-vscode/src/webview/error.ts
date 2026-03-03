@@ -238,9 +238,35 @@ body {
   transform: none;
 }
 
+.apply-fix-btn:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
 .apply-fix-btn.applied {
   background: var(--vscode-testing-iconPassed, #4caf50);
   border-color: var(--vscode-testing-iconPassed, #4caf50);
+}
+
+.apply-fix-btn.applying {
+  position: relative;
+  color: transparent;
+}
+
+.apply-fix-btn.applying::after {
+  content: 'Applying...';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-button-foreground);
+  animation: applyPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes applyPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .loading-spinner {
@@ -340,8 +366,20 @@ body {
 
 .empty-state-text {
   font-size: 13px;
-  max-width: 260px;
+  max-width: 280px;
   line-height: 1.5;
+}
+
+.empty-state-hint {
+  font-size: 12px;
+  max-width: 280px;
+  line-height: 1.5;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+.sk-hidden {
+  display: none !important;
 }
 `;
   document.head.appendChild(style);
@@ -355,24 +393,24 @@ function initializeDOM() {
   if (!app) return;
 
   app.innerHTML = `
-    <div class="error-panel">
-      <div class="error-header" id="error-header" style="display: none;">
+    <main class="error-panel">
+      <div class="error-header sk-hidden" id="error-header">
         <div class="severity-badge" id="severity-badge">Error</div>
         <div class="error-message" id="error-message"></div>
         <div class="error-code-preview" id="error-code-preview"></div>
       </div>
 
-      <div class="loading-spinner" id="loading-spinner">
+      <div class="loading-spinner" id="loading-spinner" role="status" aria-label="Analyzing error">
         <div class="spinner-dots"><span></span><span></span><span></span></div>
         <div class="loading-text">Analyzing error...</div>
       </div>
 
-      <div class="error-state" id="error-state">
+      <div class="error-state" id="error-state" role="alert">
         <div class="error-state-title">Analysis Failed</div>
         <div class="error-state-details" id="error-state-details"></div>
       </div>
 
-      <div id="explanation-content" style="display: none;">
+      <div id="explanation-content" class="sk-hidden" role="region" aria-label="Error explanation">
         <div class="explanation-section">
           <div class="section-title">Root Cause</div>
           <div class="section-content" id="root-cause"></div>
@@ -389,17 +427,18 @@ function initializeDOM() {
         </div>
       </div>
 
-      <div class="fix-preview-section" id="fix-preview" style="display: none;">
+      <div class="fix-preview-section sk-hidden" id="fix-preview">
         <div class="fix-preview-title">Suggested Fix</div>
         <div class="fix-code-block" id="fix-code-block"></div>
-        <button class="apply-fix-btn" id="apply-fix-btn">Apply Fix</button>
+        <button class="apply-fix-btn" id="apply-fix-btn" aria-label="Apply suggested fix">Apply Fix</button>
       </div>
 
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">\u26A0</div>
         <div class="empty-state-text">Waiting for error diagnostic...</div>
+        <div class="empty-state-hint">Click on an error squiggle, then use "Explain Error" or "Fix Error" from the context menu.</div>
       </div>
-    </div>
+    </main>
   `;
 }
 
@@ -419,9 +458,10 @@ function setupEventListeners() {
         fixSuggestion: currentFixSuggestion,
       } as ErrorExplainWebviewMessage);
 
-      // Disable button while applying
+      // Show applying state with animation
       if (applyFixBtn instanceof HTMLButtonElement) {
         applyFixBtn.disabled = true;
+        applyFixBtn.classList.add('applying');
         applyFixBtn.textContent = 'Applying...';
       }
     }
@@ -468,10 +508,11 @@ function handleExtensionMessage(event: MessageEvent) {
       break;
 
     case 'applyFixResult': {
-      // Re-enable apply button
+      // Re-enable apply button and clear applying state
       const applyFixBtn = document.getElementById('apply-fix-btn');
       if (applyFixBtn instanceof HTMLButtonElement) {
         applyFixBtn.disabled = false;
+        applyFixBtn.classList.remove('applying');
         if (message.success) {
           applyFixBtn.textContent = 'Applied';
           applyFixBtn.classList.add('applied');
@@ -497,16 +538,16 @@ function updateUI() {
   const emptyState = document.getElementById('empty-state');
 
   // Hide everything first
-  errorHeader?.style.setProperty('display', 'none');
+  errorHeader?.classList.add('sk-hidden');
   loadingSpinner?.classList.remove('visible');
   errorState?.classList.remove('visible');
-  explanationContent?.style.setProperty('display', 'none');
-  fixPreview?.style.setProperty('display', 'none');
+  explanationContent?.classList.add('sk-hidden');
+  fixPreview?.classList.add('sk-hidden');
   emptyState?.classList.remove('visible');
 
   // Show error header if we have error context
   if (currentErrorContext && currentCode) {
-    errorHeader?.style.setProperty('display', 'block');
+    errorHeader?.classList.remove('sk-hidden');
     renderErrorHeader(currentErrorContext, currentCode);
   }
 
@@ -520,10 +561,10 @@ function updateUI() {
       errorDetails.textContent = errorMessage;
     }
   } else if (currentExplanation) {
-    explanationContent?.style.setProperty('display', 'block');
+    explanationContent?.classList.remove('sk-hidden');
     renderExplanation(currentExplanation);
   } else if (currentFixSuggestion) {
-    fixPreview?.style.setProperty('display', 'block');
+    fixPreview?.classList.remove('sk-hidden');
     renderFixPreview(currentFixSuggestion);
   } else if (!currentErrorContext) {
     // Empty state - no error loaded yet

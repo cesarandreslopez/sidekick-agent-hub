@@ -128,7 +128,7 @@ export function getSharedStyles(): string {
   }
 
   @keyframes sk-value-update {
-    0%   { background-color: color-mix(in srgb, var(--sk-accent-primary) 25%, transparent); }
+    0%   { background-color: color-mix(in srgb, var(--sk-accent-primary) 35%, transparent); }
     100% { background-color: transparent; }
   }
 
@@ -363,7 +363,7 @@ export function getSharedStyles(): string {
 
   /* ── Value Update Pulse ── */
   .sk-value-updated {
-    animation: sk-value-update 0.6s ease-out;
+    animation: sk-value-update 0.7s ease-out;
   }
 
   /* ── Timeline Entry Animations ── */
@@ -458,6 +458,51 @@ export function getSharedStyles(): string {
   .sk-transition-content {
     transition: opacity var(--sk-transition-base),
                 transform var(--sk-transition-base);
+  }
+
+  /* ── Hidden utility ── */
+  .sk-hidden {
+    display: none !important;
+  }
+
+  /* ── Toast notifications ── */
+  .sk-toast {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: var(--vscode-editorWidget-background, var(--sk-surface-overlay));
+    color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+    border: 1px solid var(--sk-border-primary);
+    box-shadow: var(--sk-shadow-lg);
+    border-radius: var(--sk-radius-lg);
+    padding: var(--sk-space-2) var(--sk-space-4);
+    font-size: var(--sk-font-md);
+    font-weight: 500;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 1000;
+  }
+
+  .sk-toast.sk-toast--visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+
+  /* ── Inline context health classes ── */
+  .sk-context-health-score {
+    font-weight: bold;
+  }
+
+  .sk-context-health-note {
+    opacity: 0.7;
+    font-size: 0.85em;
+  }
+
+  .sk-truncation-warning {
+    color: var(--sk-accent-warning);
   }
 </style>`;
 }

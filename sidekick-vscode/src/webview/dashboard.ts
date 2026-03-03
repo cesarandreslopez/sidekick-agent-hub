@@ -85,13 +85,27 @@ let sessionTimerInterval: number | null = null;
 // CLAUDE.md suggestions state
 let currentSuggestions: ClaudeMdSuggestion[] = [];
 
-// Color thresholds for context gauge
-const GAUGE_COLORS = {
-  green: 'rgb(75, 192, 192)',
-  orange: 'rgb(255, 159, 64)',
-  red: 'rgb(255, 99, 132)',
-  background: 'rgba(100, 100, 100, 0.2)'
-};
+/**
+ * Resolves a CSS variable value from the document's computed styles.
+ * Falls back to the provided default if the variable is not set.
+ */
+function resolveCssColor(varName: string, fallback: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  return value || fallback;
+}
+
+/**
+ * Returns gauge colors resolved from the current theme's design tokens.
+ * Called lazily so values are read after the DOM is ready and themed.
+ */
+function getGaugeColors() {
+  return {
+    green: resolveCssColor('--sk-accent-success', '#4caf50'),
+    orange: resolveCssColor('--sk-accent-warning', '#ff9800'),
+    red: resolveCssColor('--sk-accent-error', '#f44336'),
+    background: 'rgba(100, 100, 100, 0.2)',
+  };
+}
 
 /**
  * Applies a brief flash animation to an element when its value changes.
@@ -157,17 +171,19 @@ function getShortModelName(modelId: string): string {
 
 /**
  * Gets the appropriate color for context gauge based on percentage.
+ * Resolves from current theme's design tokens.
  * @param percent - Context usage percentage (0-100)
  * @returns CSS color string
  */
 function getGaugeColor(percent: number): string {
+  const colors = getGaugeColors();
   if (percent >= 95) {
-    return GAUGE_COLORS.red;
+    return colors.red;
   }
   if (percent >= 80) {
-    return GAUGE_COLORS.orange;
+    return colors.orange;
   }
-  return GAUGE_COLORS.green;
+  return colors.green;
 }
 
 /**
@@ -185,7 +201,7 @@ function initContextGauge(): void {
     data: {
       datasets: [{
         data: [0, 100],
-        backgroundColor: [GAUGE_COLORS.green, GAUGE_COLORS.background],
+        backgroundColor: [getGaugeColors().green, getGaugeColors().background],
         borderWidth: 0
       }]
     },
@@ -218,7 +234,7 @@ function updateContextGauge(percent: number): void {
     contextChart.data.datasets[0].data = [clampedPercent, 100 - clampedPercent];
     contextChart.data.datasets[0].backgroundColor = [
       getGaugeColor(clampedPercent),
-      GAUGE_COLORS.background
+      getGaugeColors().background
     ];
     contextChart.update('none');
   }
@@ -469,6 +485,26 @@ function requestAnalysis(): void {
 }
 
 /**
+ * Shows a brief toast notification that auto-dismisses.
+ * @param message - Text to display
+ * @param durationMs - Duration in milliseconds before hiding (default 1500)
+ */
+function showToast(message: string, durationMs = 1500): void {
+  let toast = document.getElementById('sk-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'sk-toast';
+    toast.className = 'sk-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('sk-toast--visible');
+  setTimeout(() => toast!.classList.remove('sk-toast--visible'), durationMs);
+}
+
+/**
  * Copies a suggestion to clipboard.
  * @param index - Index of suggestion in currentSuggestions array
  */
@@ -478,6 +514,7 @@ function copySuggestion(index: number): void {
       type: 'copySuggestion',
       text: currentSuggestions[index].suggestion
     });
+    showToast('Copied to clipboard');
   }
 }
 
@@ -555,7 +592,7 @@ function renderSuggestions(suggestions: ClaudeMdSuggestion[]): void {
         <span class="label">Why:</span> ${escapeHtml(s.reasoning)}
       </div>
       <div class="suggestion-actions">
-        <button class="copy-btn" onclick="copySuggestion(${i})">Copy</button>
+        <button class="copy-btn" onclick="copySuggestion(${i})" aria-label="Copy suggestion to clipboard">Copy</button>
       </div>
     </div>
   `).join('');
@@ -586,8 +623,8 @@ function updateContextHealthDisplay(score: number, compactionCount: number): voi
     : 'var(--vscode-charts-red, #f14c4c)';
 
   el.innerHTML = `
-    <span style="color: ${color}; font-weight: bold;">${score}%</span>
-    <span style="opacity: 0.7; font-size: 0.85em;"> · ${compactionCount} compaction${compactionCount === 1 ? '' : 's'}</span>
+    <span class="sk-context-health-score" style="color: ${color};">${score}%</span>
+    <span class="sk-context-health-note"> · ${compactionCount} compaction${compactionCount === 1 ? '' : 's'}</span>
   `;
   el.style.display = 'flex';
 }
@@ -606,8 +643,8 @@ function updateTruncationDisplay(count: number, byTool: Array<{ tool: string; co
 
   const breakdown = byTool.map(t => `${escapeHtml(t.tool)}: ${t.count}`).join(', ');
   el.innerHTML = `
-    <span style="color: var(--vscode-charts-yellow, #cca700);">⚠ ${count} truncated</span>
-    ${breakdown ? `<span style="opacity: 0.7; font-size: 0.85em;"> (${breakdown})</span>` : ''}
+    <span class="sk-truncation-warning">⚠ ${count} truncated</span>
+    ${breakdown ? `<span class="sk-context-health-note"> (${breakdown})</span>` : ''}
   `;
   el.style.display = 'flex';
 }

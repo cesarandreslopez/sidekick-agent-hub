@@ -102,6 +102,12 @@ body {
   color: var(--vscode-button-foreground);
 }
 
+.complexity-btn:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -364,10 +370,10 @@ function initializeDOM() {
   if (!app) return;
 
   app.innerHTML = `
-    <div class="explain-panel">
-      <div class="toolbar">
+    <main class="explain-panel">
+      <nav class="toolbar" aria-label="Explanation settings">
         <div class="complexity-bar" id="complexity-bar"></div>
-      </div>
+      </nav>
       <div class="loading-spinner" id="loading-spinner">
         <div class="spinner-dots"><span></span><span></span><span></span></div>
         <div class="loading-text">Generating explanation...</div>
@@ -375,15 +381,15 @@ function initializeDOM() {
       <div class="error-message" id="error-message">
         <div class="error-title">Explanation Failed</div>
         <div class="error-details" id="error-details"></div>
-        <button class="retry-btn" id="retry-btn">Try Again</button>
+        <button class="retry-btn" id="retry-btn" aria-label="Retry explanation">Try Again</button>
       </div>
-      <div id="explanation-content"></div>
+      <div id="explanation-content" role="region" aria-label="Explanation output" aria-live="polite"></div>
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">&lt;/&gt;</div>
         <div class="empty-state-title">Explain Selection</div>
         <div class="empty-state-hint">Select code in the editor, then use <kbd>Explain Selection</kbd> from the command palette or context menu.</div>
       </div>
-    </div>
+    </main>
   `;
 
   // Render complexity buttons
@@ -400,11 +406,14 @@ function renderComplexityBar() {
   // Create button for each complexity level
   const levels: ComplexityLevel[] = ['eli5', 'curious-amateur', 'imposter-syndrome', 'senior', 'phd'];
 
+  complexityBar.setAttribute('role', 'tablist');
+  complexityBar.setAttribute('aria-label', 'Explanation complexity level');
+
   complexityBar.innerHTML = levels
-    .map(level => {
+    .map((level, i) => {
       const isActive = level === state.complexity;
       const label = COMPLEXITY_LABELS[level];
-      return `<button class="complexity-btn ${isActive ? 'active' : ''}" data-complexity="${level}">${label}</button>`;
+      return `<button class="complexity-btn ${isActive ? 'active' : ''}" data-complexity="${level}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" id="complexity-tab-${i}">${label}</button>`;
     })
     .join('');
 }
@@ -428,6 +437,33 @@ function setupEventListeners() {
     }
   });
 
+  // Keyboard arrow navigation for complexity bar (roving tabindex)
+  complexityBar?.addEventListener('keydown', (e) => {
+    const buttons = Array.from(complexityBar.querySelectorAll('.complexity-btn')) as HTMLElement[];
+    const current = document.activeElement as HTMLElement;
+    const idx = buttons.indexOf(current);
+    if (idx === -1) return;
+
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      next = (idx + 1) % buttons.length;
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      next = (idx - 1 + buttons.length) % buttons.length;
+    } else if (e.key === 'Home') {
+      next = 0;
+    } else if (e.key === 'End') {
+      next = buttons.length - 1;
+    }
+
+    if (next !== -1) {
+      e.preventDefault();
+      buttons[idx].setAttribute('tabindex', '-1');
+      buttons[next].setAttribute('tabindex', '0');
+      buttons[next].focus();
+      buttons[next].click();
+    }
+  });
+
   // Retry button
   const retryBtn = document.getElementById('retry-btn');
   retryBtn?.addEventListener('click', () => {
@@ -435,7 +471,6 @@ function setupEventListeners() {
       requestExplanation(state.code, state.complexity, state.fileContext);
     }
   });
-
 }
 
 /**
