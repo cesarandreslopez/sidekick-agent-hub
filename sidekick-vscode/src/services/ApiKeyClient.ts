@@ -9,6 +9,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { ClaudeClient, CompletionOptions } from '../types';
+import { requestWithTimeout } from '../utils/requestWithTimeout';
 
 /**
  * Claude client using API key authentication.
@@ -43,56 +44,19 @@ export class ApiKeyClient implements ClaudeClient {
    * @returns Promise resolving to the completion text
    */
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
-    // Check for early abort
-    if (options?.signal?.aborted) {
-      const error = new Error('Request was cancelled');
-      error.name = 'AbortError';
-      throw error;
-    }
-
-    // Create abort controller for timeout
-    const abortController = new AbortController();
-    const timeoutMs = options?.timeout ?? 30000;
-    const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
-
-    // Link external signal to our internal abort controller
-    let externalAbortHandler: (() => void) | undefined;
-    if (options?.signal) {
-      externalAbortHandler = () => abortController.abort();
-      options.signal.addEventListener('abort', externalAbortHandler);
-    }
-
-    try {
+    return requestWithTimeout(options, async (signal) => {
       const message = await this.client.messages.create(
         {
           model: this.mapModel(options?.model),
           max_tokens: options?.maxTokens ?? 1024,
           messages: [{ role: 'user', content: prompt }],
         },
-        { signal: abortController.signal }
+        { signal }
       );
 
       const textBlock = message.content.find(b => b.type === 'text');
       return textBlock?.text ?? '';
-    } catch (error) {
-      // Check if it was a user cancellation vs timeout
-      if (error instanceof Error && error.name === 'AbortError') {
-        if (options?.signal?.aborted) {
-          const abortError = new Error('Request was cancelled');
-          abortError.name = 'AbortError';
-          throw abortError;
-        }
-        // Import TimeoutError for timeout case
-        const { TimeoutError } = await import('../types');
-        throw new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
-      if (externalAbortHandler && options?.signal) {
-        options.signal.removeEventListener('abort', externalAbortHandler);
-      }
-    }
+    });
   }
 
   /**

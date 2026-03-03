@@ -53,6 +53,22 @@ export const CACHE_KEY_PREFIX_LENGTH = 500;
 export const CACHE_KEY_SUFFIX_LENGTH = 200;
 
 // ---------------------------------------------------------------------------
+// Completion character limits (must match values in system prompts)
+// ---------------------------------------------------------------------------
+
+/** Max chars for single-line code completions. */
+export const CODE_SINGLE_LINE_LIMIT = 500;
+
+/** Max chars for multi-line code completions. */
+export const CODE_MULTI_LINE_LIMIT = 800;
+
+/** Max chars for single-line prose completions. */
+export const PROSE_SINGLE_LINE_LIMIT = 2_000;
+
+/** Max chars for multi-line prose completions. */
+export const PROSE_MULTI_LINE_LIMIT = 3_000;
+
+// ---------------------------------------------------------------------------
 // Token / output limits
 // ---------------------------------------------------------------------------
 

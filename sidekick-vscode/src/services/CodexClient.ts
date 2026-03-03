@@ -17,9 +17,10 @@ import * as readline from 'readline';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ClaudeClient, CompletionOptions, TimeoutError, ConnectionError } from '../types';
+import { ClaudeClient, CompletionOptions, ConnectionError } from '../types';
 import { log, logError } from './Logger';
 import { findCli } from '../utils/cliPathResolver';
+import { requestWithTimeout } from '../utils/requestWithTimeout';
 
 /**
  * Finds the Codex CLI executable path.
@@ -44,13 +45,6 @@ function findCodexCli(): string {
  */
 export class CodexClient implements ClaudeClient {
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
-    if (options?.signal?.aborted) {
-      const err = new Error('Request was cancelled');
-      err.name = 'AbortError';
-      throw err;
-    }
-
-    const timeoutMs = options?.timeout ?? 30000;
     const codexPath = findCodexCli();
 
     const args = ['exec', '--experimental-json', '--sandbox', 'read-only', '--skip-git-repo-check'];
@@ -66,98 +60,64 @@ export class CodexClient implements ClaudeClient {
       env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE = 'codex_sdk_ts';
     }
 
-    return new Promise<string>((resolve, reject) => {
-      // Internal controller unifies external abort + timeout
-      const controller = new AbortController();
-      let settled = false;
-
-      const settle = (fn: () => void) => {
-        if (settled) return;
-        settled = true;
-        controller.abort();
-        fn();
-      };
-
-      // Timeout
-      const timer = setTimeout(() => {
-        settle(() => reject(new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs)));
-      }, timeoutMs);
-
-      // External abort
-      const onAbort = () => {
-        clearTimeout(timer);
-        settle(() => {
-          const err = new Error('Request was cancelled');
-          err.name = 'AbortError';
-          reject(err);
+    return requestWithTimeout(options, (signal) => {
+      return new Promise<string>((resolve, reject) => {
+        // Spawn the CLI
+        const child = spawn(codexPath, args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env,
         });
-      };
-      options?.signal?.addEventListener('abort', onAbort, { once: true });
 
-      // Spawn the CLI
-      const child = spawn(codexPath, args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env,
-      });
+        // Kill child on abort (covers both timeout and user cancellation)
+        signal.addEventListener('abort', () => {
+          if (!child.killed) child.kill('SIGTERM');
+        }, { once: true });
 
-      // Kill child on abort
-      controller.signal.addEventListener('abort', () => {
-        if (!child.killed) child.kill('SIGTERM');
-      }, { once: true });
+        // Write prompt to stdin and close
+        child.stdin.write(prompt);
+        child.stdin.end();
 
-      // Write prompt to stdin and close
-      child.stdin.write(prompt);
-      child.stdin.end();
+        // Collect stderr for error reporting
+        let stderr = '';
+        child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
 
-      // Collect stderr for error reporting
-      let stderr = '';
-      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+        // Parse JSONL from stdout
+        let response = '';
+        let errorMessage = '';
 
-      // Parse JSONL from stdout
-      let response = '';
-      let errorMessage = '';
+        const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+        rl.on('line', (line: string) => {
+          try {
+            const parsed = JSON.parse(line);
+            const type = parsed.type;
 
-      const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
-      rl.on('line', (line: string) => {
-        try {
-          const parsed = JSON.parse(line);
-          const type = parsed.type;
+            // item.completed with agent_message carries the response text
+            if (type === 'item.completed' && parsed.item?.type === 'agent_message') {
+              response = parsed.item.text ?? '';
+            }
 
-          // item.completed with agent_message carries the response text
-          if (type === 'item.completed' && parsed.item?.type === 'agent_message') {
-            response = parsed.item.text ?? '';
+            // turn.failed carries error info
+            if (type === 'turn.failed' && parsed.error?.message) {
+              errorMessage = parsed.error.message;
+            }
+          } catch {
+            // Skip non-JSON lines
           }
+        });
 
-          // turn.failed carries error info
-          if (type === 'turn.failed' && parsed.error?.message) {
-            errorMessage = parsed.error.message;
+        child.on('error', (err) => reject(err));
+
+        child.on('close', (code) => {
+          if (errorMessage) {
+            reject(new Error(`Codex error: ${errorMessage}`));
+          } else if (code !== 0 && code !== null) {
+            reject(new Error(
+              `Codex exited with code ${code}${stderr ? ': ' + stderr.trim() : ''}`
+            ));
+          } else {
+            resolve(response);
           }
-        } catch {
-          // Skip non-JSON lines
-        }
-      });
-
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        options?.signal?.removeEventListener('abort', onAbort);
-        settle(() => reject(err));
-      });
-
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        options?.signal?.removeEventListener('abort', onAbort);
-
-        if (settled) return;
-
-        if (errorMessage) {
-          settle(() => reject(new Error(`Codex error: ${errorMessage}`)));
-        } else if (code !== 0 && code !== null) {
-          settle(() => reject(new Error(
-            `Codex exited with code ${code}${stderr ? ': ' + stderr.trim() : ''}`
-          )));
-        } else {
-          settle(() => resolve(response));
-        }
+        });
       });
     });
   }

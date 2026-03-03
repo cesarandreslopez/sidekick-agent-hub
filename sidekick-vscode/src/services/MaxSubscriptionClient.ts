@@ -12,10 +12,11 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
-import { ClaudeClient, CompletionOptions, TimeoutError, ApiError, ConnectionError } from '../types';
+import { spawnSync } from 'child_process';
+import { ClaudeClient, CompletionOptions, ApiError, ConnectionError } from '../types';
 import { log, logError } from './Logger';
 import { findCli, resolveCommandPath } from '../utils/cliPathResolver';
+import { requestWithTimeout } from '../utils/requestWithTimeout';
 
 // Type for the query function from the SDK
 type QueryFunction = typeof import('@anthropic-ai/claude-agent-sdk').query;
@@ -207,24 +208,12 @@ export class MaxSubscriptionClient implements ClaudeClient {
    * @throws Error if request times out or fails
    */
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
-    const abortController = new AbortController();
-    const timeoutMs = options?.timeout ?? 30000;
-    const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+    log(`MaxSubscriptionClient.complete called, model=${options?.model}, timeout=${options?.timeout ?? 30000}`);
 
-    // Link external signal to our internal abort controller if provided
-    let externalAbortHandler: (() => void) | undefined;
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        clearTimeout(timeoutId);
-        throw new Error('Request was cancelled');
-      }
-      externalAbortHandler = () => abortController.abort();
-      options.signal.addEventListener('abort', externalAbortHandler);
-    }
+    return requestWithTimeout(options, async (signal) => {
+      const abortController = new AbortController();
+      signal.addEventListener('abort', () => abortController.abort(), { once: true });
 
-    log(`MaxSubscriptionClient.complete called, model=${options?.model}, timeout=${timeoutMs}`);
-
-    try {
       const query = await getQueryFunction();
       const cwd = getWorkingDirectory();
 
@@ -262,25 +251,7 @@ export class MaxSubscriptionClient implements ClaudeClient {
         }
       }
       throw new ApiError('No result received', 'claude-max');
-    } catch (error) {
-      logError('MaxSubscriptionClient.complete error', error);
-      if (error instanceof Error && error.name === 'AbortError') {
-        // Check if external signal was aborted (user cancellation) vs timeout
-        if (options?.signal?.aborted) {
-          const abortError = new Error('Request was cancelled');
-          abortError.name = 'AbortError';
-          throw abortError;
-        }
-        throw new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
-      // Clean up external signal listener
-      if (externalAbortHandler && options?.signal) {
-        options.signal.removeEventListener('abort', externalAbortHandler);
-      }
-    }
+    });
   }
 
   /**
@@ -299,9 +270,7 @@ export class MaxSubscriptionClient implements ClaudeClient {
 
       log(`Testing CLI availability with: ${claudePath}`);
 
-      // Use shell: true to handle paths with spaces
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      execSync(`"${claudePath}" --version`, { stdio: 'ignore', shell: true } as any);
+      spawnSync(claudePath, ['--version'], { stdio: 'ignore' });
       log('Claude CLI is available');
       return true;
     } catch (error) {

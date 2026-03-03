@@ -203,7 +203,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   // Pre-warm SDK in background (don't await - let activation continue)
-  warmupSdk().catch(() => { /* ignored - will retry on first request */ });
+  warmupSdk().catch((err) => logError('SDK pre-warm failed', err));
 
   // Initialize completion service (depends on authService)
   completionService = new CompletionService(authService);

@@ -12,6 +12,12 @@ import type { ErrorContext } from '../types/errorExplanation';
 import type { ComplexityLevel } from '../types/explain';
 import { COMPLEXITY_LABELS } from '../types/explain';
 import { stripMarkdownFences } from './markdownUtils';
+import {
+  CODE_SINGLE_LINE_LIMIT,
+  CODE_MULTI_LINE_LIMIT,
+  PROSE_SINGLE_LINE_LIMIT,
+  PROSE_MULTI_LINE_LIMIT,
+} from '../constants';
 
 /**
  * Patterns that indicate a conversational response rather than code.
@@ -74,8 +80,8 @@ export function getSystemPrompt(multiline: boolean, language?: string): string {
 
   // Character limits based on file type
   const charLimit = isProse
-    ? (multiline ? '3000' : '2000')
-    : (multiline ? '800' : '500');
+    ? (multiline ? String(PROSE_MULTI_LINE_LIMIT) : String(PROSE_SINGLE_LINE_LIMIT))
+    : (multiline ? String(CODE_MULTI_LINE_LIMIT) : String(CODE_SINGLE_LINE_LIMIT));
 
   const lineLimit = multiline ? 'up to 10 lines' : '1-3 lines';
 
@@ -189,8 +195,8 @@ export function cleanCompletion(
 
   // Limits must match what we tell Claude in getSystemPrompt
   const maxLength = isProse
-    ? (multiline ? 3000 : 2000)
-    : (multiline ? 800 : 500);
+    ? (multiline ? PROSE_MULTI_LINE_LIMIT : PROSE_SINGLE_LINE_LIMIT)
+    : (multiline ? CODE_MULTI_LINE_LIMIT : CODE_SINGLE_LINE_LIMIT);
 
   log(`Clean: isProse=${isProse}, maxLength=${maxLength}`);
 

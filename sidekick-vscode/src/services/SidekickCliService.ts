@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { log } from './Logger';
 import { findCli } from '../utils/cliPathResolver';
 
@@ -69,11 +69,13 @@ export interface CliVersionCheck {
  */
 export function checkCliVersion(cliPath: string): CliVersionCheck | null {
   try {
-    const output = execSync(`"${cliPath}" --version`, {
+    const result = spawnSync(cliPath, ['--version'], {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 5000,
-    }).trim();
+    });
+    if (result.error || result.status !== 0) return null;
+    const output = (result.stdout ?? '').trim();
 
     // Parse version — output may be just "0.12.0" or "sidekick/0.12.0"
     const match = output.match(/(\d+\.\d+\.\d+)/);

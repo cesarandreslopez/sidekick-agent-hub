@@ -7,8 +7,9 @@
  * @module services/OpenCodeClient
  */
 
-import { ClaudeClient, CompletionOptions, TimeoutError, ConnectionError } from '../types';
+import { ClaudeClient, CompletionOptions, ConnectionError } from '../types';
 import { log, logError } from './Logger';
+import { requestWithTimeout } from '../utils/requestWithTimeout';
 
 const DEFAULT_PORT = 4096;
 const DEFAULT_HOST = '127.0.0.1';
@@ -83,16 +84,9 @@ export class OpenCodeClient implements ClaudeClient {
   }
 
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
-    if (options?.signal?.aborted) {
-      const err = new Error('Request was cancelled');
-      err.name = 'AbortError';
-      throw err;
-    }
+    return requestWithTimeout(options, async () => {
+      const client = await this.getClient();
 
-    const timeoutMs = options?.timeout ?? 30000;
-    const client = await this.getClient();
-
-    const work = async (): Promise<string> => {
       // Create a session
       const session = await client.session.create({ body: {} });
       const sessionId = session.data?.id ?? session.id;
@@ -134,22 +128,7 @@ export class OpenCodeClient implements ClaudeClient {
       if (text) return text;
 
       return JSON.stringify(data);
-    };
-
-    // Race the work against a timeout
-    const timeout = new Promise<never>((_, reject) => {
-      const id = setTimeout(() => {
-        reject(new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs));
-      }, timeoutMs);
-      options?.signal?.addEventListener('abort', () => {
-        clearTimeout(id);
-        const err = new Error('Request was cancelled');
-        err.name = 'AbortError';
-        reject(err);
-      });
     });
-
-    return Promise.race([work(), timeout]);
   }
 
   /**
