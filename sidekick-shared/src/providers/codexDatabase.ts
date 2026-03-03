@@ -29,7 +29,6 @@ export class CodexDatabase {
 
   isAvailable(): boolean {
     try {
-      if (!fs.existsSync(this.dbPath)) return false;
       return fs.statSync(this.dbPath).size > 0;
     } catch { return false; }
   }

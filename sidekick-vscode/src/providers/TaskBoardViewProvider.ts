@@ -18,6 +18,7 @@ import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
+import { PERSIST_INTERVAL_MS } from '../constants';
 
 /**
  * WebviewViewProvider for the session task board.
@@ -52,8 +53,6 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Timestamp of last auto-persistence write */
   private _lastPersistTime = 0;
 
-  /** Minimum interval between auto-persistence writes (ms) */
-  private readonly _PERSIST_INTERVAL_MS = 30_000;
 
   /** Manages rotating phrase timers */
   private readonly _phrases: PhraseRotationManager;
@@ -206,7 +205,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _maybePersistTasks(): void {
     if (!this._taskPersistence || !this._sessionMonitor.isActive()) return;
-    if (Date.now() - this._lastPersistTime < this._PERSIST_INTERVAL_MS) return;
+    if (Date.now() - this._lastPersistTime < PERSIST_INTERVAL_MS) return;
     this._lastPersistTime = Date.now();
     this._saveCurrentTasksToPersistence();
   }

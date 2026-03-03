@@ -49,6 +49,7 @@ import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
+import { MAX_DISPLAY_TIMELINE } from '../constants';
 
 /**
  * WebviewViewProvider for the session analytics dashboard.
@@ -90,8 +91,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Timeline events (most recent first) */
   private _timeline: TimelineEvent[] = [];
 
-  /** Maximum timeline events to display */
-  private readonly MAX_DISPLAY_TIMELINE = 20;
 
   /** QuotaService for subscription quota data */
   private readonly _quotaService?: QuotaService;
@@ -1414,8 +1413,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._timeline.unshift(event);
 
     // Cap at display limit
-    if (this._timeline.length > this.MAX_DISPLAY_TIMELINE) {
-      this._timeline = this._timeline.slice(0, this.MAX_DISPLAY_TIMELINE);
+    if (this._timeline.length > MAX_DISPLAY_TIMELINE) {
+      this._timeline = this._timeline.slice(0, MAX_DISPLAY_TIMELINE);
     }
 
     this._updateTimelineState();
@@ -1741,7 +1740,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._updateToolAnalyticsState();
 
     // Sync timeline
-    this._timeline = [...stats.timeline].slice(0, this.MAX_DISPLAY_TIMELINE);
+    this._timeline = [...stats.timeline].slice(0, MAX_DISPLAY_TIMELINE);
     this._updateTimelineState();
 
     // Sync error details

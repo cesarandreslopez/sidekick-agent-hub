@@ -41,6 +41,7 @@ vi.mock('fs', async (importOriginal) => {
 
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
+  execFileSync: vi.fn(),
   spawnSync: vi.fn().mockReturnValue({ stdout: '', status: 0, error: undefined }),
 }));
 
@@ -49,13 +50,15 @@ vi.mock('./Logger', () => ({
 }));
 
 import { findSidekickCli, openCliDashboard, disposeDashboardTerminal, checkCliVersion, isNewer } from './SidekickCliService';
-import { execSync, spawnSync } from 'child_process';
+import { clearCliCache } from '../utils/cliPathResolver';
+import { execSync, execFileSync, spawnSync } from 'child_process';
 
 describe('SidekickCliService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset module-level terminal state by disposing
+    // Reset module-level terminal state and cached CLI paths
     disposeDashboardTerminal();
+    clearCliCache();
 
     mockGetConfiguration.mockReturnValue({
       get: vi.fn().mockReturnValue(''),
@@ -103,8 +106,8 @@ describe('SidekickCliService', () => {
       mockGetConfiguration.mockReturnValue({
         get: vi.fn().mockReturnValue(''),
       });
-      mockExistsSync.mockImplementation((p) => p === '/resolved/sidekick');
-      vi.mocked(execSync).mockReturnValue('/resolved/sidekick\n');
+      mockExistsSync.mockReturnValue(false);
+      vi.mocked(execFileSync).mockReturnValue('/resolved/sidekick\n');
 
       expect(findSidekickCli()).toBe('/resolved/sidekick');
     });
@@ -114,7 +117,7 @@ describe('SidekickCliService', () => {
         get: vi.fn().mockReturnValue(''),
       });
       mockExistsSync.mockReturnValue(false);
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         throw new Error('not found');
       });
 

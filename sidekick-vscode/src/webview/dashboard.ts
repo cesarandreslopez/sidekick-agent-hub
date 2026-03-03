@@ -94,17 +94,23 @@ function resolveCssColor(varName: string, fallback: string): string {
   return value || fallback;
 }
 
+/** Cached gauge colors, resolved once from theme tokens on first access. */
+let _gaugeColors: { green: string; orange: string; red: string; background: string } | null = null;
+
 /**
  * Returns gauge colors resolved from the current theme's design tokens.
- * Called lazily so values are read after the DOM is ready and themed.
+ * Cached after first call since theme tokens don't change within a webview lifecycle.
  */
 function getGaugeColors() {
-  return {
-    green: resolveCssColor('--sk-accent-success', '#4caf50'),
-    orange: resolveCssColor('--sk-accent-warning', '#ff9800'),
-    red: resolveCssColor('--sk-accent-error', '#f44336'),
-    background: 'rgba(100, 100, 100, 0.2)',
-  };
+  if (!_gaugeColors) {
+    _gaugeColors = {
+      green: resolveCssColor('--sk-accent-success', '#4caf50'),
+      orange: resolveCssColor('--sk-accent-warning', '#ff9800'),
+      red: resolveCssColor('--sk-accent-error', '#f44336'),
+      background: 'rgba(100, 100, 100, 0.2)',
+    };
+  }
+  return _gaugeColors;
 }
 
 /** Tracks last pulse time per element to throttle animation frequency. */

@@ -10,8 +10,11 @@
 // Design Tokens
 // ---------------------------------------------------------------------------
 
+let _designTokenCSS: string | undefined;
+
 export function getDesignTokenCSS(): string {
-  return `<style id="sk-design-tokens">
+  if (_designTokenCSS) return _designTokenCSS;
+  return (_designTokenCSS = `<style id="sk-design-tokens">
   :root {
     /* ── Spacing (base 4px) ── */
     --sk-space-1: 4px;
@@ -121,15 +124,18 @@ export function getDesignTokenCSS(): string {
       transition-duration: 0.01ms !important;
     }
   }
-</style>`;
+</style>`);
 }
 
 // ---------------------------------------------------------------------------
 // Shared Component Styles
 // ---------------------------------------------------------------------------
 
+let _sharedStyles: string | undefined;
+
 export function getSharedStyles(): string {
-  return `<style id="sk-shared-styles">
+  if (_sharedStyles) return _sharedStyles;
+  return (_sharedStyles = `<style id="sk-shared-styles">
   /* ── Keyframe Animations ── */
   @keyframes sk-shimmer {
     0%   { background-position: -200% 0; }
@@ -560,5 +566,5 @@ export function getSharedStyles(): string {
       padding: 1px 4px;
     }
   }
-</style>`;
+</style>`);
 }

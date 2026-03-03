@@ -11,12 +11,27 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { log } from '../services/Logger';
+
+/** Cache of resolved CLI paths (cleared only by `clearCliCache`). */
+const resolvedPaths = new Map<string, string>();
+
+/**
+ * Clears the cached CLI path for a given binary name (or all if omitted).
+ * Useful when user changes the configured path in settings.
+ */
+export function clearCliCache(binaryName?: string): void {
+  if (binaryName) {
+    resolvedPaths.delete(binaryName);
+  } else {
+    resolvedPaths.clear();
+  }
+}
 
 /**
  * Resolves a command name to its absolute path using the system's PATH.
- * Works cross-platform: `which` on Unix, `where` on Windows.
+ * Uses `which` on Unix, `where` on Windows — via `execFileSync` (no shell).
  *
  * @param command - The command name to resolve (e.g., 'claude', 'codex')
  * @returns The absolute path to the command, or null if not found
@@ -24,13 +39,14 @@ import { log } from '../services/Logger';
 export function resolveCommandPath(command: string): string | null {
   try {
     const isWindows = process.platform === 'win32';
-    const cmd = isWindows ? `where ${command}` : `which ${command}`;
-    const result = execSync(cmd, {
+    const bin = isWindows ? 'where' : 'which';
+    const result = execFileSync(bin, [command], {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 5000,
     });
     const resolved = result.trim().split(/\r?\n/)[0];
-    if (resolved && fs.existsSync(resolved)) {
+    if (resolved) {
       log(`Resolved '${command}' from PATH: ${resolved}`);
       return resolved;
     }
@@ -102,11 +118,16 @@ export interface FindCliOptions {
 export function findCli(options: FindCliOptions): string | null {
   const { binaryName, configuredPath, extraPaths } = options;
 
+  // Return cached result if available
+  const cached = resolvedPaths.get(binaryName);
+  if (cached) return cached;
+
   // 1. Check user-configured path
   if (configuredPath && configuredPath.trim() !== '') {
     const expandedPath = configuredPath.replace(/^~/, os.homedir());
     if (fs.existsSync(expandedPath)) {
       log(`Using configured ${binaryName} path: ${expandedPath}`);
+      resolvedPaths.set(binaryName, expandedPath);
       return expandedPath;
     }
     log(`Configured ${binaryName} path not found: ${expandedPath}`);
@@ -119,6 +140,7 @@ export function findCli(options: FindCliOptions): string | null {
 
     if (fs.existsSync(candidatePath)) {
       log(`Found ${binaryName} at: ${candidatePath}`);
+      resolvedPaths.set(binaryName, candidatePath);
       return candidatePath;
     }
   }
@@ -127,6 +149,7 @@ export function findCli(options: FindCliOptions): string | null {
   log(`${binaryName} not found in common paths, resolving from PATH...`);
   const resolved = resolveCommandPath(binaryName);
   if (resolved) {
+    resolvedPaths.set(binaryName, resolved);
     return resolved;
   }
 
