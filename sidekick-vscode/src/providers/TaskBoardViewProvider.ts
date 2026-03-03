@@ -17,6 +17,7 @@ import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 
 /**
  * WebviewViewProvider for the session task board.
@@ -54,11 +55,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Minimum interval between auto-persistence writes (ms) */
   private readonly _PERSIST_INTERVAL_MS = 30_000;
 
-  /** Interval for rotating header phrase */
-  private _phraseInterval?: ReturnType<typeof setInterval>;
-
-  /** Interval for rotating empty-state phrase */
-  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
+  /** Manages rotating phrase timers */
+  private readonly _phrases: PhraseRotationManager;
 
   /**
    * Creates a new TaskBoardViewProvider.
@@ -68,6 +66,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     private readonly _sessionMonitor: SessionMonitor,
     private readonly _taskPersistence?: TaskPersistenceService
   ) {
+    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
     this._state = {
       columns: TaskBoardViewProvider.COLUMN_ORDER.map(status => ({
         status,
@@ -140,25 +139,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       this._disposables
     );
 
-    this._startPhraseTimers();
+    this._phrases.start(() => this._state.sessionActive);
     log('Task board webview resolved');
-  }
-
-  private _startPhraseTimers(): void {
-    this._clearPhraseTimers();
-    this._phraseInterval = setInterval(() => {
-      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
-    }, 60_000);
-    this._emptyPhraseInterval = setInterval(() => {
-      if (!this._state.sessionActive) {
-        this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
-      }
-    }, 30_000);
-  }
-
-  private _clearPhraseTimers(): void {
-    if (this._phraseInterval) { clearInterval(this._phraseInterval); this._phraseInterval = undefined; }
-    if (this._emptyPhraseInterval) { clearInterval(this._emptyPhraseInterval); this._emptyPhraseInterval = undefined; }
   }
 
   /**
@@ -169,7 +151,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._taskPersistence && this._sessionMonitor.isActive()) {
       this._saveCurrentTasksToPersistence();
     }
-    this._clearPhraseTimers();
+    this._phrases.stop();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
   }

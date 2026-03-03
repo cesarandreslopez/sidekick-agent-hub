@@ -12,26 +12,14 @@
  * @module services/CodexClient
  */
 
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { ClaudeClient, CompletionOptions, TimeoutError, ConnectionError } from '../types';
 import { log, logError } from './Logger';
-
-/**
- * Resolves a command to its absolute path using which/where.
- */
-function resolveCommand(command: string): string | null {
-  try {
-    const cmd = process.platform === 'win32' ? `where ${command}` : `which ${command}`;
-    const result = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-    const resolved = result.trim().split(/\r?\n/)[0];
-    if (resolved && fs.existsSync(resolved)) return resolved;
-  } catch { /* not found */ }
-  return null;
-}
+import { findCli } from '../utils/cliPathResolver';
 
 /**
  * Finds the Codex CLI executable path.
@@ -39,45 +27,8 @@ function resolveCommand(command: string): string | null {
  * Checks common install locations then falls back to PATH resolution.
  */
 function findCodexCli(): string {
-  const homeDir = os.homedir();
-  const isWindows = process.platform === 'win32';
-  const ext = isWindows ? '.cmd' : '';
-
-  const candidates = [
-    // npm global
-    path.join(homeDir, '.npm-global', 'bin', `codex${ext}`),
-    // pnpm global
-    path.join(homeDir, '.local', 'share', 'pnpm', `codex${ext}`),
-    // yarn global
-    path.join(homeDir, '.yarn', 'bin', `codex${ext}`),
-    // volta
-    path.join(homeDir, '.volta', 'bin', `codex${ext}`),
-    // System paths
-    '/usr/local/bin/codex',
-    '/usr/bin/codex',
-    // Homebrew
-    '/opt/homebrew/bin/codex',
-    // Windows
-    ...(isWindows ? [
-      path.join(process.env.APPDATA || '', 'npm', 'codex.cmd'),
-      path.join(process.env.LOCALAPPDATA || '', 'pnpm', 'codex.cmd'),
-    ] : []),
-  ];
-
-  for (const p of candidates) {
-    if (fs.existsSync(p)) {
-      log(`Found codex at: ${p}`);
-      return p;
-    }
-  }
-
-  // Fall back to PATH
-  const resolved = resolveCommand('codex');
-  if (resolved) {
-    log(`Resolved codex from PATH: ${resolved}`);
-    return resolved;
-  }
-
+  const result = findCli({ binaryName: 'codex' });
+  if (result) return result;
   throw new ConnectionError(
     'Codex CLI not found. Install it (npm install -g @openai/codex) or choose a different inference provider.',
     'codex'

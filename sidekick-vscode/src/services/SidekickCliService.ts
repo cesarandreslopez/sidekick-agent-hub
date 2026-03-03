@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 import { log } from './Logger';
+import { findCli } from '../utils/cliPathResolver';
 
 const TERMINAL_NAME = 'Sidekick Dashboard';
 const DOCS_URL = 'https://github.com/cesarandreslopez/sidekick-agent-hub';
@@ -23,78 +24,18 @@ let dashboardTerminal: vscode.Terminal | undefined;
 let versionCheckDone = false;
 
 /**
- * Common installation paths for the Sidekick CLI on different platforms.
- * Mirrors the pattern from MaxSubscriptionClient's getCommonClaudePaths().
+ * Extra nvm-specific paths for the Sidekick CLI.
+ * Enumerates actual nvm node versions (most recent first).
  */
-function getCommonSidekickPaths(): string[] {
-  const homeDir = os.homedir();
-  const isWindows = process.platform === 'win32';
-  const ext = isWindows ? '.cmd' : '';
-  const bin = `sidekick${ext}`;
-
-  // nvm: detect current node version directory
-  const nvmPaths: string[] = [];
-  const nvmDir = path.join(homeDir, '.nvm', 'versions', 'node');
-  if (!isWindows && fs.existsSync(nvmDir)) {
-    try {
-      const versions = fs.readdirSync(nvmDir).sort().reverse();
-      for (const v of versions) {
-        nvmPaths.push(path.join(nvmDir, v, 'bin', bin));
-      }
-    } catch {
-      // nvm dir not readable
-    }
-  }
-
-  return [
-    // nvm (most recent versions first)
-    ...nvmPaths,
-    // npm global
-    path.join(homeDir, '.npm-global', 'bin', bin),
-    path.join(homeDir, 'npm-global', 'bin', bin),
-    // pnpm global
-    path.join(homeDir, '.local', 'share', 'pnpm', bin),
-    path.join(homeDir, 'Library', 'pnpm', bin),
-    // yarn global
-    path.join(homeDir, '.yarn', 'bin', bin),
-    // volta
-    path.join(homeDir, '.volta', 'bin', bin),
-    // Linux local bin
-    path.join(homeDir, '.local', 'bin', bin),
-    // System paths
-    '/usr/local/bin/sidekick',
-    '/usr/bin/sidekick',
-    // macOS Homebrew
-    '/opt/homebrew/bin/sidekick',
-    // Windows npm/pnpm global
-    ...(isWindows ? [
-      path.join(process.env.APPDATA || '', 'npm', 'sidekick.cmd'),
-      path.join(process.env.LOCALAPPDATA || '', 'pnpm', 'sidekick.cmd'),
-    ] : []),
-  ];
-}
-
-/**
- * Resolves 'sidekick' from the system PATH to an absolute path.
- * Uses `which` on Unix, `where` on Windows.
- */
-function resolveFromPath(): string | null {
+function getNvmSidekickPaths(): string[] {
+  const nvmDir = path.join(os.homedir(), '.nvm', 'versions', 'node');
+  if (process.platform === 'win32' || !fs.existsSync(nvmDir)) return [];
   try {
-    const isWindows = process.platform === 'win32';
-    const cmd = isWindows ? 'where sidekick' : 'which sidekick';
-    const result = execSync(cmd, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-    });
-    const resolved = result.trim().split(/\r?\n/)[0];
-    if (resolved && fs.existsSync(resolved)) {
-      log(`Resolved 'sidekick' from PATH: ${resolved}`);
-      return resolved;
-    }
+    return fs.readdirSync(nvmDir).sort().reverse()
+      .map(v => path.join(nvmDir, v, 'bin', 'sidekick'));
   } catch {
-    // Not found in PATH
+    return [];
   }
-  return null;
 }
 
 /**
@@ -102,42 +43,18 @@ function resolveFromPath(): string | null {
  *
  * Checks in order:
  * 1. User-configured path (`sidekick.sidekickCliPath` setting)
- * 2. Common installation paths (npm/pnpm/yarn/volta globals, system paths)
+ * 2. nvm paths + common installation paths
  * 3. Resolves 'sidekick' from system PATH
  *
  * @returns The absolute path to the sidekick executable, or null if not found
  */
 export function findSidekickCli(): string | null {
-  // 1. Check user-configured path
   const config = vscode.workspace.getConfiguration('sidekick');
-  const configuredPath = config.get<string>('sidekickCliPath');
-
-  if (configuredPath && configuredPath.trim() !== '') {
-    const expandedPath = configuredPath.replace(/^~/, os.homedir());
-    if (fs.existsSync(expandedPath)) {
-      log(`Using configured sidekick CLI path: ${expandedPath}`);
-      return expandedPath;
-    }
-    log(`Configured sidekick CLI path not found: ${expandedPath}`);
-  }
-
-  // 2. Check common installation paths
-  for (const candidatePath of getCommonSidekickPaths()) {
-    if (fs.existsSync(candidatePath)) {
-      log(`Found sidekick CLI at: ${candidatePath}`);
-      return candidatePath;
-    }
-  }
-
-  // 3. Resolve from PATH
-  log('Sidekick CLI not found in common paths, resolving from PATH...');
-  const resolved = resolveFromPath();
-  if (resolved) {
-    return resolved;
-  }
-
-  log('Sidekick CLI not found anywhere');
-  return null;
+  return findCli({
+    binaryName: 'sidekick',
+    configuredPath: config.get<string>('sidekickCliPath'),
+    extraPaths: getNvmSidekickPaths(),
+  });
 }
 
 export interface CliVersionCheck {

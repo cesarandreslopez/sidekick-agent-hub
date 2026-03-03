@@ -48,6 +48,7 @@ import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 
 /**
  * WebviewViewProvider for the session analytics dashboard.
@@ -137,11 +138,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Knowledge note service for knowledge note persistence and extraction */
   private _knowledgeNoteService?: KnowledgeNoteService;
 
-  /** Interval for rotating header phrase */
-  private _phraseInterval?: ReturnType<typeof setInterval>;
-
-  /** Interval for rotating empty-state phrase */
-  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
+  /** Manages rotating phrase timers */
+  private readonly _phrases: PhraseRotationManager;
 
   /** Plan persistence service for historical plan data */
   private _planPersistenceService?: import('../services/PlanPersistenceService').PlanPersistenceService;
@@ -203,6 +201,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sessionAnalyzer = sessionAnalyzer;
     this._authService = authService;
     this._decisionLogService = decisionLogService;
+    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
     // Initialize empty state
     this._state = {
       totalInputTokens: 0,
@@ -343,40 +342,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     // Start phrase rotation timers
-    this._startPhraseTimers();
+    this._phrases.start(() => this._state.sessionActive);
 
     log('Dashboard webview resolved');
-  }
-
-  /**
-   * Starts phrase rotation timers for header (60s) and empty state (30s).
-   */
-  private _startPhraseTimers(): void {
-    this._clearPhraseTimers();
-
-    this._phraseInterval = setInterval(() => {
-      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
-    }, 60_000);
-
-    this._emptyPhraseInterval = setInterval(() => {
-      if (!this._state.sessionActive) {
-        this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
-      }
-    }, 30_000);
-  }
-
-  /**
-   * Clears phrase rotation timers.
-   */
-  private _clearPhraseTimers(): void {
-    if (this._phraseInterval) {
-      clearInterval(this._phraseInterval);
-      this._phraseInterval = undefined;
-    }
-    if (this._emptyPhraseInterval) {
-      clearInterval(this._emptyPhraseInterval);
-      this._emptyPhraseInterval = undefined;
-    }
   }
 
   /**
@@ -597,7 +565,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       //   break;
 
       case 'openExternal':
-        if (message.url) {
+        if (message.url && /^https?:\/\//i.test(message.url)) {
           vscode.env.openExternal(vscode.Uri.parse(message.url));
         }
         break;
@@ -8411,7 +8379,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._richerPanelTimer) {
       clearTimeout(this._richerPanelTimer);
     }
-    this._clearPhraseTimers();
+    this._phrases.stop();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
     log('DashboardViewProvider disposed');

@@ -604,7 +604,7 @@ function updateTruncationDisplay(count: number, byTool: Array<{ tool: string; co
     return;
   }
 
-  const breakdown = byTool.map(t => `${t.tool}: ${t.count}`).join(', ');
+  const breakdown = byTool.map(t => `${escapeHtml(t.tool)}: ${t.count}`).join(', ');
   el.innerHTML = `
     <span style="color: var(--vscode-charts-yellow, #cca700);">⚠ ${count} truncated</span>
     ${breakdown ? `<span style="opacity: 0.7; font-size: 0.85em;"> (${breakdown})</span>` : ''}

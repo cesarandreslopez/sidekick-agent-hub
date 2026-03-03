@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import { execSync } from 'child_process';
 import { ClaudeClient, CompletionOptions, TimeoutError, ApiError, ConnectionError } from '../types';
 import { log, logError } from './Logger';
+import { findCli, resolveCommandPath } from '../utils/cliPathResolver';
 
 // Type for the query function from the SDK
 type QueryFunction = typeof import('@anthropic-ai/claude-agent-sdk').query;
@@ -31,81 +32,23 @@ function getWorkingDirectory(): string {
 }
 
 /**
- * Common installation paths for the Claude CLI on different platforms.
- * These are checked when the CLI isn't found in PATH.
+ * Platform-specific native installer paths for Claude CLI.
  */
-function getCommonClaudePaths(): string[] {
+function getClaudePlatformPaths(): string[] {
   const homeDir = os.homedir();
   const platform = process.platform;
-  const isWindows = platform === 'win32';
-  const ext = isWindows ? '.cmd' : '';
 
-  const platformPaths: string[] = [];
-
-  // Native Claude Code installer paths (platform-specific) - check first as preferred
   if (platform === 'linux') {
-    platformPaths.push(path.join(homeDir, '.local', 'bin', 'claude'));
+    return [path.join(homeDir, '.local', 'bin', 'claude')];
   } else if (platform === 'darwin') {
-    platformPaths.push('/usr/local/bin/claude');
-    platformPaths.push(path.join(homeDir, '.claude', 'local', 'claude'));
-  } else if (isWindows) {
-    platformPaths.push(path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Claude', 'claude.exe'));
-    platformPaths.push(path.join(process.env.LOCALAPPDATA || '', 'Claude', 'claude.exe'));
+    return ['/usr/local/bin/claude', path.join(homeDir, '.claude', 'local', 'claude')];
+  } else if (platform === 'win32') {
+    return [
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Claude', 'claude.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Claude', 'claude.exe'),
+    ];
   }
-
-  return [
-    ...platformPaths,
-    // npm global
-    path.join(homeDir, '.npm-global', 'bin', `claude${ext}`),
-    path.join(homeDir, 'npm-global', 'bin', `claude${ext}`),
-    // pnpm global
-    path.join(homeDir, '.local', 'share', 'pnpm', `claude${ext}`),
-    path.join(homeDir, 'Library', 'pnpm', `claude${ext}`),
-    // yarn global
-    path.join(homeDir, '.yarn', 'bin', `claude${ext}`),
-    // volta
-    path.join(homeDir, '.volta', 'bin', `claude${ext}`),
-    // nvm (common node versions)
-    path.join(homeDir, '.nvm', 'versions', 'node', '**', 'bin', `claude${ext}`),
-    // System paths
-    '/usr/local/bin/claude',
-    '/usr/bin/claude',
-    // macOS Homebrew
-    '/opt/homebrew/bin/claude',
-    '/usr/local/opt/node/bin/claude',
-    // Windows npm/pnpm global
-    ...(isWindows ? [
-      path.join(process.env.APPDATA || '', 'npm', 'claude.cmd'),
-      path.join(process.env.LOCALAPPDATA || '', 'pnpm', 'claude.cmd'),
-    ] : []),
-  ];
-}
-
-/**
- * Resolves a command name to its absolute path using the system's PATH.
- * Works cross-platform: `which` on Unix, `where` on Windows.
- *
- * @param command - The command name to resolve (e.g., 'claude')
- * @returns The absolute path to the command, or null if not found
- */
-function resolveCommandPath(command: string): string | null {
-  try {
-    const isWindows = process.platform === 'win32';
-    const cmd = isWindows ? `where ${command}` : `which ${command}`;
-    const result = execSync(cmd, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-    });
-    // `where` on Windows may return multiple lines; take the first
-    const resolvedPath = result.trim().split(/\r?\n/)[0];
-    if (resolvedPath && fs.existsSync(resolvedPath)) {
-      log(`Resolved '${command}' from PATH: ${resolvedPath}`);
-      return resolvedPath;
-    }
-  } catch {
-    // Command not found in PATH
-  }
-  return null;
+  return [];
 }
 
 /**
@@ -113,46 +56,27 @@ function resolveCommandPath(command: string): string | null {
  *
  * Checks in order:
  * 1. User-configured path (sidekick.claudePath setting)
- * 2. Common installation paths
+ * 2. Native installer paths + common package manager paths
  * 3. Resolves 'claude' from system PATH to absolute path
  *
  * @returns The absolute path to the claude executable
- * @throws Error if claude CLI cannot be found
+ * @throws ConnectionError if claude CLI cannot be found
  */
 function findClaudeCli(): string {
-  // Check user-configured path first
   const config = vscode.workspace.getConfiguration('sidekick');
-  const configuredPath = config.get<string>('claudePath');
+  const result = findCli({
+    binaryName: 'claude',
+    configuredPath: config.get<string>('claudePath'),
+    extraPaths: [
+      ...getClaudePlatformPaths(),
+      // nvm glob pattern (skipped by findCli)
+      path.join(os.homedir(), '.nvm', 'versions', 'node', '**', 'bin', 'claude'),
+      // macOS Homebrew node
+      '/usr/local/opt/node/bin/claude',
+    ],
+  });
+  if (result) return result;
 
-  if (configuredPath && configuredPath.trim() !== '') {
-    const expandedPath = configuredPath.replace(/^~/, os.homedir());
-    if (fs.existsSync(expandedPath)) {
-      log(`Using configured claude path: ${expandedPath}`);
-      return expandedPath;
-    }
-    log(`Configured claude path not found: ${expandedPath}`);
-  }
-
-  // Check common installation paths
-  for (const candidatePath of getCommonClaudePaths()) {
-    // Skip glob patterns (nvm paths with **)
-    if (candidatePath.includes('**')) continue;
-
-    if (fs.existsSync(candidatePath)) {
-      log(`Found claude at: ${candidatePath}`);
-      return candidatePath;
-    }
-  }
-
-  // Try to resolve 'claude' from PATH to get absolute path
-  // (The SDK requires an absolute path, not just a command name)
-  log('Claude not found in common paths, resolving from PATH...');
-  const resolvedPath = resolveCommandPath('claude');
-  if (resolvedPath) {
-    return resolvedPath;
-  }
-
-  // Could not find claude anywhere
   throw new ConnectionError(
     'Claude CLI not found. Please install Claude Code (https://claude.ai/download) ' +
     'or set the path manually in Settings > Sidekick: Claude Path',

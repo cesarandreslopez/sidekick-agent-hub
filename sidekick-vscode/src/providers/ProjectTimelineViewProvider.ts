@@ -20,6 +20,7 @@ import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 
 /**
  * WebviewViewProvider for the multi-session project timeline.
@@ -33,16 +34,14 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   private _currentRange: TimelineRange = '7d';
   private _refreshTimer?: ReturnType<typeof setTimeout>;
 
-  /** Interval for rotating header phrase */
-  private _phraseInterval?: ReturnType<typeof setInterval>;
-
-  /** Interval for rotating empty-state phrase */
-  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
+  /** Manages rotating phrase timers */
+  private readonly _phrases: PhraseRotationManager;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _sessionMonitor: SessionMonitor
   ) {
+    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
     this._dataService = new ProjectTimelineDataService(this._sessionMonitor.getProvider());
 
     // Subscribe to session events
@@ -88,23 +87,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       this._disposables
     );
 
-    this._startPhraseTimers();
+    this._phrases.start();
     log('Project timeline webview resolved');
-  }
-
-  private _startPhraseTimers(): void {
-    this._clearPhraseTimers();
-    this._phraseInterval = setInterval(() => {
-      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
-    }, 60_000);
-    this._emptyPhraseInterval = setInterval(() => {
-      this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
-    }, 30_000);
-  }
-
-  private _clearPhraseTimers(): void {
-    if (this._phraseInterval) { clearInterval(this._phraseInterval); this._phraseInterval = undefined; }
-    if (this._emptyPhraseInterval) { clearInterval(this._emptyPhraseInterval); this._emptyPhraseInterval = undefined; }
   }
 
   private _handleWebviewMessage(message: WebviewTimelineMessage): void {
@@ -691,7 +675,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 
   dispose(): void {
     if (this._refreshTimer) clearTimeout(this._refreshTimer);
-    this._clearPhraseTimers();
+    this._phrases.stop();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
     log('ProjectTimelineViewProvider disposed');

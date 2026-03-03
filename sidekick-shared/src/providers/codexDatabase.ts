@@ -50,14 +50,17 @@ export class CodexDatabase {
 
   private query<T>(sql: string, params: (string | number)[] = []): T[] {
     if (!this.sqlite3Available) return [];
-    let query = sql;
-    for (const param of params) {
-      if (typeof param === 'number') query = query.replace('?', String(param));
-      else {
-        const escaped = String(param).replace(/'/g, "''");
-        query = query.replace('?', `'${escaped}'`);
+    let paramIndex = 0;
+    const query = sql.replace(/\?/g, () => {
+      if (paramIndex >= params.length) return '?';
+      const param = params[paramIndex++];
+      if (typeof param === 'number') {
+        if (!Number.isFinite(param)) return '0';
+        return String(param);
       }
-    }
+      const escaped = String(param).replace(/'/g, "''");
+      return `'${escaped}'`;
+    });
     try {
       const result = execFileSync('sqlite3', ['-json', '-readonly', this.dbPath, query], {
         encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 10 * 1024 * 1024,

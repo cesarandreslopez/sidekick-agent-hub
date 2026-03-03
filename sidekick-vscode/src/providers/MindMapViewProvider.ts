@@ -23,6 +23,7 @@ import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 
 /**
  * WebviewViewProvider for the session mind map visualization.
@@ -52,11 +53,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   /** Optional knowledge note service for note nodes */
   private _knowledgeNoteService?: KnowledgeNoteService;
 
-  /** Interval for rotating header phrase */
-  private _phraseInterval?: ReturnType<typeof setInterval>;
-
-  /** Interval for rotating empty-state phrase */
-  private _emptyPhraseInterval?: ReturnType<typeof setInterval>;
+  /** Manages rotating phrase timers */
+  private readonly _phrases: PhraseRotationManager;
 
   /**
    * Creates a new MindMapViewProvider.
@@ -68,6 +66,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     private readonly _extensionUri: vscode.Uri,
     private readonly _sessionMonitor: SessionMonitor
   ) {
+    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
     // Initialize empty state
     this._state = {
       graph: { nodes: [], links: [] },
@@ -153,25 +152,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       this._disposables
     );
 
-    this._startPhraseTimers();
+    this._phrases.start(() => this._state.sessionActive);
     log('Mind map webview resolved');
-  }
-
-  private _startPhraseTimers(): void {
-    this._clearPhraseTimers();
-    this._phraseInterval = setInterval(() => {
-      this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
-    }, 60_000);
-    this._emptyPhraseInterval = setInterval(() => {
-      if (!this._state.sessionActive) {
-        this._postMessage({ type: 'updateEmptyPhrase', phrase: getRandomPhrase() });
-      }
-    }, 30_000);
-  }
-
-  private _clearPhraseTimers(): void {
-    if (this._phraseInterval) { clearInterval(this._phraseInterval); this._phraseInterval = undefined; }
-    if (this._emptyPhraseInterval) { clearInterval(this._emptyPhraseInterval); this._emptyPhraseInterval = undefined; }
   }
 
   /**
@@ -1951,7 +1933,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    * Disposes of all resources.
    */
   dispose(): void {
-    this._clearPhraseTimers();
+    this._phrases.stop();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
     log('MindMapViewProvider disposed');
