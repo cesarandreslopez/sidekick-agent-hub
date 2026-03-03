@@ -358,6 +358,14 @@ body {
   border-radius: 3px;
   color: var(--vscode-textPreformat-foreground);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 `;
   document.head.appendChild(style);
 }
@@ -386,8 +394,8 @@ function initializeDOM() {
       <div id="explanation-content" role="region" aria-label="Explanation output" aria-live="polite"></div>
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">&lt;/&gt;</div>
-        <div class="empty-state-title">Explain Selection</div>
-        <div class="empty-state-hint">Select code in the editor, then use <kbd>Explain Selection</kbd> from the command palette or context menu.</div>
+        <div class="empty-state-title">Ready to explain</div>
+        <div class="empty-state-hint">Highlight code in the editor and run <kbd>Sidekick: Explain Selection</kbd> from the command palette or right-click menu.</div>
       </div>
     </main>
   `;

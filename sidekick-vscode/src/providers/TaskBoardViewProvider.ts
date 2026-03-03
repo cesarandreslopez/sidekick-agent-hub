@@ -751,7 +751,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
   <div id="board" class="board"></div>
   <div id="empty" class="empty-state" hidden>
-    <p>No tasks yet. Tasks appear when Claude Code creates tasks or spawns subagents.</p>
+    <p>No tasks yet. Tasks will appear here when your agent creates todos or spawns subagents during a session.</p>
     <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 

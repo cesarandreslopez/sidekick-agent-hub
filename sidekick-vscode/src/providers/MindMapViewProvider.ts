@@ -709,8 +709,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 
   <div id="empty-state" class="empty-state">
-    <p>No active Claude Code session detected.</p>
-    <p>Start a session to see the mind map.</p>
+    <p>No active session detected.</p>
+    <p>Start a session to see files, tools, and tasks visualized as an interactive graph.</p>
     <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 

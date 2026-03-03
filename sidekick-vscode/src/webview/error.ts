@@ -381,6 +381,14 @@ body {
 .sk-hidden {
   display: none !important;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 `;
   document.head.appendChild(style);
 }
@@ -435,8 +443,8 @@ function initializeDOM() {
 
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">\u26A0</div>
-        <div class="empty-state-text">Waiting for error diagnostic...</div>
-        <div class="empty-state-hint">Click on an error squiggle, then use "Explain Error" or "Fix Error" from the context menu.</div>
+        <div class="empty-state-text">Ready to diagnose</div>
+        <div class="empty-state-hint">Click on an error or warning squiggle in the editor, then right-click and choose "Explain Error" or "Fix Error".</div>
       </div>
     </main>
   `;

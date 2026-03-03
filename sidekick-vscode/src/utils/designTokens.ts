@@ -105,12 +105,21 @@ export function getDesignTokenCSS(): string {
 
   /* ── Focus-Visible Ring ── */
   :focus-visible {
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: -1px;
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
   }
 
   button:focus-visible {
     outline-offset: 2px;
+  }
+
+  /* ── Reduced Motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 </style>`;
 }
@@ -465,6 +474,13 @@ export function getSharedStyles(): string {
     display: none !important;
   }
 
+  /* ── Text Truncation ── */
+  .sk-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* ── Toast notifications ── */
   .sk-toast {
     position: fixed;
@@ -483,12 +499,31 @@ export function getSharedStyles(): string {
     pointer-events: none;
     transition: opacity 0.2s ease, transform 0.2s ease;
     z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: var(--sk-space-2);
   }
 
   .sk-toast.sk-toast--visible {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
     pointer-events: auto;
+  }
+
+  .sk-toast__dismiss {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: var(--sk-font-lg);
+    line-height: 1;
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
+
+  .sk-toast__dismiss:hover {
+    opacity: 1;
   }
 
   /* ── Inline context health classes ── */
@@ -503,6 +538,27 @@ export function getSharedStyles(): string {
 
   .sk-truncation-warning {
     color: var(--sk-accent-warning);
+  }
+
+  /* ── Narrow Viewport Adjustments ── */
+  @media (max-width: 260px) {
+    .sk-header {
+      padding: var(--sk-space-1) var(--sk-space-2);
+      gap: var(--sk-space-1);
+    }
+    .sk-header h1 {
+      font-size: var(--sk-font-md);
+    }
+    .sk-card {
+      padding: var(--sk-space-2);
+    }
+    .sk-collapsible__body {
+      font-size: var(--sk-font-sm);
+    }
+    .sk-chip {
+      font-size: 8px;
+      padding: 1px 4px;
+    }
   }
 </style>`;
 }

@@ -107,12 +107,25 @@ function getGaugeColors() {
   };
 }
 
+/** Tracks last pulse time per element to throttle animation frequency. */
+const lastPulseTime = new WeakMap<Element, number>();
+
+/** Minimum interval between pulse animations on the same element (ms). */
+const PULSE_THROTTLE_MS = 800;
+
 /**
  * Applies a brief flash animation to an element when its value changes.
+ * Throttled to at most once per PULSE_THROTTLE_MS to avoid visual noise
+ * during rapid updates.
  * Uses the sk-value-updated class defined in designTokens shared styles.
  */
 function pulseValue(el: Element | null): void {
   if (!el) return;
+  const now = Date.now();
+  const last = lastPulseTime.get(el) || 0;
+  if (now - last < PULSE_THROTTLE_MS) return;
+  lastPulseTime.set(el, now);
+
   el.classList.remove('sk-value-updated');
   // Force reflow to restart animation
   void (el as HTMLElement).offsetWidth;
@@ -484,12 +497,16 @@ function requestAnalysis(): void {
   vscode.postMessage({ type: 'analyzeSession' });
 }
 
+/** Active toast dismiss timer, cleared on manual dismiss or new toast. */
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Shows a brief toast notification that auto-dismisses.
+ * Includes a dismiss button for immediate closure.
  * @param message - Text to display
- * @param durationMs - Duration in milliseconds before hiding (default 1500)
+ * @param durationMs - Duration in milliseconds before hiding (default 2500)
  */
-function showToast(message: string, durationMs = 1500): void {
+function showToast(message: string, durationMs = 2500): void {
   let toast = document.getElementById('sk-toast');
   if (!toast) {
     toast = document.createElement('div');
@@ -499,9 +516,26 @@ function showToast(message: string, durationMs = 1500): void {
     toast.setAttribute('aria-live', 'polite');
     document.body.appendChild(toast);
   }
-  toast.textContent = message;
+
+  // Build toast content with dismiss button
+  const span = document.createElement('span');
+  span.textContent = message;
+  const dismiss = document.createElement('button');
+  dismiss.className = 'sk-toast__dismiss';
+  dismiss.setAttribute('aria-label', 'Dismiss notification');
+  dismiss.textContent = '\u00D7';
+  dismiss.addEventListener('click', () => {
+    toast!.classList.remove('sk-toast--visible');
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  });
+  toast.replaceChildren(span, dismiss);
+
   toast.classList.add('sk-toast--visible');
-  setTimeout(() => toast!.classList.remove('sk-toast--visible'), durationMs);
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast!.classList.remove('sk-toast--visible');
+    toastTimer = null;
+  }, durationMs);
 }
 
 /**

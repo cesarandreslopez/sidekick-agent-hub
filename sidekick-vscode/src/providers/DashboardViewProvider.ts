@@ -4829,7 +4829,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     <div id="content">
       <div class="empty-state">
         <p id="empty-state-title">No active session detected.</p>
-        <p id="empty-state-hint">Start a session to see analytics.</p>
+        <p id="empty-state-hint">Start a Claude Code, OpenCode, or Codex session to see real-time analytics here.</p>
         <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
       </div>
     </div>

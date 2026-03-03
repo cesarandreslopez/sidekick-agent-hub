@@ -444,8 +444,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 
   <div id="empty" class="empty-state" style="display: none;">
-    <p>No sessions found in selected time range.</p>
-    <p>Start a session or expand the time range.</p>
+    <p>No sessions found in this time range.</p>
+    <p>Try expanding the range, or start a new session to see it appear here.</p>
     <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 

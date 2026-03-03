@@ -602,7 +602,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   </div>
   <div id="content" class="content"></div>
   <div id="empty" class="empty-state" hidden>
-    <p>No plans yet. Plans appear when Claude Code enters plan mode.</p>
+    <p>No plans yet. Plans will appear here when your agent enters plan mode during a session.</p>
   </div>
 
   <script nonce="${nonce}">
