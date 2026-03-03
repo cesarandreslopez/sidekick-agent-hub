@@ -770,6 +770,13 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
     const boardEl = document.getElementById('board');
     const emptyEl = document.getElementById('empty');
     const statusEl = document.getElementById('status');
@@ -852,7 +859,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
             + (isCollapsed ? 'Expand' : 'Collapse')
             + '</button>';
         headerEl.innerHTML = '<span class="title">'
-          + column.label
+          + escapeHtml(column.label)
           + '</span><span class="right"><span class="count">'
           + column.tasks.length
           + '</span>'

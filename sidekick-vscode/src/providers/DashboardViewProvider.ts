@@ -5438,7 +5438,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Catch uncaught errors
       window.onerror = function(msg, url, line) {
         const el = document.getElementById('session-list');
-        if (el) el.innerHTML = '<div class="session-list-empty">JS Error: ' + msg + ' (line ' + line + ')</div>';
+        if (el) el.innerHTML = '<div class="session-list-empty">JS Error: ' + escapeHtml(String(msg)) + ' (line ' + line + ')</div>';
       };
 
       // DOM elements
@@ -6278,7 +6278,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           return '<div class="tool-item" data-tool-name="' + escapeHtml(tool.name) + '" style="cursor: pointer;">' +
             '<div class="tool-header">' +
-              '<span class="tool-name">' + tool.name + '</span>' +
+              '<span class="tool-name">' + escapeHtml(tool.name) + '</span>' +
               '<span class="tool-calls">' + tool.totalCalls + ' calls' +
                 (tool.pendingCount > 0 ? ' (' + tool.pendingCount + ' pending)' : '') +
               '</span>' +
@@ -7086,7 +7086,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             state.modelBreakdown.forEach(function(model) {
               const item = document.createElement('div');
               item.className = 'model-item';
-              item.innerHTML = '<span class="name">' + getShortModelName(model.model) + '</span>' +
+              item.innerHTML = '<span class="name">' + escapeHtml(getShortModelName(model.model)) + '</span>' +
                 '<span class="stats">' + model.calls + ' calls, ' + formatNumber(model.tokens) + ' tokens, ' + formatCost(model.cost) + '</span>';
               modelListEl.appendChild(item);
             });
@@ -8395,7 +8395,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
         } catch (e) {
           const errEl = document.getElementById('session-list');
-          if (errEl) errEl.innerHTML = '<div class="session-list-empty">Init error: ' + e.message + '</div>';
+          if (errEl) errEl.innerHTML = '<div class="session-list-empty">Init error: ' + escapeHtml(e.message) + '</div>';
         }
       }
 

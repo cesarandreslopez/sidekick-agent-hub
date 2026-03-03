@@ -786,6 +786,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     (function() {
       const vscode = acquireVsCodeApi();
 
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+      }
+
       // Node colors by type
       const NODE_COLORS = {
         session: '#9B9B9B',
@@ -1522,10 +1528,11 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           })
           .on('mouseover', function(event, d) {
             const label = d.fullPath || d.label;
+            const safeLabel = escapeHtml(label);
             // Build tooltip content
             if (d.type === 'file') {
               // For files, show touches and line changes
-              let firstLine = label;
+              let firstLine = safeLabel;
               if (d.count) {
                 firstLine += ' (' + d.count + ' touch' + (d.count > 1 ? 'es' : '') + ')';
               }
@@ -1536,7 +1543,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
                 const dels = d.deletions || 0;
                 tooltipEl.innerHTML = firstLine + '<br><span class="additions">+' + adds + '</span> / <span class="deletions">-' + dels + '</span> lines';
               } else {
-                tooltipEl.textContent = firstLine;
+                tooltipEl.textContent = label;
               }
             } else if (d.type === 'task') {
               // For tasks, show subject, status, and action count
@@ -1546,14 +1553,14 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
                               : 'var(--vscode-descriptionForeground)';
               const actionCount = d.count || 0;
               const actionText = actionCount === 1 ? '1 action' : actionCount + ' actions';
-              tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' +
-                '<span style="color: ' + statusColor + '">● ' + statusLabel.replace('_', ' ') + '</span>' +
+              tooltipEl.innerHTML = '<strong>' + safeLabel + '</strong><br>' +
+                '<span style="color: ' + statusColor + '">● ' + escapeHtml(statusLabel.replace('_', ' ')) + '</span>' +
                 '<br>' + actionText;
             } else if (d.type === 'plan') {
               // For plan root, show title and step count
               const stepCount = d.count || 0;
               const stepText = stepCount === 1 ? '1 step' : stepCount + ' steps';
-              tooltipEl.innerHTML = '<strong>' + label + '</strong><br>' + stepText;
+              tooltipEl.innerHTML = '<strong>' + safeLabel + '</strong><br>' + stepText;
             } else if (d.type === 'plan-step') {
               // For plan steps, show description, status, and enriched metadata
               const planStatus = d.planStepStatus || 'pending';
@@ -1561,12 +1568,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
                                  : planStatus === 'pending' ? 'var(--vscode-charts-yellow, #FFD700)'
                                  : planStatus === 'failed' ? 'var(--vscode-charts-red, #f14c4c)'
                                  : 'var(--vscode-descriptionForeground)';
-              let planTooltipHtml = '<strong>' + label + '</strong><br>' +
-                '<span style="color: ' + planStatusColor + '">● ' + planStatus.replace('_', ' ') + '</span>';
+              let planTooltipHtml = '<strong>' + safeLabel + '</strong><br>' +
+                '<span style="color: ' + planStatusColor + '">● ' + escapeHtml(planStatus.replace('_', ' ')) + '</span>';
               if (d.planStepComplexity) {
                 const COMPLEXITY_COLORS = { high: '#f14c4c', medium: '#FFD700', low: '#73c991' };
                 const cxColor = COMPLEXITY_COLORS[d.planStepComplexity] || '#73c991';
-                planTooltipHtml += '<br>Complexity: <span style="color:' + cxColor + '">' + d.planStepComplexity + '</span>';
+                planTooltipHtml += '<br>Complexity: <span style="color:' + cxColor + '">' + escapeHtml(d.planStepComplexity) + '</span>';
               }
               if (d.planStepDurationMs) {
                 const dSec = Math.round(d.planStepDurationMs / 1000);
@@ -1577,7 +1584,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
                 planTooltipHtml += '<br>Tokens: ' + (d.planStepTokens >= 1000 ? (d.planStepTokens / 1000).toFixed(1) + 'k' : d.planStepTokens);
               }
               if (d.planStepError) {
-                planTooltipHtml += '<br><span style="color:var(--vscode-charts-red, #f14c4c)">Error: ' + d.planStepError.substring(0, 80) + '</span>';
+                planTooltipHtml += '<br><span style="color:var(--vscode-charts-red, #f14c4c)">Error: ' + escapeHtml(d.planStepError.substring(0, 80)) + '</span>';
               }
               tooltipEl.innerHTML = planTooltipHtml;
             } else if (d.type === 'knowledge-note') {

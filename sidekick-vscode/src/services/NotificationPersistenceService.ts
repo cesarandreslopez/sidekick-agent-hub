@@ -2,8 +2,7 @@
  * @fileoverview Cross-session notification persistence service.
  *
  * Persists fired notifications to disk so they carry forward across
- * extension reloads. Follows the DecisionLogService pattern:
- * dirty tracking, debounced saves, synchronous dispose.
+ * extension reloads.
  *
  * Storage location: ~/.config/sidekick/notifications/{projectSlug}.json
  *
@@ -11,16 +10,14 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import * as crypto from 'crypto';
 import type {
   PersistedNotification,
   NotificationStore,
 } from '../types/notificationPersistence';
 import { NOTIFICATION_SCHEMA_VERSION } from '../types/notificationPersistence';
-import { log, logError } from './Logger';
+import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
+import { log } from './Logger';
 
 const MAX_NOTIFICATIONS = 100;
 
@@ -36,60 +33,22 @@ function createEmptyStore(): NotificationStore {
 /**
  * Service for persisting notifications across extension reloads.
  */
-export class NotificationPersistenceService implements vscode.Disposable {
-  private store: NotificationStore;
-  private dataFilePath: string;
-  private isDirty: boolean = false;
-  private saveTimer: NodeJS.Timeout | null = null;
-  private readonly SAVE_DEBOUNCE_MS = 5000;
-
+export class NotificationPersistenceService extends PersistenceService<NotificationStore> {
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   /** Fires when notifications are added/modified */
   readonly onDidChange = this._onDidChange.event;
 
-  constructor(private readonly projectSlug: string) {
-    this.store = createEmptyStore();
-    this.dataFilePath = this.getDataFilePath();
+  constructor(projectSlug: string) {
+    super(
+      resolveSidekickDataPath('notifications', `${projectSlug}.json`),
+      'Notification',
+      NOTIFICATION_SCHEMA_VERSION,
+      createEmptyStore,
+    );
   }
 
-  private getDataFilePath(): string {
-    let configDir: string;
-
-    if (process.platform === 'win32') {
-      configDir = path.join(process.env.APPDATA || os.homedir(), 'sidekick', 'notifications');
-    } else {
-      configDir = path.join(os.homedir(), '.config', 'sidekick', 'notifications');
-    }
-
-    return path.join(configDir, `${this.projectSlug}.json`);
-  }
-
-  async initialize(): Promise<void> {
-    try {
-      const dir = path.dirname(this.dataFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        log(`Created notification directory: ${dir}`);
-      }
-
-      if (fs.existsSync(this.dataFilePath)) {
-        const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
-        const loaded = JSON.parse(content) as NotificationStore;
-
-        if (loaded.schemaVersion !== NOTIFICATION_SCHEMA_VERSION) {
-          log(`Notification store schema version mismatch: ${loaded.schemaVersion} vs ${NOTIFICATION_SCHEMA_VERSION}`);
-        }
-
-        this.store = loaded;
-        log(`Loaded persisted notifications: ${this.store.notifications.length} entries`);
-      } else {
-        this.store = createEmptyStore();
-        log('Initialized new notification store');
-      }
-    } catch (error) {
-      logError('Failed to load persisted notifications, starting with empty store', error);
-      this.store = createEmptyStore();
-    }
+  protected override onStoreLoaded(): void {
+    log(`Loaded persisted notifications: ${this.store.notifications.length} entries`);
   }
 
   /**
@@ -125,9 +84,7 @@ export class NotificationPersistenceService implements vscode.Disposable {
       this.store.notifications = this.store.notifications.slice(0, MAX_NOTIFICATIONS);
     }
 
-    this.isDirty = true;
-    this.scheduleSave();
-    this._onDidChange.fire();
+    this.markDirtyAndNotify();
   }
 
   /**
@@ -153,9 +110,7 @@ export class NotificationPersistenceService implements vscode.Disposable {
     const notification = this.store.notifications.find(n => n.id === id);
     if (notification && !notification.isRead) {
       notification.isRead = true;
-      this.isDirty = true;
-      this.scheduleSave();
-      this._onDidChange.fire();
+      this.markDirtyAndNotify();
     }
   }
 
@@ -171,9 +126,7 @@ export class NotificationPersistenceService implements vscode.Disposable {
       }
     }
     if (changed) {
-      this.isDirty = true;
-      this.scheduleSave();
-      this._onDidChange.fire();
+      this.markDirtyAndNotify();
     }
   }
 
@@ -184,60 +137,23 @@ export class NotificationPersistenceService implements vscode.Disposable {
     const count = this.store.notifications.length;
     this.store.notifications = [];
     if (count > 0) {
-      this.isDirty = true;
-      this.scheduleSave();
-      this._onDidChange.fire();
+      this.markDirtyAndNotify();
       log(`Cleared all ${count} notifications`);
     }
   }
 
   setLastSessionId(sessionId: string): void {
     this.store.lastSessionId = sessionId;
-    this.isDirty = true;
-    this.scheduleSave();
+    this.markDirty();
   }
 
-  private scheduleSave(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-    }
-
-    this.saveTimer = setTimeout(() => {
-      this.save();
-    }, this.SAVE_DEBOUNCE_MS);
-  }
-
-  private async save(): Promise<void> {
-    if (!this.isDirty) return;
-
-    try {
-      this.store.lastSaved = new Date().toISOString();
-      const content = JSON.stringify(this.store, null, 2);
-      await fs.promises.writeFile(this.dataFilePath, content, 'utf-8');
-      this.isDirty = false;
-      log('Notification data saved to disk');
-    } catch (error) {
-      logError('Failed to save notification data', error);
-    }
-  }
-
-  dispose(): void {
+  override dispose(): void {
     this._onDidChange.dispose();
+    super.dispose();
+  }
 
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-
-    if (this.isDirty) {
-      try {
-        this.store.lastSaved = new Date().toISOString();
-        const content = JSON.stringify(this.store, null, 2);
-        fs.writeFileSync(this.dataFilePath, content, 'utf-8');
-        log('Notification data saved on dispose');
-      } catch (error) {
-        logError('Failed to save notification data on dispose', error);
-      }
-    }
+  private markDirtyAndNotify(): void {
+    this.markDirty();
+    this._onDidChange.fire();
   }
 }

@@ -2,25 +2,21 @@
  * @fileoverview Cross-session decision log persistence service.
  *
  * Persists extracted decisions to disk so they carry forward across
- * Claude Code sessions. Follows the TaskPersistenceService pattern:
- * dirty tracking, debounced saves, synchronous dispose.
+ * Claude Code sessions.
  *
  * Storage location: ~/.config/sidekick/decisions/{projectSlug}.json
  *
  * @module services/DecisionLogService
  */
 
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import type {
   DecisionEntry,
   DecisionLogStore,
   DecisionEntryDisplay,
 } from '../types/decisionLog';
 import { DECISION_LOG_SCHEMA_VERSION } from '../types/decisionLog';
-import { log, logError } from './Logger';
+import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
+import { log } from './Logger';
 
 function createEmptyStore(): DecisionLogStore {
   return {
@@ -34,56 +30,18 @@ function createEmptyStore(): DecisionLogStore {
 /**
  * Service for persisting decisions across Claude Code sessions.
  */
-export class DecisionLogService implements vscode.Disposable {
-  private store: DecisionLogStore;
-  private dataFilePath: string;
-  private isDirty: boolean = false;
-  private saveTimer: NodeJS.Timeout | null = null;
-  private readonly SAVE_DEBOUNCE_MS = 5000;
-
-  constructor(private readonly projectSlug: string) {
-    this.store = createEmptyStore();
-    this.dataFilePath = this.getDataFilePath();
+export class DecisionLogService extends PersistenceService<DecisionLogStore> {
+  constructor(projectSlug: string) {
+    super(
+      resolveSidekickDataPath('decisions', `${projectSlug}.json`),
+      'Decision log',
+      DECISION_LOG_SCHEMA_VERSION,
+      createEmptyStore,
+    );
   }
 
-  private getDataFilePath(): string {
-    let configDir: string;
-
-    if (process.platform === 'win32') {
-      configDir = path.join(process.env.APPDATA || os.homedir(), 'sidekick', 'decisions');
-    } else {
-      configDir = path.join(os.homedir(), '.config', 'sidekick', 'decisions');
-    }
-
-    return path.join(configDir, `${this.projectSlug}.json`);
-  }
-
-  async initialize(): Promise<void> {
-    try {
-      const dir = path.dirname(this.dataFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        log(`Created decision log directory: ${dir}`);
-      }
-
-      if (fs.existsSync(this.dataFilePath)) {
-        const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
-        const loaded = JSON.parse(content) as DecisionLogStore;
-
-        if (loaded.schemaVersion !== DECISION_LOG_SCHEMA_VERSION) {
-          log(`Decision log schema version mismatch: ${loaded.schemaVersion} vs ${DECISION_LOG_SCHEMA_VERSION}`);
-        }
-
-        this.store = loaded;
-        log(`Loaded persisted decisions: ${Object.keys(this.store.decisions).length} entries`);
-      } else {
-        this.store = createEmptyStore();
-        log('Initialized new decision log store');
-      }
-    } catch (error) {
-      logError('Failed to load persisted decisions, starting with empty store', error);
-      this.store = createEmptyStore();
-    }
+  protected override onStoreLoaded(): void {
+    log(`Loaded persisted decisions: ${Object.keys(this.store.decisions).length} entries`);
   }
 
   /**
@@ -107,8 +65,7 @@ export class DecisionLogService implements vscode.Disposable {
     }
 
     if (added > 0) {
-      this.isDirty = true;
-      this.scheduleSave();
+      this.markDirty();
       log(`Added ${added} new decisions (${entries.length - added} duplicates skipped)`);
     }
   }
@@ -150,59 +107,15 @@ export class DecisionLogService implements vscode.Disposable {
 
   setLastSessionId(sessionId: string): void {
     this.store.lastSessionId = sessionId;
-    this.isDirty = true;
-    this.scheduleSave();
+    this.markDirty();
   }
 
   clearAll(): void {
     const count = Object.keys(this.store.decisions).length;
     this.store.decisions = {};
     if (count > 0) {
-      this.isDirty = true;
-      this.scheduleSave();
+      this.markDirty();
       log(`Cleared all ${count} decisions`);
-    }
-  }
-
-  private scheduleSave(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-    }
-
-    this.saveTimer = setTimeout(() => {
-      this.save();
-    }, this.SAVE_DEBOUNCE_MS);
-  }
-
-  private async save(): Promise<void> {
-    if (!this.isDirty) return;
-
-    try {
-      this.store.lastSaved = new Date().toISOString();
-      const content = JSON.stringify(this.store, null, 2);
-      await fs.promises.writeFile(this.dataFilePath, content, 'utf-8');
-      this.isDirty = false;
-      log('Decision log data saved to disk');
-    } catch (error) {
-      logError('Failed to save decision log data', error);
-    }
-  }
-
-  dispose(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-
-    if (this.isDirty) {
-      try {
-        this.store.lastSaved = new Date().toISOString();
-        const content = JSON.stringify(this.store, null, 2);
-        fs.writeFileSync(this.dataFilePath, content, 'utf-8');
-        log('Decision log data saved on dispose');
-      } catch (error) {
-        logError('Failed to save decision log data on dispose', error);
-      }
     }
   }
 }

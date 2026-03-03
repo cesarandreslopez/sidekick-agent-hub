@@ -172,10 +172,9 @@ export class PreCommitReviewService implements vscode.Disposable {
     const issuesByFile = new Map<string, ReviewIssue[]>();
     for (const issue of issues) {
       const filePath = path.join(repoRoot, issue.file);
-      if (!issuesByFile.has(filePath)) {
-        issuesByFile.set(filePath, []);
-      }
-      issuesByFile.get(filePath)!.push(issue);
+      let fileIssues = issuesByFile.get(filePath);
+      if (!fileIssues) { fileIssues = []; issuesByFile.set(filePath, fileIssues); }
+      fileIssues.push(issue);
     }
 
     // Create diagnostics for each file

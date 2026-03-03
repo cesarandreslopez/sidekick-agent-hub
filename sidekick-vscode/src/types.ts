@@ -81,6 +81,35 @@ export class TimeoutError extends Error {
 }
 
 /**
+ * Error from an AI provider API or CLI returning a failure response.
+ * Carries the provider name and optional status for diagnostics.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly provider: string,
+    public readonly statusCode?: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
+ * Error when a required external dependency (CLI binary, SDK, server)
+ * cannot be found or connected to.
+ */
+export class ConnectionError extends Error {
+  constructor(
+    message: string,
+    public readonly provider: string,
+  ) {
+    super(message);
+    this.name = 'ConnectionError';
+  }
+}
+
+/**
  * Interface for Claude API clients.
  *
  * Both ApiKeyClient and MaxSubscriptionClient implement this interface,

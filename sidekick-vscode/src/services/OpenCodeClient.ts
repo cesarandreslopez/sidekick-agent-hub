@@ -7,7 +7,7 @@
  * @module services/OpenCodeClient
  */
 
-import { ClaudeClient, CompletionOptions, TimeoutError } from '../types';
+import { ClaudeClient, CompletionOptions, TimeoutError, ConnectionError } from '../types';
 import { log, logError } from './Logger';
 
 const DEFAULT_PORT = 4096;
@@ -43,8 +43,9 @@ export class OpenCodeClient implements ClaudeClient {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         sdkModule = require('@opencode-ai/sdk');
       } catch {
-        throw new Error(
-          'OpenCode SDK not installed. Install @opencode-ai/sdk or choose a different inference provider.'
+        throw new ConnectionError(
+          'OpenCode SDK not installed. Install @opencode-ai/sdk or choose a different inference provider.',
+          'opencode'
         );
       }
     }
@@ -74,8 +75,9 @@ export class OpenCodeClient implements ClaudeClient {
       log('OpenCodeClient: spawned new OpenCode server');
       return clientInstance;
     } catch (err) {
-      throw new Error(
-        `Failed to connect to OpenCode: ${err instanceof Error ? err.message : String(err)}`
+      throw new ConnectionError(
+        `Failed to connect to OpenCode: ${err instanceof Error ? err.message : String(err)}`,
+        'opencode'
       );
     }
   }

@@ -478,12 +478,10 @@ export class SessionAnalyzer {
     const targetCounts = new Map<string, Map<string, number>>();
 
     for (const call of toolCalls) {
-      if (!targetCounts.has(call.name)) {
-        targetCounts.set(call.name, new Map());
-      }
+      let toolTargets = targetCounts.get(call.name);
+      if (!toolTargets) { toolTargets = new Map(); targetCounts.set(call.name, toolTargets); }
       const target = this.extractTarget(call);
       if (target) {
-        const toolTargets = targetCounts.get(call.name)!;
         toolTargets.set(target, (toolTargets.get(target) || 0) + 1);
       }
     }
@@ -715,10 +713,9 @@ export class SessionAnalyzer {
     const byDir = new Map<string, string[]>();
     for (const pattern of patterns) {
       const dir = path.dirname(pattern) || '.';
-      if (!byDir.has(dir)) {
-        byDir.set(dir, []);
-      }
-      byDir.get(dir)!.push(pattern);
+      let group = byDir.get(dir);
+      if (!group) { group = []; byDir.set(dir, group); }
+      group.push(pattern);
     }
 
     // Find directories with multiple patterns

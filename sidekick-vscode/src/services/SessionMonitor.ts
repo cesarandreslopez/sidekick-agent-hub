@@ -2834,19 +2834,20 @@ export class SessionMonitor implements vscode.Disposable {
         this.handleTaskToolUse(toolUse, timestamp);
 
         // Initialize analytics for this tool if needed
-        if (!this.toolAnalyticsMap.has(toolUse.name)) {
-          this.toolAnalyticsMap.set(toolUse.name, {
+        let analytics = this.toolAnalyticsMap.get(toolUse.name);
+        if (!analytics) {
+          analytics = {
             name: toolUse.name,
             successCount: 0,
             failureCount: 0,
             totalDuration: 0,
             completedCount: 0,
             pendingCount: 0
-          });
+          };
+          this.toolAnalyticsMap.set(toolUse.name, analytics);
         }
 
         // Increment pending count
-        const analytics = this.toolAnalyticsMap.get(toolUse.name)!;
         analytics.pendingCount++;
 
         // Emit analytics update

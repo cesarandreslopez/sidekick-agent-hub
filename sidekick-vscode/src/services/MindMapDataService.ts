@@ -733,8 +733,9 @@ export class MindMapDataService {
     for (let i = 0; i < planState.steps.length; i++) {
       const phase = planState.steps[i].phase;
       if (phase) {
-        if (!phaseGroups.has(phase)) phaseGroups.set(phase, []);
-        phaseGroups.get(phase)!.push(i);
+        let group = phaseGroups.get(phase);
+        if (!group) { group = []; phaseGroups.set(phase, group); }
+        group.push(i);
       } else {
         noPhaseIndices.push(i);
       }

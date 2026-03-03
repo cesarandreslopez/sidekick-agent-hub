@@ -2,64 +2,42 @@
  * @fileoverview Cross-session plan persistence service.
  *
  * Persists plan analytics to disk so plan history and metrics are available
- * across sessions. Follows the TaskPersistenceService pattern.
+ * across sessions.
  *
  * Storage location: ~/.config/sidekick/plans/{projectSlug}.json
  *
  * @module services/PlanPersistenceService
  */
 
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import type { PlanState, PlanStep } from '../types/claudeSession';
 import type { PersistedPlan, PersistedPlanStep, PlanHistoryStore, PlanStatus } from '../types/plan';
 import { PLAN_SCHEMA_VERSION, MAX_PLANS_PER_PROJECT } from '../types/plan';
-import { log, logError } from './Logger';
+import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
+import { log } from './Logger';
+
+function createEmptyStore(): PlanHistoryStore {
+  return {
+    schemaVersion: PLAN_SCHEMA_VERSION,
+    plans: [],
+    lastSaved: new Date().toISOString(),
+  };
+}
 
 /**
  * Service for persisting plan data across sessions.
  */
-export class PlanPersistenceService implements vscode.Disposable {
-  private store: PlanHistoryStore;
-  private dataFilePath: string;
-  private isDirty = false;
-  private saveTimer: NodeJS.Timeout | null = null;
-  private readonly SAVE_DEBOUNCE_MS = 5000;
-
+export class PlanPersistenceService extends PersistenceService<PlanHistoryStore> {
   constructor(private readonly projectSlug: string) {
-    this.store = { schemaVersion: PLAN_SCHEMA_VERSION, plans: [], lastSaved: new Date().toISOString() };
-    this.dataFilePath = this.getDataFilePath();
+    super(
+      resolveSidekickDataPath('plans', `${projectSlug}.json`),
+      'Plan persistence',
+      PLAN_SCHEMA_VERSION,
+      createEmptyStore,
+    );
   }
 
-  private getDataFilePath(): string {
-    let configDir: string;
-    if (process.platform === 'win32') {
-      configDir = path.join(process.env.APPDATA || os.homedir(), 'sidekick', 'plans');
-    } else {
-      configDir = path.join(os.homedir(), '.config', 'sidekick', 'plans');
-    }
-    return path.join(configDir, `${this.projectSlug}.json`);
-  }
-
-  async initialize(): Promise<void> {
-    try {
-      const dir = path.dirname(this.dataFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        log(`Created plan persistence directory: ${dir}`);
-      }
-
-      if (fs.existsSync(this.dataFilePath)) {
-        const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
-        const loaded = JSON.parse(content) as PlanHistoryStore;
-        this.store = loaded;
-        log(`Loaded persisted plans: ${this.store.plans.length} plans`);
-      }
-    } catch (error) {
-      logError('Failed to load persisted plans', error);
-    }
+  protected override onStoreLoaded(): void {
+    log(`Loaded persisted plans: ${this.store.plans.length} plans`);
   }
 
   /**
@@ -124,8 +102,7 @@ export class PlanPersistenceService implements vscode.Disposable {
       this.store.plans = this.store.plans.slice(0, MAX_PLANS_PER_PROJECT);
     }
 
-    this.isDirty = true;
-    this.scheduleSave();
+    this.markDirty();
     log(`Persisted plan "${persisted.title}" (${status}, ${completedSteps}/${totalSteps} steps) for session ${sessionId.slice(0, 8)}`);
   }
 
@@ -152,46 +129,5 @@ export class PlanPersistenceService implements vscode.Disposable {
    */
   getPlans(): PersistedPlan[] {
     return [...this.store.plans];
-  }
-
-  private scheduleSave(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-    }
-    this.saveTimer = setTimeout(() => {
-      this.save();
-    }, this.SAVE_DEBOUNCE_MS);
-  }
-
-  private async save(): Promise<void> {
-    if (!this.isDirty) return;
-
-    try {
-      this.store.lastSaved = new Date().toISOString();
-      const content = JSON.stringify(this.store, null, 2);
-      await fs.promises.writeFile(this.dataFilePath, content, 'utf-8');
-      this.isDirty = false;
-      log('Plan persistence data saved to disk');
-    } catch (error) {
-      logError('Failed to save plan persistence data', error);
-    }
-  }
-
-  dispose(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-
-    if (this.isDirty) {
-      try {
-        this.store.lastSaved = new Date().toISOString();
-        const content = JSON.stringify(this.store, null, 2);
-        fs.writeFileSync(this.dataFilePath, content, 'utf-8');
-        log('Plan persistence data saved on dispose');
-      } catch (error) {
-        logError('Failed to save plan persistence data on dispose', error);
-      }
-    }
   }
 }

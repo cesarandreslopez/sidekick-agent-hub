@@ -17,7 +17,7 @@ import * as readline from 'readline';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ClaudeClient, CompletionOptions, TimeoutError } from '../types';
+import { ClaudeClient, CompletionOptions, TimeoutError, ConnectionError } from '../types';
 import { log, logError } from './Logger';
 
 /**
@@ -78,8 +78,9 @@ function findCodexCli(): string {
     return resolved;
   }
 
-  throw new Error(
-    'Codex CLI not found. Install it (npm install -g @openai/codex) or choose a different inference provider.'
+  throw new ConnectionError(
+    'Codex CLI not found. Install it (npm install -g @openai/codex) or choose a different inference provider.',
+    'codex'
   );
 }
 

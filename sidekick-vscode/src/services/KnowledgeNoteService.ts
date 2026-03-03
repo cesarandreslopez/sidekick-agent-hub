@@ -2,8 +2,7 @@
  * @fileoverview Cross-session knowledge note persistence service.
  *
  * Persists knowledge notes (gotchas, patterns, guidelines, tips) attached to files
- * with lifecycle staleness tracking. Follows the DecisionLogService pattern:
- * dirty tracking, debounced saves, synchronous dispose.
+ * with lifecycle staleness tracking.
  *
  * Storage location: ~/.config/sidekick/knowledge-notes/{projectSlug}.json
  *
@@ -11,9 +10,6 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import * as crypto from 'crypto';
 import type {
   KnowledgeNote,
@@ -29,7 +25,8 @@ import {
   IMPORTANCE_DECAY_FACTORS,
   STALENESS_THRESHOLDS,
 } from '../types/knowledgeNote';
-import { log, logError } from './Logger';
+import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
+import { log } from './Logger';
 
 function createEmptyStore(): KnowledgeNoteStore {
   return {
@@ -63,60 +60,22 @@ export interface NoteFilter {
 /**
  * Service for persisting knowledge notes across sessions.
  */
-export class KnowledgeNoteService implements vscode.Disposable {
-  private store: KnowledgeNoteStore;
-  private dataFilePath: string;
-  private isDirty: boolean = false;
-  private saveTimer: NodeJS.Timeout | null = null;
-  private readonly SAVE_DEBOUNCE_MS = 5000;
-
+export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore> {
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
-  constructor(private readonly projectSlug: string) {
-    this.store = createEmptyStore();
-    this.dataFilePath = this.getDataFilePath();
+  constructor(projectSlug: string) {
+    super(
+      resolveSidekickDataPath('knowledge-notes', `${projectSlug}.json`),
+      'Knowledge note',
+      KNOWLEDGE_NOTE_SCHEMA_VERSION,
+      createEmptyStore,
+    );
   }
 
-  private getDataFilePath(): string {
-    let configDir: string;
-
-    if (process.platform === 'win32') {
-      configDir = path.join(process.env.APPDATA || os.homedir(), 'sidekick', 'knowledge-notes');
-    } else {
-      configDir = path.join(os.homedir(), '.config', 'sidekick', 'knowledge-notes');
-    }
-
-    return path.join(configDir, `${this.projectSlug}.json`);
-  }
-
-  async initialize(): Promise<void> {
-    try {
-      const dir = path.dirname(this.dataFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        log(`Created knowledge notes directory: ${dir}`);
-      }
-
-      if (fs.existsSync(this.dataFilePath)) {
-        const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
-        const loaded = JSON.parse(content) as KnowledgeNoteStore;
-
-        if (loaded.schemaVersion !== KNOWLEDGE_NOTE_SCHEMA_VERSION) {
-          log(`Knowledge note schema version mismatch: ${loaded.schemaVersion} vs ${KNOWLEDGE_NOTE_SCHEMA_VERSION}`);
-        }
-
-        this.store = loaded;
-        this.recountNotes();
-        log(`Loaded persisted knowledge notes: ${this.store.totalNotes} entries`);
-      } else {
-        this.store = createEmptyStore();
-        log('Initialized new knowledge note store');
-      }
-    } catch (error) {
-      logError('Failed to load persisted knowledge notes, starting with empty store', error);
-      this.store = createEmptyStore();
-    }
+  protected override onStoreLoaded(): void {
+    this.recountNotes();
+    log(`Loaded persisted knowledge notes: ${this.store.totalNotes} entries`);
   }
 
   /**
@@ -150,7 +109,7 @@ export class KnowledgeNoteService implements vscode.Disposable {
 
     this.store.notesByFile[options.filePath].push(note);
     this.store.totalNotes++;
-    this.markDirty();
+    this.markDirtyAndNotify();
     log(`Added knowledge note ${id} to ${options.filePath}`);
 
     return id;
@@ -164,7 +123,7 @@ export class KnowledgeNoteService implements vscode.Disposable {
     if (!note) return false;
 
     Object.assign(note, updates, { updatedAt: new Date().toISOString() });
-    this.markDirty();
+    this.markDirtyAndNotify();
     return true;
   }
 
@@ -180,7 +139,7 @@ export class KnowledgeNoteService implements vscode.Disposable {
           delete this.store.notesByFile[filePath];
         }
         this.store.totalNotes--;
-        this.markDirty();
+        this.markDirtyAndNotify();
         log(`Deleted knowledge note ${id}`);
         return true;
       }
@@ -198,7 +157,7 @@ export class KnowledgeNoteService implements vscode.Disposable {
     note.lastReviewedAt = new Date().toISOString();
     note.updatedAt = new Date().toISOString();
     note.status = 'active';
-    this.markDirty();
+    this.markDirtyAndNotify();
     return true;
   }
 
@@ -288,12 +247,6 @@ export class KnowledgeNoteService implements vscode.Disposable {
   /**
    * Updates staleness status for notes based on file changes.
    *
-   * Lifecycle transitions:
-   * - Active -> NeedsReview: file modified AND staleness score > needsReview threshold
-   * - NeedsReview -> Stale: score > stale threshold
-   * - Any -> Obsolete: file deleted from workspace
-   * - Confirm resets lastReviewedAt and status back to Active
-   *
    * @param changedFilePaths - Relative paths of files that changed. If undefined, checks all.
    * @param deletedFilePaths - Relative paths of files that were deleted.
    */
@@ -338,7 +291,7 @@ export class KnowledgeNoteService implements vscode.Disposable {
     }
 
     if (updated) {
-      this.markDirty();
+      this.markDirtyAndNotify();
     }
   }
 
@@ -352,6 +305,11 @@ export class KnowledgeNoteService implements vscode.Disposable {
     const ageDays = (now - reviewedAt) / (1000 * 60 * 60 * 24);
     const decayFactor = IMPORTANCE_DECAY_FACTORS[note.importance];
     return ageDays / decayFactor;
+  }
+
+  override dispose(): void {
+    this._onDidChange.dispose();
+    super.dispose();
   }
 
   private determineStatus(score: number, currentStatus: KnowledgeNoteStatus): KnowledgeNoteStatus {
@@ -382,53 +340,8 @@ export class KnowledgeNoteService implements vscode.Disposable {
     this.store.totalNotes = count;
   }
 
-  private markDirty(): void {
-    this.isDirty = true;
-    this.scheduleSave();
+  private markDirtyAndNotify(): void {
+    this.markDirty();
     this._onDidChange.fire();
-  }
-
-  private scheduleSave(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-    }
-
-    this.saveTimer = setTimeout(() => {
-      this.save();
-    }, this.SAVE_DEBOUNCE_MS);
-  }
-
-  private async save(): Promise<void> {
-    if (!this.isDirty) return;
-
-    try {
-      this.store.lastSaved = new Date().toISOString();
-      const content = JSON.stringify(this.store, null, 2);
-      await fs.promises.writeFile(this.dataFilePath, content, 'utf-8');
-      this.isDirty = false;
-      log('Knowledge note data saved to disk');
-    } catch (error) {
-      logError('Failed to save knowledge note data', error);
-    }
-  }
-
-  dispose(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-
-    if (this.isDirty) {
-      try {
-        this.store.lastSaved = new Date().toISOString();
-        const content = JSON.stringify(this.store, null, 2);
-        fs.writeFileSync(this.dataFilePath, content, 'utf-8');
-        log('Knowledge note data saved on dispose');
-      } catch (error) {
-        logError('Failed to save knowledge note data on dispose', error);
-      }
-    }
-
-    this._onDidChange.dispose();
   }
 }

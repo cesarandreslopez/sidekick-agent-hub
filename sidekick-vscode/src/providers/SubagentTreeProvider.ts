@@ -286,9 +286,9 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
           const agentId = match[1];
 
           // Skip if already tracked
-          if (this.subagents.has(agentId)) {
-            // But still enrich with stats if available
-            const existing = this.subagents.get(agentId)!;
+          const existing = this.subagents.get(agentId);
+          if (existing) {
+            // Already tracked — still enrich with stats if available
             const stats = statsMap.get(agentId);
             if (stats) {
               this.enrichFromStats(existing, stats);

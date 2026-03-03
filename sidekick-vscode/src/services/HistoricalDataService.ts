@@ -12,10 +12,6 @@
  * @module services/HistoricalDataService
  */
 
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import {
   HistoricalDataStore,
   DailyData,
@@ -29,7 +25,8 @@ import {
   createEmptyTokenTotals,
   HISTORICAL_DATA_SCHEMA_VERSION,
 } from '../types/historicalData';
-import { log, logError } from './Logger';
+import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
+import { log } from './Logger';
 
 /**
  * Service for persisting and aggregating historical session data.
@@ -50,85 +47,18 @@ import { log, logError } from './Logger';
  * const allTime = service.getAllTimeStats();
  * ```
  */
-export class HistoricalDataService implements vscode.Disposable {
-  /** Data file name */
-  private static readonly DATA_FILE = 'historical-data.json';
-
-  /** In-memory data store */
-  private store: HistoricalDataStore;
-
-  /** Path to data file */
-  private dataFilePath: string;
-
-  /** Whether data has unsaved changes */
-  private isDirty: boolean = false;
-
-  /** Debounce timer for saves */
-  private saveTimer: NodeJS.Timeout | null = null;
-
-  /** Save debounce delay (5 seconds) */
-  private readonly SAVE_DEBOUNCE_MS = 5000;
-
-  /**
-   * Creates a new HistoricalDataService.
-   *
-   * Call initialize() before using other methods.
-   */
+export class HistoricalDataService extends PersistenceService<HistoricalDataStore> {
   constructor() {
-    this.store = createEmptyDataStore();
-    this.dataFilePath = this.getDataFilePath();
+    super(
+      resolveSidekickDataPath('', 'historical-data.json'),
+      'Historical data',
+      HISTORICAL_DATA_SCHEMA_VERSION,
+      createEmptyDataStore,
+    );
   }
 
-  /**
-   * Gets the path to the data file based on platform.
-   */
-  private getDataFilePath(): string {
-    let configDir: string;
-
-    if (process.platform === 'win32') {
-      // Windows: %APPDATA%/sidekick/
-      configDir = path.join(process.env.APPDATA || os.homedir(), 'sidekick');
-    } else {
-      // Linux/Mac: ~/.config/sidekick/
-      configDir = path.join(os.homedir(), '.config', 'sidekick');
-    }
-
-    return path.join(configDir, HistoricalDataService.DATA_FILE);
-  }
-
-  /**
-   * Initializes the service by loading existing data or creating new store.
-   */
-  async initialize(): Promise<void> {
-    try {
-      // Ensure directory exists
-      const dir = path.dirname(this.dataFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        log(`Created historical data directory: ${dir}`);
-      }
-
-      // Load existing data if present
-      if (fs.existsSync(this.dataFilePath)) {
-        const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
-        const loaded = JSON.parse(content) as HistoricalDataStore;
-
-        // Check schema version for future migrations
-        if (loaded.schemaVersion !== HISTORICAL_DATA_SCHEMA_VERSION) {
-          log(`Historical data schema version mismatch: ${loaded.schemaVersion} vs ${HISTORICAL_DATA_SCHEMA_VERSION}`);
-          // For now, just use loaded data as-is. Future: add migration logic here.
-        }
-
-        this.store = loaded;
-        log(`Loaded historical data: ${Object.keys(this.store.daily).length} days, ${this.store.allTime.sessionCount} sessions`);
-      } else {
-        this.store = createEmptyDataStore();
-        log('Initialized new historical data store');
-      }
-    } catch (error) {
-      logError('Failed to load historical data', error);
-      this.store = createEmptyDataStore();
-    }
+  protected override onStoreLoaded(): void {
+    log(`Loaded historical data: ${Object.keys(this.store.daily).length} days, ${this.store.allTime.sessionCount} sessions`);
   }
 
   /**
@@ -154,8 +84,7 @@ export class HistoricalDataService implements vscode.Disposable {
     // Update all-time stats
     this.updateAllTimeStats(date, summary);
 
-    this.isDirty = true;
-    this.scheduleSave();
+    this.markDirty();
 
     log(`Saved session ${summary.sessionId.slice(0, 8)} to historical data (${date})`);
   }
@@ -454,49 +383,6 @@ export class HistoricalDataService implements vscode.Disposable {
     return result;
   }
 
-  /**
-   * Schedules a debounced save to disk.
-   */
-  private scheduleSave(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-    }
-
-    this.saveTimer = setTimeout(() => {
-      this.save();
-    }, this.SAVE_DEBOUNCE_MS);
-  }
-
-  /**
-   * Saves data to disk immediately.
-   */
-  private async save(): Promise<void> {
-    if (!this.isDirty) {
-      return;
-    }
-
-    try {
-      this.store.lastSaved = new Date().toISOString();
-      const content = JSON.stringify(this.store, null, 2);
-      await fs.promises.writeFile(this.dataFilePath, content, 'utf-8');
-      this.isDirty = false;
-      log('Historical data saved to disk');
-    } catch (error) {
-      logError('Failed to save historical data', error);
-    }
-  }
-
-  /**
-   * Forces an immediate save (for extension deactivation).
-   */
-  async forceSave(): Promise<void> {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-    await this.save();
-  }
-
   // ============================================================
   // Retroactive Import Support Methods
   // ============================================================
@@ -524,8 +410,7 @@ export class HistoricalDataService implements vscode.Disposable {
     if (!this.store.importedFiles.includes(filePath)) {
       this.store.importedFiles.push(filePath);
       this.store.lastImportTimestamp = new Date().toISOString();
-      this.isDirty = true;
-      this.scheduleSave();
+      this.markDirty();
     }
   }
 
@@ -545,30 +430,7 @@ export class HistoricalDataService implements vscode.Disposable {
    */
   clearAllData(): void {
     this.store = createEmptyDataStore();
-    this.isDirty = true;
-    this.scheduleSave();
+    this.markDirty();
     log('Historical data cleared');
-  }
-
-  /**
-   * Disposes of the service, saving any pending data.
-   */
-  dispose(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-
-    // Synchronous save on dispose since async may not complete
-    if (this.isDirty) {
-      try {
-        this.store.lastSaved = new Date().toISOString();
-        const content = JSON.stringify(this.store, null, 2);
-        fs.writeFileSync(this.dataFilePath, content, 'utf-8');
-        log('Historical data saved on dispose');
-      } catch (error) {
-        logError('Failed to save historical data on dispose', error);
-      }
-    }
   }
 }

@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
-import { ClaudeClient, CompletionOptions, TimeoutError } from '../types';
+import { ClaudeClient, CompletionOptions, TimeoutError, ApiError, ConnectionError } from '../types';
 import { log, logError } from './Logger';
 
 // Type for the query function from the SDK
@@ -153,9 +153,10 @@ function findClaudeCli(): string {
   }
 
   // Could not find claude anywhere
-  throw new Error(
+  throw new ConnectionError(
     'Claude CLI not found. Please install Claude Code (https://claude.ai/download) ' +
-    'or set the path manually in Settings > Sidekick: Claude Path'
+    'or set the path manually in Settings > Sidekick: Claude Path',
+    'claude-max'
   );
 }
 
@@ -333,10 +334,10 @@ export class MaxSubscriptionClient implements ClaudeClient {
           log(`Result message: ${JSON.stringify(message, null, 2)}`);
           const errorMsg = message.errors?.join(', ') || message.subtype || 'Unknown error';
           logError(`Query failed: ${errorMsg}`);
-          throw new Error(errorMsg);
+          throw new ApiError(errorMsg, 'claude-max');
         }
       }
-      throw new Error('No result received');
+      throw new ApiError('No result received', 'claude-max');
     } catch (error) {
       logError('MaxSubscriptionClient.complete error', error);
       if (error instanceof Error && error.name === 'AbortError') {
