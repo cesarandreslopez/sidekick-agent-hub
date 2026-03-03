@@ -307,6 +307,12 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       transition: border-color var(--sk-transition-fast),
                   transform var(--sk-transition-fast),
                   box-shadow var(--sk-transition-fast);
+      animation: sessionCardEnter 0.25s ease-out both;
+    }
+
+    @keyframes sessionCardEnter {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .session-card:hover {

@@ -65,30 +65,41 @@ body {
 
 .complexity-bar {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--vscode-input-border, var(--vscode-contrastBorder));
+  background: var(--vscode-input-background);
 }
 
 .complexity-btn {
-  padding: 6px 14px;
-  border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder));
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
+  padding: 7px 14px;
+  border: none;
+  border-right: 1px solid var(--vscode-input-border, var(--vscode-contrastBorder));
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
   font-family: var(--vscode-font-family);
-  transition: background-color 0.1s ease;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.complexity-btn:last-child {
+  border-right: none;
 }
 
 .complexity-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
 .complexity-btn.active {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
-  border-color: var(--vscode-button-background);
 }
 
 .toolbar {
@@ -96,9 +107,18 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder));
+}
+
+.toolbar-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 8px;
 }
 
 #explanation-content {
@@ -181,31 +201,52 @@ body {
 .loading-spinner {
   display: none;
   text-align: center;
-  padding: 40px 20px;
+  padding: 48px 20px;
   color: var(--vscode-descriptionForeground);
 }
 
 .loading-spinner.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: fadeIn 0.2s ease-out;
 }
 
-.spinner-icon {
-  display: inline-block;
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--vscode-progressBar-background);
-  border-top-color: var(--vscode-button-background);
+.spinner-dots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.spinner-dots span {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  background: var(--vscode-textLink-foreground);
+  animation: dotPulse 1.2s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.spinner-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.spinner-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes dotPulse {
+  0%, 60%, 100% { opacity: 0.2; transform: scale(0.8); }
+  30% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .loading-text {
-  margin-top: 12px;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .error-message {
@@ -214,49 +255,102 @@ body {
   padding: 16px;
   background: var(--vscode-inputValidation-errorBackground);
   border: 1px solid var(--vscode-inputValidation-errorBorder);
-  border-radius: 4px;
+  border-radius: 6px;
   margin: 20px 0;
+  border-left: 3px solid var(--vscode-editorError-foreground, #f44336);
 }
 
 .error-message.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .error-title {
   font-weight: 600;
-  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .error-details {
-  margin-bottom: 12px;
   opacity: 0.9;
+  line-height: 1.5;
+  font-size: 13px;
 }
 
 .retry-btn {
-  padding: 6px 12px;
+  align-self: flex-start;
+  padding: 6px 14px;
   border: 1px solid var(--vscode-button-border, transparent);
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   cursor: pointer;
   border-radius: 4px;
   font-family: var(--vscode-font-family);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s ease;
 }
 
 .retry-btn:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
+#explanation-content {
+  animation: contentReveal 0.3s ease-out;
+}
+
+@keyframes contentReveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .empty-state {
   display: none;
   text-align: center;
-  padding: 60px 20px;
+  padding: 60px 24px;
   color: var(--vscode-descriptionForeground);
-  font-size: 14px;
 }
 
 .empty-state.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.empty-state-icon {
+  font-size: 32px;
+  opacity: 0.4;
+  line-height: 1;
+}
+
+.empty-state-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  opacity: 0.7;
+}
+
+.empty-state-hint {
+  font-size: 12px;
+  max-width: 280px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.empty-state kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family);
+  background: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--vscode-panel-border, transparent);
+  border-radius: 3px;
+  color: var(--vscode-textPreformat-foreground);
 }
 `;
   document.head.appendChild(style);
@@ -275,7 +369,7 @@ function initializeDOM() {
         <div class="complexity-bar" id="complexity-bar"></div>
       </div>
       <div class="loading-spinner" id="loading-spinner">
-        <div class="spinner-icon"></div>
+        <div class="spinner-dots"><span></span><span></span><span></span></div>
         <div class="loading-text">Generating explanation...</div>
       </div>
       <div class="error-message" id="error-message">
@@ -285,7 +379,9 @@ function initializeDOM() {
       </div>
       <div id="explanation-content"></div>
       <div class="empty-state" id="empty-state">
-        Select code and use "Explain Selection" to begin
+        <div class="empty-state-icon">&lt;/&gt;</div>
+        <div class="empty-state-title">Explain Selection</div>
+        <div class="empty-state-hint">Select code in the editor, then use <kbd>Explain Selection</kbd> from the command palette or context menu.</div>
       </div>
     </div>
   `;

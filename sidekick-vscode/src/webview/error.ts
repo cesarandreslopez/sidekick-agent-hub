@@ -71,12 +71,25 @@ body {
 }
 
 .severity-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 4px 10px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.severity-badge::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .severity-badge.error {
@@ -113,39 +126,79 @@ body {
 
 .explanation-section {
   margin-bottom: 24px;
+  padding: 14px;
+  background: var(--vscode-textBlockQuote-background, transparent);
+  border-radius: 6px;
+  border-left: 3px solid var(--vscode-panel-border);
+  animation: sectionReveal 0.3s ease-out both;
 }
 
-.section-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: var(--vscode-editor-foreground);
+.explanation-section:nth-child(1) { animation-delay: 0s; }
+.explanation-section:nth-child(2) { animation-delay: 0.08s; }
+.explanation-section:nth-child(3) { animation-delay: 0.16s; }
+
+@keyframes sectionReveal {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
 }
+
+.explanation-section:nth-child(1) { border-left-color: var(--vscode-editorError-foreground, #f44336); }
+.explanation-section:nth-child(2) { border-left-color: var(--vscode-editorWarning-foreground, #ff9800); }
+.explanation-section:nth-child(3) { border-left-color: var(--vscode-testing-iconPassed, #4caf50); }
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--vscode-editor-foreground);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-title::before {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.explanation-section:nth-child(1) .section-title::before { content: '\u26A0'; }
+.explanation-section:nth-child(2) .section-title::before { content: '\u2139'; }
+.explanation-section:nth-child(3) .section-title::before { content: '\u2705'; }
 
 .section-content {
   line-height: 1.7;
   color: var(--vscode-editor-foreground);
   white-space: pre-wrap;
+  font-size: 13px;
 }
 
 .fix-preview-section {
   margin-top: 24px;
   padding: 16px;
   background: var(--vscode-textBlockQuote-background);
-  border-left: 4px solid var(--vscode-textBlockQuote-border);
-  border-radius: 4px;
+  border-left: 4px solid var(--vscode-testing-iconPassed, #4caf50);
+  border-radius: 6px;
+  animation: sectionReveal 0.3s ease-out both;
 }
 
 .fix-preview-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   margin-bottom: 12px;
   color: var(--vscode-editor-foreground);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fix-preview-title::before {
+  content: '\u2728';
+  font-size: 14px;
 }
 
 .fix-code-block {
   background: var(--vscode-textCodeBlock-background);
-  padding: 12px;
+  padding: 14px;
   border-radius: 4px;
   border: 1px solid var(--vscode-panel-border, transparent);
   font-family: var(--vscode-editor-font-family);
@@ -153,59 +206,87 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--vscode-textPreformat-foreground);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  line-height: 1.5;
 }
 
 .apply-fix-btn {
-  padding: 8px 16px;
+  padding: 8px 20px;
   border: 1px solid var(--vscode-button-border, transparent);
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   cursor: pointer;
   border-radius: 4px;
   font-family: var(--vscode-font-family);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  transition: background-color 0.1s ease;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
 .apply-fix-btn:hover {
   background: var(--vscode-button-hoverBackground);
+  transform: translateY(-1px);
+}
+
+.apply-fix-btn:active {
+  transform: translateY(0);
 }
 
 .apply-fix-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+}
+
+.apply-fix-btn.applied {
+  background: var(--vscode-testing-iconPassed, #4caf50);
+  border-color: var(--vscode-testing-iconPassed, #4caf50);
 }
 
 .loading-spinner {
   display: none;
   text-align: center;
-  padding: 40px 20px;
+  padding: 48px 20px;
   color: var(--vscode-descriptionForeground);
 }
 
 .loading-spinner.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: fadeIn 0.2s ease-out;
 }
 
-.spinner-icon {
-  display: inline-block;
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--vscode-progressBar-background);
-  border-top-color: var(--vscode-button-background);
+.spinner-dots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.spinner-dots span {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  background: var(--vscode-textLink-foreground);
+  animation: dotPulse 1.2s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.spinner-dots span:nth-child(2) { animation-delay: 0.15s; }
+.spinner-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dotPulse {
+  0%, 60%, 100% { opacity: 0.2; transform: scale(0.8); }
+  30% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .loading-text {
-  margin-top: 12px;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .error-state {
@@ -214,33 +295,53 @@ body {
   padding: 16px;
   background: var(--vscode-inputValidation-errorBackground);
   border: 1px solid var(--vscode-inputValidation-errorBorder);
-  border-radius: 4px;
+  border-radius: 6px;
+  border-left: 3px solid var(--vscode-editorError-foreground, #f44336);
   margin: 20px 0;
 }
 
 .error-state.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .error-state-title {
   font-weight: 600;
-  margin-bottom: 8px;
 }
 
 .error-state-details {
   opacity: 0.9;
+  line-height: 1.5;
+  font-size: 13px;
 }
 
 .empty-state {
   display: none;
   text-align: center;
-  padding: 60px 20px;
+  padding: 60px 24px;
   color: var(--vscode-descriptionForeground);
-  font-size: 14px;
 }
 
 .empty-state.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.empty-state-icon {
+  font-size: 32px;
+  opacity: 0.4;
+  line-height: 1;
+}
+
+.empty-state-text {
+  font-size: 13px;
+  max-width: 260px;
+  line-height: 1.5;
 }
 `;
   document.head.appendChild(style);
@@ -262,7 +363,7 @@ function initializeDOM() {
       </div>
 
       <div class="loading-spinner" id="loading-spinner">
-        <div class="spinner-icon"></div>
+        <div class="spinner-dots"><span></span><span></span><span></span></div>
         <div class="loading-text">Analyzing error...</div>
       </div>
 
@@ -295,7 +396,8 @@ function initializeDOM() {
       </div>
 
       <div class="empty-state" id="empty-state">
-        Waiting for error diagnostic...
+        <div class="empty-state-icon">\u26A0</div>
+        <div class="empty-state-text">Waiting for error diagnostic...</div>
       </div>
     </div>
   `;
@@ -370,7 +472,13 @@ function handleExtensionMessage(event: MessageEvent) {
       const applyFixBtn = document.getElementById('apply-fix-btn');
       if (applyFixBtn instanceof HTMLButtonElement) {
         applyFixBtn.disabled = false;
-        applyFixBtn.textContent = message.success ? 'Applied ✓' : 'Apply Fix';
+        if (message.success) {
+          applyFixBtn.textContent = 'Applied';
+          applyFixBtn.classList.add('applied');
+        } else {
+          applyFixBtn.textContent = 'Apply Fix';
+          applyFixBtn.classList.remove('applied');
+        }
       }
       break;
     }

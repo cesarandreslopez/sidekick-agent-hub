@@ -68,6 +68,50 @@ export function getDesignTokenCSS(): string {
     /* ── Animation Keyframes (durations) ── */
     --sk-pulse-duration: 2s;
   }
+</style>
+<style id="sk-scrollbar-selection">
+  /* ── Custom Scrollbar ── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--vscode-scrollbarSlider-background, #79797966) 60%, transparent);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-hoverBackground, #646464b3);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* ── Text Selection ── */
+  ::selection {
+    background: color-mix(in srgb, var(--vscode-editor-selectionBackground, #264f78) 80%, transparent);
+    color: var(--vscode-editor-selectionForeground, inherit);
+  }
+
+  /* ── Focus-Visible Ring ── */
+  :focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+  }
+
+  button:focus-visible {
+    outline-offset: 2px;
+  }
 </style>`;
 }
 
@@ -397,6 +441,23 @@ export function getSharedStyles(): string {
   /* ── Fade-in utility ── */
   .sk-fade-in {
     animation: sk-fade-in 0.3s ease-out;
+  }
+
+  /* ── Staggered entrance for list children ── */
+  .sk-stagger-in > * {
+    animation: sk-fade-in 0.25s ease-out both;
+  }
+  .sk-stagger-in > *:nth-child(1) { animation-delay: 0s; }
+  .sk-stagger-in > *:nth-child(2) { animation-delay: 0.04s; }
+  .sk-stagger-in > *:nth-child(3) { animation-delay: 0.08s; }
+  .sk-stagger-in > *:nth-child(4) { animation-delay: 0.12s; }
+  .sk-stagger-in > *:nth-child(5) { animation-delay: 0.16s; }
+  .sk-stagger-in > *:nth-child(n+6) { animation-delay: 0.2s; }
+
+  /* ── Smooth state transitions ── */
+  .sk-transition-content {
+    transition: opacity var(--sk-transition-base),
+                transform var(--sk-transition-base);
   }
 </style>`;
 }

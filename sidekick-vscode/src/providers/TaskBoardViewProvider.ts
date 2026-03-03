@@ -633,6 +633,12 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       flex-direction: column;
       gap: var(--sk-space-2);
       transition: transform var(--sk-transition-fast), box-shadow var(--sk-transition-fast);
+      animation: cardEnter 0.25s ease-out both;
+    }
+
+    @keyframes cardEnter {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .card:hover {
@@ -796,6 +802,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     function render(state) {
       if (!state) return;
+      cardIndex = 0;
 
       statusEl.textContent = state.sessionActive ? 'Active' : 'Idle';
       statusEl.classList.toggle('active', state.sessionActive);
@@ -896,6 +903,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       });
     }
 
+    var cardIndex = 0;
+
     function renderCard(task) {
       const card = document.createElement('article');
       const classes = ['card'];
@@ -904,6 +913,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (task.carriedOver) classes.push('carried-over');
       if (task.isGoalGate) classes.push('goal-gate');
       card.className = classes.join(' ');
+      card.style.animationDelay = Math.min(cardIndex * 0.04, 0.3) + 's';
+      cardIndex++;
 
       const title = document.createElement('div');
       title.className = 'card-title';
