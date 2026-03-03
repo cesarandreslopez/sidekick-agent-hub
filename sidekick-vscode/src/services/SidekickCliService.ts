@@ -12,7 +12,6 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
-import { log } from './Logger';
 import { findCli } from '../utils/cliPathResolver';
 
 const TERMINAL_NAME = 'Sidekick Dashboard';
