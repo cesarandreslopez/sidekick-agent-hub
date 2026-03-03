@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-03-03
+
+### Added
+
+- **VS Code Toast Notifications**: Dismissable toast notifications in the dashboard webview with `aria-live` for screen readers — copying a CLAUDE.md suggestion now shows "Copied to clipboard" feedback
+- **VS Code Reduced Motion Support**: `prefers-reduced-motion` media queries across all webviews — animations and transitions disabled when OS-level setting is enabled
+- **VS Code Keyboard Navigation for Explain Panel**: Complexity level selector is now a proper segmented control with `role="tablist"` and roving tabindex — Arrow, Home, and End keys navigate between levels
+- **VS Code Improved Focus Indicators**: Focus-visible outlines upgraded to 2px with positive offset across all webviews for better keyboard navigation visibility
+- **VS Code ARIA Landmarks**: Explain and Error panels use semantic `<main>`, `role="region"`, `aria-live`, `role="status"`, `role="alert"`, and `aria-label` attributes throughout
+- **VS Code Theme-Aware Gauge Colors**: Context usage gauge reads colors from VS Code theme CSS variables instead of hardcoded RGB values
+- **VS Code Redesigned Explain Panel**: Complexity selector replaced with a unified segmented control (bordered pill-style bar) with smooth hover/active transitions
+- **VS Code Redesigned Error Panel**: Explanation sections now have color-coded left borders (red/orange/green), section icons, padded card-like backgrounds, and staggered slide-in entrance animations
+- **VS Code Three-Dot Pulse Loader**: Replaced spinning circle loader with a three-dot pulse animation in Explain and Error panels
+- **VS Code Improved Empty States**: All 7 sidebar panels have rewritten empty-state copy with icons, titles, and clearer instructions
+- **VS Code Card Entrance Animations**: Fade-in animations with stagger delay in Task Board, Plan Board, and Project Timeline
+- **VS Code Custom Scrollbar and Selection Styling**: Themed 6px scrollbars and VS Code-matching text selection colors across all webviews
+- **VS Code Apply Fix Button States**: Animated "Applying..." state, green "Applied" confirmation, hover lift, and active press effects
+- **VS Code Narrow Viewport Support**: Responsive styles for sidebar panels narrower than 260px
+
+### Changed
+
+- **VS Code Pulse Animation Throttling**: Value pulse animations in the dashboard throttled to once per 800ms per element, reducing visual noise during rapid updates
+- **VS Code Inline Styles Replaced**: Context health score and truncation warnings now use CSS classes instead of inline styles
+
+### Fixed
+
+- **Codex SQL Parameter Binding**: Fixed `string.replace('?', ...)` only replacing the first placeholder — now uses regex with sequential index counter so each `?` maps to the correct parameter
+- **Codex Double Filesystem Stat**: Collapsed redundant `existsSync` + `statSync` calls in `CodexDatabase.isAvailable()` to a single `statSync` in try/catch
+
+### Security
+
+- **XSS Prevention**: Added `escapeHtml()` across all innerHTML interpolations in Dashboard, MindMap, TaskBoard, and webview scripts
+- **Cryptographic CSP Nonces**: Nonce generation now uses `crypto.getRandomValues()` instead of `Math.random()`
+- **Command Injection Prevention**: CLI discovery and version checks now use `execFileSync`/`spawnSync` instead of `execSync` with string interpolation
+- **URL Protocol Validation**: `openExternal` handler validates `^https?://` before opening URLs, preventing `file://` and `javascript:` protocol attacks
+
 ## [0.12.10] - 2026-03-01
 
 ### Added

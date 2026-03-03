@@ -23,8 +23,19 @@ Get AI-powered explanations for selected code at your preferred complexity level
 ## Features
 
 - Rich webview panel with markdown rendering
+- **Segmented control** for complexity selection — a unified pill-style bar replacing individual buttons, with smooth hover/active transitions
+- **Keyboard navigation** — Arrow (Left/Right), Home, and End keys navigate between complexity levels; the selector uses proper `role="tablist"` semantics
+- **Three-dot pulse loader** while the explanation generates
 - Regenerate with custom instructions for different perspectives
 - Configurable default complexity via `sidekick.explanationComplexity`
+
+## Accessibility
+
+- `prefers-reduced-motion` — all animations and transitions are disabled when the OS-level reduced motion setting is enabled
+- Focus-visible outlines (2px) on all interactive elements for keyboard navigation
+- ARIA landmarks: `<main>`, `role="region"`, `aria-live="polite"` on the explanation content area
+- Toolbar wrapped in `<nav>` with `aria-label`
+- Responsive layout for narrow sidebar panels (under 260px)
 
 ## Configuration
 

@@ -69,8 +69,9 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Quick Ask** — inline chat for questions and code changes without switching context
 - **Code Review** — catch bugs and security concerns before they reach your team
 - **PR Descriptions** — structured summaries from branch diff, ready to paste
-- **Error Analysis** — understand what went wrong, why, and how to fix it
+- **Error Analysis** — understand what went wrong, why, and how to fix it, with color-coded explanation sections and one-click Apply Fix
 - **Session Handoff** — pick up where you left off instead of re-discovering everything
+- **Accessibility** — `prefers-reduced-motion` support, keyboard navigation, ARIA landmarks, and focus-visible indicators across all panels
 - **CLAUDE.md Suggestions** — learn from session patterns to improve agent effectiveness
 - **Context Health** — track how much information your agent has lost to context compaction
 - **Truncation Detection** — know when tool outputs are silently cut short

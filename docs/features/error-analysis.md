@@ -26,6 +26,24 @@ Understand and fix errors with AI assistance.
 2. Select **"Fix Error with AI"**
 3. The suggested fix is applied directly to your code
 
+The **Apply Fix** button shows animated state feedback — "Applying..." while the fix runs, and a green "Applied" confirmation on success.
+
+## Panel Design
+
+Explanation sections (Root Cause / Why It Happens / How to Fix) are displayed as cards with:
+
+- **Color-coded left borders** — red for root cause, orange for why it happens, green for how to fix
+- **Section icons** and padded card-like backgrounds
+- **Staggered slide-in** entrance animations (disabled when OS-level reduced motion is enabled)
+- **Three-dot pulse loader** while the analysis generates
+
+## Accessibility
+
+- `prefers-reduced-motion` — all animations and transitions are disabled when the OS-level reduced motion setting is enabled
+- Focus-visible outlines (2px) on all interactive elements for keyboard navigation
+- ARIA landmarks: `<main>`, `role="alert"` for error states, `role="status"` for loading, `aria-label` on copy buttons
+- Responsive layout for narrow sidebar panels (under 260px)
+
 ## Configuration
 
 | Setting | Default | Description |

@@ -18,7 +18,7 @@ The main dashboard panel provides:
 - **Cost Tracking** — per-model cost breakdown with accurate pricing
 - **Context Token Attribution** — stacked bar chart showing where your context budget goes (system prompt, CLAUDE.md, user messages, assistant responses, tool I/O, thinking)
 - **Token Usage Tooltips** — hover for quota projections and estimated time to exhaustion
-- **Context Window Gauge** — input/output token usage vs. limits
+- **Context Window Gauge** — input/output token usage vs. limits, with theme-aware colors that adapt to light, dark, and high-contrast themes
 - **Compaction Detection** — timeline markers showing when context was compressed and how much was lost
 - **Context Health** — real-time fidelity score showing how much context degradation has occurred from compactions, with a color-coded gauge (green/yellow/red)
 - **Truncation Tracking** — detects when tool outputs are truncated by the agent, with per-tool breakdown and total count
@@ -27,6 +27,7 @@ The main dashboard panel provides:
 - **Timeline Search & Filtering** — filter by event type, noise classification (system reminders, sidechains)
 - **Session Navigator** — collapsible panel to switch between active and recent sessions
 - **Tool Analytics** — categorized tool usage with drill-down to individual calls
+- **Toast Notifications** — dismissable feedback toasts (e.g. "Copied to clipboard") with `aria-live` for screen readers
 - **Session Summary** — AI narrative generation with progress notification
 - **Session Dump** — export the current session as text, markdown, JSON, or HTML via `Sidekick: Dump Session Report` (Command Palette, status bar menu, or Session Analytics toolbar)
 - **HTML Session Report** — self-contained HTML report with full transcript, token/cost stats, model breakdown, and tool-use summary via `Sidekick: Generate HTML Report` (Command Palette or Session Analytics toolbar). Also available in the [CLI](cli.md#html-report) as `sidekick report` or by pressing `r` in the TUI dashboard
@@ -124,3 +125,13 @@ The monitor automatically discovers sessions based on your configured provider. 
 |---------|---------|-------------|
 | `sidekick.enableSessionMonitoring` | `true` | Enable/disable session monitoring |
 | `sidekick.sessionProvider` | `auto` | Which agent to monitor: `auto`, `claude-code`, `opencode`, `codex` |
+
+## Accessibility
+
+All webview panels include:
+
+- `prefers-reduced-motion` support — animations and transitions disabled when the OS-level setting is enabled
+- Focus-visible outlines (2px) on all interactive elements for keyboard navigation
+- Custom scrollbar styling (6px, themed) and text selection colors matching the VS Code editor
+- Responsive layout adjustments for narrow sidebar panels (under 260px)
+- Card entrance animations with stagger delay in Task Board, Plan Board, and Project Timeline (respects reduced motion)
