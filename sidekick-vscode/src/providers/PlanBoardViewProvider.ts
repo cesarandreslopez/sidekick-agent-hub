@@ -376,12 +376,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       word-wrap: break-word;
       overflow-wrap: break-word;
       transition: transform var(--sk-transition-fast), box-shadow var(--sk-transition-fast);
-      animation: planCardEnter 0.25s ease-out both;
-    }
-
-    @keyframes planCardEnter {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
+      animation: sk-fade-in 0.25s ease-out both;
     }
 
     .plan-card:hover {

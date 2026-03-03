@@ -633,12 +633,11 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       flex-direction: column;
       gap: var(--sk-space-2);
       transition: transform var(--sk-transition-fast), box-shadow var(--sk-transition-fast);
-      animation: cardEnter 0.25s ease-out both;
+      animation: sk-fade-in 0.25s ease-out both;
     }
 
-    @keyframes cardEnter {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
+    .card.no-enter-animation {
+      animation: none;
     }
 
     .card:hover {
@@ -778,9 +777,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     const vscode = acquireVsCodeApi();
 
     function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     const boardEl = document.getElementById('board');
@@ -802,7 +800,6 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     function render(state) {
       if (!state) return;
-      cardIndex = 0;
 
       statusEl.textContent = state.sessionActive ? 'Active' : 'Idle';
       statusEl.classList.toggle('active', state.sessionActive);
@@ -901,9 +898,10 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         columnEl.appendChild(bodyEl);
         boardEl.appendChild(columnEl);
       });
+      firstRender = false;
     }
 
-    var cardIndex = 0;
+    var firstRender = true;
 
     function renderCard(task) {
       const card = document.createElement('article');
@@ -912,9 +910,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (task.isSubagent) classes.push('subagent');
       if (task.carriedOver) classes.push('carried-over');
       if (task.isGoalGate) classes.push('goal-gate');
+      if (!firstRender) classes.push('no-enter-animation');
       card.className = classes.join(' ');
-      card.style.animationDelay = Math.min(cardIndex * 0.04, 0.3) + 's';
-      cardIndex++;
 
       const title = document.createElement('div');
       title.className = 'card-title';

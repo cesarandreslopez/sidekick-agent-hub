@@ -29,6 +29,16 @@ export interface BaseStore {
 /** Save debounce delay shared by all persistence services (5 seconds). */
 const SAVE_DEBOUNCE_MS = 5000;
 
+let _sidekickBase: string | undefined;
+function getSidekickBase(): string {
+  if (!_sidekickBase) {
+    _sidekickBase = process.platform === 'win32'
+      ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
+      : path.join(os.homedir(), '.config', 'sidekick');
+  }
+  return _sidekickBase;
+}
+
 /**
  * Resolves a path under the Sidekick config directory.
  *
@@ -36,10 +46,7 @@ const SAVE_DEBOUNCE_MS = 5000;
  * - Windows:   `%APPDATA%/sidekick/{subdirectory}/{filename}`
  */
 export function resolveSidekickDataPath(subdirectory: string, filename: string): string {
-  const base = process.platform === 'win32'
-    ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
-    : path.join(os.homedir(), '.config', 'sidekick');
-
+  const base = getSidekickBase();
   return subdirectory
     ? path.join(base, subdirectory, filename)
     : path.join(base, filename);
@@ -76,29 +83,24 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
    */
   async initialize(): Promise<void> {
     try {
-      const dir = path.dirname(this.dataFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        log(`Created ${this.logLabel} directory: ${dir}`);
+      await fs.promises.mkdir(path.dirname(this.dataFilePath), { recursive: true });
+      const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
+      const loaded = JSON.parse(content) as T;
+
+      if (loaded.schemaVersion !== this._schemaVersion) {
+        log(`${this.logLabel} schema version mismatch: ${loaded.schemaVersion} vs ${this._schemaVersion}`);
       }
 
-      if (fs.existsSync(this.dataFilePath)) {
-        const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
-        const loaded = JSON.parse(content) as T;
-
-        if (loaded.schemaVersion !== this._schemaVersion) {
-          log(`${this.logLabel} schema version mismatch: ${loaded.schemaVersion} vs ${this._schemaVersion}`);
-        }
-
-        this.store = loaded;
-        this.onStoreLoaded();
-      } else {
+      this.store = loaded;
+      this.onStoreLoaded();
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         this.store = this._createEmptyStore();
         log(`Initialized new ${this.logLabel} store`);
+      } else {
+        logError(`Failed to load persisted ${this.logLabel}, starting with empty store`, error);
+        this.store = this._createEmptyStore();
       }
-    } catch (error) {
-      logError(`Failed to load persisted ${this.logLabel}, starting with empty store`, error);
-      this.store = this._createEmptyStore();
     }
   }
 

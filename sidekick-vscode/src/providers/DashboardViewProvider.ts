@@ -5523,10 +5523,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // ==== CLAUDE.md Suggestions Functions ====
 
-      function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       }
 
       // ==== Changelog Modal ====
@@ -6821,14 +6820,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       }
 
-      /**
-       * Escapes HTML to prevent XSS.
-       */
-      function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-      }
 
       function updateProviderDisplay(providerId, providerName) {
         if (!providerId || !providerName) return;

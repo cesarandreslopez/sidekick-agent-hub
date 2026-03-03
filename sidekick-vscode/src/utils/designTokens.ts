@@ -133,7 +133,7 @@ export function getSharedStyles(): string {
   }
 
   @keyframes sk-fade-in {
-    from { opacity: 0; transform: translateY(4px); }
+    from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 

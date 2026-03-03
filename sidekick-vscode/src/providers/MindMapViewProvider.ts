@@ -787,9 +787,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       const vscode = acquireVsCodeApi();
 
       function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = String(str);
-        return div.innerHTML;
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       }
 
       // Node colors by type

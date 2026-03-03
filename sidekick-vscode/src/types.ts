@@ -87,7 +87,7 @@ export class TimeoutError extends Error {
 export class ApiError extends Error {
   constructor(
     message: string,
-    public readonly provider: string,
+    public readonly provider: InferenceProviderId,
     public readonly statusCode?: number,
   ) {
     super(message);
@@ -102,7 +102,7 @@ export class ApiError extends Error {
 export class ConnectionError extends Error {
   constructor(
     message: string,
-    public readonly provider: string,
+    public readonly provider: InferenceProviderId,
   ) {
     super(message);
     this.name = 'ConnectionError';
