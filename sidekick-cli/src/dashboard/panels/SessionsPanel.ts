@@ -355,10 +355,16 @@ export class SessionsPanel implements SidePanel {
         lines.push('', sectionHeader('Quota', w));
         const fiveColor = getUtilizationColor(q.fiveHour.utilization);
         const fiveBar = makeColorBar(q.fiveHour.utilization, 18, fiveColor);
-        lines.push(`  {grey-fg}5h{/grey-fg}  ${fiveBar} {bold}${q.fiveHour.utilization.toFixed(0)}%{/bold}`);
+        const fiveProj = q.projectedFiveHour != null
+          ? (() => { const pc = getUtilizationColor(q.projectedFiveHour!); return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedFiveHour!.toFixed(0)}%{/${pc}-fg}`; })()
+          : '';
+        lines.push(`  {grey-fg}5h{/grey-fg}  ${fiveBar} {bold}${q.fiveHour.utilization.toFixed(0)}%{/bold}${fiveProj}`);
         const sevenColor = getUtilizationColor(q.sevenDay.utilization);
         const sevenBar = makeColorBar(q.sevenDay.utilization, 18, sevenColor);
-        lines.push(`  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}`);
+        const sevenProj = q.projectedSevenDay != null
+          ? (() => { const pc = getUtilizationColor(q.projectedSevenDay!); return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedSevenDay!.toFixed(0)}%{/${pc}-fg}`; })()
+          : '';
+        lines.push(`  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}${sevenProj}`);
       }
 
       // ── Context Attribution section

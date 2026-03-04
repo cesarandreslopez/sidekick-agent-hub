@@ -32,23 +32,17 @@ interface UsageApiResponse {
   seven_day?: { utilization: number; resets_at: string };
 }
 
-interface UtilizationReading {
-  utilization: number;
-  timestamp: number;
-}
-
 // ── Service ──
 
 const REFRESH_MS = 30_000;
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const BETA_HEADER = 'oauth-2025-04-20';
-const MAX_HISTORY = 10;
+const FIVE_HOUR_MS = 5 * 3_600_000;
+const SEVEN_DAY_MS = 7 * 86_400_000;
 
 export class QuotaService {
   private _interval: ReturnType<typeof setInterval> | null = null;
   private _cached: QuotaState | null = null;
-  private _fiveHourHistory: UtilizationReading[] = [];
-  private _sevenDayHistory: UtilizationReading[] = [];
   private _callback: ((quota: QuotaState) => void) | null = null;
 
   /** Register a callback for quota updates. */
@@ -74,6 +68,45 @@ export class QuotaService {
   /** Get the last fetched quota state. */
   getCached(): QuotaState | null {
     return this._cached;
+  }
+
+  /** Single fetch — no polling, includes elapsed-time projections. */
+  async fetchOnce(): Promise<QuotaState> {
+    const token = await this.readToken();
+    if (!token) {
+      return { fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false, error: 'no-credentials' };
+    }
+
+    try {
+      const res = await fetch(USAGE_URL, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'anthropic-beta': BETA_HEADER,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!res.ok) {
+        const error = res.status === 401 ? 'auth-failed' : `API error: ${res.status}`;
+        return { fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false, error };
+      }
+
+      const data: UsageApiResponse = await res.json();
+      const fiveUtil = data.five_hour?.utilization ?? 0;
+      const sevenUtil = data.seven_day?.utilization ?? 0;
+      const fiveResetsAt = data.five_hour?.resets_at ?? '';
+      const sevenResetsAt = data.seven_day?.resets_at ?? '';
+      return {
+        fiveHour: { utilization: fiveUtil, resetsAt: fiveResetsAt },
+        sevenDay: { utilization: sevenUtil, resetsAt: sevenResetsAt },
+        available: true,
+        projectedFiveHour: this.projectFromElapsed(fiveUtil, fiveResetsAt, FIVE_HOUR_MS),
+        projectedSevenDay: this.projectFromElapsed(sevenUtil, sevenResetsAt, SEVEN_DAY_MS),
+      };
+    } catch {
+      return { fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false, error: 'network-error' };
+    }
   }
 
   async fetchQuota(): Promise<void> {
@@ -107,10 +140,6 @@ export class QuotaService {
       const data: UsageApiResponse = await res.json();
       const fiveUtil = data.five_hour?.utilization ?? 0;
       const sevenUtil = data.seven_day?.utilization ?? 0;
-
-      this.addHistory(this._fiveHourHistory, fiveUtil);
-      this.addHistory(this._sevenDayHistory, sevenUtil);
-
       const fiveResetsAt = data.five_hour?.resets_at ?? '';
       const sevenResetsAt = data.seven_day?.resets_at ?? '';
 
@@ -118,8 +147,8 @@ export class QuotaService {
         fiveHour: { utilization: fiveUtil, resetsAt: fiveResetsAt },
         sevenDay: { utilization: sevenUtil, resetsAt: sevenResetsAt },
         available: true,
-        projectedFiveHour: this.project(fiveUtil, fiveResetsAt, this.rate(this._fiveHourHistory)),
-        projectedSevenDay: this.project(sevenUtil, sevenResetsAt, this.rate(this._sevenDayHistory)),
+        projectedFiveHour: this.projectFromElapsed(fiveUtil, fiveResetsAt, FIVE_HOUR_MS),
+        projectedSevenDay: this.projectFromElapsed(sevenUtil, sevenResetsAt, SEVEN_DAY_MS),
       });
     } catch {
       if (this._cached?.available) return; // network error, keep cache
@@ -147,26 +176,12 @@ export class QuotaService {
     }
   }
 
-  private addHistory(history: UtilizationReading[], utilization: number): void {
-    history.push({ utilization, timestamp: Date.now() });
-    while (history.length > MAX_HISTORY) history.shift();
-  }
-
-  private rate(history: UtilizationReading[]): number | null {
-    if (history.length < 2) return null;
-    const oldest = history[0];
-    const newest = history[history.length - 1];
-    const diffMs = newest.timestamp - oldest.timestamp;
-    if (diffMs < 30_000) return null;
-    const diffUtil = newest.utilization - oldest.utilization;
-    if (diffUtil <= 0) return 0;
-    return diffUtil / (diffMs / 60_000);
-  }
-
-  private project(current: number, resetsAt: string, rate: number | null): number | undefined {
-    if (rate === null || rate <= 0 || !resetsAt) return undefined;
-    const timeToResetMs = new Date(resetsAt).getTime() - Date.now();
-    if (timeToResetMs <= 0) return undefined;
-    return Math.min(current + rate * (timeToResetMs / 60_000), 200);
+  private projectFromElapsed(utilization: number, resetsAt: string, windowMs: number): number | undefined {
+    if (!resetsAt || utilization <= 0) return undefined;
+    const resetTime = new Date(resetsAt).getTime();
+    const now = Date.now();
+    const elapsed = windowMs - (resetTime - now);
+    if (elapsed <= 0) return undefined;
+    return Math.min(Math.round(utilization * (windowMs / elapsed)), 200);
   }
 }

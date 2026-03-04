@@ -232,6 +232,26 @@ sidekick stats
 sidekick stats --json
 ```
 
+### Quota
+
+```bash
+sidekick quota
+```
+
+Check Claude Max / Claude Code subscription quota utilization. Shows 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires Claude Code credentials (`~/.claude/.credentials.json`). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
+
+No command-specific flags. Use `--json` for machine-readable output.
+
+#### Examples
+
+```bash
+# Check current quota utilization
+sidekick quota
+
+# Get raw quota data as JSON
+sidekick quota --json
+```
+
 ### Handoff
 
 ```bash

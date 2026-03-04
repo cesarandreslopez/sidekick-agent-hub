@@ -24,8 +24,8 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 
 Claude Code sessions are monitored from `~/.claude/projects/`. The dashboard shows:
 
-- Token usage with quota projections
-- 5-hour and 7-day subscription quota gauges
+- Token usage with elapsed-time quota projections
+- 5-hour and 7-day subscription quota gauges with projected end-of-window utilization
 - Cost tracking (included in subscription)
 
 ## Best For

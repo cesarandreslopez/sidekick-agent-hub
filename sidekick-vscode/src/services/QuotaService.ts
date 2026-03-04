@@ -43,16 +43,6 @@ export interface QuotaState {
 }
 
 /**
- * A single utilization reading with timestamp.
- */
-interface UtilizationReading {
-  /** Utilization percentage (0-100) */
-  utilization: number;
-  /** Unix timestamp in milliseconds */
-  timestamp: number;
-}
-
-/**
  * Credentials file structure from Claude Code CLI.
  */
 interface ClaudeCredentials {
@@ -119,14 +109,11 @@ export class QuotaService implements vscode.Disposable {
   /** Beta header required for OAuth API */
   private readonly BETA_HEADER = 'oauth-2025-04-20';
 
-  /** History of 5-hour utilization readings for rate calculation */
-  private _fiveHourHistory: UtilizationReading[] = [];
+  /** Window duration for 5-hour quota */
+  private readonly FIVE_HOUR_MS = 5 * 3_600_000;
 
-  /** History of 7-day utilization readings for rate calculation */
-  private _sevenDayHistory: UtilizationReading[] = [];
-
-  /** Maximum history entries to keep (10 readings = ~5 minutes at 30s intervals) */
-  private readonly MAX_HISTORY_SIZE = 10;
+  /** Window duration for 7-day quota */
+  private readonly SEVEN_DAY_MS = 7 * 86_400_000;
 
   /**
    * Event fired when quota is updated.
@@ -246,23 +233,13 @@ export class QuotaService implements vscode.Disposable {
 
       const data: UsageApiResponse = await response.json();
 
-      // Extract current utilization values
       const fiveHourUtil = data.five_hour?.utilization ?? 0;
       const sevenDayUtil = data.seven_day?.utilization ?? 0;
-
-      // Track history and calculate projections
-      this._addToHistory(this._fiveHourHistory, fiveHourUtil);
-      this._addToHistory(this._sevenDayHistory, sevenDayUtil);
-
       const fiveHourResetsAt = data.five_hour?.resets_at ?? '';
       const sevenDayResetsAt = data.seven_day?.resets_at ?? '';
 
-      const projectedFiveHour = this._calculateProjection(
-        fiveHourUtil, fiveHourResetsAt, this._calculateRate(this._fiveHourHistory)
-      );
-      const projectedSevenDay = this._calculateProjection(
-        sevenDayUtil, sevenDayResetsAt, this._calculateRate(this._sevenDayHistory)
-      );
+      const projectedFiveHour = this._projectFromElapsed(fiveHourUtil, fiveHourResetsAt, this.FIVE_HOUR_MS);
+      const projectedSevenDay = this._projectFromElapsed(sevenDayUtil, sevenDayResetsAt, this.SEVEN_DAY_MS);
 
       const state: QuotaState = {
         fiveHour: { utilization: fiveHourUtil, resetsAt: fiveHourResetsAt },
@@ -296,80 +273,16 @@ export class QuotaService implements vscode.Disposable {
   }
 
   /**
-   * Adds a utilization reading to history and maintains max size.
-   * @param history - The history array to update
-   * @param utilization - Current utilization percentage
+   * Projects utilization at end of window based on elapsed time.
+   * Formula: projected = current * (windowDuration / elapsed)
    */
-  private _addToHistory(history: UtilizationReading[], utilization: number): void {
-    history.push({
-      utilization,
-      timestamp: Date.now()
-    });
-
-    // Keep only the most recent readings
-    while (history.length > this.MAX_HISTORY_SIZE) {
-      history.shift();
-    }
-  }
-
-  /**
-   * Calculates utilization rate from history (% per minute).
-   * @param history - The history array to analyze
-   * @returns Rate in % per minute, or null if insufficient data
-   */
-  private _calculateRate(history: UtilizationReading[]): number | null {
-    if (history.length < 2) {
-      return null;
-    }
-
-    const oldest = history[0];
-    const newest = history[history.length - 1];
-
-    const timeDiffMs = newest.timestamp - oldest.timestamp;
-    if (timeDiffMs < 30_000) {
-      // Need at least 30 seconds of data for meaningful rate
-      return null;
-    }
-
-    const utilizationDiff = newest.utilization - oldest.utilization;
-    if (utilizationDiff <= 0) {
-      // Rate is zero or negative (quota reset happened)
-      return 0;
-    }
-
-    // Convert to % per minute
-    const timeDiffMinutes = timeDiffMs / 60_000;
-    return utilizationDiff / timeDiffMinutes;
-  }
-
-  /**
-   * Calculates projected utilization at reset time.
-   * @param currentUtilization - Current utilization percentage
-   * @param resetsAt - ISO timestamp of reset time
-   * @param rate - Utilization rate in % per minute
-   * @returns Projected utilization at reset, or undefined if cannot project
-   */
-  private _calculateProjection(
-    currentUtilization: number,
-    resetsAt: string,
-    rate: number | null
-  ): number | undefined {
-    if (rate === null || rate <= 0 || !resetsAt) {
-      return undefined;
-    }
-
+  private _projectFromElapsed(utilization: number, resetsAt: string, windowMs: number): number | undefined {
+    if (!resetsAt || utilization <= 0) return undefined;
     const resetTime = new Date(resetsAt).getTime();
     const now = Date.now();
-    const timeToResetMs = resetTime - now;
-
-    if (timeToResetMs <= 0) {
-      return undefined;
-    }
-
-    const timeToResetMinutes = timeToResetMs / 60_000;
-    const projected = currentUtilization + (rate * timeToResetMinutes);
-
-    return Math.min(projected, 200); // Cap at 200% to avoid absurd numbers
+    const elapsed = windowMs - (resetTime - now);
+    if (elapsed <= 0) return undefined;
+    return Math.min(Math.round(utilization * (windowMs / elapsed)), 200);
   }
 
   /**

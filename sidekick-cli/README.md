@@ -27,7 +27,7 @@ Requires **Node.js 20+**.
 
 ```bash
 sidekick dashboard [options]
-sidekick tasks|decisions|notes|stats|handoff|search|context [options]
+sidekick tasks|decisions|notes|stats|quota|handoff|search|context [options]
 ```
 
 The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
@@ -76,6 +76,23 @@ Generate a self-contained HTML session report and open it in the default browser
 Global flags `--project` and `--provider` also apply.
 
 You can also press `r` in the TUI dashboard to generate a report for the current session.
+
+## Subscription Quota
+
+```bash
+sidekick quota
+```
+
+Check Claude Max / Claude Code subscription quota utilization. Shows 5-hour and 7-day windows with color-coded progress bars and reset countdowns.
+
+```
+Subscription Quota
+──────────────────────────────────────────────────
+  5-Hour   ████████████░░░░░░░░░░░░░░░░░░ 40%   resets in 2h 15m
+  7-Day    ██████████████████████░░░░░░░░ 72%   resets in 4d 6h
+```
+
+Use `--json` for machine-readable output. Requires Claude Code credentials (`~/.claude/.credentials.json`).
 
 ## Dashboard Panels
 

@@ -132,6 +132,15 @@ const statsCmd = new Command('stats')
   });
 program.addCommand(statsCmd);
 
+// Quota command — one-shot subscription quota check
+const quotaCmd = new Command('quota')
+  .description('Show subscription quota utilization (Claude Max / Claude Code)')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { quotaAction } = await import('./commands/quota');
+    return quotaAction(_opts, cmd);
+  });
+program.addCommand(quotaCmd);
+
 // Handoff command — show the latest handoff document
 const handoffCmd = new Command('handoff')
   .description('Show the latest session handoff document for the current project')

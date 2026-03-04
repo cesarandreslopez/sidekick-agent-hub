@@ -96,6 +96,7 @@ When a cycle is detected, a VS Code notification fires with the affected files s
 For Claude Max users, the dashboard shows 5-hour and 7-day quota utilization with:
 
 - Color-coded gauges (green/orange/red)
+- Elapsed-time projections showing expected end-of-window utilization (e.g., `40% → 100%`)
 - Countdown timers showing reset times
 - Auto-refresh every 30 seconds
 

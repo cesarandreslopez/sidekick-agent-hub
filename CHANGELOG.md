@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-03-04
+
+### Added
+
+- **CLI `sidekick quota` Command**: One-shot subscription quota check showing 5-hour and 7-day utilization with color-coded progress bars and reset countdowns — supports `--json` for machine-readable output
+- **Quota Projections**: Elapsed-time projections shown alongside current utilization in the CLI quota command, TUI dashboard, and VS Code dashboard — projects end-of-window usage based on linear extrapolation (e.g., `40% → 100%`)
+
 ## [0.13.0] - 2026-03-03
 
 ### Added

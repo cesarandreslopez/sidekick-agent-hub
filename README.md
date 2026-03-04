@@ -58,11 +58,12 @@ Standalone commands jump directly to a specific panel or run one-shot queries:
 sidekick tasks                                      # open tasks panel
 sidekick search "migration"                         # cross-session search
 sidekick stats                                      # session statistics
+sidekick quota                                      # subscription quota check
 sidekick dump --format markdown > session-report.md
 sidekick report                                     # HTML report → browser
 ```
 
-Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`.
+Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`.
 
 ## Provider Support
 
