@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { readClaudeMaxCredentials, fetchQuota } from 'sidekick-shared';
 import type { QuotaState, QuotaWindow } from 'sidekick-shared';
-import { log, logError } from './Logger';
+import { log } from './Logger';
 
 export type { QuotaWindow, QuotaState };
 
