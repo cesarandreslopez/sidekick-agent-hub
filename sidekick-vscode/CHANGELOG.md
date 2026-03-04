@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.3] - 2026-03-04
+
+### Changed
+
+- **Task Tracking Delegated to Shared Library**: `SessionMonitor` no longer maintains its own task state — delegates to the shared `EventAggregator` for TaskCreate, TaskUpdate, TodoWrite, UpdatePlan, and Agent/Task tracking, reducing ~400 lines of duplicated logic
+
 ## [0.13.2] - 2026-03-04
 
 _No extension-specific changes in this release._

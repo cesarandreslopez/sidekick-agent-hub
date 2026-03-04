@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.3] - 2026-03-04
+
+### Changed
+
+- **Shared Task Tracking Consolidation**: Moved task lifecycle logic (TodoWrite, UpdatePlan, Agent/Task spawn, goal gate detection) from VS Code `SessionMonitor` into the shared `EventAggregator` — CLI and shared library consumers now get full task tracking out of the box
+- **Shared `parseTodoDependencies` Export**: Dependency-parsing utility for OpenCode todos now exported from `sidekick-shared` for external use
+
+### Fixed
+
+- **Task Deduplication**: `addBlockedBy` and `addBlocks` arrays no longer accumulate duplicate entries on repeated TaskUpdate calls
+- **Active Task Tracking**: Active task ID now correctly cleared when a task transitions from `in_progress` to another status (was only cleared on delete)
+- **TaskCreate Error Handling**: Failed TaskCreate tool calls (error results) no longer create phantom tasks in the tracked state
+- **Goal Gate Re-evaluation**: Goal gate status re-evaluated after every TaskUpdate, not just on initial creation
+- **Task Timestamps**: TaskCreate timestamps now preserved from the tool_use event rather than always using the result timestamp
+
 ## [0.13.2] - 2026-03-04
 
 ### Added

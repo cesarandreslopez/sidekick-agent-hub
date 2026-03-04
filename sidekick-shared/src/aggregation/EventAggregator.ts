@@ -109,6 +109,10 @@ interface ModelAccumulator {
   cost: number;
 }
 
+// ── Goal gate detection regex ──
+
+const GOAL_GATE_REGEX = /\b(CRITICAL|MUST|blocker|required|must.?complete|goal.?gate|essential|do.?not.?skip|blocking)\b/i;
+
 // ── Pending task create input ──
 
 interface PendingTaskCreateInput {
@@ -117,6 +121,40 @@ interface PendingTaskCreateInput {
   activeForm?: string;
   subagentType?: string;
   isGoalGate?: boolean;
+  timestamp?: Date;
+}
+
+// ── Todo dependency parsing ──
+
+/**
+ * Parses dependency references from a todo item's content text.
+ *
+ * Looks for patterns like "(blocked by Task A and Task B)" and maps
+ * referenced task names back to todo-{i} IDs by substring matching.
+ */
+export function parseTodoDependencies(
+  content: string,
+  allTodos: Array<Record<string, unknown>>
+): string[] {
+  const depPattern = /(?:blocked by|depends on|waiting on|requires)\s+(.+?)(?:\)|$)/i;
+  const match = content.match(depPattern);
+  if (!match) return [];
+
+  const refs = match[1].split(/\s+and\s+|,\s*|&\s*/).map(r => r.trim()).filter(Boolean);
+  const result: string[] = [];
+
+  for (const ref of refs) {
+    const refLower = ref.toLowerCase();
+    for (let j = 0; j < allTodos.length; j++) {
+      const otherContent = String(allTodos[j].content || allTodos[j].subject || '').toLowerCase();
+      if (otherContent.includes(refLower) || refLower.includes(otherContent.split(':')[0].trim())) {
+        result.push(`todo-${j}`);
+        break;
+      }
+    }
+  }
+
+  return result;
 }
 
 // ── Burn rate sample ──
@@ -1061,14 +1099,23 @@ export class EventAggregator {
             activeForm: input.activeForm as string | undefined,
             subagentType: input.subagentType as string | undefined,
             isGoalGate: input.isGoalGate as boolean | undefined,
+            timestamp: new Date(event.timestamp),
           });
         } else if (name === 'TaskUpdate') {
           this.applyTaskUpdate(input);
+        } else if (name === 'TodoWrite') {
+          this.handleTodoWrite(input, new Date(event.timestamp));
+        } else if (name === 'UpdatePlan') {
+          this.handleUpdatePlan(input, new Date(event.timestamp));
+        } else if ((name === 'Agent' || name === 'Task') && toolUseId) {
+          this.handleAgentSpawn(toolUseId, input, new Date(event.timestamp));
         }
       } else if (block.type === 'tool_result') {
         const toolUseId = block.tool_use_id as string;
         if (!toolUseId) continue;
-        this.resolveTaskCreate(toolUseId, block.content ?? block.output, event.timestamp);
+        const isError = (block.is_error as boolean) ?? false;
+        this.resolveTaskCreate(toolUseId, block.content ?? block.output, event.timestamp, isError);
+        this.resolveAgentResult(toolUseId, isError, event.timestamp);
       }
     }
   }
@@ -1092,15 +1139,24 @@ export class EventAggregator {
           activeForm: input.activeForm as string | undefined,
           subagentType: input.subagentType as string | undefined,
           isGoalGate: input.isGoalGate as boolean | undefined,
+          timestamp: new Date(event.timestamp),
         });
       } else if (event.toolName === 'TaskUpdate') {
         this.applyTaskUpdate(input);
+      } else if (event.toolName === 'TodoWrite') {
+        this.handleTodoWrite(input, new Date(event.timestamp));
+      } else if (event.toolName === 'UpdatePlan') {
+        this.handleUpdatePlan(input, new Date(event.timestamp));
+      } else if ((event.toolName === 'Agent' || event.toolName === 'Task') && toolUseId) {
+        this.handleAgentSpawn(toolUseId, input, new Date(event.timestamp));
       }
     } else if (event.type === 'tool_result') {
       if (!raw) return;
       const toolUseId = raw.tool_use_id as string | undefined;
       if (!toolUseId) return;
-      this.resolveTaskCreate(toolUseId, raw.content, event.timestamp);
+      const isError = (raw.is_error as boolean) ?? false;
+      this.resolveTaskCreate(toolUseId, raw.content, event.timestamp, isError);
+      this.resolveAgentResult(toolUseId, isError, event.timestamp);
     }
   }
 
@@ -1117,29 +1173,45 @@ export class EventAggregator {
           if (this.activeTaskId === taskId) this.activeTaskId = null;
           return;
         }
+        const oldStatus = existing.status;
         existing.status = newStatus as TrackedTask['status'];
         existing.updatedAt = new Date();
-        if (newStatus === 'in_progress') {
+        if (newStatus === 'in_progress' && oldStatus !== 'in_progress') {
           this.activeTaskId = taskId;
+        } else if (oldStatus === 'in_progress' && newStatus !== 'in_progress') {
+          if (this.activeTaskId === taskId) this.activeTaskId = null;
         }
       }
       if (input.subject) existing.subject = input.subject as string;
       if (input.description) existing.description = input.description as string;
       if (input.activeForm) existing.activeForm = input.activeForm as string;
       if (input.addBlockedBy && Array.isArray(input.addBlockedBy)) {
-        existing.blockedBy.push(...(input.addBlockedBy as string[]));
+        for (const id of input.addBlockedBy as string[]) {
+          const idStr = String(id);
+          if (!existing.blockedBy.includes(idStr)) {
+            existing.blockedBy.push(idStr);
+          }
+        }
       }
       if (input.addBlocks && Array.isArray(input.addBlocks)) {
-        existing.blocks.push(...(input.addBlocks as string[]));
+        for (const id of input.addBlocks as string[]) {
+          const idStr = String(id);
+          if (!existing.blocks.includes(idStr)) {
+            existing.blocks.push(idStr);
+          }
+        }
       }
+      // Re-evaluate goal gate after update
+      existing.isGoalGate = this.isGoalGateTask(existing);
     } else {
       // TaskUpdate for unknown task — create placeholder
       const status = (input.status as string) || 'pending';
       if (status === 'deleted') return;
       const now = new Date();
-      this.tasks.set(taskId, {
+      const task: TrackedTask = {
         taskId,
         subject: (input.subject as string) || `Task ${taskId}`,
+        description: input.description as string | undefined,
         status: status as TrackedTask['status'],
         createdAt: now,
         updatedAt: now,
@@ -1147,28 +1219,33 @@ export class EventAggregator {
         blocks: [],
         associatedToolCalls: [],
         activeForm: input.activeForm as string | undefined,
-      });
+      };
+      task.isGoalGate = this.isGoalGateTask(task);
+      this.tasks.set(taskId, task);
       if (status === 'in_progress') {
         this.activeTaskId = taskId;
       }
     }
   }
 
-  private resolveTaskCreate(toolUseId: string, content: unknown, timestamp: string): void {
+  private resolveTaskCreate(toolUseId: string, content: unknown, timestamp: string, isError?: boolean): void {
     const pending = this.pendingTaskCreates.get(toolUseId);
     if (!pending) return;
     this.pendingTaskCreates.delete(toolUseId);
+
+    // Don't create task on error
+    if (isError) return;
 
     const taskId = this.extractTaskIdFromResult(content);
     if (!taskId) return;
 
     const now = new Date(timestamp);
-    this.tasks.set(taskId, {
+    const task: TrackedTask = {
       taskId,
       subject: pending.subject,
       description: pending.description,
       status: 'pending',
-      createdAt: now,
+      createdAt: pending.timestamp ?? now,
       updatedAt: now,
       blockedBy: [],
       blocks: [],
@@ -1176,7 +1253,211 @@ export class EventAggregator {
       activeForm: pending.activeForm,
       subagentType: pending.subagentType,
       isGoalGate: pending.isGoalGate,
-    });
+    };
+    // Evaluate goal gate from content if not explicitly set
+    task.isGoalGate = task.isGoalGate || this.isGoalGateTask(task);
+    this.tasks.set(taskId, task);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Private: TodoWrite handling (OpenCode)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private handleTodoWrite(input: Record<string, unknown>, now: Date): void {
+    const todos = input.todos as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(todos)) return;
+
+    // Remove all non-subagent tasks (subagent tasks should persist)
+    for (const [taskId, task] of this.tasks) {
+      if (!task.isSubagent) {
+        this.tasks.delete(taskId);
+      }
+    }
+
+    // Reset active task if it was a non-subagent task
+    if (this.activeTaskId && !this.tasks.has(this.activeTaskId)) {
+      this.activeTaskId = null;
+    }
+
+    for (let i = 0; i < todos.length; i++) {
+      const todo = todos[i];
+      const taskId = `todo-${i}`;
+      const content = String(todo.content || todo.subject || `Todo ${i + 1}`);
+      const rawStatus = String(todo.status || 'pending').toLowerCase();
+      const priority = todo.priority ? String(todo.priority) : undefined;
+
+      // Map OpenCode todo status values to TaskStatus
+      let status: TrackedTask['status'];
+      if (rawStatus === 'completed' || rawStatus === 'done') {
+        status = 'completed';
+      } else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') {
+        status = 'in_progress';
+      } else {
+        status = 'pending';
+      }
+
+      const task: TrackedTask = {
+        taskId,
+        subject: content,
+        description: priority ? `Priority: ${priority}` : undefined,
+        status,
+        createdAt: now,
+        updatedAt: now,
+        blockedBy: [],
+        blocks: [],
+        associatedToolCalls: [],
+      };
+
+      this.tasks.set(taskId, task);
+
+      if (status === 'in_progress') {
+        this.activeTaskId = taskId;
+      }
+    }
+
+    // Second pass: parse dependency info from content text
+    for (let i = 0; i < todos.length; i++) {
+      const task = this.tasks.get(`todo-${i}`);
+      if (!task) continue;
+
+      // Check for explicit blockedBy field
+      if (Array.isArray(todos[i].blockedBy)) {
+        for (const ref of todos[i].blockedBy as string[]) {
+          const refStr = String(ref);
+          if (!task.blockedBy.includes(refStr)) {
+            task.blockedBy.push(refStr);
+          }
+        }
+      }
+
+      // Parse dependency references from content text
+      const deps = parseTodoDependencies(String(todos[i].content || ''), todos);
+      for (const depId of deps) {
+        if (depId !== `todo-${i}` && !task.blockedBy.includes(depId)) {
+          task.blockedBy.push(depId);
+          const depTask = this.tasks.get(depId);
+          if (depTask && !depTask.blocks.includes(`todo-${i}`)) {
+            depTask.blocks.push(`todo-${i}`);
+          }
+        }
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Private: UpdatePlan handling (Codex)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private handleUpdatePlan(input: Record<string, unknown>, now: Date): void {
+    const plan = input.plan as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(plan)) return;
+
+    const seenPlanTaskIds = new Set<string>();
+    let activePlanTaskId: string | null = null;
+
+    for (let i = 0; i < plan.length; i++) {
+      const entry = plan[i];
+      const step = String(entry.step || '').trim();
+      if (!step) continue;
+
+      const rawStatus = String(entry.status || 'pending').toLowerCase();
+      let status: TrackedTask['status'];
+      if (rawStatus === 'completed') status = 'completed';
+      else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') status = 'in_progress';
+      else status = 'pending';
+
+      const taskId = `plan-${i}`;
+      seenPlanTaskIds.add(taskId);
+
+      const existing = this.tasks.get(taskId);
+      if (existing) {
+        existing.subject = step;
+        existing.status = status;
+        existing.updatedAt = now;
+        if (!existing.activeForm) {
+          existing.activeForm = `Working on ${step}`;
+        }
+      } else {
+        const task: TrackedTask = {
+          taskId,
+          subject: step,
+          status,
+          createdAt: now,
+          updatedAt: now,
+          activeForm: `Working on ${step}`,
+          blockedBy: [],
+          blocks: [],
+          associatedToolCalls: [],
+        };
+        this.tasks.set(taskId, task);
+      }
+
+      if (status === 'in_progress') {
+        activePlanTaskId = taskId;
+      }
+    }
+
+    // Mark missing synthetic plan tasks as deleted
+    for (const [taskId, task] of this.tasks) {
+      if (!taskId.startsWith('plan-')) continue;
+      if (!seenPlanTaskIds.has(taskId) && task.status !== 'deleted') {
+        task.status = 'deleted';
+        task.updatedAt = now;
+      }
+    }
+
+    if (activePlanTaskId) {
+      this.activeTaskId = activePlanTaskId;
+    } else if (this.activeTaskId?.startsWith('plan-')) {
+      this.activeTaskId = null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Private: Agent/Task (subagent) as tracked task
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private handleAgentSpawn(toolUseId: string, input: Record<string, unknown>, now: Date): void {
+    const agentTaskId = `agent-${toolUseId}`;
+    const description = input.description ? String(input.description) : 'Subagent';
+    const subagentType = (input.subagent_type as string) || (input.subagentType as string) || undefined;
+
+    const task: TrackedTask = {
+      taskId: agentTaskId,
+      subject: description,
+      status: 'in_progress',
+      createdAt: now,
+      updatedAt: now,
+      activeForm: subagentType ? `Running ${subagentType} agent` : 'Running subagent',
+      blockedBy: [],
+      blocks: [],
+      associatedToolCalls: [],
+      isSubagent: true,
+      subagentType,
+      toolUseId,
+    };
+
+    this.tasks.set(agentTaskId, task);
+  }
+
+  private resolveAgentResult(toolUseId: string, isError: boolean, timestamp: string): void {
+    const agentTaskId = `agent-${toolUseId}`;
+    const agentTask = this.tasks.get(agentTaskId);
+    if (!agentTask) return;
+
+    agentTask.status = isError ? 'deleted' : 'completed';
+    agentTask.updatedAt = new Date(timestamp);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Private: Goal gate detection
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private isGoalGateTask(task: TrackedTask): boolean {
+    if (GOAL_GATE_REGEX.test(task.subject)) return true;
+    if (task.description && GOAL_GATE_REGEX.test(task.description)) return true;
+    if (task.blocks.length >= 3) return true;
+    return false;
   }
 
   // ═══════════════════════════════════════════════════════════════════════

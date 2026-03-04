@@ -24,12 +24,11 @@ import path from 'path';
 import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
 import { extractTokenUsage } from './JsonlParser';
 import type { SessionProvider, SessionReader } from '../types/sessionProvider';
-import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus, LatencyStats, CompactionEvent, TruncationEvent, ContextAttribution, PlanState, PlanStep, TurnAttribution, ContextSizePoint } from '../types/claudeSession';
+import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, LatencyStats, CompactionEvent, TruncationEvent, ContextAttribution, PlanState, PlanStep, TurnAttribution, ContextSizePoint } from '../types/claudeSession';
 import { SessionSummary, ModelUsageRecord, ToolUsageRecord, createEmptyTokenTotals } from '../types/historicalData';
 import { estimateTokens } from '../utils/tokenEstimator';
 import { ModelPricingService } from './ModelPricingService';
 import { log, logError } from './Logger';
-import { extractTaskIdFromResult } from '../utils/taskHelpers';
 import { parsePlanMarkdown, extractProposedPlan } from '../utils/planParser';
 import { detectCycle } from '../utils/cycleDetector';
 import type { SessionEventLogger } from './SessionEventLogger';
@@ -79,45 +78,6 @@ const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
   return block !== null && typeof block === 'object' && typeof (block as Record<string, unknown>).type === 'string';
-}
-
-/**
- * Parses dependency references from a todo item's content text.
- *
- * Looks for patterns like "(blocked by Task A and Task B)" and maps
- * referenced task names back to todo-{i} IDs by substring matching.
- *
- * @param content - The todo item's content text
- * @param allTodos - All todo items from the TodoWrite input
- * @returns Array of todo-{i} task IDs that this task depends on
- */
-export function parseTodoDependencies(
-  content: string,
-  allTodos: Array<Record<string, unknown>>
-): string[] {
-  const depPattern = /(?:blocked by|depends on|waiting on|requires)\s+(.+?)(?:\)|$)/i;
-  const match = content.match(depPattern);
-  if (!match) return [];
-
-  // Split matched refs on common separators
-  const refs = match[1].split(/\s+and\s+|,\s*|&\s*/).map(r => r.trim()).filter(Boolean);
-  const result: string[] = [];
-
-  for (const ref of refs) {
-    const refLower = ref.toLowerCase();
-    // Try to match against other todos' content
-    for (let j = 0; j < allTodos.length; j++) {
-      const otherContent = String(allTodos[j].content || allTodos[j].subject || '').toLowerCase();
-      // Substring match: the reference should appear in the other task's content,
-      // or the other task's content should start with the reference
-      if (otherContent.includes(refLower) || refLower.includes(otherContent.split(':')[0].trim())) {
-        result.push(`todo-${j}`);
-        break;
-      }
-    }
-  }
-
-  return result;
 }
 
 export class SessionMonitor implements vscode.Disposable {
@@ -180,20 +140,6 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Maximum number of hashes to track before pruning */
   private readonly MAX_SEEN_HASHES = 10000;
-
-  /** Task tracking state */
-  private taskState: TaskState = {
-    tasks: new Map(),
-    activeTaskId: null
-  };
-
-  /** Pending TaskCreate calls awaiting results (tool_use_id -> TaskCreate input) */
-  private pendingTaskCreates: Map<string, {
-    subject: string;
-    description?: string;
-    activeForm?: string;
-    timestamp: Date;
-  }> = new Map();
 
   /** Task-related tool names */
   private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task', 'TodoWrite', 'TodoRead', 'UpdatePlan', 'EnterPlanMode', 'ExitPlanMode'];
@@ -1031,10 +977,10 @@ export class SessionMonitor implements vscode.Disposable {
       lastModelId: this.lastModelId ?? undefined,
       recentUsageEvents: [],
       sessionStartTime: this.sessionStartTime,
-      taskState: this.taskState.tasks.size > 0 ? {
-        tasks: new Map(this.taskState.tasks),
-        activeTaskId: this.taskState.activeTaskId
-      } : undefined,
+      taskState: (() => {
+        const ts = this.aggregator.getTaskState();
+        return ts.tasks.size > 0 ? ts : undefined;
+      })(),
       latencyStats: aggLatency ?? undefined,
       compactionEvents: aggCompactions.length > 0 ? aggCompactions : undefined,
       contextAttribution: this.aggregator.getContextAttribution(),
@@ -1064,22 +1010,6 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     return Math.max(0, Math.round(100 - (compactions.length * 15) - (totalReclaimedPercent * 0.3)));
-  }
-
-  /** Regex for goal gate keyword detection */
-  private static readonly GOAL_GATE_REGEX = /\b(CRITICAL|MUST|blocker|required|must.?complete|goal.?gate|essential|do.?not.?skip|blocking)\b/i;
-
-  /**
-   * Checks whether a task qualifies as a goal gate.
-   * A task is a goal gate if it matches critical keywords or blocks 3+ tasks.
-   */
-  private isGoalGateTask(task: TrackedTask): boolean {
-    // Criterion 1: subject or description matches keyword regex
-    if (SessionMonitor.GOAL_GATE_REGEX.test(task.subject)) return true;
-    if (task.description && SessionMonitor.GOAL_GATE_REGEX.test(task.description)) return true;
-    // Criterion 2: blocks 3+ other tasks
-    if (task.blocks.length >= 3) return true;
-    return false;
   }
 
   // Truncation detection is now handled by the shared aggregator.
@@ -2830,8 +2760,8 @@ export class SessionMonitor implements vscode.Disposable {
           startTime: new Date(timestamp)
         });
 
-        // Handle task-related tools
-        this.handleTaskToolUse(toolUse, timestamp);
+        // Handle VS Code-specific plan mode tools (aggregator handles task tools)
+        this.handlePlanModeToolUse(toolUse, timestamp);
 
         // Initialize analytics for this tool if needed
         let analytics = this.toolAnalyticsMap.get(toolUse.name);
@@ -2881,11 +2811,14 @@ export class SessionMonitor implements vscode.Disposable {
           timestamp: new Date(timestamp)
         };
 
-        // Associate non-task tool calls with active task
-        if (!SessionMonitor.TASK_TOOLS.includes(toolUse.name) && this.taskState.activeTaskId) {
-          const activeTask = this.taskState.tasks.get(this.taskState.activeTaskId);
-          if (activeTask) {
-            activeTask.associatedToolCalls.push(toolCall);
+        // Associate non-task tool calls with active task (from aggregator)
+        if (!SessionMonitor.TASK_TOOLS.includes(toolUse.name)) {
+          const aggTaskState = this.aggregator.getTaskState();
+          if (aggTaskState.activeTaskId) {
+            const activeTask = aggTaskState.tasks.get(aggTaskState.activeTaskId);
+            if (activeTask) {
+              activeTask.associatedToolCalls.push(toolCall);
+            }
           }
         }
 
@@ -2913,49 +2846,18 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Handles task-related tool uses (TaskCreate, TaskUpdate).
+   * Handles VS Code-specific plan mode tool uses (Write/Edit in plan mode, EnterPlanMode, ExitPlanMode).
+   * Task tracking (TaskCreate, TaskUpdate, TodoWrite, UpdatePlan, Agent/Task) is now handled by the shared EventAggregator.
    *
-   * @param toolUse - Tool use block with name and input
-   * @param timestamp - Event timestamp
+   * Also syncs plan step status when TaskUpdate targets plan-linked tasks.
    */
-  private handleTaskToolUse(
+  private handlePlanModeToolUse(
     toolUse: { id: string; name: string; input: Record<string, unknown> },
     timestamp: string
   ): void {
     const now = new Date(timestamp);
 
-    if (toolUse.name === 'TaskCreate') {
-      // Store pending TaskCreate to correlate with result
-      this.pendingTaskCreates.set(toolUse.id, {
-        subject: String(toolUse.input.subject || ''),
-        description: toolUse.input.description ? String(toolUse.input.description) : undefined,
-        activeForm: toolUse.input.activeForm ? String(toolUse.input.activeForm) : undefined,
-        timestamp: now
-      });
-    } else if (toolUse.name === 'Task') {
-      // Subagent spawn — create a TrackedTask immediately as in_progress
-      const agentTaskId = 'agent-' + toolUse.id;
-      const description = toolUse.input.description ? String(toolUse.input.description) : 'Subagent';
-      const subagentType = toolUse.input.subagent_type ? String(toolUse.input.subagent_type) : undefined;
-
-      const newTask: TrackedTask = {
-        taskId: agentTaskId,
-        subject: description,
-        status: 'in_progress',
-        createdAt: now,
-        updatedAt: now,
-        activeForm: subagentType ? `Running ${subagentType} agent` : 'Running subagent',
-        blockedBy: [],
-        blocks: [],
-        associatedToolCalls: [],
-        isSubagent: true,
-        subagentType,
-        toolUseId: toolUse.id
-      };
-
-      this.taskState.tasks.set(agentTaskId, newTask);
-      log(`Subagent spawned: ${agentTaskId} - "${description}" (${subagentType || 'unknown'})`);
-    } else if (toolUse.name === 'Write' && this.planModeActive) {
+    if (toolUse.name === 'Write' && this.planModeActive) {
       const filePath = toolUse.input?.file_path as string | undefined;
       const content = toolUse.input?.content as string | undefined;
       if (filePath && content && filePath.includes('.claude/plans/')) {
@@ -2963,7 +2865,6 @@ export class SessionMonitor implements vscode.Disposable {
         this.planFilePath = filePath;
       }
     } else if (toolUse.name === 'Edit' && this.planModeActive) {
-      // Edit contains a diff, not full content — capture path for disk-read fallback
       const filePath = toolUse.input?.file_path as string | undefined;
       if (filePath?.includes('.claude/plans/')) {
         this.planFilePath = filePath;
@@ -2972,93 +2873,46 @@ export class SessionMonitor implements vscode.Disposable {
       this.handleEnterPlanMode(now);
     } else if (toolUse.name === 'ExitPlanMode') {
       this.handleExitPlanMode(now);
-    } else if (toolUse.name === 'TodoWrite') {
-      this.handleTodoWriteToolUse(toolUse, now);
-    } else if (toolUse.name === 'UpdatePlan') {
-      this.handleUpdatePlanToolUse(toolUse, now);
     } else if (toolUse.name === 'TaskUpdate') {
+      // Sync plan step status for plan-linked tasks (plan-0 → step-0)
       const taskId = String(toolUse.input.taskId || '');
-      const task = this.taskState.tasks.get(taskId);
+      if (taskId.startsWith('plan-') && toolUse.input.status) {
+        const stepIndex = taskId.replace('plan-', '');
+        const stepId = `step-${stepIndex}`;
+        const rawStatus = String(toolUse.input.status).toLowerCase();
+        let planStatus: PlanStep['status'];
+        if (rawStatus === 'completed') planStatus = 'completed';
+        else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') planStatus = 'in_progress';
+        else if (rawStatus === 'deleted') planStatus = 'skipped';
+        else planStatus = 'pending';
+        this.transitionPlanStep(stepId, planStatus, now);
+      }
+    } else if (toolUse.name === 'UpdatePlan') {
+      // Dual-write: populate planState for mind map plan visualization
+      const plan = toolUse.input.plan as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(plan)) {
+        const planSteps: PlanStep[] = [];
+        for (let i = 0; i < plan.length; i++) {
+          const entry = plan[i];
+          const step = String(entry.step || '').trim();
+          if (!step) continue;
+          const rawStatus = String(entry.status || 'pending').toLowerCase();
+          let stepStatus: 'pending' | 'in_progress' | 'completed';
+          if (rawStatus === 'completed') stepStatus = 'completed';
+          else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') stepStatus = 'in_progress';
+          else stepStatus = 'pending';
+          planSteps.push({ id: `step-${i}`, description: step, status: stepStatus });
+        }
 
-      if (task) {
-        // Update task fields if provided
-        if (toolUse.input.status) {
-          const newStatus = toolUse.input.status as TaskStatus;
-          const oldStatus = task.status;
-          task.status = newStatus;
-
-          // Track active task transitions
-          if (newStatus === 'in_progress' && oldStatus !== 'in_progress') {
-            this.taskState.activeTaskId = taskId;
-          } else if (oldStatus === 'in_progress' && newStatus !== 'in_progress') {
-            if (this.taskState.activeTaskId === taskId) {
-              this.taskState.activeTaskId = null;
-            }
-          }
-        }
-        if (toolUse.input.subject) {
-          task.subject = String(toolUse.input.subject);
-        }
-        if (toolUse.input.description) {
-          task.description = String(toolUse.input.description);
-        }
-        if (toolUse.input.activeForm) {
-          task.activeForm = String(toolUse.input.activeForm);
-        }
-        if (Array.isArray(toolUse.input.addBlockedBy)) {
-          for (const id of toolUse.input.addBlockedBy) {
-            const idStr = String(id);
-            if (!task.blockedBy.includes(idStr)) {
-              task.blockedBy.push(idStr);
-            }
-          }
-        }
-        if (Array.isArray(toolUse.input.addBlocks)) {
-          for (const id of toolUse.input.addBlocks) {
-            const idStr = String(id);
-            if (!task.blocks.includes(idStr)) {
-              task.blocks.push(idStr);
-            }
-          }
-        }
-        task.updatedAt = now;
-        // Re-evaluate goal gate status after any update
-        task.isGoalGate = this.isGoalGateTask(task);
-
-        // Sync plan step status for plan-linked tasks (plan-0 → step-0)
-        if (taskId.startsWith('plan-') && toolUse.input.status) {
-          const stepIndex = taskId.replace('plan-', '');
-          const stepId = `step-${stepIndex}`;
-          const rawStatus = String(toolUse.input.status).toLowerCase();
-          let planStatus: PlanStep['status'];
-          if (rawStatus === 'completed') planStatus = 'completed';
-          else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') planStatus = 'in_progress';
-          else if (rawStatus === 'deleted') planStatus = 'skipped';
-          else planStatus = 'pending';
-          this.transitionPlanStep(stepId, planStatus, now);
-        }
-      } else {
-        // TaskUpdate for unknown task - create placeholder
-        log(`TaskUpdate for unknown task ${taskId}, creating placeholder`);
-        const newTask: TrackedTask = {
-          taskId,
-          subject: toolUse.input.subject ? String(toolUse.input.subject) : `Task ${taskId}`,
-          description: toolUse.input.description ? String(toolUse.input.description) : undefined,
-          status: (toolUse.input.status as TaskStatus) || 'pending',
-          createdAt: now,
-          updatedAt: now,
-          activeForm: toolUse.input.activeForm ? String(toolUse.input.activeForm) : undefined,
-          blockedBy: [],
-          blocks: [],
-          associatedToolCalls: []
+        const hasActive = planSteps.some(s => s.status === 'in_progress' || s.status === 'pending');
+        this.planState = {
+          active: hasActive,
+          steps: planSteps,
+          title: 'Plan',
+          source: 'codex',
         };
-        newTask.isGoalGate = this.isGoalGateTask(newTask);
-        this.taskState.tasks.set(taskId, newTask);
 
-        // Set active if in_progress
-        if (newTask.status === 'in_progress') {
-          this.taskState.activeTaskId = taskId;
-        }
+        this.updatePlanCompletionRate();
       }
     }
   }
@@ -3141,103 +2995,7 @@ export class SessionMonitor implements vscode.Disposable {
     log(`Plan mode exited at ${now.toISOString()}, ${this.planState?.steps.length ?? 0} steps extracted`);
   }
 
-  /**
-   * Handles Codex UpdatePlan snapshots by projecting them into tracked tasks.
-   *
-   * Each plan step is represented as a synthetic task (`plan-{index}`) so the
-   * Kanban view can render lifecycle transitions in a provider-agnostic way.
-   */
-  private handleUpdatePlanToolUse(
-    toolUse: { id: string; name: string; input: Record<string, unknown> },
-    now: Date
-  ): void {
-    const plan = toolUse.input.plan as Array<Record<string, unknown>> | undefined;
-    if (!Array.isArray(plan)) return;
 
-    const seenPlanTaskIds = new Set<string>();
-    let activePlanTaskId: string | null = null;
-
-    for (let i = 0; i < plan.length; i++) {
-      const entry = plan[i];
-      const step = String(entry.step || '').trim();
-      if (!step) continue;
-
-      const rawStatus = String(entry.status || 'pending').toLowerCase();
-      let status: TaskStatus;
-      if (rawStatus === 'completed') status = 'completed';
-      else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') status = 'in_progress';
-      else status = 'pending';
-
-      const taskId = `plan-${i}`;
-      seenPlanTaskIds.add(taskId);
-
-      const existing = this.taskState.tasks.get(taskId);
-      if (existing) {
-        existing.subject = step;
-        existing.status = status;
-        existing.updatedAt = now;
-        if (!existing.activeForm) {
-          existing.activeForm = `Working on ${step}`;
-        }
-      } else {
-        const task: TrackedTask = {
-          taskId,
-          subject: step,
-          status,
-          createdAt: now,
-          updatedAt: now,
-          activeForm: `Working on ${step}`,
-          blockedBy: [],
-          blocks: [],
-          associatedToolCalls: []
-        };
-        this.taskState.tasks.set(taskId, task);
-      }
-
-      if (status === 'in_progress') {
-        activePlanTaskId = taskId;
-      }
-    }
-
-    // Mark missing synthetic plan tasks as deleted when absent from a new snapshot.
-    for (const [taskId, task] of this.taskState.tasks) {
-      if (!taskId.startsWith('plan-')) continue;
-      if (!seenPlanTaskIds.has(taskId) && task.status !== 'deleted') {
-        task.status = 'deleted';
-        task.updatedAt = now;
-      }
-    }
-
-    if (activePlanTaskId) {
-      this.taskState.activeTaskId = activePlanTaskId;
-    } else if (this.taskState.activeTaskId?.startsWith('plan-')) {
-      this.taskState.activeTaskId = null;
-    }
-
-    // Dual-write: populate planState for mind map plan visualization
-    const planSteps: PlanStep[] = [];
-    for (let i = 0; i < plan.length; i++) {
-      const entry = plan[i];
-      const step = String(entry.step || '').trim();
-      if (!step) continue;
-      const rawStatus = String(entry.status || 'pending').toLowerCase();
-      let stepStatus: 'pending' | 'in_progress' | 'completed';
-      if (rawStatus === 'completed') stepStatus = 'completed';
-      else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') stepStatus = 'in_progress';
-      else stepStatus = 'pending';
-      planSteps.push({ id: `step-${i}`, description: step, status: stepStatus });
-    }
-
-    const hasActive = planSteps.some(s => s.status === 'in_progress' || s.status === 'pending');
-    this.planState = {
-      active: hasActive,
-      steps: planSteps,
-      title: 'Plan',
-      source: 'codex',
-    };
-
-    this.updatePlanCompletionRate();
-  }
 
   /**
    * Updates the completion rate on the current plan state.
@@ -3335,102 +3093,6 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Handles TodoWrite tool use (OpenCode's equivalent of TaskCreate/TaskUpdate).
-   *
-   * Replaces all non-subagent tracked tasks with the new todo list from the
-   * input's `todos` array. Each todo item has: content, status, priority.
-   *
-   * @param toolUse - Tool use block with input containing `todos` array
-   * @param now - Parsed timestamp
-   */
-  private handleTodoWriteToolUse(
-    toolUse: { id: string; name: string; input: Record<string, unknown> },
-    now: Date
-  ): void {
-    const todos = toolUse.input.todos as Array<Record<string, unknown>> | undefined;
-    if (!Array.isArray(todos)) return;
-
-    // Remove all non-subagent tasks (subagent tasks should persist)
-    for (const [taskId, task] of this.taskState.tasks) {
-      if (!task.isSubagent) {
-        this.taskState.tasks.delete(taskId);
-      }
-    }
-
-    // Reset active task if it was a non-subagent task
-    if (this.taskState.activeTaskId && !this.taskState.tasks.has(this.taskState.activeTaskId)) {
-      this.taskState.activeTaskId = null;
-    }
-
-    for (let i = 0; i < todos.length; i++) {
-      const todo = todos[i];
-      const taskId = `todo-${i}`;
-      const content = String(todo.content || todo.subject || `Todo ${i + 1}`);
-      const rawStatus = String(todo.status || 'pending').toLowerCase();
-      const priority = todo.priority ? String(todo.priority) : undefined;
-
-      // Map OpenCode todo status values to TaskStatus
-      let status: TaskStatus;
-      if (rawStatus === 'completed' || rawStatus === 'done') {
-        status = 'completed';
-      } else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') {
-        status = 'in_progress';
-      } else {
-        status = 'pending';
-      }
-
-      const task: TrackedTask = {
-        taskId,
-        subject: content,
-        description: priority ? `Priority: ${priority}` : undefined,
-        status,
-        createdAt: now,
-        updatedAt: now,
-        blockedBy: [],
-        blocks: [],
-        associatedToolCalls: []
-      };
-
-      this.taskState.tasks.set(taskId, task);
-
-      // Track active task
-      if (status === 'in_progress') {
-        this.taskState.activeTaskId = taskId;
-      }
-    }
-
-    // Second pass: parse dependency info from content text
-    for (let i = 0; i < todos.length; i++) {
-      const task = this.taskState.tasks.get(`todo-${i}`);
-      if (!task) continue;
-
-      // Check for explicit blockedBy field (future-proofing)
-      if (Array.isArray(todos[i].blockedBy)) {
-        for (const ref of todos[i].blockedBy as string[]) {
-          const refStr = String(ref);
-          if (!task.blockedBy.includes(refStr)) {
-            task.blockedBy.push(refStr);
-          }
-        }
-      }
-
-      // Parse dependency references from content text
-      const deps = parseTodoDependencies(String(todos[i].content || ''), todos);
-      for (const depId of deps) {
-        if (depId !== `todo-${i}` && !task.blockedBy.includes(depId)) {
-          task.blockedBy.push(depId);
-          const depTask = this.taskState.tasks.get(depId);
-          if (depTask && !depTask.blocks.includes(`todo-${i}`)) {
-            depTask.blocks.push(`todo-${i}`);
-          }
-        }
-      }
-    }
-
-    log(`TodoWrite: created ${todos.length} tasks from todo list`);
-  }
-
-  /**
    * Extracts tool_result blocks from message content array.
    *
    * @param content - Message content array
@@ -3445,23 +3107,10 @@ export class SessionMonitor implements vscode.Disposable {
 
         const pending = this.pendingToolCalls.get(toolResult.tool_use_id);
         if (pending) {
-          // Handle TaskCreate results
-          if (pending.name === 'TaskCreate') {
-            this.handleTaskCreateResult(toolResult.tool_use_id, toolResult.content, timestamp, toolResult.is_error);
-          }
-
-          // Handle Task (subagent) results
-          if (pending.name === 'Task') {
-            const agentTaskId = 'agent-' + toolResult.tool_use_id;
-            const agentTask = this.taskState.tasks.get(agentTaskId);
-            if (agentTask) {
-              agentTask.status = toolResult.is_error ? 'deleted' : 'completed';
-              agentTask.updatedAt = new Date(timestamp);
-              // Fire event so the board refreshes immediately (suppressed during replay)
-              if (!this._isReplaying) {
-                this._onToolCall.fire({ name: 'Task', input: {}, timestamp: new Date(timestamp) });
-              }
-            }
+          // Task tracking (TaskCreate, Task/Agent results) is handled by the shared EventAggregator.
+          // Fire tool call event for Task results so the board refreshes immediately.
+          if (pending.name === 'Task' && !this._isReplaying) {
+            this._onToolCall.fire({ name: 'Task', input: {}, timestamp: new Date(timestamp) });
           }
 
           // Prefer provider-supplied duration (from OpenCode tool parts) over
@@ -3527,66 +3176,6 @@ export class SessionMonitor implements vscode.Disposable {
         }
       }
     }
-  }
-
-  /**
-   * Handles TaskCreate result to extract task ID and create TrackedTask.
-   *
-   * @param toolUseId - The tool_use_id for correlation
-   * @param resultContent - The tool result content
-   * @param timestamp - Event timestamp
-   * @param isError - Whether the tool result is an error
-   */
-  private handleTaskCreateResult(
-    toolUseId: string,
-    resultContent: unknown,
-    timestamp: string,
-    isError?: boolean
-  ): void {
-    const pendingCreate = this.pendingTaskCreates.get(toolUseId);
-    if (!pendingCreate) {
-      return;
-    }
-
-    // Clean up pending create
-    this.pendingTaskCreates.delete(toolUseId);
-
-    // Don't create task on error
-    if (isError) {
-      log(`TaskCreate failed for tool_use_id ${toolUseId}`);
-      return;
-    }
-
-    const taskId = extractTaskIdFromResult(resultContent);
-    if (!taskId) {
-      const resultStr = typeof resultContent === 'string'
-        ? resultContent
-        : JSON.stringify(resultContent || '');
-      log(`Could not extract task ID from TaskCreate result: ${resultStr.substring(0, 100)}`);
-      return;
-    }
-
-    const now = new Date(timestamp);
-
-    // Create the tracked task
-    const task: TrackedTask = {
-      taskId,
-      subject: pendingCreate.subject,
-      description: pendingCreate.description,
-      status: 'pending', // TaskCreate always creates in pending status
-      createdAt: pendingCreate.timestamp,
-      updatedAt: now,
-      activeForm: pendingCreate.activeForm,
-      blockedBy: [],
-      blocks: [],
-      associatedToolCalls: []
-    };
-
-    // Check if this task qualifies as a goal gate
-    task.isGoalGate = this.isGoalGateTask(task);
-
-    this.taskState.tasks.set(taskId, task);
-    log(`Created TrackedTask: ${taskId} - "${task.subject}"${task.isGoalGate ? ' [GOAL GATE]' : ''}`);
   }
 
   /**
@@ -3661,14 +3250,10 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Resets task state. Called when session resets or switches.
+   * Resets plan and task state. Called when session resets or switches.
+   * Task state (tasks map, pending creates) is handled by the shared aggregator's reset().
    */
   private resetTaskState(): void {
-    this.taskState = {
-      tasks: new Map(),
-      activeTaskId: null
-    };
-    this.pendingTaskCreates.clear();
     this.planState = null;
     this.planModeActive = false;
     this.planModeEnteredAt = null;

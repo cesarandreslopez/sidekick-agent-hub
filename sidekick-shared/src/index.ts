@@ -236,7 +236,7 @@ export type { HighlightFormat } from './formatters/eventHighlighter';
 export { ALL_PHRASES, getRandomPhrase } from './phrases';
 
 // Aggregation
-export { EventAggregator } from './aggregation/EventAggregator';
+export { EventAggregator, parseTodoDependencies } from './aggregation/EventAggregator';
 export type { SerializedAggregatorState } from './aggregation/EventAggregator';
 export { saveSnapshot, loadSnapshot, deleteSnapshot, isSnapshotValid, getSnapshotPath } from './aggregation/snapshot';
 export type { SessionSnapshot } from './aggregation/snapshot';
