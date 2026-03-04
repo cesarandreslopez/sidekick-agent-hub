@@ -263,3 +263,11 @@ export type { PatternCluster, SerializedPatternState } from './aggregation/Patte
 // Report — HTML session report generation
 export { generateHtmlReport, parseTranscript, openInBrowser } from './report';
 export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './report';
+
+// Credentials
+export { readClaudeMaxCredentials, readClaudeMaxAccessTokenSync } from './credentials';
+export type { ClaudeMaxCredentials } from './credentials';
+
+// Quota
+export { fetchQuota } from './quota';
+export type { QuotaWindow, QuotaState } from './quota';

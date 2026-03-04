@@ -24,6 +24,7 @@ Which part of the project does this affect?
 
 - [ ] Extension (VS Code / VSCodium / compatible editors)
 - [ ] CLI (sidekick-cli)
+- [ ] Shared Library (sidekick-shared)
 - [ ] Documentation
 
 ## Additional Context

@@ -1,16 +1,23 @@
 {
   "name": "sidekick-shared",
-  "version": "0.13.1",
-  "description": "Shared data access layer for Sidekick — readers, types, providers",
+  "version": "0.13.2",
+  "description": "Shared data access layer for Sidekick — readers, types, providers, credentials, quota",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

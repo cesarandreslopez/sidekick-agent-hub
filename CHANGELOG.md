@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] - 2026-03-04
+
+### Added
+
+- **Shared Library npm Publication**: `sidekick-shared` published to npm as a standalone package — provides types, parsers, providers, readers, formatters, aggregation, search, reporting, credentials, and quota for building tools on top of Sidekick session data
+- **CI/CD Publish Shared Job**: Release workflow now includes a `publish-shared` job that lints, tests, builds, and publishes `sidekick-shared` to npm before the CLI publish step
+- **Shared Library Issue Templates**: Bug report and feature request templates now include a "Shared Library (sidekick-shared)" component checkbox
+
 ## [0.13.1] - 2026-03-04
 
 ### Added

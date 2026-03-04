@@ -90,10 +90,51 @@ jobs:
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
+  publish-shared:
+    name: Publish Shared Library to npm
+    runs-on: ubuntu-latest
+    needs: validate
+
+    defaults:
+      run:
+        working-directory: sidekick-shared
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm (skip if already published)
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          if npm view "sidekick-shared@$VERSION" version 2>/dev/null; then
+            echo "Version $VERSION already published, skipping"
+          else
+            npm publish
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   publish-npm:
     name: Publish CLI to npm
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [validate, publish-shared]
 
     steps:
       - uses: actions/checkout@v4
@@ -139,7 +180,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [validate, publish-extension, publish-npm]
+    needs: [validate, publish-extension, publish-shared, publish-npm]
 
     steps:
       - uses: actions/checkout@v4
