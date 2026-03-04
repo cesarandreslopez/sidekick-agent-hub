@@ -79,6 +79,7 @@ export function simpleMarkdownToHtml(text: string): string {
   result = result.replace(/(?<!<\/(?:h[1-4]|ul|li|blockquote|hr|div|pre)>)\n(?!<(?:h[1-4]|ul|li|blockquote|hr|div|pre|p|\/))/g, '<br>\n');
 
   // Restore code blocks
+  // eslint-disable-next-line no-control-regex
   result = result.replace(/\x00CODEBLOCK(\d+)\x00/g, (_match, idx: string) => codeBlocks[parseInt(idx, 10)]);
 
   return result;

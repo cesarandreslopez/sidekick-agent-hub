@@ -12,7 +12,6 @@ import { readDecisions } from '../readers/decisions';
 import { readNotes } from '../readers/notes';
 import { readHistory } from '../readers/history';
 import { readLatestHandoff } from '../readers/handoff';
-import { createEmptyTokenTotals } from '../types/historicalData';
 
 export type Fidelity = 'full' | 'compact' | 'brief';
 
@@ -43,7 +42,7 @@ export async function composeContext(
 
   // Get session summaries
   const sessionFiles = workspacePath ? provider.findAllSessions(workspacePath) : [];
-  let sessionSummaries: SessionFileStats[] = [];
+  const sessionSummaries: SessionFileStats[] = [];
 
   // Read stats for session files based on fidelity
   const FIDELITY_SESSION_LIMIT: Record<Fidelity, number> = { full: 5, compact: 2, brief: 1 };

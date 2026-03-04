@@ -42,10 +42,14 @@
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
     "@types/react": "^19.2.14",
     "chalk": "^5.6.2",
     "commander": "^13.0.0",
@@ -54,6 +58,7 @@
     "react": "^19.2.4",
     "sidekick-shared": "file:../sidekick-shared",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^4.0.18"
   },
   "license": "MIT"

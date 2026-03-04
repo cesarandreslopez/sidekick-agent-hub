@@ -3,8 +3,6 @@
  * Displays robot logo, version, random phrase, spinner, and usage hints.
  */
 
-declare const __CLI_VERSION__: string;
-
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useSpinner } from './useSpinner';

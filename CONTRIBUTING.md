@@ -58,9 +58,18 @@ npm run package      # Create .vsix for distribution
 
 ### Code Style
 
-- We use ESLint for linting
-- Run `npm run lint` before committing
-- Run `npm run lint:fix` to auto-fix issues
+- We use ESLint for linting across all three packages (`sidekick-vscode`, `sidekick-cli`, `sidekick-shared`)
+- Lint the entire project before committing:
+  ```bash
+  bash scripts/lint-all.sh         # Check all packages
+  bash scripts/lint-all.sh --fix   # Auto-fix across all packages
+  ```
+- Or lint a single package:
+  ```bash
+  cd sidekick-vscode && npm run lint
+  cd sidekick-cli && npm run lint
+  cd sidekick-shared && npm run lint
+  ```
 
 ### Running Tests
 

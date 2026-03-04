@@ -663,6 +663,7 @@ function getBoxWidth(columns?: number): number {
 function visibleLength(text: string): number {
   return text
     .replace(/\{[^}]+\}/g, '')       // blessed tags
+    // eslint-disable-next-line no-control-regex
     .replace(/\x1b\[[0-9;]*m/g, '')  // ANSI escapes
     .length;
 }

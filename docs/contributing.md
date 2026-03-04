@@ -64,7 +64,12 @@ cd sidekick-cli && npm install && npm run build
 
 ## Code Style
 
-- ESLint for linting — run `npm run lint` before committing
+- ESLint for linting across all three packages (`sidekick-vscode`, `sidekick-cli`, `sidekick-shared`)
+- Lint the entire project before committing:
+    ```bash
+    bash scripts/lint-all.sh         # Check all packages
+    bash scripts/lint-all.sh --fix   # Auto-fix across all packages
+    ```
 - TypeScript strict mode
 - Tests co-located with source files (`Foo.ts` / `Foo.test.ts`)
 

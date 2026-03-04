@@ -144,7 +144,7 @@ function classifyWord(word: string): ColorName | null {
   const lower = word.toLowerCase();
 
   // Strip common punctuation for keyword matching
-  const stripped = lower.replace(/[.,;:!?()\[\]{}'"]+$/g, '').replace(/^['"([\]{}]+/, '');
+  const stripped = lower.replace(/[.,;:!?()[\]{}'"]+$/g, '').replace(/^['"([\]{}]+/, '');
 
   if (ERROR_KEYWORDS.has(stripped)) return 'red';
   if (WARNING_KEYWORDS.has(stripped)) return 'yellow';

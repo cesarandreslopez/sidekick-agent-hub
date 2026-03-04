@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SessionProvider, SearchHit, ProviderId } from '../providers/types';
+import type { SessionProvider, ProviderId } from '../providers/types';
 
 export interface SearchResult {
   providerId: ProviderId;

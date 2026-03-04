@@ -14,6 +14,7 @@ export interface TerminalMouseEvent {
 }
 
 // SGR mouse sequence: ESC [ < Cb ; Cx ; Cy M/m
+// eslint-disable-next-line no-control-regex
 const SGR_MOUSE_RE = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/;
 
 /**
