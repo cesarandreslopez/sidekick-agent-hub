@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.4] - 2026-03-08
+
+### Fixed
+
+- **Onboarding Phrase Spam**: Splash screen and detail pane motivational phrases memoized — no longer flicker every render tick (fixes [#13](https://github.com/cesarandreslopez/sidekick-agent-hub/issues/13))
+
+### Changed
+
+- **Simplified Logo**: Replaced 6-line ASCII robot art with compact text header in splash, help, and changelog overlays
+- **Removed Dead Code**: Removed unused `getSplashContent()` and `HELP_HEADER` exports from branding module
+
 ## [0.13.3] - 2026-03-04
 
 _No CLI-specific changes in this release._

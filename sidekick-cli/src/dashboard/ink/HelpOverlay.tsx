@@ -41,7 +41,7 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
       paddingY={1}
       width={60}
     >
-      {/* Robot Logo */}
+      {/* Logo */}
       {LOGO_ART.map((line, i) => (
         <Text key={`logo-${i}`}>{parseBlessedTags(line)}</Text>
       ))}

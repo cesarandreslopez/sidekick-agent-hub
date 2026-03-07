@@ -3,7 +3,7 @@
  * Replaces PanelLayout.ts with React/Ink rendering.
  */
 
-import React, { useReducer, useCallback, useEffect, useRef } from 'react';
+import React, { useReducer, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Box, useInput, useApp } from 'ink';
 import type { DashboardMetrics } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
@@ -402,12 +402,14 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
   const detailTabs = panel.detailTabs;
   const tabIdx = Math.min(state.detailTabIndex, detailTabs.length - 1);
 
+  const detailPhrase = useMemo(() => getRandomPhraseBlessedTag(), [selectedItem?.id, tabIdx]);
+
   let detailContent = '';
   if (selectedItem && detailTabs.length > 0 && tabIdx >= 0) {
     const tab = detailTabs[tabIdx];
     const tabLabel = tab.label;
     const skipPhrase = tabLabel === 'Timeline' || tabLabel === 'Mind Map';
-    const prefix = skipPhrase ? '' : getRandomPhraseBlessedTag() + '\n';
+    const prefix = skipPhrase ? '' : detailPhrase + '\n';
     detailContent = prefix + tab.render(selectedItem, metrics, staticData);
   } else if (!selectedItem) {
     const filterablePanel = ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id);

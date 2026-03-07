@@ -85,12 +85,7 @@ export function ChangelogOverlay({ entries, scrollOffset }: ChangelogOverlayProp
       width={width}
     >
       {/* Logo */}
-      <Text>          <Text color="yellow">{'\u26A1'}</Text></Text>
-      <Text>          <Text color="magenta">{'\u2502'}</Text></Text>
-      <Text>  <Text color="white">{'</>'}</Text>  <Text color="white">{'\u256D\u2500\u2500\u2534\u2500\u2500\u256E'}</Text>   <Text bold color="magenta">W H A T ' S   N E W</Text></Text>
-      <Text>       <Text color="white">{'\u2502'}</Text> <Text color="cyan">{'\u25CF'}</Text> <Text color="cyan">{'\u25CF'}</Text> <Text color="white">{'\u2502'}</Text>   <Text bold>Sidekick Agent Hub</Text></Text>
-      <Text>       <Text color="white">{'\u2502'}</Text>  <Text color="green">{'\u25E1'}</Text>  <Text color="white">{'\u2502'}</Text></Text>
-      <Text>       <Text color="white">{'\u2570\u2500\u2500\u2500\u2500\u2500\u256F'}</Text></Text>
+      <Text>  <Text bold color="magenta">{'\u26A1'} W H A T ' S   N E W</Text></Text>
       <Text> </Text>
 
       {/* Scroll indicator top */}

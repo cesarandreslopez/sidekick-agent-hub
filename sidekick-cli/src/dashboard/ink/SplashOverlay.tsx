@@ -3,7 +3,7 @@
  * Displays robot logo, version, random phrase, spinner, and usage hints.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { useSpinner } from './useSpinner';
 import { getRandomPhrase } from 'sidekick-shared';
@@ -12,6 +12,7 @@ import { parseBlessedTags } from './parseBlessedTags';
 
 export function SplashOverlay(): React.ReactElement {
   const spinner = useSpinner();
+  const phrase = useMemo(() => getRandomPhrase(), []);
 
   return (
     <Box
@@ -22,12 +23,12 @@ export function SplashOverlay(): React.ReactElement {
       paddingY={1}
       width={60}
     >
-      {/* Robot Logo */}
+      {/* Logo */}
       {LOGO_ART.map((line, i) => (
         <Text key={i}>{parseBlessedTags(line)}</Text>
       ))}
       <Text> </Text>
-      <Text color="gray">  {getRandomPhrase()}</Text>
+      <Text color="gray">  {phrase}</Text>
       <Text> </Text>
       <Text>  <Text color="magenta">{spinner}</Text> <Text color="gray">Waiting for session events...</Text></Text>
       <Text> </Text>
