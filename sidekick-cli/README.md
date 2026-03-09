@@ -2,6 +2,8 @@
 
 Full-screen terminal dashboard for monitoring AI agent sessions — standalone, no VS Code required.
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cesarandreslopez/sidekick-agent-hub)
+
 ![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
 Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) writes. Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in an interactive terminal UI.
