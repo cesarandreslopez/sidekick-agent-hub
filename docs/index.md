@@ -77,6 +77,7 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Context Health** — track how much information your agent has lost to context compaction
 - **Truncation Detection** — know when tool outputs are silently cut short
 - **Cycle Detection** — get alerted when your agent enters repetitive loops
+- **Provider Status** — live Claude API health from status.claude.com, shown when degraded
 
 ### VS Code + [CLI Dashboard](features/cli.md)
 

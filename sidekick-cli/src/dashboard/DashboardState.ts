@@ -13,6 +13,7 @@ import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sid
 import type { SessionSnapshot } from 'sidekick-shared';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
+import type { ProviderStatusState } from './ProviderStatusService';
 import type { UpdateInfo } from './UpdateCheckService';
 
 // ── Public metric types ──
@@ -148,6 +149,7 @@ export interface DashboardMetrics {
   compactionCount: number;
   compactionEvents: CompactionEvent[];
   quota: QuotaState | null;
+  providerStatus: ProviderStatusState | null;
   eventCount: number;
   sessionStartTime?: string;
   currentModel?: string;
@@ -217,6 +219,9 @@ export class DashboardState {
   // Quota (external state from OAuth API or Codex rate limits)
   private _quota: QuotaState | null = null;
 
+  // Provider status (external state from status.claude.com)
+  private _providerStatus: ProviderStatusState | null = null;
+
   // Update availability (external state)
   private _updateInfo: UpdateInfo | null = null;
 
@@ -244,6 +249,7 @@ export class DashboardState {
     this._todoSeen.clear();
     this._providerName = undefined;
     this._quota = null;
+    this._providerStatus = null;
     this._updateInfo = null;
     this._sessionId = undefined;
     this._lastKnownCompactionCount = 0;
@@ -443,6 +449,11 @@ export class DashboardState {
     this._quota = quota;
   }
 
+  /** Update provider status from status.claude.com polling. */
+  setProviderStatus(status: ProviderStatusState): void {
+    this._providerStatus = status;
+  }
+
   /** Set update availability info from UpdateCheckService. */
   setUpdateInfo(info: UpdateInfo): void {
     this._updateInfo = info;
@@ -568,6 +579,7 @@ export class DashboardState {
       compactionCount: m.compactionCount,
       compactionEvents,
       quota: this._quota,
+      providerStatus: this._providerStatus,
       eventCount: m.eventCount,
       sessionStartTime: m.sessionStartTime ?? undefined,
       currentModel: m.currentModel ?? undefined,

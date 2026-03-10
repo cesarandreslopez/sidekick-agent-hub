@@ -91,6 +91,16 @@ Sometimes agents get stuck in loops — reading a file, editing it, reading it a
 
 When a cycle is detected, a VS Code notification fires with the affected files so you can intervene. The mind map also highlights cycling files with a distinct visual indicator.
 
+## Provider Status
+
+The dashboard monitors Claude API health via status.claude.com. When the API is degraded or experiencing an outage, a banner appears in the gauge row showing:
+
+- Color-coded indicator (yellow for minor, red for major/critical)
+- Affected components and their status
+- Active incident name with link to the status page
+
+The banner is hidden when all systems are operational. Polls every 60 seconds, pausing when the dashboard is not visible. Also available as a standalone CLI command: `sidekick status`.
+
 ## Subscription Quota Display
 
 For Claude Max users, the dashboard shows 5-hour and 7-day quota utilization with:

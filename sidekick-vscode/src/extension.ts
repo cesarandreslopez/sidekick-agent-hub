@@ -36,6 +36,7 @@ import { detectProvider } from './services/providers/ProviderDetector';
 import { SessionFolderPicker } from './services/SessionFolderPicker';
 import { MonitorStatusBar } from './services/MonitorStatusBar';
 import { QuotaService } from './services/QuotaService';
+import { ProviderStatusService } from './services/ProviderStatusService';
 import { HistoricalDataService } from './services/HistoricalDataService';
 import { RetroactiveDataLoader } from './services/RetroactiveDataLoader';
 import { SessionAnalyzer } from './services/SessionAnalyzer';
@@ -126,6 +127,9 @@ let dashboardProvider: DashboardViewProvider | undefined;
 
 /** Quota service for Claude Max subscription limits */
 let quotaService: QuotaService | undefined;
+
+/** Provider status service for Claude API health */
+let providerStatusService: ProviderStatusService | undefined;
 
 /** Historical data service for long-term analytics */
 let historicalDataService: HistoricalDataService | undefined;
@@ -377,6 +381,11 @@ export async function activate(context: vscode.ExtensionContext) {
       log('QuotaService initialized');
     }
 
+    // Create provider status service (public API — useful for all providers)
+    providerStatusService = new ProviderStatusService();
+    context.subscriptions.push(providerStatusService);
+    log('ProviderStatusService initialized');
+
     // Initialize session event logger for JSONL audit trail
     const eventLogger = new SessionEventLogger();
     eventLogger.initialize().then(() => {
@@ -528,6 +537,9 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register dashboard view provider (depends on sessionMonitor, quotaService, historicalDataService, and guidanceAdvisor)
     dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, guidanceAdvisor, sessionAnalyzer, authService, decisionLogService, notificationPersistenceService);
     dashboardProvider.setEventLogger(eventLogger);
+    if (providerStatusService) {
+      dashboardProvider.setProviderStatusService(providerStatusService);
+    }
     if (handoffService) {
       dashboardProvider.setHandoffService(handoffService);
     }

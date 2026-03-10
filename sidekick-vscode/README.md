@@ -2,7 +2,7 @@
 
 Multi-provider AI coding assistant for VS Code — inline completions, code transforms, commit messages, and agent session monitoring.
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cesarandreslopez/sidekick-agent-hub)
+[![Ask DeepWiki](https://deepwiki.com/badge.png)](https://deepwiki.com/cesarandreslopez/sidekick-agent-hub)
 
 ![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-agent-hub.gif)
 
@@ -96,6 +96,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
+- **Provider Status** — live Claude API health indicator from status.claude.com, shown when degraded
 
 ### Session Intelligence
 
@@ -124,7 +125,7 @@ sidekick dashboard
 
 ![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
-Browse sessions, tasks, decisions, knowledge notes, live event streams, and charts in a full-screen TUI. Eight panels including an Events panel for real-time session activity and a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick context`) jump directly to a specific panel or run one-shot queries. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
+Browse sessions, tasks, decisions, knowledge notes, live event streams, and charts in a full-screen TUI. Eight panels including an Events panel for real-time session activity and a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick context`, `sidekick status`) jump directly to a specific panel or run one-shot queries. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 

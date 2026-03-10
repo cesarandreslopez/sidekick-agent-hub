@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.5] - 2026-03-10
+
+### Added
+
+- **`sidekick status` Command**: One-shot Claude API status check with color-coded text output and `--json` mode
+- **Dashboard Status Banner**: Status bar shows a colored `● API minor/major/critical` indicator when Claude is degraded; Sessions panel Summary tab shows an "API Status" section with affected components and active incident details. Polls every 60s
+
 ## [0.13.4] - 2026-03-08
 
 ### Fixed

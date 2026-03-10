@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.5] - 2026-03-10
+
+### Added
+
+- **Provider Status Banner**: Dashboard shows a color-bordered banner when Claude API is degraded — displays indicator, affected components, and active incident link. Polls `status.claude.com` every 60s with visibility-gated refresh (pauses when dashboard is hidden)
+
 ## [0.13.4] - 2026-03-08
 
 _No extension-specific changes in this release._

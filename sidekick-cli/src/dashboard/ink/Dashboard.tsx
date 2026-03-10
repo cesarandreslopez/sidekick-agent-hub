@@ -950,6 +950,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
           matchCount={currentItems.length}
           totalCount={panel.getItems(metrics, staticData).length}
           updateInfo={metrics.updateInfo}
+          providerStatus={metrics.providerStatus}
         />
 
         {/* Inline overlays (render on top of content) */}

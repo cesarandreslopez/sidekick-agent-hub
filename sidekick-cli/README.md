@@ -29,7 +29,7 @@ Requires **Node.js 20+**.
 
 ```bash
 sidekick dashboard [options]
-sidekick tasks|decisions|notes|stats|quota|handoff|search|context [options]
+sidekick tasks|decisions|notes|stats|quota|status|handoff|search|context [options]
 ```
 
 The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
@@ -78,6 +78,14 @@ Generate a self-contained HTML session report and open it in the default browser
 Global flags `--project` and `--provider` also apply.
 
 You can also press `r` in the TUI dashboard to generate a report for the current session.
+
+## API Status
+
+```bash
+sidekick status
+```
+
+Check Claude API health from status.claude.com. Shows indicator with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. The dashboard also shows a status indicator in the status bar and Sessions Summary tab when the API is degraded.
 
 ## Subscription Quota
 

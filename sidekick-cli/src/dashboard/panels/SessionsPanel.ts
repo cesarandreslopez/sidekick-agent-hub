@@ -367,6 +367,24 @@ export class SessionsPanel implements SidePanel {
         lines.push(`  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}${sevenProj}`);
       }
 
+      // ── Provider Status section
+      if (m.providerStatus && m.providerStatus.indicator !== 'none') {
+        const ps = m.providerStatus;
+        const statusColor = ps.indicator === 'minor' ? 'yellow' : 'red';
+        lines.push('', sectionHeader('API Status', w));
+        lines.push(`  {${statusColor}-fg}\u25cf ${ps.description}{/${statusColor}-fg}`);
+        for (const c of ps.affectedComponents) {
+          const cColor = c.status.includes('major') ? 'red' : 'yellow';
+          lines.push(`  {${cColor}-fg}\u2022{/${cColor}-fg} ${c.name} {grey-fg}\u2014 ${c.status.replace(/_/g, ' ')}{/grey-fg}`);
+        }
+        if (ps.activeIncident) {
+          lines.push(`  {${statusColor}-fg}${ps.activeIncident.name}{/${statusColor}-fg}`);
+          if (ps.activeIncident.shortlink) {
+            lines.push(`  {grey-fg}${ps.activeIncident.shortlink}{/grey-fg}`);
+          }
+        }
+      }
+
       // ── Context Attribution section
       const attrLines = renderContextAttribution(m.contextAttribution);
       if (attrLines.length > 0) {

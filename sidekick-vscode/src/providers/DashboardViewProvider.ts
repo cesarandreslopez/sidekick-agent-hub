@@ -143,6 +143,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Plan persistence service for historical plan data */
   private _planPersistenceService?: import('../services/PlanPersistenceService').PlanPersistenceService;
 
+  /** Provider status service for Claude API health */
+  private _providerStatusService?: import('../services/ProviderStatusService').ProviderStatusService;
+
   /**
    * Sets the event logger instance used for dashboard toggle control.
    */
@@ -169,6 +172,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   setPlanPersistenceService(service: import('../services/PlanPersistenceService').PlanPersistenceService): void {
     this._planPersistenceService = service;
+  }
+
+  /**
+   * Sets the provider status service for Claude API health monitoring.
+   */
+  setProviderStatusService(service: import('../services/ProviderStatusService').ProviderStatusService): void {
+    this._providerStatusService = service;
+    // Subscribe to status updates → post to webview
+    this._disposables.push(
+      service.onStatusUpdate(status => {
+        this._postMessage({ type: 'updateProviderStatus', status });
+      })
+    );
   }
 
   /**
@@ -317,7 +333,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._disposables
     );
 
-    // Resend state when view becomes visible, manage quota refresh
+    // Resend state when view becomes visible, manage quota + status refresh
     webviewView.onDidChangeVisibility(
       () => {
         if (webviewView.visible) {
@@ -326,18 +342,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           this._sendProviderInfo();
           // Start quota refresh when visible
           this._quotaService?.startRefresh();
+          this._providerStatusService?.startRefresh();
         } else {
-          // Stop quota refresh when hidden to save resources
+          // Stop quota + status refresh when hidden to save resources
           this._quotaService?.stopRefresh();
+          this._providerStatusService?.stopRefresh();
         }
       },
       undefined,
       this._disposables
     );
 
-    // Start quota refresh if view is initially visible
+    // Start quota + status refresh if view is initially visible
     if (webviewView.visible) {
       this._quotaService?.startRefresh();
+      this._providerStatusService?.startRefresh();
     }
 
     // Start phrase rotation timers
@@ -3477,6 +3496,50 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       color: var(--vscode-descriptionForeground);
     }
 
+    .provider-status-section {
+      display: none;
+    }
+
+    .provider-status-section.visible {
+      display: block;
+    }
+
+    .provider-status-content {
+      background: var(--vscode-input-background);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+    }
+
+    .provider-status-section.status-minor .provider-status-content {
+      border: 1px solid var(--vscode-charts-yellow);
+    }
+
+    .provider-status-section.status-major .provider-status-content,
+    .provider-status-section.status-critical .provider-status-content {
+      border: 1px solid var(--vscode-errorForeground);
+    }
+
+    .provider-status-indicator {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .provider-status-details {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.4;
+    }
+
+    .provider-status-details a {
+      color: var(--vscode-textLink-foreground);
+      text-decoration: none;
+    }
+
+    .provider-status-details a:hover {
+      text-decoration: underline;
+    }
+
     .tool-list {
       display: flex;
       flex-direction: column;
@@ -4878,6 +4941,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           </div>
           <div class="quota-error" id="quota-error" style="display: none;"></div>
         </div>
+
+        <div class="gauge-row-item provider-status-section" id="provider-status-section" title="Claude API status from status.claude.com">
+          <div class="provider-status-content" id="provider-status-content">
+            <div class="provider-status-indicator" id="provider-status-indicator"></div>
+            <div class="provider-status-details" id="provider-status-details"></div>
+          </div>
+        </div>
       </div>
 
       <div class="primary-metric-display" data-metric="cost" id="primary-metric-display" style="display: none;" aria-live="polite">
@@ -6195,6 +6265,49 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           reset7dEl.textContent = formatResetTime(quota.sevenDay.resetsAt);
         }
         updateProjectionDisplay(projection7dEl, quota.projectedSevenDay);
+      }
+
+      /**
+       * Updates the provider status display.
+       */
+      function updateProviderStatus(status) {
+        const sectionEl = document.getElementById('provider-status-section');
+        const indicatorEl = document.getElementById('provider-status-indicator');
+        const detailsEl = document.getElementById('provider-status-details');
+        if (!sectionEl || !indicatorEl || !detailsEl) return;
+
+        // Remove previous indicator classes
+        sectionEl.classList.remove('status-minor', 'status-major', 'status-critical');
+
+        if (!status || status.indicator === 'none') {
+          sectionEl.classList.remove('visible');
+          return;
+        }
+
+        sectionEl.classList.add('visible', 'status-' + status.indicator);
+
+        // Indicator dot and description
+        const dot = status.indicator === 'minor' ? '\u25cf' : '\u25cf';
+        const color = status.indicator === 'minor'
+          ? 'var(--vscode-charts-yellow)'
+          : 'var(--vscode-errorForeground)';
+        indicatorEl.innerHTML = '<span style="color: ' + color + '">' + dot + '</span> ' +
+          (status.description || status.indicator.charAt(0).toUpperCase() + status.indicator.slice(1));
+
+        // Details: components + incident
+        let html = '';
+        if (status.affectedComponents && status.affectedComponents.length > 0) {
+          for (const c of status.affectedComponents) {
+            html += c.name + ' \u2014 ' + c.status.replace(/_/g, ' ') + '<br>';
+          }
+        }
+        if (status.activeIncident) {
+          html += '<strong>' + status.activeIncident.name + '</strong>';
+          if (status.activeIncident.shortlink) {
+            html += ' <a href="' + status.activeIncident.shortlink + '">\u2197</a>';
+          }
+        }
+        detailsEl.innerHTML = html;
       }
 
       /**
@@ -7583,6 +7696,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           case 'updateQuota':
             updateQuota(message.quota);
+            break;
+
+          case 'updateProviderStatus':
+            updateProviderStatus(message.status);
             break;
 
           case 'updateLatency':

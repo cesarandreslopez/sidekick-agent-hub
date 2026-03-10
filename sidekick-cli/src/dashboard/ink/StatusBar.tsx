@@ -8,6 +8,7 @@ declare const __CLI_VERSION__: string;
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { UpdateInfo } from '../UpdateCheckService';
+import type { ProviderStatusState } from '../ProviderStatusService';
 
 interface StatusBarProps {
   eventCount: number;
@@ -20,6 +21,7 @@ interface StatusBarProps {
   matchCount?: number;
   totalCount?: number;
   updateInfo?: UpdateInfo | null;
+  providerStatus?: ProviderStatusState | null;
 }
 
 export function StatusBar({
@@ -33,6 +35,7 @@ export function StatusBar({
   matchCount,
   totalCount,
   updateInfo,
+  providerStatus,
 }: StatusBarProps): React.ReactElement {
   const evtLabel = eventCount > 0 ? `${eventCount} events` : 'waiting...';
 
@@ -45,6 +48,9 @@ export function StatusBar({
     : permissionMode === 'plan' ? 'PLAN'
     : undefined;
 
+  const statusIndicator = providerStatus && providerStatus.indicator !== 'none';
+  const statusColor = providerStatus?.indicator === 'minor' ? 'yellow' : 'red';
+
   return (
     <Box height={1} width="100%">
       {/* Left zone: brand + version */}
@@ -56,7 +62,7 @@ export function StatusBar({
         )}
       </Box>
 
-      {/* Center zone: provider, permission, events, filters */}
+      {/* Center zone: provider, permission, events, status, filters */}
       <Box flexGrow={1} justifyContent="center">
         {providerName && (
           <><Text dimColor> {'\u2502'} </Text><Text color="cyan">{providerName}</Text></>
@@ -66,6 +72,9 @@ export function StatusBar({
         )}
         <Text dimColor> {'\u2502'} </Text>
         <Text>{evtLabel}</Text>
+        {statusIndicator && (
+          <><Text dimColor> {'\u2502'} </Text><Text color={statusColor}>{'\u25cf'} API {providerStatus!.indicator}</Text></>
+        )}
         {filterString && (
           <Text color="yellow">  filter: "{filterString}" ({matchCount ?? 0}/{totalCount ?? 0})</Text>
         )}

@@ -16,6 +16,7 @@ import { DashboardState } from '../dashboard/DashboardState';
 import { loadStaticData } from '../dashboard/StaticDataLoader';
 import type { StaticData } from '../dashboard/StaticDataLoader';
 import { QuotaService } from '../dashboard/QuotaService';
+import { ProviderStatusService } from '../dashboard/ProviderStatusService';
 import { UpdateCheckService } from '../dashboard/UpdateCheckService';
 import { SessionsPanel } from '../dashboard/panels/SessionsPanel';
 import { TasksPanel } from '../dashboard/panels/TasksPanel';
@@ -120,6 +121,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Subscription quota polling
   const quotaService = new QuotaService();
+
+  // Provider status polling (status.claude.com)
+  const providerStatusService = new ProviderStatusService();
 
   // One-shot update check
   const updateCheckService = new UpdateCheckService();
@@ -307,6 +311,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     scheduleRender();
   });
 
+  // Provider status updates trigger rerender
+  providerStatusService.onUpdate((status) => {
+    state.setProviderStatus(status);
+    scheduleRender();
+  });
+
   // Cleanup handler
   let stopped = false;
   function cleanup() {
@@ -316,6 +326,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     // persistPlan(state, workspacePath).catch(() => {});
     try { clearInterval(sessionPollInterval); } catch { /* ignore */ }
     try { quotaService.stop(); } catch { /* ignore */ }
+    try { providerStatusService.stop(); } catch { /* ignore */ }
     try { watcher?.stop(); } catch { /* ignore */ }
     try { activeProvider.dispose(); } catch { /* ignore */ }
     for (const panel of panels) {
@@ -390,8 +401,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     // No active session — still show dashboard with static data
   }
 
-  // Start quota polling + update check
+  // Start quota polling + provider status polling + update check
   quotaService.start();
+  providerStatusService.start();
   updateCheckService.check();
 
   // Initial render

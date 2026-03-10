@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.5] - 2026-03-10
+
+### Added
+
+- **Provider Status Monitoring**: New `fetchProviderStatus()` in sidekick-shared polls `status.claude.com` for API health — returns indicator, affected components, and active incidents with graceful fallback on network errors
+- **CLI `sidekick status` Command**: One-shot command with color-coded text output and `--json` mode for checking Claude API status
+- **CLI Dashboard Status Banner**: Status bar shows a colored `● API minor/major/critical` indicator when Claude is degraded; Sessions panel Summary tab shows affected components and active incident details
+- **VS Code Dashboard Status Banner**: Dashboard gauge row shows a color-bordered banner with indicator, affected components, and incident link when Claude API is degraded; hidden when all systems are operational
+
 ## [0.13.4] - 2026-03-08
 
 ### Fixed

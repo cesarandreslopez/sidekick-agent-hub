@@ -141,6 +141,15 @@ const quotaCmd = new Command('quota')
   });
 program.addCommand(quotaCmd);
 
+// Status command — one-shot Claude API status check
+const statusCmd = new Command('status')
+  .description('Show Claude API status (from status.claude.com)')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { statusAction } = await import('./commands/status');
+    return statusAction(_opts, cmd);
+  });
+program.addCommand(statusCmd);
+
 // Handoff command — show the latest handoff document
 const handoffCmd = new Command('handoff')
   .description('Show the latest session handoff document for the current project')

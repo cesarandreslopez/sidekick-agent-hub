@@ -29,6 +29,7 @@ npm install sidekick-shared
 | **Report** | Self-contained HTML session report generation |
 | **Credentials** | Claude Max OAuth credential reading from `~/.claude/.credentials.json` |
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) |
+| **Provider Status** | Claude API health checking via status.claude.com (indicator, components, incidents) |
 
 ## Usage Examples
 
@@ -52,6 +53,20 @@ import { readTasks, getProjectSlug } from 'sidekick-shared';
 const slug = getProjectSlug('/path/to/project');
 const tasks = readTasks({ projectSlug: slug });
 console.log(`Found ${tasks.length} tasks`);
+```
+
+### Check provider status
+
+```typescript
+import { fetchProviderStatus } from 'sidekick-shared';
+
+const status = await fetchProviderStatus();
+if (status.indicator !== 'none') {
+  console.log(`Claude API: ${status.description}`);
+  for (const c of status.affectedComponents) {
+    console.log(`  ${c.name}: ${c.status}`);
+  }
+}
 ```
 
 ### Fetch subscription quota

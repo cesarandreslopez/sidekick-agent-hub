@@ -232,6 +232,28 @@ sidekick stats
 sidekick stats --json
 ```
 
+### Status
+
+```bash
+sidekick status
+```
+
+Check Claude API health from status.claude.com. Shows indicator with color coding (green = operational, yellow = minor, red = major/critical), affected components, and active incident details with shortlink.
+
+No command-specific flags. Use `--json` for machine-readable output.
+
+#### Examples
+
+```bash
+# Check current API status
+sidekick status
+
+# Get raw status data as JSON
+sidekick status --json
+```
+
+The dashboard also monitors status automatically — the status bar shows a colored `● API minor/major/critical` indicator when degraded, and the Sessions panel Summary tab shows an "API Status" section with affected components and incident details.
+
 ### Quota
 
 ```bash
