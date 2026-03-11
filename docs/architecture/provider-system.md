@@ -56,7 +56,7 @@ Defined as `SessionProvider` in `src/types/sessionProvider.ts`:
 | ID | Description | Data Source |
 |----|-------------|------------|
 | `claude-code` | Claude Code sessions | `~/.claude/projects/` |
-| `opencode` | OpenCode sessions | `~/.local/share/opencode/` |
+| `opencode` | OpenCode sessions | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) |
 | `codex` | Codex CLI sessions | `~/.codex/sessions/` |
 
 Each session provider normalizes raw data into the common `ClaudeSessionEvent` format.

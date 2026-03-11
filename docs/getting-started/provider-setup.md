@@ -32,8 +32,9 @@ Direct Anthropic API access with per-token billing.
 Uses your configured OpenCode provider and model.
 
 1. Ensure OpenCode is installed and running (`opencode` in a terminal)
-2. Sidekick connects to the local server on port 4096
-3. Switch provider:
+2. Ensure `sqlite3` is installed and available on `PATH` if you want Sidekick to monitor OpenCode sessions
+3. Sidekick connects to the local server on port 4096
+4. Switch provider:
     - Settings → `sidekick.inferenceProvider` → `opencode`
     - Or: status bar → "Switch Inference Provider" → OpenCode
 
@@ -64,5 +65,8 @@ When `sidekick.inferenceProvider` is set to `auto` (the default), Sidekick detec
 Session monitoring uses a separate `sidekick.sessionProvider` setting. It also defaults to `auto` and supports:
 
 - **Claude Code** — monitors `~/.claude/projects/`
-- **OpenCode** — monitors `~/.local/share/opencode/`
+- **OpenCode** — monitors OpenCode's data directory:
+  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%APPDATA%\\opencode\\`
 - **Codex CLI** — monitors `~/.codex/sessions/`
+
+For OpenCode session monitoring, Sidekick reads `opencode.db` via `sqlite3`. If `sqlite3` is unavailable, the extension and CLI show an actionable OpenCode-specific notice.

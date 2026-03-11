@@ -501,10 +501,13 @@ The dashboard supports mouse input in terminals with SGR 1006 extended mouse enc
 The CLI auto-detects which session provider is most recently active by checking filesystem presence and modification times:
 
 - **Claude Code** — `~/.claude/projects/`
-- **OpenCode** — `~/.local/share/opencode/`
+- **OpenCode** — OpenCode's data directory:
+  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%APPDATA%\\opencode\\`
 - **Codex** — `~/.codex/`
 
 Override with `--provider claude-code`, `--provider opencode`, or `--provider codex`.
+
+For OpenCode, the CLI reads `opencode.db` via `sqlite3`. If `sqlite3` is missing or not executable in the current shell environment, the dashboard now prints an actionable OpenCode-specific notice.
 
 ### Session Pinning
 

@@ -5,6 +5,17 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.6] - 2026-03-11
+
+### Changed
+
+- **Refreshed CLI Dashboard Wordmark**: Updated the CLI dashboard wordmark/header styling for a cleaner, more intentional branded splash experience
+
+### Fixed
+
+- **OpenCode DB-backed monitoring**: Manual selection now accepts synthetic `db-sessions/<projectId>` folders, and workspace discovery now resolves OpenCode projects by worktree, sandboxes, and session directory instead of silently falling back to legacy file paths
+- **OpenCode runtime notices**: VS Code and CLI now show OpenCode-only actionable notices when `opencode.db` exists but `sqlite3` is missing, blocked, or otherwise unusable in the current environment
+
 ## [0.13.5] - 2026-03-10
 
 ### Added

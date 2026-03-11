@@ -30,7 +30,7 @@ Each CLI agent stores session data differently. Provider implementations in `src
 | Provider | Data Source | Format |
 |----------|------------|--------|
 | Claude Code | `~/.claude/projects/` | JSONL files |
-| OpenCode | `~/.local/share/opencode/` | Database/files |
+| OpenCode | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) | `opencode.db` plus legacy files |
 | Codex CLI | `~/.codex/sessions/` | Session files |
 
 ## SessionMonitor
@@ -72,4 +72,3 @@ These systems feed their results into the dashboard, handoffs, notifications, mi
 ## CLI Reader Path
 
 The `sidekick-shared` library provides a read-only alternative to the SessionMonitor pipeline. Instead of watching files in real time, the CLI reads session data on demand — useful for loading context at session start or querying session history in batch.
-
