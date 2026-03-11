@@ -5,17 +5,23 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.6] - 2026-03-11
+
+### Changed
+
+- **Refreshed CLI Dashboard Wordmark**: Updated the dashboard wordmark/header styling for a cleaner splash and dashboard identity
+
+### Fixed
+
+- **OpenCode dashboard startup**: OpenCode DB-backed session discovery now resolves projects by worktree, sandboxes, and session directory instead of quietly behaving like no session exists
+- **OpenCode runtime notices**: The CLI now prints an OpenCode-only actionable notice when `opencode.db` exists but `sqlite3` is missing, blocked, or otherwise unusable in the current shell environment
+
 ## [0.13.5] - 2026-03-10
 
 ### Added
 
 - **`sidekick status` Command**: One-shot Claude API status check with color-coded text output and `--json` mode
 - **Dashboard Status Banner**: Status bar shows a colored `● API minor/major/critical` indicator when Claude is degraded; Sessions panel Summary tab shows an "API Status" section with affected components and active incident details. Polls every 60s
-
-### Fixed
-
-- **OpenCode dashboard startup**: OpenCode DB-backed session discovery now resolves projects by worktree, sandboxes, and session directory instead of quietly behaving like no session exists
-- **OpenCode DB runtime errors**: The CLI now reports when `opencode.db` exists but `sqlite3` cannot be executed, instead of leaving the dashboard in a misleading waiting state
 
 ## [0.13.4] - 2026-03-08
 

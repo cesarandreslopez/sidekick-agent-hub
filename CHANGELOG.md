@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.6] - 2026-03-11
+
+### Changed
+
+- **Refreshed CLI Dashboard Wordmark**: Updated the CLI dashboard wordmark/header styling for a cleaner, more intentional branded splash experience
+
+### Fixed
+
+- **OpenCode DB-backed monitoring**: Manual selection now accepts synthetic `db-sessions/<projectId>` folders, and workspace discovery now resolves OpenCode projects by worktree, sandboxes, and session directory instead of silently falling back to legacy file paths
+- **OpenCode runtime notices**: VS Code and CLI now show OpenCode-only actionable notices when `opencode.db` exists but `sqlite3` is missing, blocked, or otherwise unusable in the current environment
+
 ## [0.13.5] - 2026-03-10
 
 ### Added
@@ -13,11 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI `sidekick status` Command**: One-shot command with color-coded text output and `--json` mode for checking Claude API status
 - **CLI Dashboard Status Banner**: Status bar shows a colored `● API minor/major/critical` indicator when Claude is degraded; Sessions panel Summary tab shows affected components and active incident details
 - **VS Code Dashboard Status Banner**: Dashboard gauge row shows a color-bordered banner with indicator, affected components, and incident link when Claude API is degraded; hidden when all systems are operational
-
-### Fixed
-
-- **OpenCode DB-backed monitoring**: Manual selection now accepts synthetic `db-sessions/<projectId>` folders, and workspace discovery now resolves OpenCode projects by worktree, sandboxes, and session directory instead of silently falling back to legacy file paths
-- **OpenCode runtime diagnostics**: VS Code and CLI now surface a specific OpenCode DB/runtime error when `opencode.db` exists but `sqlite3` cannot be executed, instead of reporting missing directories or waiting forever
 
 ## [0.13.4] - 2026-03-08
 

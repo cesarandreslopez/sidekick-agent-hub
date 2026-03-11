@@ -5,16 +5,18 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.6] - 2026-03-11
+
+### Fixed
+
+- **OpenCode DB-backed resolution**: OpenCode project discovery now matches DB projects by worktree, sandboxes, and session directory, and synthetic `db-sessions/<projectId>` folders are treated as monitorable paths
+- **OpenCode runtime status**: DB-backed consumers can now distinguish `db_missing` from `sqlite_missing`, `sqlite_blocked`, and `query_failed`, enabling OpenCode-only actionable runtime notices instead of silent fallback to legacy file scanning
+
 ## [0.13.5] - 2026-03-10
 
 ### Added
 
 - **Provider Status module**: `fetchProviderStatus()` for checking Claude API health via `status.claude.com` — returns indicator, affected components, active incidents, with graceful fallback on errors
-
-### Fixed
-
-- **OpenCode DB-backed resolution**: OpenCode project discovery now matches DB projects by worktree, sandboxes, and session directory, and synthetic `db-sessions/<projectId>` folders are treated as monitorable paths
-- **OpenCode runtime status**: DB-backed consumers can now distinguish `db_missing` from `sqlite_missing`, `sqlite_blocked`, and `query_failed` instead of silently degrading to legacy file scanning
 
 ## [0.13.4] - 2026-03-08
 

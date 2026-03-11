@@ -1,6 +1,6 @@
 {
   "name": "sidekick-shared",
-  "version": "0.13.5",
+  "version": "0.13.6",
   "description": "Shared data access layer for Sidekick — readers, types, providers, credentials, quota",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
