@@ -23,7 +23,7 @@ import { execSync } from 'child_process';
 import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput } from '../parsers/openCodeParser';
 import { OpenCodeDatabase } from './openCodeDatabase';
 import type { DbPart } from './openCodeDatabase';
-import type { SessionProviderBase, SessionReader, ProjectFolderInfo, SearchHit, SessionFileStats, ProviderId } from './types';
+import type { SessionProviderBase, SessionReader, ProjectFolderInfo, SearchHit, SessionFileStats, ProviderId, ProviderRuntimeStatus } from './types';
 import type { SessionEvent, TokenUsage, SubagentStats, ContextAttribution, ToolCall } from '../types/sessionEvent';
 import type { OpenCodeSession, OpenCodeMessage, OpenCodePart, OpenCodeProject } from '../types/opencode';
 
@@ -39,6 +39,12 @@ function getOpenCodeDataDir(): string {
   const xdg = process.env.XDG_DATA_HOME;
   if (xdg) {
     return path.join(xdg, 'opencode');
+  }
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'opencode');
+  }
+  if (process.platform === 'win32') {
+    return path.join(process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'opencode');
   }
   return path.join(os.homedir(), '.local', 'share', 'opencode');
 }
@@ -148,11 +154,22 @@ function extractParentIdFromDbMessage(row: { data: string }): string | null {
  *
  * Tries DB first, then file-based project metadata, then git root commit hash.
  */
-function resolveProjectId(workspacePath: string, db: OpenCodeDatabase | null): string | null {
+function resolveProjectId(
+  workspacePath: string,
+  db: OpenCodeDatabase | null,
+  runtimeStatus: ProviderRuntimeStatus,
+): string | null {
   // Strategy 1: DB lookup
   if (db) {
     const dbProject = db.findProjectByWorktree(workspacePath);
     if (dbProject) return dbProject.id;
+
+    const byDirectory = db.findProjectBySessionDirectory(workspacePath);
+    if (byDirectory) return byDirectory.id;
+  }
+
+  if (runtimeStatus.kind !== 'db_missing') {
+    return null;
   }
 
   // Strategy 2: scan project files to find matching path
@@ -630,6 +647,7 @@ export class OpenCodeProvider implements SessionProviderBase {
 
   private db: OpenCodeDatabase | null = null;
   private dbInitialized = false;
+  private dbStatus: ProviderRuntimeStatus = { available: false, kind: 'db_missing' };
   /** Cache of session metadata populated during listing */
   private sessionMetaCache = new Map<string, { title: string | null; timeUpdated: number }>();
 
@@ -640,17 +658,51 @@ export class OpenCodeProvider implements SessionProviderBase {
 
     const dataDir = getOpenCodeDataDir();
     const db = new OpenCodeDatabase(dataDir);
-    if (db.isAvailable() && db.open()) {
+    if (db.open()) {
       this.db = db;
     }
+    this.dbStatus = db.getRuntimeStatus();
     return this.db;
+  }
+
+  getRuntimeStatus(): ProviderRuntimeStatus {
+    const db = this.ensureDb();
+    if (db) return db.getRuntimeStatus();
+    return this.dbStatus;
+  }
+
+  canMonitorDirectory(dir: string): boolean {
+    if (fs.existsSync(dir)) return true;
+
+    const db = this.ensureDb();
+    if (!db) return false;
+
+    const projectId = extractProjectIdFromDbPath(dir + path.sep + 'dummy.json') || path.basename(dir);
+    return projectId.length > 0 && db.hasProject(projectId);
+  }
+
+  private mapDbSessions(projectId: string) {
+    const db = this.ensureDb();
+    if (!db) return [];
+
+    const sessions = db.getSessionsForProject(projectId);
+    const dataDir = getOpenCodeDataDir();
+    return sessions.map(session => {
+      const syntheticPath = makeDbSessionPath(dataDir, projectId, session.id);
+      this.sessionMetaCache.set(syntheticPath, {
+        title: session.title,
+        timeUpdated: session.time_updated,
+      });
+      return syntheticPath;
+    });
   }
 
   // --- Path resolution ---
 
   getSessionDirectory(workspacePath: string): string {
     const db = this.ensureDb();
-    const projectId = resolveProjectId(workspacePath, db);
+    const dbStatus = this.getRuntimeStatus();
+    const projectId = resolveProjectId(workspacePath, db, dbStatus);
     if (projectId) {
       // For DB sessions, return a synthetic directory path
       if (db) {
@@ -658,20 +710,27 @@ export class OpenCodeProvider implements SessionProviderBase {
       }
       return path.join(getStorageDir(), 'session', projectId);
     }
+    if (dbStatus.kind !== 'db_missing') {
+      return path.join(getOpenCodeDataDir(), DB_SESSION_PREFIX);
+    }
     return path.join(getStorageDir(), 'session');
   }
 
   discoverSessionDirectory(workspacePath: string): string | null {
     const db = this.ensureDb();
-    const projectId = resolveProjectId(workspacePath, db);
+    const dbStatus = this.getRuntimeStatus();
+    const projectId = resolveProjectId(workspacePath, db, dbStatus);
     if (!projectId) return null;
 
     // DB: check if project has sessions
     if (db) {
-      const sessions = db.getSessionsForProject(projectId);
-      if (sessions.length > 0) {
+      if (db.hasProject(projectId)) {
         return path.join(getOpenCodeDataDir(), DB_SESSION_PREFIX, projectId);
       }
+    }
+
+    if (dbStatus.kind !== 'db_missing') {
+      return null;
     }
 
     // File fallback
@@ -683,7 +742,8 @@ export class OpenCodeProvider implements SessionProviderBase {
 
   findActiveSession(workspacePath: string): string | null {
     const db = this.ensureDb();
-    const projectId = resolveProjectId(workspacePath, db);
+    const dbStatus = this.getRuntimeStatus();
+    const projectId = resolveProjectId(workspacePath, db, dbStatus);
     if (!projectId) return null;
 
     // DB primary
@@ -697,6 +757,10 @@ export class OpenCodeProvider implements SessionProviderBase {
         });
         return syntheticPath;
       }
+    }
+
+    if (dbStatus.kind !== 'db_missing') {
+      return null;
     }
 
     // File fallback
@@ -762,23 +826,17 @@ export class OpenCodeProvider implements SessionProviderBase {
 
   findAllSessions(workspacePath: string): string[] {
     const db = this.ensureDb();
-    const projectId = resolveProjectId(workspacePath, db);
+    const dbStatus = this.getRuntimeStatus();
+    const projectId = resolveProjectId(workspacePath, db, dbStatus);
     if (!projectId) return [];
 
     // DB primary
     if (db) {
-      const sessions = db.getSessionsForProject(projectId);
-      if (sessions.length > 0) {
-        const dataDir = getOpenCodeDataDir();
-        return sessions.map(s => {
-          const syntheticPath = makeDbSessionPath(dataDir, projectId, s.id);
-          this.sessionMetaCache.set(syntheticPath, {
-            title: s.title,
-            timeUpdated: s.time_updated,
-          });
-          return syntheticPath;
-        });
-      }
+      return this.mapDbSessions(projectId);
+    }
+
+    if (dbStatus.kind !== 'db_missing') {
+      return [];
     }
 
     // File fallback
@@ -788,21 +846,13 @@ export class OpenCodeProvider implements SessionProviderBase {
 
   findSessionsInDirectory(dir: string): string[] {
     const db = this.ensureDb();
+    const dbStatus = this.getRuntimeStatus();
 
     // Check if this is a synthetic DB session directory
     if (db && dir.includes(path.sep + DB_SESSION_PREFIX + path.sep)) {
       const projectId = extractProjectIdFromDbPath(dir + path.sep + 'dummy.json');
       if (projectId) {
-        const sessions = db.getSessionsForProject(projectId);
-        const dataDir = getOpenCodeDataDir();
-        return sessions.map(s => {
-          const syntheticPath = makeDbSessionPath(dataDir, projectId, s.id);
-          this.sessionMetaCache.set(syntheticPath, {
-            title: s.title,
-            timeUpdated: s.time_updated,
-          });
-          return syntheticPath;
-        });
+        return this.mapDbSessions(projectId);
       }
     }
 
@@ -810,18 +860,13 @@ export class OpenCodeProvider implements SessionProviderBase {
     // try to extract project ID from dir name
     if (db) {
       const dirName = path.basename(dir);
-      const sessions = db.getSessionsForProject(dirName);
-      if (sessions.length > 0) {
-        const dataDir = getOpenCodeDataDir();
-        return sessions.map(s => {
-          const syntheticPath = makeDbSessionPath(dataDir, dirName, s.id);
-          this.sessionMetaCache.set(syntheticPath, {
-            title: s.title,
-            timeUpdated: s.time_updated,
-          });
-          return syntheticPath;
-        });
+      if (db.hasProject(dirName)) {
+        return this.mapDbSessions(dirName);
       }
+    }
+
+    if (dbStatus.kind !== 'db_missing') {
+      return [];
     }
 
     // File fallback
@@ -856,6 +901,7 @@ export class OpenCodeProvider implements SessionProviderBase {
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
     const db = this.ensureDb();
     const folders: ProjectFolderInfo[] = [];
+    const dbStatus = this.getRuntimeStatus();
 
     // DB primary
     if (db) {
@@ -865,7 +911,7 @@ export class OpenCodeProvider implements SessionProviderBase {
 
       let currentProjectId: string | null = null;
       if (workspacePath) {
-        currentProjectId = resolveProjectId(workspacePath, db);
+        currentProjectId = resolveProjectId(workspacePath, db, dbStatus);
       }
 
       const dataDir = getOpenCodeDataDir();
@@ -895,6 +941,10 @@ export class OpenCodeProvider implements SessionProviderBase {
       });
 
       if (folders.length > 0) return folders;
+    }
+
+    if (dbStatus.kind !== 'db_missing') {
+      return [];
     }
 
     // File fallback
@@ -997,7 +1047,7 @@ export class OpenCodeProvider implements SessionProviderBase {
 
   encodeWorkspacePath(workspacePath: string): string {
     const db = this.ensureDb();
-    return resolveProjectId(workspacePath, db) || workspacePath;
+    return resolveProjectId(workspacePath, db, this.getRuntimeStatus()) || workspacePath;
   }
 
   extractSessionLabel(sessionPath: string): string | null {

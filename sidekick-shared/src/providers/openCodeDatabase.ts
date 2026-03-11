@@ -7,14 +7,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 
-export interface DbProject { id: string; worktree: string; name: string | null; time_created: number; time_updated: number; }
+export interface DbProject { id: string; worktree: string; name: string | null; sandboxes: string[]; time_created: number; time_updated: number; }
 export interface DbSession { id: string; project_id: string; title: string; directory: string; time_created: number; time_updated: number; }
 export interface DbMessage { id: string; session_id: string; time_created: number; time_updated: number; data: string; }
 export interface DbPart { id: string; message_id: string; session_id: string; time_created: number; time_updated: number; data: string; }
+type DbProjectRow = Omit<DbProject, 'sandboxes'> & { sandboxes?: string | null };
+
+export interface OpenCodeDbRuntimeStatus {
+  available: boolean;
+  kind: 'available' | 'db_missing' | 'sqlite_missing' | 'sqlite_blocked' | 'query_failed';
+  message?: string;
+}
 
 export class OpenCodeDatabase {
   private readonly dbPath: string;
-  private sqlite3Available: boolean | null = null;
+  private runtimeStatus: OpenCodeDbRuntimeStatus | null = null;
 
   constructor(dataDir: string) {
     this.dbPath = path.join(dataDir, 'opencode.db');
@@ -22,14 +29,27 @@ export class OpenCodeDatabase {
 
   isAvailable(): boolean { return fs.existsSync(this.dbPath); }
 
+  getRuntimeStatus(): OpenCodeDbRuntimeStatus {
+    if (this.runtimeStatus) return this.runtimeStatus;
+    if (!this.isAvailable()) {
+      this.runtimeStatus = { available: false, kind: 'db_missing' };
+      return this.runtimeStatus;
+    }
+    return { available: false, kind: 'query_failed', message: 'OpenCode database has not been initialized yet.' };
+  }
+
   open(): boolean {
-    if (this.sqlite3Available !== null) return this.sqlite3Available;
+    if (this.runtimeStatus) return this.runtimeStatus.available;
+    if (!this.isAvailable()) {
+      this.runtimeStatus = { available: false, kind: 'db_missing' };
+      return false;
+    }
     try {
       execFileSync('sqlite3', ['--version'], { encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] });
-      this.sqlite3Available = true;
+      this.runtimeStatus = { available: true, kind: 'available' };
       return true;
-    } catch {
-      this.sqlite3Available = false;
+    } catch (error) {
+      this.runtimeStatus = toRuntimeStatus(error);
       return false;
     }
   }
@@ -37,7 +57,7 @@ export class OpenCodeDatabase {
   close(): void {}
 
   private query<T>(sql: string, params: (string | number)[] = []): T[] {
-    if (!this.sqlite3Available) return [];
+    if (!this.open()) return [];
     let query = sql;
     for (const param of params) {
       if (typeof param === 'number') query = query.replace('?', String(param));
@@ -50,10 +70,14 @@ export class OpenCodeDatabase {
       const result = execFileSync('sqlite3', ['-json', '-readonly', this.dbPath, query], {
         encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 50 * 1024 * 1024,
       });
+      this.runtimeStatus = { available: true, kind: 'available' };
       const trimmed = result.trim();
       if (!trimmed) return [];
       return JSON.parse(trimmed) as T[];
-    } catch { return []; }
+    } catch (error) {
+      this.runtimeStatus = toRuntimeStatus(error, 'query_failed');
+      return [];
+    }
   }
 
   private queryOne<T>(sql: string, params: (string | number)[] = []): T | null {
@@ -63,23 +87,59 @@ export class OpenCodeDatabase {
 
   findProjectByWorktree(workspacePath: string): DbProject | null {
     const normalized = normalizePath(workspacePath);
-    const exact = this.queryOne<DbProject>('SELECT id, worktree, name, time_created, time_updated FROM project WHERE worktree = ?', [normalized]);
-    if (exact) return exact;
-    const all = this.query<DbProject>('SELECT id, worktree, name, time_created, time_updated FROM project');
-    const matches: Array<DbProject & { pathLen: number }> = [];
-    for (const proj of all) {
-      const projPath = normalizePath(proj.worktree);
-      if (projPath === normalized) return proj;
-      if (normalized.startsWith(projPath + path.sep) || projPath.startsWith(normalized + path.sep)) {
-        matches.push({ ...proj, pathLen: projPath.length });
+    const all = this.getAllProjects();
+
+    let best: DbProject | null = null;
+    let bestScore = -1;
+
+    for (const project of all) {
+      const worktreeScore = pathMatchScore(project.worktree, normalized);
+      if (worktreeScore > bestScore) {
+        best = project;
+        bestScore = worktreeScore;
+      }
+      for (const sandbox of project.sandboxes) {
+        const sandboxScore = pathMatchScore(sandbox, normalized);
+        if (sandboxScore > bestScore) {
+          best = project;
+          bestScore = sandboxScore;
+        }
       }
     }
-    if (matches.length > 0) { matches.sort((a, b) => b.pathLen - a.pathLen); return matches[0]; }
-    return null;
+
+    return bestScore >= 0 ? best : null;
+  }
+
+  findProjectBySessionDirectory(workspacePath: string): DbProject | null {
+    const normalized = normalizePath(workspacePath);
+    const sessions = this.query<DbSession>(
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id IS NULL ORDER BY time_updated DESC'
+    );
+
+    let bestProjectId: string | null = null;
+    let bestScore = -1;
+    for (const session of sessions) {
+      const score = pathMatchScore(session.directory, normalized);
+      if (score > bestScore) {
+        bestProjectId = session.project_id;
+        bestScore = score;
+      }
+    }
+
+    if (!bestProjectId) return null;
+    return this.getAllProjects().find(project => project.id === bestProjectId) ?? null;
   }
 
   getAllProjects(): DbProject[] {
-    return this.query<DbProject>('SELECT id, worktree, name, time_created, time_updated FROM project');
+    return this.query<DbProjectRow>('SELECT id, worktree, name, sandboxes, time_created, time_updated FROM project')
+      .map(project => ({
+        ...project,
+        sandboxes: parseStringArray(project.sandboxes),
+      }));
+  }
+
+  hasProject(projectId: string): boolean {
+    return this.queryOne<{ id: string }>('SELECT id FROM project WHERE id = ? LIMIT 1', [projectId]) !== null;
   }
 
   getSessionsForProject(projectId: string): DbSession[] {
@@ -261,4 +321,60 @@ export class OpenCodeDatabase {
 function normalizePath(input: string): string {
   try { return fs.realpathSync(input); }
   catch { return path.resolve(input); }
+}
+
+function parseStringArray(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0).map(normalizePath)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeForCompare(input: string): string {
+  const normalized = normalizePath(input);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function pathMatchScore(candidate: string, workspacePath: string): number {
+  if (!candidate) return -1;
+  const normalizedCandidate = normalizeForCompare(candidate);
+  const normalizedWorkspace = normalizeForCompare(workspacePath);
+
+  if (normalizedCandidate === normalizedWorkspace) return 10_000 + normalizedCandidate.length;
+
+  const candidatePrefix = normalizedCandidate.endsWith(path.sep)
+    ? normalizedCandidate
+    : normalizedCandidate + path.sep;
+  const workspacePrefix = normalizedWorkspace.endsWith(path.sep)
+    ? normalizedWorkspace
+    : normalizedWorkspace + path.sep;
+
+  if (normalizedWorkspace.startsWith(candidatePrefix)) return 5_000 + normalizedCandidate.length;
+  if (normalizedCandidate.startsWith(workspacePrefix)) return 1_000 + normalizedCandidate.length;
+
+  return -1;
+}
+
+function toRuntimeStatus(error: unknown, fallback: OpenCodeDbRuntimeStatus['kind'] = 'sqlite_missing'): OpenCodeDbRuntimeStatus {
+  if (isErrno(error, 'ENOENT')) {
+    return { available: false, kind: 'sqlite_missing', message: 'sqlite3 executable not found in PATH.' };
+  }
+  if (isErrno(error, 'EPERM') || isErrno(error, 'EACCES')) {
+    return { available: false, kind: 'sqlite_blocked', message: 'sqlite3 exists but could not be executed.' };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return { available: false, kind: fallback, message };
+}
+
+function isErrno(error: unknown, code: string): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === code;
 }

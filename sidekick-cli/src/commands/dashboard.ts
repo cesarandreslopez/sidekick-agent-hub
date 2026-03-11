@@ -9,7 +9,7 @@ import * as os from 'os';
 import type { Command } from 'commander';
 import * as fs from 'fs';
 import { createWatcher, getAllDetectedProviders, EventAggregator, generateHtmlReport, parseTranscript, openInBrowser } from 'sidekick-shared';
-import type { FollowEvent, ProviderId } from 'sidekick-shared';
+import type { FollowEvent, ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { DashboardState } from '../dashboard/DashboardState';
@@ -40,6 +40,24 @@ function createProviderById(id: ProviderId) {
   }
 }
 
+export function getProviderRuntimeIssue(provider: Pick<SessionProviderBase, 'id' | 'displayName' | 'getRuntimeStatus'>): string | null {
+  if (provider.id !== 'opencode') {
+    return null;
+  }
+
+  const status = provider.getRuntimeStatus?.();
+  if (!status || status.available || status.kind === 'db_missing') {
+    return null;
+  }
+  const detail = status.message ? ` ${status.message}` : '';
+  const recommendation = status.kind === 'sqlite_missing'
+    ? ' Recommendation: install `sqlite3`, ensure it is on PATH for the current shell, then retry.'
+    : status.kind === 'sqlite_blocked'
+      ? ' Recommendation: ensure `sqlite3` is executable in the same environment as this shell, then retry.'
+      : ' Recommendation: verify `sqlite3` can read `opencode.db` in the current environment, then retry.';
+  return `${provider.displayName} session database is unavailable.${detail}${recommendation}`;
+}
+
 // TODO: Plan persistence disabled — plan file content capture not working yet.
 // Re-enable when EnterPlanMode/ExitPlanMode + Edit tool capture is fixed.
 // import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
@@ -57,6 +75,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   let sessionId: string | undefined = opts.session;
   let replay = !!opts.replay;
   let activeProvider = provider;
+  const providerIssue = getProviderRuntimeIssue(provider);
 
   // Detect additional providers for the session picker
   const detectedIds = getAllDetectedProviders();
@@ -65,11 +84,14 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     .map((id: ProviderId) => createProviderById(id));
 
   if (!sessionId) {
-    const sessions = provider.findAllSessions(workspacePath);
-    const hasAnySessions = sessions.length > 0 || additionalProviders.some(p => p.findAllSessions(workspacePath).length > 0);
+    const sessions = providerIssue ? [] : provider.findAllSessions(workspacePath);
+    const healthyAdditionalProviders = additionalProviders.filter(p => !getProviderRuntimeIssue(p));
+    const hasAnySessions = sessions.length > 0 || healthyAdditionalProviders.some(p => p.findAllSessions(workspacePath).length > 0);
     if (hasAnySessions) {
       try {
-        const result = await showSessionPicker(provider, workspacePath, additionalProviders);
+        const pickerProvider = providerIssue ? healthyAdditionalProviders[0] || provider : provider;
+        const pickerAdditionalProviders = providerIssue ? healthyAdditionalProviders.slice(1) : healthyAdditionalProviders;
+        const result = await showSessionPicker(pickerProvider, workspacePath, pickerAdditionalProviders);
         if (result.sessionPath) {
           sessionId = path.basename(result.sessionPath, path.extname(result.sessionPath));
           replay = true;
@@ -83,12 +105,24 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         for (const p of additionalProviders) p.dispose();
         process.exit(0);
       }
+    } else if (providerIssue) {
+      for (const p of additionalProviders) p.dispose();
+      console.error(providerIssue);
+      process.exitCode = 1;
+      return;
     }
   }
 
   // Dispose additional providers we won't use
   for (const p of additionalProviders) {
     if (p !== activeProvider) p.dispose();
+  }
+
+  const activeProviderIssue = getProviderRuntimeIssue(activeProvider);
+  if (activeProviderIssue) {
+    console.error(activeProviderIssue);
+    process.exitCode = 1;
+    return;
   }
 
   // Load static data

@@ -121,6 +121,12 @@ export interface SessionProvider extends vscode.Disposable {
   /** Gets context attribution breakdown from provider data, if available. */
   getContextAttribution?(sessionPath: string): import('sidekick-shared/dist/types/sessionEvent').ContextAttribution | null;
 
+  /** Reports provider runtime readiness for DB-backed providers. */
+  getRuntimeStatus?(): import('sidekick-shared/dist/providers/types').ProviderRuntimeStatus;
+
+  /** Tests whether a provider can monitor a directory path, including synthetic DB-backed paths. */
+  canMonitorDirectory?(dir: string): boolean;
+
   /** Gets subscription quota state from session data (e.g., Codex rate_limits). */
   getQuotaFromSession?(): QuotaState | null;
 }

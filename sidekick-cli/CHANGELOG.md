@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`sidekick status` Command**: One-shot Claude API status check with color-coded text output and `--json` mode
 - **Dashboard Status Banner**: Status bar shows a colored `● API minor/major/critical` indicator when Claude is degraded; Sessions panel Summary tab shows an "API Status" section with affected components and active incident details. Polls every 60s
 
+### Fixed
+
+- **OpenCode dashboard startup**: OpenCode DB-backed session discovery now resolves projects by worktree, sandboxes, and session directory instead of quietly behaving like no session exists
+- **OpenCode DB runtime errors**: The CLI now reports when `opencode.db` exists but `sqlite3` cannot be executed, instead of leaving the dashboard in a misleading waiting state
+
 ## [0.13.4] - 2026-03-08
 
 ### Fixed

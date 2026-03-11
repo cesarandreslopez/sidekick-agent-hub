@@ -127,7 +127,7 @@ export { readPlans, getLatestPlan, writePlans, getPlanAnalytics, readClaudeCodeP
 export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 
 // Providers
-export type { ProviderId, SessionProvider, SessionProviderBase, SessionFileStats, SessionFileInfo, SearchHit, ProjectFolderInfo, SessionReader } from './providers/types';
+export type { ProviderId, SessionProvider, SessionProviderBase, SessionFileStats, SessionFileInfo, SearchHit, ProjectFolderInfo, SessionReader, ProviderRuntimeStatus } from './providers/types';
 export { detectProvider, getAllDetectedProviders } from './providers/detect';
 export { ClaudeCodeProvider } from './providers/claudeCode';
 export { OpenCodeProvider } from './providers/openCode';

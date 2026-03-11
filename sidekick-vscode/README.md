@@ -38,6 +38,8 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 1. Ensure OpenCode is running (`opencode` in a terminal)
 2. Set `sidekick.inferenceProvider` to `opencode`
 
+> **Note:** OpenCode session monitoring reads `opencode.db` and currently expects an executable `sqlite3` runtime in the host environment.
+
 ### [Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)
 
 1. Install Codex CLI: `npm install -g @openai/codex`
@@ -168,7 +170,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 
 **CLI not found?** Set `sidekick.claudePath` to the full path (find with `which claude`).
 
-**OpenCode issues?** Ensure OpenCode is running and listening on port 4096.
+**OpenCode issues?** Ensure OpenCode is running and listening on port 4096. If session monitoring is still unavailable, verify `sqlite3` is executable in the same environment as VS Code because OpenCode session discovery reads `opencode.db`.
 
 **Codex issues?** Verify `OPENAI_API_KEY` or `CODEX_API_KEY` is set.
 

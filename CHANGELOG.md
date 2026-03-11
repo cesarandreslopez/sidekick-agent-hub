@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI Dashboard Status Banner**: Status bar shows a colored `● API minor/major/critical` indicator when Claude is degraded; Sessions panel Summary tab shows affected components and active incident details
 - **VS Code Dashboard Status Banner**: Dashboard gauge row shows a color-bordered banner with indicator, affected components, and incident link when Claude API is degraded; hidden when all systems are operational
 
+### Fixed
+
+- **OpenCode DB-backed monitoring**: Manual selection now accepts synthetic `db-sessions/<projectId>` folders, and workspace discovery now resolves OpenCode projects by worktree, sandboxes, and session directory instead of silently falling back to legacy file paths
+- **OpenCode runtime diagnostics**: VS Code and CLI now surface a specific OpenCode DB/runtime error when `opencode.db` exists but `sqlite3` cannot be executed, instead of reporting missing directories or waiting forever
+
 ## [0.13.4] - 2026-03-08
 
 ### Fixed

@@ -319,6 +319,38 @@ export class SessionMonitor implements vscode.Disposable {
     };
   }
 
+  private getProviderRuntimeIssue(): string | null {
+    if (this.provider.id !== 'opencode') {
+      return null;
+    }
+
+    const status = this.provider.getRuntimeStatus?.();
+    if (!status || status.available || status.kind === 'db_missing') {
+      return null;
+    }
+
+    const detail = status.message ? ` ${status.message}` : '';
+    const recommendation = status.kind === 'sqlite_missing'
+      ? ' Recommendation: install `sqlite3`, ensure it is on PATH for the VS Code environment, then reload the window.'
+      : status.kind === 'sqlite_blocked'
+        ? ' Recommendation: ensure `sqlite3` is executable in the same environment as VS Code, then reload the window.'
+        : ' Recommendation: verify `sqlite3` can read `opencode.db` in the current environment, then retry.';
+    return `${this.provider.displayName} session database is unavailable.${detail}${recommendation}`;
+  }
+
+  private reportProviderRuntimeIssue(): void {
+    const issue = this.getProviderRuntimeIssue();
+    if (!issue) return;
+    logError(issue);
+    void vscode.window.showErrorMessage(issue);
+  }
+
+  private canMonitorDirectory(sessionDirectory: string): boolean {
+    if (fs.existsSync(sessionDirectory)) return true;
+    if (this.provider.canMonitorDirectory?.(sessionDirectory)) return true;
+    return this.provider.findSessionsInDirectory(sessionDirectory).length > 0;
+  }
+
   /**
    * Starts monitoring for the given workspace.
    *
@@ -345,6 +377,11 @@ export class SessionMonitor implements vscode.Disposable {
   async start(workspacePath: string): Promise<boolean> {
     // Store workspace path for session detection
     this.workspacePath = workspacePath;
+
+    if (this.getProviderRuntimeIssue()) {
+      this.reportProviderRuntimeIssue();
+      return false;
+    }
 
     // Log diagnostic information for debugging path resolution issues
     const sessionDir = this.provider.getSessionDirectory(workspacePath);
@@ -1247,8 +1284,12 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns True if a session was found and monitoring started
    */
   async startWithCustomPath(sessionDirectory: string): Promise<boolean> {
-    if (!fs.existsSync(sessionDirectory) && !this.provider.getSessionMetadata?.(sessionDirectory)) {
-      logError(`Custom session directory not found: ${sessionDirectory}`);
+    if (!this.canMonitorDirectory(sessionDirectory)) {
+      if (this.getProviderRuntimeIssue()) {
+        this.reportProviderRuntimeIssue();
+      } else {
+        logError(`Custom session directory not found: ${sessionDirectory}`);
+      }
       return false;
     }
 

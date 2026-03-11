@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Provider Status Banner**: Dashboard shows a color-bordered banner when Claude API is degraded — displays indicator, affected components, and active incident link. Polls `status.claude.com` every 60s with visibility-gated refresh (pauses when dashboard is hidden)
 
+### Fixed
+
+- **OpenCode manual folder browsing**: Session browsing now accepts synthetic OpenCode DB-backed project paths instead of rejecting them as missing directories
+- **OpenCode startup diagnostics**: The extension now reports OpenCode DB/runtime failures explicitly when `opencode.db` exists but `sqlite3` cannot be executed
+
 ## [0.13.4] - 2026-03-08
 
 _No extension-specific changes in this release._

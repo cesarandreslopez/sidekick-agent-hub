@@ -54,6 +54,12 @@ export interface ProjectFolderInfo {
   lastModified: Date;
 }
 
+export interface ProviderRuntimeStatus {
+  available: boolean;
+  kind: 'available' | 'db_missing' | 'sqlite_missing' | 'sqlite_blocked' | 'query_failed';
+  message?: string;
+}
+
 /**
  * Incremental reader for session data.
  *
@@ -167,6 +173,12 @@ export interface SessionProviderBase {
 
   /** Gets context attribution breakdown from provider data, if available. */
   getContextAttribution?(sessionPath: string): ContextAttribution | null;
+
+  /** Reports provider runtime readiness for DB-backed providers. */
+  getRuntimeStatus?(): ProviderRuntimeStatus;
+
+  /** Tests whether a provider can monitor a directory path, including synthetic DB-backed paths. */
+  canMonitorDirectory?(dir: string): boolean;
 
   // --- Lifecycle ---
 

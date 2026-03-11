@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Provider Status module**: `fetchProviderStatus()` for checking Claude API health via `status.claude.com` — returns indicator, affected components, active incidents, with graceful fallback on errors
 
+### Fixed
+
+- **OpenCode DB-backed resolution**: OpenCode project discovery now matches DB projects by worktree, sandboxes, and session directory, and synthetic `db-sessions/<projectId>` folders are treated as monitorable paths
+- **OpenCode runtime status**: DB-backed consumers can now distinguish `db_missing` from `sqlite_missing`, `sqlite_blocked`, and `query_failed` instead of silently degrading to legacy file scanning
+
 ## [0.13.4] - 2026-03-08
 
 _No shared-specific changes in this release._

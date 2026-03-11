@@ -25,6 +25,8 @@ Requires **Node.js 20+**.
 3. The dashboard auto-detects your project and session provider
 4. Press `?` to see all keybindings
 
+> **OpenCode note:** OpenCode session monitoring reads `opencode.db` and currently expects an executable `sqlite3` runtime in the host environment.
+
 ## Usage
 
 ```bash
