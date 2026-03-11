@@ -27,6 +27,14 @@ Requires **Node.js 20+**.
 
 > **OpenCode note:** OpenCode session monitoring reads `opencode.db` and currently expects an executable `sqlite3` runtime in the host environment.
 
+OpenCode session data lives in OpenCode's platform-specific data directory:
+
+- Linux: `~/.local/share/opencode/`
+- macOS: `~/Library/Application Support/opencode/`
+- Windows: `%APPDATA%\\opencode\\`
+
+If `sqlite3` is missing or not executable in the current shell environment, Sidekick prints an actionable OpenCode-specific notice instead of silently failing session detection.
+
 ## Usage
 
 ```bash
@@ -200,7 +208,8 @@ The dashboard supports mouse input in terminals with SGR 1006 extended mouse enc
 Auto-detects the most recently active session provider:
 
 - **Claude Code** — `~/.claude/projects/`
-- **OpenCode** — `~/.local/share/opencode/`
+- **OpenCode** — OpenCode's data directory:
+  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%APPDATA%\\opencode\\`
 - **Codex** — `~/.codex/`
 
 Override with `--provider claude-code`, `--provider opencode`, or `--provider codex`.
