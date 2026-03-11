@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **npm README sync**: Updated the published CLI package README to reflect current OpenCode monitoring behavior, platform-specific data directories, and the `sqlite3` runtime requirement
+- **README badge cleanup**: Removed the Ask DeepWiki badge from the published CLI package README; the repo root README still keeps it
 
 ## [0.13.6] - 2026-03-11
 

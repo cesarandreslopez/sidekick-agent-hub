@@ -15,8 +15,6 @@
 [![npm](https://img.shields.io/npm/v/sidekick-agent-hub?label=npm)](https://www.npmjs.com/package/sidekick-agent-hub)
 [![npm Downloads](https://img.shields.io/npm/dt/sidekick-agent-hub?label=npm%20Downloads)](https://www.npmjs.com/package/sidekick-agent-hub)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/LICENSE)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cesarandreslopez/sidekick-agent-hub)
-
 ## What Sidekick Does For You
 
 **Code faster.** AI handles the mechanical work — boilerplate, commit messages, docs, PR descriptions, error explanations — so you focus on design and logic. Inline completions understand your project context, not just syntax.
