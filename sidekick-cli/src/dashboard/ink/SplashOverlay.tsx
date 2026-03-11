@@ -1,6 +1,6 @@
 /**
  * Splash screen shown when waiting for session events.
- * Displays robot logo, version, random phrase, spinner, and usage hints.
+ * Displays the Sidekick wordmark, random phrase, spinner, and usage hints.
  */
 
 import React, { useMemo } from 'react';

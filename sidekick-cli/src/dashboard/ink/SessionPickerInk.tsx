@@ -8,6 +8,8 @@ import React, { useState } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import type { SessionProvider, ProviderId } from 'sidekick-shared';
 import { collectSessionItems, collectMultiProviderItems, PROVIDER_BADGES, type SessionPickerItem } from '../SessionPickerHelpers';
+import { BRAND_INLINE, LOGO_ART } from '../branding';
+import { parseBlessedTags } from './parseBlessedTags';
 
 /** Provider display names for section headers. */
 const PROVIDER_NAMES: Record<string, string> = {
@@ -184,8 +186,9 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
       {/* Logo */}
       <Box justifyContent="center" marginTop={1}>
         <Box flexDirection="column" width={50}>
-          <Text bold color="magenta">  S I D E K I C K</Text>
-          <Text bold>  Agent Hub</Text>
+          {LOGO_ART.map((line, i) => (
+            <Text key={`logo-${i}`}>{parseBlessedTags(line)}</Text>
+          ))}
         </Box>
       </Box>
 
@@ -203,7 +206,7 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
 
       {/* Status bar */}
       <Box height={1}>
-        <Text> <Text bold color="magenta">SIDEKICK</Text> <Text color="gray">Session Picker</Text>  <Text bold>{'\u2191'}/{'\u2193'}</Text> navigate  <Text bold>Enter</Text> select  <Text bold>q</Text> quit</Text>
+        <Text> {parseBlessedTags(BRAND_INLINE)} <Text color="gray">Session Picker</Text>  <Text bold>{'\u2191'}/{'\u2193'}</Text> navigate  <Text bold>Enter</Text> select  <Text bold>q</Text> quit</Text>
       </Box>
     </Box>
   );

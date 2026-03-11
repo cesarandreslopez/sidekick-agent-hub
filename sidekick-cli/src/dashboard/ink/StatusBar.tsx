@@ -9,6 +9,8 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { UpdateInfo } from '../UpdateCheckService';
 import type { ProviderStatusState } from '../ProviderStatusService';
+import { BRAND_INLINE } from '../branding';
+import { parseBlessedTags } from './parseBlessedTags';
 
 interface StatusBarProps {
   eventCount: number;
@@ -55,7 +57,7 @@ export function StatusBar({
     <Box height={1} width="100%">
       {/* Left zone: brand + version */}
       <Box>
-        <Text bold color="magenta">{'\u26A1'} SIDEKICK</Text>
+        <Text>{parseBlessedTags(BRAND_INLINE)}</Text>
         <Text dimColor> v{__CLI_VERSION__}</Text>
         {updateInfo && (
           <Text color="yellow"> (v{updateInfo.latest})</Text>
