@@ -21,7 +21,7 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { QuotaService } from '../services/QuotaService';
 import type { HistoricalDataService } from '../services/HistoricalDataService';
 import type { GuidanceAdvisor } from '../services/GuidanceAdvisor';
-import type { QuotaState as DashboardQuotaState, HistoricalSummary, HistoricalDataPoint, LatencyDisplay, ClaudeMdSuggestionDisplay } from '../types/dashboard';
+import type { QuotaState as DashboardQuotaState, QuotaFailureDisplay, HistoricalSummary, HistoricalDataPoint, LatencyDisplay, ClaudeMdSuggestionDisplay } from '../types/dashboard';
 import { resolveInstructionTarget } from '../types/instructionFile';
 import type { HandoffService } from '../services/HandoffService';
 import { encodeWorkspacePath } from '../services/SessionPathResolver';
@@ -48,6 +48,7 @@ import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { describeQuotaFailure } from 'sidekick-shared';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 import { MAX_DISPLAY_TIMELINE } from '../constants';
 
@@ -145,6 +146,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Provider status service for Claude API health */
   private _providerStatusService?: import('../services/ProviderStatusService').ProviderStatusService;
+
+  /** Last quota alert emitted into dashboard surfaces */
+  private _lastQuotaAlertKey: string | null = null;
 
   /**
    * Sets the event logger instance used for dashboard toggle control.
@@ -1557,7 +1561,38 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param quota - Updated quota state
    */
   private _handleQuotaUpdate(quota: DashboardQuotaState): void {
-    this._postMessage({ type: 'updateQuota', quota });
+    const quotaFailure = describeQuotaFailure(quota) ?? undefined;
+    this._postMessage({ type: 'updateQuota', quota, quotaFailure });
+    this._maybeEmitQuotaAlert(quota, quotaFailure);
+  }
+
+  private _maybeEmitQuotaAlert(
+    quota: DashboardQuotaState,
+    quotaFailure?: QuotaFailureDisplay
+  ): void {
+    const providerId = this._sessionMonitor.getProvider().id;
+    if (providerId !== 'claude-code' || quota.available || !quotaFailure) {
+      this._lastQuotaAlertKey = null;
+      return;
+    }
+
+    if (this._lastQuotaAlertKey === quotaFailure.alertKey) return;
+    this._lastQuotaAlertKey = quotaFailure.alertKey;
+
+    this._postMessage({
+      type: 'notification',
+      title: quotaFailure.title,
+      body: [quotaFailure.message, quotaFailure.detail].filter(Boolean).join(' '),
+      severity: quotaFailure.severity,
+    });
+
+    this._notificationPersistence?.addNotification({
+      triggerId: `quota:${quotaFailure.alertKey}`,
+      triggerName: 'Quota status',
+      severity: quotaFailure.severity,
+      title: quotaFailure.title,
+      body: [quotaFailure.message, quotaFailure.detail].filter(Boolean).join(' '),
+    });
   }
 
   /**
@@ -3491,8 +3526,83 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       border: 1px solid var(--vscode-input-border);
       border-radius: 4px;
       padding: 8px;
-      text-align: center;
+      text-align: left;
       font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .quota-error.warning {
+      border-color: var(--vscode-editorWarning-foreground);
+    }
+
+    .quota-error.error {
+      border-color: var(--vscode-errorForeground);
+    }
+
+    .quota-error-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--vscode-foreground);
+      margin-bottom: 4px;
+    }
+
+    .quota-error.warning .quota-error-title {
+      color: var(--vscode-editorWarning-foreground);
+    }
+
+    .quota-error.error .quota-error-title {
+      color: var(--vscode-errorForeground);
+    }
+
+    .quota-error-body {
+      line-height: 1.4;
+    }
+
+    .quota-error-detail {
+      margin-top: 4px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .sk-toast {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 9999;
+      max-width: 320px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-panel-border);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      opacity: 0;
+      transform: translateY(-6px);
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    .sk-toast--visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .sk-toast--warning {
+      border-color: var(--vscode-editorWarning-foreground);
+    }
+
+    .sk-toast--error {
+      border-color: var(--vscode-errorForeground);
+    }
+
+    .sk-toast__title {
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: var(--vscode-foreground);
+    }
+
+    .sk-toast__body {
+      font-size: 11px;
+      line-height: 1.35;
       color: var(--vscode-descriptionForeground);
     }
 
@@ -5548,6 +5658,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       let currentProviderId = 'claude-code';
       let currentProviderName = 'Claude Code';
       let currentQuota = null;
+      let currentQuotaFailure = null;
+      let quotaToastTimer = null;
 
       // Provider-aware instruction file targeting
       let targetFileName = 'CLAUDE.md';
@@ -6200,11 +6312,35 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       }
 
+      function showQuotaToast(title, body, severity) {
+        let toast = document.getElementById('sk-toast');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = 'sk-toast';
+          toast.className = 'sk-toast';
+          toast.setAttribute('role', 'status');
+          toast.setAttribute('aria-live', 'polite');
+          document.body.appendChild(toast);
+        }
+
+        toast.className = 'sk-toast sk-toast--' + (severity || 'info');
+        toast.innerHTML = '<div class="sk-toast__title">' + escapeHtml(title || 'Notification') + '</div>' +
+          '<div class="sk-toast__body">' + escapeHtml(body || '') + '</div>';
+        toast.classList.add('sk-toast--visible');
+
+        if (quotaToastTimer) clearTimeout(quotaToastTimer);
+        quotaToastTimer = setTimeout(function() {
+          toast.classList.remove('sk-toast--visible');
+          quotaToastTimer = null;
+        }, severity === 'error' ? 4200 : 3200);
+      }
+
       /**
        * Updates the quota display with new data.
        */
-      function updateQuota(quota) {
+      function updateQuota(quota, quotaFailure) {
         currentQuota = quota;
+        currentQuotaFailure = quotaFailure || null;
 
         const sectionEl = document.getElementById('quota-section');
         const contentEl = document.getElementById('quota-content');
@@ -6227,16 +6363,29 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         if (!quota.available) {
-          // Hide quota section or show error
-          if (quota.error) {
+          if (quotaFailure) {
             sectionEl.classList.add('visible');
             contentEl.style.display = 'none';
             errorEl.style.display = 'block';
+            errorEl.classList.remove('warning', 'error');
+            if (quotaFailure.severity === 'warning' || quotaFailure.severity === 'error') {
+              errorEl.classList.add(quotaFailure.severity);
+            }
+            errorEl.innerHTML =
+              '<div class="quota-error-title">' + escapeHtml(quotaFailure.title) + '</div>' +
+              '<div class="quota-error-body">' + escapeHtml(quotaFailure.message) + '</div>' +
+              (quotaFailure.detail ? '<div class="quota-error-detail">' + escapeHtml(quotaFailure.detail) + '</div>' : '');
+          } else if (quota.error) {
+            sectionEl.classList.add('visible');
+            contentEl.style.display = 'none';
+            errorEl.style.display = 'block';
+            errorEl.classList.remove('warning', 'error');
             errorEl.textContent = quota.error;
           } else {
             sectionEl.classList.remove('visible');
             contentEl.style.display = 'none';
             errorEl.style.display = 'none';
+            errorEl.classList.remove('warning', 'error');
           }
           return;
         }
@@ -6245,6 +6394,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         sectionEl.classList.add('visible');
         contentEl.style.display = 'block';
         errorEl.style.display = 'none';
+        errorEl.classList.remove('warning', 'error');
 
         // Update 5-hour gauge
         const percent5hEl = document.getElementById('quota-5h-percent');
@@ -6904,6 +7054,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       function updateProviderDisplay(providerId, providerName) {
         if (!providerId || !providerName) return;
         currentQuota = null;
+        currentQuotaFailure = null;
         currentProviderId = providerId;
         currentProviderName = providerName;
 
@@ -6968,7 +7119,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         if (quotaBtn) quotaBtn.textContent = 'Quota';
 
         if (currentQuota) {
-          updateQuota(currentQuota);
+          updateQuota(currentQuota, currentQuotaFailure);
         }
       }
 
@@ -7695,7 +7846,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             break;
 
           case 'updateQuota':
-            updateQuota(message.quota);
+            updateQuota(message.quota, message.quotaFailure);
+            break;
+
+          case 'notification':
+            showQuotaToast(message.title, message.body, message.severity);
             break;
 
           case 'updateProviderStatus':

@@ -27,7 +27,7 @@ import { ToastNotification } from './ToastNotification';
 import { MouseProvider } from './mouse';
 import type { TerminalMouseEvent } from './mouse';
 import changelogMd from '../../../CHANGELOG.md';
-import { parseChangelog } from 'sidekick-shared';
+import { describeQuotaFailure, parseChangelog } from 'sidekick-shared';
 
 const changelogEntries = parseChangelog(changelogMd, 5);
 
@@ -276,6 +276,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
   const { columns, rows } = useTerminalSize();
   const toastIdRef = useRef(0);
   const lastAlertCountRef = useRef(0);
+  const lastQuotaAlertKeyRef = useRef<string | null>(null);
   const alertsInitRef = useRef(false);
   const prevDetailLineCountRef = useRef(0);
 
@@ -320,6 +321,25 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       dispatch({ type: 'REMOVE_TOAST', id });
     }, durations[severity]);
   }, []);
+
+  // ── Quota alert detection ──
+  useEffect(() => {
+    if (metrics.providerId !== 'claude-code') {
+      lastQuotaAlertKeyRef.current = null;
+      return;
+    }
+
+    const descriptor = describeQuotaFailure(metrics.quota);
+    if (!descriptor) {
+      lastQuotaAlertKeyRef.current = null;
+      return;
+    }
+
+    if (lastQuotaAlertKeyRef.current === descriptor.alertKey) return;
+
+    lastQuotaAlertKeyRef.current = descriptor.alertKey;
+    addToast(`${descriptor.title}: ${descriptor.message}`, descriptor.severity);
+  }, [addToast, metrics.providerId, metrics.quota]);
 
   // ── Derived values ──
   const panel = panels[state.activePanelIndex];

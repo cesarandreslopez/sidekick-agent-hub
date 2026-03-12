@@ -19,7 +19,7 @@ import { GitDiffCache } from '../GitDiffCache';
 import { CliInferenceClient } from '../../inference/CliInferenceClient';
 import { buildNarrativePrompt } from '../../inference/narrativePrompt';
 import type { ProviderId } from 'sidekick-shared';
-import { highlightEvent } from 'sidekick-shared';
+import { describeQuotaFailure, highlightEvent } from 'sidekick-shared';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
 type MindMapFilter = 'all' | 'file' | 'tool' | 'task' | 'subagent' | 'command' | 'plan' | 'knowledge-note';
@@ -365,6 +365,18 @@ export class SessionsPanel implements SidePanel {
           ? (() => { const pc = getUtilizationColor(q.projectedSevenDay!); return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedSevenDay!.toFixed(0)}%{/${pc}-fg}`; })()
           : '';
         lines.push(`  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}${sevenProj}`);
+      } else if (m.providerId === 'claude-code' && m.quota) {
+        const descriptor = describeQuotaFailure(m.quota);
+        if (descriptor) {
+          const severityColor = descriptor.severity === 'warning' ? 'yellow' : descriptor.severity === 'info' ? 'cyan' : 'red';
+          lines.push('', sectionHeader('Quota', w));
+          lines.push(`  {${severityColor}-fg}${descriptor.title}{/${severityColor}-fg}`);
+          const failureText = [descriptor.message, descriptor.detail].filter(Boolean).join(' ');
+          const quotaTextWidth = Math.max(20, detailWidth(w) - 4);
+          for (const line of wordWrap(failureText, quotaTextWidth)) {
+            lines.push(`  {grey-fg}${line}{/grey-fg}`);
+          }
+        }
       }
 
       // ── Provider Status section

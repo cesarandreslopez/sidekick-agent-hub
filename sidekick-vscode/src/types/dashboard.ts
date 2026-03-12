@@ -84,6 +84,14 @@ export interface QuotaState {
   projectedSevenDay?: number;
 }
 
+export interface QuotaFailureDisplay {
+  severity: 'info' | 'warning' | 'error';
+  title: string;
+  message: string;
+  detail?: string;
+  alertKey: string;
+}
+
 /**
  * Messages from extension to webview.
  *
@@ -99,7 +107,7 @@ export type DashboardMessage =
   | { type: 'updateSessionProvider'; providerId: 'claude-code' | 'opencode' | 'codex'; displayName: string }
   | { type: 'updateSessionList'; groups: SessionGroup[]; isPinned: boolean; isUsingCustomPath?: boolean; customPathDisplay?: string | null }
   | { type: 'discoveryModeChange'; inDiscoveryMode: boolean }
-  | { type: 'updateQuota'; quota: QuotaState }
+  | { type: 'updateQuota'; quota: QuotaState; quotaFailure?: QuotaFailureDisplay }
   | { type: 'updateHistoricalData'; data: HistoricalSummary }
   | { type: 'historicalDataLoading'; loading: boolean }
   | { type: 'updateLatency'; latency: LatencyDisplay }

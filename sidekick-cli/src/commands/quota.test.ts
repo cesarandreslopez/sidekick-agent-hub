@@ -80,6 +80,52 @@ describe('formatTimeUntil', () => {
 
 const mockFetchOnce = vi.fn();
 
+vi.mock('sidekick-shared', () => ({
+  describeQuotaFailure: (quota: {
+    available?: boolean;
+    error?: string;
+    failureKind?: string;
+    httpStatus?: number;
+    retryAfterMs?: number;
+  }) => {
+    if (!quota || quota.available || !quota.failureKind) return null;
+
+    switch (quota.failureKind) {
+      case 'auth':
+        if (quota.error === 'No OAuth token available') {
+          return {
+            severity: 'error',
+            title: 'Sign in required',
+            message: 'No Claude Code credentials are available in this environment.',
+            detail: 'Run `claude` to sign in, then retry quota refresh.',
+          };
+        }
+        return {
+          severity: 'error',
+          title: 'Claude Code sign-in expired',
+          message: 'The current Claude Code OAuth session was rejected.',
+          detail: 'Sign in again to refresh subscription quota.',
+        };
+      case 'rate_limit':
+        return {
+          severity: 'warning',
+          title: 'Quota API rate limited',
+          message: quota.retryAfterMs === 45_000 ? 'Retry in 45s.' : 'Retry shortly.',
+          detail: quota.httpStatus != null ? `Anthropic returned HTTP ${quota.httpStatus}.` : undefined,
+        };
+      case 'network':
+        return {
+          severity: 'warning',
+          title: 'Quota API unreachable',
+          message: 'Could not reach Anthropic from the current environment.',
+          detail: 'Check connectivity, proxy, or firewall settings, then retry.',
+        };
+      default:
+        return null;
+    }
+  },
+}));
+
 vi.mock('../dashboard/QuotaService', () => ({
   QuotaService: vi.fn().mockImplementation(function () {
     return { fetchOnce: mockFetchOnce };
@@ -166,7 +212,8 @@ describe('quotaAction', () => {
     const { quotaAction } = await import('./quota');
     await quotaAction({}, makeCmd());
 
-    expect(stderrData).toContain('No Claude Code credentials found');
+    expect(stderrData).toContain('Sign in required');
+    expect(stderrData).toContain('No Claude Code credentials are available');
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
@@ -203,7 +250,7 @@ describe('quotaAction', () => {
     const { quotaAction } = await import('./quota');
     await quotaAction({}, makeCmd());
 
-    expect(stderrData).toContain('Authentication failed');
+    expect(stderrData).toContain('Claude Code sign-in expired');
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
@@ -223,6 +270,7 @@ describe('quotaAction', () => {
 
     expect(stderrData).toContain('Quota API rate limited');
     expect(stderrData).toContain('45s');
+    expect(stderrData).toContain('Anthropic returned HTTP 429');
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 

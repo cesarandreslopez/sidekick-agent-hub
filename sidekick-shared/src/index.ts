@@ -271,6 +271,8 @@ export type { ClaudeMaxCredentials } from './credentials';
 // Quota
 export { fetchQuota } from './quota';
 export type { QuotaWindow, QuotaState } from './quota';
+export { describeQuotaFailure } from './quotaPresentation';
+export type { QuotaFailureDescriptor } from './quotaPresentation';
 
 // Provider Status
 export { fetchProviderStatus } from './providerStatus';
