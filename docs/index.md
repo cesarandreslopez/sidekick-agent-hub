@@ -76,6 +76,7 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Truncation Detection** — know when tool outputs are silently cut short
 - **Cycle Detection** — get alerted when your agent enters repetitive loops
 - **Provider Status** — live Claude API health from status.claude.com, shown when degraded
+- **Multi-Account Switching** — save and switch between Claude Code accounts without manual login cycles
 
 ### VS Code + [CLI Dashboard](features/cli.md)
 

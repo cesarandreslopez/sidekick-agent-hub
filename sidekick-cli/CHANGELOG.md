@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-03-12
+
+### Added
+
+- **`sidekick account` Command**: Manage Claude Code accounts from the terminal — list saved accounts, add the current account with an optional label, switch to the next or a specific account, and remove accounts. Supports `--json` output for scripting
+- **Quota Account Label**: `sidekick quota` now shows the active account email and label above the quota bars when multi-account is enabled
+- **macOS Keychain Support**: `sidekick account` and `sidekick quota` now read and write credentials via the system Keychain on macOS, fixing account switching and quota checks on Mac
+
 ## [0.13.8] - 2026-03-12
 
 ### Changed

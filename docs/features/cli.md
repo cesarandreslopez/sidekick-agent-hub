@@ -260,7 +260,7 @@ The dashboard also monitors status automatically — the status bar shows a colo
 sidekick quota
 ```
 
-Check Claude Max / Claude Code subscription quota utilization. Shows 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires Claude Code credentials (`~/.claude/.credentials.json`). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
+Check Claude Max / Claude Code subscription quota utilization. Shows 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
 
 When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel now keeps a compact inline Claude Code quota state visible even when quota is unavailable, and quota failure toasts only appear when the failure state changes.
 
@@ -274,6 +274,46 @@ sidekick quota
 
 # Get raw quota data as JSON
 sidekick quota --json
+```
+
+### Account
+
+```bash
+sidekick account [options]
+```
+
+Manage Claude Code accounts — save, list, switch, and remove accounts without manual `claude login` / logout cycles. Account data is stored in `~/.config/sidekick/accounts/`.
+
+| Flag | Description |
+|------|-------------|
+| `--add` | Save the currently signed-in Claude account |
+| `--label <name>` | Label for the account (use with `--add`, e.g., "Work") |
+| `--switch` | Switch to the next saved account in the list |
+| `--switch-to <email>` | Switch to a specific account by email address |
+| `--remove <email>` | Remove a saved account by email address |
+
+With no flags, lists all saved accounts and marks the active one.
+
+#### Examples
+
+```bash
+# List saved accounts
+sidekick account
+
+# Save the current account with a label
+sidekick account --add --label Work
+
+# Switch to the next account
+sidekick account --switch
+
+# Switch to a specific account
+sidekick account --switch-to personal@gmail.com
+
+# Remove an account
+sidekick account --remove old@example.com
+
+# JSON output for scripting
+sidekick account --json
 ```
 
 ### Handoff
@@ -528,6 +568,9 @@ The CLI reads from the same `~/.config/sidekick/` directory as the VS Code exten
 | `historical-data.json` | Token/cost/tool usage statistics |
 | `tasks/{projectSlug}.json` | Kanban board task data |
 | `decisions/{projectSlug}.json` | Decision log entries |
+| `accounts/accounts.json` | Multi-account registry |
+| `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per account |
+| `accounts/configs/*.config.json` | Backed-up account identity per account |
 
 Any data written by the VS Code extension is immediately visible in the CLI, and vice versa.
 

@@ -37,7 +37,7 @@ If `sqlite3` is missing or not executable in the current shell environment, Side
 
 ```bash
 sidekick dashboard [options]
-sidekick tasks|decisions|notes|stats|quota|status|handoff|search|context [options]
+sidekick tasks|decisions|notes|stats|quota|status|account|handoff|search|context [options]
 ```
 
 The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
@@ -112,7 +112,27 @@ Subscription Quota
 
 When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota state for Claude Code instead of hiding quota entirely.
 
-Use `--json` for machine-readable output. Requires Claude Code credentials (`~/.claude/.credentials.json`). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
+Use `--json` for machine-readable output. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
+
+When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
+
+## Account Management
+
+```bash
+sidekick account [options]
+```
+
+Manage multiple Claude Code accounts — save, list, switch, and remove without manual `claude login` / logout cycles. Account data is stored in `~/.config/sidekick/accounts/` with strict file permissions and atomic writes with rollback on failure.
+
+| Flag | Description |
+|------|-------------|
+| `--add` | Save the currently signed-in account |
+| `--label <name>` | Label for the account (use with `--add`) |
+| `--switch` | Switch to the next saved account |
+| `--switch-to <email>` | Switch to a specific account by email |
+| `--remove <email>` | Remove a saved account |
+
+With no flags, lists all saved accounts and marks the active one. Use `--json` for machine-readable output.
 
 ## Dashboard Panels
 

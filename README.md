@@ -65,7 +65,21 @@ sidekick dump --format markdown > session-report.md
 sidekick report                                     # HTML report → browser
 ```
 
-Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`.
+Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`, `sidekick account`.
+
+### Account Management
+
+Switch between multiple Claude Code accounts without manual `claude login` / logout cycles:
+
+```bash
+sidekick account                                    # list saved accounts
+sidekick account --add --label Work                 # save the current Claude Code account
+sidekick account --switch                           # switch to next account
+sidekick account --switch-to personal@gmail.com     # switch to a specific account
+sidekick account --remove old@example.com           # remove a saved account
+```
+
+In VS Code, account actions are also available from the **Sidekick · Claude** status bar menu and the Command Palette. See the [Claude Max provider docs](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) for the full setup guide.
 
 ## Provider Support
 

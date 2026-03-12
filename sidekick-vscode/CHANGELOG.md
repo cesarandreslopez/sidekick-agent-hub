@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-03-12
+
+### Added
+
+- **Multi-Account Switching**: Save, list, and switch between multiple Claude Code accounts without leaving VS Code. Three new commands: `Sidekick: Save Current Claude Account`, `Sidekick: Switch Claude Account`, and `Sidekick: Remove Claude Account`
+- **Account Status Bar**: New status bar item (priority 98, between main status bar and monitor status bar) showing the active account. Only visible when 2+ accounts are managed. Click opens the account switcher QuickPick
+- **Account Switching in Status Bar Menu**: The main **Sidekick · Claude** status bar menu now includes **Switch Account** (when 2+ accounts are saved) or **Save Current Account** (when fewer than 2). Only shown when the inference provider is Claude Code
+- **Account File Watchers**: `AccountService` watches `~/.config/sidekick/accounts/accounts.json` and `~/.claude/` for external changes (CLI switches, `claude login` with a new account) and auto-refreshes the UI
+- **Auth Client Reset on Switch**: Switching accounts automatically resets the inference client and refreshes quota data — no restart needed
+- **macOS Keychain Support**: Account switching, saving, and quota checks now read and write credentials via the system Keychain on macOS. File watchers for `~/.claude/` only apply on Linux/Windows; on macOS, run **Save Current Claude Account** after an external `claude login`
+
 ## [0.13.8] - 2026-03-12
 
 ### Added

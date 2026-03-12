@@ -30,6 +30,37 @@ Claude Code sessions are monitored from `~/.claude/projects/`. The dashboard sho
 
 If quota data becomes unavailable, Sidekick now keeps the quota surface visible and classifies the failure: missing credentials / expired Claude Code sign-in, rate limits, transient network or server failures, and unexpected API responses are shown as distinct states instead of a single generic error.
 
+## Multiple Accounts
+
+If you have multiple Claude Max subscriptions (e.g., personal and work), Sidekick can switch between their Claude Code CLI credentials natively — no manual `claude login` / logout cycles. This feature manages Claude Code sign-in credentials specifically; it does not apply to Claude API keys or other providers.
+
+### VS Code
+
+1. Sign in to Claude Code with your first account
+2. Run **`Sidekick: Save Current Claude Account`** — optionally add a label like "Personal"
+3. Sign in to Claude Code with your second account (`claude login`)
+4. Run **`Sidekick: Save Current Claude Account`** — label it "Work"
+5. Run **`Sidekick: Switch Claude Account`** to switch via QuickPick
+
+When 2+ accounts are saved, a status bar item shows the active account. Click it to switch. Switching automatically resets the auth client and refreshes quota — no restart needed.
+
+You can also reach account actions from the main **Sidekick · Claude** status bar menu — click it and select **Switch Account** (when 2+ accounts are saved) or **Save Current Account** (to start multi-account setup). These entries only appear when the inference provider is Claude Code.
+
+### CLI
+
+```bash
+sidekick account --add --label Personal   # save current account
+sidekick account --add --label Work       # save another account
+sidekick account                          # list all accounts
+sidekick account --switch                 # switch to next account
+sidekick account --switch-to work@co.com  # switch to specific account
+sidekick account --remove work@co.com     # remove an account
+```
+
+Account data is stored in `~/.config/sidekick/accounts/` with `0o700` directory and `0o600` file permissions. Credential swaps use atomic writes with rollback on failure.
+
+**macOS note:** Claude Code stores active credentials in the system Keychain (not a file). Sidekick reads and writes Keychain credentials automatically via the `security` CLI. One limitation: if you run `claude login` externally, VS Code cannot detect the change automatically — run **Save Current Claude Account** to pick up the new credentials.
+
 ## Best For
 
 - Heavy daily use of inline completions (no per-token cost)

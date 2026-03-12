@@ -5,6 +5,19 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-03-12
+
+### Added
+
+- **Native Multi-Account Switching**: Save, list, and switch between multiple Claude Code accounts from within Sidekick — no more manual `claude login` / logout cycles. Accounts are stored in `~/.config/sidekick/accounts/` with atomic writes, strict file permissions, and rollback-on-failure safety
+- **Shared Account Manager** (`sidekick-shared`): New `accounts.ts` module with `addCurrentAccount()`, `switchToAccount()`, `removeAccount()`, `listAccounts()`, `getActiveAccount()`, and `readActiveClaudeAccount()` — consumed by both the VS Code extension and CLI
+- **VS Code Account Commands**: Three new commands — `Sidekick: Save Current Claude Account`, `Sidekick: Switch Claude Account` (QuickPick), and `Sidekick: Remove Claude Account` — with automatic auth client reset and quota refresh on switch
+- **Account Status Bar**: New status bar item (visible when 2+ accounts are managed) showing the active account label or email, with click-to-switch
+- **Account Switching in Status Bar Menu**: The main Sidekick status bar menu now shows **Switch Account** or **Save Current Account** when the inference provider is Claude Code
+- **CLI `sidekick account` Command**: Manage accounts from the terminal — `--add`, `--label`, `--switch`, `--switch-to <email>`, `--remove <email>`, and `--json` output
+- **CLI Quota Account Label**: `sidekick quota` now shows the active account email above the quota bars when multi-account is enabled
+- **macOS Keychain Support**: Credential I/O now reads and writes Claude Code's active credentials via the system Keychain on macOS (where Claude Code stores them), instead of assuming `~/.claude/.credentials.json` on all platforms. Fixes account switching, quota checks, and account saving on macOS
+
 ## [0.13.8] - 2026-03-12
 
 ### Added

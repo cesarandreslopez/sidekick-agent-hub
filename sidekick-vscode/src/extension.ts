@@ -71,6 +71,8 @@ import { KnowledgeNoteDecorationProvider } from "./providers/KnowledgeNoteDecora
 import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
 import { EventStreamTreeProvider } from "./providers/EventStreamTreeProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
+import { AccountService } from "./services/AccountService";
+import { AccountStatusBar } from "./services/AccountStatusBar";
 import { openCliDashboard, disposeDashboardTerminal } from "./services/SidekickCliService";
 import { initLogger, log, logError, showLog } from "./services/Logger";
 import {
@@ -895,6 +897,106 @@ export async function activate(context: vscode.ExtensionContext) {
     log('Session monitoring disabled by configuration');
   }
 
+  // ── Multi-account management ───────────────────────────────────────────
+  const accountService = new AccountService();
+  context.subscriptions.push(accountService);
+
+  const accountStatusBar = new AccountStatusBar(accountService);
+  context.subscriptions.push(accountStatusBar);
+
+  // Re-init auth client + refresh quota when the active account changes
+  accountService.onAccountChange(() => {
+    authService?.resetClient();
+    quotaService?.fetchQuota();
+  });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.switchAccount', async () => {
+      const accounts = accountService.listAccounts();
+      if (accounts.length === 0) {
+        const action = await vscode.window.showInformationMessage(
+          'No accounts saved. Save the current account first?',
+          'Save Current Account'
+        );
+        if (action) {
+          vscode.commands.executeCommand('sidekick.addAccount');
+        }
+        return;
+      }
+
+      const active = accountService.getActiveAccount();
+      const items = accounts.map(a => ({
+        label: `$(account) ${a.label ?? a.email}`,
+        description: a.label ? a.email : undefined,
+        detail: a.uuid === active?.uuid ? '$(check) Active' : undefined,
+        uuid: a.uuid,
+      }));
+
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select an account to switch to',
+      });
+      if (!picked) return;
+
+      const result = accountService.switchToAccount(picked.uuid);
+      if (result.success) {
+        const entry = accounts.find(a => a.uuid === picked.uuid);
+        vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'account'}`);
+      } else {
+        vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
+      }
+    }),
+
+    vscode.commands.registerCommand('sidekick.addAccount', async () => {
+      const label = await vscode.window.showInputBox({
+        prompt: 'Optional label for this account (e.g., "Work", "Personal")',
+        placeHolder: 'Leave empty for no label',
+      });
+      // undefined means cancelled, empty string means no label
+      if (label === undefined) return;
+
+      const result = accountService.addCurrentAccount(label || undefined);
+      if (result.success) {
+        vscode.window.showInformationMessage('Current Claude account saved.');
+      } else {
+        vscode.window.showErrorMessage(`Failed to save account: ${result.error}`);
+      }
+    }),
+
+    vscode.commands.registerCommand('sidekick.removeAccount', async () => {
+      const accounts = accountService.listAccounts();
+      if (accounts.length === 0) {
+        vscode.window.showInformationMessage('No accounts saved.');
+        return;
+      }
+
+      const items = accounts.map(a => ({
+        label: a.label ?? a.email,
+        description: a.label ? a.email : undefined,
+        uuid: a.uuid,
+      }));
+
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select an account to remove',
+      });
+      if (!picked) return;
+
+      const confirm = await vscode.window.showWarningMessage(
+        `Remove account "${picked.label}"? This deletes backed-up credentials.`,
+        { modal: true },
+        'Remove'
+      );
+      if (confirm !== 'Remove') return;
+
+      const result = accountService.removeAccount(picked.uuid);
+      if (result.success) {
+        vscode.window.showInformationMessage('Account removed.');
+      } else {
+        vscode.window.showErrorMessage(`Failed to remove account: ${result.error}`);
+      }
+    }),
+  );
+  log('Multi-account service initialized');
+
   // Register inline completion provider using CompletionService
   const inlineProvider = new InlineCompletionProvider(completionService);
   const inlineDisposable = vscode.languages.registerInlineCompletionItemProvider(
@@ -1330,6 +1432,26 @@ export async function activate(context: vscode.ExtensionContext) {
         });
       }
 
+      // Show account actions when using Claude Code (claude-max) provider
+      if (authService?.getProviderId() === 'claude-max') {
+        const accounts = accountService.listAccounts();
+        if (accounts.length >= 2) {
+          const active = accountService.getActiveAccount();
+          const displayName = active?.label ?? active?.email ?? 'unknown';
+          items.splice(2, 0, {
+            label: "$(account) Switch Account",
+            description: `Active: ${displayName}`,
+            action: "switchAccount",
+          });
+        } else {
+          items.splice(2, 0, {
+            label: "$(account) Save Current Account",
+            description: "Save Claude Code credentials for multi-account switching",
+            action: "saveAccount",
+          });
+        }
+      }
+
       const selected = await vscode.window.showQuickPick(items, {
         placeHolder: "Sidekick Options",
       });
@@ -1353,6 +1475,12 @@ export async function activate(context: vscode.ExtensionContext) {
             break;
           case "apiKey":
             vscode.commands.executeCommand("sidekick.setApiKey");
+            break;
+          case "switchAccount":
+            vscode.commands.executeCommand("sidekick.switchAccount");
+            break;
+          case "saveAccount":
+            vscode.commands.executeCommand("sidekick.addAccount");
             break;
           case "cliDashboard":
             vscode.commands.executeCommand("sidekick.openCliDashboard");
