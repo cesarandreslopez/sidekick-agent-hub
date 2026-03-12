@@ -81,6 +81,7 @@ describe('formatTimeUntil', () => {
 const mockFetchOnce = vi.fn();
 
 vi.mock('sidekick-shared', () => ({
+  getActiveAccount: () => null,
   describeQuotaFailure: (quota: {
     available?: boolean;
     error?: string;

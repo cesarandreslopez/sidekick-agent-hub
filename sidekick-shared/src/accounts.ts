@@ -148,7 +148,7 @@ export function addCurrentAccount(label?: string): AccountManagerResult {
   ensureDirs();
 
   // 4. Load or create registry
-  let registry = readAccountRegistry() ?? {
+  const registry = readAccountRegistry() ?? {
     version: 1 as const,
     activeAccountUuid: null,
     accounts: [],
