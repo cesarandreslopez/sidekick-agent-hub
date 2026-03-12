@@ -262,6 +262,8 @@ sidekick quota
 
 Check Claude Max / Claude Code subscription quota utilization. Shows 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires Claude Code credentials (`~/.claude/.credentials.json`). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
 
+When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel now keeps a compact inline Claude Code quota state visible even when quota is unavailable, and quota failure toasts only appear when the failure state changes.
+
 No command-specific flags. Use `--json` for machine-readable output.
 
 #### Examples

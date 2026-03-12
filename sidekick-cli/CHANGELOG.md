@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.8] - 2026-03-12
+
+### Changed
+
+- **Structured quota failure output**: `sidekick quota` now renders consistent auth, rate-limit, server, network, and unexpected-failure copy from shared quota failure descriptors while preserving `--json` machine-readable output
+- **Dashboard unavailable quota rendering**: The Sessions panel now shows Claude Code quota failures inline instead of hiding the quota section whenever subscription data is unavailable
+- **Quota transition toasts**: The Ink dashboard now fires low-noise toast notifications only when Claude Code quota failure state changes, avoiding repeated alerts every polling interval
+
 ## [0.13.7] - 2026-03-11
 
 ### Changed

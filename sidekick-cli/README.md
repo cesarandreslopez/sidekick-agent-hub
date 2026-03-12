@@ -110,7 +110,9 @@ Subscription Quota
   7-Day    ██████████████████████░░░░░░░░ 72%   resets in 4d 6h
 ```
 
-Use `--json` for machine-readable output. Requires Claude Code credentials (`~/.claude/.credentials.json`).
+When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota state for Claude Code instead of hiding quota entirely.
+
+Use `--json` for machine-readable output. Requires Claude Code credentials (`~/.claude/.credentials.json`). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
 
 ## Dashboard Panels
 

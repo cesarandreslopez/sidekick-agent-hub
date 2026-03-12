@@ -5,6 +5,13 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.8] - 2026-03-12
+
+### Added
+
+- **Structured quota failure metadata**: `QuotaState` unavailable results now optionally include `failureKind`, `httpStatus`, and `retryAfterMs`, and `fetchQuota()` classifies `401`, `429`, `5xx`, other non-OK responses, and transport failures without changing its non-throwing contract
+- **Quota failure presentation helper**: New `describeQuotaFailure()` export maps unavailable quota states to consistent first-party severity, title/message/detail copy, retryability hints, and stable alert keys for CLI and VS Code consumers
+
 ## [0.13.7] - 2026-03-11
 
 _No shared-specific changes in this release._

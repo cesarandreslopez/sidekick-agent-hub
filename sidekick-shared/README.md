@@ -85,6 +85,14 @@ if (creds) {
 }
 ```
 
+Unavailable quota responses remain non-throwing and may include:
+
+- `failureKind`: `auth | network | rate_limit | server | unknown`
+- `httpStatus`: HTTP response status when available
+- `retryAfterMs`: retry delay in milliseconds for `429` responses when the API provides `Retry-After`
+
+For first-party style messaging, `describeQuotaFailure()` maps unavailable quota states to stable alert keys plus display-ready severity/title/message/detail fields for CLI and VS Code consumers.
+
 ## Building
 
 ```bash

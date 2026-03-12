@@ -110,6 +110,8 @@ For Claude Max users, the dashboard shows 5-hour and 7-day quota utilization wit
 - Countdown timers showing reset times
 - Auto-refresh every 30 seconds
 
+When quota cannot be fetched, the dashboard keeps the quota section visible and shows a structured unavailable state for missing credentials, expired sign-in, rate limits, network/server failures, or unexpected API responses. New Claude Code quota failure transitions also appear as lightweight dashboard toasts and are recorded in notification history, without triggering native VS Code popup notifications.
+
 ## Project Timeline
 
 ![Project Timeline](../images/project-timeline.png)

@@ -3565,17 +3565,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .sk-toast {
       position: fixed;
-      top: 12px;
+      bottom: 10px;
       right: 12px;
       z-index: 9999;
-      max-width: 320px;
-      padding: 10px 12px;
-      border-radius: 6px;
+      max-width: 220px;
+      padding: 6px 8px;
+      border-radius: 4px;
       background: var(--vscode-editorWidget-background);
       border: 1px solid var(--vscode-panel-border);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
       opacity: 0;
-      transform: translateY(-6px);
+      transform: translateY(4px);
       pointer-events: none;
       transition: opacity 120ms ease, transform 120ms ease;
     }
@@ -3594,16 +3594,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .sk-toast__title {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
       color: var(--vscode-foreground);
     }
 
     .sk-toast__body {
-      font-size: 11px;
-      line-height: 1.35;
+      font-size: 10px;
+      line-height: 1.2;
       color: var(--vscode-descriptionForeground);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-height: 2.4em;
     }
 
     .provider-status-section {
@@ -6323,16 +6329,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           document.body.appendChild(toast);
         }
 
+        const compactBody = typeof body === 'string' ? body.split('. ')[0] : '';
         toast.className = 'sk-toast sk-toast--' + (severity || 'info');
         toast.innerHTML = '<div class="sk-toast__title">' + escapeHtml(title || 'Notification') + '</div>' +
-          '<div class="sk-toast__body">' + escapeHtml(body || '') + '</div>';
+          '<div class="sk-toast__body">' + escapeHtml(compactBody || '') + '</div>';
         toast.classList.add('sk-toast--visible');
 
         if (quotaToastTimer) clearTimeout(quotaToastTimer);
         quotaToastTimer = setTimeout(function() {
           toast.classList.remove('sk-toast--visible');
           quotaToastTimer = null;
-        }, severity === 'error' ? 4200 : 3200);
+        }, severity === 'error' ? 2400 : 1800);
       }
 
       /**

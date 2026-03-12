@@ -5,6 +5,18 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.8] - 2026-03-12
+
+### Added
+
+- **Structured quota failure metadata**: `fetchQuota()` now classifies unavailable states with `failureKind`, `httpStatus`, and `retryAfterMs`, so first-party consumers and external callers can distinguish auth failures, network errors, rate limits, server failures, and unexpected API responses without parsing human-readable strings
+- **Shared quota failure presentation helper**: First-party consumers now share a common `describeQuotaFailure()` helper for consistent quota error copy, severity mapping, retryability hints, and stable alert keys
+
+### Changed
+
+- **CLI quota UX**: `sidekick quota` and the CLI dashboard now render structured quota failure states with clearer auth/rate-limit/server copy, show unavailable quota inline in the Sessions panel, and fire low-noise transition-based quota toasts instead of relying on raw error strings
+- **VS Code quota UX**: The dashboard now renders structured unavailable quota states, shows lightweight dashboard toasts on new quota failure transitions, and stores those alerts in dashboard notification history without using native VS Code popup notifications
+
 ## [0.13.7] - 2026-03-11
 
 ### Changed

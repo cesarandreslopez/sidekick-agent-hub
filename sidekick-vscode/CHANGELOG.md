@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.8] - 2026-03-12
+
+### Added
+
+- **Dashboard quota failure alerts**: New Claude Code quota failure transitions now produce lightweight dashboard toasts and are recorded in dashboard notification history without triggering native VS Code popup notifications
+
+### Changed
+
+- **Structured quota unavailable states**: The dashboard quota section now shows structured title/message/detail states for auth expiry, missing credentials, rate limits, server failures, network failures, and unexpected API responses instead of displaying raw quota error strings
+
 ## [0.13.7] - 2026-03-11
 
 _No extension-specific changes in this release._
