@@ -159,7 +159,8 @@ describe('quotaAction', () => {
       fiveHour: { utilization: 0, resetsAt: '' },
       sevenDay: { utilization: 0, resetsAt: '' },
       available: false,
-      error: 'no-credentials',
+      error: 'No OAuth token available',
+      failureKind: 'auth',
     });
 
     const { quotaAction } = await import('./quota');
@@ -174,7 +175,8 @@ describe('quotaAction', () => {
       fiveHour: { utilization: 0, resetsAt: '' },
       sevenDay: { utilization: 0, resetsAt: '' },
       available: false,
-      error: 'no-credentials',
+      error: 'No OAuth token available',
+      failureKind: 'auth',
     };
     mockFetchOnce.mockResolvedValue(quota);
 
@@ -183,7 +185,59 @@ describe('quotaAction', () => {
 
     const parsed = JSON.parse(stdoutData);
     expect(parsed.available).toBe(false);
-    expect(parsed.error).toBe('no-credentials');
+    expect(parsed.error).toBe('No OAuth token available');
+    expect(parsed.failureKind).toBe('auth');
     expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  it('prints an auth failure message when the API rejects the token', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'Sign in to Claude Code to view quota',
+      failureKind: 'auth',
+      httpStatus: 401,
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stderrData).toContain('Authentication failed');
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  it('prints retry timing for rate-limited responses', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'API error: 429',
+      failureKind: 'rate_limit',
+      httpStatus: 429,
+      retryAfterMs: 45_000,
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stderrData).toContain('Quota API rate limited');
+    expect(stderrData).toContain('45s');
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  it('falls back to legacy error matching when failure metadata is absent', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'network-error',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stderrData).toContain('Could not reach the Anthropic API');
+    expect(process.exit).toHaveBeenCalledWith(1);
   });
 });

@@ -14,6 +14,12 @@ import { log } from './Logger';
 
 export type { QuotaWindow, QuotaState };
 
+const NO_CREDENTIALS_ERROR = 'No OAuth token available';
+
+function shouldKeepCachedQuota(state: QuotaState): boolean {
+  return !state.available && (state.failureKind === 'network' || state.failureKind === 'rate_limit' || state.failureKind === 'server');
+}
+
 /**
  * Service for fetching and managing Claude Max subscription quota.
  *
@@ -42,13 +48,14 @@ export class QuotaService implements vscode.Disposable {
       sevenDay: { utilization: 0, resetsAt: '' },
       available: false,
       error,
+      failureKind: 'auth',
     };
   }
 
   async fetchQuota(): Promise<QuotaState> {
     const creds = await readClaudeMaxCredentials();
     if (!creds) {
-      const state = this._unavailableState('No OAuth token available');
+      const state = this._unavailableState(NO_CREDENTIALS_ERROR);
       this._cachedQuota = state;
       this._onQuotaUpdate.fire(state);
       return state;
@@ -56,8 +63,8 @@ export class QuotaService implements vscode.Disposable {
 
     const state = await fetchQuota(creds.accessToken);
 
-    // On failure, try to keep cached data
-    if (!state.available && this._cachedQuota?.available) {
+    // Keep stale quota only for retryable failures.
+    if (shouldKeepCachedQuota(state) && this._cachedQuota?.available) {
       log('Fetch failed, using cached quota');
       return this._cachedQuota;
     }

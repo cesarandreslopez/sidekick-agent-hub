@@ -72,6 +72,12 @@ export interface QuotaState {
   available: boolean;
   /** Error message if quota fetch failed */
   error?: string;
+  /** Machine-readable failure classification for unavailable states */
+  failureKind?: 'auth' | 'network' | 'rate_limit' | 'server' | 'unknown';
+  /** HTTP status code for unavailable API responses */
+  httpStatus?: number;
+  /** Retry delay in milliseconds when rate-limited */
+  retryAfterMs?: number;
   /** Projected 5-hour utilization at reset time (percentage) */
   projectedFiveHour?: number;
   /** Projected 7-day utilization at reset time (percentage) */

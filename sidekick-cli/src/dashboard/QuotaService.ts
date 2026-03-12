@@ -13,6 +13,21 @@ import type { QuotaState, QuotaWindow } from 'sidekick-shared';
 export type { QuotaWindow, QuotaState };
 
 const REFRESH_MS = 30_000;
+const NO_CREDENTIALS_ERROR = 'No OAuth token available';
+
+function unavailableAuthState(): QuotaState {
+  return {
+    fiveHour: { utilization: 0, resetsAt: '' },
+    sevenDay: { utilization: 0, resetsAt: '' },
+    available: false,
+    error: NO_CREDENTIALS_ERROR,
+    failureKind: 'auth',
+  };
+}
+
+function shouldKeepCachedQuota(state: QuotaState): boolean {
+  return !state.available && (state.failureKind === 'network' || state.failureKind === 'rate_limit' || state.failureKind === 'server');
+}
 
 export class QuotaService {
   private _interval: ReturnType<typeof setInterval> | null = null;
@@ -48,7 +63,7 @@ export class QuotaService {
   async fetchOnce(): Promise<QuotaState> {
     const creds = await readClaudeMaxCredentials();
     if (!creds) {
-      return { fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false, error: 'no-credentials' };
+      return unavailableAuthState();
     }
     return fetchQuota(creds.accessToken);
   }
@@ -56,14 +71,14 @@ export class QuotaService {
   async fetchQuota(): Promise<void> {
     const creds = await readClaudeMaxCredentials();
     if (!creds) {
-      this.emit({ fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false });
+      this.emit(unavailableAuthState());
       return;
     }
 
     const state = await fetchQuota(creds.accessToken);
 
-    // On rate limit / network error keep cached data
-    if (!state.available && this._cached?.available) return;
+    // Keep stale quota only for retryable failures.
+    if (shouldKeepCachedQuota(state) && this._cached?.available) return;
 
     this.emit(state);
   }

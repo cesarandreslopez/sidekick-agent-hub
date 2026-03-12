@@ -77,7 +77,11 @@ import { fetchQuota, readClaudeMaxCredentials } from 'sidekick-shared';
 const creds = readClaudeMaxCredentials();
 if (creds) {
   const quota = await fetchQuota(creds.accessToken);
-  console.log(`5-hour utilization: ${quota.fiveHour.percentUsed}%`);
+  if (quota.available) {
+    console.log(`5-hour utilization: ${quota.fiveHour.utilization}%`);
+  } else {
+    console.log(quota.failureKind, quota.httpStatus, quota.retryAfterMs);
+  }
 }
 ```
 

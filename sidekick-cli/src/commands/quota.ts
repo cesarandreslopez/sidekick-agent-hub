@@ -36,6 +36,24 @@ export function formatTimeUntil(isoString: string): string {
   return 'in ' + (parts.join(' ') || '0m');
 }
 
+function formatRetryAfter(ms: number): string {
+  if (ms <= 0) return 'now';
+
+  const totalSeconds = Math.ceil(ms / 1000);
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
+  if (parts.length === 0) parts.push(`${seconds}s`);
+
+  return parts.join(' ');
+}
+
 export async function quotaAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
   const jsonOutput: boolean = !!globalOpts.json;
@@ -50,18 +68,44 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
     }
 
     let msg: string;
-    switch (quota.error) {
-      case 'no-credentials':
-        msg = 'No Claude Code credentials found. Sign in with `claude` first.';
+    switch (quota.failureKind) {
+      case 'auth':
+        msg = quota.error === 'No OAuth token available'
+          ? 'No Claude Code credentials found. Sign in with `claude` first.'
+          : 'Authentication failed. Try signing in to Claude Code again.';
         break;
-      case 'auth-failed':
-        msg = 'Authentication failed. Try signing in to Claude Code again.';
-        break;
-      case 'network-error':
+      case 'network':
         msg = 'Could not reach the Anthropic API. Check your connection.';
         break;
+      case 'rate_limit':
+        msg = quota.retryAfterMs != null
+          ? `Quota API rate limited. Retry in ${formatRetryAfter(quota.retryAfterMs)}.`
+          : 'Quota API rate limited. Retry shortly.';
+        break;
+      case 'server':
+        msg = quota.httpStatus != null
+          ? `Anthropic quota API error (${quota.httpStatus}). Try again shortly.`
+          : 'Anthropic quota API error. Try again shortly.';
+        break;
+      case 'unknown':
+        msg = quota.httpStatus != null
+          ? `Unexpected quota API response (${quota.httpStatus}).`
+          : (quota.error ?? 'Unknown error fetching quota.');
+        break;
       default:
-        msg = quota.error ?? 'Unknown error fetching quota.';
+        switch (quota.error) {
+          case 'no-credentials':
+            msg = 'No Claude Code credentials found. Sign in with `claude` first.';
+            break;
+          case 'auth-failed':
+            msg = 'Authentication failed. Try signing in to Claude Code again.';
+            break;
+          case 'network-error':
+            msg = 'Could not reach the Anthropic API. Check your connection.';
+            break;
+          default:
+            msg = quota.error ?? 'Unknown error fetching quota.';
+        }
     }
     process.stderr.write(chalk.red(msg) + '\n');
     process.exit(1);

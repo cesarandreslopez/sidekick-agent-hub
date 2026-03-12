@@ -19,6 +19,12 @@ export interface QuotaState {
   available: boolean;
   /** Human-readable error if not available */
   error?: string;
+  /** Machine-readable failure classification for unavailable states */
+  failureKind?: 'auth' | 'network' | 'rate_limit' | 'server' | 'unknown';
+  /** HTTP status code for unavailable API responses */
+  httpStatus?: number;
+  /** Retry delay in milliseconds when rate-limited */
+  retryAfterMs?: number;
   /** Projected 5-hour utilization at reset (percentage, capped at 200) */
   projectedFiveHour?: number;
   /** Projected 7-day utilization at reset (percentage, capped at 200) */
@@ -49,16 +55,33 @@ function projectFromElapsed(utilization: number, resetsAt: string, windowMs: num
   return Math.min(Math.round(utilization * (windowMs / elapsed)), 200);
 }
 
+type QuotaFailureMeta = Pick<QuotaState, 'failureKind' | 'httpStatus' | 'retryAfterMs'>;
+
 /**
  * Helper to build an unavailable QuotaState.
  */
-function unavailableState(error: string): QuotaState {
+function unavailableState(error: string, meta: QuotaFailureMeta = {}): QuotaState {
   return {
     fiveHour: { utilization: 0, resetsAt: '' },
     sevenDay: { utilization: 0, resetsAt: '' },
     available: false,
     error,
+    ...meta,
   };
+}
+
+function parseRetryAfterMs(retryAfter: string | null): number | undefined {
+  if (!retryAfter) return undefined;
+
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.round(seconds * 1000);
+  }
+
+  const retryAt = Date.parse(retryAfter);
+  if (Number.isNaN(retryAt)) return undefined;
+
+  return Math.max(retryAt - Date.now(), 0);
 }
 
 /**
@@ -82,8 +105,32 @@ export async function fetchQuota(accessToken: string): Promise<QuotaState> {
     });
 
     if (!res.ok) {
-      if (res.status === 401) return unavailableState('Sign in to Claude Code to view quota');
-      return unavailableState(`API error: ${res.status}`);
+      if (res.status === 401) {
+        return unavailableState('Sign in to Claude Code to view quota', {
+          failureKind: 'auth',
+          httpStatus: res.status,
+        });
+      }
+
+      if (res.status === 429) {
+        return unavailableState(`API error: ${res.status}`, {
+          failureKind: 'rate_limit',
+          httpStatus: res.status,
+          retryAfterMs: parseRetryAfterMs(res.headers.get('retry-after')),
+        });
+      }
+
+      if (res.status >= 500 && res.status <= 599) {
+        return unavailableState(`API error: ${res.status}`, {
+          failureKind: 'server',
+          httpStatus: res.status,
+        });
+      }
+
+      return unavailableState(`API error: ${res.status}`, {
+        failureKind: 'unknown',
+        httpStatus: res.status,
+      });
     }
 
     const data: UsageApiResponse = await res.json();
@@ -100,6 +147,6 @@ export async function fetchQuota(accessToken: string): Promise<QuotaState> {
       projectedSevenDay: projectFromElapsed(sevenUtil, sevenResetsAt, SEVEN_DAY_MS),
     };
   } catch {
-    return unavailableState('Network error');
+    return unavailableState('Network error', { failureKind: 'network' });
   }
 }
