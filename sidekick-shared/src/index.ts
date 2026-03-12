@@ -264,9 +264,27 @@ export type { PatternCluster, SerializedPatternState } from './aggregation/Patte
 export { generateHtmlReport, parseTranscript, openInBrowser } from './report';
 export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './report';
 
+// Credential I/O (platform-aware: Keychain on macOS, file on Linux/Windows)
+export { readActiveCredentials, writeActiveCredentials } from './credentialIO';
+
 // Credentials
 export { readClaudeMaxCredentials, readClaudeMaxAccessTokenSync } from './credentials';
 export type { ClaudeMaxCredentials } from './credentials';
+
+// Accounts
+export {
+  getAccountsDir,
+  readAccountRegistry,
+  writeAccountRegistry,
+  readActiveClaudeAccount,
+  addCurrentAccount,
+  switchToAccount,
+  removeAccount,
+  listAccounts,
+  getActiveAccount,
+  isMultiAccountEnabled,
+} from './accounts';
+export type { AccountEntry, AccountRegistry, ActiveAccountInfo, AccountManagerResult } from './accounts';
 
 // Quota
 export { fetchQuota } from './quota';

@@ -150,6 +150,20 @@ const statusCmd = new Command('status')
   });
 program.addCommand(statusCmd);
 
+// Account command — manage Claude Max accounts
+const accountCmd = new Command('account')
+  .description('Manage Claude Max accounts (list, add, switch, remove)')
+  .option('--add', 'Save the currently signed-in account')
+  .option('--label <name>', 'Label for the account (use with --add)')
+  .option('--switch', 'Switch to the next saved account')
+  .option('--switch-to <email>', 'Switch to a specific account by email')
+  .option('--remove <email>', 'Remove a saved account by email')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { accountAction } = await import('./commands/account');
+    return accountAction(_opts, cmd);
+  });
+program.addCommand(accountCmd);
+
 // Handoff command — show the latest handoff document
 const handoffCmd = new Command('handoff')
   .description('Show the latest session handoff document for the current project')

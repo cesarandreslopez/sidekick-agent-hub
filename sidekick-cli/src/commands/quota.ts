@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
-import { describeQuotaFailure } from 'sidekick-shared';
+import { describeQuotaFailure, getActiveAccount } from 'sidekick-shared';
 import { QuotaService } from '../dashboard/QuotaService';
 
 export function getUtilizationColor(percent: number): ChalkInstance {
@@ -98,6 +98,10 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
     ? ` ${chalk.dim('\u2192')} ${getUtilizationColor(quota.projectedSevenDay)(String(Math.round(quota.projectedSevenDay)).padStart(3) + '%')}`
     : '';
 
+  const active = getActiveAccount();
+  if (active) {
+    process.stdout.write(chalk.dim(`Account: ${active.email}${active.label ? ` (${active.label})` : ''}\n`));
+  }
   process.stdout.write(chalk.bold('Subscription Quota\n'));
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
   process.stdout.write(`  ${chalk.dim('5-Hour')}   ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%${fiveProj}   ${chalk.dim('resets ' + fiveReset)}\n`);

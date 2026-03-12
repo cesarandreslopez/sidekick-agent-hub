@@ -214,6 +214,13 @@ export class AuthService implements vscode.Disposable {
     }
   }
 
+  /** Resets the cached client so the next call creates a fresh one (e.g. after account switch). */
+  resetClient(): void {
+    log('AuthService: resetting client (account switch)');
+    this.client?.dispose();
+    this.client = undefined;
+  }
+
   /** Returns the current inference provider ID. */
   getProviderId(): InferenceProviderId {
     return this.providerId;
