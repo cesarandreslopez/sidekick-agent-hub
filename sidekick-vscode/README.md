@@ -2,8 +2,6 @@
 
 Multi-provider AI coding assistant for VS Code — inline completions, code transforms, commit messages, and agent session monitoring.
 
-[![Ask DeepWiki](https://deepwiki.com/badge.png)](https://deepwiki.com/cesarandreslopez/sidekick-agent-hub)
-
 ![Sidekick demo](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-agent-hub.gif)
 
 AI coding agents are powerful, but they run autonomously — tokens burn silently, context fills up without warning, and everything is lost when a session ends. Sidekick gives you real-time visibility into what your agent is doing, AI-powered coding features that eliminate mechanical work, and session intelligence that preserves context across sessions.
