@@ -50,7 +50,7 @@ import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import { describeQuotaFailure } from 'sidekick-shared';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
-import { MAX_DISPLAY_TIMELINE } from '../constants';
+import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
 
 /**
  * WebviewViewProvider for the session analytics dashboard.
@@ -2223,7 +2223,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _getContextWindowLimit(): number {
     const provider = this._sessionMonitor.getProvider();
-    return provider.getContextWindowLimit?.(this._lastModelId) ?? 200_000;
+    return provider.getContextWindowLimit?.(this._lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
   }
 
   /**

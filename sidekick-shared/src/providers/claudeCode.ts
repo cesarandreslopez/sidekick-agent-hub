@@ -33,6 +33,7 @@ import {
   getAllProjectFolders as getAllProjectFoldersRaw,
 } from '../parsers/sessionPathResolver';
 import { scanSubagentDir } from '../parsers/subagentScanner';
+import { getModelContextWindowSize } from '../modelContext';
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -170,6 +171,9 @@ class ClaudeCodeReader implements SessionReader {
 export class ClaudeCodeProvider implements SessionProviderBase {
   readonly id: ProviderId = 'claude-code';
   readonly displayName = 'Claude Code';
+
+  /** Runtime-reported context window limit (overrides static map when set). */
+  private dynamicContextWindowLimit: number | null = null;
 
   // --- Path resolution ---
 
@@ -434,8 +438,14 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   // --- Optional methods ---
 
-  getContextWindowLimit(_modelId?: string): number {
-    return 200_000;
+  getContextWindowLimit(modelId?: string): number {
+    if (this.dynamicContextWindowLimit) return this.dynamicContextWindowLimit;
+    return getModelContextWindowSize(modelId);
+  }
+
+  /** Set a runtime-reported context window limit (overrides static map). */
+  setDynamicContextWindowLimit(limit: number): void {
+    this.dynamicContextWindowLimit = limit;
   }
 
   /**
@@ -491,6 +501,6 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   // --- Lifecycle ---
 
   dispose(): void {
-    // No resources to clean up
+    this.dynamicContextWindowLimit = null;
   }
 }

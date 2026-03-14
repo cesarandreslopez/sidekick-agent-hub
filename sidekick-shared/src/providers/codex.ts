@@ -24,6 +24,7 @@ import type {
 } from './types';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type { CodexRolloutLine, CodexRateLimits, CodexSessionMeta } from '../types/codex';
+import { getModelContextWindowSize } from '../modelContext';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -941,20 +942,7 @@ export class CodexProvider implements SessionProviderBase {
   getContextWindowLimit(modelId?: string): number {
     // Prefer actual model_context_window reported by token_count events
     if (this.dynamicContextWindowLimit) return this.dynamicContextWindowLimit;
-
-    if (!modelId) return 128_000;
-    const id = modelId.toLowerCase();
-
-    // GPT-4.1 series: 1M context
-    if (id.startsWith('gpt-4.1')) return 1_048_576;
-    // GPT-4o: 128K
-    if (id.startsWith('gpt-4o') || id.startsWith('gpt-4')) return 128_000;
-    // o3 / o4-mini: 200K
-    if (id.startsWith('o3') || id.startsWith('o4')) return 200_000;
-    // o1: 200K
-    if (id.startsWith('o1')) return 200_000;
-
-    return 128_000;
+    return getModelContextWindowSize(modelId);
   }
 
   getCurrentUsageSnapshot(_sessionPath: string): TokenUsage | null {

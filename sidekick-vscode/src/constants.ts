@@ -79,7 +79,7 @@ export const MAX_TOKENS_CHAT = 2_000;
 export const MAX_TOKENS_SUMMARY = 1_000;
 
 /** Default context window size (tokens) for session summary. */
-export const DEFAULT_CONTEXT_WINDOW = 200_000;
+export { DEFAULT_CONTEXT_WINDOW } from 'sidekick-shared';
 
 // ---------------------------------------------------------------------------
 // UI timing

@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-03-14
+
+### Fixed
+
+- **Per-model context window sizes**: Context gauge, status bar, and session summaries now show correct utilization for Claude Opus 4.6 (1M context) instead of assuming 200K for all models
+- **Hardcoded context limit in handoff generation**: Session-end handoff now uses the provider's model-aware context limit instead of a hardcoded 200K
+
 ## [0.14.0] - 2026-03-12
 
 ### Added

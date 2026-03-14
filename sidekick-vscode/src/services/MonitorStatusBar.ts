@@ -21,6 +21,7 @@ import { SessionMonitor } from './SessionMonitor';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import type { TokenUsage } from '../types/claudeSession';
 import type { PermissionMode } from 'sidekick-shared/dist/types/sessionEvent';
+import { DEFAULT_CONTEXT_WINDOW } from '../constants';
 
 /**
  * Status bar service for Claude Code session monitoring.
@@ -160,7 +161,7 @@ export class MonitorStatusBar implements vscode.Disposable {
       + stats.totalCacheReadTokens;
 
     const modelId = stats.lastModelId ?? usageHint?.model;
-    const contextLimit = provider.getContextWindowLimit?.(modelId) ?? 200_000;
+    const contextLimit = provider.getContextWindowLimit?.(modelId) ?? DEFAULT_CONTEXT_WINDOW;
     this.contextPercent = contextLimit > 0
       ? Math.round((stats.currentContextSize / contextLimit) * 100)
       : 0;
@@ -225,7 +226,7 @@ export class MonitorStatusBar implements vscode.Disposable {
     // Build detailed tooltip
     const stats = this.monitor.getStats();
     const provider = this.monitor.getProvider();
-    const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? 200_000;
+    const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
     const tooltipLines = [
       `${provider.displayName} Session`,
       `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,

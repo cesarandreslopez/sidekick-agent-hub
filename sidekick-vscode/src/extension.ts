@@ -44,6 +44,7 @@ import { GuidanceAdvisor } from './services/GuidanceAdvisor';
 import { HandoffService } from './services/HandoffService';
 import { SessionSummaryService } from './services/SessionSummaryService';
 import { resolveInstructionTarget } from './types/instructionFile';
+import { DEFAULT_CONTEXT_WINDOW } from './constants';
 import { NotificationTriggerService } from './services/NotificationTriggerService';
 import { SessionEventLogger } from './services/SessionEventLogger';
 import { ConversationViewProvider } from './providers/ConversationViewProvider';
@@ -469,7 +470,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const summaryService = new SessionSummaryService();
       const analysisData = sessionAnalyzer.getCachedData();
-      const summaryData = summaryService.generateSummary(stats, analysisData, 200000);
+      const provider = sessionMonitor.getProvider();
+      const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
+      const summaryData = summaryService.generateSummary(stats, analysisData, contextLimit);
 
       handoffService.generateHandoff(summaryData, analysisData, stats).then(handoffPath => {
         log(`Handoff generated: ${handoffPath}`);

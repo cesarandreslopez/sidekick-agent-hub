@@ -12,6 +12,16 @@ describe('getContextWindowSize', () => {
     expect(getContextWindowSize('gpt-4')).toBe(8_192);
   });
 
+  it('returns 1M for Claude Opus 4.6', () => {
+    expect(getContextWindowSize('claude-opus-4-6')).toBe(1_000_000);
+    expect(getContextWindowSize('claude-opus-4-6-20250414')).toBe(1_000_000);
+  });
+
+  it('returns 1M for Claude Sonnet 4.6', () => {
+    expect(getContextWindowSize('claude-sonnet-4-6')).toBe(1_000_000);
+    expect(getContextWindowSize('claude-sonnet-4-6-20250414')).toBe(1_000_000);
+  });
+
   it('matches by prefix for versioned model IDs', () => {
     expect(getContextWindowSize('claude-sonnet-4-20250514')).toBe(200_000);
     expect(getContextWindowSize('claude-3-5-sonnet-20241022')).toBe(200_000);

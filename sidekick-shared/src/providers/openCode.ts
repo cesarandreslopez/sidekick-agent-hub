@@ -26,6 +26,7 @@ import type { DbPart } from './openCodeDatabase';
 import type { SessionProviderBase, SessionReader, ProjectFolderInfo, SearchHit, SessionFileStats, ProviderId, ProviderRuntimeStatus } from './types';
 import type { SessionEvent, TokenUsage, SubagentStats, ContextAttribution, ToolCall } from '../types/sessionEvent';
 import type { OpenCodeSession, OpenCodeMessage, OpenCodePart, OpenCodeProject } from '../types/opencode';
+import { getModelContextWindowSize } from '../modelContext';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -650,6 +651,8 @@ export class OpenCodeProvider implements SessionProviderBase {
   private dbStatus: ProviderRuntimeStatus = { available: false, kind: 'db_missing' };
   /** Cache of session metadata populated during listing */
   private sessionMetaCache = new Map<string, { title: string | null; timeUpdated: number }>();
+  /** Runtime-reported context window limit (overrides static map when set). */
+  private dynamicContextWindowLimit: number | null = null;
 
   /** Lazy-initialize the database connection. */
   private ensureDb(): OpenCodeDatabase | null {
@@ -1640,25 +1643,13 @@ export class OpenCodeProvider implements SessionProviderBase {
   }
 
   getContextWindowLimit(modelId?: string): number {
-    if (!modelId) return 200_000;
-    const id = modelId.toLowerCase();
+    if (this.dynamicContextWindowLimit) return this.dynamicContextWindowLimit;
+    return getModelContextWindowSize(modelId);
+  }
 
-    // GPT-4.1 series: 1M context
-    if (id.startsWith('gpt-4.1')) return 1_000_000;
-    // GPT-5 series: 400K context
-    if (id.startsWith('gpt-5')) return 400_000;
-    // o1, o3, o4 series: 200K context
-    if (id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4')) return 200_000;
-    // GPT-4o / GPT-4 series: 128K context
-    if (id.startsWith('gpt-4')) return 128_000;
-    // Claude models: 200K context
-    if (id.startsWith('claude')) return 200_000;
-    // Gemini models: 1M context
-    if (id.startsWith('gemini')) return 1_000_000;
-    // DeepSeek models: 128K context
-    if (id.startsWith('deepseek')) return 128_000;
-
-    return 200_000;
+  /** Set a runtime-reported context window limit (overrides static map). */
+  setDynamicContextWindowLimit(limit: number): void {
+    this.dynamicContextWindowLimit = limit;
   }
 
   // --- Lifecycle ---
@@ -1668,5 +1659,6 @@ export class OpenCodeProvider implements SessionProviderBase {
     this.db = null;
     this.dbInitialized = false;
     this.sessionMetaCache.clear();
+    this.dynamicContextWindowLimit = null;
   }
 }

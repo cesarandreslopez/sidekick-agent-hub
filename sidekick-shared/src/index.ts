@@ -292,6 +292,9 @@ export type { QuotaWindow, QuotaState } from './quota';
 export { describeQuotaFailure } from './quotaPresentation';
 export type { QuotaFailureDescriptor } from './quotaPresentation';
 
+// Model Context
+export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+
 // Provider Status
 export { fetchProviderStatus } from './providerStatus';
 export type { ProviderStatusState } from './providerStatus';
