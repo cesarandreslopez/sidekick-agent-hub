@@ -2,7 +2,7 @@
  * Subscription quota polling for the TUI dashboard.
  *
  * For Claude Code / Claude Max: reads OAuth token from ~/.claude/.credentials.json
- * and polls the Anthropic usage API every 30s.
+ * and polls the Anthropic usage API every 5 minutes.
  *
  * For Codex: quota comes from rate_limits in FollowEvent (handled by DashboardState).
  */
@@ -12,7 +12,7 @@ import type { QuotaState, QuotaWindow } from 'sidekick-shared';
 
 export type { QuotaWindow, QuotaState };
 
-const REFRESH_MS = 30_000;
+const REFRESH_MS = 300_000;
 const NO_CREDENTIALS_ERROR = 'No OAuth token available';
 
 function unavailableAuthState(): QuotaState {
@@ -39,7 +39,7 @@ export class QuotaService {
     this._callback = cb;
   }
 
-  /** Start polling. Fetches immediately, then every 30s. */
+  /** Start polling. Fetches immediately, then every 5 minutes. */
   start(): void {
     if (this._interval) return;
     this.fetchQuota();

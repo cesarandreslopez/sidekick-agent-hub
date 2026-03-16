@@ -17,6 +17,7 @@ import type {
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
 import type { KnowledgeNoteDisplay, KnowledgeCandidateDisplay } from './knowledgeNote';
+import type { ProviderStatusState } from 'sidekick-shared';
 
 /**
  * Session info for the session card navigator.
@@ -141,7 +142,8 @@ export type DashboardMessage =
   | { type: 'updateEmptyPhrase'; phrase: string }
   | { type: 'updatePlan'; plan: PlanDisplay }
   | { type: 'updatePlanHistory'; history: PlanHistoryDisplay }
-  | { type: 'updateAnalytics'; analytics: AnalyticsDisplay };
+  | { type: 'updateAnalytics'; analytics: AnalyticsDisplay }
+  | { type: 'updateProviderStatus'; status: ProviderStatusState };
 
 /**
  * Plan history analytics display data.

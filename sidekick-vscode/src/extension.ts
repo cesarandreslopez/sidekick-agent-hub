@@ -470,7 +470,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const summaryService = new SessionSummaryService();
       const analysisData = sessionAnalyzer.getCachedData();
-      const provider = sessionMonitor.getProvider();
+      const provider = sessionMonitor!.getProvider();
       const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
       const summaryData = summaryService.generateSummary(stats, analysisData, contextLimit);
 
@@ -1567,7 +1567,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       statusBarManager?.setLoading('Testing connection');
 
-      const result = await vscode.window.withProgress(
+      const result = await Promise.resolve(vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
           title: "Testing connection...",
@@ -1575,14 +1575,14 @@ export async function activate(context: vscode.ExtensionContext) {
         },
         async (_progress, token) => {
           const testResult = authService!.testConnection();
-          return new Promise<Awaited<ReturnType<typeof authService.testConnection>>>((resolve, reject) => {
+          return new Promise<Awaited<typeof testResult>>((resolve, reject) => {
             token.onCancellationRequested(() => {
               reject(new Error('Cancelled'));
             });
             testResult.then(resolve, reject);
           });
         }
-      ).catch((error: Error) => {
+      )).catch((error: Error) => {
         if (error.message === 'Cancelled') {
           return null;
         }

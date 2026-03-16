@@ -32,7 +32,7 @@ export class QuotaService implements vscode.Disposable {
   private _cachedQuota: QuotaState | null = null;
   private _refreshInterval: ReturnType<typeof setInterval> | null = null;
   private readonly _disposables: vscode.Disposable[] = [];
-  private readonly REFRESH_INTERVAL_MS = 30_000;
+  private readonly REFRESH_INTERVAL_MS = 300_000;
 
   readonly onQuotaUpdate = this._onQuotaUpdate.event;
   readonly onQuotaError = this._onQuotaError.event;

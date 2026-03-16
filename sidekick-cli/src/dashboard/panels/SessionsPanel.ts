@@ -372,7 +372,7 @@ export class SessionsPanel implements SidePanel {
           lines.push('', sectionHeader('Quota', w));
           lines.push(`  {${severityColor}-fg}${descriptor.title}{/${severityColor}-fg}`);
           const failureText = [descriptor.message, descriptor.detail].filter(Boolean).join(' ');
-          const quotaTextWidth = Math.max(20, detailWidth(w) - 4);
+          const quotaTextWidth = Math.max(20, detailWidth() - 4);
           for (const line of wordWrap(failureText, quotaTextWidth)) {
             lines.push(`  {grey-fg}${line}{/grey-fg}`);
           }
