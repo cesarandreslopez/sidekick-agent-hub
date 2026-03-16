@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-03-16
+
+### Fixed
+
+- **Quota polling interval**: Reduced quota refresh from every 30 seconds to every 5 minutes to avoid unnecessary API calls
+- **Connection test typing**: Improved Promise typing and wrapped `withProgress` to fix `.catch()` type inference in the connection test flow
+- **Session monitor null assertion**: Fixed potential null access on `sessionMonitor.getProvider()` in the session summary command
+
+### Added
+
+- **Provider status dashboard message**: New `updateProviderStatus` message type for pushing provider status updates to the dashboard webview
+
 ## [0.14.1] - 2026-03-14
 
 ### Fixed
