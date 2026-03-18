@@ -179,14 +179,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
-   * Sets the provider status service for Claude API health monitoring.
+   * Sets the provider status service for Claude & OpenAI API health monitoring.
+   * Only forwards status updates matching the active inference provider:
+   * - codex → OpenAI status
+   * - claude-max, claude-api, opencode → Claude status
    */
   setProviderStatusService(service: import('../services/ProviderStatusService').ProviderStatusService): void {
     this._providerStatusService = service;
-    // Subscribe to status updates → post to webview
     this._disposables.push(
       service.onStatusUpdate(status => {
-        this._postMessage({ type: 'updateProviderStatus', status });
+        const pid = this._authService?.getProviderId();
+        if (pid !== 'codex') {
+          this._postMessage({ type: 'updateProviderStatus', status });
+        }
+      }),
+      service.onOpenAIStatusUpdate(status => {
+        const pid = this._authService?.getProviderId();
+        if (pid === 'codex') {
+          this._postMessage({ type: 'updateOpenAIStatus', status });
+        }
       })
     );
   }
@@ -5064,6 +5075,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             <div class="provider-status-details" id="provider-status-details"></div>
           </div>
         </div>
+
+        <div class="gauge-row-item provider-status-section" id="openai-status-section" title="OpenAI API status from status.openai.com">
+          <div class="provider-status-content" id="openai-status-content">
+            <div class="provider-status-indicator" id="openai-status-indicator"></div>
+            <div class="provider-status-details" id="openai-status-details"></div>
+          </div>
+        </div>
       </div>
 
       <div class="primary-metric-display" data-metric="cost" id="primary-metric-display" style="display: none;" aria-live="polite">
@@ -6448,10 +6466,50 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const color = status.indicator === 'minor'
           ? 'var(--vscode-charts-yellow)'
           : 'var(--vscode-errorForeground)';
-        indicatorEl.innerHTML = '<span style="color: ' + color + '">' + dot + '</span> ' +
+        indicatorEl.innerHTML = '<span style="color: ' + color + '">' + dot + '</span> Claude: ' +
           (status.description || status.indicator.charAt(0).toUpperCase() + status.indicator.slice(1));
 
         // Details: components + incident
+        let html = '';
+        if (status.affectedComponents && status.affectedComponents.length > 0) {
+          for (const c of status.affectedComponents) {
+            html += c.name + ' \u2014 ' + c.status.replace(/_/g, ' ') + '<br>';
+          }
+        }
+        if (status.activeIncident) {
+          html += '<strong>' + status.activeIncident.name + '</strong>';
+          if (status.activeIncident.shortlink) {
+            html += ' <a href="' + status.activeIncident.shortlink + '">\u2197</a>';
+          }
+        }
+        detailsEl.innerHTML = html;
+      }
+
+      /**
+       * Updates the OpenAI provider status display.
+       */
+      function updateOpenAIStatus(status) {
+        const sectionEl = document.getElementById('openai-status-section');
+        const indicatorEl = document.getElementById('openai-status-indicator');
+        const detailsEl = document.getElementById('openai-status-details');
+        if (!sectionEl || !indicatorEl || !detailsEl) return;
+
+        sectionEl.classList.remove('status-minor', 'status-major', 'status-critical');
+
+        if (!status || status.indicator === 'none') {
+          sectionEl.classList.remove('visible');
+          return;
+        }
+
+        sectionEl.classList.add('visible', 'status-' + status.indicator);
+
+        const dot = '\u25cf';
+        const color = status.indicator === 'minor'
+          ? 'var(--vscode-charts-yellow)'
+          : 'var(--vscode-errorForeground)';
+        indicatorEl.innerHTML = '<span style="color: ' + color + '">' + dot + '</span> OpenAI: ' +
+          (status.description || status.indicator.charAt(0).toUpperCase() + status.indicator.slice(1));
+
         let html = '';
         if (status.affectedComponents && status.affectedComponents.length > 0) {
           for (const c of status.affectedComponents) {
@@ -7862,6 +7920,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           case 'updateProviderStatus':
             updateProviderStatus(message.status);
+            break;
+
+          case 'updateOpenAIStatus':
+            updateOpenAIStatus(message.status);
             break;
 
           case 'updateLatency':

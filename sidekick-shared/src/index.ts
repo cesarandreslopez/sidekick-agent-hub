@@ -296,5 +296,5 @@ export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
 
 // Provider Status
-export { fetchProviderStatus } from './providerStatus';
+export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';
 export type { ProviderStatusState } from './providerStatus';

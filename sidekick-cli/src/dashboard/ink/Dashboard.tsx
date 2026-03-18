@@ -971,6 +971,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
           totalCount={panel.getItems(metrics, staticData).length}
           updateInfo={metrics.updateInfo}
           providerStatus={metrics.providerStatus}
+          openaiStatus={metrics.openaiStatus}
         />
 
         {/* Inline overlays (render on top of content) */}

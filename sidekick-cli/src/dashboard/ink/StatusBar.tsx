@@ -24,6 +24,7 @@ interface StatusBarProps {
   totalCount?: number;
   updateInfo?: UpdateInfo | null;
   providerStatus?: ProviderStatusState | null;
+  openaiStatus?: ProviderStatusState | null;
 }
 
 export function StatusBar({
@@ -38,6 +39,7 @@ export function StatusBar({
   totalCount,
   updateInfo,
   providerStatus,
+  openaiStatus,
 }: StatusBarProps): React.ReactElement {
   const evtLabel = eventCount > 0 ? `${eventCount} events` : 'waiting...';
 
@@ -52,6 +54,9 @@ export function StatusBar({
 
   const statusIndicator = providerStatus && providerStatus.indicator !== 'none';
   const statusColor = providerStatus?.indicator === 'minor' ? 'yellow' : 'red';
+
+  const openaiIndicator = openaiStatus && openaiStatus.indicator !== 'none';
+  const openaiColor = openaiStatus?.indicator === 'minor' ? 'yellow' : 'red';
 
   return (
     <Box height={1} width="100%">
@@ -75,7 +80,10 @@ export function StatusBar({
         <Text dimColor> {'\u2502'} </Text>
         <Text>{evtLabel}</Text>
         {statusIndicator && (
-          <><Text dimColor> {'\u2502'} </Text><Text color={statusColor}>{'\u25cf'} API {providerStatus!.indicator}</Text></>
+          <><Text dimColor> {'\u2502'} </Text><Text color={statusColor}>{'\u25cf'} Claude {providerStatus!.indicator}</Text></>
+        )}
+        {openaiIndicator && (
+          <><Text dimColor> {'\u2502'} </Text><Text color={openaiColor}>{'\u25cf'} OpenAI {openaiStatus!.indicator}</Text></>
         )}
         {filterString && (
           <Text color="yellow">  filter: "{filterString}" ({matchCount ?? 0}/{totalCount ?? 0})</Text>

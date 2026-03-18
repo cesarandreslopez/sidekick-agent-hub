@@ -1,8 +1,8 @@
 /**
- * Stateless provider status fetcher for Claude API health.
+ * Stateless provider status fetchers for Atlassian Statuspage APIs.
  *
- * Calls the Atlassian Statuspage API at status.claude.com and returns
- * current status information. Polling / eventing is the caller's responsibility.
+ * Supports both status.claude.com and status.openai.com (same API format).
+ * Polling / eventing is the caller's responsibility.
  */
 
 export interface ProviderStatusState {
@@ -36,8 +36,8 @@ interface SummaryResponse {
   incidents?: SummaryIncident[];
 }
 
-const STATUS_URL = 'https://status.claude.com/api/v2/status.json';
-const SUMMARY_URL = 'https://status.claude.com/api/v2/summary.json';
+const CLAUDE_BASE = 'https://status.claude.com';
+const OPENAI_BASE = 'https://status.openai.com';
 
 function fallbackState(): ProviderStatusState {
   return {
@@ -50,16 +50,11 @@ function fallbackState(): ProviderStatusState {
 }
 
 /**
- * Fetch current Claude API status from status.claude.com.
- *
- * This is a **single-shot** function — it does not poll. The caller wraps
- * it in a polling loop, VS Code EventEmitter, or CLI interval as needed.
- *
- * @returns ProviderStatusState with indicator, affected components, and active incident
+ * Generic fetcher for any Atlassian Statuspage-compatible endpoint.
  */
-export async function fetchProviderStatus(): Promise<ProviderStatusState> {
+async function fetchStatusPage(baseUrl: string): Promise<ProviderStatusState> {
   try {
-    const statusRes = await fetch(STATUS_URL);
+    const statusRes = await fetch(`${baseUrl}/api/v2/status.json`);
     if (!statusRes.ok) return fallbackState();
 
     const statusData: StatusResponse = await statusRes.json();
@@ -73,7 +68,7 @@ export async function fetchProviderStatus(): Promise<ProviderStatusState> {
     }
 
     // Degraded — fetch summary for components + incidents
-    const summaryRes = await fetch(SUMMARY_URL);
+    const summaryRes = await fetch(`${baseUrl}/api/v2/summary.json`);
     if (!summaryRes.ok) {
       return { indicator, description, affectedComponents: [], activeIncident: null, updatedAt };
     }
@@ -102,4 +97,22 @@ export async function fetchProviderStatus(): Promise<ProviderStatusState> {
   } catch {
     return fallbackState();
   }
+}
+
+/**
+ * Fetch current Claude API status from status.claude.com.
+ *
+ * Single-shot — caller wraps in polling loop, EventEmitter, or interval.
+ */
+export async function fetchProviderStatus(): Promise<ProviderStatusState> {
+  return fetchStatusPage(CLAUDE_BASE);
+}
+
+/**
+ * Fetch current OpenAI API status from status.openai.com.
+ *
+ * Single-shot — caller wraps in polling loop, EventEmitter, or interval.
+ */
+export async function fetchOpenAIStatus(): Promise<ProviderStatusState> {
+  return fetchStatusPage(OPENAI_BASE);
 }

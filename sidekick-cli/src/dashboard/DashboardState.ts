@@ -150,6 +150,7 @@ export interface DashboardMetrics {
   compactionEvents: CompactionEvent[];
   quota: QuotaState | null;
   providerStatus: ProviderStatusState | null;
+  openaiStatus: ProviderStatusState | null;
   eventCount: number;
   sessionStartTime?: string;
   currentModel?: string;
@@ -219,8 +220,9 @@ export class DashboardState {
   // Quota (external state from OAuth API or Codex rate limits)
   private _quota: QuotaState | null = null;
 
-  // Provider status (external state from status.claude.com)
+  // Provider status (external state from status.claude.com / status.openai.com)
   private _providerStatus: ProviderStatusState | null = null;
+  private _openaiStatus: ProviderStatusState | null = null;
 
   // Update availability (external state)
   private _updateInfo: UpdateInfo | null = null;
@@ -250,6 +252,7 @@ export class DashboardState {
     this._providerName = undefined;
     this._quota = null;
     this._providerStatus = null;
+    this._openaiStatus = null;
     this._updateInfo = null;
     this._sessionId = undefined;
     this._lastKnownCompactionCount = 0;
@@ -449,9 +452,14 @@ export class DashboardState {
     this._quota = quota;
   }
 
-  /** Update provider status from status.claude.com polling. */
+  /** Update Claude provider status from status.claude.com polling. */
   setProviderStatus(status: ProviderStatusState): void {
     this._providerStatus = status;
+  }
+
+  /** Update OpenAI provider status from status.openai.com polling. */
+  setOpenAIStatus(status: ProviderStatusState): void {
+    this._openaiStatus = status;
   }
 
   /** Set update availability info from UpdateCheckService. */
@@ -580,6 +588,7 @@ export class DashboardState {
       compactionEvents,
       quota: this._quota,
       providerStatus: this._providerStatus,
+      openaiStatus: this._openaiStatus,
       eventCount: m.eventCount,
       sessionStartTime: m.sessionStartTime ?? undefined,
       currentModel: m.currentModel ?? undefined,

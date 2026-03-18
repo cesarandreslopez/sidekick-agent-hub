@@ -350,6 +350,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     state.setProviderStatus(status);
     scheduleRender();
   });
+  providerStatusService.onOpenAIUpdate((status) => {
+    state.setOpenAIStatus(status);
+    scheduleRender();
+  });
 
   // Cleanup handler
   let stopped = false;

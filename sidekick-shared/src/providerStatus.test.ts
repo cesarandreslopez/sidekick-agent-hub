@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchProviderStatus } from './providerStatus';
+import { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';
 
 describe('fetchProviderStatus', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
@@ -132,5 +132,89 @@ describe('fetchProviderStatus', () => {
     expect(result.description).toBe('Minor issue');
     expect(result.affectedComponents).toEqual([]);
     expect(result.activeIncident).toBeNull();
+  });
+});
+
+describe('fetchOpenAIStatus', () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('hits status.openai.com endpoints', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: { indicator: 'none', description: 'All Systems Operational' },
+        page: { updated_at: '2026-03-10T12:00:00Z' },
+      }),
+    });
+
+    const result = await fetchOpenAIStatus();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith('https://status.openai.com/api/v2/status.json');
+    expect(result.indicator).toBe('none');
+  });
+
+  it('fetches summary from status.openai.com when degraded', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: { indicator: 'major', description: 'Elevated Error Rates' },
+        page: { updated_at: '2026-03-10T14:00:00Z' },
+      }),
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        components: [
+          { name: 'ChatGPT', status: 'major_outage' },
+          { name: 'API', status: 'operational' },
+        ],
+        incidents: [
+          {
+            name: 'ChatGPT Outage',
+            impact: 'major',
+            shortlink: 'https://stspg.io/oai123',
+            updated_at: '2026-03-10T13:45:00Z',
+            status: 'investigating',
+          },
+        ],
+      }),
+    });
+
+    const result = await fetchOpenAIStatus();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(1, 'https://status.openai.com/api/v2/status.json');
+    expect(mockFetch).toHaveBeenNthCalledWith(2, 'https://status.openai.com/api/v2/summary.json');
+    expect(result).toEqual({
+      indicator: 'major',
+      description: 'Elevated Error Rates',
+      affectedComponents: [{ name: 'ChatGPT', status: 'major_outage' }],
+      activeIncident: {
+        name: 'ChatGPT Outage',
+        impact: 'major',
+        shortlink: 'https://stspg.io/oai123',
+        updatedAt: '2026-03-10T13:45:00Z',
+      },
+      updatedAt: '2026-03-10T14:00:00Z',
+    });
+  });
+
+  it('returns graceful fallback on fetch failure', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+    const result = await fetchOpenAIStatus();
+
+    expect(result.indicator).toBe('none');
+    expect(result.description).toBe('Status unavailable');
   });
 });
