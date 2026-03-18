@@ -238,7 +238,7 @@ sidekick stats --json
 sidekick status
 ```
 
-Check Claude API health from status.claude.com. Shows indicator with color coding (green = operational, yellow = minor, red = major/critical), affected components, and active incident details with shortlink.
+Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicator with color coding (green = operational, yellow = minor, red = major/critical), affected components, and active incident details with shortlink.
 
 No command-specific flags. Use `--json` for machine-readable output.
 

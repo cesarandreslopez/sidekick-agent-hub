@@ -41,8 +41,11 @@ export function formatTimeUntil(isoString: string): string {
 
 export async function quotaAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
+  const localOpts = cmd.opts();
   const jsonOutput: boolean = !!globalOpts.json;
-  const provider = resolveProvider(globalOpts);
+  // Local --provider overrides the global one
+  const providerOpts = localOpts.provider ? { provider: localOpts.provider } : globalOpts;
+  const provider = resolveProvider(providerOpts);
 
   if (provider.id === 'opencode') {
     provider.dispose();

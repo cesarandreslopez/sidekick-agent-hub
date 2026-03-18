@@ -28,8 +28,8 @@ npm install sidekick-shared
 | **Aggregation** | Event aggregation, frequency tracking, activity heatmaps, pattern extraction |
 | **Report** | Self-contained HTML session report generation |
 | **Credentials** | Claude Max OAuth credential reading from `~/.claude/.credentials.json` |
-| **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) |
-| **Provider Status** | Claude API health checking via status.claude.com (indicator, components, incidents) |
+| **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
+| **Provider Status** | API health checking via status.claude.com and status.openai.com (indicator, components, incidents) |
 
 ## Usage Examples
 

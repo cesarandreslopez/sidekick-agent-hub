@@ -132,9 +132,10 @@ const statsCmd = new Command('stats')
   });
 program.addCommand(statsCmd);
 
-// Quota command — one-shot subscription quota check
+// Quota command — one-shot quota / rate-limit check
 const quotaCmd = new Command('quota')
-  .description('Show subscription quota utilization (Claude Max / Claude Code)')
+  .description('Show quota or rate-limit utilization (auto-detects provider)')
+  .option('--provider <id>', 'Provider: claude-code, codex, auto (default: auto)')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaAction } = await import('./commands/quota');
     return quotaAction(_opts, cmd);
@@ -143,7 +144,7 @@ program.addCommand(quotaCmd);
 
 // Status command — one-shot Claude API status check
 const statusCmd = new Command('status')
-  .description('Show Claude API status (from status.claude.com)')
+  .description('Show API status (Claude and OpenAI)')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { statusAction } = await import('./commands/status');
     return statusAction(_opts, cmd);

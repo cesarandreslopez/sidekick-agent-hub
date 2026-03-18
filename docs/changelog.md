@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-03-18
+
+### Fixed
+
+- **CLI help descriptions**: Updated `quota` and `status` command descriptions to reflect provider-aware behavior
+- **`sidekick quota --provider`**: Added local `--provider` option so `sidekick quota --provider codex` works without requiring the flag before the subcommand
+
 ## [0.15.0] - 2026-03-18
 
 ### Added
