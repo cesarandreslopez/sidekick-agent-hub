@@ -1,10 +1,12 @@
 /**
- * `sidekick quota` — Show subscription quota utilization (one-shot).
+ * `sidekick quota` — Show subscription quota / rate-limit utilization (one-shot).
  */
 
 import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
-import { describeQuotaFailure, getActiveAccount } from 'sidekick-shared';
+import { describeQuotaFailure, getActiveAccount, createWatcher, CodexProvider } from 'sidekick-shared';
+import type { FollowEvent } from 'sidekick-shared';
+import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
 
 export function getUtilizationColor(percent: number): ChalkInstance {
@@ -40,7 +42,30 @@ export function formatTimeUntil(isoString: string): string {
 export async function quotaAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
   const jsonOutput: boolean = !!globalOpts.json;
+  const provider = resolveProvider(globalOpts);
 
+  if (provider.id === 'opencode') {
+    provider.dispose();
+    const msg = 'OpenCode does not provide rate-limit data.';
+    if (jsonOutput) {
+      process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
+    } else {
+      process.stderr.write(chalk.yellow(msg) + '\n');
+    }
+    return;
+  }
+
+  if (provider.id === 'codex') {
+    await codexQuotaAction(provider as CodexProvider, globalOpts, jsonOutput);
+    return;
+  }
+
+  // claude-code: existing OAuth quota flow
+  provider.dispose();
+  await claudeQuotaAction(jsonOutput);
+}
+
+async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   const service = new QuotaService();
   const quota = await service.fetchOnce();
 
@@ -106,4 +131,99 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
   process.stdout.write(`  ${chalk.dim('5-Hour')}   ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%${fiveProj}   ${chalk.dim('resets ' + fiveReset)}\n`);
   process.stdout.write(`  ${chalk.dim('7-Day')}    ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%${sevenProj}   ${chalk.dim('resets ' + sevenReset)}\n`);
+}
+
+async function codexQuotaAction(provider: CodexProvider, globalOpts: Record<string, unknown>, jsonOutput: boolean): Promise<void> {
+  const workspacePath = (globalOpts.project as string) || process.cwd();
+
+  // Find the most recent Codex session and replay it to extract rate limits
+  const sessions = provider.findAllSessions(workspacePath);
+  if (sessions.length === 0) {
+    provider.dispose();
+    const msg = 'No active Codex session. Rate limits are available only during active sessions.';
+    if (jsonOutput) {
+      process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
+    } else {
+      process.stderr.write(chalk.yellow(msg) + '\n');
+    }
+    return;
+  }
+
+  // Replay the latest session to capture rate limit data from events.
+  // Use a wrapper object so TypeScript doesn't narrow the closure-mutated value.
+  const captured: { rl: FollowEvent['rateLimits'] } = { rl: undefined };
+  try {
+    const result = createWatcher({
+      provider,
+      workspacePath,
+      callbacks: {
+        onEvent: (event: FollowEvent) => {
+          if (event.rateLimits) {
+            captured.rl = event.rateLimits;
+          }
+        },
+        onError: () => {},
+      },
+    });
+    result.watcher.start(true); // replay
+    result.watcher.stop();
+  } catch {
+    // ignore watcher errors
+  }
+  provider.dispose();
+
+  const rateLimits = captured.rl;
+  if (!rateLimits) {
+    const msg = 'No rate-limit data found in latest Codex session.';
+    if (jsonOutput) {
+      process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
+    } else {
+      process.stderr.write(chalk.yellow(msg) + '\n');
+    }
+    return;
+  }
+
+  const primary = rateLimits.primary;
+  const secondary = rateLimits.secondary;
+
+  if (!primary && !secondary) {
+    const msg = 'No rate-limit data found in latest Codex session.';
+    if (jsonOutput) {
+      process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
+    } else {
+      process.stderr.write(chalk.yellow(msg) + '\n');
+    }
+    return;
+  }
+
+  // Convert to QuotaState-like structure for display
+  const quota = {
+    fiveHour: primary
+      ? { utilization: primary.usedPercent, resetsAt: new Date(primary.resetsAt * 1000).toISOString() }
+      : { utilization: 0, resetsAt: '' },
+    sevenDay: secondary
+      ? { utilization: secondary.usedPercent, resetsAt: new Date(secondary.resetsAt * 1000).toISOString() }
+      : { utilization: 0, resetsAt: '' },
+    available: true,
+  };
+
+  if (jsonOutput) {
+    process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
+    return;
+  }
+
+  const barWidth = 30;
+  const fivePct = Math.round(quota.fiveHour.utilization);
+  const sevenPct = Math.round(quota.sevenDay.utilization);
+  const fiveReset = quota.fiveHour.resetsAt ? formatTimeUntil(quota.fiveHour.resetsAt) : '';
+  const sevenReset = quota.sevenDay.resetsAt ? formatTimeUntil(quota.sevenDay.resetsAt) : '';
+
+  process.stdout.write(chalk.bold('Rate Limits\n'));
+  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
+  if (primary) {
+    process.stdout.write(`  ${chalk.dim('Primary')}  ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%   ${fiveReset ? chalk.dim('resets ' + fiveReset) : ''}\n`);
+  }
+  if (secondary) {
+    process.stdout.write(`  ${chalk.dim('Secondary')} ${makeChalkBar(sevenPct, barWidth - 1)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
+  }
 }

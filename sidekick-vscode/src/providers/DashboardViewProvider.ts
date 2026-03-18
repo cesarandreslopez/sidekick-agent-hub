@@ -1582,7 +1582,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     quotaFailure?: QuotaFailureDisplay
   ): void {
     const providerId = this._sessionMonitor.getProvider().id;
-    if (providerId !== 'claude-code' || quota.available || !quotaFailure) {
+    const supportsQuotaAlerts = providerId === 'claude-code' || providerId === 'codex';
+    if (!supportsQuotaAlerts || quota.available || !quotaFailure) {
       this._lastQuotaAlertKey = null;
       return;
     }
@@ -6380,6 +6381,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           return;
         }
 
+        // Provider-aware section title and tooltip
+        const titleEl = sectionEl.querySelector('.section-title');
+        if (titleEl) {
+          titleEl.textContent = currentProviderId === 'codex' ? 'Rate Limits' : 'Subscription Quota';
+        }
+        sectionEl.title = currentProviderId === 'codex'
+          ? 'Codex CLI rate limits'
+          : 'Claude Max subscription usage limits';
+
         if (!quota) {
           sectionEl.classList.remove('visible');
           contentEl.style.display = 'none';
@@ -7181,7 +7191,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         // Restore for non-OpenCode providers
-        if (quotaBtn) quotaBtn.textContent = 'Quota';
+        if (quotaBtn) quotaBtn.textContent = currentProviderId === 'codex' ? 'Limits' : 'Quota';
 
         if (currentQuota) {
           updateQuota(currentQuota, currentQuotaFailure);

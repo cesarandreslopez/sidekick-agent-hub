@@ -440,7 +440,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   }
 
   // Start quota polling + provider status polling + update check
-  quotaService.start();
+  // Only poll Claude OAuth quota for claude-code; Codex quota arrives via event stream
+  if (activeProvider.id === 'claude-code') {
+    quotaService.start();
+  }
   providerStatusService.start();
   updateCheckService.check();
 

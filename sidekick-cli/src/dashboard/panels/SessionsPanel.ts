@@ -350,9 +350,10 @@ export class SessionsPanel implements SidePanel {
       }
 
       // ── Quota section
+      const quotaLabel = m.providerId === 'codex' ? 'Rate Limits' : 'Quota';
       if (m.quota?.available) {
         const q = m.quota;
-        lines.push('', sectionHeader('Quota', w));
+        lines.push('', sectionHeader(quotaLabel, w));
         const fiveColor = getUtilizationColor(q.fiveHour.utilization);
         const fiveBar = makeColorBar(q.fiveHour.utilization, 18, fiveColor);
         const fiveProj = q.projectedFiveHour != null
@@ -365,11 +366,11 @@ export class SessionsPanel implements SidePanel {
           ? (() => { const pc = getUtilizationColor(q.projectedSevenDay!); return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedSevenDay!.toFixed(0)}%{/${pc}-fg}`; })()
           : '';
         lines.push(`  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}${sevenProj}`);
-      } else if (m.providerId === 'claude-code' && m.quota) {
+      } else if ((m.providerId === 'claude-code' || m.providerId === 'codex') && m.quota) {
         const descriptor = describeQuotaFailure(m.quota);
         if (descriptor) {
           const severityColor = descriptor.severity === 'warning' ? 'yellow' : descriptor.severity === 'info' ? 'cyan' : 'red';
-          lines.push('', sectionHeader('Quota', w));
+          lines.push('', sectionHeader(quotaLabel, w));
           lines.push(`  {${severityColor}-fg}${descriptor.title}{/${severityColor}-fg}`);
           const failureText = [descriptor.message, descriptor.detail].filter(Boolean).join(' ');
           const quotaTextWidth = Math.max(20, detailWidth() - 4);

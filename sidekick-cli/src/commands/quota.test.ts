@@ -127,6 +127,10 @@ vi.mock('sidekick-shared', () => ({
   },
 }));
 
+vi.mock('../cli', () => ({
+  resolveProvider: () => ({ id: 'claude-code', dispose: () => {} }),
+}));
+
 vi.mock('../dashboard/QuotaService', () => ({
   QuotaService: vi.fn().mockImplementation(function () {
     return { fetchOnce: mockFetchOnce };
