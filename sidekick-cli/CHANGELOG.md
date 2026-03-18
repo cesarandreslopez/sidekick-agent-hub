@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-03-18
+
+### Added
+
+- **OpenAI status page monitoring**: CLI dashboard now shows OpenAI API status alongside Claude API status
+- **Codex rate limits in dashboard**: Sessions panel displays Codex rate-limit data with "Rate Limits" header instead of "Quota"
+- **Provider-aware `sidekick quota` command**: Detects active provider and shows Codex rate limits, Claude subscription quota, or an informational message for OpenCode
+
+### Fixed
+
+- **QuotaService polling for Codex**: Dashboard no longer starts Claude OAuth quota polling when the active provider is Codex
+
 ## [0.14.2] - 2026-03-16
 
 ### Fixed

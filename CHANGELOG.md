@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-03-18
+
+### Added
+
+- **OpenAI status page monitoring**: The CLI dashboard and VS Code extension now poll OpenAI's status page alongside Claude's, showing incidents and degraded components for Codex users
+- **Codex rate limits as first-class quota**: Codex CLI rate-limit data (from token_count event streams) now displays in the VS Code dashboard quota section, CLI Sessions panel, and `sidekick quota` command — with provider-aware labels ("Rate Limits" vs "Subscription Quota") throughout
+
+### Fixed
+
+- **QuotaService polling for non-Claude providers**: `QuotaService.start()` no longer runs for Codex sessions, preventing failed OAuth calls from overwriting valid rate-limit data
+
 ## [0.14.2] - 2026-03-16
 
 ### Fixed

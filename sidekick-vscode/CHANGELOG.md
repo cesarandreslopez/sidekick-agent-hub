@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-03-18
+
+### Added
+
+- **OpenAI status page monitoring**: Dashboard now shows OpenAI API status for Codex users alongside Claude API status
+- **Codex rate limits in dashboard**: Quota section displays Codex rate-limit data with provider-aware labels ("Rate Limits" / "Limits" button) and supports quota alerts for Codex
+
 ## [0.14.2] - 2026-03-16
 
 ### Fixed
