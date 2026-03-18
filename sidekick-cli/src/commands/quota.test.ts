@@ -144,6 +144,7 @@ describe('quotaAction', () => {
 
   const makeCmd = (json = false) => ({
     parent: { opts: () => ({ json }) },
+    opts: () => ({}),
   }) as unknown as import('commander').Command;
 
   beforeEach(() => {
