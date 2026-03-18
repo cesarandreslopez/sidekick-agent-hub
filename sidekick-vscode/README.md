@@ -96,7 +96,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
-- **Provider Status** — live Claude API health indicator from status.claude.com, shown when degraded
+- **Provider Status** — live API health indicator from status.claude.com and status.openai.com, shown when degraded
 
 ### Session Intelligence
 

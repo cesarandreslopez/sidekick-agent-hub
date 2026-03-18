@@ -260,20 +260,27 @@ The dashboard also monitors status automatically — the status bar shows a colo
 sidekick quota
 ```
 
-Check Claude Max / Claude Code subscription quota utilization. Shows 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
+Provider-aware quota and rate-limit display. The command detects the active provider and shows the appropriate data:
 
-When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel now keeps a compact inline Claude Code quota state visible even when quota is unavailable, and quota failure toasts only appear when the failure state changes.
+- **Claude Code**: Shows Claude Max subscription quota utilization — 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
+- **Codex**: Shows rate limits extracted from the latest Codex session's token_count events — primary and secondary windows with progress bars and reset countdowns. Requires an active or recent Codex session.
+- **OpenCode**: Prints an informational message — OpenCode does not provide rate-limit data.
+
+When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel keeps a compact inline quota/rate-limit state visible even when data is unavailable, and quota failure toasts only appear when the failure state changes.
 
 No command-specific flags. Use `--json` for machine-readable output.
 
 #### Examples
 
 ```bash
-# Check current quota utilization
+# Check current quota utilization (auto-detects provider)
 sidekick quota
 
 # Get raw quota data as JSON
 sidekick quota --json
+
+# Explicitly check Codex rate limits
+sidekick --provider codex quota
 ```
 
 ### Account

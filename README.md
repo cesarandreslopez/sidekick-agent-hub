@@ -59,8 +59,8 @@ Standalone commands jump directly to a specific panel or run one-shot queries:
 sidekick tasks                                      # open tasks panel
 sidekick search "migration"                         # cross-session search
 sidekick stats                                      # session statistics
-sidekick quota                                      # subscription quota check
-sidekick status                                     # Claude API status check
+sidekick quota                                      # quota / rate-limit check
+sidekick status                                     # API status check (Claude + OpenAI)
 sidekick dump --format markdown > session-report.md
 sidekick report                                     # HTML report → browser
 ```

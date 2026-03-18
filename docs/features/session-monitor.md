@@ -93,24 +93,23 @@ When a cycle is detected, a VS Code notification fires with the affected files s
 
 ## Provider Status
 
-The dashboard monitors Claude API health via status.claude.com. When the API is degraded or experiencing an outage, a banner appears in the gauge row showing:
+The dashboard monitors API health for both Claude (status.claude.com) and OpenAI (status.openai.com). When either API is degraded or experiencing an outage, a banner appears in the gauge row showing:
 
 - Color-coded indicator (yellow for minor, red for major/critical)
 - Affected components and their status
 - Active incident name with link to the status page
 
-The banner is hidden when all systems are operational. Polls every 60 seconds, pausing when the dashboard is not visible. Also available as a standalone CLI command: `sidekick status`.
+The relevant status page is shown based on the active provider — Claude status for Claude Code and OpenCode, OpenAI status for Codex. The banner is hidden when all systems are operational. Polls every 60 seconds, pausing when the dashboard is not visible. Also available as a standalone CLI command: `sidekick status`.
 
-## Subscription Quota Display
+## Quota & Rate Limits Display
 
-For Claude Max users, the dashboard shows 5-hour and 7-day quota utilization with:
+The dashboard shows quota or rate-limit data depending on the active provider:
 
-- Color-coded gauges (green/orange/red)
-- Elapsed-time projections showing expected end-of-window utilization (e.g., `40% → 100%`)
-- Countdown timers showing reset times
-- Auto-refresh every 5 minutes
+- **Claude Max** ("Subscription Quota"): 5-hour and 7-day utilization from the Anthropic OAuth usage API, with color-coded gauges, elapsed-time projections (e.g., `40% → 100%`), countdown timers, and auto-refresh every 5 minutes.
+- **Codex** ("Rate Limits"): Primary and secondary rate-limit windows extracted from token_count events in the Codex event stream. Data arrives automatically during active sessions — no separate polling needed.
+- **OpenCode**: No quota display — OpenCode does not provide rate-limit data.
 
-When quota cannot be fetched, the dashboard keeps the quota section visible and shows a structured unavailable state for missing credentials, expired sign-in, rate limits, network/server failures, or unexpected API responses. New Claude Code quota failure transitions also appear as lightweight dashboard toasts and are recorded in notification history, without triggering native VS Code popup notifications.
+When quota cannot be fetched, the dashboard keeps the section visible and shows a structured unavailable state for missing credentials, expired sign-in, rate limits, network/server failures, or unexpected API responses. Quota failure transitions appear as lightweight dashboard toasts and are recorded in notification history, without triggering native VS Code popup notifications.
 
 ## Project Timeline
 

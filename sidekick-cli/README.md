@@ -93,15 +93,19 @@ You can also press `r` in the TUI dashboard to generate a report for the current
 sidekick status
 ```
 
-Check Claude API health from status.claude.com. Shows indicator with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. The dashboard also shows a status indicator in the status bar and Sessions Summary tab when the API is degraded.
+Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicators with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. The dashboard also shows a status indicator in the status bar and Sessions Summary tab when the API is degraded.
 
-## Subscription Quota
+## Quota & Rate Limits
 
 ```bash
 sidekick quota
 ```
 
-Check Claude Max / Claude Code subscription quota utilization. Shows 5-hour and 7-day windows with color-coded progress bars and reset countdowns.
+Provider-aware quota and rate-limit display. The command auto-detects the active provider:
+
+- **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns.
+- **Codex**: Shows rate limits from the latest session's event stream — primary and secondary windows with progress bars and reset countdowns.
+- **OpenCode**: Prints an informational message (no rate-limit data available).
 
 ```
 Subscription Quota
@@ -110,9 +114,9 @@ Subscription Quota
   7-Day    ██████████████████████░░░░░░░░ 72%   resets in 4d 6h
 ```
 
-When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota state for Claude Code instead of hiding quota entirely.
+When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota/rate-limit state visible instead of hiding the section entirely.
 
-Use `--json` for machine-readable output. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
+Use `--json` for machine-readable output. Use `--provider codex` to explicitly check Codex rate limits. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
 
 When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
 
