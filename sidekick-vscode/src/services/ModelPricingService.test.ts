@@ -100,13 +100,13 @@ describe('ModelPricingService', () => {
     });
 
     it('falls back to latest family version for unknown version', () => {
-      // Unknown version 5.0, should fall back to opus-4.5
+      // Unknown version 5.0, should fall back to latest opus entry (opus-4.6)
       const pricing = ModelPricingService.getPricing('claude-opus-5.0-20270101');
       expect(pricing).toEqual({
-        inputCostPerMillion: 5.0,
-        outputCostPerMillion: 25.0,
-        cacheWriteCostPerMillion: 6.25,
-        cacheReadCostPerMillion: 0.5,
+        inputCostPerMillion: 15.0,
+        outputCostPerMillion: 75.0,
+        cacheWriteCostPerMillion: 18.75,
+        cacheReadCostPerMillion: 1.5,
       });
     });
 

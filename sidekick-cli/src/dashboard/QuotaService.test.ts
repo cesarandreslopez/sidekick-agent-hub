@@ -5,10 +5,14 @@ const { mockReadClaudeMaxCredentials, mockFetchQuota } = vi.hoisted(() => ({
   mockFetchQuota: vi.fn(),
 }));
 
-vi.mock('sidekick-shared', () => ({
-  readClaudeMaxCredentials: (...args: unknown[]) => mockReadClaudeMaxCredentials(...args),
-  fetchQuota: (...args: unknown[]) => mockFetchQuota(...args),
-}));
+vi.mock('sidekick-shared', async () => {
+  const actual = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
+  return {
+    ...actual,
+    readClaudeMaxCredentials: (...args: unknown[]) => mockReadClaudeMaxCredentials(...args),
+    fetchQuota: (...args: unknown[]) => mockFetchQuota(...args),
+  };
+});
 
 import { QuotaService } from './QuotaService';
 
@@ -30,91 +34,31 @@ describe('QuotaService', () => {
     });
   });
 
-  it('keeps cached quota on retryable failures', async () => {
+  it('fetchOnce returns quota from API', async () => {
     mockReadClaudeMaxCredentials.mockResolvedValue({ accessToken: 'token' });
-    mockFetchQuota
-      .mockResolvedValueOnce({
-        fiveHour: { utilization: 10, resetsAt: '2026-03-12T14:00:00Z' },
-        sevenDay: { utilization: 20, resetsAt: '2026-03-13T12:00:00Z' },
-        available: true,
-      })
-      .mockResolvedValueOnce({
-        fiveHour: { utilization: 0, resetsAt: '' },
-        sevenDay: { utilization: 0, resetsAt: '' },
-        available: false,
-        error: 'Network error',
-        failureKind: 'network',
-      });
-
-    const service = new QuotaService();
-    const updates: unknown[] = [];
-    service.onUpdate((quota) => updates.push(quota));
-
-    await service.fetchQuota();
-    await service.fetchQuota();
-
-    expect(updates).toHaveLength(1);
-    expect(service.getCached()).toMatchObject({
+    mockFetchQuota.mockResolvedValue({
+      fiveHour: { utilization: 5, resetsAt: '2026-03-12T14:00:00Z' },
+      sevenDay: { utilization: 8, resetsAt: '2026-03-13T12:00:00Z' },
       available: true,
-      fiveHour: { utilization: 10, resetsAt: '2026-03-12T14:00:00Z' },
     });
-  });
-
-  it('replaces cached quota on auth failures', async () => {
-    mockReadClaudeMaxCredentials.mockResolvedValue({ accessToken: 'token' });
-    mockFetchQuota
-      .mockResolvedValueOnce({
-        fiveHour: { utilization: 10, resetsAt: '2026-03-12T14:00:00Z' },
-        sevenDay: { utilization: 20, resetsAt: '2026-03-13T12:00:00Z' },
-        available: true,
-      })
-      .mockResolvedValueOnce({
-        fiveHour: { utilization: 0, resetsAt: '' },
-        sevenDay: { utilization: 0, resetsAt: '' },
-        available: false,
-        error: 'Sign in to Claude Code to view quota',
-        failureKind: 'auth',
-        httpStatus: 401,
-      });
 
     const service = new QuotaService();
+    const result = await service.fetchOnce();
 
-    await service.fetchQuota();
-    await service.fetchQuota();
-
-    expect(service.getCached()).toMatchObject({
-      available: false,
-      failureKind: 'auth',
-      httpStatus: 401,
-    });
+    expect(result).toMatchObject({ available: true, fiveHour: { utilization: 5 } });
+    expect(mockFetchQuota).toHaveBeenCalledWith('token');
   });
 
-  it('replaces cached quota on unknown failures', async () => {
-    mockReadClaudeMaxCredentials.mockResolvedValue({ accessToken: 'token' });
-    mockFetchQuota
-      .mockResolvedValueOnce({
-        fiveHour: { utilization: 10, resetsAt: '2026-03-12T14:00:00Z' },
-        sevenDay: { utilization: 20, resetsAt: '2026-03-13T12:00:00Z' },
-        available: true,
-      })
-      .mockResolvedValueOnce({
-        fiveHour: { utilization: 0, resetsAt: '' },
-        sevenDay: { utilization: 0, resetsAt: '' },
-        available: false,
-        error: 'API error: 403',
-        failureKind: 'unknown',
-        httpStatus: 403,
-      });
-
+  it('start and stop do not throw', () => {
     const service = new QuotaService();
+    service.start();
+    service.stop();
+    // Double-stop should not throw
+    service.stop();
+  });
 
-    await service.fetchQuota();
-    await service.fetchQuota();
-
-    expect(service.getCached()).toMatchObject({
-      available: false,
-      failureKind: 'unknown',
-      httpStatus: 403,
-    });
+  it('getCached returns null before any poll', () => {
+    const service = new QuotaService();
+    expect(service.getCached()).toBeNull();
   });
 });

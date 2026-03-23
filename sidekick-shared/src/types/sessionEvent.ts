@@ -180,6 +180,12 @@ export interface ToolCall {
 
   /** Error category (permission, not_found, timeout, syntax, exit_code, tool_error, other) */
   errorCategory?: string;
+
+  /** Tool use ID for correlation with tool_result */
+  toolUseId?: string;
+
+  /** Truncated tool output/result content (max 5000 chars) */
+  output?: string;
 }
 
 /**

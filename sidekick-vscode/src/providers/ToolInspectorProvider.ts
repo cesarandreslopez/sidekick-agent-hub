@@ -238,6 +238,23 @@ export class ToolInspectorProvider implements vscode.Disposable {
     .diff-add { color: var(--vscode-gitDecoration-addedResourceForeground, #98c379); }
     .diff-del { color: var(--vscode-gitDecoration-deletedResourceForeground, #e06c75); }
 
+    .tool-output {
+      border-left: 3px solid var(--vscode-charts-green, #98c379);
+    }
+
+    .tool-error-output {
+      border-left: 3px solid var(--vscode-errorForeground, #e06c75);
+      color: var(--vscode-errorForeground, #e06c75);
+    }
+
+    .tool-output-label {
+      color: var(--vscode-charts-green, #98c379);
+    }
+
+    .tool-error-output-label {
+      color: var(--vscode-errorForeground, #e06c75);
+    }
+
     .cmd-line {
       color: var(--vscode-terminal-ansiBrightYellow, #e5c07b);
       font-weight: 500;
@@ -375,7 +392,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     return `<div class="tool-section">
       <div class="tool-section-label">File</div>
       <div class="file-path">${this.escapeHtml(filePath)}${range}</div>
-    </div>`;
+    </div>${this.renderOutputSection(call)}`;
   }
 
   private renderWriteCall(call: ToolCall): string {
@@ -390,7 +407,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     <div class="tool-section">
       <div class="tool-section-label">Content (${content.length} chars)</div>
       <pre class="tool-content">${this.escapeHtml(preview)}${content.length > 1000 ? '\n... (truncated)' : ''}</pre>
-    </div>`;
+    </div>${this.renderOutputSection(call)}`;
   }
 
   private renderEditCall(call: ToolCall): string {
@@ -417,7 +434,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     <div class="tool-section">
       <div class="tool-section-label">Changes</div>
       <pre class="tool-content">${diffLines.join('\n')}</pre>
-    </div>`;
+    </div>${this.renderOutputSection(call)}`;
   }
 
   private renderBashCall(call: ToolCall): string {
@@ -436,6 +453,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
       <pre class="tool-content"><span class="cmd-line">$ ${this.escapeHtml(command)}</span></pre>
     </div>`;
 
+    html += this.renderOutputSection(call);
     return html;
   }
 
@@ -452,7 +470,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     return `<div class="tool-section">
       <div class="tool-section-label">${this.escapeHtml(call.name)} Parameters</div>
       <pre class="tool-content">${parts.join('\n')}</pre>
-    </div>`;
+    </div>${this.renderOutputSection(call)}`;
   }
 
   private renderGenericCall(call: ToolCall): string {
@@ -462,6 +480,21 @@ export class ToolInspectorProvider implements vscode.Disposable {
     return `<div class="tool-section">
       <div class="tool-section-label">Input</div>
       <pre class="tool-content">${this.escapeHtml(preview)}${inputStr.length > 2000 ? '\n... (truncated)' : ''}</pre>
+    </div>${this.renderOutputSection(call)}`;
+  }
+
+  private renderOutputSection(call: ToolCall): string {
+    if (!call.output) return '';
+
+    const preview = call.output.substring(0, 3000);
+    const isError = call.isError;
+    const label = isError ? 'Error Output' : 'Output';
+    const labelClass = isError ? 'tool-section-label tool-error-output-label' : 'tool-section-label tool-output-label';
+    const contentClass = isError ? 'tool-content tool-error-output' : 'tool-content tool-output';
+
+    return `<div class="tool-section">
+      <div class="${labelClass}">${label}</div>
+      <pre class="${contentClass}">${this.escapeHtml(preview)}${call.output.length > 3000 ? '\n... (truncated)' : ''}</pre>
     </div>`;
   }
 

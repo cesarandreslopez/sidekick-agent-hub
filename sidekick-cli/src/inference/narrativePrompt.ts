@@ -7,6 +7,7 @@
 import type { DashboardMetrics } from '../dashboard/DashboardState';
 import type { DiffStat } from '../dashboard/GitDiffCache';
 import { fmtNum } from '../dashboard/formatters';
+import { formatCost } from 'sidekick-shared';
 
 export function buildNarrativePrompt(
   metrics: DashboardMetrics,
@@ -19,7 +20,7 @@ export function buildNarrativePrompt(
 
   const t = metrics.tokens;
   const totalTokens = t.input + t.output + t.cacheRead + t.cacheWrite;
-  const costStr = `$${t.cost.toFixed(4)}`;
+  const costStr = formatCost(t.cost);
 
   // Task summary
   const completed = metrics.tasks.filter(tk => tk.status === 'completed').length;
@@ -63,7 +64,7 @@ export function buildNarrativePrompt(
 
   // Model cost breakdown
   const modelLines = metrics.modelStats.length > 0
-    ? metrics.modelStats.map(m => `  - ${m.model}: $${m.cost.toFixed(4)} (${m.calls} calls, ${fmtNum(m.tokens)} tokens)`).join('\n')
+    ? metrics.modelStats.map(m => `  - ${m.model}: ${formatCost(m.cost)} (${m.calls} calls, ${fmtNum(m.tokens)} tokens)`).join('\n')
     : '  (no model data)';
 
   // Tool stats

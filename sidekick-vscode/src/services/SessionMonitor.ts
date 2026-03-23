@@ -1089,6 +1089,15 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
+   * Gets the session ID for the current session.
+   *
+   * @returns Session ID string or null if no active session
+   */
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  /**
    * Gets subagent statistics from all subagent JSONL files.
    *
    * Scans the subagents directory for the current session and
@@ -2849,7 +2858,8 @@ export class SessionMonitor implements vscode.Disposable {
           rawName: rawToolName,
           providerId: this.provider.id,
           input: toolUse.input,
-          timestamp: new Date(timestamp)
+          timestamp: new Date(timestamp),
+          toolUseId: toolUse.id,
         };
 
         // Associate non-task tool calls with active task (from aggregator)
@@ -3163,12 +3173,26 @@ export class SessionMonitor implements vscode.Disposable {
             : endTime.getTime() - pending.startTime.getTime();
 
           // Update the corresponding ToolCall with result data
+          // Prefer toolUseId match (reliable), fall back to timestamp+name (legacy)
           const toolCall = this.stats.toolCalls.find(
+            tc => tc.toolUseId === toolResult.tool_use_id
+          ) ?? this.stats.toolCalls.find(
             tc => tc.timestamp.getTime() === pending.startTime.getTime() && tc.name === pending.name
           );
           if (toolCall) {
             toolCall.isError = toolResult.is_error ?? false;
             toolCall.duration = duration;
+
+            // Store truncated output for Tool Inspector
+            if (toolResult.content != null) {
+              const outputStr = typeof toolResult.content === 'string'
+                ? toolResult.content
+                : JSON.stringify(toolResult.content, null, 2);
+              toolCall.output = outputStr.length > 5000
+                ? outputStr.substring(0, 5000) + '\n...(truncated)'
+                : outputStr;
+            }
+
             if (toolResult.is_error && toolResult.content) {
               toolCall.errorMessage = this.extractErrorMessage(toolResult.content, pending.name);
               toolCall.errorCategory = this.categorizeError(toolResult.content);

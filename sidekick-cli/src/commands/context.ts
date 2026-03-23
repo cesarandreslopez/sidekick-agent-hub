@@ -10,6 +10,7 @@ import {
   composeContext,
   getProjectSlug,
   getProjectSlugRaw,
+  formatCost,
 } from 'sidekick-shared';
 import type { ContextResult, Fidelity } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -85,7 +86,7 @@ function formatContextText(ctx: ContextResult, slug: string): string {
     const t = ctx.stats.tokens;
     lines.push(`Tokens: ${t.inputTokens.toLocaleString()} in / ${t.outputTokens.toLocaleString()} out`);
     lines.push(`Cache: ${t.cacheReadTokens.toLocaleString()} read / ${t.cacheWriteTokens.toLocaleString()} write`);
-    lines.push(`Cost: $${ctx.stats.cost.toFixed(2)}`);
+    lines.push(`Cost: ${formatCost(ctx.stats.cost)}`);
     lines.push('');
   }
 

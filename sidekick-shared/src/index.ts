@@ -135,7 +135,7 @@ export { CodexProvider } from './providers/codex';
 
 // Parsers — JSONL
 export { JsonlParser, TRUNCATION_PATTERNS } from './parsers/jsonl';
-export type { RawSessionEvent, JsonlParserCallbacks } from './parsers/jsonl';
+export type { RawSessionEvent, JsonlParserCallbacks, JsonlParserOptions } from './parsers/jsonl';
 
 // Parsers — OpenCode
 export {
@@ -291,9 +291,27 @@ export { fetchQuota } from './quota';
 export type { QuotaWindow, QuotaState } from './quota';
 export { describeQuotaFailure } from './quotaPresentation';
 export type { QuotaFailureDescriptor } from './quotaPresentation';
+export { QuotaPoller } from './quotaPoller';
+export type { QuotaPollerOptions } from './quotaPoller';
 
 // Model Context
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+
+// Model Info & Pricing
+export { parseModelId, getModelPricing, getModelInfo, calculateCost, calculateCostWithPricing, formatCost } from './modelInfo';
+export type { ModelPricing, CostTokenUsage, ModelInfo } from './modelInfo';
+
+// Extractors — per-event token usage and tool call extraction
+export { extractTokenUsage } from './extractors/tokenUsage';
+export { extractToolCalls } from './extractors/toolCall';
+
+// Schemas — Zod runtime validation for session events
+export {
+  messageUsageSchema,
+  sessionMessageSchema,
+  sessionEventSchema,
+  permissionModeSchema,
+} from './schemas/sessionEvent';
 
 // Provider Status
 export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';

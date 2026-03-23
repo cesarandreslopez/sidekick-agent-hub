@@ -8,6 +8,7 @@ import type { SidePanel, PanelItem, PanelAction, DetailTab, KeyBinding } from '.
 import type { DashboardMetrics, ContextAttribution } from '../DashboardState';
 import type { StaticData, SessionRecord } from '../StaticDataLoader';
 import { fmtNum, formatDuration, formatElapsed, formatTime, makeColorBar, makeSparkline, sectionHeader, shortenPath, wordWrap, detailWidth, visibleLength, truncate } from '../formatters';
+import { formatCost } from 'sidekick-shared';
 
 function getUtilizationColor(percent: number): string {
   if (percent < 60) return 'green';
@@ -286,7 +287,7 @@ export class SessionsPanel implements SidePanel {
       lines.push(
         '',
         sectionHeader('Tokens', w),
-        `{grey-fg}In{/grey-fg} {bold}${fmtNum(t.input)}{/bold}  {grey-fg}Out{/grey-fg} {bold}${fmtNum(t.output)}{/bold}  ${cacheRate}  {green-fg}$${t.cost.toFixed(4)}{/green-fg}`,
+        `{grey-fg}In{/grey-fg} {bold}${fmtNum(t.input)}{/bold}  {grey-fg}Out{/grey-fg} {bold}${fmtNum(t.output)}{/bold}  ${cacheRate}  {green-fg}${formatCost(t.cost)}{/green-fg}`,
       );
 
       // ── Context section
@@ -345,7 +346,7 @@ export class SessionsPanel implements SidePanel {
         lines.push('', sectionHeader('Model Usage', w));
         for (const ms of m.modelStats) {
           const modelName = ms.model.length > 20 ? ms.model.substring(0, 17) + '...' : ms.model;
-          lines.push(`  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  {green-fg}$${ms.cost.toFixed(4)}{/green-fg}`);
+          lines.push(`  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  {green-fg}${formatCost(ms.cost)}{/green-fg}`);
         }
       }
 
@@ -418,7 +419,7 @@ export class SessionsPanel implements SidePanel {
     const totalTokens = s.inputTokens + s.outputTokens;
     return [
       `{bold}${s.date}{/bold}  {bold}${s.sessionCount}{/bold}{grey-fg} sessions{/grey-fg}  {bold}${s.messageCount}{/bold}{grey-fg} messages{/grey-fg}`,
-      `{grey-fg}Tokens{/grey-fg} {bold}${fmtNum(totalTokens)}{/bold} ({grey-fg}In{/grey-fg} ${fmtNum(s.inputTokens)}  {grey-fg}Out{/grey-fg} ${fmtNum(s.outputTokens)})  {green-fg}$${s.totalCost.toFixed(4)}{/green-fg}`,
+      `{grey-fg}Tokens{/grey-fg} {bold}${fmtNum(totalTokens)}{/bold} ({grey-fg}In{/grey-fg} ${fmtNum(s.inputTokens)}  {grey-fg}Out{/grey-fg} ${fmtNum(s.outputTokens)})  {green-fg}${formatCost(s.totalCost)}{/green-fg}`,
       '',
       sectionHeader('Models', w),
       ...s.modelUsage.map(u => `  ${u.model}: {bold}${u.calls}{/bold} calls`),
@@ -448,7 +449,7 @@ export class SessionsPanel implements SidePanel {
       let suffix = '';
       if (ev.tokens) {
         suffix = `  (${fmtNum(ev.tokens.input)} in / ${fmtNum(ev.tokens.output)} out)`;
-        if (ev.cost) suffix += ` $${ev.cost.toFixed(4)}`;
+        if (ev.cost) suffix += ` ${formatCost(ev.cost)}`;
       }
       // Prefix visible width: "[HH:MM:SS] event_type   " = ~23 chars
       const prefixLen = 1 + time.length + 2 + 12; // [time] + space + label

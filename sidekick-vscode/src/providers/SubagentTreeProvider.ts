@@ -7,6 +7,7 @@
  * timeline events and displays them in the Session Monitor activity bar.
  *
  * Key features:
+ * - Hierarchical display of nested subagents (parent → children)
  * - Detects subagents from timeline event descriptions
  * - Shows running (spinner) vs completed (check) status
  * - Displays agent type (Explore, Plan, Task, Unknown)
@@ -21,6 +22,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SessionMonitor } from '../services/SessionMonitor';
 import { TimelineEvent, SubagentStats } from '../types/claudeSession';
+import { scanSubagentTraces } from 'sidekick-shared/dist/parsers/subagentTraceParser';
+import type { SubagentTrace } from 'sidekick-shared/dist/parsers/subagentTraceParser';
 
 /**
  * Type for subagent classification based on description keywords.
@@ -63,13 +66,17 @@ interface SubagentItem {
 
   /** Whether this agent ran in parallel with another */
   isParallel?: boolean;
+
+  /** Child subagents (for hierarchical display) */
+  children: SubagentItem[];
 }
 
 /**
  * Tree data provider for subagent activity during Claude Code sessions.
  *
  * Monitors timeline events for subagent spawning indicators and tracks
- * their lifecycle. Provides click-to-open functionality for transcript files.
+ * their lifecycle. Uses the shared trace parser to build hierarchical
+ * parent-child trees when scan data is available.
  *
  * @example
  * ```typescript
@@ -92,8 +99,11 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
   /** Event fired when tree data changes */
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  /** Map of agent ID to SubagentItem */
+  /** Map of agent ID to SubagentItem (includes all agents, flat index) */
   private subagents: Map<string, SubagentItem> = new Map();
+
+  /** Top-level agents for getChildren(undefined) */
+  private topLevelAgents: SubagentItem[] = [];
 
   /** Directory containing session/agent files */
   private sessionDir: string | null = null;
@@ -115,6 +125,7 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       sessionMonitor.onSessionStart((sessionPath: string) => {
         this.sessionDir = path.dirname(sessionPath);
         this.subagents.clear();
+        this.topLevelAgents = [];
         this.scanForAgentFiles();
         this.refresh();
       })
@@ -147,6 +158,8 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
     // Handle Task tool_result events to mark subagents as completed
     if (event.type === 'tool_result' && event.metadata?.toolName === 'Task') {
       this.markOldestRunningAsCompleted();
+      // Re-scan with trace parser to pick up hierarchy
+      this.scanForAgentFiles();
       return;
     }
 
@@ -190,9 +203,11 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       transcriptPath: undefined,
       timestamp: new Date(event.timestamp),
       description: agentDescription,
+      children: [],
     };
 
     this.subagents.set(agentId, item);
+    this.topLevelAgents.push(item);
     this.refresh();
   }
 
@@ -259,15 +274,94 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
   }
 
   /**
+   * Converts a SubagentTrace tree into a SubagentItem tree.
+   */
+  private traceToItem(trace: SubagentTrace): SubagentItem {
+    const agentType = this.classifyAgentType(trace.agentType);
+    const label = `${trace.agentId.substring(0, 8)} (${agentType})`;
+    const children = trace.children.map(c => this.traceToItem(c));
+
+    const item: SubagentItem = {
+      id: trace.agentId,
+      label,
+      type: trace.stats.endTime ? 'completed' : 'running',
+      agentType,
+      transcriptPath: this.findTranscriptPath(trace.agentId),
+      timestamp: trace.stats.startTime || new Date(),
+      inputTokens: trace.stats.inputTokens,
+      outputTokens: trace.stats.outputTokens,
+      durationMs: trace.stats.durationMs,
+      description: trace.description,
+      children,
+    };
+
+    // Register in flat map for lookup
+    this.subagents.set(trace.agentId, item);
+    return item;
+  }
+
+  /**
    * Scans the session directory for existing agent transcript files.
    *
-   * Discovers completed agents that may have been created before
-   * monitoring started or without detectable timeline events.
+   * First tries the trace parser for hierarchical results, then
+   * falls back to flat file scanning for backward compatibility.
    */
   private scanForAgentFiles(): void {
     if (!this.sessionDir) {
       return;
     }
+
+    // Try hierarchical scan via trace parser
+    const sessionId = this.sessionMonitor.getSessionId();
+    if (sessionId) {
+      try {
+        const traces = scanSubagentTraces(this.sessionDir, sessionId);
+        if (traces.length > 0) {
+          this.applyTraceResults(traces);
+          return;
+        }
+      } catch {
+        // Fall through to flat scan
+      }
+    }
+
+    // Fallback: flat file scan (original behavior)
+    this.flatScanForAgentFiles();
+  }
+
+  /**
+   * Applies trace parser results, preserving any live-tracked running agents.
+   */
+  private applyTraceResults(traces: SubagentTrace[]): void {
+    // Save running agents (from timeline events) to merge back
+    const runningAgents: SubagentItem[] = [];
+    for (const item of this.subagents.values()) {
+      if (item.type === 'running') {
+        runningAgents.push(item);
+      }
+    }
+
+    // Build tree from traces
+    this.subagents.clear();
+    this.topLevelAgents = traces.map(t => this.traceToItem(t));
+
+    // Re-add running agents that weren't found in trace results
+    for (const running of runningAgents) {
+      if (!this.subagents.has(running.id)) {
+        this.subagents.set(running.id, running);
+        this.topLevelAgents.push(running);
+      }
+    }
+
+    this.detectParallelExecution();
+    this.refresh();
+  }
+
+  /**
+   * Flat scan fallback — original behavior for backward compatibility.
+   */
+  private flatScanForAgentFiles(): void {
+    if (!this.sessionDir) return;
 
     // Enrich with SubagentStats from monitor (has token metrics)
     const agentStats = this.sessionMonitor.getSubagentStats();
@@ -310,10 +404,12 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
             inputTokens: stats?.inputTokens,
             outputTokens: stats?.outputTokens,
             durationMs: stats?.durationMs,
-            description: stats?.description
+            description: stats?.description,
+            children: [],
           };
 
           this.subagents.set(agentId, item);
+          this.topLevelAgents.push(item);
         }
       }
 
@@ -394,11 +490,16 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
    * @returns VS Code TreeItem for display
    */
   getTreeItem(element: SubagentItem): vscode.TreeItem {
-    const treeItem = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
+    const collapsible = element.children.length > 0
+      ? vscode.TreeItemCollapsibleState.Collapsed
+      : vscode.TreeItemCollapsibleState.None;
+    const treeItem = new vscode.TreeItem(element.label, collapsible);
 
     // Set icon based on status
     if (element.type === 'running') {
       treeItem.iconPath = new vscode.ThemeIcon('sync~spin');
+    } else if (element.children.length > 0) {
+      treeItem.iconPath = new vscode.ThemeIcon('symbol-class');
     } else if (element.isParallel) {
       treeItem.iconPath = new vscode.ThemeIcon('layers');
     } else {
@@ -421,6 +522,9 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       if (element.isParallel) {
         descParts.push('parallel');
       }
+      if (element.children.length > 0) {
+        descParts.push(`${element.children.length} child${element.children.length > 1 ? 'ren' : ''}`);
+      }
       treeItem.description = descParts.length > 0 ? descParts.join(' | ') : 'Completed';
     }
 
@@ -434,6 +538,7 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       const tooltipParts = [element.transcriptPath];
       if (element.description) tooltipParts.unshift(element.description);
       if (element.isParallel) tooltipParts.push('Ran in parallel with other agents');
+      if (element.children.length > 0) tooltipParts.push(`${element.children.length} child agent(s)`);
       treeItem.tooltip = tooltipParts.join('\n');
     } else {
       treeItem.tooltip = element.description || 'Transcript not yet available';
@@ -447,19 +552,18 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
   /**
    * Gets children for a tree element.
    *
-   * Returns all subagents for root, empty for children (flat structure).
+   * Returns top-level subagents for root, child subagents for parents.
    *
    * @param element - Parent element (undefined for root)
    * @returns Array of child items
    */
   getChildren(element?: SubagentItem): SubagentItem[] {
-    // Flat structure - no children for items
     if (element) {
-      return [];
+      return element.children;
     }
 
-    // Return all subagents sorted by timestamp (most recent first)
-    return Array.from(this.subagents.values())
+    // Return top-level subagents sorted by timestamp (most recent first)
+    return [...this.topLevelAgents]
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 

@@ -1,7 +1,9 @@
 /**
- * Line-buffered JSONL parser and token/tool extraction.
+ * Line-buffered JSONL parser with optional Zod schema validation.
  * Ported from sidekick-vscode/src/services/JsonlParser.ts
  */
+
+import type { ZodType } from 'zod';
 
 /** Minimal session event shape for stats extraction. */
 export interface RawSessionEvent {
@@ -28,14 +30,27 @@ export interface JsonlParserCallbacks<T = RawSessionEvent> {
   onError?: (error: Error, line: string) => void;
 }
 
+/** Options for JsonlParser construction. */
+export interface JsonlParserOptions<T> {
+  /**
+   * Optional Zod schema for runtime validation.
+   * When provided, each parsed JSON line is validated against this schema.
+   * Valid events are emitted via onEvent; invalid events go to onError.
+   * When omitted, JSON.parse output is cast to T (existing behavior).
+   */
+  schema?: ZodType<T>;
+}
+
 export class JsonlParser<T = RawSessionEvent> {
   private buffer = '';
   private readonly onEvent: (event: T) => void;
   private readonly onError?: (error: Error, line: string) => void;
+  private readonly schema?: ZodType<T>;
 
-  constructor(callbacks: JsonlParserCallbacks<T>) {
+  constructor(callbacks: JsonlParserCallbacks<T>, options?: JsonlParserOptions<T>) {
     this.onEvent = callbacks.onEvent;
     this.onError = callbacks.onError;
+    this.schema = options?.schema;
   }
 
   processChunk(chunk: string): void {
@@ -62,8 +77,18 @@ export class JsonlParser<T = RawSessionEvent> {
     const trimmed = line.trim();
     if (!trimmed || !trimmed.startsWith('{')) return;
     try {
-      const event = JSON.parse(trimmed) as T;
-      this.onEvent(event);
+      const raw = JSON.parse(trimmed);
+
+      if (this.schema) {
+        const result = this.schema.safeParse(raw);
+        if (result.success) {
+          this.onEvent(result.data);
+        } else if (this.onError) {
+          this.onError(new Error(`Schema validation failed: ${result.error.message}`), line);
+        }
+      } else {
+        this.onEvent(raw as T);
+      }
     } catch (error) {
       if (this.onError) {
         this.onError(error instanceof Error ? error : new Error(String(error)), line);
