@@ -5,6 +5,25 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-03-23
+
+### Added
+
+- **Shared library: Zod schemas** for runtime JSONL event validation (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`)
+- **Shared library: Token usage & tool call extractors** — pure functions `extractTokenUsage()` and `extractToolCalls()` for single-event processing
+- **Shared library: Model info & pricing** — `getModelInfo()`, `calculateCost()`, `formatCost()` ported from VS Code extension into shared module
+- **Shared library: Typed JSONL parser** — optional `schema` parameter on `JsonlParser` for Zod-validated parsing
+- **Shared library: QuotaPoller class** — reusable polling with exponential backoff, active/idle intervals, and cached fallback
+- **VS Code: Tool result pairing** — Tool Inspector now shows truncated tool outputs (read content, bash stdout, search results) paired with each tool call
+- **VS Code: Recursive subagent tree** — Subagent tree view now displays nested parent/child relationships using trace-based parsing
+- **CLI: Consistent cost formatting** — all cost displays now use shared `formatCost()` with intelligent decimal precision
+
+### Changed
+
+- **VS Code: ModelPricingService** now delegates to `sidekick-shared/modelInfo` (reduced from 256 to ~50 lines)
+- **CLI: QuotaService** rewritten to wrap shared `QuotaPoller` instead of manual polling loop
+- **CLI: modelContext** now re-exports `getModelInfo` from shared library
+
 ## [0.15.2] - 2026-03-18
 
 ### Fixed

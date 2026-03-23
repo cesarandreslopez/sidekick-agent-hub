@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-03-23
+
+### Changed
+
+- **Consistent cost formatting**: All cost displays (`stats`, `context`, Sessions panel, narrative prompt) now use shared `formatCost()` with intelligent decimal precision (4 places for < $0.01, 2 otherwise)
+- **QuotaService**: Rewritten to wrap shared `QuotaPoller` with exponential backoff instead of manual polling loop
+- **modelContext**: Now re-exports `getModelInfo` from shared library alongside `getContextWindowSize`
+
 ## [0.15.2] - 2026-03-18
 
 ### Fixed

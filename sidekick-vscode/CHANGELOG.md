@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-03-23
+
+### Added
+
+- **Tool result pairing in Inspector**: Tool Inspector now shows truncated outputs (file content, bash stdout, search results, edit status) paired with each tool call via `toolUseId` correlation
+- **Recursive subagent tree**: Subagent tree view displays nested parent/child relationships using `scanSubagentTraces`, with collapsible nodes and child count indicators
+
+### Changed
+
+- **ModelPricingService** now delegates to `sidekick-shared/modelInfo` — reduced from ~256 lines to a thin wrapper
+
 ## [0.15.2] - 2026-03-18
 
 _No VS Code extension changes — CLI-only patch._
