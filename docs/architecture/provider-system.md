@@ -75,6 +75,6 @@ Inference and session providers are independent — you can use Claude Max for i
 
 ## Shared Provider Library
 
-The `sidekick-shared` package ports the session provider implementations for use outside VS Code. It uses the same auto-detection algorithm — checking filesystem presence and most-recent modification time — minus the VS Code setting fallback.
+The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) package ports the session provider implementations for use outside VS Code. It uses the same auto-detection algorithm — checking filesystem presence and most-recent modification time — minus the VS Code setting fallback. Any npm project can consume these providers directly via `npm install sidekick-shared`.
 
 The CLI's `--provider` flag serves as an explicit override when auto-detection isn't appropriate. Providers read session data in the same formats (JSONL, SQLite, JSON) as the extension, so the CLI produces identical results from the same data files.

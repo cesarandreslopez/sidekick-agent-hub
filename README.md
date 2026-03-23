@@ -118,6 +118,8 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup inst
 
 ## See Also
 
+**[sidekick-shared](https://www.npmjs.com/package/sidekick-shared)** — the shared data access library, published as a standalone npm package. Types, parsers, session providers, event aggregation, model pricing, Zod schemas, and more — for building your own tools on top of Sidekick session data without depending on the VS Code extension or CLI. Install with `npm install sidekick-shared`.
+
 **[Sidekick Docker](https://github.com/cesarandreslopez/sidekick-docker)** — a sibling project that brings the same real-time dashboard experience to Docker management. Monitor containers, Compose projects, images, volumes, and networks from a keyboard-driven TUI or VS Code panel. Available as a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-docker-vscode), [Open VSX extension](https://open-vsx.org/extension/CesarAndresLopez/sidekick-docker-vscode), and [CLI](https://www.npmjs.com/package/sidekick-docker).
 
 ## Community

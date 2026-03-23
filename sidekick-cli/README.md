@@ -240,6 +240,8 @@ Override with `--provider claude-code`, `--provider opencode`, or `--provider co
 
 ## See Also
 
+**[sidekick-shared](https://www.npmjs.com/package/sidekick-shared)** — the shared data access library used by this CLI. Published as a standalone npm package for building custom tools on Sidekick session data — types, parsers, providers, event aggregation, model pricing, and more. Install with `npm install sidekick-shared`.
+
 **[Sidekick Docker](https://github.com/cesarandreslopez/sidekick-docker)** — the same TUI dashboard experience for Docker management. Monitor containers, Compose projects, images, and volumes from a keyboard-driven terminal. Install with `npm install -g sidekick-docker`.
 
 ## Documentation

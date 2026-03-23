@@ -93,7 +93,8 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 ![Event Stream](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/event_stream_vscode_extension.png)
 
 - **Conversation Viewer** — full session conversation with search
-- **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.)
+- **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.) with paired tool outputs (file content, stdout, search results)
+- **Subagent Tree** — hierarchical view of subagent spawns with nested parent/child relationships
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
 - **Provider Status** — live API health indicator from status.claude.com and status.openai.com, shown when degraded
@@ -177,6 +178,8 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 For detailed guides, configuration reference, and architecture docs, visit the [documentation site](https://cesarandreslopez.github.io/sidekick-agent-hub/).
 
 ## See Also
+
+**[sidekick-shared](https://www.npmjs.com/package/sidekick-shared)** — the shared data access library, published as a standalone npm package. Types, parsers, session providers, event aggregation, model pricing, and more — for building custom tools on Sidekick session data without depending on VS Code. Install with `npm install sidekick-shared`.
 
 **[Sidekick Docker](https://github.com/cesarandreslopez/sidekick-docker)** — real-time Docker management dashboard as a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-docker-vscode) and [CLI](https://www.npmjs.com/package/sidekick-docker). Monitor containers, Compose projects, images, volumes, and networks with vi keybindings and live-streaming stats.
 

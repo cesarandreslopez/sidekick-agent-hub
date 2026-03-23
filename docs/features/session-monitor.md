@@ -59,6 +59,10 @@ Generate a self-contained HTML report for any session — full transcript with c
 - **VS Code**: Run `Sidekick: Generate HTML Report` from the Command Palette or the Session Analytics toolbar. The report opens in a webview panel. Also available as the "HTML Report" format option in `Sidekick: Dump Session Report`.
 - **CLI**: Run `sidekick report` to generate and open in the default browser, or press `r` in the TUI dashboard. See the [CLI HTML Report docs](cli.md#html-report) for flags and examples.
 
+## Subagent Tree
+
+The subagent tree view displays spawned subagents in a hierarchical parent/child structure. When an agent spawns other agents, they appear as nested children in the tree, with collapsible nodes showing the agent count. The tree uses trace-based parsing from session logs to reconstruct the spawn hierarchy, falling back to a flat list for providers that use different directory structures. Running agents are tracked in real-time and merged into the tree as they complete.
+
 ## Event Stream
 
 ![Event Stream](../images/event_stream_vscode_extension.png)

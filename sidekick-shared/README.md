@@ -30,6 +30,10 @@ npm install sidekick-shared
 | **Credentials** | Claude Max OAuth credential reading from `~/.claude/.credentials.json` |
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
 | **Provider Status** | API health checking via status.claude.com and status.openai.com (indicator, components, incidents) |
+| **Schemas** | Zod schemas for runtime JSONL event validation (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`) |
+| **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCalls()` |
+| **Model Info & Pricing** | Model family parsing, context window lookup, pricing tables, and cost calculation (`getModelInfo()`, `calculateCost()`, `formatCost()`) |
+| **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
 
 ## Usage Examples
 
@@ -92,6 +96,56 @@ Unavailable quota responses remain non-throwing and may include:
 - `retryAfterMs`: retry delay in milliseconds for `429` responses when the API provides `Retry-After`
 
 For first-party style messaging, `describeQuotaFailure()` maps unavailable quota states to stable alert keys plus display-ready severity/title/message/detail fields for CLI and VS Code consumers.
+
+### Model info and cost calculation
+
+```typescript
+import { getModelInfo, calculateCost, formatCost } from 'sidekick-shared';
+
+const info = getModelInfo('claude-sonnet-4-6-20260321');
+console.log(info.family, info.version, info.contextWindow); // "sonnet" "4.6" 200000
+
+const cost = calculateCost(
+  { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, cacheWriteTokens: 0 },
+  'claude-sonnet-4-6-20260321',
+);
+console.log(formatCost(cost)); // "$0.0045"
+```
+
+### Extract token usage and tool calls from events
+
+```typescript
+import { extractTokenUsage, extractToolCalls } from 'sidekick-shared';
+
+const usage = extractTokenUsage(event); // TokenUsage | null
+const tools = extractToolCalls(event);  // ToolCall[]
+```
+
+### Validate JSONL events with Zod schemas
+
+```typescript
+import { JsonlParser, sessionEventSchema } from 'sidekick-shared';
+
+const parser = new JsonlParser(
+  { onEvent: (e) => console.log(e), onError: (e) => console.warn(e) },
+  { schema: sessionEventSchema },
+);
+parser.addChunk(rawData);
+```
+
+### Poll quota with backoff
+
+```typescript
+import { QuotaPoller } from 'sidekick-shared';
+
+const poller = new QuotaPoller({
+  activeIntervalMs: 300_000,
+  idleIntervalMs: 300_000,
+  getAccessToken: async () => token,
+});
+poller.onUpdate((state) => console.log(state));
+poller.start();
+```
 
 ## Building
 

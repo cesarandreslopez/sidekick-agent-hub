@@ -5,6 +5,21 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-03-23
+
+### Added
+
+- **Zod schemas for session events**: `sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`, and `permissionModeSchema` for runtime JSONL validation
+- **Token usage extractor**: Pure function `extractTokenUsage()` normalizes snake_case API usage fields from a single event
+- **Tool call extractor**: Pure function `extractToolCalls()` extracts tool_use content blocks with `toolUseId` from a single event
+- **Model info & pricing module**: `getModelInfo()`, `parseModelId()`, `getModelPricing()`, `calculateCost()`, `calculateCostWithPricing()`, and `formatCost()` — ported from VS Code extension with zero VS Code dependencies
+- **Typed JSONL parser**: Optional `schema` parameter on `JsonlParser` for Zod-validated event parsing; invalid events route to `onError()`
+- **QuotaPoller class**: Reusable polling service with exponential backoff, active/idle interval switching, cached fallback on transient errors, and automatic stop on auth failures
+
+### Changed
+
+- **ToolCall type**: Added optional `toolUseId` and `output` fields for tool result correlation
+
 ## [0.13.8] - 2026-03-12
 
 ### Added

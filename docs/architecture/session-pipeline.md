@@ -71,4 +71,4 @@ These systems feed their results into the dashboard, handoffs, notifications, mi
 
 ## CLI Reader Path
 
-The `sidekick-shared` library provides a read-only alternative to the SessionMonitor pipeline. Instead of watching files in real time, the CLI reads session data on demand — useful for loading context at session start or querying session history in batch.
+The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) library provides a read-only alternative to the SessionMonitor pipeline. Instead of watching files in real time, the CLI reads session data on demand — useful for loading context at session start or querying session history in batch. Third-party tools can consume the same library directly (`npm install sidekick-shared`).

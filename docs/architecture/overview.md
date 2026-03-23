@@ -30,10 +30,10 @@ Only `vscode` is externalized. All other dependencies (including `@anthropic-ai/
 | Package | Purpose | Build |
 |---------|---------|-------|
 | `sidekick-vscode/` | VS Code extension (UI, monitoring, inference) | esbuild |
-| `sidekick-shared/` | Pure TS library — readers, types, session providers (no VS Code deps) | tsc |
+| `sidekick-shared/` | Pure TS library — readers, types, session providers, schemas, extractors, model pricing, quota polling (no VS Code deps) | tsc |
 | `sidekick-cli/` | CLI binary — 8 subcommands, markdown/JSON output | esbuild |
 
-`sidekick-shared` extracts the data access layer from the extension so it can be consumed by the CLI (and future integrations). The extension itself is not modified — `sidekick-shared` is a parallel implementation with no VS Code dependencies.
+[`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) extracts the data access layer from the extension so it can be consumed by the CLI, third-party tools, and custom integrations. It is published as a standalone npm package (`npm install sidekick-shared`) with no VS Code dependencies. Key modules include Zod schemas for runtime JSONL validation, pure extractors (`extractTokenUsage`, `extractToolCalls`), model info and pricing (`getModelInfo`, `calculateCost`, `formatCost`), a typed `JsonlParser` with optional schema validation, and a `QuotaPoller` class with exponential backoff.
 
 ## Key Source Locations
 
