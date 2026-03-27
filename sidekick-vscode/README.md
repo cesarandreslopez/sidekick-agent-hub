@@ -97,7 +97,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 - **Subagent Tree** — hierarchical view of subagent spawns with nested parent/child relationships
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
-- **Provider Status** — live API health indicator from status.claude.com and status.openai.com, shown when degraded
+- **Provider Status** — live API health indicator scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, hidden for OpenCode unless you run the standalone status command
 
 ### Session Intelligence
 

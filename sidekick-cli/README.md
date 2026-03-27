@@ -93,7 +93,7 @@ You can also press `r` in the TUI dashboard to generate a report for the current
 sidekick status
 ```
 
-Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicators with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. The dashboard also shows a status indicator in the status bar and Sessions Summary tab when the API is degraded.
+Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicators with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. In the dashboard, provider-status surfaces are scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, and hidden for OpenCode.
 
 ## Quota & Rate Limits
 

@@ -97,13 +97,13 @@ When a cycle is detected, a VS Code notification fires with the affected files s
 
 ## Provider Status
 
-The dashboard monitors API health for both Claude (status.claude.com) and OpenAI (status.openai.com). When either API is degraded or experiencing an outage, a banner appears in the gauge row showing:
+The dashboard polls API health for both Claude (status.claude.com) and OpenAI (status.openai.com), then shows the banner only for the monitored provider. When the relevant API is degraded or experiencing an outage, a banner appears in the gauge row showing:
 
 - Color-coded indicator (yellow for minor, red for major/critical)
 - Affected components and their status
 - Active incident name with link to the status page
 
-The relevant status page is shown based on the active provider — Claude status for Claude Code and OpenCode, OpenAI status for Codex. The banner is hidden when all systems are operational. Polls every 60 seconds, pausing when the dashboard is not visible. Also available as a standalone CLI command: `sidekick status`.
+The relevant status page is shown based on the monitored provider — Claude status for Claude Code, OpenAI status for Codex, and no provider-status banner for OpenCode. The banner is hidden when all systems are operational. Polls every 60 seconds, pausing when the dashboard is not visible. Also available as a standalone CLI command: `sidekick status`, which checks both endpoints directly.
 
 ## Quota & Rate Limits Display
 

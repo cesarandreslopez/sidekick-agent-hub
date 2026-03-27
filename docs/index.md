@@ -75,7 +75,7 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Context Health** — track how much information your agent has lost to context compaction
 - **Truncation Detection** — know when tool outputs are silently cut short
 - **Cycle Detection** — get alerted when your agent enters repetitive loops
-- **Provider Status** — live API health from status.claude.com and status.openai.com, shown when degraded
+- **Provider Status** — live API health scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, hidden for OpenCode
 - **Multi-Account Switching** — save and switch between Claude Code accounts without manual login cycles
 
 ### VS Code + [CLI Dashboard](features/cli.md)

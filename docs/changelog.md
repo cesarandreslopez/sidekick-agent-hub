@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-03-27
+
+### Fixed
+
+- **Provider status scoping**: VS Code and CLI dashboards now scope degraded-service notices to the monitored session provider — Claude status for Claude Code, OpenAI status for Codex, and no provider-status banner for OpenCode
+- **Cross-platform account tests**: `sidekick-shared` account tests now mock credential I/O instead of depending on platform-specific credential stores, restoring green test runs on macOS
+
 ## [0.16.0] - 2026-03-23
 
 ### Added

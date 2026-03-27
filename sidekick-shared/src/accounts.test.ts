@@ -23,9 +23,27 @@ vi.mock('./paths', () => ({
   getConfigDir: () => tmpDir,
 }));
 
-// Mock os.homedir to isolate .claude dir
-const mockClaudeDir = () => path.join(tmpDir, '.claude');
+vi.mock('./credentialIO', () => ({
+  readActiveCredentials: () => {
+    try {
+      return JSON.parse(
+        fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')
+      );
+    } catch {
+      return null;
+    }
+  },
+  writeActiveCredentials: (credentials: unknown) => {
+    const claudeDir = path.join(tmpDir, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(claudeDir, '.credentials.json'),
+      JSON.stringify(credentials)
+    );
+  },
+}));
 
+// Mock os.homedir to isolate .claude dir
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
   return {

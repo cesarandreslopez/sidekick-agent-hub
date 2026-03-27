@@ -252,7 +252,7 @@ sidekick status
 sidekick status --json
 ```
 
-The dashboard also monitors status automatically — the status bar shows a colored `● API minor/major/critical` indicator when degraded, and the Sessions panel Summary tab shows an "API Status" section with affected components and incident details.
+The dashboard also monitors status automatically, but only for the monitored provider — Claude for Claude Code sessions, OpenAI for Codex sessions, and no provider-status section for OpenCode. When degraded, the status bar shows a colored indicator and the Sessions panel Summary tab shows affected components and incident details.
 
 ### Quota
 

@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-03-27
+
+### Fixed
+
+- **Dashboard provider status scoping**: Provider incident banners now follow the monitored session provider instead of the inference provider, so Codex sessions show OpenAI status, Claude Code sessions show Claude status, and OpenCode hides provider-status banners
+- **Dashboard webview message typing**: Added the missing `updateOpenAIStatus` message type to match runtime behavior
+
 ## [0.16.0] - 2026-03-23
 
 ### Added
