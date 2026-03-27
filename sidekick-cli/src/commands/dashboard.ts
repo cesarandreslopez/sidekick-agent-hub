@@ -17,6 +17,7 @@ import { loadStaticData } from '../dashboard/StaticDataLoader';
 import type { StaticData } from '../dashboard/StaticDataLoader';
 import { QuotaService } from '../dashboard/QuotaService';
 import { ProviderStatusService } from '../dashboard/ProviderStatusService';
+import { scopeDashboardProviderStatuses } from '../dashboard/providerStatusScope';
 import { UpdateCheckService } from '../dashboard/UpdateCheckService';
 import { SessionsPanel } from '../dashboard/panels/SessionsPanel';
 import { TasksPanel } from '../dashboard/panels/TasksPanel';
@@ -308,7 +309,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   const instance = render(
     React.createElement(Dashboard, {
       panels,
-      metrics: state.getMetrics(),
+      metrics: {
+        ...state.getMetrics(),
+        ...scopeDashboardProviderStatuses(activeProvider.id as 'claude-code' | 'opencode' | 'codex', state.getMetrics().providerStatus, state.getMetrics().openaiStatus),
+      },
       staticData,
       isPinned,
       pendingSessionPath,
@@ -324,10 +328,14 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     if (renderTimer) return;
     renderTimer = setTimeout(() => {
       renderTimer = null;
+      const metrics = state.getMetrics();
       instance.rerender(
         React.createElement(Dashboard, {
           panels,
-          metrics: state.getMetrics(),
+          metrics: {
+            ...metrics,
+            ...scopeDashboardProviderStatuses(activeProvider.id as 'claude-code' | 'opencode' | 'codex', metrics.providerStatus, metrics.openaiStatus),
+          },
           staticData,
           isPinned,
           pendingSessionPath,

@@ -143,7 +143,8 @@ export type DashboardMessage =
   | { type: 'updatePlan'; plan: PlanDisplay }
   | { type: 'updatePlanHistory'; history: PlanHistoryDisplay }
   | { type: 'updateAnalytics'; analytics: AnalyticsDisplay }
-  | { type: 'updateProviderStatus'; status: ProviderStatusState };
+  | { type: 'updateProviderStatus'; status: ProviderStatusState }
+  | { type: 'updateOpenAIStatus'; status: ProviderStatusState };
 
 /**
  * Plan history analytics display data.

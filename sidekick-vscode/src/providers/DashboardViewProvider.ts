@@ -50,6 +50,7 @@ import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import { describeQuotaFailure } from 'sidekick-shared';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
+import { scopeProviderStatuses, type DashboardSessionProviderId } from '../utils/providerStatusScope';
 import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
 
 /**
@@ -180,25 +181,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /**
    * Sets the provider status service for Claude & OpenAI API health monitoring.
-   * Only forwards status updates matching the active inference provider:
+   *
+   * Dashboard status cards follow the monitored session provider:
+   * - claude-code → Claude status
    * - codex → OpenAI status
-   * - claude-max, claude-api, opencode → Claude status
+   * - opencode → no provider status card
    */
   setProviderStatusService(service: import('../services/ProviderStatusService').ProviderStatusService): void {
     this._providerStatusService = service;
     this._disposables.push(
-      service.onStatusUpdate(status => {
-        const pid = this._authService?.getProviderId();
-        if (pid !== 'codex') {
-          this._postMessage({ type: 'updateProviderStatus', status });
-        }
-      }),
-      service.onOpenAIStatusUpdate(status => {
-        const pid = this._authService?.getProviderId();
-        if (pid === 'codex') {
-          this._postMessage({ type: 'updateOpenAIStatus', status });
-        }
-      })
+      service.onStatusUpdate(() => this._syncProviderStatusCards()),
+      service.onOpenAIStatusUpdate(() => this._syncProviderStatusCards())
     );
   }
 
@@ -2194,6 +2187,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       providerId: provider.id,
       displayName: provider.displayName
     });
+    this._syncProviderStatusCards();
   }
 
   /**
@@ -2255,6 +2249,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _postMessage(message: DashboardMessage): void {
     this._view?.webview.postMessage(message);
+  }
+
+  /**
+   * Sends provider-scoped status cards to the webview and clears stale cards.
+   */
+  private _syncProviderStatusCards(): void {
+    const providerId = this._sessionMonitor.getProvider().id as DashboardSessionProviderId;
+    const { claude, openai } = scopeProviderStatuses(
+      providerId,
+      this._providerStatusService?.getCachedStatus(),
+      this._providerStatusService?.getCachedOpenAIStatus(),
+    );
+
+    this._postMessage({ type: 'updateProviderStatus', status: claude });
+    this._postMessage({ type: 'updateOpenAIStatus', status: openai });
   }
 
   /**
