@@ -15,7 +15,6 @@ import {
   listSavedAccountProfiles,
   readSavedAccountRegistry,
   replaceSavedAccountProfiles,
-  setActiveSavedAccount,
   type SavedAccountProfile,
 } from './accountRegistry';
 
@@ -70,10 +69,6 @@ function getCredentialsDir(): string {
 
 function getConfigsDir(): string {
   return path.join(getAccountsDir(), 'configs');
-}
-
-function getRegistryPath(): string {
-  return path.join(getAccountsDir(), 'accounts.json');
 }
 
 // ── Directory bootstrap ──────────────────────────────────────────────────
