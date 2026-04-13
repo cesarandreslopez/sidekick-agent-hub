@@ -1,8 +1,8 @@
 /**
- * VS Code wrapper around sidekick-shared account management.
+ * VS Code wrapper around Sidekick account management.
  *
- * Provides EventEmitter for account changes and file watching
- * to detect external switches (CLI, another VS Code window, `claude login`).
+ * Provides provider-aware account operations plus file watching for external
+ * registry and Claude credential changes.
  */
 
 import * as vscode from 'vscode';
@@ -10,80 +10,130 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import {
-  addCurrentAccount,
-  switchToAccount,
-  removeAccount,
-  listAccounts,
-  getActiveAccount,
-  isMultiAccountEnabled,
+  addCurrentAccount as addCurrentClaudeAccount,
+  switchToAccount as switchToClaudeAccount,
+  removeAccount as removeClaudeAccount,
+  listAccounts as listClaudeAccounts,
+  getActiveAccount as getActiveClaudeAccount,
   readActiveClaudeAccount,
   getAccountsDir,
+  prepareCodexAccount,
+  finalizeCodexAccount as finalizeSavedCodexAccount,
+  switchToCodexAccount,
+  removeCodexAccount,
+  listCodexAccounts,
+  getActiveCodexAccount,
 } from 'sidekick-shared';
-import type { AccountEntry, AccountManagerResult } from 'sidekick-shared';
+import type {
+  AccountEntry,
+  AccountManagerResult,
+  AccountProviderId,
+  SavedAccountProfile,
+} from 'sidekick-shared';
 import { log } from './Logger';
 
+export type ManagedAccount = AccountEntry | SavedAccountProfile;
+
+export function isSavedAccountProfile(account: ManagedAccount): account is SavedAccountProfile {
+  return 'providerId' in account;
+}
+
 export class AccountService implements vscode.Disposable {
-  private readonly _onAccountChange = new vscode.EventEmitter<AccountEntry | null>();
+  private readonly _onAccountChange = new vscode.EventEmitter<AccountProviderId>();
   readonly onAccountChange = this._onAccountChange.event;
 
   private registryWatcher: fs.FSWatcher | null = null;
   private credentialsWatcher: fs.FSWatcher | null = null;
-  private lastKnownUuid: string | null = null;
-  private disposables: vscode.Disposable[] = [];
+  private lastKnownActiveIds: Record<AccountProviderId, string | null> = {
+    'claude-code': null,
+    codex: null,
+  };
 
   constructor() {
-    this.lastKnownUuid = getActiveAccount()?.uuid ?? null;
+    this.lastKnownActiveIds['claude-code'] = getActiveClaudeAccount()?.uuid ?? readActiveClaudeAccount()?.uuid ?? null;
+    this.lastKnownActiveIds.codex = getActiveCodexAccount()?.id ?? null;
     this.startWatching();
   }
 
-  addCurrentAccount(label?: string): AccountManagerResult {
-    const result = addCurrentAccount(label);
+  addCurrentAccount(providerId: AccountProviderId, label?: string): AccountManagerResult {
+    const result = providerId === 'claude-code'
+      ? addCurrentClaudeAccount(label)
+      : prepareCodexAccount(label ?? '');
+
     if (result.success) {
       this.refresh();
     }
     return result;
   }
 
-  switchToAccount(uuid: string): AccountManagerResult {
-    const result = switchToAccount(uuid);
+  finalizeCodexAccount(profileId: string): AccountManagerResult {
+    const result = finalizeSavedCodexAccount(profileId);
     if (result.success) {
       this.refresh();
     }
     return result;
   }
 
-  removeAccount(uuid: string): AccountManagerResult {
-    const result = removeAccount(uuid);
+  switchToAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
+    const result = providerId === 'claude-code'
+      ? switchToClaudeAccount(accountId)
+      : switchToCodexAccount(accountId);
+
     if (result.success) {
       this.refresh();
     }
     return result;
   }
 
-  listAccounts(): AccountEntry[] {
-    return listAccounts();
+  removeAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
+    const result = providerId === 'claude-code'
+      ? removeClaudeAccount(accountId)
+      : removeCodexAccount(accountId);
+
+    if (result.success) {
+      this.refresh();
+    }
+    return result;
   }
 
-  getActiveAccount(): AccountEntry | null {
-    return getActiveAccount();
+  listAccounts(providerId: 'claude-code'): AccountEntry[];
+  listAccounts(providerId: 'codex'): SavedAccountProfile[];
+  listAccounts(providerId: AccountProviderId): ManagedAccount[];
+  listAccounts(providerId: AccountProviderId): ManagedAccount[] {
+    return providerId === 'claude-code'
+      ? listClaudeAccounts()
+      : listCodexAccounts();
   }
 
-  isMultiAccountEnabled(): boolean {
-    return isMultiAccountEnabled();
+  getActiveAccount(providerId: 'claude-code'): AccountEntry | null;
+  getActiveAccount(providerId: 'codex'): SavedAccountProfile | null;
+  getActiveAccount(providerId: AccountProviderId): ManagedAccount | null;
+  getActiveAccount(providerId: AccountProviderId): ManagedAccount | null {
+    return providerId === 'claude-code'
+      ? getActiveClaudeAccount()
+      : getActiveCodexAccount();
+  }
+
+  isMultiAccountEnabled(providerId: AccountProviderId): boolean {
+    return this.listAccounts(providerId).length >= 2;
   }
 
   refresh(): void {
-    const current = getActiveAccount();
-    const currentUuid = current?.uuid ?? readActiveClaudeAccount()?.uuid ?? null;
-    if (currentUuid !== this.lastKnownUuid) {
-      this.lastKnownUuid = currentUuid;
-      this._onAccountChange.fire(current);
-      log(`AccountService: active account changed to ${current?.email ?? 'none'}`);
+    const currentIds: Record<AccountProviderId, string | null> = {
+      'claude-code': getActiveClaudeAccount()?.uuid ?? readActiveClaudeAccount()?.uuid ?? null,
+      codex: getActiveCodexAccount()?.id ?? null,
+    };
+
+    for (const providerId of ['claude-code', 'codex'] as const) {
+      if (currentIds[providerId] !== this.lastKnownActiveIds[providerId]) {
+        this.lastKnownActiveIds[providerId] = currentIds[providerId];
+        this._onAccountChange.fire(providerId);
+        log(`AccountService: active ${providerId} account changed to ${currentIds[providerId] ?? 'none'}`);
+      }
     }
   }
 
   private startWatching(): void {
-    // Watch accounts.json for external changes
     try {
       const registryPath = path.join(getAccountsDir(), 'accounts.json');
       const registryDir = path.dirname(registryPath);
@@ -98,16 +148,11 @@ export class AccountService implements vscode.Disposable {
       log(`AccountService: could not watch accounts dir: ${err}`);
     }
 
-    // Watch ~/.claude/ for `claude login` with new account (Linux/Windows only).
-    // On macOS, Claude Code stores credentials in the system Keychain, so file
-    // watchers cannot detect external credential changes. Users must manually
-    // save new accounts via "Save Current Claude Account" after `claude login`.
     try {
       const claudeDir = path.join(os.homedir(), '.claude');
       if (fs.existsSync(claudeDir)) {
         this.credentialsWatcher = fs.watch(claudeDir, (_event, filename) => {
           if (filename === '.credentials.json' || filename === '.claude.json') {
-            // Debounce slightly — both files may change in quick succession
             setTimeout(() => this.refresh(), 500);
           }
         });
@@ -121,6 +166,5 @@ export class AccountService implements vscode.Disposable {
     this.registryWatcher?.close();
     this.credentialsWatcher?.close();
     this._onAccountChange.dispose();
-    this.disposables.forEach(d => d.dispose());
   }
 }

@@ -33,6 +33,7 @@ import { PrDescriptionService } from "./services/PrDescriptionService";
 import { getTimeoutManager } from "./services/TimeoutManager";
 import { SessionMonitor } from './services/SessionMonitor';
 import { detectProvider } from './services/providers/ProviderDetector';
+import { CodexSessionProvider } from './services/providers/CodexSessionProvider';
 import { SessionFolderPicker } from './services/SessionFolderPicker';
 import { MonitorStatusBar } from './services/MonitorStatusBar';
 import { QuotaService } from './services/QuotaService';
@@ -72,7 +73,7 @@ import { KnowledgeNoteDecorationProvider } from "./providers/KnowledgeNoteDecora
 import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
 import { EventStreamTreeProvider } from "./providers/EventStreamTreeProvider";
 import { StatusBarManager } from "./services/StatusBarManager";
-import { AccountService } from "./services/AccountService";
+import { AccountService, isSavedAccountProfile } from "./services/AccountService";
 import { AccountStatusBar } from "./services/AccountStatusBar";
 import { openCliDashboard, disposeDashboardTerminal } from "./services/SidekickCliService";
 import { initLogger, log, logError, showLog } from "./services/Logger";
@@ -84,6 +85,7 @@ import {
 import { resolveModel } from "./services/ModelResolver";
 import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
 import { getNonce } from "./utils/nonce";
+import type { AccountProviderId } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 
 /** Whether completions are currently enabled */
@@ -904,60 +906,184 @@ export async function activate(context: vscode.ExtensionContext) {
   const accountService = new AccountService();
   context.subscriptions.push(accountService);
 
-  const accountStatusBar = new AccountStatusBar(accountService);
+  const accountStatusBar = new AccountStatusBar(accountService, authService!);
   context.subscriptions.push(accountStatusBar);
 
-  // Re-init auth client + refresh quota when the active account changes
-  accountService.onAccountChange(() => {
+  const getManagedAccountProvider = (): AccountProviderId | null => {
+    const providerId = authService?.getProviderId();
+    if (providerId === 'codex') return 'codex';
+    if (providerId === 'claude-max') return 'claude-code';
+    return null;
+  };
+
+  const restartCodexMonitoring = async (): Promise<void> => {
+    if (!sessionMonitor || sessionMonitor.getProvider().id !== 'codex') return;
+    await sessionMonitor.switchProvider(new CodexSessionProvider(), true);
+    dashboardProvider?.refreshSessionView();
+  };
+
+  const handleAccountChange = async (providerId: AccountProviderId): Promise<void> => {
     authService?.resetClient();
+    accountStatusBar.refresh();
+
+    if (providerId === 'codex') {
+      try {
+        await restartCodexMonitoring();
+      } catch (err) {
+        logError('Failed to restart Codex session monitoring after account change', err);
+      }
+    }
+
     quotaService?.fetchQuota();
+    dashboardProvider?.refreshSessionView();
+  };
+
+  accountService.onAccountChange((providerId) => {
+    void handleAccountChange(providerId);
   });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.switchAccount', async () => {
-      const accounts = accountService.listAccounts();
-      if (accounts.length === 0) {
-        const action = await vscode.window.showInformationMessage(
-          'No accounts saved. Save the current account first?',
-          'Save Current Account'
-        );
-        if (action) {
-          vscode.commands.executeCommand('sidekick.addAccount');
-        }
+      const managedProvider = getManagedAccountProvider();
+      if (!managedProvider) {
+        vscode.window.showInformationMessage('Account switching is available when the inference provider is Claude Max or Codex.');
         return;
       }
 
-      const active = accountService.getActiveAccount();
-      const items = accounts.map(a => ({
-        label: `$(account) ${a.label ?? a.email}`,
-        description: a.label ? a.email : undefined,
-        detail: a.uuid === active?.uuid ? '$(check) Active' : undefined,
-        uuid: a.uuid,
-      }));
+      if (managedProvider === 'codex') {
+        const accounts = accountService.listAccounts('codex');
+        if (accounts.length === 0) {
+          const action = await vscode.window.showInformationMessage(
+            'No accounts saved. Save the current account first?',
+            'Save Current Account'
+          );
+          if (action) {
+            vscode.commands.executeCommand('sidekick.addAccount');
+          }
+          return;
+        }
 
-      const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select an account to switch to',
-      });
-      if (!picked) return;
+        const active = accountService.getActiveAccount('codex');
+        const items = accounts.map((account) => ({
+          label: `$(account) ${account.label ?? account.id}`,
+          description: account.email ?? undefined,
+          detail: account.id === active?.id ? '$(check) Active' : account.metadata?.authMode,
+          accountId: account.id,
+        }));
 
-      const result = accountService.switchToAccount(picked.uuid);
-      if (result.success) {
-        const entry = accounts.find(a => a.uuid === picked.uuid);
-        vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'account'}`);
+        const picked = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select a Codex account to switch to',
+        });
+        if (!picked) return;
+
+        const result = accountService.switchToAccount('codex', picked.accountId);
+        if (result.success) {
+          const entry = accounts.find(account => account.id === picked.accountId);
+          vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'Codex account'}`);
+        } else {
+          vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
+        }
       } else {
-        vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
+        const accounts = accountService.listAccounts('claude-code');
+        if (accounts.length === 0) {
+          const action = await vscode.window.showInformationMessage(
+            'No accounts saved. Save the current account first?',
+            'Save Current Account'
+          );
+          if (action) {
+            vscode.commands.executeCommand('sidekick.addAccount');
+          }
+          return;
+        }
+
+        const active = accountService.getActiveAccount('claude-code');
+        const items = accounts.map((account) => ({
+          label: `$(account) ${account.label ?? account.email}`,
+          description: account.label ? account.email : undefined,
+          detail: account.uuid === active?.uuid ? '$(check) Active' : undefined,
+          accountId: account.uuid,
+        }));
+
+        const picked = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select a Claude account to switch to',
+        });
+        if (!picked) return;
+
+        const result = accountService.switchToAccount('claude-code', picked.accountId);
+        if (result.success) {
+          const entry = accounts.find(account => account.uuid === picked.accountId);
+          vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'Claude account'}`);
+        } else {
+          vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
+        }
       }
     }),
 
     vscode.commands.registerCommand('sidekick.addAccount', async () => {
+      const managedProvider = getManagedAccountProvider();
+      if (!managedProvider) {
+        vscode.window.showInformationMessage('Account saving is available when the inference provider is Claude Max or Codex.');
+        return;
+      }
+
+      if (managedProvider === 'codex') {
+        const label = await vscode.window.showInputBox({
+          prompt: 'Label for this Codex account (e.g., "Work", "Personal")',
+          placeHolder: 'Required label',
+          ignoreFocusOut: true,
+          validateInput: value => value.trim() ? null : 'A label is required for Codex accounts.',
+        });
+        if (label === undefined) return;
+
+        const result = accountService.addCurrentAccount('codex', label.trim());
+        if (!result.success) {
+          vscode.window.showErrorMessage(`Failed to save Codex account: ${result.error}`);
+          return;
+        }
+
+        if (result.needsLogin && result.profileId && result.codexHome) {
+          const terminal = vscode.window.createTerminal({
+            name: `Sidekick Codex Login (${label.trim()})`,
+            env: { CODEX_HOME: result.codexHome },
+          });
+
+          const closeDisposable = vscode.window.onDidCloseTerminal(async (closed) => {
+            if (closed !== terminal) return;
+            closeDisposable.dispose();
+
+            const finalized = accountService.finalizeCodexAccount(result.profileId!);
+            if (!finalized.success) {
+              vscode.window.showErrorMessage(`Failed to finalize Codex account: ${finalized.error}`);
+              return;
+            }
+
+            try {
+              await restartCodexMonitoring();
+            } catch (err) {
+              logError('Failed to restart Codex monitoring after account setup', err);
+            }
+            dashboardProvider?.refreshSessionView();
+            vscode.window.showInformationMessage(`Codex account "${label.trim()}" saved.`);
+          });
+          context.subscriptions.push(closeDisposable);
+
+          terminal.show();
+          terminal.sendText('codex login', true);
+          vscode.window.showInformationMessage('Complete the Codex login in the terminal. Sidekick will save the profile when the terminal closes.');
+          return;
+        }
+
+        vscode.window.showInformationMessage(`Codex account "${label.trim()}" saved.`);
+        return;
+      }
+
       const label = await vscode.window.showInputBox({
         prompt: 'Optional label for this account (e.g., "Work", "Personal")',
         placeHolder: 'Leave empty for no label',
       });
-      // undefined means cancelled, empty string means no label
       if (label === undefined) return;
 
-      const result = accountService.addCurrentAccount(label || undefined);
+      const result = accountService.addCurrentAccount('claude-code', label || undefined);
       if (result.success) {
         vscode.window.showInformationMessage('Current Claude account saved.');
       } else {
@@ -966,17 +1092,28 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand('sidekick.removeAccount', async () => {
-      const accounts = accountService.listAccounts();
-      if (accounts.length === 0) {
-        vscode.window.showInformationMessage('No accounts saved.');
+      const managedProvider = getManagedAccountProvider();
+      if (!managedProvider) {
+        vscode.window.showInformationMessage('Account removal is available when the inference provider is Claude Max or Codex.');
         return;
       }
 
-      const items = accounts.map(a => ({
-        label: a.label ?? a.email,
-        description: a.label ? a.email : undefined,
-        uuid: a.uuid,
-      }));
+      const items = managedProvider === 'codex'
+        ? accountService.listAccounts('codex').map((account) => ({
+            label: account.label ?? account.id,
+            description: account.email ?? undefined,
+            accountId: account.id,
+          }))
+        : accountService.listAccounts('claude-code').map((account) => ({
+            label: account.label ?? account.email,
+            description: account.label ? account.email : undefined,
+            accountId: account.uuid,
+          }));
+
+      if (items.length === 0) {
+        vscode.window.showInformationMessage('No accounts saved.');
+        return;
+      }
 
       const picked = await vscode.window.showQuickPick(items, {
         placeHolder: 'Select an account to remove',
@@ -990,7 +1127,7 @@ export async function activate(context: vscode.ExtensionContext) {
       );
       if (confirm !== 'Remove') return;
 
-      const result = accountService.removeAccount(picked.uuid);
+      const result = accountService.removeAccount(managedProvider, picked.accountId);
       if (result.success) {
         vscode.window.showInformationMessage('Account removed.');
       } else {
@@ -1435,12 +1572,15 @@ export async function activate(context: vscode.ExtensionContext) {
         });
       }
 
-      // Show account actions when using Claude Code (claude-max) provider
-      if (authService?.getProviderId() === 'claude-max') {
-        const accounts = accountService.listAccounts();
+      const managedProvider = getManagedAccountProvider();
+      if (managedProvider) {
+        const accounts = accountService.listAccounts(managedProvider);
+        const active = accountService.getActiveAccount(managedProvider);
+        const displayName = active && isSavedAccountProfile(active)
+          ? active.label ?? active.email ?? active.id ?? 'unknown'
+          : active?.label ?? active?.email ?? 'unknown';
+
         if (accounts.length >= 2) {
-          const active = accountService.getActiveAccount();
-          const displayName = active?.label ?? active?.email ?? 'unknown';
           items.splice(2, 0, {
             label: "$(account) Switch Account",
             description: `Active: ${displayName}`,
@@ -1449,7 +1589,9 @@ export async function activate(context: vscode.ExtensionContext) {
         } else {
           items.splice(2, 0, {
             label: "$(account) Save Current Account",
-            description: "Save Claude Code credentials for multi-account switching",
+            description: managedProvider === 'codex'
+              ? "Save or create a managed Codex profile for account switching"
+              : "Save Claude Code credentials for multi-account switching",
             action: "saveAccount",
           });
         }
