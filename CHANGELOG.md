@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-04-13
+
+### Added
+
+- **Multi-provider account registry**: Account management is now provider-aware — each provider (Claude Code, Codex) maintains its own active account with independent switching, stored in a v2 registry format that auto-migrates from v1
+- **Codex profile management**: Full lifecycle for Codex accounts — prepare, finalize, switch, and remove profiles with isolated `CODEX_HOME` directories per account
+- **Quota snapshot caching**: Cached rate-limit snapshots per provider/account in `~/.config/sidekick/quota-snapshots.json` for offline fallback with "cached from" indicators
+- **VS Code multi-provider account UI**: `Switch Account`, `Add Account`, and `Remove Account` commands now work for both Claude Code and Codex — with guided login flow for Codex profiles
+- **CLI multi-provider account commands**: `sidekick account --provider codex` for Codex account management with `--add`, `--switch-to`, and `--remove` by email, label, or ID
+
+### Fixed
+
+- **Account type safety**: Added type guards and typed overloads to `AccountService`, removing unsafe type assertions from extension commands
+- **Email normalization**: CLI Claude account lookup now normalizes email case for reliable matching
+- **Codex monitoring recovery**: `restartCodexMonitoring` failures are now handled gracefully instead of propagating
+
 ## [0.16.1] - 2026-03-27
 
 ### Fixed

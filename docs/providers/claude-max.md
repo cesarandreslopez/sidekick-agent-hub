@@ -32,7 +32,7 @@ If quota data becomes unavailable, Sidekick now keeps the quota surface visible 
 
 ## Multiple Accounts
 
-If you have multiple Claude Max subscriptions (e.g., personal and work), Sidekick can switch between their Claude Code CLI credentials natively — no manual `claude login` / logout cycles. This feature manages Claude Code sign-in credentials specifically; it does not apply to Claude API keys or other providers.
+If you have multiple Claude Max subscriptions (e.g., personal and work), Sidekick can switch between their Claude Code CLI credentials natively — no manual `claude login` / logout cycles. This feature manages Claude Code sign-in credentials specifically; it does not apply to Claude API keys. For Codex multi-account management, see the [Codex provider docs](codex.md#account-management).
 
 ### VS Code
 

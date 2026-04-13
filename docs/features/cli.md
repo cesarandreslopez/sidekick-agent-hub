@@ -289,25 +289,26 @@ sidekick --provider codex quota
 sidekick account [options]
 ```
 
-Manage Claude Code accounts — save, list, switch, and remove accounts without manual `claude login` / logout cycles. Account data is stored in `~/.config/sidekick/accounts/`.
+Manage accounts across providers — save, list, switch, and remove without manual login/logout cycles. Supports Claude Code and Codex profiles. Account data is stored in `~/.config/sidekick/accounts/`.
 
 | Flag | Description |
 |------|-------------|
-| `--add` | Save the currently signed-in Claude account |
-| `--label <name>` | Label for the account (use with `--add`, e.g., "Work") |
+| `--provider <id>` | Provider: `claude-code` (default) or `codex` |
+| `--add` | Save the currently signed-in account |
+| `--label <name>` | Label for the account (use with `--add`; required for Codex) |
 | `--switch` | Switch to the next saved account in the list |
-| `--switch-to <email>` | Switch to a specific account by email address |
-| `--remove <email>` | Remove a saved account by email address |
+| `--switch-to <id>` | Switch to a specific account by email, label, or ID |
+| `--remove <id>` | Remove a saved account by email, label, or ID |
 
 With no flags, lists all saved accounts and marks the active one.
 
 #### Examples
 
 ```bash
-# List saved accounts
+# List saved accounts (Claude Code, default)
 sidekick account
 
-# Save the current account with a label
+# Save the current Claude Code account with a label
 sidekick account --add --label Work
 
 # Switch to the next account
@@ -318,6 +319,12 @@ sidekick account --switch-to personal@gmail.com
 
 # Remove an account
 sidekick account --remove old@example.com
+
+# Codex profile management
+sidekick account --provider codex                    # list Codex accounts
+sidekick account --provider codex --add --label Dev  # prepare profile + login
+sidekick account --provider codex --switch-to Dev    # switch by label, email, or ID
+sidekick account --provider codex --remove Dev       # remove a profile
 
 # JSON output for scripting
 sidekick account --json
@@ -575,9 +582,11 @@ The CLI reads from the same `~/.config/sidekick/` directory as the VS Code exten
 | `historical-data.json` | Token/cost/tool usage statistics |
 | `tasks/{projectSlug}.json` | Kanban board task data |
 | `decisions/{projectSlug}.json` | Decision log entries |
-| `accounts/accounts.json` | Multi-account registry |
-| `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per account |
-| `accounts/configs/*.config.json` | Backed-up account identity per account |
+| `accounts/accounts.json` | Multi-provider account registry (v2) |
+| `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per Claude account |
+| `accounts/configs/*.config.json` | Backed-up account identity per Claude account |
+| `accounts/codex/profiles/*/codex-home/` | Isolated Codex profile directories |
+| `quota-snapshots.json` | Cached rate-limit snapshots per provider/account |
 
 Any data written by the VS Code extension is immediately visible in the CLI, and vice versa.
 

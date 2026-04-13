@@ -126,15 +126,16 @@ When multi-account is enabled, `sidekick quota` shows the active account email a
 sidekick account [options]
 ```
 
-Manage multiple Claude Code accounts — save, list, switch, and remove without manual `claude login` / logout cycles. Account data is stored in `~/.config/sidekick/accounts/` with strict file permissions and atomic writes with rollback on failure.
+Manage accounts across providers — save, list, switch, and remove without manual login/logout cycles. Supports Claude Code and Codex profiles. Account data is stored in `~/.config/sidekick/accounts/` with strict file permissions and atomic writes with rollback on failure.
 
 | Flag | Description |
 |------|-------------|
+| `--provider <id>` | Provider: `claude-code` (default) or `codex` |
 | `--add` | Save the currently signed-in account |
-| `--label <name>` | Label for the account (use with `--add`) |
+| `--label <name>` | Label for the account (use with `--add`; required for Codex) |
 | `--switch` | Switch to the next saved account |
-| `--switch-to <email>` | Switch to a specific account by email |
-| `--remove <email>` | Remove a saved account |
+| `--switch-to <id>` | Switch to a specific account by email, label, or ID |
+| `--remove <id>` | Remove a saved account by email, label, or ID |
 
 With no flags, lists all saved accounts and marks the active one. Use `--json` for machine-readable output.
 

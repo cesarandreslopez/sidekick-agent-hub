@@ -34,6 +34,9 @@ npm install sidekick-shared
 | **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCalls()` |
 | **Model Info & Pricing** | Model family parsing, context window lookup, pricing tables, and cost calculation (`getModelInfo()`, `calculateCost()`, `formatCost()`) |
 | **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
+| **Accounts** | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, and v1 migration |
+| **Codex Profiles** | Codex account lifecycle — prepare, finalize, switch, remove — with isolated `CODEX_HOME` directories |
+| **Quota Snapshots** | Persistent quota caching per provider/account for offline fallback |
 
 ## Usage Examples
 

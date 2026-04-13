@@ -69,7 +69,7 @@ Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sid
 
 ### Account Management
 
-Switch between multiple Claude Code accounts without manual `claude login` / logout cycles:
+Manage multiple accounts for Claude Code and Codex — save, switch, and remove without manual login/logout cycles:
 
 ```bash
 sidekick account                                    # list saved accounts
@@ -77,9 +77,14 @@ sidekick account --add --label Work                 # save the current Claude Co
 sidekick account --switch                           # switch to next account
 sidekick account --switch-to personal@gmail.com     # switch to a specific account
 sidekick account --remove old@example.com           # remove a saved account
+
+# Codex profiles
+sidekick account --provider codex                   # list Codex accounts
+sidekick account --provider codex --add --label Dev # add a Codex profile (opens login)
+sidekick account --provider codex --switch-to Dev   # switch by label, email, or ID
 ```
 
-In VS Code, account actions are also available from the **Sidekick · Claude** status bar menu and the Command Palette. See the [Claude Max provider docs](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) for the full setup guide.
+In VS Code, account actions are available from the status bar menu and the Command Palette — for both Claude Code and Codex providers. See the [Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) and [Codex](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/) provider docs for setup guides.
 
 ## Provider Support
 

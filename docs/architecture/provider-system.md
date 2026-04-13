@@ -73,6 +73,15 @@ Both provider types support auto-detection via `ProviderDetector`, which checks:
 
 Inference and session providers are independent — you can use Claude Max for inference while monitoring OpenCode sessions, or any other combination.
 
+## Account Registry
+
+Account management is provider-aware via a v2 registry format (`~/.config/sidekick/accounts/accounts.json`). Each provider (Claude Code, Codex) maintains its own active account independently — switching Claude accounts does not affect Codex, and vice versa.
+
+- **Claude Code accounts** store backed-up OAuth credentials and identity metadata
+- **Codex accounts** use isolated profile directories with independent `CODEX_HOME` paths, allowing each profile to have its own auth, config, and session data
+
+The registry auto-migrates from v1 (single-provider) to v2 (multi-provider) on first read. Quota snapshots are cached per provider/account for offline fallback.
+
 ## Shared Provider Library
 
 The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) package ports the session provider implementations for use outside VS Code. It uses the same auto-detection algorithm — checking filesystem presence and most-recent modification time — minus the VS Code setting fallback. Any npm project can consume these providers directly via `npm install sidekick-shared`.

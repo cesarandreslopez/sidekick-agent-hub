@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-04-13
+
+### Added
+
+- **Multi-provider account management**: `sidekick account` now supports `--provider codex` for Codex profile management alongside Claude Code accounts
+- **Codex account lifecycle**: `--add` prepares a profile and spawns `codex login`; `--switch-to` and `--remove` accept email, label, or profile ID
+- **Quota snapshot fallback**: `sidekick quota` for Codex shows cached rate-limit snapshots when no active session exists, with "cached from" timestamp
+
+### Fixed
+
+- **Email normalization**: Claude account lookup normalizes email case for reliable matching
+
 ## [0.16.1] - 2026-03-27
 
 ### Fixed

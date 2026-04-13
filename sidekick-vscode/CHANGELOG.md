@@ -5,6 +5,20 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-04-13
+
+### Added
+
+- **Multi-provider account management**: `Switch Account`, `Add Account`, and `Remove Account` commands now support both Claude Code and Codex providers — shows provider-specific quick picks with account metadata
+- **Codex account onboarding**: `Add Account` for Codex prompts for a label, prepares an isolated profile, opens a terminal for `codex login`, and auto-finalizes on completion
+- **Account status bar**: Shows the active account for each provider with auth-mode icons (API key vs ChatGPT for Codex)
+- **Dashboard account actions**: Context menu entries for switching or saving accounts, scoped to the active provider
+
+### Fixed
+
+- **Account type safety**: `AccountService` now uses typed overloads and type guards — no more unsafe `as` casts in extension commands
+- **Codex monitoring recovery**: `restartCodexMonitoring` failures are caught gracefully
+
 ## [0.16.1] - 2026-03-27
 
 ### Fixed
