@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { resolveSidekickCodexHome } from 'sidekick-shared';
 import { ClaudeCodeSessionProvider } from './ClaudeCodeSessionProvider';
 import { OpenCodeSessionProvider } from './OpenCodeSessionProvider';
 import { CodexSessionProvider } from './CodexSessionProvider';
@@ -41,12 +42,10 @@ function getOpenCodeStorageDir(): string {
 
 /**
  * Gets the Codex home directory path for detection.
- * Respects CODEX_HOME env var, defaults to ~/.codex/
+ * Uses the active Sidekick-managed Codex home when present.
  */
 function getCodexHome(): string {
-  const envHome = process.env.CODEX_HOME;
-  if (envHome) return envHome;
-  return path.join(os.homedir(), '.codex');
+  return resolveSidekickCodexHome();
 }
 
 /**

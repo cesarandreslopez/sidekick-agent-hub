@@ -4,7 +4,16 @@
 
 import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
-import { describeQuotaFailure, getActiveAccount, createWatcher, CodexProvider } from 'sidekick-shared';
+import {
+  describeQuotaFailure,
+  getActiveAccount,
+  createWatcher,
+  CodexProvider,
+  getActiveCodexAccount,
+  quotaFromCodexRateLimits,
+  readQuotaSnapshot,
+  writeQuotaSnapshot,
+} from 'sidekick-shared';
 import type { FollowEvent } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
@@ -37,6 +46,11 @@ export function formatTimeUntil(isoString: string): string {
   if (hours > 0) parts.push(`${hours}h`);
   if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
   return 'in ' + (parts.join(' ') || '0m');
+}
+
+function formatSnapshotTime(isoString?: string): string {
+  if (!isoString) return 'unknown time';
+  return new Date(isoString).toLocaleString();
 }
 
 export async function quotaAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
@@ -138,46 +152,64 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
 
 async function codexQuotaAction(provider: CodexProvider, globalOpts: Record<string, unknown>, jsonOutput: boolean): Promise<void> {
   const workspacePath = (globalOpts.project as string) || process.cwd();
+  const activeAccount = getActiveCodexAccount();
+  let quota = activeAccount ? readQuotaSnapshot('codex', activeAccount.id) : null;
 
-  // Find the most recent Codex session and replay it to extract rate limits
+  // Find the most recent Codex session and replay it to extract rate limits.
+  // Fall back to the cached snapshot for the active managed profile.
   const sessions = provider.findAllSessions(workspacePath);
-  if (sessions.length === 0) {
-    provider.dispose();
-    const msg = 'No active Codex session. Rate limits are available only during active sessions.';
-    if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
-    } else {
-      process.stderr.write(chalk.yellow(msg) + '\n');
-    }
-    return;
-  }
-
-  // Replay the latest session to capture rate limit data from events.
-  // Use a wrapper object so TypeScript doesn't narrow the closure-mutated value.
-  const captured: { rl: FollowEvent['rateLimits'] } = { rl: undefined };
-  try {
-    const result = createWatcher({
-      provider,
-      workspacePath,
-      callbacks: {
-        onEvent: (event: FollowEvent) => {
-          if (event.rateLimits) {
-            captured.rl = event.rateLimits;
-          }
+  if (sessions.length > 0) {
+    const captured: { rl: FollowEvent['rateLimits'] } = { rl: undefined };
+    try {
+      const result = createWatcher({
+        provider,
+        workspacePath,
+        callbacks: {
+          onEvent: (event: FollowEvent) => {
+            if (event.rateLimits) {
+              captured.rl = event.rateLimits;
+            }
+          },
+          onError: () => {},
         },
-        onError: () => {},
-      },
-    });
-    result.watcher.start(true); // replay
-    result.watcher.stop();
-  } catch {
-    // ignore watcher errors
+      });
+      result.watcher.start(true); // replay
+      result.watcher.stop();
+    } catch {
+      // ignore watcher errors
+    }
+
+    const liveQuota = captured.rl
+      ? quotaFromCodexRateLimits({
+          primary: captured.rl.primary
+            ? {
+                used_percent: captured.rl.primary.usedPercent,
+                window_minutes: captured.rl.primary.windowMinutes,
+                resets_at: captured.rl.primary.resetsAt,
+              }
+            : undefined,
+          secondary: captured.rl.secondary
+            ? {
+                used_percent: captured.rl.secondary.usedPercent,
+                window_minutes: captured.rl.secondary.windowMinutes,
+                resets_at: captured.rl.secondary.resetsAt,
+              }
+            : undefined,
+        }, 'session')
+      : null;
+    if (liveQuota) {
+      quota = liveQuota;
+      if (activeAccount) {
+        writeQuotaSnapshot('codex', activeAccount.id, liveQuota);
+      }
+    }
   }
   provider.dispose();
 
-  const rateLimits = captured.rl;
-  if (!rateLimits) {
-    const msg = 'No rate-limit data found in latest Codex session.';
+  if (!quota) {
+    const msg = activeAccount
+      ? `No active Codex session and no cached rate-limit snapshot is available for "${activeAccount.label ?? activeAccount.id}".`
+      : 'No active Codex session and no saved Codex account snapshot is available.';
     if (jsonOutput) {
       process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
     } else {
@@ -185,30 +217,6 @@ async function codexQuotaAction(provider: CodexProvider, globalOpts: Record<stri
     }
     return;
   }
-
-  const primary = rateLimits.primary;
-  const secondary = rateLimits.secondary;
-
-  if (!primary && !secondary) {
-    const msg = 'No rate-limit data found in latest Codex session.';
-    if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
-    } else {
-      process.stderr.write(chalk.yellow(msg) + '\n');
-    }
-    return;
-  }
-
-  // Convert to QuotaState-like structure for display
-  const quota = {
-    fiveHour: primary
-      ? { utilization: primary.usedPercent, resetsAt: new Date(primary.resetsAt * 1000).toISOString() }
-      : { utilization: 0, resetsAt: '' },
-    sevenDay: secondary
-      ? { utilization: secondary.usedPercent, resetsAt: new Date(secondary.resetsAt * 1000).toISOString() }
-      : { utilization: 0, resetsAt: '' },
-    available: true,
-  };
 
   if (jsonOutput) {
     process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
@@ -220,13 +228,21 @@ async function codexQuotaAction(provider: CodexProvider, globalOpts: Record<stri
   const sevenPct = Math.round(quota.sevenDay.utilization);
   const fiveReset = quota.fiveHour.resetsAt ? formatTimeUntil(quota.fiveHour.resetsAt) : '';
   const sevenReset = quota.sevenDay.resetsAt ? formatTimeUntil(quota.sevenDay.resetsAt) : '';
+  const fiveLabel = quota.fiveHourLabel ?? '5-Hour';
+  const sevenLabel = quota.sevenDayLabel ?? '7-Day';
 
+  if (activeAccount) {
+    process.stdout.write(chalk.dim(`Account: ${activeAccount.label ?? activeAccount.id}${activeAccount.email ? ` (${activeAccount.email})` : ''}\n`));
+  }
+  if (quota.stale) {
+    process.stdout.write(chalk.yellow(`Using cached rate-limit snapshot from ${formatSnapshotTime(quota.capturedAt)}.\n`));
+  }
   process.stdout.write(chalk.bold('Rate Limits\n'));
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
-  if (primary) {
-    process.stdout.write(`  ${chalk.dim('Primary')}  ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%   ${fiveReset ? chalk.dim('resets ' + fiveReset) : ''}\n`);
+  if (quota.fiveHour.resetsAt || quota.fiveHour.utilization > 0) {
+    process.stdout.write(`  ${chalk.dim(fiveLabel.padEnd(9))} ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%   ${fiveReset ? chalk.dim('resets ' + fiveReset) : ''}\n`);
   }
-  if (secondary) {
-    process.stdout.write(`  ${chalk.dim('Secondary')} ${makeChalkBar(sevenPct, barWidth - 1)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
+  if (quota.sevenDay.resetsAt || quota.sevenDay.utilization > 0) {
+    process.stdout.write(`  ${chalk.dim(sevenLabel.padEnd(9))} ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
   }
 }

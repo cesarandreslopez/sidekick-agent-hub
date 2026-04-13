@@ -15,8 +15,8 @@
 import { spawn } from 'child_process';
 import * as readline from 'readline';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
+import { getCodexExecutionEnv, resolveSidekickCodexHome } from 'sidekick-shared';
 import { ClaudeClient, CompletionOptions, ConnectionError } from '../types';
 import { log, logError } from './Logger';
 import { findCli } from '../utils/cliPathResolver';
@@ -53,7 +53,7 @@ export class CodexClient implements ClaudeClient {
     }
 
     const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(process.env)) {
+    for (const [key, value] of Object.entries(getCodexExecutionEnv())) {
       if (value !== undefined) env[key] = value;
     }
     if (!env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE) {
@@ -129,11 +129,11 @@ export class CodexClient implements ClaudeClient {
       return true;
     }
 
-    const credPath = path.join(
-      process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex'),
-      '.credentials.json'
-    );
-    if (fs.existsSync(credPath)) {
+    const codexHome = resolveSidekickCodexHome();
+    if (
+      fs.existsSync(path.join(codexHome, 'auth.json')) ||
+      fs.existsSync(path.join(codexHome, '.credentials.json'))
+    ) {
       log('CodexClient: credentials file found');
       return true;
     }

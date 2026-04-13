@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { ProviderId } from './types';
+import { resolveSidekickCodexHome } from '../codexProfiles';
 
 function getOpenCodeDataDir(): string {
   const xdg = process.env.XDG_DATA_HOME;
@@ -20,9 +21,7 @@ function getOpenCodeDataDir(): string {
 }
 
 function getCodexHome(): string {
-  const envHome = process.env.CODEX_HOME;
-  if (envHome) return envHome;
-  return path.join(os.homedir(), '.codex');
+  return resolveSidekickCodexHome();
 }
 
 function getMostRecentMtime(dir: string): number {

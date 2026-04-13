@@ -29,6 +29,18 @@ export interface QuotaState {
   projectedFiveHour?: number;
   /** Projected 7-day utilization at reset (percentage, capped at 200) */
   projectedSevenDay?: number;
+  /** Provider that produced this quota sample */
+  providerId?: 'claude-code' | 'codex';
+  /** Source of the sample */
+  source?: 'api' | 'session' | 'cache';
+  /** ISO timestamp when the sample was captured */
+  capturedAt?: string;
+  /** Whether the sample is stale cached data */
+  stale?: boolean;
+  /** Provider-specific display label for the first window */
+  fiveHourLabel?: string;
+  /** Provider-specific display label for the second window */
+  sevenDayLabel?: string;
 }
 
 interface UsageApiResponse {

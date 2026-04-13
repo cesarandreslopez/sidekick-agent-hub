@@ -11,6 +11,7 @@
 
 import { spawn, execSync, type ExecSyncOptionsWithStringEncoding } from 'child_process';
 import type { ProviderId } from 'sidekick-shared';
+import { getCodexExecutionEnv } from 'sidekick-shared';
 
 export interface InferenceResult {
   text: string;
@@ -184,14 +185,22 @@ export class CliInferenceClient {
   }
 
   private completeViaCodexCli(prompt: string): Promise<InferenceResult> {
-    return spawnWithStdin('codex', ['exec'], prompt);
+    return spawnWithStdin('codex', ['exec'], prompt, getCodexExecutionEnv());
   }
 }
 
 /** Spawn a CLI process and pipe the prompt via stdin. */
-function spawnWithStdin(cmd: string, args: string[], prompt: string): Promise<InferenceResult> {
+function spawnWithStdin(
+  cmd: string,
+  args: string[],
+  prompt: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<InferenceResult> {
   return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn(cmd, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: env ?? process.env,
+    });
 
     let stdout = '';
     let stderr = '';

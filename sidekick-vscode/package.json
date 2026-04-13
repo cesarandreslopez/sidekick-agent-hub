@@ -836,15 +836,15 @@
       },
       {
         "command": "sidekick.switchAccount",
-        "title": "Sidekick: Switch Claude Account"
+        "title": "Sidekick: Switch Account"
       },
       {
         "command": "sidekick.addAccount",
-        "title": "Sidekick: Save Current Claude Account"
+        "title": "Sidekick: Save Current Account"
       },
       {
         "command": "sidekick.removeAccount",
-        "title": "Sidekick: Remove Claude Account"
+        "title": "Sidekick: Remove Account"
       }
     ],
     "submenus": [

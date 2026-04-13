@@ -456,10 +456,11 @@ export class SessionMonitor implements vscode.Disposable {
    * Switches the session provider and restarts monitoring.
    *
    * @param newProvider - The new session provider to use
+   * @param force - Restart even if the provider ID did not change
    * @returns True if a session was found and monitoring started
    */
-  async switchProvider(newProvider: SessionProvider): Promise<boolean> {
-    if (this.provider.id === newProvider.id) {
+  async switchProvider(newProvider: SessionProvider, force = false): Promise<boolean> {
+    if (this.provider.id === newProvider.id && !force) {
       // No change needed; dispose the unused provider instance.
       newProvider.dispose();
       return this.isActive();

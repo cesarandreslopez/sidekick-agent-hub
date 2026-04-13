@@ -11,6 +11,7 @@ import type { FollowEvent } from 'sidekick-shared';
 import { EventAggregator } from 'sidekick-shared';
 import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared';
 import type { SessionSnapshot } from 'sidekick-shared';
+import { quotaFromCodexRateLimits } from 'sidekick-shared';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
 import type { ProviderStatusState } from './ProviderStatusService';
@@ -774,15 +775,22 @@ export class DashboardState {
   private extractCodexQuota(event: FollowEvent): void {
     const rl = event.rateLimits;
     if (!rl?.primary && !rl?.secondary) return;
-    this._quota = {
-      fiveHour: rl.primary
-        ? { utilization: rl.primary.usedPercent, resetsAt: new Date(rl.primary.resetsAt * 1000).toISOString() }
-        : { utilization: 0, resetsAt: '' },
-      sevenDay: rl.secondary
-        ? { utilization: rl.secondary.usedPercent, resetsAt: new Date(rl.secondary.resetsAt * 1000).toISOString() }
-        : { utilization: 0, resetsAt: '' },
-      available: true,
-    };
+    this._quota = quotaFromCodexRateLimits({
+      primary: rl.primary
+        ? {
+            used_percent: rl.primary.usedPercent,
+            window_minutes: rl.primary.windowMinutes,
+            resets_at: rl.primary.resetsAt,
+          }
+        : undefined,
+      secondary: rl.secondary
+        ? {
+            used_percent: rl.secondary.usedPercent,
+            window_minutes: rl.secondary.windowMinutes,
+            resets_at: rl.secondary.resetsAt,
+          }
+        : undefined,
+    }) ?? this._quota;
   }
 }
 

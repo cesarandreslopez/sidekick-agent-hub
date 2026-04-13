@@ -273,7 +273,6 @@ export type { ClaudeMaxCredentials } from './credentials';
 
 // Accounts
 export {
-  getAccountsDir,
   readAccountRegistry,
   writeAccountRegistry,
   readActiveClaudeAccount,
@@ -285,6 +284,36 @@ export {
   isMultiAccountEnabled,
 } from './accounts';
 export type { AccountEntry, AccountRegistry, ActiveAccountInfo, AccountManagerResult } from './accounts';
+export {
+  getAccountsDir,
+  readSavedAccountRegistry,
+  writeSavedAccountRegistry,
+  listSavedAccountProfiles,
+  getActiveSavedAccount,
+  upsertSavedAccountProfile,
+  setActiveSavedAccount,
+  replaceSavedAccountProfiles,
+  removeSavedAccountProfile,
+} from './accountRegistry';
+export type {
+  AccountProviderId,
+  AccountIdentityMetadata,
+  SavedAccountProfile,
+  SavedAccountRegistry,
+} from './accountRegistry';
+export {
+  getCodexProfilesDir,
+  getCodexProfileHome,
+  listCodexAccounts,
+  getActiveCodexAccount,
+  resolveSidekickCodexHome,
+  getCodexExecutionEnv,
+  prepareCodexAccount,
+  finalizeCodexAccount,
+  switchToCodexAccount,
+  removeCodexAccount,
+} from './codexProfiles';
+export type { CodexAccountManagerResult } from './codexProfiles';
 
 // Quota
 export { fetchQuota } from './quota';
@@ -293,6 +322,8 @@ export { describeQuotaFailure } from './quotaPresentation';
 export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
 export type { QuotaPollerOptions } from './quotaPoller';
+export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
+export { quotaFromCodexRateLimits } from './codexQuota';
 
 // Model Context
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';

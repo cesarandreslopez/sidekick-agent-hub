@@ -48,7 +48,7 @@ import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
-import { describeQuotaFailure } from 'sidekick-shared';
+import { describeQuotaFailure, getActiveCodexAccount, readQuotaSnapshot } from 'sidekick-shared';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 import { scopeProviderStatuses, type DashboardSessionProviderId } from '../utils/providerStatusScope';
 import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
@@ -2130,6 +2130,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (sessionQuota) {
       // Codex: has session-based quota from rate_limits
       this._handleQuotaUpdate(sessionQuota);
+    } else if (provider.id === 'codex') {
+      const activeCodexAccount = getActiveCodexAccount();
+      const cached = activeCodexAccount ? readQuotaSnapshot('codex', activeCodexAccount.id) : null;
+      if (cached) {
+        this._handleQuotaUpdate({
+          ...cached,
+          accountLabel: activeCodexAccount?.label,
+          accountDetail: activeCodexAccount?.email,
+        });
+      } else {
+        this._handleQuotaUpdate({ fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false });
+      }
     } else if (this._quotaService && provider.id === 'claude-code') {
       // Claude Code: use cached quota from QuotaService, trigger refresh
       const cached = this._quotaService.getCachedQuota();
@@ -3116,6 +3128,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       margin-bottom: var(--sk-space-2);
       letter-spacing: 0.5px;
       opacity: 0.85;
+    }
+
+    .section-subtitle {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 6px;
+      opacity: 0.8;
     }
 
     .token-grid {
@@ -5054,10 +5073,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         <div class="gauge-row-item quota-item quota-section" id="quota-section" title="Claude Max subscription usage limits">
           <div class="section-title">Subscription Quota</div>
+          <div class="section-subtitle" id="quota-meta" style="display: none;"></div>
           <div id="quota-content">
             <div class="quota-grid">
               <div class="quota-card" title="Usage in the last 5 hours">
-                <div class="quota-label">5-Hour</div>
+                <div class="quota-label" id="quota-5h-label">5-Hour</div>
                 <div class="quota-gauge">
                   <canvas id="quota5hChart"></canvas>
                   <span class="quota-percent" id="quota-5h-percent">0%</span>
@@ -5066,7 +5086,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                 <div class="quota-projection" id="quota-5h-projection"></div>
               </div>
               <div class="quota-card" title="Usage in the last 7 days">
-                <div class="quota-label">7-Day</div>
+                <div class="quota-label" id="quota-7d-label">7-Day</div>
                 <div class="quota-gauge">
                   <canvas id="quota7dChart"></canvas>
                   <span class="quota-percent" id="quota-7d-percent">0%</span>
@@ -6380,6 +6400,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const sectionEl = document.getElementById('quota-section');
         const contentEl = document.getElementById('quota-content');
         const errorEl = document.getElementById('quota-error');
+        const metaEl = document.getElementById('quota-meta');
+        const label5hEl = document.getElementById('quota-5h-label');
+        const label7dEl = document.getElementById('quota-7d-label');
 
         if (!sectionEl || !contentEl || !errorEl) return;
 
@@ -6387,6 +6410,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           sectionEl.classList.remove('visible');
           contentEl.style.display = 'none';
           errorEl.style.display = 'none';
+          if (metaEl) metaEl.style.display = 'none';
           return;
         }
 
@@ -6398,11 +6422,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         sectionEl.title = currentProviderId === 'codex'
           ? 'Codex CLI rate limits'
           : 'Claude Max subscription usage limits';
+        if (label5hEl) label5hEl.textContent = quota?.fiveHourLabel || (currentProviderId === 'codex' ? 'Primary' : '5-Hour');
+        if (label7dEl) label7dEl.textContent = quota?.sevenDayLabel || (currentProviderId === 'codex' ? 'Secondary' : '7-Day');
 
         if (!quota) {
           sectionEl.classList.remove('visible');
           contentEl.style.display = 'none';
           errorEl.style.display = 'none';
+          if (metaEl) metaEl.style.display = 'none';
           return;
         }
 
@@ -6431,6 +6458,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             errorEl.style.display = 'none';
             errorEl.classList.remove('warning', 'error');
           }
+          if (metaEl) metaEl.style.display = 'none';
           return;
         }
 
@@ -6439,6 +6467,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         contentEl.style.display = 'block';
         errorEl.style.display = 'none';
         errorEl.classList.remove('warning', 'error');
+        if (metaEl) {
+          const metaParts = [];
+          if (quota.accountLabel) {
+            metaParts.push(quota.accountDetail
+              ? quota.accountLabel + ' (' + quota.accountDetail + ')'
+              : quota.accountLabel);
+          }
+          if (quota.stale) {
+            metaParts.push('Cached ' + (quota.capturedAt ? new Date(quota.capturedAt).toLocaleString() : 'snapshot'));
+          } else if (quota.providerId === 'codex') {
+            metaParts.push('Live session');
+          }
+          metaEl.textContent = metaParts.join(' • ');
+          metaEl.style.display = metaParts.length ? 'block' : 'none';
+        }
 
         // Update 5-hour gauge
         const percent5hEl = document.getElementById('quota-5h-percent');

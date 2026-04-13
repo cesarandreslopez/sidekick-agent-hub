@@ -10,10 +10,10 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { CodexRolloutParser } from '../parsers/codexParser';
 import { CodexDatabase } from './codexDatabase';
+import { resolveSidekickCodexHome } from '../codexProfiles';
 import type {
   SessionProviderBase,
   SessionReader,
@@ -32,12 +32,10 @@ import { getModelContextWindowSize } from '../modelContext';
 
 /**
  * Gets the Codex home directory.
- * Respects CODEX_HOME env var, defaults to ~/.codex/
+ * Uses the active Sidekick-managed Codex home when present.
  */
 function getCodexHome(): string {
-  const envHome = process.env.CODEX_HOME;
-  if (envHome) return envHome;
-  return path.join(os.homedir(), '.codex');
+  return resolveSidekickCodexHome();
 }
 
 /** Get the sessions base directory. */

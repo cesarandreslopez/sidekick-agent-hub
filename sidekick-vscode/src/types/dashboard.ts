@@ -83,6 +83,22 @@ export interface QuotaState {
   projectedFiveHour?: number;
   /** Projected 7-day utilization at reset time (percentage) */
   projectedSevenDay?: number;
+  /** Provider that produced this quota sample */
+  providerId?: 'claude-code' | 'codex';
+  /** Source of the sample */
+  source?: 'api' | 'session' | 'cache';
+  /** When the sample was captured */
+  capturedAt?: string;
+  /** Whether the sample is cached rather than live */
+  stale?: boolean;
+  /** Provider-specific display label for the first window */
+  fiveHourLabel?: string;
+  /** Provider-specific display label for the second window */
+  sevenDayLabel?: string;
+  /** Optional display label for the active account/profile */
+  accountLabel?: string;
+  /** Optional secondary identity detail */
+  accountDetail?: string;
 }
 
 export interface QuotaFailureDisplay {

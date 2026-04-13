@@ -8,8 +8,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { getConfigDir } from './paths';
 import { readActiveCredentials, writeActiveCredentials } from './credentialIO';
+import {
+  getAccountsDir,
+  getActiveSavedAccount,
+  listSavedAccountProfiles,
+  readSavedAccountRegistry,
+  replaceSavedAccountProfiles,
+  setActiveSavedAccount,
+  type SavedAccountProfile,
+} from './accountRegistry';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -34,6 +42,9 @@ export interface ActiveAccountInfo {
 export interface AccountManagerResult {
   success: boolean;
   error?: string;
+  needsLogin?: boolean;
+  profileId?: string;
+  codexHome?: string;
 }
 
 // ── Paths ────────────────────────────────────────────────────────────────
@@ -51,10 +62,6 @@ function getClaudeConfigPath(): string {
   } catch { /* fall through */ }
   // Fallback: ~/.claude.json (some Claude Code versions store config here)
   return path.join(os.homedir(), '.claude.json');
-}
-
-export function getAccountsDir(): string {
-  return path.join(getConfigDir(), 'accounts');
 }
 
 function getCredentialsDir(): string {
@@ -91,19 +98,38 @@ function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
 // ── Registry operations ──────────────────────────────────────────────────
 
 export function readAccountRegistry(): AccountRegistry | null {
-  try {
-    const content = fs.readFileSync(getRegistryPath(), 'utf8');
-    const parsed = JSON.parse(content);
-    if (parsed?.version !== 1 || !Array.isArray(parsed.accounts)) return null;
-    return parsed as AccountRegistry;
-  } catch {
-    return null;
-  }
+  const registry = readSavedAccountRegistry();
+  if (!registry) return null;
+
+  const claudeAccounts = registry.accounts
+    .filter(account => account.providerId === 'claude-code')
+    .map(account => ({
+      uuid: account.providerAccountId ?? account.id,
+      email: account.email ?? account.metadata?.email ?? 'unknown',
+      label: account.label,
+      addedAt: account.addedAt,
+    }));
+
+  return {
+    version: 1,
+    activeAccountUuid: registry.activeByProvider['claude-code'],
+    accounts: claudeAccounts,
+  };
 }
 
 export function writeAccountRegistry(registry: AccountRegistry): void {
-  ensureDirs();
-  atomicWriteJson(getRegistryPath(), registry);
+  const mappedClaudeProfiles: SavedAccountProfile[] = registry.accounts.map(account => ({
+    id: account.uuid,
+    providerId: 'claude-code',
+    providerAccountId: account.uuid,
+    email: account.email,
+    label: account.label,
+    addedAt: account.addedAt,
+    metadata: {
+      email: account.email,
+    },
+  }));
+  replaceSavedAccountProfiles('claude-code', mappedClaudeProfiles, registry.activeAccountUuid);
 }
 
 // ── Read active Claude account ───────────────────────────────────────────
@@ -318,16 +344,25 @@ export function removeAccount(uuid: string): AccountManagerResult {
 // ── Query helpers ────────────────────────────────────────────────────────
 
 export function listAccounts(): AccountEntry[] {
-  return readAccountRegistry()?.accounts ?? [];
+  return listSavedAccountProfiles('claude-code').map(account => ({
+    uuid: account.providerAccountId ?? account.id,
+    email: account.email ?? account.metadata?.email ?? 'unknown',
+    label: account.label,
+    addedAt: account.addedAt,
+  }));
 }
 
 export function getActiveAccount(): AccountEntry | null {
-  const registry = readAccountRegistry();
-  if (!registry?.activeAccountUuid) return null;
-  return registry.accounts.find(a => a.uuid === registry.activeAccountUuid) ?? null;
+  const active = getActiveSavedAccount('claude-code');
+  if (!active) return null;
+  return {
+    uuid: active.providerAccountId ?? active.id,
+    email: active.email ?? active.metadata?.email ?? 'unknown',
+    label: active.label,
+    addedAt: active.addedAt,
+  };
 }
 
 export function isMultiAccountEnabled(): boolean {
-  const registry = readAccountRegistry();
-  return (registry?.accounts.length ?? 0) >= 1;
+  return listSavedAccountProfiles('claude-code').length >= 1;
 }

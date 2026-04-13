@@ -15,11 +15,21 @@ program
   .option('--project <path>', 'Override project path (default: cwd)')
   .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)');
 
+export function resolveProviderId(
+  opts: { provider?: string },
+  defaultProvider: ProviderId | 'auto' = 'auto',
+): ProviderId {
+  if (opts.provider && opts.provider !== 'auto') {
+    return opts.provider as ProviderId;
+  }
+  if (defaultProvider !== 'auto') {
+    return defaultProvider;
+  }
+  return detectProvider();
+}
+
 export function resolveProvider(opts: { provider?: string }): SessionProvider {
-  const override = opts.provider && opts.provider !== 'auto'
-    ? opts.provider as ProviderId
-    : undefined;
-  const id = override || detectProvider(override);
+  const id = resolveProviderId(opts);
   switch (id) {
     case 'opencode': return new OpenCodeProvider();
     case 'codex': return new CodexProvider();
@@ -153,12 +163,13 @@ program.addCommand(statusCmd);
 
 // Account command — manage Claude Max accounts
 const accountCmd = new Command('account')
-  .description('Manage Claude Max accounts (list, add, switch, remove)')
+  .description('Manage saved accounts (list, add, switch, remove)')
+  .option('--provider <id>', 'Provider: claude-code, codex, auto (default: claude-code)')
   .option('--add', 'Save the currently signed-in account')
-  .option('--label <name>', 'Label for the account (use with --add)')
+  .option('--label <name>', 'Label for the account (required for Codex, optional for Claude)')
   .option('--switch', 'Switch to the next saved account')
-  .option('--switch-to <email>', 'Switch to a specific account by email')
-  .option('--remove <email>', 'Remove a saved account by email')
+  .option('--switch-to <identifier>', 'Switch to a specific account by email, label, or id')
+  .option('--remove <identifier>', 'Remove a saved account by email, label, or id')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { accountAction } = await import('./commands/account');
     return accountAction(_opts, cmd);
