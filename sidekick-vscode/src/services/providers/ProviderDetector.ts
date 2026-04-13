@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { resolveSidekickCodexHome } from 'sidekick-shared';
+import { getCodexMonitoringHomes } from 'sidekick-shared';
 import { ClaudeCodeSessionProvider } from './ClaudeCodeSessionProvider';
 import { OpenCodeSessionProvider } from './OpenCodeSessionProvider';
 import { CodexSessionProvider } from './CodexSessionProvider';
@@ -41,11 +41,10 @@ function getOpenCodeStorageDir(): string {
 }
 
 /**
- * Gets the Codex home directory path for detection.
- * Uses the active Sidekick-managed Codex home when present.
+ * Gets candidate Codex homes for session detection.
  */
-function getCodexHome(): string {
-  return resolveSidekickCodexHome();
+function getCodexHomes(): string[] {
+  return getCodexMonitoringHomes();
 }
 
 /**
@@ -95,19 +94,25 @@ function getOpenCodeActivityMtime(storageDir: string): number {
 }
 
 /**
- * Gets the most recent Codex activity timestamp.
- * Checks state.sqlite mtime first, then falls back to sessions dir.
+ * Gets the most recent Codex activity timestamp across all candidate homes.
  */
-function getCodexActivityMtime(codexHome: string): number {
-  const dbPath = path.join(codexHome, 'state.sqlite');
-  try {
-    const dbMtime = fs.statSync(dbPath).mtime.getTime();
-    if (dbMtime > 0) return dbMtime;
-  } catch {
-    // DB doesn't exist
+function getCodexActivityMtime(codexHomes: string[]): number {
+  let latest = 0;
+
+  for (const codexHome of codexHomes) {
+    const dbPath = path.join(codexHome, 'state.sqlite');
+    try {
+      const dbMtime = fs.statSync(dbPath).mtime.getTime();
+      if (dbMtime > latest) latest = dbMtime;
+    } catch {
+      // DB doesn't exist
+    }
+
+    const sessionsMtime = getMostRecentMtime(path.join(codexHome, 'sessions'));
+    if (sessionsMtime > latest) latest = sessionsMtime;
   }
 
-  return getMostRecentMtime(path.join(codexHome, 'sessions'));
+  return latest;
 }
 
 /**
@@ -143,13 +148,13 @@ export function detectProvider(): SessionProvider {
   const openCodeStorage = getOpenCodeStorageDir();
   const openCodeDbPath = path.join(getOpenCodeDataDir(), 'opencode.db');
   const claudeBase = path.join(os.homedir(), '.claude', 'projects');
-  const codexHome = getCodexHome();
-  const codexSessionsDir = path.join(codexHome, 'sessions');
-  const codexDbPath = path.join(codexHome, 'state.sqlite');
+  const codexHomes = getCodexHomes();
 
   const hasOpenCode = fs.existsSync(openCodeStorage) || fs.existsSync(openCodeDbPath);
   const hasClaude = fs.existsSync(claudeBase);
-  const hasCodex = fs.existsSync(codexSessionsDir) || fs.existsSync(codexDbPath);
+  const hasCodex = codexHomes.some(codexHome =>
+    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+  );
 
   log(`Auto-detecting session provider: Claude Code=${hasClaude}, OpenCode=${hasOpenCode}, Codex=${hasCodex}`);
 
@@ -175,7 +180,7 @@ export function detectProvider(): SessionProvider {
   if (hasCodex) {
     available.push({
       name: 'Codex CLI',
-      mtime: getCodexActivityMtime(codexHome),
+      mtime: getCodexActivityMtime(codexHomes),
       create: () => new CodexSessionProvider(),
     });
   }
@@ -206,13 +211,13 @@ export function detectInferenceProvider(): InferenceProviderId {
   const openCodeStorage = getOpenCodeStorageDir();
   const openCodeDbPath = path.join(getOpenCodeDataDir(), 'opencode.db');
   const claudeBase = path.join(os.homedir(), '.claude', 'projects');
-  const codexHome = getCodexHome();
-  const codexSessionsDir = path.join(codexHome, 'sessions');
-  const codexDbPath = path.join(codexHome, 'state.sqlite');
+  const codexHomes = getCodexHomes();
 
   const hasOpenCode = fs.existsSync(openCodeStorage) || fs.existsSync(openCodeDbPath);
   const hasClaude = fs.existsSync(claudeBase);
-  const hasCodex = fs.existsSync(codexSessionsDir) || fs.existsSync(codexDbPath);
+  const hasCodex = codexHomes.some(codexHome =>
+    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+  );
 
   const available: Array<{ id: InferenceProviderId; mtime: number }> = [];
 
@@ -223,7 +228,7 @@ export function detectInferenceProvider(): InferenceProviderId {
     available.push({ id: 'opencode', mtime: getOpenCodeActivityMtime(openCodeStorage) });
   }
   if (hasCodex) {
-    available.push({ id: 'codex', mtime: getCodexActivityMtime(codexHome) });
+    available.push({ id: 'codex', mtime: getCodexActivityMtime(codexHomes) });
   }
 
   if (available.length === 0) {

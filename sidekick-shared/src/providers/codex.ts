@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CodexRolloutParser } from '../parsers/codexParser';
 import { CodexDatabase } from './codexDatabase';
-import { resolveSidekickCodexHome } from '../codexProfiles';
+import { getCodexMonitoringHomes } from '../codexProfiles';
 import type {
   SessionProviderBase,
   SessionReader,
@@ -31,16 +31,18 @@ import { getModelContextWindowSize } from '../modelContext';
 // ---------------------------------------------------------------------------
 
 /**
- * Gets the Codex home directory.
- * Uses the active Sidekick-managed Codex home when present.
+ * Gets all candidate Codex homes to monitor.
+ *
+ * Managed profiles stay first so Sidekick-launched sessions keep working, but
+ * we also fall back to the system ~/.codex home when no explicit CODEX_HOME is set.
  */
-function getCodexHome(): string {
-  return resolveSidekickCodexHome();
+function getCodexHomes(): string[] {
+  return getCodexMonitoringHomes();
 }
 
-/** Get the sessions base directory. */
-function getSessionsDir(): string {
-  return path.join(getCodexHome(), 'sessions');
+/** Get every sessions base directory that may contain live Codex rollouts. */
+function getSessionsDirs(): string[] {
+  return getCodexHomes().map(home => path.join(home, 'sessions'));
 }
 
 /** Test if a filename is a Codex rollout file. */
@@ -107,6 +109,37 @@ function findRolloutFiles(dir: string): Array<{ path: string; mtime: Date }> {
   }
 
   return results;
+}
+
+function findRolloutFilesInConfiguredHomes(): Array<{ path: string; mtime: Date }> {
+  const results: Array<{ path: string; mtime: Date }> = [];
+  const seen = new Set<string>();
+
+  for (const sessionsDir of getSessionsDirs()) {
+    for (const file of findRolloutFiles(sessionsDir)) {
+      if (seen.has(file.path)) continue;
+      seen.add(file.path);
+      results.push(file);
+    }
+  }
+
+  return results;
+}
+
+/** Pick the best sessions directory for UI/search entrypoints. */
+function getSessionsDir(): string {
+  const dirs = getSessionsDirs();
+  for (const dir of dirs) {
+    if (findRolloutFiles(dir).length > 0) {
+      return dir;
+    }
+  }
+  return dirs[0] ?? path.join(process.cwd(), '.codex', 'sessions');
+}
+
+/** Pick the home that owns the preferred sessions directory. */
+function getCodexHome(): string {
+  return path.dirname(getSessionsDir());
 }
 
 /**
@@ -514,10 +547,7 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // File scan: look for any rollout file whose session_meta.cwd matches
-    const sessionsDir = getSessionsDir();
-    if (!fs.existsSync(sessionsDir)) return null;
-
-    const files = findRolloutFiles(sessionsDir);
+    const files = findRolloutFilesInConfiguredHomes();
     if (files.length === 0) return null;
 
     // Sort by mtime descending
@@ -530,8 +560,8 @@ export class CodexProvider implements SessionProviderBase {
       }
     }
 
-    // Fallback: return sessions dir if it exists
-    return fs.existsSync(sessionsDir) ? sessionsDir : null;
+    // Fallback: return the most relevant base sessions dir if one exists
+    return getSessionsDir();
   }
 
   // --- Session discovery ---
@@ -547,10 +577,7 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // File scan fallback
-    const sessionsDir = getSessionsDir();
-    if (!fs.existsSync(sessionsDir)) return null;
-
-    const files = findRolloutFiles(sessionsDir);
+    const files = findRolloutFilesInConfiguredHomes();
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
     for (const file of files) {
@@ -575,10 +602,7 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // File scan
-    const sessionsDir = getSessionsDir();
-    if (!fs.existsSync(sessionsDir)) return [];
-
-    const files = findRolloutFiles(sessionsDir);
+    const files = findRolloutFilesInConfiguredHomes();
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
     return files
@@ -620,28 +644,24 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // File scan supplement
-    const sessionsDir = getSessionsDir();
-    if (fs.existsSync(sessionsDir)) {
-      const files = findRolloutFiles(sessionsDir);
-      for (const file of files) {
-        const meta = readSessionMeta(file.path);
-        if (!meta?.cwd) continue;
+    for (const file of findRolloutFilesInConfiguredHomes()) {
+      const meta = readSessionMeta(file.path);
+      if (!meta?.cwd) continue;
 
-        const existing = seenCwds.get(meta.cwd);
-        if (existing) {
-          // Update mtime if newer
-          if (file.mtime > existing.lastModified) {
-            existing.lastModified = file.mtime;
-          }
-        } else {
-          seenCwds.set(meta.cwd, {
-            dir: path.dirname(file.path),
-            name: meta.cwd,
-            encodedName: meta.cwd,
-            sessionCount: 1,
-            lastModified: file.mtime,
-          });
+      const existing = seenCwds.get(meta.cwd);
+      if (existing) {
+        // Update mtime if newer
+        if (file.mtime > existing.lastModified) {
+          existing.lastModified = file.mtime;
         }
+      } else {
+        seenCwds.set(meta.cwd, {
+          dir: path.dirname(file.path),
+          name: meta.cwd,
+          encodedName: meta.cwd,
+          sessionCount: 1,
+          lastModified: file.mtime,
+        });
       }
     }
 
@@ -722,10 +742,7 @@ export class CodexProvider implements SessionProviderBase {
 
     // Filesystem fallback: scan all rollout files for matching forked_from_id.
     // Limited to recent files (last 50) to avoid excessive I/O.
-    const sessionsDir = getSessionsDir();
-    if (!fs.existsSync(sessionsDir)) return subagents;
-
-    const files = findRolloutFiles(sessionsDir);
+    const files = findRolloutFilesInConfiguredHomes();
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
     const filesToCheck = files.slice(0, 50);

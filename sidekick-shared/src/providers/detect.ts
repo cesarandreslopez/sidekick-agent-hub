@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { ProviderId } from './types';
-import { resolveSidekickCodexHome } from '../codexProfiles';
+import { getCodexMonitoringHomes } from '../codexProfiles';
 
 function getOpenCodeDataDir(): string {
   const xdg = process.env.XDG_DATA_HOME;
@@ -20,8 +20,8 @@ function getOpenCodeDataDir(): string {
   return path.join(os.homedir(), '.local', 'share', 'opencode');
 }
 
-function getCodexHome(): string {
-  return resolveSidekickCodexHome();
+function getCodexHomes(): string[] {
+  return getCodexMonitoringHomes();
 }
 
 function getMostRecentMtime(dir: string): number {
@@ -58,24 +58,31 @@ function getOpenCodeActivityMtime(): number {
 }
 
 function getCodexActivityMtime(): number {
-  const codexHome = getCodexHome();
-  const dbPath = path.join(codexHome, 'state.sqlite');
-  try {
-    const dbMtime = fs.statSync(dbPath).mtime.getTime();
-    if (dbMtime > 0) return dbMtime;
-  } catch { /* no DB */ }
-  return getMostRecentMtime(path.join(codexHome, 'sessions'));
+  let latest = 0;
+
+  for (const codexHome of getCodexHomes()) {
+    const dbPath = path.join(codexHome, 'state.sqlite');
+    try {
+      const dbMtime = fs.statSync(dbPath).mtime.getTime();
+      if (dbMtime > latest) latest = dbMtime;
+    } catch { /* no DB */ }
+
+    const sessionsMtime = getMostRecentMtime(path.join(codexHome, 'sessions'));
+    if (sessionsMtime > latest) latest = sessionsMtime;
+  }
+
+  return latest;
 }
 
 function getProviderPaths() {
   const claudeBase = path.join(os.homedir(), '.claude', 'projects');
   const openCodeDataDir = getOpenCodeDataDir();
+  const codexHomes = getCodexHomes();
   return {
     claudeBase,
     openCodeDbPath: path.join(openCodeDataDir, 'opencode.db'),
     openCodeStorageDir: path.join(openCodeDataDir, 'storage'),
-    codexSessionsDir: path.join(getCodexHome(), 'sessions'),
-    codexDbPath: path.join(getCodexHome(), 'state.sqlite'),
+    codexHomes,
   };
 }
 
@@ -84,11 +91,13 @@ function getProviderPaths() {
  * Ordered by most-recent activity first.
  */
 export function getAllDetectedProviders(): ProviderId[] {
-  const { claudeBase, openCodeDbPath, openCodeStorageDir, codexSessionsDir, codexDbPath } = getProviderPaths();
+  const { claudeBase, openCodeDbPath, openCodeStorageDir, codexHomes } = getProviderPaths();
 
   const hasClaude = fs.existsSync(claudeBase);
   const hasOpenCode = fs.existsSync(openCodeStorageDir) || fs.existsSync(openCodeDbPath);
-  const hasCodex = fs.existsSync(codexSessionsDir) || fs.existsSync(codexDbPath);
+  const hasCodex = codexHomes.some(codexHome =>
+    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+  );
 
   const available: Array<{ id: ProviderId; mtime: number }> = [];
   if (hasClaude) available.push({ id: 'claude-code', mtime: getMostRecentMtime(claudeBase) });
@@ -106,11 +115,13 @@ export function getAllDetectedProviders(): ProviderId[] {
 export function detectProvider(override?: ProviderId | 'auto'): ProviderId {
   if (override && override !== 'auto') return override;
 
-  const { claudeBase, openCodeDbPath, openCodeStorageDir, codexSessionsDir, codexDbPath } = getProviderPaths();
+  const { claudeBase, openCodeDbPath, openCodeStorageDir, codexHomes } = getProviderPaths();
 
   const hasClaude = fs.existsSync(claudeBase);
   const hasOpenCode = fs.existsSync(openCodeStorageDir) || fs.existsSync(openCodeDbPath);
-  const hasCodex = fs.existsSync(codexSessionsDir) || fs.existsSync(codexDbPath);
+  const hasCodex = codexHomes.some(codexHome =>
+    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+  );
 
   const available: Array<{ id: ProviderId; mtime: number }> = [];
 

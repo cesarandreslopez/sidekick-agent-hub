@@ -36,8 +36,45 @@ export interface CodexAccountManagerResult extends AccountManagerResult {
   codexHome?: string;
 }
 
-function getSystemCodexHome(): string {
-  return process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex');
+function getDefaultSystemCodexHome(): string {
+  return path.join(os.homedir(), '.codex');
+}
+
+function getExplicitCodexHome(): string | null {
+  const explicitHome = process.env.CODEX_HOME?.trim();
+  return explicitHome ? explicitHome : null;
+}
+
+function dedupePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const candidate of paths) {
+    const normalized = path.resolve(candidate);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(candidate);
+  }
+
+  return unique;
+}
+
+export function getSystemCodexHome(): string {
+  return getExplicitCodexHome() ?? getDefaultSystemCodexHome();
+}
+
+export function getCodexMonitoringHomes(): string[] {
+  const explicitHome = getExplicitCodexHome();
+  if (explicitHome) return [explicitHome];
+
+  const homes: string[] = [];
+  const active = getActiveCodexAccount();
+  if (active) {
+    homes.push(getCodexProfileHome(active.id));
+  }
+  homes.push(getDefaultSystemCodexHome());
+
+  return dedupePaths(homes);
 }
 
 export function getCodexProfilesDir(): string {

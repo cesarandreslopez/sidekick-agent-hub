@@ -304,6 +304,8 @@ export type {
 export {
   getCodexProfilesDir,
   getCodexProfileHome,
+  getCodexMonitoringHomes,
+  getSystemCodexHome,
   listCodexAccounts,
   getActiveCodexAccount,
   resolveSidekickCodexHome,

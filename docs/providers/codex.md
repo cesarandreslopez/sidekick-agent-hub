@@ -21,7 +21,7 @@ Uses the OpenAI API via Codex CLI for inference.
 
 ## Session Monitoring
 
-Codex CLI sessions are monitored from `~/.codex/sessions/`. Set `sidekick.sessionProvider` to `codex` or leave as `auto`.
+Codex CLI sessions are monitored from all candidate Codex home directories. When a managed Codex profile is active, Sidekick scans that profile's sessions directory first, then falls back to the system default `~/.codex/sessions/`. When `CODEX_HOME` is explicitly set, only that directory is used. Set `sidekick.sessionProvider` to `codex` or leave as `auto`.
 
 ## Rate Limits
 

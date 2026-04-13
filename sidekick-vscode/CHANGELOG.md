@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] - 2026-04-13
+
+### Fixed
+
+- **Codex multi-home session discovery**: `ProviderDetector` now checks all candidate Codex home directories for activity, fixing missed session detection when the active managed profile has no sessions but the system `~/.codex/` does
+
 ## [0.17.0] - 2026-04-13
 
 ### Added
