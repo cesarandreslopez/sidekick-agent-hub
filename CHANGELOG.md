@@ -7,9 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-04-17
+
+### Added
+
+- **LiteLLM pricing hydration**: On startup, the extension and CLI fetch the LiteLLM pricing catalog and cache it to `~/.config/sidekick/pricing-catalog.json` with a 24-hour TTL, 3s timeout, and stale-cache fallback. Fresh pricing lands automatically without needing a release
+- **Expanded pricing coverage**: `PRICING_TABLE` now recognizes Anthropic, OpenAI, and Google model families — GPT-4o, GPT-4.1, GPT-5.x, o1, o3, and o3-mini in addition to the existing Claude entries
+- **Reasoning-token billing**: `CostTokenUsage` now carries `reasoningTokens`, priced at the output rate (matches OpenAI billing)
+- **Provider-omitted cost computation**: `EventAggregator` computes cost from the pricing table when the provider doesn't report one — Claude Code and Codex sessions now show real dollars in the CLI dashboard
+- **New VS Code settings**: `sidekick.pricing.hydrateFromLiteLLM` (default `true`) and `sidekick.pricing.cacheTtlHours` (default `24`) — disable or tune the LiteLLM hydration from the UI
+
 ### Fixed
 
-- **Context-window % wrong for Opus 4.7 (and other new models)**: The dashboard and status bar now report accurate context usage for Claude Opus 4.7, Sonnet 4.7, GPT-5.4, and GPT-5.3-Codex variants. The model → context-window map in `sidekick-shared` now includes these families (Opus 4.7 = 1M, Sonnet 4.7 = 1M, GPT-5.4 = 1.05M, GPT-5.3-Codex = 400K, GPT-5.3-Codex-Spark = 128K) instead of falling through to 200K via prefix match. Also honors Claude Code's `[1m]` suffix as an explicit 1M marker.
+- **Context-window % wrong for Opus 4.7 (and other new models)**: The dashboard and status bar now report accurate context usage for Claude Opus 4.7, Sonnet 4.7, GPT-5.4, and GPT-5.3-Codex variants. The model → context-window map in `sidekick-shared` now includes these families (Opus 4.7 = 1M, Sonnet 4.7 = 1M, GPT-5.4 = 1.05M, GPT-5.3-Codex = 400K, GPT-5.3-Codex-Spark = 128K) instead of falling through to 200K via prefix match. Also honors Claude Code's `[1m]` suffix as an explicit 1M marker
+- **Silent Sonnet-priced fallback for unknown models**: Unknown models (Codex, GPT-5.x, o-series) were previously billed at Sonnet rates, silently inventing a dollar figure. `getModelInfo()` now returns `null` cost for unknown models and `formatCost(null)` renders as `—` — in the VS Code dashboard as `—` per row with a footer warning and a `*` marker on totals when priced and unpriced rows mix; in the CLI dashboard in yellow
+
+### Changed
+
+- **`historical-data.json` schema v2**: `ModelUsageRecord` gains an optional `priced` flag and `SessionSummary` gains an optional `unpricedModelIds` array so historical data can distinguish real costs from unknown-model gaps. Fix-forward only — v1 records continue to read correctly, no migration required
 
 ## [0.17.1] - 2026-04-13
 

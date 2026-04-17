@@ -70,11 +70,12 @@ Cross-session data stored in `~/.config/sidekick/`:
 
 | File | Purpose |
 |------|---------|
-| `historical-data.json` | Token/cost/tool usage stats |
+| `historical-data.json` | Token/cost/tool usage stats (schema v2: adds `priced` flag and `unpricedModelIds`) |
 | `tasks/{projectSlug}.json` | Kanban board carry-over |
 | `decisions/{projectSlug}.json` | Decision log |
 | `handoffs/` | Session handoff documents |
 | `knowledge-notes/{projectSlug}.json` | Knowledge notes per project |
 | `event-logs/` | Optional JSONL audit trail |
+| `pricing-catalog.json` | Cached LiteLLM pricing table (24h TTL, auto-refreshed on activation) |
 
 The Sidekick CLI reads from these same files, providing terminal access to persisted data without VS Code.

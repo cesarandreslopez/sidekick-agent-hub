@@ -7,9 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-04-17
+
+### Added
+
+- **LiteLLM pricing hydration**: Extension and CLI fetch the LiteLLM pricing catalog on startup and cache it to `~/.config/sidekick/pricing-catalog.json` with a 24h TTL, 3s timeout, and stale-cache fallback. New model prices land between releases
+- **Expanded pricing coverage**: GPT-4o, GPT-4.1, GPT-5.x, o1, o3, and o3-mini are now priced alongside the existing Claude entries
+- **Reasoning-token billing**: OpenAI reasoning tokens are now priced at the output rate
+- **Provider-omitted cost computation**: `EventAggregator` computes cost from the pricing table when the provider doesn't report it — the CLI dashboard now shows real dollars for Claude Code and Codex sessions
+- **New VS Code settings**: `sidekick.pricing.hydrateFromLiteLLM` (default `true`) and `sidekick.pricing.cacheTtlHours` (default `24`)
+
 ### Fixed
 
-- **Context-window % wrong for Opus 4.7 (and other new models)**: The dashboard and status bar now report accurate context usage for Claude Opus 4.7, Sonnet 4.7, GPT-5.4, and GPT-5.3-Codex variants. The model → context-window map in `sidekick-shared` now includes these families (Opus 4.7 = 1M, Sonnet 4.7 = 1M, GPT-5.4 = 1.05M, GPT-5.3-Codex = 400K, GPT-5.3-Codex-Spark = 128K) instead of falling through to 200K via prefix match. Also honors Claude Code's `[1m]` suffix as an explicit 1M marker.
+- **Context-window % wrong for Opus 4.7 (and other new models)**: The dashboard and status bar now report accurate context usage for Claude Opus 4.7, Sonnet 4.7, GPT-5.4, and GPT-5.3-Codex variants. The model → context-window map in `sidekick-shared` now includes these families (Opus 4.7 = 1M, Sonnet 4.7 = 1M, GPT-5.4 = 1.05M, GPT-5.3-Codex = 400K, GPT-5.3-Codex-Spark = 128K) instead of falling through to 200K via prefix match. Also honors Claude Code's `[1m]` suffix as an explicit 1M marker
+- **Silent Sonnet-priced fallback for unknown models**: Codex, GPT-5.x, and o-series sessions were being billed at Sonnet rates, silently inventing a dollar figure. Unknown models now return `null` cost and render as `—` (yellow in the CLI; footer warning + `*` on totals in the VS Code dashboard)
+
+### Changed
+
+- **`historical-data.json` schema v2**: adds optional `priced` flag on `ModelUsageRecord` and `unpricedModelIds` on `SessionSummary`. Fix-forward only — v1 records still read correctly, no migration required
 
 ## [0.17.1] - 2026-04-13
 

@@ -218,7 +218,7 @@ sidekick notes --type tip --status active --json
 sidekick stats [options]
 ```
 
-Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`.
+Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`. Unknown-model rows render as `—`; any unpriced models encountered are listed in the footer so missing pricing coverage is visible.
 
 No command-specific flags. Use `--json` for machine-readable output.
 

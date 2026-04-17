@@ -101,6 +101,15 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 | `sidekick.eventLogMaxSizeMB` | `500` | Max total event log size before cleanup |
 | `sidekick.eventLogMaxAgeDays` | `30` | Max age for event log files |
 
+## Pricing & Cost Tracking
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sidekick.pricing.hydrateFromLiteLLM` | `true` | Fetch pricing catalog from LiteLLM on activation |
+| `sidekick.pricing.cacheTtlHours` | `24` | How long to cache the LiteLLM catalog (hours) |
+
+The catalog is cached at `~/.config/sidekick/pricing-catalog.json` with a 3s fetch timeout and stale-cache fallback — if the network is down, the last good cache is used; if there is no cache, the static table ships as a fallback. Unknown models return `null` cost and render as `—` (yellow in the CLI; in the VS Code dashboard as `—` per row with a footer warning, and a `*` appended to the total when priced and unpriced rows are mixed).
+
 ## Session Handoff
 
 | Setting | Default | Description |

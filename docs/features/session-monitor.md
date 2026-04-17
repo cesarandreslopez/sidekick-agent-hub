@@ -15,7 +15,7 @@ Click the **Agent Hub** icon in the activity bar (left sidebar) to access all mo
 The main dashboard panel provides:
 
 - **Token Usage** — real-time input/output token tracking with model-specific pricing
-- **Cost Tracking** — per-model cost breakdown with accurate pricing
+- **Cost Tracking** — per-model cost breakdown with accurate pricing; unknown models render as `—` with a dashboard footer warning (hydrated on startup from LiteLLM, cached to `~/.config/sidekick/pricing-catalog.json`)
 - **Context Token Attribution** — stacked bar chart showing where your context budget goes (system prompt, CLAUDE.md, user messages, assistant responses, tool I/O, thinking)
 - **Token Usage Tooltips** — hover for quota projections and estimated time to exhaustion
 - **Context Window Gauge** — input/output token usage vs. limits, with theme-aware colors that adapt to light, dark, and high-contrast themes

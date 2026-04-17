@@ -7,9 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-04-17
+
+### Added
+
+- **LiteLLM pricing hydration on startup**: The CLI now fetches the LiteLLM pricing catalog on startup and caches to `~/.config/sidekick/pricing-catalog.json` with a 24-hour TTL, 3s timeout, and stale-cache fallback — new model prices are picked up without a CLI upgrade
+- **Expanded pricing coverage**: GPT-4o, GPT-4.1, GPT-5.x, o1, o3, and o3-mini families are now priced alongside the existing Claude entries
+- **Real-dollar Codex / Claude Code costs**: `EventAggregator` computes cost from the pricing table when the session provider doesn't report one, so `sidekick` live dashboards now show actual dollars for Codex and Claude Code sessions
+- **`stats` footer lists unpriced models**: `sidekick stats` prints any models encountered with no pricing entry so missing coverage is visible
+
 ### Fixed
 
-- **Context-gauge % wrong for Opus 4.7 (1M) and other new models**: The dashboard's context gauge was dividing by 200K for Claude Opus 4.7 (native 1M), inflating the displayed %. The shared model → context-window map now includes Opus/Sonnet 4.7 (1M), GPT-5.4 (1.05M), GPT-5.3-Codex (400K), and GPT-5.3-Codex-Spark (128K). Claude Code's `[1m]` suffix is now also honored as an explicit 1M marker.
+- **Context-gauge % wrong for Opus 4.7 (1M) and other new models**: The dashboard's context gauge was dividing by 200K for Claude Opus 4.7 (native 1M), inflating the displayed %. The shared model → context-window map now includes Opus/Sonnet 4.7 (1M), GPT-5.4 (1.05M), GPT-5.3-Codex (400K), and GPT-5.3-Codex-Spark (128K). Claude Code's `[1m]` suffix is now also honored as an explicit 1M marker
+- **Silent Sonnet-priced fallback for unknown models**: Codex, GPT-5.x, and o-series rows were being rendered at Sonnet rates. Unknown-model rows now render as `—` in yellow instead of inventing a dollar figure
+
+### Changed
+
+- **`historical-data.json` schema v2**: reads `priced` flag and `unpricedModelIds` from records written by the latest VS Code extension; v1 records still read correctly
 
 ## [0.17.1] - 2026-04-13
 

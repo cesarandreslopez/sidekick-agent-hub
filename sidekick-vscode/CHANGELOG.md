@@ -7,9 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-04-17
+
+### Added
+
+- **LiteLLM pricing hydration on activation**: The extension now fires `hydratePricingCatalog()` on activate to fetch the latest model prices from LiteLLM, caching to `~/.config/sidekick/pricing-catalog.json` with a 24h TTL (3s timeout, stale-cache fallback). New model pricing lands between releases
+- **Pricing settings**: `sidekick.pricing.hydrateFromLiteLLM` (default `true`) and `sidekick.pricing.cacheTtlHours` (default `24`) — disable or tune hydration from Settings
+- **Expanded model coverage**: `PRICING_TABLE` recognizes Anthropic, OpenAI, and Google families — GPT-4o/4.1, GPT-5.x, o1/o3/o3-mini in addition to Claude entries
+- **Reasoning-token billing**: OpenAI reasoning tokens are now priced at the output rate
+
 ### Fixed
 
-- **Context-window gauge wrong for Opus 4.7 (1M) and other new models**: The dashboard gauge and status bar were showing inflated % (e.g. 72% when Claude Code's own statusline reported 14%) because the model → context-window map in `sidekick-shared` had no entry for Opus/Sonnet 4.7 and fell through to the 200K `claude-opus-4` prefix. Now routes Opus 4.7, Sonnet 4.7, GPT-5.4, and the GPT-5.3-Codex family to their correct windows, and honors Claude Code's `[1m]` suffix as an explicit 1M marker.
+- **Context-window gauge wrong for Opus 4.7 (1M) and other new models**: The dashboard gauge and status bar were showing inflated % (e.g. 72% when Claude Code's own statusline reported 14%) because the model → context-window map in `sidekick-shared` had no entry for Opus/Sonnet 4.7 and fell through to the 200K `claude-opus-4` prefix. Now routes Opus 4.7, Sonnet 4.7, GPT-5.4, and the GPT-5.3-Codex family to their correct windows, and honors Claude Code's `[1m]` suffix as an explicit 1M marker
+- **Silent Sonnet-priced fallback for unknown models**: Codex, GPT-5.x, and o-series sessions were being billed at Sonnet rates, silently inflating the dashboard's cost number. `ModelPricingService` now returns `ModelPricing | null`; four cost sites handle `null` and track `unpricedModelIds`. Dashboard renders `—` per row, shows a footer warning listing unpriced models, and appends `*` to the total when priced and unpriced rows are mixed
+
+### Changed
+
+- **`historical-data.json` schema v2**: `ModelUsageRecord` gains an optional `priced` flag and `SessionSummary` gains an optional `unpricedModelIds` array. Fix-forward only — v1 records still read correctly, no migration
 
 ## [0.17.1] - 2026-04-13
 

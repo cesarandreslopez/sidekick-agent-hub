@@ -32,7 +32,7 @@ npm install sidekick-shared
 | **Provider Status** | API health checking via status.claude.com and status.openai.com (indicator, components, incidents) |
 | **Schemas** | Zod schemas for runtime JSONL event validation (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`) |
 | **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCalls()` |
-| **Model Info & Pricing** | Model family parsing, context window lookup, pricing tables, and cost calculation (`getModelInfo()`, `calculateCost()`, `formatCost()`) |
+| **Model Info & Pricing** | Model family parsing (Anthropic / OpenAI / Google), context-window lookup (including Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, and null-aware cost calculation (`getModelInfo()`, `calculateCost()`, `formatCost()`, `hydratePricingCatalog()`) |
 | **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
 | **Accounts** | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, and v1 migration |
 | **Codex Profiles** | Codex account lifecycle — prepare, finalize, switch, remove — with isolated `CODEX_HOME` directories and multi-home monitoring support |
