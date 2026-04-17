@@ -35,6 +35,8 @@ Only `vscode` is externalized. All other dependencies (including `@anthropic-ai/
 
 [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) extracts the data access layer from the extension so it can be consumed by the CLI, third-party tools, and custom integrations. It is published as a standalone npm package (`npm install sidekick-shared`) with no VS Code dependencies. Key modules include Zod schemas for runtime JSONL validation, pure extractors (`extractTokenUsage`, `extractToolCalls`), model info and pricing (`getModelInfo`, `calculateCost`, `formatCost`), a typed `JsonlParser` with optional schema validation, and a `QuotaPoller` class with exponential backoff.
 
+Starting in 0.17.4, `sidekick-shared` ships typed subpath entries via a `package.json` `exports` map. Use `sidekick-shared/browser` for pure, filesystem-free helpers safe in webviews and browser bundles (context-window lookup, model parsing, cost math), and `sidekick-shared/node` for the Node-only pricing-catalog hydration API. The package root still exposes the full API for Node consumers, and legacy `sidekick-shared/dist/*` deep imports keep resolving via a compat entry — see the [`sidekick-shared` README](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/sidekick-shared/README.md#supported-import-paths) for the full import-path table.
+
 ## Key Source Locations
 
 | Area | Location |

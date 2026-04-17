@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.4] - 2026-04-17
+
+### Changed
+
+- **Pricing hydration import migrated to `sidekick-shared/node`**: `extension.ts` now imports `hydratePricingCatalog` from the new `sidekick-shared/node` subpath instead of the `sidekick-shared/dist/pricingCatalog` deep path. Runtime behavior unchanged; the import now self-documents its Node-only nature and rides on the shared library's new stable, versioned public API surface
+
+### Added
+
+- **Webview import guard**: New ESLint `no-restricted-imports` rule scoped to `src/webview/**` forbids `sidekick-shared` (root), `sidekick-shared/node`, and `sidekick-shared/dist/pricingCatalog`. Prevents future webview code from accidentally pulling `node:fs`/`node:path` into a browser bundle — an entire class of silent runtime crash that could previously slip through the build
+
 ## [0.17.3] - 2026-04-17
 
 ### Changed

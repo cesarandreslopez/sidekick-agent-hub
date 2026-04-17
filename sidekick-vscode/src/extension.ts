@@ -88,7 +88,7 @@ import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
 import { getNonce } from "./utils/nonce";
 import type { AccountProviderId } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
-import { hydratePricingCatalog } from 'sidekick-shared/dist/pricingCatalog';
+import { hydratePricingCatalog } from 'sidekick-shared/node';
 
 /** Whether completions are currently enabled */
 let enabled = vscode.workspace.getConfiguration('sidekick').get('enabled', true);

@@ -3,7 +3,8 @@ declare const __CLI_VERSION__: string;
 import { Command } from 'commander';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { detectProvider, hydratePricingCatalog } from 'sidekick-shared';
+import { detectProvider } from 'sidekick-shared';
+import { hydratePricingCatalog } from 'sidekick-shared/node';
 import type { ProviderId, SessionProvider } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 

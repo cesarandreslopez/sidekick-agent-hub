@@ -38,6 +38,43 @@ npm install sidekick-shared
 | **Codex Profiles** | Codex account lifecycle — prepare, finalize, switch, remove — with isolated `CODEX_HOME` directories and multi-home monitoring support |
 | **Quota Snapshots** | Persistent quota caching per provider/account for offline fallback |
 
+## Supported import paths
+
+`sidekick-shared` ships three public entry points plus a few convenience subpaths. Pick the one that matches your runtime.
+
+| Path                              | Runtime                     | What it exposes                                                    |
+|-----------------------------------|-----------------------------|--------------------------------------------------------------------|
+| `sidekick-shared`                 | Node (CLI, extension host)  | Full public API (readers, providers, parsers, pricing, …).         |
+| `sidekick-shared/browser`         | **Browser / webview**       | Pure helpers: context-window lookup, model parsing, cost math.     |
+| `sidekick-shared/node`            | Node only                   | LiteLLM pricing catalog hydration (`fs` + `path`).                 |
+| `sidekick-shared/phrases`         | Any runtime                 | Phrase arrays + `getRandomPhrase()`.                               |
+| `sidekick-shared/modelContext`    | Any runtime                 | Direct access to the context-window module.                        |
+| `sidekick-shared/modelInfo`       | Any runtime                 | Direct access to model parsing and cost math.                      |
+
+### Browser / webview runtimes
+
+Import from `sidekick-shared/browser`. **Do not import the package root from browser code** — the root re-exports Node-only pricing hydration and can drag `node:fs` / `node:path` into your bundle.
+
+```typescript
+import {
+  getModelContextWindowSize,
+  DEFAULT_CONTEXT_WINDOW,
+  parseModelId,
+  calculateCost,
+  formatCost,
+} from 'sidekick-shared/browser';
+```
+
+### Node / CLI / extension host
+
+Hydrate the pricing catalog from the `node` subpath:
+
+```typescript
+import { hydratePricingCatalog } from 'sidekick-shared/node';
+
+await hydratePricingCatalog({ cacheDir: '~/.config/sidekick' });
+```
+
 ## Usage Examples
 
 ### Detect the active session provider

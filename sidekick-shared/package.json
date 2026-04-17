@@ -1,9 +1,40 @@
 {
   "name": "sidekick-shared",
-  "version": "0.17.3",
+  "version": "0.17.4",
   "description": "Shared data access layer for Sidekick — readers, types, providers, credentials, quota",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    },
+    "./phrases": {
+      "types": "./dist/phrases.d.ts",
+      "default": "./dist/phrases.js"
+    },
+    "./modelContext": {
+      "types": "./dist/modelContext.d.ts",
+      "default": "./dist/modelContext.js"
+    },
+    "./modelInfo": {
+      "types": "./dist/modelInfo.d.ts",
+      "default": "./dist/modelInfo.js"
+    },
+    "./dist/*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist"
   ],
@@ -15,6 +46,7 @@
     "clean": "rm -rf dist",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
+    "pretest": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"

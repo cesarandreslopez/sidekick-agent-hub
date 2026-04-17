@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.4] - 2026-04-17
+
+### Changed
+
+- **Pricing hydration import migrated to `sidekick-shared/node`**: `cli.ts` now imports `hydratePricingCatalog` from the new Node-only subpath and keeps `detectProvider` on the package root. Runtime behavior is unchanged; the split makes the CLI's import surface self-documenting (hydration is explicitly a Node API) and aligns the CLI with the shared library's new versioned public API contract
+
 ## [0.17.3] - 2026-04-17
 
 ### Changed

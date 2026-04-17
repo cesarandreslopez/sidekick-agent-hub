@@ -5,6 +5,18 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.4] - 2026-04-17
+
+### Added
+
+- **`sidekick-shared` packaging split**: New stable subpath entries — `sidekick-shared/browser` for pure, filesystem-free helpers safe in webview/browser bundles (context-window lookup, model parsing, cost math), and `sidekick-shared/node` for Node-only pricing hydration. Plus convenience subpaths `sidekick-shared/phrases`, `sidekick-shared/modelContext`, and `sidekick-shared/modelInfo`
+- **Typed `exports` map on `sidekick-shared`**: Downstream consumers now resolve the new subpaths cleanly with per-entry `types` + `default` conditions. Existing `sidekick-shared/dist/*` deep imports keep working via a compat entry, so nothing breaks in this release
+- **Webview import guard (VS Code extension)**: ESLint `no-restricted-imports` rule scoped to `src/webview/**` prevents Node-only code from being pulled into browser bundles through a future refactor
+
+### Changed
+
+- **Pricing hydration call sites migrated to `/node`**: The VS Code extension host and the CLI now import `hydratePricingCatalog` from `sidekick-shared/node` instead of deep `dist/*` paths or the root. Runtime behavior unchanged; imports now self-document that the code is Node-only
+
 ## [0.17.3] - 2026-04-17
 
 ### Changed

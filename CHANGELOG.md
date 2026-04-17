@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.4] - 2026-04-17
+
+### Added
+
+- **`sidekick-shared` packaging split**: `sidekick-shared` now ships supported, documented subpath entries — `sidekick-shared/browser` for pure, filesystem-free helpers safe in webview/browser bundles (context-window lookup, model parsing, cost math), and `sidekick-shared/node` for Node-only pricing hydration. Plus convenience subpaths `sidekick-shared/phrases`, `sidekick-shared/modelContext`, and `sidekick-shared/modelInfo`
+- **Typed `exports` map on `sidekick-shared`**: Downstream consumers (including TypeScript) now resolve the new subpaths cleanly with per-entry `types` + `default` conditions. Existing `sidekick-shared/dist/*` deep imports keep working via a compat entry in the exports map, so nothing breaks in this release
+- **Webview import guard (VS Code extension)**: New ESLint `no-restricted-imports` rule scoped to `sidekick-vscode/src/webview/**` forbids importing `sidekick-shared` (root), `sidekick-shared/node`, or `sidekick-shared/dist/pricingCatalog` — preventing Node-only code from ever being pulled into a browser bundle through a future refactor
+
+### Changed
+
+- **Pricing hydration call sites migrated to `/node`**: The VS Code extension host (`extension.ts`) and the CLI (`cli.ts`) now import `hydratePricingCatalog` from `sidekick-shared/node` instead of a `dist/*` deep path (extension) or the package root (CLI). Runtime behavior is unchanged; the import now self-documents that this code is Node-only
+
 ## [0.17.3] - 2026-04-17
 
 ### Changed
