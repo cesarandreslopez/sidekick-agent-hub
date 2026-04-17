@@ -224,6 +224,11 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
         current.calls += record.calls;
         current.tokens += record.tokens;
         current.cost += record.cost;
+        // Unpriced taints: if either side was unpriced, the merged row is too.
+        // Legacy v1 records (priced === undefined) are assumed priced.
+        if (record.priced === false || current.priced === false) {
+          current.priced = false;
+        }
       } else {
         map.set(record.model, { ...record });
       }

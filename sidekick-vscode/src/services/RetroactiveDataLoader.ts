@@ -317,7 +317,10 @@ export class RetroactiveDataLoader {
   private createSessionSummary(group: SessionGroup): SessionSummary {
     // Aggregate token totals
     const tokens: TokenTotals = createEmptyTokenTotals();
-    const modelUsageMap = new Map<string, { calls: number; tokens: number; cost: number }>();
+    const modelUsageMap = new Map<
+      string,
+      { calls: number; tokens: number; cost: number; priced: boolean }
+    >();
 
     for (const record of group.records) {
       tokens.inputTokens += record.inputTokens;
@@ -325,7 +328,8 @@ export class RetroactiveDataLoader {
       tokens.cacheWriteTokens += record.cacheWriteTokens;
       tokens.cacheReadTokens += record.cacheReadTokens;
 
-      // Calculate cost for this record
+      // Calculate cost for this record. `null` means pricing is unknown —
+      // treat contribution as 0 and mark the aggregate as unpriced.
       const pricing = ModelPricingService.getPricing(record.model);
       const cost = ModelPricingService.calculateCost({
         inputTokens: record.inputTokens,
@@ -333,18 +337,22 @@ export class RetroactiveDataLoader {
         cacheWriteTokens: record.cacheWriteTokens,
         cacheReadTokens: record.cacheReadTokens,
       }, pricing);
+      const priced = cost !== null;
+      const contribution = cost ?? 0;
 
-      // Aggregate by model
       const existing = modelUsageMap.get(record.model);
       if (existing) {
         existing.calls += 1;
         existing.tokens += record.inputTokens + record.outputTokens;
-        existing.cost += cost;
+        existing.cost += contribution;
+        // One unpriced record taints the aggregate for this model.
+        if (!priced) existing.priced = false;
       } else {
         modelUsageMap.set(record.model, {
           calls: 1,
           tokens: record.inputTokens + record.outputTokens,
-          cost,
+          cost: contribution,
+          priced,
         });
       }
     }
@@ -356,10 +364,12 @@ export class RetroactiveDataLoader {
         calls: data.calls,
         tokens: data.tokens,
         cost: data.cost,
+        priced: data.priced,
       })
     );
+    const unpricedModelIds = modelUsage.filter(m => !m.priced).map(m => m.model);
 
-    // Calculate total cost
+    // Calculate total cost from priced portion.
     const totalCost = modelUsage.reduce((sum, m) => sum + m.cost, 0);
 
     // Tool usage is not available from historical JSONL parsing
@@ -375,6 +385,7 @@ export class RetroactiveDataLoader {
       messageCount: group.records.length,
       modelUsage,
       toolUsage,
+      unpricedModelIds: unpricedModelIds.length > 0 ? unpricedModelIds : undefined,
     };
   }
 

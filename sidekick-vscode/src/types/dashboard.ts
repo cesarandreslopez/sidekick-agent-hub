@@ -257,7 +257,7 @@ export type DashboardWebviewMessage =
  * Tracks usage statistics for a specific Claude model.
  */
 export interface ModelBreakdownEntry {
-  /** Model identifier (e.g., "claude-opus-4-20250514") */
+  /** Model identifier (e.g., "claude-opus-4-20250514", "gpt-5.4") */
   model: string;
 
   /** Number of API calls to this model */
@@ -266,8 +266,14 @@ export interface ModelBreakdownEntry {
   /** Total tokens used by this model */
   tokens: number;
 
-  /** Total cost for this model in USD */
+  /** USD cost for the priced portion. `0` when `priced === false`. */
   cost: number;
+
+  /**
+   * `false` when no pricing was known for this model (cost is 0 and the UI
+   * should render "—" instead of "$0"). Defaults to `true` for legacy data.
+   */
+  priced?: boolean;
 }
 
 /**
@@ -509,6 +515,12 @@ export interface DashboardState {
 
   /** Context window size history per turn for timeline visualization */
   contextTimeline?: Array<{ timestamp: string; inputTokens: number; turnIndex: number }>;
+
+  /**
+   * Model IDs seen this session with no known pricing. Surfaced as a
+   * "N model(s) unpriced" footer under the model breakdown table.
+   */
+  unpricedModelIds?: string[];
 }
 
 /**

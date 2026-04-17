@@ -33,6 +33,11 @@ interface ModelBreakdownEntry {
   calls: number;
   tokens: number;
   cost: number;
+  /**
+   * `false` when no pricing was known for this model (cost is 0 and the UI
+   * renders "—" instead of "$0"). Legacy data omits the field — treat as true.
+   */
+  priced?: boolean;
 }
 
 /**
@@ -70,6 +75,8 @@ interface DashboardState {
   modelBreakdown: ModelBreakdownEntry[];
   sessionActive: boolean;
   lastUpdated: string;
+  /** Models seen in this session that have no known pricing. */
+  unpricedModelIds?: string[];
 }
 
 // Acquire VS Code API (call once, cache result)
@@ -150,10 +157,12 @@ function formatTokenCount(num: number): string {
 /**
  * Formats cost with appropriate precision.
  * Uses 4 decimals for < $0.01, 2 decimals otherwise.
- * @param cost - Cost in USD
+ * Null/undefined → "—" (honest "pricing unavailable").
+ * @param cost - Cost in USD, or null/undefined when unknown
  * @returns Formatted cost string
  */
-function formatCost(cost: number): string {
+function formatCost(cost: number | null | undefined): string {
+  if (cost === null || cost === undefined) return '—';
   if (cost < 0.01) {
     return '$' + cost.toFixed(4);
   }
@@ -287,10 +296,25 @@ function updateTokenCards(state: DashboardState): void {
  */
 function updateCostDisplay(state: DashboardState): void {
   const totalCostEl = document.getElementById('total-cost');
-  if (totalCostEl) {
+  if (!totalCostEl) return;
+
+  // If every priced bucket is zero AND every model was unpriced, show "—".
+  // If there's a real dollar total but some models were unpriced, show the
+  // number and append a hint so the user knows it's only part of the session.
+  const unpriced = state.unpricedModelIds?.length ?? 0;
+  const allUnpriced = unpriced > 0 && state.totalCost === 0;
+
+  if (allUnpriced) {
+    totalCostEl.textContent = '—';
+    totalCostEl.title = 'No pricing available for any model used this session';
+  } else if (unpriced > 0) {
+    totalCostEl.textContent = formatCost(state.totalCost) + '*';
+    totalCostEl.title = unpriced + ' model(s) unpriced; total reflects priced usage only';
+  } else {
     totalCostEl.textContent = formatCost(state.totalCost);
-    pulseValue(totalCostEl);
+    totalCostEl.title = '';
   }
+  pulseValue(totalCostEl);
 }
 
 /**
@@ -367,14 +391,44 @@ function updateModelBreakdown(state: DashboardState): void {
 
   sorted.forEach(model => {
     const row = document.createElement('tr');
+    // priced===false means pricing was unknown; cost is 0 but we render "—"
+    // with a tooltip so users don't mistake it for "free".
+    const costCell = model.priced === false
+      ? '<td class="model-cost" title="No pricing available for this model">—</td>'
+      : `<td class="model-cost">${formatCost(model.cost)}</td>`;
     row.innerHTML = `
       <td class="model-name">${getShortModelName(model.model)}</td>
       <td class="model-calls">${model.calls}</td>
       <td class="model-tokens">${formatTokenCount(model.tokens)}</td>
-      <td class="model-cost">${formatCost(model.cost)}</td>
+      ${costCell}
     `;
     tbody.appendChild(row);
   });
+
+  // Footer: if any models were unpriced, surface them explicitly.
+  renderUnpricedFooter(state);
+}
+
+/**
+ * Renders a one-line notice beneath the model table when some models
+ * lacked pricing. Idempotent — replaces any existing notice.
+ */
+function renderUnpricedFooter(state: DashboardState): void {
+  const host = document.querySelector('#model-table')?.parentElement;
+  if (!host) return;
+  const existing = host.querySelector('.unpriced-models-note');
+  if (existing) existing.remove();
+
+  const ids = state.unpricedModelIds ?? [];
+  if (ids.length === 0) return;
+
+  const note = document.createElement('div');
+  note.className = 'unpriced-models-note';
+  note.style.cssText = 'margin-top:8px;font-size:11px;opacity:0.7;';
+  const label = ids.length === 1 ? '1 model unpriced' : ids.length + ' models unpriced';
+  note.textContent = '⚠ ' + label + ': ' + ids.join(', ');
+  note.title = 'No pricing is available for these models — cost shown as "—".';
+  host.appendChild(note);
 }
 
 /**

@@ -9,42 +9,49 @@ describe('ModelPricingService', () => {
   describe('parseModelId', () => {
     it('parses Opus 4 model ID', () => {
       const result = ModelPricingService.parseModelId('claude-opus-4-20250514');
-      expect(result).toEqual({ family: 'opus', version: '4' });
+      expect(result).toEqual({ provider: 'anthropic', family: 'opus', version: '4' });
     });
 
     it('parses Sonnet 4.5 model ID', () => {
       const result = ModelPricingService.parseModelId('claude-sonnet-4.5-20241022');
-      expect(result).toEqual({ family: 'sonnet', version: '4.5' });
+      expect(result).toEqual({ provider: 'anthropic', family: 'sonnet', version: '4.5' });
     });
 
     it('parses Haiku 4.5 model ID', () => {
       const result = ModelPricingService.parseModelId('claude-haiku-4.5-20251215');
-      expect(result).toEqual({ family: 'haiku', version: '4.5' });
+      expect(result).toEqual({ provider: 'anthropic', family: 'haiku', version: '4.5' });
     });
 
-    it('parses Haiku 3.5 model ID', () => {
-      const result = ModelPricingService.parseModelId('claude-haiku-3.5-20240307');
-      expect(result).toEqual({ family: 'haiku', version: '3.5' });
+    it('parses GPT model IDs', () => {
+      expect(ModelPricingService.parseModelId('gpt-4o')).toEqual({
+        provider: 'openai',
+        family: 'gpt',
+        version: '4o',
+      });
+      expect(ModelPricingService.parseModelId('gpt-5.4')).toEqual({
+        provider: 'openai',
+        family: 'gpt',
+        version: '5.4',
+      });
     });
 
-    it('returns null for non-Claude model', () => {
-      const result = ModelPricingService.parseModelId('gpt-4');
-      expect(result).toBeNull();
+    it('parses o-series reasoning model IDs', () => {
+      expect(ModelPricingService.parseModelId('o3-mini')).toEqual({
+        provider: 'openai',
+        family: 'o',
+        version: '3-mini',
+      });
     });
 
-    it('returns null for malformed string', () => {
-      const result = ModelPricingService.parseModelId('invalid-model-id');
-      expect(result).toBeNull();
-    });
-
-    it('returns null for empty string', () => {
-      const result = ModelPricingService.parseModelId('');
-      expect(result).toBeNull();
+    it('returns null for completely unrecognized model IDs', () => {
+      expect(ModelPricingService.parseModelId('deepseek-coder')).toBeNull();
+      expect(ModelPricingService.parseModelId('invalid-model-id')).toBeNull();
+      expect(ModelPricingService.parseModelId('')).toBeNull();
     });
 
     it('handles case-insensitive family names', () => {
       const result = ModelPricingService.parseModelId('claude-OPUS-4-20250514');
-      expect(result).toEqual({ family: 'opus', version: '4' });
+      expect(result).toEqual({ provider: 'anthropic', family: 'opus', version: '4' });
     });
   });
 
@@ -89,40 +96,16 @@ describe('ModelPricingService', () => {
       });
     });
 
-    it('returns correct pricing for Haiku 3.5', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-3.5-20240307');
-      expect(pricing).toEqual({
-        inputCostPerMillion: 0.8,
-        outputCostPerMillion: 4.0,
-        cacheWriteCostPerMillion: 1.0,
-        cacheReadCostPerMillion: 0.08,
-      });
+    it('returns GPT-4o pricing', () => {
+      const pricing = ModelPricingService.getPricing('gpt-4o');
+      expect(pricing).not.toBeNull();
+      expect(pricing!.inputCostPerMillion).toBe(2.5);
+      expect(pricing!.outputCostPerMillion).toBe(10.0);
     });
 
-    it('falls back to latest family version for unknown version', () => {
-      // Unknown version 5.0, should fall back to latest opus entry (opus-4.6)
-      const pricing = ModelPricingService.getPricing('claude-opus-5.0-20270101');
-      expect(pricing).toEqual({
-        inputCostPerMillion: 15.0,
-        outputCostPerMillion: 75.0,
-        cacheWriteCostPerMillion: 18.75,
-        cacheReadCostPerMillion: 1.5,
-      });
-    });
-
-    it('falls back to sonnet-4.5 for completely unknown model', () => {
-      const pricing = ModelPricingService.getPricing('gpt-4');
-      expect(pricing).toEqual({
-        inputCostPerMillion: 3.0,
-        outputCostPerMillion: 15.0,
-        cacheWriteCostPerMillion: 3.75,
-        cacheReadCostPerMillion: 0.3,
-      });
-    });
-
-    it('falls back to latest haiku for unknown haiku version', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-5-20270101');
-      expect(pricing.inputCostPerMillion).toBe(1.0); // haiku-4.5
+    it('returns null for completely unknown models (no silent fallback)', () => {
+      expect(ModelPricingService.getPricing('deepseek-coder')).toBeNull();
+      expect(ModelPricingService.getPricing('made-up-vendor-model')).toBeNull();
     });
   });
 
@@ -130,13 +113,8 @@ describe('ModelPricingService', () => {
     it('calculates cost for simple input/output (haiku)', () => {
       const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
       const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: 1000,
-          outputTokens: 0,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 0,
-        },
-        pricing
+        { inputTokens: 1000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        pricing,
       );
       // 1000 tokens at $1.00 per million = $0.001
       expect(cost).toBeCloseTo(0.001, 6);
@@ -145,13 +123,8 @@ describe('ModelPricingService', () => {
     it('calculates cost for input and output', () => {
       const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
       const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: 1000,
-          outputTokens: 500,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 0,
-        },
-        pricing
+        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        pricing,
       );
       // Input: 1000 * $1.00 / 1M = $0.001
       // Output: 500 * $5.00 / 1M = $0.0025
@@ -162,86 +135,69 @@ describe('ModelPricingService', () => {
     it('calculates cost with cache write tokens', () => {
       const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
       const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: 1000,
-          outputTokens: 500,
-          cacheWriteTokens: 2000,
-          cacheReadTokens: 0,
-        },
-        pricing
+        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 2000, cacheReadTokens: 0 },
+        pricing,
       );
-      // Input: 1000 * $1.00 / 1M = $0.001
-      // Output: 500 * $5.00 / 1M = $0.0025
-      // Cache write: 2000 * $1.25 / 1M = $0.0025
-      // Total: $0.006
       expect(cost).toBeCloseTo(0.006, 6);
     });
 
     it('calculates cost with cache read tokens', () => {
       const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
       const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: 1000,
-          outputTokens: 500,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 5000,
-        },
-        pricing
+        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 5000 },
+        pricing,
       );
-      // Input: 1000 * $1.00 / 1M = $0.001
-      // Output: 500 * $5.00 / 1M = $0.0025
-      // Cache read: 5000 * $0.10 / 1M = $0.0005
-      // Total: $0.004
       expect(cost).toBeCloseTo(0.004, 6);
     });
 
     it('calculates cost with all token types', () => {
       const pricing = ModelPricingService.getPricing('claude-sonnet-4.5-20241022');
       const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: 10000,
-          outputTokens: 5000,
-          cacheWriteTokens: 3000,
-          cacheReadTokens: 8000,
-        },
-        pricing
+        { inputTokens: 10000, outputTokens: 5000, cacheWriteTokens: 3000, cacheReadTokens: 8000 },
+        pricing,
       );
-      // Input: 10000 * $3.00 / 1M = $0.03
-      // Output: 5000 * $15.00 / 1M = $0.075
-      // Cache write: 3000 * $3.75 / 1M = $0.01125
-      // Cache read: 8000 * $0.30 / 1M = $0.0024
-      // Total: $0.11865
       expect(cost).toBeCloseTo(0.11865, 6);
     });
 
-    it('returns 0 for zero tokens', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
+    it('prices reasoning tokens at the output rate', () => {
+      const pricing = ModelPricingService.getPricing('o3-mini');
       const cost = ModelPricingService.calculateCost(
         {
           inputTokens: 0,
           outputTokens: 0,
           cacheWriteTokens: 0,
           cacheReadTokens: 0,
+          reasoningTokens: 1_000_000,
         },
-        pricing
+        pricing,
+      );
+      // o3-mini output rate is $4.40/M
+      expect(cost).toBeCloseTo(4.4, 2);
+    });
+
+    it('returns 0 for zero tokens', () => {
+      const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
+      const cost = ModelPricingService.calculateCost(
+        { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        pricing,
       );
       expect(cost).toBe(0);
+    });
+
+    it('returns null when pricing is null', () => {
+      const cost = ModelPricingService.calculateCost(
+        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        null,
+      );
+      expect(cost).toBeNull();
     });
 
     it('handles large token counts (millions)', () => {
       const pricing = ModelPricingService.getPricing('claude-opus-4.5-20250514');
       const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: 1_000_000,
-          outputTokens: 500_000,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 0,
-        },
-        pricing
+        { inputTokens: 1_000_000, outputTokens: 500_000, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        pricing,
       );
-      // Input: 1M * $5.00 / 1M = $5.00
-      // Output: 500K * $25.00 / 1M = $12.50
-      // Total: $17.50
       expect(cost).toBeCloseTo(17.5, 6);
     });
   });
@@ -277,6 +233,14 @@ describe('ModelPricingService', () => {
 
     it('formats cost just below $0.01', () => {
       expect(ModelPricingService.formatCost(0.00999)).toBe('$0.0100');
+    });
+
+    it("renders null as '—'", () => {
+      expect(ModelPricingService.formatCost(null)).toBe('—');
+    });
+
+    it("renders undefined as '—'", () => {
+      expect(ModelPricingService.formatCost(undefined)).toBe('—');
     });
   });
 });

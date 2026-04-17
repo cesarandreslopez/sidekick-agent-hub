@@ -39,6 +39,11 @@ export interface ModelStats {
   calls: number;
   tokens: number;
   cost: number;
+  /**
+   * `false` when no pricing was known for this model (cost is 0, UI should
+   * render "—"). Omit for legacy records; undefined means "priced".
+   */
+  priced?: boolean;
 }
 
 export interface ContextGauge {
@@ -493,12 +498,15 @@ export class DashboardState {
       lastCallTime: undefined,
     }));
 
-    // Map model stats from aggregator's ModelUsageStats to CLI's ModelStats
+    // Map model stats from aggregator's ModelUsageStats to CLI's ModelStats.
+    // Aggregator's `priced` flag flows through so the UI renders "—" for
+    // models without a known pricing entry.
     const modelStats: ModelStats[] = m.modelStats.map(ms => ({
       model: ms.model,
       calls: ms.calls,
       tokens: ms.tokens,
       cost: ms.cost,
+      priced: ms.priced,
     }));
 
     // Map tasks from aggregator's TrackedTask to CLI's TaskItem

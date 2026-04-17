@@ -552,7 +552,7 @@ export interface SessionStats {
   toolCalls: ToolCall[];
 
   /** Per-model usage breakdown */
-  modelUsage: Map<string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number }>;
+  modelUsage: Map<string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; reasoningTokens?: number }>;
 
   /** When the session was last updated */
   lastUpdated: Date;

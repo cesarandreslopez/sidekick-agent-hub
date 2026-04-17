@@ -18,6 +18,7 @@
 
 import * as vscode from "vscode";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { AuthService } from "./services/AuthService";
 import { CompletionService } from "./services/CompletionService";
@@ -87,6 +88,7 @@ import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
 import { getNonce } from "./utils/nonce";
 import type { AccountProviderId } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { hydratePricingCatalog } from 'sidekick-shared/dist/pricingCatalog';
 
 /** Whether completions are currently enabled */
 let enabled = vscode.workspace.getConfiguration('sidekick').get('enabled', true);
@@ -154,6 +156,24 @@ export async function activate(context: vscode.ExtensionContext) {
   const outputChannel = initLogger();
   context.subscriptions.push(outputChannel);
   log("Sidekick Agent Hub extension activated");
+
+  // Fire-and-forget hydrate the pricing catalog from LiteLLM so Codex/GPT
+  // sessions display correct USD costs. Falls back to the static baseline if
+  // offline. Never blocks activation.
+  const pricingConfig = vscode.workspace.getConfiguration('sidekick.pricing');
+  if (pricingConfig.get<boolean>('hydrateFromLiteLLM', true)) {
+    const ttlHours = pricingConfig.get<number>('cacheTtlHours', 24);
+    const cacheDir = path.join(os.homedir(), '.config', 'sidekick');
+    hydratePricingCatalog({
+      cacheDir,
+      ttlMs: Math.max(1, ttlHours) * 60 * 60 * 1000,
+      logger: (msg) => log(msg),
+    }).then((result) => {
+      log(`Pricing catalog ready (${result.source}, ${result.entries} entries).`);
+    }).catch((err) => {
+      logError('pricing catalog hydration failed', err);
+    });
+  }
 
   // Create status bar manager
   statusBarManager = new StatusBarManager();

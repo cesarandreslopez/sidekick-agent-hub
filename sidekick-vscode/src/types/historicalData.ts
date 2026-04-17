@@ -10,9 +10,16 @@
 
 /**
  * Schema version for data migrations.
- * Increment when making breaking changes to data structure.
+ *
+ * v2 (2026-04-17):
+ *   - `ModelUsageRecord.priced?: boolean` — false when the model had no known
+ *     pricing at write time (cost is 0 and UIs render "—").
+ *   - `SessionSummary.unpricedModelIds?: string[]` — list of models that fell
+ *     back to $0 because pricing was unknown.
+ *   Legacy v1 records are read as-is; missing fields mean "fully priced".
+ *   No retroactive migration — fix forward only.
  */
-export const HISTORICAL_DATA_SCHEMA_VERSION = 1;
+export const HISTORICAL_DATA_SCHEMA_VERSION = 2;
 
 /**
  * Token usage totals by category.
@@ -32,10 +39,10 @@ export interface TokenTotals {
 }
 
 /**
- * Usage record for a specific Claude model.
+ * Usage record for a specific model (Claude, GPT, o-series, etc).
  */
 export interface ModelUsageRecord {
-  /** Model identifier (e.g., "claude-opus-4-20250514") */
+  /** Model identifier (e.g., "claude-opus-4-20250514", "gpt-5.4") */
   model: string;
 
   /** Number of API calls to this model */
@@ -44,8 +51,15 @@ export interface ModelUsageRecord {
   /** Total tokens (input + output) used by this model */
   tokens: number;
 
-  /** Total estimated cost in USD */
+  /** Cost in USD for the priced portion. `0` when `priced === false`. */
   cost: number;
+
+  /**
+   * Schema v2+. `false` when no pricing was known for this model at write
+   * time — cost is 0 and the UI should render "—" instead of "$0". Omit on
+   * v1 records; treat `undefined` as `true` (fully priced).
+   */
+  priced?: boolean;
 }
 
 /**
@@ -233,6 +247,13 @@ export interface SessionSummary {
 
   /** Per-tool usage breakdown */
   toolUsage: ToolUsageRecord[];
+
+  /**
+   * Schema v2+. Model IDs whose usage contributed 0 to `totalCost` because
+   * pricing was unknown. Surfaced to the UI as a "N model(s) unpriced"
+   * indicator. Omitted when every model in the session was priced.
+   */
+  unpricedModelIds?: string[];
 }
 
 /**

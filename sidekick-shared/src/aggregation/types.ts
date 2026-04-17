@@ -88,7 +88,14 @@ export interface ModelUsageStats {
   outputTokens: number;
   cacheWriteTokens: number;
   cacheReadTokens: number;
+  reasoningTokens?: number;
   cost: number;
+  /**
+   * `false` when the aggregator encountered this model with no known
+   * pricing — `cost` is the priced-portion only. UIs render "—" for
+   * unpriced rows rather than "$0".
+   */
+  priced?: boolean;
 }
 
 /** Burn rate info. */

@@ -346,7 +346,11 @@ export class SessionsPanel implements SidePanel {
         lines.push('', sectionHeader('Model Usage', w));
         for (const ms of m.modelStats) {
           const modelName = ms.model.length > 20 ? ms.model.substring(0, 17) + '...' : ms.model;
-          lines.push(`  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  {green-fg}${formatCost(ms.cost)}{/green-fg}`);
+          // priced === false means pricing is unknown — show "—" not "$0".
+          const costDisplay = ms.priced === false
+            ? '{yellow-fg}—{/yellow-fg}'
+            : `{green-fg}${formatCost(ms.cost)}{/green-fg}`;
+          lines.push(`  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  ${costDisplay}`);
         }
       }
 

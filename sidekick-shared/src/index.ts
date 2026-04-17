@@ -332,7 +332,12 @@ export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContex
 
 // Model Info & Pricing
 export { parseModelId, getModelPricing, getModelInfo, calculateCost, calculateCostWithPricing, formatCost } from './modelInfo';
-export type { ModelPricing, CostTokenUsage, ModelInfo } from './modelInfo';
+export type { ModelPricing, CostTokenUsage, ModelInfo, ModelProvider, ParsedModelId } from './modelInfo';
+
+// Pricing Catalog (LiteLLM hydration) — Node-only. Safe for extension host
+// and CLI; do NOT import from browser bundles (webviews).
+export { hydratePricingCatalog, normalizeLiteLlmCatalog, LITELLM_CATALOG_URL } from './pricingCatalog';
+export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 
 // Extractors — per-event token usage and tool call extraction
 export { extractTokenUsage } from './extractors/tokenUsage';

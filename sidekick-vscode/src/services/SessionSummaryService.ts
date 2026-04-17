@@ -332,12 +332,15 @@ export class SessionSummaryService {
     let cost = 0;
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      cost += ModelPricingService.calculateCost({
+      const contribution = ModelPricingService.calculateCost({
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         cacheWriteTokens: usage.cacheWriteTokens,
         cacheReadTokens: usage.cacheReadTokens,
       }, pricing);
+      // Unpriced models (null) contribute 0; see SessionMonitor.getSessionSummary
+      // for the per-model "—" rendering path.
+      if (contribution !== null) cost += contribution;
     });
     return cost;
   }
@@ -429,8 +432,10 @@ export class SessionSummaryService {
         cacheWriteTokens: usage.cacheWriteTokens,
         cacheReadTokens: usage.cacheReadTokens,
       }, pricing);
-      entries.push({ model, cost });
-      total += cost;
+      // Unpriced models (null) contribute 0 and 0% to the percentage chart.
+      const contribution = cost ?? 0;
+      entries.push({ model, cost: contribution });
+      total += contribution;
     });
 
     return entries
@@ -501,6 +506,8 @@ export class SessionSummaryService {
 
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
+      // Skip unpriced models — they'd otherwise drag the weighted avg to 0.
+      if (!pricing) return;
       weightedPrice += pricing.inputCostPerMillion * usage.calls;
       totalWeight += usage.calls;
     });

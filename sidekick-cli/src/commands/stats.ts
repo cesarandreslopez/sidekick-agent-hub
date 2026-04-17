@@ -37,9 +37,24 @@ function printStatsSummary(history: HistoricalDataStore): void {
     process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
     const sorted = [...at.modelUsage].sort((a, b) => b.calls - a.calls);
+    const unpricedModels: string[] = [];
     for (const m of sorted) {
-      const costStr = m.cost > 0 ? chalk.dim(` (${formatCost(m.cost)})`) : '';
+      // Honest rendering: priced === false means no pricing was available
+      // for this model at write time — show "—" instead of "$0".
+      let costStr = '';
+      if (m.priced === false) {
+        costStr = chalk.yellow(' (—)');
+        unpricedModels.push(m.model);
+      } else if (m.cost > 0) {
+        costStr = chalk.dim(` (${formatCost(m.cost)})`);
+      }
       process.stdout.write(`  ${chalk.cyan(m.model.padEnd(30))} ${formatNumber(m.calls).padStart(8)} calls${costStr}\n`);
+    }
+    if (unpricedModels.length > 0) {
+      const label = unpricedModels.length === 1
+        ? '1 model unpriced'
+        : `${unpricedModels.length} models unpriced`;
+      process.stdout.write(chalk.dim(`  ⚠ ${label}: ${unpricedModels.join(', ')} — no pricing catalog entry.\n`));
     }
     process.stdout.write('\n');
   }

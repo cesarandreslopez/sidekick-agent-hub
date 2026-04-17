@@ -1354,21 +1354,37 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._lastModelId = usage.model;
 
     // Use provider-reported cost when available, else calculate from pricing.
-    // For non-Claude models (GPT, Gemini, etc.) without reported cost, use 0
-    // rather than applying incorrect Claude pricing.
+    // `null` pricing means the model isn't in our catalog (or LiteLLM hydration
+    // hasn't happened yet) — contribute 0 to totals and flag it in
+    // `unpricedModelIds` so the UI renders "—" instead of "$0".
     let cost: number;
+    let priced: boolean;
     if (usage.reportedCost !== undefined && usage.reportedCost > 0) {
       cost = usage.reportedCost;
-    } else if (ModelPricingService.parseModelId(usage.model)) {
+      priced = true;
+    } else {
       const pricing = ModelPricingService.getPricing(usage.model);
-      cost = ModelPricingService.calculateCost({
+      const computed = ModelPricingService.calculateCost({
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         cacheWriteTokens: usage.cacheWriteTokens,
-        cacheReadTokens: usage.cacheReadTokens
+        cacheReadTokens: usage.cacheReadTokens,
+        reasoningTokens: usage.reasoningTokens,
       }, pricing);
-    } else {
-      cost = 0;
+      if (computed !== null) {
+        cost = computed;
+        priced = true;
+      } else {
+        cost = 0;
+        priced = false;
+      }
+    }
+
+    if (!priced) {
+      const seen = this._state.unpricedModelIds ?? [];
+      if (!seen.includes(usage.model)) {
+        this._state.unpricedModelIds = [...seen, usage.model];
+      }
     }
 
     // Update totals
@@ -1380,18 +1396,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.lastUpdated = new Date().toISOString();
     this._state.sessionActive = true;
 
-    // Update model breakdown
+    // Update model breakdown (keep `priced` sticky: one unpriced event taints
+    // the aggregate so the UI shows "—" for the row).
     const existingModel = this._state.modelBreakdown.find(m => m.model === usage.model);
     if (existingModel) {
       existingModel.calls += 1;
       existingModel.tokens += usage.inputTokens + usage.outputTokens;
       existingModel.cost += cost;
+      if (!priced) existingModel.priced = false;
     } else {
       this._state.modelBreakdown.push({
         model: usage.model,
         calls: 1,
         tokens: usage.inputTokens + usage.outputTokens,
-        cost: cost
+        cost: cost,
+        priced,
       });
     }
 
@@ -1743,9 +1762,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Rebuild model breakdown with costs
     this._state.modelBreakdown = [];
     this._state.totalCost = 0;
+    const unpricedThisRebuild: string[] = [];
 
     if (stats.totalReportedCost !== undefined && stats.totalReportedCost > 0) {
-      // Use provider-reported cost, distribute proportionally by token count
+      // Use provider-reported cost, distribute proportionally by token count.
+      // Provider-reported cost is assumed authoritative — mark each row as priced.
       const totalTokens = Array.from(stats.modelUsage.values())
         .reduce((sum, u) => sum + u.tokens, 0);
 
@@ -1757,39 +1778,38 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           model,
           calls: usage.calls,
           tokens: usage.tokens,
-          cost
+          cost,
+          priced: true,
         });
 
         this._state.totalCost += cost;
       });
     } else {
       stats.modelUsage.forEach((usage, model) => {
-        // Only calculate from pricing table for known Claude models.
-        // Non-Claude models (GPT, Gemini, etc.) get cost 0 to avoid
-        // applying incorrect Claude pricing.
-        let cost: number;
-        if (ModelPricingService.parseModelId(model)) {
-          const pricing = ModelPricingService.getPricing(model);
-          cost = ModelPricingService.calculateCost({
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            cacheWriteTokens: usage.cacheWriteTokens,
-            cacheReadTokens: usage.cacheReadTokens,
-          }, pricing);
-        } else {
-          cost = 0;
-        }
+        // Honest pricing: null pricing → priced=false, cost=0, row renders as "—".
+        const pricing = ModelPricingService.getPricing(model);
+        const computed = ModelPricingService.calculateCost({
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheWriteTokens: usage.cacheWriteTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+        }, pricing);
+        const priced = computed !== null;
+        const cost = computed ?? 0;
+        if (!priced) unpricedThisRebuild.push(model);
 
         this._state.modelBreakdown.push({
           model,
           calls: usage.calls,
           tokens: usage.tokens,
-          cost
+          cost,
+          priced,
         });
 
         this._state.totalCost += cost;
       });
     }
+    this._state.unpricedModelIds = unpricedThisRebuild.length > 0 ? unpricedThisRebuild : undefined;
 
     // Calculate context window usage (uses _currentContextSize synced above)
     this._updateContextUsage();

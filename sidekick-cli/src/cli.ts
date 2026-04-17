@@ -1,9 +1,20 @@
 declare const __CLI_VERSION__: string;
 
 import { Command } from 'commander';
-import { detectProvider } from 'sidekick-shared';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { detectProvider, hydratePricingCatalog } from 'sidekick-shared';
 import type { ProviderId, SessionProvider } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
+
+// Fire-and-forget: warm the pricing catalog so `stats` / `dashboard` show
+// correct dollar figures for Codex/GPT/o-series sessions. Non-blocking and
+// offline-safe — failures fall through to the static baseline.
+hydratePricingCatalog({
+  cacheDir: path.join(os.homedir(), '.config', 'sidekick'),
+}).catch(() => {
+  /* non-fatal; static table still works */
+});
 
 const program = new Command();
 

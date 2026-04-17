@@ -1,8 +1,9 @@
 /**
- * @fileoverview Model pricing service for calculating Claude API costs.
+ * @fileoverview Model pricing service — thin wrapper around sidekick-shared.
  *
- * Thin wrapper around sidekick-shared/modelInfo for backward compatibility.
- * New code should import directly from sidekick-shared.
+ * Kept for backward compatibility with existing call sites. New code should
+ * import directly from `sidekick-shared`. Signatures now return `null` for
+ * unknown models so callers render "—" instead of a wrong dollar figure.
  *
  * @module services/ModelPricingService
  */
@@ -12,41 +13,46 @@ import {
   getModelPricing,
   calculateCostWithPricing,
   formatCost as sharedFormatCost,
-} from 'sidekick-shared/dist/modelInfo';
-import type { ModelPricing as SharedModelPricing, CostTokenUsage } from 'sidekick-shared/dist/modelInfo';
+  type ModelPricing as SharedModelPricing,
+  type CostTokenUsage,
+  type ParsedModelId,
+} from 'sidekick-shared';
 
-/**
- * Pricing information for a Claude model.
- * All costs are per million tokens in USD.
- */
+/** Pricing information for a model. All costs are per million tokens in USD. */
 export type ModelPricing = SharedModelPricing;
 
-/**
- * Token usage for cost calculation.
- */
+/** Token usage for cost calculation. */
 export type TokenUsage = CostTokenUsage;
 
 /**
  * Service for model pricing lookup and cost calculation.
  *
- * Delegates to sidekick-shared/modelInfo. Existing callers can continue
- * using ModelPricingService.getPricing() etc. without changes.
+ * Delegates to sidekick-shared/modelInfo. Unknown models return null — callers
+ * must check and render "—" rather than silently invent a price.
  */
 export class ModelPricingService {
-  static parseModelId(modelId: string): { family: string; version: string } | null {
+  static parseModelId(modelId: string): ParsedModelId | null {
     return parseModelId(modelId);
   }
 
-  static getPricing(modelId: string): ModelPricing {
-    // Shared module returns null for non-Claude; preserve original behavior (sonnet-4.5 fallback)
-    return getModelPricing(modelId) ?? getModelPricing('claude-sonnet-4.5')!;
+  /**
+   * Returns pricing for a model, or null if unknown. Callers must handle null.
+   */
+  static getPricing(modelId: string): ModelPricing | null {
+    return getModelPricing(modelId);
   }
 
-  static calculateCost(usage: TokenUsage, pricing: ModelPricing): number {
+  /**
+   * Calculates cost given token usage and pricing.
+   * If `pricing` is null, returns null (caller should render "—").
+   */
+  static calculateCost(usage: TokenUsage, pricing: ModelPricing | null): number | null {
+    if (!pricing) return null;
     return calculateCostWithPricing(usage, pricing);
   }
 
-  static formatCost(cost: number): string {
+  /** Formats cost as `$X.YZ`, or `—` for null/undefined. */
+  static formatCost(cost: number | null | undefined): string {
     return sharedFormatCost(cost);
   }
 }

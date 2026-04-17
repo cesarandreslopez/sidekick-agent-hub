@@ -1148,8 +1148,10 @@ export class SessionMonitor implements vscode.Disposable {
       return null;
     }
 
-    // Build model usage with costs
+    // Build model usage with costs. Unknown-pricing models get cost=0 and
+    // are tagged `priced: false` so the UI renders "—" instead of "$0".
     const modelUsage: ModelUsageRecord[] = [];
+    const unpricedModelIds: string[] = [];
     this.stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
       const cost = ModelPricingService.calculateCost({
@@ -1157,13 +1159,14 @@ export class SessionMonitor implements vscode.Disposable {
         outputTokens: usage.outputTokens,
         cacheWriteTokens: usage.cacheWriteTokens,
         cacheReadTokens: usage.cacheReadTokens,
+        reasoningTokens: usage.reasoningTokens,
       }, pricing);
-      modelUsage.push({
-        model,
-        calls: usage.calls,
-        tokens: usage.tokens,
-        cost,
-      });
+      if (cost === null) {
+        unpricedModelIds.push(model);
+        modelUsage.push({ model, calls: usage.calls, tokens: usage.tokens, cost: 0, priced: false });
+      } else {
+        modelUsage.push({ model, calls: usage.calls, tokens: usage.tokens, cost, priced: true });
+      }
     });
 
     // Build tool usage from analytics
@@ -1196,6 +1199,7 @@ export class SessionMonitor implements vscode.Disposable {
       messageCount: this.stats.messageCount,
       modelUsage,
       toolUsage,
+      unpricedModelIds: unpricedModelIds.length > 0 ? unpricedModelIds : undefined,
     };
   }
 
@@ -1715,7 +1719,7 @@ export class SessionMonitor implements vscode.Disposable {
 
       // Restore Maps from serialized arrays
       if (Array.isArray(s.modelUsage)) {
-        this.stats.modelUsage = new Map(s.modelUsage as Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number }]>);
+        this.stats.modelUsage = new Map(s.modelUsage as Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; reasoningTokens?: number }]>);
       }
       if (Array.isArray(s.toolCalls)) {
         this.stats.toolCalls = (s.toolCalls as ToolCall[]).map(tc => ({
@@ -2236,13 +2240,14 @@ export class SessionMonitor implements vscode.Disposable {
       this.stats.totalCacheReadTokens += usage.cacheReadTokens;
 
       // Update per-model usage (kept for SessionSummary cost calculation)
-      const modelStats = this.stats.modelUsage.get(usage.model) || { calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 };
+      const modelStats = this.stats.modelUsage.get(usage.model) || { calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, reasoningTokens: 0 };
       modelStats.calls++;
       modelStats.tokens += usage.inputTokens + usage.outputTokens;
       modelStats.inputTokens += usage.inputTokens;
       modelStats.outputTokens += usage.outputTokens;
       modelStats.cacheWriteTokens += usage.cacheWriteTokens;
       modelStats.cacheReadTokens += usage.cacheReadTokens;
+      modelStats.reasoningTokens = (modelStats.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0);
       this.stats.modelUsage.set(usage.model, modelStats);
 
       // Track context size for waterfall chart

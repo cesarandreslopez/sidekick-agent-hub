@@ -375,6 +375,17 @@
               "Monitor Codex CLI sessions (~/.codex/sessions/)"
             ],
             "description": "Which CLI coding agent to monitor. 'auto' detects based on installed tools and recent activity."
+          },
+          "sidekick.pricing.hydrateFromLiteLLM": {
+            "type": "boolean",
+            "default": true,
+            "description": "On startup, fetch the LiteLLM model pricing catalog and cache it to ~/.config/sidekick/pricing-catalog.json. Keeps Codex/GPT/o-series costs accurate without manual updates. Disable to stay fully offline."
+          },
+          "sidekick.pricing.cacheTtlHours": {
+            "type": "number",
+            "default": 24,
+            "minimum": 1,
+            "description": "How long (in hours) to trust the cached pricing catalog before refetching."
           }
         }
       },

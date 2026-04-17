@@ -47,6 +47,7 @@ import { HeatmapTracker } from './HeatmapTracker';
 import type { SerializedHeatmapState } from './HeatmapTracker';
 import { PatternExtractor } from './PatternExtractor';
 import type { SerializedPatternState } from './PatternExtractor';
+import { getModelPricing, calculateCostWithPricing } from '../modelInfo';
 
 // ── Defaults ──
 
@@ -66,7 +67,7 @@ const SNAPSHOT_SCHEMA_VERSION = 1;
 export interface SerializedAggregatorState {
   version: number;
   tokens: { input: number; output: number; cacheWrite: number; cacheRead: number; reportedCost: number };
-  modelUsage: Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; cost: number }]>;
+  modelUsage: Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; cost: number; reasoningTokens?: number; priced?: boolean }]>;
   contextSize: number;
   previousContextSize: number;
   compactionEvents: CompactionEvent[];
@@ -106,7 +107,15 @@ interface ModelAccumulator {
   outputTokens: number;
   cacheWriteTokens: number;
   cacheReadTokens: number;
+  /** Reasoning tokens (OpenAI o-series / Codex). Billed at the output rate. */
+  reasoningTokens?: number;
   cost: number;
+  /**
+   * True when every usage event aggregated into this row had a pricing hit.
+   * Flips to false as soon as one event has no provider-reported cost and no
+   * pricing catalog entry. UIs render "—" when false.
+   */
+  priced?: boolean;
 }
 
 // ── Goal gate detection regex ──
@@ -394,12 +403,30 @@ export class EventAggregator {
       this.previousContextSize = contextSize;
       this.currentContextSize = contextSize;
 
-      // Per-model usage
+      // Per-model usage. If the provider reported a cost, use it; otherwise
+      // resolve pricing from the catalog (null = unpriced → priced: false,
+      // UI renders "—").
       if (event.model) {
         const model = event.model;
+        const pricing = event.cost ? null : getModelPricing(model);
+        const computed = event.cost
+          ? event.cost
+          : pricing
+            ? calculateCostWithPricing(
+                {
+                  inputTokens: inputTok,
+                  outputTokens: outputTok,
+                  cacheWriteTokens: cacheWrite,
+                  cacheReadTokens: cacheRead,
+                },
+                pricing,
+              )
+            : 0;
+        const evPriced = event.cost != null || pricing != null;
+
         const acc = this.modelUsage.get(model) ?? {
           calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0,
-          cacheWriteTokens: 0, cacheReadTokens: 0, cost: 0,
+          cacheWriteTokens: 0, cacheReadTokens: 0, cost: 0, priced: true,
         };
         acc.calls++;
         acc.tokens += inputTok + outputTok;
@@ -407,7 +434,8 @@ export class EventAggregator {
         acc.outputTokens += outputTok;
         acc.cacheWriteTokens += cacheWrite;
         acc.cacheReadTokens += cacheRead;
-        if (event.cost) acc.cost += event.cost;
+        acc.cost += computed;
+        if (!evPriced) acc.priced = false;
         this.modelUsage.set(model, acc);
       }
     }
@@ -772,7 +800,32 @@ export class EventAggregator {
     const outputTok = usage.output_tokens;
     const cacheWrite = usage.cache_creation_input_tokens ?? 0;
     const cacheRead = usage.cache_read_input_tokens ?? 0;
-    const cost = usage.reported_cost ?? 0;
+    const reasoningTok = usage.reasoning_tokens ?? 0;
+    const reported = usage.reported_cost ?? 0;
+
+    // Resolve provider pricing when we have a model ID. Lets sessions with no
+    // reported_cost (Claude Code, Codex) still show real dollar figures.
+    const modelKey = model ?? this.currentModel;
+    const pricing = modelKey ? getModelPricing(modelKey) : null;
+    let priced = reported > 0 || pricing !== null;
+    let cost: number;
+    if (reported > 0) {
+      cost = reported;
+    } else if (pricing) {
+      cost = calculateCostWithPricing(
+        {
+          inputTokens: inputTok,
+          outputTokens: outputTok,
+          cacheWriteTokens: cacheWrite,
+          cacheReadTokens: cacheRead,
+          reasoningTokens: reasoningTok,
+        },
+        pricing,
+      );
+    } else {
+      cost = 0;
+      priced = false;
+    }
 
     this.inputTokens += inputTok;
     this.outputTokens += outputTok;
@@ -816,11 +869,13 @@ export class EventAggregator {
       turnIndex: this.contextTurnIndex++,
     });
 
-    // Per-model usage
-    const modelKey = model ?? this.currentModel ?? 'unknown';
-    const acc = this.modelUsage.get(modelKey) ?? {
+    // Per-model usage. Accumulate reasoning tokens and an inverted-sticky
+    // `priced` flag so one unpriced event taints the aggregate (UI renders "—").
+    const perModelKey = model ?? this.currentModel ?? 'unknown';
+    const acc = this.modelUsage.get(perModelKey) ?? {
       calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0,
-      cacheWriteTokens: 0, cacheReadTokens: 0, cost: 0,
+      cacheWriteTokens: 0, cacheReadTokens: 0, reasoningTokens: 0,
+      cost: 0, priced: true,
     };
     acc.calls++;
     acc.tokens += inputTok + outputTok;
@@ -828,8 +883,10 @@ export class EventAggregator {
     acc.outputTokens += outputTok;
     acc.cacheWriteTokens += cacheWrite;
     acc.cacheReadTokens += cacheRead;
+    acc.reasoningTokens = (acc.reasoningTokens ?? 0) + reasoningTok;
     acc.cost += cost;
-    this.modelUsage.set(modelKey, acc);
+    if (!priced) acc.priced = false;
+    this.modelUsage.set(perModelKey, acc);
 
     // Burn rate sampling
     this.updateBurnRate(timestamp);
