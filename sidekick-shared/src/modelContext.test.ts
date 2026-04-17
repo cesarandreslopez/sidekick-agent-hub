@@ -21,6 +21,21 @@ describe('getModelContextWindowSize', () => {
     expect(getModelContextWindowSize('claude-sonnet-4-6')).toBe(1_000_000);
   });
 
+  it('returns 1M for Claude 4.7 family (Opus native 1M)', () => {
+    expect(getModelContextWindowSize('claude-opus-4-7')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-opus-4-7-20260101')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-sonnet-4-7')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-sonnet-4-7-20260101')).toBe(1_000_000);
+  });
+
+  it('honors the [1m] suffix as an explicit 1M marker', () => {
+    expect(getModelContextWindowSize('claude-opus-4-7[1m]')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-opus-4-7[1M]')).toBe(1_000_000);
+    // Suffix overrides the base family even when the base is 200K.
+    expect(getModelContextWindowSize('claude-sonnet-4-5[1m]')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-haiku-4-5[1m]')).toBe(1_000_000);
+  });
+
   it('matches versioned model IDs by longest prefix', () => {
     // claude-opus-4-6-20250414 should match claude-opus-4-6 (1M), not claude-opus-4 (200K)
     expect(getModelContextWindowSize('claude-opus-4-6-20250414')).toBe(1_000_000);
@@ -43,6 +58,16 @@ describe('getModelContextWindowSize', () => {
     expect(getModelContextWindowSize('o3')).toBe(200_000);
     expect(getModelContextWindowSize('o4')).toBe(200_000);
     expect(getModelContextWindowSize('o4-mini')).toBe(200_000);
+  });
+
+  it('returns correct sizes for GPT-5 variants', () => {
+    expect(getModelContextWindowSize('gpt-5.4')).toBe(1_050_000);
+    expect(getModelContextWindowSize('gpt-5.4-pro')).toBe(1_050_000);
+    expect(getModelContextWindowSize('gpt-5.3-codex')).toBe(400_000);
+    expect(getModelContextWindowSize('gpt-5.3-codex-20260101')).toBe(400_000);
+    expect(getModelContextWindowSize('gpt-5.3-codex-spark')).toBe(128_000);
+    // gpt-5 fallback is still 400K for unknown 5.x variants.
+    expect(getModelContextWindowSize('gpt-5-turbo')).toBe(400_000);
   });
 
   it('returns correct sizes for Gemini and DeepSeek', () => {

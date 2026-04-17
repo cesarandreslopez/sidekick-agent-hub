@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Context-window % wrong for Opus 4.7 (and other new models)**: The dashboard and status bar now report accurate context usage for Claude Opus 4.7, Sonnet 4.7, GPT-5.4, and GPT-5.3-Codex variants. The model → context-window map in `sidekick-shared` now includes these families (Opus 4.7 = 1M, Sonnet 4.7 = 1M, GPT-5.4 = 1.05M, GPT-5.3-Codex = 400K, GPT-5.3-Codex-Spark = 128K) instead of falling through to 200K via prefix match. Also honors Claude Code's `[1m]` suffix as an explicit 1M marker.
+
 ## [0.17.1] - 2026-04-13
 
 ### Fixed

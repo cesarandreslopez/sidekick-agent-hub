@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Context-gauge % wrong for Opus 4.7 (1M) and other new models**: The dashboard's context gauge was dividing by 200K for Claude Opus 4.7 (native 1M), inflating the displayed %. The shared model → context-window map now includes Opus/Sonnet 4.7 (1M), GPT-5.4 (1.05M), GPT-5.3-Codex (400K), and GPT-5.3-Codex-Spark (128K). Claude Code's `[1m]` suffix is now also honored as an explicit 1M marker.
+
 ## [0.17.1] - 2026-04-13
 
 ### Fixed

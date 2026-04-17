@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Context-window gauge wrong for Opus 4.7 (1M) and other new models**: The dashboard gauge and status bar were showing inflated % (e.g. 72% when Claude Code's own statusline reported 14%) because the model → context-window map in `sidekick-shared` had no entry for Opus/Sonnet 4.7 and fell through to the 200K `claude-opus-4` prefix. Now routes Opus 4.7, Sonnet 4.7, GPT-5.4, and the GPT-5.3-Codex family to their correct windows, and honors Claude Code's `[1m]` suffix as an explicit 1M marker.
+
 ## [0.17.1] - 2026-04-13
 
 ### Fixed
