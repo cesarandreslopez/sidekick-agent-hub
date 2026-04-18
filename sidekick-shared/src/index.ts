@@ -273,6 +273,14 @@ export type { ClaudeMaxCredentials } from './credentials';
 
 // Accounts
 export {
+  ensureDefaultAccounts,
+} from './ensureDefaultAccounts';
+export type {
+  EnsureDefaultAccountStatus,
+  EnsureDefaultAccountsOptions,
+  EnsureDefaultAccountsResult,
+} from './ensureDefaultAccounts';
+export {
   readAccountRegistry,
   writeAccountRegistry,
   readActiveClaudeAccount,
