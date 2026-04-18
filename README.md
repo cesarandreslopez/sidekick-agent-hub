@@ -61,11 +61,12 @@ sidekick search "migration"                         # cross-session search
 sidekick stats                                      # session statistics
 sidekick quota                                      # quota / rate-limit check
 sidekick status                                     # API status check (Claude + OpenAI)
+sidekick peak                                       # Claude peak-hours check (faster session-limit drain)
 sidekick dump --format markdown > session-report.md
 sidekick report                                     # HTML report → browser
 ```
 
-Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`, `sidekick account`.
+Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`, `sidekick peak`, `sidekick account`.
 
 ### Account Management
 

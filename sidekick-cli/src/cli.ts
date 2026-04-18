@@ -181,6 +181,15 @@ const statusCmd = new Command('status')
   });
 program.addCommand(statusCmd);
 
+// Peak command — one-shot Claude peak-hours check (promoclock.co)
+const peakCmd = new Command('peak')
+  .description('Show whether Claude is currently in peak hours (faster session-limit drain)')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { peakAction } = await import('./commands/peak');
+    return peakAction(_opts, cmd);
+  });
+program.addCommand(peakCmd);
+
 // Account command — manage Claude Max accounts
 const accountCmd = new Command('account')
   .description('Manage saved accounts (list, add, switch, remove)')

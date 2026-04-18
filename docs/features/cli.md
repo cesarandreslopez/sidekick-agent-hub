@@ -252,7 +252,27 @@ sidekick status
 sidekick status --json
 ```
 
+When the active provider is `claude-code`, the status output is followed by a **Claude Peak Hours** block pulled from [promoclock.co](https://promoclock.co/) — see [Peak Hours](peak-hours.md) for background.
+
 The dashboard also monitors status automatically, but only for the monitored provider — Claude for Claude Code sessions, OpenAI for Codex sessions, and no provider-status section for OpenCode. When degraded, the status bar shows a colored indicator and the Sessions panel Summary tab shows affected components and incident details.
+
+### Peak
+
+```bash
+sidekick peak
+```
+
+Show whether Claude is currently in [peak hours](peak-hours.md) (weekdays 13:00–19:00 UTC) when session limits drain faster. Works for any user — no provider gate — since the upstream endpoint is public.
+
+No command-specific flags. Use `--json` for machine-readable output.
+
+```bash
+# Human-readable
+sidekick peak
+
+# JSON
+sidekick peak --json
+```
 
 ### Quota
 
@@ -282,6 +302,8 @@ sidekick quota --json
 # Explicitly check Codex rate limits
 sidekick --provider codex quota
 ```
+
+For Claude Max subscriptions, the output also includes a **Peak** line showing whether Claude is currently in peak hours (faster session-limit drain). See [Peak Hours](peak-hours.md).
 
 ### Account
 

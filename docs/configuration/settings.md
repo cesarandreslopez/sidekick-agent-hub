@@ -60,6 +60,15 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 |---------|---------|-------------|
 | `sidekick.explanationComplexity` | `imposter-syndrome` | Default level: `eli5`, `curious-amateur`, `imposter-syndrome`, `senior`, `phd` |
 
+## Peak Hours
+
+Only applies when the inference provider is Claude Max (subscription). See [Peak Hours](../features/peak-hours.md) for background.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sidekick.peakHours.enabled` | `true` | Show Claude peak-hours indicator in the dashboard and status bar. Polls [promoclock.co](https://promoclock.co/) (third-party) every 15 minutes while the dashboard is open. |
+| `sidekick.peakHours.notifyOnTransition` | `false` | Show a one-time VS Code notification when peak hours start or end. |
+
 ## Notifications
 
 | Setting | Default | Description |

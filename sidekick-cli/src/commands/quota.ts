@@ -13,10 +13,12 @@ import {
   quotaFromCodexRateLimits,
   readQuotaSnapshot,
   writeQuotaSnapshot,
+  fetchPeakHoursStatus,
 } from 'sidekick-shared';
-import type { FollowEvent } from 'sidekick-shared';
+import type { FollowEvent, PeakHoursState } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
+import { formatPeakHoursLine } from './peakHoursRender';
 
 export function getUtilizationColor(percent: number): ChalkInstance {
   if (percent < 60) return chalk.green;
@@ -84,11 +86,14 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
 
 async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   const service = new QuotaService();
-  const quota = await service.fetchOnce();
+  const [quota, peak] = await Promise.all([
+    service.fetchOnce(),
+    fetchPeakHoursStatus(),
+  ]);
 
   if (!quota.available) {
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
+      process.stdout.write(JSON.stringify({ ...quota, peak }, null, 2) + '\n');
       return;
     }
 
@@ -123,7 +128,7 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   }
 
   if (jsonOutput) {
-    process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({ ...quota, peak }, null, 2) + '\n');
     return;
   }
 
@@ -148,6 +153,14 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
   process.stdout.write(`  ${chalk.dim('5-Hour')}   ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%${fiveProj}   ${chalk.dim('resets ' + fiveReset)}\n`);
   process.stdout.write(`  ${chalk.dim('7-Day')}    ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%${sevenProj}   ${chalk.dim('resets ' + sevenReset)}\n`);
+
+  printPeakHoursSummary(peak);
+}
+
+function printPeakHoursSummary(peak: PeakHoursState): void {
+  const line = formatPeakHoursLine(peak);
+  if (!line) return;
+  process.stdout.write(`  ${chalk.dim('Peak')}     ${line}\n`);
 }
 
 async function codexQuotaAction(provider: CodexProvider, globalOpts: Record<string, unknown>, jsonOutput: boolean): Promise<void> {

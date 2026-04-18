@@ -21,6 +21,7 @@ import { SessionMonitor } from './SessionMonitor';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import type { TokenUsage } from '../types/claudeSession';
 import type { PermissionMode } from 'sidekick-shared/dist/types/sessionEvent';
+import type { PeakHoursService, PeakHoursState } from './PeakHoursService';
 import { DEFAULT_CONTEXT_WINDOW } from '../constants';
 
 /**
@@ -55,6 +56,9 @@ export class MonitorStatusBar implements vscode.Disposable {
   private lastUpdateTime: number = 0;
   private readonly UPDATE_THROTTLE_MS = 500;
 
+  /** Cached peak-hours state (null = not peak, not applicable, or unavailable) */
+  private peakHours: PeakHoursState | null = null;
+
   /** Disposables for cleanup */
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -62,9 +66,21 @@ export class MonitorStatusBar implements vscode.Disposable {
    * Creates a new MonitorStatusBar.
    *
    * @param monitor - SessionMonitor instance to subscribe to
+   * @param peakHoursService - Optional PeakHoursService; when in an active
+   *   peak window, the status bar appends a subtle 🟠 glyph.
    */
-  constructor(monitor: SessionMonitor) {
+  constructor(monitor: SessionMonitor, peakHoursService?: PeakHoursService) {
     this.monitor = monitor;
+
+    if (peakHoursService) {
+      this.peakHours = peakHoursService.getCachedStatus();
+      this.disposables.push(
+        peakHoursService.onStatusUpdate((state) => {
+          this.peakHours = state;
+          this.updateDisplay();
+        }),
+      );
+    }
 
     // Create status bar item
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -210,7 +226,10 @@ export class MonitorStatusBar implements vscode.Disposable {
 
     // Add skull emoji when context is critically high (>= 80%)
     const icon = this.contextPercent >= 80 ? '💀' : '$(pulse)';
-    this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}`;
+    const peakIndicator = this.peakHours && this.peakHours.isPeak && !this.peakHours.unavailable
+      ? ' 🟠'
+      : '';
+    this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}${peakIndicator}`;
 
     // Color code based on context usage and permission mode
     if (this.permissionMode === 'bypassPermissions') {
@@ -240,6 +259,16 @@ export class MonitorStatusBar implements vscode.Disposable {
         plan: '📋 Plan Mode',
       };
       tooltipLines.push(`Permission: ${modeLabels[this.permissionMode] || this.permissionMode}`);
+    }
+
+    if (this.peakHours && this.peakHours.isPeak && !this.peakHours.unavailable) {
+      let peakLine = `🟠 ${this.peakHours.label || 'Claude peak hours'}`;
+      if (typeof this.peakHours.minutesUntilChange === 'number' && this.peakHours.minutesUntilChange > 0) {
+        const h = Math.floor(this.peakHours.minutesUntilChange / 60);
+        const m = this.peakHours.minutesUntilChange % 60;
+        peakLine += ` (off-peak in ${h > 0 ? `${h}h ${m}m` : `${m}m`})`;
+      }
+      tooltipLines.push(peakLine);
     }
 
     tooltipLines.push('', getRandomPhrase(), '', 'Click to open dashboard');

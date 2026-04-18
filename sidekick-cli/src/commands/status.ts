@@ -4,8 +4,10 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { fetchProviderStatus, fetchOpenAIStatus } from 'sidekick-shared';
+import { fetchProviderStatus, fetchOpenAIStatus, fetchPeakHoursStatus } from 'sidekick-shared';
 import type { ProviderStatusState } from 'sidekick-shared';
+import { printPeakHoursBlock } from './peakHoursRender';
+import { resolveProviderId } from '../cli';
 
 function printStatus(label: string, statusPageHost: string, status: ProviderStatusState): void {
   const indicatorColor = status.indicator === 'none' ? chalk.green
@@ -49,17 +51,28 @@ export async function statusAction(_opts: Record<string, unknown>, cmd: Command)
   const globalOpts = cmd.parent!.opts();
   const jsonOutput: boolean = !!globalOpts.json;
 
-  const [claude, openai] = await Promise.all([
+  // Peak hours only applies to Claude session/subscription users — skip the
+  // network call entirely for OpenCode/Codex so we don't ping a third-party
+  // service on their behalf.
+  const providerId = resolveProviderId(globalOpts);
+  const wantsPeak = providerId === 'claude-code';
+
+  const [claude, openai, peak] = await Promise.all([
     fetchProviderStatus(),
     fetchOpenAIStatus(),
+    wantsPeak ? fetchPeakHoursStatus() : Promise.resolve(null),
   ]);
 
   if (jsonOutput) {
-    process.stdout.write(JSON.stringify({ claude, openai }, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({ claude, openai, peak }, null, 2) + '\n');
     return;
   }
 
   printStatus('Claude API Status', 'status.claude.com', claude);
   process.stdout.write('\n');
   printStatus('OpenAI API Status', 'status.openai.com', openai);
+  if (peak) {
+    process.stdout.write('\n');
+    printPeakHoursBlock(peak);
+  }
 }

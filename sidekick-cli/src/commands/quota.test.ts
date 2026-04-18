@@ -82,6 +82,18 @@ const mockFetchOnce = vi.fn();
 
 vi.mock('sidekick-shared', () => ({
   getActiveAccount: () => null,
+  fetchPeakHoursStatus: async () => ({
+    status: 'unknown',
+    isPeak: false,
+    sessionLimitSpeed: 'unknown',
+    label: 'Peak-hours status unavailable',
+    peakHoursDescription: '',
+    nextChange: null,
+    minutesUntilChange: null,
+    note: '',
+    updatedAt: new Date().toISOString(),
+    unavailable: true,
+  }),
   describeQuotaFailure: (quota: {
     available?: boolean;
     error?: string;

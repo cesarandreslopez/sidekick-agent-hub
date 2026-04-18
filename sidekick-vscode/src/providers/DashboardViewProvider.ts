@@ -148,6 +148,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Provider status service for Claude API health */
   private _providerStatusService?: import('../services/ProviderStatusService').ProviderStatusService;
 
+  /** Peak-hours service for Claude Max subscription (promoclock.co) */
+  private _peakHoursService?: import('../services/PeakHoursService').PeakHoursService;
+
   /** Last quota alert emitted into dashboard surfaces */
   private _lastQuotaAlertKey: string | null = null;
 
@@ -192,6 +195,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._disposables.push(
       service.onStatusUpdate(() => this._syncProviderStatusCards()),
       service.onOpenAIStatusUpdate(() => this._syncProviderStatusCards())
+    );
+  }
+
+  /**
+   * Sets the peak-hours service. Dashboard surfaces the indicator only when
+   * the current inference provider is `claude-max`; off-peak and
+   * unavailable states render nothing.
+   */
+  setPeakHoursService(service: import('../services/PeakHoursService').PeakHoursService): void {
+    this._peakHoursService = service;
+    this._disposables.push(
+      service.onStatusUpdate(() => this._syncPeakHoursCard())
     );
   }
 
@@ -351,10 +366,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           // Start quota refresh when visible
           this._quotaService?.startRefresh();
           this._providerStatusService?.startRefresh();
+          this._peakHoursService?.startRefresh();
         } else {
           // Stop quota + status refresh when hidden to save resources
           this._quotaService?.stopRefresh();
           this._providerStatusService?.stopRefresh();
+          this._peakHoursService?.stopRefresh();
         }
       },
       undefined,
@@ -365,6 +382,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (webviewView.visible) {
       this._quotaService?.startRefresh();
       this._providerStatusService?.startRefresh();
+      this._peakHoursService?.startRefresh();
     }
 
     // Start phrase rotation timers
@@ -2299,6 +2317,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
+   * Posts the current peak-hours state to the webview. Pushes `null` when
+   * gated off (wrong provider, setting disabled, or fetch unavailable) so
+   * the UI clears any stale pill.
+   */
+  private _syncPeakHoursCard(): void {
+    const status = this._peakHoursService?.getCachedStatus() ?? null;
+    this._postMessage({ type: 'updatePeakHours', status });
+  }
+
+  /**
    * Generates HTML content for the webview.
    *
    * @param webview - The webview to generate HTML for
@@ -3716,6 +3744,33 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       text-decoration: underline;
     }
 
+    .peak-hours-section {
+      display: none;
+    }
+
+    .peak-hours-section.visible {
+      display: block;
+    }
+
+    .peak-hours-content {
+      background: var(--vscode-input-background);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+      border: 1px solid var(--vscode-charts-orange, var(--vscode-charts-yellow));
+    }
+
+    .peak-hours-indicator {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .peak-hours-details {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.4;
+    }
+
     .tool-list {
       display: flex;
       flex-direction: column;
@@ -5130,6 +5185,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           <div class="provider-status-content" id="openai-status-content">
             <div class="provider-status-indicator" id="openai-status-indicator"></div>
             <div class="provider-status-details" id="openai-status-details"></div>
+          </div>
+        </div>
+
+        <div class="gauge-row-item peak-hours-section" id="peak-hours-section" title="Claude peak-hours tracker — data from promoclock.co (third-party, unaffiliated)">
+          <div class="peak-hours-content">
+            <div class="peak-hours-indicator" id="peak-hours-indicator"></div>
+            <div class="peak-hours-details" id="peak-hours-details"></div>
           </div>
         </div>
       </div>
@@ -6608,6 +6670,43 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       /**
+       * Updates the Claude peak-hours pill. Off-peak, unavailable, or
+       * non-claude-max states all collapse the pill entirely — only a live
+       * "peak active" window is surfaced.
+       */
+      function updatePeakHours(status) {
+        const sectionEl = document.getElementById('peak-hours-section');
+        const indicatorEl = document.getElementById('peak-hours-indicator');
+        const detailsEl = document.getElementById('peak-hours-details');
+        if (!sectionEl || !indicatorEl || !detailsEl) return;
+
+        if (!status || status.unavailable || !status.isPeak) {
+          sectionEl.classList.remove('visible');
+          return;
+        }
+
+        sectionEl.classList.add('visible');
+
+        const dot = '\u25cf';
+        indicatorEl.innerHTML =
+          '<span style="color: var(--vscode-charts-orange, var(--vscode-charts-yellow))">' +
+          dot + '</span> ' +
+          (status.label || 'Peak Hours');
+
+        let html = '';
+        if (typeof status.minutesUntilChange === 'number' && status.minutesUntilChange > 0) {
+          const hours = Math.floor(status.minutesUntilChange / 60);
+          const mins = status.minutesUntilChange % 60;
+          const countdown = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
+          html += 'Off-peak in ' + countdown + '<br>';
+        }
+        if (status.peakHoursDescription) {
+          html += status.peakHoursDescription;
+        }
+        detailsEl.innerHTML = html;
+      }
+
+      /**
        * Updates the latency display with new data.
        */
       function updateLatency(latency) {
@@ -8006,6 +8105,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           case 'updateOpenAIStatus':
             updateOpenAIStatus(message.status);
+            break;
+
+          case 'updatePeakHours':
+            updatePeakHours(message.status);
             break;
 
           case 'updateLatency':

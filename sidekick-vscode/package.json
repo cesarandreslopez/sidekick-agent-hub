@@ -444,6 +444,22 @@
         }
       },
       {
+        "title": "Peak Hours",
+        "order": 5.5,
+        "properties": {
+          "sidekick.peakHours.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show Claude peak-hours indicator in the dashboard and status bar. Only applies when the inference provider is Claude Max (subscription). Fetches status from promoclock.co (third-party, unaffiliated with Anthropic) every 15 minutes."
+          },
+          "sidekick.peakHours.notifyOnTransition": {
+            "type": "boolean",
+            "default": false,
+            "description": "Show a one-time VS Code notification each time peak hours start or end."
+          }
+        }
+      },
+      {
         "title": "Notifications",
         "order": 6,
         "properties": {
