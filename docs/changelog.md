@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **Claude peak-hours indicator**: Sidekick now surfaces Anthropic's peak-hours schedule (weekdays 13:00–19:00 UTC — session limits drain faster on Free/Pro/Max/Team subscriptions). Shown subtly in the VS Code dashboard (orange pill, only during an active peak) and the status bar (`🟠` glyph). In the CLI: new `sidekick peak` one-shot command, plus peak info appended to `sidekick status` (for `claude-code`) and `sidekick quota` (for Claude subscriptions). Gated on the Claude Max inference provider so OpenCode / Codex / API-key users never see the indicator or make the upstream call. Data comes from the public `promoclock.co/api/status` endpoint — a third-party tracker unaffiliated with Anthropic. See the new [Peak Hours](features/peak-hours.md) guide for schedule details, settings, and privacy posture
+- **New settings**: `sidekick.peakHours.enabled` (default `true`) and `sidekick.peakHours.notifyOnTransition` (default `false`, opt-in toast when peak starts or ends)
+
 ## [0.17.5] - 2026-04-18
 
 ### Added

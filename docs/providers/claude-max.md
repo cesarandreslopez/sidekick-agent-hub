@@ -30,6 +30,10 @@ Claude Code sessions are monitored from `~/.claude/projects/`. The dashboard sho
 
 If quota data becomes unavailable, Sidekick now keeps the quota surface visible and classifies the failure: missing credentials / expired Claude Code sign-in, rate limits, transient network or server failures, and unexpected API responses are shown as distinct states instead of a single generic error.
 
+## Peak Hours
+
+Anthropic drains session limits faster on weekdays 13:00–19:00 UTC (see [Peak Hours](../features/peak-hours.md) for the full schedule and per-timezone breakdown). Sidekick surfaces this state subtly — a pill in the dashboard and a `🟠` glyph in the status bar during an active peak window; `sidekick peak`, `sidekick quota`, and `sidekick status` in the CLI. The indicator only appears on Claude Max, since API-key and Enterprise paths don't share the same session-limit concept.
+
 ## Multiple Accounts
 
 If you have multiple Claude Max subscriptions (e.g., personal and work), Sidekick can switch between their Claude Code CLI credentials natively — no manual `claude login` / logout cycles. This feature manages Claude Code sign-in credentials specifically; it does not apply to Claude API keys. For Codex multi-account management, see the [Codex provider docs](codex.md#account-management).

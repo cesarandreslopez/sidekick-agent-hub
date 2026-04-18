@@ -95,6 +95,16 @@ sidekick status
 
 Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicators with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. In the dashboard, provider-status surfaces are scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, and hidden for OpenCode.
 
+When the active provider is `claude-code`, the output also includes a **Claude Peak Hours** block (see below).
+
+## Peak Hours
+
+```bash
+sidekick peak
+```
+
+Show whether Claude is currently in peak hours (weekdays 13:00–19:00 UTC — when session limits drain faster on Free/Pro/Max/Team subscriptions). Data comes from the public `promoclock.co/api/status` endpoint (third-party, unaffiliated with Anthropic). Use `--json` for machine-readable output. The peak-hours summary also appears under the bars in `sidekick quota` for Claude subscriptions.
+
 ## Quota & Rate Limits
 
 ```bash
@@ -103,7 +113,7 @@ sidekick quota
 
 Provider-aware quota and rate-limit display. The command auto-detects the active provider:
 
-- **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns.
+- **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns. Includes a peak-hours summary line.
 - **Codex**: Shows rate limits from the latest session's event stream — primary and secondary windows with progress bars and reset countdowns.
 - **OpenCode**: Prints an informational message (no rate-limit data available).
 

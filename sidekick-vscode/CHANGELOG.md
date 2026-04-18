@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **Claude peak-hours indicator (Claude Max only)**: The Agent Hub dashboard now shows a subtle orange pill whenever Claude is in an active peak window (weekdays 13:00–19:00 UTC — when session limits drain faster on Free/Pro/Max/Team subscriptions), and the session status bar appends a `🟠` glyph with a tooltip countdown. Off-peak, unavailable, and wrong-provider states render nothing — no "all clear" chrome. Only activates when the inference provider is `claude-max`; OpenCode, Codex, and API-key users never see the pill and the extension never hits the upstream service on their behalf
+- **`PeakHoursService`**: New service wired into `extension.ts` that polls `promoclock.co/api/status` (third-party, unaffiliated with Anthropic) every 15 minutes while the dashboard is open. Reacts to `sidekick.inferenceProvider` changes to start/stop polling without a reload. Graceful fallback — if the endpoint is unreachable, the service emits a `unavailable: true` state and the UI silently collapses
+- **Settings**:
+  - `sidekick.peakHours.enabled` (default `true`) — master toggle; when off, the service does not poll and no UI appears
+  - `sidekick.peakHours.notifyOnTransition` (default `false`) — opt-in one-time VS Code toast when peak hours start or end
+
 ## [0.17.5] - 2026-04-18
 
 ### Added

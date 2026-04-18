@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **Claude peak-hours indicator**: Sidekick now surfaces Anthropic's peak-hours schedule (weekdays 13:00–19:00 UTC — when session limits drain faster for Free/Pro/Max/Team subscriptions) across all three surfaces, gated on the Claude Max inference provider so OpenCode / Codex / API-key users see nothing and make no upstream network calls
+  - **Shared library**: new `fetchPeakHoursStatus()` and `PeakHoursState` exports from `sidekick-shared`, backed by the public `promoclock.co/api/status` endpoint (third-party, unaffiliated with Anthropic) with a graceful `unavailable: true` fallback on any network or parse error
+  - **VS Code extension**: new `PeakHoursService` polls every 15 minutes while the dashboard is open and the active provider is Claude Max. A subtle orange pill appears in the dashboard only during an active peak window (off-peak renders nothing), and the session status bar appends a `🟠` glyph with a countdown in the tooltip. Optional opt-in transition notification via `sidekick.peakHours.notifyOnTransition`. Master toggle: `sidekick.peakHours.enabled` (default `true`)
+  - **CLI**: new `sidekick peak` one-shot command; `sidekick status` now includes a **Claude Peak Hours** block when the active provider is `claude-code`; `sidekick quota` shows a one-line peak summary under the 5-hour / 7-day bars for Claude subscriptions. All three support `--json`
+- **Documentation**: new `docs/features/peak-hours.md` explaining the schedule, who's affected, where the indicator shows up, and the privacy posture around the third-party data source. Linked from the settings reference and the CLI feature docs
+
 ## [0.17.5] - 2026-04-18
 
 ### Added

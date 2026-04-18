@@ -5,6 +5,14 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **`fetchPeakHoursStatus()` API**: New top-level export from `sidekick-shared` that fetches Claude's current peak-hours state from the public `promoclock.co/api/status` endpoint (third-party, unaffiliated with Anthropic). Single-shot fetcher — callers own polling. Returns a fully-normalized `PeakHoursState` with a `unavailable: true` fallback on network errors, HTTP non-2xx, or parse failures, so call sites never need try/catch
+- **`PeakHoursState` type**: Exported type covering `status` (`'peak' | 'off_peak' | 'unknown'`), `isPeak`, `sessionLimitSpeed` (`'normal' | 'faster' | 'unknown'`), `label`, `peakHoursDescription`, `nextChange`, `minutesUntilChange`, `note`, `updatedAt`, and `unavailable`. Unexpected upstream values collapse to `'unknown'` rather than widening the union
+- **Test coverage**: `peakHours.test.ts` adds five vitest cases — peak, off-peak, HTTP 500, network error, and unexpected-enum-value handling — mirroring the existing `providerStatus.test.ts` pattern with `vi.stubGlobal('fetch', …)`
+
 ## [0.17.5] - 2026-04-18
 
 ### Added

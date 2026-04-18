@@ -113,6 +113,19 @@ if (status.indicator !== 'none') {
 }
 ```
 
+### Check Claude peak-hours state
+
+```typescript
+import { fetchPeakHoursStatus } from 'sidekick-shared';
+
+// Third-party endpoint: promoclock.co/api/status (unaffiliated with Anthropic).
+// Returns a `unavailable: true` fallback on any network or parse error.
+const peak = await fetchPeakHoursStatus();
+if (!peak.unavailable && peak.isPeak) {
+  console.log(`${peak.label} — off-peak in ${peak.minutesUntilChange}m`);
+}
+```
+
 ### Fetch subscription quota
 
 ```typescript

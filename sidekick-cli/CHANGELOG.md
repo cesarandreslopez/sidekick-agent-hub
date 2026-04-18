@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **`sidekick peak` command**: One-shot check for Claude's current peak-hours state — weekdays 13:00–19:00 UTC, when session limits drain faster on Free/Pro/Max/Team subscriptions. Prints a color-coded status block with a countdown to the next transition. Data comes from the public `promoclock.co/api/status` endpoint (third-party, unaffiliated with Anthropic) with a graceful fallback when unreachable. `--json` emits the full raw state
+- **Peak-hours block in `sidekick status`**: When the active provider is `claude-code`, the Claude + OpenAI health blocks are now followed by a **Claude Peak Hours** block (off-peak or in-peak, with countdown). Gated on the provider so OpenCode / Codex users don't trigger an unnecessary third-party fetch. `--json` output includes the new `peak` field
+- **Peak-hours summary in `sidekick quota`**: Claude subscription quota output now shows a **Peak** line under the 5-hour / 7-day bars — green dot off-peak, orange dot during an active peak, with a countdown to the next transition. `--json` output includes the new `peak` field
+
 ## [0.17.5] - 2026-04-18
 
 ### Added
