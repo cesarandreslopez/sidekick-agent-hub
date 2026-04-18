@@ -69,6 +69,8 @@ Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sid
 
 ### Account Management
 
+On first run, Sidekick auto-registers your active system Claude Code and Codex credentials as a **"Default"** account — no setup required. Use the flags below only when you want to add a second account or switch between them.
+
 Manage multiple accounts for Claude Code and Codex — save, switch, and remove without manual login/logout cycles:
 
 ```bash

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.5] - 2026-04-18
+
+### Added
+
+- **Default account auto-registration**: On first startup, Sidekick now auto-registers the active system Claude Code and Codex credentials as a "Default" account in the shared account registry — without overwriting accounts that were saved manually. Quota and analytics surfaces that read from the registry work out of the box instead of silently no-oping until someone ran `Save Current Account` / `sidekick account --add`. Exposed from `sidekick-shared` as `ensureDefaultAccounts()`, wired into CLI startup via a non-blocking Commander `preAction` hook (so `--version` / `--help` stay fast) and into VS Code extension activation. Idempotent — repeated calls never create duplicates, and per-provider errors are logged and swallowed rather than thrown
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#16](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/16).
+
 ## [0.17.4] - 2026-04-17
 
 ### Added

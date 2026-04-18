@@ -82,6 +82,12 @@ Account management is provider-aware via a v2 registry format (`~/.config/sideki
 
 The registry auto-migrates from v1 (single-provider) to v2 (multi-provider) on first read. Quota snapshots are cached per provider/account for offline fallback.
 
+### Default account bootstrap
+
+On startup, both the CLI and the VS Code extension call `ensureDefaultAccounts()` from `sidekick-shared`. If an active system Claude Code credential exists and no saved Claude Code account is active yet, it is registered as a **"Default"** account. The same check runs independently for Codex — if `~/.codex/auth.json` exists and no active Codex account is saved yet, a "Default" Codex profile is registered.
+
+The bootstrap is idempotent (repeated calls do not create duplicates), never overwrites accounts that were saved manually, and swallows per-provider errors so they can never block startup. It ensures that quota, analytics, and dashboard surfaces that read from the registry work out of the box, without requiring users to run **`Save Current Claude Account`** / `sidekick account --add` first.
+
 ## Shared Provider Library
 
 The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) package ports the session provider implementations for use outside VS Code. It uses the same auto-detection algorithm — checking filesystem presence and most-recent modification time — minus the VS Code setting fallback. Any npm project can consume these providers directly via `npm install sidekick-shared`.

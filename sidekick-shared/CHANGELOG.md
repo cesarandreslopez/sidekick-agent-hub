@@ -5,6 +5,17 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.5] - 2026-04-18
+
+### Added
+
+- **`ensureDefaultAccounts()` API**: New top-level export from `sidekick-shared` that auto-registers the first system Claude Code and Codex credentials as a "Default" saved account when no active account exists for that provider. Idempotent across repeated calls; never overwrites accounts that were manually saved; cleans up orphaned Codex profile directories if `prepareCodexAccount` succeeds but still reports `needsLogin`. Accepts an optional `{ logger }` for diagnostic output — every failure path returns a `'error'` status and is routed through the logger rather than thrown
+- **Account bootstrap types**: `EnsureDefaultAccountsResult`, `EnsureDefaultAccountStatus` (`'registered' | 'skipped' | 'error'`), and `EnsureDefaultAccountsOptions` exported from the package root
+- **Packaging contract coverage**: `packagingContract.test.ts` now asserts `ensureDefaultAccounts` is reachable from the built `dist/index.js`, so the API can't silently drop out of the published artifact
+- **Test coverage**: `ensureDefaultAccounts.test.ts` adds six vitest cases covering happy path, idempotency, Claude-only, Codex-only, respect-existing-accounts, and error-swallowing — using the existing `credentialIO` mock pattern so the suite stays portable across macOS and file-based platforms
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#16](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/16).
+
 ## [0.16.1] - 2026-03-27
 
 ### Fixed

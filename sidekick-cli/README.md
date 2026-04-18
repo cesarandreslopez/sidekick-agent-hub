@@ -128,6 +128,8 @@ sidekick account [options]
 
 Manage accounts across providers — save, list, switch, and remove without manual login/logout cycles. Supports Claude Code and Codex profiles. Account data is stored in `~/.config/sidekick/accounts/` with strict file permissions and atomic writes with rollback on failure.
 
+On first CLI startup, Sidekick auto-registers the active system Claude Code and Codex credentials as a **"Default"** account (when no saved account exists for that provider yet). Existing manually saved accounts are never overwritten — the flags below are only needed to add additional accounts or switch between them.
+
 | Flag | Description |
 |------|-------------|
 | `--provider <id>` | Provider: `claude-code` (default) or `codex` |

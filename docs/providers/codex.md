@@ -41,6 +41,10 @@ Sidekick supports multiple Codex accounts with isolated profiles — each profil
 
 Each Codex profile is stored in `~/.config/sidekick/accounts/codex/profiles/{profileId}/codex-home/`. When you switch profiles, Sidekick sets the `CODEX_HOME` environment variable so the Codex CLI uses the correct credentials. If no managed profile is active, Sidekick falls back to the system default `~/.codex/`.
 
+!!! tip "First-run default"
+
+    If `~/.codex/auth.json` already exists when Sidekick first starts, the extension and CLI auto-register it as a **"Default"** Codex profile — no manual `Sidekick: Add Account` / `sidekick account --provider codex --add --label …` is required to get started. Additional Codex profiles still go through the flows below. Manually saved profiles are never overwritten by the bootstrap.
+
 ### VS Code
 
 1. Set your inference provider to `codex`

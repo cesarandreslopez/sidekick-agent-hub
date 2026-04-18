@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.5] - 2026-04-18
+
+### Added
+
+- **Default account bootstrap on activation**: The extension now calls `ensureDefaultAccounts()` from `sidekick-shared` as part of `activate()`, auto-registering the active system Claude Code and Codex credentials as a "Default" saved account when none exist for that provider yet. Existing manually saved accounts are never overwritten. The call routes logging through the extension's own `logError()` channel, and all failures are non-fatal — activation never fails because of account bootstrap. Users who are already signed in to Claude Code or Codex no longer have to run **`Sidekick: Save Current Claude Account`** / **`Sidekick: Add Account`** before the quota and dashboard surfaces light up
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#16](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/16).
+
 ## [0.17.4] - 2026-04-17
 
 ### Changed

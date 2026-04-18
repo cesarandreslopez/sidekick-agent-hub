@@ -34,7 +34,7 @@ npm install sidekick-shared
 | **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCalls()` |
 | **Model Info & Pricing** | Model family parsing (Anthropic / OpenAI / Google), context-window lookup (including Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, and null-aware cost calculation (`getModelInfo()`, `calculateCost()`, `formatCost()`, `hydratePricingCatalog()`) |
 | **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
-| **Accounts** | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, and v1 migration |
+| **Accounts** | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, v1 migration, and `ensureDefaultAccounts()` for first-run bootstrap of the active system Claude/Codex credentials as a "Default" saved account |
 | **Codex Profiles** | Codex account lifecycle — prepare, finalize, switch, remove — with isolated `CODEX_HOME` directories and multi-home monitoring support |
 | **Quota Snapshots** | Persistent quota caching per provider/account for offline fallback |
 

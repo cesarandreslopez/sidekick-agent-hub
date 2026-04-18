@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.5] - 2026-04-18
+
+### Added
+
+- **Default account bootstrap at CLI startup**: The CLI now calls `ensureDefaultAccounts()` from `sidekick-shared` at module load and awaits the result inside a Commander `preAction` hook, so the first real subcommand blocks briefly on the bootstrap while `--version` and `--help` stay instant. When a system Claude Code or Codex credential exists and no saved account is active for that provider yet, the CLI registers it as "Default" — `sidekick quota`, `sidekick account`, and `sidekick stats` now reflect the active account on first run without requiring an explicit `sidekick account --add` first. Idempotent, never overwrites manually saved accounts, and all errors are swallowed so startup is never blocked
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#16](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/16).
+
 ## [0.17.4] - 2026-04-17
 
 ### Changed

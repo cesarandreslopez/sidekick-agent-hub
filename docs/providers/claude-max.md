@@ -36,6 +36,10 @@ If you have multiple Claude Max subscriptions (e.g., personal and work), Sidekic
 
 ### VS Code
 
+!!! tip "First-run default"
+
+    If you were already signed in to Claude Code before installing Sidekick, the extension auto-registers that account as **"Default"** on activation. You only need the steps below to add a _second_ account or to relabel the first one. Manually saved accounts are never overwritten.
+
 1. Sign in to Claude Code with your first account
 2. Run **`Sidekick: Save Current Claude Account`** — optionally add a label like "Personal"
 3. Sign in to Claude Code with your second account (`claude login`)
