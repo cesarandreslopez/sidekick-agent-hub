@@ -3,7 +3,7 @@ declare const __CLI_VERSION__: string;
 import { Command } from 'commander';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { detectProvider } from 'sidekick-shared';
+import { detectProvider, ensureDefaultAccounts } from 'sidekick-shared';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
 import type { ProviderId, SessionProvider } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
@@ -17,6 +17,10 @@ hydratePricingCatalog({
   /* non-fatal; static table still works */
 });
 
+const defaultAccountsReady = ensureDefaultAccounts().catch(() => {
+  /* non-fatal; account bootstrap must not block startup */
+});
+
 const program = new Command();
 
 program
@@ -26,6 +30,10 @@ program
   .option('--json', 'Output as JSON')
   .option('--project <path>', 'Override project path (default: cwd)')
   .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)');
+
+program.hook('preAction', async () => {
+  await defaultAccountsReady;
+});
 
 export function resolveProviderId(
   opts: { provider?: string },

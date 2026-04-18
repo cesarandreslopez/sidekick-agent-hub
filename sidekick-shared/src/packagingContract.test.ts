@@ -38,6 +38,11 @@ describe('packaging contract', () => {
     expect(typeof m.LITELLM_CATALOG_URL).toBe('string');
   });
 
+  it('dist/index.js exposes account bootstrap', () => {
+    const m = require(path.join(distDir, 'index.js'));
+    expect(typeof m.ensureDefaultAccounts).toBe('function');
+  });
+
   it('dist/browser.js does not transitively load node:fs or node:path', async () => {
     const src = await fs.readFile(browserJs, 'utf8');
     expect(src).not.toMatch(/require\(["']node:fs["']\)/);

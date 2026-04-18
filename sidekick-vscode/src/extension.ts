@@ -87,6 +87,7 @@ import { resolveModel } from "./services/ModelResolver";
 import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
 import { getNonce } from "./utils/nonce";
 import type { AccountProviderId } from 'sidekick-shared';
+import { ensureDefaultAccounts } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
 
@@ -156,6 +157,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const outputChannel = initLogger();
   context.subscriptions.push(outputChannel);
   log("Sidekick Agent Hub extension activated");
+
+  await ensureDefaultAccounts({
+    logger: (message, error) => logError(message, error),
+  });
 
   // Fire-and-forget hydrate the pricing catalog from LiteLLM so Codex/GPT
   // sessions display correct USD costs. Falls back to the static baseline if
