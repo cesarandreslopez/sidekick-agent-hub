@@ -5,6 +5,12 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.7] - 2026-04-28
+
+### Fixed
+
+- **Quota snapshot write race**: `writeQuotaSnapshot()` now writes through a per-process unique temp suffix (PID + timestamp + 8 bytes from `crypto.randomBytes`) before atomically renaming to `quota-snapshots.json`, and best-effort removes the temp file if the rename fails. This eliminates fixed-temp collisions and `ENOENT` when multiple Node processes (e.g., the VS Code extension and the CLI) write cached Codex quota snapshots at the same time, and prevents partial writes from leaking orphan `.tmp` files into the config directory
+
 ## [0.17.6] - 2026-04-19
 
 ### Added

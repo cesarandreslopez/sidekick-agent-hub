@@ -5,6 +5,12 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.7] - 2026-04-28
+
+### Fixed
+
+- **Quota snapshot write race**: `sidekick-shared` now writes cached quota snapshots through a unique temp file per write and cleans up partial writes on error, preventing concurrent Codex quota updates from colliding on `quota-snapshots.json.tmp` and emitting `ENOENT` during active sessions when the VS Code extension and CLI update quota at the same time
+
 ## [0.17.6] - 2026-04-19
 
 ### Added

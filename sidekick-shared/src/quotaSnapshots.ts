@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from './paths';
@@ -24,11 +25,21 @@ function ensureConfigDir(): void {
 }
 
 function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
-  const tmp = filePath + '.tmp';
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomBytes(8).toString('hex')}.tmp`;
   const json = JSON.stringify(data, null, 2);
+  // Throws if `data` was undefined or a top-level non-serializable value — prevents writing the literal string "undefined" to disk.
   JSON.parse(json);
-  fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
+    fs.renameSync(tmp, filePath);
+  } catch (error) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // Best effort cleanup only.
+    }
+    throw error;
+  }
 }
 
 function readStore(): QuotaSnapshotStore {
