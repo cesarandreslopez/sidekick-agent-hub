@@ -10,4 +10,4 @@
 export {
   scanSubagentDir,
   extractTaskInfo,
-} from 'sidekick-shared/dist/parsers/subagentScanner';
+} from 'sidekick-shared';

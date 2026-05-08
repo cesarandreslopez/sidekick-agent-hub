@@ -19,7 +19,7 @@ import type {
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 
 /**

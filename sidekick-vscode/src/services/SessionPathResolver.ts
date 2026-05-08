@@ -25,7 +25,7 @@ import {
   getMostRecentlyActiveSessionDir,
   decodeEncodedPath,
   getAllProjectFolders,
-} from 'sidekick-shared/dist/parsers/sessionPathResolver';
+} from 'sidekick-shared';
 
 export {
   encodeWorkspacePath,
@@ -41,7 +41,7 @@ export {
 };
 
 // Re-export ProjectFolderInfo from the shared type (used by session providers)
-export type { ProjectFolderInfo } from 'sidekick-shared/dist/providers/types';
+export type { ProjectFolderInfo } from 'sidekick-shared';
 
 /**
  * Diagnostic information about session path resolution.

@@ -14,7 +14,7 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { ClaudeSessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log, logError } from '../services/Logger';
-import { formatToolSummary } from 'sidekick-shared/dist/formatters/toolSummary';
+import { formatToolSummary } from 'sidekick-shared';
 
 /** Parsed message chunk for display */
 interface ConversationChunk {

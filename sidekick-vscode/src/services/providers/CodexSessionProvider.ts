@@ -2,8 +2,8 @@
  * @fileoverview Codex CLI session provider (VS Code wrapper).
  */
 
-import { CodexProvider } from 'sidekick-shared/dist/providers/codex';
 import {
+  CodexProvider,
   getActiveCodexAccount,
   quotaFromCodexRateLimits,
   writeQuotaSnapshot,

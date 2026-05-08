@@ -9,7 +9,7 @@
  * @module services/providers/ClaudeCodeSessionProvider
  */
 
-import { ClaudeCodeProvider } from 'sidekick-shared/dist/providers/claudeCode';
+import { ClaudeCodeProvider } from 'sidekick-shared';
 import type { SessionProvider } from '../../types/sessionProvider';
 
 /**

@@ -18,9 +18,10 @@
 
 import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { formatTokenCount } from 'sidekick-shared';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import type { TokenUsage } from '../types/claudeSession';
-import type { PermissionMode } from 'sidekick-shared/dist/types/sessionEvent';
+import type { PermissionMode } from 'sidekick-shared';
 import type { PeakHoursService, PeakHoursState } from './PeakHoursService';
 import { DEFAULT_CONTEXT_WINDOW } from '../constants';
 
@@ -208,7 +209,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   private updateDisplay(): void {
     // Format: "$(pulse) 12.5K | 15%"
-    const tokensFormatted = this.formatTokenCount(this.totalTokens);
+    const tokensFormatted = formatTokenCount(this.totalTokens, { suffixCase: 'upper' });
 
     // Context trend indicator
     const trendIcon = this.contextTrend === 'up' ? '$(arrow-up)'
@@ -249,7 +250,7 @@ export class MonitorStatusBar implements vscode.Disposable {
     const tooltipLines = [
       `${provider.displayName} Session`,
       `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,
-      `Context: ${this.contextPercent}% of ${this.formatTokenCount(contextLimit)}`,
+      `Context: ${this.contextPercent}% of ${formatTokenCount(contextLimit, { suffixCase: 'upper' })}`,
     ];
 
     if (this.permissionMode && this.permissionMode !== 'default') {
@@ -297,18 +298,6 @@ export class MonitorStatusBar implements vscode.Disposable {
       'Click to open dashboard'
     ].join('\n');
     this.statusBarItem.backgroundColor = undefined;
-  }
-
-  /**
-   * Formats token count with K/M suffix.
-   *
-   * @param tokens - Token count
-   * @returns Formatted string (e.g., "12.5K", "1.2M")
-   */
-  private formatTokenCount(tokens: number): string {
-    if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-    if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`;
-    return tokens.toString();
   }
 
   /**

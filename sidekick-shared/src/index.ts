@@ -214,8 +214,12 @@ export type { FollowEvent, FollowEventType, SessionWatcher, SessionWatcherCallba
 export { createWatcher } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
 export { toFollowEvents } from './watchers/eventBridge';
+export { createJsonlTail } from './watchers/jsonlTail';
+export type { JsonlTail, JsonlTailBatch, JsonlTailOptions } from './watchers/jsonlTail';
 
 // Formatters
+export { formatDurationMs, formatTokenCount } from './formatting';
+export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
 export { formatToolSummary } from './formatters/toolSummary';
 export {
   isHardNoise,

@@ -22,8 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SessionMonitor } from '../services/SessionMonitor';
 import { TimelineEvent, SubagentStats } from '../types/claudeSession';
-import { scanSubagentTraces } from 'sidekick-shared/dist/parsers/subagentTraceParser';
-import type { SubagentTrace } from 'sidekick-shared/dist/parsers/subagentTraceParser';
+import { scanSubagentTraces, type SubagentTrace } from 'sidekick-shared';
 
 /**
  * Type for subagent classification based on description keywords.

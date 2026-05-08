@@ -22,7 +22,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import path from 'path';
 import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
-import { extractTokenUsage } from './JsonlParser';
 import type { SessionProvider, SessionReader } from '../types/sessionProvider';
 import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, LatencyStats, CompactionEvent, TruncationEvent, ContextAttribution, PlanState, PlanStep, TurnAttribution, ContextSizePoint } from '../types/claudeSession';
 import { SessionSummary, ModelUsageRecord, ToolUsageRecord, createEmptyTokenTotals } from '../types/historicalData';
@@ -32,9 +31,15 @@ import { log, logError } from './Logger';
 import { parsePlanMarkdown, extractProposedPlan } from '../utils/planParser';
 import { detectCycle } from '../utils/cycleDetector';
 import type { SessionEventLogger } from './SessionEventLogger';
-import { EventAggregator } from 'sidekick-shared/dist/aggregation/EventAggregator';
-import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared/dist/aggregation/snapshot';
-import type { SessionSnapshot } from 'sidekick-shared/dist/aggregation/snapshot';
+import {
+  EventAggregator,
+  deleteSnapshot,
+  extractTokenUsage,
+  isSnapshotValid,
+  loadSnapshot,
+  saveSnapshot,
+  type SessionSnapshot,
+} from 'sidekick-shared';
 
 /**
  * Session monitoring service for Claude Code sessions.

@@ -26,6 +26,7 @@ import type {
 import { ModelPricingService } from './ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { buildNarrativePrompt } from '../utils/summaryPrompts';
+import { formatDurationMs } from 'sidekick-shared';
 
 /**
  * Weights for tool cost attribution.
@@ -534,12 +535,7 @@ export class SessionSummaryService {
   }
 
   private _formatDuration(ms: number): string {
-    const seconds = ms / 1000;
-    if (seconds < 1) return `${seconds.toFixed(1)}s`;
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remaining = Math.round(seconds % 60);
-    return remaining > 0 ? `${minutes}m ${remaining}s` : `${minutes}m`;
+    return formatDurationMs(ms);
   }
 
   private _shortenPath(filePath: string): string {

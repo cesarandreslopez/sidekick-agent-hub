@@ -14,4 +14,4 @@ export {
   convertOpenCodeMessage,
   parseDbMessageData,
   parseDbPartData,
-} from 'sidekick-shared/dist/parsers/openCodeParser';
+} from 'sidekick-shared';

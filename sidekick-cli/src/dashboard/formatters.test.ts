@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { stripBlessedTags, visibleLength, wordWrap, detailWidth, truncate } from './formatters';
+import { fmtNum, formatDuration, stripBlessedTags, visibleLength, wordWrap, detailWidth, truncate } from './formatters';
+
+describe('shared display formatting', () => {
+  it('delegates compact number formatting through the shared helper', () => {
+    expect(fmtNum(42)).toBe('42');
+    expect(fmtNum(12_500)).toBe('12.5K');
+    expect(fmtNum(1_500_000)).toBe('1.5M');
+  });
+
+  it('delegates compact duration formatting through the shared helper', () => {
+    expect(formatDuration(250)).toBe('250ms');
+    expect(formatDuration(5_000)).toBe('5.0s');
+    expect(formatDuration(65_000)).toBe('1m5s');
+  });
+});
 
 describe('stripBlessedTags', () => {
   it('removes simple blessed tags', () => {

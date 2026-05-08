@@ -11,6 +11,7 @@
  */
 
 import { Chart, registerables } from 'chart.js';
+import { formatCost, formatTokenCount } from 'sidekick-shared/browser';
 
 // Register all built-in Chart.js components
 Chart.register(...registerables);
@@ -143,30 +144,6 @@ function pulseValue(el: Element | null): void {
   // Force reflow to restart animation
   void (el as HTMLElement).offsetWidth;
   el.classList.add('sk-value-updated');
-}
-
-/**
- * Formats a number with thousands separators.
- * @param num - Number to format
- * @returns Formatted string (e.g., "12,345")
- */
-function formatTokenCount(num: number): string {
-  return num.toLocaleString();
-}
-
-/**
- * Formats cost with appropriate precision.
- * Uses 4 decimals for < $0.01, 2 decimals otherwise.
- * Null/undefined → "—" (honest "pricing unavailable").
- * @param cost - Cost in USD, or null/undefined when unknown
- * @returns Formatted cost string
- */
-function formatCost(cost: number | null | undefined): string {
-  if (cost === null || cost === undefined) return '—';
-  if (cost < 0.01) {
-    return '$' + cost.toFixed(4);
-  }
-  return '$' + cost.toFixed(2);
 }
 
 /**

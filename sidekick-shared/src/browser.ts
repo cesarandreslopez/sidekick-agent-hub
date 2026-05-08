@@ -9,6 +9,8 @@
  */
 
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+export { formatDurationMs, formatTokenCount } from './formatting';
+export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
 
 export {
   parseModelId,

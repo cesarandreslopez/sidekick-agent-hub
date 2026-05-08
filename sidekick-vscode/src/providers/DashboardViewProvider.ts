@@ -47,8 +47,8 @@ import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
-import { describeQuotaFailure, getActiveCodexAccount, readQuotaSnapshot } from 'sidekick-shared';
+import { describeQuotaFailure, formatDurationMs, getActiveCodexAccount, readQuotaSnapshot } from 'sidekick-shared';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 import { scopeProviderStatuses, type DashboardSessionProviderId } from '../utils/providerStatusScope';
 import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
@@ -1743,16 +1743,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @returns Formatted duration string
    */
   private _formatDuration(ms: number): string {
-    const seconds = ms / 1000;
-    if (seconds < 1) {
-      return `${seconds.toFixed(1)}s`;
-    } else if (seconds < 60) {
-      return `${Math.round(seconds)}s`;
-    } else {
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = Math.round(seconds % 60);
-      return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
-    }
+    return formatDurationMs(ms);
   }
 
   /**

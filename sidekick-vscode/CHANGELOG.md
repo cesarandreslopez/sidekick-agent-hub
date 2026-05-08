@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - 2026-05-08
+
+### Changed
+
+- **Public shared imports**: extension code now consumes supported `sidekick-shared` entrypoints (`sidekick-shared`, `sidekick-shared/browser`, `sidekick-shared/phrases`) instead of reaching into `dist/*`, and `services/JsonlParser.ts` is now a compatibility shim re-exporting `JsonlParser`, `extractTokenUsage`, and `extractToolCall` from `sidekick-shared` to remove the forked parser implementation
+- **Shared display formatting**: status bar, session summary, analysis prompt, handoff document, and bundled dashboard webview formatting now reuse `formatTokenCount()`, `formatDurationMs()`, and `formatCost()` from `sidekick-shared` where the package import is safe — webview dashboard token cards now render compact `12.3k` / `1.2M` totals (was `12,345`); status bar, CLI, and tooltip helpers continue to use uppercase `K`/`M`
+
 ## [0.18.0] - 2026-05-08
 
 ### Changed

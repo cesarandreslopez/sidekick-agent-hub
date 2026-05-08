@@ -89,7 +89,7 @@ import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
 import { getNonce } from "./utils/nonce";
 import type { AccountProviderId } from 'sidekick-shared';
 import { ensureDefaultAccounts } from 'sidekick-shared';
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
 
 /** Whether completions are currently enabled */

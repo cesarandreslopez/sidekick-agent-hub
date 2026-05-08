@@ -30,6 +30,8 @@ describe('packaging contract', () => {
       'compareModelIds',
       'sortModelIds',
       'formatCost',
+      'formatDurationMs',
+      'formatTokenCount',
     ]) {
       expect(typeof m[k]).toBe('function');
     }
@@ -50,6 +52,9 @@ describe('packaging contract', () => {
     expect(typeof m.getActiveAccountStatus).toBe('function');
     expect(typeof m.CodexQuotaWatcher).toBe('function');
     expect(typeof m.MultiProviderQuotaService).toBe('function');
+    expect(typeof m.createJsonlTail).toBe('function');
+    expect(typeof m.formatDurationMs).toBe('function');
+    expect(typeof m.formatTokenCount).toBe('function');
     expect(typeof m.extractToolCall).toBe('function');
   });
 
@@ -81,6 +86,7 @@ describe('packaging contract', () => {
       'sidekick-shared/phrases': path.join(distDir, 'phrases.js'),
       'sidekick-shared/modelContext': path.join(distDir, 'modelContext.js'),
       'sidekick-shared/modelInfo': path.join(distDir, 'modelInfo.js'),
+      'sidekick-shared/formatting': path.join(distDir, 'formatting.js'),
       // Compat path — downstream consumers still rely on these in this release.
       'sidekick-shared/dist/phrases': path.join(distDir, 'phrases.js'),
       'sidekick-shared/dist/providers/types': path.join(distDir, 'providers', 'types.js'),

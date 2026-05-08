@@ -7,4 +7,4 @@
  * @module services/providers/OpenCodeDatabase
  */
 
-export { OpenCodeDatabase } from 'sidekick-shared/dist/providers/openCodeDatabase';
+export { OpenCodeDatabase } from 'sidekick-shared';

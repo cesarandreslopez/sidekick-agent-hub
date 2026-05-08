@@ -22,8 +22,8 @@ npm install sidekick-shared
 | **Readers** | Read tasks, decisions, notes, history, handoff, and plans from `~/.config/sidekick/` |
 | **Providers** | Session provider abstraction with Claude Code, OpenCode, and Codex implementations; auto-detection via filesystem |
 | **Parsers** | JSONL event parsing, OpenCode/Codex format normalization, subagent scanning, session path resolution, debug log parsing |
-| **Watchers** | Live session file watching with event bridging |
-| **Formatters** | Tool summary, noise classification, session dump (text/markdown/JSON), event highlighting |
+| **Watchers** | Live session file watching with event bridging, plus `createJsonlTail()` for raw incremental JSONL consumers |
+| **Formatters** | Display helpers (`formatTokenCount()`, `formatDurationMs()`), tool summary, noise classification, session dump (text/markdown/JSON), event highlighting |
 | **Search** | Cross-session full-text search, advanced filtering (substring, fuzzy, regex, date) |
 | **Aggregation** | Event aggregation, frequency tracking, activity heatmaps, pattern extraction |
 | **Report** | Self-contained HTML session report generation |
@@ -52,6 +52,7 @@ npm install sidekick-shared
 | `sidekick-shared/phrases`         | Any runtime                 | Phrase arrays + `getRandomPhrase()`.                               |
 | `sidekick-shared/modelContext`    | Any runtime                 | Direct access to the context-window module.                        |
 | `sidekick-shared/modelInfo`       | Any runtime                 | Direct access to model parsing and cost math.                      |
+| `sidekick-shared/formatting`      | Any runtime                 | Direct access to pure token and duration display helpers.           |
 
 ### Browser / webview runtimes
 
@@ -64,6 +65,8 @@ import {
   parseModelId,
   calculateCost,
   formatCost,
+  formatTokenCount,
+  formatDurationMs,
 } from 'sidekick-shared/browser';
 ```
 
@@ -177,6 +180,16 @@ const tools = extractToolCalls(event);           // ToolCall[]    — assistant 
 const toolFromEvent = extractToolCall(event);    // ToolCall | null — top-level `tool_use` events
 ```
 
+### Format shared dashboard values
+
+```typescript
+import { formatTokenCount, formatDurationMs, formatCost } from 'sidekick-shared';
+
+console.log(formatTokenCount(15_000)); // "15.0k"
+console.log(formatDurationMs(330_000)); // "5m 30s"
+console.log(formatCost(0.0045)); // "$0.0045"
+```
+
 ### Validate JSONL events with Zod schemas
 
 ```typescript
@@ -186,7 +199,25 @@ const parser = new JsonlParser(
   { onEvent: (e) => console.log(e), onError: (e) => console.warn(e) },
   { schema: sessionEventSchema },
 );
-parser.addChunk(rawData);
+parser.processChunk(rawData);
+```
+
+### Tail raw JSONL events incrementally
+
+Use `createJsonlTail()` when a consumer needs raw parsed events and owns its own aggregation lifecycle. `onBatchComplete` fires once after each drained byte chunk, which lets callers defer expensive UI or metrics updates until parsing for that chunk is complete.
+
+```typescript
+import { createJsonlTail, sessionEventSchema } from 'sidekick-shared';
+
+const tail = createJsonlTail({
+  path: '/path/to/session.jsonl',
+  schema: sessionEventSchema,
+  onEvent: event => aggregator.processEvent(event),
+  onBatchComplete: () => renderMetrics(aggregator.getMetrics()),
+  onError: error => console.warn(error.message),
+});
+
+tail.start();
 ```
 
 ### Poll quota with backoff
@@ -220,6 +251,7 @@ service.onUpdate(({ claude, codex }) => {
 
 service.startPolling();
 // service.setPollingMode('active'); // tighter cadence while a session is live
+// service.updateProviderQuota('codex', codexQuota); // externally push Codex quota snapshots
 // service.dispose();
 ```
 
@@ -263,6 +295,10 @@ const total = (a.costUsd ?? 0) + (b.costUsd ?? 0);
 const totalSource = mergeCostSources(a.source, b.source); // 'unpriced' wins (least certain)
 console.log(formatCost(total), totalSource);
 ```
+
+### Deferred Contextful adoption note
+
+`sidekick-shared@0.18.x` already exposes the quota primitives Contextful needs: `MultiProviderQuotaService`, `ProviderQuotaMap`, `ProviderQuotaState`, and `CodexQuotaWatcher`. Contextful should keep its local integration unchanged until a newer `sidekick-shared` release is published to npm, then migrate thin wrappers to these public APIs plus `formatTokenCount()`, `formatDurationMs()`, and `createJsonlTail()`.
 
 ## Building
 

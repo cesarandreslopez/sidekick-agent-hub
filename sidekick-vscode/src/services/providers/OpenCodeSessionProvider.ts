@@ -9,7 +9,7 @@
  * @module services/providers/OpenCodeSessionProvider
  */
 
-import { OpenCodeProvider } from 'sidekick-shared/dist/providers/openCode';
+import { OpenCodeProvider } from 'sidekick-shared';
 import type { SessionProvider } from '../../types/sessionProvider';
 
 /**

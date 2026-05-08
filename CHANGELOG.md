@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - 2026-05-08
+
+### Added (sidekick-shared)
+
+- **Shared display formatting (`formatTokenCount()`, `formatDurationMs()`)**: Single source of truth for compact token (`12.5k` / `1.2M`) and duration (`5m 30s`) rendering, exposed from the root, `sidekick-shared/browser`, and `sidekick-shared/formatting` entrypoints so CLI, webview, and downstream consumers no longer fork their own helpers
+- **Raw JSONL tailing (`createJsonlTail()`)**: Offset-tracked incremental JSONL reads with optional Zod validation, debounced `fs.watch` plus catch-up polling, and a post-batch callback that lets aggregation-driven consumers defer expensive UI/metric updates until parsing for a chunk is complete
+
+### Changed (sidekick-vscode)
+
+- **Public shared imports**: Extension code now consumes supported `sidekick-shared` entrypoints (`sidekick-shared`, `sidekick-shared/browser`, `sidekick-shared/phrases`) instead of reaching into `dist/*`. `services/JsonlParser.ts` is now a compatibility shim re-exporting `JsonlParser`, `extractTokenUsage`, and `extractToolCall` from `sidekick-shared`, removing the forked parser implementation
+- **Shared display formatting**: Status bar, session summary, analysis prompt, handoff document, and bundled dashboard webview now reuse `formatTokenCount()`, `formatDurationMs()`, and `formatCost()` from `sidekick-shared`. Webview dashboard token cards render compact `12.3k` / `1.2M` totals (previously `12,345`); status bar, CLI, and tooltip helpers continue to use uppercase `K`/`M`
+
+### Changed (sidekick-cli)
+
+- **Shared dashboard formatting**: Terminal dashboard `fmtNum()` and `formatDuration()` now delegate to `formatTokenCount()` and `formatDurationMs()` from `sidekick-shared`, preserving the existing CLI surface (uppercase `K`/`M` suffix, compact `1m5s` style) while removing forked rounding logic
+
 ## [0.18.0] - 2026-05-08
 
 ### Added (sidekick-shared)

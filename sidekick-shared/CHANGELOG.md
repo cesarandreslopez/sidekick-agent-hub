@@ -5,6 +5,13 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - 2026-05-08
+
+### Added
+
+- **Shared display formatting**: `formatTokenCount()` and `formatDurationMs()` are now public from the root, browser, and `formatting` entrypoints, giving CLI, webview, and downstream consumers a single source of truth for compact token and duration rendering
+- **Raw JSONL tailing (`createJsonlTail()`)**: offset-tracked incremental JSONL reads with optional Zod validation, debounced `fs.watch` plus catch-up polling, and a post-batch callback for aggregation-driven consumers that need to defer expensive work until parsing for a chunk is complete
+
 ## [0.18.0] - 2026-05-08
 
 ### Added
