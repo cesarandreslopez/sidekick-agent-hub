@@ -63,6 +63,32 @@ export interface ModelInfo {
   pricing: ModelPricing | null;
 }
 
+/** Provenance for a displayed cost value. */
+export type CostSource = 'reported' | 'estimated' | 'unpriced';
+
+/** Input for cost calculation that preserves reported-vs-estimated provenance. */
+export interface CostProvenanceInput {
+  usage: CostTokenUsage;
+  modelId: string;
+  reportedCostUsd?: number | null;
+}
+
+/** Cost value plus provenance for UI rollups and merged session totals. */
+export interface CostWithProvenance {
+  costUsd?: number;
+  source: CostSource;
+}
+
+/** Display and ranking metadata for model pickers. */
+export interface ModelDisplayInfo {
+  modelId: string;
+  provider: ModelProvider | null;
+  family: string | null;
+  version: string | null;
+  shortName: string;
+  rank: number;
+}
+
 // ── Static Pricing Table ──
 
 /**
@@ -244,6 +270,7 @@ export function _clearPricingOverrides(): void {
 // ── Model ID Parsing ──
 
 const CLAUDE_RE = /^claude-(haiku|sonnet|opus)-([0-9.]+)/i;
+const LEGACY_CLAUDE_RE = /^claude-([0-9]+(?:[-.][0-9]+)?)-(haiku|sonnet|opus)(?:-|$)/i;
 const GPT_RE = /^gpt-([0-9][0-9.A-Za-z-]*)/i;
 const O_SERIES_RE = /^o([0-9]+)(-mini|-pro)?/i;
 const GEMINI_RE = /^gemini-([0-9][0-9.A-Za-z-]*)/i;
@@ -261,6 +288,15 @@ export function parseModelId(modelId: string): ParsedModelId | null {
   const claude = normalized.match(CLAUDE_RE);
   if (claude) {
     return { provider: 'anthropic', family: claude[1].toLowerCase(), version: claude[2] };
+  }
+
+  const legacyClaude = normalized.match(LEGACY_CLAUDE_RE);
+  if (legacyClaude) {
+    return {
+      provider: 'anthropic',
+      family: legacyClaude[2].toLowerCase(),
+      version: legacyClaude[1].replace('-', '.'),
+    };
   }
 
   const gpt = normalized.match(GPT_RE);
@@ -380,7 +416,125 @@ export function calculateCost(
   return calculateCostWithPricing(usage, pricing);
 }
 
+/**
+ * Calculates cost while preserving whether the value was provider-reported,
+ * locally estimated from pricing, or unavailable because the model is unpriced.
+ */
+export function calculateCostWithProvenance(input: CostProvenanceInput): CostWithProvenance {
+  if (
+    typeof input.reportedCostUsd === 'number' &&
+    Number.isFinite(input.reportedCostUsd)
+  ) {
+    return { costUsd: input.reportedCostUsd, source: 'reported' };
+  }
+
+  const estimated = calculateCost(input.usage, input.modelId);
+  if (estimated === null) return { source: 'unpriced' };
+  return { costUsd: estimated, source: 'estimated' };
+}
+
+/**
+ * Merge two cost sources for rollups. The least certain source wins so a total
+ * containing any unpriced or estimated component does not look fully reported.
+ */
+export function mergeCostSources(a: CostSource, b: CostSource): CostSource {
+  const rank: Record<CostSource, number> = {
+    reported: 0,
+    estimated: 1,
+    unpriced: 2,
+  };
+  return rank[a] >= rank[b] ? a : b;
+}
+
 // ── Display ──
+
+function normalizeModelId(modelId: string): string {
+  return modelId
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+\//, '')
+    .replace(/-\d{8}$/, '')
+    .replace(/-latest$/, '')
+    .replace(/\[1m\]/gi, '');
+}
+
+/**
+ * Short display label for model IDs. Keeps historical Claude family labels
+ * compact while normalizing common OpenAI labels.
+ */
+export function shortModelName(modelId: string): string {
+  const normalized = normalizeModelId(modelId);
+  const parsed = parseModelId(normalized);
+
+  if (normalized.includes('codex')) return 'Codex';
+  if (parsed?.provider === 'anthropic') {
+    const family = parsed.family.toLowerCase();
+    return family.charAt(0).toUpperCase() + family.slice(1);
+  }
+
+  if (parsed?.provider === 'openai') {
+    if (parsed.family === 'o') return `o${parsed.version}`;
+    if (normalized.startsWith('gpt-4o-mini')) return 'GPT-4o mini';
+    if (normalized.startsWith('gpt-4o')) return 'GPT-4o';
+    if (parsed.family === 'gpt') return `GPT-${parsed.version}`;
+  }
+
+  return modelId;
+}
+
+const CLAUDE_FAMILY_RANK: Record<string, number> = {
+  opus: 0,
+  sonnet: 1,
+  haiku: 2,
+};
+
+function versionRank(version: string | null): number {
+  if (!version) return Number.MAX_SAFE_INTEGER;
+  const numeric = Number(version.replace('-', '.').match(/[0-9]+(?:\.[0-9]+)?/)?.[0]);
+  if (!Number.isFinite(numeric)) return Number.MAX_SAFE_INTEGER;
+  return -numeric;
+}
+
+/**
+ * Returns stable display metadata and a rank suitable for provider model menus.
+ */
+export function getModelDisplayInfo(modelId: string): ModelDisplayInfo {
+  const parsed = parseModelId(modelId);
+  const normalized = normalizeModelId(modelId);
+
+  let rank = 1_000;
+  if (parsed?.provider === 'anthropic') {
+    rank = (CLAUDE_FAMILY_RANK[parsed.family] ?? 9) * 100 + versionRank(parsed.version);
+  } else if (normalized.includes('codex')) {
+    rank = 200;
+  } else if (parsed?.provider === 'openai') {
+    rank = parsed.family === 'gpt' ? 300 + versionRank(parsed.version) : 400 + versionRank(parsed.version);
+  } else if (parsed?.provider === 'google') {
+    rank = 500 + versionRank(parsed.version);
+  }
+
+  return {
+    modelId,
+    provider: parsed?.provider ?? null,
+    family: parsed?.family ?? null,
+    version: parsed?.version ?? null,
+    shortName: shortModelName(modelId),
+    rank,
+  };
+}
+
+/** Compare two model IDs using shared provider/family ranking rules. */
+export function compareModelIds(a: string, b: string): number {
+  const left = getModelDisplayInfo(a);
+  const right = getModelDisplayInfo(b);
+  if (left.rank !== right.rank) return left.rank - right.rank;
+  return a.localeCompare(b);
+}
+
+/** Return a sorted copy of model IDs using shared provider/family ranking rules. */
+export function sortModelIds<T extends string>(modelIds: readonly T[]): T[] {
+  return [...modelIds].sort(compareModelIds) as T[];
+}
 
 /**
  * Formats a USD cost as a currency string.

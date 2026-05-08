@@ -31,12 +31,14 @@ npm install sidekick-shared
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
 | **Provider Status** | API health checking via status.claude.com and status.openai.com (indicator, components, incidents) |
 | **Schemas** | Zod schemas for runtime JSONL event validation (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`) |
-| **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCalls()` |
-| **Model Info & Pricing** | Model family parsing (Anthropic / OpenAI / Google), context-window lookup (including Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, and null-aware cost calculation (`getModelInfo()`, `calculateCost()`, `formatCost()`, `hydratePricingCatalog()`) |
+| **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCall()` (top-level `tool_use`), `extractToolCalls()` (assistant content blocks) |
+| **Model Info & Pricing** | Model family parsing (Anthropic / OpenAI / Google, including legacy `claude-3-opus-…` and `claude-3-5-sonnet-…` IDs), context-window lookup (including Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, null-aware cost (`calculateCost()`), provenance-preserving cost (`calculateCostWithProvenance()`, `mergeCostSources()`), and display helpers (`shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, `sortModelIds()`, `formatCost()`) |
 | **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
-| **Accounts** | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, v1 migration, and `ensureDefaultAccounts()` for first-run bootstrap of the active system Claude/Codex credentials as a "Default" saved account |
+| **Multi-Provider Quota** | `MultiProviderQuotaService` orchestrates Claude polling + peak-hours + account labels + Codex quota updates behind one typed `{ claude?, codex? }` event stream. `CodexQuotaWatcher` watches the active Codex rollout for live rate limits with snapshot fallback |
+| **Accounts** | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, v1 migration, `ensureDefaultAccounts()` for first-run bootstrap of the active system Claude/Codex credentials as a "Default" saved account, and `getActiveAccountStatus()` for a single-pass active-account read across providers |
 | **Codex Profiles** | Codex account lifecycle — prepare, finalize, switch, remove — with isolated `CODEX_HOME` directories and multi-home monitoring support |
 | **Quota Snapshots** | Persistent quota caching per provider/account for offline fallback |
+| **Phrases** | Curated humorous phrases for loading/idle states, available as a flat `ALL_PHRASES` array or grouped via `PHRASE_CATEGORIES` for category-aware UI |
 
 ## Supported import paths
 
@@ -168,10 +170,11 @@ console.log(formatCost(cost)); // "$0.0045"
 ### Extract token usage and tool calls from events
 
 ```typescript
-import { extractTokenUsage, extractToolCalls } from 'sidekick-shared';
+import { extractTokenUsage, extractToolCall, extractToolCalls } from 'sidekick-shared';
 
-const usage = extractTokenUsage(event); // TokenUsage | null
-const tools = extractToolCalls(event);  // ToolCall[]
+const usage = extractTokenUsage(event);          // TokenUsage | null
+const tools = extractToolCalls(event);           // ToolCall[]    — assistant content blocks
+const toolFromEvent = extractToolCall(event);    // ToolCall | null — top-level `tool_use` events
 ```
 
 ### Validate JSONL events with Zod schemas
@@ -198,6 +201,67 @@ const poller = new QuotaPoller({
 });
 poller.onUpdate((state) => console.log(state));
 poller.start();
+```
+
+### Orchestrate quota across Claude and Codex
+
+```typescript
+import { MultiProviderQuotaService } from 'sidekick-shared';
+
+const service = new MultiProviderQuotaService({
+  // Optional — when set, an internal CodexQuotaWatcher is created and managed.
+  codexWorkspacePath: '/path/to/project',
+});
+
+service.onUpdate(({ claude, codex }) => {
+  if (claude) console.log('Claude:', claude.fiveHour.utilization, claude.peakHours?.label);
+  if (codex)  console.log('Codex:',  codex.fiveHour.utilization, codex.accountLabel);
+});
+
+service.startPolling();
+// service.setPollingMode('active'); // tighter cadence while a session is live
+// service.dispose();
+```
+
+Or run the Codex watcher standalone (e.g. inside an existing polling loop):
+
+```typescript
+import { CodexQuotaWatcher } from 'sidekick-shared';
+
+const watcher = new CodexQuotaWatcher('/path/to/project');
+watcher.onUpdate((state) => console.log(state.fiveHour.utilization, state.accountLabel));
+watcher.start();
+```
+
+### Read active account status across providers
+
+```typescript
+import { getActiveAccountStatus } from 'sidekick-shared';
+
+const status = getActiveAccountStatus();
+if (!status.ok) console.log('No saved account active');
+console.log(status.claude.present, status.claude.email);
+console.log(status.codex.present, status.codex.label);
+```
+
+### Track cost provenance for honest UI rollups
+
+```typescript
+import { calculateCostWithProvenance, mergeCostSources, formatCost } from 'sidekick-shared';
+
+const a = calculateCostWithProvenance({
+  usage: { inputTokens: 1_000_000, outputTokens: 500_000, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  modelId: 'claude-sonnet-4-20250514',
+  reportedCostUsd: 1.23, // provider-reported when available — wins over local estimate
+});
+const b = calculateCostWithProvenance({
+  usage: { inputTokens: 200_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  modelId: 'unknown-model', // no pricing → { source: 'unpriced' }
+});
+
+const total = (a.costUsd ?? 0) + (b.costUsd ?? 0);
+const totalSource = mergeCostSources(a.source, b.source); // 'unpriced' wins (least certain)
+console.log(formatCost(total), totalSource);
 ```
 
 ## Building

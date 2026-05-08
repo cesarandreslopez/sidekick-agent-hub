@@ -23,6 +23,12 @@ describe('packaging contract', () => {
       'getModelInfo',
       'calculateCost',
       'calculateCostWithPricing',
+      'calculateCostWithProvenance',
+      'mergeCostSources',
+      'shortModelName',
+      'getModelDisplayInfo',
+      'compareModelIds',
+      'sortModelIds',
       'formatCost',
     ]) {
       expect(typeof m[k]).toBe('function');
@@ -41,6 +47,17 @@ describe('packaging contract', () => {
   it('dist/index.js exposes account bootstrap', () => {
     const m = require(path.join(distDir, 'index.js'));
     expect(typeof m.ensureDefaultAccounts).toBe('function');
+    expect(typeof m.getActiveAccountStatus).toBe('function');
+    expect(typeof m.CodexQuotaWatcher).toBe('function');
+    expect(typeof m.MultiProviderQuotaService).toBe('function');
+    expect(typeof m.extractToolCall).toBe('function');
+  });
+
+  it('dist/phrases.js exposes flat and categorized phrase surfaces', () => {
+    const m = require(path.join(distDir, 'phrases.js'));
+    expect(Array.isArray(m.ALL_PHRASES)).toBe(true);
+    expect(Array.isArray(m.PHRASE_CATEGORIES)).toBe(true);
+    expect(m.PHRASE_CATEGORIES.length).toBeGreaterThan(0);
   });
 
   it('dist/browser.js does not transitively load node:fs or node:path', async () => {

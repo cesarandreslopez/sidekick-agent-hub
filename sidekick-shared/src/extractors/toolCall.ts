@@ -62,3 +62,20 @@ export function extractToolCalls(event: SessionEvent): ToolCall[] {
 
   return calls;
 }
+
+/**
+ * Extracts a single top-level `tool_use` event.
+ *
+ * This complements `extractToolCalls`, which scans assistant message content
+ * blocks. Some providers normalize tool calls as their own event with
+ * `event.type === 'tool_use'` and `event.tool` populated.
+ */
+export function extractToolCall(event: SessionEvent): ToolCall | null {
+  if (event.type !== 'tool_use' || !event.tool?.name) return null;
+
+  return {
+    name: event.tool.name,
+    input: event.tool.input ?? {},
+    timestamp: new Date(event.timestamp),
+  };
+}

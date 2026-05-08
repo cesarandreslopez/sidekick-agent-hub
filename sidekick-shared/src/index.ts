@@ -233,7 +233,8 @@ export { highlight as highlightEvent, clearHighlightCache, HIGHLIGHT_CSS } from 
 export type { HighlightFormat } from './formatters/eventHighlighter';
 
 // Phrases
-export { ALL_PHRASES, getRandomPhrase } from './phrases';
+export { ALL_PHRASES, PHRASE_CATEGORIES, getRandomPhrase } from './phrases';
+export type { PhraseCategory } from './phrases';
 
 // Aggregation
 export { EventAggregator, parseTodoDependencies } from './aggregation/EventAggregator';
@@ -309,6 +310,8 @@ export type {
   SavedAccountProfile,
   SavedAccountRegistry,
 } from './accountRegistry';
+export { getActiveAccountStatus } from './accountStatus';
+export type { ActiveAccountStatus, ActiveProviderAccountStatus } from './accountStatus';
 export {
   getCodexProfilesDir,
   getCodexProfileHome,
@@ -334,13 +337,41 @@ export { QuotaPoller } from './quotaPoller';
 export type { QuotaPollerOptions } from './quotaPoller';
 export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 export { quotaFromCodexRateLimits } from './codexQuota';
+export { CodexQuotaWatcher } from './codexQuotaWatcher';
+export type { CodexQuotaWatcherOptions } from './codexQuotaWatcher';
+export { MultiProviderQuotaService } from './multiProviderQuotaService';
+export type { MultiProviderQuotaServiceOptions } from './multiProviderQuotaService';
+export type { ProviderQuotaMap, ProviderQuotaState, RuntimeQuotaProvider } from './providerQuota';
 
 // Model Context
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
 
 // Model Info & Pricing
-export { parseModelId, getModelPricing, getModelInfo, calculateCost, calculateCostWithPricing, formatCost } from './modelInfo';
-export type { ModelPricing, CostTokenUsage, ModelInfo, ModelProvider, ParsedModelId } from './modelInfo';
+export {
+  parseModelId,
+  getModelPricing,
+  getModelInfo,
+  calculateCost,
+  calculateCostWithPricing,
+  calculateCostWithProvenance,
+  mergeCostSources,
+  shortModelName,
+  getModelDisplayInfo,
+  compareModelIds,
+  sortModelIds,
+  formatCost,
+} from './modelInfo';
+export type {
+  ModelPricing,
+  CostTokenUsage,
+  CostSource,
+  CostProvenanceInput,
+  CostWithProvenance,
+  ModelInfo,
+  ModelProvider,
+  ParsedModelId,
+  ModelDisplayInfo,
+} from './modelInfo';
 
 // Pricing Catalog (LiteLLM hydration) — Node-only. Safe for extension host
 // and CLI; do NOT import from browser bundles (webviews).
@@ -349,7 +380,7 @@ export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 
 // Extractors — per-event token usage and tool call extraction
 export { extractTokenUsage } from './extractors/tokenUsage';
-export { extractToolCalls } from './extractors/toolCall';
+export { extractToolCall, extractToolCalls } from './extractors/toolCall';
 
 // Schemas — Zod runtime validation for session events
 export {

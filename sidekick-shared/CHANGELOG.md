@@ -5,6 +5,21 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-05-08
+
+### Added
+
+- **Provider-aware quota orchestration**: `MultiProviderQuotaService` coordinates Claude polling, peak-hours enrichment, account labels, transient-failure fallback, and optional Codex quota watcher updates behind one typed `{ claude?, codex? }` event stream
+- **Codex quota watcher**: `CodexQuotaWatcher` discovers the active Codex rollout for a workspace, watches it for live rate-limit updates, persists account-scoped snapshots, and falls back to cached or unavailable states when no live data exists
+- **Account status helper**: `getActiveAccountStatus()` returns a single Claude/Codex account status shape for startup and setup flows
+- **Tool-call extraction helper**: `extractToolCall()` extracts top-level `tool_use` events, complementing the existing `extractToolCalls()` assistant-content-block helper
+- **Cost/model helpers**: `calculateCostWithProvenance()`, `mergeCostSources()`, `shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, and `sortModelIds()` provide reusable UI and accounting primitives next to pricing
+- **Phrase categories**: `PHRASE_CATEGORIES` exposes the category structure behind the existing flat `ALL_PHRASES`
+
+### Changed
+
+- **Model parsing**: `parseModelId()` now recognizes legacy Claude IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022`
+
 ## [0.17.7] - 2026-04-28
 
 ### Fixed

@@ -16,13 +16,23 @@ export {
   getModelInfo,
   calculateCost,
   calculateCostWithPricing,
+  calculateCostWithProvenance,
+  mergeCostSources,
+  shortModelName,
+  getModelDisplayInfo,
+  compareModelIds,
+  sortModelIds,
   formatCost,
 } from './modelInfo';
 
 export type {
   ModelPricing,
   CostTokenUsage,
+  CostSource,
+  CostProvenanceInput,
+  CostWithProvenance,
   ModelProvider,
   ParsedModelId,
   ModelInfo,
+  ModelDisplayInfo,
 } from './modelInfo';

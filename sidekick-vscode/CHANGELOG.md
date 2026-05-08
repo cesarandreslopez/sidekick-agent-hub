@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-05-08
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.0**: Picks up the new provider-aware quota orchestration surface — `MultiProviderQuotaService`, `CodexQuotaWatcher`, `getActiveAccountStatus()`, `extractToolCall()`, cost-provenance helpers (`calculateCostWithProvenance`, `mergeCostSources`), and model display helpers (`shortModelName`, `getModelDisplayInfo`, `compareModelIds`, `sortModelIds`). `parseModelId()` also now recognizes legacy Claude IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022`
+- **No extension runtime changes**: This release ships the shared library upgrade for downstream tooling alignment; the extension's quota polling, dashboard, and status bar continue to use the existing `QuotaPoller`. Wiring the new orchestrator into the extension host will land in a follow-up release
+
 ## [0.17.7] - 2026-04-28
 
 ### Fixed

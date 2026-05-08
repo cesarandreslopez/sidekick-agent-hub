@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractToolCalls } from './toolCall';
+import { extractToolCall, extractToolCalls } from './toolCall';
 import type { SessionEvent } from '../types/sessionEvent';
 
 function makeAssistantEvent(content: unknown[]): SessionEvent {
@@ -69,5 +69,27 @@ describe('extractToolCalls', () => {
       { type: 'text', text: 'done' },
     ]);
     expect(extractToolCalls(event)).toHaveLength(1);
+  });
+});
+
+describe('extractToolCall', () => {
+  it('extracts a top-level tool_use event', () => {
+    const event: SessionEvent = {
+      type: 'tool_use',
+      timestamp: '2026-03-23T10:00:00Z',
+      message: { role: 'assistant' },
+      tool: { name: 'Read', input: { file_path: '/foo.ts' } },
+    };
+
+    const call = extractToolCall(event);
+    expect(call?.name).toBe('Read');
+    expect(call?.input).toEqual({ file_path: '/foo.ts' });
+    expect(call?.timestamp).toBeInstanceOf(Date);
+  });
+
+  it('returns null for assistant content-block events', () => {
+    expect(extractToolCall(makeAssistantEvent([
+      { type: 'tool_use', id: 'tu_1', name: 'Read', input: {} },
+    ]))).toBeNull();
   });
 });

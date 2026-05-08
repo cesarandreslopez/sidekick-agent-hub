@@ -5,6 +5,22 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-05-08
+
+### Added (sidekick-shared)
+
+- **Provider-aware quota orchestration (`MultiProviderQuotaService`)**: Coordinates Claude polling, peak-hours enrichment, account labels, transient-failure backoff, and optional Codex quota watcher updates behind one typed `{ claude?, codex? }` event stream — replacing ad-hoc per-provider polling wiring in downstream consumers
+- **Codex quota watcher (`CodexQuotaWatcher`)**: Discovers the active Codex rollout for a workspace, watches it for live rate-limit updates, persists account-scoped snapshots, and falls back to cached or unavailable states when no live data exists
+- **Account status helper (`getActiveAccountStatus()`)**: Single-pass read of active Claude Code and Codex account status for startup and setup flows
+- **Tool-call extraction helper (`extractToolCall()`)**: Extracts a top-level `tool_use` event, complementing the existing `extractToolCalls()` assistant-content-block helper
+- **Cost provenance & model display helpers**: `calculateCostWithProvenance()` and `mergeCostSources()` preserve whether a cost was provider-reported, locally estimated, or unpriced for honest UI rollups. `shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, and `sortModelIds()` provide reusable display and ranking primitives
+- **Phrase categories (`PHRASE_CATEGORIES`)**: Exposes the category structure behind the existing flat `ALL_PHRASES` array
+
+### Changed
+
+- **Legacy Claude model parsing**: `parseModelId()` now recognizes legacy IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022` (version before family) in addition to the modern `claude-{family}-{version}-...` form
+- **Version sync**: VS Code extension and CLI bumped to 0.18.0 in lockstep with the shared library to keep release tags aligned. No runtime behavior change in the extension or CLI in this release; downstream wiring of `MultiProviderQuotaService` and `CodexQuotaWatcher` will land in a follow-up release
+
 ## [0.17.7] - 2026-04-28
 
 ### Fixed

@@ -5,6 +5,10 @@ import {
   getModelInfo,
   calculateCost,
   calculateCostWithPricing,
+  calculateCostWithProvenance,
+  mergeCostSources,
+  shortModelName,
+  sortModelIds,
   formatCost,
   _setPricingOverrides,
   _clearPricingOverrides,
@@ -82,6 +86,19 @@ describe('parseModelId', () => {
       provider: 'anthropic',
       family: 'opus',
       version: '4',
+    });
+  });
+
+  it('parses legacy Claude model IDs with version before family', () => {
+    expect(parseModelId('claude-3-opus-20240229')).toEqual({
+      provider: 'anthropic',
+      family: 'opus',
+      version: '3',
+    });
+    expect(parseModelId('claude-3-5-sonnet-20241022')).toEqual({
+      provider: 'anthropic',
+      family: 'sonnet',
+      version: '3.5',
     });
   });
 });
@@ -246,6 +263,61 @@ describe('calculateCostWithPricing', () => {
       { inputCostPerMillion: 5, outputCostPerMillion: 15, cacheWriteCostPerMillion: 0, cacheReadCostPerMillion: 0 },
     );
     expect(cost).toBeCloseTo(5.0, 2);
+  });
+});
+
+describe('cost provenance', () => {
+  it('prefers provider-reported cost when available', () => {
+    expect(calculateCostWithProvenance({
+      usage: { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheWriteTokens: 0, cacheReadTokens: 0 },
+      modelId: 'claude-sonnet-4-20250514',
+      reportedCostUsd: 1.23,
+    })).toEqual({ costUsd: 1.23, source: 'reported' });
+  });
+
+  it('estimates known models and marks unknown models unpriced', () => {
+    expect(calculateCostWithProvenance({
+      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+      modelId: 'claude-sonnet-4-20250514',
+    })).toEqual({ costUsd: 3, source: 'estimated' });
+
+    expect(calculateCostWithProvenance({
+      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+      modelId: 'unknown-model',
+    })).toEqual({ source: 'unpriced' });
+  });
+
+  it('merges cost sources conservatively', () => {
+    expect(mergeCostSources('reported', 'estimated')).toBe('estimated');
+    expect(mergeCostSources('estimated', 'unpriced')).toBe('unpriced');
+    expect(mergeCostSources('reported', 'reported')).toBe('reported');
+  });
+});
+
+describe('model display helpers', () => {
+  it('uses compact labels for legacy and modern Claude IDs', () => {
+    expect(shortModelName('claude-opus-4-20250514')).toBe('Opus');
+    expect(shortModelName('claude-3-sonnet-20240229')).toBe('Sonnet');
+  });
+
+  it('normalizes common OpenAI labels', () => {
+    expect(shortModelName('gpt-4o-mini')).toBe('GPT-4o mini');
+    expect(shortModelName('o3-mini')).toBe('o3-mini');
+    expect(shortModelName('gpt-5.3-codex')).toBe('Codex');
+  });
+
+  it('sorts model ids by provider family rank', () => {
+    expect(sortModelIds([
+      'claude-haiku-4.5',
+      'gpt-4o',
+      'claude-opus-4.5',
+      'claude-sonnet-4.5',
+    ])).toEqual([
+      'claude-opus-4.5',
+      'claude-sonnet-4.5',
+      'claude-haiku-4.5',
+      'gpt-4o',
+    ]);
   });
 });
 
