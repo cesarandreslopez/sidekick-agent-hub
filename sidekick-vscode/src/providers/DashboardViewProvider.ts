@@ -47,7 +47,15 @@ import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
-import { describeQuotaFailure, formatDurationMs, getActiveCodexAccount, readQuotaSnapshot } from 'sidekick-shared';
+import {
+  describeQuotaFailure,
+  formatDurationMs,
+  getActiveCodexAccount,
+  readQuotaSnapshot,
+  readQuotaHistoryDailyBuckets,
+} from 'sidekick-shared';
+import { getWorkspaceId } from '../utils/workspaceId';
+import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 import { scopeProviderStatuses, type DashboardSessionProviderId } from '../utils/providerStatusScope';
@@ -419,6 +427,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
         // Send plan history if available
         this._sendPlanHistory();
+        void this._sendQuotaHistory();
         break;
 
       case 'requestStats':
@@ -1605,6 +1614,50 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const quotaFailure = describeQuotaFailure(quota) ?? undefined;
     this._postMessage({ type: 'updateQuota', quota, quotaFailure });
     this._maybeEmitQuotaAlert(quota, quotaFailure);
+    void this._sendQuotaHistory();
+  }
+
+  /**
+   * Reads daily-bucket quota history for both providers in the current workspace
+   * and posts a {@link QuotaHistoryPayload} to the webview heatmap.
+   *
+   * No-op when no workspace is open or when both providers have empty history.
+   */
+  private async _sendQuotaHistory(): Promise<void> {
+    const workspaceId = getWorkspaceId();
+    if (!workspaceId) return;
+    const weeks = 13;
+    const toMs = Date.now();
+    // -1 because readQuotaHistoryDailyBuckets emits inclusive endpoints (start..end ⇒ end-start+1 buckets).
+    const fromMs = toMs - (weeks * 7 - 1) * 86_400_000;
+    const from = new Date(fromMs).toISOString();
+    const to = new Date(toMs).toISOString();
+    try {
+      const [claude, codex] = await Promise.all([
+        readQuotaHistoryDailyBuckets({ workspaceId, provider: 'claude', from, to }),
+        readQuotaHistoryDailyBuckets({ workspaceId, provider: 'codex', from, to }),
+      ]);
+      const toCells = (buckets: Awaited<ReturnType<typeof readQuotaHistoryDailyBuckets>>): QuotaHistoryDailyCell[] =>
+        buckets.map(b => ({
+          date: b.date,
+          utilization: Math.max(b.maxUtilizationFiveHour, b.maxUtilizationSevenDay),
+          unavailable: b.anyUnavailable,
+          samples: b.samples,
+        }));
+      const claudeHasData = claude.some(b => b.samples > 0);
+      const codexHasData = codex.some(b => b.samples > 0);
+      const payload: QuotaHistoryPayload = {
+        weeks,
+        providers: {
+          ...(claudeHasData ? { claude: { cells: toCells(claude) } } : {}),
+          ...(codexHasData ? { codex: { cells: toCells(codex) } } : {}),
+        },
+        generatedAt: new Date().toISOString(),
+      };
+      this._postMessage({ type: 'updateQuotaHistory', payload });
+    } catch (err) {
+      log(`Quota history read failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private _maybeEmitQuotaAlert(
@@ -3450,6 +3503,90 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       display: block;
     }
 
+    .quota-history-section {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+      border-radius: 6px;
+      background: var(--vscode-editor-background);
+    }
+
+    .quota-history-header {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 8px;
+    }
+
+    .quota-history-subtitle {
+      font-size: 9px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .quota-history-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .quota-history-provider {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: 8px;
+      align-items: center;
+    }
+
+    .quota-history-provider-label {
+      font-size: 9px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground);
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      justify-self: end;
+      align-self: center;
+    }
+
+    .quota-history-grid {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .quota-history-cell {
+      stroke: var(--vscode-editor-background);
+      stroke-width: 0.5;
+    }
+
+    .quota-history-cell.bucket-0 { fill: var(--vscode-input-background, rgba(127, 127, 127, 0.12)); }
+    .quota-history-cell.bucket-1 { fill: color-mix(in srgb, var(--vscode-textLink-foreground) 25%, transparent); }
+    .quota-history-cell.bucket-2 { fill: color-mix(in srgb, var(--vscode-textLink-foreground) 45%, transparent); }
+    .quota-history-cell.bucket-3 { fill: color-mix(in srgb, var(--vscode-textLink-foreground) 70%, transparent); }
+    .quota-history-cell.bucket-4 { fill: var(--vscode-textLink-foreground); }
+    .quota-history-cell.unavailable { fill: var(--vscode-editorError-foreground, #f44336); opacity: 0.55; }
+
+    .quota-history-legend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      font-size: 9px;
+      color: var(--vscode-descriptionForeground);
+      justify-content: flex-end;
+    }
+
+    .quota-history-legend-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+    .quota-history-legend-swatch[data-bucket="0"] { background: var(--vscode-input-background, rgba(127, 127, 127, 0.12)); }
+    .quota-history-legend-swatch[data-bucket="1"] { background: color-mix(in srgb, var(--vscode-textLink-foreground) 25%, transparent); }
+    .quota-history-legend-swatch[data-bucket="2"] { background: color-mix(in srgb, var(--vscode-textLink-foreground) 45%, transparent); }
+    .quota-history-legend-swatch[data-bucket="3"] { background: color-mix(in srgb, var(--vscode-textLink-foreground) 70%, transparent); }
+    .quota-history-legend-swatch[data-bucket="4"] { background: var(--vscode-textLink-foreground); }
+
     .quota-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -5184,6 +5321,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             <div class="peak-hours-indicator" id="peak-hours-indicator"></div>
             <div class="peak-hours-details" id="peak-hours-details"></div>
           </div>
+        </div>
+      </div>
+
+      <div class="quota-history-section" id="quota-history-section" style="display: none;" aria-label="Quota history heatmap (last 13 weeks)">
+        <div class="quota-history-header">
+          <div class="section-title">Quota History</div>
+          <div class="quota-history-subtitle">Last 13 weeks · peak utilization per day</div>
+        </div>
+        <div class="quota-history-body" id="quota-history-body"></div>
+        <div class="quota-history-legend">
+          <span class="quota-history-legend-label">Less</span>
+          <span class="quota-history-legend-swatch" data-bucket="0"></span>
+          <span class="quota-history-legend-swatch" data-bucket="1"></span>
+          <span class="quota-history-legend-swatch" data-bucket="2"></span>
+          <span class="quota-history-legend-swatch" data-bucket="3"></span>
+          <span class="quota-history-legend-swatch" data-bucket="4"></span>
+          <span class="quota-history-legend-label">More</span>
         </div>
       </div>
 

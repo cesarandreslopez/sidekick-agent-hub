@@ -171,6 +171,18 @@ const quotaCmd = new Command('quota')
     const { quotaAction } = await import('./commands/quota');
     return quotaAction(_opts, cmd);
   });
+
+quotaCmd
+  .command('history')
+  .description('Render a 13-week heatmap of quota utilization for the current workspace')
+  .option('--weeks <n>', 'Weeks of history to render (default: 13, clamped 1-26)', '13')
+  .option('--provider <id>', 'Limit to a single runtime provider: claude or codex (default: both)')
+  .option('--workspace <path>', 'Workspace path used to derive the history scope (default: cwd)')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { quotaHistoryAction } = await import('./commands/quotaHistory');
+    return quotaHistoryAction(_opts, cmd);
+  });
+
 program.addCommand(quotaCmd);
 
 // Status command — one-shot Claude API status check

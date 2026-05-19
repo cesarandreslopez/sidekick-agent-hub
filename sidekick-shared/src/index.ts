@@ -341,6 +341,20 @@ export { QuotaPoller } from './quotaPoller';
 export type { QuotaPollerOptions } from './quotaPoller';
 export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 export {
+  appendQuotaHistorySample,
+  readQuotaHistoryRange,
+  readQuotaHistoryDailyBuckets,
+  pruneQuotaHistory,
+  getWorkspaceIdFromPath,
+} from './quotaHistory';
+export type {
+  QuotaHistorySample,
+  QuotaHistoryAppendOptions,
+  QuotaHistoryRangeOptions,
+  QuotaHistoryDailyBucket,
+  QuotaHistoryRuntimeProvider,
+} from './quotaHistory';
+export {
   fetchCodexQuotaFromApi,
   quotaFromCodexRateLimits,
   readLatestCodexQuotaFromRollouts,

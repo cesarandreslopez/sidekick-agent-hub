@@ -308,6 +308,36 @@ sidekick quota --provider codex --refresh
 
 For Claude Max subscriptions, the output also includes a **Peak** line showing whether Claude is currently in peak hours (faster session-limit drain). See [Peak Hours](peak-hours.md).
 
+#### Quota History
+
+```bash
+sidekick quota history
+```
+
+Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one calendar day; brightness encodes the peak utilization observed that day (≤0% empty, <25% low, <50% mid, <75% high, ≥75% peak). Days that had at least one `available: false` sample render as a red `×`.
+
+| Flag | Description |
+|------|-------------|
+| `--weeks <n>` | Weeks of history to render (default `13`, clamped 1-26) |
+| `--provider <id>` | Limit to a single runtime provider: `claude` or `codex`. Default: both, in two stacked grids |
+| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()` |
+| `--json` | Emit a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
+
+History is sourced from per-workspace JSONL written by both the CLI's quota path and the VS Code extension (Claude via `QuotaService`, Codex via the session provider and `CodexQuotaWatcher`), stored under `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` with `0600` file permissions, a 60-second per-sample debounce, and a 91-day retention window. The workspace id is `sha256(realpath(workspace))[0..16]` — stable across CLI invocations and VS Code sessions for the same folder.
+
+```bash
+# Default — last 13 weeks, both providers
+sidekick quota history
+
+# Last 8 weeks, Codex only
+sidekick quota history --weeks 8 --provider codex
+
+# JSON for downstream tooling
+sidekick quota history --json
+```
+
+If no history has accumulated yet for the workspace (or `--workspace`), the command prints a hint pointing at how to seed it (run a Claude Max or Codex session, or pass `--workspace <path>`).
+
 ### Account
 
 ```bash

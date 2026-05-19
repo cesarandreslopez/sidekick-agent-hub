@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.3] - 2026-05-19
+
+### Added
+
+- **Quota History dashboard panel**: New "Quota History · Last 13 weeks · peak utilization per day" section under the quota readout. Per-provider SVG heatmap (Claude / Codex) with bucketed `var(--vscode-textLink-foreground)` shades, per-cell `<title>` tooltips (date · peak % · sample count), a red overlay for days that hit "unavailable", and a "Less / More" legend. The section auto-hides when no history exists for either provider
+- **Workspace-scoped history sampling**: Every Claude quota refresh from `QuotaService` and every Codex quota update from `CodexSessionProvider` now appends a sample to the per-workspace history JSONL when a workspace is open and a saved account is active. A new `utils/workspaceId.ts` helper wraps `workspaceFolders[0]?.uri.fsPath → getWorkspaceIdFromPath` so the extension and the CLI hash the same path to the same opaque id
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.3**: Picks up the new per-workspace quota history surface (`appendQuotaHistorySample`, `readQuotaHistoryRange`, `readQuotaHistoryDailyBuckets`, `pruneQuotaHistory`, `getWorkspaceIdFromPath`) and the optional `workspaceId` / `appendHistorySample` hooks on `CodexQuotaWatcher`
+
 ## [0.18.2] - 2026-05-19
 
 ### Changed

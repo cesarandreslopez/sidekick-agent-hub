@@ -766,7 +766,124 @@ function handleMessage(event: MessageEvent): void {
     case 'updateAnalytics':
       // Handled by inline script in DashboardViewProvider
       break;
+    case 'updateQuotaHistory':
+      renderQuotaHistory(message.payload);
+      break;
   }
+}
+
+interface QuotaHistoryDailyCell {
+  date: string;
+  utilization: number;
+  unavailable: boolean;
+  samples: number;
+}
+
+interface QuotaHistoryPayload {
+  weeks: number;
+  providers: {
+    claude?: { cells: QuotaHistoryDailyCell[] };
+    codex?: { cells: QuotaHistoryDailyCell[] };
+  };
+  generatedAt: string;
+}
+
+const QUOTA_HISTORY_NS = 'http://www.w3.org/2000/svg';
+const QUOTA_HISTORY_CELL_SIZE = 11;
+const QUOTA_HISTORY_CELL_GAP = 2;
+
+function quotaHistoryBucket(utilization: number): number {
+  if (utilization <= 0) return 0;
+  if (utilization < 25) return 1;
+  if (utilization < 50) return 2;
+  if (utilization < 75) return 3;
+  return 4;
+}
+
+function renderQuotaHistoryGrid(
+  cells: QuotaHistoryDailyCell[],
+  weeks: number,
+): SVGSVGElement {
+  const cols = weeks;
+  const rows = 7;
+  const width = cols * (QUOTA_HISTORY_CELL_SIZE + QUOTA_HISTORY_CELL_GAP) - QUOTA_HISTORY_CELL_GAP;
+  const height = rows * (QUOTA_HISTORY_CELL_SIZE + QUOTA_HISTORY_CELL_GAP) - QUOTA_HISTORY_CELL_GAP;
+  const svg = document.createElementNS(QUOTA_HISTORY_NS, 'svg');
+  svg.setAttribute('class', 'quota-history-grid');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.setAttribute('role', 'img');
+
+  // Right-align the data so the rightmost column is "today".
+  // We render exactly cols*rows cells; missing days at the start (if cells are short) get bucket-0.
+  const totalCells = cols * rows;
+  const padded: (QuotaHistoryDailyCell | null)[] = [];
+  for (let i = 0; i < totalCells - cells.length; i += 1) padded.push(null);
+  for (const cell of cells) padded.push(cell);
+
+  for (let i = 0; i < totalCells; i += 1) {
+    const col = Math.floor(i / rows);
+    const row = i % rows;
+    const x = col * (QUOTA_HISTORY_CELL_SIZE + QUOTA_HISTORY_CELL_GAP);
+    const y = row * (QUOTA_HISTORY_CELL_SIZE + QUOTA_HISTORY_CELL_GAP);
+    const cell = padded[i];
+    const rect = document.createElementNS(QUOTA_HISTORY_NS, 'rect');
+    rect.setAttribute('x', String(x));
+    rect.setAttribute('y', String(y));
+    rect.setAttribute('width', String(QUOTA_HISTORY_CELL_SIZE));
+    rect.setAttribute('height', String(QUOTA_HISTORY_CELL_SIZE));
+    rect.setAttribute('rx', '2');
+    if (!cell) {
+      rect.setAttribute('class', 'quota-history-cell bucket-0');
+    } else if (cell.unavailable && cell.samples > 0) {
+      rect.setAttribute('class', 'quota-history-cell unavailable');
+    } else {
+      const bucket = quotaHistoryBucket(cell.utilization);
+      rect.setAttribute('class', `quota-history-cell bucket-${bucket}`);
+    }
+    if (cell) {
+      const title = document.createElementNS(QUOTA_HISTORY_NS, 'title');
+      const pct = Math.round(cell.utilization);
+      const status = cell.unavailable
+        ? ' · unavailable'
+        : cell.samples === 0
+          ? ' · no samples'
+          : ` · peak ${pct}% · ${cell.samples} sample${cell.samples === 1 ? '' : 's'}`;
+      title.textContent = `${cell.date}${status}`;
+      rect.appendChild(title);
+    }
+    svg.appendChild(rect);
+  }
+  return svg;
+}
+
+function renderQuotaHistory(payload: QuotaHistoryPayload): void {
+  const section = document.getElementById('quota-history-section');
+  const body = document.getElementById('quota-history-body');
+  if (!section || !body) return;
+
+  const entries: Array<[label: string, cells: QuotaHistoryDailyCell[]]> = [];
+  if (payload.providers.claude) entries.push(['Claude', payload.providers.claude.cells]);
+  if (payload.providers.codex) entries.push(['Codex', payload.providers.codex.cells]);
+
+  if (entries.length === 0) {
+    section.style.display = 'none';
+    body.innerHTML = '';
+    return;
+  }
+
+  body.innerHTML = '';
+  for (const [label, cells] of entries) {
+    const row = document.createElement('div');
+    row.className = 'quota-history-provider';
+    const labelEl = document.createElement('div');
+    labelEl.className = 'quota-history-provider-label';
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+    row.appendChild(renderQuotaHistoryGrid(cells, payload.weeks));
+    body.appendChild(row);
+  }
+  section.style.display = 'block';
 }
 
 /**

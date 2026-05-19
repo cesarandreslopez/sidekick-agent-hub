@@ -60,6 +60,7 @@ sidekick tasks                                      # open tasks panel
 sidekick search "migration"                         # cross-session search
 sidekick stats                                      # session statistics
 sidekick quota                                      # quota / rate-limit check
+sidekick quota history                              # 13-week quota-utilization heatmap (per workspace)
 sidekick status                                     # API status check (Claude + OpenAI)
 sidekick peak                                       # Claude peak-hours check (faster session-limit drain)
 sidekick dump --format markdown > session-report.md

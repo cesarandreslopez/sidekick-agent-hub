@@ -130,6 +130,26 @@ Use `--json` for machine-readable output. Use `--provider codex` to explicitly c
 
 When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
 
+### Quota History
+
+```bash
+sidekick quota history
+```
+
+Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one day; brightness encodes the peak utilization observed (`· ░ ▒ ▓ █` → ≤0% / <25% / <50% / <75% / ≥75%). Days that hit `available: false` render as a red `×`.
+
+```
+Claude  ·  13 weeks  ·  41 day(s) with samples
+Sun ·░▒▒▓█░░░ ·░░·· ·▒▒
+Mon ··▒▒▓█▒░· ·░░·· ·▒▓
+…
+Peak 92%  ·  Avg 38%  ·  Samples 612
+```
+
+Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex` (default both, stacked), `--workspace <path>` (default `cwd`). `--json` emits a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel.
+
+History is stored at `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` (mode `0600`, 60-second debounce, 91-day retention). The workspace id is `sha256(realpath)[0..16]`, so the same folder yields the same store whether sampled from the CLI or VS Code.
+
 ## Account Management
 
 ```bash

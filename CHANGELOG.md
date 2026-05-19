@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.3] - 2026-05-19
+
+### Added (sidekick-shared)
+
+- **Per-workspace quota history (`appendQuotaHistorySample`, `readQuotaHistoryRange`, `readQuotaHistoryDailyBuckets`, `pruneQuotaHistory`, `getWorkspaceIdFromPath`)**: New append-only JSONL store at `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl`. 60-second per-sample debounce, 91-day (13-week) retention, atomic prune above 16 KB, `0600` file mode and `0700` directory mode, and an in-process append chain that prevents interleaved writes from concurrent callers. Workspace ids are `sha256(realpath)[0..16]` so the CLI and extension agree on the same store for a given folder. Live append failures are swallowed so the quota emission path is never poisoned, and snapshot writes are mirrored so existing latest-snapshot consumers keep working unchanged
+- **`CodexQuotaWatcher` history hook**: New optional `workspaceId` and `appendHistorySample` options; when `workspaceId` is provided, every live Codex quota emit also appends a sample to the per-workspace history
+
+### Added (sidekick-cli)
+
+- **`sidekick quota history`**: New subcommand that renders a 13-week GitHub-contributions-style heatmap of quota utilization for the current workspace. Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex` (default both), `--workspace <path>` (default cwd). Bucketed glyphs (`· ░ ▒ ▓ █`) are color-coded by utilization band (≤0 / <25 / <50 / <75 / ≥75), with per-provider rows and a peak / avg / unavailable-days / samples footer. Days that hit `available: false` render as a red `×`. With the inherited `--json` flag, emits a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload — the same shape consumed by the VS Code dashboard
+
+### Added (sidekick-vscode)
+
+- **Quota History dashboard panel**: New "Quota History · Last 13 weeks · peak utilization per day" section under the quota readout. Per-provider SVG heatmap (Claude / Codex) using bucketed `var(--vscode-textLink-foreground)` shades, per-cell `<title>` tooltips (date · peak % · sample count), a red overlay for days that hit "unavailable", and a "Less / More" legend. The section auto-hides when no data exists for either provider
+- **History sampling**: Every Claude quota refresh from `QuotaService` and every Codex quota update from `CodexSessionProvider` now writes a sample into the shared workspace history JSONL when a workspace is open and a saved account is active. New `utils/workspaceId.ts` wraps `vscode.workspace.workspaceFolders[0]?.uri.fsPath → getWorkspaceIdFromPath` so the extension and CLI hash the same path to the same id
+
 ## [0.18.2] - 2026-05-19
 
 ### Added (sidekick-shared)

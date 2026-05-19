@@ -3,6 +3,8 @@ import type { FSWatcher } from 'fs';
 import { getActiveCodexAccount } from './codexProfiles';
 import { quotaFromCodexRateLimits, resolveCodexQuotaFromLocalSources } from './codexQuota';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
+import { appendQuotaHistorySample } from './quotaHistory';
+import type { QuotaHistorySample } from './quotaHistory';
 import { CodexProvider } from './providers/codex';
 import type { SavedAccountProfile } from './accountRegistry';
 import type { Disposable } from './quotaPoller';
@@ -15,6 +17,7 @@ const DEFAULT_DISCOVERY_POLL_INTERVAL_MS = 30_000;
 type CodexAccountReader = () => SavedAccountProfile | null;
 type SnapshotReader = (providerId: 'codex', accountId: string) => QuotaState | null;
 type SnapshotWriter = (providerId: 'codex', accountId: string, quota: QuotaState) => void;
+type HistoryAppender = (sample: QuotaHistorySample) => void | Promise<void>;
 type WatchFile = (filename: fs.PathLike, listener: fs.WatchListener<string>) => FSWatcher;
 
 export interface CodexQuotaWatcherOptions {
@@ -26,6 +29,10 @@ export interface CodexQuotaWatcherOptions {
   readSnapshot?: SnapshotReader;
   writeSnapshot?: SnapshotWriter;
   watchFile?: WatchFile;
+  /** Stable workspace identifier. When provided, live quotas are appended to the per-workspace history JSONL. */
+  workspaceId?: string;
+  /** Override the history append function (used by tests). Default: `appendQuotaHistorySample`. */
+  appendHistorySample?: HistoryAppender;
 }
 
 function accountEmail(account: SavedAccountProfile | null): string | undefined {
@@ -77,6 +84,8 @@ export class CodexQuotaWatcher implements Disposable {
   private readonly watchFile: WatchFile;
   private readonly maxTailBytes: number | undefined;
   private readonly maxSessionFiles: number | undefined;
+  private readonly workspaceId: string | undefined;
+  private readonly appendHistorySample: HistoryAppender;
   private readonly listeners: Array<(state: ProviderQuotaState<'codex'>) => void> = [];
 
   private discoveryTimer: ReturnType<typeof setInterval> | undefined;
@@ -97,6 +106,8 @@ export class CodexQuotaWatcher implements Disposable {
     this.watchFile = options.watchFile ?? fs.watch;
     this.maxTailBytes = options.maxTailBytes;
     this.maxSessionFiles = options.maxSessionFiles;
+    this.workspaceId = options.workspaceId;
+    this.appendHistorySample = options.appendHistorySample ?? appendQuotaHistorySample;
   }
 
   start(): void {
@@ -207,6 +218,30 @@ export class CodexQuotaWatcher implements Disposable {
     const account = this.getActiveAccount();
     if (account) {
       this.writeSnapshot('codex', account.id, liveQuota);
+      if (this.workspaceId) {
+        const sample: QuotaHistorySample = {
+          timestamp: liveQuota.capturedAt ?? new Date().toISOString(),
+          runtimeProvider: 'codex',
+          providerId: account.id,
+          workspaceId: this.workspaceId,
+          fiveHour: { utilization: liveQuota.fiveHour.utilization, resetsAt: liveQuota.fiveHour.resetsAt },
+          sevenDay: { utilization: liveQuota.sevenDay.utilization, resetsAt: liveQuota.sevenDay.resetsAt },
+          available: liveQuota.available,
+          error: liveQuota.error,
+          source: liveQuota.source,
+          stale: liveQuota.stale,
+        };
+        try {
+          const result = this.appendHistorySample(sample);
+          if (result && typeof (result as Promise<void>).catch === 'function') {
+            (result as Promise<void>).catch(() => {
+              // History append must never break the live emission path.
+            });
+          }
+        } catch {
+          // Synchronous errors swallowed for the same reason.
+        }
+      }
     }
 
     this.emitState(
