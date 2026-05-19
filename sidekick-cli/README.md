@@ -114,7 +114,7 @@ sidekick quota
 Provider-aware quota and rate-limit display. The command auto-detects the active provider:
 
 - **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns. Includes a peak-hours summary line.
-- **Codex**: Shows rate limits from the latest session's event stream — primary and secondary windows with progress bars and reset countdowns.
+- **Codex**: Shows rate limits from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars and reset countdowns. The default path is local-only: current workspace rollout, recent account-level rollouts, then the active account's cached snapshot. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
 - **OpenCode**: Prints an informational message (no rate-limit data available).
 
 ```
@@ -126,7 +126,7 @@ Subscription Quota
 
 When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota/rate-limit state visible instead of hiding the section entirely.
 
-Use `--json` for machine-readable output. Use `--provider codex` to explicitly check Codex rate limits. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
+Use `--json` for machine-readable output. Use `--provider codex` to explicitly check Codex rate limits, and `--refresh` to opt in to a Codex usage API refresh. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
 
 When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
 

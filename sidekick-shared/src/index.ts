@@ -340,7 +340,19 @@ export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
 export type { QuotaPollerOptions } from './quotaPoller';
 export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
-export { quotaFromCodexRateLimits } from './codexQuota';
+export {
+  fetchCodexQuotaFromApi,
+  quotaFromCodexRateLimits,
+  readLatestCodexQuotaFromRollouts,
+  resolveCodexQuota,
+  resolveCodexQuotaFromLocalSources,
+} from './codexQuota';
+export type {
+  CodexQuotaApiOptions,
+  CodexQuotaCreditsSnapshot,
+  CodexQuotaResolveOptions,
+  CodexQuotaResolveSource,
+} from './codexQuota';
 export { CodexQuotaWatcher } from './codexQuotaWatcher';
 export type { CodexQuotaWatcherOptions } from './codexQuotaWatcher';
 export { MultiProviderQuotaService } from './multiProviderQuotaService';

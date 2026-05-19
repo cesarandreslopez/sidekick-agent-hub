@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.2] - 2026-05-19
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.2**: Picks up the new Codex quota orchestrator (`resolveCodexQuota`, `resolveCodexQuotaFromLocalSources`, `readLatestCodexQuotaFromRollouts`, `fetchCodexQuotaFromApi`), relaxed `CodexRateLimits` types tolerating nullable `resets_at` / `window_minutes`, rate-limit-only `token_count` event emission in `JsonlSessionWatcher`, optional `limitId` / `limitName` / `credits` / `planType` / `rateLimitReachedType` fields on `QuotaState`, `state_N.sqlite` discovery in `CodexDatabase` and provider auto-detect, and a workspace + account-level rollout fallback in `CodexQuotaWatcher`
+- **No extension runtime changes**: This release ships the shared library upgrade for downstream tooling alignment; the extension's quota polling, dashboard, and status bar continue to use the existing `QuotaPoller`. Wiring `resolveCodexQuota` into the extension host (and any UI for the new metadata fields) will land in a follow-up release
+
 ## [0.18.1] - 2026-05-08
 
 ### Changed

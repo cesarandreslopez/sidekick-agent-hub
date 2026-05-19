@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import type { FSWatcher } from 'fs';
 import { getActiveCodexAccount } from './codexProfiles';
-import { quotaFromCodexRateLimits } from './codexQuota';
+import { quotaFromCodexRateLimits, resolveCodexQuotaFromLocalSources } from './codexQuota';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import { CodexProvider } from './providers/codex';
 import type { SavedAccountProfile } from './accountRegistry';
@@ -19,6 +19,8 @@ type WatchFile = (filename: fs.PathLike, listener: fs.WatchListener<string>) => 
 
 export interface CodexQuotaWatcherOptions {
   discoveryPollIntervalMs?: number;
+  maxTailBytes?: number;
+  maxSessionFiles?: number;
   providerFactory?: () => CodexProvider;
   getActiveAccount?: CodexAccountReader;
   readSnapshot?: SnapshotReader;
@@ -73,6 +75,8 @@ export class CodexQuotaWatcher implements Disposable {
   private readonly readSnapshot: SnapshotReader;
   private readonly writeSnapshot: SnapshotWriter;
   private readonly watchFile: WatchFile;
+  private readonly maxTailBytes: number | undefined;
+  private readonly maxSessionFiles: number | undefined;
   private readonly listeners: Array<(state: ProviderQuotaState<'codex'>) => void> = [];
 
   private discoveryTimer: ReturnType<typeof setInterval> | undefined;
@@ -91,6 +95,8 @@ export class CodexQuotaWatcher implements Disposable {
     this.readSnapshot = options.readSnapshot ?? readQuotaSnapshot;
     this.writeSnapshot = options.writeSnapshot ?? writeQuotaSnapshot;
     this.watchFile = options.watchFile ?? fs.watch;
+    this.maxTailBytes = options.maxTailBytes;
+    this.maxSessionFiles = options.maxSessionFiles;
   }
 
   start(): void {
@@ -217,6 +223,28 @@ export class CodexQuotaWatcher implements Disposable {
 
   private emitCachedOrUnavailable(): void {
     const account = this.getActiveAccount();
+    let localProvider: CodexProvider | null = null;
+    try {
+      localProvider = this.providerFactory();
+      const local = resolveCodexQuotaFromLocalSources({
+        workspacePath: this.workspacePath,
+        activeAccount: account,
+        readSnapshot: this.readSnapshot,
+        writeSnapshot: this.writeSnapshot,
+        provider: localProvider,
+        maxTailBytes: this.maxTailBytes,
+        maxSessionFiles: this.maxSessionFiles,
+      });
+      if (local) {
+        this.emitState(local);
+        return;
+      }
+    } catch {
+      // Fall through to account-scoped cache or unavailable state.
+    } finally {
+      localProvider?.dispose();
+    }
+
     const cached = account ? this.readSnapshot('codex', account.id) : null;
     if (cached) {
       this.emitState(

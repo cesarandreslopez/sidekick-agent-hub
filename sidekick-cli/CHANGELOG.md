@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.2] - 2026-05-19
+
+### Added
+
+- **`sidekick quota --refresh`**: New flag on the `quota` command that, for Codex, explicitly refreshes from the ChatGPT usage API before falling back to local rollout data and cached snapshots. Without the flag, the Codex quota path stays fully local and makes no upstream network call
+
+### Changed
+
+- **Codex quota is local-only by default**: `sidekick quota --provider codex` now delegates to the new `resolveCodexQuota` orchestrator in `sidekick-shared`. It checks the current workspace's most recent rollout, then recent account-level rollouts under `CODEX_HOME/sessions`, then the active account's cached snapshot — no upstream network call unless `--refresh` is passed. Failure output continues to include structured `failureKind` / `httpStatus` / `retryAfterMs` fields under `--json`
+- **Bundled `sidekick-shared` 0.18.2**: Picks up the new Codex quota orchestrator (`resolveCodexQuota`, `resolveCodexQuotaFromLocalSources`, `readLatestCodexQuotaFromRollouts`, `fetchCodexQuotaFromApi`), the relaxed `CodexRateLimits` shape (nullable `resets_at` / `window_minutes`), the rate-limit-only `token_count` event emission in `JsonlSessionWatcher`, and `state_N.sqlite` discovery in `CodexDatabase` + provider auto-detect
+
 ## [0.18.1] - 2026-05-08
 
 ### Changed

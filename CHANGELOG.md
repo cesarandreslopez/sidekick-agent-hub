@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.2] - 2026-05-19
+
+### Added (sidekick-shared)
+
+- **Codex quota orchestrator (`resolveCodexQuota()`)**: New entry point that resolves Codex rate-limit data in a single call with a configurable `source: 'local' | 'api' | 'auto'`. The `local` path walks the workspace's most recent Codex rollout, then recent account-level rollouts under `CODEX_HOME/sessions`, then the account-scoped snapshot cache; `api` calls Codex's ChatGPT `wham/usage` endpoint first with a local fallback; `auto` tries local first and falls back to the API. Helpers `resolveCodexQuotaFromLocalSources()`, `readLatestCodexQuotaFromRollouts()`, and `fetchCodexQuotaFromApi()` are also exported for callers that need finer control
+- **Codex quota types**: `CodexQuotaApiOptions`, `CodexQuotaCreditsSnapshot`, `CodexQuotaResolveOptions`, and `CodexQuotaResolveSource` are exported alongside the new functions
+- **Provider-specific quota metadata on `QuotaState`**: Optional `limitId`, `limitName`, `credits`, `planType`, and `rateLimitReachedType` fields propagate through quota snapshots, so callers can render plan, limit, and "rate limit reached" reasons without re-parsing upstream payloads
+
+### Added (sidekick-cli)
+
+- **`sidekick quota --refresh`**: New flag on the `quota` command that, for Codex, explicitly refreshes from the ChatGPT usage API before falling back to local rollout data and cached snapshots. Without the flag, the Codex quota path stays fully local and makes no upstream network call
+
+### Changed (sidekick-cli)
+
+- **Codex quota is local-only by default**: `sidekick quota --provider codex` now uses the new `resolveCodexQuota` orchestrator and only consults local sources (current workspace rollout → account-level rollouts → cached snapshot) unless `--refresh` is passed. Failure output still includes structured `failureKind` / `httpStatus` / `retryAfterMs` fields under `--json`
+
+### Changed (sidekick-shared)
+
+- **`CodexRateLimits` accepts nullable reset fields**: `primary.resets_at`, `secondary.resets_at`, `primary.window_minutes`, and `secondary.window_minutes` are now `number | null | undefined`, matching the live Codex usage API payload. `quotaFromCodexRateLimits()` normalizes nullish percentages and timestamps and accepts an additional `'api'` source value alongside `'session'` / `'cache'`
+- **`CodexQuotaWatcher` falls back to local rollouts**: When the active workspace has no live Codex rollout, the watcher now consults `resolveCodexQuotaFromLocalSources()` (workspace + account-level rollouts) before falling back to the account-scoped snapshot cache. New optional `maxTailBytes` / `maxSessionFiles` knobs cap the work done while scanning rollouts
+
+### Fixed (sidekick-shared)
+
+- **Codex `state_N.sqlite` discovery**: `CodexDatabase` and the provider auto-detector now match both `state.sqlite` and versioned `state_N.sqlite` filenames (preferring the most recently modified DB). Fresh Codex CLI installs that no longer write a plain `state.sqlite` are now detected and read correctly
+- **`JsonlSessionWatcher` emits rate-limit-only `token_count` events**: When a Codex `token_count` payload carries `rate_limits` but no `last_token_usage` / `total_token_usage`, the watcher now still emits a `system` event with the rate limits attached (summary `Rate limits updated`). Quota updates can no longer be swallowed just because the same record has no token-usage delta
+
 ## [0.18.1] - 2026-05-08
 
 ### Added (sidekick-shared)

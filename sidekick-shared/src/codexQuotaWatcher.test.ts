@@ -38,6 +38,7 @@ describe('CodexQuotaWatcher', () => {
     };
     const provider = {
       findActiveSession: vi.fn(() => '/tmp/rollout.jsonl'),
+      findAllSessions: vi.fn(() => []),
       createReader: vi.fn(() => reader),
       getLastRateLimits: vi.fn(() => rateLimits),
       dispose: vi.fn(),
@@ -84,6 +85,7 @@ describe('CodexQuotaWatcher', () => {
     };
     const provider = {
       findActiveSession: vi.fn(() => null),
+      findAllSessions: vi.fn(() => []),
       dispose: vi.fn(),
     } as unknown as CodexProvider;
     const states: QuotaState[] = [];

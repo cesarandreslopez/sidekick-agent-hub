@@ -64,4 +64,21 @@ describe('detectProvider', () => {
 
     expect(detectProvider()).toBe('codex');
   });
+
+  it('detects codex from current state_*.sqlite database files', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(fs.readdirSync).mockImplementation((p: fs.PathLike) => {
+      if (String(p) === '/system/.codex') return ['state_5.sqlite'] as any;
+      return [] as any;
+    });
+    vi.mocked(fs.statSync).mockImplementation((p: fs.PathLike) => {
+      if (String(p) === '/system/.codex/state_5.sqlite') {
+        return { mtimeMs: 3000, mtime: new Date(3000) } as fs.Stats;
+      }
+      return { mtimeMs: 0, mtime: new Date(0) } as fs.Stats;
+    });
+
+    expect(detectProvider()).toBe('codex');
+  });
 });

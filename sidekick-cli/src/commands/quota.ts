@@ -7,15 +7,12 @@ import chalk, { type ChalkInstance } from 'chalk';
 import {
   describeQuotaFailure,
   getActiveAccount,
-  createWatcher,
   CodexProvider,
   getActiveCodexAccount,
-  quotaFromCodexRateLimits,
-  readQuotaSnapshot,
-  writeQuotaSnapshot,
+  resolveCodexQuota,
   fetchPeakHoursStatus,
 } from 'sidekick-shared';
-import type { FollowEvent, PeakHoursState } from 'sidekick-shared';
+import type { PeakHoursState } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
 import { formatPeakHoursLine } from './peakHoursRender';
@@ -75,7 +72,7 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
   }
 
   if (provider.id === 'codex') {
-    await codexQuotaAction(provider as CodexProvider, globalOpts, jsonOutput);
+    await codexQuotaAction(provider as CodexProvider, globalOpts, localOpts, jsonOutput);
     return;
   }
 
@@ -163,70 +160,31 @@ function printPeakHoursSummary(peak: PeakHoursState): void {
   process.stdout.write(`  ${chalk.dim('Peak')}     ${line}\n`);
 }
 
-async function codexQuotaAction(provider: CodexProvider, globalOpts: Record<string, unknown>, jsonOutput: boolean): Promise<void> {
+async function codexQuotaAction(
+  provider: CodexProvider,
+  globalOpts: Record<string, unknown>,
+  localOpts: Record<string, unknown>,
+  jsonOutput: boolean,
+): Promise<void> {
   const workspacePath = (globalOpts.project as string) || process.cwd();
   const activeAccount = getActiveCodexAccount();
-  let quota = activeAccount ? readQuotaSnapshot('codex', activeAccount.id) : null;
-
-  // Find the most recent Codex session and replay it to extract rate limits.
-  // Fall back to the cached snapshot for the active managed profile.
-  const sessions = provider.findAllSessions(workspacePath);
-  if (sessions.length > 0) {
-    const captured: { rl: FollowEvent['rateLimits'] } = { rl: undefined };
-    try {
-      const result = createWatcher({
-        provider,
-        workspacePath,
-        callbacks: {
-          onEvent: (event: FollowEvent) => {
-            if (event.rateLimits) {
-              captured.rl = event.rateLimits;
-            }
-          },
-          onError: () => {},
-        },
-      });
-      result.watcher.start(true); // replay
-      result.watcher.stop();
-    } catch {
-      // ignore watcher errors
-    }
-
-    const liveQuota = captured.rl
-      ? quotaFromCodexRateLimits({
-          primary: captured.rl.primary
-            ? {
-                used_percent: captured.rl.primary.usedPercent,
-                window_minutes: captured.rl.primary.windowMinutes,
-                resets_at: captured.rl.primary.resetsAt,
-              }
-            : undefined,
-          secondary: captured.rl.secondary
-            ? {
-                used_percent: captured.rl.secondary.usedPercent,
-                window_minutes: captured.rl.secondary.windowMinutes,
-                resets_at: captured.rl.secondary.resetsAt,
-              }
-            : undefined,
-        }, 'session')
-      : null;
-    if (liveQuota) {
-      quota = liveQuota;
-      if (activeAccount) {
-        writeQuotaSnapshot('codex', activeAccount.id, liveQuota);
-      }
-    }
+  let quota: Awaited<ReturnType<typeof resolveCodexQuota>>;
+  try {
+    quota = await resolveCodexQuota({
+      workspacePath,
+      provider,
+      activeAccount,
+      source: localOpts.refresh ? 'api' : 'local',
+    });
+  } finally {
+    provider.dispose();
   }
-  provider.dispose();
 
-  if (!quota) {
-    const msg = activeAccount
-      ? `No active Codex session and no cached rate-limit snapshot is available for "${activeAccount.label ?? activeAccount.id}".`
-      : 'No active Codex session and no saved Codex account snapshot is available.';
+  if (!quota.available) {
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ available: false, error: msg }, null, 2) + '\n');
+      process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
     } else {
-      process.stderr.write(chalk.yellow(msg) + '\n');
+      process.stderr.write(chalk.yellow(quota.error ?? 'Codex rate-limit data is unavailable.') + '\n');
     }
     return;
   }

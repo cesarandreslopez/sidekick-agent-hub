@@ -357,13 +357,17 @@ export class JsonlSessionWatcher implements SessionWatcher {
       if (evtType === 'token_count') {
         const info = payload?.info as Record<string, unknown> | undefined;
         const usage = (info?.last_token_usage || info?.total_token_usage) as Record<string, unknown> | undefined;
-        if (usage) {
-          const rl = payload?.rate_limits as Record<string, unknown> | undefined;
-          const rateLimits = rl ? extractRateLimits(rl) : undefined;
+        const rl = payload?.rate_limits as Record<string, unknown> | undefined;
+        const rateLimits = rl ? extractRateLimits(rl) : undefined;
+        if (usage || rateLimits) {
           events.push({
             providerId: 'codex', type: 'system', timestamp: ts,
-            summary: `Tokens: ${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out`,
-            tokens: { input: (usage.input_tokens as number) || 0, output: (usage.output_tokens as number) || 0 },
+            summary: usage
+              ? `Tokens: ${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out`
+              : 'Rate limits updated',
+            tokens: usage
+              ? { input: (usage.input_tokens as number) || 0, output: (usage.output_tokens as number) || 0 }
+              : undefined,
             rateLimits,
             raw,
           });

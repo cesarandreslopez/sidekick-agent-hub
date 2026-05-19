@@ -283,12 +283,12 @@ sidekick quota
 Provider-aware quota and rate-limit display. The command detects the active provider and shows the appropriate data:
 
 - **Claude Code**: Shows Claude Max subscription quota utilization — 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
-- **Codex**: Shows rate limits extracted from the latest Codex session's token_count events — primary and secondary windows with progress bars and reset countdowns. Requires an active or recent Codex session.
+- **Codex**: Shows rate limits extracted from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars and reset countdowns. The default path is local-only: Sidekick checks the current workspace, then recent account-level Codex rollouts, then the account-scoped snapshot cache. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
 - **OpenCode**: Prints an informational message — OpenCode does not provide rate-limit data.
 
 When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel keeps a compact inline quota/rate-limit state visible even when data is unavailable, and quota failure toasts only appear when the failure state changes.
 
-No command-specific flags. Use `--json` for machine-readable output.
+Use `--json` for machine-readable output. For Codex, use `--refresh` to explicitly call the Codex usage API; without it, no Codex quota network request is made.
 
 #### Examples
 
@@ -301,6 +301,9 @@ sidekick quota --json
 
 # Explicitly check Codex rate limits
 sidekick --provider codex quota
+
+# Explicitly refresh Codex rate limits from the usage API
+sidekick quota --provider codex --refresh
 ```
 
 For Claude Max subscriptions, the output also includes a **Peak** line showing whether Claude is currently in peak hours (faster session-limit drain). See [Peak Hours](peak-hours.md).

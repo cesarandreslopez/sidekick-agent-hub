@@ -166,6 +166,7 @@ program.addCommand(statsCmd);
 const quotaCmd = new Command('quota')
   .description('Show quota or rate-limit utilization (auto-detects provider)')
   .option('--provider <id>', 'Provider: claude-code, codex, auto (default: auto)')
+  .option('--refresh', 'For Codex, explicitly refresh from the Codex usage API before falling back to local data')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaAction } = await import('./commands/quota');
     return quotaAction(_opts, cmd);

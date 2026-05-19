@@ -31,7 +31,7 @@ Codex CLI embeds rate-limit data in its event stream (via `token_count` events w
 - **CLI dashboard**: The Sessions panel Summary tab shows a "Rate Limits" section with utilization bars
 - **`sidekick quota`**: When the active provider is Codex, shows rate-limit bars with reset countdowns
 
-No separate API polling is needed — rate-limit data arrives as part of normal session monitoring.
+No separate API polling is needed by default — rate-limit data arrives as part of normal session monitoring. For one-shot CLI checks, `sidekick quota --provider codex --refresh` explicitly refreshes from Codex's usage API first, then falls back to local rollout data and cached snapshots if the API is unavailable.
 
 ## Account Management
 
@@ -68,7 +68,7 @@ sidekick account --provider codex --remove Work      # remove a profile
 
 ### Quota Snapshots
 
-When no active Codex session exists, `sidekick quota` falls back to the most recent cached rate-limit snapshot for the active account. Snapshots are stored in `~/.config/sidekick/quota-snapshots.json` and display with a "cached from" timestamp to indicate staleness.
+When no active Codex session exists, `sidekick quota` first checks recent account-level Codex rollouts for a usable rate-limit event, then falls back to the most recent cached rate-limit snapshot for the active account. Snapshots are stored in `~/.config/sidekick/quota-snapshots.json` and display with a "cached from" timestamp to indicate staleness.
 
 ## Provider Status
 
