@@ -3,15 +3,15 @@
  *
  * Uses sidekick-shared for the stateless fetcher.
  * Polls every 15 minutes (peak transitions happen on UTC-hour boundaries).
- * Gated on the `claude-max` inference provider — no network requests when
- * the user is on Claude API, OpenCode, or Codex.
+ * Gated on `claude-max` inference plus the `claude-code` session provider —
+ * no network requests when the monitored session provider is OpenCode or Codex.
  *
  * @module services/PeakHoursService
  */
 
 import * as vscode from 'vscode';
-import { fetchPeakHoursStatus } from 'sidekick-shared';
-import type { PeakHoursState } from 'sidekick-shared';
+import { fetchPeakHoursStatus, isClaudeCodeSessionProvider } from 'sidekick-shared';
+import type { PeakHoursState, ProviderId } from 'sidekick-shared';
 import type { AuthService } from './AuthService';
 import { log } from './Logger';
 
@@ -33,7 +33,10 @@ export class PeakHoursService implements vscode.Disposable {
 
   readonly onStatusUpdate = this._onStatusUpdate.event;
 
-  constructor(private readonly authService: AuthService) {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly getSessionProviderId: () => ProviderId = () => 'claude-code',
+  ) {
     this._disposables.push(this._onStatusUpdate);
 
     // React to provider changes so we stop polling when switching away from
@@ -41,6 +44,7 @@ export class PeakHoursService implements vscode.Disposable {
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('sidekick.inferenceProvider')
+          || e.affectsConfiguration('sidekick.sessionProvider')
           || e.affectsConfiguration('sidekick.peakHours.enabled')) {
           this.reconcile();
         }
@@ -53,7 +57,8 @@ export class PeakHoursService implements vscode.Disposable {
   /** Whether the user's current configuration makes peak-hours relevant. */
   private isApplicable(): boolean {
     if (!this.isEnabledInSettings()) return false;
-    return this.authService.getProviderId() === 'claude-max';
+    return this.authService.getProviderId() === 'claude-max'
+      && isClaudeCodeSessionProvider(this.getSessionProviderId());
   }
 
   private isEnabledInSettings(): boolean {
@@ -131,7 +136,7 @@ export class PeakHoursService implements vscode.Disposable {
    * Bring the service in line with the current provider + settings. Called
    * when either changes while the dashboard may already be visible.
    */
-  private reconcile(): void {
+  reconcile(): void {
     if (this.isApplicable()) {
       // Re-fetch immediately if the dashboard is already running us.
       if (this._refreshInterval) {

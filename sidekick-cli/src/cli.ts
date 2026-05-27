@@ -197,6 +197,7 @@ program.addCommand(statusCmd);
 // Peak command — one-shot Claude peak-hours check (promoclock.co)
 const peakCmd = new Command('peak')
   .description('Show whether Claude is currently in peak hours (faster session-limit drain)')
+  .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { peakAction } = await import('./commands/peak');
     return peakAction(_opts, cmd);

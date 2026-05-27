@@ -95,6 +95,7 @@ describe('CodexQuotaWatcher', () => {
       getActiveAccount: () => makeAccount(),
       readSnapshot: () => cached,
       writeSnapshot: vi.fn(),
+      maxSessionFiles: 0,
     });
     watcher.onUpdate(state => states.push(state));
 

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchPeakHoursStatus } from './peakHours';
+import {
+  createPeakHoursNotApplicableState,
+  fetchPeakHoursStatus,
+  isClaudeCodeSessionProvider,
+  scopePeakHoursToSessionProvider,
+} from './peakHours';
 
 describe('fetchPeakHoursStatus', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
@@ -119,5 +124,30 @@ describe('fetchPeakHoursStatus', () => {
     expect(result.sessionLimitSpeed).toBe('unknown');
     expect(result.isPeak).toBe(true);
     expect(result.unavailable).toBe(false);
+  });
+});
+
+describe('peak-hours provider scoping', () => {
+  it('identifies only Claude Code as peak-hours applicable', () => {
+    expect(isClaudeCodeSessionProvider('claude-code')).toBe(true);
+    expect(isClaudeCodeSessionProvider('codex')).toBe(false);
+    expect(isClaudeCodeSessionProvider('opencode')).toBe(false);
+  });
+
+  it('scopes peak-hours state to Claude Code sessions', () => {
+    const state = createPeakHoursNotApplicableState('codex');
+
+    expect(scopePeakHoursToSessionProvider('claude-code', state)).toBe(state);
+    expect(scopePeakHoursToSessionProvider('codex', state)).toBeNull();
+    expect(scopePeakHoursToSessionProvider('opencode', state)).toBeNull();
+  });
+
+  it('creates a not-applicable state for non-Claude providers', () => {
+    const state = createPeakHoursNotApplicableState('codex');
+
+    expect(state.unavailable).toBe(true);
+    expect(state.notApplicable).toBe(true);
+    expect(state.isPeak).toBe(false);
+    expect(state.note).toContain('Codex CLI');
   });
 });

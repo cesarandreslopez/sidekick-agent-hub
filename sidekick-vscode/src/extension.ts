@@ -420,8 +420,8 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(providerStatusService);
     log('ProviderStatusService initialized');
 
-    // Peak-hours tracker (gated on claude-max provider; silent no-op otherwise)
-    peakHoursService = new PeakHoursService(authService);
+    // Peak-hours tracker (gated on claude-max + Claude Code session provider; silent no-op otherwise)
+    peakHoursService = new PeakHoursService(authService, () => sessionMonitor?.getProvider().id ?? 'claude-code');
     context.subscriptions.push(peakHoursService);
     log('PeakHoursService initialized');
 
@@ -1360,6 +1360,7 @@ export async function activate(context: vscode.ExtensionContext) {
         log(`Switched session provider to ${providerId}, no active session found yet`);
       }
 
+      peakHoursService?.reconcile();
       dashboardProvider?.refreshSessionView();
     })
   );

@@ -227,7 +227,11 @@ export class MonitorStatusBar implements vscode.Disposable {
 
     // Add skull emoji when context is critically high (>= 80%)
     const icon = this.contextPercent >= 80 ? '💀' : '$(pulse)';
-    const peakIndicator = this.peakHours && this.peakHours.isPeak && !this.peakHours.unavailable
+    const showPeakHours = this.monitor.getProvider().id === 'claude-code'
+      && this.peakHours !== null
+      && this.peakHours.isPeak
+      && !this.peakHours.unavailable;
+    const peakIndicator = showPeakHours
       ? ' 🟠'
       : '';
     this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}${peakIndicator}`;
@@ -262,7 +266,7 @@ export class MonitorStatusBar implements vscode.Disposable {
       tooltipLines.push(`Permission: ${modeLabels[this.permissionMode] || this.permissionMode}`);
     }
 
-    if (this.peakHours && this.peakHours.isPeak && !this.peakHours.unavailable) {
+    if (showPeakHours && this.peakHours) {
       let peakLine = `🟠 ${this.peakHours.label || 'Claude peak hours'}`;
       if (typeof this.peakHours.minutesUntilChange === 'number' && this.peakHours.minutesUntilChange > 0) {
         const h = Math.floor(this.peakHours.minutesUntilChange / 60);

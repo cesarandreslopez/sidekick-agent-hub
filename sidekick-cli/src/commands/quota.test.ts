@@ -78,10 +78,11 @@ describe('formatTimeUntil', () => {
 
 // ── quotaAction ──
 
-const { mockFetchOnce, mockResolveCodexQuota, mockResolveProvider } = vi.hoisted(() => ({
+const { mockFetchOnce, mockResolveCodexQuota, mockResolveProvider, mockFetchPeakHoursStatus } = vi.hoisted(() => ({
   mockFetchOnce: vi.fn(),
   mockResolveCodexQuota: vi.fn(),
   mockResolveProvider: vi.fn(),
+  mockFetchPeakHoursStatus: vi.fn(),
 }));
 
 vi.mock('sidekick-shared', () => ({
@@ -89,18 +90,21 @@ vi.mock('sidekick-shared', () => ({
   getActiveAccount: () => null,
   getActiveCodexAccount: () => ({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' }),
   resolveCodexQuota: mockResolveCodexQuota,
-  fetchPeakHoursStatus: async () => ({
+  fetchPeakHoursStatus: (...args: unknown[]) => mockFetchPeakHoursStatus(...args),
+  createPeakHoursNotApplicableState: (providerId: string) => ({
     status: 'unknown',
     isPeak: false,
     sessionLimitSpeed: 'unknown',
-    label: 'Peak-hours status unavailable',
+    label: 'Claude peak hours not applicable',
     peakHoursDescription: '',
     nextChange: null,
     minutesUntilChange: null,
-    note: '',
+    note: `Claude peak hours apply only to Claude Code sessions, not ${providerId}.`,
     updatedAt: new Date().toISOString(),
     unavailable: true,
+    notApplicable: true,
   }),
+  isClaudeCodeSessionProvider: (providerId: string) => providerId === 'claude-code',
   describeQuotaFailure: (quota: {
     available?: boolean;
     error?: string;
@@ -181,7 +185,20 @@ describe('quotaAction', () => {
     mockFetchOnce.mockReset();
     mockResolveCodexQuota.mockReset();
     mockResolveProvider.mockReset();
+    mockFetchPeakHoursStatus.mockReset();
     mockResolveProvider.mockReturnValue({ id: 'claude-code', dispose: () => {} });
+    mockFetchPeakHoursStatus.mockResolvedValue({
+      status: 'unknown',
+      isPeak: false,
+      sessionLimitSpeed: 'unknown',
+      label: 'Peak-hours status unavailable',
+      peakHoursDescription: '',
+      nextChange: null,
+      minutesUntilChange: null,
+      note: '',
+      updatedAt: new Date().toISOString(),
+      unavailable: true,
+    });
     chalk.level = 0;
   });
 
@@ -340,6 +357,7 @@ describe('quotaAction', () => {
     }));
     expect(stdoutData).toContain('Rate Limits');
     expect(stdoutData).toContain('6%');
+    expect(mockFetchPeakHoursStatus).not.toHaveBeenCalled();
     expect(provider.dispose).toHaveBeenCalledOnce();
   });
 

@@ -425,5 +425,10 @@ export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';
 export type { ProviderStatusState } from './providerStatus';
 
 // Peak Hours (PromoClock — third-party)
-export { fetchPeakHoursStatus } from './peakHours';
+export {
+  createPeakHoursNotApplicableState,
+  fetchPeakHoursStatus,
+  isClaudeCodeSessionProvider,
+  scopePeakHoursToSessionProvider,
+} from './peakHours';
 export type { PeakHoursState } from './peakHours';

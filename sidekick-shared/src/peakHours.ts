@@ -10,6 +10,8 @@
  * Polling / eventing is the caller's responsibility.
  */
 
+import type { ProviderId } from './providers/types';
+
 export interface PeakHoursState {
   status: 'peak' | 'off_peak' | 'unknown';
   isPeak: boolean;
@@ -21,6 +23,7 @@ export interface PeakHoursState {
   note: string;
   updatedAt: string;
   unavailable: boolean;
+  notApplicable?: boolean;
 }
 
 interface PromoClockResponse {
@@ -50,6 +53,41 @@ function unavailableState(): PeakHoursState {
     updatedAt: new Date().toISOString(),
     unavailable: true,
   };
+}
+
+const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
+  'claude-code': 'Claude Code',
+  opencode: 'OpenCode',
+  codex: 'Codex CLI',
+};
+
+export function isClaudeCodeSessionProvider(providerId: ProviderId): boolean {
+  return providerId === 'claude-code';
+}
+
+export function createPeakHoursNotApplicableState(providerId: ProviderId): PeakHoursState {
+  const providerName = PROVIDER_DISPLAY_NAMES[providerId] ?? providerId;
+  return {
+    status: 'unknown',
+    isPeak: false,
+    sessionLimitSpeed: 'unknown',
+    label: 'Claude peak hours not applicable',
+    peakHoursDescription: '',
+    nextChange: null,
+    minutesUntilChange: null,
+    note: `Claude peak hours apply only to Claude Code sessions, not ${providerName}.`,
+    updatedAt: new Date().toISOString(),
+    unavailable: true,
+    notApplicable: true,
+  };
+}
+
+export function scopePeakHoursToSessionProvider(
+  providerId: ProviderId,
+  status: PeakHoursState | null | undefined,
+): PeakHoursState | null {
+  if (!isClaudeCodeSessionProvider(providerId)) return null;
+  return status ?? null;
 }
 
 function normalizeStatus(raw: string | undefined): PeakHoursState['status'] {

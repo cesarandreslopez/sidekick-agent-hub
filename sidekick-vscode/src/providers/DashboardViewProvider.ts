@@ -54,6 +54,7 @@ import {
   readQuotaSnapshot,
   readQuotaHistoryDailyBuckets,
   resolveCodexQuotaFromLocalSources,
+  scopePeakHoursToSessionProvider,
 } from 'sidekick-shared';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
@@ -2309,6 +2310,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       displayName: provider.displayName
     });
     this._syncProviderStatusCards();
+    this._syncPeakHoursCard();
   }
 
   /**
@@ -2393,7 +2395,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * the UI clears any stale pill.
    */
   private _syncPeakHoursCard(): void {
-    const status = this._peakHoursService?.getCachedStatus() ?? null;
+    const providerId = this._sessionMonitor.getProvider().id;
+    const status = scopePeakHoursToSessionProvider(
+      providerId,
+      this._peakHoursService?.getCachedStatus() ?? null,
+    );
     this._postMessage({ type: 'updatePeakHours', status });
   }
 
@@ -6852,7 +6858,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const detailsEl = document.getElementById('peak-hours-details');
         if (!sectionEl || !indicatorEl || !detailsEl) return;
 
-        if (!status || status.unavailable || !status.isPeak) {
+        if (currentProviderId !== 'claude-code' || !status || status.unavailable || !status.isPeak) {
           sectionEl.classList.remove('visible');
           return;
         }
@@ -7475,6 +7481,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         currentQuotaFailure = null;
         currentProviderId = providerId;
         currentProviderName = providerName;
+        if (currentProviderId !== 'claude-code') {
+          updatePeakHours(null);
+        }
 
         // Update instruction file targeting based on provider
         const instructionTargets = {

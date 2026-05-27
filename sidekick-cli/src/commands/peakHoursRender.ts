@@ -21,6 +21,11 @@ export function printPeakHoursBlock(state: PeakHoursState): void {
   process.stdout.write(chalk.bold('Claude Peak Hours\n'));
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
+  if (state.notApplicable) {
+    process.stdout.write(chalk.dim(`  ${state.note || 'Claude peak hours do not apply to this provider.'}\n`));
+    return;
+  }
+
   if (state.unavailable) {
     process.stdout.write(chalk.dim('  Peak-hours status unavailable (promoclock.co unreachable).\n'));
     return;
