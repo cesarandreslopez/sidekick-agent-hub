@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getActiveCodexAccount, resolveSidekickCodexHome } from './codexProfiles';
+import { getActiveCodexAccount, getCodexMonitoringHomes, resolveSidekickCodexHome } from './codexProfiles';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { QuotaState } from './quota';
 import { CodexProvider } from './providers/codex';
@@ -92,6 +92,38 @@ interface CodexUsageApiCredits {
 interface RolloutQuotaHit {
   quota: QuotaState;
   filePath: string;
+  mtimeMs: number;
+}
+
+function timestampMs(value: string | undefined, fallbackMs = 0): number {
+  if (!value) return fallbackMs;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : fallbackMs;
+}
+
+// Codex can report slightly different percentages for the same reset window
+// across recent sessions. Prefer newer reset windows, then the highest observed
+// same-window utilization so local fallbacks do not under-report quota usage.
+function isPreferredQuotaHit(candidate: RolloutQuotaHit, current: RolloutQuotaHit | null): boolean {
+  if (!current) return true;
+
+  const candidatePrimaryReset = timestampMs(candidate.quota.fiveHour.resetsAt);
+  const currentPrimaryReset = timestampMs(current.quota.fiveHour.resetsAt);
+  if (candidatePrimaryReset !== currentPrimaryReset) return candidatePrimaryReset > currentPrimaryReset;
+
+  const candidateSecondaryReset = timestampMs(candidate.quota.sevenDay.resetsAt);
+  const currentSecondaryReset = timestampMs(current.quota.sevenDay.resetsAt);
+  if (candidateSecondaryReset !== currentSecondaryReset) return candidateSecondaryReset > currentSecondaryReset;
+
+  const candidateUtilization = candidate.quota.fiveHour.utilization + candidate.quota.sevenDay.utilization;
+  const currentUtilization = current.quota.fiveHour.utilization + current.quota.sevenDay.utilization;
+  if (candidateUtilization !== currentUtilization) return candidateUtilization > currentUtilization;
+
+  const candidateMs = timestampMs(candidate.quota.capturedAt, candidate.mtimeMs);
+  const currentMs = timestampMs(current.quota.capturedAt, current.mtimeMs);
+  if (candidateMs !== currentMs) return candidateMs > currentMs;
+
+  return candidate.mtimeMs > current.mtimeMs;
 }
 
 function normalizePercent(value: unknown): number {
@@ -254,14 +286,64 @@ export function readLatestCodexQuotaFromRollouts(
     maxSessionFiles?: number;
   } = {},
 ): QuotaState | null {
+  return readLatestCodexQuotaHitFromRollouts(sessionPaths, options)?.quota ?? null;
+}
+
+function readLatestCodexQuotaHitFromRollouts(
+  sessionPaths: string[],
+  options: {
+    source?: 'session' | 'cache';
+    maxTailBytes?: number;
+    maxSessionFiles?: number;
+  } = {},
+): RolloutQuotaHit | null {
   const maxSessionFiles = options.maxSessionFiles ?? DEFAULT_MAX_SESSION_FILES;
   const maxTailBytes = options.maxTailBytes ?? DEFAULT_TAIL_BYTES;
+  let latest: RolloutQuotaHit | null = null;
 
   for (const sessionPath of sessionPaths.slice(0, maxSessionFiles)) {
     const hit = readLatestQuotaFromRollout(sessionPath, maxTailBytes, options.source ?? 'session');
-    if (hit) return hit.quota;
+    if (hit && isPreferredQuotaHit(hit, latest)) {
+      latest = hit;
+    }
   }
-  return null;
+  return latest;
+}
+
+function dedupePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const filePath of paths) {
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
+    unique.push(filePath);
+  }
+  return unique;
+}
+
+function sortPathsByMtimeDesc(paths: string[]): string[] {
+  return [...paths].sort((a, b) => {
+    const aMtime = safeMtimeMs(a);
+    const bMtime = safeMtimeMs(b);
+    return bMtime - aMtime;
+  });
+}
+
+function safeMtimeMs(filePath: string): number {
+  try {
+    return fs.statSync(filePath).mtime.getTime();
+  } catch {
+    return 0;
+  }
+}
+
+function findAccountRolloutFiles(codexHome?: string): string[] {
+  const homes = codexHome ? [codexHome] : getCodexMonitoringHomes();
+  const files: string[] = [];
+  for (const home of homes) {
+    files.push(...findRolloutFiles(path.join(home, 'sessions')));
+  }
+  return sortPathsByMtimeDesc(dedupePaths(files));
 }
 
 export function resolveCodexQuotaFromLocalSources(
@@ -279,19 +361,24 @@ export function resolveCodexQuotaFromLocalSources(
   })();
 
   try {
-    const workspaceSessions = options.workspacePath ? provider.findAllSessions(options.workspacePath) : [];
-    const workspaceQuota = readLatestCodexQuotaFromRollouts(workspaceSessions, { maxTailBytes, maxSessionFiles });
-    if (workspaceQuota) {
-      if (account) writeSnapshot('codex', account.id, workspaceQuota);
-      return enrichCodexQuota(workspaceQuota, account);
+    const candidates: RolloutQuotaHit[] = [];
+    if (options.workspacePath) {
+      const workspaceSessions = provider.findAllSessions(options.workspacePath);
+      const workspaceHit = readLatestCodexQuotaHitFromRollouts(workspaceSessions, { maxTailBytes, maxSessionFiles });
+      if (workspaceHit) candidates.push(workspaceHit);
     }
 
-    const codexHome = options.codexHome ?? resolveSidekickCodexHome();
-    const accountSessions = findRolloutFiles(path.join(codexHome, 'sessions'));
-    const accountQuota = readLatestCodexQuotaFromRollouts(accountSessions, { maxTailBytes, maxSessionFiles });
-    if (accountQuota) {
-      if (account) writeSnapshot('codex', account.id, accountQuota);
-      return enrichCodexQuota(accountQuota, account);
+    const accountSessions = findAccountRolloutFiles(options.codexHome);
+    const accountHit = readLatestCodexQuotaHitFromRollouts(accountSessions, { maxTailBytes, maxSessionFiles });
+    if (accountHit) candidates.push(accountHit);
+
+    const latestHit = candidates.reduce<RolloutQuotaHit | null>(
+      (latest, candidate) => isPreferredQuotaHit(candidate, latest) ? candidate : latest,
+      null,
+    );
+    if (latestHit) {
+      if (account) writeSnapshot('codex', account.id, latestHit.quota);
+      return enrichCodexQuota(latestHit.quota, account);
     }
 
     const cached = account ? readSnapshot('codex', account.id) : null;
@@ -482,7 +569,7 @@ function readLatestQuotaFromRollout(
         };
         if (parsed.type !== 'event_msg' || parsed.payload?.type !== 'token_count') continue;
         const quota = quotaFromCodexRateLimits(parsed.payload.rate_limits, source, parsed.timestamp ?? new Date(stat.mtime).toISOString());
-        if (quota) return { quota, filePath: sessionPath };
+        if (quota) return { quota, filePath: sessionPath, mtimeMs: stat.mtime.getTime() };
       } catch {
         // Ignore malformed or partial lines.
       }

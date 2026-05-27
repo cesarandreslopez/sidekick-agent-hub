@@ -69,6 +69,45 @@ describe('quotaSnapshots', () => {
     ).toEqual([]);
   });
 
+  it('does not replace a newer account snapshot with an older sample', () => {
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(49),
+      capturedAt: '2026-05-19T10:15:00Z',
+    });
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(8),
+      capturedAt: '2026-05-19T10:00:00Z',
+    });
+
+    const cached = readQuotaSnapshot('codex', 'codex-1');
+
+    expect(cached).toMatchObject({
+      capturedAt: '2026-05-19T10:15:00Z',
+      fiveHour: { utilization: 49 },
+    });
+  });
+
+  it('does not replace a higher same-window snapshot with a lower newer sample', () => {
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(52),
+      sevenDay: { utilization: 45, resetsAt: '2026-04-18T20:00:00Z' },
+      capturedAt: '2026-05-19T10:10:00Z',
+    });
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(50),
+      sevenDay: { utilization: 44, resetsAt: '2026-04-18T20:00:00Z' },
+      capturedAt: '2026-05-19T10:15:00Z',
+    });
+
+    const cached = readQuotaSnapshot('codex', 'codex-1');
+
+    expect(cached).toMatchObject({
+      capturedAt: '2026-05-19T10:10:00Z',
+      fiveHour: { utilization: 52 },
+      sevenDay: { utilization: 45 },
+    });
+  });
+
   it('supports concurrent quota snapshot writes from multiple processes', async () => {
     const workerScript = `
       const fs = require('fs');

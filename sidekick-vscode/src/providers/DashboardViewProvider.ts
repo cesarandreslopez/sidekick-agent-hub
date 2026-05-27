@@ -53,6 +53,7 @@ import {
   getActiveCodexAccount,
   readQuotaSnapshot,
   readQuotaHistoryDailyBuckets,
+  resolveCodexQuotaFromLocalSources,
 } from 'sidekick-shared';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
@@ -420,9 +421,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._sendEventLogState();
         // Send session-based quota if available (e.g., Codex rate_limits)
         {
-          const sessionQuota = this._sessionMonitor.getProvider().getQuotaFromSession?.();
+          const provider = this._sessionMonitor.getProvider();
+          const sessionQuota = provider.getQuotaFromSession?.();
           if (sessionQuota) {
             this._handleQuotaUpdate(sessionQuota);
+          } else if (provider.id === 'codex') {
+            this._handleQuotaUpdate(this._getCodexLocalQuota());
           }
         }
         // Send plan history if available
@@ -1617,6 +1621,39 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     void this._sendQuotaHistory();
   }
 
+  private _getCodexLocalQuota(): DashboardQuotaState {
+    const activeCodexAccount = getActiveCodexAccount();
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    try {
+      const local = resolveCodexQuotaFromLocalSources({
+        workspacePath,
+        activeAccount: activeCodexAccount,
+      });
+      if (local) return local;
+    } catch (error) {
+      logError('Failed to resolve Codex quota from local sessions', error);
+    }
+
+    const cached = activeCodexAccount ? readQuotaSnapshot('codex', activeCodexAccount.id) : null;
+    if (cached) {
+      return {
+        ...cached,
+        accountLabel: activeCodexAccount?.label,
+        accountDetail: activeCodexAccount?.email,
+      };
+    }
+
+    return {
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      providerId: 'codex',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+    };
+  }
+
   /**
    * Reads daily-bucket quota history for both providers in the current workspace
    * and posts a {@link QuotaHistoryPayload} to the webview heatmap.
@@ -2213,17 +2250,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Codex: has session-based quota from rate_limits
       this._handleQuotaUpdate(sessionQuota);
     } else if (provider.id === 'codex') {
-      const activeCodexAccount = getActiveCodexAccount();
-      const cached = activeCodexAccount ? readQuotaSnapshot('codex', activeCodexAccount.id) : null;
-      if (cached) {
-        this._handleQuotaUpdate({
-          ...cached,
-          accountLabel: activeCodexAccount?.label,
-          accountDetail: activeCodexAccount?.email,
-        });
-      } else {
-        this._handleQuotaUpdate({ fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false });
-      }
+      this._handleQuotaUpdate(this._getCodexLocalQuota());
     } else if (this._quotaService && provider.id === 'claude-code') {
       // Claude Code: use cached quota from QuotaService, trigger refresh
       const cached = this._quotaService.getCachedQuota();

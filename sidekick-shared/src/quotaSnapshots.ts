@@ -63,6 +63,34 @@ function writeStore(store: QuotaSnapshotStore): void {
   atomicWriteJson(getQuotaSnapshotPath(), store);
 }
 
+function snapshotTimeMs(quota: QuotaState): number {
+  const capturedAt = quota.capturedAt ? Date.parse(quota.capturedAt) : NaN;
+  return Number.isFinite(capturedAt) ? capturedAt : 0;
+}
+
+function windowResetMs(value: string): number {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+// Preserve the best-known same-window snapshot while still allowing lower
+// utilization after Codex advances to a newer reset window.
+function shouldKeepExistingSnapshot(existing: QuotaState, next: QuotaState): boolean {
+  const existingPrimaryReset = windowResetMs(existing.fiveHour.resetsAt);
+  const nextPrimaryReset = windowResetMs(next.fiveHour.resetsAt);
+  if (existingPrimaryReset !== nextPrimaryReset) return existingPrimaryReset > nextPrimaryReset;
+
+  const existingSecondaryReset = windowResetMs(existing.sevenDay.resetsAt);
+  const nextSecondaryReset = windowResetMs(next.sevenDay.resetsAt);
+  if (existingSecondaryReset !== nextSecondaryReset) return existingSecondaryReset > nextSecondaryReset;
+
+  const existingUtilization = existing.fiveHour.utilization + existing.sevenDay.utilization;
+  const nextUtilization = next.fiveHour.utilization + next.sevenDay.utilization;
+  if (existingUtilization !== nextUtilization) return existingUtilization > nextUtilization;
+
+  return snapshotTimeMs(existing) > snapshotTimeMs(next);
+}
+
 export function writeQuotaSnapshot(providerId: AccountProviderId, accountId: string, quota: QuotaState): void {
   const store = readStore();
   const snapshot: QuotaState = {
@@ -74,6 +102,10 @@ export function writeQuotaSnapshot(providerId: AccountProviderId, accountId: str
   };
 
   const index = store.snapshots.findIndex(item => item.providerId === providerId && item.accountId === accountId);
+  if (index >= 0 && shouldKeepExistingSnapshot(store.snapshots[index].quota, snapshot)) {
+    return;
+  }
+
   const record: QuotaSnapshotRecord = {
     providerId,
     accountId,
