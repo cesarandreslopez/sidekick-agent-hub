@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.4] - 2026-05-27
+
+### Changed
+
+- **Peak hours scoped to Claude Code sessions**: `PeakHoursService` now requires both the `claude-max` inference provider and the `claude-code` session provider before polling or rendering. The dashboard pill and status bar `🟠` glyph are hidden when the session provider is OpenCode or Codex, and switching session providers triggers an immediate reconcile
+- **Bundled `sidekick-shared` 0.18.4**: Picks up `scopePeakHoursToSessionProvider()`, `isClaudeCodeSessionProvider()`, `createPeakHoursNotApplicableState()` for peak-hours scoping, the improved Codex quota snapshot selection logic (`isPreferredQuotaHit`, `findAccountRolloutFiles`, `shouldKeepExistingSnapshot`), and the `notApplicable` field on `PeakHoursState`
+
+### Fixed
+
+- **Codex quota fallback on dashboard open**: When no live Codex session provides rate-limit data, the dashboard now resolves quota from local rollout files and account-level sessions via `resolveCodexQuotaFromLocalSources()` before falling back to the snapshot cache — previously it only read the snapshot cache directly
+
 ## [0.18.3] - 2026-05-19
 
 ### Added

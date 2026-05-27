@@ -62,7 +62,7 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 
 ## Peak Hours
 
-Only applies when the inference provider is Claude Max (subscription). See [Peak Hours](../features/peak-hours.md) for background.
+Only applies when the inference provider is Claude Max and the session provider is Claude Code. See [Peak Hours](../features/peak-hours.md) for background.
 
 | Setting | Default | Description |
 |---------|---------|-------------|

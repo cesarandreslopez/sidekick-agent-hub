@@ -5,6 +5,28 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.4] - 2026-05-27
+
+### Fixed (sidekick-shared)
+
+- **Codex quota snapshot selection across multiple rollout files**: When multiple Codex sessions report rate-limit data, the resolver now picks the snapshot from the newest reset window and, within the same window, the highest observed utilization — instead of returning whichever rollout file happened to be scanned first. New helpers `isPreferredQuotaHit()` and `findAccountRolloutFiles()` (which searches across all configured Codex home directories) replace the previous first-match return. `shouldKeepExistingSnapshot()` in the snapshot cache prevents a stale rollout from overwriting a higher-fidelity cached snapshot for the same reset window
+
+### Changed (sidekick-shared)
+
+- **Peak hours scoped to Claude Code session provider**: New helpers `scopePeakHoursToSessionProvider()`, `isClaudeCodeSessionProvider()`, and `createPeakHoursNotApplicableState()` gate peak-hours state on both the `claude-max` inference provider and the `claude-code` session provider. `PeakHoursState` gains an optional `notApplicable` field for providers where peak hours are irrelevant
+
+### Changed (extension)
+
+- **Peak hours hidden for non-Claude Code sessions**: `PeakHoursService` now takes a `getSessionProviderId` callback and requires both `claude-max` inference and `claude-code` session provider before polling. The dashboard pill and status bar glyph are suppressed for OpenCode and Codex session providers, and switching session providers triggers an immediate reconcile
+
+### Changed (CLI)
+
+- **`sidekick peak --provider <id>`**: New flag gates peak-hours output on the session provider. When the resolved provider is not `claude-code`, the command prints a "not applicable" message instead of calling the upstream endpoint. `sidekick peak` without `--provider` continues to auto-detect
+
+### Fixed (extension)
+
+- **Codex quota fallback on dashboard open**: When no live Codex session provides quota and the dashboard is opened or the provider switches to Codex, the dashboard now calls `resolveCodexQuotaFromLocalSources()` (workspace rollouts → account rollouts → snapshot cache) instead of only reading the snapshot cache directly
+
 ## [0.18.3] - 2026-05-19
 
 ### Added (sidekick-shared)

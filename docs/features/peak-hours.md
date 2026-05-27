@@ -16,7 +16,7 @@ Per Anthropic, roughly 7% of Pro users may hit session limits during peak hours 
 
 ## Where Sidekick shows it
 
-The indicator only appears when your active **inference provider is Claude Max** (or your CLI session provider is `claude-code`). OpenCode, Codex, and raw-API-key users never see a peak-hours pill and Sidekick never calls the upstream source on their behalf.
+The indicator only appears when your active **inference provider is Claude Max** and your **session provider is Claude Code**. In the CLI, `sidekick peak` also gates on the session provider (pass `--provider claude-code` to override auto-detection). OpenCode, Codex, and raw-API-key users never see a peak-hours pill and Sidekick never calls the upstream source on their behalf.
 
 ### VS Code extension
 

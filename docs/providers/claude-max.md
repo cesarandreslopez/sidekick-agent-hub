@@ -32,7 +32,7 @@ If quota data becomes unavailable, Sidekick now keeps the quota surface visible 
 
 ## Peak Hours
 
-Anthropic drains session limits faster on weekdays 13:00–19:00 UTC (see [Peak Hours](../features/peak-hours.md) for the full schedule and per-timezone breakdown). Sidekick surfaces this state subtly — a pill in the dashboard and a `🟠` glyph in the status bar during an active peak window; `sidekick peak`, `sidekick quota`, and `sidekick status` in the CLI. The indicator only appears on Claude Max, since API-key and Enterprise paths don't share the same session-limit concept.
+Anthropic drains session limits faster on weekdays 13:00–19:00 UTC (see [Peak Hours](../features/peak-hours.md) for the full schedule and per-timezone breakdown). Sidekick surfaces this state subtly — a pill in the dashboard and a `🟠` glyph in the status bar during an active peak window; `sidekick peak`, `sidekick quota`, and `sidekick status` in the CLI. The indicator requires both the Claude Max inference provider and the Claude Code session provider, since API-key, Enterprise, OpenCode, and Codex paths don't share the same session-limit concept.
 
 ## Multiple Accounts
 

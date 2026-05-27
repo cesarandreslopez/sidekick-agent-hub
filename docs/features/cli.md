@@ -262,9 +262,9 @@ The dashboard also monitors status automatically, but only for the monitored pro
 sidekick peak
 ```
 
-Show whether Claude is currently in [peak hours](peak-hours.md) (weekdays 13:00–19:00 UTC) when session limits drain faster. Works for any user — no provider gate — since the upstream endpoint is public.
+Show whether Claude is currently in [peak hours](peak-hours.md) (weekdays 13:00–19:00 UTC) when session limits drain faster. Gated on the `claude-code` session provider — when the resolved provider is OpenCode or Codex, the command prints a "not applicable" message instead of calling the upstream endpoint.
 
-No command-specific flags. Use `--json` for machine-readable output.
+Flags: `--provider <id>` (override auto-detected provider: `claude-code`, `opencode`, `codex`, `auto`). Use `--json` for machine-readable output.
 
 ```bash
 # Human-readable
