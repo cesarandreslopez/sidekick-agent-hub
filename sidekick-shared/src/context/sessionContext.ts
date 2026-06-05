@@ -113,11 +113,10 @@ export interface BuildSessionContextSnapshotOptions {
   sourceLimit?: number;
 }
 
-export interface ReadSessionContextSnapshotOptions
-  extends Omit<
-    BuildSessionContextSnapshotOptions,
-    'providerId' | 'providerLabel' | 'sessionId' | 'sessionPath' | 'contextWindowForModel' | 'computeContextSize'
-  > {}
+export type ReadSessionContextSnapshotOptions = Omit<
+  BuildSessionContextSnapshotOptions,
+  'providerId' | 'providerLabel' | 'sessionId' | 'sessionPath' | 'contextWindowForModel' | 'computeContextSize'
+>;
 
 export interface SessionContextProjector {
   processEvent(event: SessionEvent): SessionContextSnapshot;
