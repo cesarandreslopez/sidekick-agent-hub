@@ -72,3 +72,9 @@ These systems feed their results into the dashboard, handoffs, notifications, mi
 ## CLI Reader Path
 
 The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) library provides a read-only alternative to the SessionMonitor pipeline. Instead of watching files in real time, the CLI reads session data on demand — useful for loading context at session start or querying session history in batch. Third-party tools can consume the same library directly (`npm install sidekick-shared`).
+
+Codex sessions flow through the same canonical path as the other providers: a `ProviderReaderSessionWatcher` (or a one-shot reader) yields canonical `SessionEvent`s, and `parseTranscriptFromEvents()` turns those into the transcript used by the dashboard, reports, and project timeline. This keeps the CLI and the VS Code extension rendering identical evidence for a given session.
+
+### Session context evidence snapshots
+
+On top of the reader path, `buildSessionContextSnapshot()` / `readSessionContextSnapshot()` project a provider-neutral view of what an assistant has "seen" in a session — layered evidence sources (system, user prompts, tool inputs/outputs, thinking), a low/medium/high **context pressure** band, and observed **capabilities** (tools, MCP servers, permission mode, rate limits). `createSessionContextProjector()` builds the snapshot incrementally as new events stream in. Every session provider exposes `readSessionContextSnapshot()`.

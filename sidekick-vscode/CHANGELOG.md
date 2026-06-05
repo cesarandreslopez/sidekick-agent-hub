@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.5] - 2026-06-04
+
+### Changed
+
+- **Codex parsing parity**: `ProjectTimelineDataService` and related wiring now consume the canonical Codex parsing path (provider reader + `parseTranscriptFromEvents`), keeping the project timeline, dashboard, and reports consistent with the CLI
+- **Bundled `sidekick-shared` 0.18.5**: Picks up the new session context evidence snapshot API (`buildSessionContextSnapshot`, `readSessionContextSnapshot`, `SessionContextSnapshot` and related types) and the Codex session evidence gap closures — `system` audit events, normalized `token_count` rate limits, per-file `apply_patch` expansion, tool-emission dedupe, MCP server attribution, and the new `ProviderReaderSessionWatcher`
+
 ## [0.18.4] - 2026-05-27
 
 ### Changed

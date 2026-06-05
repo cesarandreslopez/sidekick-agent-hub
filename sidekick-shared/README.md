@@ -26,6 +26,7 @@ npm install sidekick-shared
 | **Formatters** | Display helpers (`formatTokenCount()`, `formatDurationMs()`), tool summary, noise classification, session dump (text/markdown/JSON), event highlighting |
 | **Search** | Cross-session full-text search, advanced filtering (substring, fuzzy, regex, date) |
 | **Aggregation** | Event aggregation, frequency tracking, activity heatmaps, pattern extraction |
+| **Session Context** | Provider-neutral context evidence snapshots (`buildSessionContextSnapshot()`, `calculateSessionContextPressure()`, `createSessionContextProjector()`, `readSessionContextSnapshot()`): layered evidence sources, low/medium/high context pressure, and observed capabilities (tools, MCP servers, permission mode, rate limits) |
 | **Report** | Self-contained HTML session report generation |
 | **Credentials** | Claude Max OAuth credential reading from `~/.claude/.credentials.json` |
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
@@ -179,6 +180,26 @@ const usage = extractTokenUsage(event);          // TokenUsage | null
 const tools = extractToolCalls(event);           // ToolCall[]    — assistant content blocks
 const toolFromEvent = extractToolCall(event);    // ToolCall | null — top-level `tool_use` events
 ```
+
+### Project session context evidence
+
+Build a provider-neutral snapshot of what an assistant has "seen" in a session — layered evidence sources, context pressure, and observed capabilities. Read it through any session provider, or build it directly from a canonical `SessionEvent[]`.
+
+```typescript
+import { detectProvider, readSessionContextSnapshot } from 'sidekick-shared';
+
+const provider = await detectProvider('/path/to/project');
+if (provider) {
+  const snapshot = readSessionContextSnapshot(provider, '/path/to/session.jsonl');
+
+  console.log(snapshot.pressure);          // 'low' | 'medium' | 'high'
+  console.log(snapshot.contextTokens, '/', snapshot.contextWindow);
+  console.log(snapshot.capabilities.tools, snapshot.capabilities.mcpServers);
+  console.log(snapshot.sources.length, 'evidence sources');
+}
+```
+
+Use `createSessionContextProjector()` for incremental updates as new events stream in, or `calculateSessionContextPressure(contextTokens, contextWindow)` for the pressure band alone.
 
 ### Format shared dashboard values
 

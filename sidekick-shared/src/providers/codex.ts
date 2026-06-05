@@ -954,8 +954,10 @@ export class CodexProvider implements SessionProviderBase {
       for (const event of reader.readAll()) {
         aggregator.processEvent(event);
       }
-    } catch {
-      // Return an empty stats shell below.
+    } catch (err) {
+      // Return an empty stats shell below. Surface the cause under DEBUG so a
+      // malformed rollout doesn't fail silently during dashboard refreshes.
+      if (process.env.DEBUG) console.error(`CodexProvider.readSessionStats: ${err}`);
     }
 
     const metrics = aggregator.getMetrics();

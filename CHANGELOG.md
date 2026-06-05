@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.5] - 2026-06-04
+
+### Added (sidekick-shared)
+
+- **Session context evidence snapshots**: New `sessionContext` module projects a provider-neutral view of what an assistant has "seen" in a session. `buildSessionContextSnapshot()` extracts layered evidence sources (system, user prompts, tool inputs/outputs, thinking) from canonical `SessionEvent` streams; `calculateSessionContextPressure()` maps token usage to a low/medium/high band (60% / 80% thresholds); `createSessionContextProjector()` builds snapshots incrementally; and `readSessionContextSnapshot()` reads them through a provider reader. New types `SessionContextSnapshot`, `SessionContextSource`, `SessionContextCapabilities` (observed tools, MCP servers, permission mode, rate limits), and `SessionContextPressure`. Exported from both `sidekick-shared` and `sidekick-shared/browser`; all three session providers (`claude-code`, `codex`, `opencode`) gain a `readSessionContextSnapshot()` method
+
+### Fixed (sidekick-shared)
+
+- **Codex session evidence gaps**: The Codex parser now emits `system` audit events for base instructions and developer/system messages, normalizes `token_count` records into `system` events that carry normalized rate limits, expands a single `apply_patch` into one `Edit` per file, dedupes repeated `exec_command` / `mcp_tool_call` emissions, and preserves MCP server attribution (`_sidekickMcpServerName`) on synthesized tool inputs. `EventAggregator` now understands the `system` event type — these events are excluded from message counts and from tool/task/plan/subagent extraction, but still contribute to system-prompt context attribution and token totals. A new `ProviderReaderSessionWatcher` plus `parseTranscriptFromEvents()` route Codex sessions through the canonical `SessionEvent` → transcript path for parity with the other providers
+- **HTML report source labels**: Transcript source labels (e.g. "base instructions", "token count", "developer") now render with a dedicated `.message-source` style instead of reusing the model-name badge
+- **Codex stats read failures**: `readSessionStats` now surfaces a malformed-rollout error under `DEBUG` instead of swallowing it silently
+
+### Changed (extension)
+
+- **Codex parsing parity**: `ProjectTimelineDataService` and the related extension wiring consume the canonical Codex parsing path (provider reader + `parseTranscriptFromEvents`), keeping the project timeline, dashboard, and reports consistent with the CLI
+- **Bundled `sidekick-shared` 0.18.5**: Picks up session context evidence snapshots and the Codex evidence gap closures
+
+### Changed (CLI)
+
+- **Consistent Codex transcripts**: `sidekick dashboard` and `sidekick report` now parse Codex sessions via `parseTranscriptFromEvents()`, matching the canonical event pipeline used elsewhere
+- **Bundled `sidekick-shared` 0.18.5**: Picks up session context evidence snapshots and the Codex evidence gap closures
+
 ## [0.18.4] - 2026-05-27
 
 ### Fixed (sidekick-shared)

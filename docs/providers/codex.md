@@ -23,6 +23,8 @@ Uses the OpenAI API via Codex CLI for inference.
 
 Codex CLI sessions are monitored from all candidate Codex home directories. When a managed Codex profile is active, Sidekick scans that profile's sessions directory first, then falls back to the system default `~/.codex/sessions/`. When `CODEX_HOME` is explicitly set, only that directory is used. Set `sidekick.sessionProvider` to `codex` or leave as `auto`.
 
+Codex evidence is captured at full fidelity: base instructions and developer/system messages surface as `system` audit entries, `token_count` records are normalized into system events that carry rate limits, an `apply_patch` is expanded into one edit per file, repeated tool emissions are de-duplicated, and MCP tool calls keep their server attribution. Codex sessions are parsed through the same canonical event pipeline as the other providers, so the dashboard, reports, and project timeline render consistent transcripts.
+
 ## Rate Limits
 
 Codex CLI embeds rate-limit data in its event stream (via `token_count` events with `rate_limits`). Sidekick extracts this automatically and displays it in:

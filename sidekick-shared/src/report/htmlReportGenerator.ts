@@ -230,6 +230,7 @@ tr:hover td { background: rgba(155,109,255,0.05); }
 .role-badge.summary { background: rgba(107,95,128,0.2); color: var(--text-muted); }
 .message-ts { color: var(--text-muted); margin-left: auto; }
 .message-model { color: var(--text-secondary); font-family: monospace; font-size: 11px; }
+.message-source { color: var(--text-muted); font-family: monospace; font-size: 11px; font-style: italic; }
 .message-tokens { color: var(--text-muted); font-size: 11px; }
 
 .message-body { padding: 12px 14px; }
@@ -533,7 +534,7 @@ function generateTranscript(
 function renderMessage(entry: TranscriptEntry, includeThinking: boolean, includeToolDetail: boolean): string {
   const ts = entry.timestamp ? formatTimestamp(entry.timestamp) : '';
   const roleBadge = `<span class="role-badge ${entry.type}">${entry.type}</span>`;
-  const sourceStr = entry.sourceLabel ? `<span class="message-model">${escapeHtml(entry.sourceLabel)}</span>` : '';
+  const sourceStr = entry.sourceLabel ? `<span class="message-source">${escapeHtml(entry.sourceLabel)}</span>` : '';
   const modelStr = entry.model ? `<span class="message-model">${escapeHtml(entry.model)}</span>` : '';
   const tokenStr = entry.usage
     ? `<span class="message-tokens">${fmtTokens(entry.usage.input_tokens + entry.usage.output_tokens)} tokens</span>`
