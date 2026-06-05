@@ -11,6 +11,21 @@
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
 export { formatDurationMs, formatTokenCount } from './formatting';
 export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
+export {
+  buildSessionContextSnapshot,
+  calculateSessionContextPressure,
+  createSessionContextProjector,
+} from './context/sessionContext';
+export type {
+  BuildSessionContextSnapshotOptions,
+  SessionContextCapabilities,
+  SessionContextLayerBreakdown,
+  SessionContextPressure,
+  SessionContextProjector,
+  SessionContextSnapshot,
+  SessionContextSource,
+  SessionContextSourceType,
+} from './context/sessionContext';
 
 export {
   parseModelId,

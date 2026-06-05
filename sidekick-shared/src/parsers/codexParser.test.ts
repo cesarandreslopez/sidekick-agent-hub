@@ -113,4 +113,33 @@ describe('CodexRolloutParser', () => {
       return content[0].tool_use_id;
     })).toEqual(['patch-1-src/a.ts', 'patch-1-src/b.ts']);
   });
+
+  it('preserves MCP server metadata on synthesized tool inputs', () => {
+    const parser = new CodexRolloutParser();
+
+    parser.convertLine(line('event_msg', {
+      type: 'mcp_tool_call_begin',
+      call_id: 'mcp-1',
+      server_name: 'contextful-cortex',
+      tool_name: 'searchKnowledge',
+      arguments: { query: 'planning' },
+    }));
+    const events = parser.convertLine(line('event_msg', {
+      type: 'mcp_tool_call_end',
+      call_id: 'mcp-1',
+      result: '[]',
+      is_error: false,
+    }));
+
+    const toolUse = events[0].message.content as Array<Record<string, unknown>>;
+    expect(toolUse[0]).toMatchObject({
+      type: 'tool_use',
+      name: 'SearchKnowledge',
+      input: {
+        query: 'planning',
+        _sidekickRawToolName: 'searchKnowledge',
+        _sidekickMcpServerName: 'contextful-cortex',
+      },
+    });
+  });
 });

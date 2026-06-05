@@ -12,6 +12,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { EventAggregator } from '../aggregation/EventAggregator';
+import { readSessionContextSnapshot } from '../context/sessionContext';
+import type {
+  ReadSessionContextSnapshotOptions,
+  SessionContextSnapshot,
+} from '../context/sessionContext';
 import { CodexRolloutParser } from '../parsers/codexParser';
 import { CodexDatabase } from './codexDatabase';
 import { getCodexMonitoringHomes } from '../codexProfiles';
@@ -984,6 +989,13 @@ export class CodexProvider implements SessionProviderBase {
       truncationCount: metrics.truncationCount,
       reportedCost: metrics.tokens.reportedCost,
     };
+  }
+
+  readSessionContextSnapshot(
+    sessionPath: string,
+    options: ReadSessionContextSnapshotOptions = {},
+  ): SessionContextSnapshot {
+    return readSessionContextSnapshot(this, sessionPath, options);
   }
 
   // --- Optional methods ---

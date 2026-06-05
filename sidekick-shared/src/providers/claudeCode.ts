@@ -11,6 +11,11 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { readSessionContextSnapshot } from '../context/sessionContext';
+import type {
+  ReadSessionContextSnapshotOptions,
+  SessionContextSnapshot,
+} from '../context/sessionContext';
 import { JsonlParser, TRUNCATION_PATTERNS } from '../parsers/jsonl';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
@@ -434,6 +439,13 @@ export class ClaudeCodeProvider implements SessionProviderBase {
       truncationCount,
       reportedCost,
     };
+  }
+
+  readSessionContextSnapshot(
+    sessionPath: string,
+    options: ReadSessionContextSnapshotOptions = {},
+  ): SessionContextSnapshot {
+    return readSessionContextSnapshot(this, sessionPath, options);
   }
 
   // --- Optional methods ---

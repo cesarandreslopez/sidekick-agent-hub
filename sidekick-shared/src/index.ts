@@ -200,6 +200,23 @@ export type { FilterMode, FilterState, HighlightFormat as FilterHighlightFormat 
 // Context
 export { composeContext } from './context/composer';
 export type { Fidelity, ContextResult } from './context/composer';
+export {
+  buildSessionContextSnapshot,
+  calculateSessionContextPressure,
+  createSessionContextProjector,
+  readSessionContextSnapshot,
+} from './context/sessionContext';
+export type {
+  BuildSessionContextSnapshotOptions,
+  ReadSessionContextSnapshotOptions,
+  SessionContextCapabilities,
+  SessionContextLayerBreakdown,
+  SessionContextPressure,
+  SessionContextProjector,
+  SessionContextSnapshot,
+  SessionContextSource,
+  SessionContextSourceType,
+} from './context/sessionContext';
 
 // Plan Extraction
 export { PlanExtractor, parsePlanMarkdown as parsePlanMarkdownShared, extractProposedPlan as extractProposedPlanShared } from './parsers/planExtractor';

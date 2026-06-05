@@ -20,6 +20,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { readSessionContextSnapshot } from '../context/sessionContext';
+import type {
+  ReadSessionContextSnapshotOptions,
+  SessionContextSnapshot,
+} from '../context/sessionContext';
 import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput } from '../parsers/openCodeParser';
 import { OpenCodeDatabase } from './openCodeDatabase';
 import type { DbPart } from './openCodeDatabase';
@@ -1473,6 +1478,13 @@ export class OpenCodeProvider implements SessionProviderBase {
       truncationCount: 0,
       reportedCost,
     };
+  }
+
+  readSessionContextSnapshot(
+    sessionPath: string,
+    options: ReadSessionContextSnapshotOptions = {},
+  ): SessionContextSnapshot {
+    return readSessionContextSnapshot(this, sessionPath, options);
   }
 
   // --- Optional methods ---

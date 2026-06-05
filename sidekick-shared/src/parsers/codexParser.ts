@@ -630,6 +630,7 @@ export class CodexRolloutParser {
                 input: {
                   ...(pendingMcp?.arguments || {}),
                   _sidekickRawToolName: toolName,
+                  _sidekickMcpServerName: pendingMcp?.server_name,
                 },
               }],
             },

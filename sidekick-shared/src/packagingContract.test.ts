@@ -32,6 +32,9 @@ describe('packaging contract', () => {
       'formatCost',
       'formatDurationMs',
       'formatTokenCount',
+      'buildSessionContextSnapshot',
+      'calculateSessionContextPressure',
+      'createSessionContextProjector',
     ]) {
       expect(typeof m[k]).toBe('function');
     }
@@ -56,6 +59,8 @@ describe('packaging contract', () => {
     expect(typeof m.formatDurationMs).toBe('function');
     expect(typeof m.formatTokenCount).toBe('function');
     expect(typeof m.extractToolCall).toBe('function');
+    expect(typeof m.readSessionContextSnapshot).toBe('function');
+    expect(typeof m.buildSessionContextSnapshot).toBe('function');
   });
 
   it('dist/phrases.js exposes flat and categorized phrase surfaces', () => {
