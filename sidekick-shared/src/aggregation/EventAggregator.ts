@@ -300,31 +300,35 @@ export class EventAggregator {
       this.currentModel = event.message.model;
     }
 
-    // 3. Skip synthetic token-count events for messageCount
+    // 3. Skip system/audit events and synthetic token-count events for messageCount
     const msgId = event.message.id ?? '';
-    if (!msgId.startsWith('token-count-')) {
+    if (event.type !== 'system' && !msgId.startsWith('token-count-')) {
       this.messageCount++;
     }
 
     // 4. Latency tracking
-    this.processLatency(event);
+    if (event.type !== 'system') {
+      this.processLatency(event);
+    }
 
     // 5. Token accumulation
     if (event.message.usage) {
       this.accumulateUsage(event.message.usage, event.timestamp, event.message.model);
     }
 
-    // 6. Tool extraction from content blocks
-    this.extractToolsFromContent(event);
+    if (event.type !== 'system') {
+      // 6. Tool extraction from content blocks
+      this.extractToolsFromContent(event);
 
-    // 7. Task state
-    this.extractTaskStateFromEvent(event);
+      // 7. Task state
+      this.extractTaskStateFromEvent(event);
 
-    // 8. Subagent tracking
-    this.extractSubagentFromEvent(event);
+      // 8. Subagent tracking
+      this.extractSubagentFromEvent(event);
 
-    // 9. Plan extraction — convert SessionEvent to a FollowEvent shape for PlanExtractor
-    this.extractPlanFromSessionEvent(event);
+      // 9. Plan extraction — convert SessionEvent to a FollowEvent shape for PlanExtractor
+      this.extractPlanFromSessionEvent(event);
+    }
 
     // 10. Context attribution
     this.attributeContextFromEvent(event);
@@ -1684,6 +1688,11 @@ export class EventAggregator {
       if (text) {
         this.contextAttribution.other += this.estimateTokens(text);
       }
+    } else if (event.type === 'system') {
+      const text = this.extractTextContent(event) || '';
+      if (text) {
+        this.contextAttribution.systemPrompt += this.estimateTokens(text);
+      }
     }
   }
 
@@ -1819,6 +1828,11 @@ export class EventAggregator {
       case 'summary':
         tlType = 'compaction';
         description = 'Context compacted';
+        noiseLevel = 'system';
+        break;
+      case 'system':
+        tlType = 'session_start';
+        description = this.extractTextContent(event) ?? event.message.sourceLabel ?? 'System event';
         noiseLevel = 'system';
         break;
       default:

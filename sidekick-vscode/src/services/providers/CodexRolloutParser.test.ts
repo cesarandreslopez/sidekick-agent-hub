@@ -127,7 +127,7 @@ describe('CodexRolloutParser', () => {
       expect(events).toHaveLength(0);
     });
 
-    it('should emit no events for system messages', () => {
+    it('should emit system audit events for system messages', () => {
       const line: CodexRolloutLine = {
         timestamp: '2025-01-15T10:01:00Z',
         type: 'response_item',
@@ -140,7 +140,10 @@ describe('CodexRolloutParser', () => {
       };
 
       const events = parser.convertLine(line);
-      expect(events).toHaveLength(0);
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('system');
+      expect(events[0].message.sourceLabel).toBe('system');
+      expect(events[0].message.content).toEqual([{ type: 'text', text: 'System prompt' }]);
     });
   });
 
@@ -400,7 +403,8 @@ describe('CodexRolloutParser', () => {
 
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
-      expect(events[0].type).toBe('assistant');
+      expect(events[0].type).toBe('system');
+      expect(events[0].message.sourceLabel).toBe('token count');
       expect(events[0].message.usage).toEqual({
         input_tokens: 1000,
         output_tokens: 200,

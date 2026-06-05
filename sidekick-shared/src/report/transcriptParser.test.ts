@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
-import { parseTranscript } from './transcriptParser';
+import { parseTranscript, parseTranscriptFromEvents } from './transcriptParser';
+import type { SessionEvent } from '../types/sessionEvent';
 
 vi.mock('fs');
 const mockedFs = vi.mocked(fs);
@@ -42,6 +43,59 @@ describe('parseTranscript', () => {
     expect(result[0].content).toHaveLength(1);
     expect(result[0].content[0].type).toBe('text');
     expect(result[0].content[0].text).toBe('Hello, help me with code');
+  });
+
+  it('parses canonical Codex system audit events', () => {
+    const events: SessionEvent[] = [{
+      type: 'system',
+      timestamp: '2026-06-01T12:00:00Z',
+      message: {
+        role: 'developer',
+        sourceLabel: 'developer',
+        content: [{ type: 'text', text: 'Use the repo conventions.' }],
+      },
+    }];
+
+    const result = parseTranscriptFromEvents(events);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      type: 'system',
+      sourceLabel: 'developer',
+      content: [{ type: 'text', text: 'Use the repo conventions.' }],
+    });
+  });
+
+  it('preserves canonical Codex tool calls and results', () => {
+    const events: SessionEvent[] = [{
+      type: 'assistant',
+      timestamp: '2026-06-01T12:00:00Z',
+      message: {
+        role: 'assistant',
+        content: [{
+          type: 'tool_use',
+          id: 'call-1',
+          name: 'Bash',
+          input: { command: 'npm test' },
+        }],
+      },
+    }, {
+      type: 'user',
+      timestamp: '2026-06-01T12:00:01Z',
+      message: {
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'call-1',
+          content: 'Process exited with code 1',
+          is_error: true,
+        }],
+      },
+    }];
+
+    const result = parseTranscriptFromEvents(events);
+    expect(result).toHaveLength(2);
+    expect(result[0].content[0]).toMatchObject({ type: 'tool_use', toolName: 'Bash', toolUseId: 'call-1' });
+    expect(result[1].content[0]).toMatchObject({ type: 'tool_result', toolUseId: 'call-1', isError: true });
   });
 
   it('parses assistant message with text and usage', () => {

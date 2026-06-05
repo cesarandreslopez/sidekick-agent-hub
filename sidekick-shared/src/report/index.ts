@@ -3,7 +3,7 @@
  */
 
 export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './types';
-export { parseTranscript } from './transcriptParser';
+export { parseTranscript, parseTranscriptFromEvents } from './transcriptParser';
 export { generateHtmlReport } from './htmlReportGenerator';
 export { openInBrowser } from './openBrowser';
 export { escapeHtml, simpleMarkdownToHtml, highlightCodeBlock } from './htmlHelpers';

@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { EventAggregator } from '../aggregation/EventAggregator';
 import { CodexRolloutParser } from '../parsers/codexParser';
 import { CodexDatabase } from './codexDatabase';
 import { getCodexMonitoringHomes } from '../codexProfiles';
@@ -280,9 +281,9 @@ function extractFirstUserMessage(rolloutPath: string): string | null {
 
         // Check event_msg with user_message
         if (parsed.type === 'event_msg') {
-          const payload = parsed.payload as { event?: { type: string; message?: string } };
-          if (payload.event?.type === 'user_message' && payload.event.message?.trim()) {
-            return truncate(payload.event.message, 60);
+          const payload = parsed.payload as { type?: string; message?: string };
+          if (payload.type === 'user_message' && payload.message?.trim()) {
+            return truncate(payload.message, 60);
           }
         }
       } catch {
@@ -298,39 +299,94 @@ function extractFirstUserMessage(rolloutPath: string): string | null {
 
 /** Extract searchable text from a rollout line. */
 function extractSearchableText(line: CodexRolloutLine): string {
+  const parts: string[] = [];
+
   switch (line.type) {
+    case 'session_meta': {
+      const payload = line.payload as CodexSessionMeta;
+      if (payload.cwd) parts.push(payload.cwd);
+      if (payload.source) parts.push(payload.source);
+      if (payload.base_instructions?.text) parts.push(payload.base_instructions.text);
+      if (payload.git?.branch) parts.push(payload.git.branch);
+      if (payload.git?.commit) parts.push(payload.git.commit);
+      return parts.join(' ');
+    }
+
     case 'response_item': {
-      const payload = line.payload as { item?: { type: string; content?: unknown; arguments?: string; output?: string } };
-      const item = payload.item;
-      if (!item) return '';
+      const item = line.payload as Record<string, unknown>;
       if (item.type === 'message') {
-        if (typeof item.content === 'string') return item.content;
-        if (Array.isArray(item.content)) {
-          return item.content
-            .map((p: { text?: string }) => p.text || '')
-            .filter(Boolean)
-            .join(' ');
+        parts.push(extractTextFromUnknownContent(item.content));
+      }
+      if (item.type === 'reasoning') {
+        const summary = item.summary;
+        if (Array.isArray(summary)) {
+          for (const entry of summary as Array<Record<string, unknown>>) {
+            if (typeof entry.text === 'string') parts.push(entry.text);
+          }
         }
       }
-      if (item.type === 'function_call' && item.arguments) return item.arguments;
-      if (item.type === 'function_call_output' && item.output) return item.output;
-      return '';
+      if (item.type === 'function_call') {
+        if (typeof item.name === 'string') parts.push(item.name);
+        if (typeof item.arguments === 'string') parts.push(item.arguments);
+      }
+      if (item.type === 'function_call_output' && typeof item.output === 'string') {
+        parts.push(item.output);
+      }
+      if (item.type === 'local_shell_call') {
+        const action = item.action as Record<string, unknown> | undefined;
+        const command = action?.command;
+        if (Array.isArray(command)) parts.push(command.map(String).join(' '));
+        if (typeof action?.workdir === 'string') parts.push(action.workdir);
+      }
+      if (item.type === 'custom_tool_call') {
+        if (typeof item.name === 'string') parts.push(item.name);
+        if (typeof item.input === 'string') parts.push(item.input);
+      }
+      if (item.type === 'custom_tool_call_output' && typeof item.output === 'string') {
+        parts.push(item.output);
+      }
+      return parts.filter(Boolean).join(' ');
     }
+
     case 'event_msg': {
-      const payload = line.payload as { event?: { type: string; message?: string; result?: string } };
-      const event = payload.event;
-      if (!event) return '';
-      if (event.message) return event.message;
-      if (event.result) return event.result;
-      return '';
+      const event = line.payload as Record<string, unknown>;
+      for (const key of ['type', 'message', 'result', 'stdout', 'stderr', 'summary', 'error', 'code', 'tool_name', 'server_name']) {
+        if (typeof event[key] === 'string') parts.push(event[key] as string);
+      }
+      const command = event.command;
+      if (Array.isArray(command)) parts.push(command.map(String).join(' '));
+      if (event.arguments && typeof event.arguments === 'object') parts.push(JSON.stringify(event.arguments));
+      return parts.filter(Boolean).join(' ');
     }
+
     case 'compacted': {
       const payload = line.payload as { summary?: string };
       return payload.summary || '';
     }
+
+    case 'turn_context': {
+      const payload = line.payload as Record<string, unknown>;
+      for (const key of ['model', 'cwd', 'approval_policy', 'sandbox_policy', 'effort']) {
+        if (typeof payload[key] === 'string') parts.push(payload[key] as string);
+      }
+      return parts.join(' ');
+    }
+
     default:
       return '';
   }
+}
+
+function extractTextFromUnknownContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map(part => {
+      const p = part as Record<string, unknown>;
+      return typeof p.text === 'string' ? p.text : '';
+    })
+    .filter(Boolean)
+    .join(' ');
 }
 
 // ---------------------------------------------------------------------------
@@ -883,72 +939,50 @@ export class CodexProvider implements SessionProviderBase {
 
   readSessionStats(sessionPath: string): SessionFileStats {
     const sessionId = extractSessionId(path.basename(sessionPath));
-    let messageCount = 0;
-    let startTime = '';
-    let endTime = '';
-    const tokens = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
-    const modelUsage: Record<string, { calls: number; tokens: number }> = {};
-    const toolUsage: Record<string, number> = {};
-    let compactionEstimate = 0;
-    let currentModel = 'unknown';
+    const aggregator = new EventAggregator({
+      providerId: 'codex',
+      computeContextSize: usage => usage.inputTokens,
+    });
 
     try {
-      const content = fs.readFileSync(sessionPath, 'utf8');
-      const lines = content.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('{')) continue;
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (!startTime && parsed.timestamp) startTime = parsed.timestamp;
-          if (parsed.timestamp) endTime = parsed.timestamp;
-          if (parsed.type === 'turn_context' && parsed.payload?.model) currentModel = parsed.payload.model;
-          if (parsed.type === 'compacted') compactionEstimate++;
-          if (parsed.type === 'response_item') {
-            const p = parsed.payload;
-            if (p?.role === 'user' || p?.role === 'assistant') messageCount++;
-            if (p?.type === 'function_call') {
-              const name = p.name || 'unknown';
-              toolUsage[name] = (toolUsage[name] || 0) + 1;
-            }
-            if (p?.type === 'local_shell_call') toolUsage['Bash'] = (toolUsage['Bash'] || 0) + 1;
-            if (p?.type === 'custom_tool_call') {
-              const name = p.name || 'unknown';
-              toolUsage[name] = (toolUsage[name] || 0) + 1;
-            }
-          }
-          if (parsed.type === 'event_msg') {
-            const evt = parsed.payload;
-            if (evt?.type === 'token_count') {
-              const usage = evt.info?.last_token_usage || evt.info?.total_token_usage;
-              if (usage) {
-                tokens.input = usage.input_tokens || 0;
-                tokens.output = usage.output_tokens || 0;
-                tokens.cacheRead = usage.cached_input_tokens || 0;
-                if (!modelUsage[currentModel]) modelUsage[currentModel] = { calls: 0, tokens: 0 };
-                modelUsage[currentModel].calls++;
-                modelUsage[currentModel].tokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
-              }
-            }
-          }
-        } catch { /* skip */ }
+      const reader = this.createReader(sessionPath);
+      for (const event of reader.readAll()) {
+        aggregator.processEvent(event);
       }
-    } catch { /* skip */ }
+    } catch {
+      // Return an empty stats shell below.
+    }
+
+    const metrics = aggregator.getMetrics();
+    const modelUsage: Record<string, { calls: number; tokens: number }> = {};
+    for (const model of metrics.modelStats) {
+      modelUsage[model.model] = { calls: model.calls, tokens: model.tokens };
+    }
+
+    const toolUsage: Record<string, number> = {};
+    for (const tool of metrics.toolStats) {
+      toolUsage[tool.name] = tool.successCount + tool.failureCount + tool.pendingCount;
+    }
 
     return {
       providerId: 'codex',
       sessionId,
       filePath: sessionPath,
       label: this.extractSessionLabel(sessionPath),
-      startTime,
-      endTime,
-      messageCount,
-      tokens,
+      startTime: metrics.sessionStartTime || '',
+      endTime: metrics.lastEventTime || '',
+      messageCount: metrics.messageCount,
+      tokens: {
+        input: metrics.tokens.inputTokens,
+        output: metrics.tokens.outputTokens,
+        cacheWrite: metrics.tokens.cacheWriteTokens,
+        cacheRead: metrics.tokens.cacheReadTokens,
+      },
       modelUsage,
       toolUsage,
-      compactionEstimate,
-      truncationCount: 0,
-      reportedCost: 0,
+      compactionEstimate: metrics.compactionCount,
+      truncationCount: metrics.truncationCount,
+      reportedCost: metrics.tokens.reportedCost,
     };
   }
 

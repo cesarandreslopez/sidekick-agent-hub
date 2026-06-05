@@ -31,6 +31,7 @@ export const messageUsageSchema = z.object({
 export const sessionMessageSchema = z.object({
   role: z.string(),
   id: z.string().optional(),
+  sourceLabel: z.string().optional(),
   model: z.string().optional(),
   usage: messageUsageSchema.optional(),
   content: z.unknown().optional(),
@@ -48,11 +49,23 @@ export const permissionModeSchema = z.enum([
 // ── SessionEvent ──
 
 export const sessionEventSchema = z.object({
-  type: z.enum(['user', 'assistant', 'tool_use', 'tool_result', 'summary']),
+  type: z.enum(['user', 'assistant', 'tool_use', 'tool_result', 'summary', 'system']),
   message: sessionMessageSchema,
   timestamp: z.string(),
   isSidechain: z.boolean().optional(),
   permissionMode: permissionModeSchema.optional(),
+  rateLimits: z.object({
+    primary: z.object({
+      usedPercent: z.number(),
+      windowMinutes: z.number(),
+      resetsAt: z.number(),
+    }).optional(),
+    secondary: z.object({
+      usedPercent: z.number(),
+      windowMinutes: z.number(),
+      resetsAt: z.number(),
+    }).optional(),
+  }).optional(),
   tool: z.object({
     name: z.string(),
     input: z.record(z.string(), z.unknown()),

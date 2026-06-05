@@ -1227,6 +1227,37 @@ describe('EventAggregator', () => {
     });
   });
 
+  describe('system SessionEvent handling', () => {
+    it('does not count system audit events as conversation messages', () => {
+      agg.processEvent(makeSessionEvent({
+        type: 'system',
+        message: {
+          role: 'system',
+          sourceLabel: 'base instructions',
+          content: [{ type: 'text', text: 'Audit context' }],
+        },
+        timestamp: '2026-06-01T12:00:00Z',
+      }));
+      agg.processEvent(makeSessionEvent({
+        type: 'system',
+        message: {
+          role: 'system',
+          sourceLabel: 'token count',
+          usage: { input_tokens: 100, output_tokens: 20 },
+          content: [],
+        },
+        timestamp: '2026-06-01T12:00:01Z',
+      }));
+
+      const metrics = agg.getMetrics();
+      expect(metrics.eventCount).toBe(2);
+      expect(metrics.messageCount).toBe(0);
+      expect(metrics.tokens.inputTokens).toBe(100);
+      expect(metrics.tokens.outputTokens).toBe(20);
+      expect(metrics.contextAttribution.systemPrompt).toBeGreaterThan(0);
+    });
+  });
+
   // ═══════════════════════════════════════════════════════════════
   // Task tracking from FollowEvent
   // ═══════════════════════════════════════════════════════════════

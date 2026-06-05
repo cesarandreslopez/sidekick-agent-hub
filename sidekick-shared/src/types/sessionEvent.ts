@@ -46,6 +46,9 @@ export interface SessionMessage {
   /** Optional message identifier (for deduplication) */
   id?: string;
 
+  /** Optional human-readable source label (e.g. "developer", "base instructions"). */
+  sourceLabel?: string;
+
   /** Model identifier (e.g., "claude-opus-4-20250514") */
   model?: string;
 
@@ -64,7 +67,7 @@ export interface SessionMessage {
  */
 export interface SessionEvent {
   /** Event type discriminator */
-  type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'summary';
+  type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'summary' | 'system';
 
   /** Message data containing role, model, usage */
   message: SessionMessage;
@@ -77,6 +80,12 @@ export interface SessionEvent {
 
   /** Permission mode active when this event occurred */
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
+  /** Subscription rate limits, when provided by the session source. */
+  rateLimits?: {
+    primary?: { usedPercent: number; windowMinutes: number; resetsAt: number };
+    secondary?: { usedPercent: number; windowMinutes: number; resetsAt: number };
+  };
 
   /** Tool use details (when type is 'tool_use') */
   tool?: {

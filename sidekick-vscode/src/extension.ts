@@ -1533,10 +1533,13 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const { generateHtmlReport, parseTranscript } = await import('sidekick-shared');
+      const { generateHtmlReport, parseTranscript, parseTranscriptFromEvents } = await import('sidekick-shared');
 
       const metrics = sessionMonitor.getAggregatedMetrics();
-      const transcript = parseTranscript(sessionPath);
+      const provider = sessionMonitor.getProvider();
+      const transcript = provider.id === 'codex'
+        ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
+        : parseTranscript(sessionPath);
       const sessionFileName = path.basename(sessionPath);
       const html = generateHtmlReport(metrics, transcript, { sessionFileName });
 

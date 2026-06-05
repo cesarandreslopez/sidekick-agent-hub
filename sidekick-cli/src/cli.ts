@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { detectProvider, ensureDefaultAccounts } from 'sidekick-shared';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
-import type { ProviderId, SessionProvider } from 'sidekick-shared';
+import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 
 // Fire-and-forget: warm the pricing catalog so `stats` / `dashboard` show
@@ -48,7 +48,7 @@ export function resolveProviderId(
   return detectProvider();
 }
 
-export function resolveProvider(opts: { provider?: string }): SessionProvider {
+export function resolveProvider(opts: { provider?: string }): SessionProviderBase {
   const id = resolveProviderId(opts);
   switch (id) {
     case 'opencode': return new OpenCodeProvider();

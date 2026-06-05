@@ -533,6 +533,7 @@ function generateTranscript(
 function renderMessage(entry: TranscriptEntry, includeThinking: boolean, includeToolDetail: boolean): string {
   const ts = entry.timestamp ? formatTimestamp(entry.timestamp) : '';
   const roleBadge = `<span class="role-badge ${entry.type}">${entry.type}</span>`;
+  const sourceStr = entry.sourceLabel ? `<span class="message-model">${escapeHtml(entry.sourceLabel)}</span>` : '';
   const modelStr = entry.model ? `<span class="message-model">${escapeHtml(entry.model)}</span>` : '';
   const tokenStr = entry.usage
     ? `<span class="message-tokens">${fmtTokens(entry.usage.input_tokens + entry.usage.output_tokens)} tokens</span>`
@@ -550,6 +551,7 @@ function renderMessage(entry: TranscriptEntry, includeThinking: boolean, include
   return `<div class="message ${entry.type}" data-type="${entry.type}">
   <div class="message-header">
     ${roleBadge}
+    ${sourceStr}
     ${modelStr}
     ${tokenStr}
     <span class="message-ts">${ts}</span>

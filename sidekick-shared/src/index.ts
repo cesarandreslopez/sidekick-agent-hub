@@ -266,7 +266,7 @@ export { PatternExtractor } from './aggregation/PatternExtractor';
 export type { PatternCluster, SerializedPatternState } from './aggregation/PatternExtractor';
 
 // Report — HTML session report generation
-export { generateHtmlReport, parseTranscript, openInBrowser } from './report';
+export { generateHtmlReport, parseTranscript, parseTranscriptFromEvents, openInBrowser } from './report';
 export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './report';
 
 // Credential I/O (platform-aware: Keychain on macOS, file on Linux/Windows)

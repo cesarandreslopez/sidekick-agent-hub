@@ -23,6 +23,8 @@ export interface TranscriptContentBlock {
 export interface TranscriptEntry {
   type: 'user' | 'assistant' | 'system' | 'summary';
   timestamp: string;
+  /** Optional human-readable source label (e.g. "developer", "base instructions"). */
+  sourceLabel?: string;
   model?: string;
   usage?: {
     input_tokens: number;

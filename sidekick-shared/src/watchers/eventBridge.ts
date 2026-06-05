@@ -32,6 +32,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
     : undefined;
   const cost = usage?.reported_cost;
   const model = event.message?.model;
+  const rateLimits = event.rateLimits;
 
   switch (event.type) {
     case 'user': {
@@ -125,6 +126,25 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       break;
     }
 
+    case 'system': {
+      const text = extractTextContent(event.message?.content);
+      const label = event.message?.sourceLabel || event.message?.role || 'system';
+      const summary = text || (usage
+        ? `Tokens: ${usage.input_tokens || 0} in / ${usage.output_tokens || 0} out`
+        : label);
+      events.push({
+        providerId, type: 'system', timestamp: ts,
+        summary: label && text ? `${label}: ${text}` : summary,
+        tokens,
+        cacheTokens,
+        cost,
+        model,
+        rateLimits,
+        raw: event,
+      });
+      break;
+    }
+
     default: {
       // Handle 'result' and other types as system events
       const evtType = (event as { type: string }).type;
@@ -142,6 +162,12 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
   if (permissionMode) {
     for (const e of events) {
       e.permissionMode = permissionMode;
+    }
+  }
+
+  if (rateLimits) {
+    for (const e of events) {
+      e.rateLimits = e.rateLimits ?? rateLimits;
     }
   }
 
