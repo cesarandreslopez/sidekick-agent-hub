@@ -41,6 +41,7 @@ export interface ActiveAccountInfo {
 export interface AccountManagerResult {
   success: boolean;
   error?: string;
+  warning?: string;
   needsLogin?: boolean;
   profileId?: string;
   codexHome?: string;
