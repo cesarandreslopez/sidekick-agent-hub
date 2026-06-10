@@ -76,3 +76,34 @@ export const sessionEventSchema = z.object({
     is_error: z.boolean().optional(),
   }).optional(),
 }) satisfies z.ZodType<SessionEvent>;
+
+// ── Progress unwrapping ──
+
+/** Recursion bound for nested progress envelopes; real data nests 1 level. */
+const MAX_PROGRESS_DEPTH = 8;
+
+/**
+ * Extracts canonical SessionEvents from a raw JSONL value.
+ *
+ * Claude Code wraps subagent/SDK events as
+ * `{ type: 'progress', data: { message: <SessionEvent> } }`, which
+ * `sessionEventSchema` alone rejects. This helper tries a direct parse,
+ * then unwraps progress envelopes (recursively, in case of nesting).
+ * Returns zero events for unrecognized input — never throws.
+ */
+export function extractSessionEvents(raw: unknown, depth = 0): SessionEvent[] {
+  const direct = sessionEventSchema.safeParse(raw);
+  if (direct.success) return [direct.data];
+
+  if (depth >= MAX_PROGRESS_DEPTH) return [];
+  if (typeof raw === 'object' && raw !== null && (raw as { type?: unknown }).type === 'progress') {
+    const data = (raw as { data?: unknown }).data;
+    if (typeof data === 'object' && data !== null) {
+      const message = (data as { message?: unknown }).message;
+      if (typeof message === 'object' && message !== null) {
+        return extractSessionEvents(message, depth + 1);
+      }
+    }
+  }
+  return [];
+}

@@ -4,6 +4,7 @@ import {
   sessionMessageSchema,
   sessionEventSchema,
   permissionModeSchema,
+  extractSessionEvents,
 } from './sessionEvent';
 
 describe('messageUsageSchema', () => {
@@ -143,5 +144,60 @@ describe('sessionEventSchema', () => {
       timestamp: '2026-03-23T10:00:00Z',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('extractSessionEvents', () => {
+  const userEvent = {
+    type: 'user',
+    message: { role: 'user', content: 'Fix this bug' },
+    timestamp: '2026-03-23T10:00:00Z',
+  };
+
+  it('returns a direct event as-is', () => {
+    const events = extractSessionEvents(userEvent);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual(userEvent);
+  });
+
+  it('unwraps a progress-wrapped event', () => {
+    const events = extractSessionEvents({
+      type: 'progress',
+      data: { message: userEvent },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual(userEvent);
+  });
+
+  it('unwraps doubly-nested progress envelopes', () => {
+    const events = extractSessionEvents({
+      type: 'progress',
+      data: { message: { type: 'progress', data: { message: userEvent } } },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual(userEvent);
+  });
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['number', 42],
+    ['string', 'not an event'],
+    ['empty object', {}],
+    ['bare progress', { type: 'progress' }],
+    ['progress with empty data', { type: 'progress', data: {} }],
+    ['progress with non-object message', { type: 'progress', data: { message: 'nope' } }],
+    ['progress with invalid inner event', { type: 'progress', data: { message: { type: 'bogus' } } }],
+    ['non-progress unknown type', { type: 'file-history-snapshot' }],
+  ])('returns [] for %s without throwing', (_label, raw) => {
+    expect(extractSessionEvents(raw)).toEqual([]);
+  });
+
+  it('stops at the recursion bound for adversarial nesting', () => {
+    let wrapped: unknown = userEvent;
+    for (let i = 0; i < 20; i++) {
+      wrapped = { type: 'progress', data: { message: wrapped } };
+    }
+    expect(extractSessionEvents(wrapped)).toEqual([]);
   });
 });
