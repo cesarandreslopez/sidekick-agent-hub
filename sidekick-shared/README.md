@@ -31,7 +31,7 @@ npm install sidekick-shared
 | **Credentials** | Claude Max OAuth credential reading from `~/.claude/.credentials.json` |
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
 | **Provider Status** | API health checking via status.claude.com and status.openai.com (indicator, components, incidents) |
-| **Schemas** | Zod schemas for runtime JSONL event validation (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`) |
+| **Schemas** | Zod schemas for runtime validation of data crossing process/IPC boundaries — JSONL session events (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`), quota, account status, and quota history — plus `extractSessionEvents()` to unwrap `progress`-wrapped events. Also published fs-free via the [`sidekick-shared/schemas`](#supported-import-paths) subpath |
 | **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCall()` (top-level `tool_use`), `extractToolCalls()` (assistant content blocks) |
 | **Model Info & Pricing** | Model family parsing (Anthropic / OpenAI / Google, including legacy `claude-3-opus-…` and `claude-3-5-sonnet-…` IDs), context-window lookup (including Fable 5 / Opus 4.8 / Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, null-aware cost (`calculateCost()`), provenance-preserving cost (`calculateCostWithProvenance()`, `mergeCostSources()`), and display helpers (`shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, `sortModelIds()`, `formatCost()`) |
 | **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
@@ -54,6 +54,7 @@ npm install sidekick-shared
 | `sidekick-shared/modelContext`    | Any runtime                 | Direct access to the context-window module.                        |
 | `sidekick-shared/modelInfo`       | Any runtime                 | Direct access to model parsing and cost math.                      |
 | `sidekick-shared/formatting`      | Any runtime                 | Direct access to pure token and duration display helpers.           |
+| `sidekick-shared/schemas`         | Any runtime                 | Pure Zod boundary schemas (session events, quota, account status, quota history) — fs-free, no Node builtins. |
 
 ### Browser / webview runtimes
 
@@ -222,6 +223,8 @@ const parser = new JsonlParser(
 );
 parser.processChunk(rawData);
 ```
+
+The boundary schemas — `sessionEventSchema` plus the quota, account-status, and quota-history schemas — are also importable fs-free from `sidekick-shared/schemas`, which keeps Zod out of bundles that only need the pure math/formatting helpers. `extractSessionEvents()` from the same subpath unwraps Claude Code `progress`-wrapped events into canonical `SessionEvent[]`.
 
 ### Tail raw JSONL events incrementally
 

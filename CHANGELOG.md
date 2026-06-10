@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - 2026-06-09
+
+### Added (sidekick-shared)
+
+- **Zod boundary schemas**: Runtime validation for the data shapes that cross process/IPC boundaries — quota (`quotaStateSchema`, `quotaWindowSchema`, `providerQuotaStateSchema`, `claudeProviderQuotaStateSchema`, `codexProviderQuotaStateSchema`, `providerQuotaMapSchema`, `peakHoursStateSchema`, `quotaFailureDescriptorSchema`), quota history (`quotaHistorySampleSchema`, `quotaHistoryDailyBucketSchema`), and account status (`activeAccountStatusSchema`, `activeProviderAccountStatusSchema`). Each is exported alongside its mirrored TypeScript type
+- **`extractSessionEvents()` helper**: Unwraps Claude Code's `{ type: 'progress', data: { message } }` envelopes — which `sessionEventSchema` alone rejects — into canonical `SessionEvent[]`. Recurses through nested envelopes (depth-bounded at 8), returns zero events for unrecognized input, and never throws
+- **`sidekick-shared/schemas` subpath**: A dedicated entry point exposing the Zod boundary schemas without `node:fs` / `node:path` — lean enough to import into browser bundles or boundary-validation modules without dragging in the rest of the library
+
+### Changed (sidekick-shared)
+
+- **Forgiving model-ID lookups**: `getModelContextWindowSize()`, `parseModelId()`, and `getModelPricing()` now trim and lowercase their input, so padded or mixed-case IDs (e.g. `" Claude-Opus-4-8 "`) resolve without caller-side normalization. `getModelPricing()` still tries the verbatim ID first — preserving mixed-case LiteLLM override keys — before retrying normalized
+- **`sideEffects: false`**: The package is now marked side-effect-free so downstream bundlers can tree-shake unused exports
+
 ## [0.19.0] - 2026-06-09
 
 ### Added (sidekick-shared)

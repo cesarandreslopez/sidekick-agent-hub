@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - 2026-06-09
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.19.1**: Model-ID pricing and context-window lookups (behind the dashboard's cost and context gauges) now tolerate padded or mixed-case IDs. The shared library also gains Zod boundary schemas, an `extractSessionEvents()` progress-unwrapping helper, and a `/schemas` subpath export for downstream consumers — internal additions that don't change CLI behavior
+
 ## [0.19.0] - 2026-06-09
 
 ### Added
