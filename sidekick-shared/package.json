@@ -17,6 +17,10 @@
       "types": "./dist/node.d.ts",
       "default": "./dist/node.js"
     },
+    "./schemas": {
+      "types": "./dist/schemas/index.d.ts",
+      "default": "./dist/schemas/index.js"
+    },
     "./phrases": {
       "types": "./dist/phrases.d.ts",
       "default": "./dist/phrases.js"
@@ -42,6 +46,7 @@
   "files": [
     "dist"
   ],
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },

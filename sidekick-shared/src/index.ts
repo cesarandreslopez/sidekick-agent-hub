@@ -435,7 +435,37 @@ export {
   sessionMessageSchema,
   sessionEventSchema,
   permissionModeSchema,
+  extractSessionEvents,
 } from './schemas/sessionEvent';
+
+// Schemas — Zod runtime validation for quota / provider quota / peak hours
+export {
+  quotaWindowSchema,
+  quotaStateSchema,
+  quotaFailureKindSchema,
+  quotaProviderIdSchema,
+  quotaSourceSchema,
+  peakHoursStateSchema,
+  quotaFailureDescriptorSchema,
+  runtimeQuotaProviderSchema,
+  providerQuotaStateSchema,
+  claudeProviderQuotaStateSchema,
+  codexProviderQuotaStateSchema,
+  providerQuotaMapSchema,
+} from './schemas/quota';
+
+// Schemas — Zod runtime validation for quota history
+export {
+  quotaHistoryRuntimeProviderSchema,
+  quotaHistorySampleSchema,
+  quotaHistoryDailyBucketSchema,
+} from './schemas/quotaHistory';
+
+// Schemas — Zod runtime validation for account status
+export {
+  activeProviderAccountStatusSchema,
+  activeAccountStatusSchema,
+} from './schemas/accountStatus';
 
 // Provider Status
 export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';
