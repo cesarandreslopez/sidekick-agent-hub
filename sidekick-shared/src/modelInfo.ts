@@ -337,12 +337,15 @@ const GEMINI_RE = /^gemini-([0-9][0-9.A-Za-z-]*)/i;
 /**
  * Parses a model ID into {provider, family, version}.
  *
+ * Input is trimmed and lowercased before matching, so padded or mixed-case
+ * IDs (e.g. " Claude-Opus-4-8 ") parse without caller-side normalization.
+ *
  * Recognizes Anthropic (Claude), OpenAI (GPT + o-series), and Google (Gemini).
  * Returns null for anything else — callers should treat that as "unknown model".
  */
 export function parseModelId(modelId: string): ParsedModelId | null {
   if (!modelId) return null;
-  const normalized = modelId.replace(/\[1m\]/gi, '');
+  const normalized = modelId.replace(/\[1m\]/gi, '').trim().toLowerCase();
 
   const claude = normalized.match(CLAUDE_RE);
   if (claude) {
@@ -387,6 +390,19 @@ function findLongestPrefix(keys: string[], modelId: string): string | null {
   return null;
 }
 
+/** Override-then-static lookup, exact then longest-prefix at each stage. */
+function lookupPricing(modelId: string): ModelPricing | null {
+  if (overrideTable[modelId]) return overrideTable[modelId];
+  const overridePrefix = findLongestPrefix(overrideSortedKeys, modelId);
+  if (overridePrefix) return overrideTable[overridePrefix];
+
+  if (PRICING_TABLE[modelId]) return PRICING_TABLE[modelId];
+  const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, modelId);
+  if (staticPrefix) return PRICING_TABLE[staticPrefix];
+
+  return null;
+}
+
 /**
  * Gets pricing for a model ID.
  *
@@ -395,24 +411,22 @@ function findLongestPrefix(keys: string[], modelId: string): string | null {
  *   2. Static PRICING_TABLE.
  *   3. `null` — unknown model. Callers MUST handle this.
  *
+ * The ID is first looked up verbatim (minus the "[1m]" suffix) — override
+ * keys from the LiteLLM catalog are stored as published and may be
+ * mixed-case — then retried trimmed/lowercased so padded or mixed-case IDs
+ * resolve against the lowercase tables.
+ *
  * @returns Pricing for the model, or null if unknown. No silent fallback.
  */
 export function getModelPricing(modelId: string): ModelPricing | null {
   if (!modelId) return null;
-  const normalized = modelId.replace(/\[1m\]/gi, '');
+  const stripped = modelId.replace(/\[1m\]/gi, '');
 
-  // 1. Overrides (exact then longest-prefix)
-  if (overrideTable[normalized]) return overrideTable[normalized];
-  const overridePrefix = findLongestPrefix(overrideSortedKeys, normalized);
-  if (overridePrefix) return overrideTable[overridePrefix];
+  const direct = lookupPricing(stripped);
+  if (direct) return direct;
 
-  // 2. Static (exact then longest-prefix)
-  if (PRICING_TABLE[normalized]) return PRICING_TABLE[normalized];
-  const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, normalized);
-  if (staticPrefix) return PRICING_TABLE[staticPrefix];
-
-  // 3. Unknown
-  return null;
+  const normalized = stripped.trim().toLowerCase();
+  return normalized === stripped ? null : lookupPricing(normalized);
 }
 
 /**

@@ -88,4 +88,23 @@ describe('getModelContextWindowSize', () => {
   it('exports DEFAULT_CONTEXT_WINDOW as 200_000', () => {
     expect(DEFAULT_CONTEXT_WINDOW).toBe(200_000);
   });
+
+  describe('input normalization', () => {
+    it('trims and lowercases before exact match', () => {
+      expect(getModelContextWindowSize('Claude-Opus-4-8 ')).toBe(1_000_000);
+      expect(getModelContextWindowSize('GPT-4O')).toBe(128_000);
+    });
+
+    it('trims and lowercases before prefix match', () => {
+      expect(getModelContextWindowSize(' CLAUDE-SONNET-4-6-20250414')).toBe(1_000_000);
+    });
+
+    it('honors an uppercase [1M] suffix', () => {
+      expect(getModelContextWindowSize('claude-sonnet-4-5[1M]')).toBe(1_000_000);
+    });
+
+    it('returns default for whitespace-only input', () => {
+      expect(getModelContextWindowSize('  ')).toBe(200_000);
+    });
+  });
 });

@@ -114,6 +114,15 @@ describe('parseModelId', () => {
       version: '3.5',
     });
   });
+
+  it('trims and lowercases padded or mixed-case IDs', () => {
+    expect(parseModelId(' Claude-Opus-4-8 ')).toEqual(parseModelId('claude-opus-4-8'));
+    expect(parseModelId('GPT-4O')).toEqual({
+      provider: 'openai',
+      family: 'gpt',
+      version: '4o',
+    });
+  });
 });
 
 describe('getModelPricing', () => {
@@ -204,6 +213,31 @@ describe('getModelPricing', () => {
     });
     const pricing = getModelPricing('mystery-model-v2-20260101');
     expect(pricing!.outputCostPerMillion).toBe(42);
+  });
+
+  it('resolves padded or mixed-case IDs against the lowercase tables', () => {
+    expect(getModelPricing('Claude-Opus-4-8 ')).toEqual(getModelPricing('claude-opus-4-8'));
+    expect(getModelPricing('Claude-Opus-4-8 ')).not.toBeNull();
+
+    const fable = getModelPricing('CLAUDE-FABLE-5[1M]');
+    expect(fable).not.toBeNull();
+    expect(fable!.inputCostPerMillion).toBe(10.0);
+  });
+
+  it('still matches mixed-case override keys verbatim', () => {
+    // LiteLLM catalog keys are stored as published; the verbatim first-stage
+    // lookup must keep matching them even when they are not lowercase.
+    _setPricingOverrides({
+      'MiXeD-Case-Model': {
+        inputCostPerMillion: 1,
+        outputCostPerMillion: 2,
+        cacheWriteCostPerMillion: 0,
+        cacheReadCostPerMillion: 0,
+      },
+    });
+    const pricing = getModelPricing('MiXeD-Case-Model-20260101');
+    expect(pricing).not.toBeNull();
+    expect(pricing!.outputCostPerMillion).toBe(2);
   });
 });
 
