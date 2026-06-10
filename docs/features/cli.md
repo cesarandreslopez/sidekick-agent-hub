@@ -640,7 +640,7 @@ The CLI reads from the same `~/.config/sidekick/` directory as the VS Code exten
 | `accounts/accounts.json` | Multi-provider account registry (v2) |
 | `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per Claude account |
 | `accounts/configs/*.config.json` | Backed-up account identity per Claude account |
-| `accounts/codex/profiles/*/codex-home/` | Isolated Codex profile directories |
+| `accounts/codex/profiles/*/codex-home/` | Backed-up credentials per Codex profile (swapped into `~/.codex/auth.json` on switch) |
 | `quota-snapshots.json` | Cached rate-limit snapshots per provider/account |
 
 Any data written by the VS Code extension is immediately visible in the CLI, and vice versa.

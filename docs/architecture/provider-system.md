@@ -57,7 +57,7 @@ Defined as `SessionProvider` in `src/types/sessionProvider.ts`:
 |----|-------------|------------|
 | `claude-code` | Claude Code sessions | `~/.claude/projects/` |
 | `opencode` | OpenCode sessions | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) |
-| `codex` | Codex CLI sessions | Managed profile home + `~/.codex/sessions/` (all candidates scanned) |
+| `codex` | Codex CLI sessions | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model) |
 
 Each session provider normalizes raw data into the common `ClaudeSessionEvent` format.
 
@@ -78,7 +78,7 @@ Inference and session providers are independent — you can use Claude Max for i
 Account management is provider-aware via a v2 registry format (`~/.config/sidekick/accounts/accounts.json`). Each provider (Claude Code, Codex) maintains its own active account independently — switching Claude accounts does not affect Codex, and vice versa.
 
 - **Claude Code accounts** store backed-up OAuth credentials and identity metadata
-- **Codex accounts** use isolated profile directories with independent `CODEX_HOME` paths, allowing each profile to have its own auth, config, and session data
+- **Codex accounts** store backed-up credentials in isolated profile directories; switching accounts atomically swaps the target profile's credentials into the system `~/.codex/auth.json`, mirroring the Claude switch pattern
 
 The registry auto-migrates from v1 (single-provider) to v2 (multi-provider) on first read. Quota snapshots are cached per provider/account for offline fallback.
 

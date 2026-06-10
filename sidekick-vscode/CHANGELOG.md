@@ -5,7 +5,7 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.19.0] - 2026-06-09
 
 ### Added
 
@@ -14,11 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Refreshed Anthropic model tier defaults**: The `claude-api` and `opencode` inference providers now resolve fast/balanced/powerful to `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-8`. The previous defaults were retired or retiring upstream — `claude-3-5-haiku-20241022` was retired in February 2026 (requests 404), and `claude-sonnet-4-20250514` / `claude-opus-4-20250514` retire June 15, 2026
+- **Codex account switching now swaps `~/.codex/auth.json`**: Switching or adding a Codex account activates it by atomically swapping the profile's backed-up credentials into the system `~/.codex/` home (mirroring the Claude switch pattern), so codex terminals outside VS Code pick up the switch. Profile directories become pure credential backups; a one-time startup migration reconciles installs created under the old `CODEX_HOME`-redirection model, stashing unknown live credentials instead of dropping them
+- **Bundled `sidekick-shared` 0.19.0**: Picks up the Codex `auth.json` swap machinery, the new model support, and the pricing fixes
 
 ### Fixed
 
 - **Opus 4.6/4.7 cost over-estimation**: Dashed model IDs (`claude-opus-4-6`, `claude-opus-4-7`) fell back to the Opus 4.0 pricing tier ($15/$75 instead of $5/$25), inflating estimated costs 3×
 - **Haiku 4.5 unpriced under dashed IDs**: Costs for `claude-haiku-4-5-*` sessions could render as "—" because no dashed static pricing key existed
+
+## [0.18.5] - 2026-06-04
 
 ### Changed
 

@@ -5,11 +5,15 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.19.0] - 2026-06-09
 
 ### Added
 
 - **Claude Opus 4.8 & Fable 5 support**: The dashboard's context-window gauge and cost estimates recognize `claude-opus-4-8` and `claude-fable-5` (both 1M-token context; Opus 4.8: $5/$25 per MTok, Fable 5: $10/$50 per MTok) via the shared model catalog
+
+### Changed
+
+- **Codex account switching now swaps `~/.codex/auth.json`**: `sidekick account --provider codex --switch-to <id>` (and `--add`) activates the account by atomically swapping its backed-up credentials into the system `~/.codex/` home, mirroring the Claude switch pattern — codex terminals outside Sidekick pick up the switch. Profile directories become pure credential backups, with a one-time startup migration for installs created under the old `CODEX_HOME`-redirection model. The command surfaces swap warnings on add, switch, and remove: a running codex process that needs restarting, stale credentials, or OS-keyring credential storage that Sidekick cannot swap
 
 ### Fixed
 
