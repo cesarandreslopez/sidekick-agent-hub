@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Claude Opus 4.8 & Fable 5 support**: The dashboard's context-window gauge and cost estimates recognize `claude-opus-4-8` and `claude-fable-5` (both 1M-token context; Opus 4.8: $5/$25 per MTok, Fable 5: $10/$50 per MTok) via the shared model catalog
+
+### Fixed
+
+- **Opus 4.6/4.7 cost over-estimation**: Dashed model IDs fell back to the Opus 4.0 pricing tier ($15/$75 instead of $5/$25), inflating estimated costs 3×
+- **Haiku 4.5 unpriced under dashed IDs**: Costs for `claude-haiku-4-5-*` sessions could render as "—" because no dashed static pricing key existed
+
 ## [0.18.5] - 2026-06-04
 
 ### Changed

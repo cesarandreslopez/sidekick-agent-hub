@@ -68,7 +68,7 @@ export class ApiKeyClient implements ClaudeClient {
     try {
       // Simple test call with minimal tokens
       await this.client.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5',
         max_tokens: 10,
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -87,13 +87,13 @@ export class ApiKeyClient implements ClaudeClient {
   private mapModel(model?: string): string {
     switch (model) {
       case 'haiku':
-        return 'claude-3-5-haiku-20241022';
+        return 'claude-haiku-4-5';
       case 'sonnet':
-        return 'claude-sonnet-4-20250514';
+        return 'claude-sonnet-4-6';
       case 'opus':
-        return 'claude-opus-4-20250514';
+        return 'claude-opus-4-8';
       default:
-        return 'claude-3-5-haiku-20241022';
+        return 'claude-haiku-4-5';
     }
   }
 

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added (sidekick-shared)
+
+- **Claude Opus 4.8 & Fable 5 support**: `claude-opus-4-8` and `claude-fable-5` (Anthropic's new Mythos-class flagship) are now recognized everywhere models are interpreted — 1M-token context windows in `getModelContextWindowSize()`, static pricing (Opus 4.8: $5/$25 per MTok; Fable 5: $10/$50 per MTok, with standard 1.25×/0.1× cache write/read multipliers), `parseModelId()` recognizes the `fable` family, `shortModelName()` renders "Fable", and model pickers rank Fable above Opus
+
+### Fixed (sidekick-shared)
+
+- **Opus 4.6/4.7 cost over-estimation**: Dashed model IDs (`claude-opus-4-6`, `claude-opus-4-7`) used to prefix-match the `claude-opus-4` pricing entry ($15/$75) instead of their actual $5/$25 rate, inflating estimated costs 3×. The static table now carries explicit dashed and dotted keys for Opus 4.6/4.7/4.8 and corrects the dotted `claude-opus-4.6` entry
+- **Haiku 4.5 unpriced under dashed IDs**: `claude-haiku-4-5-20251001` matched no static pricing key (only the dotted `claude-haiku-4.5` existed), so costs rendered as "—" unless the LiteLLM catalog hydration rescued it. Dashed keys for Haiku 4.5 and Sonnet 4.5/4.6 are now in the static table
+
+### Changed (extension)
+
+- **Refreshed Anthropic model tier defaults**: The `claude-api` and `opencode` inference providers now resolve fast/balanced/powerful to `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-8`. The previous defaults were retired or retiring upstream — `claude-3-5-haiku-20241022` was retired in February 2026 (requests 404), and `claude-sonnet-4-20250514` / `claude-opus-4-20250514` retire June 15, 2026. `ApiKeyClient`'s availability probe and shorthand mapping were updated to match
+- **Fable display names**: Dashboard, conversation view, and webview model labels recognize `claude-fable-5`; the dashboard context-window tooltip no longer claims a fixed 200K window
+
 ## [0.18.5] - 2026-06-04
 
 ### Added (sidekick-shared)

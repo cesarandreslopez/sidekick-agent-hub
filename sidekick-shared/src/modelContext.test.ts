@@ -28,6 +28,14 @@ describe('getModelContextWindowSize', () => {
     expect(getModelContextWindowSize('claude-sonnet-4-7-20260101')).toBe(1_000_000);
   });
 
+  it('returns 1M for Opus 4.8 and Fable 5', () => {
+    expect(getModelContextWindowSize('claude-opus-4-8')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-opus-4-8-20260528')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-fable-5')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-fable-5-20260609')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-fable-5[1m]')).toBe(1_000_000);
+  });
+
   it('honors the [1m] suffix as an explicit 1M marker', () => {
     expect(getModelContextWindowSize('claude-opus-4-7[1m]')).toBe(1_000_000);
     expect(getModelContextWindowSize('claude-opus-4-7[1M]')).toBe(1_000_000);

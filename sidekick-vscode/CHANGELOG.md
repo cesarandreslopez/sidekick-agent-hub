@@ -5,7 +5,20 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.18.5] - 2026-06-04
+## [Unreleased]
+
+### Added
+
+- **Claude Opus 4.8 & Fable 5 support**: Both new models are recognized across the dashboard, conversation view, and cost estimation — 1M-token context windows, pricing (Opus 4.8: $5/$25 per MTok; Fable 5: $10/$50 per MTok), and "Fable" display labels
+
+### Changed
+
+- **Refreshed Anthropic model tier defaults**: The `claude-api` and `opencode` inference providers now resolve fast/balanced/powerful to `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-8`. The previous defaults were retired or retiring upstream — `claude-3-5-haiku-20241022` was retired in February 2026 (requests 404), and `claude-sonnet-4-20250514` / `claude-opus-4-20250514` retire June 15, 2026
+
+### Fixed
+
+- **Opus 4.6/4.7 cost over-estimation**: Dashed model IDs (`claude-opus-4-6`, `claude-opus-4-7`) fell back to the Opus 4.0 pricing tier ($15/$75 instead of $5/$25), inflating estimated costs 3×
+- **Haiku 4.5 unpriced under dashed IDs**: Costs for `claude-haiku-4-5-*` sessions could render as "—" because no dashed static pricing key existed
 
 ### Changed
 

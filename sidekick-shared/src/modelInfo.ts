@@ -99,10 +99,26 @@ export interface ModelDisplayInfo {
  * Sources:
  *   - Anthropic: https://www.anthropic.com/pricing
  *   - OpenAI: https://openai.com/api/pricing/
- * Snapshot taken: 2026-04-17. Runtime LiteLLM hydration refreshes this.
+ * Snapshot taken: 2026-06-09. Runtime LiteLLM hydration refreshes this.
+ *
+ * Anthropic keys appear in both dashed (`claude-opus-4-8`, the real model-ID
+ * form) and dotted (`claude-opus-4.8`, the LiteLLM catalog form) spellings —
+ * prefix matching cannot bridge the two, so both are needed.
  */
 const PRICING_TABLE: Record<string, ModelPricing> = {
   // ── Anthropic: Claude ──
+  'claude-fable-5': {
+    inputCostPerMillion: 10.0,
+    outputCostPerMillion: 50.0,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1.0,
+  },
+  'claude-haiku-4-5': {
+    inputCostPerMillion: 1.0,
+    outputCostPerMillion: 5.0,
+    cacheWriteCostPerMillion: 1.25,
+    cacheReadCostPerMillion: 0.1,
+  },
   'claude-haiku-4.5': {
     inputCostPerMillion: 1.0,
     outputCostPerMillion: 5.0,
@@ -115,7 +131,19 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 1.0,
     cacheReadCostPerMillion: 0.08,
   },
+  'claude-sonnet-4-6': {
+    inputCostPerMillion: 3.0,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 3.75,
+    cacheReadCostPerMillion: 0.3,
+  },
   'claude-sonnet-4.6': {
+    inputCostPerMillion: 3.0,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 3.75,
+    cacheReadCostPerMillion: 0.3,
+  },
+  'claude-sonnet-4-5': {
     inputCostPerMillion: 3.0,
     outputCostPerMillion: 15.0,
     cacheWriteCostPerMillion: 3.75,
@@ -133,11 +161,41 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 3.75,
     cacheReadCostPerMillion: 0.3,
   },
+  'claude-opus-4-8': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4.8': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4-7': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4.7': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4-6': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
   'claude-opus-4.6': {
-    inputCostPerMillion: 15.0,
-    outputCostPerMillion: 75.0,
-    cacheWriteCostPerMillion: 18.75,
-    cacheReadCostPerMillion: 1.5,
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
   },
   'claude-opus-4.5': {
     inputCostPerMillion: 5.0,
@@ -145,6 +203,7 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 6.25,
     cacheReadCostPerMillion: 0.5,
   },
+  // Opus 4.0 / 4.1 — pre-4.5 pricing tier
   'claude-opus-4': {
     inputCostPerMillion: 15.0,
     outputCostPerMillion: 75.0,
@@ -269,7 +328,7 @@ export function _clearPricingOverrides(): void {
 
 // ── Model ID Parsing ──
 
-const CLAUDE_RE = /^claude-(haiku|sonnet|opus)-([0-9.]+)/i;
+const CLAUDE_RE = /^claude-(haiku|sonnet|opus|fable)-([0-9.]+)/i;
 const LEGACY_CLAUDE_RE = /^claude-([0-9]+(?:[-.][0-9]+)?)-(haiku|sonnet|opus)(?:-|$)/i;
 const GPT_RE = /^gpt-([0-9][0-9.A-Za-z-]*)/i;
 const O_SERIES_RE = /^o([0-9]+)(-mini|-pro)?/i;
@@ -483,9 +542,10 @@ export function shortModelName(modelId: string): string {
 }
 
 const CLAUDE_FAMILY_RANK: Record<string, number> = {
-  opus: 0,
-  sonnet: 1,
-  haiku: 2,
+  fable: 0,
+  opus: 1,
+  sonnet: 2,
+  haiku: 3,
 };
 
 function versionRank(version: string | null): number {

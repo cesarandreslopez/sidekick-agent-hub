@@ -37,6 +37,19 @@ describe('parseModelId', () => {
     });
   });
 
+  it('parses Fable model IDs', () => {
+    expect(parseModelId('claude-fable-5')).toEqual({
+      provider: 'anthropic',
+      family: 'fable',
+      version: '5',
+    });
+    expect(parseModelId('claude-fable-5[1m]')).toEqual({
+      provider: 'anthropic',
+      family: 'fable',
+      version: '5',
+    });
+  });
+
   it('parses OpenAI GPT model IDs', () => {
     expect(parseModelId('gpt-4o')).toEqual({
       provider: 'openai',
@@ -109,6 +122,38 @@ describe('getModelPricing', () => {
     expect(pricing).not.toBeNull();
     expect(pricing!.inputCostPerMillion).toBe(3.0);
     expect(pricing!.outputCostPerMillion).toBe(15.0);
+  });
+
+  it('returns pricing for Opus 4.8 and Fable 5', () => {
+    const opus48 = getModelPricing('claude-opus-4-8');
+    expect(opus48).not.toBeNull();
+    expect(opus48!.inputCostPerMillion).toBe(5.0);
+    expect(opus48!.outputCostPerMillion).toBe(25.0);
+
+    const fable = getModelPricing('claude-fable-5');
+    expect(fable).not.toBeNull();
+    expect(fable!.inputCostPerMillion).toBe(10.0);
+    expect(fable!.outputCostPerMillion).toBe(50.0);
+    expect(fable!.cacheWriteCostPerMillion).toBe(12.5);
+    expect(fable!.cacheReadCostPerMillion).toBe(1.0);
+  });
+
+  it('prices dashed Opus 4.6/4.7 IDs at the 4.5+ tier, not the Opus 4.0 tier', () => {
+    // Regression: dashed IDs used to prefix-match 'claude-opus-4' ($15/$75).
+    for (const id of ['claude-opus-4-6', 'claude-opus-4-7', 'claude-opus-4-6-20251101']) {
+      const pricing = getModelPricing(id);
+      expect(pricing).not.toBeNull();
+      expect(pricing!.inputCostPerMillion).toBe(5.0);
+      expect(pricing!.outputCostPerMillion).toBe(25.0);
+    }
+  });
+
+  it('prices dashed Haiku 4.5 IDs', () => {
+    // Regression: 'claude-haiku-4-5-20251001' matched no static key and showed "—".
+    const pricing = getModelPricing('claude-haiku-4-5-20251001');
+    expect(pricing).not.toBeNull();
+    expect(pricing!.inputCostPerMillion).toBe(1.0);
+    expect(pricing!.outputCostPerMillion).toBe(5.0);
   });
 
   it('returns pricing for known OpenAI models', () => {
@@ -298,6 +343,8 @@ describe('model display helpers', () => {
   it('uses compact labels for legacy and modern Claude IDs', () => {
     expect(shortModelName('claude-opus-4-20250514')).toBe('Opus');
     expect(shortModelName('claude-3-sonnet-20240229')).toBe('Sonnet');
+    expect(shortModelName('claude-fable-5')).toBe('Fable');
+    expect(shortModelName('claude-fable-5[1m]')).toBe('Fable');
   });
 
   it('normalizes common OpenAI labels', () => {
@@ -317,6 +364,18 @@ describe('model display helpers', () => {
       'claude-sonnet-4.5',
       'claude-haiku-4.5',
       'gpt-4o',
+    ]);
+  });
+
+  it('ranks Fable above Opus', () => {
+    expect(sortModelIds([
+      'claude-opus-4-8',
+      'claude-fable-5',
+      'claude-sonnet-4-6',
+    ])).toEqual([
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-sonnet-4-6',
     ]);
   });
 });

@@ -96,6 +96,26 @@ describe('ModelPricingService', () => {
       });
     });
 
+    it('returns correct pricing for Opus 4.8', () => {
+      const pricing = ModelPricingService.getPricing('claude-opus-4-8');
+      expect(pricing).toEqual({
+        inputCostPerMillion: 5.0,
+        outputCostPerMillion: 25.0,
+        cacheWriteCostPerMillion: 6.25,
+        cacheReadCostPerMillion: 0.5,
+      });
+    });
+
+    it('returns correct pricing for Fable 5', () => {
+      const pricing = ModelPricingService.getPricing('claude-fable-5');
+      expect(pricing).toEqual({
+        inputCostPerMillion: 10.0,
+        outputCostPerMillion: 50.0,
+        cacheWriteCostPerMillion: 12.5,
+        cacheReadCostPerMillion: 1.0,
+      });
+    });
+
     it('returns GPT-4o pricing', () => {
       const pricing = ModelPricingService.getPricing('gpt-4o');
       expect(pricing).not.toBeNull();

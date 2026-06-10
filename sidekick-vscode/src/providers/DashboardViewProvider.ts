@@ -5297,7 +5297,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       </div>
 
       <div class="gauge-row" id="gauge-row">
-        <div class="gauge-row-item context-item" title="How much of Claude's 200K token context window is currently in use">
+        <div class="gauge-row-item context-item" title="How much of the model's context window (200K–1M tokens depending on model) is currently in use">
           <div class="section-title">Context Window</div>
           <div class="context-gauge" title="Green: &lt;50% | Orange: 50-79% | Red: ≥80%. When full, older context is summarized.">
             <canvas id="contextChart"></canvas>
@@ -6422,7 +6422,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Extracts short model name from full ID.
        */
       function getShortModelName(modelId) {
-        const match = modelId.match(/claude-(haiku|sonnet|opus)-([0-9.]+)/i);
+        const match = modelId.match(/claude-(haiku|sonnet|opus|fable)-([0-9.]+)/i);
         if (match) {
           return match[1].charAt(0).toUpperCase() + match[1].slice(1) + ' ' + match[2];
         }

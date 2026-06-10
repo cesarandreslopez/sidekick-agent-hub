@@ -5,7 +5,9 @@
 
 /** Known model context window sizes (in tokens). */
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
-  // Claude — native 1M context (Opus 4.6+, Sonnet 4.6+)
+  // Claude — native 1M context (Fable 5, Opus 4.6+, Sonnet 4.6+)
+  'claude-fable-5': 1_000_000,
+  'claude-opus-4-8': 1_000_000,
   'claude-opus-4-7': 1_000_000,
   'claude-opus-4-6': 1_000_000,
   'claude-sonnet-4-7': 1_000_000,

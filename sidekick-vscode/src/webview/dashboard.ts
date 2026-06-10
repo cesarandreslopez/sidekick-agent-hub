@@ -167,7 +167,7 @@ function formatTimeRemaining(minutes: number): string {
  * @returns Short name (e.g., "Opus 4")
  */
 function getShortModelName(modelId: string): string {
-  const match = modelId.match(/claude-(haiku|sonnet|opus)-([0-9.]+)/i);
+  const match = modelId.match(/claude-(haiku|sonnet|opus|fable)-([0-9.]+)/i);
   if (match) {
     return match[1].charAt(0).toUpperCase() + match[1].slice(1) + ' ' + match[2];
   }
