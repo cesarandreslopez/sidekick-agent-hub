@@ -116,8 +116,13 @@ function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
   const tmp = filePath + '.tmp';
   const json = JSON.stringify(data, null, 2);
   JSON.parse(json);
-  fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* nothing to clean up */ }
+    throw err;
+  }
 }
 
 // auth.json must be copied byte-for-byte: re-serializing would drop fields
