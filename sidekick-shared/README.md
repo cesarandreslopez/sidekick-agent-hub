@@ -27,11 +27,12 @@ npm install sidekick-shared
 | **Search** | Cross-session full-text search, advanced filtering (substring, fuzzy, regex, date) |
 | **Aggregation** | Event aggregation, frequency tracking, activity heatmaps, pattern extraction |
 | **Session Context** | Provider-neutral context evidence snapshots (`buildSessionContextSnapshot()`, `calculateSessionContextPressure()`, `createSessionContextProjector()`, `readSessionContextSnapshot()`): layered evidence sources, low/medium/high context pressure, and observed capabilities (tools, MCP servers, permission mode, rate limits) |
+| **Assistant Turns** | Browser-safe process/answer projection for provider-normalized assistant turns (`segmentAssistantTurn()`, `assistantTurnEventsFromSessionEvents()`), including reasoning blocks, compact tool groups, and Claude `Task` subagent refs without prompt leakage |
 | **Report** | Self-contained HTML session report generation |
 | **Credentials** | Claude Max OAuth credential reading from `~/.claude/.credentials.json` |
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
 | **Provider Status** | API health checking via status.claude.com and status.openai.com (indicator, components, incidents) |
-| **Schemas** | Zod schemas for runtime validation of data crossing process/IPC boundaries — JSONL session events (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`), quota, account status, and quota history — plus `extractSessionEvents()` to unwrap `progress`-wrapped events. Also published fs-free via the [`sidekick-shared/schemas`](#supported-import-paths) subpath |
+| **Schemas** | Zod schemas for runtime validation of data crossing process/IPC boundaries — JSONL session events (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`), assistant turns, quota, account status, and quota history — plus `extractSessionEvents()` to unwrap `progress`-wrapped events. Also published fs-free via the [`sidekick-shared/schemas`](#supported-import-paths) subpath |
 | **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCall()` (top-level `tool_use`), `extractToolCalls()` (assistant content blocks) |
 | **Model Info & Pricing** | Model family parsing (Anthropic / OpenAI / Google, including legacy `claude-3-opus-…` and `claude-3-5-sonnet-…` IDs), context-window lookup (including Fable 5 / Opus 4.8 / Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, null-aware cost (`calculateCost()`), provenance-preserving cost (`calculateCostWithProvenance()`, `mergeCostSources()`), and display helpers (`shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, `sortModelIds()`, `formatCost()`) |
 | **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
@@ -48,13 +49,13 @@ npm install sidekick-shared
 | Path                              | Runtime                     | What it exposes                                                    |
 |-----------------------------------|-----------------------------|--------------------------------------------------------------------|
 | `sidekick-shared`                 | Node (CLI, extension host)  | Full public API (readers, providers, parsers, pricing, …).         |
-| `sidekick-shared/browser`         | **Browser / webview**       | Pure helpers: context-window lookup, model parsing, cost math.     |
+| `sidekick-shared/browser`         | **Browser / webview**       | Pure helpers: context-window lookup, model parsing, cost math, assistant turn projection. |
 | `sidekick-shared/node`            | Node only                   | LiteLLM pricing catalog hydration (`fs` + `path`).                 |
 | `sidekick-shared/phrases`         | Any runtime                 | Phrase arrays + `getRandomPhrase()`.                               |
 | `sidekick-shared/modelContext`    | Any runtime                 | Direct access to the context-window module.                        |
 | `sidekick-shared/modelInfo`       | Any runtime                 | Direct access to model parsing and cost math.                      |
 | `sidekick-shared/formatting`      | Any runtime                 | Direct access to pure token and duration display helpers.           |
-| `sidekick-shared/schemas`         | Any runtime                 | Pure Zod boundary schemas (session events, quota, account status, quota history) — fs-free, no Node builtins. |
+| `sidekick-shared/schemas`         | Any runtime                 | Pure Zod boundary schemas (session events, assistant turns, quota, account status, quota history) — fs-free, no Node builtins. |
 
 ### Browser / webview runtimes
 
@@ -69,6 +70,7 @@ import {
   formatCost,
   formatTokenCount,
   formatDurationMs,
+  segmentAssistantTurn,
 } from 'sidekick-shared/browser';
 ```
 
@@ -201,6 +203,23 @@ if (provider) {
 ```
 
 Use `createSessionContextProjector()` for incremental updates as new events stream in, or `calculateSessionContextPressure(contextTokens, contextWindow)` for the pressure band alone.
+
+### Project an assistant turn into Process + Answer
+
+Build a compact UI-safe projection from provider-normalized turn events. The final contiguous text run becomes `answer`; earlier narration, tools, and reasoning stay in `process` / `reasoningBlocks`.
+
+```typescript
+import {
+  assistantTurnEventsFromSessionEvents,
+  segmentAssistantTurn,
+} from 'sidekick-shared/browser';
+
+const projection = segmentAssistantTurn(assistantTurnEventsFromSessionEvents(sessionEvents));
+
+console.log(projection.answer);
+console.log(projection.process.steps);
+console.log(projection.subagents); // Claude Task spawns, prompt text omitted
+```
 
 ### Format shared dashboard values
 

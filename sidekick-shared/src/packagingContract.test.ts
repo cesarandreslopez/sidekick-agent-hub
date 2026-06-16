@@ -36,6 +36,10 @@ describe('packaging contract', () => {
       'buildSessionContextSnapshot',
       'calculateSessionContextPressure',
       'createSessionContextProjector',
+      'assistantTurnEventsFromSessionEvents',
+      'extractTurnSubagents',
+      'reasoningSummary',
+      'segmentAssistantTurn',
     ]) {
       expect(typeof m[k]).toBe('function');
     }
@@ -66,6 +70,9 @@ describe('packaging contract', () => {
       'quotaHistoryDailyBucketSchema',
       'activeProviderAccountStatusSchema',
       'activeAccountStatusSchema',
+      'assistantTurnEventSchema',
+      'assistantTurnProjectionSchema',
+      'assistantTurnSubagentSchema',
     ]) {
       expect(typeof m[k]?.safeParse).toBe('function');
     }
@@ -93,6 +100,8 @@ describe('packaging contract', () => {
     expect(typeof m.readSessionContextSnapshot).toBe('function');
     expect(typeof m.buildSessionContextSnapshot).toBe('function');
     expect(typeof m.extractSessionEvents).toBe('function');
+    expect(typeof m.segmentAssistantTurn).toBe('function');
+    expect(typeof m.assistantTurnProjectionSchema?.safeParse).toBe('function');
     expect(typeof m.quotaStateSchema?.safeParse).toBe('function');
     expect(typeof m.activeAccountStatusSchema?.safeParse).toBe('function');
   });

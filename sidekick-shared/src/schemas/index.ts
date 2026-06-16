@@ -2,9 +2,10 @@
  * Schemas entry (`sidekick-shared/schemas`).
  *
  * Pure zod runtime validation for the data shapes that cross process/IPC
- * boundaries: session events, quota state, quota history, account status.
- * No node:fs / node:path — safe to bundle for browser runtimes, and lean
- * enough that importing it does not drag in the rest of the library.
+ * boundaries: session events, quota state, quota history, account status,
+ * and assistant turn projections. No node:fs / node:path — safe to bundle
+ * for browser runtimes, and lean enough that importing it does not drag in
+ * the rest of the library.
  *
  * The mirrored TypeScript interfaces are re-exported as types so this
  * subpath is self-sufficient for boundary-validation modules.
@@ -66,3 +67,26 @@ export type {
   ActiveProviderAccountStatus,
   ActiveAccountStatus,
 } from '../accountStatus';
+
+export {
+  assistantTurnEventSchema,
+  assistantTurnEventTypeSchema,
+  assistantTurnNarrationStepSchema,
+  assistantTurnProcessSchema,
+  assistantTurnProcessStepSchema,
+  assistantTurnProjectionSchema,
+  assistantTurnSubagentSchema,
+  assistantTurnSubagentStatusSchema,
+  assistantTurnToolGroupStepSchema,
+  assistantTurnToolRefSchema,
+} from './assistantTurn';
+export type {
+  AssistantTurnEvent,
+  AssistantTurnEventType,
+  AssistantTurnProcess,
+  AssistantTurnProcessStep,
+  AssistantTurnProjection,
+  AssistantTurnSubagent,
+  AssistantTurnSubagentStatus,
+  AssistantTurnToolRef,
+} from '../turns/assistantTurn';

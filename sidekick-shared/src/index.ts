@@ -218,6 +218,28 @@ export type {
   SessionContextSourceType,
 } from './context/sessionContext';
 
+// Assistant turn projection
+export {
+  assistantTurnEventsFromSessionEvents,
+  extractTurnSubagents,
+  isAssistantTurnSubagentTool,
+  reasoningSummary,
+  segmentAssistantTurn,
+} from './turns/assistantTurn';
+export type {
+  AssistantTurnEvent,
+  AssistantTurnEventType,
+  AssistantTurnProcess,
+  AssistantTurnProcessStep,
+  AssistantTurnProjection,
+  AssistantTurnSubagent,
+  AssistantTurnSubagentStatus,
+  AssistantTurnToolRef,
+  ExtractTurnSubagentsOptions,
+  ReasoningSummary,
+  SegmentAssistantTurnOptions,
+} from './turns/assistantTurn';
+
 // Plan Extraction
 export { PlanExtractor, parsePlanMarkdown as parsePlanMarkdownShared, extractProposedPlan as extractProposedPlanShared } from './parsers/planExtractor';
 export type { ExtractedPlan, ExtractedPlanStep } from './parsers/planExtractor';
@@ -466,6 +488,18 @@ export {
   activeProviderAccountStatusSchema,
   activeAccountStatusSchema,
 } from './schemas/accountStatus';
+export {
+  assistantTurnEventSchema,
+  assistantTurnEventTypeSchema,
+  assistantTurnNarrationStepSchema,
+  assistantTurnProcessSchema,
+  assistantTurnProcessStepSchema,
+  assistantTurnProjectionSchema,
+  assistantTurnSubagentSchema,
+  assistantTurnSubagentStatusSchema,
+  assistantTurnToolGroupStepSchema,
+  assistantTurnToolRefSchema,
+} from './schemas/assistantTurn';
 
 // Provider Status
 export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';

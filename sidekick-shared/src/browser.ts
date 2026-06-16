@@ -28,6 +28,27 @@ export type {
 } from './context/sessionContext';
 
 export {
+  assistantTurnEventsFromSessionEvents,
+  extractTurnSubagents,
+  isAssistantTurnSubagentTool,
+  reasoningSummary,
+  segmentAssistantTurn,
+} from './turns/assistantTurn';
+export type {
+  AssistantTurnEvent,
+  AssistantTurnEventType,
+  AssistantTurnProcess,
+  AssistantTurnProcessStep,
+  AssistantTurnProjection,
+  AssistantTurnSubagent,
+  AssistantTurnSubagentStatus,
+  AssistantTurnToolRef,
+  ExtractTurnSubagentsOptions,
+  ReasoningSummary,
+  SegmentAssistantTurnOptions,
+} from './turns/assistantTurn';
+
+export {
   parseModelId,
   getModelPricing,
   getModelInfo,
