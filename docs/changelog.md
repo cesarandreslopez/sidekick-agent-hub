@@ -5,6 +5,12 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.2] - 2026-06-15
+
+### Added (sidekick-shared)
+
+- **Assistant turn projection**: Browser-safe helpers that segment a provider-normalized assistant turn into a compact, UI-ready Process + Answer shape. `segmentAssistantTurn()` keeps only the final contiguous text run as `answer` and moves earlier narration, tool calls, and reasoning into `process.steps` / `reasoningBlocks` — adjacent tool calls collapse into grouped `toolGroup` steps, and process/reasoning are length-capped (with an "N omitted" marker) while the answer stays uncapped. `assistantTurnEventsFromSessionEvents()` adapts canonical `SessionEvent[]` into the turn-event stream the segmenter consumes, and `extractTurnSubagents()` / `reasoningSummary()` / `isAssistantTurnSubagentTool()` cover Claude `Task` subagent refs and bold-heading reasoning summaries. `Task` tool inputs are projected **without leaking the prompt** — only `subagent_type` and `description` survive. The mirrored Zod schemas (`assistantTurnProjectionSchema`, `assistantTurnEventSchema`, `assistantTurnProcessStepSchema`, `assistantTurnSubagentSchema`, and friends) validate the shape at UI/IPC boundaries, and the whole module is exposed fs-free via the `sidekick-shared/browser` and `sidekick-shared/schemas` subpaths
+
 ## [0.19.1] - 2026-06-09
 
 ### Added (sidekick-shared)

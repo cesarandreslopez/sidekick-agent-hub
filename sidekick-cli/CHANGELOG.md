@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.2] - 2026-06-15
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.19.2**: The shared library gains a browser-safe assistant-turn projection module (`segmentAssistantTurn()`, `assistantTurnEventsFromSessionEvents()`, and mirrored Zod schemas) that segments an assistant turn into a compact Process + Answer shape, with Claude `Task` subagent refs surfaced without leaking prompt text — internal additions that don't change CLI behavior
+
 ## [0.19.1] - 2026-06-09
 
 ### Changed
