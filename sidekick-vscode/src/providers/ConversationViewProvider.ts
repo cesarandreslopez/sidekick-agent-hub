@@ -28,7 +28,6 @@ export interface ConversationChunk {
   model?: string;
   toolName?: string;
   toolUseId?: string;
-  toolInput?: string;
   toolSummary?: string;
   toolOutput?: string;
   isError?: boolean;
@@ -36,7 +35,7 @@ export interface ConversationChunk {
   isCompaction?: boolean;
 }
 
-type PendingTool = { name: string; input: string; timestamp: string };
+type PendingTool = { name: string };
 
 export function conversationChunksFromSessionEvents(events: readonly ClaudeSessionEvent[]): ConversationChunk[] {
   const chunks: ConversationChunk[] = [];
@@ -144,11 +143,7 @@ function toolRefToChunk(
   pendingTools: Map<string, PendingTool>,
 ): ConversationChunk {
   if (tool.toolUseId != null) {
-    pendingTools.set(tool.toolUseId, {
-      name: tool.toolName,
-      input: tool.toolInput ?? '',
-      timestamp,
-    });
+    pendingTools.set(tool.toolUseId, { name: tool.toolName });
   }
 
   return {
@@ -158,7 +153,6 @@ function toolRefToChunk(
     toolName: tool.toolName,
     toolUseId: tool.toolUseId,
     toolSummary: tool.toolInput,
-    toolInput: tool.toolInput,
     isSidechain,
   };
 }
@@ -394,23 +388,35 @@ export class ConversationViewProvider implements vscode.Disposable {
 
       if (chunk.role === 'tool') {
         const errorClass = chunk.isError ? ' tool-error' : '';
-        const inputSection = chunk.toolInput
-          ? `<div class="tool-section"><div class="tool-section-label">Input</div><pre class="tool-content">${this.escapeHtml(chunk.toolInput)}</pre></div>`
+        const summary = chunk.toolSummary
+          ? `<span class="tool-summary">${this.escapeHtml(chunk.toolSummary)}</span>`
           : '';
-        const outputSection = chunk.toolOutput
-          ? `<div class="tool-section"><div class="tool-section-label">${chunk.isError ? 'Error' : 'Output'}</div><pre class="tool-content${errorClass}">${this.escapeHtml(chunk.toolOutput)}</pre></div>`
-          : '';
+
+        // Tool-call rows carry their gist in the header summary, so they render
+        // as concise, non-expandable rows. Only tool-result rows (which have
+        // output) get a collapsible body.
+        if (!chunk.toolOutput) {
+          return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
+          <div class="tool-header tool-header-static">
+            <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
+            <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
+            ${summary}
+            <span class="chunk-time">${time}</span>
+          </div>
+        </div>`;
+        }
+
+        const outputSection = `<div class="tool-section"><div class="tool-section-label">${chunk.isError ? 'Error' : 'Output'}</div><pre class="tool-content${errorClass}">${this.escapeHtml(chunk.toolOutput)}</pre></div>`;
 
         return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
           <div class="tool-header" data-toggle="tool-body-${i}">
             <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
             <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
-            ${chunk.toolSummary ? `<span class="tool-summary">${this.escapeHtml(chunk.toolSummary)}</span>` : ''}
+            ${summary}
             <span class="chunk-time">${time}</span>
             <span class="toggle-arrow">+</span>
           </div>
           <div class="tool-body" id="tool-body-${i}" style="display:none;">
-            ${inputSection}
             ${outputSection}
           </div>
         </div>`;
@@ -596,6 +602,10 @@ export class ConversationViewProvider implements vscode.Disposable {
 
     .tool-header:hover {
       background: var(--vscode-list-hoverBackground);
+    }
+
+    .tool-header-static {
+      cursor: default;
     }
 
     .tool-icon {

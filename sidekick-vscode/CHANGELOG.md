@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Bundled `sidekick-shared` projection contract**: The shared assistant-turn projection now exposes a v2 `timeline` array for interleaved reasoning, narration, and tool groups. This is a shared-library contract update for downstream consumers and does not change extension behavior by itself
-- **Conversation view interleave**: The transcript rail now uses the shared assistant-turn timeline to render reasoning, tool calls, and narration in provider-normalized arrival order for Claude, Codex, and OpenCode sessions. Tool results remain separate transcript entries, and assistant turns now use a provider-neutral "Assistant" label
+- **Conversation view interleave**: The transcript rail now uses the shared assistant-turn timeline to render reasoning, tool calls, and narration in provider-normalized arrival order for Claude, Codex, and OpenCode sessions. Tool results remain separate transcript entries, and assistant turns now use a provider-neutral "Assistant" label. Tool calls render as concise rows with their summary inline, while tool results stay expandable to reveal their output
 
 ## [0.19.2] - 2026-06-15
 

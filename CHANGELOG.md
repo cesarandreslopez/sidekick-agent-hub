@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (sidekick-vscode)
 
-- **Conversation view interleave**: The transcript rail now renders assistant reasoning, tool calls, and narration from the shared assistant-turn timeline, preserving provider-normalized arrival order for Claude, Codex, and OpenCode sessions while keeping the final answer separate
+- **Conversation view interleave**: The transcript rail now renders assistant reasoning, tool calls, and narration from the shared assistant-turn timeline, preserving provider-normalized arrival order for Claude, Codex, and OpenCode sessions while keeping the final answer separate. Tool calls render as concise rows with their summary inline, while tool results stay expandable to reveal their output
 
 ## [0.19.2] - 2026-06-15
 

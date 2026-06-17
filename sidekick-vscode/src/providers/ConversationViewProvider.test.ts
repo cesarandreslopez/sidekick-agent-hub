@@ -35,7 +35,10 @@ describe('conversationChunksFromSessionEvents', () => {
     expect(chunks.map((chunk) => chunk.role)).toEqual(['reasoning', 'tool', 'assistant']);
     expect(chunks[0].content).toBe('Need to inspect the file.');
     expect(chunks[1]).toMatchObject({ role: 'tool', toolName: 'Read', toolUseId: 'read-1' });
+    // Tool-call rows carry their gist in the header summary only (no separate,
+    // redundant input body) and have no output, so they render concise.
     expect(chunks[1].toolSummary).toContain('a.ts');
+    expect(chunks[1].toolOutput).toBeUndefined();
     expect(chunks[2]).toMatchObject({
       role: 'assistant',
       content: 'The answer is ready.',
