@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { extractCommands, extractFilePaths, extractUrls } from './sessionAssets';
+import { dedupeAssets, extractCommands, extractFilePaths, extractUrls } from './sessionAssets';
 
 describe('extractUrls', () => {
   it('extracts http, https, and file URLs without trailing punctuation', () => {
@@ -64,5 +64,36 @@ describe('extractFilePaths', () => {
 
   it('resolves relative paths and preserves line suffixes', () => {
     expect(extractFilePaths('see src.ts:42:7', dir)).toEqual([{ file: realFile, line: 42 }]);
+  });
+});
+
+describe('dedupeAssets', () => {
+  it('dedupes by type and text while preserving first provenance metadata', () => {
+    const assets = dedupeAssets([
+      {
+        type: 'url',
+        text: 'https://example.test',
+        display: 'https://example.test',
+        agent: 'claude',
+        sessionPath: '/tmp/claude.jsonl',
+      },
+      {
+        type: 'url',
+        text: 'https://example.test',
+        display: 'https://example.test',
+        agent: 'codex',
+        sessionPath: '/tmp/codex.jsonl',
+      },
+    ]);
+
+    expect(assets).toEqual([
+      {
+        type: 'url',
+        text: 'https://example.test',
+        display: 'https://example.test',
+        agent: 'claude',
+        sessionPath: '/tmp/claude.jsonl',
+      },
+    ]);
   });
 });

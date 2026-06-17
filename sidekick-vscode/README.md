@@ -108,6 +108,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 - **[Session Handoff](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-handoff/)** — automatic context documents for session continuity
 - **[Decision Log](https://cesarandreslopez.github.io/sidekick-agent-hub/features/decision-log/)** — tracks architectural decisions from sessions
 - **[CLAUDE.md Suggestions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/claude-md-suggestions/)** — AI-powered session analysis for optimizing agent instructions
+- **Extract Session Assets** — run `Sidekick: Extract Session Assets` to search recent Claude Code and Codex chats for URLs, files, commands, and plans. URLs open externally, file paths open in the editor, commands copy to the clipboard, and plans open as Markdown
 
 ![CLAUDE.md suggestions](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/claude-md-suggestions.png)
 

@@ -18,6 +18,7 @@ import {
   pathAsset,
   planAsset,
   urlAsset,
+  type ExtractedAssetProvenance,
   type SourceAssets,
 } from '../sessionAssets';
 
@@ -152,6 +153,10 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function provenance(sessionPath: string, source: string): ExtractedAssetProvenance {
+  return { agent: 'codex', sessionPath, source };
+}
+
 function commandFromLocalShell(item: Record<string, unknown>): string | undefined {
   const action = item.action as Record<string, unknown> | undefined;
   const command = action?.command;
@@ -169,15 +174,27 @@ function patchFiles(patch: unknown, cwd: string): Array<{ file: string; line?: n
   return paths;
 }
 
-function addMessageAssets(acc: SourceAssets, text: unknown, cwd: string, timestamp?: string): void {
-  for (const url of extractUrls(text)) acc.urls.push(urlAsset(url, timestamp));
-  for (const filePath of extractFilePaths(text, cwd)) acc.paths.push(pathAsset(filePath, timestamp));
-  for (const command of extractCommands(text)) acc.commands.push(commandAsset(command, timestamp));
+function addMessageAssets(
+  acc: SourceAssets,
+  text: unknown,
+  cwd: string,
+  timestamp: string | undefined,
+  meta: ExtractedAssetProvenance,
+): void {
+  for (const url of extractUrls(text)) acc.urls.push(urlAsset(url, timestamp, meta));
+  for (const filePath of extractFilePaths(text, cwd)) acc.paths.push(pathAsset(filePath, timestamp, meta));
+  for (const command of extractCommands(text)) acc.commands.push(commandAsset(command, timestamp, meta));
 }
 
-function addExecutedCommandAssets(acc: SourceAssets, command: unknown, cwd: string, timestamp?: string): void {
-  for (const url of extractUrls(command)) acc.urls.push(urlAsset(url, timestamp));
-  for (const filePath of extractFilePaths(command, cwd)) acc.paths.push(pathAsset(filePath, timestamp));
+function addExecutedCommandAssets(
+  acc: SourceAssets,
+  command: unknown,
+  cwd: string,
+  timestamp: string | undefined,
+  meta: ExtractedAssetProvenance,
+): void {
+  for (const url of extractUrls(command)) acc.urls.push(urlAsset(url, timestamp, meta));
+  for (const filePath of extractFilePaths(command, cwd)) acc.paths.push(pathAsset(filePath, timestamp, meta));
 }
 
 export function readCodexAssets(cwd: string, limit = 3): SourceAssets {
@@ -198,23 +215,24 @@ export function readCodexAssets(cwd: string, limit = 3): SourceAssets {
       if (payload.type === 'function_call') {
         if (EXEC_NAMES.has(payload.name as string)) {
           const args = parseArgs(payload.arguments);
-          addExecutedCommandAssets(acc, args.cmd ?? args.command, exactCwd, timestamp);
+          addExecutedCommandAssets(acc, args.cmd ?? args.command, exactCwd, timestamp, provenance(filePath, `tool:${String(payload.name)}`));
         }
       } else if (payload.type === 'local_shell_call') {
-        addExecutedCommandAssets(acc, commandFromLocalShell(payload), exactCwd, timestamp);
+        addExecutedCommandAssets(acc, commandFromLocalShell(payload), exactCwd, timestamp, provenance(filePath, 'tool:local_shell'));
       } else if (payload.type === 'item_completed') {
         const item = payload.item as Record<string, unknown> | undefined;
         const text = asString(item?.text);
-        if (item?.type === 'Plan' && text?.trim()) acc.plans.push(planAsset(text, timestamp));
+        if (item?.type === 'Plan' && text?.trim()) acc.plans.push(planAsset(text, timestamp, provenance(filePath, 'plan')));
       } else if (payload.type === 'custom_tool_call' && payload.name === 'apply_patch') {
-        for (const file of patchFiles(payload.input, exactCwd)) acc.paths.push(pathAsset(file, timestamp));
+        const meta = provenance(filePath, 'tool:apply_patch');
+        for (const file of patchFiles(payload.input, exactCwd)) acc.paths.push(pathAsset(file, timestamp, meta));
       } else if (payload.type === 'message' && Array.isArray(payload.content)) {
         for (const block of payload.content) {
           const typedBlock = block as Record<string, unknown>;
-          addMessageAssets(acc, typedBlock.text, exactCwd, timestamp);
+          addMessageAssets(acc, typedBlock.text, exactCwd, timestamp, provenance(filePath, 'message'));
         }
       } else if (payload.type === 'agent_message') {
-        addMessageAssets(acc, payload.message, exactCwd, timestamp);
+        addMessageAssets(acc, payload.message, exactCwd, timestamp, provenance(filePath, 'message'));
       }
     }
   }

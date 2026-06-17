@@ -26,7 +26,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ### VS Code Extension
 
-Inline completions, code transforms, commit messages, session monitoring, and more — all inside VS Code.
+Inline completions, code transforms, commit messages, session monitoring, session asset extraction, and more — all inside VS Code.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-agent-hub.gif" alt="Sidekick VS Code Extension" width="800">
@@ -53,7 +53,7 @@ Browse sessions, tasks, decisions, knowledge notes, charts, and live event strea
 
 Eight panels: Sessions, Tasks, Kanban, Notes, Decisions, Plans, Events, and Charts. The Events panel streams live session activity with colored type badges. The Charts panel shows tool frequency bars, event distribution, a 60-minute activity heatmap, and pattern analysis. Press `/` to filter with substring, fuzzy, regex, or date modes.
 
-Standalone commands jump directly to a specific panel or run one-shot queries, including extracting actionable links, files, commands, and plans from recent Claude Code and Codex chats:
+Standalone commands jump directly to a specific panel or run one-shot queries, including extracting actionable links, files, commands, and plans from recent Claude Code and Codex chats. VS Code users can run `Sidekick: Extract Session Assets` for the same asset model in a native QuickPick.
 
 ```bash
 sidekick tasks                                      # open tasks panel

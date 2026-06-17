@@ -459,7 +459,9 @@ export {
   extractCommands,
 } from './extractors/sessionAssets';
 export type {
+  AssetAgent,
   ExtractedAsset,
+  ExtractedAssetProvenance,
   ExtractedAssetType,
   ExtractedAssets,
   SourceAssets,
@@ -467,7 +469,7 @@ export type {
 export { readClaudeAssets, claudeSessions } from './extractors/sources/claudeAssets';
 export { readCodexAssets, codexSessions } from './extractors/sources/codexAssets';
 export { gatherAssetsForCwd } from './extractors/gatherAssets';
-export type { GatherAssetsOptions, GatherAssetsResult, AssetAgent } from './extractors/gatherAssets';
+export type { GatherAssetsOptions, GatherAssetsResult } from './extractors/gatherAssets';
 
 // Schemas — Zod runtime validation for session events
 export {

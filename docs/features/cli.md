@@ -140,18 +140,18 @@ Extract actionable items from recent Claude Code and Codex chats for exactly the
 - **Commands** the agent presented for you to run in shell snippets or `$`-prefixed lines
 - **Plans** from Claude plan mode and Codex finalized `Plan` items
 
-Results are merged across supported agents, sorted by recency, deduped, capped, and grouped by type. The command intentionally uses exact-cwd scoping; it does not walk up or down the directory tree to avoid surfacing another project's chat data.
+Results are merged across supported agents, sorted by recency, deduped, capped, and grouped by type. Text output labels each item with its source agent (`claude` or `codex`), and JSON output includes `inChat` plus per-item provenance (`agent`, `sessionPath`, and `source`) for downstream tools. The command intentionally uses exact-cwd scoping; it does not walk up or down the directory tree to avoid surfacing another project's chat data.
 
 This feature was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) and adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
 
 | Flag | Description |
 |------|-------------|
 | `--type <types>` | Comma list: `url`, `path`, `command`, `plan` (default: all). Aliases include `urls`, `files`, `cmds`, and `plans` |
-| `--limit <n>` | Maximum items per type |
+| `--limit <n>` | Positive integer maximum items per type |
 | `-i`, `--interactive` | Interactive picker; Enter opens URLs and copies paths, commands, or plans |
 | `--json` | Emit grouped JSON for scripting |
 
-Global flags `--project` and `--provider` also apply. `--provider claude-code` reads Claude Code only, `--provider codex` reads Codex only, and `auto` reads both. OpenCode extraction is not supported yet.
+Global flags `--project` and `--provider` also apply. `--provider claude-code` reads Claude Code only, `--provider codex` reads Codex only, and `auto` reads both. Invalid `--type` or `--limit` values fail fast with a clear error. OpenCode extraction is not supported yet.
 
 ### Examples
 

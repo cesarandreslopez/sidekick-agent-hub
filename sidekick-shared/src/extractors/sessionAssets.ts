@@ -17,8 +17,15 @@ const PATH_RE =
 const SHELL_TAGS = new Set(['sh', 'bash', 'shell', 'zsh', 'console', 'shellscript', 'shell-session']);
 
 export type ExtractedAssetType = 'url' | 'path' | 'command' | 'plan';
+export type AssetAgent = 'claude' | 'codex';
 
-export interface ExtractedAsset {
+export interface ExtractedAssetProvenance {
+  agent?: AssetAgent;
+  sessionPath?: string;
+  source?: string;
+}
+
+export interface ExtractedAsset extends ExtractedAssetProvenance {
   type: ExtractedAssetType;
   text: string;
   display: string;
@@ -126,21 +133,29 @@ export function extractCommands(text: unknown): string[] {
   return commands;
 }
 
-export function urlAsset(url: string, timestamp?: string): ExtractedAsset {
-  return { type: 'url', text: url, display: url, timestamp };
+export function urlAsset(url: string, timestamp?: string, provenance: ExtractedAssetProvenance = {}): ExtractedAsset {
+  return { type: 'url', text: url, display: url, timestamp, ...provenance };
 }
 
-export function commandAsset(command: string, timestamp?: string): ExtractedAsset {
-  return { type: 'command', text: command, display: flat(command), timestamp };
+export function commandAsset(command: string, timestamp?: string, provenance: ExtractedAssetProvenance = {}): ExtractedAsset {
+  return { type: 'command', text: command, display: flat(command), timestamp, ...provenance };
 }
 
-export function pathAsset(path: { file: string; line?: number }, timestamp?: string): ExtractedAsset {
+export function pathAsset(
+  path: { file: string; line?: number },
+  timestamp?: string,
+  provenance: ExtractedAssetProvenance = {},
+): ExtractedAsset {
   const text = path.line !== undefined ? `${path.file}:${path.line}` : path.file;
-  return { type: 'path', text, display: text, timestamp };
+  return { type: 'path', text, display: text, timestamp, ...provenance };
 }
 
-export function planAsset(markdown: string, timestamp?: string): ExtractedAsset {
-  return { type: 'plan', text: markdown, display: planTitle(markdown), timestamp };
+export function planAsset(
+  markdown: string,
+  timestamp?: string,
+  provenance: ExtractedAssetProvenance = {},
+): ExtractedAsset {
+  return { type: 'plan', text: markdown, display: planTitle(markdown), timestamp, ...provenance };
 }
 
 export function flat(value: string): string {

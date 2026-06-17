@@ -16,13 +16,13 @@ import {
   dedupeAssets,
   dedupePlansByTitle,
   DEFAULT_CAPS,
+  type AssetAgent,
   type ExtractedAsset,
   type ExtractedAssets,
   type ExtractedAssetType,
   type SourceAssets,
 } from './sessionAssets';
-
-export type AssetAgent = 'claude' | 'codex';
+export type { AssetAgent } from './sessionAssets';
 
 export interface GatherAssetsOptions {
   cwd?: string;

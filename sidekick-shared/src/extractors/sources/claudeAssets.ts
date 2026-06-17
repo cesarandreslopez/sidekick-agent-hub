@@ -20,6 +20,7 @@ import {
   planAsset,
   readPlanFile,
   urlAsset,
+  type ExtractedAssetProvenance,
   type SourceAssets,
 } from '../sessionAssets';
 
@@ -87,15 +88,31 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function addTextAssets(acc: SourceAssets, text: unknown, cwd: string, timestamp?: string): void {
-  for (const url of extractUrls(text)) acc.urls.push(urlAsset(url, timestamp));
-  for (const filePath of extractFilePaths(text, cwd)) acc.paths.push(pathAsset(filePath, timestamp));
-  for (const command of extractCommands(text)) acc.commands.push(commandAsset(command, timestamp));
+function provenance(sessionPath: string, source: string): ExtractedAssetProvenance {
+  return { agent: 'claude', sessionPath, source };
 }
 
-function addToolPathAssets(acc: SourceAssets, value: unknown, cwd: string, timestamp?: string): void {
+function addTextAssets(
+  acc: SourceAssets,
+  text: unknown,
+  cwd: string,
+  timestamp: string | undefined,
+  meta: ExtractedAssetProvenance,
+): void {
+  for (const url of extractUrls(text)) acc.urls.push(urlAsset(url, timestamp, meta));
+  for (const filePath of extractFilePaths(text, cwd)) acc.paths.push(pathAsset(filePath, timestamp, meta));
+  for (const command of extractCommands(text)) acc.commands.push(commandAsset(command, timestamp, meta));
+}
+
+function addToolPathAssets(
+  acc: SourceAssets,
+  value: unknown,
+  cwd: string,
+  timestamp: string | undefined,
+  meta: ExtractedAssetProvenance,
+): void {
   for (const filePath of extractFilePaths(value, cwd)) {
-    acc.paths.push(pathAsset(filePath, timestamp));
+    acc.paths.push(pathAsset(filePath, timestamp, meta));
   }
 }
 
@@ -108,7 +125,7 @@ function accumClaude(filePath: string, cwd: string, acc: SourceAssets): void {
       const planFilePath = asString(attachment?.planFilePath);
       if (planFilePath && isExistingFile(planFilePath)) {
         const text = readPlanFile(planFilePath);
-        if (text?.trim()) acc.plans.push(planAsset(text, timestamp));
+        if (text?.trim()) acc.plans.push(planAsset(text, timestamp, provenance(filePath, 'attachment:plan')));
       }
       continue;
     }
@@ -116,7 +133,7 @@ function accumClaude(filePath: string, cwd: string, acc: SourceAssets): void {
     const message = line.message as Record<string, unknown> | undefined;
     const content = message?.content;
     if (typeof content === 'string') {
-      addTextAssets(acc, content, cwd, timestamp);
+      addTextAssets(acc, content, cwd, timestamp, provenance(filePath, 'message'));
       continue;
     }
     if (!Array.isArray(content)) continue;
@@ -124,25 +141,27 @@ function accumClaude(filePath: string, cwd: string, acc: SourceAssets): void {
     for (const block of content) {
       const typedBlock = block as Record<string, unknown>;
       if (typedBlock.type === 'text') {
-        addTextAssets(acc, typedBlock.text, cwd, timestamp);
+        addTextAssets(acc, typedBlock.text, cwd, timestamp, provenance(filePath, 'message'));
         continue;
       }
       if (typedBlock.type !== 'tool_use') continue;
 
       const name = asString(typedBlock.name);
       const input = (typedBlock.input as Record<string, unknown>) || {};
+      const toolSource = name ? `tool:${name}` : 'tool';
+      const toolMeta = provenance(filePath, toolSource);
 
       if (name === 'Bash') {
-        for (const url of extractUrls(input.command)) acc.urls.push(urlAsset(url, timestamp));
-        addToolPathAssets(acc, input.command, cwd, timestamp);
+        for (const url of extractUrls(input.command)) acc.urls.push(urlAsset(url, timestamp, toolMeta));
+        addToolPathAssets(acc, input.command, cwd, timestamp, toolMeta);
       } else if (name && PATH_TOOLS.has(name)) {
-        addToolPathAssets(acc, input.file_path, cwd, timestamp);
+        addToolPathAssets(acc, input.file_path, cwd, timestamp, toolMeta);
       } else if (name === 'WebFetch' || name === 'WebSearch') {
-        for (const url of extractUrls(JSON.stringify(input))) acc.urls.push(urlAsset(url, timestamp));
+        for (const url of extractUrls(JSON.stringify(input))) acc.urls.push(urlAsset(url, timestamp, toolMeta));
       } else if (name === 'ExitPlanMode') {
         const inline = asString(input.plan);
         const markdown = inline?.trim() ? inline : readPlanFile(asString(input.planFilePath));
-        if (markdown?.trim()) acc.plans.push(planAsset(markdown, timestamp));
+        if (markdown?.trim()) acc.plans.push(planAsset(markdown, timestamp, toolMeta));
       }
     }
   }

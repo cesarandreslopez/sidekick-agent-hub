@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- **Shared extraction foundation**: The shared library now exposes Node-only session asset extraction APIs for URLs, filesystem-validated paths, user-facing commands, and plan-mode plans from recent Claude Code and Codex chats. These APIs are usable from the VS Code extension host for a future Quick Pick/view integration, but this does not add a VS Code extraction UI
+- **Native asset extraction command**: `Sidekick: Extract Session Assets` uses the shared Claude Code/Codex extractor in a searchable QuickPick. URLs open externally, file paths open in the editor at their line when available, commands copy to the clipboard, and plans open as Markdown scratch documents
 
 Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing the underlying shared/CLI feature in [#17](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/17), adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
 

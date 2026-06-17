@@ -78,6 +78,7 @@ import { StatusBarManager } from "./services/StatusBarManager";
 import { AccountService, isSavedAccountProfile } from "./services/AccountService";
 import { AccountStatusBar } from "./services/AccountStatusBar";
 import { openCliDashboard, disposeDashboardTerminal } from "./services/SidekickCliService";
+import { showExtractedSessionAssets } from "./services/SessionAssetService";
 import { initLogger, log, logError, showLog } from "./services/Logger";
 import {
   getTransformSystemPrompt,
@@ -1253,6 +1254,15 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Register native extracted session assets command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.extractAssets', async () => {
+      const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const providerId = sessionMonitor?.getProvider().id;
+      await showExtractedSessionAssets({ workspacePath, providerId });
+    })
+  );
+
   // Register start monitoring command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.startMonitoring', async () => {
@@ -1598,6 +1608,11 @@ export async function activate(context: vscode.ExtensionContext) {
           action: "cliDashboard",
         },
         {
+          label: "$(list-tree) Extract Session Assets",
+          description: "Find URLs, files, commands, and plans from recent sessions",
+          action: "extractAssets",
+        },
+        {
           label: "$(output) Dump Session Report",
           description: "Export session as text, markdown, or JSON",
           action: "dumpSession",
@@ -1670,6 +1685,9 @@ export async function activate(context: vscode.ExtensionContext) {
             break;
           case "cliDashboard":
             vscode.commands.executeCommand("sidekick.openCliDashboard");
+            break;
+          case "extractAssets":
+            vscode.commands.executeCommand("sidekick.extractAssets");
             break;
           case "dumpSession":
             vscode.commands.executeCommand("sidekick.dumpSession");

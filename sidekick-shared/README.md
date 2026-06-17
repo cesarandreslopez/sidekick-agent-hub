@@ -203,6 +203,10 @@ console.log(assets.urls);
 console.log(assets.paths);
 console.log(assets.commands);
 console.log(assets.plans);
+
+// Each item keeps stable text/display fields plus optional provenance:
+// { agent: 'claude' | 'codex', sessionPath, source }
+console.log(assets.urls[0]?.agent);
 ```
 
 The extractor is safe for CLI and VS Code extension-host code, but not for browser or webview bundles because it reads session files and validates paths with Node filesystem APIs.

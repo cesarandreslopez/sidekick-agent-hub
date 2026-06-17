@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Actionable session asset extraction**: New Node-only APIs for extracting URLs, filesystem-validated file paths, commands the agent suggested for the user to run, and plan-mode plans from recent Claude Code and Codex sessions for exactly one cwd. `gatherAssetsForCwd()` merges supported agents with recency sorting, dedupe, and per-type caps; `readClaudeAssets()`, `readCodexAssets()`, `claudeSessions()`, `codexSessions()`, `extractUrls()`, `extractFilePaths()`, and `extractCommands()` are exported for lower-level use. These APIs are safe for CLI and VS Code extension-host code, but not for browser/webview bundles
+- **Session asset provenance**: `ExtractedAsset` now includes optional `agent`, `sessionPath`, and `source` metadata while keeping `type`, `text`, `display`, and `timestamp` stable for existing consumers
 - **Test coverage**: Added extractor tests for command parsing, URL cleanup, filesystem-validated paths, message-text file paths, exact-cwd isolation, Codex `CODEX_HOME` discovery, merge caps, and packaging-contract exports
 
 Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#17](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/17), adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.

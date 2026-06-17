@@ -768,6 +768,11 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "sidekick.extractAssets",
+        "title": "Sidekick: Extract Session Assets",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "sidekick.openConversation",
         "title": "Sidekick: View Session Conversation"
       },
@@ -1027,6 +1032,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "sidekick.extractAssets",
+          "when": "view == sidekick.dashboard",
+          "group": "navigation@0"
+        },
         {
           "command": "sidekick.dumpSession",
           "when": "view == sidekick.dashboard",

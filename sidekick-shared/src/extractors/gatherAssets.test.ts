@@ -12,6 +12,8 @@ let cwd: string;
 let childCwd: string;
 let realFile: string;
 let mentionedFile: string;
+let claudeSessionPath: string;
+let codexSessionPath: string;
 const originalHome = process.env.HOME;
 const originalCodexHome = process.env.CODEX_HOME;
 
@@ -37,7 +39,10 @@ beforeAll(() => {
   process.env.HOME = home;
   process.env.CODEX_HOME = explicitCodexHome;
 
-  writeJsonl(path.join(home, '.claude', 'projects', claudeSlug(cwd), 'session.jsonl'), [
+  claudeSessionPath = path.join(home, '.claude', 'projects', claudeSlug(cwd), 'session.jsonl');
+  codexSessionPath = path.join(explicitCodexHome, 'sessions', '2026', '06', '17', 'rollout-codex.jsonl');
+
+  writeJsonl(claudeSessionPath, [
     {
       type: 'assistant',
       timestamp: '2026-06-17T10:00:00Z',
@@ -60,7 +65,7 @@ beforeAll(() => {
     },
   ]);
 
-  writeJsonl(path.join(explicitCodexHome, 'sessions', '2026', '06', '17', 'rollout-codex.jsonl'), [
+  writeJsonl(codexSessionPath, [
     { type: 'session_meta', timestamp: '2026-06-17T11:00:00Z', payload: { cwd, id: 'x' } },
     { type: 'response_item', timestamp: '2026-06-17T11:00:01Z', payload: { type: 'agent_message', message: `see https://codex.test and ${mentionedFile}:12` } },
     { type: 'response_item', timestamp: '2026-06-17T11:00:02Z', payload: { type: 'function_call', name: 'shell', arguments: JSON.stringify({ command: `cat ${realFile}` }) } },
@@ -93,6 +98,21 @@ describe('readClaudeAssets', () => {
     expect(assets.commands.map((c) => c.text)).toEqual(['npm test']);
     expect(assets.paths.map((p) => p.text)).toEqual([`${mentionedFile}:7`, realFile]);
     expect(assets.plans.map((p) => p.display)).toEqual(['Claude Plan']);
+    expect(assets.urls[0]).toMatchObject({
+      agent: 'claude',
+      sessionPath: claudeSessionPath,
+      source: 'message',
+    });
+    expect(assets.paths[1]).toMatchObject({
+      agent: 'claude',
+      sessionPath: claudeSessionPath,
+      source: 'tool:Read',
+    });
+    expect(assets.plans[0]).toMatchObject({
+      agent: 'claude',
+      sessionPath: claudeSessionPath,
+      source: 'tool:ExitPlanMode',
+    });
   });
 
   it('does not read parent or child sessions when scoped to a cwd', () => {
@@ -112,6 +132,21 @@ describe('readCodexAssets', () => {
     expect(assets.paths.map((p) => p.text)).toContain(`${mentionedFile}:12`);
     expect(assets.paths.map((p) => p.text)).toContain(realFile);
     expect(assets.plans.map((p) => p.display)).toContain('Codex Plan');
+    expect(assets.urls.find((u) => u.text === 'https://codex.test')).toMatchObject({
+      agent: 'codex',
+      sessionPath: codexSessionPath,
+      source: 'message',
+    });
+    expect(assets.paths.find((p) => p.text === realFile)).toMatchObject({
+      agent: 'codex',
+      sessionPath: codexSessionPath,
+      source: 'tool:shell',
+    });
+    expect(assets.plans.find((p) => p.display === 'Codex Plan')).toMatchObject({
+      agent: 'codex',
+      sessionPath: codexSessionPath,
+      source: 'plan',
+    });
   });
 });
 
@@ -123,6 +158,8 @@ describe('gatherAssetsForCwd', () => {
     expect(assets.urls.map((u) => u.text)).toEqual(['https://codex.test']);
     expect(assets.commands.map((c) => c.text)).toEqual(['npm test']);
     expect(assets.plans.map((p) => p.display).sort()).toEqual(['Claude Plan', 'Codex Plan']);
+    expect(assets.urls[0]).toMatchObject({ agent: 'codex', sessionPath: codexSessionPath });
+    expect(assets.commands[0]).toMatchObject({ agent: 'claude', sessionPath: claudeSessionPath });
   });
 
   it('can scope extraction to one agent', () => {

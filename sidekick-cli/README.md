@@ -93,17 +93,17 @@ You can also press `r` in the TUI dashboard to generate a report for the current
 sidekick extract [options]
 ```
 
-Pull actionable assets from recent Claude Code and Codex sessions for exactly the current project directory: URLs, validated file paths, commands the agent suggested for you to run, and plan-mode plans. Text output is grouped by type; `--json` returns the same grouped shape for scripts; `-i` opens an interactive picker where Enter opens URLs and copies other assets.
+Pull actionable assets from recent Claude Code and Codex sessions for exactly the current project directory: URLs, validated file paths, commands the agent suggested for you to run, and plan-mode plans. Text output is grouped by type and labels each item with its source agent; `--json` returns the same grouped shape plus `inChat` and per-item provenance for scripts; `-i` opens an interactive picker where Enter opens URLs and copies other assets.
 
 This feature was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) and adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
 
 | Flag | Description |
 |------|-------------|
 | `--type <types>` | Comma list: `url`, `path`, `command`, `plan` (aliases: `urls`, `files`, `cmds`, `plans`) |
-| `--limit <n>` | Maximum items per type |
+| `--limit <n>` | Positive integer maximum items per type |
 | `-i`, `--interactive` | Interactive picker with copy/open actions |
 
-Global flags `--project`, `--provider`, and `--json` also apply. `--provider claude-code` scopes to Claude Code, `--provider codex` scopes to Codex, and `auto` reads both. OpenCode extraction is not supported yet.
+Global flags `--project`, `--provider`, and `--json` also apply. `--provider claude-code` scopes to Claude Code, `--provider codex` scopes to Codex, and `auto` reads both. Invalid `--type` or `--limit` values fail fast with a clear error. OpenCode extraction is not supported yet.
 
 ```bash
 # Grouped text output

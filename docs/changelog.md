@@ -10,14 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added (sidekick-shared)
 
 - **Actionable session asset extraction**: New Node-only extraction APIs collect URLs, filesystem-validated file paths, commands the agent suggested for the user to run, and plan-mode plans from recent Claude Code and Codex sessions for exactly one cwd. `gatherAssetsForCwd()` merges supported agents with recency sorting, dedupe, and per-type caps; lower-level `extractUrls()`, `extractFilePaths()`, `extractCommands()`, `readClaudeAssets()`, and `readCodexAssets()` are exported for custom tooling. The API is safe for CLI and VS Code extension-host code, but intentionally not exported from `sidekick-shared/browser`
+- **Session asset provenance**: Extracted assets now carry optional `agent`, `sessionPath`, and `source` metadata so CLI, VS Code, and custom tools can label where each URL, path, command, or plan came from without changing the stable `text`/`display` fields
 
 ### Added (CLI)
 
 - **`sidekick extract`**: New one-shot command for pulling URLs, paths, commands, and plans out of recent Claude Code and Codex chats. Supports grouped colored text, `--json`, `--type url,path,command,plan`, `--limit`, and `-i/--interactive` picker actions that open URLs or copy selections. The command preserves exact-cwd scoping and reports OpenCode as unsupported instead of silently reading other providers
+- **Extract output polish**: `sidekick extract` now validates invalid `--type` and `--limit` values, preserves `inChat` in JSON output, and labels text output with the source agent for each asset
 
-### Changed (VS Code extension)
+### Added (VS Code extension)
 
-- **Shared extraction foundation**: The extension-host-safe session asset extraction API is available for future VS Code command/view integration. This does not add a VS Code UI for extraction yet
+- **Native asset extraction command**: `Sidekick: Extract Session Assets` opens a searchable VS Code QuickPick backed by the shared extractor. URLs open externally, file paths open in the editor at their line when available, commands copy to the clipboard, and plans open as Markdown scratch documents
 
 Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing the feature in [#17](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/17), adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
 
