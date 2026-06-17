@@ -2,116 +2,132 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { gatherAssetsForCwd } from './gatherAssets';
 import { readClaudeAssets } from './sources/claudeAssets';
 import { readCodexAssets } from './sources/codexAssets';
-import { gatherAssetsForCwd } from './gatherAssets';
 
-// These readers resolve sessions under os.homedir(); point HOME at a sandbox.
 let home: string;
+let explicitCodexHome: string;
 let cwd: string;
+let childCwd: string;
 let realFile: string;
-const origHome = process.env.HOME;
+let mentionedFile: string;
+const originalHome = process.env.HOME;
+const originalCodexHome = process.env.CODEX_HOME;
 
 const claudeSlug = (dir: string): string => dir.replace(/[/._]/g, '-');
 
+function writeJsonl(filePath: string, lines: unknown[]): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, lines.map((line) => JSON.stringify(line)).join('\n'));
+}
+
 beforeAll(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'assets-home-'));
-  process.env.HOME = home;
-
+  explicitCodexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'assets-codex-home-'));
   cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'assets-cwd-'));
+  childCwd = path.join(cwd, 'child');
+  fs.mkdirSync(childCwd);
+
   realFile = path.join(cwd, 'src.ts');
-  fs.writeFileSync(realFile, '// hi');
+  mentionedFile = path.join(cwd, 'mentioned.ts');
+  fs.writeFileSync(realFile, '// real');
+  fs.writeFileSync(mentionedFile, '// mentioned');
 
-  // ── Claude session for this exact cwd ──
-  const claudeDir = path.join(home, '.claude', 'projects', claudeSlug(cwd));
-  fs.mkdirSync(claudeDir, { recursive: true });
-  const claudeLines = [
-    { type: 'assistant', timestamp: '2026-06-17T10:00:00Z', message: { role: 'assistant', content: [
-      { type: 'text', text: 'Docs https://claude.test\n```bash\nnpm test\n```' },
-      { type: 'tool_use', name: 'Read', input: { file_path: realFile } },
-      { type: 'tool_use', name: 'ExitPlanMode', input: { plan: '# Claude Plan\n- [ ] do it' } },
-    ] } },
-  ].map((l) => JSON.stringify(l)).join('\n');
-  fs.writeFileSync(path.join(claudeDir, 'session.jsonl'), claudeLines);
+  process.env.HOME = home;
+  process.env.CODEX_HOME = explicitCodexHome;
 
-  // ── Codex rollout for this exact cwd ──
-  const codexDir = path.join(home, '.codex', 'sessions', '2026', '06', '17');
-  fs.mkdirSync(codexDir, { recursive: true });
-  const codexLines = [
+  writeJsonl(path.join(home, '.claude', 'projects', claudeSlug(cwd), 'session.jsonl'), [
+    {
+      type: 'assistant',
+      timestamp: '2026-06-17T10:00:00Z',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: `Docs https://claude.test\nOpen ${mentionedFile}:7\n\`\`\`bash\nnpm test\n\`\`\`` },
+          { type: 'tool_use', name: 'Read', input: { file_path: realFile } },
+          { type: 'tool_use', name: 'ExitPlanMode', input: { plan: '# Claude Plan\n- [ ] do it' } },
+        ],
+      },
+    },
+  ]);
+
+  writeJsonl(path.join(home, '.claude', 'projects', claudeSlug(childCwd), 'child.jsonl'), [
+    {
+      type: 'assistant',
+      timestamp: '2026-06-17T10:30:00Z',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'https://child-only.test' }] },
+    },
+  ]);
+
+  writeJsonl(path.join(explicitCodexHome, 'sessions', '2026', '06', '17', 'rollout-codex.jsonl'), [
     { type: 'session_meta', timestamp: '2026-06-17T11:00:00Z', payload: { cwd, id: 'x' } },
-    { type: 'response_item', timestamp: '2026-06-17T11:00:01Z', payload: { type: 'agent_message', message: 'see https://codex.test' } },
+    { type: 'response_item', timestamp: '2026-06-17T11:00:01Z', payload: { type: 'agent_message', message: `see https://codex.test and ${mentionedFile}:12` } },
     { type: 'response_item', timestamp: '2026-06-17T11:00:02Z', payload: { type: 'function_call', name: 'shell', arguments: JSON.stringify({ command: `cat ${realFile}` }) } },
     { type: 'response_item', timestamp: '2026-06-17T11:00:03Z', payload: { type: 'item_completed', item: { type: 'Plan', text: '# Codex Plan\n- step' } } },
-  ].map((l) => JSON.stringify(l)).join('\n');
-  fs.writeFileSync(path.join(codexDir, 'rollout-2026-06-17T11-00-00-abc.jsonl'), codexLines);
+  ]);
 
-  // ── Codex rollout for a DIFFERENT cwd (must NOT be picked up) ──
-  const otherLines = [
-    { type: 'session_meta', timestamp: '2026-06-17T12:00:00Z', payload: { cwd: '/somewhere/else', id: 'y' } },
-    { type: 'response_item', timestamp: '2026-06-17T12:00:01Z', payload: { type: 'agent_message', message: 'https://WRONG.test' } },
-  ].map((l) => JSON.stringify(l)).join('\n');
-  fs.writeFileSync(path.join(codexDir, 'rollout-2026-06-17T12-00-00-def.jsonl'), otherLines);
+  writeJsonl(path.join(explicitCodexHome, 'sessions', '2026', '06', '17', 'rollout-child.jsonl'), [
+    { type: 'session_meta', timestamp: '2026-06-17T12:00:00Z', payload: { cwd: childCwd, id: 'y' } },
+    { type: 'response_item', timestamp: '2026-06-17T12:00:01Z', payload: { type: 'agent_message', message: 'https://codex-child-only.test' } },
+  ]);
 });
 
 afterAll(() => {
-  if (origHome === undefined) delete process.env.HOME;
-  else process.env.HOME = origHome;
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+  else process.env.CODEX_HOME = originalCodexHome;
+
   fs.rmSync(home, { recursive: true, force: true });
+  fs.rmSync(explicitCodexHome, { recursive: true, force: true });
   fs.rmSync(cwd, { recursive: true, force: true });
 });
 
 describe('readClaudeAssets', () => {
-  it('extracts urls, commands, paths, and plans from the exact cwd', () => {
-    const a = readClaudeAssets(cwd);
-    expect(a.hadSession).toBe(true);
-    expect(a.urls.map((u) => u.text)).toEqual(['https://claude.test']);
-    expect(a.commands.map((c) => c.text)).toEqual(['npm test']);
-    expect(a.paths.map((p) => p.text)).toEqual([realFile]);
-    expect(a.plans.map((p) => p.display)).toEqual(['Claude Plan']);
+  it('extracts URLs, commands, paths from tool input and message text, and plans for the exact cwd', () => {
+    const assets = readClaudeAssets(cwd);
+
+    expect(assets.hadSession).toBe(true);
+    expect(assets.urls.map((u) => u.text)).toEqual(['https://claude.test']);
+    expect(assets.commands.map((c) => c.text)).toEqual(['npm test']);
+    expect(assets.paths.map((p) => p.text)).toEqual([`${mentionedFile}:7`, realFile]);
+    expect(assets.plans.map((p) => p.display)).toEqual(['Claude Plan']);
   });
 
-  it('returns nothing for a cwd with no session dir', () => {
-    const a = readClaudeAssets(path.join(cwd, 'no-such-sub'));
-    expect(a.hadSession).toBe(false);
-    expect(a.urls).toEqual([]);
+  it('does not read parent or child sessions when scoped to a cwd', () => {
+    const assets = readClaudeAssets(cwd);
+
+    expect(assets.urls.map((u) => u.text)).not.toContain('https://child-only.test');
   });
 });
 
 describe('readCodexAssets', () => {
-  it('matches the exact cwd only and mines urls/paths/plans', () => {
-    const a = readCodexAssets(cwd);
-    expect(a.hadSession).toBe(true);
-    expect(a.urls.map((u) => u.text)).toContain('https://codex.test');
-    expect(a.urls.map((u) => u.text)).not.toContain('https://WRONG.test');
-    expect(a.paths.map((p) => p.text)).toContain(realFile);
-    expect(a.plans.map((p) => p.display)).toContain('Codex Plan');
-  });
+  it('reads Codex rollouts from CODEX_HOME and extracts message-text paths', () => {
+    const assets = readCodexAssets(cwd);
 
-  it('does not pick up a different cwd', () => {
-    const a = readCodexAssets('/somewhere/else');
-    // The fixture for /somewhere/else has no real files; only its URL.
-    expect(a.urls.map((u) => u.text)).toEqual(['https://WRONG.test']);
+    expect(assets.hadSession).toBe(true);
+    expect(assets.urls.map((u) => u.text)).toContain('https://codex.test');
+    expect(assets.urls.map((u) => u.text)).not.toContain('https://codex-child-only.test');
+    expect(assets.paths.map((p) => p.text)).toContain(`${mentionedFile}:12`);
+    expect(assets.paths.map((p) => p.text)).toContain(realFile);
+    expect(assets.plans.map((p) => p.display)).toContain('Codex Plan');
   });
 });
 
 describe('gatherAssetsForCwd', () => {
-  it('merges both agents for the exact cwd, newest-first', () => {
-    const a = gatherAssetsForCwd({ cwd });
-    expect(a.inChat).toBe(true);
-    // Codex (11:00) is newer than Claude (10:00), so its URL sorts first.
-    expect(a.urls.map((u) => u.text)).toEqual(['https://codex.test', 'https://claude.test']);
-    expect(a.commands.map((c) => c.text)).toEqual(['npm test']);
-    expect(a.paths.map((p) => p.text)).toEqual([realFile]);
-    expect(a.plans.map((p) => p.display).sort()).toEqual(['Claude Plan', 'Codex Plan']);
+  it('merges both supported agents newest-first with caps and exact-cwd isolation', () => {
+    const assets = gatherAssetsForCwd({ cwd, caps: { url: 1 } });
+
+    expect(assets.inChat).toBe(true);
+    expect(assets.urls.map((u) => u.text)).toEqual(['https://codex.test']);
+    expect(assets.commands.map((c) => c.text)).toEqual(['npm test']);
+    expect(assets.plans.map((p) => p.display).sort()).toEqual(['Claude Plan', 'Codex Plan']);
   });
 
-  it('can scope to a single agent', () => {
-    const a = gatherAssetsForCwd({ cwd, agents: ['claude'] });
-    expect(a.urls.map((u) => u.text)).toEqual(['https://claude.test']);
-  });
+  it('can scope extraction to one agent', () => {
+    const assets = gatherAssetsForCwd({ cwd, agents: ['claude'] });
 
-  it('respects caps', () => {
-    const a = gatherAssetsForCwd({ cwd, caps: { url: 1 } });
-    expect(a.urls).toHaveLength(1);
+    expect(assets.urls.map((u) => u.text)).toEqual(['https://claude.test']);
   });
 });

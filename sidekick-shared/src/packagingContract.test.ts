@@ -99,6 +99,12 @@ describe('packaging contract', () => {
     expect(typeof m.formatDurationMs).toBe('function');
     expect(typeof m.formatTokenCount).toBe('function');
     expect(typeof m.extractToolCall).toBe('function');
+    expect(typeof m.extractUrls).toBe('function');
+    expect(typeof m.extractFilePaths).toBe('function');
+    expect(typeof m.extractCommands).toBe('function');
+    expect(typeof m.gatherAssetsForCwd).toBe('function');
+    expect(typeof m.readClaudeAssets).toBe('function');
+    expect(typeof m.readCodexAssets).toBe('function');
     expect(typeof m.readSessionContextSnapshot).toBe('function');
     expect(typeof m.buildSessionContextSnapshot).toBe('function');
     expect(typeof m.extractSessionEvents).toBe('function');

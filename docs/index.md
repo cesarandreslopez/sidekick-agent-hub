@@ -37,7 +37,7 @@
 
 ![CLAUDE.md Suggestions](images/claude-md-suggestions.png)
 
-**Monitor from the terminal.** The [Sidekick CLI](features/cli.md) provides a full-screen TUI dashboard for monitoring agent sessions without leaving the terminal. Browse sessions, tasks, decisions, knowledge notes, and more — all rendered in an Ink-based terminal UI. Install with `npm install -g sidekick-agent-hub` and run `sidekick dashboard`. Works with Claude Code, OpenCode, and Codex sessions.
+**Monitor from the terminal.** The [Sidekick CLI](features/cli.md) provides a full-screen TUI dashboard for monitoring agent sessions without leaving the terminal. Browse sessions, tasks, decisions, knowledge notes, and more — all rendered in an Ink-based terminal UI. Use `sidekick extract` to pull URLs, file paths, commands, and plans out of recent Claude Code and Codex chats for the current project. Install with `npm install -g sidekick-agent-hub` and run `sidekick dashboard`. Works with Claude Code, OpenCode, and Codex sessions.
 
 ![Sidekick CLI Dashboard](images/sidekick-cli.gif)
 
@@ -89,6 +89,7 @@ Available in the VS Code extension and the [CLI Dashboard](features/cli.md). The
 - **Project Timeline** — chronological view of all sessions with duration, token usage, and expandable details
 - **Knowledge Notes** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking
 - **HTML Session Report** — self-contained HTML report with full transcript, token/cost stats, and tool-use breakdown
+- **Session Asset Extraction** — CLI command for extracting actionable URLs, paths, commands, and plans from recent Claude Code and Codex chats
 
 ## Quick Install
 
@@ -109,7 +110,7 @@ Requires Node.js 20+. Works standalone — no VS Code required. See [CLI Dashboa
 
 ### Shared Library
 
-Building your own tool on top of Sidekick session data? The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) npm package provides types, parsers, session providers, event aggregation, model pricing, Zod schemas, and more — no VS Code or CLI dependency required.
+Building your own tool on top of Sidekick session data? The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) npm package provides types, parsers, session providers, event aggregation, model pricing, Zod schemas, actionable session-asset extraction, and more — no VS Code or CLI dependency required.
 
 ```bash
 npm install sidekick-shared

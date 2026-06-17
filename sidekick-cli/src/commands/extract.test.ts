@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseTypes, filterByTypes, flattenAssets } from './extract';
-import type { ExtractedAssets, ExtractedAsset } from 'sidekick-shared';
+import {
+  filterByTypes,
+  flattenAssets,
+  parseTypes,
+  resolveAssetAgents,
+} from './extract';
+import type { ExtractedAsset, ExtractedAssets } from 'sidekick-shared';
 
 function asset(type: ExtractedAsset['type'], text: string): ExtractedAsset {
   return { type, text, display: text };
@@ -31,6 +36,7 @@ describe('parseTypes', () => {
 describe('filterByTypes', () => {
   it('keeps only requested types', () => {
     const filtered = filterByTypes(sample, ['url', 'command']);
+
     expect(filtered.urls).toHaveLength(1);
     expect(filtered.commands).toHaveLength(1);
     expect(filtered.paths).toHaveLength(0);
@@ -40,6 +46,22 @@ describe('filterByTypes', () => {
 
 describe('flattenAssets', () => {
   it('orders urls, paths, commands, plans', () => {
-    expect(flattenAssets(sample).map(a => a.type)).toEqual(['url', 'path', 'command', 'plan']);
+    expect(flattenAssets(sample).map((a) => a.type)).toEqual(['url', 'path', 'command', 'plan']);
+  });
+});
+
+describe('resolveAssetAgents', () => {
+  it('maps supported global providers to extractor agents', () => {
+    expect(resolveAssetAgents({ provider: 'claude-code' })).toEqual({ agents: ['claude'] });
+    expect(resolveAssetAgents({ provider: 'codex' })).toEqual({ agents: ['codex'] });
+    expect(resolveAssetAgents({ provider: 'auto' })).toEqual({ agents: undefined });
+    expect(resolveAssetAgents({})).toEqual({ agents: undefined });
+  });
+
+  it('reports OpenCode as unsupported instead of silently reading other agents', () => {
+    expect(resolveAssetAgents({ provider: 'opencode' })).toEqual({
+      agents: [],
+      unsupportedProvider: 'opencode',
+    });
   });
 });

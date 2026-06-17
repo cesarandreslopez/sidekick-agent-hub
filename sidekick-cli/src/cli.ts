@@ -224,7 +224,7 @@ const extractCmd = new Command('extract')
   .description('Extract URLs, file paths, commands, and plans from recent sessions')
   .option('--type <types>', 'Comma list: url, path, command, plan (default: all)')
   .option('--limit <n>', 'Maximum items per type')
-  .option('-i, --interactive', 'Interactive fuzzy picker with copy/open actions')
+  .option('-i, --interactive', 'Interactive picker with copy/open actions')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { extractAction } = await import('./commands/extract');
     return extractAction(_opts, cmd);

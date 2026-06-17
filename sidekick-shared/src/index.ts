@@ -451,10 +451,8 @@ export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 // Extractors — per-event token usage and tool call extraction
 export { extractTokenUsage } from './extractors/tokenUsage';
 export { extractToolCall, extractToolCalls } from './extractors/toolCall';
-
-// Extractors — actionable session assets (URLs, file paths, commands, plans).
-// Node-only (uses `node:fs` to validate file paths); safe for CLI and
-// extension-host, not for browser bundles.
+// Extractors — actionable session assets. Node-only: safe for CLI and
+// extension-host code, not for browser/webview bundles.
 export {
   extractUrls,
   extractFilePaths,

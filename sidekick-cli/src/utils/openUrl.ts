@@ -1,12 +1,13 @@
 /**
- * Open a URL in the default browser (detached).
+ * Open a URL in the default browser.
  *
- * Adapted from `trawl` (MIT, (c) 2026 Juan Fourie).
+ * Adapted from `trawl` by Juan Fourie (B33pBeeps), MIT licensed:
+ * https://github.com/B33pBeeps/trawl
  */
 
 import { spawn } from 'node:child_process';
-import { platform } from 'node:os';
 import { readFileSync } from 'node:fs';
+import { platform } from 'node:os';
 
 function isWSL(): boolean {
   try {
@@ -22,7 +23,6 @@ function opener(): string {
   return 'xdg-open';
 }
 
-/** Open `url` in the default browser. Returns true if the opener spawned. */
 export function openUrl(url: string): boolean {
   try {
     const child = spawn(opener(), [url], { detached: true, stdio: 'ignore' });

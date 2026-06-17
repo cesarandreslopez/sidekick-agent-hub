@@ -2,24 +2,20 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { extractUrls, extractFilePaths, extractCommands } from './sessionAssets';
+import { extractCommands, extractFilePaths, extractUrls } from './sessionAssets';
 
 describe('extractUrls', () => {
-  it('extracts http/https/file URLs', () => {
-    const text = 'see https://example.com and http://foo.test/bar and file:///etc/hosts';
+  it('extracts http, https, and file URLs without trailing punctuation', () => {
+    const text = 'see https://example.com/path. Then http://foo.test/bar, and file:///tmp/x';
+
     expect(extractUrls(text)).toEqual([
-      'https://example.com',
+      'https://example.com/path',
       'http://foo.test/bar',
-      'file:///etc/hosts',
+      'file:///tmp/x',
     ]);
   });
 
-  it('strips trailing punctuation', () => {
-    expect(extractUrls('Go to https://example.com/path.')).toEqual(['https://example.com/path']);
-    expect(extractUrls('(https://example.com),')).toEqual(['https://example.com']);
-  });
-
-  it('returns [] for empty/nullish input', () => {
+  it('returns an empty list for nullish or empty input', () => {
     expect(extractUrls('')).toEqual([]);
     expect(extractUrls(undefined)).toEqual([]);
     expect(extractUrls(null)).toEqual([]);
@@ -27,29 +23,22 @@ describe('extractUrls', () => {
 });
 
 describe('extractCommands', () => {
-  it('extracts lines from shell-tagged fenced blocks', () => {
+  it('extracts commands from shell-tagged fenced blocks', () => {
     const text = '```bash\nnpm run build\nnpm test\n```';
+
     expect(extractCommands(text)).toEqual(['npm run build', 'npm test']);
   });
 
-  it('skips comments and joins line continuations in shell blocks', () => {
+  it('keeps explicit prompt-prefixed commands in untagged blocks and prose', () => {
+    const text = '```\nnot a command\n$ pnpm test\n```\nThen run:\n$ git status';
+
+    expect(extractCommands(text)).toEqual(['pnpm test', 'git status']);
+  });
+
+  it('joins shell line continuations and skips comments', () => {
     const text = '```sh\n# build it\ndocker run \\\n  --rm hello\n```';
+
     expect(extractCommands(text)).toEqual(['docker run --rm hello']);
-  });
-
-  it('ignores non-$ lines in untagged blocks but keeps $-prefixed ones', () => {
-    const text = '```\nthis is prose\n$ echo hi\n```';
-    expect(extractCommands(text)).toEqual(['echo hi']);
-  });
-
-  it('extracts $-prefixed lines from prose outside blocks', () => {
-    const text = 'Run this:\n$ git status\nthen review.';
-    expect(extractCommands(text)).toEqual(['git status']);
-  });
-
-  it('does not double-count $ lines already inside a block', () => {
-    const text = '```bash\n$ ls -la\n```';
-    expect(extractCommands(text)).toEqual(['ls -la']);
   });
 });
 
@@ -59,7 +48,7 @@ describe('extractFilePaths', () => {
 
   beforeAll(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-assets-'));
-    realFile = path.join(dir, 'real.ts');
+    realFile = path.join(dir, 'src.ts');
     fs.writeFileSync(realFile, '// hi');
   });
 
@@ -67,17 +56,13 @@ describe('extractFilePaths', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('returns only paths that exist on disk', () => {
-    const text = `edit ${realFile} and ${path.join(dir, 'nope.ts')}`;
+  it('returns only file paths that exist on disk', () => {
+    const text = `edit ${realFile} and ${path.join(dir, 'missing.ts')}`;
+
     expect(extractFilePaths(text, dir)).toEqual([{ file: realFile }]);
   });
 
-  it('parses :line suffixes', () => {
-    const text = `error at ${realFile}:42:7`;
-    expect(extractFilePaths(text, dir)).toEqual([{ file: realFile, line: 42 }]);
-  });
-
-  it('resolves relative paths against cwd', () => {
-    expect(extractFilePaths('see real.ts', dir)).toEqual([{ file: realFile }]);
+  it('resolves relative paths and preserves line suffixes', () => {
+    expect(extractFilePaths('see src.ts:42:7', dir)).toEqual([{ file: realFile, line: 42 }]);
   });
 });

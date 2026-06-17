@@ -1,56 +1,53 @@
 /**
- * Codex CLI rollout reader for asset extraction.
- * ~/.codex/sessions/<Y>/<M>/<D>/rollout-<iso>-<uuid>.jsonl  (append-only JSONL)
- * cwd lives in line 1: session_meta.payload.cwd. arguments/input are
- * JSON-encoded strings (double-parse).
+ * Codex CLI rollout reader for actionable asset extraction.
  *
- * Ported directly from trawl `src/sources/codex.mjs` (MIT, (c) 2026 Juan
- * Fourie). Matches sessions by EXACT cwd — no walking up or down.
+ * Portions adapted from `trawl` by Juan Fourie (B33pBeeps), MIT licensed:
+ * https://github.com/B33pBeeps/trawl
  *
  * @module extractors/sources/codexAssets
  */
 
-import { join } from 'path';
-import { homedir } from 'os';
-import { readdirSync, statSync, readFileSync, openSync, readSync, closeSync } from 'fs';
+import { join, resolve } from 'node:path';
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
+import { getCodexMonitoringHomes } from '../../codexProfiles';
 import {
-  extractUrls,
-  extractFilePaths,
-  extractCommands,
-  urlAsset,
   commandAsset,
+  extractCommands,
+  extractFilePaths,
+  extractUrls,
   pathAsset,
   planAsset,
+  urlAsset,
   type SourceAssets,
 } from '../sessionAssets';
 
 const EXEC_NAMES = new Set(['exec_command', 'shell', 'local_shell', 'container.exec']);
 
-function dirExists(p: string): boolean {
+function dirExists(path: string): boolean {
   try {
-    return statSync(p).isDirectory();
+    return statSync(path).isDirectory();
   } catch {
     return false;
   }
 }
 
-/** Parse only the FIRST JSON line of a file (cheap cwd probe for big rollouts). */
-function firstJsonLine(file: string): Record<string, unknown> | null {
+function firstJsonLine(filePath: string): Record<string, unknown> | null {
   let fd: number;
   try {
-    fd = openSync(file, 'r');
+    fd = openSync(filePath, 'r');
   } catch {
     return null;
   }
-  const buf = Buffer.alloc(65536);
+
+  const buffer = Buffer.alloc(65536);
   let data = '';
   try {
-    let n: number;
-    while ((n = readSync(fd, buf, 0, buf.length, null)) > 0) {
-      data += buf.toString('utf8', 0, n);
-      const i = data.indexOf('\n');
-      if (i >= 0) {
-        data = data.slice(0, i);
+    let bytesRead: number;
+    while ((bytesRead = readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+      data += buffer.toString('utf8', 0, bytesRead);
+      const newlineIndex = data.indexOf('\n');
+      if (newlineIndex >= 0) {
+        data = data.slice(0, newlineIndex);
         break;
       }
       if (data.length > 1_000_000) break;
@@ -60,6 +57,7 @@ function firstJsonLine(file: string): Record<string, unknown> | null {
   } finally {
     closeSync(fd);
   }
+
   try {
     return JSON.parse(data) as Record<string, unknown>;
   } catch {
@@ -67,140 +65,156 @@ function firstJsonLine(file: string): Record<string, unknown> | null {
   }
 }
 
-/** Read a JSONL file into parsed objects; `skip(rawLine)` drops heavy lines pre-parse. */
-function readJsonl(file: string, skip?: (raw: string) => boolean): Array<Record<string, unknown>> {
+function readJsonl(filePath: string, skip?: (rawLine: string) => boolean): Array<Record<string, unknown>> {
   let raw: string;
   try {
-    raw = readFileSync(file, 'utf8');
+    raw = readFileSync(filePath, 'utf8');
   } catch {
     return [];
   }
-  const out: Array<Record<string, unknown>> = [];
+
+  const lines: Array<Record<string, unknown>> = [];
   for (const line of raw.split('\n')) {
-    const s = line.trim();
-    if (!s) continue;
-    if (skip && skip(s)) continue;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (skip?.(trimmed)) continue;
     try {
-      out.push(JSON.parse(s));
+      lines.push(JSON.parse(trimmed) as Record<string, unknown>);
     } catch {
-      /* ignore */
+      // Ignore partial or malformed JSONL lines.
     }
   }
-  return out;
+  return lines;
 }
 
-/** Collect rollout files newest-first by mtime (resumed sessions rank by fresh mtime). */
 function rolloutFiles(limit = 150): string[] {
-  const root = join(homedir(), '.codex', 'sessions');
-  if (!dirExists(root)) return [];
-  const out: Array<{ p: string; mtime: number }> = [];
+  const entries: Array<{ path: string; mtime: number }> = [];
+  const seen = new Set<string>();
+
   const walk = (dir: string): void => {
-    let entries: import('fs').Dirent[];
+    let dirEntries: import('node:fs').Dirent[];
     try {
-      entries = readdirSync(dir, { withFileTypes: true });
+      dirEntries = readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
-    for (const e of entries) {
-      const p = join(dir, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (e.isFile() && e.name.startsWith('rollout-') && e.name.endsWith('.jsonl')) {
+
+    for (const entry of dirEntries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
         try {
-          out.push({ p, mtime: statSync(p).mtimeMs });
+          if (seen.has(fullPath)) continue;
+          seen.add(fullPath);
+          entries.push({ path: fullPath, mtime: statSync(fullPath).mtimeMs });
         } catch {
-          /* ignore */
+          // Ignore inaccessible files.
         }
       }
     }
   };
-  walk(root);
-  return out.sort((a, b) => b.mtime - a.mtime).slice(0, limit).map((x) => x.p);
+
+  for (const home of getCodexMonitoringHomes()) {
+    const sessionsDir = join(home, 'sessions');
+    if (dirExists(sessionsDir)) walk(sessionsDir);
+  }
+
+  return entries.sort((a, b) => b.mtime - a.mtime).slice(0, limit).map((entry) => entry.path);
 }
 
-/** Up to `n` newest rollout files whose session cwd matches EXACTLY (line-1 probe). */
-export function codexSessions(cwd: string, n = 3): string[] {
-  const out: string[] = [];
-  for (const f of rolloutFiles()) {
-    const meta = firstJsonLine(f);
+export function codexSessions(cwd: string, limit = 3): string[] {
+  const exactCwd = resolve(cwd);
+  const sessions: string[] = [];
+
+  for (const filePath of rolloutFiles()) {
+    const meta = firstJsonLine(filePath);
     const payload = meta?.payload as Record<string, unknown> | undefined;
-    if (payload?.cwd === cwd) {
-      out.push(f);
-      if (out.length >= n) break;
+    if (payload?.cwd === exactCwd) {
+      sessions.push(filePath);
+      if (sessions.length >= limit) break;
     }
   }
-  return out;
+
+  return sessions;
 }
 
-function parseArgs(s: unknown): Record<string, unknown> {
-  if (typeof s !== 'string') return s && typeof s === 'object' ? (s as Record<string, unknown>) : {};
+function parseArgs(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string') return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   try {
-    return JSON.parse(s) as Record<string, unknown>;
+    return JSON.parse(value) as Record<string, unknown>;
   } catch {
     return {};
   }
 }
 
-/** Extract file paths from apply_patch headers (Update/Add/Delete File: path). */
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function commandFromLocalShell(item: Record<string, unknown>): string | undefined {
+  const action = item.action as Record<string, unknown> | undefined;
+  const command = action?.command;
+  if (Array.isArray(command)) return command.map(String).join(' ');
+  return asString(command);
+}
+
 function patchFiles(patch: unknown, cwd: string): Array<{ file: string; line?: number }> {
-  const out: Array<{ file: string; line?: number }> = [];
-  for (const m of String(patch).matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm)) {
-    const f = m[1].trim();
-    for (const p of extractFilePaths(f, cwd)) out.push(p);
+  const paths: Array<{ file: string; line?: number }> = [];
+  for (const match of String(patch).matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm)) {
+    for (const filePath of extractFilePaths(match[1].trim(), cwd)) {
+      paths.push(filePath);
+    }
   }
-  return out;
+  return paths;
 }
 
-function asString(v: unknown): string | undefined {
-  return typeof v === 'string' ? v : undefined;
+function addMessageAssets(acc: SourceAssets, text: unknown, cwd: string, timestamp?: string): void {
+  for (const url of extractUrls(text)) acc.urls.push(urlAsset(url, timestamp));
+  for (const filePath of extractFilePaths(text, cwd)) acc.paths.push(pathAsset(filePath, timestamp));
+  for (const command of extractCommands(text)) acc.commands.push(commandAsset(command, timestamp));
 }
 
-/** Extract assets from the newest `limit` Codex sessions for the exact cwd. */
+function addExecutedCommandAssets(acc: SourceAssets, command: unknown, cwd: string, timestamp?: string): void {
+  for (const url of extractUrls(command)) acc.urls.push(urlAsset(url, timestamp));
+  for (const filePath of extractFilePaths(command, cwd)) acc.paths.push(pathAsset(filePath, timestamp));
+}
+
 export function readCodexAssets(cwd: string, limit = 3): SourceAssets {
-  const files = codexSessions(cwd, limit);
+  const exactCwd = resolve(cwd);
+  const files = codexSessions(exactCwd, limit);
   const acc: SourceAssets = { urls: [], paths: [], commands: [], plans: [], hadSession: files.length > 0 };
+  const skip = (line: string): boolean =>
+    line.includes('"type":"function_call_output"') ||
+    line.includes('"type":"reasoning"') ||
+    line.includes('"type":"token_count"');
 
-  // Skip heavy lines (command output, encrypted reasoning, token counters)
-  // before paying their JSON.parse cost.
-  const skip = (l: string): boolean =>
-    l.includes('"type":"function_call_output"') ||
-    l.includes('"type":"reasoning"') ||
-    l.includes('"type":"token_count"');
+  for (const filePath of files) {
+    for (const line of readJsonl(filePath, skip)) {
+      const payload = line.payload as Record<string, unknown> | undefined;
+      if (!payload) continue;
+      const timestamp = asString(line.timestamp);
 
-  for (const file of files) {
-    for (const line of readJsonl(file, skip)) {
-      const p = line.payload as Record<string, unknown> | undefined;
-      if (!p) continue;
-      const ts = asString(line.timestamp);
-      const pt = p.type;
-
-      if (pt === 'function_call') {
-        // commands the session RAN — mine paths/urls, but don't list the command.
-        if (EXEC_NAMES.has(p.name as string)) {
-          const args = parseArgs(p.arguments);
-          const cmd = args.cmd ?? args.command;
-          if (cmd) {
-            for (const u of extractUrls(cmd)) acc.urls.push(urlAsset(u, ts));
-            for (const pp of extractFilePaths(cmd, cwd)) acc.paths.push(pathAsset(pp, ts));
-          }
+      if (payload.type === 'function_call') {
+        if (EXEC_NAMES.has(payload.name as string)) {
+          const args = parseArgs(payload.arguments);
+          addExecutedCommandAssets(acc, args.cmd ?? args.command, exactCwd, timestamp);
         }
-      } else if (pt === 'item_completed') {
-        const item = p.item as Record<string, unknown> | undefined;
+      } else if (payload.type === 'local_shell_call') {
+        addExecutedCommandAssets(acc, commandFromLocalShell(payload), exactCwd, timestamp);
+      } else if (payload.type === 'item_completed') {
+        const item = payload.item as Record<string, unknown> | undefined;
         const text = asString(item?.text);
-        if (item?.type === 'Plan' && text && text.trim()) {
-          // A finalized PlanItem (distinct from the update_plan todo list).
-          acc.plans.push(planAsset(text, ts));
+        if (item?.type === 'Plan' && text?.trim()) acc.plans.push(planAsset(text, timestamp));
+      } else if (payload.type === 'custom_tool_call' && payload.name === 'apply_patch') {
+        for (const file of patchFiles(payload.input, exactCwd)) acc.paths.push(pathAsset(file, timestamp));
+      } else if (payload.type === 'message' && Array.isArray(payload.content)) {
+        for (const block of payload.content) {
+          const typedBlock = block as Record<string, unknown>;
+          addMessageAssets(acc, typedBlock.text, exactCwd, timestamp);
         }
-      } else if (pt === 'custom_tool_call' && p.name === 'apply_patch') {
-        for (const pp of patchFiles(p.input, cwd)) acc.paths.push(pathAsset(pp, ts));
-      } else if (pt === 'message' && Array.isArray(p.content)) {
-        for (const block of p.content) {
-          const b = block as Record<string, unknown>;
-          for (const u of extractUrls(b?.text)) acc.urls.push(urlAsset(u, ts));
-          for (const c of extractCommands(b?.text)) acc.commands.push(commandAsset(c, ts));
-        }
-      } else if (pt === 'agent_message' && typeof p.message === 'string') {
-        for (const u of extractUrls(p.message)) acc.urls.push(urlAsset(u, ts));
-        for (const c of extractCommands(p.message)) acc.commands.push(commandAsset(c, ts));
+      } else if (payload.type === 'agent_message') {
+        addMessageAssets(acc, payload.message, exactCwd, timestamp);
       }
     }
   }
