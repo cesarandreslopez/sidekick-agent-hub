@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Assistant turn timeline**: `segmentAssistantTurn()` now emits a required v2 `timeline` array that preserves reasoning, narration, and tool groups in original arrival order while keeping the final answer text excluded. The mirrored Zod schemas and public type exports include the new timeline contract for browser and IPC consumers
 
+### Changed (sidekick-vscode)
+
+- **Conversation view interleave**: The transcript rail now renders assistant reasoning, tool calls, and narration from the shared assistant-turn timeline, preserving provider-normalized arrival order for Claude, Codex, and OpenCode sessions while keeping the final answer separate
+
 ## [0.19.2] - 2026-06-15
 
 ### Added (sidekick-shared)
