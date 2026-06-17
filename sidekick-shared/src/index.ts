@@ -234,6 +234,7 @@ export type {
   AssistantTurnProjection,
   AssistantTurnSubagent,
   AssistantTurnSubagentStatus,
+  AssistantTurnTimelineItem,
   AssistantTurnToolRef,
   ExtractTurnSubagentsOptions,
   ReasoningSummary,
@@ -495,8 +496,10 @@ export {
   assistantTurnProcessSchema,
   assistantTurnProcessStepSchema,
   assistantTurnProjectionSchema,
+  assistantTurnReasoningTimelineItemSchema,
   assistantTurnSubagentSchema,
   assistantTurnSubagentStatusSchema,
+  assistantTurnTimelineItemSchema,
   assistantTurnToolGroupStepSchema,
   assistantTurnToolRefSchema,
 } from './schemas/assistantTurn';

@@ -27,7 +27,7 @@ npm install sidekick-shared
 | **Search** | Cross-session full-text search, advanced filtering (substring, fuzzy, regex, date) |
 | **Aggregation** | Event aggregation, frequency tracking, activity heatmaps, pattern extraction |
 | **Session Context** | Provider-neutral context evidence snapshots (`buildSessionContextSnapshot()`, `calculateSessionContextPressure()`, `createSessionContextProjector()`, `readSessionContextSnapshot()`): layered evidence sources, low/medium/high context pressure, and observed capabilities (tools, MCP servers, permission mode, rate limits) |
-| **Assistant Turns** | Browser-safe process/answer projection for provider-normalized assistant turns (`segmentAssistantTurn()`, `assistantTurnEventsFromSessionEvents()`), including reasoning blocks, compact tool groups, and Claude `Task` subagent refs without prompt leakage |
+| **Assistant Turns** | Browser-safe timeline/process/answer projection for provider-normalized assistant turns (`segmentAssistantTurn()`, `assistantTurnEventsFromSessionEvents()`), including interleaved reasoning, compact tool groups, and Claude `Task` subagent refs without prompt leakage |
 | **Report** | Self-contained HTML session report generation |
 | **Credentials** | Claude Max OAuth credential reading from `~/.claude/.credentials.json` |
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
@@ -204,9 +204,9 @@ if (provider) {
 
 Use `createSessionContextProjector()` for incremental updates as new events stream in, or `calculateSessionContextPressure(contextTokens, contextWindow)` for the pressure band alone.
 
-### Project an assistant turn into Process + Answer
+### Project an assistant turn into Timeline + Process + Answer
 
-Build a compact UI-safe projection from provider-normalized turn events. The final contiguous text run becomes `answer`; earlier narration, tools, and reasoning stay in `process` / `reasoningBlocks`.
+Build a compact UI-safe projection from provider-normalized turn events. The final contiguous text run becomes `answer`; earlier narration, tools, and reasoning stay in `process` / `reasoningBlocks`, and `timeline` preserves their interleaved arrival order for rendering.
 
 ```typescript
 import {
@@ -217,6 +217,7 @@ import {
 const projection = segmentAssistantTurn(assistantTurnEventsFromSessionEvents(sessionEvents));
 
 console.log(projection.answer);
+console.log(projection.timeline);
 console.log(projection.process.steps);
 console.log(projection.subagents); // Claude Task spawns, prompt text omitted
 ```

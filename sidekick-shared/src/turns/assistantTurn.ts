@@ -30,6 +30,11 @@ export type AssistantTurnProcessStep =
   | { kind: 'narration'; text: string }
   | { kind: 'toolGroup'; tools: AssistantTurnToolRef[] };
 
+export type AssistantTurnTimelineItem =
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'narration'; text: string }
+  | { kind: 'toolGroup'; tools: AssistantTurnToolRef[] };
+
 export interface AssistantTurnProcess {
   steps: AssistantTurnProcessStep[];
 }
@@ -44,11 +49,12 @@ export interface AssistantTurnSubagent {
 }
 
 export interface AssistantTurnProjection {
-  schemaVersion: 1;
+  schemaVersion: 2;
   answer: string;
   reasoning: string;
   reasoningBlocks: string[];
   process: AssistantTurnProcess;
+  timeline: AssistantTurnTimelineItem[];
   subagents: AssistantTurnSubagent[];
 }
 
@@ -85,6 +91,25 @@ export interface ReasoningSummary {
   body: string;
 }
 
+type AssistantTurnToolGroupStep = Extract<AssistantTurnProcessStep, { kind: 'toolGroup' }>;
+
+type InternalTimelineItem =
+  | { kind: 'reasoning'; text: string; reasoningIndex: number }
+  | { kind: 'narration'; text: string; processStepIndex: number }
+  | { kind: 'toolGroup'; tools: AssistantTurnToolRef[]; processStepIndex: number };
+
+interface CappedProcessSteps {
+  steps: AssistantTurnProcessStep[];
+  retainedIndexes: Set<number>;
+  omittedMarker?: string;
+}
+
+interface CappedReasoningBlocks {
+  blocks: string[];
+  retainedIndexes: Set<number>;
+  omittedMarker?: string;
+}
+
 export function reasoningSummary(text: string): ReasoningSummary {
   const normalized = text.replace(/\r\n/g, '\n');
   const trimmed = normalized.trim();
@@ -116,12 +141,15 @@ export function segmentAssistantTurn(
 
   const reasoningParts: string[] = [];
   const steps: AssistantTurnProcessStep[] = [];
+  const timelineItems: InternalTimelineItem[] = [];
   let textBuffer: string[] = [];
-  let toolGroup: { kind: 'toolGroup'; tools: AssistantTurnToolRef[] } | null = null;
+  let toolGroup: AssistantTurnToolGroupStep | null = null;
 
   function closeToolGroup(): void {
     if (toolGroup != null && toolGroup.tools.length > 0) {
+      const processStepIndex = steps.length;
       steps.push(toolGroup);
+      timelineItems.push({ kind: 'toolGroup', tools: toolGroup.tools, processStepIndex });
     }
     toolGroup = null;
   }
@@ -129,7 +157,10 @@ export function segmentAssistantTurn(
   function sealTextAsNarration(): void {
     const text = joinText(textBuffer);
     if (text !== '') {
-      steps.push({ kind: 'narration', text: capText(text, maxNarrationChars) });
+      const processStepIndex = steps.length;
+      const step = { kind: 'narration' as const, text: capText(text, maxNarrationChars) };
+      steps.push(step);
+      timelineItems.push({ kind: 'narration', text: step.text, processStepIndex });
     }
     textBuffer = [];
   }
@@ -146,7 +177,13 @@ export function segmentAssistantTurn(
         if (event.content.trim() === '') break;
         sealTextAsNarration();
         closeToolGroup();
+        const reasoningIndex = reasoningParts.length;
         reasoningParts.push(event.content);
+        timelineItems.push({
+          kind: 'reasoning',
+          text: capText(event.content, maxReasoningChars),
+          reasoningIndex,
+        });
         break;
       }
       case 'tool_use': {
@@ -168,20 +205,20 @@ export function segmentAssistantTurn(
   const answer = joinText(textBuffer);
   closeToolGroup();
 
-  const reasoningBlocks = capReasoningBlocks(
-    reasoningParts
-      .filter((part) => part.trim() !== '')
-      .map((part) => capText(part, maxReasoningChars)),
+  const cappedReasoning = capReasoningBlocks(
+    reasoningParts.map((part) => capText(part, maxReasoningChars)),
     maxReasoningBlocks,
   );
-  const process = { steps: capProcessSteps(steps, maxProcessSteps) };
+  const cappedProcess = capProcessSteps(steps, maxProcessSteps);
+  const process = { steps: cappedProcess.steps };
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     answer,
     reasoning: capText(joinText(reasoningParts), maxReasoningChars),
-    reasoningBlocks,
+    reasoningBlocks: cappedReasoning.blocks,
     process,
+    timeline: capTimelineItems(timelineItems, cappedReasoning, cappedProcess),
     subagents: extractTurnSubagents(flattenProcessTools(process), { status: subagentStatus }),
   };
 }
@@ -323,22 +360,82 @@ function flattenProcessTools(process: AssistantTurnProcess): AssistantTurnToolRe
 function capProcessSteps(
   steps: AssistantTurnProcessStep[],
   maxRetainedSteps: number,
-): AssistantTurnProcessStep[] {
-  if (!Number.isFinite(maxRetainedSteps) || maxRetainedSteps < 0) return [];
+): CappedProcessSteps {
+  const retainedIndexes = new Set<number>();
+  if (!Number.isFinite(maxRetainedSteps) || maxRetainedSteps < 0) return { steps: [], retainedIndexes };
   const retainedCount = Math.floor(maxRetainedSteps);
-  if (steps.length <= retainedCount) return steps;
-  const kept = retainedCount > 0 ? steps.slice(steps.length - retainedCount) : [];
+  if (steps.length <= retainedCount) {
+    steps.forEach((_step, index) => retainedIndexes.add(index));
+    return { steps, retainedIndexes };
+  }
+  const firstKeptIndex = Math.max(steps.length - retainedCount, 0);
+  const kept = retainedCount > 0 ? steps.slice(firstKeptIndex) : [];
+  for (let index = firstKeptIndex; index < steps.length; index += 1) {
+    retainedIndexes.add(index);
+  }
   const omitted = steps.length - kept.length;
-  return [{ kind: 'narration', text: `... ${omitted} earlier process step${omitted === 1 ? '' : 's'} omitted` }, ...kept];
+  const omittedMarker = `... ${omitted} earlier process step${omitted === 1 ? '' : 's'} omitted`;
+  return { steps: [{ kind: 'narration', text: omittedMarker }, ...kept], retainedIndexes, omittedMarker };
 }
 
-function capReasoningBlocks(blocks: string[], maxRetainedBlocks: number): string[] {
-  if (!Number.isFinite(maxRetainedBlocks) || maxRetainedBlocks < 0) return [];
+function capReasoningBlocks(blocks: string[], maxRetainedBlocks: number): CappedReasoningBlocks {
+  const retainedIndexes = new Set<number>();
+  if (!Number.isFinite(maxRetainedBlocks) || maxRetainedBlocks < 0) return { blocks: [], retainedIndexes };
   const retainedCount = Math.floor(maxRetainedBlocks);
-  if (blocks.length <= retainedCount) return blocks;
+  if (blocks.length <= retainedCount) {
+    blocks.forEach((_block, index) => retainedIndexes.add(index));
+    return { blocks, retainedIndexes };
+  }
   const kept = retainedCount > 0 ? blocks.slice(0, retainedCount) : [];
+  for (let index = 0; index < kept.length; index += 1) {
+    retainedIndexes.add(index);
+  }
   const omitted = blocks.length - kept.length;
-  return [...kept, `... ${omitted} more reasoning block${omitted === 1 ? '' : 's'} omitted`];
+  const omittedMarker = `... ${omitted} more reasoning block${omitted === 1 ? '' : 's'} omitted`;
+  return { blocks: [...kept, omittedMarker], retainedIndexes, omittedMarker };
+}
+
+function capTimelineItems(
+  items: InternalTimelineItem[],
+  reasoning: CappedReasoningBlocks,
+  process: CappedProcessSteps,
+): AssistantTurnTimelineItem[] {
+  const result: AssistantTurnTimelineItem[] = [];
+  let insertedReasoningOmission = false;
+  let insertedProcessOmission = false;
+
+  for (const item of items) {
+    if (item.kind === 'reasoning') {
+      if (reasoning.retainedIndexes.has(item.reasoningIndex)) {
+        result.push({ kind: 'reasoning', text: item.text });
+      } else if (reasoning.omittedMarker != null && !insertedReasoningOmission) {
+        result.push({ kind: 'reasoning', text: reasoning.omittedMarker });
+        insertedReasoningOmission = true;
+      }
+      continue;
+    }
+
+    if (!process.retainedIndexes.has(item.processStepIndex)) {
+      if (process.omittedMarker != null && !insertedProcessOmission) {
+        result.push({ kind: 'narration', text: process.omittedMarker });
+        insertedProcessOmission = true;
+      }
+      continue;
+    }
+
+    if (process.omittedMarker != null && !insertedProcessOmission) {
+      result.push({ kind: 'narration', text: process.omittedMarker });
+      insertedProcessOmission = true;
+    }
+
+    if (item.kind === 'narration') {
+      result.push({ kind: 'narration', text: item.text });
+    } else {
+      result.push({ kind: 'toolGroup', tools: item.tools });
+    }
+  }
+
+  return result;
 }
 
 function parseSubagentInput(input: unknown): { description?: string; agentType?: string } {

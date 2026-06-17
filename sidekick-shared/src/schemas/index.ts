@@ -75,8 +75,10 @@ export {
   assistantTurnProcessSchema,
   assistantTurnProcessStepSchema,
   assistantTurnProjectionSchema,
+  assistantTurnReasoningTimelineItemSchema,
   assistantTurnSubagentSchema,
   assistantTurnSubagentStatusSchema,
+  assistantTurnTimelineItemSchema,
   assistantTurnToolGroupStepSchema,
   assistantTurnToolRefSchema,
 } from './assistantTurn';
@@ -88,5 +90,6 @@ export type {
   AssistantTurnProjection,
   AssistantTurnSubagent,
   AssistantTurnSubagentStatus,
+  AssistantTurnTimelineItem,
   AssistantTurnToolRef,
 } from '../turns/assistantTurn';

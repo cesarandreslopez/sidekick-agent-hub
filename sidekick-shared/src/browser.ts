@@ -42,6 +42,7 @@ export type {
   AssistantTurnProjection,
   AssistantTurnSubagent,
   AssistantTurnSubagentStatus,
+  AssistantTurnTimelineItem,
   AssistantTurnToolRef,
   ExtractTurnSubagentsOptions,
   ReasoningSummary,

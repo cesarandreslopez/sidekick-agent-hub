@@ -14,6 +14,7 @@ import type {
   AssistantTurnProjection,
   AssistantTurnSubagent,
   AssistantTurnSubagentStatus,
+  AssistantTurnTimelineItem,
   AssistantTurnToolRef,
 } from '../turns/assistantTurn';
 
@@ -58,6 +59,17 @@ export const assistantTurnProcessStepSchema = z.discriminatedUnion('kind', [
   assistantTurnToolGroupStepSchema,
 ]) satisfies z.ZodType<AssistantTurnProcessStep>;
 
+export const assistantTurnReasoningTimelineItemSchema = z.object({
+  kind: z.literal('reasoning'),
+  text: z.string(),
+}) satisfies z.ZodType<Extract<AssistantTurnTimelineItem, { kind: 'reasoning' }>>;
+
+export const assistantTurnTimelineItemSchema = z.discriminatedUnion('kind', [
+  assistantTurnReasoningTimelineItemSchema,
+  assistantTurnNarrationStepSchema,
+  assistantTurnToolGroupStepSchema,
+]) satisfies z.ZodType<AssistantTurnTimelineItem>;
+
 export const assistantTurnProcessSchema = z.object({
   steps: z.array(assistantTurnProcessStepSchema),
 }) satisfies z.ZodType<AssistantTurnProcess>;
@@ -76,10 +88,11 @@ export const assistantTurnSubagentSchema = z.object({
 }) satisfies z.ZodType<AssistantTurnSubagent>;
 
 export const assistantTurnProjectionSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   answer: z.string(),
   reasoning: z.string(),
   reasoningBlocks: z.array(z.string()),
   process: assistantTurnProcessSchema,
+  timeline: z.array(assistantTurnTimelineItemSchema),
   subagents: z.array(assistantTurnSubagentSchema),
 }) satisfies z.ZodType<AssistantTurnProjection>;

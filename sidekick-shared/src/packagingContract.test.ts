@@ -72,7 +72,9 @@ describe('packaging contract', () => {
       'activeAccountStatusSchema',
       'assistantTurnEventSchema',
       'assistantTurnProjectionSchema',
+      'assistantTurnReasoningTimelineItemSchema',
       'assistantTurnSubagentSchema',
+      'assistantTurnTimelineItemSchema',
     ]) {
       expect(typeof m[k]?.safeParse).toBe('function');
     }

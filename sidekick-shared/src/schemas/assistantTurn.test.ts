@@ -7,7 +7,7 @@ import {
 describe('assistantTurnProjectionSchema', () => {
   it('round-trips a process-and-answer projection', () => {
     const projection = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       answer: 'Use the shared projection helper.',
       reasoning: '**Check**\n\nThe helper is browser-safe.',
       reasoningBlocks: ['**Check**\n\nThe helper is browser-safe.'],
@@ -20,6 +20,14 @@ describe('assistantTurnProjectionSchema', () => {
           },
         ],
       },
+      timeline: [
+        { kind: 'reasoning', text: '**Check**\n\nThe helper is browser-safe.' },
+        { kind: 'narration', text: 'I will inspect the exports.' },
+        {
+          kind: 'toolGroup',
+          tools: [{ toolName: 'Read', toolInput: 'index.ts', toolUseId: 'read-1' }],
+        },
+      ],
       subagents: [
         {
           id: 'toolu_1',
@@ -36,13 +44,37 @@ describe('assistantTurnProjectionSchema', () => {
     expect(result.data).toEqual(projection);
   });
 
-  it('rejects an unknown process step kind', () => {
-    const result = assistantTurnProjectionSchema.safeParse({
+  it('requires schema version 2 and timeline', () => {
+    const v1Projection = {
       schemaVersion: 1,
       answer: '',
       reasoning: '',
       reasoningBlocks: [],
+      process: { steps: [] },
+      timeline: [],
+      subagents: [],
+    };
+    const missingTimelineProjection = {
+      schemaVersion: 2,
+      answer: '',
+      reasoning: '',
+      reasoningBlocks: [],
+      process: { steps: [] },
+      subagents: [],
+    };
+
+    expect(assistantTurnProjectionSchema.safeParse(v1Projection).success).toBe(false);
+    expect(assistantTurnProjectionSchema.safeParse(missingTimelineProjection).success).toBe(false);
+  });
+
+  it('rejects an unknown process step kind', () => {
+    const result = assistantTurnProjectionSchema.safeParse({
+      schemaVersion: 2,
+      answer: '',
+      reasoning: '',
+      reasoningBlocks: [],
       process: { steps: [{ kind: 'unknown', text: 'bad' }] },
+      timeline: [],
       subagents: [],
     });
 
