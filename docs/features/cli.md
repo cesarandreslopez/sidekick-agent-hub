@@ -252,7 +252,27 @@ sidekick status
 sidekick status --json
 ```
 
+When the active provider is `claude-code`, the status output is followed by a **Claude Peak Hours** block pulled from [promoclock.co](https://promoclock.co/) — see [Peak Hours](peak-hours.md) for background.
+
 The dashboard also monitors status automatically, but only for the monitored provider — Claude for Claude Code sessions, OpenAI for Codex sessions, and no provider-status section for OpenCode. When degraded, the status bar shows a colored indicator and the Sessions panel Summary tab shows affected components and incident details.
+
+### Peak
+
+```bash
+sidekick peak
+```
+
+Show whether Claude is currently in [peak hours](peak-hours.md) (weekdays 13:00–19:00 UTC) when session limits drain faster. Gated on the `claude-code` session provider — when the resolved provider is OpenCode or Codex, the command prints a "not applicable" message instead of calling the upstream endpoint.
+
+Flags: `--provider <id>` (override auto-detected provider: `claude-code`, `opencode`, `codex`, `auto`). Use `--json` for machine-readable output.
+
+```bash
+# Human-readable
+sidekick peak
+
+# JSON
+sidekick peak --json
+```
 
 ### Quota
 
@@ -263,12 +283,12 @@ sidekick quota
 Provider-aware quota and rate-limit display. The command detects the active provider and shows the appropriate data:
 
 - **Claude Code**: Shows Claude Max subscription quota utilization — 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
-- **Codex**: Shows rate limits extracted from the latest Codex session's token_count events — primary and secondary windows with progress bars and reset countdowns. Requires an active or recent Codex session.
+- **Codex**: Shows rate limits extracted from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars and reset countdowns. The default path is local-only: Sidekick checks the current workspace, then recent account-level Codex rollouts, then the account-scoped snapshot cache. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
 - **OpenCode**: Prints an informational message — OpenCode does not provide rate-limit data.
 
 When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel keeps a compact inline quota/rate-limit state visible even when data is unavailable, and quota failure toasts only appear when the failure state changes.
 
-No command-specific flags. Use `--json` for machine-readable output.
+Use `--json` for machine-readable output. For Codex, use `--refresh` to explicitly call the Codex usage API; without it, no Codex quota network request is made.
 
 #### Examples
 
@@ -281,7 +301,42 @@ sidekick quota --json
 
 # Explicitly check Codex rate limits
 sidekick --provider codex quota
+
+# Explicitly refresh Codex rate limits from the usage API
+sidekick quota --provider codex --refresh
 ```
+
+For Claude Max subscriptions, the output also includes a **Peak** line showing whether Claude is currently in peak hours (faster session-limit drain). See [Peak Hours](peak-hours.md).
+
+#### Quota History
+
+```bash
+sidekick quota history
+```
+
+Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one calendar day; brightness encodes the peak utilization observed that day (≤0% empty, <25% low, <50% mid, <75% high, ≥75% peak). Days that had at least one `available: false` sample render as a red `×`.
+
+| Flag | Description |
+|------|-------------|
+| `--weeks <n>` | Weeks of history to render (default `13`, clamped 1-26) |
+| `--provider <id>` | Limit to a single runtime provider: `claude` or `codex`. Default: both, in two stacked grids |
+| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()` |
+| `--json` | Emit a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
+
+History is sourced from per-workspace JSONL written by both the CLI's quota path and the VS Code extension (Claude via `QuotaService`, Codex via the session provider and `CodexQuotaWatcher`), stored under `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` with `0600` file permissions, a 60-second per-sample debounce, and a 91-day retention window. The workspace id is `sha256(realpath(workspace))[0..16]` — stable across CLI invocations and VS Code sessions for the same folder.
+
+```bash
+# Default — last 13 weeks, both providers
+sidekick quota history
+
+# Last 8 weeks, Codex only
+sidekick quota history --weeks 8 --provider codex
+
+# JSON for downstream tooling
+sidekick quota history --json
+```
+
+If no history has accumulated yet for the workspace (or `--workspace`), the command prints a hint pointing at how to seed it (run a Claude Max or Codex session, or pass `--workspace <path>`).
 
 ### Account
 
@@ -585,7 +640,7 @@ The CLI reads from the same `~/.config/sidekick/` directory as the VS Code exten
 | `accounts/accounts.json` | Multi-provider account registry (v2) |
 | `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per Claude account |
 | `accounts/configs/*.config.json` | Backed-up account identity per Claude account |
-| `accounts/codex/profiles/*/codex-home/` | Isolated Codex profile directories |
+| `accounts/codex/profiles/*/codex-home/` | Backed-up credentials per Codex profile (swapped into `~/.codex/auth.json` on switch) |
 | `quota-snapshots.json` | Cached rate-limit snapshots per provider/account |
 
 Any data written by the VS Code extension is immediately visible in the CLI, and vice versa.

@@ -9,6 +9,10 @@
  * compatibility with existing CLI code.
  */
 
+import type {
+  ReadSessionContextSnapshotOptions,
+  SessionContextSnapshot,
+} from '../context/sessionContext';
 import type { SessionEvent, SubagentStats, TokenUsage, ContextAttribution } from '../types/sessionEvent';
 
 export type ProviderId = 'claude-code' | 'opencode' | 'codex';
@@ -174,6 +178,12 @@ export interface SessionProviderBase {
   /** Gets context attribution breakdown from provider data, if available. */
   getContextAttribution?(sessionPath: string): ContextAttribution | null;
 
+  /** Reads a provider-neutral context evidence snapshot for a session. */
+  readSessionContextSnapshot?(
+    sessionPath: string,
+    options?: ReadSessionContextSnapshotOptions,
+  ): SessionContextSnapshot;
+
   /** Reports provider runtime readiness for DB-backed providers. */
   getRuntimeStatus?(): ProviderRuntimeStatus;
 
@@ -197,6 +207,10 @@ export interface SessionProvider {
   findAllSessions(workspacePath: string): string[];
   getProjectsBaseDir(): string;
   readSessionStats(sessionPath: string): SessionFileStats;
+  readSessionContextSnapshot?(
+    sessionPath: string,
+    options?: ReadSessionContextSnapshotOptions,
+  ): SessionContextSnapshot;
   extractSessionLabel(sessionPath: string): string | null;
   searchInSession(sessionPath: string, query: string, maxResults: number): SearchHit[];
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[];

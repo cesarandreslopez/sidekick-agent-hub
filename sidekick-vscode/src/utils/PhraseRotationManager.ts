@@ -8,7 +8,7 @@
  * @module utils/PhraseRotationManager
  */
 
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PHRASE_ROTATION_INTERVAL, EMPTY_PHRASE_ROTATION_INTERVAL } from '../constants';
 
 /**

@@ -39,6 +39,7 @@ import { SessionFolderPicker } from './services/SessionFolderPicker';
 import { MonitorStatusBar } from './services/MonitorStatusBar';
 import { QuotaService } from './services/QuotaService';
 import { ProviderStatusService } from './services/ProviderStatusService';
+import { PeakHoursService } from './services/PeakHoursService';
 import { HistoricalDataService } from './services/HistoricalDataService';
 import { RetroactiveDataLoader } from './services/RetroactiveDataLoader';
 import { SessionAnalyzer } from './services/SessionAnalyzer';
@@ -88,7 +89,7 @@ import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
 import { getNonce } from "./utils/nonce";
 import type { AccountProviderId } from 'sidekick-shared';
 import { ensureDefaultAccounts } from 'sidekick-shared';
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
 
 /** Whether completions are currently enabled */
@@ -138,6 +139,9 @@ let quotaService: QuotaService | undefined;
 
 /** Provider status service for Claude API health */
 let providerStatusService: ProviderStatusService | undefined;
+
+/** Peak-hours service for Claude Max subscription (promoclock.co) */
+let peakHoursService: PeakHoursService | undefined;
 
 /** Historical data service for long-term analytics */
 let historicalDataService: HistoricalDataService | undefined;
@@ -416,6 +420,11 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(providerStatusService);
     log('ProviderStatusService initialized');
 
+    // Peak-hours tracker (gated on claude-max + Claude Code session provider; silent no-op otherwise)
+    peakHoursService = new PeakHoursService(authService, () => sessionMonitor?.getProvider().id ?? 'claude-code');
+    context.subscriptions.push(peakHoursService);
+    log('PeakHoursService initialized');
+
     // Initialize session event logger for JSONL audit trail
     const eventLogger = new SessionEventLogger();
     eventLogger.initialize().then(() => {
@@ -571,6 +580,9 @@ export async function activate(context: vscode.ExtensionContext) {
     dashboardProvider.setEventLogger(eventLogger);
     if (providerStatusService) {
       dashboardProvider.setProviderStatusService(providerStatusService);
+    }
+    if (peakHoursService) {
+      dashboardProvider.setPeakHoursService(peakHoursService);
     }
     if (handoffService) {
       dashboardProvider.setHandoffService(handoffService);
@@ -921,7 +933,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Create monitor status bar (depends on sessionMonitor)
-    const monitorStatusBar = new MonitorStatusBar(sessionMonitor);
+    const monitorStatusBar = new MonitorStatusBar(sessionMonitor, peakHoursService);
     context.subscriptions.push(monitorStatusBar);
   } else {
     log('Session monitoring disabled by configuration');
@@ -1348,6 +1360,7 @@ export async function activate(context: vscode.ExtensionContext) {
         log(`Switched session provider to ${providerId}, no active session found yet`);
       }
 
+      peakHoursService?.reconcile();
       dashboardProvider?.refreshSessionView();
     })
   );
@@ -1520,10 +1533,13 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const { generateHtmlReport, parseTranscript } = await import('sidekick-shared');
+      const { generateHtmlReport, parseTranscript, parseTranscriptFromEvents } = await import('sidekick-shared');
 
       const metrics = sessionMonitor.getAggregatedMetrics();
-      const transcript = parseTranscript(sessionPath);
+      const provider = sessionMonitor.getProvider();
+      const transcript = provider.id === 'codex'
+        ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
+        : parseTranscript(sessionPath);
       const sessionFileName = path.basename(sessionPath);
       const html = generateHtmlReport(metrics, transcript, { sessionFileName });
 

@@ -5,6 +5,112 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.3] - 2026-06-17
+
+### Changed
+
+- **Bundled `sidekick-shared` projection contract**: The shared assistant-turn projection now exposes a v2 `timeline` array for interleaved reasoning, narration, and tool groups. This is a shared-library contract update for downstream consumers and does not change CLI behavior by itself
+
+## [0.19.2] - 2026-06-15
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.19.2**: The shared library gains a browser-safe assistant-turn projection module (`segmentAssistantTurn()`, `assistantTurnEventsFromSessionEvents()`, and mirrored Zod schemas) that segments an assistant turn into a compact Process + Answer shape, with Claude `Task` subagent refs surfaced without leaking prompt text — internal additions that don't change CLI behavior
+
+## [0.19.1] - 2026-06-09
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.19.1**: Model-ID pricing and context-window lookups (behind the dashboard's cost and context gauges) now tolerate padded or mixed-case IDs. The shared library also gains Zod boundary schemas, an `extractSessionEvents()` progress-unwrapping helper, and a `/schemas` subpath export for downstream consumers — internal additions that don't change CLI behavior
+
+## [0.19.0] - 2026-06-09
+
+### Added
+
+- **Claude Opus 4.8 & Fable 5 support**: The dashboard's context-window gauge and cost estimates recognize `claude-opus-4-8` and `claude-fable-5` (both 1M-token context; Opus 4.8: $5/$25 per MTok, Fable 5: $10/$50 per MTok) via the shared model catalog
+
+### Changed
+
+- **Codex account switching now swaps `~/.codex/auth.json`**: `sidekick account --provider codex --switch-to <id>` (and `--add`) activates the account by atomically swapping its backed-up credentials into the system `~/.codex/` home, mirroring the Claude switch pattern — codex terminals outside Sidekick pick up the switch. Profile directories become pure credential backups, with a one-time startup migration for installs created under the old `CODEX_HOME`-redirection model. The command surfaces swap warnings on add, switch, and remove: a running codex process that needs restarting, stale credentials, or OS-keyring credential storage that Sidekick cannot swap
+
+### Fixed
+
+- **Opus 4.6/4.7 cost over-estimation**: Dashed model IDs fell back to the Opus 4.0 pricing tier ($15/$75 instead of $5/$25), inflating estimated costs 3×
+- **Haiku 4.5 unpriced under dashed IDs**: Costs for `claude-haiku-4-5-*` sessions could render as "—" because no dashed static pricing key existed
+
+## [0.18.5] - 2026-06-04
+
+### Changed
+
+- **Consistent Codex transcripts**: `sidekick dashboard` and `sidekick report` now parse Codex sessions via `parseTranscriptFromEvents()`, matching the canonical `SessionEvent` pipeline used by the other providers
+- **Bundled `sidekick-shared` 0.18.5**: Picks up the new session context evidence snapshot API (`buildSessionContextSnapshot`, `readSessionContextSnapshot`, `SessionContextSnapshot` and related types) and the Codex session evidence gap closures — `system` audit events, normalized `token_count` rate limits, per-file `apply_patch` expansion, tool-emission dedupe, MCP server attribution, and the new `ProviderReaderSessionWatcher`
+
+## [0.18.4] - 2026-05-27
+
+### Added
+
+- **`sidekick peak --provider <id>`**: New flag gates peak-hours output on the session provider. When the resolved provider is not `claude-code`, the command prints a "not applicable" message instead of calling the upstream endpoint
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.4**: Picks up `scopePeakHoursToSessionProvider()`, `isClaudeCodeSessionProvider()`, `createPeakHoursNotApplicableState()` for peak-hours scoping, the improved Codex quota snapshot selection logic (`isPreferredQuotaHit`, `findAccountRolloutFiles`, `shouldKeepExistingSnapshot`), and the `notApplicable` field on `PeakHoursState`
+
+## [0.18.3] - 2026-05-19
+
+### Added
+
+- **`sidekick quota history`**: New subcommand that renders a 13-week GitHub-contributions-style heatmap of quota utilization for the current workspace. Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex` (default both), `--workspace <path>` (default cwd). Bucketed glyphs (`· ░ ▒ ▓ █`) are color-coded by utilization band (≤0 / <25 / <50 / <75 / ≥75), with per-provider rows and a peak / avg / unavailable-days / samples footer. Days that hit `available: false` render as a red `×`. With `--json`, emits a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload — the same shape consumed by the VS Code dashboard
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.3**: Picks up the new per-workspace quota history surface (`appendQuotaHistorySample`, `readQuotaHistoryRange`, `readQuotaHistoryDailyBuckets`, `pruneQuotaHistory`, `getWorkspaceIdFromPath`) and the optional `workspaceId` / `appendHistorySample` hooks on `CodexQuotaWatcher`
+
+## [0.18.2] - 2026-05-19
+
+### Added
+
+- **`sidekick quota --refresh`**: New flag on the `quota` command that, for Codex, explicitly refreshes from the ChatGPT usage API before falling back to local rollout data and cached snapshots. Without the flag, the Codex quota path stays fully local and makes no upstream network call
+
+### Changed
+
+- **Codex quota is local-only by default**: `sidekick quota --provider codex` now delegates to the new `resolveCodexQuota` orchestrator in `sidekick-shared`. It checks the current workspace's most recent rollout, then recent account-level rollouts under `CODEX_HOME/sessions`, then the active account's cached snapshot — no upstream network call unless `--refresh` is passed. Failure output continues to include structured `failureKind` / `httpStatus` / `retryAfterMs` fields under `--json`
+- **Bundled `sidekick-shared` 0.18.2**: Picks up the new Codex quota orchestrator (`resolveCodexQuota`, `resolveCodexQuotaFromLocalSources`, `readLatestCodexQuotaFromRollouts`, `fetchCodexQuotaFromApi`), the relaxed `CodexRateLimits` shape (nullable `resets_at` / `window_minutes`), the rate-limit-only `token_count` event emission in `JsonlSessionWatcher`, and `state_N.sqlite` discovery in `CodexDatabase` + provider auto-detect
+
+## [0.18.1] - 2026-05-08
+
+### Changed
+
+- **Shared dashboard formatting**: terminal dashboard `fmtNum()` and `formatDuration()` now delegate to `formatTokenCount()` and `formatDurationMs()` from `sidekick-shared`, keeping the existing CLI surface (uppercase `K`/`M` suffix, compact `1m5s` style) while removing forked rounding logic
+
+## [0.18.0] - 2026-05-08
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.0**: Picks up the new provider-aware quota orchestration surface — `MultiProviderQuotaService`, `CodexQuotaWatcher`, `getActiveAccountStatus()`, `extractToolCall()`, cost-provenance helpers (`calculateCostWithProvenance`, `mergeCostSources`), and model display helpers (`shortModelName`, `getModelDisplayInfo`, `compareModelIds`, `sortModelIds`). `parseModelId()` also now recognizes legacy Claude IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022`
+- **No CLI runtime changes**: This release ships the shared library upgrade for downstream tooling alignment; `sidekick quota`, `sidekick status`, and the live dashboard keep using the existing polling path. Wiring the new orchestrator into the CLI will land in a follow-up release
+
+## [0.17.7] - 2026-04-28
+
+### Fixed
+
+- **Quota snapshot write race**: Updated the bundled `sidekick-shared` snapshot writer so concurrent `sidekick quota` / Codex session updates no longer collide on `quota-snapshots.json.tmp` or throw `ENOENT`. Failed writes now also clean up their partial temp files instead of leaving orphans in `~/.config/sidekick/`
+
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **`sidekick peak` command**: One-shot check for Claude's current peak-hours state — weekdays 13:00–19:00 UTC, when session limits drain faster on Free/Pro/Max/Team subscriptions. Prints a color-coded status block with a countdown to the next transition. Data comes from the public `promoclock.co/api/status` endpoint (third-party, unaffiliated with Anthropic) with a graceful fallback when unreachable. `--json` emits the full raw state
+- **Peak-hours block in `sidekick status`**: When the active provider is `claude-code`, the Claude + OpenAI health blocks are now followed by a **Claude Peak Hours** block (off-peak or in-peak, with countdown). Gated on the provider so OpenCode / Codex users don't trigger an unnecessary third-party fetch. `--json` output includes the new `peak` field
+- **Peak-hours summary in `sidekick quota`**: Claude subscription quota output now shows a **Peak** line under the 5-hour / 7-day bars — green dot off-peak, orange dot during an active peak, with a countdown to the next transition. `--json` output includes the new `peak` field
+
+## [0.17.5] - 2026-04-18
+
+### Added
+
+- **Default account bootstrap at CLI startup**: The CLI now calls `ensureDefaultAccounts()` from `sidekick-shared` at module load and awaits the result inside a Commander `preAction` hook, so the first real subcommand blocks briefly on the bootstrap while `--version` and `--help` stay instant. When a system Claude Code or Codex credential exists and no saved account is active for that provider yet, the CLI registers it as "Default" — `sidekick quota`, `sidekick account`, and `sidekick stats` now reflect the active account on first run without requiring an explicit `sidekick account --add` first. Idempotent, never overwrites manually saved accounts, and all errors are swallowed so startup is never blocked
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#16](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/16).
+
 ## [0.17.4] - 2026-04-17
 
 ### Changed

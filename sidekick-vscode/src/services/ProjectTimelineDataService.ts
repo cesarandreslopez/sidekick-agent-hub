@@ -10,7 +10,6 @@
 
 import * as fs from 'fs';
 import type { SessionProvider } from '../types/sessionProvider';
-import type { ClaudeSessionEvent } from '../types/claudeSession';
 import type {
   TimelineSessionEntry,
   TimelineSessionDetail,
@@ -94,43 +93,30 @@ export class ProjectTimelineDataService {
       const toolMap = new Map<string, { calls: number; failures: number }>();
 
       for (const event of events) {
-        // Extract tasks
         if (event.type === 'tool_use' && event.tool) {
-          const toolName = event.tool.name;
-          const existing = toolMap.get(toolName) || { calls: 0, failures: 0 };
-          existing.calls++;
-          toolMap.set(toolName, existing);
-
-          if (toolName === 'TaskCreate') {
-            const subject = (event.tool.input?.subject as string) || 'Untitled';
-            tasks.push({ subject, status: 'pending' });
-          }
-          if (toolName === 'TaskUpdate') {
-            const status = event.tool.input?.status as string;
-            const taskId = event.tool.input?.taskId as string;
-            if (status && taskId) {
-              // Update matching task if possible
-              const task = tasks.find(t => t.subject.includes(taskId));
-              if (task) task.status = status;
-            }
-          }
+          this._recordToolUseForDetail(event.tool.name, event.tool.input || {}, toolMap, tasks);
         }
 
-        // Count tool failures
         if (event.type === 'tool_result' && event.result?.is_error) {
-          // Try to find the matching tool call
-          const output = String(event.result.output || '');
-          const category = this._categorizeError(output);
-          const existing = errorMap.get(category) || { count: 0, example: '' };
-          existing.count++;
-          if (!existing.example) {
-            existing.example = output.slice(0, 100);
-          }
-          errorMap.set(category, existing);
+          this._recordErrorForDetail(String(event.result.output || ''), errorMap);
+        }
 
-          // Increment failure count for the tool
-          // Note: we can't reliably match tool_result to tool_use by name here,
-          // so failures are tracked via errorMap only
+        const content = Array.isArray(event.message?.content)
+          ? event.message.content as Array<Record<string, unknown>>
+          : [];
+
+        for (const block of content) {
+          if (block.type !== 'tool_use') continue;
+          const toolName = typeof block.name === 'string' ? block.name : 'unknown';
+          const input = block.input && typeof block.input === 'object'
+            ? block.input as Record<string, unknown>
+            : {};
+          this._recordToolUseForDetail(toolName, input, toolMap, tasks);
+        }
+
+        for (const block of content) {
+          if (block.type !== 'tool_result' || block.is_error !== true) continue;
+          this._recordErrorForDetail(String(block.content || ''), errorMap);
         }
       }
 
@@ -227,6 +213,35 @@ export class ProjectTimelineDataService {
 
     if (fileSize === 0) return null;
 
+    if (this._provider.id === 'codex') {
+      try {
+        const stats = this._provider.readSessionStats(sessionPath);
+        if (!stats.startTime) return null;
+        const startMs = new Date(stats.startTime).getTime();
+        const endMs = stats.endTime ? new Date(stats.endTime).getTime() : startMs;
+        const isCurrent = sessionPath === currentSessionPath;
+        return {
+          sessionId,
+          sessionPath,
+          startTime: stats.startTime,
+          endTime: stats.endTime || null,
+          durationMs: endMs - startMs,
+          label: stats.label || sessionId.slice(0, 8),
+          totalTokens: stats.tokens.input + stats.tokens.output,
+          totalCost: stats.reportedCost,
+          messageCount: stats.messageCount,
+          taskCount: stats.toolUsage.TaskCreate || 0,
+          errorCount: 0,
+          keyFiles: [],
+          isCurrent,
+          isActive: isCurrent,
+          models: Object.keys(stats.modelUsage),
+        };
+      } catch {
+        return null;
+      }
+    }
+
     // Read first chunk for start time, label, model
     const headChunk = this._readChunk(sessionPath, 0, Math.min(16384, fileSize));
     if (!headChunk) return null;
@@ -235,7 +250,7 @@ export class ProjectTimelineDataService {
     if (headEvents.length === 0) return null;
 
     // Read tail chunk for end time (skip if file is small enough that head covered it)
-    let tailEvents: ClaudeSessionEvent[] = [];
+    let tailEvents: Array<Record<string, unknown>> = [];
     if (fileSize > 16384) {
       const tailOffset = Math.max(0, fileSize - 16384);
       const tailChunk = this._readChunk(sessionPath, tailOffset, fileSize - tailOffset);
@@ -256,29 +271,44 @@ export class ProjectTimelineDataService {
     const modelSet = new Set<string>();
 
     for (const event of allSampled) {
-      if (event.timestamp) {
-        if (!startTime || event.timestamp < startTime) startTime = event.timestamp;
-        if (!endTime || event.timestamp > endTime) endTime = event.timestamp;
+      const timestamp = typeof event.timestamp === 'string' ? event.timestamp : '';
+      const type = typeof event.type === 'string' ? event.type : '';
+      const message = event.message && typeof event.message === 'object'
+        ? event.message as Record<string, unknown>
+        : undefined;
+
+      if (timestamp) {
+        if (!startTime || timestamp < startTime) startTime = timestamp;
+        if (!endTime || timestamp > endTime) endTime = timestamp;
       }
 
-      if (event.type === 'assistant' || event.type === 'user') {
+      if (type === 'assistant' || type === 'user') {
         messageCount++;
       }
 
-      if (event.message?.usage) {
-        totalInputTokens += event.message.usage.input_tokens || 0;
-        totalOutputTokens += event.message.usage.output_tokens || 0;
+      const usage = message?.usage && typeof message.usage === 'object'
+        ? message.usage as Record<string, unknown>
+        : undefined;
+      if (usage) {
+        totalInputTokens += typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
+        totalOutputTokens += typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
       }
 
-      if (event.message?.model) {
-        modelSet.add(event.message.model);
+      if (typeof message?.model === 'string') {
+        modelSet.add(message.model);
       }
 
-      if (event.type === 'tool_use' && event.tool?.name === 'TaskCreate') {
+      const tool = event.tool && typeof event.tool === 'object'
+        ? event.tool as Record<string, unknown>
+        : undefined;
+      if (type === 'tool_use' && tool?.name === 'TaskCreate') {
         taskCount++;
       }
 
-      if (event.type === 'tool_result' && event.result?.is_error) {
+      const result = event.result && typeof event.result === 'object'
+        ? event.result as Record<string, unknown>
+        : undefined;
+      if (type === 'tool_result' && result?.is_error === true) {
         errorCount++;
       }
     }
@@ -328,9 +358,9 @@ export class ProjectTimelineDataService {
    * Parses JSONL events from a raw text chunk.
    * Skips the first and last lines (may be partial).
    */
-  private _parseChunkEvents(chunk: string): ClaudeSessionEvent[] {
+  private _parseChunkEvents(chunk: string): Array<Record<string, unknown>> {
     const lines = chunk.split('\n');
-    const events: ClaudeSessionEvent[] = [];
+    const events: Array<Record<string, unknown>> = [];
 
     // If chunk starts at offset > 0, the first line may be partial — skip it.
     // If chunk doesn't end with \n, the last line may be partial — skip it.
@@ -342,7 +372,7 @@ export class ProjectTimelineDataService {
       const trimmed = lines[i].trim();
       if (!trimmed || !trimmed.startsWith('{')) continue;
       try {
-        events.push(JSON.parse(trimmed) as ClaudeSessionEvent);
+        events.push(JSON.parse(trimmed) as Record<string, unknown>);
       } catch {
         // Skip malformed lines
       }
@@ -362,6 +392,44 @@ export class ProjectTimelineDataService {
       case '30d': return now - 30 * 24 * 60 * 60 * 1000;
       case 'all': return null;
     }
+  }
+
+  private _recordToolUseForDetail(
+    toolName: string,
+    input: Record<string, unknown>,
+    toolMap: Map<string, { calls: number; failures: number }>,
+    tasks: TimelineSessionDetail['tasks'],
+  ): void {
+    const existing = toolMap.get(toolName) || { calls: 0, failures: 0 };
+    existing.calls++;
+    toolMap.set(toolName, existing);
+
+    if (toolName === 'TaskCreate') {
+      const subject = (input.subject as string) || 'Untitled';
+      tasks.push({ subject, status: 'pending' });
+    }
+
+    if (toolName === 'TaskUpdate') {
+      const status = input.status as string;
+      const taskId = input.taskId as string;
+      if (status && taskId) {
+        const task = tasks.find(t => t.subject.includes(taskId));
+        if (task) task.status = status;
+      }
+    }
+  }
+
+  private _recordErrorForDetail(
+    output: string,
+    errorMap: Map<string, { count: number; example: string }>,
+  ): void {
+    const category = this._categorizeError(output);
+    const existing = errorMap.get(category) || { count: 0, example: '' };
+    existing.count++;
+    if (!existing.example) {
+      existing.example = output.slice(0, 100);
+    }
+    errorMap.set(category, existing);
   }
 
   /**

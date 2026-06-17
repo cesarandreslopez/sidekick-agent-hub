@@ -31,6 +31,7 @@ export const messageUsageSchema = z.object({
 export const sessionMessageSchema = z.object({
   role: z.string(),
   id: z.string().optional(),
+  sourceLabel: z.string().optional(),
   model: z.string().optional(),
   usage: messageUsageSchema.optional(),
   content: z.unknown().optional(),
@@ -48,11 +49,23 @@ export const permissionModeSchema = z.enum([
 // ── SessionEvent ──
 
 export const sessionEventSchema = z.object({
-  type: z.enum(['user', 'assistant', 'tool_use', 'tool_result', 'summary']),
+  type: z.enum(['user', 'assistant', 'tool_use', 'tool_result', 'summary', 'system']),
   message: sessionMessageSchema,
   timestamp: z.string(),
   isSidechain: z.boolean().optional(),
   permissionMode: permissionModeSchema.optional(),
+  rateLimits: z.object({
+    primary: z.object({
+      usedPercent: z.number(),
+      windowMinutes: z.number(),
+      resetsAt: z.number(),
+    }).optional(),
+    secondary: z.object({
+      usedPercent: z.number(),
+      windowMinutes: z.number(),
+      resetsAt: z.number(),
+    }).optional(),
+  }).optional(),
   tool: z.object({
     name: z.string(),
     input: z.record(z.string(), z.unknown()),
@@ -63,3 +76,34 @@ export const sessionEventSchema = z.object({
     is_error: z.boolean().optional(),
   }).optional(),
 }) satisfies z.ZodType<SessionEvent>;
+
+// ── Progress unwrapping ──
+
+/** Recursion bound for nested progress envelopes; real data nests 1 level. */
+const MAX_PROGRESS_DEPTH = 8;
+
+/**
+ * Extracts canonical SessionEvents from a raw JSONL value.
+ *
+ * Claude Code wraps subagent/SDK events as
+ * `{ type: 'progress', data: { message: <SessionEvent> } }`, which
+ * `sessionEventSchema` alone rejects. This helper tries a direct parse,
+ * then unwraps progress envelopes (recursively, in case of nesting).
+ * Returns zero events for unrecognized input — never throws.
+ */
+export function extractSessionEvents(raw: unknown, depth = 0): SessionEvent[] {
+  const direct = sessionEventSchema.safeParse(raw);
+  if (direct.success) return [direct.data];
+
+  if (depth >= MAX_PROGRESS_DEPTH) return [];
+  if (typeof raw === 'object' && raw !== null && (raw as { type?: unknown }).type === 'progress') {
+    const data = (raw as { data?: unknown }).data;
+    if (typeof data === 'object' && data !== null) {
+      const message = (data as { message?: unknown }).message;
+      if (typeof message === 'object' && message !== null) {
+        return extractSessionEvents(message, depth + 1);
+      }
+    }
+  }
+  return [];
+}

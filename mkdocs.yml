@@ -78,6 +78,7 @@ nav:
     - Code Transforms: features/code-transforms.md
     - Commit Messages: features/commit-messages.md
     - Session Monitor: features/session-monitor.md
+    - Peak Hours: features/peak-hours.md
     - Mind Map: features/mind-map.md
     - Kanban Board: features/kanban-board.md
     - Project Timeline: features/project-timeline.md

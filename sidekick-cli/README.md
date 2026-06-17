@@ -95,6 +95,16 @@ sidekick status
 
 Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicators with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. In the dashboard, provider-status surfaces are scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, and hidden for OpenCode.
 
+When the active provider is `claude-code`, the output also includes a **Claude Peak Hours** block (see below).
+
+## Peak Hours
+
+```bash
+sidekick peak
+```
+
+Show whether Claude is currently in peak hours (weekdays 13:00–19:00 UTC — when session limits drain faster on Free/Pro/Max/Team subscriptions). Data comes from the public `promoclock.co/api/status` endpoint (third-party, unaffiliated with Anthropic). Use `--json` for machine-readable output. The peak-hours summary also appears under the bars in `sidekick quota` for Claude subscriptions.
+
 ## Quota & Rate Limits
 
 ```bash
@@ -103,8 +113,8 @@ sidekick quota
 
 Provider-aware quota and rate-limit display. The command auto-detects the active provider:
 
-- **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns.
-- **Codex**: Shows rate limits from the latest session's event stream — primary and secondary windows with progress bars and reset countdowns.
+- **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns. Includes a peak-hours summary line.
+- **Codex**: Shows rate limits from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars and reset countdowns. The default path is local-only: current workspace rollout, recent account-level rollouts, then the active account's cached snapshot. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
 - **OpenCode**: Prints an informational message (no rate-limit data available).
 
 ```
@@ -116,9 +126,29 @@ Subscription Quota
 
 When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota/rate-limit state visible instead of hiding the section entirely.
 
-Use `--json` for machine-readable output. Use `--provider codex` to explicitly check Codex rate limits. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
+Use `--json` for machine-readable output. Use `--provider codex` to explicitly check Codex rate limits, and `--refresh` to opt in to a Codex usage API refresh. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
 
 When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
+
+### Quota History
+
+```bash
+sidekick quota history
+```
+
+Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one day; brightness encodes the peak utilization observed (`· ░ ▒ ▓ █` → ≤0% / <25% / <50% / <75% / ≥75%). Days that hit `available: false` render as a red `×`.
+
+```
+Claude  ·  13 weeks  ·  41 day(s) with samples
+Sun ·░▒▒▓█░░░ ·░░·· ·▒▒
+Mon ··▒▒▓█▒░· ·░░·· ·▒▓
+…
+Peak 92%  ·  Avg 38%  ·  Samples 612
+```
+
+Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex` (default both, stacked), `--workspace <path>` (default `cwd`). `--json` emits a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel.
+
+History is stored at `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` (mode `0600`, 60-second debounce, 91-day retention). The workspace id is `sha256(realpath)[0..16]`, so the same folder yields the same store whether sampled from the CLI or VS Code.
 
 ## Account Management
 
@@ -127,6 +157,8 @@ sidekick account [options]
 ```
 
 Manage accounts across providers — save, list, switch, and remove without manual login/logout cycles. Supports Claude Code and Codex profiles. Account data is stored in `~/.config/sidekick/accounts/` with strict file permissions and atomic writes with rollback on failure.
+
+On first CLI startup, Sidekick auto-registers the active system Claude Code and Codex credentials as a **"Default"** account (when no saved account exists for that provider yet). Existing manually saved accounts are never overwritten — the flags below are only needed to add additional accounts or switch between them.
 
 | Flag | Description |
 |------|-------------|

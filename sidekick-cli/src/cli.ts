@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { detectProvider, ensureDefaultAccounts } from 'sidekick-shared';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
-import type { ProviderId, SessionProvider } from 'sidekick-shared';
+import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 
 // Fire-and-forget: warm the pricing catalog so `stats` / `dashboard` show
@@ -48,7 +48,7 @@ export function resolveProviderId(
   return detectProvider();
 }
 
-export function resolveProvider(opts: { provider?: string }): SessionProvider {
+export function resolveProvider(opts: { provider?: string }): SessionProviderBase {
   const id = resolveProviderId(opts);
   switch (id) {
     case 'opencode': return new OpenCodeProvider();
@@ -166,10 +166,23 @@ program.addCommand(statsCmd);
 const quotaCmd = new Command('quota')
   .description('Show quota or rate-limit utilization (auto-detects provider)')
   .option('--provider <id>', 'Provider: claude-code, codex, auto (default: auto)')
+  .option('--refresh', 'For Codex, explicitly refresh from the Codex usage API before falling back to local data')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaAction } = await import('./commands/quota');
     return quotaAction(_opts, cmd);
   });
+
+quotaCmd
+  .command('history')
+  .description('Render a 13-week heatmap of quota utilization for the current workspace')
+  .option('--weeks <n>', 'Weeks of history to render (default: 13, clamped 1-26)', '13')
+  .option('--provider <id>', 'Limit to a single runtime provider: claude or codex (default: both)')
+  .option('--workspace <path>', 'Workspace path used to derive the history scope (default: cwd)')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { quotaHistoryAction } = await import('./commands/quotaHistory');
+    return quotaHistoryAction(_opts, cmd);
+  });
+
 program.addCommand(quotaCmd);
 
 // Status command — one-shot Claude API status check
@@ -180,6 +193,16 @@ const statusCmd = new Command('status')
     return statusAction(_opts, cmd);
   });
 program.addCommand(statusCmd);
+
+// Peak command — one-shot Claude peak-hours check (promoclock.co)
+const peakCmd = new Command('peak')
+  .description('Show whether Claude is currently in peak hours (faster session-limit drain)')
+  .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { peakAction } = await import('./commands/peak');
+    return peakAction(_opts, cmd);
+  });
+program.addCommand(peakCmd);
 
 // Account command — manage Claude Max accounts
 const accountCmd = new Command('account')

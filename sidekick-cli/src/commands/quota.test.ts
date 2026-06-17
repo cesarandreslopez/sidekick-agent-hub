@@ -78,10 +78,33 @@ describe('formatTimeUntil', () => {
 
 // ── quotaAction ──
 
-const mockFetchOnce = vi.fn();
+const { mockFetchOnce, mockResolveCodexQuota, mockResolveProvider, mockFetchPeakHoursStatus } = vi.hoisted(() => ({
+  mockFetchOnce: vi.fn(),
+  mockResolveCodexQuota: vi.fn(),
+  mockResolveProvider: vi.fn(),
+  mockFetchPeakHoursStatus: vi.fn(),
+}));
 
 vi.mock('sidekick-shared', () => ({
+  CodexProvider: class {},
   getActiveAccount: () => null,
+  getActiveCodexAccount: () => ({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' }),
+  resolveCodexQuota: mockResolveCodexQuota,
+  fetchPeakHoursStatus: (...args: unknown[]) => mockFetchPeakHoursStatus(...args),
+  createPeakHoursNotApplicableState: (providerId: string) => ({
+    status: 'unknown',
+    isPeak: false,
+    sessionLimitSpeed: 'unknown',
+    label: 'Claude peak hours not applicable',
+    peakHoursDescription: '',
+    nextChange: null,
+    minutesUntilChange: null,
+    note: `Claude peak hours apply only to Claude Code sessions, not ${providerId}.`,
+    updatedAt: new Date().toISOString(),
+    unavailable: true,
+    notApplicable: true,
+  }),
+  isClaudeCodeSessionProvider: (providerId: string) => providerId === 'claude-code',
   describeQuotaFailure: (quota: {
     available?: boolean;
     error?: string;
@@ -128,7 +151,7 @@ vi.mock('sidekick-shared', () => ({
 }));
 
 vi.mock('../cli', () => ({
-  resolveProvider: () => ({ id: 'claude-code', dispose: () => {} }),
+  resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
 }));
 
 vi.mock('../dashboard/QuotaService', () => ({
@@ -142,9 +165,9 @@ describe('quotaAction', () => {
   let stderrData: string;
   const originalExit = process.exit;
 
-  const makeCmd = (json = false) => ({
+  const makeCmd = (json = false, localOpts: Record<string, unknown> = {}) => ({
     parent: { opts: () => ({ json }) },
-    opts: () => ({}),
+    opts: () => localOpts,
   }) as unknown as import('commander').Command;
 
   beforeEach(() => {
@@ -160,6 +183,22 @@ describe('quotaAction', () => {
     });
     process.exit = vi.fn() as never;
     mockFetchOnce.mockReset();
+    mockResolveCodexQuota.mockReset();
+    mockResolveProvider.mockReset();
+    mockFetchPeakHoursStatus.mockReset();
+    mockResolveProvider.mockReturnValue({ id: 'claude-code', dispose: () => {} });
+    mockFetchPeakHoursStatus.mockResolvedValue({
+      status: 'unknown',
+      isPeak: false,
+      sessionLimitSpeed: 'unknown',
+      label: 'Peak-hours status unavailable',
+      peakHoursDescription: '',
+      nextChange: null,
+      minutesUntilChange: null,
+      note: '',
+      updatedAt: new Date().toISOString(),
+      unavailable: true,
+    });
     chalk.level = 0;
   });
 
@@ -293,5 +332,58 @@ describe('quotaAction', () => {
 
     expect(stderrData).toContain('Could not reach the Anthropic API');
     expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  it('uses local-only Codex quota resolution by default', async () => {
+    const provider = { id: 'codex', dispose: vi.fn() };
+    mockResolveProvider.mockReturnValue(provider);
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 6, resetsAt: '2026-05-19T15:00:00Z' },
+      sevenDay: { utilization: 1, resetsAt: '2026-05-26T15:00:00Z' },
+      available: true,
+      source: 'session',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(mockResolveCodexQuota).toHaveBeenCalledWith(expect.objectContaining({
+      provider,
+      source: 'local',
+    }));
+    expect(stdoutData).toContain('Rate Limits');
+    expect(stdoutData).toContain('6%');
+    expect(mockFetchPeakHoursStatus).not.toHaveBeenCalled();
+    expect(provider.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('uses explicit API Codex quota refresh with --refresh', async () => {
+    const provider = { id: 'codex', dispose: vi.fn() };
+    mockResolveProvider.mockReturnValue(provider);
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 21, resetsAt: '2026-05-19T15:00:00Z' },
+      sevenDay: { utilization: 4, resetsAt: '2026-05-26T15:00:00Z' },
+      available: true,
+      source: 'api',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { refresh: true }));
+
+    expect(mockResolveCodexQuota).toHaveBeenCalledWith(expect.objectContaining({
+      provider,
+      source: 'api',
+    }));
+    expect(stdoutData).toContain('Rate Limits');
+    expect(stdoutData).toContain('21%');
+    expect(provider.dispose).toHaveBeenCalledOnce();
   });
 });

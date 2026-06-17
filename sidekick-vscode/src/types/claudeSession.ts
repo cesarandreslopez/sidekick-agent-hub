@@ -16,7 +16,6 @@ export type {
   ToolAnalytics,
   TimelineEvent,
   PendingToolCall,
-  TaskStatus,
   TrackedTask,
   TaskState,
   SubagentStats,
@@ -31,4 +30,6 @@ export type {
   ContextAttribution,
   TurnAttribution,
   ContextSizePoint,
-} from 'sidekick-shared/dist/types/sessionEvent';
+} from 'sidekick-shared';
+
+export type { SessionTaskStatus as TaskStatus } from 'sidekick-shared';

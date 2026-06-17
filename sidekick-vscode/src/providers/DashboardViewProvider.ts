@@ -47,8 +47,18 @@ import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
-import { describeQuotaFailure, getActiveCodexAccount, readQuotaSnapshot } from 'sidekick-shared';
+import {
+  describeQuotaFailure,
+  formatDurationMs,
+  getActiveCodexAccount,
+  readQuotaSnapshot,
+  readQuotaHistoryDailyBuckets,
+  resolveCodexQuotaFromLocalSources,
+  scopePeakHoursToSessionProvider,
+} from 'sidekick-shared';
+import { getWorkspaceId } from '../utils/workspaceId';
+import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 import { scopeProviderStatuses, type DashboardSessionProviderId } from '../utils/providerStatusScope';
 import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
@@ -148,6 +158,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Provider status service for Claude API health */
   private _providerStatusService?: import('../services/ProviderStatusService').ProviderStatusService;
 
+  /** Peak-hours service for Claude Max subscription (promoclock.co) */
+  private _peakHoursService?: import('../services/PeakHoursService').PeakHoursService;
+
   /** Last quota alert emitted into dashboard surfaces */
   private _lastQuotaAlertKey: string | null = null;
 
@@ -192,6 +205,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._disposables.push(
       service.onStatusUpdate(() => this._syncProviderStatusCards()),
       service.onOpenAIStatusUpdate(() => this._syncProviderStatusCards())
+    );
+  }
+
+  /**
+   * Sets the peak-hours service. Dashboard surfaces the indicator only when
+   * the current inference provider is `claude-max`; off-peak and
+   * unavailable states render nothing.
+   */
+  setPeakHoursService(service: import('../services/PeakHoursService').PeakHoursService): void {
+    this._peakHoursService = service;
+    this._disposables.push(
+      service.onStatusUpdate(() => this._syncPeakHoursCard())
     );
   }
 
@@ -351,10 +376,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           // Start quota refresh when visible
           this._quotaService?.startRefresh();
           this._providerStatusService?.startRefresh();
+          this._peakHoursService?.startRefresh();
         } else {
           // Stop quota + status refresh when hidden to save resources
           this._quotaService?.stopRefresh();
           this._providerStatusService?.stopRefresh();
+          this._peakHoursService?.stopRefresh();
         }
       },
       undefined,
@@ -365,6 +392,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (webviewView.visible) {
       this._quotaService?.startRefresh();
       this._providerStatusService?.startRefresh();
+      this._peakHoursService?.startRefresh();
     }
 
     // Start phrase rotation timers
@@ -394,13 +422,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._sendEventLogState();
         // Send session-based quota if available (e.g., Codex rate_limits)
         {
-          const sessionQuota = this._sessionMonitor.getProvider().getQuotaFromSession?.();
+          const provider = this._sessionMonitor.getProvider();
+          const sessionQuota = provider.getQuotaFromSession?.();
           if (sessionQuota) {
             this._handleQuotaUpdate(sessionQuota);
+          } else if (provider.id === 'codex') {
+            this._handleQuotaUpdate(this._getCodexLocalQuota());
           }
         }
         // Send plan history if available
         this._sendPlanHistory();
+        void this._sendQuotaHistory();
         break;
 
       case 'requestStats':
@@ -1587,6 +1619,83 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const quotaFailure = describeQuotaFailure(quota) ?? undefined;
     this._postMessage({ type: 'updateQuota', quota, quotaFailure });
     this._maybeEmitQuotaAlert(quota, quotaFailure);
+    void this._sendQuotaHistory();
+  }
+
+  private _getCodexLocalQuota(): DashboardQuotaState {
+    const activeCodexAccount = getActiveCodexAccount();
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    try {
+      const local = resolveCodexQuotaFromLocalSources({
+        workspacePath,
+        activeAccount: activeCodexAccount,
+      });
+      if (local) return local;
+    } catch (error) {
+      logError('Failed to resolve Codex quota from local sessions', error);
+    }
+
+    const cached = activeCodexAccount ? readQuotaSnapshot('codex', activeCodexAccount.id) : null;
+    if (cached) {
+      return {
+        ...cached,
+        accountLabel: activeCodexAccount?.label,
+        accountDetail: activeCodexAccount?.email,
+      };
+    }
+
+    return {
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      providerId: 'codex',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+    };
+  }
+
+  /**
+   * Reads daily-bucket quota history for both providers in the current workspace
+   * and posts a {@link QuotaHistoryPayload} to the webview heatmap.
+   *
+   * No-op when no workspace is open or when both providers have empty history.
+   */
+  private async _sendQuotaHistory(): Promise<void> {
+    const workspaceId = getWorkspaceId();
+    if (!workspaceId) return;
+    const weeks = 13;
+    const toMs = Date.now();
+    // -1 because readQuotaHistoryDailyBuckets emits inclusive endpoints (start..end ⇒ end-start+1 buckets).
+    const fromMs = toMs - (weeks * 7 - 1) * 86_400_000;
+    const from = new Date(fromMs).toISOString();
+    const to = new Date(toMs).toISOString();
+    try {
+      const [claude, codex] = await Promise.all([
+        readQuotaHistoryDailyBuckets({ workspaceId, provider: 'claude', from, to }),
+        readQuotaHistoryDailyBuckets({ workspaceId, provider: 'codex', from, to }),
+      ]);
+      const toCells = (buckets: Awaited<ReturnType<typeof readQuotaHistoryDailyBuckets>>): QuotaHistoryDailyCell[] =>
+        buckets.map(b => ({
+          date: b.date,
+          utilization: Math.max(b.maxUtilizationFiveHour, b.maxUtilizationSevenDay),
+          unavailable: b.anyUnavailable,
+          samples: b.samples,
+        }));
+      const claudeHasData = claude.some(b => b.samples > 0);
+      const codexHasData = codex.some(b => b.samples > 0);
+      const payload: QuotaHistoryPayload = {
+        weeks,
+        providers: {
+          ...(claudeHasData ? { claude: { cells: toCells(claude) } } : {}),
+          ...(codexHasData ? { codex: { cells: toCells(codex) } } : {}),
+        },
+        generatedAt: new Date().toISOString(),
+      };
+      this._postMessage({ type: 'updateQuotaHistory', payload });
+    } catch (err) {
+      log(`Quota history read failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private _maybeEmitQuotaAlert(
@@ -1725,16 +1834,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @returns Formatted duration string
    */
   private _formatDuration(ms: number): string {
-    const seconds = ms / 1000;
-    if (seconds < 1) {
-      return `${seconds.toFixed(1)}s`;
-    } else if (seconds < 60) {
-      return `${Math.round(seconds)}s`;
-    } else {
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = Math.round(seconds % 60);
-      return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
-    }
+    return formatDurationMs(ms);
   }
 
   /**
@@ -2151,17 +2251,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Codex: has session-based quota from rate_limits
       this._handleQuotaUpdate(sessionQuota);
     } else if (provider.id === 'codex') {
-      const activeCodexAccount = getActiveCodexAccount();
-      const cached = activeCodexAccount ? readQuotaSnapshot('codex', activeCodexAccount.id) : null;
-      if (cached) {
-        this._handleQuotaUpdate({
-          ...cached,
-          accountLabel: activeCodexAccount?.label,
-          accountDetail: activeCodexAccount?.email,
-        });
-      } else {
-        this._handleQuotaUpdate({ fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false });
-      }
+      this._handleQuotaUpdate(this._getCodexLocalQuota());
     } else if (this._quotaService && provider.id === 'claude-code') {
       // Claude Code: use cached quota from QuotaService, trigger refresh
       const cached = this._quotaService.getCachedQuota();
@@ -2220,6 +2310,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       displayName: provider.displayName
     });
     this._syncProviderStatusCards();
+    this._syncPeakHoursCard();
   }
 
   /**
@@ -2296,6 +2387,20 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     this._postMessage({ type: 'updateProviderStatus', status: claude });
     this._postMessage({ type: 'updateOpenAIStatus', status: openai });
+  }
+
+  /**
+   * Posts the current peak-hours state to the webview. Pushes `null` when
+   * gated off (wrong provider, setting disabled, or fetch unavailable) so
+   * the UI clears any stale pill.
+   */
+  private _syncPeakHoursCard(): void {
+    const providerId = this._sessionMonitor.getProvider().id;
+    const status = scopePeakHoursToSessionProvider(
+      providerId,
+      this._peakHoursService?.getCachedStatus() ?? null,
+    );
+    this._postMessage({ type: 'updatePeakHours', status });
   }
 
   /**
@@ -3431,6 +3536,90 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       display: block;
     }
 
+    .quota-history-section {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+      border-radius: 6px;
+      background: var(--vscode-editor-background);
+    }
+
+    .quota-history-header {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 8px;
+    }
+
+    .quota-history-subtitle {
+      font-size: 9px;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .quota-history-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .quota-history-provider {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: 8px;
+      align-items: center;
+    }
+
+    .quota-history-provider-label {
+      font-size: 9px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground);
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      justify-self: end;
+      align-self: center;
+    }
+
+    .quota-history-grid {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .quota-history-cell {
+      stroke: var(--vscode-editor-background);
+      stroke-width: 0.5;
+    }
+
+    .quota-history-cell.bucket-0 { fill: var(--vscode-input-background, rgba(127, 127, 127, 0.12)); }
+    .quota-history-cell.bucket-1 { fill: color-mix(in srgb, var(--vscode-textLink-foreground) 25%, transparent); }
+    .quota-history-cell.bucket-2 { fill: color-mix(in srgb, var(--vscode-textLink-foreground) 45%, transparent); }
+    .quota-history-cell.bucket-3 { fill: color-mix(in srgb, var(--vscode-textLink-foreground) 70%, transparent); }
+    .quota-history-cell.bucket-4 { fill: var(--vscode-textLink-foreground); }
+    .quota-history-cell.unavailable { fill: var(--vscode-editorError-foreground, #f44336); opacity: 0.55; }
+
+    .quota-history-legend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      font-size: 9px;
+      color: var(--vscode-descriptionForeground);
+      justify-content: flex-end;
+    }
+
+    .quota-history-legend-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+    .quota-history-legend-swatch[data-bucket="0"] { background: var(--vscode-input-background, rgba(127, 127, 127, 0.12)); }
+    .quota-history-legend-swatch[data-bucket="1"] { background: color-mix(in srgb, var(--vscode-textLink-foreground) 25%, transparent); }
+    .quota-history-legend-swatch[data-bucket="2"] { background: color-mix(in srgb, var(--vscode-textLink-foreground) 45%, transparent); }
+    .quota-history-legend-swatch[data-bucket="3"] { background: color-mix(in srgb, var(--vscode-textLink-foreground) 70%, transparent); }
+    .quota-history-legend-swatch[data-bucket="4"] { background: var(--vscode-textLink-foreground); }
+
     .quota-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -3714,6 +3903,33 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .provider-status-details a:hover {
       text-decoration: underline;
+    }
+
+    .peak-hours-section {
+      display: none;
+    }
+
+    .peak-hours-section.visible {
+      display: block;
+    }
+
+    .peak-hours-content {
+      background: var(--vscode-input-background);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+      border: 1px solid var(--vscode-charts-orange, var(--vscode-charts-yellow));
+    }
+
+    .peak-hours-indicator {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .peak-hours-details {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.4;
     }
 
     .tool-list {
@@ -5081,7 +5297,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       </div>
 
       <div class="gauge-row" id="gauge-row">
-        <div class="gauge-row-item context-item" title="How much of Claude's 200K token context window is currently in use">
+        <div class="gauge-row-item context-item" title="How much of the model's context window (200K–1M tokens depending on model) is currently in use">
           <div class="section-title">Context Window</div>
           <div class="context-gauge" title="Green: &lt;50% | Orange: 50-79% | Red: ≥80%. When full, older context is summarized.">
             <canvas id="contextChart"></canvas>
@@ -5131,6 +5347,30 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             <div class="provider-status-indicator" id="openai-status-indicator"></div>
             <div class="provider-status-details" id="openai-status-details"></div>
           </div>
+        </div>
+
+        <div class="gauge-row-item peak-hours-section" id="peak-hours-section" title="Claude peak-hours tracker — data from promoclock.co (third-party, unaffiliated)">
+          <div class="peak-hours-content">
+            <div class="peak-hours-indicator" id="peak-hours-indicator"></div>
+            <div class="peak-hours-details" id="peak-hours-details"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="quota-history-section" id="quota-history-section" style="display: none;" aria-label="Quota history heatmap (last 13 weeks)">
+        <div class="quota-history-header">
+          <div class="section-title">Quota History</div>
+          <div class="quota-history-subtitle">Last 13 weeks · peak utilization per day</div>
+        </div>
+        <div class="quota-history-body" id="quota-history-body"></div>
+        <div class="quota-history-legend">
+          <span class="quota-history-legend-label">Less</span>
+          <span class="quota-history-legend-swatch" data-bucket="0"></span>
+          <span class="quota-history-legend-swatch" data-bucket="1"></span>
+          <span class="quota-history-legend-swatch" data-bucket="2"></span>
+          <span class="quota-history-legend-swatch" data-bucket="3"></span>
+          <span class="quota-history-legend-swatch" data-bucket="4"></span>
+          <span class="quota-history-legend-label">More</span>
         </div>
       </div>
 
@@ -6182,7 +6422,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
        * Extracts short model name from full ID.
        */
       function getShortModelName(modelId) {
-        const match = modelId.match(/claude-(haiku|sonnet|opus)-([0-9.]+)/i);
+        const match = modelId.match(/claude-(haiku|sonnet|opus|fable)-([0-9.]+)/i);
         if (match) {
           return match[1].charAt(0).toUpperCase() + match[1].slice(1) + ' ' + match[2];
         }
@@ -6603,6 +6843,43 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           if (status.activeIncident.shortlink) {
             html += ' <a href="' + status.activeIncident.shortlink + '">\u2197</a>';
           }
+        }
+        detailsEl.innerHTML = html;
+      }
+
+      /**
+       * Updates the Claude peak-hours pill. Off-peak, unavailable, or
+       * non-claude-max states all collapse the pill entirely — only a live
+       * "peak active" window is surfaced.
+       */
+      function updatePeakHours(status) {
+        const sectionEl = document.getElementById('peak-hours-section');
+        const indicatorEl = document.getElementById('peak-hours-indicator');
+        const detailsEl = document.getElementById('peak-hours-details');
+        if (!sectionEl || !indicatorEl || !detailsEl) return;
+
+        if (currentProviderId !== 'claude-code' || !status || status.unavailable || !status.isPeak) {
+          sectionEl.classList.remove('visible');
+          return;
+        }
+
+        sectionEl.classList.add('visible');
+
+        const dot = '\u25cf';
+        indicatorEl.innerHTML =
+          '<span style="color: var(--vscode-charts-orange, var(--vscode-charts-yellow))">' +
+          dot + '</span> ' +
+          (status.label || 'Peak Hours');
+
+        let html = '';
+        if (typeof status.minutesUntilChange === 'number' && status.minutesUntilChange > 0) {
+          const hours = Math.floor(status.minutesUntilChange / 60);
+          const mins = status.minutesUntilChange % 60;
+          const countdown = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
+          html += 'Off-peak in ' + countdown + '<br>';
+        }
+        if (status.peakHoursDescription) {
+          html += status.peakHoursDescription;
         }
         detailsEl.innerHTML = html;
       }
@@ -7204,6 +7481,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         currentQuotaFailure = null;
         currentProviderId = providerId;
         currentProviderName = providerName;
+        if (currentProviderId !== 'claude-code') {
+          updatePeakHours(null);
+        }
 
         // Update instruction file targeting based on provider
         const instructionTargets = {
@@ -8006,6 +8286,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           case 'updateOpenAIStatus':
             updateOpenAIStatus(message.status);
+            break;
+
+          case 'updatePeakHours':
+            updatePeakHours(message.status);
             break;
 
           case 'updateLatency':

@@ -8,6 +8,7 @@
  */
 
 import type { AggregatedMetrics } from '../aggregation/types';
+import { formatDurationMs, formatTokenCount } from '../formatting';
 
 /** Options for text and markdown formatters. */
 export interface SessionDumpOptions {
@@ -267,9 +268,7 @@ function formatTokenSummary(metrics: AggregatedMetrics): string {
 
 /** @internal Exported for tests. */
 export function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
+  return formatTokenCount(n);
 }
 
 /** @internal Exported for tests. */
@@ -298,14 +297,7 @@ export function formatDuration(start: string | null, end: string | null): string
   if (!start || !end) return 'N/A';
   try {
     const ms = new Date(end).getTime() - new Date(start).getTime();
-    if (ms < 0) return 'N/A';
-    const totalSec = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSec / 3600);
-    const minutes = Math.floor((totalSec % 3600) / 60);
-    const seconds = totalSec % 60;
-    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-    if (minutes > 0) return `${minutes}m ${seconds}s`;
-    return `${seconds}s`;
+    return formatDurationMs(ms);
   } catch {
     return 'N/A';
   }

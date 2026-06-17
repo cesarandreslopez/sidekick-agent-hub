@@ -29,14 +29,14 @@ export interface ModelMapping {
 export const DEFAULT_MODEL_MAPPINGS: Record<InferenceProviderId, ModelMapping> = {
   'claude-max': { fast: 'haiku', balanced: 'sonnet', powerful: 'opus' },
   'claude-api': {
-    fast: 'claude-3-5-haiku-20241022',
-    balanced: 'claude-sonnet-4-20250514',
-    powerful: 'claude-opus-4-20250514',
+    fast: 'claude-haiku-4-5',
+    balanced: 'claude-sonnet-4-6',
+    powerful: 'claude-opus-4-8',
   },
   opencode: {
-    fast: 'anthropic/claude-3-5-haiku-20241022',
-    balanced: 'anthropic/claude-sonnet-4-20250514',
-    powerful: 'anthropic/claude-opus-4-20250514',
+    fast: 'anthropic/claude-haiku-4-5',
+    balanced: 'anthropic/claude-sonnet-4-6',
+    powerful: 'anthropic/claude-opus-4-8',
   },
   codex: {
     fast: 'gpt-5-codex-mini',

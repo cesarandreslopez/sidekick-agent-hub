@@ -12,4 +12,4 @@ export {
   extractPatchFilePaths,
   normalizeCodexToolName,
   normalizeCodexToolInput,
-} from 'sidekick-shared/dist/parsers/codexParser';
+} from 'sidekick-shared';

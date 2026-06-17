@@ -46,4 +46,4 @@ export type {
   CodexBackgroundEvent,
   CodexGenericEvent,
   CodexDbThread,
-} from 'sidekick-shared/dist/types/codex';
+} from 'sidekick-shared';

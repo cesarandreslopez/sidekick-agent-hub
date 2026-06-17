@@ -7,6 +7,7 @@ import {
   getCodexProfilesDir,
   getSystemCodexHome,
   prepareCodexAccount,
+  reconcileCodexAuthState,
 } from './codexProfiles';
 import { readClaudeMaxCredentials } from './credentials';
 
@@ -84,6 +85,12 @@ export async function ensureDefaultAccounts(
 ): Promise<EnsureDefaultAccountsResult> {
   const claude = await ensureDefaultClaudeAccount(options);
   const codex = ensureDefaultCodexAccount(options);
+
+  try {
+    reconcileCodexAuthState();
+  } catch (error) {
+    logFailure(options, 'Codex auth reconciliation failed.', error);
+  }
 
   return { claude, codex };
 }

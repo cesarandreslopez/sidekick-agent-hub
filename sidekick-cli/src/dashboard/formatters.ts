@@ -3,6 +3,8 @@
  * Consolidates duplicated helpers from panels and MindMapBuilder.
  */
 
+import { formatDurationMs, formatTokenCount } from 'sidekick-shared';
+
 /** Shorten a file path to show only the last 3 segments. */
 export function shortenPath(p: string): string {
   const parts = p.replace(/\\/g, '/').split('/');
@@ -12,19 +14,16 @@ export function shortenPath(p: string): string {
 
 /** Format a number with K/M suffixes. */
 export function fmtNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
+  return formatTokenCount(n, { suffixCase: 'upper' });
 }
 
 /** Format a duration in ms to a human-readable string. */
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const secs = ms / 1000;
-  if (secs < 60) return `${secs.toFixed(1)}s`;
-  const mins = Math.floor(secs / 60);
-  const remSecs = Math.floor(secs % 60);
-  return `${mins}m${remSecs}s`;
+  return formatDurationMs(ms, {
+    style: 'compact',
+    includeMilliseconds: true,
+    secondsFractionDigits: 1,
+  });
 }
 
 /** Strip blessed-style tags like `{cyan-fg}` or `{/bold}` from text. */

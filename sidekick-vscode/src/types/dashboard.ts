@@ -17,7 +17,7 @@ import type {
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
 import type { KnowledgeNoteDisplay, KnowledgeCandidateDisplay } from './knowledgeNote';
-import type { ProviderStatusState } from 'sidekick-shared';
+import type { ProviderStatusState, PeakHoursState } from 'sidekick-shared';
 
 /**
  * Session info for the session card navigator.
@@ -110,6 +110,35 @@ export interface QuotaFailureDisplay {
 }
 
 /**
+ * Per-day cell in the quota-history heatmap.
+ */
+export interface QuotaHistoryDailyCell {
+  /** UTC date string (YYYY-MM-DD) */
+  date: string;
+  /** Max observed utilization across the day, 0-100. The larger of fiveHour/sevenDay. */
+  utilization: number;
+  /** True if any sample on that day reported `available: false`. */
+  unavailable: boolean;
+  /** Number of samples observed that day. */
+  samples: number;
+}
+
+/**
+ * Heatmap payload pushed from the extension to the dashboard webview.
+ */
+export interface QuotaHistoryPayload {
+  /** Window in weeks (e.g. 13). */
+  weeks: number;
+  /** Per-runtime-provider cells; either may be absent if no data exists. */
+  providers: {
+    claude?: { cells: QuotaHistoryDailyCell[] };
+    codex?: { cells: QuotaHistoryDailyCell[] };
+  };
+  /** ISO timestamp when the payload was generated. */
+  generatedAt: string;
+}
+
+/**
  * Messages from extension to webview.
  *
  * These messages update the dashboard UI with session data.
@@ -125,6 +154,7 @@ export type DashboardMessage =
   | { type: 'updateSessionList'; groups: SessionGroup[]; isPinned: boolean; isUsingCustomPath?: boolean; customPathDisplay?: string | null }
   | { type: 'discoveryModeChange'; inDiscoveryMode: boolean }
   | { type: 'updateQuota'; quota: QuotaState; quotaFailure?: QuotaFailureDisplay }
+  | { type: 'updateQuotaHistory'; payload: QuotaHistoryPayload }
   | { type: 'updateHistoricalData'; data: HistoricalSummary }
   | { type: 'historicalDataLoading'; loading: boolean }
   | { type: 'updateLatency'; latency: LatencyDisplay }
@@ -160,7 +190,8 @@ export type DashboardMessage =
   | { type: 'updatePlanHistory'; history: PlanHistoryDisplay }
   | { type: 'updateAnalytics'; analytics: AnalyticsDisplay }
   | { type: 'updateProviderStatus'; status: ProviderStatusState }
-  | { type: 'updateOpenAIStatus'; status: ProviderStatusState };
+  | { type: 'updateOpenAIStatus'; status: ProviderStatusState }
+  | { type: 'updatePeakHours'; status: PeakHoursState | null };
 
 /**
  * Plan history analytics display data.

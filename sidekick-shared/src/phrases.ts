@@ -1364,32 +1364,39 @@ export const STACK_OVERFLOW: string[] = [
   'You mass-searched, mass-copied, and mass-deployed. The Stack Overflow-driven development lifecycle.',
 ];
 
-export const ALL_PHRASES: string[] = [
-  ...SIDEKICK_ENERGY,
-  ...AI_COMMENTARY,
-  ...DEV_RELATABLE,
-  ...DRAMATIC,
-  ...PUNCHY,
-  ...META_MONITORING,
-  ...FOURTH_WALL,
-  ...THE_ECOSYSTEM,
-  ...AI_INDUSTRY,
-  ...MOTIVATION,
-  ...SYCOPHANCY,
-  ...OBSOLESCENCE,
-  ...VIBE_CODING,
-  ...AFTER_HOURS,
-  ...LOADING_TIPS,
-  ...ERROR_MESSAGES,
-  ...OVERHEARD,
-  ...COMMIT_SINS,
-  ...FORTUNE_COOKIE,
-  ...INTERVIEW_HELL,
-  ...TONGUE_TWISTERS,
-  ...RUBBER_DUCK,
-  ...DEPENDENCY_HELL,
-  ...STACK_OVERFLOW,
+export interface PhraseCategory {
+  id: string;
+  phrases: string[];
+}
+
+export const PHRASE_CATEGORIES: PhraseCategory[] = [
+  { id: 'sidekick-energy', phrases: SIDEKICK_ENERGY },
+  { id: 'ai-commentary', phrases: AI_COMMENTARY },
+  { id: 'dev-relatable', phrases: DEV_RELATABLE },
+  { id: 'dramatic', phrases: DRAMATIC },
+  { id: 'punchy', phrases: PUNCHY },
+  { id: 'meta-monitoring', phrases: META_MONITORING },
+  { id: 'fourth-wall', phrases: FOURTH_WALL },
+  { id: 'ecosystem', phrases: THE_ECOSYSTEM },
+  { id: 'ai-industry', phrases: AI_INDUSTRY },
+  { id: 'motivation', phrases: MOTIVATION },
+  { id: 'sycophancy', phrases: SYCOPHANCY },
+  { id: 'obsolescence', phrases: OBSOLESCENCE },
+  { id: 'vibe-coding', phrases: VIBE_CODING },
+  { id: 'after-hours', phrases: AFTER_HOURS },
+  { id: 'loading-tips', phrases: LOADING_TIPS },
+  { id: 'error-messages', phrases: ERROR_MESSAGES },
+  { id: 'overheard', phrases: OVERHEARD },
+  { id: 'commit-sins', phrases: COMMIT_SINS },
+  { id: 'fortune-cookie', phrases: FORTUNE_COOKIE },
+  { id: 'interview-hell', phrases: INTERVIEW_HELL },
+  { id: 'tongue-twisters', phrases: TONGUE_TWISTERS },
+  { id: 'rubber-duck', phrases: RUBBER_DUCK },
+  { id: 'dependency-hell', phrases: DEPENDENCY_HELL },
+  { id: 'stack-overflow', phrases: STACK_OVERFLOW },
 ];
+
+export const ALL_PHRASES: string[] = PHRASE_CATEGORIES.flatMap(category => category.phrases);
 
 /** Pick a random phrase from all categories. */
 export function getRandomPhrase(): string {

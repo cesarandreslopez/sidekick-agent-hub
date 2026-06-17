@@ -41,6 +41,16 @@ export interface QuotaState {
   fiveHourLabel?: string;
   /** Provider-specific display label for the second window */
   sevenDayLabel?: string;
+  /** Provider-specific rate-limit identifier */
+  limitId?: string;
+  /** Provider-specific rate-limit display name */
+  limitName?: string;
+  /** Provider-specific credits snapshot */
+  credits?: unknown;
+  /** Provider-specific plan type */
+  planType?: string;
+  /** Provider-specific rate-limit reached reason */
+  rateLimitReachedType?: string;
 }
 
 interface UsageApiResponse {

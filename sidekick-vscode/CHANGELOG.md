@@ -5,6 +5,116 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.3] - 2026-06-17
+
+### Changed
+
+- **Bundled `sidekick-shared` projection contract**: The shared assistant-turn projection now exposes a v2 `timeline` array for interleaved reasoning, narration, and tool groups. This is a shared-library contract update for downstream consumers and does not change extension behavior by itself
+- **Conversation view interleave**: The transcript rail now uses the shared assistant-turn timeline to render reasoning, tool calls, and narration in provider-normalized arrival order for Claude, Codex, and OpenCode sessions. Tool results remain separate transcript entries, and assistant turns now use a provider-neutral "Assistant" label. Tool calls render as concise rows with their summary inline, while tool results stay expandable to reveal their output
+
+## [0.19.2] - 2026-06-15
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.19.2**: The shared library gains a browser-safe assistant-turn projection module (`segmentAssistantTurn()`, `assistantTurnEventsFromSessionEvents()`, and mirrored Zod schemas) that segments an assistant turn into a compact Process + Answer shape, with Claude `Task` subagent refs surfaced without leaking prompt text — internal additions that don't change extension behavior
+
+## [0.19.1] - 2026-06-09
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.19.1**: Model-ID pricing and context-window lookups now tolerate padded or mixed-case IDs. The shared library also gains Zod boundary schemas, an `extractSessionEvents()` progress-unwrapping helper, and a `/schemas` subpath export for downstream consumers — internal additions that don't change extension behavior
+
+## [0.19.0] - 2026-06-09
+
+### Added
+
+- **Claude Opus 4.8 & Fable 5 support**: Both new models are recognized across the dashboard, conversation view, and cost estimation — 1M-token context windows, pricing (Opus 4.8: $5/$25 per MTok; Fable 5: $10/$50 per MTok), and "Fable" display labels
+
+### Changed
+
+- **Refreshed Anthropic model tier defaults**: The `claude-api` and `opencode` inference providers now resolve fast/balanced/powerful to `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-8`. The previous defaults were retired or retiring upstream — `claude-3-5-haiku-20241022` was retired in February 2026 (requests 404), and `claude-sonnet-4-20250514` / `claude-opus-4-20250514` retire June 15, 2026
+- **Codex account switching now swaps `~/.codex/auth.json`**: Switching or adding a Codex account activates it by atomically swapping the profile's backed-up credentials into the system `~/.codex/` home (mirroring the Claude switch pattern), so codex terminals outside VS Code pick up the switch. Profile directories become pure credential backups; a one-time startup migration reconciles installs created under the old `CODEX_HOME`-redirection model, stashing unknown live credentials instead of dropping them
+- **Bundled `sidekick-shared` 0.19.0**: Picks up the Codex `auth.json` swap machinery, the new model support, and the pricing fixes
+
+### Fixed
+
+- **Opus 4.6/4.7 cost over-estimation**: Dashed model IDs (`claude-opus-4-6`, `claude-opus-4-7`) fell back to the Opus 4.0 pricing tier ($15/$75 instead of $5/$25), inflating estimated costs 3×
+- **Haiku 4.5 unpriced under dashed IDs**: Costs for `claude-haiku-4-5-*` sessions could render as "—" because no dashed static pricing key existed
+
+## [0.18.5] - 2026-06-04
+
+### Changed
+
+- **Codex parsing parity**: `ProjectTimelineDataService` and related wiring now consume the canonical Codex parsing path (provider reader + `parseTranscriptFromEvents`), keeping the project timeline, dashboard, and reports consistent with the CLI
+- **Bundled `sidekick-shared` 0.18.5**: Picks up the new session context evidence snapshot API (`buildSessionContextSnapshot`, `readSessionContextSnapshot`, `SessionContextSnapshot` and related types) and the Codex session evidence gap closures — `system` audit events, normalized `token_count` rate limits, per-file `apply_patch` expansion, tool-emission dedupe, MCP server attribution, and the new `ProviderReaderSessionWatcher`
+
+## [0.18.4] - 2026-05-27
+
+### Changed
+
+- **Peak hours scoped to Claude Code sessions**: `PeakHoursService` now requires both the `claude-max` inference provider and the `claude-code` session provider before polling or rendering. The dashboard pill and status bar `🟠` glyph are hidden when the session provider is OpenCode or Codex, and switching session providers triggers an immediate reconcile
+- **Bundled `sidekick-shared` 0.18.4**: Picks up `scopePeakHoursToSessionProvider()`, `isClaudeCodeSessionProvider()`, `createPeakHoursNotApplicableState()` for peak-hours scoping, the improved Codex quota snapshot selection logic (`isPreferredQuotaHit`, `findAccountRolloutFiles`, `shouldKeepExistingSnapshot`), and the `notApplicable` field on `PeakHoursState`
+
+### Fixed
+
+- **Codex quota fallback on dashboard open**: When no live Codex session provides rate-limit data, the dashboard now resolves quota from local rollout files and account-level sessions via `resolveCodexQuotaFromLocalSources()` before falling back to the snapshot cache — previously it only read the snapshot cache directly
+
+## [0.18.3] - 2026-05-19
+
+### Added
+
+- **Quota History dashboard panel**: New "Quota History · Last 13 weeks · peak utilization per day" section under the quota readout. Per-provider SVG heatmap (Claude / Codex) with bucketed `var(--vscode-textLink-foreground)` shades, per-cell `<title>` tooltips (date · peak % · sample count), a red overlay for days that hit "unavailable", and a "Less / More" legend. The section auto-hides when no history exists for either provider
+- **Workspace-scoped history sampling**: Every Claude quota refresh from `QuotaService` and every Codex quota update from `CodexSessionProvider` now appends a sample to the per-workspace history JSONL when a workspace is open and a saved account is active. A new `utils/workspaceId.ts` helper wraps `workspaceFolders[0]?.uri.fsPath → getWorkspaceIdFromPath` so the extension and the CLI hash the same path to the same opaque id
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.3**: Picks up the new per-workspace quota history surface (`appendQuotaHistorySample`, `readQuotaHistoryRange`, `readQuotaHistoryDailyBuckets`, `pruneQuotaHistory`, `getWorkspaceIdFromPath`) and the optional `workspaceId` / `appendHistorySample` hooks on `CodexQuotaWatcher`
+
+## [0.18.2] - 2026-05-19
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.2**: Picks up the new Codex quota orchestrator (`resolveCodexQuota`, `resolveCodexQuotaFromLocalSources`, `readLatestCodexQuotaFromRollouts`, `fetchCodexQuotaFromApi`), relaxed `CodexRateLimits` types tolerating nullable `resets_at` / `window_minutes`, rate-limit-only `token_count` event emission in `JsonlSessionWatcher`, optional `limitId` / `limitName` / `credits` / `planType` / `rateLimitReachedType` fields on `QuotaState`, `state_N.sqlite` discovery in `CodexDatabase` and provider auto-detect, and a workspace + account-level rollout fallback in `CodexQuotaWatcher`
+- **No extension runtime changes**: This release ships the shared library upgrade for downstream tooling alignment; the extension's quota polling, dashboard, and status bar continue to use the existing `QuotaPoller`. Wiring `resolveCodexQuota` into the extension host (and any UI for the new metadata fields) will land in a follow-up release
+
+## [0.18.1] - 2026-05-08
+
+### Changed
+
+- **Public shared imports**: extension code now consumes supported `sidekick-shared` entrypoints (`sidekick-shared`, `sidekick-shared/browser`, `sidekick-shared/phrases`) instead of reaching into `dist/*`, and `services/JsonlParser.ts` is now a compatibility shim re-exporting `JsonlParser`, `extractTokenUsage`, and `extractToolCall` from `sidekick-shared` to remove the forked parser implementation
+- **Shared display formatting**: status bar, session summary, analysis prompt, handoff document, and bundled dashboard webview formatting now reuse `formatTokenCount()`, `formatDurationMs()`, and `formatCost()` from `sidekick-shared` where the package import is safe — webview dashboard token cards now render compact `12.3k` / `1.2M` totals (was `12,345`); status bar, CLI, and tooltip helpers continue to use uppercase `K`/`M`
+
+## [0.18.0] - 2026-05-08
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.18.0**: Picks up the new provider-aware quota orchestration surface — `MultiProviderQuotaService`, `CodexQuotaWatcher`, `getActiveAccountStatus()`, `extractToolCall()`, cost-provenance helpers (`calculateCostWithProvenance`, `mergeCostSources`), and model display helpers (`shortModelName`, `getModelDisplayInfo`, `compareModelIds`, `sortModelIds`). `parseModelId()` also now recognizes legacy Claude IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022`
+- **No extension runtime changes**: This release ships the shared library upgrade for downstream tooling alignment; the extension's quota polling, dashboard, and status bar continue to use the existing `QuotaPoller`. Wiring the new orchestrator into the extension host will land in a follow-up release
+
+## [0.17.7] - 2026-04-28
+
+### Fixed
+
+- **Quota snapshot write race**: Updated the bundled `sidekick-shared` snapshot writer so concurrent Codex session quota updates no longer collide on `quota-snapshots.json.tmp` or throw `ENOENT`. Failed writes now also clean up their partial temp files instead of leaving orphans in `~/.config/sidekick/`
+
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **Claude peak-hours indicator (Claude Max only)**: The Agent Hub dashboard now shows a subtle orange pill whenever Claude is in an active peak window (weekdays 13:00–19:00 UTC — when session limits drain faster on Free/Pro/Max/Team subscriptions), and the session status bar appends a `🟠` glyph with a tooltip countdown. Off-peak, unavailable, and wrong-provider states render nothing — no "all clear" chrome. Only activates when the inference provider is `claude-max`; OpenCode, Codex, and API-key users never see the pill and the extension never hits the upstream service on their behalf
+- **`PeakHoursService`**: New service wired into `extension.ts` that polls `promoclock.co/api/status` (third-party, unaffiliated with Anthropic) every 15 minutes while the dashboard is open. Reacts to `sidekick.inferenceProvider` changes to start/stop polling without a reload. Graceful fallback — if the endpoint is unreachable, the service emits a `unavailable: true` state and the UI silently collapses
+- **Settings**:
+  - `sidekick.peakHours.enabled` (default `true`) — master toggle; when off, the service does not poll and no UI appears
+  - `sidekick.peakHours.notifyOnTransition` (default `false`) — opt-in one-time VS Code toast when peak hours start or end
+
+## [0.17.5] - 2026-04-18
+
+### Added
+
+- **Default account bootstrap on activation**: The extension now calls `ensureDefaultAccounts()` from `sidekick-shared` as part of `activate()`, auto-registering the active system Claude Code and Codex credentials as a "Default" saved account when none exist for that provider yet. Existing manually saved accounts are never overwritten. The call routes logging through the extension's own `logError()` channel, and all failures are non-fatal — activation never fails because of account bootstrap. Users who are already signed in to Claude Code or Codex no longer have to run **`Sidekick: Save Current Claude Account`** / **`Sidekick: Add Account`** before the quota and dashboard surfaces light up
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#16](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/16).
+
 ## [0.17.4] - 2026-04-17
 
 ### Changed

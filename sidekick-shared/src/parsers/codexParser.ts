@@ -58,6 +58,22 @@ interface PendingMcpToolCall {
   timestamp: string;
 }
 
+function normalizeRateLimits(rateLimits: CodexRateLimits | null | undefined): SessionEvent['rateLimits'] | undefined {
+  if (!rateLimits?.primary && !rateLimits?.secondary) return undefined;
+  return {
+    primary: rateLimits.primary ? {
+      usedPercent: rateLimits.primary.used_percent || 0,
+      windowMinutes: rateLimits.primary.window_minutes || 0,
+      resetsAt: rateLimits.primary.resets_at || 0,
+    } : undefined,
+    secondary: rateLimits.secondary ? {
+      usedPercent: rateLimits.secondary.used_percent || 0,
+      windowMinutes: rateLimits.secondary.window_minutes || 0,
+      resetsAt: rateLimits.secondary.resets_at || 0,
+    } : undefined,
+  };
+}
+
 /**
  * Codex-specific tool name normalization.
  * Extends the shared normalizeToolName with Codex-specific mappings.
@@ -148,6 +164,8 @@ export class CodexRolloutParser {
   private modelContextWindow: number | null = null;
   private lastRateLimits: CodexRateLimits | null = null;
   private inPlanMode = false;
+  private emittedToolUseIds = new Set<string>();
+  private patchExpandedToolUseIds = new Map<string, string[]>();
 
   /** Get stored session metadata. */
   getSessionMeta(): CodexSessionMeta | null {
@@ -180,7 +198,7 @@ export class CodexRolloutParser {
   convertLine(line: CodexRolloutLine): SessionEvent[] {
     switch (line.type) {
       case 'session_meta':
-        return this.handleSessionMeta(line.payload as CodexSessionMeta);
+        return this.handleSessionMeta(line.timestamp, line.payload as CodexSessionMeta);
       case 'response_item':
         return this.handleResponseItem(line.timestamp, line.payload as CodexResponseItem);
       case 'compacted':
@@ -204,13 +222,26 @@ export class CodexRolloutParser {
     this.modelContextWindow = null;
     this.lastRateLimits = null;
     this.inPlanMode = false;
+    this.emittedToolUseIds.clear();
+    this.patchExpandedToolUseIds.clear();
   }
 
   // --- Handlers ---
 
-  private handleSessionMeta(payload: CodexSessionMeta): SessionEvent[] {
+  private handleSessionMeta(timestamp: string, payload: CodexSessionMeta): SessionEvent[] {
     this.sessionMeta = payload;
-    return [];
+    const text = payload.base_instructions?.text?.trim();
+    if (!text) return [];
+    return [{
+      type: 'system',
+      message: {
+        role: 'system',
+        id: `${payload.id}:base-instructions`,
+        sourceLabel: 'base instructions',
+        content: [{ type: 'text', text }],
+      },
+      timestamp,
+    }];
   }
 
   private handleResponseItem(timestamp: string, payload: CodexResponseItem): SessionEvent[] {
@@ -266,6 +297,19 @@ export class CodexRolloutParser {
       }];
     }
 
+    if (item.role === 'developer' || item.role === 'system') {
+      return [{
+        type: 'system',
+        message: {
+          role: item.role,
+          id: item.id,
+          sourceLabel: item.role,
+          content: [{ type: 'text', text }],
+        },
+        timestamp,
+      }];
+    }
+
     return [];
   }
 
@@ -298,6 +342,7 @@ export class CodexRolloutParser {
 
     const canonicalName = normalizeCodexToolName(item.name);
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedArgs);
+    this.emittedToolUseIds.add(item.call_id);
 
     return [{
       type: 'assistant',
@@ -336,6 +381,7 @@ export class CodexRolloutParser {
 
   private handleLocalShellCall(timestamp: string, item: CodexLocalShellCallItem): SessionEvent[] {
     const command = item.action?.command?.join(' ') || '';
+    this.emittedToolUseIds.add(item.call_id);
     return [{
       type: 'assistant',
       message: {
@@ -361,6 +407,11 @@ export class CodexRolloutParser {
     if (item.name === 'apply_patch') {
       const filePaths = extractPatchFilePaths(item.input);
       if (filePaths.length === 0) return [];
+      const toolUseIds = filePaths.map(fp => `${item.call_id}-${fp}`);
+      this.patchExpandedToolUseIds.set(item.call_id, toolUseIds);
+      for (const id of toolUseIds) {
+        this.emittedToolUseIds.add(id);
+      }
       return filePaths.map(fp => ({
         type: 'assistant' as const,
         message: {
@@ -391,6 +442,7 @@ export class CodexRolloutParser {
 
     const canonicalName = normalizeCodexToolName(item.name);
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedInput);
+    this.emittedToolUseIds.add(item.call_id);
 
     return [{
       type: 'assistant',
@@ -422,21 +474,23 @@ export class CodexRolloutParser {
       isError = parsePlainTextFailure(item.output);
     }
 
-    return [{
+    const toolUseIds = this.patchExpandedToolUseIds.get(item.call_id) ?? [item.call_id];
+    this.patchExpandedToolUseIds.delete(item.call_id);
+    return toolUseIds.map(toolUseId => ({
       type: 'user',
       message: {
         role: 'user',
-        id: `${item.call_id}:result`,
+        id: `${toolUseId}:result`,
         content: [{
           type: 'tool_result',
-          tool_use_id: item.call_id,
+          tool_use_id: toolUseId,
           content: item.output,
           is_error: isError,
           duration,
         }],
       },
       timestamp,
-    }];
+    }));
   }
 
   private handleCompacted(timestamp: string, payload: CodexCompacted): SessionEvent[] {
@@ -475,7 +529,7 @@ export class CodexRolloutParser {
         }
         // Usage data is nested under info.last_token_usage (info can be null)
         const usage = e.info?.last_token_usage || e.info?.total_token_usage;
-        return this.handleTokenCount(timestamp, usage ?? null);
+        return this.handleTokenCount(timestamp, usage ?? null, e.rate_limits);
       }
 
       // agent_message and user_message are suppressed — they duplicate
@@ -499,25 +553,28 @@ export class CodexRolloutParser {
         const command = pending?.command?.join(' ') || '';
         const events: SessionEvent[] = [];
 
-        events.push({
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            id: `exec-${e.call_id}`,
-            model: this.currentModel || undefined,
-            content: [{
-              type: 'tool_use',
-              id: e.call_id,
-              name: 'Bash',
-              input: {
-                command,
-                workdir: pending?.workdir,
-                _sidekickRawToolName: 'exec_command',
-              },
-            }],
-          },
-          timestamp: pending?.timestamp || timestamp,
-        });
+        if (!this.emittedToolUseIds.has(e.call_id)) {
+          this.emittedToolUseIds.add(e.call_id);
+          events.push({
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              id: `exec-${e.call_id}`,
+              model: this.currentModel || undefined,
+              content: [{
+                type: 'tool_use',
+                id: e.call_id,
+                name: 'Bash',
+                input: {
+                  command,
+                  workdir: pending?.workdir,
+                  _sidekickRawToolName: 'exec_command',
+                },
+              }],
+            },
+            timestamp: pending?.timestamp || timestamp,
+          });
+        }
 
         const output = [e.stdout, e.stderr].filter(Boolean).join('\n') || '';
         events.push({
@@ -558,24 +615,28 @@ export class CodexRolloutParser {
         const toolName = pendingMcp?.tool_name || 'McpTool';
         const events: SessionEvent[] = [];
 
-        events.push({
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            id: `mcp-${e.call_id}`,
-            model: this.currentModel || undefined,
-            content: [{
-              type: 'tool_use',
-              id: e.call_id,
-              name: normalizeCodexToolName(toolName),
-              input: {
-                ...(pendingMcp?.arguments || {}),
-                _sidekickRawToolName: toolName,
-              },
-            }],
-          },
-          timestamp: pendingMcp?.timestamp || timestamp,
-        });
+        if (!this.emittedToolUseIds.has(e.call_id)) {
+          this.emittedToolUseIds.add(e.call_id);
+          events.push({
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              id: `mcp-${e.call_id}`,
+              model: this.currentModel || undefined,
+              content: [{
+                type: 'tool_use',
+                id: e.call_id,
+                name: normalizeCodexToolName(toolName),
+                input: {
+                  ...(pendingMcp?.arguments || {}),
+                  _sidekickRawToolName: toolName,
+                  _sidekickMcpServerName: pendingMcp?.server_name,
+                },
+              }],
+            },
+            timestamp: pendingMcp?.timestamp || timestamp,
+          });
+        }
 
         events.push({
           type: 'user',
@@ -710,29 +771,38 @@ export class CodexRolloutParser {
     }
   }
 
-  private handleTokenCount(timestamp: string, usage: CodexTokenUsage | null): SessionEvent[] {
-    if (!usage) return [];
+  private handleTokenCount(
+    timestamp: string,
+    usage: CodexTokenUsage | null,
+    rateLimits?: CodexRateLimits | null,
+  ): SessionEvent[] {
+    const normalizedRateLimits = normalizeRateLimits(rateLimits);
+    if (!usage && !normalizedRateLimits) return [];
 
-    const mappedUsage: MessageUsage = {
+    const mappedUsage: MessageUsage | undefined = usage ? {
       input_tokens: usage.input_tokens || 0,
       output_tokens: usage.output_tokens || 0,
       cache_read_input_tokens: usage.cached_input_tokens || 0,
       cache_creation_input_tokens: 0,
       reasoning_tokens: usage.reasoning_output_tokens || 0,
-    };
+    } : undefined;
 
-    this.lastTokenUsage = usage;
+    if (usage) {
+      this.lastTokenUsage = usage;
+    }
 
     return [{
-      type: 'assistant',
+      type: 'system',
       message: {
-        role: 'assistant',
+        role: 'system',
         id: `token-count-${timestamp}`,
+        sourceLabel: 'token count',
         model: this.currentModel || undefined,
         usage: mappedUsage,
         content: [],
       },
       timestamp,
+      rateLimits: normalizedRateLimits,
     }];
   }
 }

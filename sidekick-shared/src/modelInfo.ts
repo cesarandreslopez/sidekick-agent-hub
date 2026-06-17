@@ -63,6 +63,32 @@ export interface ModelInfo {
   pricing: ModelPricing | null;
 }
 
+/** Provenance for a displayed cost value. */
+export type CostSource = 'reported' | 'estimated' | 'unpriced';
+
+/** Input for cost calculation that preserves reported-vs-estimated provenance. */
+export interface CostProvenanceInput {
+  usage: CostTokenUsage;
+  modelId: string;
+  reportedCostUsd?: number | null;
+}
+
+/** Cost value plus provenance for UI rollups and merged session totals. */
+export interface CostWithProvenance {
+  costUsd?: number;
+  source: CostSource;
+}
+
+/** Display and ranking metadata for model pickers. */
+export interface ModelDisplayInfo {
+  modelId: string;
+  provider: ModelProvider | null;
+  family: string | null;
+  version: string | null;
+  shortName: string;
+  rank: number;
+}
+
 // ── Static Pricing Table ──
 
 /**
@@ -73,10 +99,26 @@ export interface ModelInfo {
  * Sources:
  *   - Anthropic: https://www.anthropic.com/pricing
  *   - OpenAI: https://openai.com/api/pricing/
- * Snapshot taken: 2026-04-17. Runtime LiteLLM hydration refreshes this.
+ * Snapshot taken: 2026-06-09. Runtime LiteLLM hydration refreshes this.
+ *
+ * Anthropic keys appear in both dashed (`claude-opus-4-8`, the real model-ID
+ * form) and dotted (`claude-opus-4.8`, the LiteLLM catalog form) spellings —
+ * prefix matching cannot bridge the two, so both are needed.
  */
 const PRICING_TABLE: Record<string, ModelPricing> = {
   // ── Anthropic: Claude ──
+  'claude-fable-5': {
+    inputCostPerMillion: 10.0,
+    outputCostPerMillion: 50.0,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1.0,
+  },
+  'claude-haiku-4-5': {
+    inputCostPerMillion: 1.0,
+    outputCostPerMillion: 5.0,
+    cacheWriteCostPerMillion: 1.25,
+    cacheReadCostPerMillion: 0.1,
+  },
   'claude-haiku-4.5': {
     inputCostPerMillion: 1.0,
     outputCostPerMillion: 5.0,
@@ -89,7 +131,19 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 1.0,
     cacheReadCostPerMillion: 0.08,
   },
+  'claude-sonnet-4-6': {
+    inputCostPerMillion: 3.0,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 3.75,
+    cacheReadCostPerMillion: 0.3,
+  },
   'claude-sonnet-4.6': {
+    inputCostPerMillion: 3.0,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 3.75,
+    cacheReadCostPerMillion: 0.3,
+  },
+  'claude-sonnet-4-5': {
     inputCostPerMillion: 3.0,
     outputCostPerMillion: 15.0,
     cacheWriteCostPerMillion: 3.75,
@@ -107,11 +161,41 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 3.75,
     cacheReadCostPerMillion: 0.3,
   },
+  'claude-opus-4-8': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4.8': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4-7': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4.7': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'claude-opus-4-6': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
   'claude-opus-4.6': {
-    inputCostPerMillion: 15.0,
-    outputCostPerMillion: 75.0,
-    cacheWriteCostPerMillion: 18.75,
-    cacheReadCostPerMillion: 1.5,
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
   },
   'claude-opus-4.5': {
     inputCostPerMillion: 5.0,
@@ -119,6 +203,7 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 6.25,
     cacheReadCostPerMillion: 0.5,
   },
+  // Opus 4.0 / 4.1 — pre-4.5 pricing tier
   'claude-opus-4': {
     inputCostPerMillion: 15.0,
     outputCostPerMillion: 75.0,
@@ -243,7 +328,8 @@ export function _clearPricingOverrides(): void {
 
 // ── Model ID Parsing ──
 
-const CLAUDE_RE = /^claude-(haiku|sonnet|opus)-([0-9.]+)/i;
+const CLAUDE_RE = /^claude-(haiku|sonnet|opus|fable)-([0-9.]+)/i;
+const LEGACY_CLAUDE_RE = /^claude-([0-9]+(?:[-.][0-9]+)?)-(haiku|sonnet|opus)(?:-|$)/i;
 const GPT_RE = /^gpt-([0-9][0-9.A-Za-z-]*)/i;
 const O_SERIES_RE = /^o([0-9]+)(-mini|-pro)?/i;
 const GEMINI_RE = /^gemini-([0-9][0-9.A-Za-z-]*)/i;
@@ -251,16 +337,28 @@ const GEMINI_RE = /^gemini-([0-9][0-9.A-Za-z-]*)/i;
 /**
  * Parses a model ID into {provider, family, version}.
  *
+ * Input is trimmed and lowercased before matching, so padded or mixed-case
+ * IDs (e.g. " Claude-Opus-4-8 ") parse without caller-side normalization.
+ *
  * Recognizes Anthropic (Claude), OpenAI (GPT + o-series), and Google (Gemini).
  * Returns null for anything else — callers should treat that as "unknown model".
  */
 export function parseModelId(modelId: string): ParsedModelId | null {
   if (!modelId) return null;
-  const normalized = modelId.replace(/\[1m\]/gi, '');
+  const normalized = modelId.replace(/\[1m\]/gi, '').trim().toLowerCase();
 
   const claude = normalized.match(CLAUDE_RE);
   if (claude) {
     return { provider: 'anthropic', family: claude[1].toLowerCase(), version: claude[2] };
+  }
+
+  const legacyClaude = normalized.match(LEGACY_CLAUDE_RE);
+  if (legacyClaude) {
+    return {
+      provider: 'anthropic',
+      family: legacyClaude[2].toLowerCase(),
+      version: legacyClaude[1].replace('-', '.'),
+    };
   }
 
   const gpt = normalized.match(GPT_RE);
@@ -292,6 +390,19 @@ function findLongestPrefix(keys: string[], modelId: string): string | null {
   return null;
 }
 
+/** Override-then-static lookup, exact then longest-prefix at each stage. */
+function lookupPricing(modelId: string): ModelPricing | null {
+  if (overrideTable[modelId]) return overrideTable[modelId];
+  const overridePrefix = findLongestPrefix(overrideSortedKeys, modelId);
+  if (overridePrefix) return overrideTable[overridePrefix];
+
+  if (PRICING_TABLE[modelId]) return PRICING_TABLE[modelId];
+  const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, modelId);
+  if (staticPrefix) return PRICING_TABLE[staticPrefix];
+
+  return null;
+}
+
 /**
  * Gets pricing for a model ID.
  *
@@ -300,24 +411,22 @@ function findLongestPrefix(keys: string[], modelId: string): string | null {
  *   2. Static PRICING_TABLE.
  *   3. `null` — unknown model. Callers MUST handle this.
  *
+ * The ID is first looked up verbatim (minus the "[1m]" suffix) — override
+ * keys from the LiteLLM catalog are stored as published and may be
+ * mixed-case — then retried trimmed/lowercased so padded or mixed-case IDs
+ * resolve against the lowercase tables.
+ *
  * @returns Pricing for the model, or null if unknown. No silent fallback.
  */
 export function getModelPricing(modelId: string): ModelPricing | null {
   if (!modelId) return null;
-  const normalized = modelId.replace(/\[1m\]/gi, '');
+  const stripped = modelId.replace(/\[1m\]/gi, '');
 
-  // 1. Overrides (exact then longest-prefix)
-  if (overrideTable[normalized]) return overrideTable[normalized];
-  const overridePrefix = findLongestPrefix(overrideSortedKeys, normalized);
-  if (overridePrefix) return overrideTable[overridePrefix];
+  const direct = lookupPricing(stripped);
+  if (direct) return direct;
 
-  // 2. Static (exact then longest-prefix)
-  if (PRICING_TABLE[normalized]) return PRICING_TABLE[normalized];
-  const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, normalized);
-  if (staticPrefix) return PRICING_TABLE[staticPrefix];
-
-  // 3. Unknown
-  return null;
+  const normalized = stripped.trim().toLowerCase();
+  return normalized === stripped ? null : lookupPricing(normalized);
 }
 
 /**
@@ -380,7 +489,126 @@ export function calculateCost(
   return calculateCostWithPricing(usage, pricing);
 }
 
+/**
+ * Calculates cost while preserving whether the value was provider-reported,
+ * locally estimated from pricing, or unavailable because the model is unpriced.
+ */
+export function calculateCostWithProvenance(input: CostProvenanceInput): CostWithProvenance {
+  if (
+    typeof input.reportedCostUsd === 'number' &&
+    Number.isFinite(input.reportedCostUsd)
+  ) {
+    return { costUsd: input.reportedCostUsd, source: 'reported' };
+  }
+
+  const estimated = calculateCost(input.usage, input.modelId);
+  if (estimated === null) return { source: 'unpriced' };
+  return { costUsd: estimated, source: 'estimated' };
+}
+
+/**
+ * Merge two cost sources for rollups. The least certain source wins so a total
+ * containing any unpriced or estimated component does not look fully reported.
+ */
+export function mergeCostSources(a: CostSource, b: CostSource): CostSource {
+  const rank: Record<CostSource, number> = {
+    reported: 0,
+    estimated: 1,
+    unpriced: 2,
+  };
+  return rank[a] >= rank[b] ? a : b;
+}
+
 // ── Display ──
+
+function normalizeModelId(modelId: string): string {
+  return modelId
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+\//, '')
+    .replace(/-\d{8}$/, '')
+    .replace(/-latest$/, '')
+    .replace(/\[1m\]/gi, '');
+}
+
+/**
+ * Short display label for model IDs. Keeps historical Claude family labels
+ * compact while normalizing common OpenAI labels.
+ */
+export function shortModelName(modelId: string): string {
+  const normalized = normalizeModelId(modelId);
+  const parsed = parseModelId(normalized);
+
+  if (normalized.includes('codex')) return 'Codex';
+  if (parsed?.provider === 'anthropic') {
+    const family = parsed.family.toLowerCase();
+    return family.charAt(0).toUpperCase() + family.slice(1);
+  }
+
+  if (parsed?.provider === 'openai') {
+    if (parsed.family === 'o') return `o${parsed.version}`;
+    if (normalized.startsWith('gpt-4o-mini')) return 'GPT-4o mini';
+    if (normalized.startsWith('gpt-4o')) return 'GPT-4o';
+    if (parsed.family === 'gpt') return `GPT-${parsed.version}`;
+  }
+
+  return modelId;
+}
+
+const CLAUDE_FAMILY_RANK: Record<string, number> = {
+  fable: 0,
+  opus: 1,
+  sonnet: 2,
+  haiku: 3,
+};
+
+function versionRank(version: string | null): number {
+  if (!version) return Number.MAX_SAFE_INTEGER;
+  const numeric = Number(version.replace('-', '.').match(/[0-9]+(?:\.[0-9]+)?/)?.[0]);
+  if (!Number.isFinite(numeric)) return Number.MAX_SAFE_INTEGER;
+  return -numeric;
+}
+
+/**
+ * Returns stable display metadata and a rank suitable for provider model menus.
+ */
+export function getModelDisplayInfo(modelId: string): ModelDisplayInfo {
+  const parsed = parseModelId(modelId);
+  const normalized = normalizeModelId(modelId);
+
+  let rank = 1_000;
+  if (parsed?.provider === 'anthropic') {
+    rank = (CLAUDE_FAMILY_RANK[parsed.family] ?? 9) * 100 + versionRank(parsed.version);
+  } else if (normalized.includes('codex')) {
+    rank = 200;
+  } else if (parsed?.provider === 'openai') {
+    rank = parsed.family === 'gpt' ? 300 + versionRank(parsed.version) : 400 + versionRank(parsed.version);
+  } else if (parsed?.provider === 'google') {
+    rank = 500 + versionRank(parsed.version);
+  }
+
+  return {
+    modelId,
+    provider: parsed?.provider ?? null,
+    family: parsed?.family ?? null,
+    version: parsed?.version ?? null,
+    shortName: shortModelName(modelId),
+    rank,
+  };
+}
+
+/** Compare two model IDs using shared provider/family ranking rules. */
+export function compareModelIds(a: string, b: string): number {
+  const left = getModelDisplayInfo(a);
+  const right = getModelDisplayInfo(b);
+  if (left.rank !== right.rank) return left.rank - right.rank;
+  return a.localeCompare(b);
+}
+
+/** Return a sorted copy of model IDs using shared provider/family ranking rules. */
+export function sortModelIds<T extends string>(modelIds: readonly T[]): T[] {
+  return [...modelIds].sort(compareModelIds) as T[];
+}
 
 /**
  * Formats a USD cost as a currency string.

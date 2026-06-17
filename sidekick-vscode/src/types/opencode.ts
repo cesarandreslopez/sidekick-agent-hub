@@ -29,4 +29,4 @@ export type {
   DbSession,
   DbMessage,
   DbPart,
-} from 'sidekick-shared/dist/types/opencode';
+} from 'sidekick-shared';

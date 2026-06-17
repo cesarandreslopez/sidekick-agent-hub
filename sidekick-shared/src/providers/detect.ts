@@ -24,6 +24,32 @@ function getCodexHomes(): string[] {
   return getCodexMonitoringHomes();
 }
 
+function hasCodexStateDb(codexHome: string): boolean {
+  try {
+    return fs.readdirSync(codexHome).some(entry => /^state(?:_\d+)?\.sqlite$/.test(entry));
+  } catch {
+    return false;
+  }
+}
+
+function getCodexStateDbMtime(codexHome: string): number {
+  try {
+    let latest = 0;
+    for (const entry of fs.readdirSync(codexHome)) {
+      if (!/^state(?:_\d+)?\.sqlite$/.test(entry)) continue;
+      try {
+        const mtime = fs.statSync(path.join(codexHome, entry)).mtime.getTime();
+        if (mtime > latest) latest = mtime;
+      } catch {
+        // Skip inaccessible files.
+      }
+    }
+    return latest;
+  } catch {
+    return 0;
+  }
+}
+
 function getMostRecentMtime(dir: string): number {
   try {
     if (!fs.existsSync(dir)) return 0;
@@ -61,11 +87,8 @@ function getCodexActivityMtime(): number {
   let latest = 0;
 
   for (const codexHome of getCodexHomes()) {
-    const dbPath = path.join(codexHome, 'state.sqlite');
-    try {
-      const dbMtime = fs.statSync(dbPath).mtime.getTime();
-      if (dbMtime > latest) latest = dbMtime;
-    } catch { /* no DB */ }
+    const dbMtime = getCodexStateDbMtime(codexHome);
+    if (dbMtime > latest) latest = dbMtime;
 
     const sessionsMtime = getMostRecentMtime(path.join(codexHome, 'sessions'));
     if (sessionsMtime > latest) latest = sessionsMtime;
@@ -96,7 +119,7 @@ export function getAllDetectedProviders(): ProviderId[] {
   const hasClaude = fs.existsSync(claudeBase);
   const hasOpenCode = fs.existsSync(openCodeStorageDir) || fs.existsSync(openCodeDbPath);
   const hasCodex = codexHomes.some(codexHome =>
-    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+    fs.existsSync(path.join(codexHome, 'sessions')) || hasCodexStateDb(codexHome)
   );
 
   const available: Array<{ id: ProviderId; mtime: number }> = [];
@@ -120,7 +143,7 @@ export function detectProvider(override?: ProviderId | 'auto'): ProviderId {
   const hasClaude = fs.existsSync(claudeBase);
   const hasOpenCode = fs.existsSync(openCodeStorageDir) || fs.existsSync(openCodeDbPath);
   const hasCodex = codexHomes.some(codexHome =>
-    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+    fs.existsSync(path.join(codexHome, 'sessions')) || hasCodexStateDb(codexHome)
   );
 
   const available: Array<{ id: ProviderId; mtime: number }> = [];

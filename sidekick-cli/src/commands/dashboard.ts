@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import type { Command } from 'commander';
 import * as fs from 'fs';
-import { createWatcher, getAllDetectedProviders, EventAggregator, generateHtmlReport, parseTranscript, openInBrowser } from 'sidekick-shared';
+import { createWatcher, getAllDetectedProviders, EventAggregator, generateHtmlReport, parseTranscript, parseTranscriptFromEvents, openInBrowser } from 'sidekick-shared';
 import type { FollowEvent, ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -294,7 +294,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     for (const e of events) aggregator.processFollowEvent(e);
 
     const metrics = aggregator.getMetrics();
-    const transcript = parseTranscript(sessionPath);
+    const transcript = activeProvider.id === 'codex'
+      ? parseTranscriptFromEvents(activeProvider.createReader(sessionPath).readAll())
+      : parseTranscript(sessionPath);
     const html = generateHtmlReport(metrics, transcript, {
       sessionFileName: path.basename(sessionPath),
       includeThinking: true,

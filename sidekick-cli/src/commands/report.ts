@@ -14,6 +14,7 @@ import {
   createWatcher,
   generateHtmlReport,
   parseTranscript,
+  parseTranscriptFromEvents,
   openInBrowser,
 } from 'sidekick-shared';
 import type { FollowEvent, HtmlReportOptions } from 'sidekick-shared';
@@ -66,7 +67,9 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
     const metrics = aggregator.getMetrics();
 
     // Parse transcript for full content
-    const transcript = parseTranscript(sessionPath);
+    const transcript = provider.id === 'codex'
+      ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
+      : parseTranscript(sessionPath);
 
     // Generate HTML report
     const sessionFileName = path.basename(sessionPath);

@@ -20,7 +20,7 @@ describe('ModelResolver', () => {
     });
 
     it('resolves "auto" for opencode provider', () => {
-      expect(resolveModel('auto', 'opencode', 'inlineModel')).toBe('anthropic/claude-3-5-haiku-20241022');
+      expect(resolveModel('auto', 'opencode', 'inlineModel')).toBe('anthropic/claude-haiku-4-5');
     });
 
     it('resolves "auto" for codex provider', () => {
@@ -34,15 +34,15 @@ describe('ModelResolver', () => {
     });
 
     it('maps sonnet -> balanced -> provider model (claude-api)', () => {
-      expect(resolveModel('sonnet', 'claude-api', 'inlineModel')).toBe('claude-sonnet-4-20250514');
+      expect(resolveModel('sonnet', 'claude-api', 'inlineModel')).toBe('claude-sonnet-4-6');
     });
 
     it('maps opus -> powerful -> provider model (claude-api)', () => {
-      expect(resolveModel('opus', 'claude-api', 'transformModel')).toBe('claude-opus-4-20250514');
+      expect(resolveModel('opus', 'claude-api', 'transformModel')).toBe('claude-opus-4-8');
     });
 
     it('maps haiku -> fast -> provider model (opencode)', () => {
-      expect(resolveModel('haiku', 'opencode', 'inlineModel')).toBe('anthropic/claude-3-5-haiku-20241022');
+      expect(resolveModel('haiku', 'opencode', 'inlineModel')).toBe('anthropic/claude-haiku-4-5');
     });
 
     it('maps opus -> powerful -> provider model (codex)', () => {
@@ -56,7 +56,7 @@ describe('ModelResolver', () => {
     });
 
     it('resolves balanced tier for claude-api', () => {
-      expect(resolveModel('balanced', 'claude-api', 'inlineModel')).toBe('claude-sonnet-4-20250514');
+      expect(resolveModel('balanced', 'claude-api', 'inlineModel')).toBe('claude-sonnet-4-6');
     });
 
     it('resolves powerful tier for codex', () => {

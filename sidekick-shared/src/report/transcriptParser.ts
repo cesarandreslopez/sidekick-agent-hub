@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import { JsonlParser } from '../parsers/jsonl';
 import type { RawSessionEvent } from '../parsers/jsonl';
+import type { SessionEvent } from '../types/sessionEvent';
 import type { TranscriptEntry, TranscriptContentBlock } from './types';
 
 /**
@@ -41,11 +42,24 @@ export function parseTranscript(sessionPath: string): TranscriptEntry[] {
   return entries;
 }
 
-function eventToTranscriptEntry(event: RawSessionEvent): TranscriptEntry | null {
+/** Parse canonical provider events into transcript entries. */
+export function parseTranscriptFromEvents(events: SessionEvent[]): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
+  for (const event of events) {
+    const entry = eventToTranscriptEntry(event);
+    if (entry) {
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
+function eventToTranscriptEntry(event: RawSessionEvent | SessionEvent): TranscriptEntry | null {
   if (!event.type || !event.message) return null;
 
   const role = event.message.role;
   const timestamp = event.timestamp || '';
+  const sourceLabel = (event.message as { sourceLabel?: string }).sourceLabel;
   const model = event.message.model;
   const usage = event.message.usage
     ? {
@@ -59,12 +73,20 @@ function eventToTranscriptEntry(event: RawSessionEvent): TranscriptEntry | null 
   const content = extractContentBlocks(event.message.content);
 
   // Skip empty entries (warmup messages, etc.)
-  if (content.length === 0) return null;
+  if (content.length === 0) {
+    if (usage || sourceLabel) {
+      content.push({ type: 'text', text: sourceLabel ? `${sourceLabel} updated` : 'Usage updated' });
+    } else {
+      return null;
+    }
+  }
 
   let type: TranscriptEntry['type'];
   // Check event.type first — summary events have role 'assistant' but should be typed as 'summary'
   if (event.type === 'summary') {
     type = 'summary';
+  } else if (event.type === 'system') {
+    type = 'system';
   } else if (role === 'user') {
     type = 'user';
   } else if (role === 'assistant') {
@@ -73,7 +95,7 @@ function eventToTranscriptEntry(event: RawSessionEvent): TranscriptEntry | null 
     type = 'system';
   }
 
-  return { type, timestamp, model, usage, content };
+  return { type, timestamp, sourceLabel, model, usage, content };
 }
 
 function extractContentBlocks(content: unknown): TranscriptContentBlock[] {

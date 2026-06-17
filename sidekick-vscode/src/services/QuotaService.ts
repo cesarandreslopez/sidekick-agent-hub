@@ -8,9 +8,15 @@
  */
 
 import * as vscode from 'vscode';
-import { readClaudeMaxCredentials, fetchQuota } from 'sidekick-shared';
+import {
+  readClaudeMaxCredentials,
+  fetchQuota,
+  appendQuotaHistorySample,
+  getActiveSavedAccount,
+} from 'sidekick-shared';
 import type { QuotaState, QuotaWindow } from 'sidekick-shared';
 import { log } from './Logger';
+import { getWorkspaceId } from '../utils/workspaceId';
 
 export type { QuotaWindow, QuotaState };
 
@@ -71,6 +77,7 @@ export class QuotaService implements vscode.Disposable {
 
     this._cachedQuota = state;
     this._onQuotaUpdate.fire(state);
+    this._recordHistorySample(state);
 
     if (!state.available && state.error) {
       this._onQuotaError.fire(state.error);
@@ -98,6 +105,25 @@ export class QuotaService implements vscode.Disposable {
       this._refreshInterval = null;
       log('Quota refresh stopped');
     }
+  }
+
+  private _recordHistorySample(state: QuotaState): void {
+    const workspaceId = getWorkspaceId();
+    if (!workspaceId) return;
+    const account = getActiveSavedAccount('claude-code');
+    if (!account) return;
+    void appendQuotaHistorySample({
+      timestamp: state.capturedAt ?? new Date().toISOString(),
+      runtimeProvider: 'claude',
+      providerId: account.id,
+      workspaceId,
+      fiveHour: { utilization: state.fiveHour.utilization, resetsAt: state.fiveHour.resetsAt },
+      sevenDay: { utilization: state.sevenDay.utilization, resetsAt: state.sevenDay.resetsAt },
+      available: state.available,
+      error: state.error,
+      source: state.source,
+      stale: state.stale,
+    }).catch(err => log(`Quota history append failed: ${err instanceof Error ? err.message : String(err)}`));
   }
 
   async isAvailable(): Promise<boolean> {

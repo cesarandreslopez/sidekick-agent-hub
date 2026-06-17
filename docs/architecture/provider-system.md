@@ -57,7 +57,7 @@ Defined as `SessionProvider` in `src/types/sessionProvider.ts`:
 |----|-------------|------------|
 | `claude-code` | Claude Code sessions | `~/.claude/projects/` |
 | `opencode` | OpenCode sessions | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) |
-| `codex` | Codex CLI sessions | Managed profile home + `~/.codex/sessions/` (all candidates scanned) |
+| `codex` | Codex CLI sessions | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model) |
 
 Each session provider normalizes raw data into the common `ClaudeSessionEvent` format.
 
@@ -78,9 +78,15 @@ Inference and session providers are independent — you can use Claude Max for i
 Account management is provider-aware via a v2 registry format (`~/.config/sidekick/accounts/accounts.json`). Each provider (Claude Code, Codex) maintains its own active account independently — switching Claude accounts does not affect Codex, and vice versa.
 
 - **Claude Code accounts** store backed-up OAuth credentials and identity metadata
-- **Codex accounts** use isolated profile directories with independent `CODEX_HOME` paths, allowing each profile to have its own auth, config, and session data
+- **Codex accounts** store backed-up credentials in isolated profile directories; switching accounts atomically swaps the target profile's credentials into the system `~/.codex/auth.json`, mirroring the Claude switch pattern
 
 The registry auto-migrates from v1 (single-provider) to v2 (multi-provider) on first read. Quota snapshots are cached per provider/account for offline fallback.
+
+### Default account bootstrap
+
+On startup, both the CLI and the VS Code extension call `ensureDefaultAccounts()` from `sidekick-shared`. If an active system Claude Code credential exists and no saved Claude Code account is active yet, it is registered as a **"Default"** account. The same check runs independently for Codex — if `~/.codex/auth.json` exists and no active Codex account is saved yet, a "Default" Codex profile is registered.
+
+The bootstrap is idempotent (repeated calls do not create duplicates), never overwrites accounts that were saved manually, and swallows per-provider errors so they can never block startup. It ensures that quota, analytics, and dashboard surfaces that read from the registry work out of the box, without requiring users to run **`Save Current Claude Account`** / `sidekick account --add` first.
 
 ## Shared Provider Library
 

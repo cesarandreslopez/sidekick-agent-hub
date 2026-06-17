@@ -235,8 +235,11 @@ export interface CodexTokenCountEvent {
 export interface CodexRateLimits {
   limit_id?: string;
   limit_name?: string | null;
-  primary?: { used_percent: number; window_minutes: number; resets_at: number };
-  secondary?: { used_percent: number; window_minutes: number; resets_at: number };
+  primary?: { used_percent: number; window_minutes?: number | null; resets_at?: number | null };
+  secondary?: { used_percent: number; window_minutes?: number | null; resets_at?: number | null };
+  credits?: unknown;
+  plan_type?: string;
+  rate_limit_reached_type?: string;
 }
 
 export interface CodexTokenUsage {

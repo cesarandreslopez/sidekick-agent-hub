@@ -7,4 +7,4 @@
  * @module services/providers/CodexDatabase
  */
 
-export { CodexDatabase } from 'sidekick-shared/dist/providers/codexDatabase';
+export { CodexDatabase } from 'sidekick-shared';

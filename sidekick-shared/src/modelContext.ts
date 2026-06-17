@@ -5,7 +5,9 @@
 
 /** Known model context window sizes (in tokens). */
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
-  // Claude — native 1M context (Opus 4.6+, Sonnet 4.6+)
+  // Claude — native 1M context (Fable 5, Opus 4.6+, Sonnet 4.6+)
+  'claude-fable-5': 1_000_000,
+  'claude-opus-4-8': 1_000_000,
   'claude-opus-4-7': 1_000_000,
   'claude-opus-4-6': 1_000_000,
   'claude-sonnet-4-7': 1_000_000,
@@ -54,6 +56,9 @@ export const DEFAULT_CONTEXT_WINDOW = 200_000;
 /**
  * Returns the context window size for a model ID.
  *
+ * Input is trimmed and lowercased before lookup, so padded or mixed-case
+ * IDs (e.g. "Claude-Opus-4-8 ") resolve without caller-side normalization.
+ *
  * Lookup order:
  * 1. Explicit "[1m]" suffix (Claude Code's 1M-variant marker) → 1_000_000
  * 2. Exact match against MODEL_CONTEXT_SIZES
@@ -69,7 +74,8 @@ export function getModelContextWindowSize(modelId?: string): number {
 
   // Strip the suffix if present, so the normal lookup still succeeds when
   // a caller passes e.g. "claude-opus-4-7[1m]" and we've already handled it.
-  const normalized = modelId.replace(/\[1m\]/gi, '');
+  // Trim/lowercase so padded or mixed-case IDs match the lowercase table keys.
+  const normalized = modelId.replace(/\[1m\]/gi, '').trim().toLowerCase();
 
   // Exact match
   if (MODEL_CONTEXT_SIZES[normalized] !== undefined) {

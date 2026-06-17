@@ -9,6 +9,45 @@
  */
 
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+export { formatDurationMs, formatTokenCount } from './formatting';
+export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
+export {
+  buildSessionContextSnapshot,
+  calculateSessionContextPressure,
+  createSessionContextProjector,
+} from './context/sessionContext';
+export type {
+  BuildSessionContextSnapshotOptions,
+  SessionContextCapabilities,
+  SessionContextLayerBreakdown,
+  SessionContextPressure,
+  SessionContextProjector,
+  SessionContextSnapshot,
+  SessionContextSource,
+  SessionContextSourceType,
+} from './context/sessionContext';
+
+export {
+  assistantTurnEventsFromSessionEvents,
+  extractTurnSubagents,
+  isAssistantTurnSubagentTool,
+  reasoningSummary,
+  segmentAssistantTurn,
+} from './turns/assistantTurn';
+export type {
+  AssistantTurnEvent,
+  AssistantTurnEventType,
+  AssistantTurnProcess,
+  AssistantTurnProcessStep,
+  AssistantTurnProjection,
+  AssistantTurnSubagent,
+  AssistantTurnSubagentStatus,
+  AssistantTurnTimelineItem,
+  AssistantTurnToolRef,
+  ExtractTurnSubagentsOptions,
+  ReasoningSummary,
+  SegmentAssistantTurnOptions,
+} from './turns/assistantTurn';
 
 export {
   parseModelId,
@@ -16,13 +55,23 @@ export {
   getModelInfo,
   calculateCost,
   calculateCostWithPricing,
+  calculateCostWithProvenance,
+  mergeCostSources,
+  shortModelName,
+  getModelDisplayInfo,
+  compareModelIds,
+  sortModelIds,
   formatCost,
 } from './modelInfo';
 
 export type {
   ModelPricing,
   CostTokenUsage,
+  CostSource,
+  CostProvenanceInput,
+  CostWithProvenance,
   ModelProvider,
   ParsedModelId,
   ModelInfo,
+  ModelDisplayInfo,
 } from './modelInfo';

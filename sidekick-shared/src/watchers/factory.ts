@@ -4,13 +4,14 @@
 
 import * as os from 'os';
 import * as path from 'path';
-import type { ProviderId, SessionProvider } from '../providers/types';
+import type { SessionProviderBase } from '../providers/types';
 import type { SessionWatcher, SessionWatcherCallbacks } from './types';
 import { JsonlSessionWatcher } from './jsonlWatcher';
+import { ProviderReaderSessionWatcher } from './providerReaderWatcher';
 import { SqliteSessionWatcher } from './sqliteWatcher';
 
 export interface CreateWatcherOptions {
-  provider: SessionProvider;
+  provider: SessionProviderBase;
   workspacePath: string;
   sessionId?: string;
   callbacks: SessionWatcherCallbacks;
@@ -41,19 +42,21 @@ export function createWatcher(options: CreateWatcherOptions): { watcher: Session
     sessionPath = sessions[0]; // most recent
   }
 
-  const watcher = createWatcherForProvider(provider.id, sessionPath, callbacks);
+  const watcher = createWatcherForProvider(provider, sessionPath, callbacks);
   return { watcher, sessionPath };
 }
 
 function createWatcherForProvider(
-  providerId: ProviderId,
+  provider: SessionProviderBase,
   sessionPath: string,
   callbacks: SessionWatcherCallbacks,
 ): SessionWatcher {
-  switch (providerId) {
+  switch (provider.id) {
     case 'claude-code':
+      return new JsonlSessionWatcher(provider.id, sessionPath, callbacks);
+
     case 'codex':
-      return new JsonlSessionWatcher(providerId, sessionPath, callbacks);
+      return new ProviderReaderSessionWatcher(provider, sessionPath, callbacks);
 
     case 'opencode': {
       const dataDir = getOpenCodeDataDir();
@@ -64,6 +67,6 @@ function createWatcherForProvider(
     }
 
     default:
-      throw new Error(`Unsupported provider: ${providerId}`);
+      throw new Error(`Unsupported provider: ${provider.id}`);
   }
 }

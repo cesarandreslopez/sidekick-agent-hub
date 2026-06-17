@@ -18,9 +18,11 @@
 
 import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
-import { getRandomPhrase } from 'sidekick-shared/dist/phrases';
+import { formatTokenCount } from 'sidekick-shared';
+import { getRandomPhrase } from 'sidekick-shared/phrases';
 import type { TokenUsage } from '../types/claudeSession';
-import type { PermissionMode } from 'sidekick-shared/dist/types/sessionEvent';
+import type { PermissionMode } from 'sidekick-shared';
+import type { PeakHoursService, PeakHoursState } from './PeakHoursService';
 import { DEFAULT_CONTEXT_WINDOW } from '../constants';
 
 /**
@@ -55,6 +57,9 @@ export class MonitorStatusBar implements vscode.Disposable {
   private lastUpdateTime: number = 0;
   private readonly UPDATE_THROTTLE_MS = 500;
 
+  /** Cached peak-hours state (null = not peak, not applicable, or unavailable) */
+  private peakHours: PeakHoursState | null = null;
+
   /** Disposables for cleanup */
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -62,9 +67,21 @@ export class MonitorStatusBar implements vscode.Disposable {
    * Creates a new MonitorStatusBar.
    *
    * @param monitor - SessionMonitor instance to subscribe to
+   * @param peakHoursService - Optional PeakHoursService; when in an active
+   *   peak window, the status bar appends a subtle 🟠 glyph.
    */
-  constructor(monitor: SessionMonitor) {
+  constructor(monitor: SessionMonitor, peakHoursService?: PeakHoursService) {
     this.monitor = monitor;
+
+    if (peakHoursService) {
+      this.peakHours = peakHoursService.getCachedStatus();
+      this.disposables.push(
+        peakHoursService.onStatusUpdate((state) => {
+          this.peakHours = state;
+          this.updateDisplay();
+        }),
+      );
+    }
 
     // Create status bar item
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -192,7 +209,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   private updateDisplay(): void {
     // Format: "$(pulse) 12.5K | 15%"
-    const tokensFormatted = this.formatTokenCount(this.totalTokens);
+    const tokensFormatted = formatTokenCount(this.totalTokens, { suffixCase: 'upper' });
 
     // Context trend indicator
     const trendIcon = this.contextTrend === 'up' ? '$(arrow-up)'
@@ -210,7 +227,14 @@ export class MonitorStatusBar implements vscode.Disposable {
 
     // Add skull emoji when context is critically high (>= 80%)
     const icon = this.contextPercent >= 80 ? '💀' : '$(pulse)';
-    this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}`;
+    const showPeakHours = this.monitor.getProvider().id === 'claude-code'
+      && this.peakHours !== null
+      && this.peakHours.isPeak
+      && !this.peakHours.unavailable;
+    const peakIndicator = showPeakHours
+      ? ' 🟠'
+      : '';
+    this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}${peakIndicator}`;
 
     // Color code based on context usage and permission mode
     if (this.permissionMode === 'bypassPermissions') {
@@ -230,7 +254,7 @@ export class MonitorStatusBar implements vscode.Disposable {
     const tooltipLines = [
       `${provider.displayName} Session`,
       `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,
-      `Context: ${this.contextPercent}% of ${this.formatTokenCount(contextLimit)}`,
+      `Context: ${this.contextPercent}% of ${formatTokenCount(contextLimit, { suffixCase: 'upper' })}`,
     ];
 
     if (this.permissionMode && this.permissionMode !== 'default') {
@@ -240,6 +264,16 @@ export class MonitorStatusBar implements vscode.Disposable {
         plan: '📋 Plan Mode',
       };
       tooltipLines.push(`Permission: ${modeLabels[this.permissionMode] || this.permissionMode}`);
+    }
+
+    if (showPeakHours && this.peakHours) {
+      let peakLine = `🟠 ${this.peakHours.label || 'Claude peak hours'}`;
+      if (typeof this.peakHours.minutesUntilChange === 'number' && this.peakHours.minutesUntilChange > 0) {
+        const h = Math.floor(this.peakHours.minutesUntilChange / 60);
+        const m = this.peakHours.minutesUntilChange % 60;
+        peakLine += ` (off-peak in ${h > 0 ? `${h}h ${m}m` : `${m}m`})`;
+      }
+      tooltipLines.push(peakLine);
     }
 
     tooltipLines.push('', getRandomPhrase(), '', 'Click to open dashboard');
@@ -268,18 +302,6 @@ export class MonitorStatusBar implements vscode.Disposable {
       'Click to open dashboard'
     ].join('\n');
     this.statusBarItem.backgroundColor = undefined;
-  }
-
-  /**
-   * Formats token count with K/M suffix.
-   *
-   * @param tokens - Token count
-   * @returns Formatted string (e.g., "12.5K", "1.2M")
-   */
-  private formatTokenCount(tokens: number): string {
-    if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-    if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`;
-    return tokens.toString();
   }
 
   /**

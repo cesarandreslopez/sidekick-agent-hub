@@ -28,6 +28,14 @@ describe('getModelContextWindowSize', () => {
     expect(getModelContextWindowSize('claude-sonnet-4-7-20260101')).toBe(1_000_000);
   });
 
+  it('returns 1M for Opus 4.8 and Fable 5', () => {
+    expect(getModelContextWindowSize('claude-opus-4-8')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-opus-4-8-20260528')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-fable-5')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-fable-5-20260609')).toBe(1_000_000);
+    expect(getModelContextWindowSize('claude-fable-5[1m]')).toBe(1_000_000);
+  });
+
   it('honors the [1m] suffix as an explicit 1M marker', () => {
     expect(getModelContextWindowSize('claude-opus-4-7[1m]')).toBe(1_000_000);
     expect(getModelContextWindowSize('claude-opus-4-7[1M]')).toBe(1_000_000);
@@ -79,5 +87,24 @@ describe('getModelContextWindowSize', () => {
 
   it('exports DEFAULT_CONTEXT_WINDOW as 200_000', () => {
     expect(DEFAULT_CONTEXT_WINDOW).toBe(200_000);
+  });
+
+  describe('input normalization', () => {
+    it('trims and lowercases before exact match', () => {
+      expect(getModelContextWindowSize('Claude-Opus-4-8 ')).toBe(1_000_000);
+      expect(getModelContextWindowSize('GPT-4O')).toBe(128_000);
+    });
+
+    it('trims and lowercases before prefix match', () => {
+      expect(getModelContextWindowSize(' CLAUDE-SONNET-4-6-20250414')).toBe(1_000_000);
+    });
+
+    it('honors an uppercase [1M] suffix', () => {
+      expect(getModelContextWindowSize('claude-sonnet-4-5[1M]')).toBe(1_000_000);
+    });
+
+    it('returns default for whitespace-only input', () => {
+      expect(getModelContextWindowSize('  ')).toBe(200_000);
+    });
   });
 });

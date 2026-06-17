@@ -225,6 +225,12 @@ function runCodexLogin(codexHome: string): { success: boolean; error?: string } 
   return { success: true };
 }
 
+function printCodexWarning(warning: string | undefined, jsonOutput: boolean): void {
+  if (warning && !jsonOutput) {
+    process.stderr.write(chalk.yellow(warning) + '\n');
+  }
+}
+
 function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): void {
   if (opts.add) {
     if (!opts.label?.trim()) {
@@ -240,6 +246,7 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
       return;
     }
 
+    let warning = prepared.warning;
     if (prepared.needsLogin) {
       if (!prepared.profileId || !prepared.codexHome) {
         process.stderr.write(chalk.red('Prepared Codex profile is missing login context.') + '\n');
@@ -256,13 +263,16 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
 
       const finalized = finalizeCodexAccount(prepared.profileId);
       if (!finalized.success) {
-        process.stderr.write(chalk.red(finalized.error ?? 'Failed to finalize Codex account.') + '\n');
+        process.stderr.write(chalk.red('Account saved, but activation failed: ' + (finalized.error ?? 'unknown error')) + '\n');
+        process.stderr.write(chalk.dim('Use `sidekick account --provider codex --switch-to <label>` to retry activation.\n'));
         process.exit(1);
         return;
       }
+      warning = finalized.warning;
     }
 
     const active = getActiveCodexAccount();
+    printCodexWarning(warning, jsonOutput);
     if (jsonOutput) {
       process.stdout.write(JSON.stringify({
         action: 'added',
@@ -271,6 +281,7 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
         label: active?.label,
         email: active?.email ?? null,
         authMode: active?.metadata?.authMode ?? null,
+        warning: warning ?? null,
       }) + '\n');
     } else {
       process.stdout.write(chalk.green('Codex account saved: ') + (active ? formatCodexAccount(active) : opts.label) + '\n');
@@ -287,6 +298,7 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
       return;
     }
 
+    const wasActive = getActiveCodexAccount()?.id === target.id;
     const result = removeCodexAccount(target.id);
     if (!result.success) {
       process.stderr.write(chalk.red(result.error ?? 'Failed to remove Codex account.') + '\n');
@@ -298,6 +310,9 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
       process.stdout.write(JSON.stringify({ action: 'removed', provider: 'codex', id: target.id, label: target.label }) + '\n');
     } else {
       process.stdout.write(chalk.green('Removed: ') + formatCodexAccount(target) + '\n');
+      if (wasActive) {
+        process.stdout.write(chalk.dim('The live ~/.codex credentials are unchanged. Use `--switch-to` to activate another saved account.\n'));
+      }
     }
     return;
   }
@@ -318,8 +333,9 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
       return;
     }
 
+    printCodexWarning(result.warning, jsonOutput);
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'codex', id: target.id, label: target.label }) + '\n');
+      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'codex', id: target.id, label: target.label, warning: result.warning ?? null }) + '\n');
     } else {
       process.stdout.write(chalk.green('Switched to: ') + formatCodexAccount(target) + '\n');
     }
@@ -345,8 +361,9 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
       return;
     }
 
+    printCodexWarning(result.warning, jsonOutput);
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'codex', id: target.id, label: target.label }) + '\n');
+      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'codex', id: target.id, label: target.label, warning: result.warning ?? null }) + '\n');
     } else {
       process.stdout.write(chalk.green('Switched to: ') + formatCodexAccount(target) + '\n');
     }

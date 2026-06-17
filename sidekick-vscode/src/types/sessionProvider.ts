@@ -16,6 +16,12 @@
 
 import type * as vscode from 'vscode';
 import type { QuotaState } from './dashboard';
+import type {
+  ProjectFolderInfo as SharedProjectFolderInfo,
+  ProviderRuntimeStatus as SharedProviderRuntimeStatus,
+  SearchHit as SharedSearchHit,
+  SessionReader as SharedSessionReader,
+} from 'sidekick-shared';
 
 // Re-export shared types
 export type {
@@ -26,7 +32,7 @@ export type {
   SessionFileStats,
   SessionProviderBase,
   ProviderId,
-} from 'sidekick-shared/dist/providers/types';
+} from 'sidekick-shared';
 
 // Re-export session event types used by providers
 export type {
@@ -72,7 +78,7 @@ export interface SessionProvider extends vscode.Disposable {
   findSessionsInDirectory(dir: string): string[];
 
   /** Gets all project folders with session data. */
-  getAllProjectFolders(workspacePath?: string): import('sidekick-shared/dist/providers/types').ProjectFolderInfo[];
+  getAllProjectFolders(workspacePath?: string): SharedProjectFolderInfo[];
 
   // --- File identification ---
 
@@ -91,17 +97,17 @@ export interface SessionProvider extends vscode.Disposable {
   // --- Data reading ---
 
   /** Creates an incremental reader for a session file. */
-  createReader(sessionPath: string): import('sidekick-shared/dist/providers/types').SessionReader;
+  createReader(sessionPath: string): SharedSessionReader;
 
   // --- Subagent support ---
 
   /** Scans for subagent data associated with a session. */
-  scanSubagents(sessionDir: string, sessionId: string): import('sidekick-shared/dist/types/sessionEvent').SubagentStats[];
+  scanSubagents(sessionDir: string, sessionId: string): SubagentStats[];
 
   // --- Cross-session search ---
 
   /** Searches for text within a session file. */
-  searchInSession(sessionPath: string, query: string, maxResults: number): import('sidekick-shared/dist/providers/types').SearchHit[];
+  searchInSession(sessionPath: string, query: string, maxResults: number): SharedSearchHit[];
 
   /** Gets the base projects directory path for cross-session search. */
   getProjectsBaseDir(): string;
@@ -113,16 +119,16 @@ export interface SessionProvider extends vscode.Disposable {
   getContextWindowLimit?(modelId?: string): number;
 
   /** Computes context window size from token usage. Provider-specific formula. */
-  computeContextSize?(usage: import('sidekick-shared/dist/types/sessionEvent').TokenUsage): number;
+  computeContextSize?(usage: TokenUsage): number;
 
   /** Gets latest assistant usage snapshot for an active session, if available. */
-  getCurrentUsageSnapshot?(sessionPath: string): import('sidekick-shared/dist/types/sessionEvent').TokenUsage | null;
+  getCurrentUsageSnapshot?(sessionPath: string): TokenUsage | null;
 
   /** Gets context attribution breakdown from provider data, if available. */
-  getContextAttribution?(sessionPath: string): import('sidekick-shared/dist/types/sessionEvent').ContextAttribution | null;
+  getContextAttribution?(sessionPath: string): ContextAttribution | null;
 
   /** Reports provider runtime readiness for DB-backed providers. */
-  getRuntimeStatus?(): import('sidekick-shared/dist/providers/types').ProviderRuntimeStatus;
+  getRuntimeStatus?(): SharedProviderRuntimeStatus;
 
   /** Tests whether a provider can monitor a directory path, including synthetic DB-backed paths. */
   canMonitorDirectory?(dir: string): boolean;

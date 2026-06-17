@@ -200,6 +200,46 @@ export type { FilterMode, FilterState, HighlightFormat as FilterHighlightFormat 
 // Context
 export { composeContext } from './context/composer';
 export type { Fidelity, ContextResult } from './context/composer';
+export {
+  buildSessionContextSnapshot,
+  calculateSessionContextPressure,
+  createSessionContextProjector,
+  readSessionContextSnapshot,
+} from './context/sessionContext';
+export type {
+  BuildSessionContextSnapshotOptions,
+  ReadSessionContextSnapshotOptions,
+  SessionContextCapabilities,
+  SessionContextLayerBreakdown,
+  SessionContextPressure,
+  SessionContextProjector,
+  SessionContextSnapshot,
+  SessionContextSource,
+  SessionContextSourceType,
+} from './context/sessionContext';
+
+// Assistant turn projection
+export {
+  assistantTurnEventsFromSessionEvents,
+  extractTurnSubagents,
+  isAssistantTurnSubagentTool,
+  reasoningSummary,
+  segmentAssistantTurn,
+} from './turns/assistantTurn';
+export type {
+  AssistantTurnEvent,
+  AssistantTurnEventType,
+  AssistantTurnProcess,
+  AssistantTurnProcessStep,
+  AssistantTurnProjection,
+  AssistantTurnSubagent,
+  AssistantTurnSubagentStatus,
+  AssistantTurnTimelineItem,
+  AssistantTurnToolRef,
+  ExtractTurnSubagentsOptions,
+  ReasoningSummary,
+  SegmentAssistantTurnOptions,
+} from './turns/assistantTurn';
 
 // Plan Extraction
 export { PlanExtractor, parsePlanMarkdown as parsePlanMarkdownShared, extractProposedPlan as extractProposedPlanShared } from './parsers/planExtractor';
@@ -214,8 +254,12 @@ export type { FollowEvent, FollowEventType, SessionWatcher, SessionWatcherCallba
 export { createWatcher } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
 export { toFollowEvents } from './watchers/eventBridge';
+export { createJsonlTail } from './watchers/jsonlTail';
+export type { JsonlTail, JsonlTailBatch, JsonlTailOptions } from './watchers/jsonlTail';
 
 // Formatters
+export { formatDurationMs, formatTokenCount } from './formatting';
+export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
 export { formatToolSummary } from './formatters/toolSummary';
 export {
   isHardNoise,
@@ -233,7 +277,8 @@ export { highlight as highlightEvent, clearHighlightCache, HIGHLIGHT_CSS } from 
 export type { HighlightFormat } from './formatters/eventHighlighter';
 
 // Phrases
-export { ALL_PHRASES, getRandomPhrase } from './phrases';
+export { ALL_PHRASES, PHRASE_CATEGORIES, getRandomPhrase } from './phrases';
+export type { PhraseCategory } from './phrases';
 
 // Aggregation
 export { EventAggregator, parseTodoDependencies } from './aggregation/EventAggregator';
@@ -261,7 +306,7 @@ export { PatternExtractor } from './aggregation/PatternExtractor';
 export type { PatternCluster, SerializedPatternState } from './aggregation/PatternExtractor';
 
 // Report — HTML session report generation
-export { generateHtmlReport, parseTranscript, openInBrowser } from './report';
+export { generateHtmlReport, parseTranscript, parseTranscriptFromEvents, openInBrowser } from './report';
 export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './report';
 
 // Credential I/O (platform-aware: Keychain on macOS, file on Linux/Windows)
@@ -309,6 +354,8 @@ export type {
   SavedAccountProfile,
   SavedAccountRegistry,
 } from './accountRegistry';
+export { getActiveAccountStatus } from './accountStatus';
+export type { ActiveAccountStatus, ActiveProviderAccountStatus } from './accountStatus';
 export {
   getCodexProfilesDir,
   getCodexProfileHome,
@@ -333,14 +380,68 @@ export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
 export type { QuotaPollerOptions } from './quotaPoller';
 export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
-export { quotaFromCodexRateLimits } from './codexQuota';
+export {
+  appendQuotaHistorySample,
+  readQuotaHistoryRange,
+  readQuotaHistoryDailyBuckets,
+  pruneQuotaHistory,
+  getWorkspaceIdFromPath,
+} from './quotaHistory';
+export type {
+  QuotaHistorySample,
+  QuotaHistoryAppendOptions,
+  QuotaHistoryRangeOptions,
+  QuotaHistoryDailyBucket,
+  QuotaHistoryRuntimeProvider,
+} from './quotaHistory';
+export {
+  fetchCodexQuotaFromApi,
+  quotaFromCodexRateLimits,
+  readLatestCodexQuotaFromRollouts,
+  resolveCodexQuota,
+  resolveCodexQuotaFromLocalSources,
+} from './codexQuota';
+export type {
+  CodexQuotaApiOptions,
+  CodexQuotaCreditsSnapshot,
+  CodexQuotaResolveOptions,
+  CodexQuotaResolveSource,
+} from './codexQuota';
+export { CodexQuotaWatcher } from './codexQuotaWatcher';
+export type { CodexQuotaWatcherOptions } from './codexQuotaWatcher';
+export { MultiProviderQuotaService } from './multiProviderQuotaService';
+export type { MultiProviderQuotaServiceOptions } from './multiProviderQuotaService';
+export type { ProviderQuotaMap, ProviderQuotaState, RuntimeQuotaProvider } from './providerQuota';
 
 // Model Context
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
 
 // Model Info & Pricing
-export { parseModelId, getModelPricing, getModelInfo, calculateCost, calculateCostWithPricing, formatCost } from './modelInfo';
-export type { ModelPricing, CostTokenUsage, ModelInfo, ModelProvider, ParsedModelId } from './modelInfo';
+export {
+  parseModelId,
+  getModelPricing,
+  getModelInfo,
+  calculateCost,
+  calculateCostWithPricing,
+  calculateCostWithProvenance,
+  mergeCostSources,
+  shortModelName,
+  getModelDisplayInfo,
+  compareModelIds,
+  sortModelIds,
+  formatCost,
+} from './modelInfo';
+export type {
+  ModelPricing,
+  CostTokenUsage,
+  CostSource,
+  CostProvenanceInput,
+  CostWithProvenance,
+  ModelInfo,
+  ModelProvider,
+  ParsedModelId,
+  ModelDisplayInfo,
+} from './modelInfo';
 
 // Pricing Catalog (LiteLLM hydration) — Node-only. Safe for extension host
 // and CLI; do NOT import from browser bundles (webviews).
@@ -349,7 +450,7 @@ export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 
 // Extractors — per-event token usage and tool call extraction
 export { extractTokenUsage } from './extractors/tokenUsage';
-export { extractToolCalls } from './extractors/toolCall';
+export { extractToolCall, extractToolCalls } from './extractors/toolCall';
 
 // Extractors — actionable session assets (URLs, file paths, commands, plans).
 // Node-only (uses `node:fs` to validate file paths); safe for CLI and
@@ -376,8 +477,61 @@ export {
   sessionMessageSchema,
   sessionEventSchema,
   permissionModeSchema,
+  extractSessionEvents,
 } from './schemas/sessionEvent';
+
+// Schemas — Zod runtime validation for quota / provider quota / peak hours
+export {
+  quotaWindowSchema,
+  quotaStateSchema,
+  quotaFailureKindSchema,
+  quotaProviderIdSchema,
+  quotaSourceSchema,
+  peakHoursStateSchema,
+  quotaFailureDescriptorSchema,
+  runtimeQuotaProviderSchema,
+  providerQuotaStateSchema,
+  claudeProviderQuotaStateSchema,
+  codexProviderQuotaStateSchema,
+  providerQuotaMapSchema,
+} from './schemas/quota';
+
+// Schemas — Zod runtime validation for quota history
+export {
+  quotaHistoryRuntimeProviderSchema,
+  quotaHistorySampleSchema,
+  quotaHistoryDailyBucketSchema,
+} from './schemas/quotaHistory';
+
+// Schemas — Zod runtime validation for account status
+export {
+  activeProviderAccountStatusSchema,
+  activeAccountStatusSchema,
+} from './schemas/accountStatus';
+export {
+  assistantTurnEventSchema,
+  assistantTurnEventTypeSchema,
+  assistantTurnNarrationStepSchema,
+  assistantTurnProcessSchema,
+  assistantTurnProcessStepSchema,
+  assistantTurnProjectionSchema,
+  assistantTurnReasoningTimelineItemSchema,
+  assistantTurnSubagentSchema,
+  assistantTurnSubagentStatusSchema,
+  assistantTurnTimelineItemSchema,
+  assistantTurnToolGroupStepSchema,
+  assistantTurnToolRefSchema,
+} from './schemas/assistantTurn';
 
 // Provider Status
 export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';
 export type { ProviderStatusState } from './providerStatus';
+
+// Peak Hours (PromoClock — third-party)
+export {
+  createPeakHoursNotApplicableState,
+  fetchPeakHoursStatus,
+  isClaudeCodeSessionProvider,
+  scopePeakHoursToSessionProvider,
+} from './peakHours';
+export type { PeakHoursState } from './peakHours';

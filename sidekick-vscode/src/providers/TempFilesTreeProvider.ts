@@ -23,7 +23,7 @@ import type { ToolCall } from '../types/claudeSession';
 import { scanSubagentDir } from '../services/SubagentFileScanner';
 import { log } from '../services/Logger';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
-import { formatToolSummary } from 'sidekick-shared/dist/formatters/toolSummary';
+import { formatToolSummary } from 'sidekick-shared';
 
 /**
  * Represents a file touched during the Claude Code session.

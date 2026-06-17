@@ -24,7 +24,7 @@ export class CodexDatabase {
   private sqlite3Available: boolean | null = null;
 
   constructor(codexHome: string) {
-    this.dbPath = path.join(codexHome, 'state.sqlite');
+    this.dbPath = findLatestStateDatabase(codexHome) ?? path.join(codexHome, 'state.sqlite');
   }
 
   isAvailable(): boolean {
@@ -116,6 +116,29 @@ export class CodexDatabase {
     } catch {
       return 0;
     }
+  }
+}
+
+function findLatestStateDatabase(codexHome: string): string | null {
+  try {
+    const entries = fs.readdirSync(codexHome, { withFileTypes: true });
+    const candidates: Array<{ path: string; mtime: number }> = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !/^state(?:_\d+)?\.sqlite$/.test(entry.name)) continue;
+      const dbPath = path.join(codexHome, entry.name);
+      try {
+        const stat = fs.statSync(dbPath);
+        if (stat.size > 0) {
+          candidates.push({ path: dbPath, mtime: stat.mtime.getTime() });
+        }
+      } catch {
+        // Skip inaccessible candidates.
+      }
+    }
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    return candidates[0]?.path ?? null;
+  } catch {
+    return null;
   }
 }
 

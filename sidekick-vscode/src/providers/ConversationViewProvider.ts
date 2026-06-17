@@ -1,8 +1,8 @@
 /**
- * @fileoverview Full-tab conversation viewer for Claude Code sessions.
+ * @fileoverview Full-tab conversation viewer for Sidekick sessions.
  *
  * Opens a webview panel in an editor tab that renders the complete
- * conversation from a JSONL session file in a chat-style layout.
+ * conversation from a provider session file in a chat-style layout.
  * Supports collapsible tool calls, syntax highlighting markers,
  * and real-time updates for active sessions.
  *
@@ -14,21 +14,286 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { ClaudeSessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log, logError } from '../services/Logger';
-import { formatToolSummary } from 'sidekick-shared/dist/formatters/toolSummary';
+import {
+  assistantTurnEventsFromSessionEvents,
+  segmentAssistantTurn,
+} from 'sidekick-shared';
+import type { AssistantTurnToolRef } from 'sidekick-shared';
 
 /** Parsed message chunk for display */
-interface ConversationChunk {
-  role: 'user' | 'assistant' | 'system' | 'tool';
+export interface ConversationChunk {
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'reasoning';
   timestamp: string;
   content: string;
   model?: string;
   toolName?: string;
-  toolInput?: string;
+  toolUseId?: string;
   toolSummary?: string;
   toolOutput?: string;
   isError?: boolean;
   isSidechain?: boolean;
   isCompaction?: boolean;
+}
+
+type PendingTool = { name: string };
+
+export function conversationChunksFromSessionEvents(events: readonly ClaudeSessionEvent[]): ConversationChunk[] {
+  const chunks: ConversationChunk[] = [];
+  const pendingTools = new Map<string, PendingTool>();
+  let assistantEvents: ClaudeSessionEvent[] = [];
+
+  function flushAssistantEvents(): void {
+    if (assistantEvents.length === 0) return;
+
+    const timestamp = assistantEvents[assistantEvents.length - 1]?.timestamp ?? '';
+    const assistantEvent = [...assistantEvents].reverse().find((event) => event.type === 'assistant');
+    const model = assistantEvent?.message?.model;
+    const isSidechain = assistantEvents.some((event) => event.isSidechain);
+    const projection = segmentAssistantTurn(assistantTurnEventsFromSessionEvents(assistantEvents));
+
+    for (const item of projection.timeline) {
+      if (item.kind === 'reasoning') {
+        chunks.push({
+          role: 'reasoning',
+          timestamp,
+          content: item.text,
+          model,
+          isSidechain,
+        });
+        continue;
+      }
+
+      if (item.kind === 'narration') {
+        chunks.push({
+          role: 'assistant',
+          timestamp,
+          content: item.text,
+          model,
+          isSidechain,
+        });
+        continue;
+      }
+
+      for (const tool of item.tools) {
+        chunks.push(toolRefToChunk(tool, timestamp, isSidechain, pendingTools));
+      }
+    }
+
+    if (projection.answer.trim() !== '') {
+      chunks.push({
+        role: 'assistant',
+        timestamp,
+        content: projection.answer,
+        model,
+        isSidechain,
+      });
+    }
+
+    assistantEvents = [];
+  }
+
+  for (const event of events) {
+    if (event.type === 'assistant' || event.type === 'tool_use') {
+      assistantEvents.push(event);
+      continue;
+    }
+
+    flushAssistantEvents();
+
+    switch (event.type) {
+      case 'user':
+        chunks.push(...userEventToChunks(event, pendingTools));
+        break;
+      case 'tool_result':
+        chunks.push(topLevelToolResultToChunk(event, pendingTools));
+        break;
+      case 'summary':
+        chunks.push({
+          role: 'system',
+          timestamp: event.timestamp,
+          content: 'Context compacted',
+          isCompaction: true,
+        });
+        break;
+      case 'system': {
+        const text = extractText(event.message?.content);
+        if (text) {
+          chunks.push({
+            role: 'system',
+            timestamp: event.timestamp,
+            content: text,
+            isSidechain: event.isSidechain,
+          });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  flushAssistantEvents();
+  return chunks;
+}
+
+function toolRefToChunk(
+  tool: AssistantTurnToolRef,
+  timestamp: string,
+  isSidechain: boolean,
+  pendingTools: Map<string, PendingTool>,
+): ConversationChunk {
+  if (tool.toolUseId != null) {
+    pendingTools.set(tool.toolUseId, { name: tool.toolName });
+  }
+
+  return {
+    role: 'tool',
+    timestamp,
+    content: '',
+    toolName: tool.toolName,
+    toolUseId: tool.toolUseId,
+    toolSummary: tool.toolInput,
+    isSidechain,
+  };
+}
+
+function userEventToChunks(
+  event: ClaudeSessionEvent,
+  pendingTools: Map<string, PendingTool>,
+): ConversationChunk[] {
+  const content = event.message?.content;
+  if (typeof content === 'string') {
+    return content.trim()
+      ? [{ role: 'user', timestamp: event.timestamp, content, isSidechain: event.isSidechain }]
+      : [];
+  }
+
+  if (!Array.isArray(content)) return [];
+
+  const chunks: ConversationChunk[] = [];
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+    const type = stringValue(block.type);
+    if (type === 'text' || type === 'input_text') {
+      const text = stringValue(block.text) ?? stringValue(block.content);
+      if (text?.trim()) {
+        chunks.push({
+          role: 'user',
+          timestamp: event.timestamp,
+          content: text,
+          isSidechain: event.isSidechain,
+        });
+      }
+      continue;
+    }
+
+    if (type === 'tool_result') {
+      chunks.push(toolResultBlockToChunk(block, event.timestamp, event.isSidechain === true, pendingTools));
+    }
+  }
+
+  return chunks;
+}
+
+function topLevelToolResultToChunk(
+  event: ClaudeSessionEvent,
+  pendingTools: Map<string, PendingTool>,
+): ConversationChunk {
+  const output = stringifyOutput(event.result?.output);
+  return toolResultToChunk(
+    event.result?.tool_use_id,
+    output,
+    event.result?.is_error === true,
+    event.timestamp,
+    event.isSidechain === true,
+    pendingTools,
+  );
+}
+
+function toolResultBlockToChunk(
+  block: Record<string, unknown>,
+  timestamp: string,
+  isSidechain: boolean,
+  pendingTools: Map<string, PendingTool>,
+): ConversationChunk {
+  return toolResultToChunk(
+    stringValue(block.tool_use_id),
+    stringifyOutput(block.content),
+    block.is_error === true,
+    timestamp,
+    isSidechain,
+    pendingTools,
+  );
+}
+
+function toolResultToChunk(
+  toolUseId: string | undefined,
+  output: string,
+  isError: boolean,
+  timestamp: string,
+  isSidechain: boolean,
+  pendingTools: Map<string, PendingTool>,
+): ConversationChunk {
+  const pending = toolUseId ? pendingTools.get(toolUseId) : undefined;
+  if (toolUseId != null) pendingTools.delete(toolUseId);
+
+  return {
+    role: 'tool',
+    timestamp,
+    content: '',
+    toolName: `${pending?.name ?? 'Tool'} result`,
+    toolUseId,
+    toolOutput: truncateForDisplay(output, 3000),
+    isError,
+    isSidechain,
+  };
+}
+
+function extractText(content: unknown): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+
+  const texts: string[] = [];
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+    const type = stringValue(block.type);
+    if (type === 'text' || type === 'input_text') {
+      const text = stringValue(block.text) ?? stringValue(block.content);
+      if (text?.trim()) texts.push(text);
+    }
+  }
+  return texts.join('\n\n');
+}
+
+function truncateForDisplay(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.substring(0, maxLen) + '\n... (truncated)';
+}
+
+function stringifyOutput(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    const parts = value
+      .filter(isRecord)
+      .map((part) => stringValue(part.text) ?? stringValue(part.content) ?? '')
+      .filter((part) => part.trim() !== '');
+    if (parts.length > 0) return parts.join('\n');
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
@@ -95,156 +360,12 @@ export class ConversationViewProvider implements vscode.Disposable {
    * Parses a JSONL session file into conversation chunks.
    */
   private async parseSession(filePath: string): Promise<ConversationChunk[]> {
-    const chunks: ConversationChunk[] = [];
-    const pendingTools = new Map<string, { name: string; input: string; timestamp: string }>();
-
     const provider = this.sessionMonitor.getProvider();
     const reader = provider.createReader(filePath);
     const events = reader.readAll();
     reader.flush();
 
-    for (const event of events) {
-      const chunk = this.eventToChunk(event, pendingTools);
-      if (chunk) {
-        chunks.push(chunk);
-      }
-    }
-
-    return chunks;
-  }
-
-  /**
-   * Converts a session event to a displayable conversation chunk.
-   */
-  private eventToChunk(
-    event: ClaudeSessionEvent,
-    pendingTools: Map<string, { name: string; input: string; timestamp: string }>
-  ): ConversationChunk | null {
-    switch (event.type) {
-      case 'user': {
-        const text = this.extractText(event.message?.content);
-        if (!text) return null;
-        return {
-          role: 'user',
-          timestamp: event.timestamp,
-          content: text,
-          isSidechain: event.isSidechain
-        };
-      }
-
-      case 'assistant': {
-        const msgContent = event.message?.content;
-        const text = this.extractText(msgContent);
-        // Also extract tool_use blocks from assistant content
-        if (Array.isArray(msgContent)) {
-          for (const block of msgContent) {
-            if (block && typeof block === 'object' && (block as Record<string, unknown>).type === 'tool_use') {
-              const b = block as Record<string, unknown>;
-              const toolId = b.id as string;
-              const toolName = b.name as string;
-              const toolInput = JSON.stringify(b.input || {}, null, 2);
-              pendingTools.set(toolId, {
-                name: toolName,
-                input: toolInput,
-                timestamp: event.timestamp
-              });
-            }
-          }
-        }
-        if (!text) return null;
-        return {
-          role: 'assistant',
-          timestamp: event.timestamp,
-          content: text,
-          model: event.message?.model,
-          isSidechain: event.isSidechain
-        };
-      }
-
-      case 'tool_use': {
-        const toolName = event.tool?.name || 'unknown';
-        const toolInput = JSON.stringify(event.tool?.input || {}, null, 2);
-        const toolSummary = formatToolSummary(toolName, (event.tool?.input || {}) as Record<string, unknown>);
-        // Store for matching with result
-        if (event.tool?.input) {
-          const toolId = (event as unknown as Record<string, unknown>).tool_use_id as string || `tool_${Date.now()}`;
-          pendingTools.set(toolId, { name: toolName, input: toolInput, timestamp: event.timestamp });
-        }
-        return {
-          role: 'tool',
-          timestamp: event.timestamp,
-          content: '',
-          toolName,
-          toolSummary,
-          toolInput: this.truncateForDisplay(toolInput, 2000)
-        };
-      }
-
-      case 'tool_result': {
-        const toolUseId = event.result?.tool_use_id;
-        const pending = toolUseId ? pendingTools.get(toolUseId) : undefined;
-        const toolName = pending?.name || 'Tool';
-        const output = typeof event.result?.output === 'string'
-          ? event.result.output
-          : JSON.stringify(event.result?.output || '', null, 2);
-
-        if (pending) {
-          pendingTools.delete(toolUseId!);
-        }
-
-        return {
-          role: 'tool',
-          timestamp: event.timestamp,
-          content: '',
-          toolName: `${toolName} result`,
-          toolOutput: this.truncateForDisplay(output, 3000),
-          isError: event.result?.is_error,
-          isSidechain: event.isSidechain
-        };
-      }
-
-      case 'summary':
-        return {
-          role: 'system',
-          timestamp: event.timestamp,
-          content: 'Context compacted',
-          isCompaction: true
-        };
-
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Extracts readable text from message content.
-   */
-  private extractText(content: unknown): string {
-    if (!content) return '';
-    if (typeof content === 'string') return content;
-    if (Array.isArray(content)) {
-      const texts: string[] = [];
-      for (const block of content) {
-        if (block && typeof block === 'object') {
-          const b = block as Record<string, unknown>;
-          if (b.type === 'text' && typeof b.text === 'string') {
-            texts.push(b.text as string);
-          } else if (b.type === 'thinking' && typeof b.thinking === 'string') {
-            texts.push(`[Thinking] ${(b.thinking as string).substring(0, 500)}...`);
-          }
-        }
-      }
-      return texts.join('\n\n');
-    }
-    return '';
-  }
-
-  /**
-   * Truncates text for display with ellipsis.
-   */
-  private truncateForDisplay(text: string, maxLen: number): string {
-    if (text.length <= maxLen) return text;
-    return text.substring(0, maxLen) + '\n... (truncated)';
+    return conversationChunksFromSessionEvents(events);
   }
 
   /**
@@ -267,29 +388,52 @@ export class ConversationViewProvider implements vscode.Disposable {
 
       if (chunk.role === 'tool') {
         const errorClass = chunk.isError ? ' tool-error' : '';
-        const inputSection = chunk.toolInput
-          ? `<div class="tool-section"><div class="tool-section-label">Input</div><pre class="tool-content">${this.escapeHtml(chunk.toolInput)}</pre></div>`
+        const summary = chunk.toolSummary
+          ? `<span class="tool-summary">${this.escapeHtml(chunk.toolSummary)}</span>`
           : '';
-        const outputSection = chunk.toolOutput
-          ? `<div class="tool-section"><div class="tool-section-label">${chunk.isError ? 'Error' : 'Output'}</div><pre class="tool-content${errorClass}">${this.escapeHtml(chunk.toolOutput)}</pre></div>`
-          : '';
+
+        // Tool-call rows carry their gist in the header summary, so they render
+        // as concise, non-expandable rows. Only tool-result rows (which have
+        // output) get a collapsible body.
+        if (!chunk.toolOutput) {
+          return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
+          <div class="tool-header tool-header-static">
+            <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
+            <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
+            ${summary}
+            <span class="chunk-time">${time}</span>
+          </div>
+        </div>`;
+        }
+
+        const outputSection = `<div class="tool-section"><div class="tool-section-label">${chunk.isError ? 'Error' : 'Output'}</div><pre class="tool-content${errorClass}">${this.escapeHtml(chunk.toolOutput)}</pre></div>`;
 
         return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
           <div class="tool-header" data-toggle="tool-body-${i}">
             <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
             <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
-            ${chunk.toolSummary ? `<span class="tool-summary">${this.escapeHtml(chunk.toolSummary)}</span>` : ''}
+            ${summary}
             <span class="chunk-time">${time}</span>
             <span class="toggle-arrow">+</span>
           </div>
           <div class="tool-body" id="tool-body-${i}" style="display:none;">
-            ${inputSection}
             ${outputSection}
           </div>
         </div>`;
       }
 
-      const ROLE_LABELS: Record<string, string> = { user: 'You', assistant: 'Claude' };
+      if (chunk.role === 'reasoning') {
+        return `<details class="chunk reasoning-chunk${sidechain}" id="chunk-${i}">
+          <summary>
+            <span class="role-label reasoning">Reasoning</span>
+            ${chunk.model ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>` : ''}
+            <span class="chunk-time">${time}</span>
+          </summary>
+          <div class="reasoning-body">${this.escapeHtml(chunk.content)}</div>
+        </details>`;
+      }
+
+      const ROLE_LABELS: Record<string, string> = { user: 'You', assistant: 'Assistant' };
       const roleLabel = ROLE_LABELS[chunk.role] ?? 'System';
       const modelTag = chunk.model ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>` : '';
 
@@ -376,6 +520,29 @@ export class ConversationViewProvider implements vscode.Disposable {
       border-left: 3px solid var(--vscode-charts-green, #98c379);
     }
 
+    .reasoning-chunk {
+      background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.03));
+      border-left: 3px solid var(--vscode-descriptionForeground);
+      opacity: 0.82;
+    }
+
+    .reasoning-chunk summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .reasoning-body {
+      padding: 4px 12px 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+    }
+
     .tool-chunk {
       background: transparent;
       border: 1px solid var(--vscode-panel-border);
@@ -401,6 +568,7 @@ export class ConversationViewProvider implements vscode.Disposable {
 
     .role-label.user { color: var(--vscode-charts-blue, #61afef); }
     .role-label.assistant { color: var(--vscode-charts-green, #98c379); }
+    .role-label.reasoning { color: var(--vscode-descriptionForeground); }
 
     .model-tag {
       font-size: 10px;
@@ -434,6 +602,10 @@ export class ConversationViewProvider implements vscode.Disposable {
 
     .tool-header:hover {
       background: var(--vscode-list-hoverBackground);
+    }
+
+    .tool-header-static {
+      cursor: default;
     }
 
     .tool-icon {
@@ -596,6 +768,7 @@ export class ConversationViewProvider implements vscode.Disposable {
    * Gets a short model name for display.
    */
   private getShortModelName(model: string): string {
+    if (model.includes('fable')) return 'Fable';
     if (model.includes('opus')) return 'Opus';
     if (model.includes('sonnet')) return 'Sonnet';
     if (model.includes('haiku')) return 'Haiku';

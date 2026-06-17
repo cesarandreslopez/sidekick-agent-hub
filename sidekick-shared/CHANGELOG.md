@@ -5,6 +5,59 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.3] - 2026-06-17
+
+### Added
+
+- **Assistant turn timeline**: `segmentAssistantTurn()` now emits a required v2 `timeline` array that preserves reasoning, narration, and tool groups in original arrival order while keeping the final answer text excluded. The mirrored Zod schemas and public type exports include the new timeline contract for browser and IPC consumers
+
+## [0.18.1] - 2026-05-08
+
+### Added
+
+- **Shared display formatting**: `formatTokenCount()` and `formatDurationMs()` are now public from the root, browser, and `formatting` entrypoints, giving CLI, webview, and downstream consumers a single source of truth for compact token and duration rendering
+- **Raw JSONL tailing (`createJsonlTail()`)**: offset-tracked incremental JSONL reads with optional Zod validation, debounced `fs.watch` plus catch-up polling, and a post-batch callback for aggregation-driven consumers that need to defer expensive work until parsing for a chunk is complete
+
+## [0.18.0] - 2026-05-08
+
+### Added
+
+- **Provider-aware quota orchestration**: `MultiProviderQuotaService` coordinates Claude polling, peak-hours enrichment, account labels, transient-failure fallback, and optional Codex quota watcher updates behind one typed `{ claude?, codex? }` event stream
+- **Codex quota watcher**: `CodexQuotaWatcher` discovers the active Codex rollout for a workspace, watches it for live rate-limit updates, persists account-scoped snapshots, and falls back to cached or unavailable states when no live data exists
+- **Account status helper**: `getActiveAccountStatus()` returns a single Claude/Codex account status shape for startup and setup flows
+- **Tool-call extraction helper**: `extractToolCall()` extracts top-level `tool_use` events, complementing the existing `extractToolCalls()` assistant-content-block helper
+- **Cost/model helpers**: `calculateCostWithProvenance()`, `mergeCostSources()`, `shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, and `sortModelIds()` provide reusable UI and accounting primitives next to pricing
+- **Phrase categories**: `PHRASE_CATEGORIES` exposes the category structure behind the existing flat `ALL_PHRASES`
+
+### Changed
+
+- **Model parsing**: `parseModelId()` now recognizes legacy Claude IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022`
+
+## [0.17.7] - 2026-04-28
+
+### Fixed
+
+- **Quota snapshot write race**: `writeQuotaSnapshot()` now writes through a per-process unique temp suffix (PID + timestamp + 8 bytes from `crypto.randomBytes`) before atomically renaming to `quota-snapshots.json`, and best-effort removes the temp file if the rename fails. This eliminates fixed-temp collisions and `ENOENT` when multiple Node processes (e.g., the VS Code extension and the CLI) write cached Codex quota snapshots at the same time, and prevents partial writes from leaking orphan `.tmp` files into the config directory
+
+## [0.17.6] - 2026-04-19
+
+### Added
+
+- **`fetchPeakHoursStatus()` API**: New top-level export from `sidekick-shared` that fetches Claude's current peak-hours state from the public `promoclock.co/api/status` endpoint (third-party, unaffiliated with Anthropic). Single-shot fetcher — callers own polling. Returns a fully-normalized `PeakHoursState` with a `unavailable: true` fallback on network errors, HTTP non-2xx, or parse failures, so call sites never need try/catch
+- **`PeakHoursState` type**: Exported type covering `status` (`'peak' | 'off_peak' | 'unknown'`), `isPeak`, `sessionLimitSpeed` (`'normal' | 'faster' | 'unknown'`), `label`, `peakHoursDescription`, `nextChange`, `minutesUntilChange`, `note`, `updatedAt`, and `unavailable`. Unexpected upstream values collapse to `'unknown'` rather than widening the union
+- **Test coverage**: `peakHours.test.ts` adds five vitest cases — peak, off-peak, HTTP 500, network error, and unexpected-enum-value handling — mirroring the existing `providerStatus.test.ts` pattern with `vi.stubGlobal('fetch', …)`
+
+## [0.17.5] - 2026-04-18
+
+### Added
+
+- **`ensureDefaultAccounts()` API**: New top-level export from `sidekick-shared` that auto-registers the first system Claude Code and Codex credentials as a "Default" saved account when no active account exists for that provider. Idempotent across repeated calls; never overwrites accounts that were manually saved; cleans up orphaned Codex profile directories if `prepareCodexAccount` succeeds but still reports `needsLogin`. Accepts an optional `{ logger }` for diagnostic output — every failure path returns a `'error'` status and is routed through the logger rather than thrown
+- **Account bootstrap types**: `EnsureDefaultAccountsResult`, `EnsureDefaultAccountStatus` (`'registered' | 'skipped' | 'error'`), and `EnsureDefaultAccountsOptions` exported from the package root
+- **Packaging contract coverage**: `packagingContract.test.ts` now asserts `ensureDefaultAccounts` is reachable from the built `dist/index.js`, so the API can't silently drop out of the published artifact
+- **Test coverage**: `ensureDefaultAccounts.test.ts` adds six vitest cases covering happy path, idempotency, Claude-only, Codex-only, respect-existing-accounts, and error-swallowing — using the existing `credentialIO` mock pattern so the suite stays portable across macOS and file-based platforms
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#16](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/16).
+
 ## [0.16.1] - 2026-03-27
 
 ### Fixed
