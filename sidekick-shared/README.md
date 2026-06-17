@@ -33,7 +33,7 @@ npm install sidekick-shared
 | **Quota** | Claude Max subscription quota fetching (5-hour and 7-day windows) and Codex rate-limit extraction from event streams |
 | **Provider Status** | API health checking via status.claude.com and status.openai.com (indicator, components, incidents) |
 | **Schemas** | Zod schemas for runtime validation of data crossing process/IPC boundaries — JSONL session events (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`), assistant turns, quota, account status, and quota history — plus `extractSessionEvents()` to unwrap `progress`-wrapped events. Also published fs-free via the [`sidekick-shared/schemas`](#supported-import-paths) subpath |
-| **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCall()` (top-level `tool_use`), `extractToolCalls()` (assistant content blocks) |
+| **Extractors** | Pure functions for single-event processing: `extractTokenUsage()`, `extractToolCall()` (top-level `tool_use`), `extractToolCalls()` (assistant content blocks), plus Node-only session asset extraction (`gatherAssetsForCwd()`, `readClaudeAssets()`, `readCodexAssets()`) for URLs, file paths, commands, and plans |
 | **Model Info & Pricing** | Model family parsing (Anthropic / OpenAI / Google, including legacy `claude-3-opus-…` and `claude-3-5-sonnet-…` IDs), context-window lookup (including Fable 5 / Opus 4.8 / Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, null-aware cost (`calculateCost()`), provenance-preserving cost (`calculateCostWithProvenance()`, `mergeCostSources()`), and display helpers (`shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, `sortModelIds()`, `formatCost()`) |
 | **Quota Polling** | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback |
 | **Multi-Provider Quota** | `MultiProviderQuotaService` orchestrates Claude polling + peak-hours + account labels + Codex quota updates behind one typed `{ claude?, codex? }` event stream. `CodexQuotaWatcher` watches the active Codex rollout for live rate limits with snapshot fallback |
@@ -183,6 +183,29 @@ const usage = extractTokenUsage(event);          // TokenUsage | null
 const tools = extractToolCalls(event);           // ToolCall[]    — assistant content blocks
 const toolFromEvent = extractToolCall(event);    // ToolCall | null — top-level `tool_use` events
 ```
+
+### Extract actionable assets from recent sessions
+
+Use the Node-only root API to collect URLs, filesystem-validated paths, commands the agent suggested for the user to run, and plan-mode plans from recent Claude Code and Codex sessions for exactly one working directory.
+
+This API powers `sidekick extract` and was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie), adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
+
+```typescript
+import { gatherAssetsForCwd } from 'sidekick-shared';
+
+const assets = gatherAssetsForCwd({
+  cwd: '/path/to/project',
+  agents: ['claude', 'codex'],
+  caps: { url: 20, path: 20, command: 20, plan: 10 },
+});
+
+console.log(assets.urls);
+console.log(assets.paths);
+console.log(assets.commands);
+console.log(assets.plans);
+```
+
+The extractor is safe for CLI and VS Code extension-host code, but not for browser or webview bundles because it reads session files and validates paths with Node filesystem APIs.
 
 ### Project session context evidence
 

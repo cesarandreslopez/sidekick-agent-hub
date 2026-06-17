@@ -127,6 +127,48 @@ sidekick report --no-open --output session.html
 
 You can also press `r` in the TUI dashboard to generate and open a report for the current session.
 
+## Extract Session Assets
+
+```bash
+sidekick extract [options]
+```
+
+Extract actionable items from recent Claude Code and Codex chats for exactly the current project directory:
+
+- **URLs** from messages and web/tool inputs
+- **File paths** validated against the filesystem, including optional `:line`
+- **Commands** the agent presented for you to run in shell snippets or `$`-prefixed lines
+- **Plans** from Claude plan mode and Codex finalized `Plan` items
+
+Results are merged across supported agents, sorted by recency, deduped, capped, and grouped by type. The command intentionally uses exact-cwd scoping; it does not walk up or down the directory tree to avoid surfacing another project's chat data.
+
+This feature was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) and adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
+
+| Flag | Description |
+|------|-------------|
+| `--type <types>` | Comma list: `url`, `path`, `command`, `plan` (default: all). Aliases include `urls`, `files`, `cmds`, and `plans` |
+| `--limit <n>` | Maximum items per type |
+| `-i`, `--interactive` | Interactive picker; Enter opens URLs and copies paths, commands, or plans |
+| `--json` | Emit grouped JSON for scripting |
+
+Global flags `--project` and `--provider` also apply. `--provider claude-code` reads Claude Code only, `--provider codex` reads Codex only, and `auto` reads both. OpenCode extraction is not supported yet.
+
+### Examples
+
+```bash
+# Grouped text output
+sidekick extract
+
+# Only links and file paths
+sidekick extract --type url,path
+
+# JSON with at most 10 items of each requested type
+sidekick extract --limit 10 --json
+
+# Fuzzy picker with copy/open actions
+sidekick extract -i
+```
+
 ## Data Commands
 
 Standalone commands that query Sidekick's persisted project data without launching the TUI dashboard. All accept the global flags `--project`, `--provider`, and `--json`.

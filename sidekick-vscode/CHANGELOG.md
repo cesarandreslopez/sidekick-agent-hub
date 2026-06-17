@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Shared extraction foundation**: The shared library now exposes Node-only session asset extraction APIs for URLs, filesystem-validated paths, user-facing commands, and plan-mode plans from recent Claude Code and Codex chats. These APIs are usable from the VS Code extension host for a future Quick Pick/view integration, but this does not add a VS Code extraction UI
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing the underlying shared/CLI feature in [#17](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/17), adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
+
 ## [0.19.3] - 2026-06-17
 
 ### Changed

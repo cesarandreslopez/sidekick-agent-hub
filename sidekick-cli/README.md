@@ -37,7 +37,7 @@ If `sqlite3` is missing or not executable in the current shell environment, Side
 
 ```bash
 sidekick dashboard [options]
-sidekick tasks|decisions|notes|stats|quota|status|account|handoff|search|context [options]
+sidekick tasks|decisions|notes|stats|quota|status|account|handoff|search|context|extract [options]
 ```
 
 The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
@@ -86,6 +86,38 @@ Generate a self-contained HTML session report and open it in the default browser
 Global flags `--project` and `--provider` also apply.
 
 You can also press `r` in the TUI dashboard to generate a report for the current session.
+
+## Extract Session Assets
+
+```bash
+sidekick extract [options]
+```
+
+Pull actionable assets from recent Claude Code and Codex sessions for exactly the current project directory: URLs, validated file paths, commands the agent suggested for you to run, and plan-mode plans. Text output is grouped by type; `--json` returns the same grouped shape for scripts; `-i` opens an interactive picker where Enter opens URLs and copies other assets.
+
+This feature was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) and adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
+
+| Flag | Description |
+|------|-------------|
+| `--type <types>` | Comma list: `url`, `path`, `command`, `plan` (aliases: `urls`, `files`, `cmds`, `plans`) |
+| `--limit <n>` | Maximum items per type |
+| `-i`, `--interactive` | Interactive picker with copy/open actions |
+
+Global flags `--project`, `--provider`, and `--json` also apply. `--provider claude-code` scopes to Claude Code, `--provider codex` scopes to Codex, and `auto` reads both. OpenCode extraction is not supported yet.
+
+```bash
+# Grouped text output
+sidekick extract
+
+# URLs and file paths only
+sidekick extract --type url,path
+
+# JSON for scripts
+sidekick extract --limit 10 --json
+
+# Interactive picker
+sidekick extract -i
+```
 
 ## API Status
 
@@ -273,7 +305,7 @@ Override with `--provider claude-code`, `--provider opencode`, or `--provider co
 
 ## See Also
 
-**[sidekick-shared](https://www.npmjs.com/package/sidekick-shared)** — the shared data access library used by this CLI. Published as a standalone npm package for building custom tools on Sidekick session data — types, parsers, providers, event aggregation, model pricing, and more. Install with `npm install sidekick-shared`.
+**[sidekick-shared](https://www.npmjs.com/package/sidekick-shared)** — the shared data access library used by this CLI. Published as a standalone npm package for building custom tools on Sidekick session data — types, parsers, providers, event aggregation, model pricing, actionable session-asset extraction, and more. Install with `npm install sidekick-shared`.
 
 **[Sidekick Docker](https://github.com/cesarandreslopez/sidekick-docker)** — the same TUI dashboard experience for Docker management. Monitor containers, Compose projects, images, and volumes from a keyboard-driven terminal. Install with `npm install -g sidekick-docker`.
 

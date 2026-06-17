@@ -451,6 +451,23 @@ export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 // Extractors — per-event token usage and tool call extraction
 export { extractTokenUsage } from './extractors/tokenUsage';
 export { extractToolCall, extractToolCalls } from './extractors/toolCall';
+// Extractors — actionable session assets. Node-only: safe for CLI and
+// extension-host code, not for browser/webview bundles.
+export {
+  extractUrls,
+  extractFilePaths,
+  extractCommands,
+} from './extractors/sessionAssets';
+export type {
+  ExtractedAsset,
+  ExtractedAssetType,
+  ExtractedAssets,
+  SourceAssets,
+} from './extractors/sessionAssets';
+export { readClaudeAssets, claudeSessions } from './extractors/sources/claudeAssets';
+export { readCodexAssets, codexSessions } from './extractors/sources/codexAssets';
+export { gatherAssetsForCwd } from './extractors/gatherAssets';
+export type { GatherAssetsOptions, GatherAssetsResult, AssetAgent } from './extractors/gatherAssets';
 
 // Schemas — Zod runtime validation for session events
 export {

@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`sidekick extract`**: New one-shot command for pulling actionable assets out of recent Claude Code and Codex chats for exactly the current cwd. It extracts URLs, filesystem-validated file paths, commands the agent suggested for the user to run, and plan-mode plans. Output is grouped and colored by default, with `--json`, `--type url,path,command,plan`, `--limit`, and `-i/--interactive` for a picker that opens URLs or copies selected paths, commands, and plans. `--provider claude-code` and `--provider codex` scope extraction to one agent; OpenCode is reported as unsupported for now
+
+Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contributing this feature in [#17](https://github.com/cesarandreslopez/sidekick-agent-hub/pull/17), adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
+
 ## [0.19.3] - 2026-06-17
 
 ### Changed
