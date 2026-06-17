@@ -351,6 +351,25 @@ export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 export { extractTokenUsage } from './extractors/tokenUsage';
 export { extractToolCalls } from './extractors/toolCall';
 
+// Extractors — actionable session assets (URLs, file paths, commands, plans).
+// Node-only (uses `node:fs` to validate file paths); safe for CLI and
+// extension-host, not for browser bundles.
+export {
+  extractUrls,
+  extractFilePaths,
+  extractCommands,
+} from './extractors/sessionAssets';
+export type {
+  ExtractedAsset,
+  ExtractedAssetType,
+  ExtractedAssets,
+  SourceAssets,
+} from './extractors/sessionAssets';
+export { readClaudeAssets, claudeSessions } from './extractors/sources/claudeAssets';
+export { readCodexAssets, codexSessions } from './extractors/sources/codexAssets';
+export { gatherAssetsForCwd } from './extractors/gatherAssets';
+export type { GatherAssetsOptions, GatherAssetsResult, AssetAgent } from './extractors/gatherAssets';
+
 // Schemas — Zod runtime validation for session events
 export {
   messageUsageSchema,
