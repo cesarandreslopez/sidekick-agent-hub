@@ -6,6 +6,16 @@ Full-screen terminal dashboard for monitoring AI agent sessions — standalone, 
 
 Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) writes. Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in an interactive terminal UI.
 
+## What's New
+
+- **`sidekick extract`** — pull URLs, file paths, commands, and plans out of recent Claude Code and Codex chats, with `--json` and an interactive picker.
+- **`sidekick quota history`** — a 13-week, per-workspace, GitHub-style heatmap of session-limit utilization.
+- **`sidekick status` & `sidekick peak`** — one-shot Claude/OpenAI API health checks and a Claude peak-hours indicator.
+- **`sidekick account`** — manage multiple Claude Code and Codex accounts, with first-run auto-registration of your active credentials.
+- **Recent models & richer reports** — Claude Opus 4.8 and Fable 5 pricing/context, plus `report`/`dump` transcripts that interleave reasoning, tool calls, and narration.
+
+See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/CHANGELOG.md) for everything.
+
 ## Installation
 
 > **Note:** The npm package is `sidekick-agent-hub`, but the binary it installs is called `sidekick`.

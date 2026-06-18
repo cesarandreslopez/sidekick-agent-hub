@@ -22,6 +22,17 @@
 
 AI coding agents are powerful but opaque — tokens burn silently, context fills up without warning, and everything is lost when a session ends. Sidekick gives you visibility into what your agent is doing, AI features that eliminate mechanical coding work, and session intelligence that preserves context across sessions. Works with **Claude Max**, **Claude API**, **OpenCode**, or **Codex CLI**.
 
+## What's New
+
+- **Claude Opus 4.8 & Fable 5** — recognized everywhere models are interpreted, with 1M-token context windows, accurate pricing, and "Fable" display labels.
+- **Richer conversation view** — assistant reasoning, tool calls, and narration now interleave in arrival order (a compact Process + Answer shape) across Claude, Codex, and OpenCode sessions.
+- **Session asset extraction** — pull URLs, file paths, commands, and plans out of recent chats with `sidekick extract` or the `Sidekick: Extract Session Assets` command.
+- **Quota-history heatmap** — `sidekick quota history` renders a 13-week, per-workspace, GitHub-style view of session-limit utilization.
+- **Multi-account management** — save, switch, and remove Claude Code and Codex accounts without manual login/logout cycles.
+- **Always-current pricing** — model prices hydrate from the LiteLLM catalog on startup, and `sidekick-shared` is published to npm for building your own tools.
+
+See the [full changelog](CHANGELOG.md) for everything.
+
 ## Two Ways to Use Sidekick
 
 ### VS Code Extension

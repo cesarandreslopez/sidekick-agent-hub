@@ -7,6 +7,16 @@ Shared data access library for [Sidekick Agent Hub](https://github.com/cesarandr
 
 Types, parsers, providers, readers, formatters, aggregation, search, reporting, credentials, and quota for AI agent session monitoring. Used by both the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) and the [CLI dashboard](https://www.npmjs.com/package/sidekick-agent-hub).
 
+## Recent additions
+
+- **Assistant-turn projection** — `segmentAssistantTurn()` / `assistantTurnEventsFromSessionEvents()` segment a provider-normalized turn into a browser-safe Timeline + Process + Answer shape (see [Assistant Turns](#api-overview)).
+- **Session-context snapshots** — `buildSessionContextSnapshot()` / `calculateSessionContextPressure()` expose layered evidence sources and low/medium/high context pressure.
+- **Zod boundary schemas** — runtime validation for data crossing process/IPC boundaries, importable fs-free from [`sidekick-shared/schemas`](#supported-import-paths).
+- **Opus 4.8 & Fable 5 model info** — 1M-token context windows and pricing, plus forgiving (trim/lowercase) model-ID lookups.
+- **Node-only asset extraction** — `gatherAssetsForCwd()` collects URLs, file paths, commands, and plans from recent Claude Code and Codex sessions.
+
+See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/CHANGELOG.md) for everything.
+
 ## Installation
 
 ```bash

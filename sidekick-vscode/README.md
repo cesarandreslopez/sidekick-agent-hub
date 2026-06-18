@@ -13,6 +13,16 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 | **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)** | Yes | Yes | Depends on provider |
 | **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)** | Yes | Yes | OpenAI API billing |
 
+## What's New
+
+- **Claude Opus 4.8 & Fable 5** — full support for Anthropic's latest flagships, including 1M-token context windows, accurate pricing, and "Fable" display labels in model pickers.
+- **Richer conversation view** — the transcript now interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode sessions.
+- **Session asset extraction** — `Sidekick: Extract Session Assets` searches recent chats for URLs, files, commands, and plans, then opens or copies them from a native QuickPick.
+- **Quota-history heatmap** — a 13-week, per-workspace, GitHub-style view of session-limit utilization in the dashboard.
+- **Multi-account management** — switch between Claude Code and Codex accounts from the status bar menu and Command Palette.
+
+See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/CHANGELOG.md) for everything.
+
 ## Quick Start
 
 ### [Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) (Recommended)
@@ -92,9 +102,11 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Event Stream](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/event_stream_vscode_extension.png)
 
-- **Conversation Viewer** — full session conversation with search
+- **Conversation Viewer** — full session transcript that interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode; tool calls render as concise rows with expandable outputs, with search across the conversation
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.) with paired tool outputs (file content, stdout, search results)
 - **Subagent Tree** — hierarchical view of subagent spawns with nested parent/child relationships
+- **Plans Board** — agent plans discovered for the project, surfaced as a dedicated sidebar view
+- **Latest Files Touched** — sidebar tree of files the current session has read or modified
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
 - **Provider Status** — live API health indicator scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, hidden for OpenCode unless you run the standalone status command
@@ -146,7 +158,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 | `sidekick.peakHours.enabled` | `true` | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only) |
 | `sidekick.peakHours.notifyOnTransition` | `false` | One-time toast when peak hours start or end (opt-in) |
 
-Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
+Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — including **Claude Opus 4.8** and **Fable 5** with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
 ## Commands
 
