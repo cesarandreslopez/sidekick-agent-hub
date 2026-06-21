@@ -93,7 +93,7 @@ Three independently-testable layers:
 
 | # | Phase | Status | Owner | PR / commit | Notes |
 |---|---|---|---|---|---|
-| 01 | Claude profiles + keychain suffix | Not started | | | lynchpin; unit-test suffix vectors |
+| 01 | Claude profiles + keychain suffix | Done | Codex | phase-01 commit | suffix vectors + profile auth primitives |
 | 02 | Credential I/O parameterization | Not started | | | keep no-arg defaults |
 | 03 | Login facade + spawn helper | Not started | | | the contextful unblocker |
 | 04 | Non-destructive switch + migration | Not started | | | `reconcileClaudeAuthState` |
