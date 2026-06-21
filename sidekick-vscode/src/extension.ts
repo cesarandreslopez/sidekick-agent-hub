@@ -1031,15 +1031,36 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const startedAt = Date.now();
     const timeoutMs = 180_000;
-    const interval = setInterval(() => {
-      const status = getAccountLoginStatus(providerId, begin.loginId);
-      if (status.state === 'authenticated') {
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let closeDisposable: vscode.Disposable | undefined;
+    const stopPolling = (): void => {
+      if (interval !== undefined) {
         clearInterval(interval);
-        finalize();
-        return;
+        interval = undefined;
+      }
+      closeDisposable?.dispose();
+      closeDisposable = undefined;
+    };
+
+    // Stop polling if the user closes the login terminal before authenticating.
+    closeDisposable = vscode.window.onDidCloseTerminal((closed) => {
+      if (closed === terminal) stopPolling();
+    });
+    context.subscriptions.push({ dispose: stopPolling });
+
+    interval = setInterval(() => {
+      try {
+        const status = getAccountLoginStatus(providerId, begin.loginId);
+        if (status.state === 'authenticated') {
+          stopPolling();
+          finalize();
+          return;
+        }
+      } catch (err) {
+        logError('Failed to poll account login status', err);
       }
       if (Date.now() - startedAt > timeoutMs) {
-        clearInterval(interval);
+        stopPolling();
         vscode.window.showErrorMessage('Account login timed out before authentication completed.');
       }
     }, 2_000);
