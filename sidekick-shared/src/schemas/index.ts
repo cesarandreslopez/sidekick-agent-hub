@@ -69,6 +69,26 @@ export type {
 } from '../accountStatus';
 
 export {
+  accountProviderIdSchema,
+  accountManagerResultSchema,
+  beginAccountLoginResultSchema,
+  accountLoginStatusSchema,
+  accountEntrySchema,
+  savedAccountProfileSchema,
+  listAllAccountsResultSchema,
+} from './accountManager';
+export type { AccountEntry, AccountManagerResult } from '../accounts';
+export type {
+  AccountProviderId,
+  SavedAccountProfile,
+} from '../accountRegistry';
+export type {
+  AccountLoginStatus,
+  BeginAccountLoginResult,
+  ListAllAccountsResult,
+} from '../accountManager';
+
+export {
   assistantTurnEventSchema,
   assistantTurnEventTypeSchema,
   assistantTurnNarrationStepSchema,

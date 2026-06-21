@@ -95,6 +95,7 @@ nav:
     - Generate Docs: features/generate-docs.md
     - CLAUDE.md Suggestions: features/claude-md-suggestions.md
   - Providers:
+    - Account Management: providers/account-management.md
     - Claude Max: providers/claude-max.md
     - Claude API: providers/claude-api.md
     - OpenCode: providers/opencode.md

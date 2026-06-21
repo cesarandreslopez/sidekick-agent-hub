@@ -101,7 +101,7 @@ Three independently-testable layers:
 | 06 | Auto-switch on quota | Done | Codex | phase-06 commit | default-off policy + controller |
 | 07 | CLI surface | Done | Codex | phase-07 commit | `--login`, `--launcher`, `--provider all`, `quota --all --json` |
 | 08 | VS Code surface | Done | Codex | phase-08 commit | sign-in command, all-provider QuickPick, default-off auto-switch setting |
-| 09 | Exports + Zod + guide | Not started | | | schemas dir already exists |
+| 09 | Exports + Zod + guide | Done | Codex | phase-09 commit | account schemas, package-root exports, docs page |
 | R | Release 0.21.0 | Not started | | | versions+changelogs+lint (§7) |
 
 ## 6. Ground-truth references (verified line numbers)

@@ -70,6 +70,13 @@ describe('packaging contract', () => {
       'quotaHistoryDailyBucketSchema',
       'activeProviderAccountStatusSchema',
       'activeAccountStatusSchema',
+      'accountProviderIdSchema',
+      'accountManagerResultSchema',
+      'beginAccountLoginResultSchema',
+      'accountLoginStatusSchema',
+      'accountEntrySchema',
+      'savedAccountProfileSchema',
+      'listAllAccountsResultSchema',
       'assistantTurnEventSchema',
       'assistantTurnProjectionSchema',
       'assistantTurnReasoningTimelineItemSchema',
@@ -93,6 +100,33 @@ describe('packaging contract', () => {
     const m = require(path.join(distDir, 'index.js'));
     expect(typeof m.ensureDefaultAccounts).toBe('function');
     expect(typeof m.getActiveAccountStatus).toBe('function');
+    for (const k of [
+      'getClaudeProfilesDir',
+      'getClaudeProfileHome',
+      'claudeKeychainSuffix',
+      'claudeKeychainService',
+      'isClaudeProfileAuthenticated',
+      'readClaudeProfileIdentity',
+      'beginAccountLogin',
+      'getAccountLoginStatus',
+      'finalizeAccountLogin',
+      'spawnAccountLogin',
+      'switchAccount',
+      'listAllAccounts',
+      'resolveActiveClaudeHome',
+      'applyActiveClaudeToLiveHome',
+      'reconcileClaudeAuthState',
+      'setTerminalActiveProfile',
+      'installShellHook',
+      'uninstallShellHook',
+      'isShellHookInstalled',
+      'writeLauncher',
+      'removeLauncher',
+      'decideAutoSwitch',
+    ]) {
+      expect(typeof m[k]).toBe('function');
+    }
+    expect(typeof m.AutoSwitchController).toBe('function');
     expect(typeof m.CodexQuotaWatcher).toBe('function');
     expect(typeof m.MultiProviderQuotaService).toBe('function');
     expect(typeof m.createJsonlTail).toBe('function');
@@ -112,6 +146,8 @@ describe('packaging contract', () => {
     expect(typeof m.assistantTurnProjectionSchema?.safeParse).toBe('function');
     expect(typeof m.quotaStateSchema?.safeParse).toBe('function');
     expect(typeof m.activeAccountStatusSchema?.safeParse).toBe('function');
+    expect(typeof m.beginAccountLoginResultSchema?.safeParse).toBe('function');
+    expect(typeof m.listAllAccountsResultSchema?.safeParse).toBe('function');
   });
 
   it('dist/phrases.js exposes flat and categorized phrase surfaces', () => {

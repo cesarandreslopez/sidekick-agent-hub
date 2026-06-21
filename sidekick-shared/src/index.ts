@@ -560,6 +560,15 @@ export {
   activeAccountStatusSchema,
 } from './schemas/accountStatus';
 export {
+  accountProviderIdSchema,
+  accountManagerResultSchema,
+  beginAccountLoginResultSchema,
+  accountLoginStatusSchema,
+  accountEntrySchema,
+  savedAccountProfileSchema,
+  listAllAccountsResultSchema,
+} from './schemas/accountManager';
+export {
   assistantTurnEventSchema,
   assistantTurnEventTypeSchema,
   assistantTurnNarrationStepSchema,
