@@ -97,7 +97,7 @@ Three independently-testable layers:
 | 02 | Credential I/O parameterization | Done | Codex | phase-02 commit | config-dir credential reads/writes; no-arg defaults preserved |
 | 03 | Login facade + spawn helper | Done | Codex | phase-03 commit | provider-neutral begin/status/finalize/spawn facade |
 | 04 | Non-destructive switch + migration | Done | Codex | phase-04 commit | profile-home apply + flat-backup migration |
-| 05 | Terminal sync (opt-in) | Not started | | | shell hook + launchers |
+| 05 | Terminal sync (opt-in) | Done | Codex | phase-05 commit | active pointers, shell hook, launchers |
 | 06 | Auto-switch on quota | Not started | | | off by default |
 | 07 | CLI surface | Not started | | | `--login`, `--provider all`, `quota --all` |
 | 08 | VS Code surface | Not started | | | login command + QuickPick |
