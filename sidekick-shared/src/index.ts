@@ -331,12 +331,33 @@ export {
   readActiveClaudeAccount,
   addCurrentAccount,
   switchToAccount,
+  resolveActiveClaudeHome,
+  applyActiveClaudeToLiveHome,
+  reconcileClaudeAuthState,
   removeAccount,
   listAccounts,
   getActiveAccount,
   isMultiAccountEnabled,
 } from './accounts';
 export type { AccountEntry, AccountRegistry, ActiveAccountInfo, AccountManagerResult } from './accounts';
+export {
+  beginAccountLogin,
+  getAccountLoginStatus,
+  finalizeAccountLogin,
+  spawnAccountLogin,
+  switchAccount,
+  listAllAccounts,
+  resolveClaudeLoginCommand,
+} from './accountManager';
+export type {
+  AccountLoginCommand,
+  AccountLoginState,
+  AccountLoginStatus,
+  BeginAccountLoginResult,
+  FinalizeAccountLoginOptions,
+  ListAllAccountsResult,
+  SpawnAccountLoginOptions,
+} from './accountManager';
 export {
   getAccountsDir,
   readSavedAccountRegistry,
@@ -357,6 +378,15 @@ export type {
 export { getActiveAccountStatus } from './accountStatus';
 export type { ActiveAccountStatus, ActiveProviderAccountStatus } from './accountStatus';
 export {
+  getClaudeProfilesDir,
+  getClaudeProfileHome,
+  claudeKeychainSuffix,
+  claudeKeychainService,
+  isClaudeProfileAuthenticated,
+  readClaudeProfileIdentity,
+} from './claudeProfiles';
+export type { ClaudeProfileIdentity } from './claudeProfiles';
+export {
   getCodexProfilesDir,
   getCodexProfileHome,
   getCodexMonitoringHomes,
@@ -371,6 +401,27 @@ export {
   removeCodexAccount,
 } from './codexProfiles';
 export type { CodexAccountManagerResult } from './codexProfiles';
+export {
+  setTerminalActiveProfile,
+  installShellHook,
+  uninstallShellHook,
+  isShellHookInstalled,
+  writeLauncher,
+  removeLauncher,
+} from './terminalSync';
+export {
+  DEFAULT_AUTO_SWITCH_CONFIG,
+  decideAutoSwitch,
+  AutoSwitchController,
+} from './autoSwitch';
+export type {
+  AutoSwitchActiveAccount,
+  AutoSwitchCandidate,
+  AutoSwitchConfig,
+  AutoSwitchControllerOptions,
+  AutoSwitchDecision,
+  AutoSwitchTransitionEvent,
+} from './autoSwitch';
 
 // Quota
 export { fetchQuota } from './quota';

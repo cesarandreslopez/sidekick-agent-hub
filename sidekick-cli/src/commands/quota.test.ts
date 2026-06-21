@@ -86,7 +86,10 @@ const { mockFetchOnce, mockResolveCodexQuota, mockResolveProvider, mockFetchPeak
 }));
 
 vi.mock('sidekick-shared', () => ({
-  CodexProvider: class {},
+  CodexProvider: class {
+    id = 'codex';
+    dispose = vi.fn();
+  },
   getActiveAccount: () => null,
   getActiveCodexAccount: () => ({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' }),
   resolveCodexQuota: mockResolveCodexQuota,
@@ -385,5 +388,31 @@ describe('quotaAction', () => {
     expect(stdoutData).toContain('Rate Limits');
     expect(stdoutData).toContain('21%');
     expect(provider.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('outputs combined Claude and Codex quota with --all --json', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 40, resetsAt: '2026-01-01T00:00:00Z' },
+      sevenDay: { utilization: 72, resetsAt: '2026-01-05T00:00:00Z' },
+      available: true,
+    });
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 6, resetsAt: '2026-05-19T15:00:00Z' },
+      sevenDay: { utilization: 1, resetsAt: '2026-05-26T15:00:00Z' },
+      available: true,
+      source: 'session',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(true, { all: true }));
+
+    const parsed = JSON.parse(stdoutData);
+    expect(parsed.claude.available).toBe(true);
+    expect(parsed.claude.fiveHour.utilization).toBe(40);
+    expect(parsed.codex.available).toBe(true);
+    expect(parsed.codex.fiveHour.utilization).toBe(6);
+    expect(mockResolveProvider).not.toHaveBeenCalled();
   });
 });

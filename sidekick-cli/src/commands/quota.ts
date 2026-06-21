@@ -56,6 +56,12 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
   const globalOpts = cmd.parent!.opts();
   const localOpts = cmd.opts();
   const jsonOutput: boolean = !!globalOpts.json;
+
+  if (localOpts.all) {
+    await allQuotaAction(globalOpts, localOpts, jsonOutput);
+    return;
+  }
+
   // Local --provider overrides the global one
   const providerOpts = localOpts.provider ? { provider: localOpts.provider } : globalOpts;
   const provider = resolveProvider(providerOpts);
@@ -82,11 +88,7 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
 }
 
 async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
-  const service = new QuotaService();
-  const [quota, peak] = await Promise.all([
-    service.fetchOnce(),
-    fetchPeakHoursStatus(),
-  ]);
+  const { quota, peak } = await fetchClaudeQuotaPayload();
 
   if (!quota.available) {
     if (jsonOutput) {
@@ -154,6 +156,15 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   printPeakHoursSummary(peak);
 }
 
+async function fetchClaudeQuotaPayload(): Promise<{ quota: Awaited<ReturnType<QuotaService['fetchOnce']>>; peak: PeakHoursState }> {
+  const service = new QuotaService();
+  const [quota, peak] = await Promise.all([
+    service.fetchOnce(),
+    fetchPeakHoursStatus(),
+  ]);
+  return { quota, peak };
+}
+
 function printPeakHoursSummary(peak: PeakHoursState): void {
   const line = formatPeakHoursLine(peak);
   if (!line) return;
@@ -166,19 +177,7 @@ async function codexQuotaAction(
   localOpts: Record<string, unknown>,
   jsonOutput: boolean,
 ): Promise<void> {
-  const workspacePath = (globalOpts.project as string) || process.cwd();
-  const activeAccount = getActiveCodexAccount();
-  let quota: Awaited<ReturnType<typeof resolveCodexQuota>>;
-  try {
-    quota = await resolveCodexQuota({
-      workspacePath,
-      provider,
-      activeAccount,
-      source: localOpts.refresh ? 'api' : 'local',
-    });
-  } finally {
-    provider.dispose();
-  }
+  const quota = await fetchCodexQuotaPayload(provider, globalOpts, localOpts);
 
   if (!quota.available) {
     if (jsonOutput) {
@@ -194,6 +193,32 @@ async function codexQuotaAction(
     return;
   }
 
+  printCodexQuota(quota, getActiveCodexAccount());
+}
+
+async function fetchCodexQuotaPayload(
+  provider: CodexProvider,
+  globalOpts: Record<string, unknown>,
+  localOpts: Record<string, unknown>,
+): Promise<Awaited<ReturnType<typeof resolveCodexQuota>>> {
+  const workspacePath = (globalOpts.project as string) || process.cwd();
+  const activeAccount = getActiveCodexAccount();
+  try {
+    return await resolveCodexQuota({
+      workspacePath,
+      provider,
+      activeAccount,
+      source: localOpts.refresh ? 'api' : 'local',
+    });
+  } finally {
+    provider.dispose();
+  }
+}
+
+function printCodexQuota(
+  quota: Awaited<ReturnType<typeof resolveCodexQuota>>,
+  activeAccount: ReturnType<typeof getActiveCodexAccount> = getActiveCodexAccount(),
+): void {
   const barWidth = 30;
   const fivePct = Math.round(quota.fiveHour.utilization);
   const sevenPct = Math.round(quota.sevenDay.utilization);
@@ -216,4 +241,26 @@ async function codexQuotaAction(
   if (quota.sevenDay.resetsAt || quota.sevenDay.utilization > 0) {
     process.stdout.write(`  ${chalk.dim(sevenLabel.padEnd(9))} ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
   }
+}
+
+async function allQuotaAction(
+  globalOpts: Record<string, unknown>,
+  localOpts: Record<string, unknown>,
+  jsonOutput: boolean,
+): Promise<void> {
+  const codexProvider = new CodexProvider();
+  const [{ quota: claude, peak }, codex] = await Promise.all([
+    fetchClaudeQuotaPayload(),
+    fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts),
+  ]);
+
+  if (jsonOutput) {
+    process.stdout.write(JSON.stringify({ claude: { ...claude, peak }, codex }, null, 2) + '\n');
+    return;
+  }
+
+  process.stdout.write(chalk.bold('Claude\n'));
+  await claudeQuotaAction(false);
+  process.stdout.write('\n' + chalk.bold('Codex\n'));
+  printCodexQuota(codex);
 }

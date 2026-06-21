@@ -12,6 +12,12 @@ const mockPrepareCodexAccount = vi.fn();
 const mockFinalizeCodexAccount = vi.fn();
 const mockSwitchToCodexAccount = vi.fn();
 const mockRemoveCodexAccount = vi.fn();
+const mockSpawnAccountLogin = vi.fn();
+const mockListAllAccounts = vi.fn();
+const mockWriteLauncher = vi.fn();
+const mockGetClaudeProfileHome = vi.fn();
+const mockGetCodexProfileHome = vi.fn();
+const mockGetConfigDir = vi.fn();
 const mockResolveProviderId = vi.fn();
 
 vi.mock('sidekick-shared', () => ({
@@ -27,6 +33,12 @@ vi.mock('sidekick-shared', () => ({
   finalizeCodexAccount: mockFinalizeCodexAccount,
   switchToCodexAccount: mockSwitchToCodexAccount,
   removeCodexAccount: mockRemoveCodexAccount,
+  spawnAccountLogin: mockSpawnAccountLogin,
+  listAllAccounts: mockListAllAccounts,
+  writeLauncher: mockWriteLauncher,
+  getClaudeProfileHome: mockGetClaudeProfileHome,
+  getCodexProfileHome: mockGetCodexProfileHome,
+  getConfigDir: mockGetConfigDir,
 }));
 
 vi.mock('../cli', () => ({
@@ -71,7 +83,14 @@ describe('accountAction', () => {
     mockFinalizeCodexAccount.mockReset();
     mockSwitchToCodexAccount.mockReset();
     mockRemoveCodexAccount.mockReset();
+    mockSpawnAccountLogin.mockReset();
+    mockListAllAccounts.mockReset();
+    mockWriteLauncher.mockReset();
+    mockGetClaudeProfileHome.mockReset();
+    mockGetCodexProfileHome.mockReset();
+    mockGetConfigDir.mockReset();
     mockResolveProviderId.mockReset();
+    mockGetConfigDir.mockReturnValue('/tmp/sidekick-config');
   });
 
   afterEach(() => {
@@ -150,5 +169,87 @@ describe('accountAction', () => {
     await accountAction({}, makeCmd({ remove: 'user@example.com' }));
 
     expect(mockRemoveAccount).toHaveBeenCalledWith('claude-1');
+  });
+
+  it('signs in and saves a Claude account with --login', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockSpawnAccountLogin.mockResolvedValue({ success: true });
+    mockGetActiveAccount.mockReturnValue({
+      uuid: 'claude-1',
+      email: 'work@example.com',
+      label: 'Work',
+      addedAt: '2026-01-01T00:00:00Z',
+    });
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ login: true, label: 'Work' }));
+
+    expect(mockSpawnAccountLogin).toHaveBeenCalledWith('claude-code', 'Work', { stdio: 'inherit' });
+    expect(stdoutData).toContain('Account saved');
+    expect(stdoutData).toContain('work@example.com');
+  });
+
+  it('exits non-zero when login fails', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockSpawnAccountLogin.mockResolvedValue({ success: false, error: 'login failed' });
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ login: true, label: 'Work' }));
+
+    expect(stderrData).toContain('login failed');
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  it('lists all providers as stable JSON with --provider all', async () => {
+    mockListAllAccounts.mockReturnValue({
+      claude: [{ uuid: 'claude-1', email: 'claude@example.com', addedAt: '2026-01-01T00:00:00Z' }],
+      codex: [{ id: 'codex-1', providerId: 'codex', label: 'Codex', addedAt: '2026-01-01T00:00:00Z' }],
+      activeByProvider: { 'claude-code': 'claude-1', codex: 'codex-1' },
+    });
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ provider: 'all' }, { json: true }));
+
+    expect(JSON.parse(stdoutData)).toEqual({
+      claude: [{ uuid: 'claude-1', email: 'claude@example.com', addedAt: '2026-01-01T00:00:00Z' }],
+      codex: [{ id: 'codex-1', providerId: 'codex', label: 'Codex', addedAt: '2026-01-01T00:00:00Z' }],
+      activeByProvider: { 'claude-code': 'claude-1', codex: 'codex-1' },
+    });
+    expect(mockResolveProviderId).not.toHaveBeenCalled();
+  });
+
+  it('creates a launcher for the active Claude account', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockGetActiveAccount.mockReturnValue({
+      uuid: 'claude-1',
+      email: 'claude@example.com',
+      addedAt: '2026-01-01T00:00:00Z',
+    });
+    mockGetClaudeProfileHome.mockReturnValue('/tmp/claude-profile');
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ launcher: 'claude-work' }));
+
+    expect(mockWriteLauncher).toHaveBeenCalledWith('claude-work', 'claude-code', '/tmp/claude-profile');
+    expect(stdoutData).toContain('claude-work');
+  });
+
+  it('exits non-zero when launcher creation fails', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockGetActiveAccount.mockReturnValue({
+      uuid: 'claude-1',
+      email: 'claude@example.com',
+      addedAt: '2026-01-01T00:00:00Z',
+    });
+    mockGetClaudeProfileHome.mockReturnValue('/tmp/claude-profile');
+    mockWriteLauncher.mockImplementation(() => {
+      throw new Error('invalid launcher');
+    });
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ launcher: 'bad/name' }));
+
+    expect(stderrData).toContain('invalid launcher');
+    expect(process.exit).toHaveBeenCalledWith(1);
   });
 });

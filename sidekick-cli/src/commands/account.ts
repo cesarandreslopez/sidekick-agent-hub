@@ -2,10 +2,13 @@
  * `sidekick account` — Manage saved Claude and Codex accounts.
  */
 
-import { spawnSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import {
+  getConfigDir,
   listAccounts,
   getActiveAccount,
   addCurrentAccount,
@@ -15,11 +18,16 @@ import {
   listCodexAccounts,
   getActiveCodexAccount,
   prepareCodexAccount,
-  finalizeCodexAccount,
   switchToCodexAccount,
   removeCodexAccount,
+  spawnAccountLogin,
+  listAllAccounts,
+  writeLauncher,
+  getClaudeProfileHome,
+  getCodexProfileHome,
+  DEFAULT_AUTO_SWITCH_CONFIG,
 } from 'sidekick-shared';
-import type { SavedAccountProfile } from 'sidekick-shared';
+import type { AccountManagerResult, AccountProviderId, AutoSwitchConfig, SavedAccountProfile } from 'sidekick-shared';
 import { resolveProviderId } from '../cli';
 
 interface AccountCommandOptions {
@@ -29,12 +37,25 @@ interface AccountCommandOptions {
   switch?: boolean;
   switchTo?: string;
   remove?: string;
+  login?: boolean;
+  launcher?: string;
+  autoSwitch?: string;
 }
 
 export async function accountAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
   const jsonOutput: boolean = !!globalOpts.json;
   const opts = cmd.opts() as AccountCommandOptions;
+
+  if (opts.autoSwitch !== undefined) {
+    configureAutoSwitch(opts.autoSwitch, jsonOutput);
+    return;
+  }
+
+  if (opts.provider?.trim().toLowerCase() === 'all') {
+    listAllProviderAccounts(jsonOutput);
+    return;
+  }
 
   const providerId = resolveProviderId(
     opts.provider ? { provider: opts.provider } : globalOpts,
@@ -48,14 +69,171 @@ export async function accountAction(_opts: Record<string, unknown>, cmd: Command
   }
 
   if (providerId === 'codex') {
-    codexAccountAction(opts, jsonOutput);
+    await codexAccountAction(opts, jsonOutput);
     return;
   }
 
-  claudeAccountAction(opts, jsonOutput);
+  await claudeAccountAction(opts, jsonOutput);
 }
 
-function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): void {
+function autoSwitchConfigPath(): string {
+  return path.join(getConfigDir(), 'cli-config.json');
+}
+
+function readCliConfig(): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(autoSwitchConfigPath(), 'utf8')) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function writeCliConfig(config: Record<string, unknown>): void {
+  const filePath = autoSwitchConfigPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(config, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(tmp, filePath);
+}
+
+function parseAutoSwitchConfig(value: string): AutoSwitchConfig {
+  if (value.trim().toLowerCase() === 'off') {
+    return { ...DEFAULT_AUTO_SWITCH_CONFIG, enabled: false };
+  }
+  const thresholdPct = Number(value);
+  if (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100) {
+    throw new Error('Use --auto-switch off or a percentage between 1 and 100.');
+  }
+  return { enabled: true, thresholdPct };
+}
+
+function configureAutoSwitch(value: string, jsonOutput: boolean): void {
+  try {
+    const autoSwitch = parseAutoSwitchConfig(value);
+    const config = readCliConfig();
+    writeCliConfig({
+      ...config,
+      accounts: {
+        ...((config.accounts as Record<string, unknown> | undefined) ?? {}),
+        autoSwitch,
+      },
+    });
+    if (jsonOutput) {
+      process.stdout.write(JSON.stringify({ action: 'auto-switch', autoSwitch }) + '\n');
+    } else {
+      process.stdout.write(autoSwitch.enabled
+        ? chalk.green(`Auto-switch threshold set to ${autoSwitch.thresholdPct}%.\n`)
+        : chalk.green('Auto-switch disabled.\n'));
+      process.stdout.write(chalk.dim('Continuous auto-switch runs in a long-running host such as VS Code.\n'));
+    }
+  } catch (error) {
+    process.stderr.write(chalk.red(error instanceof Error ? error.message : String(error)) + '\n');
+    process.exit(1);
+  }
+}
+
+function listAllProviderAccounts(jsonOutput: boolean): void {
+  const accounts = listAllAccounts();
+  if (jsonOutput) {
+    process.stdout.write(JSON.stringify(accounts, null, 2) + '\n');
+    return;
+  }
+
+  process.stdout.write(chalk.bold('Claude Accounts\n'));
+  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
+  for (const account of accounts.claude) {
+    const isActive = account.uuid === accounts.activeByProvider['claude-code'];
+    const marker = isActive ? chalk.green('  * ') : '    ';
+    const label = account.label ? chalk.dim(` (${account.label})`) : '';
+    process.stdout.write(`${marker}${account.email}${label}\n`);
+  }
+  process.stdout.write('\n' + chalk.bold('Codex Accounts\n'));
+  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
+  for (const account of accounts.codex) {
+    const isActive = account.id === accounts.activeByProvider.codex;
+    const marker = isActive ? chalk.green('  * ') : '    ';
+    const details = [account.email, account.metadata?.planType].filter(Boolean).join(' · ');
+    process.stdout.write(`${marker}${account.label ?? account.id}${details ? chalk.dim(` (${details})`) : ''}\n`);
+  }
+}
+
+function printLoginResult(provider: AccountProviderId, result: AccountManagerResult, opts: AccountCommandOptions, jsonOutput: boolean): void {
+  if (!result.success) {
+    process.stderr.write(chalk.red(result.error ?? 'Account login failed.') + '\n');
+    process.exit(1);
+    return;
+  }
+
+  const active = provider === 'codex' ? getActiveCodexAccount() : getActiveAccount();
+  if (jsonOutput) {
+    process.stdout.write(JSON.stringify({
+      action: 'login',
+      provider,
+      success: true,
+      account: active ?? null,
+      warning: result.warning ?? null,
+    }) + '\n');
+    return;
+  }
+
+  if (result.warning) process.stderr.write(chalk.yellow(result.warning) + '\n');
+  const display = provider === 'codex'
+    ? (active && 'id' in active ? formatCodexAccount(active as SavedAccountProfile) : opts.label)
+    : (active && 'email' in active ? `${active.email}${active.label ? ` (${active.label})` : ''}` : opts.label);
+  process.stdout.write(chalk.green('Account saved: ') + (display ?? 'unknown') + '\n');
+}
+
+async function handleLogin(provider: AccountProviderId, opts: AccountCommandOptions, jsonOutput: boolean): Promise<void> {
+  if (!opts.label?.trim()) {
+    process.stderr.write(chalk.red('Account login requires `--label`.\n'));
+    process.exit(1);
+    return;
+  }
+  const result = await spawnAccountLogin(provider, opts.label, { stdio: 'inherit' });
+  printLoginResult(provider, result, opts, jsonOutput);
+}
+
+function createLauncher(provider: AccountProviderId, opts: AccountCommandOptions, jsonOutput: boolean): void {
+  const name = opts.launcher!;
+  const active = provider === 'codex' ? getActiveCodexAccount() : getActiveAccount();
+  if (!active) {
+    process.stderr.write(chalk.red('No active account found for launcher creation.\n'));
+    process.exit(1);
+    return;
+  }
+
+  const profileHome = provider === 'codex'
+    ? getCodexProfileHome((active as SavedAccountProfile).id)
+    : getClaudeProfileHome((active as ReturnType<typeof getActiveAccount>)!.uuid);
+
+  try {
+    writeLauncher(name, provider, profileHome);
+  } catch (error) {
+    process.stderr.write(chalk.red(error instanceof Error ? error.message : String(error)) + '\n');
+    process.exit(1);
+    return;
+  }
+
+  const launcherPath = path.join(os.homedir(), '.local', 'bin', name);
+  if (jsonOutput) {
+    process.stdout.write(JSON.stringify({ action: 'launcher', provider, name, path: launcherPath, profileHome }) + '\n');
+  } else {
+    process.stdout.write(chalk.green('Launcher created: ') + launcherPath + '\n');
+    process.stdout.write(chalk.dim(`Open a new terminal or run \`${name}\` directly.\n`));
+  }
+}
+
+async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): Promise<void> {
+  if (opts.login) {
+    await handleLogin('claude-code', opts, jsonOutput);
+    return;
+  }
+
+  if (opts.launcher) {
+    createLauncher('claude-code', opts, jsonOutput);
+    return;
+  }
+
   if (opts.add) {
     const result = addCurrentAccount(opts.label);
     if (!result.success) {
@@ -208,30 +386,23 @@ function formatCodexAccount(account: SavedAccountProfile): string {
   return `${account.label ?? account.id} (${account.email})`;
 }
 
-function runCodexLogin(codexHome: string): { success: boolean; error?: string } {
-  const result = spawnSync('codex', ['login'], {
-    stdio: 'inherit',
-    env: { ...process.env, CODEX_HOME: codexHome },
-  });
-
-  if (result.error) {
-    return { success: false, error: `Failed to start \`codex login\`: ${result.error.message}` };
-  }
-
-  if (result.status !== 0) {
-    return { success: false, error: `\`codex login\` exited with status ${result.status}.` };
-  }
-
-  return { success: true };
-}
-
 function printCodexWarning(warning: string | undefined, jsonOutput: boolean): void {
   if (warning && !jsonOutput) {
     process.stderr.write(chalk.yellow(warning) + '\n');
   }
 }
 
-function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): void {
+async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): Promise<void> {
+  if (opts.login) {
+    await handleLogin('codex', opts, jsonOutput);
+    return;
+  }
+
+  if (opts.launcher) {
+    createLauncher('codex', opts, jsonOutput);
+    return;
+  }
+
   if (opts.add) {
     if (!opts.label?.trim()) {
       process.stderr.write(chalk.red('Codex accounts require `--label`.\n'));
@@ -246,29 +417,11 @@ function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): v
       return;
     }
 
-    let warning = prepared.warning;
+    const warning = prepared.warning;
     if (prepared.needsLogin) {
-      if (!prepared.profileId || !prepared.codexHome) {
-        process.stderr.write(chalk.red('Prepared Codex profile is missing login context.') + '\n');
-        process.exit(1);
-        return;
-      }
-
-      const login = runCodexLogin(prepared.codexHome);
-      if (!login.success) {
-        process.stderr.write(chalk.red(login.error ?? 'Codex login failed.') + '\n');
-        process.exit(1);
-        return;
-      }
-
-      const finalized = finalizeCodexAccount(prepared.profileId);
-      if (!finalized.success) {
-        process.stderr.write(chalk.red('Account saved, but activation failed: ' + (finalized.error ?? 'unknown error')) + '\n');
-        process.stderr.write(chalk.dim('Use `sidekick account --provider codex --switch-to <label>` to retry activation.\n'));
-        process.exit(1);
-        return;
-      }
-      warning = finalized.warning;
+      process.stderr.write(chalk.red('No current Codex auth was importable. Use `sidekick account --provider codex --login --label <name>`.\n'));
+      process.exit(1);
+      return;
     }
 
     const active = getActiveCodexAccount();

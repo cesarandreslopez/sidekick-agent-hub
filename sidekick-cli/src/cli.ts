@@ -166,6 +166,7 @@ program.addCommand(statsCmd);
 const quotaCmd = new Command('quota')
   .description('Show quota or rate-limit utilization (auto-detects provider)')
   .option('--provider <id>', 'Provider: claude-code, codex, auto (default: auto)')
+  .option('--all', 'Show all providers')
   .option('--refresh', 'For Codex, explicitly refresh from the Codex usage API before falling back to local data')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaAction } = await import('./commands/quota');
@@ -207,12 +208,15 @@ program.addCommand(peakCmd);
 // Account command — manage Claude Max accounts
 const accountCmd = new Command('account')
   .description('Manage saved accounts (list, add, switch, remove)')
-  .option('--provider <id>', 'Provider: claude-code, codex, auto (default: claude-code)')
+  .option('--provider <id>', 'Provider: claude-code, codex, all, auto (default: claude-code)')
   .option('--add', 'Save the currently signed-in account')
+  .option('--login', 'Sign in and save a new account')
   .option('--label <name>', 'Label for the account (required for Codex, optional for Claude)')
   .option('--switch', 'Switch to the next saved account')
   .option('--switch-to <identifier>', 'Switch to a specific account by email, label, or id')
   .option('--remove <identifier>', 'Remove a saved account by email, label, or id')
+  .option('--launcher <name>', 'Create a per-account launcher for the active account')
+  .option('--auto-switch <pct|off>', 'Persist auto-switch quota threshold, or off')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { accountAction } = await import('./commands/account');
     return accountAction(_opts, cmd);
