@@ -165,9 +165,10 @@ program.addCommand(statsCmd);
 // Quota command — one-shot quota / rate-limit check
 const quotaCmd = new Command('quota')
   .description('Show quota or rate-limit utilization (auto-detects provider)')
-  .option('--provider <id>', 'Provider: claude-code, codex, auto (default: auto)')
-  .option('--all', 'Show all providers')
+  .option('--provider <id>', 'Provider: claude-code, opencode, codex, zai, auto (default: auto)')
+  .option('--all', 'Show all providers (Claude, Codex, z.ai if active)')
   .option('--refresh', 'For Codex, explicitly refresh from the Codex usage API before falling back to local data')
+  .option('--tier <id>', 'z.ai plan tier: lite, pro, max, auto (default: auto)', 'auto')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaAction } = await import('./commands/quota');
     return quotaAction(_opts, cmd);
@@ -177,7 +178,7 @@ quotaCmd
   .command('history')
   .description('Render a 13-week heatmap of quota utilization for the current workspace')
   .option('--weeks <n>', 'Weeks of history to render (default: 13, clamped 1-26)', '13')
-  .option('--provider <id>', 'Limit to a single runtime provider: claude or codex (default: both)')
+  .option('--provider <id>', 'Limit to a single runtime provider: claude, codex, zai (default: all)')
   .option('--workspace <path>', 'Workspace path used to derive the history scope (default: cwd)')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaHistoryAction } = await import('./commands/quotaHistory');

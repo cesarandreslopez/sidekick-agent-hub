@@ -30,7 +30,7 @@ export interface QuotaState {
   /** Projected 7-day utilization at reset (percentage, capped at 200) */
   projectedSevenDay?: number;
   /** Provider that produced this quota sample */
-  providerId?: 'claude-code' | 'codex';
+  providerId?: 'claude-code' | 'codex' | 'zai';
   /** Source of the sample */
   source?: 'api' | 'session' | 'cache';
   /** ISO timestamp when the sample was captured */

@@ -308,6 +308,62 @@ export class OpenCodeDatabase {
     );
   }
 
+  /**
+   * Returns assistant messages tagged with the given providerID(s), completed
+   * within `sinceMs`. Used by the z.ai quota accumulator to walk OpenCode's
+   * per-turn token records without re-deriving the session filter.
+   *
+   * Results are ordered oldest-first by `time_created`.
+   */
+  getAssistantMessagesByProviderId(
+    providerIds: readonly string[],
+    sinceMs: number,
+  ): Array<{
+    timeCreated: number;
+    modelId: string;
+    providerId: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+    errorMessage: string | null;
+    errorCode: string | null;
+  }> {
+    if (providerIds.length === 0) return [];
+    const providerClauses = providerIds.map(() => 'json_extract(data, \'$.providerID\') = ?').join(' OR ');
+    return this.query<{
+      timeCreated: number;
+      modelId: string;
+      providerId: string;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      reasoningTokens: number;
+      errorMessage: string | null;
+      errorCode: string | null;
+    }>(
+      `SELECT
+         time_created AS timeCreated,
+         COALESCE(json_extract(data, '$.modelID'), 'unknown') AS modelId,
+         COALESCE(json_extract(data, '$.providerID'), '') AS providerId,
+         COALESCE(json_extract(data, '$.tokens.input'), 0) AS inputTokens,
+         COALESCE(json_extract(data, '$.tokens.output'), 0) AS outputTokens,
+         COALESCE(json_extract(data, '$.tokens.cache.read'), 0) AS cacheReadTokens,
+         COALESCE(json_extract(data, '$.tokens.cache.write'), 0) AS cacheWriteTokens,
+         COALESCE(json_extract(data, '$.tokens.reasoning'), 0) AS reasoningTokens,
+         json_extract(data, '$.error.message') AS errorMessage,
+         json_extract(data, '$.error.code') AS errorCode
+       FROM message
+       WHERE time_created >= ?
+         AND json_extract(data, '$.role') = 'assistant'
+         AND (${providerClauses})
+       ORDER BY time_created ASC`,
+      [sinceMs, ...providerIds],
+    );
+  }
+
   /** Get the database file's mtime (ms epoch). Returns 0 if unavailable. */
   getDbMtime(): number {
     try {

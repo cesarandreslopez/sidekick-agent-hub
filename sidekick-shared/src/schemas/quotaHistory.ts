@@ -21,6 +21,7 @@ import type {
 export const quotaHistoryRuntimeProviderSchema = z.enum([
   'claude',
   'codex',
+  'zai',
 ]) satisfies z.ZodType<QuotaHistoryRuntimeProvider>;
 
 // ── QuotaHistorySample ──

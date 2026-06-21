@@ -23,6 +23,12 @@ interface CodexWatcherLike extends Disposable {
   onUpdate(cb: (state: ProviderQuotaState<'codex'>) => void): Disposable;
 }
 
+interface ZaiWatcherLike extends Disposable {
+  start(): void;
+  stop(): void;
+  onUpdate(cb: (state: ProviderQuotaState<'zai'>) => void): Disposable;
+}
+
 export interface MultiProviderQuotaServiceOptions {
   activeIntervalMs?: number;
   idleIntervalMs?: number;
@@ -31,6 +37,7 @@ export interface MultiProviderQuotaServiceOptions {
   includePeakHours?: boolean;
   codexWorkspacePath?: string;
   codexWatcher?: CodexWatcherLike | null;
+  zaiWatcher?: ZaiWatcherLike | null;
   readClaudeCredentials?: () => Promise<ClaudeMaxCredentials | null>;
   readClaudeAccount?: typeof readActiveClaudeAccount;
   fetchClaudeQuota?: (accessToken: string) => Promise<QuotaState>;
@@ -90,6 +97,9 @@ export class MultiProviderQuotaService implements Disposable {
   private readonly codexWatcher: CodexWatcherLike | null;
   private readonly ownsCodexWatcher: boolean;
   private codexSubscription: Disposable | null = null;
+  private readonly zaiWatcher: ZaiWatcherLike | null;
+  private readonly ownsZaiWatcher: boolean;
+  private zaiSubscription: Disposable | null = null;
 
   private timer: ReturnType<typeof setTimeout> | undefined;
   private polling = false;
@@ -130,12 +140,25 @@ export class MultiProviderQuotaService implements Disposable {
     this.codexSubscription = this.codexWatcher?.onUpdate((state) => {
       this.updateProviderQuota('codex', state);
     }) ?? null;
+
+    if (options.zaiWatcher !== undefined) {
+      this.zaiWatcher = options.zaiWatcher;
+      this.ownsZaiWatcher = false;
+    } else {
+      this.zaiWatcher = null;
+      this.ownsZaiWatcher = false;
+    }
+
+    this.zaiSubscription = this.zaiWatcher?.onUpdate((state) => {
+      this.updateProviderQuota('zai', state);
+    }) ?? null;
   }
 
   startPolling(): void {
     if (this.polling) return;
     this.polling = true;
     this.codexWatcher?.start();
+    this.zaiWatcher?.start();
     void this.poll();
     this.log?.('[Quota] Polling started');
   }
@@ -148,6 +171,7 @@ export class MultiProviderQuotaService implements Disposable {
       this.timer = undefined;
     }
     this.codexWatcher?.stop();
+    this.zaiWatcher?.stop();
     this.log?.('[Quota] Polling stopped');
   }
 
@@ -183,6 +207,7 @@ export class MultiProviderQuotaService implements Disposable {
 
   updateProviderQuota(provider: 'claude', state: ProviderQuotaState<'claude'>): void;
   updateProviderQuota(provider: 'codex', state: ProviderQuotaState<'codex'>): void;
+  updateProviderQuota(provider: 'zai', state: ProviderQuotaState<'zai'>): void;
   updateProviderQuota(provider: RuntimeQuotaProvider, state: ProviderQuotaState): void {
     if (provider === 'claude') {
       const nextState = this.withClaudeAccountDetails({
@@ -197,6 +222,20 @@ export class MultiProviderQuotaService implements Disposable {
       this.quotaByProvider = {
         ...this.quotaByProvider,
         claude: nextState,
+      };
+      this.emit();
+      return;
+    }
+
+    if (provider === 'zai') {
+      const nextState: ProviderQuotaState<'zai'> = {
+        ...state,
+        runtimeProvider: 'zai',
+        providerId: 'zai',
+      };
+      this.quotaByProvider = {
+        ...this.quotaByProvider,
+        zai: nextState,
       };
       this.emit();
       return;
@@ -220,6 +259,11 @@ export class MultiProviderQuotaService implements Disposable {
     this.codexSubscription = null;
     if (this.ownsCodexWatcher) {
       this.codexWatcher?.dispose();
+    }
+    this.zaiSubscription?.dispose();
+    this.zaiSubscription = null;
+    if (this.ownsZaiWatcher) {
+      this.zaiWatcher?.dispose();
     }
     this.listeners.splice(0, this.listeners.length);
   }

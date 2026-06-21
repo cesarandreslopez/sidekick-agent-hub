@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **z.ai Coding Plan quota derivation**: New `zaiQuota.ts` and `zaiQuotaWatcher.ts` modules derive an estimated `QuotaState` for z.ai coding plans from OpenCode assistant turns tagged `providerID ∈ {zai, zai-coding-plan}`. Because z.ai exposes no quota/usage HTTP API (verified against `docs.z.ai/openapi.json`), utilization is computed by accumulating per-turn tokens into 5-hour and 7-day rolling windows and comparing against the published per-tier prompt budgets (Lite 80/400, Pro 400/2000, Max 1600/8000 prompts per 5h/week). Authoritative reset timestamps are extracted from trapped `1308`/`1310`/`1313`/`1309` business error codes when present. Exports include `accumulateZaiUsage()`, `inferZaiQuotaState()`, `parseZaiQuotaError()`, `resolveZaiTier()`, `ZaiQuotaWatcher`, `ZAI_TIER_BUDGETS`, and `ZAI_PROMPT_INVOCATIONS`
+- **`OpenCodeProvider.getZaiQuotaState()`**: The shared OpenCode provider now derives z.ai quota on demand from the on-disk `opencode.db`. `OpenCodeSessionProvider.getQuotaFromSession()` (VS Code wrapper) wires the derived state into the existing session-based quota pipeline so the dashboard, snapshot, and history see z.ai samples automatically
+- **`OpenCodeDatabase.getAssistantMessagesByProviderId()`**: New query method returns assistant rows tagged with the given providerID(s), used by the z.ai accumulator to walk per-turn token records
+- **Runtime quota provider `'zai'`**: `RuntimeQuotaProvider`, `QuotaHistoryRuntimeProvider`, `QuotaState.providerId`, `ProviderQuotaMap`, and the corresponding Zod schemas all accept `'zai'`. `MultiProviderQuotaService` accepts an optional `zaiWatcher` and a new `updateProviderQuota('zai', …)` overload. `QuotaSnapshotProviderId` widens the snapshot store key to `AccountProviderId | 'zai'` so the derived z.ai quota persists across sessions
+- **`getOpenCodeDataDir()` exported**: Now a public helper
 - **Account Management 2.0 acquisition facade**: New provider-neutral helpers `beginAccountLogin()`, `getAccountLoginStatus()`, `finalizeAccountLogin()`, and `spawnAccountLogin()` let hosts acquire Claude Max and Codex accounts through isolated profile directories before activating them
 - **Provider-neutral account switching**: `listAllAccounts()` and `switchAccount()` expose a single surface over Claude saved accounts and Codex saved profiles. Claude switching now applies canonical profile homes back to the live Claude home, with legacy flat-backup migration handled by `reconcileClaudeAuthState()`
 - **Claude profile primitives**: `getClaudeProfilesDir()`, `getClaudeProfileHome()`, `claudeKeychainSuffix()`, `claudeKeychainService()`, `isClaudeProfileAuthenticated()`, and `readClaudeProfileIdentity()` are exported for hosts that need lower-level profile inspection
@@ -53,6 +58,10 @@ Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contribut
 ### Changed
 
 - **Model parsing**: `parseModelId()` now recognizes legacy Claude IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022`
+
+### Fixed
+
+- **OpenCode data directory resolution**: `getOpenCodeDataDir()` (now exported) probes both the macOS-default `~/Library/Application Support/opencode` and Linux-style `~/.local/share/opencode` candidate paths and returns whichever actually contains `opencode.db`. Previously it returned the platform default unconditionally, which failed on machines where OpenCode writes to the Linux-style path even on macOS
 
 ## [0.17.7] - 2026-04-28
 

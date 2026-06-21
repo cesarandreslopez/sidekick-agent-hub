@@ -12,10 +12,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from './paths';
 import type { QuotaState } from './quota';
-import type { AccountProviderId } from './accountRegistry';
 import { writeQuotaSnapshot } from './quotaSnapshots';
 
-export type QuotaHistoryRuntimeProvider = 'claude' | 'codex';
+export type QuotaHistoryRuntimeProvider = 'claude' | 'codex' | 'zai';
 
 export interface QuotaHistorySample {
   timestamp: string;
@@ -203,7 +202,7 @@ function pruneFileSync(filePath: string, retentionDays: number): { kept: number;
 }
 
 function sampleToQuotaState(sample: QuotaHistorySample): QuotaState {
-  const providerId: AccountProviderId = sample.runtimeProvider === 'claude' ? 'claude-code' : 'codex';
+  const providerId = runtimeProviderToSnapshotProvider(sample.runtimeProvider);
   return {
     fiveHour: { utilization: sample.fiveHour.utilization, resetsAt: sample.fiveHour.resetsAt },
     sevenDay: { utilization: sample.sevenDay.utilization, resetsAt: sample.sevenDay.resetsAt },
@@ -214,6 +213,19 @@ function sampleToQuotaState(sample: QuotaHistorySample): QuotaState {
     capturedAt: sample.timestamp,
     stale: sample.stale,
   };
+}
+
+/**
+ * Maps a runtime provider to the snapshot storage key.
+ * `'zai'` is allowed at the storage layer even though it is not part of
+ * `AccountProviderId` (z.ai has no full account management in v1).
+ */
+function runtimeProviderToSnapshotProvider(
+  runtime: QuotaHistoryRuntimeProvider,
+): 'claude-code' | 'codex' | 'zai' {
+  if (runtime === 'claude') return 'claude-code';
+  if (runtime === 'zai') return 'zai';
+  return 'codex';
 }
 
 async function runAppend(
@@ -253,7 +265,7 @@ async function runAppend(
   // Backwards-compat: keep the latest-snapshot store hot so existing callers (DashboardViewProvider,
   // codex session provider, contextful_desktop) don't have to query history for "latest".
   try {
-    const providerId: AccountProviderId = sample.runtimeProvider === 'claude' ? 'claude-code' : 'codex';
+    const providerId = runtimeProviderToSnapshotProvider(sample.runtimeProvider);
     writeQuotaSnapshot(providerId, sample.providerId, sampleToQuotaState(sample));
   } catch {
     // Snapshot write failures must not poison the history append path.

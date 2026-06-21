@@ -39,6 +39,7 @@ export const quotaFailureKindSchema = z.enum([
 export const quotaProviderIdSchema = z.enum([
   'claude-code',
   'codex',
+  'zai',
 ]) satisfies z.ZodType<NonNullable<QuotaState['providerId']>>;
 
 export const quotaSourceSchema = z.enum([
@@ -102,6 +103,7 @@ export const quotaFailureDescriptorSchema = z.object({
 export const runtimeQuotaProviderSchema = z.enum([
   'claude',
   'codex',
+  'zai',
 ]) satisfies z.ZodType<RuntimeQuotaProvider>;
 
 /** Fields ProviderQuotaState adds on top of QuotaState, minus the provider tag. */
@@ -127,7 +129,13 @@ export const codexProviderQuotaStateSchema = quotaStateSchema.extend({
   ...providerQuotaExtensionShape,
 }) satisfies z.ZodType<ProviderQuotaState<'codex'>>;
 
+export const zaiProviderQuotaStateSchema = quotaStateSchema.extend({
+  runtimeProvider: z.literal('zai'),
+  ...providerQuotaExtensionShape,
+}) satisfies z.ZodType<ProviderQuotaState<'zai'>>;
+
 export const providerQuotaMapSchema = z.object({
   claude: claudeProviderQuotaStateSchema.optional(),
   codex: codexProviderQuotaStateSchema.optional(),
+  zai: zaiProviderQuotaStateSchema.optional(),
 }) satisfies z.ZodType<ProviderQuotaMap>;

@@ -7,12 +7,23 @@ import chalk, { type ChalkInstance } from 'chalk';
 import {
   describeQuotaFailure,
   getActiveAccount,
+  getOpenCodeDataDir,
   CodexProvider,
+  OpenCodeDatabase,
+  ZAI_PROVIDER_IDS,
+  ZAI_TIER_BUDGETS,
+  accumulateZaiUsage,
   getActiveCodexAccount,
+  inferZaiQuotaState,
+  makeUnavailableZaiQuotaState,
+  parseZaiQuotaError,
   resolveCodexQuota,
+  resolveZaiTier,
+  rowsToZaiTurnsAndErrors,
   fetchPeakHoursStatus,
 } from 'sidekick-shared';
 import type { PeakHoursState } from 'sidekick-shared';
+import type { ZaiTier } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
 import { formatPeakHoursLine } from './peakHoursRender';
@@ -64,9 +75,25 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
 
   // Local --provider overrides the global one
   const providerOpts = localOpts.provider ? { provider: localOpts.provider } : globalOpts;
+
+  // z.ai is an inference-routing target, not a session provider. Short-circuit
+  // before resolveProvider() so the user doesn't need --provider opencode.
+  if (providerOpts.provider === 'zai') {
+    await zaiQuotaAction(globalOpts, localOpts, jsonOutput);
+    return;
+  }
+
   const provider = resolveProvider(providerOpts);
 
   if (provider.id === 'opencode') {
+    // Try z.ai anyway — OpenCode is the only session source that carries
+    // z.ai-routed turns today. If z.ai routing is active, show its quota;
+    // otherwise emit the legacy "no rate-limit data" message.
+    if (await detectZaiRouting()) {
+      provider.dispose();
+      await zaiQuotaAction(globalOpts, localOpts, jsonOutput);
+      return;
+    }
     provider.dispose();
     const msg = 'OpenCode does not provide rate-limit data.';
     if (jsonOutput) {
@@ -252,24 +279,159 @@ function printCodexQuota(
   }
 }
 
+// ── z.ai (GLM Coding Plan) ──
+
+function resolveZaiTierOption(localOpts: Record<string, unknown>): ZaiTier | 'auto' {
+  const raw = localOpts.tier;
+  if (raw === 'lite' || raw === 'pro' || raw === 'max') return raw;
+  return 'auto';
+}
+
+/**
+ * Heuristic: does the local OpenCode install currently route at z.ai?
+ * Used to auto-pick z.ai for `sidekick quota` when no explicit provider is set.
+ */
+async function detectZaiRouting(): Promise<boolean> {
+  try {
+    const db = new OpenCodeDatabase(getOpenCodeDataDir());
+    if (!db.isAvailable() || !db.open()) return false;
+    const rows = db.getAssistantMessagesByProviderId(
+      [...ZAI_PROVIDER_IDS],
+      Date.now() - 7 * 86_400_000,
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchZaiQuotaPayload(localOpts: Record<string, unknown>): Promise<{
+  quota: ReturnType<typeof makeUnavailableZaiQuotaState> | ReturnType<typeof inferZaiQuotaState>;
+  detected: boolean;
+}> {
+  const sinceMs = Date.now() - 7 * 86_400_000;
+  let rows: ReturnType<typeof rowsToZaiTurnsAndErrors>['turns'] = [];
+  let detected = false;
+  try {
+    const db = new OpenCodeDatabase(getOpenCodeDataDir());
+    if (db.isAvailable() && db.open()) {
+      const rawRows = db.getAssistantMessagesByProviderId([...ZAI_PROVIDER_IDS], sinceMs);
+      detected = rawRows.length > 0;
+      const parsed = rowsToZaiTurnsAndErrors(rawRows);
+      rows = parsed.turns;
+    }
+  } catch {
+    // Fall through with empty rows → unavailable.
+  }
+
+  if (rows.length === 0) {
+    return {
+      quota: makeUnavailableZaiQuotaState('No z.ai usage observed in the last 7 days.'),
+      detected,
+    };
+  }
+
+  const accumulated = accumulateZaiUsage(rows, Date.now());
+  const configuredTier = resolveZaiTierOption(localOpts);
+  const tier = resolveZaiTier(configuredTier, accumulated);
+
+  // Walk rows once more to trap any z.ai business errors captured in
+  // message.error.code. Most recent authoritative reset wins.
+  let authoritativeFiveHourResetAt: string | undefined;
+  let authoritativeWeeklyResetAt: string | undefined;
+  try {
+    const db = new OpenCodeDatabase(getOpenCodeDataDir());
+    if (db.isAvailable() && db.open()) {
+      const rawRows = db.getAssistantMessagesByProviderId([...ZAI_PROVIDER_IDS], sinceMs);
+      for (const row of rawRows) {
+        const parsed = parseZaiQuotaError({
+          code: row.errorCode ?? undefined,
+          message: row.errorMessage ?? undefined,
+        });
+        if (!parsed?.resetsAt) continue;
+        if (parsed.kind === 'exhausted') {
+          authoritativeFiveHourResetAt = parsed.resetsAt;
+          if (String(parsed.code) === '1310') authoritativeWeeklyResetAt = parsed.resetsAt;
+        }
+      }
+    }
+  } catch {
+    // Optional refinement — ignore failures.
+  }
+
+  const quota = inferZaiQuotaState(accumulated, tier, {
+    authoritativeFiveHourResetAt,
+    authoritativeWeeklyResetAt,
+  });
+  return { quota, detected };
+}
+
+async function zaiQuotaAction(
+  _globalOpts: Record<string, unknown>,
+  localOpts: Record<string, unknown>,
+  jsonOutput: boolean,
+): Promise<void> {
+  const { quota } = await fetchZaiQuotaPayload(localOpts);
+
+  if (!quota.available) {
+    if (jsonOutput) {
+      process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
+    } else {
+      process.stderr.write(chalk.yellow(quota.error ?? 'z.ai quota data is unavailable.') + '\n');
+    }
+    return;
+  }
+
+  if (jsonOutput) {
+    process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
+    return;
+  }
+
+  printZaiQuota(quota);
+}
+
+function printZaiQuota(quota: ReturnType<typeof inferZaiQuotaState>): void {
+  const barWidth = 30;
+  const fivePct = Math.round(quota.fiveHour.utilization);
+  const sevenPct = Math.round(quota.sevenDay.utilization);
+  const fiveReset = quota.fiveHour.resetsAt ? formatTimeUntil(quota.fiveHour.resetsAt) : '';
+  const sevenReset = quota.sevenDay.resetsAt ? formatTimeUntil(quota.sevenDay.resetsAt) : '';
+  const tier = (quota.planType ?? 'auto') as ZaiTier | 'auto';
+  const tierBudget = tier === 'auto' ? null : ZAI_TIER_BUDGETS[tier];
+
+  process.stdout.write(chalk.bold('z.ai Coding Plan') + chalk.dim(` (estimated, tier: ${tier})\n`));
+  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
+  process.stdout.write(`  ${chalk.dim('5-Hour')}   ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%   ${fiveReset ? chalk.dim('resets ' + fiveReset) : ''}\n`);
+  process.stdout.write(`  ${chalk.dim('Weekly')}    ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
+  if (tierBudget) {
+    process.stdout.write(chalk.dim(`  budgets: ${tierBudget.fiveHour}/5h, ${tierBudget.weekly}/week (prompts)\n`));
+  }
+  process.stdout.write(chalk.dim('  z.ai exposes no quota API; utilization is derived from observed traffic.\n'));
+}
+
 async function allQuotaAction(
   globalOpts: Record<string, unknown>,
   localOpts: Record<string, unknown>,
   jsonOutput: boolean,
 ): Promise<void> {
   const codexProvider = new CodexProvider();
-  const [{ quota: claude, peak }, codex] = await Promise.all([
+  const [{ quota: claude, peak }, codex, zai] = await Promise.all([
     fetchClaudeQuotaPayload(),
     fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts),
+    fetchZaiQuotaPayload(localOpts),
   ]);
 
   if (jsonOutput) {
-    process.stdout.write(JSON.stringify({ claude: { ...claude, peak }, codex }, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({
+      claude: { ...claude, peak },
+      codex,
+      zai: zai.quota,
+    }, null, 2) + '\n');
     return;
   }
 
-  // Render both providers from the already-fetched payloads. A failure in one
-  // provider must not suppress the other, so each side degrades independently
+  // Render all providers from the already-fetched payloads. A failure in one
+  // provider must not suppress the others, so each side degrades independently
   // (no process.exit, no re-fetch).
   process.stdout.write(chalk.bold('Claude\n'));
   if (claude.available) {
@@ -283,5 +445,16 @@ async function allQuotaAction(
     printCodexQuota(codex);
   } else {
     process.stderr.write(chalk.yellow(codex.error ?? 'Codex rate-limit data is unavailable.') + '\n');
+  }
+
+  // Only show z.ai when we actually have observed traffic — otherwise the
+  // section is noise.
+  if (zai.detected || zai.quota.available) {
+    process.stdout.write('\n' + chalk.bold('z.ai\n'));
+    if (zai.quota.available) {
+      printZaiQuota(zai.quota);
+    } else {
+      process.stderr.write(chalk.yellow(zai.quota.error ?? 'z.ai quota data is unavailable.') + '\n');
+    }
   }
 }

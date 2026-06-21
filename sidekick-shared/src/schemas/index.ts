@@ -37,6 +37,7 @@ export {
   providerQuotaStateSchema,
   claudeProviderQuotaStateSchema,
   codexProviderQuotaStateSchema,
+  zaiProviderQuotaStateSchema,
   providerQuotaMapSchema,
 } from './quota';
 export type { QuotaWindow, QuotaState } from '../quota';

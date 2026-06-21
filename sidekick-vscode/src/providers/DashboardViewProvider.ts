@@ -1671,9 +1671,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const from = new Date(fromMs).toISOString();
     const to = new Date(toMs).toISOString();
     try {
-      const [claude, codex] = await Promise.all([
+      const [claude, codex, zai] = await Promise.all([
         readQuotaHistoryDailyBuckets({ workspaceId, provider: 'claude', from, to }),
         readQuotaHistoryDailyBuckets({ workspaceId, provider: 'codex', from, to }),
+        readQuotaHistoryDailyBuckets({ workspaceId, provider: 'zai', from, to }),
       ]);
       const toCells = (buckets: Awaited<ReturnType<typeof readQuotaHistoryDailyBuckets>>): QuotaHistoryDailyCell[] =>
         buckets.map(b => ({
@@ -1684,11 +1685,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }));
       const claudeHasData = claude.some(b => b.samples > 0);
       const codexHasData = codex.some(b => b.samples > 0);
+      const zaiHasData = zai.some(b => b.samples > 0);
       const payload: QuotaHistoryPayload = {
         weeks,
         providers: {
           ...(claudeHasData ? { claude: { cells: toCells(claude) } } : {}),
           ...(codexHasData ? { codex: { cells: toCells(codex) } } : {}),
+          ...(zaiHasData ? { zai: { cells: toCells(zai) } } : {}),
         },
         generatedAt: new Date().toISOString(),
       };
@@ -1703,7 +1706,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     quotaFailure?: QuotaFailureDisplay
   ): void {
     const providerId = this._sessionMonitor.getProvider().id;
-    const supportsQuotaAlerts = providerId === 'claude-code' || providerId === 'codex';
+    // z.ai rides on OpenCode sessions, so an opencode session provider with
+    // active z.ai routing also surfaces quota alerts.
+    const supportsQuotaAlerts = providerId === 'claude-code' || providerId === 'codex' || providerId === 'opencode';
     if (!supportsQuotaAlerts || quota.available || !quotaFailure) {
       this._lastQuotaAlertKey = null;
       return;
@@ -6738,6 +6743,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             metaParts.push('Cached ' + (quota.capturedAt ? new Date(quota.capturedAt).toLocaleString() : 'snapshot'));
           } else if (quota.providerId === 'codex') {
             metaParts.push('Live session');
+          } else if (quota.providerId === 'zai') {
+            metaParts.push('Estimated from observed traffic');
           }
           metaEl.textContent = metaParts.join(' • ');
           metaEl.style.display = metaParts.length ? 'block' : 'none';

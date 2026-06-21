@@ -130,7 +130,7 @@ export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 export type { ProviderId, SessionProvider, SessionProviderBase, SessionFileStats, SessionFileInfo, SearchHit, ProjectFolderInfo, SessionReader, ProviderRuntimeStatus } from './providers/types';
 export { detectProvider, getAllDetectedProviders } from './providers/detect';
 export { ClaudeCodeProvider } from './providers/claudeCode';
-export { OpenCodeProvider } from './providers/openCode';
+export { OpenCodeProvider, getOpenCodeDataDir } from './providers/openCode';
 export { CodexProvider } from './providers/codex';
 
 // Parsers — JSONL
@@ -460,9 +460,36 @@ export type {
 } from './codexQuota';
 export { CodexQuotaWatcher } from './codexQuotaWatcher';
 export type { CodexQuotaWatcherOptions } from './codexQuotaWatcher';
+export {
+  accumulateZaiUsage,
+  extractNextFlushTime,
+  inferZaiQuotaState,
+  isZaiProviderId,
+  makeUnavailableZaiQuotaState,
+  parseZaiQuotaError,
+  resolveZaiTier,
+  rowsToZaiTurnsAndErrors,
+  turnTokenWeight,
+  ZAI_PROMPT_INVOCATIONS,
+  ZAI_PROVIDER_IDS,
+  ZAI_TIER_BUDGETS,
+} from './zaiQuota';
+export type {
+  ZaiAccumulatedUsage,
+  ZaiAssistantTurn,
+  ZaiOpenCodeRow,
+  ZaiProviderId,
+  ZaiQuotaError,
+  ZaiQuotaErrorKind,
+  ZaiTier,
+  InferZaiQuotaStateOptions,
+} from './zaiQuota';
+export { ZaiQuotaWatcher } from './zaiQuotaWatcher';
+export type { ZaiQuotaWatcherOptions } from './zaiQuotaWatcher';
 export { MultiProviderQuotaService } from './multiProviderQuotaService';
 export type { MultiProviderQuotaServiceOptions } from './multiProviderQuotaService';
 export type { ProviderQuotaMap, ProviderQuotaState, RuntimeQuotaProvider } from './providerQuota';
+export type { QuotaSnapshotProviderId } from './quotaSnapshots';
 
 // Model Context
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
@@ -544,6 +571,7 @@ export {
   providerQuotaStateSchema,
   claudeProviderQuotaStateSchema,
   codexProviderQuotaStateSchema,
+  zaiProviderQuotaStateSchema,
   providerQuotaMapSchema,
 } from './schemas/quota';
 

@@ -84,7 +84,7 @@ export interface QuotaState {
   /** Projected 7-day utilization at reset time (percentage) */
   projectedSevenDay?: number;
   /** Provider that produced this quota sample */
-  providerId?: 'claude-code' | 'codex';
+  providerId?: 'claude-code' | 'codex' | 'zai';
   /** Source of the sample */
   source?: 'api' | 'session' | 'cache';
   /** When the sample was captured */
@@ -133,6 +133,7 @@ export interface QuotaHistoryPayload {
   providers: {
     claude?: { cells: QuotaHistoryDailyCell[] };
     codex?: { cells: QuotaHistoryDailyCell[] };
+    zai?: { cells: QuotaHistoryDailyCell[] };
   };
   /** ISO timestamp when the payload was generated. */
   generatedAt: string;

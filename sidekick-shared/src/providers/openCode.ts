@@ -28,6 +28,9 @@ import type {
 import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput } from '../parsers/openCodeParser';
 import { OpenCodeDatabase } from './openCodeDatabase';
 import type { DbPart } from './openCodeDatabase';
+import { accumulateZaiUsage, inferZaiQuotaState, parseZaiQuotaError, ZAI_PROVIDER_IDS } from '../zaiQuota';
+import type { ZaiAssistantTurn, ZaiTier } from '../zaiQuota';
+import type { QuotaState } from '../quota';
 import type { SessionProviderBase, SessionReader, ProjectFolderInfo, SearchHit, SessionFileStats, ProviderId, ProviderRuntimeStatus } from './types';
 import type { SessionEvent, TokenUsage, SubagentStats, ContextAttribution, ToolCall } from '../types/sessionEvent';
 import type { OpenCodeSession, OpenCodeMessage, OpenCodePart, OpenCodeProject } from '../types/opencode';
@@ -39,18 +42,43 @@ import { getModelContextWindowSize } from '../modelContext';
 
 /**
  * Gets the OpenCode data directory.
- * Respects XDG_DATA_HOME if set, otherwise uses ~/.local/share/opencode/
+ *
+ * Resolves in priority order: `XDG_DATA_HOME` (if set), then whichever of
+ * the platform-default candidates actually contains an `opencode.db` file.
+ * OpenCode's CLI has historically used the Linux-style `~/.local/share/opencode`
+ * path even on macOS, so we probe both and pick whichever exists — falling
+ * back to the platform default when neither is present yet.
  */
-function getOpenCodeDataDir(): string {
+export function getOpenCodeDataDir(): string {
   const xdg = process.env.XDG_DATA_HOME;
-  if (xdg) {
-    return path.join(xdg, 'opencode');
+  if (xdg) return path.join(xdg, 'opencode');
+
+  const candidates = [path.join(os.homedir(), '.local', 'share', 'opencode')];
+  if (process.platform === 'darwin') {
+    candidates.push(path.join(os.homedir(), 'Library', 'Application Support', 'opencode'));
+  } else if (process.platform === 'win32') {
+    candidates.push(path.join(
+      process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'),
+      'opencode',
+    ));
   }
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(path.join(candidate, 'opencode.db'))) return candidate;
+    } catch {
+      // ignore — try the next candidate.
+    }
+  }
+  // Nothing found yet — return the platform default so a fresh OpenCode
+  // install gets detected at the conventional location for this OS.
   if (process.platform === 'darwin') {
     return path.join(os.homedir(), 'Library', 'Application Support', 'opencode');
   }
   if (process.platform === 'win32') {
-    return path.join(process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'opencode');
+    return path.join(
+      process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'),
+      'opencode',
+    );
   }
   return path.join(os.homedir(), '.local', 'share', 'opencode');
 }
@@ -1672,5 +1700,90 @@ export class OpenCodeProvider implements SessionProviderBase {
     this.dbInitialized = false;
     this.sessionMetaCache.clear();
     this.dynamicContextWindowLimit = null;
+  }
+
+  // --- z.ai (GLM Coding Plan) quota derivation ---
+
+  /**
+   * Derives a z.ai coding-plan `QuotaState` from OpenCode assistant turns
+   * tagged with `providerID ∈ {zai, zai-coding-plan}`.
+   *
+   * z.ai does not expose a quota API (verified vs. docs.z.ai/openapi.json),
+   * so this method accumulates observed per-turn tokens from OpenCode's DB
+   * into 5-hour / 7-day rolling windows and infers utilization against the
+   * configured tier budget. Returns null when no z.ai routing is detected.
+   *
+   * @param tier  Plan tier; `'auto'` infers from observed weekly volume.
+   *              When the caller has no opinion, the heuristic falls back to
+   *              `'max'` (conservative — small overcount rather than large).
+   */
+  getZaiQuotaState(tier: ZaiTier | 'auto' = 'auto'): QuotaState | null {
+    const db = this.ensureDb();
+    if (!db) return null;
+
+    const sinceMs = Date.now() - 7 * 86_400_000;
+    let rawRows: ReturnType<OpenCodeDatabase['getAssistantMessagesByProviderId']> = [];
+    try {
+      rawRows = db.getAssistantMessagesByProviderId([...ZAI_PROVIDER_IDS], sinceMs);
+    } catch {
+      return null;
+    }
+    if (rawRows.length === 0) return null;
+
+    const turns: ZaiAssistantTurn[] = rawRows.map(row => ({
+      timestampMs: row.timeCreated,
+      model: row.modelId,
+      inputTokens: row.inputTokens || 0,
+      outputTokens: row.outputTokens || 0,
+      cacheReadTokens: row.cacheReadTokens || 0,
+      cacheWriteTokens: row.cacheWriteTokens || 0,
+      reasoningTokens: row.reasoningTokens || 0,
+    }));
+
+    const accumulated = accumulateZaiUsage(turns, Date.now());
+    // Default to 'max' on auto when usage is non-zero — overestimating the
+    // tier gives a lower (safer) utilization % until calibration runs.
+    const resolvedTier: ZaiTier = tier === 'auto'
+      ? (accumulated.weeklyTurns > 0 ? 'max' : 'lite')
+      : tier;
+
+    // Walk rows again to trap any captured z.ai business errors.
+    let authoritativeFiveHourResetAt: string | undefined;
+    let authoritativeWeeklyResetAt: string | undefined;
+    for (const row of rawRows) {
+      if (row.errorCode == null && !row.errorMessage) continue;
+      const parsed = parseZaiQuotaError({
+        code: row.errorCode ?? undefined,
+        message: row.errorMessage ?? undefined,
+      });
+      if (!parsed?.resetsAt) continue;
+      if (parsed.kind === 'exhausted') {
+        authoritativeFiveHourResetAt = parsed.resetsAt;
+        if (String(parsed.code) === '1310') authoritativeWeeklyResetAt = parsed.resetsAt;
+      }
+    }
+
+    return inferZaiQuotaState(accumulated, resolvedTier, {
+      authoritativeFiveHourResetAt,
+      authoritativeWeeklyResetAt,
+    });
+  }
+
+  /**
+   * Cheap boolean: does the local OpenCode install currently route at z.ai?
+   * Used by callers to decide whether to render a z.ai quota surface.
+   */
+  isZaiRoutingActive(): boolean {
+    const db = this.ensureDb();
+    if (!db) return false;
+    try {
+      const rows = db.getAssistantMessagesByProviderId(
+        [...ZAI_PROVIDER_IDS],
+        Date.now() - 7 * 86_400_000,
+      );
+      return rows.length > 0;
+    } catch {
+      return false;
+    }
   }
 }

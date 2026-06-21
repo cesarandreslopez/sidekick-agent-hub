@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **z.ai Coding Plan quota**: `sidekick quota --provider zai` derives and renders z.ai plan utilization from OpenCode traffic already on disk (5-Hour / Weekly windows with per-tier prompt budgets). `--tier lite|pro|max|auto` overrides the assumed plan tier (default `auto`). `sidekick quota --provider opencode` now auto-routes to z.ai quota when z.ai traffic is detected. `sidekick quota --all` includes the z.ai section when active
+- **z.ai quota history heatmap**: `sidekick quota history --provider zai` renders a 13-week z.ai utilization heatmap for the current workspace, alongside the existing Claude and Codex heatmaps (now also in `--all`)
 - **Account login**: `sidekick account --login` starts the provider-isolated login flow for Claude Max or Codex and saves the authenticated profile without disturbing the active account until finalization
 - **All-provider account view**: `sidekick account --provider all` lists Claude and Codex saved accounts together, including active state. JSON output returns provider-keyed account arrays and active ids
 - **Terminal account helpers**: `sidekick account --launcher <name>` creates opt-in launchers for the selected account, and `--auto-switch <pct|off>` persists the CLI auto-switch threshold preference

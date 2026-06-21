@@ -78,11 +78,13 @@ describe('formatTimeUntil', () => {
 
 // ── quotaAction ──
 
-const { mockFetchOnce, mockResolveCodexQuota, mockResolveProvider, mockFetchPeakHoursStatus } = vi.hoisted(() => ({
+const { mockFetchOnce, mockResolveCodexQuota, mockResolveProvider, mockFetchPeakHoursStatus, mockZaiRows, mockZaiRouting } = vi.hoisted(() => ({
   mockFetchOnce: vi.fn(),
   mockResolveCodexQuota: vi.fn(),
   mockResolveProvider: vi.fn(),
   mockFetchPeakHoursStatus: vi.fn(),
+  mockZaiRows: vi.fn(() => []),
+  mockZaiRouting: vi.fn(() => false),
 }));
 
 vi.mock('sidekick-shared', () => ({
@@ -90,9 +92,59 @@ vi.mock('sidekick-shared', () => ({
     id = 'codex';
     dispose = vi.fn();
   },
+  OpenCodeDatabase: class {
+    isAvailable = () => true;
+    open = () => true;
+    getAssistantMessagesByProviderId = () => mockZaiRows();
+  },
+  ZAI_PROVIDER_IDS: ['zai', 'zai-coding-plan'],
+  ZAI_TIER_BUDGETS: { lite: { fiveHour: 80, weekly: 400 }, pro: { fiveHour: 400, weekly: 2000 }, max: { fiveHour: 1600, weekly: 8000 } },
+  accumulateZaiUsage: (turns: unknown[]) => ({
+    fiveHourTurns: turns.length,
+    weeklyTurns: turns.length,
+    fiveHourTokens: 0,
+    weeklyTokens: 0,
+    fiveHourPrompts: turns.length / 17.5,
+    weeklyPrompts: turns.length / 17.5,
+    fiveHourStartedAtMs: turns.length ? Date.now() - 60_000 : null,
+    weeklyStartedAtMs: turns.length ? Date.now() - 60_000 : null,
+  }),
   getActiveAccount: () => null,
   getActiveCodexAccount: () => ({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' }),
+  inferZaiQuotaState: (_acc: unknown, tier: string) => ({
+    fiveHour: { utilization: 5, resetsAt: '' },
+    sevenDay: { utilization: 1, resetsAt: '' },
+    available: true,
+    providerId: 'zai',
+    source: 'session',
+    capturedAt: new Date().toISOString(),
+    fiveHourLabel: '5-Hour',
+    sevenDayLabel: 'Weekly',
+    planType: tier,
+  }),
+  makeUnavailableZaiQuotaState: (error?: string) => ({
+    fiveHour: { utilization: 0, resetsAt: '' },
+    sevenDay: { utilization: 0, resetsAt: '' },
+    available: false,
+    error: error ?? 'unavailable',
+    providerId: 'zai',
+    source: 'session',
+    capturedAt: new Date().toISOString(),
+    stale: true,
+    fiveHourLabel: '5-Hour',
+    sevenDayLabel: 'Weekly',
+    planType: 'auto',
+  }),
+  parseZaiQuotaError: (error: { code?: string | number; message?: string }) => {
+    const code = String(error?.code ?? '');
+    if (code === '1308' || code === '1310' || code === '1313' || code === '1309') {
+      return { kind: 'exhausted', code, message: error?.message ?? '', resetsAt: undefined };
+    }
+    return null;
+  },
   resolveCodexQuota: mockResolveCodexQuota,
+  resolveZaiTier: () => 'lite',
+  rowsToZaiTurnsAndErrors: (rows: unknown[]) => ({ turns: rows, errors: [] }),
   fetchPeakHoursStatus: (...args: unknown[]) => mockFetchPeakHoursStatus(...args),
   createPeakHoursNotApplicableState: (providerId: string) => ({
     status: 'unknown',

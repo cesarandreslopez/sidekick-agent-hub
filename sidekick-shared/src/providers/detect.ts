@@ -9,16 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import type { ProviderId } from './types';
 import { getCodexMonitoringHomes } from '../codexProfiles';
-
-function getOpenCodeDataDir(): string {
-  const xdg = process.env.XDG_DATA_HOME;
-  if (xdg) return path.join(xdg, 'opencode');
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'opencode');
-  if (process.platform === 'win32') {
-    return path.join(process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'opencode');
-  }
-  return path.join(os.homedir(), '.local', 'share', 'opencode');
-}
+import { getOpenCodeDataDir } from './openCode';
 
 function getCodexHomes(): string[] {
   return getCodexMonitoringHomes();

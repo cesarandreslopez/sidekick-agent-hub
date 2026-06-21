@@ -2,7 +2,7 @@ import type { PeakHoursState } from './peakHours';
 import type { QuotaState } from './quota';
 import type { QuotaFailureDescriptor } from './quotaPresentation';
 
-export type RuntimeQuotaProvider = 'claude' | 'codex';
+export type RuntimeQuotaProvider = 'claude' | 'codex' | 'zai';
 
 export interface ProviderQuotaState<
   TProvider extends RuntimeQuotaProvider = RuntimeQuotaProvider,
@@ -17,4 +17,5 @@ export interface ProviderQuotaState<
 export interface ProviderQuotaMap {
   claude?: ProviderQuotaState<'claude'>;
   codex?: ProviderQuotaState<'codex'>;
+  zai?: ProviderQuotaState<'zai'>;
 }

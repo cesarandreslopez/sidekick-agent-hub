@@ -92,6 +92,18 @@
             "minimum": 0,
             "maximum": 100,
             "description": "Quota utilization percentage that triggers automatic account switching. Set to 0 to disable."
+          },
+          "sidekick.zai.tier": {
+            "type": "string",
+            "enum": ["auto", "lite", "pro", "max"],
+            "default": "auto",
+            "description": "z.ai coding-plan tier. 'auto' infers from observed weekly volume (defaults to 'max' when uncertain for safer under-reporting). Used to compute utilization against the published per-tier prompt budgets.",
+            "enumDescriptions": [
+              "Auto — infer tier from observed usage; falls back to 'max' until sufficient volume accrues.",
+              "Lite plan (~80 prompts / 5 hours, ~400 prompts / week).",
+              "Pro plan (~400 prompts / 5 hours, ~2000 prompts / week).",
+              "Max plan (~1600 prompts / 5 hours, ~8000 prompts / week)."
+            ]
           }
         }
       },

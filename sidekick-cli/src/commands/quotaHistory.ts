@@ -30,6 +30,7 @@ interface QuotaHistoryPayload {
   providers: {
     claude?: { cells: QuotaHistoryDailyCell[] };
     codex?: { cells: QuotaHistoryDailyCell[] };
+    zai?: { cells: QuotaHistoryDailyCell[] };
   };
   generatedAt: string;
 }
@@ -148,6 +149,7 @@ function parseProviderFilter(value: unknown): QuotaHistoryRuntimeProvider | 'aut
   const lower = value.toLowerCase();
   if (lower === 'claude' || lower === 'claude-code') return 'claude';
   if (lower === 'codex') return 'codex';
+  if (lower === 'zai' || lower === 'z.ai') return 'zai';
   return 'auto';
 }
 
@@ -179,7 +181,7 @@ export async function quotaHistoryAction(
   const to = new Date(toMs).toISOString();
 
   const wanted: QuotaHistoryRuntimeProvider[] =
-    providerFilter === 'auto' ? ['claude', 'codex'] : [providerFilter];
+    providerFilter === 'auto' ? ['claude', 'codex', 'zai'] : [providerFilter];
 
   const providerCells: Partial<Record<QuotaHistoryRuntimeProvider, QuotaHistoryDailyCell[]>> = {};
   for (const provider of wanted) {
@@ -193,6 +195,7 @@ export async function quotaHistoryAction(
     providers: {
       ...(providerCells.claude ? { claude: { cells: providerCells.claude } } : {}),
       ...(providerCells.codex ? { codex: { cells: providerCells.codex } } : {}),
+      ...(providerCells.zai ? { zai: { cells: providerCells.zai } } : {}),
     },
     generatedAt: new Date().toISOString(),
   };
@@ -205,11 +208,12 @@ export async function quotaHistoryAction(
   const sections: string[] = [];
   const claudeHasData = (payload.providers.claude?.cells ?? []).some(c => c.samples > 0);
   const codexHasData = (payload.providers.codex?.cells ?? []).some(c => c.samples > 0);
+  const zaiHasData = (payload.providers.zai?.cells ?? []).some(c => c.samples > 0);
 
-  if (providerFilter === 'auto' && !claudeHasData && !codexHasData) {
+  if (providerFilter === 'auto' && !claudeHasData && !codexHasData && !zaiHasData) {
     process.stdout.write(
       chalk.yellow(`No quota history yet for workspace ${chalk.bold(workspaceId)}.`) + '\n' +
-        chalk.dim(`Run a Claude Max or Codex session in this workspace, or override with --workspace <path>.`) + '\n',
+        chalk.dim(`Run a Claude Max, Codex, or z.ai/OpenCode session in this workspace, or override with --workspace <path>.`) + '\n',
     );
     return;
   }
@@ -219,6 +223,9 @@ export async function quotaHistoryAction(
   }
   if (payload.providers.codex && (providerFilter !== 'auto' || codexHasData)) {
     sections.push(renderProviderHeatmap('Codex', payload.providers.codex.cells, weeks));
+  }
+  if (payload.providers.zai && (providerFilter !== 'auto' || zaiHasData)) {
+    sections.push(renderProviderHeatmap('z.ai', payload.providers.zai.cells, weeks));
   }
 
   const header = chalk.dim(`workspace ${workspaceId}  ·  ${from.slice(0, 10)} → ${to.slice(0, 10)}`);

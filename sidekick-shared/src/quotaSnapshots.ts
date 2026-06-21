@@ -5,8 +5,15 @@ import { getConfigDir } from './paths';
 import type { QuotaState } from './quota';
 import type { AccountProviderId } from './accountRegistry';
 
+/**
+ * Storage key for a quota snapshot. Extends `AccountProviderId` with `'zai'`
+ * because z.ai has no full account-management surface in v1, but the snapshot
+ * store still needs a stable key for the derived z.ai quota cache.
+ */
+export type QuotaSnapshotProviderId = AccountProviderId | 'zai';
+
 interface QuotaSnapshotRecord {
-  providerId: AccountProviderId;
+  providerId: QuotaSnapshotProviderId;
   accountId: string;
   quota: QuotaState;
 }
@@ -91,7 +98,7 @@ function shouldKeepExistingSnapshot(existing: QuotaState, next: QuotaState): boo
   return snapshotTimeMs(existing) > snapshotTimeMs(next);
 }
 
-export function writeQuotaSnapshot(providerId: AccountProviderId, accountId: string, quota: QuotaState): void {
+export function writeQuotaSnapshot(providerId: QuotaSnapshotProviderId, accountId: string, quota: QuotaState): void {
   const store = readStore();
   const snapshot: QuotaState = {
     ...quota,
@@ -121,7 +128,7 @@ export function writeQuotaSnapshot(providerId: AccountProviderId, accountId: str
   writeStore(store);
 }
 
-export function readQuotaSnapshot(providerId: AccountProviderId, accountId: string): QuotaState | null {
+export function readQuotaSnapshot(providerId: QuotaSnapshotProviderId, accountId: string): QuotaState | null {
   const store = readStore();
   const snapshot = store.snapshots.find(item => item.providerId === providerId && item.accountId === accountId);
   if (!snapshot) return null;
