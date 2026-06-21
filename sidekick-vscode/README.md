@@ -19,7 +19,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 - **Richer conversation view** — the transcript now interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode sessions.
 - **Session asset extraction** — `Sidekick: Extract Session Assets` searches recent chats for URLs, files, commands, and plans, then opens or copies them from a native QuickPick.
 - **Quota-history heatmap** — a 13-week, per-workspace, GitHub-style view of session-limit utilization in the dashboard.
-- **Multi-account management** — switch between Claude Code and Codex accounts from the status bar menu and Command Palette.
+- **Multi-account management** — sign in to new Claude Code and Codex accounts, switch across all saved accounts from one picker (status bar menu or Command Palette), and opt into quota-based auto-switching via the `sidekick.accounts.autoSwitchThreshold` setting.
 
 See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/CHANGELOG.md) for everything.
 
@@ -174,6 +174,11 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Review Changes | SCM eye icon | Pre-commit review |
 | Generate PR Description | SCM PR icon | Auto-generate PR description |
 | Switch Provider | — | Change inference provider |
+| Save Current Account | — | Save the active Claude Code/Codex account |
+| Add Account (Sign In) | — | Sign in and save a new account via the integrated terminal |
+| Switch Account | — | Switch the active provider's account |
+| Switch Account (All Providers) | — | Pick any saved Claude Code/Codex account |
+| Remove Account | — | Remove a saved account |
 | Open Dashboard | — | Open session analytics |
 | Dump Session Report | — | Export session data as text/markdown/JSON/HTML |
 | Generate HTML Report | — | Full transcript report in a webview panel |

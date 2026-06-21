@@ -172,6 +172,8 @@ Use `--json` for machine-readable output. Use `--provider codex` to explicitly c
 
 When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
 
+Use `sidekick quota --all` to show Claude and Codex quota together in a single run. Each provider degrades independently — if one provider's quota can't be fetched, its error is shown inline and the other still renders (the command never aborts on a single provider's failure). `--all --json` emits a `{ claude, codex }` payload for dashboards and automation.
+
 ### Quota History
 
 ```bash
@@ -204,14 +206,17 @@ On first CLI startup, Sidekick auto-registers the active system Claude Code and 
 
 | Flag | Description |
 |------|-------------|
-| `--provider <id>` | Provider: `claude-code` (default) or `codex` |
+| `--provider <id>` | Provider: `claude-code` (default), `codex`, or `all` |
 | `--add` | Save the currently signed-in account |
-| `--label <name>` | Label for the account (use with `--add`; required for Codex) |
+| `--login` | Sign in and save a **new** account via a provider-isolated login flow, without disturbing the active account until finalization |
+| `--label <name>` | Label for the account (required for Codex and `--login`; optional for Claude `--add`) |
 | `--switch` | Switch to the next saved account |
 | `--switch-to <id>` | Switch to a specific account by email, label, or ID |
 | `--remove <id>` | Remove a saved account by email, label, or ID |
+| `--launcher <name>` | Create an opt-in per-account terminal launcher for the active account |
+| `--auto-switch <pct\|off>` | Persist the auto-switch quota threshold (1–100), or `off` to disable. Continuous auto-switching runs in a long-running host such as VS Code |
 
-With no flags, lists all saved accounts and marks the active one. Use `--json` for machine-readable output.
+With no flags, lists all saved accounts and marks the active one. `--provider all` lists Claude and Codex accounts together. Use `--json` for machine-readable output (provider-keyed when `--provider all`).
 
 ## Dashboard Panels
 

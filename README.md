@@ -90,18 +90,25 @@ Manage multiple accounts for Claude Code and Codex — save, switch, and remove 
 
 ```bash
 sidekick account                                    # list saved accounts
+sidekick account --provider all                     # list Claude + Codex accounts together
 sidekick account --add --label Work                 # save the current Claude Code account
+sidekick account --login --label Personal           # sign in and save a NEW account (isolated flow)
 sidekick account --switch                           # switch to next account
 sidekick account --switch-to personal@gmail.com     # switch to a specific account
 sidekick account --remove old@example.com           # remove a saved account
+sidekick account --auto-switch 90                   # auto-switch when quota crosses 90% (off to disable)
+sidekick account --launcher work                    # create a per-account terminal launcher
 
 # Codex profiles
 sidekick account --provider codex                   # list Codex accounts
 sidekick account --provider codex --add --label Dev # add a Codex profile (opens login)
 sidekick account --provider codex --switch-to Dev   # switch by label, email, or ID
+
+# Combined quota view
+sidekick quota --all                                # Claude + Codex quota side by side
 ```
 
-In VS Code, account actions are available from the status bar menu and the Command Palette — for both Claude Code and Codex providers. See the [Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) and [Codex](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/) provider docs for setup guides.
+In VS Code, account actions are available from the status bar menu and the Command Palette — sign in to a new account, switch across all saved Claude Code and Codex accounts from one picker, and opt into quota-based auto-switching via the `sidekick.accounts.autoSwitchThreshold` setting. See the [Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) and [Codex](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/) provider docs for setup guides.
 
 ## Provider Support
 

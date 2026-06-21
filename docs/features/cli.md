@@ -332,6 +332,8 @@ When quota data is unavailable, the command emits structured failure output inst
 
 Use `--json` for machine-readable output. For Codex, use `--refresh` to explicitly call the Codex usage API; without it, no Codex quota network request is made.
 
+Use `--all` to show Claude and Codex quota together in one run. The two providers are fetched in parallel and rendered independently — if one provider's quota is unavailable, its error is shown inline and the other still prints (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed `{ claude, codex }` payload.
+
 #### Examples
 
 ```bash
@@ -346,6 +348,12 @@ sidekick --provider codex quota
 
 # Explicitly refresh Codex rate limits from the usage API
 sidekick quota --provider codex --refresh
+
+# Show Claude and Codex quota side by side
+sidekick quota --all
+
+# Combined quota as JSON for automation
+sidekick quota --all --json
 ```
 
 For Claude Max subscriptions, the output also includes a **Peak** line showing whether Claude is currently in peak hours (faster session-limit drain). See [Peak Hours](peak-hours.md).
@@ -390,14 +398,17 @@ Manage accounts across providers — save, list, switch, and remove without manu
 
 | Flag | Description |
 |------|-------------|
-| `--provider <id>` | Provider: `claude-code` (default) or `codex` |
+| `--provider <id>` | Provider: `claude-code` (default), `codex`, or `all` |
 | `--add` | Save the currently signed-in account |
-| `--label <name>` | Label for the account (use with `--add`; required for Codex) |
+| `--login` | Sign in and save a **new** account via a provider-isolated login flow that leaves the active account untouched until finalization |
+| `--label <name>` | Label for the account (required for Codex and `--login`; optional for Claude `--add`) |
 | `--switch` | Switch to the next saved account in the list |
 | `--switch-to <id>` | Switch to a specific account by email, label, or ID |
 | `--remove <id>` | Remove a saved account by email, label, or ID |
+| `--launcher <name>` | Create an opt-in per-account terminal launcher for the active account |
+| `--auto-switch <pct\|off>` | Persist the auto-switch quota threshold (`1`–`100`), or `off` to disable. Continuous auto-switching runs in a long-running host such as VS Code |
 
-With no flags, lists all saved accounts and marks the active one.
+With no flags, lists all saved accounts and marks the active one. `--provider all` lists Claude and Codex accounts together; with `--json` the output is provider-keyed.
 
 #### Examples
 
@@ -405,8 +416,14 @@ With no flags, lists all saved accounts and marks the active one.
 # List saved accounts (Claude Code, default)
 sidekick account
 
+# List Claude and Codex accounts together
+sidekick account --provider all
+
 # Save the current Claude Code account with a label
 sidekick account --add --label Work
+
+# Sign in and save a NEW account without disturbing the active one
+sidekick account --login --label Personal
 
 # Switch to the next account
 sidekick account --switch
@@ -416,6 +433,12 @@ sidekick account --switch-to personal@gmail.com
 
 # Remove an account
 sidekick account --remove old@example.com
+
+# Auto-switch to a healthier account when quota crosses 90% (off to disable)
+sidekick account --auto-switch 90
+
+# Create a per-account terminal launcher
+sidekick account --launcher work
 
 # Codex profile management
 sidekick account --provider codex                    # list Codex accounts

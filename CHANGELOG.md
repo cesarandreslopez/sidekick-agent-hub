@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added (sidekick-cli)
 
 - **Account login and all-provider views**: `sidekick account --login` starts provider-isolated login, `--provider all` lists Claude and Codex accounts together, `--launcher` creates opt-in terminal launchers, and `--auto-switch <pct|off>` persists the CLI auto-switch preference
-- **Multi-provider quota output**: `sidekick quota --all` renders Claude and Codex quota state together; `--all --json` emits a provider-keyed payload suitable for dashboards and automation
+- **Multi-provider quota output**: `sidekick quota --all` renders Claude and Codex quota state together — each provider degrades independently, so one provider's quota still prints when the other is unavailable; `--all --json` emits a provider-keyed payload suitable for dashboards and automation
 
 ### Added (sidekick-vscode)
 
