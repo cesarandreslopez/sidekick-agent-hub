@@ -17,6 +17,16 @@ All settings use the `sidekick.*` prefix. Open VS Code Settings (`Ctrl+,`) and s
 
 When the threshold is greater than `0`, the extension host watches multi-provider quota and switches to another saved account for the active provider once utilization crosses the threshold. Account sign-in and switching are available from the status bar menu and the Command Palette (**Sidekick: Add Account (Sign In)**, **Sidekick: Switch Account (All Providers)**). See [Account Management](../providers/account-management.md).
 
+## z.ai (OpenCode routing)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sidekick.zai.tier` | `auto` | z.ai Coding Plan tier used for utilization math: `auto`, `lite`, `pro`, or `max`. `auto` infers the tier from observed weekly volume and falls back to `max` until enough volume accrues (conservative, lower utilization % until calibration). |
+
+When OpenCode routes inference to a z.ai Coding Plan (GLM), Sidekick derives an **estimated** quota from observed traffic and compares it against the published per-tier prompt budgets (per 5 hours / per week): **Lite** 80 / 400, **Pro** 400 / 2000, **Max** 1600 / 8000.
+
+These budgets are published z.ai figures, not authoritative account limits, and the quota is an estimate. See [OpenCode → z.ai Coding Plan quota](../providers/opencode.md#zai-coding-plan-quota-estimated) for how the estimate is derived and its current limitations.
+
 ## Model Selection
 
 All model settings accept: `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID.

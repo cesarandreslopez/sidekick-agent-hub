@@ -326,13 +326,13 @@ Provider-aware quota and rate-limit display. The command detects the active prov
 
 - **Claude Code**: Shows Claude Max subscription quota utilization — 5-hour and 7-day windows with color-coded progress bars, elapsed-time projections (e.g., `40% → 100%`), and reset countdowns. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
 - **Codex**: Shows rate limits extracted from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars and reset countdowns. The default path is local-only: Sidekick checks the current workspace, then recent account-level Codex rollouts, then the account-scoped snapshot cache. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
-- **OpenCode**: Prints an informational message — OpenCode does not provide rate-limit data.
+- **OpenCode / z.ai**: OpenCode itself provides no rate-limit data, but when it routes to a **z.ai Coding Plan** (GLM), `sidekick quota --provider opencode` auto-routes to an **estimated** z.ai quota (5-Hour / Weekly) derived from observed traffic. Use `sidekick quota --provider zai` to request it explicitly, and `--tier lite|pro|max|auto` to override the assumed plan tier (default `auto`). This is an estimate, not an authoritative figure — see [Limitations](#zai-quota-limitations).
 
 When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel keeps a compact inline quota/rate-limit state visible even when data is unavailable, and quota failure toasts only appear when the failure state changes.
 
 Use `--json` for machine-readable output. For Codex, use `--refresh` to explicitly call the Codex usage API; without it, no Codex quota network request is made.
 
-Use `--all` to show Claude and Codex quota together in one run. The two providers are fetched in parallel and rendered independently — if one provider's quota is unavailable, its error is shown inline and the other still prints (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed `{ claude, codex }` payload.
+Use `--all` to show Claude and Codex quota together in one run (and the estimated z.ai section when z.ai traffic is active). The providers are fetched in parallel and rendered independently — if one provider's quota is unavailable, its error is shown inline and the others still print (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed payload.
 
 #### Examples
 
@@ -349,7 +349,13 @@ sidekick --provider codex quota
 # Explicitly refresh Codex rate limits from the usage API
 sidekick quota --provider codex --refresh
 
-# Show Claude and Codex quota side by side
+# Estimated z.ai Coding Plan quota (from observed OpenCode traffic)
+sidekick quota --provider zai
+
+# Override the assumed z.ai tier
+sidekick quota --provider zai --tier pro
+
+# Show Claude, Codex (and z.ai when active) quota side by side
 sidekick quota --all
 
 # Combined quota as JSON for automation
@@ -357,6 +363,10 @@ sidekick quota --all --json
 ```
 
 For Claude Max subscriptions, the output also includes a **Peak** line showing whether Claude is currently in peak hours (faster session-limit drain). See [Peak Hours](peak-hours.md).
+
+##### z.ai quota limitations
+
+The z.ai quota is an **estimate, not an authoritative figure**, and some related capabilities are not yet delivered. z.ai exposes no usage API, so utilization is derived only from OpenCode traffic observed on this machine/workspace and compared against provisional per-tier prompt budgets. z.ai is observed-only (it is not a selectable inference provider) and has no account management yet; with `--tier auto` the tier is under-detected early in a cycle (set it explicitly), and reset times are approximate unless a rate-limit error is trapped. See the [OpenCode provider guide](../providers/opencode.md#limitations) for the full list.
 
 #### Quota History
 
@@ -369,7 +379,7 @@ Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for t
 | Flag | Description |
 |------|-------------|
 | `--weeks <n>` | Weeks of history to render (default `13`, clamped 1-26) |
-| `--provider <id>` | Limit to a single runtime provider: `claude` or `codex`. Default: both, in two stacked grids |
+| `--provider <id>` | Limit to a single runtime provider: `claude`, `codex`, or `zai`. Default: all available, in stacked grids |
 | `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()` |
 | `--json` | Emit a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
 

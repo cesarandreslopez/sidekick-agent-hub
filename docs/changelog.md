@@ -5,11 +5,34 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.21.0] - 2026-06-21
+## [0.21.1] - 2026-06-21
 
 ### Added (sidekick-shared)
 
 - **z.ai Coding Plan quota derivation**: New `zaiQuota.ts` and `zaiQuotaWatcher.ts` modules derive an estimated `QuotaState` for z.ai coding plans from OpenCode assistant turns tagged `providerID ∈ {zai, zai-coding-plan}`. Because z.ai exposes no quota/usage HTTP API (verified against `docs.z.ai/openapi.json`), utilization is computed by accumulating per-turn tokens into 5-hour and 7-day rolling windows and comparing against the published per-tier prompt budgets (Lite 80/400, Pro 400/2000, Max 1600/8000 prompts per 5h/week). Authoritative reset timestamps are extracted from trapped `1308`/`1310`/`1313`/`1309` business error codes when present
+
+### Added (CLI)
+
+- **z.ai Coding Plan quota**: `sidekick quota --provider zai` derives and renders z.ai plan utilization from OpenCode traffic already on disk (5-Hour / Weekly windows with per-tier prompt budgets). `--tier lite|pro|max|auto` overrides the assumed plan tier. `sidekick quota --provider opencode` now auto-routes to z.ai quota when z.ai traffic is detected. `sidekick quota --all` includes the z.ai section when active. `sidekick quota history --provider zai` renders a 13-week heatmap
+
+### Added (VS Code extension)
+
+- **z.ai Coding Plan quota in the dashboard**: When OpenCode is the active session provider and z.ai routing is detected, the dashboard renders a third quota card (5-Hour / Weekly) labeled "Estimated from observed traffic". z.ai quota flows through the snapshot/history pipeline so the 13-week heatmap works automatically
+- **`sidekick.zai.tier` setting**: New setting (`auto` | `lite` | `pro` | `max`, default `auto`) overrides the z.ai plan tier used for utilization math
+- **Quota alerts for OpenCode**: Quota-failure alerts now also fire when the active session provider is `opencode`, so z.ai rate-limit errors surface as notifications
+
+### Fixed
+
+- **OpenCode data directory resolution**: `getOpenCodeDataDir()` now probes both the macOS-default `~/Library/Application Support/opencode` and Linux-style `~/.local/share/opencode` candidate paths and returns whichever actually contains `opencode.db`, fixing dashboard/quota detection on machines where OpenCode writes to the Linux-style path
+
+### Limitations
+
+- z.ai quota is **estimated, not authoritative**, and several capabilities remain unbuilt. z.ai exposes no usage API, so utilization is derived only from OpenCode traffic observed on this machine/workspace and compared against provisional per-tier prompt budgets. z.ai is **observed-only** (not selectable as an inference provider) and has **no account management** in this release; auto-tier detection under-reports early in a cycle; reset times are approximate unless a rate-limit error is trapped; OpenCode has no native (non-z.ai) quota. See the [OpenCode provider guide](providers/opencode.md) for the full list of current limitations and planned work.
+
+## [0.21.0] - 2026-06-21
+
+### Added (sidekick-shared)
+
 - **Account Management 2.0**: Provider-neutral account acquisition and switching APIs for Claude Max and Codex. `beginAccountLogin()`, `getAccountLoginStatus()`, `finalizeAccountLogin()`, and `spawnAccountLogin()` support isolated login profiles; `listAllAccounts()` and `switchAccount()` expose a shared account switcher surface for hosts
 - **Claude profile homes**: Claude accounts now have canonical profile homes under Sidekick's account store, with account-specific macOS keychain service suffixes and startup migration from legacy flat backups. Switching applies the selected profile back to the live Claude home without destroying unrelated saved accounts
 - **Terminal sync and quota auto-switch primitives**: New opt-in terminal profile pointers, shell hook/launcher helpers, and a default-off `AutoSwitchController` for switching to a healthier saved account when quota crosses a configured threshold
@@ -17,21 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (CLI)
 
-- **z.ai Coding Plan quota**: `sidekick quota --provider zai` derives and renders z.ai plan utilization from OpenCode traffic already on disk (5-Hour / Weekly windows with per-tier prompt budgets). `--tier lite|pro|max|auto` overrides the assumed plan tier. `sidekick quota --provider opencode` now auto-routes to z.ai quota when z.ai traffic is detected. `sidekick quota --all` includes the z.ai section when active. `sidekick quota history --provider zai` renders a 13-week heatmap
 - **Account login and all-provider views**: `sidekick account --login` starts provider-isolated login, `--provider all` lists Claude and Codex accounts together, `--launcher` creates opt-in terminal launchers, and `--auto-switch <pct|off>` persists the CLI auto-switch preference
 - **Multi-provider quota output**: `sidekick quota --all` renders Claude and Codex quota state together — each provider degrades independently, so one provider's quota still prints when the other is unavailable; `--all --json` emits a provider-keyed payload suitable for dashboards and automation
 
 ### Added (VS Code extension)
 
-- **z.ai Coding Plan quota in the dashboard**: When OpenCode is the active session provider and z.ai routing is detected, the dashboard renders a third quota card (5-Hour / Weekly) labeled "Estimated from observed traffic". z.ai quota flows through the snapshot/history pipeline so the 13-week heatmap works automatically
-- **`sidekick.zai.tier` setting**: New setting (`auto` | `lite` | `pro` | `max`, default `auto`) overrides the z.ai plan tier used for utilization math
-- **Quota alerts for OpenCode**: Quota-failure alerts now also fire when the active session provider is `opencode`, so z.ai rate-limit errors surface as notifications
 - **Account sign-in and all-provider switching**: New commands for signing into Claude/Codex accounts from the integrated terminal and switching across all saved providers from one QuickPick. The account status bar now opens the all-provider switcher
 - **Quota auto-switch setting**: `sidekick.accounts.autoSwitchThreshold` enables the default-off auto-switch controller in the extension host
-
-### Fixed
-
-- **OpenCode data directory resolution**: `getOpenCodeDataDir()` now probes both the macOS-default `~/Library/Application Support/opencode` and Linux-style `~/.local/share/opencode` candidate paths and returns whichever actually contains `opencode.db`, fixing dashboard/quota detection on machines where OpenCode writes to the Linux-style path
 
 ### Documentation
 

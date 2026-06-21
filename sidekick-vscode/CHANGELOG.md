@@ -5,20 +5,33 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.21.0] - 2026-06-21
+## [0.21.1] - 2026-06-21
 
 ### Added
 
 - **z.ai Coding Plan quota in the dashboard**: When OpenCode is the active session provider and z.ai routing is detected, the dashboard renders a third quota card (5-Hour / Weekly) labeled "Estimated from observed traffic". z.ai quota also flows through the existing snapshot/history pipeline so the 13-week heatmap and cross-session cache work automatically
 - **`sidekick.zai.tier` setting**: New setting (`auto` | `lite` | `pro` | `max`, default `auto`) overrides the z.ai plan tier used for utilization math. `auto` falls back to `'max'` until sufficient volume accrues, giving a conservative (lower) utilization % until calibration
 - **Quota alerts for OpenCode**: Quota-failure alerts now also fire when the active session provider is `opencode` (previously only Claude Code and Codex), so z.ai rate-limit errors surface as notifications
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.1**: Picks up z.ai quota derivation and the OpenCode data directory resolution fix.
+
+### Limitations
+
+- z.ai quota is **estimated, not authoritative** — the dashboard card is labeled "Estimated from observed traffic" because z.ai exposes no usage API; utilization is derived only from OpenCode traffic seen in this workspace and compared against provisional per-tier prompt budgets. z.ai is observed-only (you cannot pick z.ai as an inference provider) and has no account management yet; `sidekick.zai.tier: auto` under-detects the tier early in a cycle (set the tier explicitly for accuracy); reset times are approximate unless a rate-limit error is trapped.
+
+## [0.21.0] - 2026-06-21
+
+### Added
+
 - **Account sign-in command**: New account sign-in flow prompts for provider and label, opens the Claude/Codex login in an integrated terminal, polls for authentication, finalizes the saved profile, and refreshes the account UI
 - **All-provider account switcher**: A provider-neutral QuickPick lists Claude and Codex accounts together with active markers. The account status bar now opens this all-provider switcher, and switch warnings are surfaced to the user
 - **Quota auto-switch setting**: `sidekick.accounts.autoSwitchThreshold` enables the default-off shared auto-switch controller in the extension host
 
 ### Changed
 
-- **Bundled `sidekick-shared` 0.21.0**: Picks up z.ai quota derivation, Account Management 2.0 acquisition, switching, terminal sync, quota auto-switch, account schema exports, and the OpenCode data directory resolution fix.
+- **Bundled `sidekick-shared` 0.21.0**: Picks up Account Management 2.0 acquisition, switching, terminal sync, quota auto-switch, and account schema exports.
 
 ## [0.20.0] - 2026-06-17
 

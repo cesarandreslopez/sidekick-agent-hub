@@ -5,12 +5,25 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.21.0] - 2026-06-21
+## [0.21.1] - 2026-06-21
 
 ### Added
 
 - **z.ai Coding Plan quota**: `sidekick quota --provider zai` derives and renders z.ai plan utilization from OpenCode traffic already on disk (5-Hour / Weekly windows with per-tier prompt budgets). `--tier lite|pro|max|auto` overrides the assumed plan tier (default `auto`). `sidekick quota --provider opencode` now auto-routes to z.ai quota when z.ai traffic is detected. `sidekick quota --all` includes the z.ai section when active
 - **z.ai quota history heatmap**: `sidekick quota history --provider zai` renders a 13-week z.ai utilization heatmap for the current workspace, alongside the existing Claude and Codex heatmaps (now also in `--all`)
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.1**: Picks up z.ai quota derivation and the OpenCode data directory resolution fix.
+
+### Limitations
+
+- z.ai quota is **estimated, not authoritative** — it reflects only the OpenCode traffic Sidekick observed on this machine/workspace (z.ai exposes no usage API) compared against provisional per-tier prompt budgets. z.ai is observed-only (no z.ai inference provider) and has no account management yet; with `--tier auto`, the tier is under-detected early in a cycle (use an explicit `--tier`); reset times are approximate unless a rate-limit error is trapped.
+
+## [0.21.0] - 2026-06-21
+
+### Added
+
 - **Account login**: `sidekick account --login` starts the provider-isolated login flow for Claude Max or Codex and saves the authenticated profile without disturbing the active account until finalization
 - **All-provider account view**: `sidekick account --provider all` lists Claude and Codex saved accounts together, including active state. JSON output returns provider-keyed account arrays and active ids
 - **Terminal account helpers**: `sidekick account --launcher <name>` creates opt-in launchers for the selected account, and `--auto-switch <pct|off>` persists the CLI auto-switch threshold preference

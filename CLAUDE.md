@@ -138,6 +138,7 @@ Provider implementations live in `src/services/providers/`. Each normalizes raw 
 - **Prompt templates**: `src/utils/prompts.ts`, `src/utils/analysisPrompts.ts`, `src/utils/summaryPrompts.ts`
 - **Inference clients**: `src/services/AuthService.ts`, `MaxSubscriptionClient.ts`, `ApiKeyClient.ts`, `OpenCodeClient.ts`, `CodexClient.ts` (spawns CLI directly, no SDK)
 - **Session providers**: `src/services/providers/ClaudeCodeSessionProvider.ts`, `OpenCodeSessionProvider.ts`, `CodexSessionProvider.ts`
+- **z.ai quota derivation** (shared): `sidekick-shared/src/zaiQuota.ts` (stateless accumulator/tier resolver/error parser) and `zaiQuotaWatcher.ts` (event-driven watcher). z.ai has no usage API, so quota is *estimated* from OpenCode traffic — observed-only, no z.ai inference provider or account management yet
 - **Webview UI**: `src/webview/` — vanilla TS bundled as IIFE; Chart.js and D3.js load from local vendor bundles
 
 ### Persistence

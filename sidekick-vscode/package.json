@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -95,7 +95,12 @@
           },
           "sidekick.zai.tier": {
             "type": "string",
-            "enum": ["auto", "lite", "pro", "max"],
+            "enum": [
+              "auto",
+              "lite",
+              "pro",
+              "max"
+            ],
             "default": "auto",
             "description": "z.ai coding-plan tier. 'auto' infers from observed weekly volume (defaults to 'max' when uncertain for safer under-reporting). Used to compute utilization against the published per-tier prompt budgets.",
             "enumDescriptions": [

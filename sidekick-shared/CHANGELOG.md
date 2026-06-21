@@ -5,7 +5,7 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.21.0] - 2026-06-21
+## [0.21.1] - 2026-06-21
 
 ### Added
 
@@ -14,6 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`OpenCodeDatabase.getAssistantMessagesByProviderId()`**: New query method returns assistant rows tagged with the given providerID(s), used by the z.ai accumulator to walk per-turn token records
 - **Runtime quota provider `'zai'`**: `RuntimeQuotaProvider`, `QuotaHistoryRuntimeProvider`, `QuotaState.providerId`, `ProviderQuotaMap`, and the corresponding Zod schemas all accept `'zai'`. `MultiProviderQuotaService` accepts an optional `zaiWatcher` and a new `updateProviderQuota('zai', …)` overload. `QuotaSnapshotProviderId` widens the snapshot store key to `AccountProviderId | 'zai'` so the derived z.ai quota persists across sessions
 - **`getOpenCodeDataDir()` exported**: Now a public helper
+
+### Fixed
+
+- **OpenCode data directory resolution**: `getOpenCodeDataDir()` (now exported) probes both the macOS-default `~/Library/Application Support/opencode` and Linux-style `~/.local/share/opencode` candidate paths and returns whichever actually contains `opencode.db`. Previously it returned the platform default unconditionally, which failed on machines where OpenCode writes to the Linux-style path even on macOS
+
+### Limitations
+
+- z.ai quota is **estimated, not authoritative**: it is derived only from OpenCode traffic observed on this machine (z.ai exposes no usage API) and compared against provisional per-tier prompt budgets (`ZAI_PROMPT_INVOCATIONS` is a midpoint estimate, not validated). z.ai is **observed-only** — there is no z.ai inference provider and no z.ai account management in this release (`zaiQuotaWatcher.ts`: "z.ai has no full account management in v1"). Auto-tier resolution under-reports early in a weekly cycle; reset times are approximate unless a `1308`/`1310`/`1313`/`1309` error is trapped
+
+## [0.21.0] - 2026-06-21
+
+### Added
+
 - **Account Management 2.0 acquisition facade**: New provider-neutral helpers `beginAccountLogin()`, `getAccountLoginStatus()`, `finalizeAccountLogin()`, and `spawnAccountLogin()` let hosts acquire Claude Max and Codex accounts through isolated profile directories before activating them
 - **Provider-neutral account switching**: `listAllAccounts()` and `switchAccount()` expose a single surface over Claude saved accounts and Codex saved profiles. Claude switching now applies canonical profile homes back to the live Claude home, with legacy flat-backup migration handled by `reconcileClaudeAuthState()`
 - **Claude profile primitives**: `getClaudeProfilesDir()`, `getClaudeProfileHome()`, `claudeKeychainSuffix()`, `claudeKeychainService()`, `isClaudeProfileAuthenticated()`, and `readClaudeProfileIdentity()` are exported for hosts that need lower-level profile inspection
@@ -58,10 +71,6 @@ Thanks to [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) for contribut
 ### Changed
 
 - **Model parsing**: `parseModelId()` now recognizes legacy Claude IDs such as `claude-3-opus-20240229` and `claude-3-5-sonnet-20241022`
-
-### Fixed
-
-- **OpenCode data directory resolution**: `getOpenCodeDataDir()` (now exported) probes both the macOS-default `~/Library/Application Support/opencode` and Linux-style `~/.local/share/opencode` candidate paths and returns whichever actually contains `opencode.db`. Previously it returned the platform default unconditionally, which failed on machines where OpenCode writes to the Linux-style path even on macOS
 
 ## [0.17.7] - 2026-04-28
 
