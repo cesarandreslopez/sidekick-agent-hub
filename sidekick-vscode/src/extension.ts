@@ -89,7 +89,14 @@ import { resolveModel } from "./services/ModelResolver";
 import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
 import { getNonce } from "./utils/nonce";
 import type { AccountProviderId } from 'sidekick-shared';
-import { ensureDefaultAccounts } from 'sidekick-shared';
+import {
+  AutoSwitchController,
+  MultiProviderQuotaService,
+  beginAccountLogin,
+  ensureDefaultAccounts,
+  finalizeAccountLogin,
+  getAccountLoginStatus,
+} from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
 
@@ -980,6 +987,102 @@ export async function activate(context: vscode.ExtensionContext) {
     void handleAccountChange(providerId);
   });
 
+  const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+
+  const runTerminalAccountLogin = async (providerId: AccountProviderId, label: string): Promise<void> => {
+    const begin = beginAccountLogin(providerId, label);
+    if (!begin.success) {
+      vscode.window.showErrorMessage(`Account login failed: ${begin.error}`);
+      return;
+    }
+
+    const finalize = (): boolean => {
+      const result = finalizeAccountLogin(providerId, begin.loginId);
+      if (!result.success) {
+        vscode.window.showErrorMessage(`Account login finalization failed: ${result.error}`);
+        return false;
+      }
+      accountService.refresh();
+      accountStatusBar.refresh();
+      if (result.warning) {
+        vscode.window.showWarningMessage(result.warning);
+      }
+      vscode.window.showInformationMessage(`Account "${label}" saved.`);
+      return true;
+    };
+
+    if (begin.alreadyComplete) {
+      finalize();
+      return;
+    }
+
+    if (!begin.command) {
+      vscode.window.showErrorMessage('Account login command was not prepared.');
+      return;
+    }
+
+    const terminal = vscode.window.createTerminal({
+      name: `Sidekick ${providerId === 'codex' ? 'Codex' : 'Claude'} Login (${label})`,
+      env: begin.env,
+    });
+    terminal.show();
+    terminal.sendText([begin.command, ...(begin.args ?? [])].map(shellQuote).join(' '), true);
+    vscode.window.showInformationMessage('Complete the browser login in the Sidekick terminal. Sidekick will save the account automatically.');
+
+    const startedAt = Date.now();
+    const timeoutMs = 180_000;
+    const interval = setInterval(() => {
+      const status = getAccountLoginStatus(providerId, begin.loginId);
+      if (status.state === 'authenticated') {
+        clearInterval(interval);
+        finalize();
+        return;
+      }
+      if (Date.now() - startedAt > timeoutMs) {
+        clearInterval(interval);
+        vscode.window.showErrorMessage('Account login timed out before authentication completed.');
+      }
+    }, 2_000);
+  };
+
+  let autoSwitchQuotaService: MultiProviderQuotaService | null = null;
+  let autoSwitchController: AutoSwitchController | null = null;
+  const disposeAutoSwitch = (): void => {
+    autoSwitchController?.dispose();
+    autoSwitchQuotaService?.dispose();
+    autoSwitchController = null;
+    autoSwitchQuotaService = null;
+  };
+  const configureAutoSwitch = (): void => {
+    disposeAutoSwitch();
+    const thresholdPct = vscode.workspace.getConfiguration('sidekick').get<number>('accounts.autoSwitchThreshold', 0);
+    if (!thresholdPct || thresholdPct <= 0) return;
+
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    autoSwitchQuotaService = new MultiProviderQuotaService({ codexWorkspacePath: workspacePath });
+    autoSwitchController = new AutoSwitchController({
+      quotaService: autoSwitchQuotaService,
+      config: { enabled: true, thresholdPct },
+      switchAccount: (providerId, accountId) => accountService.switchToAccount(providerId, accountId),
+      onTransition: (event) => {
+        accountService.refresh();
+        vscode.window.showInformationMessage(`Sidekick auto-switched ${event.provider} account.`);
+      },
+      log: (message, error) => logError(message, error),
+    });
+    autoSwitchController.start();
+    autoSwitchQuotaService.startPolling();
+  };
+  configureAutoSwitch();
+  context.subscriptions.push(
+    { dispose: disposeAutoSwitch },
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('sidekick.accounts.autoSwitchThreshold')) {
+        configureAutoSwitch();
+      }
+    }),
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.switchAccount', async () => {
       const managedProvider = getManagedAccountProvider();
@@ -1018,6 +1121,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (result.success) {
           const entry = accounts.find(account => account.id === picked.accountId);
           vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'Codex account'}`);
+          if (result.warning) vscode.window.showWarningMessage(result.warning);
         } else {
           vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
         }
@@ -1051,10 +1155,66 @@ export async function activate(context: vscode.ExtensionContext) {
         if (result.success) {
           const entry = accounts.find(account => account.uuid === picked.accountId);
           vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'Claude account'}`);
+          if (result.warning) vscode.window.showWarningMessage(result.warning);
         } else {
           vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
         }
       }
+    }),
+
+    vscode.commands.registerCommand('sidekick.switchAnyAccount', async () => {
+      const all = accountService.listAllAccounts();
+      const items = [
+        ...all.claude.map(account => ({
+          label: `$(account) ${account.label ?? account.email}`,
+          description: 'Claude',
+          detail: account.uuid === all.activeByProvider['claude-code'] ? '$(check) Active' : account.email,
+          providerId: 'claude-code' as const,
+          accountId: account.uuid,
+        })),
+        ...all.codex.map(account => ({
+          label: `$(account) ${account.label ?? account.id}`,
+          description: 'Codex',
+          detail: account.id === all.activeByProvider.codex ? '$(check) Active' : (account.email ?? account.metadata?.authMode),
+          providerId: 'codex' as const,
+          accountId: account.id,
+        })),
+      ];
+      if (items.length === 0) {
+        vscode.window.showInformationMessage('No accounts saved.');
+        return;
+      }
+
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select an account to switch to',
+      });
+      if (!picked) return;
+
+      const result = accountService.switchManagedAccount(picked.providerId, picked.accountId);
+      if (!result.success) {
+        vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
+        return;
+      }
+      vscode.window.showInformationMessage(`Switched to ${picked.label.replace('$(account) ', '')}`);
+      if (result.warning) vscode.window.showWarningMessage(result.warning);
+    }),
+
+    vscode.commands.registerCommand('sidekick.signInAccount', async () => {
+      const providerPick = await vscode.window.showQuickPick([
+        { label: 'Claude', providerId: 'claude-code' as const },
+        { label: 'Codex', providerId: 'codex' as const },
+      ], { placeHolder: 'Select provider to sign in' });
+      if (!providerPick) return;
+
+      const label = await vscode.window.showInputBox({
+        prompt: `Label for this ${providerPick.label} account`,
+        placeHolder: 'Work, Personal, Client',
+        ignoreFocusOut: true,
+        validateInput: value => value.trim() ? null : 'A label is required.',
+      });
+      if (label === undefined) return;
+
+      await runTerminalAccountLogin(providerPick.providerId, label.trim());
     }),
 
     vscode.commands.registerCommand('sidekick.addAccount', async () => {

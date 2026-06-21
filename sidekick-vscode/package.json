@@ -85,6 +85,13 @@
             "type": "string",
             "default": "",
             "description": "Custom path to the Sidekick CLI executable (sidekick-agent-hub). Leave empty to auto-detect."
+          },
+          "sidekick.accounts.autoSwitchThreshold": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Quota utilization percentage that triggers automatic account switching. Set to 0 to disable."
           }
         }
       },
@@ -869,6 +876,14 @@
       {
         "command": "sidekick.switchAccount",
         "title": "Sidekick: Switch Account"
+      },
+      {
+        "command": "sidekick.switchAnyAccount",
+        "title": "Sidekick: Switch Account (All Providers)"
+      },
+      {
+        "command": "sidekick.signInAccount",
+        "title": "Sidekick: Add Account (Sign In)"
       },
       {
         "command": "sidekick.addAccount",

@@ -19,7 +19,7 @@ export class AccountStatusBar implements vscode.Disposable {
       vscode.StatusBarAlignment.Right,
       98,
     );
-    this.statusBarItem.command = 'sidekick.switchAccount';
+    this.statusBarItem.command = 'sidekick.switchAnyAccount';
 
     this.disposables.push(
       this.accountService.onAccountChange(() => this.updateDisplay()),

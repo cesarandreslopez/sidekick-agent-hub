@@ -23,11 +23,15 @@ import {
   removeCodexAccount,
   listCodexAccounts,
   getActiveCodexAccount,
+  spawnAccountLogin,
+  listAllAccounts as listAllManagedAccounts,
+  switchAccount,
 } from 'sidekick-shared';
 import type {
   AccountEntry,
   AccountManagerResult,
   AccountProviderId,
+  ListAllAccountsResult,
   SavedAccountProfile,
 } from 'sidekick-shared';
 import { log } from './Logger';
@@ -68,6 +72,26 @@ export class AccountService implements vscode.Disposable {
 
   finalizeCodexAccount(profileId: string): AccountManagerResult {
     const result = finalizeSavedCodexAccount(profileId);
+    if (result.success) {
+      this.refresh();
+    }
+    return result;
+  }
+
+  async signInAccount(providerId: AccountProviderId, label: string): Promise<AccountManagerResult> {
+    const result = await spawnAccountLogin(providerId, label, { stdio: 'inherit' });
+    if (result.success) {
+      this.refresh();
+    }
+    return result;
+  }
+
+  listAllAccounts(): ListAllAccountsResult {
+    return listAllManagedAccounts();
+  }
+
+  switchManagedAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
+    const result = switchAccount(providerId, accountId);
     if (result.success) {
       this.refresh();
     }
