@@ -13,11 +13,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
+import { claudeKeychainService } from './claudeProfiles';
 
-const KEYCHAIN_SERVICE = 'Claude Code-credentials';
+export const KEYCHAIN_SERVICE = 'Claude Code-credentials';
 
-function getCredentialsFilePath(): string {
-  return path.join(os.homedir(), '.claude', '.credentials.json');
+function getCredentialsFilePath(configDir?: string): string {
+  return path.join(configDir ?? path.join(os.homedir(), '.claude'), '.credentials.json');
 }
 
 /**
@@ -28,11 +29,11 @@ function getCredentialsFilePath(): string {
  *
  * Returns `null` when credentials are absent or unreadable.
  */
-export function readActiveCredentials(): unknown {
+export function readActiveCredentials(configDir?: string): unknown {
   if (process.platform === 'darwin') {
     try {
       const raw = execFileSync('security', [
-        'find-generic-password', '-s', KEYCHAIN_SERVICE, '-w',
+        'find-generic-password', '-s', claudeKeychainService(configDir), '-w',
       ], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
       return JSON.parse(raw.trim());
     } catch {
@@ -41,7 +42,7 @@ export function readActiveCredentials(): unknown {
   }
   // Linux / WSL / Windows — file-based
   try {
-    return JSON.parse(fs.readFileSync(getCredentialsFilePath(), 'utf8'));
+    return JSON.parse(fs.readFileSync(getCredentialsFilePath(configDir), 'utf8'));
   } catch {
     return null;
   }
@@ -55,21 +56,21 @@ export function readActiveCredentials(): unknown {
  *
  * Throws on failure.
  */
-export function writeActiveCredentials(credentials: unknown): void {
+export function writeActiveCredentials(credentials: unknown, configDir?: string): void {
   const json = JSON.stringify(credentials);
   JSON.parse(json); // validate round-trip
 
   if (process.platform === 'darwin') {
     execFileSync('security', [
       'add-generic-password', '-U',
-      '-s', KEYCHAIN_SERVICE,
+      '-s', claudeKeychainService(configDir),
       '-a', process.env.USER || 'user',
       '-w', json,
     ], { stdio: ['pipe', 'pipe', 'pipe'] });
     return;
   }
   // Linux / WSL / Windows — file-based
-  const credPath = getCredentialsFilePath();
+  const credPath = getCredentialsFilePath(configDir);
   const tmp = credPath + '.tmp';
   fs.writeFileSync(tmp, json, { encoding: 'utf8', mode: 0o600 });
   fs.renameSync(tmp, credPath);
