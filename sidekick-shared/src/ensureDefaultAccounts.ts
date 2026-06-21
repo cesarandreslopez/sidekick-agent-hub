@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { addCurrentAccount, readActiveClaudeAccount } from './accounts';
+import { addCurrentAccount, readActiveClaudeAccount, reconcileClaudeAuthState } from './accounts';
 import { getActiveSavedAccount } from './accountRegistry';
 import {
   getActiveCodexAccount,
@@ -85,6 +85,12 @@ export async function ensureDefaultAccounts(
 ): Promise<EnsureDefaultAccountsResult> {
   const claude = await ensureDefaultClaudeAccount(options);
   const codex = ensureDefaultCodexAccount(options);
+
+  try {
+    reconcileClaudeAuthState();
+  } catch (error) {
+    logFailure(options, 'Claude auth reconciliation failed.', error);
+  }
 
   try {
     reconcileCodexAuthState();

@@ -8,12 +8,16 @@ import {
   readActiveClaudeAccount,
   addCurrentAccount,
   switchToAccount,
+  resolveActiveClaudeHome,
+  applyActiveClaudeToLiveHome,
+  reconcileClaudeAuthState,
   removeAccount,
   listAccounts,
   getActiveAccount,
   isMultiAccountEnabled,
 } from './accounts';
 import type { AccountRegistry } from './accounts';
+import { getClaudeProfileHome } from './claudeProfiles';
 
 // Use a temp dir for all test data
 let tmpDir: string;
@@ -24,17 +28,17 @@ vi.mock('./paths', () => ({
 }));
 
 vi.mock('./credentialIO', () => ({
-  readActiveCredentials: () => {
+  readActiveCredentials: (configDir?: string) => {
     try {
       return JSON.parse(
-        fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')
+        fs.readFileSync(path.join(configDir ?? path.join(tmpDir, '.claude'), '.credentials.json'), 'utf8')
       );
     } catch {
       return null;
     }
   },
-  writeActiveCredentials: (credentials: unknown) => {
-    const claudeDir = path.join(tmpDir, '.claude');
+  writeActiveCredentials: (credentials: unknown, configDir?: string) => {
+    const claudeDir = configDir ?? path.join(tmpDir, '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
     fs.writeFileSync(
       path.join(claudeDir, '.credentials.json'),
@@ -67,6 +71,34 @@ function writeClaudeCredentials(token: string): void {
   fs.writeFileSync(
     path.join(claudeDir, '.credentials.json'),
     JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } })
+  );
+}
+
+function writeClaudeProfileAccount(uuid: string, email: string, token: string): void {
+  const home = getClaudeProfileHome(uuid);
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(
+    path.join(home, '.claude.json'),
+    JSON.stringify({ oauthAccount: { emailAddress: email, accountUuid: uuid } })
+  );
+  fs.writeFileSync(
+    path.join(home, '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } })
+  );
+}
+
+function writeLegacyBackup(uuid: string, email: string, token: string): void {
+  const credentialsDir = path.join(tmpDir, 'accounts', 'credentials');
+  const configsDir = path.join(tmpDir, 'accounts', 'configs');
+  fs.mkdirSync(credentialsDir, { recursive: true });
+  fs.mkdirSync(configsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(credentialsDir, `${uuid}.credentials.json`),
+    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } })
+  );
+  fs.writeFileSync(
+    path.join(configsDir, `${uuid}.config.json`),
+    JSON.stringify({ emailAddress: email, accountUuid: uuid })
   );
 }
 
@@ -224,7 +256,113 @@ describe('switchToAccount', () => {
     const result = switchToAccount('uuid-personal');
     expect(result.success).toBe(false);
   });
+
+  it('switches from profile homes and preserves rotated credentials losslessly', () => {
+    const registry: AccountRegistry = {
+      version: 1,
+      activeAccountUuid: 'uuid-a',
+      accounts: [
+        { uuid: 'uuid-a', email: 'a@example.com', label: 'A', addedAt: '2026-01-01T00:00:00Z' },
+        { uuid: 'uuid-b', email: 'b@example.com', label: 'B', addedAt: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    writeAccountRegistry(registry);
+    writeClaudeProfileAccount('uuid-a', 'a@example.com', 'tok_a_rotated');
+    writeClaudeProfileAccount('uuid-b', 'b@example.com', 'tok_b');
+
+    expect(switchToAccount('uuid-b')).toEqual({ success: true });
+    expect(readActiveClaudeAccount()).toEqual({ email: 'b@example.com', uuid: 'uuid-b' });
+
+    expect(switchToAccount('uuid-a')).toEqual({ success: true });
+
+    const liveCreds = JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'));
+    expect(getActiveAccount()?.uuid).toBe('uuid-a');
+    expect(readActiveClaudeAccount()).toEqual({ email: 'a@example.com', uuid: 'uuid-a' });
+    expect(liveCreds.claudeAiOauth.accessToken).toBe('tok_a_rotated');
+  });
+
+  it('switches pre-migration flat backups and creates the target profile home', () => {
+    const registry: AccountRegistry = {
+      version: 1,
+      activeAccountUuid: null,
+      accounts: [{ uuid: 'uuid-b', email: 'b@example.com', label: 'B', addedAt: '2026-01-01T00:00:00Z' }],
+    };
+    writeAccountRegistry(registry);
+    writeLegacyBackup('uuid-b', 'b@example.com', 'tok_b');
+
+    expect(switchToAccount('uuid-b')).toEqual({ success: true });
+
+    expect(readActiveClaudeAccount()).toEqual({ email: 'b@example.com', uuid: 'uuid-b' });
+    expect(fs.existsSync(path.join(getClaudeProfileHome('uuid-b'), '.credentials.json'))).toBe(true);
+  });
 });
+
+describe('Claude profile-home apply and migration', () => {
+  it('resolves the active Claude profile home or falls back to the live home', () => {
+    expect(resolveActiveClaudeHome()).toBe(path.join(tmpDir, '.claude'));
+
+    writeAccountRegistry({
+      version: 1,
+      activeAccountUuid: 'uuid-a',
+      accounts: [{ uuid: 'uuid-a', email: 'a@example.com', addedAt: '2026-01-01T00:00:00Z' }],
+    });
+
+    expect(resolveActiveClaudeHome()).toBe(getClaudeProfileHome('uuid-a'));
+  });
+
+  it('applies the active Claude profile to the live home', () => {
+    writeAccountRegistry({
+      version: 1,
+      activeAccountUuid: 'uuid-a',
+      accounts: [{ uuid: 'uuid-a', email: 'a@example.com', addedAt: '2026-01-01T00:00:00Z' }],
+    });
+    writeClaudeProfileAccount('uuid-a', 'a@example.com', 'tok_a');
+
+    expect(applyActiveClaudeToLiveHome()).toEqual({ success: true });
+
+    expect(readActiveClaudeAccount()).toEqual({ email: 'a@example.com', uuid: 'uuid-a' });
+    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')).claudeAiOauth.accessToken)
+      .toBe('tok_a');
+  });
+
+  it('migrates flat backup accounts into profile homes once', () => {
+    writeAccountRegistry({
+      version: 1,
+      activeAccountUuid: 'uuid-a',
+      accounts: [{ uuid: 'uuid-a', email: 'a@example.com', addedAt: '2026-01-01T00:00:00Z' }],
+    });
+    writeLegacyBackup('uuid-a', 'a@example.com', 'tok_a');
+
+    reconcileClaudeAuthState();
+
+    const markerPath = path.join(tmpDir, 'accounts', 'claude', '.profiles-migrated-v1');
+    expect(fs.existsSync(markerPath)).toBe(true);
+    expect(readActiveCredentialsFrom(getClaudeProfileHome('uuid-a')).claudeAiOauth.accessToken).toBe('tok_a');
+
+    writeLegacyBackup('uuid-a', 'a@example.com', 'tok_modified');
+    reconcileClaudeAuthState();
+
+    expect(readActiveCredentialsFrom(getClaudeProfileHome('uuid-a')).claudeAiOauth.accessToken).toBe('tok_a');
+  });
+
+  it('does not throw when migration sees malformed flat backup data', () => {
+    writeAccountRegistry({
+      version: 1,
+      activeAccountUuid: null,
+      accounts: [{ uuid: 'uuid-bad', email: 'bad@example.com', addedAt: '2026-01-01T00:00:00Z' }],
+    });
+    const configsDir = path.join(tmpDir, 'accounts', 'configs');
+    fs.mkdirSync(configsDir, { recursive: true });
+    fs.writeFileSync(path.join(configsDir, 'uuid-bad.config.json'), '{not-json');
+
+    expect(() => reconcileClaudeAuthState()).not.toThrow();
+    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'claude', '.profiles-migrated-v1'))).toBe(true);
+  });
+});
+
+function readActiveCredentialsFrom(configDir: string): { claudeAiOauth: { accessToken: string } } {
+  return JSON.parse(fs.readFileSync(path.join(configDir, '.credentials.json'), 'utf8'));
+}
 
 describe('removeAccount', () => {
   beforeEach(() => {
