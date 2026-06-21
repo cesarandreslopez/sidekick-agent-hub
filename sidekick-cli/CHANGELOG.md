@@ -5,6 +5,19 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-06-21
+
+### Added
+
+- **Account login**: `sidekick account --login` starts the provider-isolated login flow for Claude Max or Codex and saves the authenticated profile without disturbing the active account until finalization
+- **All-provider account view**: `sidekick account --provider all` lists Claude and Codex saved accounts together, including active state. JSON output returns provider-keyed account arrays and active ids
+- **Terminal account helpers**: `sidekick account --launcher <name>` creates opt-in launchers for the selected account, and `--auto-switch <pct|off>` persists the CLI auto-switch threshold preference
+- **Multi-provider quota output**: `sidekick quota --all` shows Claude and Codex quota state together; `--all --json` emits a provider-keyed payload for automation
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.0**: Picks up Account Management 2.0 acquisition, switching, terminal sync, quota auto-switch, and account schema exports.
+
 ## [0.20.0] - 2026-06-17
 
 ### Added

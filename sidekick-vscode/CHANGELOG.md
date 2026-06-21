@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-06-21
+
+### Added
+
+- **Account sign-in command**: New account sign-in flow prompts for provider and label, opens the Claude/Codex login in an integrated terminal, polls for authentication, finalizes the saved profile, and refreshes the account UI
+- **All-provider account switcher**: A provider-neutral QuickPick lists Claude and Codex accounts together with active markers. The account status bar now opens this all-provider switcher, and switch warnings are surfaced to the user
+- **Quota auto-switch setting**: `sidekick.accounts.autoSwitchThreshold` enables the default-off shared auto-switch controller in the extension host
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.0**: Picks up Account Management 2.0 acquisition, switching, terminal sync, quota auto-switch, and account schema exports.
+
 ## [0.20.0] - 2026-06-17
 
 ### Added

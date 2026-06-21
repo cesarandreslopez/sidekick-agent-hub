@@ -5,6 +5,17 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-06-21
+
+### Added
+
+- **Account Management 2.0 acquisition facade**: New provider-neutral helpers `beginAccountLogin()`, `getAccountLoginStatus()`, `finalizeAccountLogin()`, and `spawnAccountLogin()` let hosts acquire Claude Max and Codex accounts through isolated profile directories before activating them
+- **Provider-neutral account switching**: `listAllAccounts()` and `switchAccount()` expose a single surface over Claude saved accounts and Codex saved profiles. Claude switching now applies canonical profile homes back to the live Claude home, with legacy flat-backup migration handled by `reconcileClaudeAuthState()`
+- **Claude profile primitives**: `getClaudeProfilesDir()`, `getClaudeProfileHome()`, `claudeKeychainSuffix()`, `claudeKeychainService()`, `isClaudeProfileAuthenticated()`, and `readClaudeProfileIdentity()` are exported for hosts that need lower-level profile inspection
+- **Terminal sync helpers**: Opt-in terminal account pointers, shell hook installation/removal, and launcher creation/removal are available through `setTerminalActiveProfile()`, `installShellHook()`, `uninstallShellHook()`, `isShellHookInstalled()`, `writeLauncher()`, and `removeLauncher()`
+- **Quota auto-switch primitives**: `decideAutoSwitch()` and `AutoSwitchController` provide a default-off policy for switching to a healthier saved account after quota crosses a configured threshold
+- **Account Zod schemas**: `sidekick-shared/schemas` and the package root now export `accountProviderIdSchema`, `beginAccountLoginResultSchema`, `accountLoginStatusSchema`, `accountManagerResultSchema`, `accountEntrySchema`, `savedAccountProfileSchema`, and `listAllAccountsResultSchema`
+
 ## [0.20.0] - 2026-06-17
 
 ### Added

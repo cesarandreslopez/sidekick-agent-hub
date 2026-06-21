@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-06-21
+
+### Added (sidekick-shared)
+
+- **Account Management 2.0**: Provider-neutral account acquisition and switching APIs for Claude Max and Codex. `beginAccountLogin()`, `getAccountLoginStatus()`, `finalizeAccountLogin()`, and `spawnAccountLogin()` support isolated login profiles; `listAllAccounts()` and `switchAccount()` expose a shared account switcher surface for hosts
+- **Claude profile homes**: Claude accounts now have canonical profile homes under Sidekick's account store, with account-specific macOS keychain service suffixes and startup migration from legacy flat backups. Switching applies the selected profile back to the live Claude home without destroying unrelated saved accounts
+- **Terminal sync and quota auto-switch primitives**: New opt-in terminal profile pointers, shell hook/launcher helpers, and a default-off `AutoSwitchController` for switching to a healthier saved account when quota crosses a configured threshold
+- **Account Zod schemas**: `sidekick-shared/schemas` and the package root now export account-management validators including `beginAccountLoginResultSchema`, `accountLoginStatusSchema`, `accountManagerResultSchema`, and `listAllAccountsResultSchema`
+
+### Added (sidekick-cli)
+
+- **Account login and all-provider views**: `sidekick account --login` starts provider-isolated login, `--provider all` lists Claude and Codex accounts together, `--launcher` creates opt-in terminal launchers, and `--auto-switch <pct|off>` persists the CLI auto-switch preference
+- **Multi-provider quota output**: `sidekick quota --all` renders Claude and Codex quota state together; `--all --json` emits a provider-keyed payload suitable for dashboards and automation
+
+### Added (sidekick-vscode)
+
+- **Account sign-in and all-provider switching**: New commands for signing into Claude/Codex accounts from the integrated terminal and switching across all saved providers from one QuickPick. The account status bar now opens the all-provider switcher
+- **Quota auto-switch setting**: `sidekick.accounts.autoSwitchThreshold` enables the default-off auto-switch controller in the extension host
+
+### Documentation
+
+- Added an Account Management provider guide covering the API contract, TTY-less login sequence, runtime schemas, and operational caveats for downstream desktop hosts.
+
 ## [0.20.0] - 2026-06-17
 
 ### Added (sidekick-shared)
