@@ -87,6 +87,8 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
   await claudeQuotaAction(jsonOutput);
 }
 
+type ClaudeQuota = Awaited<ReturnType<QuotaService['fetchOnce']>>;
+
 async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   const { quota, peak } = await fetchClaudeQuotaPayload();
 
@@ -95,34 +97,7 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
       process.stdout.write(JSON.stringify({ ...quota, peak }, null, 2) + '\n');
       return;
     }
-
-    const descriptor = describeQuotaFailure(quota);
-    let msg: string;
-    let color = chalk.red;
-
-    if (descriptor) {
-      msg = [descriptor.title, descriptor.message, descriptor.detail].filter(Boolean).join(' ');
-      color = descriptor.severity === 'warning'
-        ? chalk.yellow
-        : descriptor.severity === 'info'
-          ? chalk.cyan
-          : chalk.red;
-    } else {
-      switch (quota.error) {
-        case 'no-credentials':
-          msg = 'No Claude Code credentials found. Sign in with `claude` first.';
-          break;
-        case 'auth-failed':
-          msg = 'Authentication failed. Try signing in to Claude Code again.';
-          break;
-        case 'network-error':
-          msg = 'Could not reach the Anthropic API. Check your connection.';
-          break;
-        default:
-          msg = quota.error ?? 'Unknown error fetching quota.';
-      }
-    }
-    process.stderr.write(color(msg) + '\n');
+    printClaudeQuotaError(quota);
     process.exit(1);
   }
 
@@ -131,6 +106,40 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
     return;
   }
 
+  printClaudeQuota(quota, peak);
+}
+
+function printClaudeQuotaError(quota: ClaudeQuota): void {
+  const descriptor = describeQuotaFailure(quota);
+  let msg: string;
+  let color = chalk.red;
+
+  if (descriptor) {
+    msg = [descriptor.title, descriptor.message, descriptor.detail].filter(Boolean).join(' ');
+    color = descriptor.severity === 'warning'
+      ? chalk.yellow
+      : descriptor.severity === 'info'
+        ? chalk.cyan
+        : chalk.red;
+  } else {
+    switch (quota.error) {
+      case 'no-credentials':
+        msg = 'No Claude Code credentials found. Sign in with `claude` first.';
+        break;
+      case 'auth-failed':
+        msg = 'Authentication failed. Try signing in to Claude Code again.';
+        break;
+      case 'network-error':
+        msg = 'Could not reach the Anthropic API. Check your connection.';
+        break;
+      default:
+        msg = quota.error ?? 'Unknown error fetching quota.';
+    }
+  }
+  process.stderr.write(color(msg) + '\n');
+}
+
+function printClaudeQuota(quota: ClaudeQuota, peak: PeakHoursState): void {
   const barWidth = 30;
   const fivePct = Math.round(quota.fiveHour.utilization);
   const sevenPct = Math.round(quota.sevenDay.utilization);
@@ -138,10 +147,10 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   const sevenReset = formatTimeUntil(quota.sevenDay.resetsAt);
 
   const fiveProj = quota.projectedFiveHour != null
-    ? ` ${chalk.dim('\u2192')} ${getUtilizationColor(quota.projectedFiveHour)(String(Math.round(quota.projectedFiveHour)).padStart(3) + '%')}`
+    ? ` ${chalk.dim('→')} ${getUtilizationColor(quota.projectedFiveHour)(String(Math.round(quota.projectedFiveHour)).padStart(3) + '%')}`
     : '';
   const sevenProj = quota.projectedSevenDay != null
-    ? ` ${chalk.dim('\u2192')} ${getUtilizationColor(quota.projectedSevenDay)(String(Math.round(quota.projectedSevenDay)).padStart(3) + '%')}`
+    ? ` ${chalk.dim('→')} ${getUtilizationColor(quota.projectedSevenDay)(String(Math.round(quota.projectedSevenDay)).padStart(3) + '%')}`
     : '';
 
   const active = getActiveAccount();
@@ -259,8 +268,20 @@ async function allQuotaAction(
     return;
   }
 
+  // Render both providers from the already-fetched payloads. A failure in one
+  // provider must not suppress the other, so each side degrades independently
+  // (no process.exit, no re-fetch).
   process.stdout.write(chalk.bold('Claude\n'));
-  await claudeQuotaAction(false);
+  if (claude.available) {
+    printClaudeQuota(claude, peak);
+  } else {
+    printClaudeQuotaError(claude);
+  }
+
   process.stdout.write('\n' + chalk.bold('Codex\n'));
-  printCodexQuota(codex);
+  if (codex.available) {
+    printCodexQuota(codex);
+  } else {
+    process.stderr.write(chalk.yellow(codex.error ?? 'Codex rate-limit data is unavailable.') + '\n');
+  }
 }

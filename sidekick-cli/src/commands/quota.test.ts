@@ -415,4 +415,57 @@ describe('quotaAction', () => {
     expect(parsed.codex.fiveHour.utilization).toBe(6);
     expect(mockResolveProvider).not.toHaveBeenCalled();
   });
+
+  it('still prints Codex with --all when Claude quota is unavailable (text mode)', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'No OAuth token available',
+      failureKind: 'auth',
+    });
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 6, resetsAt: '2026-05-19T15:00:00Z' },
+      sevenDay: { utilization: 1, resetsAt: '2026-05-26T15:00:00Z' },
+      available: true,
+      source: 'session',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { all: true }));
+
+    // Claude error surfaces, but must NOT abort the command…
+    expect(stderrData).toContain('Sign in required');
+    expect(process.exit).not.toHaveBeenCalled();
+    // …so Codex quota still renders.
+    expect(stdoutData).toContain('Codex');
+    expect(stdoutData).toContain('Rate Limits');
+    expect(stdoutData).toContain('6%');
+  });
+
+  it('still prints Claude with --all when Codex quota is unavailable (text mode)', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 40, resetsAt: new Date(Date.now() + 2 * 3600_000).toISOString() },
+      sevenDay: { utilization: 72, resetsAt: new Date(Date.now() + 4 * 86400_000).toISOString() },
+      available: true,
+    });
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'Codex rate-limit data is unavailable.',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { all: true }));
+
+    expect(stdoutData).toContain('Subscription Quota');
+    expect(stdoutData).toContain('40%');
+    expect(stderrData).toContain('Codex rate-limit data is unavailable.');
+    expect(process.exit).not.toHaveBeenCalled();
+  });
 });
