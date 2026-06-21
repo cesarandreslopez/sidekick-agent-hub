@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex and other coding agents when working with code in this repository. `CLAUDE.md` mirrors the same project guidance for Claude Code.
 
 ## Project Overview
 
@@ -143,6 +143,7 @@ Provider implementations live in `src/services/providers/`. Each normalizes raw 
 ### Persistence
 
 Cross-session data stored in `~/.config/sidekick/`:
+
 - `historical-data.json` — token/cost/tool usage stats
 - `tasks/{projectSlug}.json` — kanban board carry-over
 - `decisions/{projectSlug}.json` — decision log
@@ -180,11 +181,13 @@ Releases are triggered by pushing a `v*` tag to `main`. The CI workflow (`.githu
 5. **Create GitHub Release** — downloads `.vsix` artifact, extracts changelog section, creates release with `.vsix` attached
 
 **Version bump checklist** (all must match the tag):
+
 - `bash scripts/bump-version.sh <version>` bumps the three `package.json` files at once. It does **not** touch lockfiles, so still:
   - `sidekick-vscode/package-lock.json`, `sidekick-cli/package-lock.json`, and `sidekick-shared/package-lock.json` (run `npm install --package-lock-only` in each workspace)
 - If bumping by hand instead, the three `package.json` files are: `sidekick-vscode/`, `sidekick-cli/`, `sidekick-shared/`
 
 **Changelogs to update** (five total):
+
 - `CHANGELOG.md` (root — full project)
 - `sidekick-vscode/CHANGELOG.md` (extension-specific)
 - `sidekick-cli/CHANGELOG.md` (CLI-specific)

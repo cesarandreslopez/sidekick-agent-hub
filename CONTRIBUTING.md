@@ -23,15 +23,17 @@ Thank you for your interest in contributing! This document provides guidelines a
    cd sidekick-vscode
    npm install
    npm run compile
+   cd ..
    ```
 
-3. **Build the shared library and CLI** (optional)
+3. **Build all packages** (optional)
    ```bash
    bash scripts/build-all.sh
    ```
 
 4. **Run tests to verify setup**
    ```bash
+   cd sidekick-vscode
    npm test
    ```
 
@@ -43,7 +45,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Available Commands
 
-All commands run from `sidekick-vscode/`:
+Extension commands run from `sidekick-vscode/`:
 
 ```bash
 npm run compile      # Dev build (with source maps)
@@ -134,23 +136,26 @@ sidekick-vscode/src/
 
 ### Key Architecture Concepts
 
-- **Build system:** esbuild bundles two targets -- CommonJS for the extension host (`out/extension.js`) and IIFE for webviews (`out/webview/*.js`).
+- **Build system:** esbuild produces the extension-host bundle (`out/extension.js`), three app webview bundles, and two local webview vendor bundles (`chartjs-vendor.js`, `d3-vendor.js`).
 - **Four inference providers:** Claude Max (subscription), Claude API (per-token), OpenCode, and Codex CLI. All implement `ClaudeClient` from `src/types.ts`.
 - **Model tiers:** Fast, balanced, and powerful tiers mapped to provider-specific models. Legacy names (`haiku`/`sonnet`/`opus`) map through `LEGACY_TIER_MAP`. Each feature has its own configurable model setting.
 - **Request management:** Debouncing (configurable delay), LRU caching, AbortController for cancellation.
 - **Session monitoring:** `SessionMonitor` watches JSONL files and emits events consumed by the dashboard, mind map, kanban board, and tree providers.
 - **Prompt templates:** All prompts centralized in `utils/prompts.ts` and `utils/analysisPrompts.ts`.
 
-### Building the CLI and Shared Library
+### Building All Packages
+
+From the repo root:
 
 ```bash
-bash scripts/build-all.sh    # Build both sidekick-shared and sidekick-cli
+bash scripts/build-all.sh    # Build sidekick-shared, sidekick-vscode, and sidekick-cli
 ```
 
 Or build individually:
 
 ```bash
 cd sidekick-shared && npm install && npm run build
+cd sidekick-vscode && npm install && npm run compile
 cd sidekick-cli && npm install && npm run build
 ```
 

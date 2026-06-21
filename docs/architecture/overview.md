@@ -2,7 +2,7 @@
 
 ## Build System (esbuild)
 
-esbuild produces four bundles:
+The VS Code extension build produces six esbuild bundles:
 
 ```mermaid
 flowchart LR
@@ -11,15 +11,19 @@ flowchart LR
         EXP["src/webview/explain.ts"]
         ERR["src/webview/error.ts"]
         DSH["src/webview/dashboard.ts"]
+        CHART["src/webview/chartjs-vendor.ts"]
+        D3["src/webview/d3-vendor.ts"]
     end
 
     EXT -->|CommonJS · Node.js| O1["out/extension.js"]
     EXP -->|IIFE · Browser| O2["out/webview/explain.js"]
     ERR -->|IIFE · Browser| O3["out/webview/error.js"]
     DSH -->|IIFE · Browser| O4["out/webview/dashboard.js"]
+    CHART -->|IIFE · Browser| O5["out/webview/chartjs-vendor.js"]
+    D3 -->|IIFE · Browser| O6["out/webview/d3-vendor.js"]
 ```
 
-Only `vscode` is externalized. All other dependencies (including `@anthropic-ai/claude-agent-sdk` and `@opencode-ai/sdk`) are bundled by esbuild.
+Only `vscode` is externalized from the extension-host bundle. Other extension dependencies (including `@anthropic-ai/claude-agent-sdk`, `@opencode-ai/sdk`, and `sidekick-shared`) are bundled by esbuild. Chart.js and D3.js are bundled into local browser vendor files so the dashboard and mind map work offline.
 
 ## Entry Point
 

@@ -36,7 +36,7 @@ Open `sidekick-vscode/` in VS Code and press **F5** to launch the Extension Deve
 
 ## Available Commands
 
-All commands run from `sidekick-vscode/`:
+Extension commands run from `sidekick-vscode/`:
 
 ```bash
 npm run compile      # Dev build (with source maps)
@@ -49,16 +49,19 @@ npm run lint:fix     # Auto-fix linting issues
 npm run package      # Create .vsix for distribution
 ```
 
-### Building the CLI and Shared Library
+### Building All Packages
+
+From the repo root:
 
 ```bash
-bash scripts/build-all.sh    # Build both sidekick-shared and sidekick-cli
+bash scripts/build-all.sh    # Build sidekick-shared, sidekick-vscode, and sidekick-cli
 ```
 
 Or build individually:
 
 ```bash
 cd sidekick-shared && npm install && npm run build
+cd sidekick-vscode && npm install && npm run compile
 cd sidekick-cli && npm install && npm run build
 ```
 
