@@ -301,7 +301,7 @@ function detectRunningCodexProcess(): boolean {
   }
 }
 
-function readCodexAccountMetadata(codexHome: string): AccountIdentityMetadata {
+export function readCodexAccountMetadata(codexHome: string): AccountIdentityMetadata {
   const fromAuth = readMetadataFromAuthJson(codexHome);
   if (fromAuth.email || fromAuth.workspaceId || fromAuth.planType || fromAuth.authMode) {
     return fromAuth;
@@ -322,7 +322,7 @@ function readCodexAccountMetadata(codexHome: string): AccountIdentityMetadata {
   return {};
 }
 
-function isCodexProfileAuthenticated(codexHome: string): boolean {
+export function isCodexProfileAuthenticated(codexHome: string): boolean {
   if (
     fs.existsSync(path.join(codexHome, 'auth.json')) ||
     fs.existsSync(path.join(codexHome, '.credentials.json'))
@@ -404,7 +404,10 @@ export function prepareCodexAccount(label: string): CodexAccountManagerResult {
   };
 }
 
-export function finalizeCodexAccount(profileId: string): CodexAccountManagerResult {
+export function finalizeCodexAccount(
+  profileId: string,
+  opts: { activate?: boolean } = {},
+): CodexAccountManagerResult {
   const pending = readPendingProfile(profileId);
   if (!pending) {
     return { success: false, error: `Codex profile ${profileId} was not prepared.` };
@@ -425,6 +428,10 @@ export function finalizeCodexAccount(profileId: string): CodexAccountManagerResu
     metadata,
   };
   upsertSavedAccountProfile(profile);
+
+  if (opts.activate === false) {
+    return { success: true };
+  }
 
   const hasCredentialFiles =
     fs.existsSync(path.join(codexHome, 'auth.json')) ||

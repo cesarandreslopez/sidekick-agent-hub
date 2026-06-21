@@ -95,7 +95,7 @@ Three independently-testable layers:
 |---|---|---|---|---|---|
 | 01 | Claude profiles + keychain suffix | Done | Codex | phase-01 commit | suffix vectors + profile auth primitives |
 | 02 | Credential I/O parameterization | Done | Codex | phase-02 commit | config-dir credential reads/writes; no-arg defaults preserved |
-| 03 | Login facade + spawn helper | Not started | | | the contextful unblocker |
+| 03 | Login facade + spawn helper | Done | Codex | phase-03 commit | provider-neutral begin/status/finalize/spawn facade |
 | 04 | Non-destructive switch + migration | Not started | | | `reconcileClaudeAuthState` |
 | 05 | Terminal sync (opt-in) | Not started | | | shell hook + launchers |
 | 06 | Auto-switch on quota | Not started | | | off by default |
