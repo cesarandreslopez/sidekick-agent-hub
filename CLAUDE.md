@@ -27,6 +27,14 @@ Run a single test file: `npx vitest run src/services/ModelResolver.test.ts` (fro
 
 Press **F5** in VS Code with `sidekick-vscode/` open to launch the Extension Development Host.
 
+**Monorepo-wide helpers** (run from repo root) cover all three packages — `sidekick-shared`, `sidekick-vscode`, `sidekick-cli`:
+
+```bash
+bash scripts/lint-all.sh          # Lint all three packages (CI lints each separately)
+bash scripts/lint-all.sh --fix    # Lint + auto-fix all three
+bash scripts/build-all.sh         # npm install + build all three; CLI binary at sidekick-cli/dist/sidekick-cli.mjs
+```
+
 ### Documentation Site
 
 The docs site uses **zensical** (not mkdocs). Config is in `mkdocs.yml` at the repo root, content in `docs/`.
@@ -145,10 +153,9 @@ Releases are triggered by pushing a `v*` tag to `main`. The CI workflow (`.githu
 4. **Create GitHub Release** — downloads `.vsix` artifact, extracts changelog section, creates release with `.vsix` attached
 
 **Version bump checklist** (all must match the tag):
-- `sidekick-vscode/package.json`
-- `sidekick-cli/package.json`
-- `sidekick-shared/package.json`
-- `sidekick-cli/package-lock.json` and `sidekick-shared/package-lock.json` (run `npm install --package-lock-only` in each)
+- `bash scripts/bump-version.sh <version>` bumps the three `package.json` files at once. It does **not** touch lockfiles, so still:
+  - `sidekick-cli/package-lock.json` and `sidekick-shared/package-lock.json` (run `npm install --package-lock-only` in each)
+- If bumping by hand instead, the three `package.json` files are: `sidekick-vscode/`, `sidekick-cli/`, `sidekick-shared/`
 
 **Changelogs to update** (four total):
 - `CHANGELOG.md` (root — full project)
