@@ -98,7 +98,7 @@ Three independently-testable layers:
 | 03 | Login facade + spawn helper | Done | Codex | phase-03 commit | provider-neutral begin/status/finalize/spawn facade |
 | 04 | Non-destructive switch + migration | Done | Codex | phase-04 commit | profile-home apply + flat-backup migration |
 | 05 | Terminal sync (opt-in) | Done | Codex | phase-05 commit | active pointers, shell hook, launchers |
-| 06 | Auto-switch on quota | Not started | | | off by default |
+| 06 | Auto-switch on quota | Done | Codex | phase-06 commit | default-off policy + controller |
 | 07 | CLI surface | Not started | | | `--login`, `--provider all`, `quota --all` |
 | 08 | VS Code surface | Not started | | | login command + QuickPick |
 | 09 | Exports + Zod + guide | Not started | | | schemas dir already exists |
