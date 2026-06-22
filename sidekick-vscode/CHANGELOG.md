@@ -5,12 +5,19 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.2] - 2026-06-22
+
+### Changed
+
+- **z.ai quota in the dashboard** now reflects authoritative quota from z.ai's API: the card is labeled "Live z.ai API" or "Cached z.ai API snapshot" (previously "Estimated from observed traffic"), and quota continues to flow through the snapshot/history pipeline so the 13-week heatmap and cross-session cache work automatically
+- **`sidekick.zai.tier` setting** is now deprecated and inert; z.ai plan utilization is no longer estimated from observed traffic
+
 ## [0.21.1] - 2026-06-21
 
 ### Added
 
-- **z.ai Coding Plan quota in the dashboard**: When OpenCode is the active session provider and z.ai quota is available, the dashboard renders a z.ai quota card (5-Hour / Weekly) labeled "Live z.ai API" or "Cached z.ai API snapshot". z.ai quota also flows through the existing snapshot/history pipeline so the 13-week heatmap and cross-session cache work automatically
-- **`sidekick.zai.tier` setting**: Deprecated compatibility setting from the former z.ai estimator; authoritative quota now comes from z.ai's quota API
+- **z.ai Coding Plan quota in the dashboard**: When OpenCode is the active session provider and z.ai routing is detected, the dashboard renders a third quota card (5-Hour / Weekly) labeled "Estimated from observed traffic". z.ai quota also flows through the existing snapshot/history pipeline so the 13-week heatmap and cross-session cache work automatically
+- **`sidekick.zai.tier` setting**: New setting (`auto` | `lite` | `pro` | `max`, default `auto`) overrides the z.ai plan tier used for utilization math. `auto` falls back to `'max'` until sufficient volume accrues, giving a conservative (lower) utilization % until calibration
 - **Quota alerts for OpenCode**: Quota-failure alerts now also fire when the active session provider is `opencode` (previously only Claude Code and Codex), so z.ai rate-limit errors surface as notifications
 
 ### Changed
@@ -19,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Limitations
 
-- z.ai quota is sourced from z.ai's quota API with cached snapshot fallback. z.ai is monitored-only (you cannot pick z.ai as an inference provider) and has no Sidekick account-management surface yet.
+- z.ai quota is **estimated, not authoritative** — the dashboard card is labeled "Estimated from observed traffic" because z.ai exposes no usage API; utilization is derived only from OpenCode traffic seen in this workspace and compared against provisional per-tier prompt budgets. z.ai is observed-only (you cannot pick z.ai as an inference provider) and has no account management yet; `sidekick.zai.tier: auto` under-detects the tier early in a cycle (set the tier explicitly for accuracy); reset times are approximate unless a rate-limit error is trapped.
 
 ## [0.21.0] - 2026-06-21
 

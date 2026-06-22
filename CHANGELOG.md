@@ -5,20 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.2] - 2026-06-22
+
+### Changed (sidekick-shared)
+
+- **Authoritative z.ai quota API**: z.ai Coding Plan quota is now read from z.ai's `api/monitor/usage/quota/limit` endpoint instead of being estimated from observed OpenCode traffic. New `zaiQuotaApi.ts` exports `resolveZaiQuota()`, `fetchZaiQuotaFromApi()`, `readZaiCredentials()`, and `quotaStateFromZaiQuotaLimitPayload()` — mapping the returned `TOKENS_LIMIT` percentages and `nextResetTime` values into Sidekick's 5-Hour / Weekly model, with credential discovery (OpenCode's stored `zai-coding-plan` → `zai` token, then `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`) and cached-snapshot fallback. The former observed-traffic estimator (`zaiQuota.ts` / `zaiQuotaWatcher.ts`) remains exported for compatibility but is deprecated and no longer used for product quota display
+
+### Changed (sidekick-cli)
+
+- **`sidekick quota --provider zai`** now renders authoritative z.ai plan utilization from z.ai's quota API (5-Hour / Weekly windows with real reset times), falling back to a cached snapshot when the API is unavailable. The `--tier lite|pro|max|auto` flag is deprecated and no longer affects the displayed utilization
+
+### Changed (sidekick-vscode)
+
+- **z.ai quota in the dashboard**: the z.ai card is now labeled "Live z.ai API" or "Cached z.ai API snapshot" (previously "Estimated from observed traffic"), reflecting authoritative quota from z.ai's API. The `sidekick.zai.tier` setting is deprecated and inert
+
 ## [0.21.1] - 2026-06-21
 
 ### Added (sidekick-shared)
 
-- **z.ai Coding Plan quota API**: New shared z.ai quota resolver reads the same `api/monitor/usage/quota/limit` endpoint used by z.ai's first-party usage plugin. It maps returned `TOKENS_LIMIT` percentages and `nextResetTime` values directly into Sidekick's 5-Hour / Weekly quota model, reading OpenCode's stored z.ai token first and falling back to `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`
+- **z.ai Coding Plan quota derivation**: New `zaiQuota.ts` and `zaiQuotaWatcher.ts` modules derive an estimated `QuotaState` from OpenCode assistant turns tagged `providerID ∈ {zai, zai-coding-plan}`. Because z.ai exposes no quota/usage HTTP API (verified against `docs.z.ai/openapi.json`), utilization is computed by accumulating per-turn tokens into 5-hour and 7-day rolling windows and comparing against the published per-tier prompt budgets (Lite 80/400, Pro 400/2000, Max 1600/8000 prompts per 5h/week). Authoritative reset timestamps are extracted from trapped `1308`/`1310`/`1313`/`1309` business error codes when present
 
 ### Added (sidekick-cli)
 
-- **z.ai quota on `sidekick quota`**: `sidekick quota --provider zai` renders authoritative z.ai Coding Plan quota from z.ai's quota API. `sidekick quota --provider opencode` auto-routes to z.ai when z.ai traffic is detected. `sidekick quota --all` includes the z.ai section when available, and `quota history --provider zai` renders a 13-week heatmap for the z.ai runtime
+- **z.ai quota on `sidekick quota`**: `sidekick quota --provider zai` derives and renders z.ai Coding Plan quota from observed OpenCode traffic; `--tier lite|pro|max|auto` overrides the plan tier used for utilization math (default `auto`). `sidekick quota --provider opencode` auto-routes to z.ai when z.ai traffic is detected. `sidekick quota --all` now includes the z.ai section when active, and `quota history --provider zai` renders a 13-week heatmap for the z.ai runtime
 
 ### Added (sidekick-vscode)
 
-- **z.ai quota in the dashboard**: When OpenCode is the active session provider and z.ai quota is available, the dashboard renders a z.ai quota card (5-Hour / Weekly) labeled "Live z.ai API" or "Cached z.ai API snapshot". z.ai quota flows through the snapshot/history pipeline so the 13-week heatmap works automatically
-- **`sidekick.zai.tier` setting**: Deprecated compatibility setting from the former z.ai estimator; authoritative quota now comes from z.ai's quota API
+- **z.ai quota in the dashboard**: When OpenCode is the active session provider and z.ai routing is detected, the dashboard renders a third quota card (5-Hour / Weekly) labeled "Estimated from observed traffic". z.ai quota flows through the snapshot/history pipeline so the 13-week heatmap works automatically
+- **`sidekick.zai.tier` setting**: New setting (`auto` | `lite` | `pro` | `max`, default `auto`) overrides the z.ai plan tier used for utilization math
 - **Quota alerts for OpenCode**: Quota-failure alerts now also fire when the active session provider is `opencode`, so z.ai rate-limit errors surface as notifications
 
 ### Fixed
@@ -27,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Limitations
 
-- z.ai remains monitored-only (not selectable as a Sidekick inference provider) and has no Sidekick account-management surface yet. If the z.ai API is unavailable, Sidekick may show a cached z.ai API snapshot, but it no longer estimates account quota from observed local traffic. OpenCode has no native non-z.ai quota.
+- The z.ai quota is **estimated, not authoritative**, and several capabilities are not yet delivered. z.ai exposes no usage API, so utilization is derived only from OpenCode traffic observed on this machine/workspace and compared against provisional per-tier prompt budgets. z.ai is **observed-only** (not selectable as an inference provider) and has **no account management** in this release; auto-tier detection under-reports early in a cycle; reset times are approximate unless a rate-limit error is trapped; OpenCode has no native (non-z.ai) quota. See the OpenCode provider guide for the full list of current limitations and planned work.
 
 ## [0.21.0] - 2026-06-21
 

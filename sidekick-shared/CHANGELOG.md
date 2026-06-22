@@ -5,15 +5,21 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.2] - 2026-06-22
+
+### Changed
+
+- **Authoritative z.ai quota API**: new `zaiQuotaApi.ts` reads z.ai's `api/monitor/usage/quota/limit` endpoint and exports `resolveZaiQuota()`, `fetchZaiQuotaFromApi()`, `readZaiCredentials()`, and `quotaStateFromZaiQuotaLimitPayload()`, mapping the returned `TOKENS_LIMIT` percentages and `nextResetTime` values into the 5-Hour / Weekly `QuotaState` model. Credentials are discovered from OpenCode's stored `zai-coding-plan` → `zai` token, then `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`; API failures fall back to a cached snapshot
+- **Deprecated observed-traffic estimator**: `zaiQuota.ts` and `zaiQuotaWatcher.ts` (and their exports — `accumulateZaiUsage`, `inferZaiQuotaState`, `resolveZaiTier`, `ZaiQuotaWatcher`, `ZAI_TIER_BUDGETS`, …) remain available for compatibility but are no longer used for product quota display
+
 ## [0.21.1] - 2026-06-21
 
 ### Added
 
-- **z.ai Coding Plan quota API**: New `zaiQuotaApi.ts` module fetches authoritative z.ai Coding Plan quota from `api/monitor/usage/quota/limit`, maps returned `TOKENS_LIMIT` percentages and `nextResetTime` values into Sidekick's 5-Hour / Weekly quota model, and exports `resolveZaiQuota()`, `fetchZaiQuotaFromApi()`, `readZaiCredentials()`, and `quotaStateFromZaiQuotaLimitPayload()`
-- **z.ai credential discovery**: z.ai quota reads OpenCode's stored `zai-coding-plan` token first, then `zai`, then falls back to the official plugin environment variables `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`
-- **`OpenCodeProvider.getZaiQuotaState()` compatibility**: The old observed-traffic estimator remains available for compatibility, but product quota display now uses the authoritative API resolver
+- **z.ai Coding Plan quota derivation**: New `zaiQuota.ts` and `zaiQuotaWatcher.ts` modules derive an estimated `QuotaState` for z.ai coding plans from OpenCode assistant turns tagged `providerID ∈ {zai, zai-coding-plan}`. Because z.ai exposes no quota/usage HTTP API (verified against `docs.z.ai/openapi.json`), utilization is computed by accumulating per-turn tokens into 5-hour and 7-day rolling windows and comparing against the published per-tier prompt budgets (Lite 80/400, Pro 400/2000, Max 1600/8000 prompts per 5h/week). Authoritative reset timestamps are extracted from trapped `1308`/`1310`/`1313`/`1309` business error codes when present. Exports include `accumulateZaiUsage()`, `inferZaiQuotaState()`, `parseZaiQuotaError()`, `resolveZaiTier()`, `ZaiQuotaWatcher`, `ZAI_TIER_BUDGETS`, and `ZAI_PROMPT_INVOCATIONS`
+- **`OpenCodeProvider.getZaiQuotaState()`**: The shared OpenCode provider now derives z.ai quota on demand from the on-disk `opencode.db`. `OpenCodeSessionProvider.getQuotaFromSession()` (VS Code wrapper) wires the derived state into the existing session-based quota pipeline so the dashboard, snapshot, and history see z.ai samples automatically
 - **`OpenCodeDatabase.getAssistantMessagesByProviderId()`**: New query method returns assistant rows tagged with the given providerID(s), used by the z.ai accumulator to walk per-turn token records
-- **Runtime quota provider `'zai'`**: `RuntimeQuotaProvider`, `QuotaHistoryRuntimeProvider`, `QuotaState.providerId`, `ProviderQuotaMap`, and the corresponding Zod schemas all accept `'zai'`. `MultiProviderQuotaService` accepts an optional `zaiWatcher` and a new `updateProviderQuota('zai', …)` overload. `QuotaSnapshotProviderId` widens the snapshot store key to `AccountProviderId | 'zai'` so z.ai quota persists across sessions
+- **Runtime quota provider `'zai'`**: `RuntimeQuotaProvider`, `QuotaHistoryRuntimeProvider`, `QuotaState.providerId`, `ProviderQuotaMap`, and the corresponding Zod schemas all accept `'zai'`. `MultiProviderQuotaService` accepts an optional `zaiWatcher` and a new `updateProviderQuota('zai', …)` overload. `QuotaSnapshotProviderId` widens the snapshot store key to `AccountProviderId | 'zai'` so the derived z.ai quota persists across sessions
 - **`getOpenCodeDataDir()` exported**: Now a public helper
 
 ### Fixed
@@ -22,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Limitations
 
-- z.ai remains monitored-only in Sidekick — there is no z.ai inference provider and no z.ai account-management surface in this release. If the z.ai API is unavailable, Sidekick may use a cached z.ai API snapshot; it no longer estimates account quota from local OpenCode traffic.
+- z.ai quota is **estimated, not authoritative**: it is derived only from OpenCode traffic observed on this machine (z.ai exposes no usage API) and compared against provisional per-tier prompt budgets (`ZAI_PROMPT_INVOCATIONS` is a midpoint estimate, not validated). z.ai is **observed-only** — there is no z.ai inference provider and no z.ai account management in this release (`zaiQuotaWatcher.ts`: "z.ai has no full account management in v1"). Auto-tier resolution under-reports early in a weekly cycle; reset times are approximate unless a `1308`/`1310`/`1313`/`1309` error is trapped
 
 ## [0.21.0] - 2026-06-21
 

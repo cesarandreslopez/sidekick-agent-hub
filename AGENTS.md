@@ -138,7 +138,7 @@ Provider implementations live in `src/services/providers/`. Each normalizes raw 
 - **Prompt templates**: `src/utils/prompts.ts`, `src/utils/analysisPrompts.ts`, `src/utils/summaryPrompts.ts`
 - **Inference clients**: `src/services/AuthService.ts`, `MaxSubscriptionClient.ts`, `ApiKeyClient.ts`, `OpenCodeClient.ts`, `CodexClient.ts` (spawns CLI directly, no SDK)
 - **Session providers**: `src/services/providers/ClaudeCodeSessionProvider.ts`, `OpenCodeSessionProvider.ts`, `CodexSessionProvider.ts`
-- **z.ai quota derivation** (shared): `sidekick-shared/src/zaiQuota.ts` (stateless accumulator/tier resolver/error parser) and `zaiQuotaWatcher.ts` (event-driven watcher). z.ai has no usage API, so quota is *estimated* from OpenCode traffic — observed-only, no z.ai inference provider or account management yet
+- **z.ai quota** (shared): `sidekick-shared/src/zaiQuotaApi.ts` — `resolveZaiQuota()` reads z.ai's authoritative `api/monitor/usage/quota/limit` endpoint (5-Hour / Weekly windows), discovering credentials from OpenCode's stored z.ai token (`zai-coding-plan` → `zai`) or `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`, with cached-snapshot fallback. The older observed-traffic estimator (`zaiQuota.ts` / `zaiQuotaWatcher.ts`) is retained for backward compatibility but deprecated and no longer used for product quota display. z.ai is monitored-only — no z.ai inference provider or account-management surface yet
 - **Webview UI**: `src/webview/` — vanilla TS bundled as IIFE; Chart.js and D3.js load from local vendor bundles
 
 ### Persistence
