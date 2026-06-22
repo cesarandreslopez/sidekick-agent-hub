@@ -8,7 +8,7 @@ import type { AccountProviderId } from './accountRegistry';
 /**
  * Storage key for a quota snapshot. Extends `AccountProviderId` with `'zai'`
  * because z.ai has no full account-management surface in v1, but the snapshot
- * store still needs a stable key for the derived z.ai quota cache.
+ * store still needs a stable key for the z.ai quota cache.
  */
 export type QuotaSnapshotProviderId = AccountProviderId | 'zai';
 

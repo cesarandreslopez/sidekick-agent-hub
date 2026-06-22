@@ -420,16 +420,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._sendSessionList();
         this._sendProviderInfo();
         this._sendEventLogState();
-        // Send session-based quota if available (e.g., Codex rate_limits)
-        {
-          const provider = this._sessionMonitor.getProvider();
-          const sessionQuota = provider.getQuotaFromSession?.();
-          if (sessionQuota) {
-            this._handleQuotaUpdate(sessionQuota);
-          } else if (provider.id === 'codex') {
-            this._handleQuotaUpdate(this._getCodexLocalQuota());
-          }
-        }
+        // Send provider quota if available (e.g., Codex rate_limits, z.ai API quota)
+        void this._sendProviderQuotaToWebview();
         // Send plan history if available
         this._sendPlanHistory();
         void this._sendQuotaHistory();
@@ -1622,6 +1614,39 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     void this._sendQuotaHistory();
   }
 
+  private async _sendProviderQuotaToWebview(): Promise<void> {
+    const provider = this._sessionMonitor.getProvider();
+    try {
+      const sessionQuota = await Promise.resolve(provider.getQuotaFromSession?.() ?? null);
+      if (sessionQuota) {
+        this._handleQuotaUpdate(sessionQuota);
+        return;
+      }
+
+      if (provider.id === 'codex') {
+        this._handleQuotaUpdate(this._getCodexLocalQuota());
+        return;
+      }
+
+      if (this._quotaService && provider.id === 'claude-code') {
+        const cached = this._quotaService.getCachedQuota();
+        if (cached) {
+          this._handleQuotaUpdate(cached);
+        }
+        this._quotaService.startRefresh();
+        return;
+      }
+
+      this._handleQuotaUpdate({
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 0, resetsAt: '' },
+        available: false,
+      });
+    } catch (error) {
+      logError('Dashboard failed to resolve provider quota', error);
+    }
+  }
+
   private _getCodexLocalQuota(): DashboardQuotaState {
     const activeCodexAccount = getActiveCodexAccount();
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -2249,25 +2274,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sendSessionList();
     this._sendProviderInfo();
 
-    // Send provider-appropriate quota data on switch
-    const provider = this._sessionMonitor.getProvider();
-    const sessionQuota = provider.getQuotaFromSession?.();
-    if (sessionQuota) {
-      // Codex: has session-based quota from rate_limits
-      this._handleQuotaUpdate(sessionQuota);
-    } else if (provider.id === 'codex') {
-      this._handleQuotaUpdate(this._getCodexLocalQuota());
-    } else if (this._quotaService && provider.id === 'claude-code') {
-      // Claude Code: use cached quota from QuotaService, trigger refresh
-      const cached = this._quotaService.getCachedQuota();
-      if (cached) {
-        this._handleQuotaUpdate(cached);
-      }
-      this._quotaService.startRefresh();
-    } else {
-      // OpenCode or no data: clear quota in webview
-      this._handleQuotaUpdate({ fiveHour: { utilization: 0, resetsAt: '' }, sevenDay: { utilization: 0, resetsAt: '' }, available: false });
-    }
+    void this._sendProviderQuotaToWebview();
   }
 
   /**
@@ -6671,7 +6678,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         if (!sectionEl || !contentEl || !errorEl) return;
 
-        if (currentProviderId === 'opencode') {
+        if (currentProviderId === 'opencode' && quota?.providerId !== 'zai') {
           sectionEl.classList.remove('visible');
           contentEl.style.display = 'none';
           errorEl.style.display = 'none';
@@ -6681,11 +6688,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         // Provider-aware section title and tooltip
         const titleEl = sectionEl.querySelector('.section-title');
+        const isZaiQuota = quota?.providerId === 'zai';
         if (titleEl) {
-          titleEl.textContent = currentProviderId === 'codex' ? 'Rate Limits' : 'Subscription Quota';
+          titleEl.textContent = currentProviderId === 'codex' ? 'Rate Limits' : isZaiQuota ? 'z.ai Quota' : 'Subscription Quota';
         }
         sectionEl.title = currentProviderId === 'codex'
           ? 'Codex CLI rate limits'
+          : isZaiQuota
+          ? 'z.ai Coding Plan quota'
           : 'Claude Max subscription usage limits';
         if (label5hEl) label5hEl.textContent = quota?.fiveHourLabel || (currentProviderId === 'codex' ? 'Primary' : '5-Hour');
         if (label7dEl) label7dEl.textContent = quota?.sevenDayLabel || (currentProviderId === 'codex' ? 'Secondary' : '7-Day');
@@ -6744,7 +6754,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           } else if (quota.providerId === 'codex') {
             metaParts.push('Live session');
           } else if (quota.providerId === 'zai') {
-            metaParts.push('Estimated from observed traffic');
+            metaParts.push(quota.source === 'cache' || quota.stale ? 'Cached z.ai API snapshot' : 'Live z.ai API');
           }
           metaEl.textContent = metaParts.join(' • ');
           metaEl.style.display = metaParts.length ? 'block' : 'none';

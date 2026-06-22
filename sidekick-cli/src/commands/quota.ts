@@ -11,19 +11,12 @@ import {
   CodexProvider,
   OpenCodeDatabase,
   ZAI_PROVIDER_IDS,
-  ZAI_TIER_BUDGETS,
-  accumulateZaiUsage,
   getActiveCodexAccount,
-  inferZaiQuotaState,
-  makeUnavailableZaiQuotaState,
-  parseZaiQuotaError,
   resolveCodexQuota,
-  resolveZaiTier,
-  rowsToZaiTurnsAndErrors,
+  resolveZaiQuota,
   fetchPeakHoursStatus,
 } from 'sidekick-shared';
 import type { PeakHoursState } from 'sidekick-shared';
-import type { ZaiTier } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
 import { formatPeakHoursLine } from './peakHoursRender';
@@ -281,12 +274,6 @@ function printCodexQuota(
 
 // ── z.ai (GLM Coding Plan) ──
 
-function resolveZaiTierOption(localOpts: Record<string, unknown>): ZaiTier | 'auto' {
-  const raw = localOpts.tier;
-  if (raw === 'lite' || raw === 'pro' || raw === 'max') return raw;
-  return 'auto';
-}
-
 /**
  * Heuristic: does the local OpenCode install currently route at z.ai?
  * Used to auto-pick z.ai for `sidekick quota` when no explicit provider is set.
@@ -305,64 +292,14 @@ async function detectZaiRouting(): Promise<boolean> {
   }
 }
 
-async function fetchZaiQuotaPayload(localOpts: Record<string, unknown>): Promise<{
-  quota: ReturnType<typeof makeUnavailableZaiQuotaState> | ReturnType<typeof inferZaiQuotaState>;
+async function fetchZaiQuotaPayload(_localOpts: Record<string, unknown>): Promise<{
+  quota: Awaited<ReturnType<typeof resolveZaiQuota>>;
   detected: boolean;
 }> {
-  const sinceMs = Date.now() - 7 * 86_400_000;
-  let rows: ReturnType<typeof rowsToZaiTurnsAndErrors>['turns'] = [];
-  let detected = false;
-  try {
-    const db = new OpenCodeDatabase(getOpenCodeDataDir());
-    if (db.isAvailable() && db.open()) {
-      const rawRows = db.getAssistantMessagesByProviderId([...ZAI_PROVIDER_IDS], sinceMs);
-      detected = rawRows.length > 0;
-      const parsed = rowsToZaiTurnsAndErrors(rawRows);
-      rows = parsed.turns;
-    }
-  } catch {
-    // Fall through with empty rows → unavailable.
-  }
-
-  if (rows.length === 0) {
-    return {
-      quota: makeUnavailableZaiQuotaState('No z.ai usage observed in the last 7 days.'),
-      detected,
-    };
-  }
-
-  const accumulated = accumulateZaiUsage(rows, Date.now());
-  const configuredTier = resolveZaiTierOption(localOpts);
-  const tier = resolveZaiTier(configuredTier, accumulated);
-
-  // Walk rows once more to trap any z.ai business errors captured in
-  // message.error.code. Most recent authoritative reset wins.
-  let authoritativeFiveHourResetAt: string | undefined;
-  let authoritativeWeeklyResetAt: string | undefined;
-  try {
-    const db = new OpenCodeDatabase(getOpenCodeDataDir());
-    if (db.isAvailable() && db.open()) {
-      const rawRows = db.getAssistantMessagesByProviderId([...ZAI_PROVIDER_IDS], sinceMs);
-      for (const row of rawRows) {
-        const parsed = parseZaiQuotaError({
-          code: row.errorCode ?? undefined,
-          message: row.errorMessage ?? undefined,
-        });
-        if (!parsed?.resetsAt) continue;
-        if (parsed.kind === 'exhausted') {
-          authoritativeFiveHourResetAt = parsed.resetsAt;
-          if (String(parsed.code) === '1310') authoritativeWeeklyResetAt = parsed.resetsAt;
-        }
-      }
-    }
-  } catch {
-    // Optional refinement — ignore failures.
-  }
-
-  const quota = inferZaiQuotaState(accumulated, tier, {
-    authoritativeFiveHourResetAt,
-    authoritativeWeeklyResetAt,
-  });
+  const [quota, detected] = await Promise.all([
+    resolveZaiQuota(),
+    detectZaiRouting(),
+  ]);
   return { quota, detected };
 }
 
@@ -390,23 +327,22 @@ async function zaiQuotaAction(
   printZaiQuota(quota);
 }
 
-function printZaiQuota(quota: ReturnType<typeof inferZaiQuotaState>): void {
+function printZaiQuota(quota: Awaited<ReturnType<typeof resolveZaiQuota>>): void {
   const barWidth = 30;
   const fivePct = Math.round(quota.fiveHour.utilization);
   const sevenPct = Math.round(quota.sevenDay.utilization);
   const fiveReset = quota.fiveHour.resetsAt ? formatTimeUntil(quota.fiveHour.resetsAt) : '';
   const sevenReset = quota.sevenDay.resetsAt ? formatTimeUntil(quota.sevenDay.resetsAt) : '';
-  const tier = (quota.planType ?? 'auto') as ZaiTier | 'auto';
-  const tierBudget = tier === 'auto' ? null : ZAI_TIER_BUDGETS[tier];
+  const tier = quota.planType ?? 'auto';
 
-  process.stdout.write(chalk.bold('z.ai Coding Plan') + chalk.dim(` (estimated, tier: ${tier})\n`));
+  process.stdout.write(chalk.bold('z.ai Coding Plan') + (tier !== 'auto' ? chalk.dim(` (plan: ${tier})\n`) : '\n'));
+  if (quota.stale) {
+    process.stdout.write(chalk.yellow(`Using cached z.ai quota snapshot from ${formatSnapshotTime(quota.capturedAt)}.\n`));
+  }
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
   process.stdout.write(`  ${chalk.dim('5-Hour')}   ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%   ${fiveReset ? chalk.dim('resets ' + fiveReset) : ''}\n`);
   process.stdout.write(`  ${chalk.dim('Weekly')}    ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
-  if (tierBudget) {
-    process.stdout.write(chalk.dim(`  budgets: ${tierBudget.fiveHour}/5h, ${tierBudget.weekly}/week (prompts)\n`));
-  }
-  process.stdout.write(chalk.dim('  z.ai exposes no quota API; utilization is derived from observed traffic.\n'));
+  process.stdout.write(chalk.dim(quota.stale ? '  Source: cached z.ai API snapshot.\n' : '  Source: z.ai quota API.\n'));
 }
 
 async function allQuotaAction(
@@ -447,8 +383,7 @@ async function allQuotaAction(
     process.stderr.write(chalk.yellow(codex.error ?? 'Codex rate-limit data is unavailable.') + '\n');
   }
 
-  // Only show z.ai when we actually have observed traffic — otherwise the
-  // section is noise.
+  // Only show z.ai when API quota is available or z.ai traffic was detected.
   if (zai.detected || zai.quota.available) {
     process.stdout.write('\n' + chalk.bold('z.ai\n'));
     if (zai.quota.available) {

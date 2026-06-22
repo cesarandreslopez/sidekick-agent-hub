@@ -1899,12 +1899,9 @@ export class SessionMonitor implements vscode.Disposable {
         this.handleEvent(event);
       }
 
-      // Propagate session-based quota data (e.g., Codex rate_limits)
+      // Propagate session-based quota data (e.g., Codex rate_limits, z.ai API quota)
       if (newEvents.length > 0) {
-        const quota = this.provider.getQuotaFromSession?.();
-        if (quota) {
-          this._onQuotaUpdate.fire(quota);
-        }
+        void this.emitQuotaFromSession();
 
         // Periodically update snapshot (throttled to avoid excessive writes)
         this.throttledSnapshotSave();
@@ -1912,6 +1909,17 @@ export class SessionMonitor implements vscode.Disposable {
     } catch (error) {
       logError('Error reading session file changes', error);
       // Don't throw - continue monitoring
+    }
+  }
+
+  private async emitQuotaFromSession(): Promise<void> {
+    try {
+      const quota = await Promise.resolve(this.provider.getQuotaFromSession?.() ?? null);
+      if (quota) {
+        this._onQuotaUpdate.fire(quota);
+      }
+    } catch (error) {
+      logError('Error reading quota from session provider', error);
     }
   }
 

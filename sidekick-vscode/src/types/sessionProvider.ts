@@ -133,6 +133,6 @@ export interface SessionProvider extends vscode.Disposable {
   /** Tests whether a provider can monitor a directory path, including synthetic DB-backed paths. */
   canMonitorDirectory?(dir: string): boolean;
 
-  /** Gets subscription quota state from session data (e.g., Codex rate_limits). */
-  getQuotaFromSession?(): QuotaState | null;
+  /** Gets subscription quota state from session data or provider APIs (e.g., Codex rate_limits, z.ai quota API). */
+  getQuotaFromSession?(): QuotaState | null | Promise<QuotaState | null>;
 }

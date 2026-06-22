@@ -8,7 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Co
 
 ## What's New
 
-- **`sidekick quota --provider zai`** — *estimated* z.ai Coding Plan quota (5-Hour / Weekly) derived from observed OpenCode traffic, with `--tier lite|pro|max|auto`. It's an estimate, not authoritative (z.ai has no usage API); see Quota & Rate Limits below.
+- **`sidekick quota --provider zai`** — authoritative z.ai Coding Plan quota (5-Hour / Weekly) from z.ai's quota API, using OpenCode's stored z.ai token when available.
 - **`sidekick extract`** — pull URLs, file paths, commands, and plans out of recent Claude Code and Codex chats, with `--json` and an interactive picker.
 - **`sidekick quota history`** — a 13-week, per-workspace, GitHub-style heatmap of session-limit utilization.
 - **`sidekick status` & `sidekick peak`** — one-shot Claude/OpenAI API health checks and a Claude peak-hours indicator.
@@ -158,7 +158,7 @@ Provider-aware quota and rate-limit display. The command auto-detects the active
 
 - **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns. Includes a peak-hours summary line.
 - **Codex**: Shows rate limits from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars and reset countdowns. The default path is local-only: current workspace rollout, recent account-level rollouts, then the active account's cached snapshot. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
-- **OpenCode / z.ai**: OpenCode has no native rate-limit data, but when it routes to a **z.ai Coding Plan** (GLM), `sidekick quota --provider opencode` auto-routes to an **estimated** z.ai quota (5-Hour / Weekly). Use `--provider zai` to request it explicitly and `--tier lite|pro|max|auto` to override the tier. The figure is an estimate, not authoritative — z.ai exposes no usage API, so utilization is derived from observed OpenCode traffic against provisional per-tier budgets, z.ai is observed-only (not a selectable inference provider) with no account management yet, and reset times are approximate unless a rate-limit error is trapped.
+- **OpenCode / z.ai**: OpenCode has no native rate-limit data, but when z.ai Coding Plan credentials are available, `sidekick quota --provider opencode` can auto-route to authoritative z.ai quota (5-Hour / Weekly). Use `--provider zai` to request it explicitly. z.ai quota is read from z.ai's quota API using OpenCode's stored token, with fallback support for `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`.
 
 ```
 Subscription Quota
@@ -173,7 +173,7 @@ Use `--json` for machine-readable output. Use `--provider codex` to explicitly c
 
 When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
 
-Use `sidekick quota --all` to show Claude and Codex quota together in a single run (plus the estimated z.ai section when z.ai traffic is active). Each provider degrades independently — if one provider's quota can't be fetched, its error is shown inline and the others still render (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed payload for dashboards and automation.
+Use `sidekick quota --all` to show Claude and Codex quota together in a single run, plus z.ai when API quota is available or z.ai traffic is active. Each provider degrades independently — if one provider's quota can't be fetched, its error is shown inline and the others still render (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed payload for dashboards and automation.
 
 ### Quota History
 

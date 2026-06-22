@@ -1,9 +1,9 @@
 /**
- * Stateless quota accumulator for z.ai coding plans.
+ * Deprecated stateless quota accumulator for z.ai coding plans.
  *
- * z.ai (GLM Coding Plan) does not expose an HTTP quota/usage API (verified
- * against the canonical OpenAPI spec at https://docs.z.ai/openapi.json).
- * The only programmatic signals are:
+ * This estimator is kept for compatibility with consumers that imported the
+ * old helpers directly. Product code should use `zaiQuotaApi.ts`, which calls
+ * z.ai's authoritative quota endpoint. The legacy estimator only uses:
  *
  *   1. Per-call token `usage` returned inline on each chat completion —
  *      which OpenCode persists into `opencode.db` message rows tagged with
@@ -13,8 +13,8 @@
  *      in the human-readable message text.
  *
  * This module is therefore a **derivation** rather than a fetcher: callers
- * feed it observed assistant turns (and any error events), and it computes
- * an estimated `QuotaState` keyed against the published per-tier budgets.
+ * feed it observed assistant turns (and any error events), and it computes a
+ * compatibility `QuotaState` keyed against the published per-tier budgets.
  *
  * Polling / eventing / persistence are the caller's responsibility —
  * see `ZaiQuotaWatcher` for the bundled watcher.

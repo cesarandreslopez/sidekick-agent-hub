@@ -486,6 +486,20 @@ export type {
 } from './zaiQuota';
 export { ZaiQuotaWatcher } from './zaiQuotaWatcher';
 export type { ZaiQuotaWatcherOptions } from './zaiQuotaWatcher';
+export {
+  fetchZaiQuotaFromApi,
+  quotaStateFromZaiQuotaLimitPayload,
+  readZaiCredentials,
+  resolveZaiQuota,
+} from './zaiQuotaApi';
+export type {
+  ReadZaiCredentialsOptions,
+  ZaiCredentialSource,
+  ZaiCredentials,
+  ZaiPlatform,
+  ZaiQuotaApiOptions,
+  ZaiQuotaResolveOptions,
+} from './zaiQuotaApi';
 export { MultiProviderQuotaService } from './multiProviderQuotaService';
 export type { MultiProviderQuotaServiceOptions } from './multiProviderQuotaService';
 export type { ProviderQuotaMap, ProviderQuotaState, RuntimeQuotaProvider } from './providerQuota';

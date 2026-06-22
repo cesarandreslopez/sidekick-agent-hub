@@ -5,21 +5,20 @@
  * vscode.Disposable compliance for the VS Code SessionProvider interface.
  *
  * All DB access, message parsing, and session logic lives in sidekick-shared.
- * Adds a `getQuotaFromSession()` override that surfaces the derived z.ai
- * coding-plan quota (when OpenCode is routing at z.ai) so the dashboard,
- * snapshot, and history pipelines see it without bespoke wiring.
+ * Adds a `getQuotaFromSession()` override that surfaces z.ai Coding Plan
+ * quota when API credentials are available or OpenCode is routing at z.ai,
+ * so the dashboard, snapshot, and history pipelines see it without bespoke
+ * wiring.
  *
  * @module services/providers/OpenCodeSessionProvider
  */
 
-import * as vscode from 'vscode';
 import {
   OpenCodeProvider,
   appendQuotaHistorySample,
-  writeQuotaSnapshot,
+  resolveZaiQuota,
 } from 'sidekick-shared';
 import type { QuotaState } from 'sidekick-shared';
-import type { ZaiTier } from 'sidekick-shared';
 import type { SessionProvider } from '../../types/sessionProvider';
 import { getWorkspaceId } from '../../utils/workspaceId';
 
@@ -31,17 +30,42 @@ import { getWorkspaceId } from '../../utils/workspaceId';
  * usage snapshot support.
  */
 export class OpenCodeSessionProvider extends OpenCodeProvider implements SessionProvider {
-  /**
-   * Returns the current z.ai coding-plan quota when OpenCode is routing at
-   * z.ai, otherwise null. Invoked by `SessionMonitor` on each event batch,
-   * so the dashboard + history pipelines see updates automatically.
-   */
-  getQuotaFromSession(): QuotaState | null {
-    const tier = this.readConfiguredTier();
-    const quota = this.getZaiQuotaState(tier);
-    if (!quota) return null;
+  private static readonly ZAI_QUOTA_REFRESH_INTERVAL_MS = 60_000;
 
-    writeQuotaSnapshot('zai', 'default', quota);
+  private lastZaiQuotaFetchMs = 0;
+  private lastZaiQuota: QuotaState | null = null;
+  private pendingZaiQuota: Promise<QuotaState | null> | null = null;
+
+  /**
+   * Returns the current z.ai coding-plan quota when credentials or z.ai
+   * routing are present, otherwise null. Invoked by `SessionMonitor` on each
+   * event batch, so the dashboard + history pipelines see updates
+   * automatically.
+   */
+  async getQuotaFromSession(): Promise<QuotaState | null> {
+    const now = Date.now();
+    if (this.lastZaiQuota && now - this.lastZaiQuotaFetchMs < OpenCodeSessionProvider.ZAI_QUOTA_REFRESH_INTERVAL_MS) {
+      return this.lastZaiQuota;
+    }
+
+    if (this.pendingZaiQuota) return this.pendingZaiQuota;
+
+    this.pendingZaiQuota = this.fetchAndRecordZaiQuota()
+      .finally(() => {
+        this.pendingZaiQuota = null;
+      });
+    return this.pendingZaiQuota;
+  }
+
+  private async fetchAndRecordZaiQuota(): Promise<QuotaState | null> {
+    const routingActive = this.isZaiRoutingActive();
+    const quota = await resolveZaiQuota();
+    if (!quota.available && !quota.stale && !routingActive) {
+      return null;
+    }
+
+    this.lastZaiQuota = quota;
+    this.lastZaiQuotaFetchMs = Date.now();
     const workspaceId = getWorkspaceId();
     if (workspaceId) {
       void appendQuotaHistorySample({
@@ -62,11 +86,4 @@ export class OpenCodeSessionProvider extends OpenCodeProvider implements Session
 
     return quota;
   }
-
-  private readConfiguredTier(): ZaiTier | 'auto' {
-    const raw = vscode.workspace.getConfiguration('sidekick').get<string>('zai.tier', 'auto');
-    if (raw === 'lite' || raw === 'pro' || raw === 'max') return raw;
-    return 'auto';
-  }
 }
-

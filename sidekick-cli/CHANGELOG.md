@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **z.ai Coding Plan quota**: `sidekick quota --provider zai` derives and renders z.ai plan utilization from OpenCode traffic already on disk (5-Hour / Weekly windows with per-tier prompt budgets). `--tier lite|pro|max|auto` overrides the assumed plan tier (default `auto`). `sidekick quota --provider opencode` now auto-routes to z.ai quota when z.ai traffic is detected. `sidekick quota --all` includes the z.ai section when active
+- **z.ai Coding Plan quota**: `sidekick quota --provider zai` renders authoritative z.ai plan utilization from z.ai's quota API (5-Hour / Weekly windows with reset times). `sidekick quota --provider opencode` auto-routes to z.ai quota when z.ai traffic is detected. `sidekick quota --all` includes the z.ai section when available
 - **z.ai quota history heatmap**: `sidekick quota history --provider zai` renders a 13-week z.ai utilization heatmap for the current workspace, alongside the existing Claude and Codex heatmaps (now also in `--all`)
 
 ### Changed
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Limitations
 
-- z.ai quota is **estimated, not authoritative** — it reflects only the OpenCode traffic Sidekick observed on this machine/workspace (z.ai exposes no usage API) compared against provisional per-tier prompt budgets. z.ai is observed-only (no z.ai inference provider) and has no account management yet; with `--tier auto`, the tier is under-detected early in a cycle (use an explicit `--tier`); reset times are approximate unless a rate-limit error is trapped.
+- z.ai quota uses z.ai's quota API with OpenCode credential discovery and cached snapshot fallback. z.ai is monitored-only in Sidekick (no z.ai inference provider or account management yet), and Sidekick no longer estimates account quota from local traffic.
 
 ## [0.21.0] - 2026-06-21
 

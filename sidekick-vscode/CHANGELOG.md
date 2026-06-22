@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **z.ai Coding Plan quota in the dashboard**: When OpenCode is the active session provider and z.ai routing is detected, the dashboard renders a third quota card (5-Hour / Weekly) labeled "Estimated from observed traffic". z.ai quota also flows through the existing snapshot/history pipeline so the 13-week heatmap and cross-session cache work automatically
-- **`sidekick.zai.tier` setting**: New setting (`auto` | `lite` | `pro` | `max`, default `auto`) overrides the z.ai plan tier used for utilization math. `auto` falls back to `'max'` until sufficient volume accrues, giving a conservative (lower) utilization % until calibration
+- **z.ai Coding Plan quota in the dashboard**: When OpenCode is the active session provider and z.ai quota is available, the dashboard renders a z.ai quota card (5-Hour / Weekly) labeled "Live z.ai API" or "Cached z.ai API snapshot". z.ai quota also flows through the existing snapshot/history pipeline so the 13-week heatmap and cross-session cache work automatically
+- **`sidekick.zai.tier` setting**: Deprecated compatibility setting from the former z.ai estimator; authoritative quota now comes from z.ai's quota API
 - **Quota alerts for OpenCode**: Quota-failure alerts now also fire when the active session provider is `opencode` (previously only Claude Code and Codex), so z.ai rate-limit errors surface as notifications
 
 ### Changed
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Limitations
 
-- z.ai quota is **estimated, not authoritative** — the dashboard card is labeled "Estimated from observed traffic" because z.ai exposes no usage API; utilization is derived only from OpenCode traffic seen in this workspace and compared against provisional per-tier prompt budgets. z.ai is observed-only (you cannot pick z.ai as an inference provider) and has no account management yet; `sidekick.zai.tier: auto` under-detects the tier early in a cycle (set the tier explicitly for accuracy); reset times are approximate unless a rate-limit error is trapped.
+- z.ai quota is sourced from z.ai's quota API with cached snapshot fallback. z.ai is monitored-only (you cannot pick z.ai as an inference provider) and has no Sidekick account-management surface yet.
 
 ## [0.21.0] - 2026-06-21
 

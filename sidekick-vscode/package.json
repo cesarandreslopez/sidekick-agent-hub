@@ -102,12 +102,12 @@
               "max"
             ],
             "default": "auto",
-            "description": "z.ai coding-plan tier. 'auto' infers from observed weekly volume (defaults to 'max' when uncertain for safer under-reporting). Used to compute utilization against the published per-tier prompt budgets.",
+            "description": "Deprecated compatibility setting from the former z.ai quota estimator. Authoritative z.ai quota is now read from z.ai's quota API.",
             "enumDescriptions": [
-              "Auto — infer tier from observed usage; falls back to 'max' until sufficient volume accrues.",
-              "Lite plan (~80 prompts / 5 hours, ~400 prompts / week).",
-              "Pro plan (~400 prompts / 5 hours, ~2000 prompts / week).",
-              "Max plan (~1600 prompts / 5 hours, ~8000 prompts / week)."
+              "Deprecated — authoritative quota comes from z.ai.",
+              "Deprecated — authoritative quota comes from z.ai.",
+              "Deprecated — authoritative quota comes from z.ai.",
+              "Deprecated — authoritative quota comes from z.ai."
             ]
           }
         }

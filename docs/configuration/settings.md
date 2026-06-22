@@ -21,11 +21,11 @@ When the threshold is greater than `0`, the extension host watches multi-provide
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `sidekick.zai.tier` | `auto` | z.ai Coding Plan tier used for utilization math: `auto`, `lite`, `pro`, or `max`. `auto` infers the tier from observed weekly volume and falls back to `max` until enough volume accrues (conservative, lower utilization % until calibration). |
+| `sidekick.zai.tier` | `auto` | Deprecated compatibility setting from the former z.ai estimator. Authoritative z.ai quota now comes from the z.ai quota API and does not use local tier math. |
 
-When OpenCode routes inference to a z.ai Coding Plan (GLM), Sidekick derives an **estimated** quota from observed traffic and compares it against the published per-tier prompt budgets (per 5 hours / per week): **Lite** 80 / 400, **Pro** 400 / 2000, **Max** 1600 / 8000.
+When OpenCode is configured with a z.ai Coding Plan (GLM), Sidekick reads authoritative 5-hour and weekly quota percentages from z.ai's quota endpoint using the z.ai token stored by OpenCode, with fallback support for the official plugin's `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` environment variables.
 
-These budgets are published z.ai figures, not authoritative account limits, and the quota is an estimate. See [OpenCode → z.ai Coding Plan quota](../providers/opencode.md#zai-coding-plan-quota-estimated) for how the estimate is derived and its current limitations.
+See [OpenCode → z.ai Coding Plan quota](../providers/opencode.md#zai-coding-plan-quota) for details and limitations.
 
 ## Model Selection
 

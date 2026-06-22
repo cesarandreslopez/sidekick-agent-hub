@@ -78,13 +78,13 @@ describe('formatTimeUntil', () => {
 
 // ── quotaAction ──
 
-const { mockFetchOnce, mockResolveCodexQuota, mockResolveProvider, mockFetchPeakHoursStatus, mockZaiRows, mockZaiRouting } = vi.hoisted(() => ({
+const { mockFetchOnce, mockResolveCodexQuota, mockResolveZaiQuota, mockResolveProvider, mockFetchPeakHoursStatus, mockZaiRows } = vi.hoisted(() => ({
   mockFetchOnce: vi.fn(),
   mockResolveCodexQuota: vi.fn(),
+  mockResolveZaiQuota: vi.fn(),
   mockResolveProvider: vi.fn(),
   mockFetchPeakHoursStatus: vi.fn(),
   mockZaiRows: vi.fn(() => []),
-  mockZaiRouting: vi.fn(() => false),
 }));
 
 vi.mock('sidekick-shared', () => ({
@@ -111,6 +111,7 @@ vi.mock('sidekick-shared', () => ({
   }),
   getActiveAccount: () => null,
   getActiveCodexAccount: () => ({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' }),
+  getOpenCodeDataDir: () => '/tmp/opencode',
   inferZaiQuotaState: (_acc: unknown, tier: string) => ({
     fiveHour: { utilization: 5, resetsAt: '' },
     sevenDay: { utilization: 1, resetsAt: '' },
@@ -143,6 +144,7 @@ vi.mock('sidekick-shared', () => ({
     return null;
   },
   resolveCodexQuota: mockResolveCodexQuota,
+  resolveZaiQuota: mockResolveZaiQuota,
   resolveZaiTier: () => 'lite',
   rowsToZaiTurnsAndErrors: (rows: unknown[]) => ({ turns: rows, errors: [] }),
   fetchPeakHoursStatus: (...args: unknown[]) => mockFetchPeakHoursStatus(...args),
@@ -239,9 +241,24 @@ describe('quotaAction', () => {
     process.exit = vi.fn() as never;
     mockFetchOnce.mockReset();
     mockResolveCodexQuota.mockReset();
+    mockResolveZaiQuota.mockReset();
     mockResolveProvider.mockReset();
     mockFetchPeakHoursStatus.mockReset();
+    mockZaiRows.mockReset();
+    mockZaiRows.mockReturnValue([]);
     mockResolveProvider.mockReturnValue({ id: 'claude-code', dispose: () => {} });
+    mockResolveZaiQuota.mockResolvedValue({
+      runtimeProvider: 'zai',
+      providerId: 'zai',
+      fiveHour: { utilization: 1, resetsAt: '2026-06-25T15:47:00Z' },
+      sevenDay: { utilization: 20, resetsAt: '2026-06-29T15:47:00Z' },
+      available: true,
+      source: 'api',
+      fiveHourLabel: '5-Hour',
+      sevenDayLabel: 'Weekly',
+      planType: 'lite',
+      limitName: 'z.ai Lite',
+    });
     mockFetchPeakHoursStatus.mockResolvedValue({
       status: 'unknown',
       isPeak: false,
@@ -442,6 +459,33 @@ describe('quotaAction', () => {
     expect(provider.dispose).toHaveBeenCalledOnce();
   });
 
+  it('prints authoritative z.ai quota without estimated budget text', async () => {
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { provider: 'zai' }));
+
+    expect(mockResolveZaiQuota).toHaveBeenCalledOnce();
+    expect(stdoutData).toContain('z.ai Coding Plan');
+    expect(stdoutData).toContain('1%');
+    expect(stdoutData).toContain('20%');
+    expect(stdoutData).not.toContain('estimated');
+    expect(stdoutData).not.toContain('budgets:');
+    expect(stdoutData).not.toContain('exposes no quota API');
+  });
+
+  it('auto-routes OpenCode quota to authoritative z.ai quota when z.ai traffic is detected', async () => {
+    const provider = { id: 'opencode', dispose: vi.fn() };
+    mockResolveProvider.mockReturnValue(provider);
+    mockZaiRows.mockReturnValue([{ providerId: 'zai-coding-plan' }]);
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { provider: 'opencode' }));
+
+    expect(provider.dispose).toHaveBeenCalledOnce();
+    expect(mockResolveZaiQuota).toHaveBeenCalledOnce();
+    expect(stdoutData).toContain('z.ai Coding Plan');
+    expect(stdoutData).toContain('20%');
+  });
+
   it('outputs combined Claude and Codex quota with --all --json', async () => {
     mockFetchOnce.mockResolvedValue({
       fiveHour: { utilization: 40, resetsAt: '2026-01-01T00:00:00Z' },
@@ -465,6 +509,8 @@ describe('quotaAction', () => {
     expect(parsed.claude.fiveHour.utilization).toBe(40);
     expect(parsed.codex.available).toBe(true);
     expect(parsed.codex.fiveHour.utilization).toBe(6);
+    expect(parsed.zai.available).toBe(true);
+    expect(parsed.zai.sevenDay.utilization).toBe(20);
     expect(mockResolveProvider).not.toHaveBeenCalled();
   });
 

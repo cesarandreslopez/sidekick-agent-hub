@@ -1702,16 +1702,16 @@ export class OpenCodeProvider implements SessionProviderBase {
     this.dynamicContextWindowLimit = null;
   }
 
-  // --- z.ai (GLM Coding Plan) quota derivation ---
+  // --- z.ai (GLM Coding Plan) compatibility quota derivation ---
 
   /**
    * Derives a z.ai coding-plan `QuotaState` from OpenCode assistant turns
    * tagged with `providerID ∈ {zai, zai-coding-plan}`.
    *
-   * z.ai does not expose a quota API (verified vs. docs.z.ai/openapi.json),
-   * so this method accumulates observed per-turn tokens from OpenCode's DB
-   * into 5-hour / 7-day rolling windows and infers utilization against the
-   * configured tier budget. Returns null when no z.ai routing is detected.
+   * This compatibility estimator predates the authoritative z.ai quota API.
+   * New product code should use `zaiQuotaApi.ts`; this method remains for
+   * consumers that still want a local OpenCode DB-derived estimate. Returns
+   * null when no z.ai routing is detected.
    *
    * @param tier  Plan tier; `'auto'` infers from observed weekly volume.
    *              When the caller has no opinion, the heuristic falls back to

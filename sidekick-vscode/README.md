@@ -15,7 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
-- **z.ai Coding Plan quota (estimated)** — when OpenCode routes to a z.ai Coding Plan (GLM), the dashboard adds a third quota card (5-Hour / Weekly) labeled "Estimated from observed traffic", tunable via the `sidekick.zai.tier` setting. It's an estimate, not authoritative (z.ai exposes no usage API).
+- **z.ai Coding Plan quota** — when OpenCode has z.ai Coding Plan credentials, the dashboard adds a z.ai quota card (5-Hour / Weekly) sourced from z.ai's quota API, with cached snapshot fallback.
 - **Claude Opus 4.8 & Fable 5** — full support for Anthropic's latest flagships, including 1M-token context windows, accurate pricing, and "Fable" display labels in model pickers.
 - **Richer conversation view** — the transcript now interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode sessions.
 - **Session asset extraction** — `Sidekick: Extract Session Assets` searches recent chats for URLs, files, commands, and plans, then opens or copies them from a native QuickPick.
@@ -148,7 +148,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 |---------|---------|-------------|
 | `sidekick.inferenceProvider` | `auto` | Provider: `auto`, `claude-max`, `claude-api`, `opencode`, `codex` |
 | `sidekick.sessionProvider` | `auto` | Session monitor: `auto`, `claude-code`, `opencode`, `codex` |
-| `sidekick.zai.tier` | `auto` | z.ai Coding Plan tier for *estimated* quota: `auto`, `lite`, `pro`, `max` (OpenCode→z.ai routing only) |
+| `sidekick.zai.tier` | `auto` | Deprecated compatibility setting from the former z.ai quota estimator |
 | `sidekick.inlineModel` | `auto` | Model for completions (fast tier) |
 | `sidekick.transformModel` | `auto` | Model for transforms (powerful tier) |
 | `sidekick.debounceMs` | `1000` | Completion delay (ms) |

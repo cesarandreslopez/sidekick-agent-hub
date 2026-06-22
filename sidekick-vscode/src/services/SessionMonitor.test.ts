@@ -130,4 +130,27 @@ describe('SessionMonitor', () => {
 
     monitor.dispose();
   });
+
+  it('emits quota updates from async session providers', async () => {
+    const quota = {
+      fiveHour: { utilization: 1, resetsAt: '2026-06-25T15:47:00Z' },
+      sevenDay: { utilization: 20, resetsAt: '2026-06-29T15:47:00Z' },
+      available: true,
+      providerId: 'zai',
+      source: 'api',
+    };
+    const provider = createProvider({
+      getQuotaFromSession: vi.fn().mockResolvedValue(quota),
+    });
+    const monitor = new SessionMonitor(provider as never, { get: vi.fn(() => null), update: vi.fn() } as never);
+    const updates: typeof quota[] = [];
+    monitor.onQuotaUpdate((state) => updates.push(state as typeof quota));
+
+    await (monitor as unknown as { emitQuotaFromSession(): Promise<void> }).emitQuotaFromSession();
+
+    expect(provider.getQuotaFromSession).toHaveBeenCalledOnce();
+    expect(updates).toEqual([quota]);
+
+    monitor.dispose();
+  });
 });

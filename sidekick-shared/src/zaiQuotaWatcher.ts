@@ -1,13 +1,14 @@
 /**
- * Event-driven watcher that derives a z.ai coding-plan `QuotaState` from
- * observed OpenCode assistant turns.
+ * Deprecated event-driven watcher that derives a z.ai coding-plan
+ * `QuotaState` from observed OpenCode assistant turns.
  *
- * z.ai does not expose a quota API, so this watcher maintains rolling
- * 5-hour / 7-day windows in memory and recomputes an estimated `QuotaState`
- * whenever a new turn arrives. The consumer is responsible for feeding it
- * z.ai-routed assistant turns (and any trapped error events) — typically
- * by subscribing to `SessionMonitor.onSessionEvent` and filtering on
- * `providerID ∈ {zai, zai-coding-plan}`.
+ * This watcher is retained for compatibility. Product code now uses
+ * `zaiQuotaApi.ts` to call z.ai's authoritative quota endpoint. The legacy
+ * watcher maintains rolling 5-hour / 7-day windows in memory and recomputes a
+ * derived `QuotaState` whenever a new turn arrives. The consumer is
+ * responsible for feeding it z.ai-routed assistant turns (and any trapped
+ * error events) — typically by subscribing to `SessionMonitor.onSessionEvent`
+ * and filtering on `providerID ∈ {zai, zai-coding-plan}`.
  *
  * Optionally writes snapshots + history samples for cross-session cache
  * and trend visualisation, mirroring `CodexQuotaWatcher`.
