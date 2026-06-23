@@ -27,11 +27,11 @@ flowchart TD
 
 Each CLI agent stores session data differently. Provider implementations in `src/services/providers/` normalize raw data into the common `ClaudeSessionEvent` format defined in `src/types/claudeSession.ts`.
 
-| Provider | Data Source | Format |
-|----------|------------|--------|
-| Claude Code | `~/.claude/projects/` | JSONL files |
-| OpenCode | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) | `opencode.db` plus legacy files |
-| Codex CLI | `~/.codex/sessions/` | Session files |
+| Provider    | Data Source                                                                                                        | Format                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| Claude Code | `~/.claude/projects/`                                                                                              | JSONL files                     |
+| OpenCode    | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) | `opencode.db` plus legacy files |
+| Codex CLI   | `~/.codex/sessions/`                                                                                               | Session files                   |
 
 ## SessionMonitor
 
@@ -47,27 +47,27 @@ The `SessionMonitor` class:
 
 Four detection systems run inline as events arrive:
 
-| System | Trigger | Output |
-|--------|---------|--------|
-| **Truncation Detection** | Every tool result | Scans for 6 truncation markers, records per-tool counts, fires `_onTruncation` event |
-| **Context Health** | Compaction events | Calculates fidelity score from compaction count and reclaimed percentage |
-| **Goal Gate Detection** | Task create/update | Flags tasks matching critical keywords or blocking 3+ other tasks |
-| **Cycle Detection** | Every tool call | Sliding-window signature hashing via `cycleDetector.ts`, throttled to 60s intervals |
+| System                   | Trigger            | Output                                                                               |
+| ------------------------ | ------------------ | ------------------------------------------------------------------------------------ |
+| **Truncation Detection** | Every tool result  | Scans for 6 truncation markers, records per-tool counts, fires `_onTruncation` event |
+| **Context Health**       | Compaction events  | Calculates fidelity score from compaction count and reclaimed percentage             |
+| **Goal Gate Detection**  | Task create/update | Flags tasks matching critical keywords or blocking 3+ other tasks                    |
+| **Cycle Detection**      | Every tool call    | Sliding-window signature hashing via `cycleDetector.ts`, throttled to 60s intervals  |
 
 These systems feed their results into the dashboard, handoffs, notifications, mind map, and knowledge note candidate extraction.
 
 ## UI Consumers
 
-| Consumer | Purpose |
-|----------|---------|
-| `DashboardViewProvider` | Token usage, costs, timeline, analytics |
-| `MindMapViewProvider` | D3.js session structure graph |
-| `TaskBoardViewProvider` | Kanban board with task/agent tracking |
-| `TempFilesTreeProvider` | Files modified during session |
-| `SubagentTreeProvider` | Spawned agent monitoring |
-| `MonitorStatusBar` | Status bar metrics |
-| `NotificationTriggerService` | Alert system |
-| `SessionEventLogger` | Optional JSONL audit trail |
+| Consumer                     | Purpose                                 |
+| ---------------------------- | --------------------------------------- |
+| `DashboardViewProvider`      | Token usage, costs, timeline, analytics |
+| `MindMapViewProvider`        | D3.js session structure graph           |
+| `TaskBoardViewProvider`      | Kanban board with task/agent tracking   |
+| `TempFilesTreeProvider`      | Files modified during session           |
+| `SubagentTreeProvider`       | Spawned agent monitoring                |
+| `MonitorStatusBar`           | Status bar metrics                      |
+| `NotificationTriggerService` | Alert system                            |
+| `SessionEventLogger`         | Optional JSONL audit trail              |
 
 ## CLI Reader Path
 

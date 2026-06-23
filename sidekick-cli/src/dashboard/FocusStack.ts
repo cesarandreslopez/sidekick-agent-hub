@@ -52,14 +52,12 @@ export class FocusStack {
 
   /** Check if a specific context kind is in the stack. */
   has(kind: ContextKind): boolean {
-    return this.stack.some(e => e.kind === kind);
+    return this.stack.some((e) => e.kind === kind);
   }
 
   /** Check if any overlay context is active (anything above side/detail). */
   get hasOverlay(): boolean {
-    return this.stack.some(e =>
-      e.kind !== 'side' && e.kind !== 'detail'
-    );
+    return this.stack.some((e) => e.kind !== 'side' && e.kind !== 'detail');
   }
 
   /**
@@ -74,6 +72,6 @@ export class FocusStack {
 
   /** Get the base focus kind (side or detail). */
   get baseFocus(): 'side' | 'detail' {
-    return (this.stack[0]?.kind === 'detail') ? 'detail' : 'side';
+    return this.stack[0]?.kind === 'detail' ? 'detail' : 'side';
   }
 }

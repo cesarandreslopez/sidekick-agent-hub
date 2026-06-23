@@ -47,10 +47,16 @@ vi.mock('vscode', () => ({
     parse: (value: string) => ({ value, scheme: value.split(':')[0] }),
   },
   Position: class {
-    constructor(public readonly line: number, public readonly character: number) {}
+    constructor(
+      public readonly line: number,
+      public readonly character: number,
+    ) {}
   },
   Range: class {
-    constructor(public readonly start: unknown, public readonly end: unknown) {}
+    constructor(
+      public readonly start: unknown,
+      public readonly end: unknown,
+    ) {}
   },
   window: {
     showErrorMessage: (...args: unknown[]) => mockShowErrorMessage(...args),
@@ -112,10 +118,12 @@ describe('resolveAssetAgentsForProvider', () => {
 
 describe('buildAssetQuickPickItems', () => {
   it('creates searchable items with source labels', () => {
-    const items = buildAssetQuickPickItems(assets({
-      urls: [asset('url', 'https://example.test')],
-      paths: [asset('path', '/tmp/a.ts:4')],
-    }));
+    const items = buildAssetQuickPickItems(
+      assets({
+        urls: [asset('url', 'https://example.test')],
+        paths: [asset('path', '/tmp/a.ts:4')],
+      }),
+    );
 
     expect(items.map((item) => item.label)).toContain('$(link-external) https://example.test');
     expect(items.map((item) => item.description)).toContain('codex url');
@@ -133,7 +141,10 @@ describe('runAssetDefaultAction', () => {
   it('opens URLs externally', async () => {
     await runAssetDefaultAction(asset('url', 'https://example.test'));
 
-    expect(mockOpenExternal).toHaveBeenCalledWith({ value: 'https://example.test', scheme: 'https' });
+    expect(mockOpenExternal).toHaveBeenCalledWith({
+      value: 'https://example.test',
+      scheme: 'https',
+    });
   });
 
   it('opens file paths at the requested line', async () => {
@@ -160,7 +171,10 @@ describe('runAssetDefaultAction', () => {
   it('opens plans as markdown scratch documents', async () => {
     await runAssetDefaultAction(asset('plan', '# Plan\n- step', 'Plan'));
 
-    expect(mockOpenTextDocument).toHaveBeenCalledWith({ content: '# Plan\n- step', language: 'markdown' });
+    expect(mockOpenTextDocument).toHaveBeenCalledWith({
+      content: '# Plan\n- step',
+      language: 'markdown',
+    });
     expect(mockShowTextDocument).toHaveBeenCalledWith({ uri: 'doc' });
   });
 });
@@ -175,13 +189,19 @@ describe('showExtractedSessionAssets', () => {
   it('requires a workspace path', async () => {
     await showExtractedSessionAssets({ providerId: 'codex', gatherAssets: vi.fn() });
 
-    expect(mockShowErrorMessage).toHaveBeenCalledWith('Open a workspace folder before extracting session assets.');
+    expect(mockShowErrorMessage).toHaveBeenCalledWith(
+      'Open a workspace folder before extracting session assets.',
+    );
   });
 
   it('does not gather for unsupported providers', async () => {
     const gatherAssets = vi.fn();
 
-    await showExtractedSessionAssets({ workspacePath: '/project', providerId: 'opencode', gatherAssets });
+    await showExtractedSessionAssets({
+      workspacePath: '/project',
+      providerId: 'opencode',
+      gatherAssets,
+    });
 
     expect(gatherAssets).not.toHaveBeenCalled();
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
@@ -195,7 +215,9 @@ describe('showExtractedSessionAssets', () => {
       providerId: 'codex',
       gatherAssets: vi.fn(() => assets({ inChat: false })),
     });
-    expect(mockShowInformationMessage).toHaveBeenCalledWith('No recent Claude Code or Codex sessions found for this project.');
+    expect(mockShowInformationMessage).toHaveBeenCalledWith(
+      'No recent Claude Code or Codex sessions found for this project.',
+    );
 
     mockShowInformationMessage.mockClear();
 
@@ -204,7 +226,9 @@ describe('showExtractedSessionAssets', () => {
       providerId: 'codex',
       gatherAssets: vi.fn(() => assets({ inChat: true })),
     });
-    expect(mockShowInformationMessage).toHaveBeenCalledWith('No extractable assets found in recent sessions.');
+    expect(mockShowInformationMessage).toHaveBeenCalledWith(
+      'No extractable assets found in recent sessions.',
+    );
   });
 
   it('shows a QuickPick when assets exist', async () => {
@@ -222,7 +246,9 @@ describe('showExtractedSessionAssets', () => {
 
 describe('extension asset command contribution', () => {
   it('declares the native extract command and dashboard title action', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    ) as {
       contributes: {
         commands: Array<{ command: string; title: string }>;
         menus: Record<string, Array<{ command: string; when?: string }>>;

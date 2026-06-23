@@ -73,7 +73,10 @@ export class DocumentationService implements vscode.Disposable {
    * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to result with documentation text and insert position, or error
    */
-  async generateDocumentation(editor: vscode.TextEditor, signal?: AbortSignal): Promise<DocumentationResult> {
+  async generateDocumentation(
+    editor: vscode.TextEditor,
+    signal?: AbortSignal,
+  ): Promise<DocumentationResult> {
     const document = editor.document;
     const selection = editor.selection;
     const language = document.languageId;
@@ -90,7 +93,10 @@ export class DocumentationService implements vscode.Disposable {
       // Detect function/class at cursor position
       const detected = this.detectCodeBlock(document, selection.active.line);
       if (!detected) {
-        return { error: 'Could not detect a function or class at cursor position. Try selecting the code to document.' };
+        return {
+          error:
+            'Could not detect a function or class at cursor position. Try selecting the code to document.',
+        };
       }
       code = detected.code;
       insertLine = detected.startLine;
@@ -108,7 +114,11 @@ export class DocumentationService implements vscode.Disposable {
       log(`Generating documentation for ${language} code (${code.length} chars)`);
 
       const config = vscode.workspace.getConfiguration('sidekick');
-      const model = resolveModel(config.get<string>('docModel') ?? 'auto', this.authService.getProviderId(), 'docModel');
+      const model = resolveModel(
+        config.get<string>('docModel') ?? 'auto',
+        this.authService.getProviderId(),
+        'docModel',
+      );
 
       const systemPrompt = getDocGenerationSystemPrompt(language);
       const userPrompt = getDocGenerationUserPrompt(code, language);
@@ -122,11 +132,12 @@ export class DocumentationService implements vscode.Disposable {
       const opLabel = `Generating documentation via ${this.authService.getProviderDisplayName()} · ${model}`;
       const timeoutResult = await this.timeoutManager.executeWithTimeout({
         operation: opLabel,
-        task: (taskSignal: AbortSignal) => this.authService.complete(fullPrompt, {
-          model,
-          maxTokens: 1024,
-          signal: taskSignal,
-        }),
+        task: (taskSignal: AbortSignal) =>
+          this.authService.complete(fullPrompt, {
+            model,
+            maxTokens: 1024,
+            signal: taskSignal,
+          }),
         config: timeoutConfig,
         contextSize,
         showProgress: true,
@@ -138,7 +149,9 @@ export class DocumentationService implements vscode.Disposable {
 
       if (!timeoutResult.success) {
         if (timeoutResult.timedOut) {
-          return { error: `Request timed out after ${timeoutResult.timeoutMs}ms. Try again or increase timeout in settings.` };
+          return {
+            error: `Request timed out after ${timeoutResult.timeoutMs}ms. Try again or increase timeout in settings.`,
+          };
         }
         if (timeoutResult.error?.name === 'AbortError') {
           return { error: 'Request cancelled' };
@@ -178,13 +191,18 @@ export class DocumentationService implements vscode.Disposable {
    * @param lineNumber - The line number to start searching from
    * @returns Object with code text and start line, or null if not found
    */
-  private detectCodeBlock(document: vscode.TextDocument, lineNumber: number): { code: string; startLine: number } | null {
+  private detectCodeBlock(
+    document: vscode.TextDocument,
+    lineNumber: number,
+  ): { code: string; startLine: number } | null {
     const language = document.languageId;
 
     // Language-specific patterns for function/class detection
     const patterns: Record<string, RegExp> = {
-      typescript: /^\s*(export\s+)?(default\s+)?(async\s+)?(function|class|interface|type|const\s+\w+\s*=\s*(async\s+)?\(|const\s+\w+\s*=\s*(async\s+)?function)/,
-      javascript: /^\s*(export\s+)?(default\s+)?(async\s+)?(function|class|const\s+\w+\s*=\s*(async\s+)?\(|const\s+\w+\s*=\s*(async\s+)?function)/,
+      typescript:
+        /^\s*(export\s+)?(default\s+)?(async\s+)?(function|class|interface|type|const\s+\w+\s*=\s*(async\s+)?\(|const\s+\w+\s*=\s*(async\s+)?function)/,
+      javascript:
+        /^\s*(export\s+)?(default\s+)?(async\s+)?(function|class|const\s+\w+\s*=\s*(async\s+)?\(|const\s+\w+\s*=\s*(async\s+)?function)/,
       python: /^\s*(async\s+)?(def|class)\s+\w+/,
     };
 
@@ -212,7 +230,7 @@ export class DocumentationService implements vscode.Disposable {
   private findCodeBlockWithPattern(
     document: vscode.TextDocument,
     lineNumber: number,
-    pattern: RegExp
+    pattern: RegExp,
   ): { code: string; startLine: number } | null {
     // Search current line and up to 5 lines above
     for (let i = lineNumber; i >= Math.max(0, lineNumber - 5); i--) {
@@ -259,7 +277,10 @@ export class DocumentationService implements vscode.Disposable {
 
       // Track brace/paren depth for JS/TS
       for (const char of line) {
-        if (char === '{') { braceDepth++; foundBody = true; }
+        if (char === '{') {
+          braceDepth++;
+          foundBody = true;
+        }
         if (char === '}') braceDepth--;
         if (char === '(') parenDepth++;
         if (char === ')') parenDepth--;
@@ -267,7 +288,9 @@ export class DocumentationService implements vscode.Disposable {
 
       // For Python, detect end by indentation decrease
       if (document.languageId === 'python' && i > startLine) {
-        const currentIndent = line.trim() ? document.lineAt(i).firstNonWhitespaceCharacterIndex : -1;
+        const currentIndent = line.trim()
+          ? document.lineAt(i).firstNonWhitespaceCharacterIndex
+          : -1;
         if (currentIndent !== -1 && currentIndent <= startIndent && !line.trim().startsWith('#')) {
           // Back to same or lower indent, we've left the block
           lines.pop();
@@ -299,7 +322,10 @@ export class DocumentationService implements vscode.Disposable {
    * @returns The indented documentation string
    */
   private indentDocumentation(doc: string, indent: string, _language: string): string {
-    return doc.split('\n').map(line => indent + line).join('\n');
+    return doc
+      .split('\n')
+      .map((line) => indent + line)
+      .join('\n');
   }
 
   /**

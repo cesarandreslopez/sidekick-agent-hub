@@ -11,7 +11,9 @@ import { platform } from 'node:os';
 
 function which(bin: string): boolean {
   try {
-    execSync(process.platform === 'win32' ? `where ${bin}` : `command -v ${bin}`, { stdio: 'ignore' });
+    execSync(process.platform === 'win32' ? `where ${bin}` : `command -v ${bin}`, {
+      stdio: 'ignore',
+    });
     return true;
   } catch {
     return false;

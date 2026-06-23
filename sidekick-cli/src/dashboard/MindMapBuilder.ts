@@ -25,51 +25,51 @@ import { shortenPath, formatDuration, truncate } from './formatters';
 // ── Color mapping (VS Code palette → blessed tag names) ──
 
 const COLORS = {
-  session:        'grey',
-  file:           'blue',
-  tool:           'green',
-  todo:           'yellow',
-  subagent:       'magenta',
-  url:            'cyan',
-  directory:      'yellow',
-  command:        'red',
-  task:           'red',
-  plan:           'cyan',
-  'plan-step':    'cyan',
+  session: 'grey',
+  file: 'blue',
+  tool: 'green',
+  todo: 'yellow',
+  subagent: 'magenta',
+  url: 'cyan',
+  directory: 'yellow',
+  command: 'red',
+  task: 'red',
+  plan: 'cyan',
+  'plan-step': 'cyan',
   'knowledge-note': 'yellow',
 } as const;
 
 // ── ANSI escape codes (for standalone renderer) ──
 
 const ANSI: Record<string, string> = {
-  grey:    '\x1b[90m',
-  blue:    '\x1b[34m',
-  green:   '\x1b[32m',
-  yellow:  '\x1b[33m',
+  grey: '\x1b[90m',
+  blue: '\x1b[34m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
   magenta: '\x1b[35m',
-  cyan:    '\x1b[36m',
-  red:     '\x1b[31m',
-  reset:   '\x1b[0m',
-  dim:     '\x1b[2m',
-  bold:    '\x1b[1m',
+  cyan: '\x1b[36m',
+  red: '\x1b[31m',
+  reset: '\x1b[0m',
+  dim: '\x1b[2m',
+  bold: '\x1b[1m',
 };
 
 /** Marker appended to the latest (most recently active) node. */
-const LATEST_MARKER = ' {yellow-fg}\u25C4{/yellow-fg}';      // ◄ in yellow
+const LATEST_MARKER = ' {yellow-fg}\u25C4{/yellow-fg}'; // ◄ in yellow
 
 // ── Status icons ──
 
 const STATUS_ICON: Record<string, string> = {
-  completed:   '\u2713', // ✓
+  completed: '\u2713', // ✓
   in_progress: '\u2192', // →
-  pending:     '\u25CB', // ○
+  pending: '\u25CB', // ○
 };
 
 /** ASCII-safe status icons for boxed renderer (avoids double-width Unicode). */
 const BOX_STATUS_ICON: Record<string, string> = {
-  completed:   'v',
+  completed: 'v',
   in_progress: '>',
-  pending:     'o',
+  pending: 'o',
 };
 
 // ── Public API ──
@@ -78,7 +78,12 @@ const BOX_STATUS_ICON: Record<string, string> = {
  * Build a blessed-contrib TreeData structure for the MindMap page.
  * Labels use blessed `{color-fg}...{/color-fg}` tags for color.
  */
-export function buildMindMapTree(metrics: DashboardMetrics, staticData: StaticData, diffStats?: Map<string, DiffStat>, filter?: string): TreeData {
+export function buildMindMapTree(
+  metrics: DashboardMetrics,
+  staticData: StaticData,
+  diffStats?: Map<string, DiffStat>,
+  filter?: string,
+): TreeData {
   const sessionId = (metrics.sessionStartTime || 'unknown').substring(0, 8);
   const rootLabel = tag('session', `SESSION [${sessionId}] \u2014 claude-code`);
 
@@ -118,7 +123,9 @@ export function buildMindMapTree(metrics: DashboardMetrics, staticData: StaticDa
     const dimmedChildren: Record<string, TreeData> = {};
     for (const [key, value] of Object.entries(children)) {
       // Check if this section's color tag matches the filter
-      const sectionMatches = matchTypes.some(t => key.includes(`{${COLORS[t as keyof typeof COLORS]}-fg}`));
+      const sectionMatches = matchTypes.some((t) =>
+        key.includes(`{${COLORS[t as keyof typeof COLORS]}-fg}`),
+      );
       if (sectionMatches) {
         dimmedChildren[key] = value;
       } else {
@@ -126,7 +133,7 @@ export function buildMindMapTree(metrics: DashboardMetrics, staticData: StaticDa
         dimmedChildren[`{grey-fg}${stripTags(key)}{/grey-fg}`] = value;
       }
     }
-    Object.keys(children).forEach(k => delete children[k]);
+    Object.keys(children).forEach((k) => delete children[k]);
     Object.assign(children, dimmedChildren);
   }
 
@@ -156,7 +163,7 @@ export function renderMindMapAnsi(metrics: DashboardMetrics, staticData: StaticD
 
 /** File-operation tool names (mirrors VS Code MindMapDataService). */
 const FILE_TOOLS = ['Read', 'Write', 'Edit', 'MultiEdit'];
-const URL_TOOLS  = ['WebFetch', 'WebSearch'];
+const URL_TOOLS = ['WebFetch', 'WebSearch'];
 
 /**
  * Determine the short path of the most recently touched file or URL
@@ -180,14 +187,21 @@ function findLatestFilePath(metrics: DashboardMetrics): string | null {
 
 // ── Section builders ──
 
-function addToolsSection(children: Record<string, TreeData>, metrics: DashboardMetrics, diffStats?: Map<string, DiffStat>, latestPath?: string | null): void {
+function addToolsSection(
+  children: Record<string, TreeData>,
+  metrics: DashboardMetrics,
+  diffStats?: Map<string, DiffStat>,
+  latestPath?: string | null,
+): void {
   if (metrics.toolStats.length === 0) return;
 
   const totalCalls = metrics.toolStats.reduce((s, t) => s + t.calls, 0);
-  const fileSuffix = metrics.fileTouches.length > 0
-    ? ` \u2192 ${metrics.fileTouches.length} files`
-    : '';
-  const label = tag('tool', `Tools (${metrics.toolStats.length} types, ${totalCalls} calls${fileSuffix})`);
+  const fileSuffix =
+    metrics.fileTouches.length > 0 ? ` \u2192 ${metrics.fileTouches.length} files` : '';
+  const label = tag(
+    'tool',
+    `Tools (${metrics.toolStats.length} types, ${totalCalls} calls${fileSuffix})`,
+  );
   const toolChildren: Record<string, TreeData> = {};
 
   // Group files by tool
@@ -214,9 +228,14 @@ function addToolsSection(children: Record<string, TreeData>, metrics: DashboardM
         // Append diff stats if available
         const shortPath = shortenPath(f.path);
         const ds = diffStats?.get(f.path) ?? diffStats?.get(shortPath);
-        const diffSuffix = ds ? ` {green-fg}+${ds.additions}{/green-fg} {red-fg}-${ds.deletions}{/red-fg}` : '';
+        const diffSuffix = ds
+          ? ` {green-fg}+${ds.additions}{/green-fg} {red-fg}-${ds.deletions}{/red-fg}`
+          : '';
         const latestSuffix = latestPath === shortPath ? LATEST_MARKER : '';
-        toolLeaves[tag('file', shortPath) + ` (${total}\u00D7, ${parts.join('/')})${diffSuffix}${latestSuffix}`] = {};
+        toolLeaves[
+          tag('file', shortPath) +
+            ` (${total}\u00D7, ${parts.join('/')})${diffSuffix}${latestSuffix}`
+        ] = {};
       }
     }
 
@@ -233,10 +252,15 @@ function addToolsSection(children: Record<string, TreeData>, metrics: DashboardM
     const dirs = dirsByTool.get(t.name);
     if (dirs) {
       for (const d of dirs) {
-        const patternSuffix = d.patterns.length > 0
-          ? `, patterns: ${d.patterns.slice(0, 3).map(p => `"${truncate(p, 20)}"`).join(', ')}`
-          : '';
-        toolLeaves[tag('directory', shortenPath(d.path)) + ` (${d.count}\u00D7${patternSuffix})`] = {};
+        const patternSuffix =
+          d.patterns.length > 0
+            ? `, patterns: ${d.patterns
+                .slice(0, 3)
+                .map((p) => `"${truncate(p, 20)}"`)
+                .join(', ')}`
+            : '';
+        toolLeaves[tag('directory', shortenPath(d.path)) + ` (${d.count}\u00D7${patternSuffix})`] =
+          {};
       }
     }
 
@@ -247,9 +271,8 @@ function addToolsSection(children: Record<string, TreeData>, metrics: DashboardM
       }
     }
 
-    toolChildren[toolLabel] = Object.keys(toolLeaves).length > 0
-      ? { extended: false, children: toolLeaves }
-      : {};
+    toolChildren[toolLabel] =
+      Object.keys(toolLeaves).length > 0 ? { extended: false, children: toolLeaves } : {};
   }
 
   children[label] = { extended: true, children: toolChildren };
@@ -258,7 +281,10 @@ function addToolsSection(children: Record<string, TreeData>, metrics: DashboardM
 function addTasksSection(children: Record<string, TreeData>, metrics: DashboardMetrics): void {
   if (metrics.tasks.length === 0) return;
 
-  const crossLinks = metrics.tasks.reduce((sum, t) => sum + t.blocks.length + t.blockedBy.length, 0);
+  const crossLinks = metrics.tasks.reduce(
+    (sum, t) => sum + t.blocks.length + t.blockedBy.length,
+    0,
+  );
   const crossSuffix = crossLinks > 0 ? `, ${crossLinks} cross-links` : '';
   const label = tag('task', `Tasks (${metrics.tasks.length}${crossSuffix})`);
   const taskChildren: Record<string, TreeData> = {};
@@ -276,13 +302,16 @@ function addTasksSection(children: Record<string, TreeData>, metrics: DashboardM
 function addPlanSection(children: Record<string, TreeData>, metrics: DashboardMetrics): void {
   if (!metrics.plan) return;
 
-  const completed = metrics.plan.steps.filter(s => s.status === 'completed').length;
+  const completed = metrics.plan.steps.filter((s) => s.status === 'completed').length;
   const total = metrics.plan.steps.length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   const durationSuffix = metrics.plan.totalDurationMs
     ? ` ${formatDuration(metrics.plan.totalDurationMs)}`
     : '';
-  const label = tag('plan', `Plan: "${metrics.plan.title}" (${completed}/${total} ${pct}%${durationSuffix})`);
+  const label = tag(
+    'plan',
+    `Plan: "${metrics.plan.title}" (${completed}/${total} ${pct}%${durationSuffix})`,
+  );
 
   // If rawMarkdown is available, render phase-grouped with context lines
   if (metrics.plan.rawMarkdown) {
@@ -328,9 +357,13 @@ function addPlanSection(children: Record<string, TreeData>, metrics: DashboardMe
 
     // Render phases with their steps
     for (const [phaseName, phaseSteps] of phaseMap) {
-      const phaseCompleted = phaseSteps.filter(s => s.status === 'completed').length;
-      const phasePct = phaseSteps.length > 0 ? Math.round((phaseCompleted / phaseSteps.length) * 100) : 0;
-      const phaseLabel = tag('plan', `${phaseName} (${phaseCompleted}/${phaseSteps.length} ${phasePct}%)`);
+      const phaseCompleted = phaseSteps.filter((s) => s.status === 'completed').length;
+      const phasePct =
+        phaseSteps.length > 0 ? Math.round((phaseCompleted / phaseSteps.length) * 100) : 0;
+      const phaseLabel = tag(
+        'plan',
+        `${phaseName} (${phaseCompleted}/${phaseSteps.length} ${phasePct}%)`,
+      );
       const phaseStepChildren: Record<string, TreeData> = {};
 
       // Add context lines
@@ -374,17 +407,22 @@ function formatPlanStepEntry(step: PlanStep, tasks: TaskItem[]): string {
   const metaParts: string[] = [];
   if (step.complexity) metaParts.push(step.complexity);
   if (step.durationMs) metaParts.push(formatDuration(step.durationMs));
-  if (step.tokensUsed) metaParts.push(`${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed} tok`);
+  if (step.tokensUsed)
+    metaParts.push(
+      `${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed} tok`,
+    );
   if (step.toolCalls) metaParts.push(`${step.toolCalls} calls`);
   const metaSuffix = metaParts.length > 0 ? ` [${metaParts.join(', ')}]` : '';
-  const errorSuffix = step.errorMessage ? ` {red-fg}(${truncate(step.errorMessage, 40)}){/red-fg}` : '';
+  const errorSuffix = step.errorMessage
+    ? ` {red-fg}(${truncate(step.errorMessage, 40)}){/red-fg}`
+    : '';
   return `[${icon}] ${tag('plan-step', `${phaseLabel}${truncate(step.description, 50)}`)}${metaSuffix}${errorSuffix}${xrefSuffix}`;
 }
 
 function addSubagentsSection(children: Record<string, TreeData>, metrics: DashboardMetrics): void {
   if (metrics.subagents.length === 0) return;
 
-  const running = metrics.subagents.filter(a => a.status === 'running').length;
+  const running = metrics.subagents.filter((a) => a.status === 'running').length;
   const countSuffix = running > 0 ? `, ${running} running` : '';
   const label = tag('subagent', `Subagents (${metrics.subagents.length}${countSuffix})`);
   const subChildren: Record<string, TreeData> = {};
@@ -392,7 +430,9 @@ function addSubagentsSection(children: Record<string, TreeData>, metrics: Dashbo
   for (const s of metrics.subagents) {
     const icon = s.status === 'running' ? '\u21BB' : s.isParallel ? '\u229A' : '\u2713';
     const duration = s.durationMs !== undefined ? ` [${formatDuration(s.durationMs)}]` : '';
-    subChildren[`${icon} ${tag('subagent', `${s.subagentType}: "${truncate(s.description, 40)}"`)}${duration}`] = {};
+    subChildren[
+      `${icon} ${tag('subagent', `${s.subagentType}: "${truncate(s.description, 40)}"`)}${duration}`
+    ] = {};
   }
 
   children[label] = { extended: true, children: subChildren };
@@ -411,7 +451,10 @@ function addTodosSection(children: Record<string, TreeData>, metrics: DashboardM
   children[label] = { extended: true, children: todoChildren };
 }
 
-function addKnowledgeNotesSection(children: Record<string, TreeData>, staticData: StaticData): void {
+function addKnowledgeNotesSection(
+  children: Record<string, TreeData>,
+  staticData: StaticData,
+): void {
   if (staticData.notes.length === 0) return;
 
   const label = tag('knowledge-note', `Knowledge Notes (${staticData.notes.length})`);
@@ -450,11 +493,13 @@ function groupFilesByTool(metrics: DashboardMetrics): Map<string, FileTouch[]> {
   return result;
 }
 
-function groupUrlsByTool(metrics: DashboardMetrics): Map<string, Array<{ url: string; count: number }>> {
+function groupUrlsByTool(
+  metrics: DashboardMetrics,
+): Map<string, Array<{ url: string; count: number }>> {
   // URLs come from WebFetch/WebSearch — we can't tell which tool produced which URL
   // from the aggregated data, so we group them under whichever URL tools are in toolStats
   const result = new Map<string, Array<{ url: string; count: number }>>();
-  const urlTools = metrics.toolStats.filter(t => ['WebFetch', 'WebSearch'].includes(t.name));
+  const urlTools = metrics.toolStats.filter((t) => ['WebFetch', 'WebSearch'].includes(t.name));
   if (urlTools.length > 0 && metrics.urls.length > 0) {
     // Place all URLs under the first matching tool
     result.set(urlTools[0].name, metrics.urls);
@@ -462,9 +507,11 @@ function groupUrlsByTool(metrics: DashboardMetrics): Map<string, Array<{ url: st
   return result;
 }
 
-function groupDirsByTool(metrics: DashboardMetrics): Map<string, Array<{ path: string; count: number; patterns: string[] }>> {
+function groupDirsByTool(
+  metrics: DashboardMetrics,
+): Map<string, Array<{ path: string; count: number; patterns: string[] }>> {
   const result = new Map<string, Array<{ path: string; count: number; patterns: string[] }>>();
-  const searchTools = metrics.toolStats.filter(t => ['Grep', 'Glob'].includes(t.name));
+  const searchTools = metrics.toolStats.filter((t) => ['Grep', 'Glob'].includes(t.name));
   if (searchTools.length > 0 && metrics.directories.length > 0) {
     result.set(searchTools[0].name, metrics.directories);
   }
@@ -491,7 +538,7 @@ function buildTaskCrossLinks(task: TaskItem, _allTasks: TaskItem[]): string {
 
 function findMatchingTask(description: string, tasks: TaskItem[]): TaskItem | undefined {
   const descLower = description.toLowerCase();
-  return tasks.find(t => {
+  return tasks.find((t) => {
     const subjectLower = t.subject.toLowerCase();
     return descLower.includes(subjectLower) || subjectLower.includes(descLower);
   });
@@ -590,11 +637,12 @@ export function renderTreeToText(node: TreeData, depth: number, columns?: number
         const connector = isLast ? '\u2514\u2500 ' : '\u251C\u2500 ';
         const coloredConnector = `{${color}-fg}${connector}{/${color}-fg}`;
         // Truncate label to fit available width
-        const availableWidth = termCols - (depth * 2) - 4;
+        const availableWidth = termCols - depth * 2 - 4;
         const plainLabel = label.replace(/\{[^}]*\}/g, '');
-        const truncLabel = plainLabel.length > availableWidth && availableWidth > 10
-          ? truncateTagged(label, availableWidth)
-          : label;
+        const truncLabel =
+          plainLabel.length > availableWidth && availableWidth > 10
+            ? truncateTagged(label, availableWidth)
+            : label;
         lines.push(`${indent}${coloredConnector}${truncLabel}`);
       }
       lines.push(...renderTreeToText(child, depth + 1, termCols));
@@ -616,9 +664,20 @@ function truncateTagged(text: string, maxVisible: number): string {
   let inTag = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (ch === '{') { inTag = true; result += ch; continue; }
-    if (inTag) { result += ch; if (ch === '}') inTag = false; continue; }
-    if (visible >= maxVisible - 3) { result += '...'; break; }
+    if (ch === '{') {
+      inTag = true;
+      result += ch;
+      continue;
+    }
+    if (inTag) {
+      result += ch;
+      if (ch === '}') inTag = false;
+      continue;
+    }
+    if (visible >= maxVisible - 3) {
+      result += '...';
+      break;
+    }
     result += ch;
     visible++;
   }
@@ -651,21 +710,20 @@ export interface BoxedRenderOptions {
  * `min(terminalColumns - 8, 50)` with fallback 50.
  */
 function getBoxWidth(columns?: number): number {
-  const cols = columns ?? (
-    typeof process !== 'undefined' && process.stdout?.columns
-      ? process.stdout.columns
-      : 80
-  );
+  const cols =
+    columns ??
+    (typeof process !== 'undefined' && process.stdout?.columns ? process.stdout.columns : 80);
   return Math.min(cols - 8, 50);
 }
 
 /** Measure visible length, ignoring blessed tags and ANSI escape codes. */
 function visibleLength(text: string): number {
-  return text
-    .replace(/\{[^}]+\}/g, '')       // blessed tags
-    // eslint-disable-next-line no-control-regex
-    .replace(/\x1b\[[0-9;]*m/g, '')  // ANSI escapes
-    .length;
+  return (
+    text
+      .replace(/\{[^}]+\}/g, '') // blessed tags
+      // eslint-disable-next-line no-control-regex
+      .replace(/\x1b\[[0-9;]*m/g, '').length // ANSI escapes
+  );
 }
 
 /** Pad or truncate `text` to exactly `width` visible chars. */
@@ -722,19 +780,20 @@ function renderStem(boxW: number): string[] {
 /** Center a box horizontally with a left margin. */
 function indentBox(boxLines: string[], boxW: number, center: boolean, columns?: number): string[] {
   if (!center) return boxLines;
-  const cols = columns ?? (
-    typeof process !== 'undefined' && process.stdout?.columns
-      ? process.stdout.columns
-      : 80
-  );
+  const cols =
+    columns ??
+    (typeof process !== 'undefined' && process.stdout?.columns ? process.stdout.columns : 80);
   const margin = Math.max(0, Math.floor((cols - boxW) / 2));
   const pad = ' '.repeat(margin);
-  return boxLines.map(l => pad + l);
+  return boxLines.map((l) => pad + l);
 }
 
 // ── Section content builders (for boxed renderer) ──
 
-function buildToolsBoxSection(metrics: DashboardMetrics, latestPath?: string | null): BoxSection | null {
+function buildToolsBoxSection(
+  metrics: DashboardMetrics,
+  latestPath?: string | null,
+): BoxSection | null {
   if (metrics.toolStats.length === 0) return null;
 
   const totalCalls = metrics.toolStats.reduce((s, t) => s + t.calls, 0);
@@ -806,7 +865,7 @@ function buildTasksBoxSection(metrics: DashboardMetrics, w: number): BoxSection 
 function buildPlanBoxSection(metrics: DashboardMetrics, w: number): BoxSection | null {
   if (!metrics.plan) return null;
 
-  const completed = metrics.plan.steps.filter(s => s.status === 'completed').length;
+  const completed = metrics.plan.steps.filter((s) => s.status === 'completed').length;
   const total = metrics.plan.steps.length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
@@ -840,7 +899,11 @@ function buildPlanBoxSection(metrics: DashboardMetrics, w: number): BoxSection |
       const trimmed = rawLine.trim();
       if (!trimmed) continue;
       const pm = trimmed.match(phaseHeaderPattern);
-      if (pm) { curPhase = pm[1].trim(); if (!phaseContexts.has(curPhase)) phaseContexts.set(curPhase, []); continue; }
+      if (pm) {
+        curPhase = pm[1].trim();
+        if (!phaseContexts.has(curPhase)) phaseContexts.set(curPhase, []);
+        continue;
+      }
       if (curPhase) {
         const cm = trimmed.match(contextBulletPattern);
         if (cm && (phaseContexts.get(curPhase)?.length ?? 0) < 2) {
@@ -850,7 +913,7 @@ function buildPlanBoxSection(metrics: DashboardMetrics, w: number): BoxSection |
     }
 
     for (const [phaseName, phaseSteps] of phaseMap) {
-      const phCompleted = phaseSteps.filter(s => s.status === 'completed').length;
+      const phCompleted = phaseSteps.filter((s) => s.status === 'completed').length;
       lines.push(`--- ${phaseName} (${phCompleted}/${phaseSteps.length}) ---`);
       const contexts = phaseContexts.get(phaseName) || [];
       for (const ctx of contexts) {
@@ -887,7 +950,10 @@ function formatPlanStepBox(step: PlanStep, tasks: TaskItem[], w: number): string
   const icon = BOX_STATUS_ICON[step.status] || 'o';
   const metaParts: string[] = [];
   if (step.durationMs) metaParts.push(formatDuration(step.durationMs));
-  if (step.tokensUsed) metaParts.push(`${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed}`);
+  if (step.tokensUsed)
+    metaParts.push(
+      `${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed}`,
+    );
   if (step.toolCalls) metaParts.push(`${step.toolCalls}c`);
   const taskXref = findMatchingTask(step.description, tasks);
   if (taskXref) metaParts.push(`T#${taskXref.taskId}`);
@@ -899,8 +965,8 @@ function formatPlanStepBox(step: PlanStep, tasks: TaskItem[], w: number): string
 function buildSubagentsBoxSection(metrics: DashboardMetrics): BoxSection | null {
   if (metrics.subagents.length === 0) return null;
 
-  const running = metrics.subagents.filter(a => a.status === 'running').length;
-  const completed = metrics.subagents.filter(a => a.status === 'completed').length;
+  const running = metrics.subagents.filter((a) => a.status === 'running').length;
+  const completed = metrics.subagents.filter((a) => a.status === 'completed').length;
   const subtitleParts = [`${metrics.subagents.length}`];
   if (running > 0) subtitleParts.push(`${running} running`);
   if (completed > 0) subtitleParts.push(`${completed} done`);
@@ -1013,8 +1079,12 @@ export function renderMindMapBoxed(
 
   // Map section titles to filter types for dimming
   const filterTypeMap: Record<string, string> = {
-    'TOOLS': 'tool', 'TASKS': 'task', 'PLAN': 'plan',
-    'SUBAGENTS': 'subagent', 'TODOs': 'todo', 'KNOWLEDGE NOTES': 'knowledge-note',
+    TOOLS: 'tool',
+    TASKS: 'task',
+    PLAN: 'plan',
+    SUBAGENTS: 'subagent',
+    TODOs: 'todo',
+    'KNOWLEDGE NOTES': 'knowledge-note',
   };
   const activeFilter = options?.filter;
 
@@ -1024,20 +1094,34 @@ export function renderMindMapBoxed(
 
     // Determine if this section matches the filter
     const sectionType = filterTypeMap[section.title] || '';
-    const isDimmed = activeFilter && sectionType !== activeFilter &&
+    const isDimmed =
+      activeFilter &&
+      sectionType !== activeFilter &&
       !(activeFilter === 'file' && sectionType === 'tool') &&
       !(activeFilter === 'command' && sectionType === 'tool');
 
     const colorOpen = isDimmed
-      ? (options?.blessedTags ? '{grey-fg}' : ANSI.dim)
-      : (options?.blessedTags ? `{${section.color}-fg}` : (ANSI[section.color] || ''));
+      ? options?.blessedTags
+        ? '{grey-fg}'
+        : ANSI.dim
+      : options?.blessedTags
+        ? `{${section.color}-fg}`
+        : ANSI[section.color] || '';
     const colorClose = isDimmed
-      ? (options?.blessedTags ? '{/grey-fg}' : ANSI.reset)
-      : (options?.blessedTags ? `{/${section.color}-fg}` : ANSI.reset);
+      ? options?.blessedTags
+        ? '{/grey-fg}'
+        : ANSI.reset
+      : options?.blessedTags
+        ? `{/${section.color}-fg}`
+        : ANSI.reset;
 
     const header = `${section.icon} ${colorOpen}${section.title}${colorClose} ─── ${section.subtitle}`;
     const dimmedLines = isDimmed
-      ? section.lines.map(l => options?.blessedTags ? `{grey-fg}${stripTags(l)}{/grey-fg}` : `${ANSI.dim}${l}${ANSI.reset}`)
+      ? section.lines.map((l) =>
+          options?.blessedTags
+            ? `{grey-fg}${stripTags(l)}{/grey-fg}`
+            : `${ANSI.dim}${l}${ANSI.reset}`,
+        )
       : section.lines;
     const sectionBox = renderSingleBox(header, dimmedLines, boxW);
     out.push(...indentBox(sectionBox, boxW, doCenter, cols));

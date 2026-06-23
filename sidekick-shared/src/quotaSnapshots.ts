@@ -51,7 +51,9 @@ function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
 
 function readStore(): QuotaSnapshotStore {
   try {
-    const parsed = JSON.parse(fs.readFileSync(getQuotaSnapshotPath(), 'utf8')) as QuotaSnapshotStore;
+    const parsed = JSON.parse(
+      fs.readFileSync(getQuotaSnapshotPath(), 'utf8'),
+    ) as QuotaSnapshotStore;
     if (parsed?.version === 1 && Array.isArray(parsed.snapshots)) {
       return parsed;
     }
@@ -89,7 +91,8 @@ function shouldKeepExistingSnapshot(existing: QuotaState, next: QuotaState): boo
 
   const existingSecondaryReset = windowResetMs(existing.sevenDay.resetsAt);
   const nextSecondaryReset = windowResetMs(next.sevenDay.resetsAt);
-  if (existingSecondaryReset !== nextSecondaryReset) return existingSecondaryReset > nextSecondaryReset;
+  if (existingSecondaryReset !== nextSecondaryReset)
+    return existingSecondaryReset > nextSecondaryReset;
 
   const existingUtilization = existing.fiveHour.utilization + existing.sevenDay.utilization;
   const nextUtilization = next.fiveHour.utilization + next.sevenDay.utilization;
@@ -98,7 +101,11 @@ function shouldKeepExistingSnapshot(existing: QuotaState, next: QuotaState): boo
   return snapshotTimeMs(existing) > snapshotTimeMs(next);
 }
 
-export function writeQuotaSnapshot(providerId: QuotaSnapshotProviderId, accountId: string, quota: QuotaState): void {
+export function writeQuotaSnapshot(
+  providerId: QuotaSnapshotProviderId,
+  accountId: string,
+  quota: QuotaState,
+): void {
   const store = readStore();
   const snapshot: QuotaState = {
     ...quota,
@@ -108,7 +115,9 @@ export function writeQuotaSnapshot(providerId: QuotaSnapshotProviderId, accountI
     stale: false,
   };
 
-  const index = store.snapshots.findIndex(item => item.providerId === providerId && item.accountId === accountId);
+  const index = store.snapshots.findIndex(
+    (item) => item.providerId === providerId && item.accountId === accountId,
+  );
   if (index >= 0 && shouldKeepExistingSnapshot(store.snapshots[index].quota, snapshot)) {
     return;
   }
@@ -128,9 +137,14 @@ export function writeQuotaSnapshot(providerId: QuotaSnapshotProviderId, accountI
   writeStore(store);
 }
 
-export function readQuotaSnapshot(providerId: QuotaSnapshotProviderId, accountId: string): QuotaState | null {
+export function readQuotaSnapshot(
+  providerId: QuotaSnapshotProviderId,
+  accountId: string,
+): QuotaState | null {
   const store = readStore();
-  const snapshot = store.snapshots.find(item => item.providerId === providerId && item.accountId === accountId);
+  const snapshot = store.snapshots.find(
+    (item) => item.providerId === providerId && item.accountId === accountId,
+  );
   if (!snapshot) return null;
 
   return {

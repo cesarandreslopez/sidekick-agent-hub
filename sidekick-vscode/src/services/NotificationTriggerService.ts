@@ -44,7 +44,7 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
     severity: 'warning',
     matchTarget: 'file_path',
     pattern: '\\.(env|pem|key|secret|credentials)$|id_rsa|id_ed25519',
-    throttleSeconds: 30
+    throttleSeconds: 30,
   },
   {
     id: 'destructive-cmd',
@@ -52,8 +52,9 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
     enabled: true,
     severity: 'error',
     matchTarget: 'command',
-    pattern: 'rm\\s+-[a-zA-Z]*[rf]|git\\s+push\\s+(-f|--force)|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-zA-Z]*[fd]|drop\\s+(table|database)|chmod\\s+-R|chown\\s+-R|>\\s*/dev/(?!null|std(out|err)|fd/|tty)',
-    throttleSeconds: 10
+    pattern:
+      'rm\\s+-[a-zA-Z]*[rf]|git\\s+push\\s+(-f|--force)|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-zA-Z]*[fd]|drop\\s+(table|database)|chmod\\s+-R|chown\\s+-R|>\\s*/dev/(?!null|std(out|err)|fd/|tty)',
+    throttleSeconds: 10,
   },
   {
     id: 'sensitive-path-write',
@@ -62,7 +63,7 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
     severity: 'warning',
     matchTarget: 'file_path',
     pattern: '^/(etc|boot|usr/(s?bin|lib))|/\\.ssh/|/\\.gnupg/',
-    throttleSeconds: 30
+    throttleSeconds: 30,
   },
   {
     id: 'tool-error',
@@ -71,7 +72,7 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
     severity: 'warning',
     matchTarget: 'tool_name',
     pattern: '.*', // Matches any tool -- triggered by error rate logic, not pattern alone
-    throttleSeconds: 60
+    throttleSeconds: 60,
   },
   {
     id: 'compaction',
@@ -80,8 +81,8 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
     severity: 'info',
     matchTarget: 'content',
     pattern: '', // Not pattern-based -- handled by compaction event handler
-    throttleSeconds: 30
-  }
+    throttleSeconds: 30,
+  },
 ];
 
 /**
@@ -109,7 +110,7 @@ export class NotificationTriggerService implements vscode.Disposable {
 
   constructor(
     private readonly sessionMonitor: SessionMonitor,
-    notificationPersistence?: NotificationPersistenceService
+    notificationPersistence?: NotificationPersistenceService,
   ) {
     this.notificationPersistence = notificationPersistence;
     // Load triggers from settings, falling back to built-in defaults
@@ -117,31 +118,29 @@ export class NotificationTriggerService implements vscode.Disposable {
     this.tokenThreshold = this.getTokenThreshold();
 
     // Subscribe to session events
+    this.disposables.push(this.sessionMonitor.onToolCall((call) => this.handleToolCall(call)));
+
     this.disposables.push(
-      this.sessionMonitor.onToolCall(call => this.handleToolCall(call))
+      this.sessionMonitor.onCompaction((event) => this.handleCompaction(event)),
     );
 
     this.disposables.push(
-      this.sessionMonitor.onCompaction(event => this.handleCompaction(event))
+      this.sessionMonitor.onTokenUsage((usage) => this.handleTokenUsage(usage)),
     );
 
     this.disposables.push(
-      this.sessionMonitor.onTokenUsage(usage => this.handleTokenUsage(usage))
-    );
-
-    this.disposables.push(
-      this.sessionMonitor.onCycleDetected(cycle => this.handleCycleDetected(cycle))
+      this.sessionMonitor.onCycleDetected((cycle) => this.handleCycleDetected(cycle)),
     );
 
     // Listen for settings changes
     this.disposables.push(
-      vscode.workspace.onDidChangeConfiguration(e => {
+      vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('sidekick.notifications')) {
           this.triggers = this.loadTriggers();
           this.tokenThreshold = this.getTokenThreshold();
           log('NotificationTriggerService: triggers reloaded from settings');
         }
-      })
+      }),
     );
 
     log('NotificationTriggerService initialized');
@@ -159,9 +158,9 @@ export class NotificationTriggerService implements vscode.Disposable {
     }
 
     // Use built-in triggers with per-trigger enable/disable from settings
-    const triggers = BUILT_IN_TRIGGERS.map(trigger => ({
+    const triggers = BUILT_IN_TRIGGERS.map((trigger) => ({
       ...trigger,
-      enabled: config.get<boolean>(`triggers.${trigger.id}`, trigger.enabled)
+      enabled: config.get<boolean>(`triggers.${trigger.id}`, trigger.enabled),
     }));
 
     // Precompile regex patterns once instead of on every tool call event
@@ -192,7 +191,7 @@ export class NotificationTriggerService implements vscode.Disposable {
   private isThrottled(triggerId: string, throttleSeconds: number): boolean {
     const lastFired = this.lastFiredAt.get(triggerId);
     if (!lastFired) return false;
-    return (Date.now() - lastFired) < throttleSeconds * 1000;
+    return Date.now() - lastFired < throttleSeconds * 1000;
   }
 
   /**
@@ -210,13 +209,19 @@ export class NotificationTriggerService implements vscode.Disposable {
     if (this.sessionMonitor.isReplaying) return;
     const config = vscode.workspace.getConfiguration('sidekick.notifications');
     if (!config.get<boolean>('triggers.cycle-detected', true)) return;
-    const files = cycle.affectedFiles.length > 0
-      ? cycle.affectedFiles.map(f => f.split('/').pop()).join(', ')
-      : 'unknown files';
-    this.fireNotification('Sidekick', `Agent cycling on ${files}: ${cycle.description}`, 'warning', {
-      triggerId: 'cycle-detected',
-      triggerName: 'Agent Cycle Detected',
-    });
+    const files =
+      cycle.affectedFiles.length > 0
+        ? cycle.affectedFiles.map((f) => f.split('/').pop()).join(', ')
+        : 'unknown files';
+    this.fireNotification(
+      'Sidekick',
+      `Agent cycling on ${files}: ${cycle.description}`,
+      'warning',
+      {
+        triggerId: 'cycle-detected',
+        triggerName: 'Agent Cycle Detected',
+      },
+    );
   }
 
   /**
@@ -238,7 +243,7 @@ export class NotificationTriggerService implements vscode.Disposable {
         compactionBefore?: number;
         compactionAfter?: number;
       };
-    }
+    },
   ): void {
     const message = `${title}: ${body}`;
 
@@ -278,13 +283,13 @@ export class NotificationTriggerService implements vscode.Disposable {
     if (call.isError) {
       this.recentToolErrors++;
       if (this.recentToolErrors >= this.ERROR_BURST_THRESHOLD) {
-        const trigger = this.triggers.find(t => t.id === 'tool-error');
+        const trigger = this.triggers.find((t) => t.id === 'tool-error');
         if (trigger?.enabled && !this.isThrottled(trigger.id, trigger.throttleSeconds)) {
           this.fireNotification(
             'Tool Error Burst',
             `${this.recentToolErrors} consecutive tool errors detected`,
             trigger.severity,
-            { triggerId: trigger.id, triggerName: trigger.name }
+            { triggerId: trigger.id, triggerName: trigger.name },
           );
           this.recordFire(trigger.id);
           this.recentToolErrors = 0;
@@ -308,7 +313,11 @@ export class NotificationTriggerService implements vscode.Disposable {
             trigger.name,
             `${call.name} accessing: ${filePath}`,
             trigger.severity,
-            { triggerId: trigger.id, triggerName: trigger.name, context: { filePath, toolName: call.name } }
+            {
+              triggerId: trigger.id,
+              triggerName: trigger.name,
+              context: { filePath, toolName: call.name },
+            },
           );
           this.recordFire(trigger.id);
         }
@@ -329,12 +338,11 @@ export class NotificationTriggerService implements vscode.Disposable {
           const body = description
             ? `${description} (${command.substring(0, 60)})`
             : `Command: ${command.substring(0, 80)}`;
-          this.fireNotification(
-            trigger.name,
-            body,
-            trigger.severity,
-            { triggerId: trigger.id, triggerName: trigger.name, context: { command } }
-          );
+          this.fireNotification(trigger.name, body, trigger.severity, {
+            triggerId: trigger.id,
+            triggerName: trigger.name,
+            context: { command },
+          });
           this.recordFire(trigger.id);
         }
       }
@@ -347,7 +355,7 @@ export class NotificationTriggerService implements vscode.Disposable {
    */
   private handleCompaction(event: CompactionEvent): void {
     if (this.sessionMonitor.isReplaying) return;
-    const trigger = this.triggers.find(t => t.id === 'compaction');
+    const trigger = this.triggers.find((t) => t.id === 'compaction');
     if (!trigger?.enabled) return;
     if (this.isThrottled(trigger.id, trigger.throttleSeconds)) return;
 
@@ -362,8 +370,8 @@ export class NotificationTriggerService implements vscode.Disposable {
       {
         triggerId: trigger.id,
         triggerName: trigger.name,
-        context: { compactionBefore: event.contextBefore, compactionAfter: event.contextAfter }
-      }
+        context: { compactionBefore: event.contextBefore, compactionAfter: event.contextAfter },
+      },
     );
     this.recordFire(trigger.id);
   }
@@ -380,7 +388,8 @@ export class NotificationTriggerService implements vscode.Disposable {
     const totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
 
     // Check if we crossed a threshold boundary since last notification
-    const crossedThreshold = Math.floor(totalTokens / this.tokenThreshold) >
+    const crossedThreshold =
+      Math.floor(totalTokens / this.tokenThreshold) >
       Math.floor(this.lastNotifiedTokenTotal / this.tokenThreshold);
 
     if (crossedThreshold) {
@@ -389,14 +398,18 @@ export class NotificationTriggerService implements vscode.Disposable {
         'High Token Usage',
         `Session has consumed ${totalK}K tokens`,
         'warning',
-        { triggerId: 'high-token-usage', triggerName: 'High Token Usage', context: { tokenCount: totalTokens } }
+        {
+          triggerId: 'high-token-usage',
+          triggerName: 'High Token Usage',
+          context: { tokenCount: totalTokens },
+        },
       );
       this.lastNotifiedTokenTotal = totalTokens;
     }
   }
 
   dispose(): void {
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
     this.lastFiredAt.clear();
     this.compiledPatterns.clear();

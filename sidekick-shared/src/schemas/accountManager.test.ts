@@ -10,10 +10,7 @@ import {
   listAllAccountsResultSchema,
 } from './accountManager';
 import type { AccountEntry, AccountManagerResult } from '../accounts';
-import type {
-  AccountProviderId,
-  SavedAccountProfile,
-} from '../accountRegistry';
+import type { AccountProviderId, SavedAccountProfile } from '../accountRegistry';
 import type {
   AccountLoginStatus,
   BeginAccountLoginResult,
@@ -21,17 +18,22 @@ import type {
 } from '../accountManager';
 
 type Equal<A, B> =
-  (<T>() => T extends A ? 1 : 2) extends
-  (<T>() => T extends B ? 1 : 2) ? true : false;
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Assert<T extends true> = T;
 
 type _ProviderParity = Assert<Equal<z.infer<typeof accountProviderIdSchema>, AccountProviderId>>;
-type _ResultParity = Assert<Equal<z.infer<typeof accountManagerResultSchema>, AccountManagerResult>>;
-type _BeginParity = Assert<Equal<z.infer<typeof beginAccountLoginResultSchema>, BeginAccountLoginResult>>;
+type _ResultParity = Assert<
+  Equal<z.infer<typeof accountManagerResultSchema>, AccountManagerResult>
+>;
+type _BeginParity = Assert<
+  Equal<z.infer<typeof beginAccountLoginResultSchema>, BeginAccountLoginResult>
+>;
 type _StatusParity = Assert<Equal<z.infer<typeof accountLoginStatusSchema>, AccountLoginStatus>>;
 type _EntryParity = Assert<Equal<z.infer<typeof accountEntrySchema>, AccountEntry>>;
 type _ProfileParity = Assert<Equal<z.infer<typeof savedAccountProfileSchema>, SavedAccountProfile>>;
-type _ListParity = Assert<Equal<z.infer<typeof listAllAccountsResultSchema>, ListAllAccountsResult>>;
+type _ListParity = Assert<
+  Equal<z.infer<typeof listAllAccountsResultSchema>, ListAllAccountsResult>
+>;
 
 const claudeAccount = {
   uuid: 'claude-uuid',
@@ -92,17 +94,21 @@ describe('accountManager schemas', () => {
   });
 
   it('round-trips login status shapes', () => {
-    expect(accountLoginStatusSchema.parse({
-      state: 'authenticated',
-      email: 'user@example.com',
-    })).toEqual({
+    expect(
+      accountLoginStatusSchema.parse({
+        state: 'authenticated',
+        email: 'user@example.com',
+      }),
+    ).toEqual({
       state: 'authenticated',
       email: 'user@example.com',
     });
-    expect(accountLoginStatusSchema.parse({
-      state: 'failed',
-      error: 'Login timed out.',
-    })).toEqual({
+    expect(
+      accountLoginStatusSchema.parse({
+        state: 'failed',
+        error: 'Login timed out.',
+      }),
+    ).toEqual({
       state: 'failed',
       error: 'Login timed out.',
     });
@@ -122,10 +128,12 @@ describe('accountManager schemas', () => {
       },
     };
     expect(listAllAccountsResultSchema.parse(list)).toEqual(list);
-    expect(() => listAllAccountsResultSchema.parse({
-      claude: [],
-      codex: [],
-      activeByProvider: { codex: null },
-    })).toThrow();
+    expect(() =>
+      listAllAccountsResultSchema.parse({
+        claude: [],
+        codex: [],
+        activeByProvider: { codex: null },
+      }),
+    ).toThrow();
   });
 });

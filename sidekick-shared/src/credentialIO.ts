@@ -32,9 +32,11 @@ function getCredentialsFilePath(configDir?: string): string {
 export function readActiveCredentials(configDir?: string): unknown {
   if (process.platform === 'darwin') {
     try {
-      const raw = execFileSync('security', [
-        'find-generic-password', '-s', claudeKeychainService(configDir), '-w',
-      ], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' });
+      const raw = execFileSync(
+        'security',
+        ['find-generic-password', '-s', claudeKeychainService(configDir), '-w'],
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
+      );
       return JSON.parse(raw.trim());
     } catch {
       return null;
@@ -61,12 +63,20 @@ export function writeActiveCredentials(credentials: unknown, configDir?: string)
   JSON.parse(json); // validate round-trip
 
   if (process.platform === 'darwin') {
-    execFileSync('security', [
-      'add-generic-password', '-U',
-      '-s', claudeKeychainService(configDir),
-      '-a', process.env.USER || 'user',
-      '-w', json,
-    ], { stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' });
+    execFileSync(
+      'security',
+      [
+        'add-generic-password',
+        '-U',
+        '-s',
+        claudeKeychainService(configDir),
+        '-a',
+        process.env.USER || 'user',
+        '-w',
+        json,
+      ],
+      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
+    );
     return;
   }
   // Linux / WSL / Windows — file-based

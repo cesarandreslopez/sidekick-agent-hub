@@ -30,7 +30,9 @@ export class CodexDatabase {
   isAvailable(): boolean {
     try {
       return fs.statSync(this.dbPath).size > 0;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
 
   open(): boolean {
@@ -76,7 +78,9 @@ export class CodexDatabase {
       const trimmed = result.trim();
       if (!trimmed) return [];
       return JSON.parse(trimmed) as T[];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
 
   private queryOne<T>(sql: string, params: (string | number)[] = []): T | null {
@@ -85,14 +89,19 @@ export class CodexDatabase {
 
   getThreadsByCwd(cwd: string): CodexDbThread[] {
     const normalized = normalizePath(cwd);
-    const exact = this.query<CodexDbThread>('SELECT * FROM threads WHERE cwd = ? ORDER BY updated_at DESC', [normalized]);
+    const exact = this.query<CodexDbThread>(
+      'SELECT * FROM threads WHERE cwd = ? ORDER BY updated_at DESC',
+      [normalized],
+    );
     if (exact.length > 0) return exact;
     const all = this.query<CodexDbThread>('SELECT * FROM threads ORDER BY updated_at DESC');
-    return all.filter(t => {
+    return all.filter((t) => {
       const threadCwd = normalizePath(t.cwd);
-      return threadCwd === normalized ||
+      return (
+        threadCwd === normalized ||
         normalized.startsWith(threadCwd + path.sep) ||
-        threadCwd.startsWith(normalized + path.sep);
+        threadCwd.startsWith(normalized + path.sep)
+      );
     });
   }
 
@@ -102,7 +111,7 @@ export class CodexDatabase {
 
   getAllDistinctCwds(): Array<{ cwd: string; count: number; lastUpdated: number }> {
     return this.query<{ cwd: string; count: number; lastUpdated: number }>(
-      'SELECT cwd, COUNT(*) as count, MAX(updated_at) as lastUpdated FROM threads GROUP BY cwd ORDER BY lastUpdated DESC'
+      'SELECT cwd, COUNT(*) as count, MAX(updated_at) as lastUpdated FROM threads GROUP BY cwd ORDER BY lastUpdated DESC',
     );
   }
 
@@ -114,7 +123,7 @@ export class CodexDatabase {
   getThreadsByForkedFromId(parentId: string): CodexDbThread[] {
     return this.query<CodexDbThread>(
       'SELECT * FROM threads WHERE forked_from_id = ? ORDER BY created_at ASC',
-      [parentId]
+      [parentId],
     );
   }
 
@@ -152,6 +161,9 @@ function findLatestStateDatabase(codexHome: string): string | null {
 }
 
 function normalizePath(input: string): string {
-  try { return fs.realpathSync(input); }
-  catch { return path.resolve(input); }
+  try {
+    return fs.realpathSync(input);
+  } catch {
+    return path.resolve(input);
+  }
 }

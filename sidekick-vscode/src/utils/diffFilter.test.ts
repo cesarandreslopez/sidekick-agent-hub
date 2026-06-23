@@ -44,9 +44,7 @@ describe('filterDiff', () => {
     });
 
     it('keeps multiple normal source file sections', () => {
-      const diff =
-        makeDiffSection('src/a.ts') +
-        makeDiffSection('src/b.ts');
+      const diff = makeDiffSection('src/a.ts') + makeDiffSection('src/b.ts');
       expect(filterDiff(diff)).toBe(diff);
     });
 
@@ -73,9 +71,7 @@ describe('filterDiff', () => {
 
     for (const lockfile of lockfiles) {
       it(`excludes ${lockfile}`, () => {
-        const diff =
-          makeDiffSection('src/app.ts') +
-          makeDiffSection(lockfile);
+        const diff = makeDiffSection('src/app.ts') + makeDiffSection(lockfile);
 
         const result = filterDiff(diff);
         expect(result).toContain('src/app.ts');
@@ -84,9 +80,7 @@ describe('filterDiff', () => {
     }
 
     it('keeps lockfiles when excludeLockfiles is false', () => {
-      const diff =
-        makeDiffSection('src/app.ts') +
-        makeDiffSection('package-lock.json');
+      const diff = makeDiffSection('src/app.ts') + makeDiffSection('package-lock.json');
 
       const result = filterDiff(diff, { excludeLockfiles: false });
       expect(result).toContain('package-lock.json');
@@ -97,9 +91,7 @@ describe('filterDiff', () => {
 
   describe('binary file exclusion', () => {
     it('excludes sections containing "Binary files" marker', () => {
-      const diff =
-        makeDiffSection('src/app.ts') +
-        makeBinarySection('logo.png');
+      const diff = makeDiffSection('src/app.ts') + makeBinarySection('logo.png');
 
       const result = filterDiff(diff);
       expect(result).toContain('src/app.ts');
@@ -107,18 +99,34 @@ describe('filterDiff', () => {
     });
 
     const binaryExtensions = [
-      'image.png', 'photo.jpg', 'pic.jpeg', 'anim.gif', 'icon.ico', 'hero.webp',
-      'doc.pdf', 'archive.zip', 'archive.tar', 'data.gz', 'backup.rar',
-      'app.exe', 'lib.dll', 'lib.so', 'lib.dylib',
-      'font.woff', 'font.woff2', 'font.ttf', 'font.eot',
-      'song.mp3', 'video.mp4', 'sound.wav', 'clip.avi',
+      'image.png',
+      'photo.jpg',
+      'pic.jpeg',
+      'anim.gif',
+      'icon.ico',
+      'hero.webp',
+      'doc.pdf',
+      'archive.zip',
+      'archive.tar',
+      'data.gz',
+      'backup.rar',
+      'app.exe',
+      'lib.dll',
+      'lib.so',
+      'lib.dylib',
+      'font.woff',
+      'font.woff2',
+      'font.ttf',
+      'font.eot',
+      'song.mp3',
+      'video.mp4',
+      'sound.wav',
+      'clip.avi',
     ];
 
     for (const file of binaryExtensions) {
       it(`excludes binary extension file: ${file}`, () => {
-        const diff =
-          makeDiffSection('src/app.ts') +
-          makeDiffSection(`assets/${file}`);
+        const diff = makeDiffSection('src/app.ts') + makeDiffSection(`assets/${file}`);
 
         const result = filterDiff(diff);
         expect(result).not.toContain(file);
@@ -126,9 +134,7 @@ describe('filterDiff', () => {
     }
 
     it('keeps binary files when excludeBinary is false', () => {
-      const diff =
-        makeDiffSection('src/app.ts') +
-        makeBinarySection('logo.png');
+      const diff = makeDiffSection('src/app.ts') + makeBinarySection('logo.png');
 
       const result = filterDiff(diff, { excludeBinary: false });
       expect(result).toContain('logo.png');
@@ -153,9 +159,7 @@ describe('filterDiff', () => {
 
     for (const path of generatedPaths) {
       it(`excludes generated path: ${path}`, () => {
-        const diff =
-          makeDiffSection('src/app.ts') +
-          makeDiffSection(path);
+        const diff = makeDiffSection('src/app.ts') + makeDiffSection(path);
 
         const result = filterDiff(diff);
         expect(result).toContain('src/app.ts');
@@ -164,9 +168,7 @@ describe('filterDiff', () => {
     }
 
     it('keeps generated paths when excludeGenerated is false', () => {
-      const diff =
-        makeDiffSection('src/app.ts') +
-        makeDiffSection('dist/bundle.js');
+      const diff = makeDiffSection('src/app.ts') + makeDiffSection('dist/bundle.js');
 
       const result = filterDiff(diff, { excludeGenerated: false });
       expect(result).toContain('dist/bundle.js');
@@ -221,9 +223,7 @@ describe('filterDiff', () => {
     });
 
     it('handles diff with only excluded files — returns empty', () => {
-      const diff =
-        makeDiffSection('package-lock.json') +
-        makeBinarySection('image.png');
+      const diff = makeDiffSection('package-lock.json') + makeBinarySection('image.png');
 
       expect(filterDiff(diff)).toBe('');
     });

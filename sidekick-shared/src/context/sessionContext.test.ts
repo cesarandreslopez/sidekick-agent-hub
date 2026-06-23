@@ -107,7 +107,7 @@ describe('buildSessionContextSnapshot', () => {
       sessionId: 'session-1',
       sessionPath: '/tmp/session.jsonl',
       contextWindow: 1000,
-      computeContextSize: usage => usage.inputTokens,
+      computeContextSize: (usage) => usage.inputTokens,
     });
 
     expect(snapshot.providerId).toBe('codex');
@@ -116,7 +116,9 @@ describe('buildSessionContextSnapshot', () => {
     expect(snapshot.contextTokens).toBe(820);
     expect(snapshot.pressure).toBe('high');
     expect(snapshot.pressureRatio).toBe(0.82);
-    expect(snapshot.layers).toEqual(expect.arrayContaining(['system', 'user', 'tool inputs', 'runtime']));
+    expect(snapshot.layers).toEqual(
+      expect.arrayContaining(['system', 'user', 'tool inputs', 'runtime']),
+    );
     expect(snapshot.capabilities).toMatchObject({
       providerId: 'codex',
       providerLabel: 'Codex',
@@ -127,7 +129,7 @@ describe('buildSessionContextSnapshot', () => {
       },
     });
 
-    const fileSource = snapshot.sources.find(source => source.sourceFile === 'src/app.ts');
+    const fileSource = snapshot.sources.find((source) => source.sourceFile === 'src/app.ts');
     expect(fileSource).toMatchObject({
       sourceType: 'tool_input',
       layer: 'tool inputs',
@@ -135,9 +137,11 @@ describe('buildSessionContextSnapshot', () => {
       toolName: 'Read',
       body: undefined,
     });
-    expect(snapshot.sources.some(source => source.title === 'base instructions')).toBe(true);
-    expect(snapshot.sources.some(source => source.sourceType === 'tool_output')).toBe(true);
-    expect(snapshot.breakdown.some(row => row.layer === 'tool inputs' && row.sourceCount === 1)).toBe(true);
+    expect(snapshot.sources.some((source) => source.title === 'base instructions')).toBe(true);
+    expect(snapshot.sources.some((source) => source.sourceType === 'tool_output')).toBe(true);
+    expect(
+      snapshot.breakdown.some((row) => row.layer === 'tool inputs' && row.sourceCount === 1),
+    ).toBe(true);
   });
 
   it('includes bounded bodies only when requested', () => {
@@ -183,7 +187,7 @@ describe('buildSessionContextSnapshot', () => {
 
     const snapshot = buildSessionContextSnapshot(manyEvents, { sourceLimit: 4 });
     expect(snapshot.sources).toHaveLength(4);
-    expect(snapshot.sources.some(source => source.sourceType === 'system')).toBe(true);
+    expect(snapshot.sources.some((source) => source.sourceType === 'system')).toBe(true);
     expect(snapshot.sources.at(-1)?.snippet).toBe('prompt 7');
   });
 });
@@ -208,7 +212,7 @@ describe('createSessionContextProjector', () => {
     );
 
     expect(snapshot.capabilities.observedTools).toEqual(['Read']);
-    expect(snapshot.sources.some(source => source.sourceFile === 'a.ts')).toBe(true);
+    expect(snapshot.sources.some((source) => source.sourceFile === 'a.ts')).toBe(true);
 
     projector.reset();
     expect(projector.getSnapshot().sources).toEqual([]);
@@ -233,7 +237,7 @@ describe('readSessionContextSnapshot', () => {
         wasTruncated: () => false,
       }),
       getContextWindowLimit: () => 1000,
-      computeContextSize: usage => usage.inputTokens,
+      computeContextSize: (usage) => usage.inputTokens,
     } as unknown as SessionProviderBase;
 
     const snapshot = readSessionContextSnapshot(provider, '/tmp/rollout.jsonl');

@@ -136,12 +136,14 @@ export class TimeoutManager {
    */
   calculateTimeout(config: TimeoutConfig, contextSizeBytes: number): number {
     const contextSizeKb = contextSizeBytes / 1024;
-    const calculatedTimeout = config.baseTimeout + (contextSizeKb * config.perKbTimeout);
+    const calculatedTimeout = config.baseTimeout + contextSizeKb * config.perKbTimeout;
     const effectiveTimeout = Math.min(calculatedTimeout, config.maxTimeout);
 
-    log(`TimeoutManager: baseTimeout=${config.baseTimeout}, contextKb=${contextSizeKb.toFixed(1)}, ` +
+    log(
+      `TimeoutManager: baseTimeout=${config.baseTimeout}, contextKb=${contextSizeKb.toFixed(1)}, ` +
         `perKb=${config.perKbTimeout}, calculated=${calculatedTimeout.toFixed(0)}, ` +
-        `capped=${effectiveTimeout.toFixed(0)}`);
+        `capped=${effectiveTimeout.toFixed(0)}`,
+    );
 
     return Math.round(effectiveTimeout);
   }
@@ -195,7 +197,9 @@ export class TimeoutManager {
     let attempt = 1;
 
     while (true) {
-      log(`TimeoutManager: ${operation} attempt ${attempt}, timeout=${timeoutMs}ms, contextKb=${contextSizeKb.toFixed(1)}`);
+      log(
+        `TimeoutManager: ${operation} attempt ${attempt}, timeout=${timeoutMs}ms, contextKb=${contextSizeKb.toFixed(1)}`,
+      );
 
       const result = await this.executeOnce<T>(
         operation,
@@ -204,7 +208,7 @@ export class TimeoutManager {
         contextSizeKb,
         showProgress,
         cancellable,
-        externalSignal
+        externalSignal,
       );
 
       // If successful or non-timeout error, return
@@ -217,10 +221,7 @@ export class TimeoutManager {
         const decision = await onTimeout(timeoutMs, contextSizeKb);
         if (decision === 'retry') {
           // Increase timeout for retry
-          timeoutMs = Math.min(
-            Math.round(timeoutMs * config.retryMultiplier),
-            config.maxTimeout
-          );
+          timeoutMs = Math.min(Math.round(timeoutMs * config.retryMultiplier), config.maxTimeout);
           attempt++;
           log(`TimeoutManager: Retrying ${operation} with timeout=${timeoutMs}ms`);
           continue;
@@ -250,7 +251,7 @@ export class TimeoutManager {
     contextSizeKb: number,
     showProgress: boolean,
     cancellable: boolean,
-    externalSignal?: AbortSignal
+    externalSignal?: AbortSignal,
   ): Promise<TimeoutResult<T>> {
     const abortController = new AbortController();
 
@@ -288,7 +289,7 @@ export class TimeoutManager {
             }
 
             return task(abortController.signal);
-          }
+          },
         );
 
         return {
@@ -377,7 +378,7 @@ export class TimeoutManager {
   async promptRetry(
     operation: string,
     timeoutMs: number,
-    contextSizeKb: number
+    contextSizeKb: number,
   ): Promise<'retry' | 'cancel'> {
     // Check if auto-retry is enabled
     const config = vscode.workspace.getConfiguration('sidekick');
@@ -388,7 +389,7 @@ export class TimeoutManager {
     }
 
     const timeoutSec = Math.round(timeoutMs / 1000);
-    const newTimeoutSec = Math.round(timeoutMs * 1.5 / 1000);
+    const newTimeoutSec = Math.round((timeoutMs * 1.5) / 1000);
 
     const contextInfo = contextSizeKb > 1 ? ` (context: ${contextSizeKb.toFixed(1)}KB)` : '';
 
@@ -397,7 +398,7 @@ export class TimeoutManager {
       { modal: false },
       `Retry (${newTimeoutSec}s)`,
       'Open Settings',
-      'Cancel'
+      'Cancel',
     );
 
     if (action === `Retry (${newTimeoutSec}s)`) {
@@ -405,10 +406,7 @@ export class TimeoutManager {
     }
 
     if (action === 'Open Settings') {
-      await vscode.commands.executeCommand(
-        'workbench.action.openSettings',
-        'sidekick.timeouts'
-      );
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'sidekick.timeouts');
     }
 
     return 'cancel';
@@ -429,7 +427,7 @@ export class TimeoutManager {
     operation: string,
     task: (signal: AbortSignal) => Promise<T>,
     operationType: OperationType,
-    contextSize: number = 0
+    contextSize: number = 0,
   ): Promise<T> {
     const config = this.getTimeoutConfig(operationType);
     const result = await this.executeWithTimeout({
@@ -448,7 +446,7 @@ export class TimeoutManager {
     if (result.timedOut) {
       throw new TimeoutError(
         `${operation} timed out after ${result.timeoutMs}ms`,
-        result.timeoutMs
+        result.timeoutMs,
       );
     }
 

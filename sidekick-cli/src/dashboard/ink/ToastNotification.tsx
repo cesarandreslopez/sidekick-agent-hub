@@ -13,9 +13,9 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 const SEVERITY_ICON: Record<string, string> = {
-  error: '\u2718',   // ✘
+  error: '\u2718', // ✘
   warning: '\u26A0', // ⚠
-  info: '\u25CF',    // ●
+  info: '\u25CF', // ●
 };
 
 interface ToastEntry {
@@ -31,7 +31,8 @@ interface ToastNotificationProps {
 export function ToastNotification({ toast }: ToastNotificationProps): React.ReactElement {
   const color = SEVERITY_COLOR[toast.severity] || 'cyan';
   const icon = SEVERITY_ICON[toast.severity] || '\u25CF';
-  const truncMsg = toast.message.length > 56 ? toast.message.substring(0, 53) + '...' : toast.message;
+  const truncMsg =
+    toast.message.length > 56 ? toast.message.substring(0, 53) + '...' : toast.message;
 
   return (
     <Box
@@ -42,7 +43,9 @@ export function ToastNotification({ toast }: ToastNotificationProps): React.Reac
       borderColor={color}
       paddingX={1}
     >
-      <Text color={color}>{icon} {truncMsg}</Text>
+      <Text color={color}>
+        {icon} {truncMsg}
+      </Text>
     </Box>
   );
 }

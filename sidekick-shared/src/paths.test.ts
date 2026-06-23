@@ -19,7 +19,9 @@ describe('encodeWorkspacePath', () => {
   });
 
   it('handles complex paths', () => {
-    expect(encodeWorkspacePath('/home/user/my_code/project_v2')).toBe('-home-user-my-code-project-v2');
+    expect(encodeWorkspacePath('/home/user/my_code/project_v2')).toBe(
+      '-home-user-my-code-project-v2',
+    );
   });
 });
 

@@ -13,7 +13,7 @@ Sidekick analyzes your coding sessions to:
 3. **Surface patterns** — highlights recurring behaviors worth codifying
 
 !!! tip "What are instruction files?"
-    Instruction files (CLAUDE.md, AGENTS.md, etc.) are project-level documents your agent reads at the start of every session. They tell your agent about your project's conventions, architecture, and preferences — so it doesn't rediscover the same things every time. See the [Context Management primer](../getting-started/context-management.md) for more.
+Instruction files (CLAUDE.md, AGENTS.md, etc.) are project-level documents your agent reads at the start of every session. They tell your agent about your project's conventions, architecture, and preferences — so it doesn't rediscover the same things every time. See the [Context Management primer](../getting-started/context-management.md) for more.
 
 ## Accessing Suggestions
 

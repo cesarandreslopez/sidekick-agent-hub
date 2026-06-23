@@ -21,9 +21,10 @@ export function initLogger(): vscode.OutputChannel {
  */
 export function log(message: string, ...args: unknown[]): void {
   const timestamp = new Date().toISOString();
-  const formatted = args.length > 0
-    ? `[${timestamp}] ${message} ${JSON.stringify(args)}`
-    : `[${timestamp}] ${message}`;
+  const formatted =
+    args.length > 0
+      ? `[${timestamp}] ${message} ${JSON.stringify(args)}`
+      : `[${timestamp}] ${message}`;
   outputChannel?.appendLine(formatted);
   console.log(`[Sidekick] ${formatted}`);
 }

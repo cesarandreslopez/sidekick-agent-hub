@@ -53,7 +53,9 @@ function writeClaudeSystemAccount(email = 'claude@example.com', uuid = 'claude-d
   );
   fs.writeFileSync(
     path.join(claudeDir, '.credentials.json'),
-    JSON.stringify({ claudeAiOauth: { accessToken: 'access-token', refreshToken: 'refresh-token' } }),
+    JSON.stringify({
+      claudeAiOauth: { accessToken: 'access-token', refreshToken: 'refresh-token' },
+    }),
   );
 }
 
@@ -98,15 +100,19 @@ describe('ensureDefaultAccounts', () => {
     const result = await ensureDefaultAccounts();
 
     expect(result).toEqual({ claude: 'registered', codex: 'registered' });
-    expect(getActiveSavedAccount('claude-code')).toEqual(expect.objectContaining({
-      id: 'claude-1',
-      label: 'Default',
-      email: 'claude@example.com',
-    }));
-    expect(getActiveCodexAccount()).toEqual(expect.objectContaining({
-      label: 'Default',
-      email: 'codex@example.com',
-    }));
+    expect(getActiveSavedAccount('claude-code')).toEqual(
+      expect.objectContaining({
+        id: 'claude-1',
+        label: 'Default',
+        email: 'claude@example.com',
+      }),
+    );
+    expect(getActiveCodexAccount()).toEqual(
+      expect.objectContaining({
+        label: 'Default',
+        email: 'codex@example.com',
+      }),
+    );
   });
 
   it('is idempotent when called repeatedly', async () => {

@@ -230,7 +230,15 @@ export interface ToolAnalytics {
  */
 export interface TimelineEvent {
   /** Event type for display categorization */
-  type: 'user_prompt' | 'tool_call' | 'tool_result' | 'error' | 'session_start' | 'session_end' | 'assistant_response' | 'compaction';
+  type:
+    | 'user_prompt'
+    | 'tool_call'
+    | 'tool_result'
+    | 'error'
+    | 'session_start'
+    | 'session_end'
+    | 'assistant_response'
+    | 'compaction';
 
   /** ISO 8601 timestamp */
   timestamp: string;
@@ -561,7 +569,18 @@ export interface SessionStats {
   toolCalls: ToolCall[];
 
   /** Per-model usage breakdown */
-  modelUsage: Map<string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; reasoningTokens?: number }>;
+  modelUsage: Map<
+    string,
+    {
+      calls: number;
+      tokens: number;
+      inputTokens: number;
+      outputTokens: number;
+      cacheWriteTokens: number;
+      cacheReadTokens: number;
+      reasoningTokens?: number;
+    }
+  >;
 
   /** When the session was last updated */
   lastUpdated: Date;

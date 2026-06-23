@@ -21,22 +21,25 @@ describe('formatProviderStatusDisplay', () => {
   });
 
   it('summarizes a major outage without flooding the compact banner', () => {
-    const display = formatProviderStatusDisplay('Claude', status({
-      indicator: 'major',
-      description: 'Partial System Outage',
-      affectedComponents: [
-        { name: 'claude.ai', status: 'major_outage' },
-        { name: 'Claude API', status: 'major_outage' },
-        { name: 'Claude Code', status: 'degraded_performance' },
-        { name: 'Claude Console', status: 'partial_outage' },
-      ],
-      activeIncident: {
-        name: 'Elevated error rate across multiple models',
-        impact: 'major',
-        shortlink: 'https://status.example/incidents/123',
-        updatedAt: '2026-06-23T11:45:00.000Z',
-      },
-    }));
+    const display = formatProviderStatusDisplay(
+      'Claude',
+      status({
+        indicator: 'major',
+        description: 'Partial System Outage',
+        affectedComponents: [
+          { name: 'claude.ai', status: 'major_outage' },
+          { name: 'Claude API', status: 'major_outage' },
+          { name: 'Claude Code', status: 'degraded_performance' },
+          { name: 'Claude Console', status: 'partial_outage' },
+        ],
+        activeIncident: {
+          name: 'Elevated error rate across multiple models',
+          impact: 'major',
+          shortlink: 'https://status.example/incidents/123',
+          updatedAt: '2026-06-23T11:45:00.000Z',
+        },
+      }),
+    );
 
     expect(display).toMatchObject({
       visible: true,
@@ -56,13 +59,14 @@ describe('formatProviderStatusDisplay', () => {
   });
 
   it('falls back to affected component count when there is no incident', () => {
-    const display = formatProviderStatusDisplay('OpenAI', status({
-      indicator: 'minor',
-      description: 'Degraded Performance',
-      affectedComponents: [
-        { name: 'ChatGPT', status: 'degraded_performance' },
-      ],
-    }));
+    const display = formatProviderStatusDisplay(
+      'OpenAI',
+      status({
+        indicator: 'minor',
+        description: 'Degraded Performance',
+        affectedComponents: [{ name: 'ChatGPT', status: 'degraded_performance' }],
+      }),
+    );
 
     expect(display.visible).toBe(true);
     expect(display.title).toBe('OpenAI: Degraded Performance');
@@ -72,19 +76,20 @@ describe('formatProviderStatusDisplay', () => {
   });
 
   it('preserves untrusted status text as plain display data', () => {
-    const display = formatProviderStatusDisplay('Claude', status({
-      indicator: 'critical',
-      description: '<img src=x onerror=alert(1)>',
-      affectedComponents: [
-        { name: '<script>alert(1)</script>', status: 'major_outage' },
-      ],
-      activeIncident: {
-        name: '<b>Incident</b>',
-        impact: 'critical',
-        shortlink: 'javascript:alert(1)',
-        updatedAt: '2026-06-23T11:45:00.000Z',
-      },
-    }));
+    const display = formatProviderStatusDisplay(
+      'Claude',
+      status({
+        indicator: 'critical',
+        description: '<img src=x onerror=alert(1)>',
+        affectedComponents: [{ name: '<script>alert(1)</script>', status: 'major_outage' }],
+        activeIncident: {
+          name: '<b>Incident</b>',
+          impact: 'critical',
+          shortlink: 'javascript:alert(1)',
+          updatedAt: '2026-06-23T11:45:00.000Z',
+        },
+      }),
+    );
 
     expect(display.title).toBe('Claude: <img src=x onerror=alert(1)>');
     expect(display.summary).toBe('<b>Incident</b>');

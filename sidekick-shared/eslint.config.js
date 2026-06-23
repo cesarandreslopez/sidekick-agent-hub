@@ -1,5 +1,5 @@
-const eslint = require("@eslint/js");
-const tseslint = require("typescript-eslint");
+const eslint = require('@eslint/js');
+const tseslint = require('typescript-eslint');
 
 module.exports = tseslint.config(
   eslint.configs.recommended,
@@ -7,19 +7,16 @@ module.exports = tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        project: "./tsconfig.json",
+        project: './tsconfig.json',
       },
     },
     rules: {
-      "@typescript-eslint/no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_" },
-      ],
-      "@typescript-eslint/explicit-function-return-type": "off",
-      "@typescript-eslint/no-explicit-any": "warn",
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
   {
-    ignores: ["dist/", "node_modules/", "*.config.js", "**/*.test.ts"],
-  }
+    ignores: ['dist/', 'node_modules/', '*.config.js', '**/*.test.ts'],
+  },
 );

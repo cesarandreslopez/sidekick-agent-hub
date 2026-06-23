@@ -26,6 +26,8 @@ npm test             # Run all tests (Vitest)
 npm run test:watch   # Watch mode for tests
 npm run lint         # ESLint check
 npm run lint:fix     # ESLint auto-fix
+npm run format       # Prettier write for this package
+npm run format:check # Prettier check for this package
 npm run package      # Create .vsix for distribution
 ```
 
@@ -39,6 +41,8 @@ Shared library commands run from `sidekick-shared/`:
 npm run build        # tsc build to dist/
 npm test             # Build, then run Vitest
 npm run lint         # ESLint check
+npm run format       # Prettier write for this package
+npm run format:check # Prettier check for this package
 ```
 
 CLI commands run from `sidekick-cli/`:
@@ -47,6 +51,8 @@ CLI commands run from `sidekick-cli/`:
 npm run build        # esbuild ESM binary to dist/sidekick-cli.mjs
 npm test             # Run Vitest
 npm run lint         # ESLint check
+npm run format       # Prettier write for this package
+npm run format:check # Prettier check for this package
 ```
 
 **Monorepo-wide helpers** (run from repo root) cover all three packages — `sidekick-shared`, `sidekick-vscode`, `sidekick-cli`:
@@ -54,6 +60,8 @@ npm run lint         # ESLint check
 ```bash
 bash scripts/lint-all.sh          # Lint all three packages (CI lints each separately)
 bash scripts/lint-all.sh --fix    # Lint + auto-fix all three
+bash scripts/format-all.sh        # Prettier write across packages, docs, root markdown/YAML, and workflows
+bash scripts/format-check-all.sh  # Prettier check across packages, docs, root markdown/YAML, and workflows
 bash scripts/build-all.sh         # npm install + build all three; CLI binary at sidekick-cli/dist/sidekick-cli.mjs
 bash scripts/bump-version.sh X.Y.Z # Update package.json versions; sync lockfiles separately
 ```
@@ -75,14 +83,14 @@ Do **not** use `mkdocs build` or `mkdocs serve` — use `zensical` instead.
 
 `sidekick-vscode/esbuild.js` produces six bundles:
 
-| Output | Format | Platform |
-|--------|--------|----------|
-| `out/extension.js` (from `src/extension.ts`) | CommonJS | Node.js |
-| `out/webview/explain.js` | IIFE | Browser |
-| `out/webview/error.js` | IIFE | Browser |
-| `out/webview/dashboard.js` | IIFE | Browser |
-| `out/webview/chartjs-vendor.js` | IIFE | Browser |
-| `out/webview/d3-vendor.js` | IIFE | Browser |
+| Output                                       | Format   | Platform |
+| -------------------------------------------- | -------- | -------- |
+| `out/extension.js` (from `src/extension.ts`) | CommonJS | Node.js  |
+| `out/webview/explain.js`                     | IIFE     | Browser  |
+| `out/webview/error.js`                       | IIFE     | Browser  |
+| `out/webview/dashboard.js`                   | IIFE     | Browser  |
+| `out/webview/chartjs-vendor.js`              | IIFE     | Browser  |
+| `out/webview/d3-vendor.js`                   | IIFE     | Browser  |
 
 Only `vscode` is externalized from the extension-host bundle. Other extension dependencies (including `@anthropic-ai/claude-agent-sdk`, `@opencode-ai/sdk`, and `sidekick-shared`) are bundled by esbuild. The `conditions: ['import']`, `banner`, and `define` settings in `esbuild.js` polyfill `import.meta.url` for ESM deps bundled into CJS. Chart.js and D3.js are bundled into local browser vendor files so the dashboard and mind map work offline.
 
@@ -144,6 +152,7 @@ Provider implementations live in `src/services/providers/`. Each normalizes raw 
 ### Persistence
 
 Cross-session data stored in `~/.config/sidekick/`:
+
 - `historical-data.json` — token/cost/tool usage stats
 - `tasks/{projectSlug}.json` — kanban board carry-over
 - `decisions/{projectSlug}.json` — decision log
@@ -181,11 +190,13 @@ Releases are triggered by pushing a `v*` tag to `main`. The CI workflow (`.githu
 5. **Create GitHub Release** — downloads `.vsix` artifact, extracts changelog section, creates release with `.vsix` attached
 
 **Version bump checklist** (all must match the tag):
+
 - `bash scripts/bump-version.sh <version>` bumps the three `package.json` files at once. It does **not** touch lockfiles, so still:
   - `sidekick-vscode/package-lock.json`, `sidekick-cli/package-lock.json`, and `sidekick-shared/package-lock.json` (run `npm install --package-lock-only` in each workspace)
 - If bumping by hand instead, the three `package.json` files are: `sidekick-vscode/`, `sidekick-cli/`, `sidekick-shared/`
 
 **Changelogs to update** (five total):
+
 - `CHANGELOG.md` (root — full project)
 - `sidekick-vscode/CHANGELOG.md` (extension-specific)
 - `sidekick-cli/CHANGELOG.md` (CLI-specific)

@@ -16,7 +16,7 @@ describe('HeatmapTracker', () => {
     const buckets = tracker.getBuckets();
     expect(buckets).toHaveLength(5);
     // Last two buckets should have data
-    const counts = buckets.map(b => b.count);
+    const counts = buckets.map((b) => b.count);
     expect(counts[counts.length - 1]).toBe(1); // 00:01
     expect(counts[counts.length - 2]).toBe(2); // 00:00
   });
@@ -45,7 +45,7 @@ describe('HeatmapTracker', () => {
 
     const buckets = tracker.getBuckets();
     // The 00:00 bucket should have been pruned
-    const nonZero = buckets.filter(b => b.count > 0);
+    const nonZero = buckets.filter((b) => b.count > 0);
     expect(nonZero).toHaveLength(1);
     expect(nonZero[0].count).toBe(1);
   });

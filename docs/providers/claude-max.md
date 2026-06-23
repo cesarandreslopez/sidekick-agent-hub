@@ -5,13 +5,13 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 ## Setup
 
 1. Install Claude Code CLI:
-    ```bash
-    npm install -g @anthropic-ai/claude-code
-    ```
+   ```bash
+   npm install -g @anthropic-ai/claude-code
+   ```
 2. Authenticate:
-    ```bash
-    claude auth
-    ```
+   ```bash
+   claude auth
+   ```
 3. Sidekick auto-detects Claude Code when `sidekick.inferenceProvider` is set to `auto`
 
 ## How It Works

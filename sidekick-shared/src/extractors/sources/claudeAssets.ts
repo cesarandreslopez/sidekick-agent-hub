@@ -100,8 +100,10 @@ function addTextAssets(
   meta: ExtractedAssetProvenance,
 ): void {
   for (const url of extractUrls(text)) acc.urls.push(urlAsset(url, timestamp, meta));
-  for (const filePath of extractFilePaths(text, cwd)) acc.paths.push(pathAsset(filePath, timestamp, meta));
-  for (const command of extractCommands(text)) acc.commands.push(commandAsset(command, timestamp, meta));
+  for (const filePath of extractFilePaths(text, cwd))
+    acc.paths.push(pathAsset(filePath, timestamp, meta));
+  for (const command of extractCommands(text))
+    acc.commands.push(commandAsset(command, timestamp, meta));
 }
 
 function addToolPathAssets(
@@ -125,7 +127,8 @@ function accumClaude(filePath: string, cwd: string, acc: SourceAssets): void {
       const planFilePath = asString(attachment?.planFilePath);
       if (planFilePath && isExistingFile(planFilePath)) {
         const text = readPlanFile(planFilePath);
-        if (text?.trim()) acc.plans.push(planAsset(text, timestamp, provenance(filePath, 'attachment:plan')));
+        if (text?.trim())
+          acc.plans.push(planAsset(text, timestamp, provenance(filePath, 'attachment:plan')));
       }
       continue;
     }
@@ -152,12 +155,14 @@ function accumClaude(filePath: string, cwd: string, acc: SourceAssets): void {
       const toolMeta = provenance(filePath, toolSource);
 
       if (name === 'Bash') {
-        for (const url of extractUrls(input.command)) acc.urls.push(urlAsset(url, timestamp, toolMeta));
+        for (const url of extractUrls(input.command))
+          acc.urls.push(urlAsset(url, timestamp, toolMeta));
         addToolPathAssets(acc, input.command, cwd, timestamp, toolMeta);
       } else if (name && PATH_TOOLS.has(name)) {
         addToolPathAssets(acc, input.file_path, cwd, timestamp, toolMeta);
       } else if (name === 'WebFetch' || name === 'WebSearch') {
-        for (const url of extractUrls(JSON.stringify(input))) acc.urls.push(urlAsset(url, timestamp, toolMeta));
+        for (const url of extractUrls(JSON.stringify(input)))
+          acc.urls.push(urlAsset(url, timestamp, toolMeta));
       } else if (name === 'ExitPlanMode') {
         const inline = asString(input.plan);
         const markdown = inline?.trim() ? inline : readPlanFile(asString(input.planFilePath));
@@ -169,7 +174,13 @@ function accumClaude(filePath: string, cwd: string, acc: SourceAssets): void {
 
 export function readClaudeAssets(cwd: string, limit = 3): SourceAssets {
   const sessions = claudeSessions(cwd, limit);
-  const acc: SourceAssets = { urls: [], paths: [], commands: [], plans: [], hadSession: sessions.length > 0 };
+  const acc: SourceAssets = {
+    urls: [],
+    paths: [],
+    commands: [],
+    plans: [],
+    hadSession: sessions.length > 0,
+  };
   for (const session of sessions) accumClaude(session, cwd, acc);
   return acc;
 }

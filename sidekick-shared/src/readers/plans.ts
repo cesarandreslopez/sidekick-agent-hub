@@ -26,11 +26,11 @@ export async function readPlans(slug: string, opts?: ReadPlansOptions): Promise<
 
   const status = opts?.status ?? 'all';
   if (status !== 'all') {
-    plans = plans.filter(p => p.status === status);
+    plans = plans.filter((p) => p.status === status);
   }
 
   if (opts?.source) {
-    plans = plans.filter(p => p.source === opts.source);
+    plans = plans.filter((p) => p.source === opts.source);
   }
 
   // Already sorted by createdAt desc in storage
@@ -66,35 +66,47 @@ export function getPlanAnalytics(plans: PersistedPlan[]): PlanAnalytics {
 
   if (totalPlans === 0) {
     return {
-      totalPlans: 0, completedPlans: 0, failedPlans: 0, abandonedPlans: 0,
-      avgCompletionRate: 0, avgDurationMs: 0, avgStepsPerPlan: 0,
-      avgTokensPerPlan: 0, avgCostPerPlan: 0,
-      plansBySource: {}, mostCommonFailureStep: null, completionTrend: [],
+      totalPlans: 0,
+      completedPlans: 0,
+      failedPlans: 0,
+      abandonedPlans: 0,
+      avgCompletionRate: 0,
+      avgDurationMs: 0,
+      avgStepsPerPlan: 0,
+      avgTokensPerPlan: 0,
+      avgCostPerPlan: 0,
+      plansBySource: {},
+      mostCommonFailureStep: null,
+      completionTrend: [],
     };
   }
 
-  const completedPlans = plans.filter(p => p.status === 'completed').length;
-  const failedPlans = plans.filter(p => p.status === 'failed').length;
-  const abandonedPlans = plans.filter(p => p.status === 'abandoned').length;
+  const completedPlans = plans.filter((p) => p.status === 'completed').length;
+  const failedPlans = plans.filter((p) => p.status === 'failed').length;
+  const abandonedPlans = plans.filter((p) => p.status === 'abandoned').length;
 
   const avgCompletionRate = plans.reduce((s, p) => s + p.completionRate, 0) / totalPlans;
 
-  const plansWithDuration = plans.filter(p => p.totalDurationMs != null && p.totalDurationMs > 0);
-  const avgDurationMs = plansWithDuration.length > 0
-    ? plansWithDuration.reduce((s, p) => s + (p.totalDurationMs || 0), 0) / plansWithDuration.length
-    : 0;
+  const plansWithDuration = plans.filter((p) => p.totalDurationMs != null && p.totalDurationMs > 0);
+  const avgDurationMs =
+    plansWithDuration.length > 0
+      ? plansWithDuration.reduce((s, p) => s + (p.totalDurationMs || 0), 0) /
+        plansWithDuration.length
+      : 0;
 
   const avgStepsPerPlan = plans.reduce((s, p) => s + p.steps.length, 0) / totalPlans;
 
-  const plansWithTokens = plans.filter(p => p.totalTokensUsed != null && p.totalTokensUsed > 0);
-  const avgTokensPerPlan = plansWithTokens.length > 0
-    ? plansWithTokens.reduce((s, p) => s + (p.totalTokensUsed || 0), 0) / plansWithTokens.length
-    : 0;
+  const plansWithTokens = plans.filter((p) => p.totalTokensUsed != null && p.totalTokensUsed > 0);
+  const avgTokensPerPlan =
+    plansWithTokens.length > 0
+      ? plansWithTokens.reduce((s, p) => s + (p.totalTokensUsed || 0), 0) / plansWithTokens.length
+      : 0;
 
-  const plansWithCost = plans.filter(p => p.totalCostUsd != null && p.totalCostUsd > 0);
-  const avgCostPerPlan = plansWithCost.length > 0
-    ? plansWithCost.reduce((s, p) => s + (p.totalCostUsd || 0), 0) / plansWithCost.length
-    : 0;
+  const plansWithCost = plans.filter((p) => p.totalCostUsd != null && p.totalCostUsd > 0);
+  const avgCostPerPlan =
+    plansWithCost.length > 0
+      ? plansWithCost.reduce((s, p) => s + (p.totalCostUsd || 0), 0) / plansWithCost.length
+      : 0;
 
   // Plans by source
   const plansBySource: Record<string, number> = {};
@@ -116,7 +128,10 @@ export function getPlanAnalytics(plans: PersistedPlan[]): PlanAnalytics {
     let maxCount = 0;
     let maxIdx = 0;
     for (const [idx, count] of failureCounts) {
-      if (count > maxCount) { maxCount = count; maxIdx = idx; }
+      if (count > maxCount) {
+        maxCount = count;
+        maxIdx = idx;
+      }
     }
     mostCommonFailureStep = `Step ${maxIdx + 1}`;
   }
@@ -135,10 +150,18 @@ export function getPlanAnalytics(plans: PersistedPlan[]): PlanAnalytics {
     .map(([date, { sum, count }]) => ({ date, rate: sum / count }));
 
   return {
-    totalPlans, completedPlans, failedPlans, abandonedPlans,
-    avgCompletionRate, avgDurationMs, avgStepsPerPlan,
-    avgTokensPerPlan, avgCostPerPlan,
-    plansBySource, mostCommonFailureStep, completionTrend,
+    totalPlans,
+    completedPlans,
+    failedPlans,
+    abandonedPlans,
+    avgCompletionRate,
+    avgDurationMs,
+    avgStepsPerPlan,
+    avgTokensPerPlan,
+    avgCostPerPlan,
+    plansBySource,
+    mostCommonFailureStep,
+    completionTrend,
   };
 }
 
@@ -147,7 +170,7 @@ export async function writePlans(slug: string, plans: PersistedPlan[]): Promise<
 
   // Sort by createdAt desc and cap
   const sorted = [...plans].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
   const capped = sorted.slice(0, MAX_PLANS_PER_PROJECT);
 
@@ -185,35 +208,38 @@ export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<P
   const slugSet = new Set<string>();
   let jsonlFiles: string[];
   try {
-    jsonlFiles = (await fs.promises.readdir(projectDir))
-      .filter(f => f.endsWith('.jsonl'));
+    jsonlFiles = (await fs.promises.readdir(projectDir)).filter((f) => f.endsWith('.jsonl'));
   } catch {
     return [];
   }
 
   // Read slugs in parallel (grep first "slug" field from each JSONL)
   const SLUG_RE = /"slug":"([^"]+)"/;
-  await Promise.all(jsonlFiles.map(async (f) => {
-    try {
-      const filePath = path.join(projectDir, f);
-      const handle = await fs.promises.open(filePath, 'r');
+  await Promise.all(
+    jsonlFiles.map(async (f) => {
       try {
-        // Read first 32KB — slug is always in the first few lines
-        const buf = Buffer.alloc(32768);
-        const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
-        const chunk = buf.toString('utf-8', 0, bytesRead);
-        for (const line of chunk.split('\n')) {
-          const m = line.match(SLUG_RE);
-          if (m) {
-            slugSet.add(m[1]);
-            break;
+        const filePath = path.join(projectDir, f);
+        const handle = await fs.promises.open(filePath, 'r');
+        try {
+          // Read first 32KB — slug is always in the first few lines
+          const buf = Buffer.alloc(32768);
+          const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+          const chunk = buf.toString('utf-8', 0, bytesRead);
+          for (const line of chunk.split('\n')) {
+            const m = line.match(SLUG_RE);
+            if (m) {
+              slugSet.add(m[1]);
+              break;
+            }
           }
+        } finally {
+          await handle.close();
         }
-      } finally {
-        await handle.close();
+      } catch {
+        /* skip unreadable files */
       }
-    } catch { /* skip unreadable files */ }
-  }));
+    }),
+  );
 
   if (slugSet.size === 0) return [];
 
@@ -226,7 +252,7 @@ export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<P
       const content = await fs.promises.readFile(planPath, 'utf-8');
       const parsed = parsePlanMarkdown(content);
 
-      const steps: PersistedPlanStep[] = parsed.steps.map(s => ({
+      const steps: PersistedPlanStep[] = parsed.steps.map((s) => ({
         id: s.id,
         description: s.description,
         status: s.status,
@@ -234,7 +260,7 @@ export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<P
         complexity: s.complexity,
       }));
 
-      const completed = steps.filter(s => s.status === 'completed').length;
+      const completed = steps.filter((s) => s.status === 'completed').length;
       const total = steps.length;
 
       plans.push({
@@ -249,7 +275,9 @@ export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<P
         completionRate: total > 0 ? completed / total : 0,
         rawMarkdown: content,
       });
-    } catch { /* plan file missing or unreadable */ }
+    } catch {
+      /* plan file missing or unreadable */
+    }
   }
 
   // Sort by createdAt descending

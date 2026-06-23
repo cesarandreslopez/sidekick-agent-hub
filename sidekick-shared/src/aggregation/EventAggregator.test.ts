@@ -5,7 +5,9 @@ import type { FollowEvent } from '../watchers/types';
 
 // ── Helpers ──
 
-function makeSessionEvent(overrides: Partial<SessionEvent> & { type: SessionEvent['type'] }): SessionEvent {
+function makeSessionEvent(
+  overrides: Partial<SessionEvent> & { type: SessionEvent['type'] },
+): SessionEvent {
   return {
     message: { role: overrides.type === 'user' ? 'user' : 'assistant' },
     timestamp: new Date().toISOString(),
@@ -31,7 +33,10 @@ function makeFollowEvent(overrides: Partial<FollowEvent> = {}): FollowEvent {
   };
 }
 
-function makeAssistantWithUsage(usage: Partial<MessageUsage> = {}, model = 'claude-sonnet-4-20250514'): SessionEvent {
+function makeAssistantWithUsage(
+  usage: Partial<MessageUsage> = {},
+  model = 'claude-sonnet-4-20250514',
+): SessionEvent {
   return makeSessionEvent({
     type: 'assistant',
     message: {
@@ -53,26 +58,30 @@ function makeUserEvent(content: string | unknown[] = 'Hello'): SessionEvent {
   });
 }
 
-function makeToolUseEvent(toolName: string, toolUseId: string, input: Record<string, unknown> = {}): SessionEvent {
+function makeToolUseEvent(
+  toolName: string,
+  toolUseId: string,
+  input: Record<string, unknown> = {},
+): SessionEvent {
   return makeSessionEvent({
     type: 'assistant',
     message: {
       role: 'assistant',
-      content: [
-        { type: 'tool_use', id: toolUseId, name: toolName, input },
-      ],
+      content: [{ type: 'tool_use', id: toolUseId, name: toolName, input }],
     },
   });
 }
 
-function makeToolResultEvent(toolUseId: string, content: unknown = 'success', isError = false): SessionEvent {
+function makeToolResultEvent(
+  toolUseId: string,
+  content: unknown = 'success',
+  isError = false,
+): SessionEvent {
   return makeSessionEvent({
     type: 'user',
     message: {
       role: 'user',
-      content: [
-        { type: 'tool_result', tool_use_id: toolUseId, content, is_error: isError },
-      ],
+      content: [{ type: 'tool_result', tool_use_id: toolUseId, content, is_error: isError }],
     },
   });
 }
@@ -153,23 +162,39 @@ describe('EventAggregator', () => {
 
     it('sets sessionStartTime from first event', () => {
       const ts = '2025-01-15T10:00:00Z';
-      agg.processEvent(makeSessionEvent({ type: 'user', message: { role: 'user', content: 'hi' }, timestamp: ts }));
+      agg.processEvent(
+        makeSessionEvent({ type: 'user', message: { role: 'user', content: 'hi' }, timestamp: ts }),
+      );
       expect(agg.getMetrics().sessionStartTime).toBe(ts);
     });
 
     it('updates lastEventTime with each event', () => {
       const ts1 = '2025-01-15T10:00:00Z';
       const ts2 = '2025-01-15T10:01:00Z';
-      agg.processEvent(makeSessionEvent({ type: 'user', message: { role: 'user', content: 'hi' }, timestamp: ts1 }));
-      agg.processEvent(makeSessionEvent({ type: 'user', message: { role: 'user', content: 'there' }, timestamp: ts2 }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: 'hi' },
+          timestamp: ts1,
+        }),
+      );
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: 'there' },
+          timestamp: ts2,
+        }),
+      );
       expect(agg.getMetrics().lastEventTime).toBe(ts2);
     });
 
     it('tracks messageCount but skips synthetic token-count events', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', id: 'token-count-123', content: 'tokens' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', id: 'token-count-123', content: 'tokens' },
+        }),
+      );
       agg.processEvent(makeUserEvent());
       // token-count event is skipped from messageCount
       expect(agg.getMetrics().messageCount).toBe(1);
@@ -182,7 +207,11 @@ describe('EventAggregator', () => {
 
     it('skips events with no message field gracefully', () => {
       // Cast to bypass TypeScript -- simulates a 'summary' event without message
-      agg.processEvent({ type: 'summary', timestamp: '2025-01-01T00:00:00Z', message: undefined } as unknown as SessionEvent);
+      agg.processEvent({
+        type: 'summary',
+        timestamp: '2025-01-01T00:00:00Z',
+        message: undefined,
+      } as unknown as SessionEvent);
       // Should have incremented eventCount but not crashed
       expect(agg.getMetrics().eventCount).toBe(1);
       expect(agg.getMetrics().messageCount).toBe(0);
@@ -202,23 +231,27 @@ describe('EventAggregator', () => {
     });
 
     it('accumulates cache tokens from usage', () => {
-      agg.processEvent(makeAssistantWithUsage({
-        input_tokens: 200,
-        output_tokens: 80,
-        cache_creation_input_tokens: 150,
-        cache_read_input_tokens: 50,
-      }));
+      agg.processEvent(
+        makeAssistantWithUsage({
+          input_tokens: 200,
+          output_tokens: 80,
+          cache_creation_input_tokens: 150,
+          cache_read_input_tokens: 50,
+        }),
+      );
       const tokens = agg.getAggregatedTokens();
       expect(tokens.cacheWriteTokens).toBe(150);
       expect(tokens.cacheReadTokens).toBe(50);
     });
 
     it('accumulates reported cost', () => {
-      agg.processEvent(makeAssistantWithUsage({
-        input_tokens: 100,
-        output_tokens: 50,
-        reported_cost: 0.005,
-      }));
+      agg.processEvent(
+        makeAssistantWithUsage({
+          input_tokens: 100,
+          output_tokens: 50,
+          reported_cost: 0.005,
+        }),
+      );
       const tokens = agg.getAggregatedTokens();
       expect(tokens.reportedCost).toBe(0.005);
     });
@@ -252,12 +285,14 @@ describe('EventAggregator', () => {
 
   describe('context size tracking', () => {
     it('computes context size as input + cacheWrite + cacheRead by default', () => {
-      agg.processEvent(makeAssistantWithUsage({
-        input_tokens: 1000,
-        output_tokens: 500,
-        cache_creation_input_tokens: 200,
-        cache_read_input_tokens: 100,
-      }));
+      agg.processEvent(
+        makeAssistantWithUsage({
+          input_tokens: 1000,
+          output_tokens: 500,
+          cache_creation_input_tokens: 200,
+          cache_read_input_tokens: 100,
+        }),
+      );
       // Default: input + cacheWrite + cacheRead = 1000 + 200 + 100 = 1300
       expect(agg.getMetrics().currentContextSize).toBe(1300);
     });
@@ -326,21 +361,33 @@ describe('EventAggregator', () => {
 
   describe('per-model usage stats', () => {
     it('tracks usage per model', () => {
-      agg.processEvent(makeAssistantWithUsage({ input_tokens: 100, output_tokens: 50 }, 'claude-sonnet-4-20250514'));
-      agg.processEvent(makeAssistantWithUsage({ input_tokens: 200, output_tokens: 100 }, 'claude-opus-4-20250514'));
-      agg.processEvent(makeAssistantWithUsage({ input_tokens: 150, output_tokens: 75 }, 'claude-sonnet-4-20250514'));
+      agg.processEvent(
+        makeAssistantWithUsage(
+          { input_tokens: 100, output_tokens: 50 },
+          'claude-sonnet-4-20250514',
+        ),
+      );
+      agg.processEvent(
+        makeAssistantWithUsage({ input_tokens: 200, output_tokens: 100 }, 'claude-opus-4-20250514'),
+      );
+      agg.processEvent(
+        makeAssistantWithUsage(
+          { input_tokens: 150, output_tokens: 75 },
+          'claude-sonnet-4-20250514',
+        ),
+      );
 
       const stats = agg.getModelStats();
       expect(stats).toHaveLength(2);
 
-      const sonnet = stats.find(s => s.model === 'claude-sonnet-4-20250514');
+      const sonnet = stats.find((s) => s.model === 'claude-sonnet-4-20250514');
       expect(sonnet).toBeDefined();
       expect(sonnet!.calls).toBe(2);
       expect(sonnet!.inputTokens).toBe(250);
       expect(sonnet!.outputTokens).toBe(125);
       expect(sonnet!.tokens).toBe(375); // 250 + 125
 
-      const opus = stats.find(s => s.model === 'claude-opus-4-20250514');
+      const opus = stats.find((s) => s.model === 'claude-opus-4-20250514');
       expect(opus).toBeDefined();
       expect(opus!.calls).toBe(1);
       expect(opus!.inputTokens).toBe(200);
@@ -357,39 +404,51 @@ describe('EventAggregator', () => {
     });
 
     it('uses "unknown" when no model is specified', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: 'hi',
-          usage: makeUsage({ input_tokens: 50, output_tokens: 25 }),
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: 'hi',
+            usage: makeUsage({ input_tokens: 50, output_tokens: 25 }),
+          },
+        }),
+      );
       const stats = agg.getModelStats();
       expect(stats).toHaveLength(1);
       expect(stats[0].model).toBe('unknown');
     });
 
     it('accumulates cache tokens in model stats', () => {
-      agg.processEvent(makeAssistantWithUsage({
-        input_tokens: 100,
-        output_tokens: 50,
-        cache_creation_input_tokens: 30,
-        cache_read_input_tokens: 20,
-      }, 'test-model'));
+      agg.processEvent(
+        makeAssistantWithUsage(
+          {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_creation_input_tokens: 30,
+            cache_read_input_tokens: 20,
+          },
+          'test-model',
+        ),
+      );
 
       const stats = agg.getModelStats();
-      const model = stats.find(s => s.model === 'test-model')!;
+      const model = stats.find((s) => s.model === 'test-model')!;
       expect(model.cacheWriteTokens).toBe(30);
       expect(model.cacheReadTokens).toBe(20);
     });
 
     it('accumulates cost in model stats', () => {
-      agg.processEvent(makeAssistantWithUsage({
-        input_tokens: 100,
-        output_tokens: 50,
-        reported_cost: 0.01,
-      }, 'test-model'));
+      agg.processEvent(
+        makeAssistantWithUsage(
+          {
+            input_tokens: 100,
+            output_tokens: 50,
+            reported_cost: 0.01,
+          },
+          'test-model',
+        ),
+      );
 
       const stats = agg.getModelStats();
       expect(stats[0].cost).toBe(0.01);
@@ -433,7 +492,7 @@ describe('EventAggregator', () => {
       agg.processEvent(makeToolResultEvent('tu-2', 'command failed', true));
 
       const stats = agg.getToolStats();
-      const bash = stats.find(s => s.name === 'Bash')!;
+      const bash = stats.find((s) => s.name === 'Bash')!;
       expect(bash.failureCount).toBe(1);
       expect(bash.successCount).toBe(0);
     });
@@ -501,20 +560,24 @@ describe('EventAggregator', () => {
       const userTs = '2025-01-15T10:00:00.000Z';
       const assistantTs = '2025-01-15T10:00:02.000Z';
 
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: { role: 'user', content: 'What is X?' },
-        timestamp: userTs,
-      }));
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: 'X is Y' }],
-          usage: makeUsage(),
-        },
-        timestamp: assistantTs,
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: 'What is X?' },
+          timestamp: userTs,
+        }),
+      );
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'X is Y' }],
+            usage: makeUsage(),
+          },
+          timestamp: assistantTs,
+        }),
+      );
 
       const stats = agg.getLatencyStats();
       expect(stats).not.toBeNull();
@@ -529,11 +592,13 @@ describe('EventAggregator', () => {
     });
 
     it('does not track latency from user events without text content', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: { role: 'user', content: [] },
-        timestamp: '2025-01-15T10:00:00Z',
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: [] },
+          timestamp: '2025-01-15T10:00:00Z',
+        }),
+      );
       agg.processEvent(makeAssistantWithUsage());
       // No latency should be tracked since user message had no text
       expect(agg.getLatencyStats()).toBeNull();
@@ -544,16 +609,24 @@ describe('EventAggregator', () => {
       for (let i = 0; i < 5; i++) {
         const userTs = `2025-01-15T10:0${i}:00.000Z`;
         const assistantTs = `2025-01-15T10:0${i}:01.000Z`;
-        custom.processEvent(makeSessionEvent({
-          type: 'user',
-          message: { role: 'user', content: `Q${i}` },
-          timestamp: userTs,
-        }));
-        custom.processEvent(makeSessionEvent({
-          type: 'assistant',
-          message: { role: 'assistant', content: [{ type: 'text', text: `A${i}` }], usage: makeUsage() },
-          timestamp: assistantTs,
-        }));
+        custom.processEvent(
+          makeSessionEvent({
+            type: 'user',
+            message: { role: 'user', content: `Q${i}` },
+            timestamp: userTs,
+          }),
+        );
+        custom.processEvent(
+          makeSessionEvent({
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: `A${i}` }],
+              usage: makeUsage(),
+            },
+            timestamp: assistantTs,
+          }),
+        );
       }
       const stats = custom.getLatencyStats()!;
       expect(stats.completedCycles).toBe(3);
@@ -566,10 +639,12 @@ describe('EventAggregator', () => {
 
   describe('context attribution', () => {
     it('attributes user text to userMessages', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: { role: 'user', content: 'Hello world' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: 'Hello world' },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.userMessages).toBeGreaterThan(0);
       // "Hello world" = 11 chars, estimate = ceil(11/4) = 3
@@ -577,94 +652,108 @@ describe('EventAggregator', () => {
     });
 
     it('attributes system prompt content to systemPrompt', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: { role: 'user', content: 'Here is <system-reminder> content' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: 'Here is <system-reminder> content' },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.systemPrompt).toBeGreaterThan(0);
       expect(attr.userMessages).toBe(0);
     });
 
     it('attributes CLAUDE.md content to systemPrompt', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: { role: 'user', content: 'Contents of CLAUDE.md are here' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: 'Contents of CLAUDE.md are here' },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.systemPrompt).toBeGreaterThan(0);
     });
 
     it('attributes tool_result blocks in user events to toolOutputs', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tu-1', content: 'file contents here' },
-          ],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: 'tu-1', content: 'file contents here' }],
+          },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.toolOutputs).toBeGreaterThan(0);
     });
 
     it('attributes assistant text blocks to assistantResponses', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: 'Here is my response' }],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Here is my response' }],
+          },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.assistantResponses).toBeGreaterThan(0);
     });
 
     it('attributes thinking blocks to thinking', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'thinking', thinking: 'Let me consider this carefully' }],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'thinking', thinking: 'Let me consider this carefully' }],
+          },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.thinking).toBeGreaterThan(0);
     });
 
     it('attributes tool_use blocks in assistant events to toolInputs', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'tu-1', name: 'Read', input: { file_path: '/foo' } }],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: 'tu-1', name: 'Read', input: { file_path: '/foo' } }],
+          },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.toolInputs).toBeGreaterThan(0);
     });
 
     it('attributes summary events to other', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'summary',
-        message: { role: 'assistant', content: 'Session summarized' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'summary',
+          message: { role: 'assistant', content: 'Session summarized' },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.other).toBeGreaterThan(0);
     });
 
     it('handles user content as structured blocks array', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Normal user question' },
-            { type: 'tool_result', tool_use_id: 'tu-1', content: 'result data' },
-          ],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Normal user question' },
+              { type: 'tool_result', tool_use_id: 'tu-1', content: 'result data' },
+            ],
+          },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.userMessages).toBeGreaterThan(0);
       expect(attr.toolOutputs).toBeGreaterThan(0);
@@ -677,16 +766,20 @@ describe('EventAggregator', () => {
 
   describe('permission mode tracking', () => {
     it('tracks permission mode changes', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', content: 'ok' },
-        permissionMode: 'default',
-      }));
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', content: 'editing' },
-        permissionMode: 'acceptEdits',
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'ok' },
+          permissionMode: 'default',
+        }),
+      );
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'editing' },
+          permissionMode: 'acceptEdits',
+        }),
+      );
 
       const metrics = agg.getMetrics();
       expect(metrics.permissionMode).toBe('acceptEdits');
@@ -698,25 +791,31 @@ describe('EventAggregator', () => {
     });
 
     it('does not add duplicate entries for same mode', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', content: 'ok' },
-        permissionMode: 'default',
-      }));
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', content: 'still default' },
-        permissionMode: 'default',
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'ok' },
+          permissionMode: 'default',
+        }),
+      );
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'still default' },
+          permissionMode: 'default',
+        }),
+      );
 
       expect(agg.getMetrics().permissionModeHistory).toHaveLength(1);
     });
 
     it('ignores events without permissionMode', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', content: 'ok' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'ok' },
+        }),
+      );
       expect(agg.getMetrics().permissionMode).toBeNull();
       expect(agg.getMetrics().permissionModeHistory).toHaveLength(0);
     });
@@ -745,11 +844,13 @@ describe('EventAggregator', () => {
     });
 
     it('adds tool_use events as tool_call type', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'tool_use',
-        message: { role: 'assistant' },
-        tool: { name: 'Read', input: { file_path: '/test.ts' } },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'tool_use',
+          message: { role: 'assistant' },
+          tool: { name: 'Read', input: { file_path: '/test.ts' } },
+        }),
+      );
       const tl = agg.getTimeline();
       // May or may not appear depending on noise classification
       // At minimum it should not crash
@@ -757,10 +858,12 @@ describe('EventAggregator', () => {
     });
 
     it('adds summary events as compaction type', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'summary',
-        message: { role: 'assistant', content: 'Context compacted' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'summary',
+          message: { role: 'assistant', content: 'Context compacted' },
+        }),
+      );
       const tl = agg.getTimeline();
       expect(tl).toHaveLength(1);
       expect(tl[0].type).toBe('compaction');
@@ -784,15 +887,17 @@ describe('EventAggregator', () => {
     });
 
     it('includes metadata for assistant events with usage', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          model: 'my-model',
-          content: [{ type: 'text', text: 'response' }],
-          usage: makeUsage({ input_tokens: 200, output_tokens: 100 }),
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            model: 'my-model',
+            content: [{ type: 'text', text: 'response' }],
+            usage: makeUsage({ input_tokens: 200, output_tokens: 100 }),
+          },
+        }),
+      );
       const tl = agg.getTimeline();
       expect(tl[0].metadata?.model).toBe('my-model');
       expect(tl[0].metadata?.tokenCount).toBe(300);
@@ -805,10 +910,12 @@ describe('EventAggregator', () => {
 
   describe('task tracking', () => {
     it('tracks TaskCreate + tool_result to create a task', () => {
-      agg.processEvent(makeToolUseEvent('TaskCreate', 'tc-1', {
-        subject: 'Fix the parser',
-        description: 'Parser needs refactoring',
-      }));
+      agg.processEvent(
+        makeToolUseEvent('TaskCreate', 'tc-1', {
+          subject: 'Fix the parser',
+          description: 'Parser needs refactoring',
+        }),
+      );
       agg.processEvent(makeToolResultEvent('tc-1', 'Task #42 created'));
 
       const state = agg.getTaskState();
@@ -825,10 +932,12 @@ describe('EventAggregator', () => {
       agg.processEvent(makeToolResultEvent('tc-1', 'Task #1 created'));
 
       // Update to in_progress
-      agg.processEvent(makeToolUseEvent('TaskUpdate', 'tu-1', {
-        taskId: '1',
-        status: 'in_progress',
-      }));
+      agg.processEvent(
+        makeToolUseEvent('TaskUpdate', 'tu-1', {
+          taskId: '1',
+          status: 'in_progress',
+        }),
+      );
 
       const state = agg.getTaskState();
       expect(state.tasks.get('1')!.status).toBe('in_progress');
@@ -836,11 +945,13 @@ describe('EventAggregator', () => {
     });
 
     it('handles TaskUpdate for unknown taskId by creating placeholder', () => {
-      agg.processEvent(makeToolUseEvent('TaskUpdate', 'tu-1', {
-        taskId: '99',
-        status: 'in_progress',
-        subject: 'Surprise task',
-      }));
+      agg.processEvent(
+        makeToolUseEvent('TaskUpdate', 'tu-1', {
+          taskId: '99',
+          status: 'in_progress',
+          subject: 'Surprise task',
+        }),
+      );
 
       const state = agg.getTaskState();
       expect(state.tasks.size).toBe(1);
@@ -861,11 +972,13 @@ describe('EventAggregator', () => {
       agg.processEvent(makeToolUseEvent('TaskCreate', 'tc-1', { subject: 'Task A' }));
       agg.processEvent(makeToolResultEvent('tc-1', 'Task #1 created'));
 
-      agg.processEvent(makeToolUseEvent('TaskUpdate', 'tu-1', {
-        taskId: '1',
-        addBlockedBy: ['2', '3'],
-        addBlocks: ['4'],
-      }));
+      agg.processEvent(
+        makeToolUseEvent('TaskUpdate', 'tu-1', {
+          taskId: '1',
+          addBlockedBy: ['2', '3'],
+          addBlocks: ['4'],
+        }),
+      );
 
       const task = agg.getTaskState().tasks.get('1')!;
       expect(task.blockedBy).toEqual(['2', '3']);
@@ -875,7 +988,9 @@ describe('EventAggregator', () => {
     it('clears activeTaskId when the active task is deleted', () => {
       agg.processEvent(makeToolUseEvent('TaskCreate', 'tc-1', { subject: 'T' }));
       agg.processEvent(makeToolResultEvent('tc-1', 'Task #1 created'));
-      agg.processEvent(makeToolUseEvent('TaskUpdate', 'tu-1', { taskId: '1', status: 'in_progress' }));
+      agg.processEvent(
+        makeToolUseEvent('TaskUpdate', 'tu-1', { taskId: '1', status: 'in_progress' }),
+      );
       expect(agg.getTaskState().activeTaskId).toBe('1');
 
       agg.processEvent(makeToolUseEvent('TaskUpdate', 'tu-2', { taskId: '1', status: 'deleted' }));
@@ -889,16 +1004,23 @@ describe('EventAggregator', () => {
 
   describe('subagent tracking', () => {
     it('tracks Task tool_use as subagent spawn', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        timestamp: '2025-01-15T10:00:00Z',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 'sa-1', name: 'Task', input: { description: 'Explore codebase', subagent_type: 'Explore' } },
-          ],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: '2025-01-15T10:00:00Z',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'sa-1',
+                name: 'Task',
+                input: { description: 'Explore codebase', subagent_type: 'Explore' },
+              },
+            ],
+          },
+        }),
+      );
 
       const subagents = agg.getSubagents();
       expect(subagents).toHaveLength(1);
@@ -912,26 +1034,28 @@ describe('EventAggregator', () => {
       const spawnTs = '2025-01-15T10:00:00.000Z';
       const completeTs = '2025-01-15T10:00:05.000Z';
 
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        timestamp: spawnTs,
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 'sa-1', name: 'Task', input: { description: 'Run tests' } },
-          ],
-        },
-      }));
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        timestamp: completeTs,
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 'sa-1', content: 'Tests passed' },
-          ],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: spawnTs,
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'tool_use', id: 'sa-1', name: 'Task', input: { description: 'Run tests' } },
+            ],
+          },
+        }),
+      );
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          timestamp: completeTs,
+          message: {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: 'sa-1', content: 'Tests passed' }],
+          },
+        }),
+      );
 
       const subagents = agg.getSubagents();
       expect(subagents[0].status).toBe('completed');
@@ -956,26 +1080,30 @@ describe('EventAggregator', () => {
       const custom = new EventAggregator({ burnSampleMs: 1000 });
 
       // First event sets lastBurnSampleTime
-      custom.processEvent(makeSessionEvent({
-        type: 'assistant',
-        timestamp: '2025-01-15T10:00:00.000Z',
-        message: {
-          role: 'assistant',
-          content: 'hi',
-          usage: makeUsage({ input_tokens: 100, output_tokens: 50 }),
-        },
-      }));
+      custom.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: '2025-01-15T10:00:00.000Z',
+          message: {
+            role: 'assistant',
+            content: 'hi',
+            usage: makeUsage({ input_tokens: 100, output_tokens: 50 }),
+          },
+        }),
+      );
 
       // Second event after 2 seconds (> 1000ms sample interval)
-      custom.processEvent(makeSessionEvent({
-        type: 'assistant',
-        timestamp: '2025-01-15T10:00:02.000Z',
-        message: {
-          role: 'assistant',
-          content: 'there',
-          usage: makeUsage({ input_tokens: 200, output_tokens: 100 }),
-        },
-      }));
+      custom.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: '2025-01-15T10:00:02.000Z',
+          message: {
+            role: 'assistant',
+            content: 'there',
+            usage: makeUsage({ input_tokens: 200, output_tokens: 100 }),
+          },
+        }),
+      );
 
       const rate = custom.getBurnRate();
       expect(rate.sampleCount).toBe(1);
@@ -989,15 +1117,17 @@ describe('EventAggregator', () => {
       for (let i = 0; i < 10; i++) {
         const ts = new Date('2025-01-15T10:00:00Z');
         ts.setMilliseconds(ts.getMilliseconds() + i * 2000);
-        custom.processEvent(makeSessionEvent({
-          type: 'assistant',
-          timestamp: ts.toISOString(),
-          message: {
-            role: 'assistant',
-            content: 'msg',
-            usage: makeUsage({ input_tokens: 100, output_tokens: 50 }),
-          },
-        }));
+        custom.processEvent(
+          makeSessionEvent({
+            type: 'assistant',
+            timestamp: ts.toISOString(),
+            message: {
+              role: 'assistant',
+              content: 'msg',
+              usage: makeUsage({ input_tokens: 100, output_tokens: 50 }),
+            },
+          }),
+        );
       }
 
       // Samples outside 5s window should be trimmed
@@ -1013,12 +1143,14 @@ describe('EventAggregator', () => {
 
   describe('processFollowEvent', () => {
     it('accumulates tokens from FollowEvent fields', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'assistant',
-        tokens: { input: 500, output: 200 },
-        cacheTokens: { read: 50, write: 100 },
-        model: 'test-model',
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'assistant',
+          tokens: { input: 500, output: 200 },
+          cacheTokens: { read: 50, write: 100 },
+          model: 'test-model',
+        }),
+      );
 
       const tokens = agg.getAggregatedTokens();
       expect(tokens.inputTokens).toBe(500);
@@ -1028,9 +1160,11 @@ describe('EventAggregator', () => {
     });
 
     it('accumulates cost from FollowEvent', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        cost: 0.015,
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          cost: 0.015,
+        }),
+      );
       expect(agg.getAggregatedTokens().reportedCost).toBe(0.015);
     });
 
@@ -1058,11 +1192,13 @@ describe('EventAggregator', () => {
     });
 
     it('tracks per-model usage from FollowEvent', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        model: 'model-x',
-        tokens: { input: 300, output: 150 },
-        cost: 0.01,
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          model: 'model-x',
+          tokens: { input: 300, output: 150 },
+          cost: 0.01,
+        }),
+      );
 
       const stats = agg.getModelStats();
       expect(stats).toHaveLength(1);
@@ -1073,32 +1209,40 @@ describe('EventAggregator', () => {
     });
 
     it('detects compaction from FollowEvent context drop', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        tokens: { input: 10000, output: 500 },
-        model: 'test',
-      }));
-      agg.processFollowEvent(makeFollowEvent({
-        tokens: { input: 1000, output: 100 },
-        model: 'test',
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          tokens: { input: 10000, output: 500 },
+          model: 'test',
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          tokens: { input: 1000, output: 100 },
+          model: 'test',
+        }),
+      );
 
       expect(agg.getCompactionEvents().length).toBe(1);
     });
 
     it('handles explicit summary event as compaction', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'summary',
-        summary: 'Context compacted',
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'summary',
+          summary: 'Context compacted',
+        }),
+      );
       expect(agg.getCompactionEvents().length).toBe(1);
     });
 
     it('tracks tool_use from FollowEvent', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'Read',
-        raw: { id: 'tu-1', input: { file: '/test.ts' } },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Read',
+          raw: { id: 'tu-1', input: { file: '/test.ts' } },
+        }),
+      );
 
       const stats = agg.getToolStats();
       expect(stats).toHaveLength(1);
@@ -1110,17 +1254,21 @@ describe('EventAggregator', () => {
       const ts1 = '2025-01-15T10:00:00.000Z';
       const ts2 = '2025-01-15T10:00:01.500Z';
 
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'Read',
-        timestamp: ts1,
-        raw: { id: 'tu-1', input: { file: '/test.ts' } },
-      }));
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        timestamp: ts2,
-        raw: { tool_use_id: 'tu-1', content: 'file contents', is_error: false },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Read',
+          timestamp: ts1,
+          raw: { id: 'tu-1', input: { file: '/test.ts' } },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          timestamp: ts2,
+          raw: { tool_use_id: 'tu-1', content: 'file contents', is_error: false },
+        }),
+      );
 
       const stats = agg.getToolStats();
       expect(stats[0].pendingCount).toBe(0);
@@ -1130,32 +1278,40 @@ describe('EventAggregator', () => {
     });
 
     it('tracks tool errors from FollowEvent', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'Bash',
-        timestamp: '2025-01-15T10:00:00Z',
-        raw: { id: 'tu-1', input: { command: 'fail' } },
-      }));
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        timestamp: '2025-01-15T10:00:01Z',
-        raw: { tool_use_id: 'tu-1', content: 'error', is_error: true },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Bash',
+          timestamp: '2025-01-15T10:00:00Z',
+          raw: { id: 'tu-1', input: { command: 'fail' } },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          timestamp: '2025-01-15T10:00:01Z',
+          raw: { tool_use_id: 'tu-1', content: 'error', is_error: true },
+        }),
+      );
 
       const stats = agg.getToolStats();
       expect(stats[0].failureCount).toBe(1);
     });
 
     it('detects truncation from FollowEvent tool_result', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'Read',
-        raw: { id: 'tu-1', input: {} },
-      }));
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        raw: { tool_use_id: 'tu-1', content: '[Response truncated] remaining content was cut' },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Read',
+          raw: { id: 'tu-1', input: {} },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          raw: { tool_use_id: 'tu-1', content: '[Response truncated] remaining content was cut' },
+        }),
+      );
 
       expect(agg.getTruncationEvents()).toHaveLength(1);
       // Note: the pending tool call is consumed by recordFollowToolResult before
@@ -1165,21 +1321,25 @@ describe('EventAggregator', () => {
     });
 
     it('detects truncation from FollowEvent tool_result with toolName fallback', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        toolName: 'Bash',
-        raw: { tool_use_id: 'tu-99', content: '<response clipped> output was too long' },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          toolName: 'Bash',
+          raw: { tool_use_id: 'tu-99', content: '<response clipped> output was too long' },
+        }),
+      );
 
       expect(agg.getTruncationEvents()).toHaveLength(1);
       expect(agg.getTruncationEvents()[0].toolName).toBe('Bash');
     });
 
     it('adds timeline entries from FollowEvent', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'user',
-        summary: 'Fix the bug in parser',
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'user',
+          summary: 'Fix the bug in parser',
+        }),
+      );
 
       const tl = agg.getTimeline();
       expect(tl).toHaveLength(1);
@@ -1188,40 +1348,48 @@ describe('EventAggregator', () => {
     });
 
     it('handles context attribution from FollowEvent user type', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'user',
-        summary: 'Some user question',
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'user',
+          summary: 'Some user question',
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.userMessages).toBeGreaterThan(0);
     });
 
     it('handles context attribution from FollowEvent assistant type', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'assistant',
-        summary: 'Here is the answer',
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'assistant',
+          summary: 'Here is the answer',
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.assistantResponses).toBeGreaterThan(0);
     });
 
     it('handles context attribution from FollowEvent tool_use type', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'Read',
-        summary: 'Read file /foo.ts',
-        raw: { input: { file_path: '/foo.ts' } },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Read',
+          summary: 'Read file /foo.ts',
+          raw: { input: { file_path: '/foo.ts' } },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.toolInputs).toBeGreaterThan(0);
     });
 
     it('handles context attribution from FollowEvent tool_result type', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        summary: 'File contents returned',
-        raw: { content: 'actual file content here' },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          summary: 'File contents returned',
+          raw: { content: 'actual file content here' },
+        }),
+      );
       const attr = agg.getContextAttribution();
       expect(attr.toolOutputs).toBeGreaterThan(0);
     });
@@ -1229,25 +1397,29 @@ describe('EventAggregator', () => {
 
   describe('system SessionEvent handling', () => {
     it('does not count system audit events as conversation messages', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'system',
-        message: {
-          role: 'system',
-          sourceLabel: 'base instructions',
-          content: [{ type: 'text', text: 'Audit context' }],
-        },
-        timestamp: '2026-06-01T12:00:00Z',
-      }));
-      agg.processEvent(makeSessionEvent({
-        type: 'system',
-        message: {
-          role: 'system',
-          sourceLabel: 'token count',
-          usage: { input_tokens: 100, output_tokens: 20 },
-          content: [],
-        },
-        timestamp: '2026-06-01T12:00:01Z',
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'system',
+          message: {
+            role: 'system',
+            sourceLabel: 'base instructions',
+            content: [{ type: 'text', text: 'Audit context' }],
+          },
+          timestamp: '2026-06-01T12:00:00Z',
+        }),
+      );
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'system',
+          message: {
+            role: 'system',
+            sourceLabel: 'token count',
+            usage: { input_tokens: 100, output_tokens: 20 },
+            content: [],
+          },
+          timestamp: '2026-06-01T12:00:01Z',
+        }),
+      );
 
       const metrics = agg.getMetrics();
       expect(metrics.eventCount).toBe(2);
@@ -1264,18 +1436,22 @@ describe('EventAggregator', () => {
 
   describe('task tracking from FollowEvent', () => {
     it('creates task from FollowEvent TaskCreate + tool_result', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'TaskCreate',
-        raw: {
-          id: 'tc-1',
-          input: { subject: 'Build feature', description: 'New feature' },
-        },
-      }));
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        raw: { tool_use_id: 'tc-1', content: 'Task #10 created' },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'TaskCreate',
+          raw: {
+            id: 'tc-1',
+            input: { subject: 'Build feature', description: 'New feature' },
+          },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          raw: { tool_use_id: 'tc-1', content: 'Task #10 created' },
+        }),
+      );
 
       const state = agg.getTaskState();
       expect(state.tasks.size).toBe(1);
@@ -1284,22 +1460,28 @@ describe('EventAggregator', () => {
 
     it('handles TaskUpdate from FollowEvent', () => {
       // Create
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'TaskCreate',
-        raw: { id: 'tc-1', input: { subject: 'Task' } },
-      }));
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        raw: { tool_use_id: 'tc-1', content: 'Task #1 created' },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'TaskCreate',
+          raw: { id: 'tc-1', input: { subject: 'Task' } },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          raw: { tool_use_id: 'tc-1', content: 'Task #1 created' },
+        }),
+      );
 
       // Update
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'TaskUpdate',
-        raw: { id: 'tu-1', input: { taskId: '1', status: 'completed' } },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'TaskUpdate',
+          raw: { id: 'tu-1', input: { taskId: '1', status: 'completed' } },
+        }),
+      );
 
       expect(agg.getTaskState().tasks.get('1')!.status).toBe('completed');
     });
@@ -1311,12 +1493,14 @@ describe('EventAggregator', () => {
 
   describe('subagent tracking from FollowEvent', () => {
     it('tracks Task tool spawn via FollowEvent', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'Task',
-        timestamp: '2025-01-15T10:00:00Z',
-        raw: { id: 'sa-1', input: { description: 'Analyze code', subagent_type: 'Explore' } },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Task',
+          timestamp: '2025-01-15T10:00:00Z',
+          raw: { id: 'sa-1', input: { description: 'Analyze code', subagent_type: 'Explore' } },
+        }),
+      );
 
       const subagents = agg.getSubagents();
       expect(subagents).toHaveLength(1);
@@ -1326,17 +1510,21 @@ describe('EventAggregator', () => {
     });
 
     it('completes subagent from FollowEvent tool_result', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'Task',
-        timestamp: '2025-01-15T10:00:00.000Z',
-        raw: { id: 'sa-1', input: { description: 'Test' } },
-      }));
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        timestamp: '2025-01-15T10:00:03.000Z',
-        raw: { tool_use_id: 'sa-1', content: 'Done' },
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Task',
+          timestamp: '2025-01-15T10:00:00.000Z',
+          raw: { id: 'sa-1', input: { description: 'Test' } },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          timestamp: '2025-01-15T10:00:03.000Z',
+          raw: { tool_use_id: 'sa-1', content: 'Done' },
+        }),
+      );
 
       const subagents = agg.getSubagents();
       expect(subagents[0].status).toBe('completed');
@@ -1351,10 +1539,17 @@ describe('EventAggregator', () => {
   describe('getMetrics', () => {
     it('returns a complete metrics snapshot', () => {
       agg.processEvent(makeUserEvent('Hello'));
-      agg.processEvent(makeAssistantWithUsage(
-        { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 10, cache_read_input_tokens: 5 },
-        'test-model',
-      ));
+      agg.processEvent(
+        makeAssistantWithUsage(
+          {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_creation_input_tokens: 10,
+            cache_read_input_tokens: 5,
+          },
+          'test-model',
+        ),
+      );
 
       const m = agg.getMetrics();
 
@@ -1476,17 +1671,27 @@ describe('EventAggregator', () => {
     it('round-trips state through serialize/restore', () => {
       // Build up state
       agg.processEvent(makeUserEvent('Hello'));
-      agg.processEvent(makeAssistantWithUsage(
-        { input_tokens: 500, output_tokens: 200, cache_creation_input_tokens: 50, cache_read_input_tokens: 30, reported_cost: 0.01 },
-        'test-model',
-      ));
+      agg.processEvent(
+        makeAssistantWithUsage(
+          {
+            input_tokens: 500,
+            output_tokens: 200,
+            cache_creation_input_tokens: 50,
+            cache_read_input_tokens: 30,
+            reported_cost: 0.01,
+          },
+          'test-model',
+        ),
+      );
       agg.processEvent(makeToolUseEvent('Read', 'tu-1'));
       agg.processEvent(makeToolResultEvent('tu-1', 'contents'));
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', content: 'resp' },
-        permissionMode: 'acceptEdits',
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'resp' },
+          permissionMode: 'acceptEdits',
+        }),
+      );
 
       const snapshot = agg.serialize();
 
@@ -1533,7 +1738,7 @@ describe('EventAggregator', () => {
       restored.processEvent(makeToolResultEvent('tu-1', 'contents'));
       // The tool stats should show 1 pending (from snapshot) — the result didn't resolve it
       const stats = restored.getToolStats();
-      const readTool = stats.find(s => s.name === 'Read');
+      const readTool = stats.find((s) => s.name === 'Read');
       expect(readTool).toBeDefined();
       // pendingCount was serialized as 1 in toolAnalytics, and the result did not decrement it
       // because the pendingToolCalls map was cleared
@@ -1550,8 +1755,8 @@ describe('EventAggregator', () => {
 
       const stats = restored.getModelStats();
       expect(stats).toHaveLength(2);
-      expect(stats.find(s => s.model === 'model-a')!.inputTokens).toBe(100);
-      expect(stats.find(s => s.model === 'model-b')!.inputTokens).toBe(200);
+      expect(stats.find((s) => s.model === 'model-a')!.inputTokens).toBe(100);
+      expect(stats.find((s) => s.model === 'model-b')!.inputTokens).toBe(200);
     });
 
     it('handles missing optional fields in snapshot gracefully', () => {
@@ -1579,55 +1784,65 @@ describe('EventAggregator', () => {
 
   describe('edge cases', () => {
     it('handles empty content array in events', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: { role: 'assistant', content: [] },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: [] },
+        }),
+      );
       // Should not crash, event should be counted
       expect(agg.getMetrics().eventCount).toBe(1);
     });
 
     it('handles non-array, non-string content', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: { role: 'user', content: 42 as unknown as string },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: { role: 'user', content: 42 as unknown as string },
+        }),
+      );
       expect(agg.getMetrics().eventCount).toBe(1);
     });
 
     it('handles tool_use content block with missing id', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', name: 'Read', input: {} }], // no id
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'tool_use', name: 'Read', input: {} }], // no id
+          },
+        }),
+      );
       // Should not crash, no pending tool tracked
       expect(agg.getToolStats()).toHaveLength(0);
     });
 
     it('handles tool_result content block with missing tool_use_id', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', content: 'data' }], // no tool_use_id
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [{ type: 'tool_result', content: 'data' }], // no tool_use_id
+          },
+        }),
+      );
       expect(agg.getToolStats()).toHaveLength(0);
     });
 
     it('handles invalid timestamps gracefully in burn rate', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        timestamp: 'not-a-date',
-        message: {
-          role: 'assistant',
-          content: 'hi',
-          usage: makeUsage(),
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: 'not-a-date',
+          message: {
+            role: 'assistant',
+            content: 'hi',
+            usage: makeUsage(),
+          },
+        }),
+      );
       // Should not crash
       expect(agg.getBurnRate().sampleCount).toBe(0);
     });
@@ -1641,18 +1856,22 @@ describe('EventAggregator', () => {
     });
 
     it('handles FollowEvent with no tokens', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'assistant',
-        // no tokens field
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'assistant',
+          // no tokens field
+        }),
+      );
       expect(agg.getAggregatedTokens().inputTokens).toBe(0);
     });
 
     it('handles FollowEvent tool_result with no raw data', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        // no raw
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          // no raw
+        }),
+      );
       // Should not crash
       expect(agg.getToolStats()).toHaveLength(0);
     });
@@ -1672,21 +1891,23 @@ describe('EventAggregator', () => {
     });
 
     it('handles TaskUpdate with status=deleted for unknown task', () => {
-      agg.processEvent(makeToolUseEvent('TaskUpdate', 'tu-1', { taskId: 'nonexistent', status: 'deleted' }));
+      agg.processEvent(
+        makeToolUseEvent('TaskUpdate', 'tu-1', { taskId: 'nonexistent', status: 'deleted' }),
+      );
       // Should not crash, and no task should be created
       expect(agg.getTaskState().tasks.size).toBe(0);
     });
 
     it('handles subagent with default description and type', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 'sa-1', name: 'Task', input: {} },
-          ],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: 'sa-1', name: 'Task', input: {} }],
+          },
+        }),
+      );
 
       const subagents = agg.getSubagents();
       expect(subagents[0].description).toBe('Unknown task');
@@ -1694,20 +1915,24 @@ describe('EventAggregator', () => {
     });
 
     it('handles FollowEvent TaskCreate without raw.input', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_use',
-        toolName: 'TaskCreate',
-        raw: { id: 'tc-1' }, // no input
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'TaskCreate',
+          raw: { id: 'tc-1' }, // no input
+        }),
+      );
       // Should not crash
       expect(agg.getMetrics().eventCount).toBe(1);
     });
 
     it('handles FollowEvent tool_result without tool_use_id in raw', () => {
-      agg.processFollowEvent(makeFollowEvent({
-        type: 'tool_result',
-        raw: { content: 'some result' }, // no tool_use_id
-      }));
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          raw: { content: 'some result' }, // no tool_use_id
+        }),
+      );
       // Should not crash, no stats changed
       expect(agg.getToolStats()).toHaveLength(0);
     });
@@ -1759,13 +1984,17 @@ describe('EventAggregator', () => {
     });
 
     it('getSubagents returns independent copy', () => {
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'sa-1', name: 'Task', input: { description: 'test' } }],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'tool_use', id: 'sa-1', name: 'Task', input: { description: 'test' } },
+            ],
+          },
+        }),
+      );
       const s1 = agg.getSubagents();
       s1.length = 0;
       expect(agg.getSubagents()).toHaveLength(1);
@@ -1788,68 +2017,92 @@ describe('EventAggregator', () => {
       const baseTs = new Date('2025-01-15T10:00:00Z');
 
       // 1. User asks a question
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        timestamp: new Date(baseTs.getTime()).toISOString(),
-        message: { role: 'user', content: 'How do I fix the parser bug?' },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          timestamp: new Date(baseTs.getTime()).toISOString(),
+          message: { role: 'user', content: 'How do I fix the parser bug?' },
+        }),
+      );
 
       // 2. Assistant responds with text + tool use
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        timestamp: new Date(baseTs.getTime() + 2000).toISOString(),
-        message: {
-          role: 'assistant',
-          model: 'claude-sonnet-4-20250514',
-          content: [
-            { type: 'text', text: 'Let me check the parser code.' },
-            { type: 'tool_use', id: 'tu-1', name: 'Read', input: { file_path: '/src/parser.ts' } },
-          ],
-          usage: makeUsage({ input_tokens: 500, output_tokens: 200 }),
-        },
-        permissionMode: 'default',
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: new Date(baseTs.getTime() + 2000).toISOString(),
+          message: {
+            role: 'assistant',
+            model: 'claude-sonnet-4-20250514',
+            content: [
+              { type: 'text', text: 'Let me check the parser code.' },
+              {
+                type: 'tool_use',
+                id: 'tu-1',
+                name: 'Read',
+                input: { file_path: '/src/parser.ts' },
+              },
+            ],
+            usage: makeUsage({ input_tokens: 500, output_tokens: 200 }),
+          },
+          permissionMode: 'default',
+        }),
+      );
 
       // 3. Tool result
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        timestamp: new Date(baseTs.getTime() + 3000).toISOString(),
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tu-1', content: 'export function parse() { ... }' },
-          ],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          timestamp: new Date(baseTs.getTime() + 3000).toISOString(),
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'tu-1',
+                content: 'export function parse() { ... }',
+              },
+            ],
+          },
+        }),
+      );
 
       // 4. Assistant makes a fix
-      agg.processEvent(makeSessionEvent({
-        type: 'assistant',
-        timestamp: new Date(baseTs.getTime() + 5000).toISOString(),
-        message: {
-          role: 'assistant',
-          model: 'claude-sonnet-4-20250514',
-          content: [
-            { type: 'thinking', thinking: 'The parser has an off-by-one error...' },
-            { type: 'text', text: 'I found the bug. Fixing it now.' },
-            { type: 'tool_use', id: 'tu-2', name: 'Write', input: { file_path: '/src/parser.ts', content: 'fixed code' } },
-          ],
-          usage: makeUsage({ input_tokens: 800, output_tokens: 150 }),
-        },
-        permissionMode: 'acceptEdits',
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: new Date(baseTs.getTime() + 5000).toISOString(),
+          message: {
+            role: 'assistant',
+            model: 'claude-sonnet-4-20250514',
+            content: [
+              { type: 'thinking', thinking: 'The parser has an off-by-one error...' },
+              { type: 'text', text: 'I found the bug. Fixing it now.' },
+              {
+                type: 'tool_use',
+                id: 'tu-2',
+                name: 'Write',
+                input: { file_path: '/src/parser.ts', content: 'fixed code' },
+              },
+            ],
+            usage: makeUsage({ input_tokens: 800, output_tokens: 150 }),
+          },
+          permissionMode: 'acceptEdits',
+        }),
+      );
 
       // 5. Write result
-      agg.processEvent(makeSessionEvent({
-        type: 'user',
-        timestamp: new Date(baseTs.getTime() + 6000).toISOString(),
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tu-2', content: 'File written successfully' },
-          ],
-        },
-      }));
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          timestamp: new Date(baseTs.getTime() + 6000).toISOString(),
+          message: {
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: 'tu-2', content: 'File written successfully' },
+            ],
+          },
+        }),
+      );
 
       const m = agg.getMetrics();
 
@@ -1867,12 +2120,12 @@ describe('EventAggregator', () => {
       expect(m.modelStats[0].calls).toBe(2);
 
       // Tools
-      const readTool = m.toolStats.find(t => t.name === 'Read');
+      const readTool = m.toolStats.find((t) => t.name === 'Read');
       expect(readTool).toBeDefined();
       expect(readTool!.completedCount).toBe(1);
       expect(readTool!.successCount).toBe(1);
 
-      const writeTool = m.toolStats.find(t => t.name === 'Write');
+      const writeTool = m.toolStats.find((t) => t.name === 'Write');
       expect(writeTool).toBeDefined();
       expect(writeTool!.completedCount).toBe(1);
 

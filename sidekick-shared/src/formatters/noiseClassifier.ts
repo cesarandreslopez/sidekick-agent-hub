@@ -27,11 +27,7 @@ export interface NoiseResult {
 // ── Hard Noise Detection ──
 
 /** Hard noise types that should be dropped entirely from display. */
-const HARD_NOISE_EVENT_TYPES = new Set([
-  'file-history-snapshot',
-  'queue-operation',
-  'progress',
-]);
+const HARD_NOISE_EVENT_TYPES = new Set(['file-history-snapshot', 'queue-operation', 'progress']);
 
 const SYNTHETIC_MODEL_PREFIX = '<synthetic>';
 
@@ -84,11 +80,7 @@ const COMMAND_CAVEAT_PATTERNS = [
   /IMPORTANT:.*?(?:never|always|must|should)/i,
   /Note:.*?(?:do not|don't|avoid)/i,
 ];
-const INTERRUPTION_MARKERS = [
-  'interrupted by user',
-  'operation cancelled',
-  'aborted',
-];
+const INTERRUPTION_MARKERS = ['interrupted by user', 'operation cancelled', 'aborted'];
 
 /**
  * Checks for soft noise that can be hidden but not dropped.
@@ -201,7 +193,7 @@ export function classifyFollowEvent(event: FollowEvent): MessageClassification {
  */
 export function shouldMergeWithPrevious(
   current: SessionEvent,
-  previous: SessionEvent | null
+  previous: SessionEvent | null,
 ): boolean {
   if (!previous) return false;
 
@@ -253,5 +245,5 @@ function extractContent(event: SessionEvent): string | null {
 
 function hasToolUseBlocks(content: unknown): boolean {
   if (!Array.isArray(content)) return false;
-  return (content as Array<Record<string, unknown>>).some(b => b.type === 'tool_use');
+  return (content as Array<Record<string, unknown>>).some((b) => b.type === 'tool_use');
 }

@@ -35,7 +35,7 @@ describe('createJsonlTail', () => {
     appendFileSync(file, '{"type":"one"}\n{"type":"two"}\n');
     tail.readNow();
 
-    expect(events.map(e => e.type)).toEqual(['one', 'two']);
+    expect(events.map((e) => e.type)).toEqual(['one', 'two']);
     expect(tail.getOffset()).toBe(Buffer.byteLength('{"type":"one"}\n{"type":"two"}\n'));
     expect(batches).toHaveLength(1);
     expect(batches[0]).toMatchObject({ eventsRead: 2, offset: tail.getOffset() });
@@ -56,8 +56,8 @@ describe('createJsonlTail', () => {
     appendFileSync(file, '}\n');
     tail.readNow();
 
-    expect(events.map(e => e.type)).toEqual(['one']);
-    expect(batches.map(b => b.eventsRead)).toEqual([0, 1]);
+    expect(events.map((e) => e.type)).toEqual(['one']);
+    expect(batches.map((b) => b.eventsRead)).toEqual([0, 1]);
   });
 
   it('reports invalid JSON and keeps parsing later lines', () => {
@@ -73,7 +73,7 @@ describe('createJsonlTail', () => {
     appendFileSync(file, '{"type":"one"}\n{"type":\n{"type":"two"}\n');
     tail.readNow();
 
-    expect(events.map(e => e.type)).toEqual(['one', 'two']);
+    expect(events.map((e) => e.type)).toEqual(['one', 'two']);
     expect(errors).toHaveLength(1);
   });
 
@@ -109,7 +109,7 @@ describe('createJsonlTail', () => {
     appendFileSync(file, '{"type":"2"}\n');
     tail.readNow();
 
-    expect(events.map(e => e.type)).toEqual(['one', '2']);
+    expect(events.map((e) => e.type)).toEqual(['one', '2']);
     expect(tail.getOffset()).toBe(Buffer.byteLength('{"type":"2"}\n'));
   });
 });

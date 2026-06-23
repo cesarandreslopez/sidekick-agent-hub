@@ -112,13 +112,15 @@ describe('OpenCodeDatabase', () => {
     });
     expect(queryCalls.length).toBeGreaterThan(0);
     for (const call of queryCalls) {
-      expect(call[2]).toEqual(expect.objectContaining({
-        encoding: 'utf-8',
-        timeout: 4000,
-        killSignal: 'SIGKILL',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        maxBuffer: 50 * 1024 * 1024,
-      }));
+      expect(call[2]).toEqual(
+        expect.objectContaining({
+          encoding: 'utf-8',
+          timeout: 4000,
+          killSignal: 'SIGKILL',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          maxBuffer: 50 * 1024 * 1024,
+        }),
+      );
     }
   });
 });

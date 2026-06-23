@@ -53,9 +53,9 @@ describe('CodexQuotaWatcher', () => {
       writeSnapshot: (_providerId, accountId, quota) => {
         writes.push({ accountId, quota });
       },
-      watchFile: () => ({ close: vi.fn() } as unknown as import('fs').FSWatcher),
+      watchFile: () => ({ close: vi.fn() }) as unknown as import('fs').FSWatcher,
     });
-    watcher.onUpdate(state => states.push(state));
+    watcher.onUpdate((state) => states.push(state));
 
     watcher.start();
     watcher.dispose();
@@ -97,7 +97,7 @@ describe('CodexQuotaWatcher', () => {
       writeSnapshot: vi.fn(),
       maxSessionFiles: 0,
     });
-    watcher.onUpdate(state => states.push(state));
+    watcher.onUpdate((state) => states.push(state));
 
     watcher.start();
     watcher.dispose();

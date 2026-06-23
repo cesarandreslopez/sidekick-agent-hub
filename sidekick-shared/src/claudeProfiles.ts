@@ -38,9 +38,7 @@ export function readClaudeProfileIdentity(home: string): ClaudeProfileIdentity |
     const raw = JSON.parse(fs.readFileSync(path.join(home, '.claude.json'), 'utf8'));
     const email = raw?.oauthAccount?.emailAddress;
     const uuid = raw?.oauthAccount?.accountUuid;
-    return typeof email === 'string' && typeof uuid === 'string'
-      ? { email, uuid }
-      : null;
+    return typeof email === 'string' && typeof uuid === 'string' ? { email, uuid } : null;
   } catch {
     return null;
   }
@@ -60,9 +58,10 @@ export function keychainServiceExists(service: string): boolean {
 }
 
 export function isClaudeProfileAuthenticated(home: string): boolean {
-  const hasCredentials = process.platform === 'darwin'
-    ? keychainServiceExists(claudeKeychainService(home))
-    : fs.existsSync(path.join(home, '.credentials.json'));
+  const hasCredentials =
+    process.platform === 'darwin'
+      ? keychainServiceExists(claudeKeychainService(home))
+      : fs.existsSync(path.join(home, '.credentials.json'));
 
   return hasCredentials && readClaudeProfileIdentity(home) !== null;
 }

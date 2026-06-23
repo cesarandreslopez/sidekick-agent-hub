@@ -54,7 +54,11 @@ function makePlanState(overrides?: Partial<PlanState>): PlanState {
   };
 }
 
-function makeTask(id: string, subject: string, status: 'pending' | 'in_progress' | 'completed' = 'pending'): TrackedTask {
+function makeTask(
+  id: string,
+  subject: string,
+  status: 'pending' | 'in_progress' | 'completed' = 'pending',
+): TrackedTask {
   return {
     taskId: id,
     subject,
@@ -76,21 +80,21 @@ describe('MindMapDataService', () => {
       // Should have: session-root + plan-root + 3 plan-step nodes
       expect(graph.nodes.length).toBe(5);
 
-      const planRoot = graph.nodes.find(n => n.id === 'plan-root');
+      const planRoot = graph.nodes.find((n) => n.id === 'plan-root');
       expect(planRoot).toBeDefined();
       expect(planRoot!.type).toBe('plan');
       expect(planRoot!.label).toBe('Implementation Plan');
       expect(planRoot!.count).toBe(3);
 
-      const step0 = graph.nodes.find(n => n.id === 'plan-step-0');
+      const step0 = graph.nodes.find((n) => n.id === 'plan-step-0');
       expect(step0).toBeDefined();
       expect(step0!.type).toBe('plan-step');
       expect(step0!.planStepStatus).toBe('completed');
 
-      const step1 = graph.nodes.find(n => n.id === 'plan-step-1');
+      const step1 = graph.nodes.find((n) => n.id === 'plan-step-1');
       expect(step1!.planStepStatus).toBe('in_progress');
 
-      const step2 = graph.nodes.find(n => n.id === 'plan-step-2');
+      const step2 = graph.nodes.find((n) => n.id === 'plan-step-2');
       expect(step2!.planStepStatus).toBe('pending');
     });
 
@@ -99,7 +103,7 @@ describe('MindMapDataService', () => {
       const graph = MindMapDataService.buildGraph(stats);
 
       const rootLink = graph.links.find(
-        l => l.source === 'session-root' && l.target === 'plan-root'
+        (l) => l.source === 'session-root' && l.target === 'plan-root',
       );
       expect(rootLink).toBeDefined();
     });
@@ -110,7 +114,7 @@ describe('MindMapDataService', () => {
 
       for (let i = 0; i < 3; i++) {
         const link = graph.links.find(
-          l => l.source === 'plan-root' && l.target === `plan-step-${i}`
+          (l) => l.source === 'plan-root' && l.target === `plan-step-${i}`,
         );
         expect(link).toBeDefined();
       }
@@ -121,12 +125,18 @@ describe('MindMapDataService', () => {
       const graph = MindMapDataService.buildGraph(stats);
 
       const seqLink01 = graph.links.find(
-        l => l.source === 'plan-step-0' && l.target === 'plan-step-1' && l.linkType === 'plan-sequence'
+        (l) =>
+          l.source === 'plan-step-0' &&
+          l.target === 'plan-step-1' &&
+          l.linkType === 'plan-sequence',
       );
       expect(seqLink01).toBeDefined();
 
       const seqLink12 = graph.links.find(
-        l => l.source === 'plan-step-1' && l.target === 'plan-step-2' && l.linkType === 'plan-sequence'
+        (l) =>
+          l.source === 'plan-step-1' &&
+          l.target === 'plan-step-2' &&
+          l.linkType === 'plan-sequence',
       );
       expect(seqLink12).toBeDefined();
     });
@@ -137,7 +147,7 @@ describe('MindMapDataService', () => {
       });
       const graph = MindMapDataService.buildGraph(stats);
 
-      expect(graph.nodes.find(n => n.id === 'plan-root')).toBeUndefined();
+      expect(graph.nodes.find((n) => n.id === 'plan-root')).toBeUndefined();
     });
 
     it('should use default label when no title', () => {
@@ -146,21 +156,19 @@ describe('MindMapDataService', () => {
       });
       const graph = MindMapDataService.buildGraph(stats);
 
-      const planRoot = graph.nodes.find(n => n.id === 'plan-root');
+      const planRoot = graph.nodes.find((n) => n.id === 'plan-root');
       expect(planRoot!.label).toBe('Plan');
     });
 
     it('should include phase in step tooltip', () => {
       const stats = makeEmptyStats({
         planState: makePlanState({
-          steps: [
-            { id: 'step-0', description: 'Setup', status: 'pending', phase: 'Init' },
-          ],
+          steps: [{ id: 'step-0', description: 'Setup', status: 'pending', phase: 'Init' }],
         }),
       });
       const graph = MindMapDataService.buildGraph(stats);
 
-      const step = graph.nodes.find(n => n.id === 'plan-step-0');
+      const step = graph.nodes.find((n) => n.id === 'plan-step-0');
       expect(step!.label).toBe('Setup');
       expect(step!.fullPath).toContain('Phase: Init');
     });
@@ -169,9 +177,7 @@ describe('MindMapDataService', () => {
   describe('plan-to-task cross-references', () => {
     it('should link plan steps to matching task nodes via fuzzy match', () => {
       const taskState: TaskState = {
-        tasks: new Map([
-          ['1', makeTask('1', 'Implement feature', 'in_progress')],
-        ]),
+        tasks: new Map([['1', makeTask('1', 'Implement feature', 'in_progress')]]),
         activeTaskId: '1',
       };
 
@@ -183,7 +189,7 @@ describe('MindMapDataService', () => {
 
       // step-1 ("Implement feature") should link to task-1 ("Implement feature")
       const crossRef = graph.links.find(
-        l => l.source === 'plan-step-1' && l.target === 'task-1' && l.linkType === 'task-action'
+        (l) => l.source === 'plan-step-1' && l.target === 'task-1' && l.linkType === 'task-action',
       );
       expect(crossRef).toBeDefined();
     });
@@ -210,12 +216,14 @@ describe('MindMapDataService', () => {
       const graph = MindMapDataService.buildGraph(stats);
 
       const crossRef0 = graph.links.find(
-        l => l.source === 'plan-step-0' && l.target === 'task-plan-0' && l.linkType === 'task-action'
+        (l) =>
+          l.source === 'plan-step-0' && l.target === 'task-plan-0' && l.linkType === 'task-action',
       );
       expect(crossRef0).toBeDefined();
 
       const crossRef1 = graph.links.find(
-        l => l.source === 'plan-step-1' && l.target === 'task-plan-1' && l.linkType === 'task-action'
+        (l) =>
+          l.source === 'plan-step-1' && l.target === 'task-plan-1' && l.linkType === 'task-action',
       );
       expect(crossRef1).toBeDefined();
     });

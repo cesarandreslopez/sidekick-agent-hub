@@ -9,7 +9,7 @@ describe('branding', () => {
   it('uses the Sidekick brand name consistently', () => {
     expect(BRAND_NAME).toBe('SIDEKICK');
     expect(BRAND_INLINE).toContain(BRAND_NAME);
-    expect(LOGO_ART.some(line => stripBlessedTags(line).includes(BRAND_TAGLINE))).toBe(true);
+    expect(LOGO_ART.some((line) => stripBlessedTags(line).includes(BRAND_TAGLINE))).toBe(true);
   });
 
   it('keeps every logo line within the overlay width budget', () => {

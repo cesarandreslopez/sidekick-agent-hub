@@ -35,15 +35,18 @@ export class KnowledgeNoteDecorationProvider implements vscode.Disposable {
 
     for (const noteType of types) {
       const iconPath = vscode.Uri.joinPath(extensionUri, 'images', `note-${noteType}.svg`);
-      this.decorationTypes.set(noteType, vscode.window.createTextEditorDecorationType({
-        gutterIconPath: iconPath,
-        gutterIconSize: 'contain',
-      }));
+      this.decorationTypes.set(
+        noteType,
+        vscode.window.createTextEditorDecorationType({
+          gutterIconPath: iconPath,
+          gutterIconSize: 'contain',
+        }),
+      );
     }
 
     // Update decorations when active editor changes
     this.disposables.push(
-      vscode.window.onDidChangeActiveTextEditor(() => this.updateDecorations())
+      vscode.window.onDidChangeActiveTextEditor(() => this.updateDecorations()),
     );
 
     // Update decorations and check staleness on save
@@ -54,13 +57,11 @@ export class KnowledgeNoteDecorationProvider implements vscode.Disposable {
           this.knowledgeNoteService.updateStaleness([relativePath]);
         }
         this.updateDecorations();
-      })
+      }),
     );
 
     // Update when notes change
-    this.disposables.push(
-      this.knowledgeNoteService.onDidChange(() => this.updateDecorations())
-    );
+    this.disposables.push(this.knowledgeNoteService.onDidChange(() => this.updateDecorations()));
 
     // Initial update
     this.updateDecorations();
@@ -145,7 +146,7 @@ export class KnowledgeNoteDecorationProvider implements vscode.Disposable {
       decType.dispose();
     }
     this.decorationTypes.clear();
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
     log('KnowledgeNoteDecorationProvider disposed');
   }

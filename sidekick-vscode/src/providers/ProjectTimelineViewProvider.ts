@@ -39,16 +39,16 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _sessionMonitor: SessionMonitor
+    private readonly _sessionMonitor: SessionMonitor,
   ) {
-    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
+    this._phrases = new PhraseRotationManager((msg) => this._postMessage(msg));
     this._dataService = new ProjectTimelineDataService(this._sessionMonitor.getProvider());
 
     // Subscribe to session events
     this._disposables.push(
       this._sessionMonitor.onSessionStart(() => this._debouncedRefresh()),
       this._sessionMonitor.onSessionEnd(() => this._debouncedRefresh()),
-      this._sessionMonitor.onTokenUsage(() => this._debouncedRefresh())
+      this._sessionMonitor.onTokenUsage(() => this._debouncedRefresh()),
     );
 
     log('ProjectTimelineViewProvider initialized');
@@ -57,7 +57,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
@@ -65,8 +65,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'out', 'webview'),
-        vscode.Uri.joinPath(this._extensionUri, 'images')
-      ]
+        vscode.Uri.joinPath(this._extensionUri, 'images'),
+      ],
     };
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -74,7 +74,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     webviewView.webview.onDidReceiveMessage(
       (message: WebviewTimelineMessage) => this._handleWebviewMessage(message),
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     webviewView.onDidChangeVisibility(
@@ -84,7 +84,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
         }
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     this._phrases.start();
@@ -137,7 +137,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       const sessions = this._dataService.getTimelineEntries(
         workspacePath,
         this._currentRange,
-        currentSessionPath
+        currentSessionPath,
       );
 
       const projectName = vscode.workspace.workspaceFolders?.[0]?.name || 'Project';
@@ -165,10 +165,10 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     const sessions = this._dataService.getTimelineEntries(
       workspacePath,
       this._currentRange,
-      currentSessionPath
+      currentSessionPath,
     );
 
-    const session = sessions.find(s => s.sessionId === sessionId);
+    const session = sessions.find((s) => s.sessionId === sessionId);
     if (!session) return;
 
     const detail = this._dataService.getSessionDetail(session.sessionPath);
@@ -180,8 +180,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   private _openSessionFile(sessionPath: string): void {
     const uri = vscode.Uri.file(sessionPath);
     vscode.workspace.openTextDocument(uri).then(
-      doc => vscode.window.showTextDocument(doc),
-      () => log(`Could not open session file: ${sessionPath}`)
+      (doc) => vscode.window.showTextDocument(doc),
+      () => log(`Could not open session file: ${sessionPath}`),
     );
   }
 
@@ -192,7 +192,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   private _getHtmlForWebview(webview: vscode.Webview): string {
     const nonce = getNonce();
     const iconUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
+      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png'),
     );
 
     return `<!DOCTYPE html>
@@ -676,7 +676,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   dispose(): void {
     if (this._refreshTimer) clearTimeout(this._refreshTimer);
     this._phrases.stop();
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     log('ProjectTimelineViewProvider disposed');
   }

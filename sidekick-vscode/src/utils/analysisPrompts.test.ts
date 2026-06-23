@@ -41,7 +41,10 @@ describe('buildGuidanceAnalysisPrompt', () => {
 
   it('uses primary file name in prompt for AGENTS.md target', () => {
     const target = makeTarget({ primaryFile: 'AGENTS.md', secondaryFile: 'CLAUDE.md' });
-    const data = makeSessionData({ currentAgentsMd: '# AGENTS.md content', currentClaudeMd: '# CLAUDE.md content' });
+    const data = makeSessionData({
+      currentAgentsMd: '# AGENTS.md content',
+      currentClaudeMd: '# CLAUDE.md content',
+    });
     const prompt = buildGuidanceAnalysisPrompt(data, target);
     expect(prompt).toContain('Append this to AGENTS.md');
     expect(prompt).toContain('<filename>AGENTS.md</filename>');

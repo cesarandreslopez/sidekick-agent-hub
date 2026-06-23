@@ -24,7 +24,9 @@ describe('getUtilizationColor', () => {
 // ── makeChalkBar ──
 
 describe('makeChalkBar', () => {
-  beforeEach(() => { chalk.level = 0; });
+  beforeEach(() => {
+    chalk.level = 0;
+  });
 
   it('produces correct bar length', () => {
     const bar = makeChalkBar(50, 20);
@@ -72,7 +74,9 @@ describe('formatTimeUntil', () => {
   });
 
   it('formats days and hours (no minutes)', () => {
-    const future = new Date(Date.now() + 4 * 24 * 60 * 60_000 + 6 * 60 * 60_000 + 30_000).toISOString();
+    const future = new Date(
+      Date.now() + 4 * 24 * 60 * 60_000 + 6 * 60 * 60_000 + 30_000,
+    ).toISOString();
     expect(formatTimeUntil(future)).toBe('in 4d 6h');
   });
 
@@ -84,7 +88,15 @@ describe('formatTimeUntil', () => {
 
 // ── quotaAction ──
 
-const { mockFetchOnce, mockResolveCodexQuota, mockResolveZaiQuota, mockResolveProvider, mockFetchPeakHoursStatus, mockZaiRows, mockActiveCodexAccount } = vi.hoisted(() => ({
+const {
+  mockFetchOnce,
+  mockResolveCodexQuota,
+  mockResolveZaiQuota,
+  mockResolveProvider,
+  mockFetchPeakHoursStatus,
+  mockZaiRows,
+  mockActiveCodexAccount,
+} = vi.hoisted(() => ({
   mockFetchOnce: vi.fn(),
   mockResolveCodexQuota: vi.fn(),
   mockResolveZaiQuota: vi.fn(),
@@ -105,7 +117,11 @@ vi.mock('sidekick-shared', () => ({
     getAssistantMessagesByProviderId = () => mockZaiRows();
   },
   ZAI_PROVIDER_IDS: ['zai', 'zai-coding-plan'],
-  ZAI_TIER_BUDGETS: { lite: { fiveHour: 80, weekly: 400 }, pro: { fiveHour: 400, weekly: 2000 }, max: { fiveHour: 1600, weekly: 8000 } },
+  ZAI_TIER_BUDGETS: {
+    lite: { fiveHour: 80, weekly: 400 },
+    pro: { fiveHour: 400, weekly: 2000 },
+    max: { fiveHour: 1600, weekly: 8000 },
+  },
   accumulateZaiUsage: (turns: unknown[]) => ({
     fiveHourTurns: turns.length,
     weeklyTurns: turns.length,
@@ -199,7 +215,8 @@ vi.mock('sidekick-shared', () => ({
           severity: 'warning',
           title: 'Quota API rate limited',
           message: quota.retryAfterMs === 45_000 ? 'Retry in 45s.' : 'Retry shortly.',
-          detail: quota.httpStatus != null ? `Anthropic returned HTTP ${quota.httpStatus}.` : undefined,
+          detail:
+            quota.httpStatus != null ? `Anthropic returned HTTP ${quota.httpStatus}.` : undefined,
         };
       case 'network':
         return {
@@ -229,10 +246,11 @@ describe('quotaAction', () => {
   let stderrData: string;
   const originalExit = process.exit;
 
-  const makeCmd = (json = false, localOpts: Record<string, unknown> = {}) => ({
-    parent: { opts: () => ({ json }) },
-    opts: () => localOpts,
-  }) as unknown as import('commander').Command;
+  const makeCmd = (json = false, localOpts: Record<string, unknown> = {}) =>
+    ({
+      parent: { opts: () => ({ json }) },
+      opts: () => localOpts,
+    }) as unknown as import('commander').Command;
 
   beforeEach(() => {
     stdoutData = '';
@@ -254,7 +272,12 @@ describe('quotaAction', () => {
     mockZaiRows.mockReset();
     mockZaiRows.mockReturnValue([]);
     mockActiveCodexAccount.mockReset();
-    mockActiveCodexAccount.mockReturnValue({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' });
+    mockActiveCodexAccount.mockReturnValue({
+      id: 'codex-account',
+      providerId: 'codex',
+      addedAt: '2026-05-19T00:00:00Z',
+      label: 'Work',
+    });
     mockResolveProvider.mockReturnValue({ id: 'claude-code', dispose: () => {} });
     mockResolveZaiQuota.mockResolvedValue({
       runtimeProvider: 'zai',
@@ -432,10 +455,12 @@ describe('quotaAction', () => {
     const { quotaAction } = await import('./quota');
     await quotaAction({}, makeCmd());
 
-    expect(mockResolveCodexQuota).toHaveBeenCalledWith(expect.objectContaining({
-      provider,
-      source: 'local',
-    }));
+    expect(mockResolveCodexQuota).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider,
+        source: 'local',
+      }),
+    );
     expect(stdoutData).toContain('Rate Limits');
     expect(stdoutData).toContain('6%');
     expect(mockFetchPeakHoursStatus).not.toHaveBeenCalled();
@@ -498,10 +523,12 @@ describe('quotaAction', () => {
     const { quotaAction } = await import('./quota');
     await quotaAction({}, makeCmd(false, { refresh: true }));
 
-    expect(mockResolveCodexQuota).toHaveBeenCalledWith(expect.objectContaining({
-      provider,
-      source: 'api',
-    }));
+    expect(mockResolveCodexQuota).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider,
+        source: 'api',
+      }),
+    );
     expect(stdoutData).toContain('Rate Limits');
     expect(stdoutData).toContain('21%');
     expect(provider.dispose).toHaveBeenCalledOnce();

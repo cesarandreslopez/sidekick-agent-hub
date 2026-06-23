@@ -46,8 +46,15 @@ export function truncate(text: string, maxLength: number): string {
 export function formatTime(ts: string): string {
   try {
     const d = new Date(ts);
-    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  } catch { return '??:??:??'; }
+    return d.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return '??:??:??';
+  }
 }
 
 /** Format elapsed time from a start timestamp. */
@@ -83,13 +90,26 @@ export function makeColorBar(percent: number, width: number, color = 'green'): s
  * Build a sparkline from numeric data and return metadata.
  * Returns { spark, max, latest } for inline display with annotations.
  */
-export function makeSparkline(data: number[], maxWidth = 25): { spark: string; max: number; latest: number } {
+export function makeSparkline(
+  data: number[],
+  maxWidth = 25,
+): { spark: string; max: number; latest: number } {
   const trimmed = data.slice(-maxWidth);
   if (trimmed.length === 0) return { spark: '', max: 0, latest: 0 };
   const max = Math.max(...trimmed, 1);
   const latest = trimmed[trimmed.length - 1];
-  const chars = [' ', '\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'];
-  const spark = trimmed.map(v => chars[Math.min(8, Math.round((v / max) * 8))]).join('');
+  const chars = [
+    ' ',
+    '\u2581',
+    '\u2582',
+    '\u2583',
+    '\u2584',
+    '\u2585',
+    '\u2586',
+    '\u2587',
+    '\u2588',
+  ];
+  const spark = trimmed.map((v) => chars[Math.min(8, Math.round((v / max) * 8))]).join('');
   return { spark, max, latest };
 }
 
@@ -97,16 +117,21 @@ export function makeSparkline(data: number[], maxWidth = 25): { spark: string; m
  * Build an ASCII heatmap from count data.
  * Uses ░▒▓█ intensity characters, with time labels every 5 columns.
  */
-export function makeHeatmap(buckets: { timestamp: string; count: number }[], maxWidth = 60): string {
+export function makeHeatmap(
+  buckets: { timestamp: string; count: number }[],
+  maxWidth = 60,
+): string {
   if (buckets.length === 0) return '{grey-fg}(no activity data){/grey-fg}';
-  const maxCount = Math.max(...buckets.map(b => b.count), 1);
+  const maxCount = Math.max(...buckets.map((b) => b.count), 1);
   const chars = [' ', '\u2591', '\u2592', '\u2593', '\u2588'];
   const trimmed = buckets.slice(-maxWidth);
 
-  const heatLine = trimmed.map(b => {
-    const intensity = Math.min(4, Math.round((b.count / maxCount) * 4));
-    return chars[intensity];
-  }).join('');
+  const heatLine = trimmed
+    .map((b) => {
+      const intensity = Math.min(4, Math.round((b.count / maxCount) * 4));
+      return chars[intensity];
+    })
+    .join('');
 
   // Time labels every 5 columns
   const labels: string[] = [];
@@ -138,31 +163,34 @@ export function detailWidth(): number {
  *  @param continuationIndent Optional string prepended to continuation lines (hanging indent). */
 export function wordWrap(text: string, width: number, continuationIndent = ''): string {
   const indentLen = visibleLength(continuationIndent);
-  return text.split('\n').map(line => {
-    if (visibleLength(line) <= width) return line;
-    const words = line.split(' ');
-    const wrapped: string[] = [];
-    let current = '';
-    let currentVisible = 0;
-    const isFirst = () => wrapped.length === 0;
-    for (const word of words) {
-      const wordVisible = visibleLength(word);
-      if (currentVisible === 0) {
-        current = word;
-        currentVisible = wordVisible;
-      } else {
-        const limit = isFirst() ? width : width - indentLen;
-        if (currentVisible + 1 + wordVisible <= limit) {
-          current += ' ' + word;
-          currentVisible += 1 + wordVisible;
-        } else {
-          wrapped.push(current);
+  return text
+    .split('\n')
+    .map((line) => {
+      if (visibleLength(line) <= width) return line;
+      const words = line.split(' ');
+      const wrapped: string[] = [];
+      let current = '';
+      let currentVisible = 0;
+      const isFirst = () => wrapped.length === 0;
+      for (const word of words) {
+        const wordVisible = visibleLength(word);
+        if (currentVisible === 0) {
           current = word;
           currentVisible = wordVisible;
+        } else {
+          const limit = isFirst() ? width : width - indentLen;
+          if (currentVisible + 1 + wordVisible <= limit) {
+            current += ' ' + word;
+            currentVisible += 1 + wordVisible;
+          } else {
+            wrapped.push(current);
+            current = word;
+            currentVisible = wordVisible;
+          }
         }
       }
-    }
-    if (current) wrapped.push(current);
-    return wrapped.map((l, i) => i === 0 ? l : continuationIndent + l).join('\n');
-  }).join('\n');
+      if (current) wrapped.push(current);
+      return wrapped.map((l, i) => (i === 0 ? l : continuationIndent + l)).join('\n');
+    })
+    .join('\n');
 }

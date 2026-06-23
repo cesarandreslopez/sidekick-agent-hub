@@ -4,11 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import {
-  readTasks,
-  getProjectSlug,
-  getProjectSlugRaw,
-} from 'sidekick-shared';
+import { readTasks, getProjectSlug, getProjectSlugRaw } from 'sidekick-shared';
 import type { PersistedTask } from 'sidekick-shared';
 
 const STATUS_COLORS: Record<string, (s: string) => string> = {
@@ -58,14 +54,13 @@ function printTasksTable(tasks: PersistedTask[]): void {
       meta.push(chalk.cyan(`age ${task.sessionAge}`));
     }
     if (task.tags && task.tags.length > 0) {
-      meta.push(chalk.dim(task.tags.map(t => `#${t}`).join(' ')));
+      meta.push(chalk.dim(task.tags.map((t) => `#${t}`).join(' ')));
     }
     process.stdout.write(`  ${meta.join(chalk.dim(' · '))}\n`);
 
     if (task.description) {
-      const desc = task.description.length > 120
-        ? task.description.slice(0, 117) + '...'
-        : task.description;
+      const desc =
+        task.description.length > 120 ? task.description.slice(0, 117) + '...' : task.description;
       process.stdout.write(`  ${chalk.dim(desc)}\n`);
     }
 

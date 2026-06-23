@@ -66,7 +66,10 @@ function firstJsonLine(filePath: string): Record<string, unknown> | null {
   }
 }
 
-function readJsonl(filePath: string, skip?: (rawLine: string) => boolean): Array<Record<string, unknown>> {
+function readJsonl(
+  filePath: string,
+  skip?: (rawLine: string) => boolean,
+): Array<Record<string, unknown>> {
   let raw: string;
   try {
     raw = readFileSync(filePath, 'utf8');
@@ -104,7 +107,11 @@ function rolloutFiles(limit = 150): string[] {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
-      } else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
+      } else if (
+        entry.isFile() &&
+        entry.name.startsWith('rollout-') &&
+        entry.name.endsWith('.jsonl')
+      ) {
         try {
           if (seen.has(fullPath)) continue;
           seen.add(fullPath);
@@ -121,7 +128,10 @@ function rolloutFiles(limit = 150): string[] {
     if (dirExists(sessionsDir)) walk(sessionsDir);
   }
 
-  return entries.sort((a, b) => b.mtime - a.mtime).slice(0, limit).map((entry) => entry.path);
+  return entries
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit)
+    .map((entry) => entry.path);
 }
 
 export function codexSessions(cwd: string, limit = 3): string[] {
@@ -141,7 +151,8 @@ export function codexSessions(cwd: string, limit = 3): string[] {
 }
 
 function parseArgs(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'string') return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  if (typeof value !== 'string')
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   try {
     return JSON.parse(value) as Record<string, unknown>;
   } catch {
@@ -182,8 +193,10 @@ function addMessageAssets(
   meta: ExtractedAssetProvenance,
 ): void {
   for (const url of extractUrls(text)) acc.urls.push(urlAsset(url, timestamp, meta));
-  for (const filePath of extractFilePaths(text, cwd)) acc.paths.push(pathAsset(filePath, timestamp, meta));
-  for (const command of extractCommands(text)) acc.commands.push(commandAsset(command, timestamp, meta));
+  for (const filePath of extractFilePaths(text, cwd))
+    acc.paths.push(pathAsset(filePath, timestamp, meta));
+  for (const command of extractCommands(text))
+    acc.commands.push(commandAsset(command, timestamp, meta));
 }
 
 function addExecutedCommandAssets(
@@ -194,13 +207,20 @@ function addExecutedCommandAssets(
   meta: ExtractedAssetProvenance,
 ): void {
   for (const url of extractUrls(command)) acc.urls.push(urlAsset(url, timestamp, meta));
-  for (const filePath of extractFilePaths(command, cwd)) acc.paths.push(pathAsset(filePath, timestamp, meta));
+  for (const filePath of extractFilePaths(command, cwd))
+    acc.paths.push(pathAsset(filePath, timestamp, meta));
 }
 
 export function readCodexAssets(cwd: string, limit = 3): SourceAssets {
   const exactCwd = resolve(cwd);
   const files = codexSessions(exactCwd, limit);
-  const acc: SourceAssets = { urls: [], paths: [], commands: [], plans: [], hadSession: files.length > 0 };
+  const acc: SourceAssets = {
+    urls: [],
+    paths: [],
+    commands: [],
+    plans: [],
+    hadSession: files.length > 0,
+  };
   const skip = (line: string): boolean =>
     line.includes('"type":"function_call_output"') ||
     line.includes('"type":"reasoning"') ||
@@ -215,24 +235,50 @@ export function readCodexAssets(cwd: string, limit = 3): SourceAssets {
       if (payload.type === 'function_call') {
         if (EXEC_NAMES.has(payload.name as string)) {
           const args = parseArgs(payload.arguments);
-          addExecutedCommandAssets(acc, args.cmd ?? args.command, exactCwd, timestamp, provenance(filePath, `tool:${String(payload.name)}`));
+          addExecutedCommandAssets(
+            acc,
+            args.cmd ?? args.command,
+            exactCwd,
+            timestamp,
+            provenance(filePath, `tool:${String(payload.name)}`),
+          );
         }
       } else if (payload.type === 'local_shell_call') {
-        addExecutedCommandAssets(acc, commandFromLocalShell(payload), exactCwd, timestamp, provenance(filePath, 'tool:local_shell'));
+        addExecutedCommandAssets(
+          acc,
+          commandFromLocalShell(payload),
+          exactCwd,
+          timestamp,
+          provenance(filePath, 'tool:local_shell'),
+        );
       } else if (payload.type === 'item_completed') {
         const item = payload.item as Record<string, unknown> | undefined;
         const text = asString(item?.text);
-        if (item?.type === 'Plan' && text?.trim()) acc.plans.push(planAsset(text, timestamp, provenance(filePath, 'plan')));
+        if (item?.type === 'Plan' && text?.trim())
+          acc.plans.push(planAsset(text, timestamp, provenance(filePath, 'plan')));
       } else if (payload.type === 'custom_tool_call' && payload.name === 'apply_patch') {
         const meta = provenance(filePath, 'tool:apply_patch');
-        for (const file of patchFiles(payload.input, exactCwd)) acc.paths.push(pathAsset(file, timestamp, meta));
+        for (const file of patchFiles(payload.input, exactCwd))
+          acc.paths.push(pathAsset(file, timestamp, meta));
       } else if (payload.type === 'message' && Array.isArray(payload.content)) {
         for (const block of payload.content) {
           const typedBlock = block as Record<string, unknown>;
-          addMessageAssets(acc, typedBlock.text, exactCwd, timestamp, provenance(filePath, 'message'));
+          addMessageAssets(
+            acc,
+            typedBlock.text,
+            exactCwd,
+            timestamp,
+            provenance(filePath, 'message'),
+          );
         }
       } else if (payload.type === 'agent_message') {
-        addMessageAssets(acc, payload.message, exactCwd, timestamp, provenance(filePath, 'message'));
+        addMessageAssets(
+          acc,
+          payload.message,
+          exactCwd,
+          timestamp,
+          provenance(filePath, 'message'),
+        );
       }
     }
   }

@@ -34,16 +34,28 @@ function normalizeMessage(msg: DbMessage): FollowEvent[] {
 
     if (role === 'user') {
       events.push({
-        providerId: 'opencode', type: 'user', timestamp: ts,
-        summary: content || '(user message)', model, raw: data,
+        providerId: 'opencode',
+        type: 'user',
+        timestamp: ts,
+        summary: content || '(user message)',
+        model,
+        raw: data,
       });
     } else if (role === 'assistant') {
       events.push({
-        providerId: 'opencode', type: 'assistant', timestamp: ts,
-        summary: content || '(thinking...)', tokens, cost, model, raw: data,
+        providerId: 'opencode',
+        type: 'assistant',
+        timestamp: ts,
+        summary: content || '(thinking...)',
+        tokens,
+        cost,
+        model,
+        raw: data,
       });
     }
-  } catch { /* skip malformed */ }
+  } catch {
+    /* skip malformed */
+  }
   return events;
 }
 
@@ -63,20 +75,24 @@ function normalizePart(part: DbPart): FollowEvent[] {
       const toolInput = state?.input as Record<string, unknown> | undefined;
       const input = data.args ? truncate(JSON.stringify(data.args), 80) : '';
       // Include input in raw so PlanExtractor can access raw.input
-      const toolRaw = eventType === 'tool_use'
-        ? { ...data, input: toolInput || {} }
-        : data;
+      const toolRaw = eventType === 'tool_use' ? { ...data, input: toolInput || {} } : data;
       events.push({
-        providerId: 'opencode', type: eventType, timestamp: ts,
+        providerId: 'opencode',
+        type: eventType,
+        timestamp: ts,
         summary: input ? `${toolName} ${input}` : toolName,
-        toolName, toolInput: input || undefined, raw: toolRaw,
+        toolName,
+        toolInput: input || undefined,
+        raw: toolRaw,
       });
     } else if (type === 'text') {
       const text = (data.text as string) || '';
       if (text) {
         // Wrap raw to include message.content for <proposed_plan> extraction
         events.push({
-          providerId: 'opencode', type: 'assistant', timestamp: ts,
+          providerId: 'opencode',
+          type: 'assistant',
+          timestamp: ts,
           summary: truncate(text, 200),
           raw: { ...data, message: { content: [{ type: 'text', text }] } },
         });
@@ -85,7 +101,9 @@ function normalizePart(part: DbPart): FollowEvent[] {
         if (direction) {
           const syntheticToolName = direction === 'enter' ? 'EnterPlanMode' : 'ExitPlanMode';
           events.push({
-            providerId: 'opencode', type: 'tool_use', timestamp: ts,
+            providerId: 'opencode',
+            type: 'tool_use',
+            timestamp: ts,
             summary: syntheticToolName,
             toolName: syntheticToolName,
             raw: { input: { source: 'opencode_text_heuristic' } },
@@ -93,7 +111,9 @@ function normalizePart(part: DbPart): FollowEvent[] {
         }
       }
     }
-  } catch { /* skip malformed */ }
+  } catch {
+    /* skip malformed */
+  }
   return events;
 }
 
@@ -128,7 +148,9 @@ export class SqliteSessionWatcher implements SessionWatcher {
     this.db = new OpenCodeDatabase(path.dirname(dbPath));
   }
 
-  get isActive(): boolean { return this._isActive; }
+  get isActive(): boolean {
+    return this._isActive;
+  }
 
   /** Seek to a timestamp position. Must be called before start(). */
   seekTo(position: number): void {
@@ -160,8 +182,12 @@ export class SqliteSessionWatcher implements SessionWatcher {
     }
 
     // Watch db and wal files for changes
-    this.watchFile(this.dbPath, (w) => { this.fsWatcher = w; });
-    this.watchFile(this.dbPath + '-wal', (w) => { this.walWatcher = w; });
+    this.watchFile(this.dbPath, (w) => {
+      this.fsWatcher = w;
+    });
+    this.watchFile(this.dbPath + '-wal', (w) => {
+      this.walWatcher = w;
+    });
 
     // Fallback polling
     this.pollTimer = setInterval(() => {
@@ -173,10 +199,22 @@ export class SqliteSessionWatcher implements SessionWatcher {
     if (!this._isActive) return;
     this._isActive = false;
 
-    if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
-    if (this.fsWatcher) { this.fsWatcher.close(); this.fsWatcher = null; }
-    if (this.walWatcher) { this.walWatcher.close(); this.walWatcher = null; }
-    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (this.fsWatcher) {
+      this.fsWatcher.close();
+      this.fsWatcher = null;
+    }
+    if (this.walWatcher) {
+      this.walWatcher.close();
+      this.walWatcher = null;
+    }
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
     this.db.close();
   }
 
@@ -186,9 +224,13 @@ export class SqliteSessionWatcher implements SessionWatcher {
       const watcher = fs.watch(filePath, { persistent: false }, () => {
         this.debouncedPoll();
       });
-      watcher.on('error', () => { /* ignore watch errors */ });
+      watcher.on('error', () => {
+        /* ignore watch errors */
+      });
       setter(watcher);
-    } catch { /* fs.watch not available */ }
+    } catch {
+      /* fs.watch not available */
+    }
   }
 
   private debouncedPoll(): void {
@@ -202,10 +244,10 @@ export class SqliteSessionWatcher implements SessionWatcher {
     const messages = this.db.getMessagesForSession(this.sessionId);
     const parts = this.db.getPartsForSession(this.sessionId);
     if (messages.length > 0) {
-      this.lastMessageTime = Math.max(...messages.map(m => m.time_created));
+      this.lastMessageTime = Math.max(...messages.map((m) => m.time_created));
     }
     if (parts.length > 0) {
-      this.lastPartTime = Math.max(...parts.map(p => p.time_created));
+      this.lastPartTime = Math.max(...parts.map((p) => p.time_created));
     }
   }
 
@@ -216,7 +258,7 @@ export class SqliteSessionWatcher implements SessionWatcher {
       const parts = this.db.getPartsForSession(this.sessionId);
 
       // Emit new messages
-      const newMessages = messages.filter(m => m.time_created > this.lastMessageTime);
+      const newMessages = messages.filter((m) => m.time_created > this.lastMessageTime);
       for (const msg of newMessages) {
         const events = normalizeMessage(msg);
         for (const e of events) this.callbacks.onEvent(e);
@@ -224,7 +266,7 @@ export class SqliteSessionWatcher implements SessionWatcher {
       }
 
       // Emit new parts
-      const newParts = parts.filter(p => p.time_created > this.lastPartTime);
+      const newParts = parts.filter((p) => p.time_created > this.lastPartTime);
       for (const part of newParts) {
         const events = normalizePart(part);
         for (const e of events) this.callbacks.onEvent(e);

@@ -53,7 +53,7 @@ const META_RESPONSE_PATTERNS = [
   /continue (the|this)? ?(text|code|naturally)/i,
   /^Based on/i,
   /^Looking at/i,
-  /^>\s*-/,  // Quoted list items from the context
+  /^>\s*-/, // Quoted list items from the context
 ];
 
 /**
@@ -80,12 +80,18 @@ export function getSystemPrompt(multiline: boolean, language?: string): string {
 
   // Character limits based on file type
   const charLimit = isProse
-    ? (multiline ? String(PROSE_MULTI_LINE_LIMIT) : String(PROSE_SINGLE_LINE_LIMIT))
-    : (multiline ? String(CODE_MULTI_LINE_LIMIT) : String(CODE_SINGLE_LINE_LIMIT));
+    ? multiline
+      ? String(PROSE_MULTI_LINE_LIMIT)
+      : String(PROSE_SINGLE_LINE_LIMIT)
+    : multiline
+      ? String(CODE_MULTI_LINE_LIMIT)
+      : String(CODE_SINGLE_LINE_LIMIT);
 
   const lineLimit = multiline ? 'up to 10 lines' : '1-3 lines';
 
-  log(`Prompt: multiline=${multiline}, isProse=${isProse}, blockType=${blockType}, charLimit=${charLimit}`);
+  log(
+    `Prompt: multiline=${multiline}, isProse=${isProse}, blockType=${blockType}, charLimit=${charLimit}`,
+  );
 
   if (isProse) {
     return `Silent text insertion engine. Output goes DIRECTLY into document - not read by human first.
@@ -135,7 +141,7 @@ export function getUserPrompt(
   language: string,
   filename: string,
   prefix: string,
-  suffix: string
+  suffix: string,
 ): string {
   return `${language} | ${filename}
 
@@ -189,14 +195,18 @@ export const PROSE_LANGUAGES = [
 export function cleanCompletion(
   text: string,
   multiline: boolean,
-  language?: string
+  language?: string,
 ): string | undefined {
   const isProse = language && PROSE_LANGUAGES.includes(language.toLowerCase());
 
   // Limits must match what we tell Claude in getSystemPrompt
   const maxLength = isProse
-    ? (multiline ? PROSE_MULTI_LINE_LIMIT : PROSE_SINGLE_LINE_LIMIT)
-    : (multiline ? CODE_MULTI_LINE_LIMIT : CODE_SINGLE_LINE_LIMIT);
+    ? multiline
+      ? PROSE_MULTI_LINE_LIMIT
+      : PROSE_SINGLE_LINE_LIMIT
+    : multiline
+      ? CODE_MULTI_LINE_LIMIT
+      : CODE_SINGLE_LINE_LIMIT;
 
   log(`Clean: isProse=${isProse}, maxLength=${maxLength}`);
 
@@ -237,7 +247,9 @@ export function cleanCompletion(
 
   // If too long, try to truncate intelligently
   if (cleaned.length > maxLength) {
-    log(`Clean: too long (${cleaned.length} > ${maxLength}), attempting truncation (isProse=${isProse}, multiline=${multiline})`);
+    log(
+      `Clean: too long (${cleaned.length} > ${maxLength}), attempting truncation (isProse=${isProse}, multiline=${multiline})`,
+    );
 
     if (isProse) {
       // For prose, truncate at sentence or paragraph boundary
@@ -320,12 +332,7 @@ export function cleanCompletion(
 /**
  * Patterns indicating a conversational transform response rather than code.
  */
-const TRANSFORM_CONVERSATIONAL_PATTERNS = [
-  /^Here/i,
-  /^The transformed/i,
-  /^I've/i,
-  /^I have/i,
-];
+const TRANSFORM_CONVERSATIONAL_PATTERNS = [/^Here/i, /^The transformed/i, /^I've/i, /^I have/i];
 
 /**
  * Generates the system prompt for code transformation requests.
@@ -381,7 +388,7 @@ export function getTransformUserPrompt(
   instruction: string,
   language: string,
   prefix?: string,
-  suffix?: string
+  suffix?: string,
 ): string {
   let prompt = `Language: ${language}\n\n`;
 
@@ -730,11 +737,13 @@ function getErrorComplexityInstruction(complexity?: ComplexityLevel): string {
   if (!complexity) return '';
 
   const instructions: Record<ComplexityLevel, string> = {
-    'eli5': 'Explain like I\'m 5 years old - use simple words, analogies, and avoid technical jargon.',
-    'curious-amateur': 'Explain for someone learning to code - be clear but can introduce basic technical terms.',
-    'imposter-syndrome': 'Explain for an intermediate developer - assume they know fundamentals but might be unfamiliar with this specific issue.',
-    'senior': 'Explain for an experienced developer - be concise and technical.',
-    'phd': 'Explain with maximum technical depth - include language spec references, compiler internals if relevant.',
+    eli5: "Explain like I'm 5 years old - use simple words, analogies, and avoid technical jargon.",
+    'curious-amateur':
+      'Explain for someone learning to code - be clear but can introduce basic technical terms.',
+    'imposter-syndrome':
+      'Explain for an intermediate developer - assume they know fundamentals but might be unfamiliar with this specific issue.',
+    senior: 'Explain for an experienced developer - be concise and technical.',
+    phd: 'Explain with maximum technical depth - include language spec references, compiler internals if relevant.',
   };
 
   return `\nAUDIENCE: ${COMPLEXITY_LABELS[complexity]} - ${instructions[complexity]}\n`;
@@ -750,7 +759,11 @@ function getErrorComplexityInstruction(complexity?: ComplexityLevel): string {
  * @param complexity - Optional complexity level for explanation depth
  * @returns Prompt string for error explanation
  */
-export function getErrorExplanationPrompt(code: string, errorContext: ErrorContext, complexity?: ComplexityLevel): string {
+export function getErrorExplanationPrompt(
+  code: string,
+  errorContext: ErrorContext,
+  complexity?: ComplexityLevel,
+): string {
   const errorType = errorContext.severity === 'error' ? 'Error' : 'Warning';
   const errorCodeInfo = errorContext.errorCode ? ` (Code: ${errorContext.errorCode})` : '';
   const complexityInstruction = getErrorComplexityInstruction(complexity);
@@ -851,7 +864,7 @@ export function getInlineChatUserPrompt(
   selectedText: string,
   languageId: string,
   contextBefore: string,
-  contextAfter: string
+  contextAfter: string,
 ): string {
   const hasSelection = selectedText.trim().length > 0;
 
@@ -882,7 +895,10 @@ export function getInlineChatUserPrompt(
  * @param response - Raw response text from Claude
  * @returns Parsed result with mode ('question' | 'edit') and content
  */
-export function parseInlineChatResponse(response: string): { mode: 'question' | 'edit'; content: string } {
+export function parseInlineChatResponse(response: string): {
+  mode: 'question' | 'edit';
+  content: string;
+} {
   const trimmed = response.trim();
 
   if (trimmed.startsWith('CODE:')) {

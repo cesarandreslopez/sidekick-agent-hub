@@ -47,8 +47,8 @@ export class PlanPersistenceService extends PersistenceService<PlanHistoryStore>
     if (!planState.steps.length && !planState.rawMarkdown) return;
 
     const planId = `${sessionId.slice(0, 8)}-${Date.now()}`;
-    const completedSteps = planState.steps.filter(s => s.status === 'completed').length;
-    const failedSteps = planState.steps.filter(s => s.status === 'failed').length;
+    const completedSteps = planState.steps.filter((s) => s.status === 'completed').length;
+    const failedSteps = planState.steps.filter((s) => s.status === 'failed').length;
     const totalSteps = planState.steps.length;
 
     let status: PlanStatus;
@@ -56,15 +56,17 @@ export class PlanPersistenceService extends PersistenceService<PlanHistoryStore>
       status = 'in_progress';
     } else if (completedSteps === totalSteps) {
       status = 'completed';
-    } else if (failedSteps > 0 || planState.steps.some(s => s.status === 'in_progress')) {
+    } else if (failedSteps > 0 || planState.steps.some((s) => s.status === 'in_progress')) {
       status = 'failed';
-    } else if (planState.steps.every(s => s.status === 'skipped' || s.status === 'pending')) {
+    } else if (planState.steps.every((s) => s.status === 'skipped' || s.status === 'pending')) {
       status = 'abandoned';
     } else {
       status = completedSteps > 0 ? 'completed' : 'abandoned';
     }
 
-    const persistedSteps: PersistedPlanStep[] = planState.steps.map(step => this.convertStep(step));
+    const persistedSteps: PersistedPlanStep[] = planState.steps.map((step) =>
+      this.convertStep(step),
+    );
 
     const totalTokensUsed = persistedSteps.reduce((sum, s) => sum + (s.tokensUsed ?? 0), 0);
     const totalToolCalls = persistedSteps.reduce((sum, s) => sum + (s.toolCalls ?? 0), 0);
@@ -90,7 +92,9 @@ export class PlanPersistenceService extends PersistenceService<PlanHistoryStore>
     };
 
     // Check if plan already exists (update) or new (insert)
-    const existingIdx = this.store.plans.findIndex(p => p.sessionId === sessionId && p.title === planState.title);
+    const existingIdx = this.store.plans.findIndex(
+      (p) => p.sessionId === sessionId && p.title === planState.title,
+    );
     if (existingIdx >= 0) {
       this.store.plans[existingIdx] = persisted;
     } else {
@@ -103,7 +107,9 @@ export class PlanPersistenceService extends PersistenceService<PlanHistoryStore>
     }
 
     this.markDirty();
-    log(`Persisted plan "${persisted.title}" (${status}, ${completedSteps}/${totalSteps} steps) for session ${sessionId.slice(0, 8)}`);
+    log(
+      `Persisted plan "${persisted.title}" (${status}, ${completedSteps}/${totalSteps} steps) for session ${sessionId.slice(0, 8)}`,
+    );
   }
 
   private convertStep(step: PlanStep): PersistedPlanStep {

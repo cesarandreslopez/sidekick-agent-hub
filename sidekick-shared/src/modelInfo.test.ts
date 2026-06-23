@@ -316,7 +316,12 @@ describe('calculateCostWithPricing', () => {
   it('calculates using explicit pricing', () => {
     const cost = calculateCostWithPricing(
       { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheWriteTokens: 0, cacheReadTokens: 0 },
-      { inputCostPerMillion: 3, outputCostPerMillion: 15, cacheWriteCostPerMillion: 0, cacheReadCostPerMillion: 0 },
+      {
+        inputCostPerMillion: 3,
+        outputCostPerMillion: 15,
+        cacheWriteCostPerMillion: 0,
+        cacheReadCostPerMillion: 0,
+      },
     );
     expect(cost).toBeCloseTo(18.0, 2);
   });
@@ -330,7 +335,12 @@ describe('calculateCostWithPricing', () => {
         cacheReadTokens: 0,
         reasoningTokens: 500_000,
       },
-      { inputCostPerMillion: 0, outputCostPerMillion: 10, cacheWriteCostPerMillion: 0, cacheReadCostPerMillion: 0 },
+      {
+        inputCostPerMillion: 0,
+        outputCostPerMillion: 10,
+        cacheWriteCostPerMillion: 0,
+        cacheReadCostPerMillion: 0,
+      },
     );
     // (0.5 + 0.5) × $10 = $10
     expect(cost).toBeCloseTo(10.0, 2);
@@ -339,7 +349,12 @@ describe('calculateCostWithPricing', () => {
   it('handles missing reasoning field as zero', () => {
     const cost = calculateCostWithPricing(
       { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
-      { inputCostPerMillion: 5, outputCostPerMillion: 15, cacheWriteCostPerMillion: 0, cacheReadCostPerMillion: 0 },
+      {
+        inputCostPerMillion: 5,
+        outputCostPerMillion: 15,
+        cacheWriteCostPerMillion: 0,
+        cacheReadCostPerMillion: 0,
+      },
     );
     expect(cost).toBeCloseTo(5.0, 2);
   });
@@ -347,23 +362,34 @@ describe('calculateCostWithPricing', () => {
 
 describe('cost provenance', () => {
   it('prefers provider-reported cost when available', () => {
-    expect(calculateCostWithProvenance({
-      usage: { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheWriteTokens: 0, cacheReadTokens: 0 },
-      modelId: 'claude-sonnet-4-20250514',
-      reportedCostUsd: 1.23,
-    })).toEqual({ costUsd: 1.23, source: 'reported' });
+    expect(
+      calculateCostWithProvenance({
+        usage: {
+          inputTokens: 1_000_000,
+          outputTokens: 1_000_000,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+        },
+        modelId: 'claude-sonnet-4-20250514',
+        reportedCostUsd: 1.23,
+      }),
+    ).toEqual({ costUsd: 1.23, source: 'reported' });
   });
 
   it('estimates known models and marks unknown models unpriced', () => {
-    expect(calculateCostWithProvenance({
-      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
-      modelId: 'claude-sonnet-4-20250514',
-    })).toEqual({ costUsd: 3, source: 'estimated' });
+    expect(
+      calculateCostWithProvenance({
+        usage: { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        modelId: 'claude-sonnet-4-20250514',
+      }),
+    ).toEqual({ costUsd: 3, source: 'estimated' });
 
-    expect(calculateCostWithProvenance({
-      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
-      modelId: 'unknown-model',
-    })).toEqual({ source: 'unpriced' });
+    expect(
+      calculateCostWithProvenance({
+        usage: { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        modelId: 'unknown-model',
+      }),
+    ).toEqual({ source: 'unpriced' });
   });
 
   it('merges cost sources conservatively', () => {
@@ -388,25 +414,13 @@ describe('model display helpers', () => {
   });
 
   it('sorts model ids by provider family rank', () => {
-    expect(sortModelIds([
-      'claude-haiku-4.5',
-      'gpt-4o',
-      'claude-opus-4.5',
-      'claude-sonnet-4.5',
-    ])).toEqual([
-      'claude-opus-4.5',
-      'claude-sonnet-4.5',
-      'claude-haiku-4.5',
-      'gpt-4o',
-    ]);
+    expect(
+      sortModelIds(['claude-haiku-4.5', 'gpt-4o', 'claude-opus-4.5', 'claude-sonnet-4.5']),
+    ).toEqual(['claude-opus-4.5', 'claude-sonnet-4.5', 'claude-haiku-4.5', 'gpt-4o']);
   });
 
   it('ranks Fable above Opus', () => {
-    expect(sortModelIds([
-      'claude-opus-4-8',
-      'claude-fable-5',
-      'claude-sonnet-4-6',
-    ])).toEqual([
+    expect(sortModelIds(['claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-4-6'])).toEqual([
       'claude-fable-5',
       'claude-opus-4-8',
       'claude-sonnet-4-6',

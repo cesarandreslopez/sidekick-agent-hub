@@ -31,20 +31,14 @@ function formatResult(result: SearchResult, query: string, index: number): strin
 
   // Header line: index, event type, timestamp
   const idx = chalk.dim(`[${index + 1}]`);
-  const eventTag = result.eventType
-    ? chalk.cyan(`[${result.eventType}]`)
-    : chalk.dim('[unknown]');
-  const ts = result.timestamp
-    ? chalk.dim(result.timestamp)
-    : '';
+  const eventTag = result.eventType ? chalk.cyan(`[${result.eventType}]`) : chalk.dim('[unknown]');
+  const ts = result.timestamp ? chalk.dim(result.timestamp) : '';
   lines.push(`${idx} ${eventTag} ${ts}`);
 
   // Snippet with highlighted matches
   const snippet = result.snippet.trim();
   const maxLen = 200;
-  const truncated = snippet.length > maxLen
-    ? snippet.substring(0, maxLen) + '...'
-    : snippet;
+  const truncated = snippet.length > maxLen ? snippet.substring(0, maxLen) + '...' : snippet;
   lines.push(`    ${highlightMatches(truncated, query)}`);
 
   // Project and session path
@@ -98,11 +92,12 @@ export async function searchAction(_opts: Record<string, unknown>, cmd: Command)
     }
 
     // Summary header
-    const countLabel = results.length === limit
-      ? `${results.length}+ matches`
-      : `${results.length} match${results.length === 1 ? '' : 'es'}`;
+    const countLabel =
+      results.length === limit
+        ? `${results.length}+ matches`
+        : `${results.length} match${results.length === 1 ? '' : 'es'}`;
     process.stdout.write(
-      chalk.bold(`Search results for "${query}"`) + chalk.dim(` (${countLabel})`) + '\n\n'
+      chalk.bold(`Search results for "${query}"`) + chalk.dim(` (${countLabel})`) + '\n\n',
     );
 
     // Render each result
@@ -119,6 +114,10 @@ export async function searchAction(_opts: Record<string, unknown>, cmd: Command)
     process.stderr.write(`Error: ${msg}\n`);
     process.exit(1);
   } finally {
-    try { provider.dispose(); } catch { /* ignore */ }
+    try {
+      provider.dispose();
+    } catch {
+      /* ignore */
+    }
   }
 }

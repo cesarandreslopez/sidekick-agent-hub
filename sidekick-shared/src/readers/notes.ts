@@ -2,7 +2,12 @@
  * Reader for knowledge notes.
  */
 
-import type { KnowledgeNote, KnowledgeNoteStore, KnowledgeNoteType, KnowledgeNoteStatus } from '../types/knowledgeNote';
+import type {
+  KnowledgeNote,
+  KnowledgeNoteStore,
+  KnowledgeNoteType,
+  KnowledgeNoteStatus,
+} from '../types/knowledgeNote';
 import { getProjectDataPath } from '../paths';
 import { readJsonStore } from './helpers';
 
@@ -24,7 +29,11 @@ export async function readNotes(slug: string, opts?: ReadNotesOptions): Promise<
     const normalizedFile = opts.file.replace(/\\/g, '/');
     for (const [filePath, fileNotes] of Object.entries(store.notesByFile)) {
       const normalizedKey = filePath.replace(/\\/g, '/');
-      if (normalizedKey === normalizedFile || normalizedKey.endsWith('/' + normalizedFile) || normalizedFile.endsWith('/' + normalizedKey)) {
+      if (
+        normalizedKey === normalizedFile ||
+        normalizedKey.endsWith('/' + normalizedFile) ||
+        normalizedFile.endsWith('/' + normalizedKey)
+      ) {
         notes.push(...fileNotes);
       }
     }
@@ -35,11 +44,11 @@ export async function readNotes(slug: string, opts?: ReadNotesOptions): Promise<
   }
 
   if (opts?.type) {
-    notes = notes.filter(n => n.noteType === opts.type);
+    notes = notes.filter((n) => n.noteType === opts.type);
   }
 
   if (opts?.status) {
-    notes = notes.filter(n => n.status === opts.status);
+    notes = notes.filter((n) => n.status === opts.status);
   }
 
   // Sort by importance then updatedAt

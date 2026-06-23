@@ -13,10 +13,10 @@ Transform selected code using natural language instructions.
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.transformModel` | `auto` | Model tier — resolves to `powerful` for quality |
-| `sidekick.transformContextLines` | `50` | Lines of context before/after selection |
+| Setting                          | Default | Description                                     |
+| -------------------------------- | ------- | ----------------------------------------------- |
+| `sidekick.transformModel`        | `auto`  | Model tier — resolves to `powerful` for quality |
+| `sidekick.transformContextLines` | `50`    | Lines of context before/after selection         |
 
 ## Tips
 

@@ -120,7 +120,11 @@ function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
     fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
     fs.renameSync(tmp, filePath);
   } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* nothing to clean up */ }
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* nothing to clean up */
+    }
     throw err;
   }
 }
@@ -135,7 +139,11 @@ function atomicWriteFile(filePath: string, content: string, mode = 0o600): void 
     fs.writeFileSync(tmp, content, { encoding: 'utf8', mode });
     fs.renameSync(tmp, filePath);
   } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* nothing to clean up */ }
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* nothing to clean up */
+    }
     throw err;
   }
 }
@@ -150,7 +158,9 @@ function readFileOrNull(filePath: string): string | null {
 
 function readPendingProfile(profileId: string): PendingCodexProfile | null {
   try {
-    return JSON.parse(fs.readFileSync(getCodexProfileStatePath(profileId), 'utf8')) as PendingCodexProfile;
+    return JSON.parse(
+      fs.readFileSync(getCodexProfileStatePath(profileId), 'utf8'),
+    ) as PendingCodexProfile;
   } catch {
     return null;
   }
@@ -173,8 +183,14 @@ function copySourceCodexConfig(sourceHome: string, targetHome: string): void {
 }
 
 function importCurrentCodexAuth(sourceHome: string, targetHome: string): boolean {
-  const authCopied = copyIfExists(path.join(sourceHome, 'auth.json'), path.join(targetHome, 'auth.json'));
-  const legacyCredsCopied = copyIfExists(path.join(sourceHome, '.credentials.json'), path.join(targetHome, '.credentials.json'));
+  const authCopied = copyIfExists(
+    path.join(sourceHome, 'auth.json'),
+    path.join(targetHome, 'auth.json'),
+  );
+  const legacyCredsCopied = copyIfExists(
+    path.join(sourceHome, '.credentials.json'),
+    path.join(targetHome, '.credentials.json'),
+  );
   return authCopied || legacyCredsCopied;
 }
 
@@ -204,26 +220,27 @@ function readAuthIdentityFromRaw(raw: string | null): CodexAuthIdentity | null {
 
   const idToken = parsed.tokens?.id_token;
   const claims = idToken ? parseJwtPayload<Record<string, unknown>>(idToken) : null;
-  const profileClaims = claims?.['https://api.openai.com/profile'] as Record<string, unknown> | undefined;
+  const profileClaims = claims?.['https://api.openai.com/profile'] as
+    | Record<string, unknown>
+    | undefined;
   const authClaims = claims?.['https://api.openai.com/auth'] as Record<string, unknown> | undefined;
 
-  const email = typeof claims?.email === 'string'
-    ? claims.email
-    : typeof profileClaims?.email === 'string'
-      ? profileClaims.email
-      : undefined;
+  const email =
+    typeof claims?.email === 'string'
+      ? claims.email
+      : typeof profileClaims?.email === 'string'
+        ? profileClaims.email
+        : undefined;
 
-  const workspaceId = typeof authClaims?.chatgpt_account_id === 'string'
-    ? authClaims.chatgpt_account_id
-    : parsed.tokens?.account_id;
+  const workspaceId =
+    typeof authClaims?.chatgpt_account_id === 'string'
+      ? authClaims.chatgpt_account_id
+      : parsed.tokens?.account_id;
 
-  const planType = typeof authClaims?.chatgpt_plan_type === 'string'
-    ? authClaims.chatgpt_plan_type
-    : undefined;
+  const planType =
+    typeof authClaims?.chatgpt_plan_type === 'string' ? authClaims.chatgpt_plan_type : undefined;
 
-  const authMode = parsed.OPENAI_API_KEY || parsed.auth_mode === 'api_key'
-    ? 'api-key'
-    : 'chatgpt';
+  const authMode = parsed.OPENAI_API_KEY || parsed.auth_mode === 'api_key' ? 'api-key' : 'chatgpt';
 
   return { email, workspaceId, planType, authMode };
 }
@@ -237,7 +254,9 @@ function readLastRefresh(raw: string | null, fallbackPath?: string): number | nu
   if (fallbackPath) {
     try {
       return fs.statSync(fallbackPath).mtimeMs;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   return null;
 }
@@ -269,7 +288,10 @@ function readMetadataFromLegacyCredentials(codexHome: string): AccountIdentityMe
   return {};
 }
 
-function getCodexLoginStatus(codexHome: string): { loggedIn: boolean; authMode?: 'chatgpt' | 'api-key' } {
+function getCodexLoginStatus(codexHome: string): {
+  loggedIn: boolean;
+  authMode?: 'chatgpt' | 'api-key';
+} {
   try {
     const env = { ...process.env, CODEX_HOME: codexHome };
     const result = spawnSync('codex', ['login', 'status'], {
@@ -297,11 +319,13 @@ function getCodexLoginStatus(codexHome: string): { loggedIn: boolean; authMode?:
 function detectRunningCodexProcess(): boolean {
   if (process.platform === 'win32') return false;
   try {
-    return spawnSync('pgrep', ['-x', 'codex'], {
-      encoding: 'utf8',
-      timeout: 4000,
-      killSignal: 'SIGKILL',
-    }).status === 0;
+    return (
+      spawnSync('pgrep', ['-x', 'codex'], {
+        encoding: 'utf8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+      }).status === 0
+    );
   } catch {
     return false;
   }
@@ -341,9 +365,9 @@ export function isCodexProfileAuthenticated(codexHome: string): boolean {
 
 function ensureUniqueCodexLabel(label: string, excludeId?: string): string | null {
   const normalized = label.trim().toLowerCase();
-  const conflict = listCodexAccounts().find(account =>
-    account.id !== excludeId &&
-    (account.label ?? '').trim().toLowerCase() === normalized,
+  const conflict = listCodexAccounts().find(
+    (account) =>
+      account.id !== excludeId && (account.label ?? '').trim().toLowerCase() === normalized,
   );
   return conflict ? `A Codex account named "${label}" already exists.` : null;
 }
@@ -448,7 +472,8 @@ export function finalizeCodexAccount(
     setActiveSavedAccount('codex', profileId);
     return {
       success: true,
-      warning: 'Codex stores credentials in the OS keyring; sidekick cannot swap them per account, so `codex` keeps using the keyring credentials.',
+      warning:
+        'Codex stores credentials in the OS keyring; sidekick cannot swap them per account, so `codex` keeps using the keyring credentials.',
     };
   }
 
@@ -459,7 +484,10 @@ function getCodexStashDir(): string {
   return path.join(getAccountsDir(), 'codex', 'stash');
 }
 
-function stashLiveCodexAuth(liveAuthRaw: string | null, liveLegacyRaw: string | null): string | null {
+function stashLiveCodexAuth(
+  liveAuthRaw: string | null,
+  liveLegacyRaw: string | null,
+): string | null {
   try {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     let stashPath: string | null = null;
@@ -481,11 +509,15 @@ function stashLiveCodexAuth(liveAuthRaw: string | null, liveLegacyRaw: string | 
 function findProfileForIdentity(identity: CodexAuthIdentity | null): SavedAccountProfile | null {
   const profiles = listCodexAccounts();
   if (identity?.workspaceId) {
-    const byWorkspace = profiles.find(profile => profile.metadata?.workspaceId === identity.workspaceId);
+    const byWorkspace = profiles.find(
+      (profile) => profile.metadata?.workspaceId === identity.workspaceId,
+    );
     if (byWorkspace) return byWorkspace;
   }
   if (identity?.email) {
-    const byEmail = profiles.find(profile => (profile.email ?? profile.metadata?.email) === identity.email);
+    const byEmail = profiles.find(
+      (profile) => (profile.email ?? profile.metadata?.email) === identity.email,
+    );
     if (byEmail) return byEmail;
   }
   if (!identity?.workspaceId && !identity?.email) {
@@ -506,7 +538,10 @@ interface SyncBackResult {
 // live file is always the freshest copy of its account. Before replacing it,
 // preserve it in the matching profile's backup — or stash it if it belongs to
 // no saved account. Best-effort: never throws.
-function syncBackLiveCodexAuth(liveAuthRaw: string | null, liveLegacyRaw: string | null): SyncBackResult {
+function syncBackLiveCodexAuth(
+  liveAuthRaw: string | null,
+  liveLegacyRaw: string | null,
+): SyncBackResult {
   if (!liveAuthRaw && !liveLegacyRaw) return {};
 
   try {
@@ -534,7 +569,9 @@ function syncBackLiveCodexAuth(liveAuthRaw: string | null, liveLegacyRaw: string
         email: metadata.email ?? profile.email,
         metadata: { ...profile.metadata, ...metadata },
       });
-    } catch { /* metadata refresh is best-effort */ }
+    } catch {
+      /* metadata refresh is best-effort */
+    }
 
     return { syncedProfileId: profile.id };
   } catch (err) {
@@ -552,7 +589,8 @@ function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerR
   if (!liveAuthRaw && !liveLegacyRaw && getCodexLoginStatus(systemHome).loggedIn) {
     return {
       success: false,
-      error: 'Codex stores credentials in the OS keyring; file-based account switching is not supported. Set `cli_auth_credentials_store = "file"` in ~/.codex/config.toml and run `codex login` again.',
+      error:
+        'Codex stores credentials in the OS keyring; file-based account switching is not supported. Set `cli_auth_credentials_store = "file"` in ~/.codex/config.toml and run `codex login` again.',
     };
   }
 
@@ -563,15 +601,23 @@ function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerR
   const targetName = target.label ?? target.email ?? target.id;
 
   if (!targetAuthRaw && !targetLegacyRaw) {
-    return { success: false, error: `No stored credentials for "${targetName}". Remove and re-add this account.` };
+    return {
+      success: false,
+      error: `No stored credentials for "${targetName}". Remove and re-add this account.`,
+    };
   }
   if (targetAuthRaw && !parseAuthJson(targetAuthRaw)) {
-    return { success: false, error: `Stored credentials for "${targetName}" are corrupted. Remove and re-add this account.` };
+    return {
+      success: false,
+      error: `Stored credentials for "${targetName}" are corrupted. Remove and re-add this account.`,
+    };
   }
 
   const warnings: string[] = [];
   if (detectRunningCodexProcess()) {
-    warnings.push('A codex process appears to be running; restart codex sessions so they pick up the switched account.');
+    warnings.push(
+      'A codex process appears to be running; restart codex sessions so they pick up the switched account.',
+    );
   }
 
   // If the live file already belongs to the target account it is the freshest
@@ -583,7 +629,9 @@ function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerR
   const targetWorkspaceId = target.metadata?.workspaceId ?? targetIdentity?.workspaceId;
   const targetEmail = target.email ?? target.metadata?.email ?? targetIdentity?.email;
   const liveMatchesTarget = Boolean(
-    (liveIdentity?.workspaceId && targetWorkspaceId && liveIdentity.workspaceId === targetWorkspaceId) ||
+    (liveIdentity?.workspaceId &&
+      targetWorkspaceId &&
+      liveIdentity.workspaceId === targetWorkspaceId) ||
     (liveIdentity?.email && targetEmail && liveIdentity.email === targetEmail) ||
     (liveAuthRaw !== null && liveAuthRaw === targetAuthRaw) ||
     (!liveAuthRaw && !targetAuthRaw && liveLegacyRaw !== null && liveLegacyRaw === targetLegacyRaw),
@@ -592,21 +640,26 @@ function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerR
   if (liveMatchesTarget) {
     try {
       if (liveAuthRaw) atomicWriteFile(targetAuthPath, liveAuthRaw);
-      if (liveLegacyRaw) atomicWriteFile(path.join(profileHome, '.credentials.json'), liveLegacyRaw);
+      if (liveLegacyRaw)
+        atomicWriteFile(path.join(profileHome, '.credentials.json'), liveLegacyRaw);
       const metadata = readCodexAccountMetadata(profileHome);
       upsertSavedAccountProfile({
         ...target,
         email: metadata.email ?? target.email,
         metadata: { ...target.metadata, ...metadata },
       });
-    } catch { /* backup refresh is best-effort */ }
+    } catch {
+      /* backup refresh is best-effort */
+    }
     setActiveSavedAccount('codex', target.id);
     return { success: true, warning: warnings.length ? warnings.join(' ') : undefined };
   }
 
   const targetLastRefresh = readLastRefresh(targetAuthRaw, targetAuthPath);
   if (targetLastRefresh !== null && Date.now() - targetLastRefresh > STALE_AUTH_THRESHOLD_MS) {
-    warnings.push(`Stored credentials for "${targetName}" have not been refreshed in over 8 days; codex may ask you to log in again.`);
+    warnings.push(
+      `Stored credentials for "${targetName}" have not been refreshed in over 8 days; codex may ask you to log in again.`,
+    );
   }
 
   const syncBack = syncBackLiveCodexAuth(liveAuthRaw, liveLegacyRaw);
@@ -618,7 +671,9 @@ function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerR
       else fs.rmSync(liveAuthPath, { force: true });
       if (liveLegacyRaw) atomicWriteFile(liveLegacyPath, liveLegacyRaw);
       else fs.rmSync(liveLegacyPath, { force: true });
-    } catch { /* rollback is best-effort */ }
+    } catch {
+      /* rollback is best-effort */
+    }
   };
 
   try {
@@ -646,7 +701,7 @@ function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerR
 }
 
 export function switchToCodexAccount(profileId: string): CodexAccountManagerResult {
-  const target = listCodexAccounts().find(account => account.id === profileId);
+  const target = listCodexAccounts().find((account) => account.id === profileId);
   if (!target) {
     return { success: false, error: `Codex account ${profileId} not found.` };
   }
@@ -695,7 +750,9 @@ export function reconcileCodexAuthState(): void {
     const liveIdentity = readAuthIdentityFromRaw(liveAuthRaw);
     const profileIdentity = readAuthIdentityFromRaw(profileAuthRaw);
     const sameIdentity = Boolean(
-      (liveIdentity?.workspaceId && profileIdentity?.workspaceId && liveIdentity.workspaceId === profileIdentity.workspaceId) ||
+      (liveIdentity?.workspaceId &&
+        profileIdentity?.workspaceId &&
+        liveIdentity.workspaceId === profileIdentity.workspaceId) ||
       (liveIdentity?.email && liveIdentity.email === profileIdentity?.email),
     );
 

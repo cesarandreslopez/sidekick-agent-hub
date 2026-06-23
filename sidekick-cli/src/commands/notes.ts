@@ -4,11 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import {
-  readNotes,
-  getProjectSlug,
-  getProjectSlugRaw,
-} from 'sidekick-shared';
+import { readNotes, getProjectSlug, getProjectSlugRaw } from 'sidekick-shared';
 import type { KnowledgeNote, KnowledgeNoteType, KnowledgeNoteStatus } from 'sidekick-shared';
 
 const TYPE_COLORS: Record<string, (s: string) => string> = {
@@ -54,14 +50,12 @@ function printNotesList(notes: KnowledgeNote[]): void {
       meta.push(chalk.cyan(note.filePath));
     }
     if (note.tags && note.tags.length > 0) {
-      meta.push(chalk.dim(note.tags.map(t => `#${t}`).join(' ')));
+      meta.push(chalk.dim(note.tags.map((t) => `#${t}`).join(' ')));
     }
     process.stdout.write(`  ${meta.join(chalk.dim(' · '))}\n`);
 
     if (note.content && note.content !== title) {
-      const content = note.content.length > 140
-        ? note.content.slice(0, 137) + '...'
-        : note.content;
+      const content = note.content.length > 140 ? note.content.slice(0, 137) + '...' : note.content;
       process.stdout.write(`  ${chalk.dim(content)}\n`);
     }
 

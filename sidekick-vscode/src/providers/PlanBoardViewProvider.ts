@@ -10,7 +10,14 @@
 import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
 import type { PlanPersistenceService } from '../services/PlanPersistenceService';
-import type { PlanBoardState, PlanBoardMessage, WebviewPlanBoardMessage, ActivePlanDisplay, PlanHistoryEntry, PlanStepCard } from '../types/planBoard';
+import type {
+  PlanBoardState,
+  PlanBoardMessage,
+  WebviewPlanBoardMessage,
+  ActivePlanDisplay,
+  PlanHistoryEntry,
+  PlanStepCard,
+} from '../types/planBoard';
 import type { PlanState } from '../types/claudeSession';
 import type { PersistedPlan } from '../types/plan';
 import { readClaudeCodePlanFiles } from 'sidekick-shared';
@@ -33,7 +40,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _sessionMonitor: SessionMonitor,
-    private readonly _planPersistence?: PlanPersistenceService
+    private readonly _planPersistence?: PlanPersistenceService,
   ) {
     this._state = {
       activePlan: null,
@@ -41,16 +48,14 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       sessionActive: false,
     };
 
-    this._disposables.push(
-      this._sessionMonitor.onToolCall(() => this._updateBoard())
-    );
+    this._disposables.push(this._sessionMonitor.onToolCall(() => this._updateBoard()));
 
     this._disposables.push(
       this._sessionMonitor.onSessionStart(() => {
         this._state.sessionActive = true;
         this._syncFromSessionMonitor();
         this._sendStateToWebview();
-      })
+      }),
     );
 
     this._disposables.push(
@@ -59,7 +64,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         this._syncFromSessionMonitor();
         this._postMessage({ type: 'sessionEnd' });
         this._sendStateToWebview();
-      })
+      }),
     );
 
     this._syncFromSessionMonitor();
@@ -73,7 +78,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
@@ -81,8 +86,8 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'out', 'webview'),
-        vscode.Uri.joinPath(this._extensionUri, 'images')
-      ]
+        vscode.Uri.joinPath(this._extensionUri, 'images'),
+      ],
     };
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -90,7 +95,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     webviewView.webview.onDidReceiveMessage(
       (message: WebviewPlanBoardMessage) => this._handleWebviewMessage(message),
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     webviewView.onDidChangeVisibility(
@@ -100,14 +105,14 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     log('Plan board webview resolved');
   }
 
   dispose(): void {
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
   }
 
@@ -137,7 +142,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     if (planId === 'active' && this._state.activePlan?.rawMarkdown) {
       return this._state.activePlan.rawMarkdown;
     }
-    const hist = this._state.historicalPlans.find(p => p.id === planId);
+    const hist = this._state.historicalPlans.find((p) => p.id === planId);
     return hist?.rawMarkdown;
   }
 
@@ -204,7 +209,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private _planStateToDisplay(planState: PlanState): ActivePlanDisplay {
-    const steps: PlanStepCard[] = planState.steps.map(s => ({
+    const steps: PlanStepCard[] = planState.steps.map((s) => ({
       id: s.id,
       description: s.description,
       status: s.status,
@@ -212,7 +217,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       complexity: s.complexity,
     }));
 
-    const completed = steps.filter(s => s.status === 'completed').length;
+    const completed = steps.filter((s) => s.status === 'completed').length;
     const rate = steps.length > 0 ? completed / steps.length : 0;
 
     return {
@@ -226,7 +231,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private _persistedToHistoryEntry(plan: PersistedPlan): PlanHistoryEntry {
-    const steps: PlanStepCard[] = plan.steps.map(s => ({
+    const steps: PlanStepCard[] = plan.steps.map((s) => ({
       id: s.id,
       description: s.description,
       status: s.status,
@@ -263,7 +268,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     const nonce = getNonce();
 
     const iconUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
+      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png'),
     );
 
     return `<!DOCTYPE html>

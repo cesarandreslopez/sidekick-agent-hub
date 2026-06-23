@@ -34,9 +34,7 @@ export class PhraseRotationManager {
   /**
    * @param _postMessage - Callback to send messages to the webview.
    */
-  constructor(
-    private readonly _postMessage: (message: PhraseMessage) => void
-  ) {}
+  constructor(private readonly _postMessage: (message: PhraseMessage) => void) {}
 
   /**
    * Start rotating phrases at standard intervals.

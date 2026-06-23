@@ -84,7 +84,10 @@ function getHistoryFilePath(workspaceId: string, provider: QuotaHistoryRuntimePr
 }
 
 function ensureHistoryDir(workspaceId: string): void {
-  fs.mkdirSync(path.join(getConfigDir(), 'quota-history', workspaceId), { recursive: true, mode: 0o700 });
+  fs.mkdirSync(path.join(getConfigDir(), 'quota-history', workspaceId), {
+    recursive: true,
+    mode: 0o700,
+  });
 }
 
 function parseSampleLine(line: string): QuotaHistorySample | null {
@@ -243,7 +246,11 @@ async function runAppend(
   }
 
   const sampleTs = Date.parse(sample.timestamp);
-  if (lastTs !== undefined && Number.isFinite(sampleTs) && sampleTs - lastTs < options.minIntervalMs) {
+  if (
+    lastTs !== undefined &&
+    Number.isFinite(sampleTs) &&
+    sampleTs - lastTs < options.minIntervalMs
+  ) {
     return;
   }
 
@@ -283,9 +290,11 @@ export async function appendQuotaHistorySample(
   const filePath = getHistoryFilePath(sample.workspaceId, sample.runtimeProvider);
 
   const previous = appendChains.get(filePath) ?? Promise.resolve();
-  const next = previous.then(() => runAppend(sample, filePath, resolved)).catch(() => {
-    // Swallow chain-level errors so a single failure doesn't break subsequent appends.
-  });
+  const next = previous
+    .then(() => runAppend(sample, filePath, resolved))
+    .catch(() => {
+      // Swallow chain-level errors so a single failure doesn't break subsequent appends.
+    });
   appendChains.set(filePath, next);
   try {
     await next;
@@ -302,7 +311,9 @@ function defaultRangeMs(): { fromMs: number; toMs: number } {
   return { fromMs, toMs };
 }
 
-export async function readQuotaHistoryRange(options: QuotaHistoryRangeOptions): Promise<QuotaHistorySample[]> {
+export async function readQuotaHistoryRange(
+  options: QuotaHistoryRangeOptions,
+): Promise<QuotaHistorySample[]> {
   const filePath = getHistoryFilePath(options.workspaceId, options.provider);
   let raw: string;
   try {

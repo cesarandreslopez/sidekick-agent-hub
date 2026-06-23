@@ -25,6 +25,6 @@ Use **"Sidekick: Clear AI Review"** to dismiss all review annotations.
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.reviewModel` | `auto` | Model tier — resolves to `balanced` |
+| Setting                | Default | Description                         |
+| ---------------------- | ------- | ----------------------------------- |
+| `sidekick.reviewModel` | `auto`  | Model tier — resolves to `balanced` |

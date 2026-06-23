@@ -18,6 +18,6 @@ The description is copied to your clipboard, ready to paste into GitHub or GitLa
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.prDescriptionModel` | `auto` | Model tier — resolves to `balanced` |
+| Setting                       | Default | Description                         |
+| ----------------------------- | ------- | ----------------------------------- |
+| `sidekick.prDescriptionModel` | `auto`  | Model tier — resolves to `balanced` |

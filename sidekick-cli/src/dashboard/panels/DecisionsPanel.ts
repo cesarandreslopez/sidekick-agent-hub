@@ -21,7 +21,8 @@ export class DecisionsPanel implements SidePanel {
 
   getItems(_metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
     return staticData.decisions.map((d, i) => {
-      const preview = d.description.length > 45 ? d.description.substring(0, 42) + '...' : d.description;
+      const preview =
+        d.description.length > 45 ? d.description.substring(0, 42) + '...' : d.description;
       return {
         id: `dec-${i}`,
         label: preview,
@@ -37,7 +38,13 @@ export class DecisionsPanel implements SidePanel {
 
   getSearchableText(item: PanelItem): string {
     const d = item.data as DecisionEntry;
-    return [d.description, d.rationale, d.chosenOption, ...(d.alternatives || []), ...(d.tags || [])].join(' ');
+    return [
+      d.description,
+      d.rationale,
+      d.chosenOption,
+      ...(d.alternatives || []),
+      ...(d.tags || []),
+    ].join(' ');
   }
 
   // ── Detail renderer ──

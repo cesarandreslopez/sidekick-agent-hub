@@ -20,14 +20,30 @@ function printStatsSummary(history: HistoricalDataStore): void {
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
   const totalTokens = at.tokens.inputTokens + at.tokens.outputTokens;
-  process.stdout.write(`  ${chalk.dim('Sessions:')}       ${chalk.bold(formatNumber(at.sessionCount))}\n`);
-  process.stdout.write(`  ${chalk.dim('Messages:')}       ${chalk.bold(formatNumber(at.messageCount))}\n`);
-  process.stdout.write(`  ${chalk.dim('Total tokens:')}   ${chalk.bold(formatNumber(totalTokens))}\n`);
-  process.stdout.write(`  ${chalk.dim('  Input:')}         ${formatNumber(at.tokens.inputTokens)}\n`);
-  process.stdout.write(`  ${chalk.dim('  Output:')}        ${formatNumber(at.tokens.outputTokens)}\n`);
-  process.stdout.write(`  ${chalk.dim('  Cache write:')}   ${formatNumber(at.tokens.cacheWriteTokens)}\n`);
-  process.stdout.write(`  ${chalk.dim('  Cache read:')}    ${formatNumber(at.tokens.cacheReadTokens)}\n`);
-  process.stdout.write(`  ${chalk.dim('Total cost:')}     ${chalk.green(formatCost(at.totalCost))}\n`);
+  process.stdout.write(
+    `  ${chalk.dim('Sessions:')}       ${chalk.bold(formatNumber(at.sessionCount))}\n`,
+  );
+  process.stdout.write(
+    `  ${chalk.dim('Messages:')}       ${chalk.bold(formatNumber(at.messageCount))}\n`,
+  );
+  process.stdout.write(
+    `  ${chalk.dim('Total tokens:')}   ${chalk.bold(formatNumber(totalTokens))}\n`,
+  );
+  process.stdout.write(
+    `  ${chalk.dim('  Input:')}         ${formatNumber(at.tokens.inputTokens)}\n`,
+  );
+  process.stdout.write(
+    `  ${chalk.dim('  Output:')}        ${formatNumber(at.tokens.outputTokens)}\n`,
+  );
+  process.stdout.write(
+    `  ${chalk.dim('  Cache write:')}   ${formatNumber(at.tokens.cacheWriteTokens)}\n`,
+  );
+  process.stdout.write(
+    `  ${chalk.dim('  Cache read:')}    ${formatNumber(at.tokens.cacheReadTokens)}\n`,
+  );
+  process.stdout.write(
+    `  ${chalk.dim('Total cost:')}     ${chalk.green(formatCost(at.totalCost))}\n`,
+  );
   process.stdout.write(`  ${chalk.dim('Period:')}         ${at.firstDate} — ${at.lastDate}\n`);
   process.stdout.write('\n');
 
@@ -48,13 +64,18 @@ function printStatsSummary(history: HistoricalDataStore): void {
       } else if (m.cost > 0) {
         costStr = chalk.dim(` (${formatCost(m.cost)})`);
       }
-      process.stdout.write(`  ${chalk.cyan(m.model.padEnd(30))} ${formatNumber(m.calls).padStart(8)} calls${costStr}\n`);
+      process.stdout.write(
+        `  ${chalk.cyan(m.model.padEnd(30))} ${formatNumber(m.calls).padStart(8)} calls${costStr}\n`,
+      );
     }
     if (unpricedModels.length > 0) {
-      const label = unpricedModels.length === 1
-        ? '1 model unpriced'
-        : `${unpricedModels.length} models unpriced`;
-      process.stdout.write(chalk.dim(`  ⚠ ${label}: ${unpricedModels.join(', ')} — no pricing catalog entry.\n`));
+      const label =
+        unpricedModels.length === 1
+          ? '1 model unpriced'
+          : `${unpricedModels.length} models unpriced`;
+      process.stdout.write(
+        chalk.dim(`  ⚠ ${label}: ${unpricedModels.join(', ')} — no pricing catalog entry.\n`),
+      );
     }
     process.stdout.write('\n');
   }
@@ -66,10 +87,10 @@ function printStatsSummary(history: HistoricalDataStore): void {
 
     const sorted = [...at.toolUsage].sort((a, b) => b.calls - a.calls);
     for (const t of sorted) {
-      const failStr = t.failureCount > 0
-        ? chalk.red(` (${t.failureCount} failed)`)
-        : '';
-      process.stdout.write(`  ${chalk.yellow(t.tool.padEnd(30))} ${formatNumber(t.calls).padStart(8)} calls${failStr}\n`);
+      const failStr = t.failureCount > 0 ? chalk.red(` (${t.failureCount} failed)`) : '';
+      process.stdout.write(
+        `  ${chalk.yellow(t.tool.padEnd(30))} ${formatNumber(t.calls).padStart(8)} calls${failStr}\n`,
+      );
     }
     process.stdout.write('\n');
   }
@@ -83,21 +104,23 @@ function printStatsSummary(history: HistoricalDataStore): void {
     process.stdout.write(chalk.bold('Recent Activity (last 7 days)\n'));
     process.stdout.write(chalk.dim('─'.repeat(70) + '\n'));
     process.stdout.write(
-      chalk.dim('  Date'.padEnd(16) +
-        'Sessions'.padStart(10) +
-        'Messages'.padStart(10) +
-        'Tokens'.padStart(12) +
-        'Cost'.padStart(10)) + '\n'
+      chalk.dim(
+        '  Date'.padEnd(16) +
+          'Sessions'.padStart(10) +
+          'Messages'.padStart(10) +
+          'Tokens'.padStart(12) +
+          'Cost'.padStart(10),
+      ) + '\n',
     );
 
     for (const day of recent) {
       const tokens = day.tokens.inputTokens + day.tokens.outputTokens;
       process.stdout.write(
         `  ${day.date.padEnd(14)}` +
-        `${String(day.sessionCount).padStart(10)}` +
-        `${String(day.messageCount).padStart(10)}` +
-        `${formatNumber(tokens).padStart(12)}` +
-        `${formatCost(day.totalCost).padStart(10)}\n`
+          `${String(day.sessionCount).padStart(10)}` +
+          `${String(day.messageCount).padStart(10)}` +
+          `${formatNumber(tokens).padStart(12)}` +
+          `${formatCost(day.totalCost).padStart(10)}\n`,
       );
     }
     process.stdout.write('\n');

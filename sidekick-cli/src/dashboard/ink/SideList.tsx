@@ -22,10 +22,16 @@ function truncateTaggedLabel(label: string, maxVisible: number): string {
   while (i < label.length) {
     if (label[i] === '{') {
       const close = label.indexOf('}', i);
-      if (close !== -1) { i = close + 1; continue; }
+      if (close !== -1) {
+        i = close + 1;
+        continue;
+      }
     }
     visible++;
-    if (visible >= maxVisible - 1) { cutIndex = i + 1; break; }
+    if (visible >= maxVisible - 1) {
+      cutIndex = i + 1;
+      break;
+    }
     i++;
   }
   // Close any open blessed tags by appending a reset — but since parseBlessedTags
@@ -60,10 +66,12 @@ function applySearchHighlight(label: string, filterString: string): string {
   }
   // Split on blessed tags, only highlight within non-tag segments
   const parts = label.split(/(\{\/?\w[\w-]*\})/g);
-  return parts.map(part => {
-    if (part.startsWith('{') && part.endsWith('}')) return part;
-    return part.replace(pattern, '{blue-bg}{white-fg}$1{/white-fg}{/blue-bg}');
-  }).join('');
+  return parts
+    .map((part) => {
+      if (part.startsWith('{') && part.endsWith('}')) return part;
+      return part.replace(pattern, '{blue-bg}{white-fg}$1{/white-fg}{/blue-bg}');
+    })
+    .join('');
 }
 
 export function SideList({
@@ -98,7 +106,10 @@ export function SideList({
     >
       {/* Label */}
       <Box>
-        <Text color={borderColor}> {panelTitle} ({items.length}) </Text>
+        <Text color={borderColor}>
+          {' '}
+          {panelTitle} ({items.length}){' '}
+        </Text>
       </Box>
 
       {/* Scroll indicator top */}
@@ -134,13 +145,21 @@ export function SideList({
       {/* Empty-state hint */}
       {items.length === 0 && viewportHeight >= 3 && (
         <>
-          <Box key="empty-hint-pad" width={innerWidth}><Text> </Text></Box>
+          <Box key="empty-hint-pad" width={innerWidth}>
+            <Text> </Text>
+          </Box>
           <Box key="empty-hint-1" justifyContent="center" width={innerWidth}>
-            <Text color="gray">{sessionFilterActive ? 'No items in this session' : 'No items yet'}</Text>
+            <Text color="gray">
+              {sessionFilterActive ? 'No items in this session' : 'No items yet'}
+            </Text>
           </Box>
           {sessionFilterActive && (
             <Box key="empty-hint-2" justifyContent="center" width={innerWidth}>
-              <Text color="gray">Press </Text><Text color="magenta" bold>f</Text><Text color="gray"> to see all</Text>
+              <Text color="gray">Press </Text>
+              <Text color="magenta" bold>
+                f
+              </Text>
+              <Text color="gray"> to see all</Text>
             </Box>
           )}
           {!sessionFilterActive && emptyStateHint && viewportHeight >= 5 && (
@@ -153,11 +172,27 @@ export function SideList({
 
       {/* Fill remaining space */}
       {visibleItems.length < viewportHeight &&
-        Array.from({ length: Math.max(0, viewportHeight - visibleItems.length - (items.length === 0 && viewportHeight >= 3 ? (sessionFilterActive ? 3 : (!sessionFilterActive && emptyStateHint && viewportHeight >= 5 ? 3 : 2)) : 0)) }, (_, i) => (
-          <Box key={`empty-${i}`} width={innerWidth}>
-            <Text> </Text>
-          </Box>
-        ))}
+        Array.from(
+          {
+            length: Math.max(
+              0,
+              viewportHeight -
+                visibleItems.length -
+                (items.length === 0 && viewportHeight >= 3
+                  ? sessionFilterActive
+                    ? 3
+                    : !sessionFilterActive && emptyStateHint && viewportHeight >= 5
+                      ? 3
+                      : 2
+                  : 0),
+            ),
+          },
+          (_, i) => (
+            <Box key={`empty-${i}`} width={innerWidth}>
+              <Text> </Text>
+            </Box>
+          ),
+        )}
 
       {/* Scroll indicator bottom */}
       {hasMoreBelow && (

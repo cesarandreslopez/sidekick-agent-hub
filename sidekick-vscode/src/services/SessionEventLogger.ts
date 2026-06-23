@@ -89,7 +89,9 @@ export class SessionEventLogger implements vscode.Disposable {
       if (fs.existsSync(this.manifestPath)) {
         const raw = await fs.promises.readFile(this.manifestPath, 'utf-8');
         this.manifest = JSON.parse(raw) as SessionEventLogManifest;
-        log(`SessionEventLogger: loaded manifest with ${Object.keys(this.manifest.sessions).length} sessions`);
+        log(
+          `SessionEventLogger: loaded manifest with ${Object.keys(this.manifest.sessions).length} sessions`,
+        );
       } else {
         log('SessionEventLogger: initialized new manifest');
       }
@@ -239,9 +241,10 @@ export class SessionEventLogger implements vscode.Disposable {
    * Resolves the event-logs directory path based on platform.
    */
   private getEventLogsDir(): string {
-    const configDir = process.platform === 'win32'
-      ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
-      : path.join(os.homedir(), '.config', 'sidekick');
+    const configDir =
+      process.platform === 'win32'
+        ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
+        : path.join(os.homedir(), '.config', 'sidekick');
     return path.join(configDir, 'event-logs');
   }
 

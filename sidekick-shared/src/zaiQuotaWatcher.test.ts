@@ -66,7 +66,11 @@ describe('ZaiQuotaWatcher', () => {
     expect(derived.providerId).toBe('zai');
     expect(derived.fiveHour.utilization).toBeGreaterThan(0);
     // Snapshot + history should be written.
-    expect(writeSnapshot).toHaveBeenCalledWith('zai', 'default', expect.objectContaining({ providerId: 'zai' }));
+    expect(writeSnapshot).toHaveBeenCalledWith(
+      'zai',
+      'default',
+      expect.objectContaining({ providerId: 'zai' }),
+    );
     watcher.dispose();
   });
 
@@ -185,8 +189,8 @@ describe('ZaiQuotaWatcher', () => {
     });
     watcher.start();
     watcher.ingestAssistantTurns([
-      makeTurn(60),                // 1h ago — inside 5h
-      makeTurn(60 * 24 * 8),       // 8d ago — outside 7d
+      makeTurn(60), // 1h ago — inside 5h
+      makeTurn(60 * 24 * 8), // 8d ago — outside 7d
     ]);
     watcher.refresh();
     expect(watcher.bufferedTurnCount).toBe(2);

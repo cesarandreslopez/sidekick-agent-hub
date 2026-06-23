@@ -24,7 +24,7 @@ import type { KnowledgeCandidateDisplay } from '../types/knowledgeNote';
 export function extractGotchaCandidates(
   _errors: AnalyzedError[],
   toolCalls: ToolCall[],
-  projectPath: string
+  projectPath: string,
 ): KnowledgeCandidateDisplay[] {
   const candidates: KnowledgeCandidateDisplay[] = [];
 
@@ -75,7 +75,7 @@ export function extractGotchaCandidates(
 export function extractPatternCandidates(
   recoveryPatterns: RecoveryPattern[],
   _toolCalls: ToolCall[],
-  projectPath: string
+  projectPath: string,
 ): KnowledgeCandidateDisplay[] {
   const candidates: KnowledgeCandidateDisplay[] = [];
 
@@ -84,7 +84,7 @@ export function extractPatternCandidates(
     // Look for file paths in the pattern description or approaches
     const filePath = extractFilePathFromText(
       `${pattern.description} ${pattern.failedApproach} ${pattern.successfulApproach}`,
-      projectPath
+      projectPath,
     );
 
     if (!filePath) continue;
@@ -107,7 +107,7 @@ export function extractPatternCandidates(
  */
 export function extractGuidelineCandidates(
   suggestions: Array<{ title: string; observed: string; suggestion: string; reasoning: string }>,
-  projectPath: string
+  projectPath: string,
 ): KnowledgeCandidateDisplay[] {
   const candidates: KnowledgeCandidateDisplay[] = [];
 
@@ -138,7 +138,7 @@ export function extractGuidelineCandidates(
  */
 export function extractTruncationCandidates(
   truncationEvents: TruncationEvent[],
-  projectPath: string
+  projectPath: string,
 ): KnowledgeCandidateDisplay[] {
   const candidates: KnowledgeCandidateDisplay[] = [];
 
@@ -176,7 +176,7 @@ export function extractKnowledgeCandidates(
   toolCalls: ToolCall[],
   suggestions: Array<{ title: string; observed: string; suggestion: string; reasoning: string }>,
   projectPath: string,
-  truncationEvents?: TruncationEvent[]
+  truncationEvents?: TruncationEvent[],
 ): KnowledgeCandidateDisplay[] {
   const all: KnowledgeCandidateDisplay[] = [];
 
@@ -189,7 +189,7 @@ export function extractKnowledgeCandidates(
 
   // Deduplicate by filePath + noteType
   const seen = new Set<string>();
-  return all.filter(candidate => {
+  return all.filter((candidate) => {
     const key = `${candidate.filePath}::${candidate.noteType}`;
     if (seen.has(key)) return false;
     seen.add(key);

@@ -47,16 +47,12 @@ describe('extractToolCalls', () => {
   });
 
   it('skips blocks without a name', () => {
-    const event = makeAssistantEvent([
-      { type: 'tool_use', id: 'tu_1', input: { x: 1 } },
-    ]);
+    const event = makeAssistantEvent([{ type: 'tool_use', id: 'tu_1', input: { x: 1 } }]);
     expect(extractToolCalls(event)).toEqual([]);
   });
 
   it('defaults input to empty object when missing', () => {
-    const event = makeAssistantEvent([
-      { type: 'tool_use', id: 'tu_1', name: 'Glob' },
-    ]);
+    const event = makeAssistantEvent([{ type: 'tool_use', id: 'tu_1', name: 'Glob' }]);
     const calls = extractToolCalls(event);
     expect(calls).toHaveLength(1);
     expect(calls[0].input).toEqual({});
@@ -88,8 +84,10 @@ describe('extractToolCall', () => {
   });
 
   it('returns null for assistant content-block events', () => {
-    expect(extractToolCall(makeAssistantEvent([
-      { type: 'tool_use', id: 'tu_1', name: 'Read', input: {} },
-    ]))).toBeNull();
+    expect(
+      extractToolCall(
+        makeAssistantEvent([{ type: 'tool_use', id: 'tu_1', name: 'Read', input: {} }]),
+      ),
+    ).toBeNull();
   });
 });

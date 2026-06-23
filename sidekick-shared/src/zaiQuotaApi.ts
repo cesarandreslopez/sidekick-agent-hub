@@ -13,7 +13,11 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 type ZaiSnapshotProvider = 'zai';
 type SnapshotReader = (providerId: ZaiSnapshotProvider, accountId: string) => QuotaState | null;
-type SnapshotWriter = (providerId: ZaiSnapshotProvider, accountId: string, quota: QuotaState) => void;
+type SnapshotWriter = (
+  providerId: ZaiSnapshotProvider,
+  accountId: string,
+  quota: QuotaState,
+) => void;
 
 export type ZaiPlatform = 'ZAI' | 'ZHIPU';
 export type ZaiCredentialSource = 'opencode' | 'env';
@@ -90,10 +94,14 @@ function openCodeDataDirCandidates(): string[] {
   if (process.platform === 'darwin') {
     candidates.push(path.join(os.homedir(), 'Library', 'Application Support', 'opencode'));
   } else if (process.platform === 'win32') {
-    candidates.push(path.join(
-      process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'),
-      'opencode',
-    ));
+    candidates.push(
+      path.join(
+        process.env.LOCALAPPDATA ||
+          process.env.APPDATA ||
+          path.join(os.homedir(), 'AppData', 'Local'),
+        'opencode',
+      ),
+    );
   }
 
   return Array.from(new Set(candidates));
@@ -103,10 +111,14 @@ function readOpenCodeAuthToken(openCodeDataDir?: string): string | null {
   const candidates = openCodeDataDir ? [openCodeDataDir] : openCodeDataDirCandidates();
   for (const dataDir of candidates) {
     try {
-      const parsed = JSON.parse(fs.readFileSync(path.join(dataDir, 'auth.json'), 'utf8')) as Record<string, unknown>;
+      const parsed = JSON.parse(fs.readFileSync(path.join(dataDir, 'auth.json'), 'utf8')) as Record<
+        string,
+        unknown
+      >;
       const codingPlan = parsed['zai-coding-plan'] as { key?: unknown } | undefined;
       const zai = parsed.zai as { key?: unknown } | undefined;
-      if (typeof codingPlan?.key === 'string' && codingPlan.key.trim()) return codingPlan.key.trim();
+      if (typeof codingPlan?.key === 'string' && codingPlan.key.trim())
+        return codingPlan.key.trim();
       if (typeof zai?.key === 'string' && zai.key.trim()) return zai.key.trim();
     } catch {
       // Try the next candidate.
@@ -159,7 +171,9 @@ function quotaLimitUrl(baseUrl: string): string | null {
 
 function tokenLimitEntries(payload: ZaiQuotaLimitPayload): ZaiQuotaLimitEntry[] {
   const limits = payload.data?.limits ?? payload.limits ?? [];
-  return limits.filter((item) => item?.type === 'TOKENS_LIMIT' && typeof item.percentage === 'number');
+  return limits.filter(
+    (item) => item?.type === 'TOKENS_LIMIT' && typeof item.percentage === 'number',
+  );
 }
 
 function isFiveHourLimit(item: ZaiQuotaLimitEntry): boolean {
@@ -189,38 +203,46 @@ export function quotaStateFromZaiQuotaLimitPayload(
   const data = payload as ZaiQuotaLimitPayload;
   const tokenLimits = tokenLimitEntries(data);
   const fiveHourLimit = tokenLimits.find(isFiveHourLimit) ?? tokenLimits[0];
-  const weeklyLimit = tokenLimits.find(isWeeklyLimit) ?? tokenLimits.find(item => item !== fiveHourLimit);
+  const weeklyLimit =
+    tokenLimits.find(isWeeklyLimit) ?? tokenLimits.find((item) => item !== fiveHourLimit);
   const level = data.data?.level;
 
   if (!fiveHourLimit || !weeklyLimit) {
-    return unavailableZaiQuotaState('z.ai quota API returned no token quota windows.', {
-      failureKind: 'unknown',
-    }, capturedAt);
+    return unavailableZaiQuotaState(
+      'z.ai quota API returned no token quota windows.',
+      {
+        failureKind: 'unknown',
+      },
+      capturedAt,
+    );
   }
 
-  return withQuotaProjections({
-    fiveHour: {
-      utilization: fiveHourLimit.percentage ?? 0,
-      resetsAt: isoFromEpochMs(fiveHourLimit.nextResetTime),
+  return withQuotaProjections(
+    {
+      fiveHour: {
+        utilization: fiveHourLimit.percentage ?? 0,
+        resetsAt: isoFromEpochMs(fiveHourLimit.nextResetTime),
+      },
+      sevenDay: {
+        utilization: weeklyLimit.percentage ?? 0,
+        resetsAt: isoFromEpochMs(weeklyLimit.nextResetTime),
+      },
+      available: true,
+      providerId: 'zai',
+      source: 'api',
+      capturedAt,
+      fiveHourLabel: '5-Hour',
+      sevenDayLabel: 'Weekly',
+      planType: level,
+      limitId: level ? `zai-${level}` : 'zai-coding-plan',
+      limitName: displayPlanName(level),
     },
-    sevenDay: {
-      utilization: weeklyLimit.percentage ?? 0,
-      resetsAt: isoFromEpochMs(weeklyLimit.nextResetTime),
+    {
+      fiveHourWindowMs: FIVE_HOUR_WINDOW_MS,
+      sevenDayWindowMs: SEVEN_DAY_WINDOW_MS,
+      capturedAt,
     },
-    available: true,
-    providerId: 'zai',
-    source: 'api',
-    capturedAt,
-    fiveHourLabel: '5-Hour',
-    sevenDayLabel: 'Weekly',
-    planType: level,
-    limitId: level ? `zai-${level}` : 'zai-coding-plan',
-    limitName: displayPlanName(level),
-  }, {
-    fiveHourWindowMs: FIVE_HOUR_WINDOW_MS,
-    sevenDayWindowMs: SEVEN_DAY_WINDOW_MS,
-    capturedAt,
-  });
+  );
 }
 
 function parseRetryAfterMs(retryAfter: string | null): number | undefined {
@@ -260,7 +282,11 @@ export async function fetchZaiQuotaFromApi(options: ZaiQuotaApiOptions = {}): Pr
 
   const url = quotaLimitUrl(credentials.baseUrl);
   if (!url) {
-    return unavailableZaiQuotaState('Invalid z.ai base URL.', { failureKind: 'unknown' }, capturedAt);
+    return unavailableZaiQuotaState(
+      'Invalid z.ai base URL.',
+      { failureKind: 'unknown' },
+      capturedAt,
+    );
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -292,14 +318,19 @@ export async function fetchZaiQuotaFromApi(options: ZaiQuotaApiOptions = {}): Pr
     if (!response.ok) {
       const failureKind = failureKindForStatus(response.status);
       const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
-      const detail = parsed && typeof parsed === 'object' && 'msg' in parsed
-        ? String((parsed as { msg?: unknown }).msg ?? '')
-        : '';
-      const baseMessage = failureKind === 'auth'
-        ? `z.ai quota API rejected credentials (HTTP ${response.status}).`
-        : `z.ai quota API error (HTTP ${response.status}).`;
+      const detail =
+        parsed && typeof parsed === 'object' && 'msg' in parsed
+          ? String((parsed as { msg?: unknown }).msg ?? '')
+          : '';
+      const baseMessage =
+        failureKind === 'auth'
+          ? `z.ai quota API rejected credentials (HTTP ${response.status}).`
+          : `z.ai quota API error (HTTP ${response.status}).`;
       return unavailableZaiQuotaState(
-        sanitizeErrorMessage([baseMessage, detail].filter(Boolean).join(' '), credentials.authToken),
+        sanitizeErrorMessage(
+          [baseMessage, detail].filter(Boolean).join(' '),
+          credentials.authToken,
+        ),
         { failureKind, httpStatus: response.status, retryAfterMs },
         capturedAt,
       );
@@ -329,7 +360,9 @@ function enrichZaiQuota(state: QuotaState): ProviderQuotaState<'zai'> {
   };
 }
 
-export async function resolveZaiQuota(options: ZaiQuotaResolveOptions = {}): Promise<ProviderQuotaState<'zai'>> {
+export async function resolveZaiQuota(
+  options: ZaiQuotaResolveOptions = {},
+): Promise<ProviderQuotaState<'zai'>> {
   const accountId = options.accountId ?? DEFAULT_ACCOUNT_ID;
   const readSnapshot = options.readSnapshot ?? readQuotaSnapshot;
   const writeSnapshot = options.writeSnapshot ?? writeQuotaSnapshot;

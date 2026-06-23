@@ -55,7 +55,7 @@ function formatRelativeTime(date: Date): string {
 export class SessionFolderPicker {
   constructor(
     private readonly sessionMonitor: SessionMonitor,
-    private readonly workspaceState: vscode.Memento
+    private readonly workspaceState: vscode.Memento,
   ) {}
 
   /**
@@ -74,7 +74,7 @@ export class SessionFolderPicker {
 
     if (folders.length === 0) {
       vscode.window.showInformationMessage(
-        `No ${provider.displayName} sessions found. Start ${provider.displayName} in any directory to create sessions.`
+        `No ${provider.displayName} sessions found. Start ${provider.displayName} in any directory to create sessions.`,
       );
       return undefined;
     }
@@ -83,13 +83,13 @@ export class SessionFolderPicker {
       label: folder.name,
       description: `${folder.sessionCount} session${folder.sessionCount !== 1 ? 's' : ''}, active ${formatRelativeTime(folder.lastModified)}`,
       detail: folder.encodedName || folder.dir,
-      folder
+      folder,
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
       placeHolder: `Select a ${provider.displayName} project folder to monitor`,
       matchOnDescription: true,
-      matchOnDetail: true
+      matchOnDetail: true,
     });
 
     return selected?.folder.dir;
@@ -110,28 +110,30 @@ export class SessionFolderPicker {
       return undefined;
     }
 
-    const items = await Promise.all(sessions.map(async (sessionPath) => {
-      const filename = provider.getSessionId(sessionPath);
-      let modifiedTime: Date;
+    const items = await Promise.all(
+      sessions.map(async (sessionPath) => {
+        const filename = provider.getSessionId(sessionPath);
+        let modifiedTime: Date;
 
-      try {
-        const stats = await vscode.workspace.fs.stat(vscode.Uri.file(sessionPath));
-        modifiedTime = new Date(stats.mtime);
-      } catch {
-        modifiedTime = new Date();
-      }
+        try {
+          const stats = await vscode.workspace.fs.stat(vscode.Uri.file(sessionPath));
+          modifiedTime = new Date(stats.mtime);
+        } catch {
+          modifiedTime = new Date();
+        }
 
-      return {
-        label: filename,
-        description: formatRelativeTime(modifiedTime),
-        detail: sessionPath,
-        sessionPath
-      };
-    }));
+        return {
+          label: filename,
+          description: formatRelativeTime(modifiedTime),
+          detail: sessionPath,
+          sessionPath,
+        };
+      }),
+    );
 
     const selected = await vscode.window.showQuickPick(items, {
       placeHolder: 'Select a session to monitor',
-      matchOnDescription: true
+      matchOnDescription: true,
     });
 
     return selected?.sessionPath;
@@ -173,14 +175,16 @@ export class SessionFolderPicker {
           await this.sessionMonitor.switchToSession(sessionPath);
         }
 
-        vscode.window.showInformationMessage(
-          `Now monitoring session from: ${path.basename(path.dirname(sessionPath))}`,
-          'Reset to Auto-Detect'
-        ).then(action => {
-          if (action === 'Reset to Auto-Detect') {
-            vscode.commands.executeCommand('sidekick.clearCustomSessionPath');
-          }
-        });
+        vscode.window
+          .showInformationMessage(
+            `Now monitoring session from: ${path.basename(path.dirname(sessionPath))}`,
+            'Reset to Auto-Detect',
+          )
+          .then((action) => {
+            if (action === 'Reset to Auto-Detect') {
+              vscode.commands.executeCommand('sidekick.clearCustomSessionPath');
+            }
+          });
 
         return true;
       } else {

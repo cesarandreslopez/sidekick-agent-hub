@@ -32,7 +32,7 @@ function findCodexCli(): string {
   if (result) return result;
   throw new ConnectionError(
     'Codex CLI not found. Install it (npm install -g @openai/codex) or choose a different inference provider.',
-    'codex'
+    'codex',
   );
 }
 
@@ -69,9 +69,13 @@ export class CodexClient implements ClaudeClient {
         });
 
         // Kill child on abort (covers both timeout and user cancellation)
-        signal.addEventListener('abort', () => {
-          if (!child.killed) child.kill('SIGTERM');
-        }, { once: true });
+        signal.addEventListener(
+          'abort',
+          () => {
+            if (!child.killed) child.kill('SIGTERM');
+          },
+          { once: true },
+        );
 
         // Write prompt to stdin and close
         child.stdin.write(prompt);
@@ -79,7 +83,9 @@ export class CodexClient implements ClaudeClient {
 
         // Collect stderr for error reporting
         let stderr = '';
-        child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+        child.stderr.on('data', (chunk: Buffer) => {
+          stderr += chunk.toString();
+        });
 
         // Parse JSONL from stdout
         let response = '';
@@ -111,9 +117,9 @@ export class CodexClient implements ClaudeClient {
           if (errorMessage) {
             reject(new Error(`Codex error: ${errorMessage}`));
           } else if (code !== 0 && code !== null) {
-            reject(new Error(
-              `Codex exited with code ${code}${stderr ? ': ' + stderr.trim() : ''}`
-            ));
+            reject(
+              new Error(`Codex exited with code ${code}${stderr ? ': ' + stderr.trim() : ''}`),
+            );
           } else {
             resolve(response);
           }

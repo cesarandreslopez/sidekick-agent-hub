@@ -22,18 +22,24 @@ export function printPeakHoursBlock(state: PeakHoursState): void {
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
   if (state.notApplicable) {
-    process.stdout.write(chalk.dim(`  ${state.note || 'Claude peak hours do not apply to this provider.'}\n`));
+    process.stdout.write(
+      chalk.dim(`  ${state.note || 'Claude peak hours do not apply to this provider.'}\n`),
+    );
     return;
   }
 
   if (state.unavailable) {
-    process.stdout.write(chalk.dim('  Peak-hours status unavailable (promoclock.co unreachable).\n'));
+    process.stdout.write(
+      chalk.dim('  Peak-hours status unavailable (promoclock.co unreachable).\n'),
+    );
     return;
   }
 
   const color = state.isPeak ? chalk.hex('#E59C4F') : chalk.green;
   const dot = '\u25cf';
-  process.stdout.write(`  ${color(dot)} ${color(state.label || (state.isPeak ? 'Peak' : 'Off-Peak'))}\n`);
+  process.stdout.write(
+    `  ${color(dot)} ${color(state.label || (state.isPeak ? 'Peak' : 'Off-Peak'))}\n`,
+  );
 
   const countdown = formatCountdown(state.minutesUntilChange);
   if (countdown) {
@@ -46,7 +52,9 @@ export function printPeakHoursBlock(state: PeakHoursState): void {
   if (state.note) {
     process.stdout.write(chalk.dim(`  ${state.note}\n`));
   }
-  process.stdout.write(chalk.dim('  Source: promoclock.co (third-party, unaffiliated with Anthropic)\n'));
+  process.stdout.write(
+    chalk.dim('  Source: promoclock.co (third-party, unaffiliated with Anthropic)\n'),
+  );
 }
 
 /**

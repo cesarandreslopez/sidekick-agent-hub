@@ -52,11 +52,15 @@ export class ExplanationService {
     complexity: ComplexityLevel,
     fileContext?: { fileName: string; languageId: string },
     extraInstructions?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<string> {
     // Read model from configuration (default: sonnet)
     const config = vscode.workspace.getConfiguration('sidekick');
-    const model = resolveModel(config.get<string>('explanationModel') ?? 'auto', this.authService.getProviderId(), 'explanationModel');
+    const model = resolveModel(
+      config.get<string>('explanationModel') ?? 'auto',
+      this.authService.getProviderId(),
+      'explanationModel',
+    );
 
     // Build adaptive prompt
     const prompt = this.buildPrompt(text, contentType, complexity, fileContext, extraInstructions);
@@ -69,11 +73,12 @@ export class ExplanationService {
     const opLabel = `Generating explanation via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
       operation: opLabel,
-      task: (taskSignal: AbortSignal) => this.authService.complete(prompt, {
-        model,
-        maxTokens: 2000,
-        signal: taskSignal,
-      }),
+      task: (taskSignal: AbortSignal) =>
+        this.authService.complete(prompt, {
+          model,
+          maxTokens: 2000,
+          signal: taskSignal,
+        }),
       config: timeoutConfig,
       contextSize,
       showProgress: true,
@@ -110,7 +115,7 @@ export class ExplanationService {
     contentType: ContentType,
     complexity: ComplexityLevel,
     fileContext?: { fileName: string; languageId: string },
-    extraInstructions?: string
+    extraInstructions?: string,
   ): string {
     const audienceContext = this.getAudienceContext(complexity);
     const contentGuidance = this.getContentGuidance(contentType);

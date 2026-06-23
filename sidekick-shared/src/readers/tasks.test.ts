@@ -12,9 +12,46 @@ vi.mock('fs', () => ({
 const mockStore = {
   schemaVersion: 1,
   tasks: {
-    '1': { taskId: '1', subject: 'Task One', status: 'pending', sessionAge: 0, blockedBy: [], blocks: [], sessionOrigin: 'abc', carriedOver: false, createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-02T00:00:00Z', toolCallCount: 5 },
-    '2': { taskId: '2', subject: 'Task Two', status: 'completed', sessionAge: 1, blockedBy: [], blocks: [], sessionOrigin: 'abc', carriedOver: true, createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-03T00:00:00Z', toolCallCount: 3 },
-    '3': { taskId: '3', subject: 'Task Three', status: 'pending', sessionAge: 2, blockedBy: [], blocks: [], sessionOrigin: 'def', carriedOver: true, createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z', toolCallCount: 0, isGoalGate: true },
+    '1': {
+      taskId: '1',
+      subject: 'Task One',
+      status: 'pending',
+      sessionAge: 0,
+      blockedBy: [],
+      blocks: [],
+      sessionOrigin: 'abc',
+      carriedOver: false,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-02T00:00:00Z',
+      toolCallCount: 5,
+    },
+    '2': {
+      taskId: '2',
+      subject: 'Task Two',
+      status: 'completed',
+      sessionAge: 1,
+      blockedBy: [],
+      blocks: [],
+      sessionOrigin: 'abc',
+      carriedOver: true,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-03T00:00:00Z',
+      toolCallCount: 3,
+    },
+    '3': {
+      taskId: '3',
+      subject: 'Task Three',
+      status: 'pending',
+      sessionAge: 2,
+      blockedBy: [],
+      blocks: [],
+      sessionOrigin: 'def',
+      carriedOver: true,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+      toolCallCount: 0,
+      isGoalGate: true,
+    },
   },
   lastSessionId: 'abc',
   sessionCount: 2,
@@ -34,7 +71,7 @@ describe('readTasks', () => {
   it('filters by pending status', async () => {
     const tasks = await readTasks('test-slug', { status: 'pending' });
     expect(tasks).toHaveLength(2);
-    expect(tasks.every(t => t.status === 'pending')).toBe(true);
+    expect(tasks.every((t) => t.status === 'pending')).toBe(true);
   });
 
   it('filters by completed status', async () => {

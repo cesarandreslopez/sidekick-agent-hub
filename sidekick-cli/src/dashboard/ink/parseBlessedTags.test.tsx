@@ -11,14 +11,17 @@ function serialize(node: React.ReactNode): string {
   if (React.isValidElement(node)) {
     const el = node as React.ReactElement<Record<string, unknown>>;
     const { children, ...props } = el.props;
-    const tag = typeof el.type === 'string' ? el.type : (el.type as { name?: string })?.name || 'Fragment';
+    const tag =
+      typeof el.type === 'string' ? el.type : (el.type as { name?: string })?.name || 'Fragment';
 
     const propStr = Object.entries(props)
       .filter(([k]) => k !== 'key')
       .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
       .join(' ');
 
-    const childStr = React.Children.map(children as React.ReactNode | React.ReactNode[], serialize)?.join('') ?? '';
+    const childStr =
+      React.Children.map(children as React.ReactNode | React.ReactNode[], serialize)?.join('') ??
+      '';
     return propStr ? `<${tag} ${propStr}>${childStr}</${tag}>` : `<${tag}>${childStr}</${tag}>`;
   }
 
@@ -105,7 +108,7 @@ describe('parseBlessedLines', () => {
   it('splits on newlines and wraps each in Text', () => {
     const result = parseBlessedLines('line1\nline2\nline3');
     expect(result).toHaveLength(3);
-    result.forEach(node => {
+    result.forEach((node) => {
       expect(React.isValidElement(node)).toBe(true);
     });
   });

@@ -12,9 +12,9 @@ import { FileContext } from './explain';
  * Extends FileContext with diagnostic-specific metadata
  */
 export interface ErrorContext extends FileContext {
-  errorMessage: string;                // Diagnostic message text
-  errorCode: string | undefined;       // Error code (e.g., "TS2322", "E0001")
-  severity: 'error' | 'warning';       // Mapped from DiagnosticSeverity
+  errorMessage: string; // Diagnostic message text
+  errorCode: string | undefined; // Error code (e.g., "TS2322", "E0001")
+  severity: 'error' | 'warning'; // Mapped from DiagnosticSeverity
   range: {
     startLine: number;
     startCharacter: number;
@@ -27,26 +27,26 @@ export interface ErrorContext extends FileContext {
  * AI-generated explanation for an error
  */
 export interface ErrorExplanation {
-  rootCause: string;                   // What's actually wrong
-  whyItHappens: string;                // Common scenario explanation
-  suggestedFix: string;                // Plain text fix description
-  fixedCode?: string;                  // Actual code to apply, if determinable
+  rootCause: string; // What's actually wrong
+  whyItHappens: string; // Common scenario explanation
+  suggestedFix: string; // Plain text fix description
+  fixedCode?: string; // Actual code to apply, if determinable
 }
 
 /**
  * A concrete fix suggestion that can be applied
  */
 export interface FixSuggestion {
-  documentUri: string;                 // Serialized URI of document
+  documentUri: string; // Serialized URI of document
   range: {
     startLine: number;
     startCharacter: number;
     endLine: number;
     endCharacter: number;
   };
-  originalCode: string;                // Code being replaced
-  fixedCode: string;                   // Replacement code
-  explanation: string;                 // Why this fix works
+  originalCode: string; // Code being replaced
+  fixedCode: string; // Replacement code
+  explanation: string; // Why this fix works
 }
 
 /**

@@ -31,10 +31,12 @@ describe('CodexRolloutParser', () => {
 
       const events = parser.convertLine(line);
       expect(events).toHaveLength(0);
-      expect(parser.getSessionMeta()).toEqual(expect.objectContaining({
-        id: 'sess-123',
-        cwd: '/home/user/project',
-      }));
+      expect(parser.getSessionMeta()).toEqual(
+        expect.objectContaining({
+          id: 'sess-123',
+          cwd: '/home/user/project',
+        }),
+      );
     });
   });
 
@@ -208,7 +210,12 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{ type: string; id: string; name: string; input: Record<string, unknown> }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+      }>;
       expect(content[0].type).toBe('tool_use');
       expect(content[0].id).toBe('call-abc');
       expect(content[0].name).toBe('Read');
@@ -233,7 +240,10 @@ describe('CodexRolloutParser', () => {
 
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{ type: string; input: Record<string, unknown> }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        input: Record<string, unknown>;
+      }>;
       expect(content[0].input).toEqual({ raw: 'not json', _sidekickRawToolName: 'bash' });
     });
 
@@ -252,7 +262,10 @@ describe('CodexRolloutParser', () => {
 
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{ name: string; input: Record<string, unknown> }>;
+      const content = events[0].message.content as Array<{
+        name: string;
+        input: Record<string, unknown>;
+      }>;
       expect(content[0].name).toBe('Bash');
       expect(content[0].input.cmd).toBe('ls -la src');
       expect(content[0].input.command).toBe('ls -la src');
@@ -277,7 +290,11 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      const content = events[0].message.content as Array<{ type: string; tool_use_id: string; content: string }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        tool_use_id: string;
+        content: string;
+      }>;
       expect(content[0].type).toBe('tool_result');
       expect(content[0].tool_use_id).toBe('call-abc');
       expect(content[0].content).toBe('file contents here');
@@ -322,7 +339,11 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{ type: string; name: string; input: Record<string, unknown> }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        name: string;
+        input: Record<string, unknown>;
+      }>;
       expect(content[0].name).toBe('Bash');
       expect(content[0].input.command).toBe('ls -la /tmp');
       expect(content[0].input.workdir).toBe('/home/user');
@@ -509,13 +530,26 @@ describe('CodexRolloutParser', () => {
 
       // First: tool_use (Bash)
       expect(endEvents[0].type).toBe('assistant');
-      const toolUse = (endEvents[0].message.content as Array<{ type: string; name: string; input: Record<string, unknown> }>)[0];
+      const toolUse = (
+        endEvents[0].message.content as Array<{
+          type: string;
+          name: string;
+          input: Record<string, unknown>;
+        }>
+      )[0];
       expect(toolUse.name).toBe('Bash');
       expect(toolUse.input.command).toBe('npm test');
 
       // Second: tool_result
       expect(endEvents[1].type).toBe('user');
-      const toolResult = (endEvents[1].message.content as Array<{ type: string; tool_use_id: string; content: string; is_error: boolean }>)[0];
+      const toolResult = (
+        endEvents[1].message.content as Array<{
+          type: string;
+          tool_use_id: string;
+          content: string;
+          is_error: boolean;
+        }>
+      )[0];
       expect(toolResult.type).toBe('tool_result');
       expect(toolResult.tool_use_id).toBe('exec-1');
       expect(toolResult.content).toBe('All tests passed');
@@ -544,7 +578,9 @@ describe('CodexRolloutParser', () => {
         },
       });
 
-      const toolResult = (events[1].message.content as Array<{ is_error: boolean; content: string }>)[0];
+      const toolResult = (
+        events[1].message.content as Array<{ is_error: boolean; content: string }>
+      )[0];
       expect(toolResult.is_error).toBe(true);
       expect(toolResult.content).toBe('command failed');
     });
@@ -598,10 +634,14 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(2);
 
-      const toolUse = (events[0].message.content as Array<{ name: string; input: Record<string, unknown> }>)[0];
+      const toolUse = (
+        events[0].message.content as Array<{ name: string; input: Record<string, unknown> }>
+      )[0];
       expect(toolUse.name).toBe('Read_file');
 
-      const toolResult = (events[1].message.content as Array<{ content: string; is_error: boolean }>)[0];
+      const toolResult = (
+        events[1].message.content as Array<{ content: string; is_error: boolean }>
+      )[0];
       expect(toolResult.content).toBe('file content');
       expect(toolResult.is_error).toBe(false);
     });
@@ -760,7 +800,10 @@ describe('CodexRolloutParser', () => {
       expect(events[0].type).toBe('assistant');
       expect(events[0].message.model).toBe('o4-mini');
       const content = events[0].message.content as Array<{
-        type: string; id: string; name: string; input: Record<string, unknown>;
+        type: string;
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
       }>;
       expect(content[0].type).toBe('tool_use');
       expect(content[0].name).toBe('Edit');
@@ -898,7 +941,8 @@ describe('CodexRolloutParser', () => {
           type: 'custom_tool_call',
           call_id: 'call_abc123',
           name: 'apply_patch',
-          input: '*** Begin Patch\n*** Add File: src/math.ts\n+export function add(a: number, b: number) { return a + b; }\n',
+          input:
+            '*** Begin Patch\n*** Add File: src/math.ts\n+export function add(a: number, b: number) { return a + b; }\n',
           status: 'completed',
         },
       } as unknown as CodexRolloutLine);
@@ -906,7 +950,12 @@ describe('CodexRolloutParser', () => {
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
       expect(events[0].message.model).toBe('o4-mini');
-      const content = events[0].message.content as Array<{ type: string; id: string; name: string; input: Record<string, unknown> }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+      }>;
       expect(content[0].type).toBe('tool_use');
       expect(content[0].name).toBe('Edit');
       expect(content[0].input.file_path).toBe('src/math.ts');
@@ -935,7 +984,7 @@ describe('CodexRolloutParser', () => {
       } as unknown as CodexRolloutLine);
 
       expect(events).toHaveLength(3);
-      const names = events.map(e => {
+      const names = events.map((e) => {
         const c = e.message.content as Array<{ name: string; input: Record<string, unknown> }>;
         return { name: c[0].name, file: c[0].input.file_path };
       });
@@ -977,10 +1026,17 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{ type: string; name: string; input: Record<string, unknown> }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        name: string;
+        input: Record<string, unknown>;
+      }>;
       expect(content[0].type).toBe('tool_use');
       expect(content[0].name).toBe('WebSearch');
-      expect(content[0].input).toEqual({ query: 'vitest testing', _sidekickRawToolName: 'web_search' });
+      expect(content[0].input).toEqual({
+        query: 'vitest testing',
+        _sidekickRawToolName: 'web_search',
+      });
     });
 
     it('should wrap non-JSON input as { raw: ... } for generic custom tool', () => {
@@ -1014,13 +1070,19 @@ describe('CodexRolloutParser', () => {
         payload: {
           type: 'custom_tool_call_output',
           call_id: 'call_abc123',
-          output: '{"output":"Success. Updated the following files:\\nA src/math.ts\\n","metadata":{"exit_code":0}}',
+          output:
+            '{"output":"Success. Updated the following files:\\nA src/math.ts\\n","metadata":{"exit_code":0}}',
         },
       } as unknown as CodexRolloutLine);
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      const content = events[0].message.content as Array<{ type: string; tool_use_id: string; content: string; is_error: boolean }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        tool_use_id: string;
+        content: string;
+        is_error: boolean;
+      }>;
       expect(content[0].type).toBe('tool_result');
       expect(content[0].tool_use_id).toBe('call_abc123');
       expect(content[0].is_error).toBe(false);
@@ -1084,7 +1146,9 @@ describe('CodexRolloutParser', () => {
     });
 
     it('should extract Update File paths', () => {
-      expect(extractPatchFilePaths('*** Update File: src/existing.ts\n@@\n-old\n+new')).toEqual(['src/existing.ts']);
+      expect(extractPatchFilePaths('*** Update File: src/existing.ts\n@@\n-old\n+new')).toEqual([
+        'src/existing.ts',
+      ]);
     });
 
     it('should extract Delete File paths', () => {
@@ -1092,7 +1156,8 @@ describe('CodexRolloutParser', () => {
     });
 
     it('should extract multiple file paths', () => {
-      const input = '*** Begin Patch\n*** Add File: a.ts\n+x\n*** Update File: b.ts\n@@\n-y\n+z\n*** Delete File: c.ts';
+      const input =
+        '*** Begin Patch\n*** Add File: a.ts\n+x\n*** Update File: b.ts\n@@\n-y\n+z\n*** Delete File: c.ts';
       expect(extractPatchFilePaths(input)).toEqual(['a.ts', 'b.ts', 'c.ts']);
     });
 
@@ -1129,7 +1194,8 @@ describe('CodexRolloutParser', () => {
         timestamp: '2025-01-15T10:16:00Z',
         type: 'response_item',
         payload: {
-          type: 'web_search_call', id: 'ws-1',
+          type: 'web_search_call',
+          id: 'ws-1',
         },
       } as unknown as CodexRolloutLine;
 

@@ -10,10 +10,7 @@
  */
 
 import { z } from 'zod';
-import type {
-  ActiveProviderAccountStatus,
-  ActiveAccountStatus,
-} from '../accountStatus';
+import type { ActiveProviderAccountStatus, ActiveAccountStatus } from '../accountStatus';
 
 // ── ActiveProviderAccountStatus ──
 

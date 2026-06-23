@@ -61,7 +61,7 @@ describe('quotaSnapshots', () => {
       fs
         .readdirSync(tmpDir)
         .filter(
-          file =>
+          (file) =>
             file !== 'quota-snapshots.json.tmp' &&
             file.includes('quota-snapshots.json.') &&
             file.endsWith('.tmp'),
@@ -138,20 +138,22 @@ describe('quotaSnapshots', () => {
       }
     `;
 
-    const results = await Promise.all(Array.from({ length: 12 }, (_, index) =>
-      runWorker(process.execPath, ['-e', workerScript, String(index)], {
-        cwd: process.cwd(),
-        env: {
-          ...process.env,
-          HOME: tmpDir,
-          APPDATA: path.join(tmpDir, 'AppData'),
-        },
-      }),
-    ));
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        runWorker(process.execPath, ['-e', workerScript, String(index)], {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            HOME: tmpDir,
+            APPDATA: path.join(tmpDir, 'AppData'),
+          },
+        }),
+      ),
+    );
 
-    const failures = results.filter(result => result.status !== 0);
+    const failures = results.filter((result) => result.status !== 0);
 
-    expect(failures.map(result => result.stderr)).toEqual([]);
+    expect(failures.map((result) => result.stderr)).toEqual([]);
   }, 10_000);
 });
 
@@ -160,17 +162,17 @@ function runWorker(
   args: string[],
   options: { cwd: string; env: NodeJS.ProcessEnv },
 ): Promise<{ status: number | null; stderr: string }> {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: options.env,
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let stderr = '';
-    child.stderr.on('data', chunk => {
+    child.stderr.on('data', (chunk) => {
       stderr += String(chunk);
     });
-    child.on('exit', status => {
+    child.on('exit', (status) => {
       resolve({ status, stderr });
     });
   });

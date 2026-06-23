@@ -18,9 +18,8 @@
  * @returns The extracted task ID string, or null if not found
  */
 export function extractTaskIdFromResult(resultContent: unknown): string | null {
-  const resultStr = typeof resultContent === 'string'
-    ? resultContent
-    : JSON.stringify(resultContent || '');
+  const resultStr =
+    typeof resultContent === 'string' ? resultContent : JSON.stringify(resultContent || '');
 
   // Try to match "Task #N" pattern
   const taskIdMatch = resultStr.match(/Task #(\d+)/i);

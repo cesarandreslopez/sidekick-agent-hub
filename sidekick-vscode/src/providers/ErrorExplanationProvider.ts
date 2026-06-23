@@ -41,9 +41,7 @@ export class ErrorExplanationProvider implements vscode.CodeActionProvider {
    * Metadata for VS Code to optimize when to call this provider.
    * Indicates we provide QuickFix actions.
    */
-  public static readonly providedCodeActionKinds = [
-    vscode.CodeActionKind.QuickFix,
-  ];
+  public static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
 
   /**
    * Provides code actions for error and warning diagnostics.
@@ -62,14 +60,14 @@ export class ErrorExplanationProvider implements vscode.CodeActionProvider {
     document: vscode.TextDocument,
     _range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): vscode.CodeAction[] | undefined {
     // Filter for Error (0) and Warning (1) severity only
     // Skip Info (2) and Hint (3) diagnostics
     const relevantDiagnostics = context.diagnostics.filter(
-      diagnostic =>
+      (diagnostic) =>
         diagnostic.severity === vscode.DiagnosticSeverity.Error ||
-        diagnostic.severity === vscode.DiagnosticSeverity.Warning
+        diagnostic.severity === vscode.DiagnosticSeverity.Warning,
     );
 
     // No relevant diagnostics - don't show our actions
@@ -103,12 +101,12 @@ export class ErrorExplanationProvider implements vscode.CodeActionProvider {
     document: vscode.TextDocument,
     diagnostic: vscode.Diagnostic,
     verb: string,
-    commandId: string
+    commandId: string,
   ): vscode.CodeAction {
     const severity = diagnostic.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
     const action = new vscode.CodeAction(
       `${verb} ${severity} with AI`,
-      vscode.CodeActionKind.QuickFix
+      vscode.CodeActionKind.QuickFix,
     );
 
     action.command = {
@@ -121,11 +119,17 @@ export class ErrorExplanationProvider implements vscode.CodeActionProvider {
     return action;
   }
 
-  private createExplainAction(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction {
+  private createExplainAction(
+    document: vscode.TextDocument,
+    diagnostic: vscode.Diagnostic,
+  ): vscode.CodeAction {
     return this.createAction(document, diagnostic, 'Explain', 'sidekick.explainError');
   }
 
-  private createFixAction(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction {
+  private createFixAction(
+    document: vscode.TextDocument,
+    diagnostic: vscode.Diagnostic,
+  ): vscode.CodeAction {
     return this.createAction(document, diagnostic, 'Fix', 'sidekick.fixError');
   }
 }

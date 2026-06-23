@@ -61,7 +61,7 @@ function countLines(str: string): number {
  */
 export function calculateLineChanges(
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
 ): LineChanges {
   if (toolName === 'Write') {
     const content = input.content as string;
@@ -73,7 +73,7 @@ export function calculateLineChanges(
     const newStr = (input.new_string as string) || '';
     return {
       additions: countLines(newStr),
-      deletions: countLines(oldStr)
+      deletions: countLines(oldStr),
     };
   }
 
@@ -111,7 +111,7 @@ export function calculateLineChanges(
  * @returns Aggregated line changes
  */
 export function aggregateLineChanges(
-  toolCalls: Array<{ name: string; input: Record<string, unknown> }>
+  toolCalls: Array<{ name: string; input: Record<string, unknown> }>,
 ): LineChanges {
   let totalAdditions = 0;
   let totalDeletions = 0;

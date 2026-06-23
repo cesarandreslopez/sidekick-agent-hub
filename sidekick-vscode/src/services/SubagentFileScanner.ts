@@ -7,7 +7,4 @@
  * @module services/SubagentFileScanner
  */
 
-export {
-  scanSubagentDir,
-  extractTaskInfo,
-} from 'sidekick-shared';
+export { scanSubagentDir, extractTaskInfo } from 'sidekick-shared';

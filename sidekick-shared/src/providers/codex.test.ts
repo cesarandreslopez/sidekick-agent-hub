@@ -150,7 +150,7 @@ function writeRichRolloutSession(sessionPath: string, cwd: string): void {
       },
     },
   ];
-  fs.writeFileSync(sessionPath, rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+  fs.writeFileSync(sessionPath, rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
 }
 
 describe('CodexProvider', () => {
@@ -202,7 +202,15 @@ describe('CodexProvider', () => {
 
   it('searches direct Codex payload shapes including audit context and tool outputs', async () => {
     const workspacePath = path.join(tmpDir, 'workspace', 'project');
-    const sessionPath = path.join(tmpDir, '.codex', 'sessions', '2026', '06', '01', 'rollout-2026-06-01T12-00-00-019d86b0-b20c-7b02-a3b2-efe5c1ed7122.jsonl');
+    const sessionPath = path.join(
+      tmpDir,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '01',
+      'rollout-2026-06-01T12-00-00-019d86b0-b20c-7b02-a3b2-efe5c1ed7122.jsonl',
+    );
     writeRichRolloutSession(sessionPath, workspacePath);
 
     const { CodexProvider } = await import('./codex');
@@ -210,14 +218,22 @@ describe('CodexProvider', () => {
 
     const hits = provider.searchInSession(sessionPath, 'needle', 10);
     expect(hits.length).toBeGreaterThanOrEqual(4);
-    expect(hits.map(h => h.line).join(' ')).toContain('Base audit needle');
-    expect(hits.map(h => h.line).join(' ')).toContain('Developer audit needle');
-    expect(hits.map(h => h.line).join(' ')).toContain('Read output needle');
+    expect(hits.map((h) => h.line).join(' ')).toContain('Base audit needle');
+    expect(hits.map((h) => h.line).join(' ')).toContain('Developer audit needle');
+    expect(hits.map((h) => h.line).join(' ')).toContain('Read output needle');
   });
 
   it('reads stats from canonical Codex reader events', async () => {
     const workspacePath = path.join(tmpDir, 'workspace', 'project');
-    const sessionPath = path.join(tmpDir, '.codex', 'sessions', '2026', '06', '01', 'rollout-2026-06-01T12-00-00-019d86b0-b20c-7b02-a3b2-efe5c1ed7122.jsonl');
+    const sessionPath = path.join(
+      tmpDir,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '01',
+      'rollout-2026-06-01T12-00-00-019d86b0-b20c-7b02-a3b2-efe5c1ed7122.jsonl',
+    );
     writeRichRolloutSession(sessionPath, workspacePath);
 
     const { CodexProvider } = await import('./codex');
@@ -234,7 +250,15 @@ describe('CodexProvider', () => {
   it('replays Codex sessions through the provider-reader watcher', async () => {
     const workspacePath = path.join(tmpDir, 'workspace', 'project');
     fs.mkdirSync(workspacePath, { recursive: true });
-    const sessionPath = path.join(tmpDir, '.codex', 'sessions', '2026', '06', '01', 'rollout-2026-06-01T12-00-00-019d86b0-b20c-7b02-a3b2-efe5c1ed7122.jsonl');
+    const sessionPath = path.join(
+      tmpDir,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '01',
+      'rollout-2026-06-01T12-00-00-019d86b0-b20c-7b02-a3b2-efe5c1ed7122.jsonl',
+    );
     writeRichRolloutSession(sessionPath, workspacePath);
 
     const { CodexProvider } = await import('./codex');
@@ -245,7 +269,7 @@ describe('CodexProvider', () => {
       provider,
       workspacePath,
       callbacks: {
-        onEvent: event => events.push(event),
+        onEvent: (event) => events.push(event),
       },
     });
 
@@ -253,9 +277,13 @@ describe('CodexProvider', () => {
     result.watcher.stop();
 
     expect(result.sessionPath).toBe(sessionPath);
-    expect(events.some(e => e.type === 'system' && e.summary.includes('base instructions'))).toBe(true);
-    expect(events.some(e => e.type === 'tool_use' && e.summary.includes('Read'))).toBe(true);
-    expect(events.some(e => e.type === 'tool_result' && e.summary.includes('Read output'))).toBe(true);
-    expect(events.some(e => e.type === 'system' && e.rateLimits)).toBe(true);
+    expect(events.some((e) => e.type === 'system' && e.summary.includes('base instructions'))).toBe(
+      true,
+    );
+    expect(events.some((e) => e.type === 'tool_use' && e.summary.includes('Read'))).toBe(true);
+    expect(events.some((e) => e.type === 'tool_result' && e.summary.includes('Read output'))).toBe(
+      true,
+    );
+    expect(events.some((e) => e.type === 'system' && e.rateLimits)).toBe(true);
   });
 });

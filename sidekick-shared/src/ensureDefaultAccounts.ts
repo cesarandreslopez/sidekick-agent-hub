@@ -22,7 +22,11 @@ export interface EnsureDefaultAccountsOptions {
   logger?: (message: string, error?: unknown) => void;
 }
 
-function logFailure(options: EnsureDefaultAccountsOptions | undefined, message: string, error: unknown): void {
+function logFailure(
+  options: EnsureDefaultAccountsOptions | undefined,
+  message: string,
+  error: unknown,
+): void {
   try {
     options?.logger?.(message, error);
   } catch {
@@ -45,7 +49,11 @@ async function ensureDefaultClaudeAccount(
     const result = addCurrentAccount('Default');
     if (result.success) return 'registered';
 
-    logFailure(options, 'Claude default account registration failed.', result.error ?? 'unknown error');
+    logFailure(
+      options,
+      'Claude default account registration failed.',
+      result.error ?? 'unknown error',
+    );
     return 'error';
   } catch (error) {
     logFailure(options, 'Claude default account registration failed.', error);
@@ -72,7 +80,11 @@ function ensureDefaultCodexAccount(
     if (result.profileId) {
       cleanupPendingCodexProfile(result.profileId);
     }
-    logFailure(options, 'Codex default account registration failed.', result.error ?? 'Codex auth could not be finalized.');
+    logFailure(
+      options,
+      'Codex default account registration failed.',
+      result.error ?? 'Codex auth could not be finalized.',
+    );
     return 'error';
   } catch (error) {
     logFailure(options, 'Codex default account registration failed.', error);

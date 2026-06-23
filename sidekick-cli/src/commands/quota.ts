@@ -79,7 +79,7 @@ interface QuotaMetaRow {
 function compactResetTime(isoString?: string): string {
   if (!isoString) return MISSING_VALUE;
   const value = formatTimeUntil(isoString);
-  return value.startsWith('in ') ? value.slice(3) : (value || MISSING_VALUE);
+  return value.startsWith('in ') ? value.slice(3) : value || MISSING_VALUE;
 }
 
 function formatColoredPercent(percent: number, width: number): string {
@@ -106,17 +106,30 @@ function formatAccountIdentity(label?: string, detail?: string): string | null {
 function sourceLabel(source?: string, stale?: boolean): string | null {
   if (stale) return 'cached snapshot';
   switch (source) {
-    case 'api': return 'API';
-    case 'session': return 'local session snapshot';
-    case 'cache': return 'cached snapshot';
-    default: return null;
+    case 'api':
+      return 'API';
+    case 'session':
+      return 'local session snapshot';
+    case 'cache':
+      return 'cached snapshot';
+    default:
+      return null;
   }
 }
 
-function printQuotaTable(title: string, rows: QuotaTableRow[], metaRows: QuotaMetaRow[] = []): void {
-  const labelWidth = Math.max(QUOTA_LABEL_WIDTH, ...rows.map(row => row.label.length), ...metaRows.map(row => row.label.length));
+function printQuotaTable(
+  title: string,
+  rows: QuotaTableRow[],
+  metaRows: QuotaMetaRow[] = [],
+): void {
+  const labelWidth = Math.max(
+    QUOTA_LABEL_WIDTH,
+    ...rows.map((row) => row.label.length),
+    ...metaRows.map((row) => row.label.length),
+  );
   const headerLeftWidth = 2 + labelWidth + 1 + QUOTA_BAR_WIDTH;
-  const tableWidth = headerLeftWidth + 1 + QUOTA_NOW_WIDTH + 1 + QUOTA_PROJECTED_WIDTH + 1 + 'resets'.length;
+  const tableWidth =
+    headerLeftWidth + 1 + QUOTA_NOW_WIDTH + 1 + QUOTA_PROJECTED_WIDTH + 1 + 'resets'.length;
 
   process.stdout.write(
     `${chalk.bold(title.padEnd(headerLeftWidth))} ${chalk.dim('now'.padStart(QUOTA_NOW_WIDTH))} ${chalk.dim('projected'.padStart(QUOTA_PROJECTED_WIDTH))} ${chalk.dim('resets')}\n`,
@@ -216,11 +229,12 @@ function printClaudeQuotaError(quota: ClaudeQuota): void {
 
   if (descriptor) {
     msg = [descriptor.title, descriptor.message, descriptor.detail].filter(Boolean).join(' ');
-    color = descriptor.severity === 'warning'
-      ? chalk.yellow
-      : descriptor.severity === 'info'
-        ? chalk.cyan
-        : chalk.red;
+    color =
+      descriptor.severity === 'warning'
+        ? chalk.yellow
+        : descriptor.severity === 'info'
+          ? chalk.cyan
+          : chalk.red;
   } else {
     switch (quota.error) {
       case 'no-credentials':
@@ -247,28 +261,32 @@ function printClaudeQuota(quota: ClaudeQuota, peak: PeakHoursState): void {
   }
 
   const peakLine = formatPeakHoursLine(peak);
-  printQuotaTable('Subscription Quota', [
-    {
-      label: '5-Hour',
-      utilization: quota.fiveHour.utilization,
-      projected: quota.projectedFiveHour,
-      resetsAt: quota.fiveHour.resetsAt,
-    },
-    {
-      label: '7-Day',
-      utilization: quota.sevenDay.utilization,
-      projected: quota.projectedSevenDay,
-      resetsAt: quota.sevenDay.resetsAt,
-    },
-  ], peakLine ? [{ label: 'Peak', value: peakLine, color: value => value }] : []);
+  printQuotaTable(
+    'Subscription Quota',
+    [
+      {
+        label: '5-Hour',
+        utilization: quota.fiveHour.utilization,
+        projected: quota.projectedFiveHour,
+        resetsAt: quota.fiveHour.resetsAt,
+      },
+      {
+        label: '7-Day',
+        utilization: quota.sevenDay.utilization,
+        projected: quota.projectedSevenDay,
+        resetsAt: quota.sevenDay.resetsAt,
+      },
+    ],
+    peakLine ? [{ label: 'Peak', value: peakLine, color: (value) => value }] : [],
+  );
 }
 
-async function fetchClaudeQuotaPayload(): Promise<{ quota: Awaited<ReturnType<QuotaService['fetchOnce']>>; peak: PeakHoursState }> {
+async function fetchClaudeQuotaPayload(): Promise<{
+  quota: Awaited<ReturnType<QuotaService['fetchOnce']>>;
+  peak: PeakHoursState;
+}> {
   const service = new QuotaService();
-  const [quota, peak] = await Promise.all([
-    service.fetchOnce(),
-    fetchPeakHoursStatus(),
-  ]);
+  const [quota, peak] = await Promise.all([service.fetchOnce(), fetchPeakHoursStatus()]);
   return { quota, peak };
 }
 
@@ -284,7 +302,9 @@ async function codexQuotaAction(
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
     } else {
-      process.stderr.write(chalk.yellow(quota.error ?? 'Codex rate-limit data is unavailable.') + '\n');
+      process.stderr.write(
+        chalk.yellow(quota.error ?? 'Codex rate-limit data is unavailable.') + '\n',
+      );
     }
     return;
   }
@@ -387,10 +407,7 @@ async function fetchZaiQuotaPayload(_localOpts: Record<string, unknown>): Promis
   quota: Awaited<ReturnType<typeof resolveZaiQuota>>;
   detected: boolean;
 }> {
-  const [quota, detected] = await Promise.all([
-    resolveZaiQuota(),
-    detectZaiRouting(),
-  ]);
+  const [quota, detected] = await Promise.all([resolveZaiQuota(), detectZaiRouting()]);
   return { quota, detected };
 }
 
@@ -422,28 +439,32 @@ function printZaiQuota(quota: Awaited<ReturnType<typeof resolveZaiQuota>>): void
   const tier = quota.planType ?? 'auto';
   const title = 'z.ai Coding Plan' + (tier !== 'auto' ? ` (plan: ${tier})` : '');
 
-  printQuotaTable(title, [
-    {
-      label: quota.fiveHourLabel ?? '5-Hour',
-      utilization: quota.fiveHour.utilization,
-      projected: quota.projectedFiveHour,
-      resetsAt: quota.fiveHour.resetsAt,
-    },
-    {
-      label: quota.sevenDayLabel ?? 'Weekly',
-      utilization: quota.sevenDay.utilization,
-      projected: quota.projectedSevenDay,
-      resetsAt: quota.sevenDay.resetsAt,
-    },
-  ], [
-    quota.stale
-      ? {
-        label: 'Source',
-        value: `cached z.ai API snapshot from ${formatSnapshotTime(quota.capturedAt)}`,
-        color: chalk.yellow,
-      }
-      : { label: 'Source', value: 'z.ai quota API' },
-  ]);
+  printQuotaTable(
+    title,
+    [
+      {
+        label: quota.fiveHourLabel ?? '5-Hour',
+        utilization: quota.fiveHour.utilization,
+        projected: quota.projectedFiveHour,
+        resetsAt: quota.fiveHour.resetsAt,
+      },
+      {
+        label: quota.sevenDayLabel ?? 'Weekly',
+        utilization: quota.sevenDay.utilization,
+        projected: quota.projectedSevenDay,
+        resetsAt: quota.sevenDay.resetsAt,
+      },
+    ],
+    [
+      quota.stale
+        ? {
+            label: 'Source',
+            value: `cached z.ai API snapshot from ${formatSnapshotTime(quota.capturedAt)}`,
+            color: chalk.yellow,
+          }
+        : { label: 'Source', value: 'z.ai quota API' },
+    ],
+  );
 }
 
 async function allQuotaAction(
@@ -459,11 +480,17 @@ async function allQuotaAction(
   ]);
 
   if (jsonOutput) {
-    process.stdout.write(JSON.stringify({
-      claude: { ...claude, peak },
-      codex,
-      zai: zai.quota,
-    }, null, 2) + '\n');
+    process.stdout.write(
+      JSON.stringify(
+        {
+          claude: { ...claude, peak },
+          codex,
+          zai: zai.quota,
+        },
+        null,
+        2,
+      ) + '\n',
+    );
     return;
   }
 
@@ -481,7 +508,9 @@ async function allQuotaAction(
   if (codex.available) {
     printCodexQuota(codex);
   } else {
-    process.stderr.write(chalk.yellow(codex.error ?? 'Codex rate-limit data is unavailable.') + '\n');
+    process.stderr.write(
+      chalk.yellow(codex.error ?? 'Codex rate-limit data is unavailable.') + '\n',
+    );
   }
 
   // Only show z.ai when API quota is available or z.ai traffic was detected.
@@ -490,7 +519,9 @@ async function allQuotaAction(
     if (zai.quota.available) {
       printZaiQuota(zai.quota);
     } else {
-      process.stderr.write(chalk.yellow(zai.quota.error ?? 'z.ai quota data is unavailable.') + '\n');
+      process.stderr.write(
+        chalk.yellow(zai.quota.error ?? 'z.ai quota data is unavailable.') + '\n',
+      );
     }
   }
 }

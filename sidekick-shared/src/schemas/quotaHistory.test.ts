@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  quotaHistorySampleSchema,
-  quotaHistoryDailyBucketSchema,
-} from './quotaHistory';
+import { quotaHistorySampleSchema, quotaHistoryDailyBucketSchema } from './quotaHistory';
 
 describe('quotaHistorySampleSchema', () => {
   it('round-trips a JSONL-line-shaped sample', () => {

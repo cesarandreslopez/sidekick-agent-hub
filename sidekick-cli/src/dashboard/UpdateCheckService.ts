@@ -25,7 +25,7 @@ interface UpdateCache {
 
 const REGISTRY_URL = 'https://registry.npmjs.org/sidekick-agent-hub/latest';
 const CACHE_FILE = 'update-check.json';
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000;  // 4 hours
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 // ── Service ──
 
@@ -63,11 +63,11 @@ export class UpdateCheckService {
 
   private async fetchLatest(): Promise<string> {
     const res = await fetch(REGISTRY_URL, {
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) throw new Error(`Registry returned ${res.status}`);
-    const data = await res.json() as { version: string };
+    const data = (await res.json()) as { version: string };
     return data.version;
   }
 
@@ -92,11 +92,7 @@ export class UpdateCheckService {
       if (!fs.existsSync(configDir)) {
         fs.mkdirSync(configDir, { recursive: true });
       }
-      fs.writeFileSync(
-        path.join(configDir, CACHE_FILE),
-        JSON.stringify(cache),
-        'utf8',
-      );
+      fs.writeFileSync(path.join(configDir, CACHE_FILE), JSON.stringify(cache), 'utf8');
     } catch {
       // Non-fatal — cache write failure doesn't affect functionality
     }

@@ -94,12 +94,7 @@ function renderSpan(text: string, style: StyleFrame, key: number): React.ReactNo
     return <Text key={key}>{text}</Text>;
   }
   return (
-    <Text
-      key={key}
-      bold={style.bold}
-      underline={style.underline}
-      color={style.color}
-    >
+    <Text key={key} bold={style.bold} underline={style.underline} color={style.color}>
       {text}
     </Text>
   );
@@ -111,7 +106,5 @@ function renderSpan(text: string, style: StyleFrame, key: number): React.ReactNo
  */
 export function parseBlessedLines(content: string): React.ReactNode[] {
   if (!content) return [];
-  return content.split('\n').map((line, i) => (
-    <Text key={i}>{parseBlessedTags(line)}</Text>
-  ));
+  return content.split('\n').map((line, i) => <Text key={i}>{parseBlessedTags(line)}</Text>);
 }

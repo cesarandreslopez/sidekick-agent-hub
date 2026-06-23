@@ -54,27 +54,37 @@ export const sessionEventSchema = z.object({
   timestamp: z.string(),
   isSidechain: z.boolean().optional(),
   permissionMode: permissionModeSchema.optional(),
-  rateLimits: z.object({
-    primary: z.object({
-      usedPercent: z.number(),
-      windowMinutes: z.number(),
-      resetsAt: z.number(),
-    }).optional(),
-    secondary: z.object({
-      usedPercent: z.number(),
-      windowMinutes: z.number(),
-      resetsAt: z.number(),
-    }).optional(),
-  }).optional(),
-  tool: z.object({
-    name: z.string(),
-    input: z.record(z.string(), z.unknown()),
-  }).optional(),
-  result: z.object({
-    tool_use_id: z.string(),
-    output: z.unknown().optional(),
-    is_error: z.boolean().optional(),
-  }).optional(),
+  rateLimits: z
+    .object({
+      primary: z
+        .object({
+          usedPercent: z.number(),
+          windowMinutes: z.number(),
+          resetsAt: z.number(),
+        })
+        .optional(),
+      secondary: z
+        .object({
+          usedPercent: z.number(),
+          windowMinutes: z.number(),
+          resetsAt: z.number(),
+        })
+        .optional(),
+    })
+    .optional(),
+  tool: z
+    .object({
+      name: z.string(),
+      input: z.record(z.string(), z.unknown()),
+    })
+    .optional(),
+  result: z
+    .object({
+      tool_use_id: z.string(),
+      output: z.unknown().optional(),
+      is_error: z.boolean().optional(),
+    })
+    .optional(),
 }) satisfies z.ZodType<SessionEvent>;
 
 // ── Progress unwrapping ──

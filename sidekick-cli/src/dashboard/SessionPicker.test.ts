@@ -64,7 +64,7 @@ describe('collectSessionItems', () => {
       findSessionFiles: vi.fn(() => []),
       findAllSessions: vi.fn(() => []),
       getProjectsBaseDir: vi.fn(() => ''),
-      readSessionStats: vi.fn(() => ({} as never)),
+      readSessionStats: vi.fn(() => ({}) as never),
       searchInSession: vi.fn(() => []),
       getAllProjectFolders: vi.fn(() => []),
       dispose: vi.fn(),
@@ -82,15 +82,11 @@ describe('collectSessionItems', () => {
       '/sessions/abc123.jsonl': 'Fix the login bug',
     });
 
-    const items = collectSessionItems(
-      ['/sessions/abc123.jsonl'],
-      provider,
-      now,
-    );
+    const items = collectSessionItems(['/sessions/abc123.jsonl'], provider, now);
 
     expect(items).toHaveLength(1);
     expect(items[0].label).toBe('Fix the login bug');
-    expect(items[0].sessionId).toBe('abc123');  // basename without ext (< 8 chars, no truncation)
+    expect(items[0].sessionId).toBe('abc123'); // basename without ext (< 8 chars, no truncation)
     expect(items[0].age).toBe('5m ago');
     expect(items[0].isActive).toBe(false);
   });
@@ -103,11 +99,7 @@ describe('collectSessionItems', () => {
     })) as never);
 
     const provider = makeMockProvider({});
-    const items = collectSessionItems(
-      ['/sessions/xyz.jsonl'],
-      provider,
-      now,
-    );
+    const items = collectSessionItems(['/sessions/xyz.jsonl'], provider, now);
 
     expect(items[0].label).toBe('Untitled session');
   });
@@ -123,11 +115,7 @@ describe('collectSessionItems', () => {
       '/sessions/live.jsonl': 'Active session',
     });
 
-    const items = collectSessionItems(
-      ['/sessions/live.jsonl'],
-      provider,
-      now,
-    );
+    const items = collectSessionItems(['/sessions/live.jsonl'], provider, now);
 
     expect(items[0].isActive).toBe(true);
     expect(items[0].age).toBe('just now');
@@ -140,8 +128,9 @@ describe('collectSessionItems', () => {
       mtime: new Date('2026-02-20T11:00:00Z'),
     })) as never);
 
-    const paths = Array.from({ length: 60 }, (_, i) =>
-      `/sessions/session-${String(i).padStart(3, '0')}.jsonl`
+    const paths = Array.from(
+      { length: 60 },
+      (_, i) => `/sessions/session-${String(i).padStart(3, '0')}.jsonl`,
     );
     const provider = makeMockProvider({});
 
@@ -163,11 +152,7 @@ describe('collectSessionItems', () => {
       '/sessions/b.jsonl': 'Second',
     });
 
-    const items = collectSessionItems(
-      ['/sessions/a.jsonl', '/sessions/b.jsonl'],
-      provider,
-      now,
-    );
+    const items = collectSessionItems(['/sessions/a.jsonl', '/sessions/b.jsonl'], provider, now);
 
     expect(items).toHaveLength(1);
     expect(items[0].label).toBe('Second');

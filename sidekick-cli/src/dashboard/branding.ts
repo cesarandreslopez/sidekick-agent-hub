@@ -15,7 +15,7 @@ export const BRAND_TAGLINE = 'Agent Hub';
 export const LOGO_ART = [
   '  {bold}{magenta-fg} ___ ___ ___  ___ _  _____ ___ _  __{/magenta-fg}{/bold}',
   '  {bold}{magenta-fg}/ __|_ _|   \\| __| |/ /_ _/ __| |/ /{/magenta-fg}{/bold}',
-  '  {bold}{magenta-fg}\\__ \\| || |) | _|| \' < | | (__| \' < {/magenta-fg}{/bold}',
+  "  {bold}{magenta-fg}\\__ \\| || |) | _|| ' < | | (__| ' < {/magenta-fg}{/bold}",
   '  {bold}{magenta-fg}|___/___|___/|___|_|\\_\\___\\___|_|\\_\\{/magenta-fg}{/bold}',
   `  {grey-fg}${BRAND_TAGLINE}{/grey-fg}`,
 ];

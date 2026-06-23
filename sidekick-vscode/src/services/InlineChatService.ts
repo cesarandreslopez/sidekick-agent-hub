@@ -38,10 +38,7 @@ export class InlineChatService {
    * @param abortSignal - Optional AbortSignal for cancellation (deprecated, use timeout manager instead)
    * @returns Promise resolving to InlineChatResult
    */
-  async process(
-    request: InlineChatRequest,
-    abortSignal?: AbortSignal
-  ): Promise<InlineChatResult> {
+  async process(request: InlineChatRequest, abortSignal?: AbortSignal): Promise<InlineChatResult> {
     // Check for early abort (legacy support)
     if (abortSignal?.aborted) {
       return { success: false, error: 'Request cancelled' };
@@ -49,7 +46,11 @@ export class InlineChatService {
 
     // Get configured model
     const config = vscode.workspace.getConfiguration('sidekick');
-    const model = resolveModel(config.get<string>('inlineChatModel') ?? 'auto', this.authService.getProviderId(), 'inlineChatModel');
+    const model = resolveModel(
+      config.get<string>('inlineChatModel') ?? 'auto',
+      this.authService.getProviderId(),
+      'inlineChatModel',
+    );
 
     // Build prompt
     const systemPrompt = getInlineChatSystemPrompt();
@@ -58,7 +59,7 @@ export class InlineChatService {
       request.selectedText,
       request.languageId,
       request.contextBefore,
-      request.contextAfter
+      request.contextAfter,
     );
 
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
@@ -69,11 +70,12 @@ export class InlineChatService {
     const opLabel = `Processing query via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
       operation: opLabel,
-      task: (signal: AbortSignal) => this.authService.complete(fullPrompt, {
-        model,
-        maxTokens: 2000,
-        signal,
-      }),
+      task: (signal: AbortSignal) =>
+        this.authService.complete(fullPrompt, {
+          model,
+          maxTokens: 2000,
+          signal,
+        }),
       config: timeoutConfig,
       contextSize,
       showProgress: true,

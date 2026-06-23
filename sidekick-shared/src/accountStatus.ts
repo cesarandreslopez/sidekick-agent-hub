@@ -30,19 +30,23 @@ export function getActiveAccountStatus(error?: string): ActiveAccountStatus {
     const codexAccount = getActiveCodexAccount();
 
     const claude = claudeAccount
-        ? {
-            present: true,
-            email: claudeAccount.email,
-            label: claudeAccount.email,
-          }
-        : { present: false };
+      ? {
+          present: true,
+          email: claudeAccount.email,
+          label: claudeAccount.email,
+        }
+      : { present: false };
     const codex = codexAccount
-        ? {
-            present: true,
-            email: codexAccount.email ?? codexAccount.metadata?.email,
-            label: codexAccount.label ?? codexAccount.email ?? codexAccount.metadata?.email ?? codexAccount.id,
-          }
-        : { present: false };
+      ? {
+          present: true,
+          email: codexAccount.email ?? codexAccount.metadata?.email,
+          label:
+            codexAccount.label ??
+            codexAccount.email ??
+            codexAccount.metadata?.email ??
+            codexAccount.id,
+        }
+      : { present: false };
 
     return {
       ok: claude.present || codex.present,

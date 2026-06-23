@@ -42,6 +42,7 @@ The dashboard organizes information into three collapsible groups:
 - **Performance & Cost** — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness, Advanced Burn Rate
 
 ![Performance & Cost — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness](../images/performance-and-cost.png)
+
 - **Analytics** — Tool Frequency chart, Event Distribution doughnut, Activity Heatmap grid, and Event Patterns with template clustering
 
 ![Analytics — Tool Frequency, Event Distribution, Activity Heatmap, Event Patterns](../images/analytics_vscode_extension.png)
@@ -137,10 +138,10 @@ The monitor automatically discovers sessions based on your configured provider. 
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.enableSessionMonitoring` | `true` | Enable/disable session monitoring |
-| `sidekick.sessionProvider` | `auto` | Which agent to monitor: `auto`, `claude-code`, `opencode`, `codex` |
+| Setting                            | Default | Description                                                        |
+| ---------------------------------- | ------- | ------------------------------------------------------------------ |
+| `sidekick.enableSessionMonitoring` | `true`  | Enable/disable session monitoring                                  |
+| `sidekick.sessionProvider`         | `auto`  | Which agent to monitor: `auto`, `claude-code`, `opencode`, `codex` |
 
 ## Accessibility
 

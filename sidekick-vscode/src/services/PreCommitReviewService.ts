@@ -61,7 +61,7 @@ export class PreCommitReviewService implements vscode.Disposable {
    */
   constructor(
     private readonly gitService: GitService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
   ) {
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection('sidekick-review');
     this.timeoutManager = getTimeoutManager();
@@ -93,19 +93,28 @@ export class PreCommitReviewService implements vscode.Disposable {
       // Filter noise (binary, lockfiles, generated)
       const filtered = filterDiff(changes.diff);
       if (filtered.trim().length === 0) {
-        return { issueCount: 0, error: 'No reviewable changes (only binary/lockfiles/generated code).' };
+        return {
+          issueCount: 0,
+          error: 'No reviewable changes (only binary/lockfiles/generated code).',
+        };
       }
 
       // Truncate if too large (warn user but continue)
       const maxLines = 3000;
       const truncated = truncateDiffIntelligently(filtered, maxLines);
       if (truncated.length < filtered.length) {
-        log(`PreCommitReviewService: Diff truncated from ${filtered.length} to ${truncated.length} characters`);
+        log(
+          `PreCommitReviewService: Diff truncated from ${filtered.length} to ${truncated.length} characters`,
+        );
       }
 
       // Get model preference
       const config = vscode.workspace.getConfiguration('sidekick');
-      const model = resolveModel(config.get<string>('reviewModel') ?? 'auto', this.authService.getProviderId(), 'reviewModel');
+      const model = resolveModel(
+        config.get<string>('reviewModel') ?? 'auto',
+        this.authService.getProviderId(),
+        'reviewModel',
+      );
 
       log(`PreCommitReviewService: Calling Claude (model: ${model})`);
 
@@ -117,11 +126,12 @@ export class PreCommitReviewService implements vscode.Disposable {
       const opLabel = `Reviewing changes via ${this.authService.getProviderDisplayName()} · ${model}`;
       const result = await this.timeoutManager.executeWithTimeout({
         operation: opLabel,
-        task: (signal: AbortSignal) => this.authService.complete(prompt, {
-          model,
-          maxTokens: 2000,
-          signal,
-        }),
+        task: (signal: AbortSignal) =>
+          this.authService.complete(prompt, {
+            model,
+            maxTokens: 2000,
+            signal,
+          }),
         config: timeoutConfig,
         contextSize,
         showProgress: true,
@@ -132,7 +142,10 @@ export class PreCommitReviewService implements vscode.Disposable {
 
       if (!result.success) {
         if (result.timedOut) {
-          return { issueCount: 0, error: `Review timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.` };
+          return {
+            issueCount: 0,
+            error: `Review timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+          };
         }
         if (result.error?.name === 'AbortError') {
           return { issueCount: 0, error: 'Review cancelled' };
@@ -173,7 +186,10 @@ export class PreCommitReviewService implements vscode.Disposable {
     for (const issue of issues) {
       const filePath = path.join(repoRoot, issue.file);
       let fileIssues = issuesByFile.get(filePath);
-      if (!fileIssues) { fileIssues = []; issuesByFile.set(filePath, fileIssues); }
+      if (!fileIssues) {
+        fileIssues = [];
+        issuesByFile.set(filePath, fileIssues);
+      }
       fileIssues.push(issue);
     }
 
@@ -183,7 +199,7 @@ export class PreCommitReviewService implements vscode.Disposable {
         const uri = vscode.Uri.file(filePath);
         const document = await vscode.workspace.openTextDocument(uri);
 
-        const diagnostics = fileIssues.map(issue => {
+        const diagnostics = fileIssues.map((issue) => {
           // Convert 1-indexed line to 0-indexed, clamp to valid range
           const line = Math.max(0, Math.min((issue.line ?? 1) - 1, document.lineCount - 1));
           const lineText = document.lineAt(line).text;
@@ -192,11 +208,11 @@ export class PreCommitReviewService implements vscode.Disposable {
           const diagnostic = new vscode.Diagnostic(
             range,
             issue.message,
-            vscode.DiagnosticSeverity.Warning  // Yellow squiggles, not errors
+            vscode.DiagnosticSeverity.Warning, // Yellow squiggles, not errors
           );
 
           diagnostic.source = 'Sidekick AI Review';
-          diagnostic.code = issue.category;  // 'logic', 'security', 'edge-case', etc.
+          diagnostic.code = issue.category; // 'logic', 'security', 'edge-case', etc.
 
           return diagnostic;
         });

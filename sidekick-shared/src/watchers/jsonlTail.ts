@@ -145,7 +145,11 @@ class JsonlTailReader<T> implements JsonlTail {
       });
     } catch (error) {
       if (fd !== null) {
-        try { fs.closeSync(fd); } catch { /* ignore close errors */ }
+        try {
+          fs.closeSync(fd);
+        } catch {
+          /* ignore close errors */
+        }
       }
       this.options.onError?.(error instanceof Error ? error : new Error(String(error)));
     }

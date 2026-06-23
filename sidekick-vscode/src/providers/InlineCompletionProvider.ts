@@ -51,7 +51,7 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
     document: vscode.TextDocument,
     position: vscode.Position,
     context: vscode.InlineCompletionContext,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
   ): Promise<vscode.InlineCompletionItem[] | undefined> {
     // Only provide completions when manually triggered (not on every keystroke)
     if (context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke) {
@@ -94,11 +94,7 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
 
         try {
           // Delegate to CompletionService
-          const completion = await this.completionService.getCompletion(
-            document,
-            position,
-            token
-          );
+          const completion = await this.completionService.getCompletion(document, position, token);
 
           // Check cancellation after async operation
           if (token.isCancellationRequested) {
@@ -111,37 +107,41 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
             return undefined;
           }
 
-          log(`Inline: got completion (${completion.length} chars): "${completion.substring(0, 50)}..."`);
+          log(
+            `Inline: got completion (${completion.length} chars): "${completion.substring(0, 50)}..."`,
+          );
 
           // Return completion as InlineCompletionItem
           return [
-            new vscode.InlineCompletionItem(
-              completion,
-              new vscode.Range(position, position)
-            ),
+            new vscode.InlineCompletionItem(completion, new vscode.Range(position, position)),
           ];
         } catch (error) {
           logError('Inline: completion error', error);
 
           // Show user-friendly error messages
           if (error instanceof TimeoutError) {
-            vscode.window.showWarningMessage(
-              `Completion timed out (${Math.round(error.timeoutMs / 1000)}s). Claude servers may be slow. Try again or increase timeout in settings.`,
-              'Open Settings',
-              'View Logs'
-            ).then(action => {
-              if (action === 'Open Settings') {
-                vscode.commands.executeCommand('workbench.action.openSettings', 'sidekick.inlineTimeout');
-              } else if (action === 'View Logs') {
-                vscode.commands.executeCommand('sidekick.showLogs');
-              }
-            });
+            vscode.window
+              .showWarningMessage(
+                `Completion timed out (${Math.round(error.timeoutMs / 1000)}s). Claude servers may be slow. Try again or increase timeout in settings.`,
+                'Open Settings',
+                'View Logs',
+              )
+              .then((action) => {
+                if (action === 'Open Settings') {
+                  vscode.commands.executeCommand(
+                    'workbench.action.openSettings',
+                    'sidekick.inlineTimeout',
+                  );
+                } else if (action === 'View Logs') {
+                  vscode.commands.executeCommand('sidekick.showLogs');
+                }
+              });
           } else if (error instanceof Error) {
             // Show other errors but don't spam the user
             const message = error.message.includes('Claude')
               ? error.message
               : `Completion failed: ${error.message}`;
-            vscode.window.showErrorMessage(message, 'View Logs').then(action => {
+            vscode.window.showErrorMessage(message, 'View Logs').then((action) => {
               if (action === 'View Logs') {
                 vscode.commands.executeCommand('sidekick.showLogs');
               }
@@ -150,7 +150,7 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
 
           return undefined;
         }
-      }
+      },
     );
   }
 }

@@ -12,7 +12,12 @@ interface ScrollState {
   scrollOffset: number;
 }
 
-function ensureVisible(index: number, currentOffset: number, totalItems: number, viewportHeight: number): number {
+function ensureVisible(
+  index: number,
+  currentOffset: number,
+  totalItems: number,
+  viewportHeight: number,
+): number {
   if (viewportHeight <= 0 || totalItems <= 0) return 0;
   let offset = currentOffset;
   if (index < offset) offset = index;
@@ -23,12 +28,18 @@ function ensureVisible(index: number, currentOffset: number, totalItems: number,
 
 function selectNext(state: ScrollState, totalItems: number, viewportHeight: number): ScrollState {
   const next = Math.min(state.selectedIndex + 1, totalItems - 1);
-  return { selectedIndex: next, scrollOffset: ensureVisible(next, state.scrollOffset, totalItems, viewportHeight) };
+  return {
+    selectedIndex: next,
+    scrollOffset: ensureVisible(next, state.scrollOffset, totalItems, viewportHeight),
+  };
 }
 
 function selectPrev(state: ScrollState, totalItems: number, viewportHeight: number): ScrollState {
   const next = Math.max(state.selectedIndex - 1, 0);
-  return { selectedIndex: next, scrollOffset: ensureVisible(next, state.scrollOffset, totalItems, viewportHeight) };
+  return {
+    selectedIndex: next,
+    scrollOffset: ensureVisible(next, state.scrollOffset, totalItems, viewportHeight),
+  };
 }
 
 function selectFirst(): ScrollState {
@@ -42,7 +53,10 @@ function selectLast(totalItems: number, viewportHeight: number): ScrollState {
 
 function setSelected(index: number, totalItems: number, viewportHeight: number): ScrollState {
   const clamped = Math.max(0, Math.min(index, totalItems - 1));
-  return { selectedIndex: clamped, scrollOffset: ensureVisible(clamped, 0, totalItems, viewportHeight) };
+  return {
+    selectedIndex: clamped,
+    scrollOffset: ensureVisible(clamped, 0, totalItems, viewportHeight),
+  };
 }
 
 describe('windowed scroll logic', () => {

@@ -13,11 +13,7 @@ import { z } from 'zod';
 import type { QuotaWindow, QuotaState } from '../quota';
 import type { PeakHoursState } from '../peakHours';
 import type { QuotaFailureDescriptor } from '../quotaPresentation';
-import type {
-  ProviderQuotaState,
-  ProviderQuotaMap,
-  RuntimeQuotaProvider,
-} from '../providerQuota';
+import type { ProviderQuotaState, ProviderQuotaMap, RuntimeQuotaProvider } from '../providerQuota';
 
 // ── QuotaWindow ──
 
@@ -36,17 +32,13 @@ export const quotaFailureKindSchema = z.enum([
   'unknown',
 ]) satisfies z.ZodType<NonNullable<QuotaState['failureKind']>>;
 
-export const quotaProviderIdSchema = z.enum([
-  'claude-code',
-  'codex',
-  'zai',
-]) satisfies z.ZodType<NonNullable<QuotaState['providerId']>>;
+export const quotaProviderIdSchema = z.enum(['claude-code', 'codex', 'zai']) satisfies z.ZodType<
+  NonNullable<QuotaState['providerId']>
+>;
 
-export const quotaSourceSchema = z.enum([
-  'api',
-  'session',
-  'cache',
-]) satisfies z.ZodType<NonNullable<QuotaState['source']>>;
+export const quotaSourceSchema = z.enum(['api', 'session', 'cache']) satisfies z.ZodType<
+  NonNullable<QuotaState['source']>
+>;
 
 export const quotaStateSchema = z.object({
   fiveHour: quotaWindowSchema,

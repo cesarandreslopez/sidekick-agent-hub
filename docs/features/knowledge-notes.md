@@ -12,12 +12,12 @@ Knowledge notes let you capture these insights once and surface them automatical
 
 ## Note Types
 
-| Type | Icon | Use For |
-|------|------|---------|
-| **Gotcha** | Warning | Non-obvious pitfalls, tricky behavior, common mistakes |
-| **Pattern** | Symbol | Established approaches, conventions, idioms in your codebase |
-| **Guideline** | Law | Rules and constraints that should be followed |
-| **Tip** | Lightbulb | Helpful shortcuts, performance tricks, best practices |
+| Type          | Icon      | Use For                                                      |
+| ------------- | --------- | ------------------------------------------------------------ |
+| **Gotcha**    | Warning   | Non-obvious pitfalls, tricky behavior, common mistakes       |
+| **Pattern**   | Symbol    | Established approaches, conventions, idioms in your codebase |
+| **Guideline** | Law       | Rules and constraints that should be followed                |
+| **Tip**       | Lightbulb | Helpful shortcuts, performance tricks, best practices        |
 
 ## Creating a Note
 
@@ -54,12 +54,12 @@ Active knowledge notes appear as amber nodes in the session mind map, linked to 
 
 Notes have a lifecycle that helps you keep knowledge current:
 
-| Status | Meaning |
-|--------|---------|
-| **Active** | Current and relevant |
+| Status           | Meaning                                                                      |
+| ---------------- | ---------------------------------------------------------------------------- |
+| **Active**       | Current and relevant                                                         |
 | **Needs Review** | The annotated file has been modified and the note may be outdated (30+ days) |
-| **Stale** | Significantly outdated (90+ days since last review) |
-| **Obsolete** | The annotated file has been deleted from the workspace |
+| **Stale**        | Significantly outdated (90+ days since last review)                          |
+| **Obsolete**     | The annotated file has been deleted from the workspace                       |
 
 Importance level affects how quickly a note ages — critical notes decay slower than low-importance ones. Use the **Confirm** action to reset a note back to active after reviewing it.
 

@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
 
 const mockResolveSidekickCodexHome = vi.hoisted(() => vi.fn(() => '/managed/.codex'));
-const mockGetCodexMonitoringHomes = vi.hoisted(() => vi.fn(() => ['/managed/.codex', '/system/.codex']));
+const mockGetCodexMonitoringHomes = vi.hoisted(() =>
+  vi.fn(() => ['/managed/.codex', '/system/.codex']),
+);
 
 vi.mock('fs', () => ({
   existsSync: vi.fn(),

@@ -61,7 +61,9 @@ function getClaudeConfigPath(): string {
   try {
     const data = JSON.parse(fs.readFileSync(primary, 'utf8'));
     if (data?.oauthAccount) return primary;
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   // Fallback: ~/.claude.json (some Claude Code versions store config here)
   return path.join(os.homedir(), '.claude.json');
 }
@@ -136,7 +138,9 @@ function readProfileClaudeOauthAccount(uuid: string): unknown | null {
   return readOauthAccountFromConfigPath(path.join(getClaudeProfileHome(uuid), '.claude.json'));
 }
 
-function readStoredClaudeAccount(uuid: string): { credentials: unknown; oauthAccount: unknown } | null {
+function readStoredClaudeAccount(
+  uuid: string,
+): { credentials: unknown; oauthAccount: unknown } | null {
   const profileCredentials = readActiveCredentials(getClaudeProfileHome(uuid));
   const profileOauthAccount = readProfileClaudeOauthAccount(uuid);
   if (profileCredentials && profileOauthAccount) {
@@ -170,7 +174,10 @@ function backupCurrentClaudeLiveHome(): void {
 
   if (originalCreds) {
     try {
-      atomicWriteJson(path.join(getCredentialsDir(), `${currentActive.uuid}.credentials.json`), originalCreds);
+      atomicWriteJson(
+        path.join(getCredentialsDir(), `${currentActive.uuid}.credentials.json`),
+        originalCreds,
+      );
       writeClaudeProfileCredentials(currentActive.uuid, originalCreds);
     } catch {
       // Best effort only.
@@ -178,7 +185,10 @@ function backupCurrentClaudeLiveHome(): void {
   }
   if (originalOauthAccount) {
     try {
-      atomicWriteJson(path.join(getConfigsDir(), `${currentActive.uuid}.config.json`), originalOauthAccount);
+      atomicWriteJson(
+        path.join(getConfigsDir(), `${currentActive.uuid}.config.json`),
+        originalOauthAccount,
+      );
       writeClaudeProfileConfig(currentActive.uuid, originalOauthAccount);
     } catch {
       // Best effort only.
@@ -204,8 +214,8 @@ export function readAccountRegistry(): AccountRegistry | null {
   if (!registry) return null;
 
   const claudeAccounts = registry.accounts
-    .filter(account => account.providerId === 'claude-code')
-    .map(account => ({
+    .filter((account) => account.providerId === 'claude-code')
+    .map((account) => ({
       uuid: account.providerAccountId ?? account.id,
       email: account.email ?? account.metadata?.email ?? 'unknown',
       label: account.label,
@@ -220,7 +230,7 @@ export function readAccountRegistry(): AccountRegistry | null {
 }
 
 export function writeAccountRegistry(registry: AccountRegistry): void {
-  const mappedClaudeProfiles: SavedAccountProfile[] = registry.accounts.map(account => ({
+  const mappedClaudeProfiles: SavedAccountProfile[] = registry.accounts.map((account) => ({
     id: account.uuid,
     providerId: 'claude-code',
     providerAccountId: account.uuid,
@@ -255,7 +265,10 @@ export function addCurrentAccount(label?: string): AccountManagerResult {
   // 1. Read current Claude identity
   const active = readActiveClaudeAccount();
   if (!active) {
-    return { success: false, error: 'No active Claude account found. Sign in with `claude` first.' };
+    return {
+      success: false,
+      error: 'No active Claude account found. Sign in with `claude` first.',
+    };
   }
 
   // 2. Read current credentials (platform-aware: Keychain on macOS, file on Linux)
@@ -283,12 +296,16 @@ export function addCurrentAccount(label?: string): AccountManagerResult {
   };
 
   // 5. Check if account already exists — update credentials + label
-  const existing = registry.accounts.find(a => a.uuid === active.uuid);
+  const existing = registry.accounts.find((a) => a.uuid === active.uuid);
   if (existing) {
     if (label !== undefined) existing.label = label;
     atomicWriteJson(path.join(getCredentialsDir(), `${active.uuid}.credentials.json`), credBlob);
     atomicWriteJson(path.join(getConfigsDir(), `${active.uuid}.config.json`), configBlob);
-    try { writeClaudeProfileMirror(active.uuid, credBlob, configBlob); } catch { /* flat backups remain available */ }
+    try {
+      writeClaudeProfileMirror(active.uuid, credBlob, configBlob);
+    } catch {
+      /* flat backups remain available */
+    }
     registry.activeAccountUuid = active.uuid;
     writeAccountRegistry(registry);
     return { success: true };
@@ -297,7 +314,11 @@ export function addCurrentAccount(label?: string): AccountManagerResult {
   // 6. New account — back up credentials
   atomicWriteJson(path.join(getCredentialsDir(), `${active.uuid}.credentials.json`), credBlob);
   atomicWriteJson(path.join(getConfigsDir(), `${active.uuid}.config.json`), configBlob);
-  try { writeClaudeProfileMirror(active.uuid, credBlob, configBlob); } catch { /* flat backups remain available */ }
+  try {
+    writeClaudeProfileMirror(active.uuid, credBlob, configBlob);
+  } catch {
+    /* flat backups remain available */
+  }
 
   // 7. Add entry
   registry.accounts.push({
@@ -320,7 +341,7 @@ export function switchToAccount(uuid: string): AccountManagerResult {
     return { success: false, error: 'No account registry found. Save an account first.' };
   }
 
-  const target = registry.accounts.find(a => a.uuid === uuid);
+  const target = registry.accounts.find((a) => a.uuid === uuid);
   if (!target) {
     return { success: false, error: `Account ${uuid} not found in registry.` };
   }
@@ -333,11 +354,15 @@ export function switchToAccount(uuid: string): AccountManagerResult {
 
   try {
     originalConfig = fs.readFileSync(getClaudeConfigPath(), 'utf8');
-  } catch { /* no existing config to back up */ }
+  } catch {
+    /* no existing config to back up */
+  }
 
   try {
     backupCurrentClaudeLiveHome();
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 
   try {
     setActiveSavedAccount('claude-code', uuid);
@@ -347,12 +372,24 @@ export function switchToAccount(uuid: string): AccountManagerResult {
 
   const applied = applyActiveClaudeToLiveHome();
   if (!applied.success) {
-    try { setActiveSavedAccount('claude-code', registry.activeAccountUuid); } catch { /* rollback failed */ }
+    try {
+      setActiveSavedAccount('claude-code', registry.activeAccountUuid);
+    } catch {
+      /* rollback failed */
+    }
     if (originalCreds) {
-      try { writeActiveCredentials(originalCreds); } catch { /* rollback failed */ }
+      try {
+        writeActiveCredentials(originalCreds);
+      } catch {
+        /* rollback failed */
+      }
     }
     if (originalConfig) {
-      try { fs.writeFileSync(getClaudeConfigPath(), originalConfig); } catch { /* rollback failed */ }
+      try {
+        fs.writeFileSync(getClaudeConfigPath(), originalConfig);
+      } catch {
+        /* rollback failed */
+      }
     }
     return applied;
   }
@@ -382,13 +419,19 @@ export function applyActiveClaudeToLiveHome(): AccountManagerResult {
   let originalConfig: string | null = null;
   try {
     originalConfig = fs.readFileSync(getClaudeConfigPath(), 'utf8');
-  } catch { /* no existing config to back up */ }
+  } catch {
+    /* no existing config to back up */
+  }
 
   try {
     writeActiveCredentials(stored.credentials);
   } catch (err) {
     if (originalCreds) {
-      try { writeActiveCredentials(originalCreds); } catch { /* rollback failed */ }
+      try {
+        writeActiveCredentials(originalCreds);
+      } catch {
+        /* rollback failed */
+      }
     }
     return { success: false, error: `Failed to write credentials: ${err}` };
   }
@@ -397,10 +440,18 @@ export function applyActiveClaudeToLiveHome(): AccountManagerResult {
     mergeOauthAccountIntoLiveConfig(stored.oauthAccount);
   } catch (err) {
     if (originalCreds) {
-      try { writeActiveCredentials(originalCreds); } catch { /* rollback failed */ }
+      try {
+        writeActiveCredentials(originalCreds);
+      } catch {
+        /* rollback failed */
+      }
     }
     if (originalConfig) {
-      try { fs.writeFileSync(getClaudeConfigPath(), originalConfig); } catch { /* rollback failed */ }
+      try {
+        fs.writeFileSync(getClaudeConfigPath(), originalConfig);
+      } catch {
+        /* rollback failed */
+      }
     }
     return { success: false, error: `Failed to write config: ${err}` };
   }
@@ -415,10 +466,15 @@ export function reconcileClaudeAuthState(): void {
 
     const registry = readSavedAccountRegistry();
     if (registry) {
-      for (const profile of registry.accounts.filter(account => account.providerId === 'claude-code')) {
+      for (const profile of registry.accounts.filter(
+        (account) => account.providerId === 'claude-code',
+      )) {
         try {
           const uuid = profile.providerAccountId ?? profile.id;
-          if (readActiveCredentials(getClaudeProfileHome(uuid)) && readProfileClaudeOauthAccount(uuid)) {
+          if (
+            readActiveCredentials(getClaudeProfileHome(uuid)) &&
+            readProfileClaudeOauthAccount(uuid)
+          ) {
             continue;
           }
 
@@ -434,7 +490,10 @@ export function reconcileClaudeAuthState(): void {
     }
 
     fs.mkdirSync(path.dirname(markerPath), { recursive: true, mode: 0o700 });
-    fs.writeFileSync(markerPath, new Date().toISOString() + '\n', { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(markerPath, new Date().toISOString() + '\n', {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
   } catch {
     // Reconciliation must never break startup.
   }
@@ -448,14 +507,22 @@ export function removeAccount(uuid: string): AccountManagerResult {
     return { success: false, error: 'No account registry found.' };
   }
 
-  const idx = registry.accounts.findIndex(a => a.uuid === uuid);
+  const idx = registry.accounts.findIndex((a) => a.uuid === uuid);
   if (idx === -1) {
     return { success: false, error: `Account ${uuid} not found.` };
   }
 
   // Remove backed-up files
-  try { fs.unlinkSync(path.join(getCredentialsDir(), `${uuid}.credentials.json`)); } catch { /* ok */ }
-  try { fs.unlinkSync(path.join(getConfigsDir(), `${uuid}.config.json`)); } catch { /* ok */ }
+  try {
+    fs.unlinkSync(path.join(getCredentialsDir(), `${uuid}.credentials.json`));
+  } catch {
+    /* ok */
+  }
+  try {
+    fs.unlinkSync(path.join(getConfigsDir(), `${uuid}.config.json`));
+  } catch {
+    /* ok */
+  }
 
   // Remove from registry
   registry.accounts.splice(idx, 1);
@@ -470,7 +537,7 @@ export function removeAccount(uuid: string): AccountManagerResult {
 // ── Query helpers ────────────────────────────────────────────────────────
 
 export function listAccounts(): AccountEntry[] {
-  return listSavedAccountProfiles('claude-code').map(account => ({
+  return listSavedAccountProfiles('claude-code').map((account) => ({
     uuid: account.providerAccountId ?? account.id,
     email: account.email ?? account.metadata?.email ?? 'unknown',
     label: account.label,

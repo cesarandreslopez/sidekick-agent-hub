@@ -45,11 +45,7 @@ export class PatternExtractor {
   // Group clusters by token count for efficient lookup
   private groups = new Map<number, InternalCluster[]>();
 
-  constructor(options?: {
-    maxClusters?: number;
-    maxDepth?: number;
-    similarityThreshold?: number;
-  }) {
+  constructor(options?: { maxClusters?: number; maxDepth?: number; similarityThreshold?: number }) {
     this.maxClusters = options?.maxClusters ?? DEFAULT_MAX_CLUSTERS;
     this.maxDepth = options?.maxDepth ?? DEFAULT_MAX_DEPTH;
     this.similarityThreshold = options?.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD;
@@ -164,7 +160,10 @@ export class PatternExtractor {
   // ── Private ──
 
   private tokenize(text: string): string[] {
-    return text.split(/\s+/).filter(t => t.length > 0).slice(0, this.maxDepth * 4);
+    return text
+      .split(/\s+/)
+      .filter((t) => t.length > 0)
+      .slice(0, this.maxDepth * 4);
   }
 
   private similarity(tokens: string[], cluster: InternalCluster): number {
@@ -179,9 +178,7 @@ export class PatternExtractor {
   }
 
   private buildTemplate(cluster: InternalCluster): string {
-    return cluster.tokens
-      .map((tok, i) => (cluster.mask[i] ? '<*>' : tok))
-      .join(' ');
+    return cluster.tokens.map((tok, i) => (cluster.mask[i] ? '<*>' : tok)).join(' ');
   }
 
   private totalClusters(): number {

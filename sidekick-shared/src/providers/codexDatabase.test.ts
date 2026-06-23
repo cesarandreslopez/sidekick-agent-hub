@@ -34,7 +34,10 @@ describe('CodexDatabase', () => {
   it('bounds sqlite version probes and treats killed probes as unavailable', () => {
     writeStateDatabase();
     mockExecFileSync.mockImplementation(() => {
-      throw Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT', signal: 'SIGKILL' });
+      throw Object.assign(new Error('spawnSync timed out'), {
+        code: 'ETIMEDOUT',
+        signal: 'SIGKILL',
+      });
     });
 
     const db = new CodexDatabase(tmpDir);
@@ -67,12 +70,14 @@ describe('CodexDatabase', () => {
       const args = call[1];
       return Array.isArray(args) && args[0] === '-json';
     });
-    expect(queryCall?.[2]).toEqual(expect.objectContaining({
-      encoding: 'utf-8',
-      timeout: 4000,
-      killSignal: 'SIGKILL',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      maxBuffer: 10 * 1024 * 1024,
-    }));
+    expect(queryCall?.[2]).toEqual(
+      expect.objectContaining({
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 10 * 1024 * 1024,
+      }),
+    );
   });
 });

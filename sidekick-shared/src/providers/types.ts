@@ -13,7 +13,12 @@ import type {
   ReadSessionContextSnapshotOptions,
   SessionContextSnapshot,
 } from '../context/sessionContext';
-import type { SessionEvent, SubagentStats, TokenUsage, ContextAttribution } from '../types/sessionEvent';
+import type {
+  SessionEvent,
+  SubagentStats,
+  TokenUsage,
+  ContextAttribution,
+} from '../types/sessionEvent';
 
 export type ProviderId = 'claude-code' | 'opencode' | 'codex';
 

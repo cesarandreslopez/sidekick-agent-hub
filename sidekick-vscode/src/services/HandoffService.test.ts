@@ -6,7 +6,9 @@ import * as os from 'os';
 // Mock vscode
 vi.mock('vscode', () => ({
   default: {},
-  Disposable: class { dispose() {} },
+  Disposable: class {
+    dispose() {}
+  },
 }));
 
 import { HandoffService } from './HandoffService';
@@ -24,8 +26,20 @@ function makeSummary(overrides?: Partial<SessionSummaryData>): SessionSummaryDat
     contextPeak: 85,
     apiCalls: 100,
     tasks: [
-      { subject: 'Fix auth bug', status: 'completed', duration: 1200000, toolCallCount: 10, estimatedCost: 0.5 },
-      { subject: 'Add tests', status: 'pending', duration: 600000, toolCallCount: 5, estimatedCost: 0.3 },
+      {
+        subject: 'Fix auth bug',
+        status: 'completed',
+        duration: 1200000,
+        toolCallCount: 10,
+        estimatedCost: 0.5,
+      },
+      {
+        subject: 'Add tests',
+        status: 'pending',
+        duration: 600000,
+        toolCallCount: 5,
+        estimatedCost: 0.3,
+      },
     ],
     taskCompletionRate: 0.5,
     filesChanged: [
@@ -45,9 +59,7 @@ function makeSummary(overrides?: Partial<SessionSummaryData>): SessionSummaryDat
 
 function makeAnalysis(overrides?: Partial<SessionAnalysisData>): SessionAnalysisData {
   return {
-    errors: [
-      { category: 'exit_code', count: 2, examples: ['npm install failed'] },
-    ],
+    errors: [{ category: 'exit_code', count: 2, examples: ['npm install failed'] }],
     toolPatterns: [],
     inefficiencies: [],
     recoveryPatterns: [

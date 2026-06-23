@@ -22,38 +22,38 @@ const MODE_LABELS: Record<FilterMode, { key: string; label: string }> = {
 
 const MODE_ORDER: FilterMode[] = ['substring', 'fuzzy', 'regex', 'date'];
 
-export function FilterOverlay({ filterString, filterMode, filterError }: FilterOverlayProps): React.ReactElement {
+export function FilterOverlay({
+  filterString,
+  filterMode,
+  filterError,
+}: FilterOverlayProps): React.ReactElement {
   return (
-    <Box
-      position="absolute"
-      marginTop={process.stdout.rows - 2}
-      width="100%"
-      height={1}
-    >
+    <Box position="absolute" marginTop={process.stdout.rows - 2} width="100%" height={1}>
       {/* Mode indicator */}
-      {MODE_ORDER.map(mode => {
+      {MODE_ORDER.map((mode) => {
         const { key, label } = MODE_LABELS[mode];
         const isActive = mode === filterMode;
         return (
           <Text key={mode}>
             {isActive ? (
-              <Text bold color="magenta">[{key}]{label} </Text>
+              <Text bold color="magenta">
+                [{key}]{label}{' '}
+              </Text>
             ) : (
-              <Text color="gray">[{key}]{label} </Text>
+              <Text color="gray">
+                [{key}]{label}{' '}
+              </Text>
             )}
           </Text>
         );
       })}
-      <Text bold color="magenta"> / </Text>
-      {filterError ? (
-        <Text color="red">{filterString}</Text>
-      ) : (
-        <Text>{filterString}</Text>
-      )}
+      <Text bold color="magenta">
+        {' '}
+        /{' '}
+      </Text>
+      {filterError ? <Text color="red">{filterString}</Text> : <Text>{filterString}</Text>}
       <Text color="gray">█</Text>
-      {filterError && (
-        <Text color="red"> {filterError}</Text>
-      )}
+      {filterError && <Text color="red"> {filterError}</Text>}
     </Box>
   );
 }

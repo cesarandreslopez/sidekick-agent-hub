@@ -29,7 +29,7 @@ export class ExplainViewProvider implements vscode.Disposable {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly explanationService: ExplanationService
+    private readonly explanationService: ExplanationService,
   ) {}
 
   /**
@@ -43,7 +43,7 @@ export class ExplainViewProvider implements vscode.Disposable {
   public showExplanation(
     code: string,
     complexity: ComplexityLevel,
-    fileContext: FileContext
+    fileContext: FileContext,
   ): void {
     // Store data - will be sent when webview signals ready
     this._pendingCode = code;
@@ -71,8 +71,8 @@ export class ExplainViewProvider implements vscode.Disposable {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'out', 'webview')]
-      }
+        localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'out', 'webview')],
+      },
     );
 
     // Set HTML content
@@ -91,7 +91,7 @@ export class ExplainViewProvider implements vscode.Disposable {
               message.requestId,
               message.code,
               message.complexity,
-              message.fileContext
+              message.fileContext,
             );
             break;
           case 'changeComplexity':
@@ -103,7 +103,7 @@ export class ExplainViewProvider implements vscode.Disposable {
                 requestId,
                 this._pendingCode,
                 message.complexity,
-                this._pendingFileContext
+                this._pendingFileContext,
               );
             }
             break;
@@ -113,7 +113,7 @@ export class ExplainViewProvider implements vscode.Disposable {
         }
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     // Handle panel disposal
@@ -125,7 +125,7 @@ export class ExplainViewProvider implements vscode.Disposable {
         this._pendingFileContext = undefined;
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
   }
 
@@ -137,7 +137,7 @@ export class ExplainViewProvider implements vscode.Disposable {
       this._panel.webview.postMessage({
         type: 'loadCode',
         code: this._pendingCode,
-        fileContext: this._pendingFileContext
+        fileContext: this._pendingFileContext,
       } as ExplainExtensionMessage);
 
       // Keep pending data for potential complexity changes
@@ -158,7 +158,7 @@ export class ExplainViewProvider implements vscode.Disposable {
     requestId: string,
     code: string,
     complexity: ComplexityLevel,
-    fileContext?: FileContext
+    fileContext?: FileContext,
   ): Promise<void> {
     this.pendingRequests.set(requestId, { timestamp: Date.now() });
 
@@ -167,14 +167,14 @@ export class ExplainViewProvider implements vscode.Disposable {
         code,
         'code',
         complexity,
-        fileContext
+        fileContext,
       );
 
       if (this.pendingRequests.has(requestId)) {
         this._panel?.webview.postMessage({
           type: 'explanationResult',
           requestId,
-          explanation
+          explanation,
         } as ExplainExtensionMessage);
       }
     } catch (error) {
@@ -182,7 +182,7 @@ export class ExplainViewProvider implements vscode.Disposable {
         this._panel?.webview.postMessage({
           type: 'explanationError',
           requestId,
-          error: error instanceof Error ? error.message : 'Explanation failed'
+          error: error instanceof Error ? error.message : 'Explanation failed',
         } as ExplainExtensionMessage);
       }
       console.error('Explanation error:', error);
@@ -212,7 +212,7 @@ export class ExplainViewProvider implements vscode.Disposable {
 
     // Build URI for webview script
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'explain.js')
+      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'explain.js'),
     );
 
     return `<!DOCTYPE html>
@@ -238,9 +238,8 @@ export class ExplainViewProvider implements vscode.Disposable {
    */
   dispose(): void {
     this._panel?.dispose();
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     this.pendingRequests.clear();
   }
 }
-

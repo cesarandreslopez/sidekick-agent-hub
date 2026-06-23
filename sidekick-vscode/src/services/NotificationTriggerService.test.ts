@@ -9,7 +9,8 @@ import { describe, it, expect } from 'vitest';
 
 // Extract the patterns from BUILT_IN_TRIGGERS for direct regex testing.
 // These must stay in sync with the actual values in NotificationTriggerService.ts.
-const DESTRUCTIVE_CMD_PATTERN = 'rm\\s+-[a-zA-Z]*[rf]|git\\s+push\\s+(-f|--force)|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-zA-Z]*[fd]|drop\\s+(table|database)|chmod\\s+-R|chown\\s+-R|>\\s*/dev/(?!null|std(out|err)|fd/|tty)';
+const DESTRUCTIVE_CMD_PATTERN =
+  'rm\\s+-[a-zA-Z]*[rf]|git\\s+push\\s+(-f|--force)|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-zA-Z]*[fd]|drop\\s+(table|database)|chmod\\s+-R|chown\\s+-R|>\\s*/dev/(?!null|std(out|err)|fd/|tty)';
 const ENV_ACCESS_PATTERN = '\\.(env|pem|key|secret|credentials)$|id_rsa|id_ed25519';
 const SENSITIVE_PATH_PATTERN = '^/(etc|boot|usr/(s?bin|lib))|/\\.ssh/|/\\.gnupg/';
 

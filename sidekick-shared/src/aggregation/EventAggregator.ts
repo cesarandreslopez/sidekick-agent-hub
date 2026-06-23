@@ -32,7 +32,13 @@ import { TRUNCATION_PATTERNS } from '../parsers/jsonl';
 import { PlanExtractor } from '../parsers/planExtractor';
 import { toFollowEvents } from '../watchers/eventBridge';
 import { formatToolSummary } from '../formatters/toolSummary';
-import { isHardNoise, isHardNoiseFollowEvent, getSoftNoiseReason, classifyMessage, classifyFollowEvent } from '../formatters/noiseClassifier';
+import {
+  isHardNoise,
+  isHardNoiseFollowEvent,
+  getSoftNoiseReason,
+  classifyMessage,
+  classifyFollowEvent,
+} from '../formatters/noiseClassifier';
 import type {
   EventAggregatorOptions,
   AggregatedTokens,
@@ -66,8 +72,29 @@ const SNAPSHOT_SCHEMA_VERSION = 1;
  */
 export interface SerializedAggregatorState {
   version: number;
-  tokens: { input: number; output: number; cacheWrite: number; cacheRead: number; reportedCost: number };
-  modelUsage: Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; cost: number; reasoningTokens?: number; priced?: boolean }]>;
+  tokens: {
+    input: number;
+    output: number;
+    cacheWrite: number;
+    cacheRead: number;
+    reportedCost: number;
+  };
+  modelUsage: Array<
+    [
+      string,
+      {
+        calls: number;
+        tokens: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheWriteTokens: number;
+        cacheReadTokens: number;
+        cost: number;
+        reasoningTokens?: number;
+        priced?: boolean;
+      },
+    ]
+  >;
   contextSize: number;
   previousContextSize: number;
   compactionEvents: CompactionEvent[];
@@ -120,7 +147,8 @@ interface ModelAccumulator {
 
 // ── Goal gate detection regex ──
 
-const GOAL_GATE_REGEX = /\b(CRITICAL|MUST|blocker|required|must.?complete|goal.?gate|essential|do.?not.?skip|blocking)\b/i;
+const GOAL_GATE_REGEX =
+  /\b(CRITICAL|MUST|blocker|required|must.?complete|goal.?gate|essential|do.?not.?skip|blocking)\b/i;
 
 // ── Pending task create input ──
 
@@ -143,13 +171,16 @@ interface PendingTaskCreateInput {
  */
 export function parseTodoDependencies(
   content: string,
-  allTodos: Array<Record<string, unknown>>
+  allTodos: Array<Record<string, unknown>>,
 ): string[] {
   const depPattern = /(?:blocked by|depends on|waiting on|requires)\s+(.+?)(?:\)|$)/i;
   const match = content.match(depPattern);
   if (!match) return [];
 
-  const refs = match[1].split(/\s+and\s+|,\s*|&\s*/).map(r => r.trim()).filter(Boolean);
+  const refs = match[1]
+    .split(/\s+and\s+|,\s*|&\s*/)
+    .map((r) => r.trim())
+    .filter(Boolean);
   const result: string[] = [];
 
   for (const ref of refs) {
@@ -182,7 +213,13 @@ export class EventAggregator {
   private readonly burnWindowMs: number;
   private readonly burnSampleMs: number;
   private readonly computeContextSize:
-    | ((usage: { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; reasoningTokens?: number }) => number)
+    | ((usage: {
+        inputTokens: number;
+        outputTokens: number;
+        cacheWriteTokens: number;
+        cacheReadTokens: number;
+        reasoningTokens?: number;
+      }) => number)
     | null;
   private readonly providerId: string | null;
 
@@ -396,7 +433,10 @@ export class EventAggregator {
       }
 
       // Compaction detection
-      if (this.previousContextSize > 0 && contextSize < this.previousContextSize * COMPACTION_DROP_THRESHOLD) {
+      if (
+        this.previousContextSize > 0 &&
+        contextSize < this.previousContextSize * COMPACTION_DROP_THRESHOLD
+      ) {
         this.compactionEvents.push({
           timestamp: new Date(event.timestamp),
           contextBefore: this.previousContextSize,
@@ -429,8 +469,14 @@ export class EventAggregator {
         const evPriced = event.cost != null || pricing != null;
 
         const acc = this.modelUsage.get(model) ?? {
-          calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0,
-          cacheWriteTokens: 0, cacheReadTokens: 0, cost: 0, priced: true,
+          calls: 0,
+          tokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+          cost: 0,
+          priced: true,
         };
         acc.calls++;
         acc.tokens += inputTok + outputTok;
@@ -519,8 +565,13 @@ export class EventAggregator {
   }
 
   getToolStats(): ToolAnalytics[] {
-    return Array.from(this.toolAnalytics.values())
-      .sort((a, b) => (b.successCount + b.failureCount + b.pendingCount) - (a.successCount + a.failureCount + a.pendingCount));
+    return Array.from(this.toolAnalytics.values()).sort(
+      (a, b) =>
+        b.successCount +
+        b.failureCount +
+        b.pendingCount -
+        (a.successCount + a.failureCount + a.pendingCount),
+    );
   }
 
   getCompactionEvents(): CompactionEvent[] {
@@ -532,7 +583,7 @@ export class EventAggregator {
   }
 
   getBurnRate(): BurnRateInfo {
-    const points = this.burnSamples.map(s => s.tokens);
+    const points = this.burnSamples.map((s) => s.tokens);
     const tokensPerMinute = points.length > 0 ? points[points.length - 1] : 0;
     return {
       tokensPerMinute,
@@ -572,7 +623,7 @@ export class EventAggregator {
     const records = this.latencyRecords;
     const totalFirstToken = records.reduce((sum, r) => sum + r.firstTokenLatencyMs, 0);
     const totalResponse = records.reduce((sum, r) => sum + r.totalResponseTimeMs, 0);
-    const maxFirstToken = Math.max(...records.map(r => r.firstTokenLatencyMs));
+    const maxFirstToken = Math.max(...records.map((r) => r.firstTokenLatencyMs));
     const last = records[records.length - 1];
 
     return {
@@ -619,8 +670,8 @@ export class EventAggregator {
       timeline: this.getTimeline(),
       latencyStats: this.getLatencyStats(),
 
-      toolFrequency: this.toolFrequency.getTopN(20).map(e => ({ name: e.key, count: e.count })),
-      wordFrequency: this.wordFrequency.getTopN(20).map(e => ({ name: e.key, count: e.count })),
+      toolFrequency: this.toolFrequency.getTopN(20).map((e) => ({ name: e.key, count: e.count })),
+      wordFrequency: this.wordFrequency.getTopN(20).map((e) => ({ name: e.key, count: e.count })),
       patterns: this.patternExtractor.getPatterns().slice(0, 20),
       heatmapBuckets: this.heatmapTracker.getBuckets(),
     };
@@ -770,7 +821,9 @@ export class EventAggregator {
     this.activeTaskId = state.activeTaskId;
     this.subagents = [...state.subagents];
     this.currentPermissionMode = state.permissionMode ?? null;
-    this.permissionModeHistory = state.permissionModeHistory ? [...state.permissionModeHistory] : [];
+    this.permissionModeHistory = state.permissionModeHistory
+      ? [...state.permissionModeHistory]
+      : [];
     this.contextTimeline = state.contextTimeline ? [...state.contextTimeline] : [];
     this.contextTurnIndex = state.contextTurnIndex ?? 0;
     this.timeline = [...state.timeline];
@@ -855,7 +908,10 @@ export class EventAggregator {
     }
 
     // Compaction detection
-    if (this.previousContextSize > 0 && contextSize < this.previousContextSize * COMPACTION_DROP_THRESHOLD) {
+    if (
+      this.previousContextSize > 0 &&
+      contextSize < this.previousContextSize * COMPACTION_DROP_THRESHOLD
+    ) {
       this.compactionEvents.push({
         timestamp: new Date(timestamp),
         contextBefore: this.previousContextSize,
@@ -877,9 +933,15 @@ export class EventAggregator {
     // `priced` flag so one unpriced event taints the aggregate (UI renders "—").
     const perModelKey = model ?? this.currentModel ?? 'unknown';
     const acc = this.modelUsage.get(perModelKey) ?? {
-      calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0,
-      cacheWriteTokens: 0, cacheReadTokens: 0, reasoningTokens: 0,
-      cost: 0, priced: true,
+      calls: 0,
+      tokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 0,
+      reasoningTokens: 0,
+      cost: 0,
+      priced: true,
     };
     acc.calls++;
     acc.tokens += inputTok + outputTok;
@@ -911,14 +973,15 @@ export class EventAggregator {
 
     const elapsed = now - this.lastBurnSampleTime;
     if (elapsed >= this.burnSampleMs) {
-      const tokPerMin = elapsed > 0 ? Math.round((this.tokensSinceLastSample / elapsed) * 60_000) : 0;
+      const tokPerMin =
+        elapsed > 0 ? Math.round((this.tokensSinceLastSample / elapsed) * 60_000) : 0;
       this.burnSamples.push({ time: now, tokens: tokPerMin });
       this.tokensSinceLastSample = 0;
       this.lastBurnSampleTime = now;
 
       // Trim to window
       const cutoff = now - this.burnWindowMs;
-      this.burnSamples = this.burnSamples.filter(s => s.time >= cutoff);
+      this.burnSamples = this.burnSamples.filter((s) => s.time >= cutoff);
     }
   }
 
@@ -940,13 +1003,15 @@ export class EventAggregator {
         // First assistant response with text
         this.pendingUserRequest.firstResponseReceived = true;
         this.pendingUserRequest.firstResponseTimestamp = now;
-        this.pendingUserRequest.firstTokenLatencyMs = now.getTime() - this.pendingUserRequest.timestamp.getTime();
+        this.pendingUserRequest.firstTokenLatencyMs =
+          now.getTime() - this.pendingUserRequest.timestamp.getTime();
       }
 
       if (event.message.usage && this.pendingUserRequest.firstResponseReceived) {
         // Assistant with usage -> complete the cycle
         const totalResponseTimeMs = now.getTime() - this.pendingUserRequest.timestamp.getTime();
-        const firstTokenLatencyMs = this.pendingUserRequest.firstTokenLatencyMs ?? totalResponseTimeMs;
+        const firstTokenLatencyMs =
+          this.pendingUserRequest.firstTokenLatencyMs ?? totalResponseTimeMs;
 
         this.latencyRecords.push({
           firstTokenLatencyMs,
@@ -981,7 +1046,12 @@ export class EventAggregator {
 
         // Record in toolAnalytics
         const analytics = this.toolAnalytics.get(name) ?? {
-          name, successCount: 0, failureCount: 0, totalDuration: 0, completedCount: 0, pendingCount: 0,
+          name,
+          successCount: 0,
+          failureCount: 0,
+          totalDuration: 0,
+          completedCount: 0,
+          pendingCount: 0,
         };
         analytics.pendingCount++;
         this.toolAnalytics.set(name, analytics);
@@ -1057,7 +1127,12 @@ export class EventAggregator {
 
     // Update analytics
     const analytics = this.toolAnalytics.get(name) ?? {
-      name, successCount: 0, failureCount: 0, totalDuration: 0, completedCount: 0, pendingCount: 0,
+      name,
+      successCount: 0,
+      failureCount: 0,
+      totalDuration: 0,
+      completedCount: 0,
+      pendingCount: 0,
     };
     analytics.pendingCount++;
     this.toolAnalytics.set(name, analytics);
@@ -1289,7 +1364,12 @@ export class EventAggregator {
     }
   }
 
-  private resolveTaskCreate(toolUseId: string, content: unknown, timestamp: string, isError?: boolean): void {
+  private resolveTaskCreate(
+    toolUseId: string,
+    content: unknown,
+    timestamp: string,
+    isError?: boolean,
+  ): void {
     const pending = this.pendingTaskCreates.get(toolUseId);
     if (!pending) return;
     this.pendingTaskCreates.delete(toolUseId);
@@ -1481,7 +1561,8 @@ export class EventAggregator {
   private handleAgentSpawn(toolUseId: string, input: Record<string, unknown>, now: Date): void {
     const agentTaskId = `agent-${toolUseId}`;
     const description = input.description ? String(input.description) : 'Subagent';
-    const subagentType = (input.subagent_type as string) || (input.subagentType as string) || undefined;
+    const subagentType =
+      (input.subagent_type as string) || (input.subagentType as string) || undefined;
 
     const task: TrackedTask = {
       taskId: agentTaskId,
@@ -1538,7 +1619,8 @@ export class EventAggregator {
         const info: SubagentLifecycle = {
           id: toolUseId,
           description: (input.description as string) || 'Unknown task',
-          subagentType: (input.subagent_type as string) || (input.subagentType as string) || 'general',
+          subagentType:
+            (input.subagent_type as string) || (input.subagentType as string) || 'general',
           spawnTime: event.timestamp,
           status: 'running',
         };
@@ -1568,7 +1650,8 @@ export class EventAggregator {
       const info: SubagentLifecycle = {
         id: toolUseId,
         description: (input.description as string) || 'Unknown task',
-        subagentType: (input.subagent_type as string) || (input.subagentType as string) || 'general',
+        subagentType:
+          (input.subagent_type as string) || (input.subagentType as string) || 'general',
         spawnTime: event.timestamp,
         status: 'running',
       };
@@ -1618,16 +1701,22 @@ export class EventAggregator {
 
   private convertExtractedPlanToPlanState(extracted: {
     title: string;
-    steps: Array<{ id: string; description: string; status: string; phase?: string; complexity?: string }>;
+    steps: Array<{
+      id: string;
+      description: string;
+      status: string;
+      phase?: string;
+      complexity?: string;
+    }>;
     source: 'claude-code' | 'opencode' | 'codex';
     rawMarkdown?: string;
   }): PlanState {
-    const completed = extracted.steps.filter(s => s.status === 'completed').length;
+    const completed = extracted.steps.filter((s) => s.status === 'completed').length;
     const total = extracted.steps.length;
 
     return {
       active: true,
-      steps: extracted.steps.map(s => ({
+      steps: extracted.steps.map((s) => ({
         id: s.id,
         description: s.description,
         status: s.status as PlanState['steps'][number]['status'],
@@ -1652,7 +1741,10 @@ export class EventAggregator {
       if (Array.isArray(content)) {
         for (const block of content as Array<Record<string, unknown>>) {
           if (block.type === 'tool_result') {
-            const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content || '');
+            const text =
+              typeof block.content === 'string'
+                ? block.content
+                : JSON.stringify(block.content || '');
             this.contextAttribution.toolOutputs += this.estimateTokens(text);
           } else if (block.type === 'text') {
             const text = (block.text as string) || '';
@@ -1674,12 +1766,17 @@ export class EventAggregator {
       if (Array.isArray(content)) {
         for (const block of content as Array<Record<string, unknown>>) {
           if (block.type === 'thinking') {
-            this.contextAttribution.thinking += this.estimateTokens((block.thinking as string) || '');
+            this.contextAttribution.thinking += this.estimateTokens(
+              (block.thinking as string) || '',
+            );
           } else if (block.type === 'tool_use') {
-            const input = typeof block.input === 'string' ? block.input : JSON.stringify(block.input || '');
+            const input =
+              typeof block.input === 'string' ? block.input : JSON.stringify(block.input || '');
             this.contextAttribution.toolInputs += this.estimateTokens(input);
           } else if (block.type === 'text') {
-            this.contextAttribution.assistantResponses += this.estimateTokens((block.text as string) || '');
+            this.contextAttribution.assistantResponses += this.estimateTokens(
+              (block.text as string) || '',
+            );
           }
         }
       }
@@ -1711,7 +1808,10 @@ export class EventAggregator {
       if (Array.isArray(content)) {
         for (const block of content as Array<Record<string, unknown>>) {
           if (block.type === 'tool_result') {
-            const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content || '');
+            const text =
+              typeof block.content === 'string'
+                ? block.content
+                : JSON.stringify(block.content || '');
             this.contextAttribution.toolOutputs += this.estimateTokens(text);
           } else if (block.type === 'text') {
             const text = (block.text as string) || '';
@@ -1733,12 +1833,17 @@ export class EventAggregator {
       if (Array.isArray(content)) {
         for (const block of content as Array<Record<string, unknown>>) {
           if (block.type === 'thinking') {
-            this.contextAttribution.thinking += this.estimateTokens((block.thinking as string) || '');
+            this.contextAttribution.thinking += this.estimateTokens(
+              (block.thinking as string) || '',
+            );
           } else if (block.type === 'tool_use') {
-            const input = typeof block.input === 'string' ? block.input : JSON.stringify(block.input || '');
+            const input =
+              typeof block.input === 'string' ? block.input : JSON.stringify(block.input || '');
             this.contextAttribution.toolInputs += this.estimateTokens(input);
           } else if (block.type === 'text') {
-            this.contextAttribution.assistantResponses += this.estimateTokens((block.text as string) || '');
+            this.contextAttribution.assistantResponses += this.estimateTokens(
+              (block.text as string) || '',
+            );
           }
         }
       } else if (event.summary) {
@@ -1751,9 +1856,12 @@ export class EventAggregator {
       if (text) this.contextAttribution.toolInputs += this.estimateTokens(text);
     } else if (event.type === 'tool_result') {
       const rawContent = raw?.content;
-      const text = typeof rawContent === 'string' ? rawContent
-        : rawContent ? JSON.stringify(rawContent)
-        : event.summary || '';
+      const text =
+        typeof rawContent === 'string'
+          ? rawContent
+          : rawContent
+            ? JSON.stringify(rawContent)
+            : event.summary || '';
       if (text) this.contextAttribution.toolOutputs += this.estimateTokens(text);
     } else if (event.type === 'summary') {
       if (event.summary) {
@@ -1804,16 +1912,15 @@ export class EventAggregator {
         noiseLevel = 'ai';
         if (event.message.model) metadata.model = event.message.model;
         if (event.message.usage) {
-          metadata.tokenCount = event.message.usage.input_tokens + event.message.usage.output_tokens;
+          metadata.tokenCount =
+            event.message.usage.input_tokens + event.message.usage.output_tokens;
         }
         break;
       case 'tool_use': {
         tlType = 'tool_call';
         // Use rich tool summary formatter
         const toolName = event.tool?.name ?? 'unknown';
-        const toolSummary = event.tool?.input
-          ? formatToolSummary(toolName, event.tool.input)
-          : '';
+        const toolSummary = event.tool?.input ? formatToolSummary(toolName, event.tool.input) : '';
         description = toolSummary ? `${toolName}: ${toolSummary}` : toolName;
         noiseLevel = 'system';
         if (event.tool) metadata.toolName = event.tool.name;
@@ -1941,7 +2048,7 @@ export class EventAggregator {
     if (typeof content === 'string') return content.length > 0;
     if (Array.isArray(content)) {
       return (content as Array<Record<string, unknown>>).some(
-        b => b.type === 'text' && typeof b.text === 'string' && (b.text as string).length > 0
+        (b) => b.type === 'text' && typeof b.text === 'string' && (b.text as string).length > 0,
       );
     }
     return false;
@@ -2000,7 +2107,7 @@ export class EventAggregator {
 
     // Word frequency: extract significant words from summary
     if (summary) {
-      const words = summary.split(/\s+/).filter(w => w.length > 2);
+      const words = summary.split(/\s+/).filter((w) => w.length > 2);
       for (const word of words) {
         this.wordFrequency.increment(word.toLowerCase(), timestamp);
       }

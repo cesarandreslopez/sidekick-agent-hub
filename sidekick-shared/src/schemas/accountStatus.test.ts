@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  activeProviderAccountStatusSchema,
-  activeAccountStatusSchema,
-} from './accountStatus';
+import { activeProviderAccountStatusSchema, activeAccountStatusSchema } from './accountStatus';
 
 describe('activeProviderAccountStatusSchema', () => {
   it('accepts a present account with label and email', () => {

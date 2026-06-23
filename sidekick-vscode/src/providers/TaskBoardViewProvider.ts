@@ -12,7 +12,13 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { TaskPersistenceService } from '../services/TaskPersistenceService';
 import type { TaskStatus, TrackedTask } from '../types/claudeSession';
 import type { PersistedTask } from '../types/taskPersistence';
-import type { TaskBoardState, TaskBoardMessage, WebviewTaskBoardMessage, TaskBoardColumn, TaskCard } from '../types/taskBoard';
+import type {
+  TaskBoardState,
+  TaskBoardMessage,
+  WebviewTaskBoardMessage,
+  TaskBoardColumn,
+  TaskCard,
+} from '../types/taskBoard';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
@@ -44,7 +50,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     pending: 'Pending',
     in_progress: 'In Progress',
     completed: 'Completed',
-    deleted: 'Archived'
+    deleted: 'Archived',
   };
 
   /** Cached persisted tasks loaded from disk */
@@ -52,7 +58,6 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Timestamp of last auto-persistence write */
   private _lastPersistTime = 0;
-
 
   /** Manages rotating phrase timers */
   private readonly _phrases: PhraseRotationManager;
@@ -63,33 +68,29 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _sessionMonitor: SessionMonitor,
-    private readonly _taskPersistence?: TaskPersistenceService
+    private readonly _taskPersistence?: TaskPersistenceService,
   ) {
-    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
+    this._phrases = new PhraseRotationManager((msg) => this._postMessage(msg));
     this._state = {
-      columns: TaskBoardViewProvider.COLUMN_ORDER.map(status => ({
+      columns: TaskBoardViewProvider.COLUMN_ORDER.map((status) => ({
         status,
         label: TaskBoardViewProvider.COLUMN_LABELS[status],
-        tasks: []
+        tasks: [],
       })),
       sessionActive: false,
       lastUpdated: new Date().toISOString(),
       totalTasks: 0,
       activeTaskId: null,
-      carriedOverCount: 0
+      carriedOverCount: 0,
     };
 
-    this._disposables.push(
-      this._sessionMonitor.onToolCall(() => this._updateBoard())
-    );
+    this._disposables.push(this._sessionMonitor.onToolCall(() => this._updateBoard()));
 
     this._disposables.push(
-      this._sessionMonitor.onSessionStart(path => this._handleSessionStart(path))
+      this._sessionMonitor.onSessionStart((path) => this._handleSessionStart(path)),
     );
 
-    this._disposables.push(
-      this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd())
-    );
+    this._disposables.push(this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd()));
 
     if (this._sessionMonitor.isActive()) {
       this._syncFromSessionMonitor();
@@ -108,7 +109,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
@@ -116,8 +117,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'out', 'webview'),
-        vscode.Uri.joinPath(this._extensionUri, 'images')
-      ]
+        vscode.Uri.joinPath(this._extensionUri, 'images'),
+      ],
     };
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -125,7 +126,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     webviewView.webview.onDidReceiveMessage(
       (message: WebviewTaskBoardMessage) => this._handleWebviewMessage(message),
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     webviewView.onDidChangeVisibility(
@@ -135,7 +136,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     this._phrases.start(() => this._state.sessionActive);
@@ -151,7 +152,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       this._saveCurrentTasksToPersistence();
     }
     this._phrases.stop();
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
   }
 
@@ -256,14 +257,14 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     const activeTaskId = taskState?.activeTaskId ?? null;
     const tasks = taskState?.tasks ?? new Map<string, TrackedTask>();
 
-    const columns: TaskBoardColumn[] = TaskBoardViewProvider.COLUMN_ORDER.map(status => ({
+    const columns: TaskBoardColumn[] = TaskBoardViewProvider.COLUMN_ORDER.map((status) => ({
       status,
       label: TaskBoardViewProvider.COLUMN_LABELS[status],
-      tasks: []
+      tasks: [],
     }));
 
     const columnLookup = new Map<TaskStatus, TaskBoardColumn>(
-      columns.map(column => [column.status, column])
+      columns.map((column) => [column.status, column]),
     );
 
     // Add current session tasks
@@ -312,7 +313,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       lastUpdated: new Date().toISOString(),
       totalTasks,
       activeTaskId,
-      carriedOverCount
+      carriedOverCount,
     };
   }
 
@@ -412,7 +413,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     const nonce = getNonce();
 
     const iconUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
+      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png'),
     );
 
     return `<!DOCTYPE html>

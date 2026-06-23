@@ -63,9 +63,13 @@ export interface TempFileItem {
  * vscode.window.registerTreeDataProvider('sidekick.tempFiles', provider);
  * ```
  */
-export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileItem>, vscode.Disposable {
+export class TempFilesTreeProvider
+  implements vscode.TreeDataProvider<TempFileItem>, vscode.Disposable
+{
   /** Event emitter for tree data changes */
-  private readonly _onDidChangeTreeData = new vscode.EventEmitter<TempFileItem | undefined | null | void>();
+  private readonly _onDidChangeTreeData = new vscode.EventEmitter<
+    TempFileItem | undefined | null | void
+  >();
 
   /** Event that fires when tree data changes */
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -95,9 +99,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
    */
   constructor(private readonly sessionMonitor: SessionMonitor) {
     // Subscribe to tool call events
-    this.disposables.push(
-      this.sessionMonitor.onToolCall((call) => this.handleToolCall(call))
-    );
+    this.disposables.push(this.sessionMonitor.onToolCall((call) => this.handleToolCall(call)));
 
     // Subscribe to session start to clear state and set session directory
     this.disposables.push(
@@ -107,7 +109,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
         this.sessionId = this.sessionMonitor.getProvider().getSessionId(sessionPath);
         this.scannedAgentFiles.clear();
         this.refresh();
-      })
+      }),
     );
 
     // Initialize from existing session data if available
@@ -166,7 +168,12 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
 
     // Handle MultiEdit which has an edits array
     if (toolName === 'MultiEdit' && call.input.edits) {
-      const edits = call.input.edits as Array<{ file_path?: string; path?: string; old_string?: string; new_string?: string }>;
+      const edits = call.input.edits as Array<{
+        file_path?: string;
+        path?: string;
+        old_string?: string;
+        new_string?: string;
+      }>;
       // Group edits by file path and calculate line changes per file
       const fileChanges = new Map<string, { additions: number; deletions: number }>();
 
@@ -175,7 +182,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
         if (filePath && typeof filePath === 'string') {
           const changes = calculateLineChanges('Edit', {
             old_string: edit.old_string || '',
-            new_string: edit.new_string || ''
+            new_string: edit.new_string || '',
           });
 
           const existing = fileChanges.get(filePath) || { additions: 0, deletions: 0 };
@@ -186,7 +193,14 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       }
 
       for (const [filePath, changes] of fileChanges) {
-        this.addFile(filePath, 'edit', timestamp, changes.additions, changes.deletions, toolSummary);
+        this.addFile(
+          filePath,
+          'edit',
+          timestamp,
+          changes.additions,
+          changes.deletions,
+          toolSummary,
+        );
       }
       return;
     }
@@ -217,7 +231,14 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
         return;
     }
 
-    this.addFile(filePath, operation, timestamp, lineChanges.additions, lineChanges.deletions, toolSummary);
+    this.addFile(
+      filePath,
+      operation,
+      timestamp,
+      lineChanges.additions,
+      lineChanges.deletions,
+      toolSummary,
+    );
   }
 
   /**
@@ -241,7 +262,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
     if (touchMatch) {
       const args = this.parseBashArgs(touchMatch[1]);
       // Filter out flags (starting with -)
-      const files = args.filter(arg => !arg.startsWith('-'));
+      const files = args.filter((arg) => !arg.startsWith('-'));
       filePaths.push(...files);
     }
 
@@ -259,7 +280,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
     // cp command: cp [-flags] src dest
     const cpMatch = command.match(/^\s*cp\s+(?:-[a-zA-Z]+\s+)*(.+)$/);
     if (cpMatch) {
-      const args = this.parseBashArgs(cpMatch[1]).filter(arg => !arg.startsWith('-'));
+      const args = this.parseBashArgs(cpMatch[1]).filter((arg) => !arg.startsWith('-'));
       // Last argument is the destination
       if (args.length >= 2) {
         filePaths.push(args[args.length - 1]);
@@ -269,7 +290,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
     // mv command: mv [-flags] src dest
     const mvMatch = command.match(/^\s*mv\s+(?:-[a-zA-Z]+\s+)*(.+)$/);
     if (mvMatch) {
-      const args = this.parseBashArgs(mvMatch[1]).filter(arg => !arg.startsWith('-'));
+      const args = this.parseBashArgs(mvMatch[1]).filter((arg) => !arg.startsWith('-'));
       // Last argument is the destination
       if (args.length >= 2) {
         filePaths.push(args[args.length - 1]);
@@ -279,14 +300,14 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
     // mkdir command: mkdir [-p] dir1 dir2 ...
     const mkdirMatch = command.match(/^\s*mkdir\s+(.+)$/);
     if (mkdirMatch) {
-      const args = this.parseBashArgs(mkdirMatch[1]).filter(arg => !arg.startsWith('-'));
+      const args = this.parseBashArgs(mkdirMatch[1]).filter((arg) => !arg.startsWith('-'));
       filePaths.push(...args);
     }
 
     // rm command: rm [-rf] file1 file2 ...
     const rmMatch = command.match(/^\s*rm\s+(.+)$/);
     if (rmMatch) {
-      const args = this.parseBashArgs(rmMatch[1]).filter(arg => !arg.startsWith('-'));
+      const args = this.parseBashArgs(rmMatch[1]).filter((arg) => !arg.startsWith('-'));
       filePaths.push(...args);
     }
 
@@ -365,12 +386,12 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
     timestamp: Date,
     additions: number = 0,
     deletions: number = 0,
-    toolSummary?: string
+    toolSummary?: string,
   ): void {
     // Check if file already exists
     if (this.seenFiles.has(filePath)) {
       // Find and update existing item
-      const existingItem = this.tempFiles.find(item => item.path === filePath);
+      const existingItem = this.tempFiles.find((item) => item.path === filePath);
       if (existingItem) {
         // Accumulate line changes
         existingItem.additions += additions;
@@ -401,7 +422,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
       operation,
       additions,
       deletions,
-      toolSummary
+      toolSummary,
     };
 
     this.tempFiles.push(item);
@@ -473,13 +494,11 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
     item.command = {
       command: 'vscode.open',
       title: 'Open',
-      arguments: [vscode.Uri.file(element.path)]
+      arguments: [vscode.Uri.file(element.path)],
     };
 
     // Set icon based on operation
-    item.iconPath = new vscode.ThemeIcon(
-      element.operation === 'read' ? 'file' : 'edit'
-    );
+    item.iconPath = new vscode.ThemeIcon(element.operation === 'read' ? 'file' : 'edit');
 
     // Set tooltip with full path, operation, and line changes
     const formattedTime = element.timestamp.toLocaleTimeString();
@@ -564,7 +583,7 @@ export class TempFilesTreeProvider implements vscode.TreeDataProvider<TempFileIt
    */
   dispose(): void {
     this._onDidChangeTreeData.dispose();
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
     log('TempFilesTreeProvider disposed');
   }

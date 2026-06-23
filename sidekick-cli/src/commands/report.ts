@@ -45,7 +45,9 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
           onEvent: (event: FollowEvent) => {
             events.push(event);
           },
-          onError: (_err: Error) => { /* ignore */ },
+          onError: (_err: Error) => {
+            /* ignore */
+          },
         },
       });
       sessionPath = result.sessionPath;
@@ -60,16 +62,19 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
     }
 
     // Process events through the aggregator for stats
-    const aggregator = new EventAggregator({ providerId: provider.id as 'claude-code' | 'opencode' | 'codex' });
+    const aggregator = new EventAggregator({
+      providerId: provider.id as 'claude-code' | 'opencode' | 'codex',
+    });
     for (const event of events) {
       aggregator.processFollowEvent(event);
     }
     const metrics = aggregator.getMetrics();
 
     // Parse transcript for full content
-    const transcript = provider.id === 'codex'
-      ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
-      : parseTranscript(sessionPath);
+    const transcript =
+      provider.id === 'codex'
+        ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
+        : parseTranscript(sessionPath);
 
     // Generate HTML report
     const sessionFileName = path.basename(sessionPath);
@@ -91,6 +96,10 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
       openInBrowser(outFile);
     }
   } finally {
-    try { provider.dispose(); } catch { /* ignore */ }
+    try {
+      provider.dispose();
+    } catch {
+      /* ignore */
+    }
   }
 }

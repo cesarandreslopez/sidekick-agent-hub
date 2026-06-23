@@ -7,15 +7,20 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import type { SessionProvider, ProviderId } from 'sidekick-shared';
-import { collectSessionItems, collectMultiProviderItems, PROVIDER_BADGES, type SessionPickerItem } from '../SessionPickerHelpers';
+import {
+  collectSessionItems,
+  collectMultiProviderItems,
+  PROVIDER_BADGES,
+  type SessionPickerItem,
+} from '../SessionPickerHelpers';
 import { BRAND_INLINE, LOGO_ART } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';
 
 /** Provider display names for section headers. */
 const PROVIDER_NAMES: Record<string, string> = {
   'claude-code': 'Claude Code',
-  'opencode': 'OpenCode',
-  'codex': 'Codex',
+  opencode: 'OpenCode',
+  codex: 'Codex',
 };
 
 interface GroupedView {
@@ -27,7 +32,7 @@ interface GroupedView {
 
 /** Build grouped rows when multiple providers have sessions. */
 function buildGroupedRows(items: SessionPickerItem[]): GroupedView | null {
-  const providerIds = new Set(items.map(it => it.providerId).filter(Boolean));
+  const providerIds = new Set(items.map((it) => it.providerId).filter(Boolean));
   if (providerIds.size <= 1) return null;
 
   const rows: GroupedView['rows'] = [];
@@ -71,12 +76,12 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
     }
 
     if (input === 'j' || key.downArrow) {
-      setSelectedIndex(prev => Math.min(prev + 1, totalItems - 1));
+      setSelectedIndex((prev) => Math.min(prev + 1, totalItems - 1));
       return;
     }
 
     if (input === 'k' || key.upArrow) {
-      setSelectedIndex(prev => Math.max(prev - 1, 0));
+      setSelectedIndex((prev) => Math.max(prev - 1, 0));
       return;
     }
 
@@ -109,15 +114,15 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
     const dot = item.isActive ? '\u25CF' : '\u25CB';
     const dotColor = item.isActive ? 'green' : 'gray';
     const badge = item.providerId ? PROVIDER_BADGES[item.providerId] : null;
-    const truncLabel = item.label.length > 40
-      ? item.label.substring(0, 37) + '...'
-      : item.label;
+    const truncLabel = item.label.length > 40 ? item.label.substring(0, 37) + '...' : item.label;
 
     return (
       <Box key={item.sessionPath}>
         <Text inverse={isSelected}>
           {badge && <Text color={badge.color}>[{badge.badge}]</Text>}{' '}
-          <Text color={dotColor}>{dot}</Text> {truncLabel.padEnd(40)}  <Text color="gray">{item.age.padEnd(9)}</Text> <Text color="gray">{item.sessionId}</Text>{item.isActive ? <Text color="green"> LIVE</Text> : ''}
+          <Text color={dotColor}>{dot}</Text> {truncLabel.padEnd(40)}{' '}
+          <Text color="gray">{item.age.padEnd(9)}</Text> <Text color="gray">{item.sessionId}</Text>
+          {item.isActive ? <Text color="green"> LIVE</Text> : ''}
         </Text>
       </Box>
     );
@@ -137,7 +142,13 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
         if (allRows[r].type === 'item') selectablePositions.push(r);
       }
       const selectedVisualPos = selectablePositions[selectedIndex] ?? 0;
-      const scrollOffset = Math.max(0, Math.min(selectedVisualPos - Math.floor(viewportHeight / 2), allRows.length - viewportHeight));
+      const scrollOffset = Math.max(
+        0,
+        Math.min(
+          selectedVisualPos - Math.floor(viewportHeight / 2),
+          allRows.length - viewportHeight,
+        ),
+      );
       const visibleStart = Math.max(0, scrollOffset);
       const visibleEnd = Math.min(allRows.length, visibleStart + viewportHeight);
 
@@ -158,8 +169,11 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
               <Text dimColor>{'\u2500\u2500'} </Text>
               {badge && <Text color={badge.color}>{name}</Text>}
               {!badge && <Text>{name}</Text>}
-              <Text dimColor> {'\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500'}</Text>
-            </Box>
+              <Text dimColor>
+                {' '}
+                {'\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500'}
+              </Text>
+            </Box>,
           );
         } else {
           const isSelected = selectableIdx === selectedIndex;
@@ -171,7 +185,10 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
     }
 
     // Flat view (single provider or no providers)
-    const scrollOffset = Math.max(0, Math.min(selectedIndex - Math.floor(viewportHeight / 2), totalItems - viewportHeight));
+    const scrollOffset = Math.max(
+      0,
+      Math.min(selectedIndex - Math.floor(viewportHeight / 2), totalItems - viewportHeight),
+    );
     const visibleStart = Math.max(0, scrollOffset);
     const visibleEnd = Math.min(totalItems, visibleStart + viewportHeight);
 
@@ -206,7 +223,14 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
 
       {/* Status bar */}
       <Box height={1}>
-        <Text> {parseBlessedTags(BRAND_INLINE)} <Text color="gray">Session Picker</Text>  <Text bold>{'\u2191'}/{'\u2193'}</Text> navigate  <Text bold>Enter</Text> select  <Text bold>q</Text> quit</Text>
+        <Text>
+          {' '}
+          {parseBlessedTags(BRAND_INLINE)} <Text color="gray">Session Picker</Text>{' '}
+          <Text bold>
+            {'\u2191'}/{'\u2193'}
+          </Text>{' '}
+          navigate <Text bold>Enter</Text> select <Text bold>q</Text> quit
+        </Text>
       </Box>
     </Box>
   );
@@ -231,7 +255,10 @@ export async function showSessionPicker(
 
   let items: SessionPickerItem[];
   if (additionalProviders && additionalProviders.length > 0) {
-    const allProviders = [provider, ...additionalProviders].map(p => ({ provider: p, workspacePath }));
+    const allProviders = [provider, ...additionalProviders].map((p) => ({
+      provider: p,
+      workspacePath,
+    }));
     items = collectMultiProviderItems(allProviders);
   } else {
     const sessions = provider.findAllSessions(workspacePath);
@@ -247,14 +274,17 @@ export async function showSessionPicker(
         items={items}
         onSelect={(selectedPath) => {
           instance.unmount();
-          const selected = items.find(it => it.sessionPath === selectedPath);
+          const selected = items.find((it) => it.sessionPath === selectedPath);
           resolve({ sessionPath: selectedPath, providerId: selected?.providerId });
         }}
       />,
     );
 
-    instance.waitUntilExit().then(() => {
-      reject(new Error('quit'));
-    }).catch(reject);
+    instance
+      .waitUntilExit()
+      .then(() => {
+        reject(new Error('quit'));
+      })
+      .catch(reject);
   });
 }

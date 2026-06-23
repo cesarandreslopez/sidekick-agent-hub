@@ -5,8 +5,8 @@
 export interface TerminalMouseEvent {
   type: 'click' | 'release' | 'scroll' | 'drag';
   button: 'left' | 'middle' | 'right' | 'none';
-  x: number;  // 0-based column
-  y: number;  // 0-based row
+  x: number; // 0-based column
+  y: number; // 0-based row
   shift: boolean;
   meta: boolean;
   ctrl: boolean;
@@ -48,8 +48,11 @@ export function parseMouseEvent(data: Buffer | string): TerminalMouseEvent | nul
     return {
       type: 'scroll',
       button: 'none',
-      x, y,
-      shift, meta, ctrl,
+      x,
+      y,
+      shift,
+      meta,
+      ctrl,
       scrollDirection: baseCode === 64 ? 'up' : 'down',
     };
   }
@@ -60,8 +63,11 @@ export function parseMouseEvent(data: Buffer | string): TerminalMouseEvent | nul
     return {
       type: 'drag',
       button: buttons[baseCode - 32],
-      x, y,
-      shift, meta, ctrl,
+      x,
+      y,
+      shift,
+      meta,
+      ctrl,
     };
   }
 
@@ -71,8 +77,11 @@ export function parseMouseEvent(data: Buffer | string): TerminalMouseEvent | nul
     return {
       type: isRelease ? 'release' : 'click',
       button: buttons[baseCode],
-      x, y,
-      shift, meta, ctrl,
+      x,
+      y,
+      shift,
+      meta,
+      ctrl,
     };
   }
 

@@ -5,12 +5,12 @@ Uses the OpenAI API via Codex CLI for inference.
 ## Setup
 
 1. Install Codex CLI globally:
-    ```bash
-    npm install -g @openai/codex
-    ```
+   ```bash
+   npm install -g @openai/codex
+   ```
 2. Ensure your OpenAI API key is available:
-    - `OPENAI_API_KEY` or `CODEX_API_KEY` environment variable
-    - Or `~/.codex/.credentials.json`
+   - `OPENAI_API_KEY` or `CODEX_API_KEY` environment variable
+   - Or `~/.codex/.credentials.json`
 3. Set `sidekick.inferenceProvider` to `codex` in settings
 
 ## How It Works

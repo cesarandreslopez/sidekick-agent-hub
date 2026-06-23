@@ -69,9 +69,7 @@ describe('cycleDetector', () => {
 
   describe('detectCycle', () => {
     it('detects pattern length 1 (same call repeated)', () => {
-      const calls = Array.from({ length: 6 }, () =>
-        makeCall('Read', { file_path: '/src/foo.ts' })
-      );
+      const calls = Array.from({ length: 6 }, () => makeCall('Read', { file_path: '/src/foo.ts' }));
       const result = detectCycle(calls, 6);
       expect(result).not.toBeNull();
       expect(result!.repetitions).toBe(6);
@@ -135,7 +133,7 @@ describe('cycleDetector', () => {
       const calls = Array.from({ length: 10 }, (_, i) =>
         i % 2 === 0
           ? makeCall('Read', { file_path: '/src/foo.ts' })
-          : makeCall('Edit', { file_path: '/src/foo.ts' })
+          : makeCall('Edit', { file_path: '/src/foo.ts' }),
       );
       const result = detectCycle(calls, 10);
       expect(result).not.toBeNull();
@@ -147,18 +145,14 @@ describe('cycleDetector', () => {
         makeCall('Bash', { command: 'git status' }),
         makeCall('Write', { file_path: '/unrelated.ts' }),
       ];
-      const cycle = Array.from({ length: 6 }, () =>
-        makeCall('Read', { file_path: '/loop.ts' })
-      );
+      const cycle = Array.from({ length: 6 }, () => makeCall('Read', { file_path: '/loop.ts' }));
       const result = detectCycle([...prefix, ...cycle], 6);
       expect(result).not.toBeNull();
       expect(result!.affectedFiles).toContain('/loop.ts');
     });
 
     it('includes description in detection result', () => {
-      const calls = Array.from({ length: 6 }, () =>
-        makeCall('Read', { file_path: '/src/foo.ts' })
-      );
+      const calls = Array.from({ length: 6 }, () => makeCall('Read', { file_path: '/src/foo.ts' }));
       const result = detectCycle(calls, 6);
       expect(result!.description).toContain('Repeating cycle');
       expect(result!.description).toContain('Read');

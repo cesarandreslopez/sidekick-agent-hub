@@ -94,18 +94,25 @@ async function main() {
     logLevel: 'warning',
   });
 
-  const allContexts = [extensionCtx, webviewExplainCtx, webviewErrorCtx, webviewDashboardCtx, webviewChartjsCtx, webviewD3Ctx];
+  const allContexts = [
+    extensionCtx,
+    webviewExplainCtx,
+    webviewErrorCtx,
+    webviewDashboardCtx,
+    webviewChartjsCtx,
+    webviewD3Ctx,
+  ];
 
   if (watch) {
-    await Promise.all(allContexts.map(ctx => ctx.watch()));
+    await Promise.all(allContexts.map((ctx) => ctx.watch()));
     console.log('Watching for changes...');
   } else {
-    await Promise.all(allContexts.map(ctx => ctx.rebuild()));
-    await Promise.all(allContexts.map(ctx => ctx.dispose()));
+    await Promise.all(allContexts.map((ctx) => ctx.rebuild()));
+    await Promise.all(allContexts.map((ctx) => ctx.dispose()));
   }
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error(e);
   process.exit(1);
 });

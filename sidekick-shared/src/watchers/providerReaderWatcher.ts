@@ -28,7 +28,9 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
     this.reader = provider.createReader(sessionPath);
   }
 
-  get isActive(): boolean { return this._isActive; }
+  get isActive(): boolean {
+    return this._isActive;
+  }
 
   seekTo(position: number): void {
     this.reader.seekTo(position);
@@ -68,9 +70,18 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
     if (!this._isActive) return;
     this._isActive = false;
 
-    if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
-    if (this.fsWatcher) { this.fsWatcher.close(); this.fsWatcher = null; }
-    if (this.catchupTimer) { clearInterval(this.catchupTimer); this.catchupTimer = null; }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (this.fsWatcher) {
+      this.fsWatcher.close();
+      this.fsWatcher = null;
+    }
+    if (this.catchupTimer) {
+      clearInterval(this.catchupTimer);
+      this.catchupTimer = null;
+    }
     this.reader.flush();
   }
 

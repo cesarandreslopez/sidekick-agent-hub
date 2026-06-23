@@ -21,7 +21,7 @@ import type {
   CacheEffectivenessData,
   RecoveryPatternData,
   AdvancedBurnRateData,
-  ToolEfficiencyData
+  ToolEfficiencyData,
 } from '../types/sessionSummary';
 import { ModelPricingService } from './ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
@@ -58,7 +58,7 @@ function computeTaskDuration(
   status: string,
   createdAt: Date,
   updatedAt: Date,
-  now: number
+  now: number,
 ): number {
   switch (status) {
     case 'completed':
@@ -77,10 +77,12 @@ export class SessionSummaryService {
   /**
    * Builds a complete session summary from stats and analysis data.
    */
-  generateSummary(stats: SessionStats, analysisData: SessionAnalysisData, contextWindowLimit: number = 200_000): SessionSummaryData {
-    const duration = stats.sessionStartTime
-      ? Date.now() - stats.sessionStartTime.getTime()
-      : 0;
+  generateSummary(
+    stats: SessionStats,
+    analysisData: SessionAnalysisData,
+    contextWindowLimit: number = 200_000,
+  ): SessionSummaryData {
+    const duration = stats.sessionStartTime ? Date.now() - stats.sessionStartTime.getTime() : 0;
 
     const totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
     const totalCost = this._computeTotalCost(stats);
@@ -103,10 +105,14 @@ export class SessionSummaryService {
 
     // Errors & recovery
     const errors = this._buildErrorSummary(analysisData);
-    const recoveryRate = analysisData.recoveryPatterns.length > 0
-      ? analysisData.recoveryPatterns.reduce((sum, p) => sum + p.occurrences, 0) /
-        Math.max(analysisData.errors.reduce((sum, e) => sum + e.count, 0), 1)
-      : 0;
+    const recoveryRate =
+      analysisData.recoveryPatterns.length > 0
+        ? analysisData.recoveryPatterns.reduce((sum, p) => sum + p.occurrences, 0) /
+          Math.max(
+            analysisData.errors.reduce((sum, e) => sum + e.count, 0),
+            1,
+          )
+        : 0;
 
     return {
       duration,
@@ -145,8 +151,8 @@ export class SessionSummaryService {
 
     const now = Date.now();
     const taskList = Array.from(taskState.tasks.values())
-      .filter(t => t.status !== 'deleted')
-      .map(t => ({
+      .filter((t) => t.status !== 'deleted')
+      .map((t) => ({
         taskId: t.taskId,
         subject: t.subject,
         status: t.status,
@@ -156,13 +162,14 @@ export class SessionSummaryService {
         blocks: [...t.blocks],
       }));
 
-    const completed = taskList.filter(t => t.status === 'completed');
-    const inProgress = taskList.filter(t => t.status === 'in_progress');
-    const pending = taskList.filter(t => t.status === 'pending');
+    const completed = taskList.filter((t) => t.status === 'completed');
+    const inProgress = taskList.filter((t) => t.status === 'in_progress');
+    const pending = taskList.filter((t) => t.status === 'pending');
 
-    const avgDuration = completed.length > 0
-      ? completed.reduce((sum, t) => sum + t.duration, 0) / completed.length
-      : 0;
+    const avgDuration =
+      completed.length > 0
+        ? completed.reduce((sum, t) => sum + t.duration, 0) / completed.length
+        : 0;
 
     return {
       tasks: taskList,
@@ -206,10 +213,13 @@ export class SessionSummaryService {
    */
   getRecoveryPatterns(analysisData: SessionAnalysisData): RecoveryPatternData {
     const totalErrors = analysisData.errors.reduce((sum, e) => sum + e.count, 0);
-    const totalRecoveries = analysisData.recoveryPatterns.reduce((sum, p) => sum + p.occurrences, 0);
+    const totalRecoveries = analysisData.recoveryPatterns.reduce(
+      (sum, p) => sum + p.occurrences,
+      0,
+    );
 
     return {
-      patterns: analysisData.recoveryPatterns.map(p => ({
+      patterns: analysisData.recoveryPatterns.map((p) => ({
         type: p.type,
         description: p.description,
         failedApproach: p.failedApproach,
@@ -228,7 +238,7 @@ export class SessionSummaryService {
   getAdvancedBurnRate(
     stats: SessionStats,
     burnRateCalculator: BurnRateCalculator,
-    quotaState?: QuotaState
+    quotaState?: QuotaState,
   ): AdvancedBurnRateData {
     const currentRate = burnRateCalculator.calculateBurnRate();
     const sessionDuration = stats.sessionStartTime
@@ -258,9 +268,10 @@ export class SessionSummaryService {
       const fiveHourRemaining = 100 - quotaState.fiveHour.utilization;
       if (fiveHourRemaining > 0 && fiveHourRemaining < 50) {
         // Rough estimate: if consuming at current rate, when would we hit 100%
-        const minutesRemaining = (fiveHourRemaining / quotaState.fiveHour.utilization) *
-          (sessionDuration / 60000);
-        if (minutesRemaining < 300) { // Only show if < 5 hours
+        const minutesRemaining =
+          (fiveHourRemaining / quotaState.fiveHour.utilization) * (sessionDuration / 60000);
+        if (minutesRemaining < 300) {
+          // Only show if < 5 hours
           projectedQuotaExhaustion = new Date(Date.now() + minutesRemaining * 60000).toISOString();
         }
       }
@@ -317,7 +328,7 @@ export class SessionSummaryService {
   async generateNarrative(
     summary: SessionSummaryData,
     authService: AuthService,
-    options?: { timeout?: number }
+    options?: { timeout?: number },
   ): Promise<string> {
     const prompt = buildNarrativePrompt(summary);
     const model = resolveModel('fast', authService.getProviderId(), 'inlineModel');
@@ -333,12 +344,15 @@ export class SessionSummaryService {
     let cost = 0;
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      const contribution = ModelPricingService.calculateCost({
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        cacheWriteTokens: usage.cacheWriteTokens,
-        cacheReadTokens: usage.cacheReadTokens,
-      }, pricing);
+      const contribution = ModelPricingService.calculateCost(
+        {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheWriteTokens: usage.cacheWriteTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+        },
+        pricing,
+      );
       // Unpriced models (null) contribute 0; see SessionMonitor.getSessionSummary
       // for the per-model "—" rendering path.
       if (contribution !== null) cost += contribution;
@@ -349,7 +363,7 @@ export class SessionSummaryService {
   private _buildTaskSummaries(
     taskState: TaskState | undefined,
     totalCost: number,
-    toolCalls: ToolCall[]
+    toolCalls: ToolCall[],
   ): TaskSummaryItem[] {
     if (!taskState) return [];
 
@@ -357,8 +371,8 @@ export class SessionSummaryService {
     const now = Date.now();
 
     return Array.from(taskState.tasks.values())
-      .filter(t => t.status !== 'deleted')
-      .map(t => {
+      .filter((t) => t.status !== 'deleted')
+      .map((t) => {
         const duration = computeTaskDuration(t.status, t.createdAt, t.updatedAt, now);
         const toolCallCount = t.associatedToolCalls.length;
         const costShare = totalToolCalls > 0 ? toolCallCount / totalToolCalls : 0;
@@ -376,9 +390,9 @@ export class SessionSummaryService {
 
   private _computeTaskCompletionRate(taskState?: TaskState): number {
     if (!taskState || taskState.tasks.size === 0) return 0;
-    const tasks = Array.from(taskState.tasks.values()).filter(t => t.status !== 'deleted');
+    const tasks = Array.from(taskState.tasks.values()).filter((t) => t.status !== 'deleted');
     if (tasks.length === 0) return 0;
-    return tasks.filter(t => t.status === 'completed').length / tasks.length;
+    return tasks.filter((t) => t.status === 'completed').length / tasks.length;
   }
 
   private _buildFileChanges(toolCalls: ToolCall[]): {
@@ -408,7 +422,7 @@ export class SessionSummaryService {
         additions: changes.additions,
         deletions: changes.deletions,
       }))
-      .sort((a, b) => (b.additions + b.deletions) - (a.additions + a.deletions));
+      .sort((a, b) => b.additions + b.deletions - (a.additions + a.deletions));
 
     const totalAdditions = filesChanged.reduce((sum, f) => sum + f.additions, 0);
     const totalDeletions = filesChanged.reduce((sum, f) => sum + f.deletions, 0);
@@ -421,18 +435,23 @@ export class SessionSummaryService {
     };
   }
 
-  private _buildCostByModel(stats: SessionStats): { model: string; cost: number; percentage: number }[] {
+  private _buildCostByModel(
+    stats: SessionStats,
+  ): { model: string; cost: number; percentage: number }[] {
     const entries: { model: string; cost: number }[] = [];
     let total = 0;
 
     stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      const cost = ModelPricingService.calculateCost({
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        cacheWriteTokens: usage.cacheWriteTokens,
-        cacheReadTokens: usage.cacheReadTokens,
-      }, pricing);
+      const cost = ModelPricingService.calculateCost(
+        {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheWriteTokens: usage.cacheWriteTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+        },
+        pricing,
+      );
       // Unpriced models (null) contribute 0 and 0% to the percentage chart.
       const contribution = cost ?? 0;
       entries.push({ model, cost: contribution });
@@ -440,11 +459,14 @@ export class SessionSummaryService {
     });
 
     return entries
-      .map(e => ({ ...e, percentage: total > 0 ? (e.cost / total) * 100 : 0 }))
+      .map((e) => ({ ...e, percentage: total > 0 ? (e.cost / total) * 100 : 0 }))
       .sort((a, b) => b.cost - a.cost);
   }
 
-  private _buildCostByTool(toolCalls: ToolCall[], totalCost: number): { tool: string; estimatedCost: number; calls: number }[] {
+  private _buildCostByTool(
+    toolCalls: ToolCall[],
+    totalCost: number,
+  ): { tool: string; estimatedCost: number; calls: number }[] {
     const costMap = this._distributeToolCosts(toolCalls, totalCost);
     const callCounts = new Map<string, number>();
 
@@ -461,7 +483,9 @@ export class SessionSummaryService {
       .sort((a, b) => b.estimatedCost - a.estimatedCost);
   }
 
-  private _buildErrorSummary(analysisData: SessionAnalysisData): { category: string; count: number; recovered: boolean }[] {
+  private _buildErrorSummary(
+    analysisData: SessionAnalysisData,
+  ): { category: string; count: number; recovered: boolean }[] {
     const recoveredCategories = new Set<string>();
 
     // Mark categories as recovered if we have recovery patterns for tools that match
@@ -471,7 +495,7 @@ export class SessionSummaryService {
       }
     }
 
-    return analysisData.errors.map(e => ({
+    return analysisData.errors.map((e) => ({
       category: e.category,
       count: e.count,
       recovered: recoveredCategories.size > 0, // Simplified: if any recovery, consider partially recovered
@@ -517,7 +541,7 @@ export class SessionSummaryService {
   }
 
   private _computeTrend(
-    recentEvents: Array<{ timestamp: Date; tokens: number }>
+    recentEvents: Array<{ timestamp: Date; tokens: number }>,
   ): 'increasing' | 'stable' | 'decreasing' {
     if (recentEvents.length < 4) return 'stable';
 

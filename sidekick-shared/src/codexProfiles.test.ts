@@ -55,23 +55,31 @@ function systemAuthPath(): string {
   return path.join(systemHome(), 'auth.json');
 }
 
-function makeAuthJson(email: string, workspaceId: string, extras: Record<string, unknown> = {}): string {
-  return JSON.stringify({
-    auth_mode: 'chatgpt',
-    tokens: {
-      id_token: makeJwt({
-        email,
-        'https://api.openai.com/auth': {
-          chatgpt_plan_type: 'plus',
-          chatgpt_account_id: workspaceId,
-        },
-      }),
-      access_token: `access-${workspaceId}`,
-      refresh_token: `refresh-${workspaceId}`,
-      account_id: workspaceId,
+function makeAuthJson(
+  email: string,
+  workspaceId: string,
+  extras: Record<string, unknown> = {},
+): string {
+  return JSON.stringify(
+    {
+      auth_mode: 'chatgpt',
+      tokens: {
+        id_token: makeJwt({
+          email,
+          'https://api.openai.com/auth': {
+            chatgpt_plan_type: 'plus',
+            chatgpt_account_id: workspaceId,
+          },
+        }),
+        access_token: `access-${workspaceId}`,
+        refresh_token: `refresh-${workspaceId}`,
+        account_id: workspaceId,
+      },
+      ...extras,
     },
-    ...extras,
-  }, null, 2);
+    null,
+    2,
+  );
 }
 
 function writeSystemAuth(content: string): void {
@@ -85,7 +93,13 @@ function writeSourceCodexAuth(email = 'codex@example.com'): void {
   writeSystemAuth(makeAuthJson(email, 'ws-123'));
 }
 
-function mockCodexCli({ loggedIn, pgrepHit = false }: { loggedIn: boolean; pgrepHit?: boolean }): void {
+function mockCodexCli({
+  loggedIn,
+  pgrepHit = false,
+}: {
+  loggedIn: boolean;
+  pgrepHit?: boolean;
+}): void {
   mockSpawnSync.mockImplementation((command: unknown) => {
     if (command === 'pgrep') {
       return { status: pgrepHit ? 0 : 1, stdout: '', stderr: '', error: undefined };
@@ -99,7 +113,13 @@ function mockCodexCli({ loggedIn, pgrepHit = false }: { loggedIn: boolean; pgrep
   });
 }
 
-function timeoutSpawnResult(): { status: null; signal: 'SIGKILL'; error: Error; stdout: string; stderr: string } {
+function timeoutSpawnResult(): {
+  status: null;
+  signal: 'SIGKILL';
+  error: Error;
+  stdout: string;
+  stderr: string;
+} {
   return {
     status: null,
     signal: 'SIGKILL',
@@ -209,8 +229,9 @@ describe('codexProfiles', () => {
     expect(switched.success).toBe(true);
     expect(getActiveCodexAccount()?.id).toBe(work);
     expect(resolveSidekickCodexHome()).toBe(systemHome());
-    expect(fs.readFileSync(systemAuthPath(), 'utf8'))
-      .toBe(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'));
+    expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
+      fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+    );
 
     const removed = removeCodexAccount(work);
     expect(removed.success).toBe(true);
@@ -223,7 +244,9 @@ describe('codexProfiles', () => {
       const { work, personal } = setupTwoAccounts();
 
       // Simulate codex rotating the live tokens since the backup was taken.
-      const rotated = makeAuthJson('personal@example.com', 'ws-personal', { last_refresh: '2026-06-01T00:00:00Z' });
+      const rotated = makeAuthJson('personal@example.com', 'ws-personal', {
+        last_refresh: '2026-06-01T00:00:00Z',
+      });
       writeSystemAuth(rotated);
 
       const result = switchToCodexAccount(work);
@@ -231,7 +254,9 @@ describe('codexProfiles', () => {
       expect(result.success).toBe(true);
       const workStored = fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8');
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(workStored);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(personal), 'auth.json'), 'utf8')).toBe(rotated);
+      expect(fs.readFileSync(path.join(getCodexProfileHome(personal), 'auth.json'), 'utf8')).toBe(
+        rotated,
+      );
       expect(getActiveCodexAccount()?.id).toBe(work);
       expect(fs.statSync(systemAuthPath()).mode & 0o777).toBe(0o600);
     });
@@ -240,29 +265,38 @@ describe('codexProfiles', () => {
       const { work, personal } = setupTwoAccounts();
 
       // The user ran `codex login` with the Work account outside sidekick.
-      const externalWork = makeAuthJson('work@example.com', 'ws-work', { last_refresh: '2026-06-02T00:00:00Z' });
+      const externalWork = makeAuthJson('work@example.com', 'ws-work', {
+        last_refresh: '2026-06-02T00:00:00Z',
+      });
       writeSystemAuth(externalWork);
 
       const result = switchToCodexAccount(personal);
 
       expect(result.success).toBe(true);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(externalWork);
-      expect(fs.readFileSync(systemAuthPath(), 'utf8'))
-        .toBe(fs.readFileSync(path.join(getCodexProfileHome(personal), 'auth.json'), 'utf8'));
+      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(
+        externalWork,
+      );
+      expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
+        fs.readFileSync(path.join(getCodexProfileHome(personal), 'auth.json'), 'utf8'),
+      );
       expect(getActiveCodexAccount()?.id).toBe(personal);
     });
 
     it('never replaces live credentials with a staler copy of the same account', () => {
       const { work } = setupTwoAccounts();
 
-      const rotatedWork = makeAuthJson('work@example.com', 'ws-work', { last_refresh: '2026-06-03T00:00:00Z' });
+      const rotatedWork = makeAuthJson('work@example.com', 'ws-work', {
+        last_refresh: '2026-06-03T00:00:00Z',
+      });
       writeSystemAuth(rotatedWork);
 
       const result = switchToCodexAccount(work);
 
       expect(result.success).toBe(true);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(rotatedWork);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(rotatedWork);
+      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(
+        rotatedWork,
+      );
       expect(getActiveCodexAccount()?.id).toBe(work);
     });
 
@@ -276,8 +310,9 @@ describe('codexProfiles', () => {
       expect(result.warning).toMatch(/stashed/i);
       const stashDir = path.join(tmpDir, 'accounts', 'codex', 'stash');
       expect(fs.readdirSync(stashDir)).toHaveLength(1);
-      expect(fs.readFileSync(systemAuthPath(), 'utf8'))
-        .toBe(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'));
+      expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
+        fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+      );
     });
 
     it('rolls back and reports an error when the system home is not writable', () => {
@@ -316,8 +351,9 @@ describe('codexProfiles', () => {
       const result = switchToCodexAccount(work);
 
       expect(result.success).toBe(true);
-      expect(fs.readFileSync(systemAuthPath(), 'utf8'))
-        .toBe(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'));
+      expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
+        fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+      );
     });
 
     it('swaps legacy .credentials.json profiles', () => {
@@ -334,14 +370,17 @@ describe('codexProfiles', () => {
 
       const toLegacy = switchToCodexAccount(legacy.profileId!);
       expect(toLegacy.success).toBe(true);
-      expect(fs.readFileSync(path.join(systemHome(), '.credentials.json'), 'utf8')).toBe(legacyCreds);
+      expect(fs.readFileSync(path.join(systemHome(), '.credentials.json'), 'utf8')).toBe(
+        legacyCreds,
+      );
       expect(fs.existsSync(systemAuthPath())).toBe(false);
 
       const toWork = switchToCodexAccount(work.profileId!);
       expect(toWork.success).toBe(true);
       expect(fs.existsSync(path.join(systemHome(), '.credentials.json'))).toBe(false);
-      expect(fs.readFileSync(systemAuthPath(), 'utf8'))
-        .toBe(fs.readFileSync(path.join(getCodexProfileHome(work.profileId!), 'auth.json'), 'utf8'));
+      expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
+        fs.readFileSync(path.join(getCodexProfileHome(work.profileId!), 'auth.json'), 'utf8'),
+      );
     });
 
     it('activates a freshly logged-in profile by promoting its auth.json to the system home', () => {
@@ -407,9 +446,13 @@ describe('codexProfiles', () => {
   describe('reconcileCodexAuthState', () => {
     it('promotes a fresher profile copy over the system copy once', () => {
       const { personal } = setupTwoAccounts();
-      const oldLive = makeAuthJson('personal@example.com', 'ws-personal', { last_refresh: '2020-01-01T00:00:00Z' });
+      const oldLive = makeAuthJson('personal@example.com', 'ws-personal', {
+        last_refresh: '2020-01-01T00:00:00Z',
+      });
       writeSystemAuth(oldLive);
-      const fresher = makeAuthJson('personal@example.com', 'ws-personal', { last_refresh: '2020-02-01T00:00:00Z' });
+      const fresher = makeAuthJson('personal@example.com', 'ws-personal', {
+        last_refresh: '2020-02-01T00:00:00Z',
+      });
       fs.writeFileSync(path.join(getCodexProfileHome(personal), 'auth.json'), fresher);
 
       reconcileCodexAuthState();
@@ -427,14 +470,18 @@ describe('codexProfiles', () => {
     it('repoints the registry when the live credentials belong to a different saved account', () => {
       const { work, personal } = setupTwoAccounts();
       expect(getActiveCodexAccount()?.id).toBe(personal);
-      const externalWork = makeAuthJson('work@example.com', 'ws-work', { last_refresh: '2020-03-01T00:00:00Z' });
+      const externalWork = makeAuthJson('work@example.com', 'ws-work', {
+        last_refresh: '2020-03-01T00:00:00Z',
+      });
       writeSystemAuth(externalWork);
 
       reconcileCodexAuthState();
 
       expect(getActiveCodexAccount()?.id).toBe(work);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(externalWork);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(externalWork);
+      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(
+        externalWork,
+      );
     });
   });
 

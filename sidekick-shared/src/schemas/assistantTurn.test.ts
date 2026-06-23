@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  assistantTurnProjectionSchema,
-  assistantTurnSubagentSchema,
-} from './assistantTurn';
+import { assistantTurnProjectionSchema, assistantTurnSubagentSchema } from './assistantTurn';
 
 describe('assistantTurnProjectionSchema', () => {
   it('round-trips a process-and-answer projection', () => {

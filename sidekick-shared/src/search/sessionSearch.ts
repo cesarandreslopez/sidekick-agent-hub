@@ -18,7 +18,7 @@ export interface SearchResult {
 export async function searchSessions(
   provider: SessionProvider,
   query: string,
-  opts?: { projectSlug?: string; maxResults?: number }
+  opts?: { projectSlug?: string; maxResults?: number },
 ): Promise<SearchResult[]> {
   const maxResults = opts?.maxResults ?? 50;
   const results: SearchResult[] = [];
@@ -41,12 +41,14 @@ export async function searchSessions(
       try {
         const dir = folder.dir;
         if (fs.existsSync(dir)) {
-          const entries = fs.readdirSync(dir).filter(f =>
-            f.endsWith('.jsonl') || f.endsWith('.json')
-          );
-          sessionFiles = entries.map(f => path.join(dir, f));
+          const entries = fs
+            .readdirSync(dir)
+            .filter((f) => f.endsWith('.jsonl') || f.endsWith('.json'));
+          sessionFiles = entries.map((f) => path.join(dir, f));
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
 
       // If no files found from dir scan, try findAllSessions with the folder name
       if (sessionFiles.length === 0) {
@@ -72,7 +74,9 @@ export async function searchSessions(
         }
       }
     }
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   return results.slice(0, maxResults);
 }

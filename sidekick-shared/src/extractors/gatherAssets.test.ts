@@ -40,7 +40,14 @@ beforeAll(() => {
   process.env.CODEX_HOME = explicitCodexHome;
 
   claudeSessionPath = path.join(home, '.claude', 'projects', claudeSlug(cwd), 'session.jsonl');
-  codexSessionPath = path.join(explicitCodexHome, 'sessions', '2026', '06', '17', 'rollout-codex.jsonl');
+  codexSessionPath = path.join(
+    explicitCodexHome,
+    'sessions',
+    '2026',
+    '06',
+    '17',
+    'rollout-codex.jsonl',
+  );
 
   writeJsonl(claudeSessionPath, [
     {
@@ -49,7 +56,10 @@ beforeAll(() => {
       message: {
         role: 'assistant',
         content: [
-          { type: 'text', text: `Docs https://claude.test\nOpen ${mentionedFile}:7\n\`\`\`bash\nnpm test\n\`\`\`` },
+          {
+            type: 'text',
+            text: `Docs https://claude.test\nOpen ${mentionedFile}:7\n\`\`\`bash\nnpm test\n\`\`\``,
+          },
           { type: 'tool_use', name: 'Read', input: { file_path: realFile } },
           { type: 'tool_use', name: 'ExitPlanMode', input: { plan: '# Claude Plan\n- [ ] do it' } },
         ],
@@ -67,14 +77,38 @@ beforeAll(() => {
 
   writeJsonl(codexSessionPath, [
     { type: 'session_meta', timestamp: '2026-06-17T11:00:00Z', payload: { cwd, id: 'x' } },
-    { type: 'response_item', timestamp: '2026-06-17T11:00:01Z', payload: { type: 'agent_message', message: `see https://codex.test and ${mentionedFile}:12` } },
-    { type: 'response_item', timestamp: '2026-06-17T11:00:02Z', payload: { type: 'function_call', name: 'shell', arguments: JSON.stringify({ command: `cat ${realFile}` }) } },
-    { type: 'response_item', timestamp: '2026-06-17T11:00:03Z', payload: { type: 'item_completed', item: { type: 'Plan', text: '# Codex Plan\n- step' } } },
+    {
+      type: 'response_item',
+      timestamp: '2026-06-17T11:00:01Z',
+      payload: { type: 'agent_message', message: `see https://codex.test and ${mentionedFile}:12` },
+    },
+    {
+      type: 'response_item',
+      timestamp: '2026-06-17T11:00:02Z',
+      payload: {
+        type: 'function_call',
+        name: 'shell',
+        arguments: JSON.stringify({ command: `cat ${realFile}` }),
+      },
+    },
+    {
+      type: 'response_item',
+      timestamp: '2026-06-17T11:00:03Z',
+      payload: { type: 'item_completed', item: { type: 'Plan', text: '# Codex Plan\n- step' } },
+    },
   ]);
 
   writeJsonl(path.join(explicitCodexHome, 'sessions', '2026', '06', '17', 'rollout-child.jsonl'), [
-    { type: 'session_meta', timestamp: '2026-06-17T12:00:00Z', payload: { cwd: childCwd, id: 'y' } },
-    { type: 'response_item', timestamp: '2026-06-17T12:00:01Z', payload: { type: 'agent_message', message: 'https://codex-child-only.test' } },
+    {
+      type: 'session_meta',
+      timestamp: '2026-06-17T12:00:00Z',
+      payload: { cwd: childCwd, id: 'y' },
+    },
+    {
+      type: 'response_item',
+      timestamp: '2026-06-17T12:00:01Z',
+      payload: { type: 'agent_message', message: 'https://codex-child-only.test' },
+    },
   ]);
 });
 

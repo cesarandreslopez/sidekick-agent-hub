@@ -118,7 +118,12 @@ export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore>
   /**
    * Updates an existing note by ID.
    */
-  updateNote(id: string, updates: Partial<Pick<KnowledgeNote, 'content' | 'title' | 'noteType' | 'importance' | 'tags' | 'status'>>): boolean {
+  updateNote(
+    id: string,
+    updates: Partial<
+      Pick<KnowledgeNote, 'content' | 'title' | 'noteType' | 'importance' | 'tags' | 'status'>
+    >,
+  ): boolean {
     const note = this.findNoteById(id);
     if (!note) return false;
 
@@ -132,7 +137,7 @@ export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore>
    */
   deleteNote(id: string): boolean {
     for (const [filePath, notes] of Object.entries(this.store.notesByFile)) {
-      const idx = notes.findIndex(n => n.id === id);
+      const idx = notes.findIndex((n) => n.id === id);
       if (idx !== -1) {
         notes.splice(idx, 1);
         if (notes.length === 0) {
@@ -180,21 +185,21 @@ export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore>
 
     if (filter) {
       if (filter.status && filter.status.length > 0) {
-        allNotes = allNotes.filter(n => filter.status!.includes(n.status));
+        allNotes = allNotes.filter((n) => filter.status!.includes(n.status));
       }
       if (filter.noteType && filter.noteType.length > 0) {
-        allNotes = allNotes.filter(n => filter.noteType!.includes(n.noteType));
+        allNotes = allNotes.filter((n) => filter.noteType!.includes(n.noteType));
       }
       if (filter.filePath) {
-        allNotes = allNotes.filter(n => n.filePath === filter.filePath);
+        allNotes = allNotes.filter((n) => n.filePath === filter.filePath);
       }
       if (filter.query && filter.query.trim().length > 0) {
         const q = filter.query.toLowerCase().trim();
         allNotes = allNotes.filter(
-          n =>
+          (n) =>
             n.content.toLowerCase().includes(q) ||
             (n.title?.toLowerCase().includes(q) ?? false) ||
-            n.filePath.toLowerCase().includes(q)
+            n.filePath.toLowerCase().includes(q),
         );
       }
     }
@@ -202,7 +207,7 @@ export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore>
     // Sort by updated time descending
     allNotes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-    return allNotes.map(n => ({
+    return allNotes.map((n) => ({
       id: n.id,
       noteType: n.noteType,
       content: n.content,
@@ -326,7 +331,7 @@ export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore>
 
   private findNoteById(id: string): KnowledgeNote | undefined {
     for (const notes of Object.values(this.store.notesByFile)) {
-      const note = notes.find(n => n.id === id);
+      const note = notes.find((n) => n.id === id);
       if (note) return note;
     }
     return undefined;

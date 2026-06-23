@@ -102,14 +102,20 @@ function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
     fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
     fs.renameSync(tmp, filePath);
   } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* nothing to clean up */ }
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* nothing to clean up */
+    }
     throw err;
   }
 }
 
 function readPendingClaudeProfile(loginId: string): PendingClaudeProfile | null {
   try {
-    return JSON.parse(fs.readFileSync(getPendingClaudeProfilePath(loginId), 'utf8')) as PendingClaudeProfile;
+    return JSON.parse(
+      fs.readFileSync(getPendingClaudeProfilePath(loginId), 'utf8'),
+    ) as PendingClaudeProfile;
   } catch {
     return null;
   }
@@ -121,7 +127,11 @@ function writePendingClaudeProfile(loginId: string, pending: PendingClaudeProfil
 }
 
 function removePendingClaudeProfile(loginId: string): void {
-  try { fs.rmSync(getPendingClaudeProfilePath(loginId), { force: true }); } catch { /* best effort */ }
+  try {
+    fs.rmSync(getPendingClaudeProfilePath(loginId), { force: true });
+  } catch {
+    /* best effort */
+  }
 }
 
 function getClaudeCredentialsBackupPath(uuid: string): string {
@@ -141,7 +151,11 @@ function readClaudeOauthAccount(home: string): unknown | null {
   }
 }
 
-function copyClaudeProfileToCanonicalHome(sourceHome: string, accountUuid: string, credentials: unknown): void {
+function copyClaudeProfileToCanonicalHome(
+  sourceHome: string,
+  accountUuid: string,
+  credentials: unknown,
+): void {
   const canonicalHome = getClaudeProfileHome(accountUuid);
   fs.mkdirSync(canonicalHome, { recursive: true, mode: 0o700 });
 
@@ -165,7 +179,9 @@ function parseClaudeLoginArgs(raw: string | undefined): string[] | null {
   return trimmed ? trimmed.split(/\s+/) : null;
 }
 
-export function resolveClaudeLoginCommand(opts: { loginCommand?: AccountLoginCommand } = {}): AccountLoginCommand {
+export function resolveClaudeLoginCommand(
+  opts: { loginCommand?: AccountLoginCommand } = {},
+): AccountLoginCommand {
   if (opts.loginCommand) return opts.loginCommand;
   return {
     command: 'claude',
@@ -227,7 +243,10 @@ export function beginAccountLogin(
   };
 }
 
-export function getAccountLoginStatus(provider: AccountProviderId, loginId: string): AccountLoginStatus {
+export function getAccountLoginStatus(
+  provider: AccountProviderId,
+  loginId: string,
+): AccountLoginStatus {
   if (provider === 'codex') {
     const codexHome = getCodexProfileHome(loginId);
     if (!isCodexProfileAuthenticated(codexHome)) {
@@ -314,7 +333,7 @@ function waitForNextPoll(ms: number, signal?: AbortSignal): Promise<boolean> {
   if (ms <= 0) return Promise.resolve(true);
   if (signal?.aborted) return Promise.resolve(false);
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const timer = setTimeout(() => {
       cleanup();
       resolve(true);
@@ -366,7 +385,7 @@ export async function spawnAccountLogin(
     return { success: false, error: `Could not spawn account login: ${err}` };
   }
 
-  child.on('exit', code => {
+  child.on('exit', (code) => {
     childExited = true;
     childExitCode = code;
   });
@@ -411,9 +430,7 @@ export async function spawnAccountLogin(
 }
 
 export function switchAccount(provider: AccountProviderId, id: string): AccountManagerResult {
-  return provider === 'codex'
-    ? switchToCodexAccount(id)
-    : switchToAccount(id);
+  return provider === 'codex' ? switchToCodexAccount(id) : switchToAccount(id);
 }
 
 export function listAllAccounts(): ListAllAccountsResult {

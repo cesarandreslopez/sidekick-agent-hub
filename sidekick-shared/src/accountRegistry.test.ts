@@ -51,7 +51,10 @@ describe('accountRegistry', () => {
 
     const accountsDir = path.join(tmpDir, 'accounts');
     fs.mkdirSync(accountsDir, { recursive: true });
-    fs.writeFileSync(path.join(accountsDir, 'accounts.json'), JSON.stringify(legacyRegistry, null, 2));
+    fs.writeFileSync(
+      path.join(accountsDir, 'accounts.json'),
+      JSON.stringify(legacyRegistry, null, 2),
+    );
 
     const migrated = readSavedAccountRegistry();
 

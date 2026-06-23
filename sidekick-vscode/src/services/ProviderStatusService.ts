@@ -84,7 +84,7 @@ export class ProviderStatusService implements vscode.Disposable {
 
   dispose(): void {
     this.stopRefresh();
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     log('ProviderStatusService disposed');
   }
 }

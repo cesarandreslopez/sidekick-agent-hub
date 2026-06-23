@@ -27,8 +27,8 @@ const STEP_ICONS: Record<string, string> = {
 
 const SOURCE_BADGES: Record<string, string> = {
   'claude-code': '{cyan-fg}CC{/cyan-fg}',
-  'opencode': '{magenta-fg}OC{/magenta-fg}',
-  'codex': '{blue-fg}CX{/blue-fg}',
+  opencode: '{magenta-fg}OC{/magenta-fg}',
+  codex: '{blue-fg}CX{/blue-fg}',
 };
 
 const COMPLEXITY_BADGES: Record<string, string> = {
@@ -155,21 +155,29 @@ export class PlansPanel implements SidePanel {
     lines.push(`{bold}${wordWrap(plan.title, w)}{/bold}`);
     lines.push('');
 
-    const steps: Array<{ id: string; description: string; status?: string; phase?: string; complexity?: string }> = plan.steps;
+    const steps: Array<{
+      id: string;
+      description: string;
+      status?: string;
+      phase?: string;
+      complexity?: string;
+    }> = plan.steps;
     if (steps.length === 0) {
       lines.push('{grey-fg}(no steps){/grey-fg}');
       return lines.join('\n');
     }
 
     // Completion progress bar
-    const completed = steps.filter(s => s.status === 'completed').length;
+    const completed = steps.filter((s) => s.status === 'completed').length;
     const rate = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0;
     const barWidth = Math.min(30, w - 20);
-    lines.push(`{bold}Progress:{/bold} ${makeBar(rate, barWidth)} ${rate}% (${completed}/${steps.length})`);
+    lines.push(
+      `{bold}Progress:{/bold} ${makeBar(rate, barWidth)} ${rate}% (${completed}/${steps.length})`,
+    );
     lines.push('');
 
     // Group by phase if phases exist
-    const phased = steps.some(s => s.phase);
+    const phased = steps.some((s) => s.phase);
     if (phased) {
       const groups = new Map<string, typeof steps>();
       for (const s of steps) {
@@ -193,7 +201,10 @@ export class PlansPanel implements SidePanel {
     return lines.join('\n');
   }
 
-  private formatStep(s: { description: string; status?: string; complexity?: string }, w: number): string {
+  private formatStep(
+    s: { description: string; status?: string; complexity?: string },
+    w: number,
+  ): string {
     const icon = STEP_ICONS[s.status || 'pending'] || STEP_ICONS['pending'];
     const complexity = s.complexity ? ` ${COMPLEXITY_BADGES[s.complexity] || ''}` : '';
     return `  ${icon}${complexity} ${wordWrap(s.description, w - 6)}`;
@@ -211,10 +222,10 @@ export class PlansPanel implements SidePanel {
     if (d.type === 'active') {
       const activePlan = plan as PlanInfo;
       const steps = activePlan.steps;
-      const completed = steps.filter(s => s.status === 'completed').length;
-      const inProgress = steps.filter(s => s.status === 'in_progress').length;
-      const failed = steps.filter(s => s.status === 'failed').length;
-      const pending = steps.filter(s => s.status === 'pending').length;
+      const completed = steps.filter((s) => s.status === 'completed').length;
+      const inProgress = steps.filter((s) => s.status === 'in_progress').length;
+      const failed = steps.filter((s) => s.status === 'failed').length;
+      const pending = steps.filter((s) => s.status === 'pending').length;
 
       lines.push('{bold}Steps Breakdown{/bold}');
       lines.push(`  Completed:   ${completed}`);
@@ -232,11 +243,11 @@ export class PlansPanel implements SidePanel {
     } else {
       const hist = plan as PersistedPlan;
       const steps = hist.steps;
-      const completed = steps.filter(s => s.status === 'completed').length;
-      const inProgress = steps.filter(s => s.status === 'in_progress').length;
-      const failed = steps.filter(s => s.status === 'failed').length;
-      const pending = steps.filter(s => s.status === 'pending').length;
-      const skipped = steps.filter(s => s.status === 'skipped').length;
+      const completed = steps.filter((s) => s.status === 'completed').length;
+      const inProgress = steps.filter((s) => s.status === 'in_progress').length;
+      const failed = steps.filter((s) => s.status === 'failed').length;
+      const pending = steps.filter((s) => s.status === 'pending').length;
+      const skipped = steps.filter((s) => s.status === 'skipped').length;
 
       if (hist.totalDurationMs) {
         lines.push(`{bold}Duration:{/bold}    ${formatDuration(hist.totalDurationMs)}`);

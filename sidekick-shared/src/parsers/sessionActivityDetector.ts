@@ -53,9 +53,7 @@ const ENDING_PATTERNS = [
 ];
 
 /** Patterns that definitely mean the session is done */
-const TERMINAL_PATTERNS = [
-  '"type":"result"',
-];
+const TERMINAL_PATTERNS = ['"type":"result"'];
 
 // ── Public API ──
 
@@ -93,7 +91,7 @@ export function detectSessionActivity(sessionPath: string): SessionActivityResul
   }
 
   // Parse the last few JSONL lines
-  const lines = tail.split('\n').filter(l => l.trim().length > 0);
+  const lines = tail.split('\n').filter((l) => l.trim().length > 0);
   if (lines.length === 0) {
     return { state: 'ended', lastActivityTime: new Date(stat.mtimeMs), reason: 'no-events' };
   }
@@ -138,7 +136,11 @@ export function detectSessionActivity(sessionPath: string): SessionActivityResul
 
   // AI activity after the last ending event → ongoing
   if (lastAiActivityIndex > lastEndingIndex) {
-    return { state: 'ongoing', lastActivityTime: new Date(stat.mtimeMs), reason: 'ai-activity-after-ending' };
+    return {
+      state: 'ongoing',
+      lastActivityTime: new Date(stat.mtimeMs),
+      reason: 'ai-activity-after-ending',
+    };
   }
 
   // Ending event with no subsequent AI activity
@@ -174,7 +176,13 @@ function readTail(filePath: string, fileSize: number): string | null {
     fd = null;
     return buffer.toString('utf-8', 0, bytesRead);
   } catch {
-    if (fd !== null) { try { fs.closeSync(fd); } catch { /* ignore */ } }
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* ignore */
+      }
+    }
     return null;
   }
 }

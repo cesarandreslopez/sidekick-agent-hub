@@ -48,7 +48,7 @@ function getCodexHomes(): string[] {
 
 /** Get every sessions base directory that may contain live Codex rollouts. */
 function getSessionsDirs(): string[] {
-  return getCodexHomes().map(home => path.join(home, 'sessions'));
+  return getCodexHomes().map((home) => path.join(home, 'sessions'));
 }
 
 /** Test if a filename is a Codex rollout file. */
@@ -235,9 +235,11 @@ function cwdMatches(sessionCwd: string, workspacePath: string): boolean {
   const normalizedSession = normalizePath(sessionCwd);
   const normalizedWorkspace = normalizePath(workspacePath);
 
-  return normalizedSession === normalizedWorkspace ||
+  return (
+    normalizedSession === normalizedWorkspace ||
     normalizedWorkspace.startsWith(normalizedSession + path.sep) ||
-    normalizedSession.startsWith(normalizedWorkspace + path.sep);
+    normalizedSession.startsWith(normalizedWorkspace + path.sep)
+  );
 }
 
 /** Normalize a path using realpathSync. */
@@ -355,12 +357,24 @@ function extractSearchableText(line: CodexRolloutLine): string {
 
     case 'event_msg': {
       const event = line.payload as Record<string, unknown>;
-      for (const key of ['type', 'message', 'result', 'stdout', 'stderr', 'summary', 'error', 'code', 'tool_name', 'server_name']) {
+      for (const key of [
+        'type',
+        'message',
+        'result',
+        'stdout',
+        'stderr',
+        'summary',
+        'error',
+        'code',
+        'tool_name',
+        'server_name',
+      ]) {
         if (typeof event[key] === 'string') parts.push(event[key] as string);
       }
       const command = event.command;
       if (Array.isArray(command)) parts.push(command.map(String).join(' '));
-      if (event.arguments && typeof event.arguments === 'object') parts.push(JSON.stringify(event.arguments));
+      if (event.arguments && typeof event.arguments === 'object')
+        parts.push(JSON.stringify(event.arguments));
       return parts.filter(Boolean).join(' ');
     }
 
@@ -386,7 +400,7 @@ function extractTextFromUnknownContent(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content
-    .map(part => {
+    .map((part) => {
       const p = part as Record<string, unknown>;
       return typeof p.text === 'string' ? p.text : '';
     })
@@ -657,8 +671,8 @@ export class CodexProvider implements SessionProviderBase {
     if (db) {
       const threads = db.getThreadsByCwd(workspacePath);
       const dbPaths = threads
-        .filter(t => t.rollout_path && fs.existsSync(t.rollout_path))
-        .map(t => t.rollout_path);
+        .filter((t) => t.rollout_path && fs.existsSync(t.rollout_path))
+        .map((t) => t.rollout_path);
       if (dbPaths.length > 0) return dbPaths;
     }
 
@@ -667,11 +681,11 @@ export class CodexProvider implements SessionProviderBase {
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
     return files
-      .filter(f => {
+      .filter((f) => {
         const meta = readSessionMeta(f.path);
         return meta && cwdMatches(meta.cwd, workspacePath);
       })
-      .map(f => f.path);
+      .map((f) => f.path);
   }
 
   /** Backward-compatible alias for findAllSessions. */
@@ -682,7 +696,7 @@ export class CodexProvider implements SessionProviderBase {
   findSessionsInDirectory(dir: string): string[] {
     const files = findRolloutFiles(dir);
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-    return files.map(f => f.path);
+    return files.map((f) => f.path);
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
@@ -777,9 +791,15 @@ export class CodexProvider implements SessionProviderBase {
   createReader(sessionPath: string): SessionReader {
     return new CodexReader(
       sessionPath,
-      (limit) => { this.dynamicContextWindowLimit = limit; },
-      (limits) => { this.lastRateLimitsData = limits; },
-      (usage) => { this.lastTokenUsageData = usage; },
+      (limit) => {
+        this.dynamicContextWindowLimit = limit;
+      },
+      (limits) => {
+        this.lastRateLimitsData = limits;
+      },
+      (usage) => {
+        this.lastTokenUsageData = usage;
+      },
     );
   }
 
@@ -875,13 +895,17 @@ export class CodexProvider implements SessionProviderBase {
               stats.outputTokens += event.message.usage.output_tokens || 0;
             }
           }
-        } catch { /* skip malformed lines */ }
+        } catch {
+          /* skip malformed lines */
+        }
       }
 
       if (stats.startTime && stats.endTime) {
         stats.durationMs = stats.endTime.getTime() - stats.startTime.getTime();
       }
-    } catch { /* skip unreadable files */ }
+    } catch {
+      /* skip unreadable files */
+    }
 
     return stats;
   }
@@ -914,7 +938,8 @@ export class CodexProvider implements SessionProviderBase {
 
           const start = Math.max(0, matchIdx - 40);
           const end = Math.min(text.length, matchIdx + query.length + 40);
-          const snippet = (start > 0 ? '...' : '') +
+          const snippet =
+            (start > 0 ? '...' : '') +
             text.substring(start, end) +
             (end < text.length ? '...' : '');
 
@@ -946,7 +971,7 @@ export class CodexProvider implements SessionProviderBase {
     const sessionId = extractSessionId(path.basename(sessionPath));
     const aggregator = new EventAggregator({
       providerId: 'codex',
-      computeContextSize: usage => usage.inputTokens,
+      computeContextSize: (usage) => usage.inputTokens,
     });
 
     try {

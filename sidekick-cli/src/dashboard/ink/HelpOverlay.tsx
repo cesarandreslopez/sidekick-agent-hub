@@ -21,7 +21,9 @@ function helpRow(key: string, desc: string, keyWidth = 14, totalWidth = 54): Rea
   const dots = '\u00B7'.repeat(dotCount);
   return (
     <Text>
-      {'  '}<Text bold>{key}</Text>{' '.repeat(Math.max(0, padding))} <Text dimColor>{dots}</Text> {desc}
+      {'  '}
+      <Text bold>{key}</Text>
+      {' '.repeat(Math.max(0, padding))} <Text dimColor>{dots}</Text> {desc}
     </Text>
   );
 }
@@ -33,65 +35,65 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
 
   return (
     <Box flexGrow={1} alignItems="center" justifyContent="center">
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor="magenta"
-      paddingX={1}
-      paddingY={1}
-      width={60}
-    >
-      {/* Logo */}
-      {LOGO_ART.map((line, i) => (
-        <Text key={`logo-${i}`}>{parseBlessedTags(line)}</Text>
-      ))}
-      <Text> </Text>
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="magenta"
+        paddingX={1}
+        paddingY={1}
+        width={60}
+      >
+        {/* Logo */}
+        {LOGO_ART.map((line, i) => (
+          <Text key={`logo-${i}`}>{parseBlessedTags(line)}</Text>
+        ))}
+        <Text> </Text>
 
-      {/* Panels */}
-      <Text bold>  Panels</Text>
-      {panels.map(p => helpRow(String(p.shortcutKey), p.title))}
-      <Text> </Text>
+        {/* Panels */}
+        <Text bold> Panels</Text>
+        {panels.map((p) => helpRow(String(p.shortcutKey), p.title))}
+        <Text> </Text>
 
-      {/* Navigation */}
-      <Text bold>  Navigation</Text>
-      {helpRow('Tab', 'Toggle side / detail focus')}
-      {helpRow('j / \u2193', 'Next item / scroll down')}
-      {helpRow('k / \u2191', 'Prev item / scroll up')}
-      {helpRow('g / G', 'First / last item')}
-      {helpRow('Enter', 'Focus detail pane')}
-      {helpRow('h / \u2190', 'Return to side')}
-      {helpRow('[ / ]', 'Cycle detail tabs')}
-      {helpRow('z', 'Cycle layout mode')}
-      <Text> </Text>
+        {/* Navigation */}
+        <Text bold> Navigation</Text>
+        {helpRow('Tab', 'Toggle side / detail focus')}
+        {helpRow('j / \u2193', 'Next item / scroll down')}
+        {helpRow('k / \u2191', 'Prev item / scroll up')}
+        {helpRow('g / G', 'First / last item')}
+        {helpRow('Enter', 'Focus detail pane')}
+        {helpRow('h / \u2190', 'Return to side')}
+        {helpRow('[ / ]', 'Cycle detail tabs')}
+        {helpRow('z', 'Cycle layout mode')}
+        <Text> </Text>
 
-      {/* Actions */}
-      <Text bold>  Actions</Text>
-      {helpRow('x', 'Context menu')}
-      {helpRow('/', 'Filter side list')}
-      {helpRow('f', 'Toggle session filter')}
+        {/* Actions */}
+        <Text bold> Actions</Text>
+        {helpRow('x', 'Context menu')}
+        {helpRow('/', 'Filter side list')}
+        {helpRow('f', 'Toggle session filter')}
 
-      {/* Panel-specific */}
-      {(actions.length > 0 || bindings.length > 0) && (
-        <>
-          <Text> </Text>
-          <Text bold>  {panel.title} Actions</Text>
-          {actions.map(a => (
-            <React.Fragment key={a.key}>{helpRow(a.key, a.label)}</React.Fragment>
-          ))}
-          {bindings.map(b => (
-            <React.Fragment key={b.keys[0]}>{helpRow(b.keys.join('/'), b.label)}</React.Fragment>
-          ))}
-        </>
-      )}
+        {/* Panel-specific */}
+        {(actions.length > 0 || bindings.length > 0) && (
+          <>
+            <Text> </Text>
+            <Text bold> {panel.title} Actions</Text>
+            {actions.map((a) => (
+              <React.Fragment key={a.key}>{helpRow(a.key, a.label)}</React.Fragment>
+            ))}
+            {bindings.map((b) => (
+              <React.Fragment key={b.keys[0]}>{helpRow(b.keys.join('/'), b.label)}</React.Fragment>
+            ))}
+          </>
+        )}
 
-      <Text> </Text>
-      <Text bold>  General</Text>
-      {helpRow('r', 'Generate HTML report')}
-      {helpRow('V', 'Version & changelog')}
-      {helpRow('?', 'Toggle this help')}
-      {helpRow('Esc', 'Close overlay / clear filter')}
-      {helpRow('q / Ctrl+C', 'Quit')}
-    </Box>
+        <Text> </Text>
+        <Text bold> General</Text>
+        {helpRow('r', 'Generate HTML report')}
+        {helpRow('V', 'Version & changelog')}
+        {helpRow('?', 'Toggle this help')}
+        {helpRow('Esc', 'Close overlay / clear filter')}
+        {helpRow('q / Ctrl+C', 'Quit')}
+      </Box>
     </Box>
   );
 }

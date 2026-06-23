@@ -120,8 +120,8 @@ export class GitService implements vscode.Disposable {
     const editor = vscode.window.activeTextEditor;
     if (editor) {
       const documentPath = editor.document.uri.fsPath;
-      const matchingRepo = this.api.repositories.find(repo =>
-        documentPath.startsWith(repo.rootUri.fsPath)
+      const matchingRepo = this.api.repositories.find((repo) =>
+        documentPath.startsWith(repo.rootUri.fsPath),
       );
       if (matchingRepo) {
         log(`getActiveRepository: Matched editor to repo: ${matchingRepo.rootUri.fsPath}`);
@@ -130,7 +130,9 @@ export class GitService implements vscode.Disposable {
     }
 
     // Last resort: first repository
-    log(`getActiveRepository: No editor match, using first repo: ${this.api.repositories[0].rootUri.fsPath}`);
+    log(
+      `getActiveRepository: No editor match, using first repo: ${this.api.repositories[0].rootUri.fsPath}`,
+    );
     return this.api.repositories[0];
   }
 
@@ -201,11 +203,13 @@ export class GitService implements vscode.Disposable {
     const editor = vscode.window.activeTextEditor;
     if (editor) {
       const documentPath = editor.document.uri.fsPath;
-      const matchingRepo = reposWithDiffs.find(repo =>
-        documentPath.startsWith(repo.rootUri.fsPath)
+      const matchingRepo = reposWithDiffs.find((repo) =>
+        documentPath.startsWith(repo.rootUri.fsPath),
       );
       if (matchingRepo) {
-        log(`selectRepository: Active editor matches repo with diff: ${matchingRepo.rootUri.fsPath}`);
+        log(
+          `selectRepository: Active editor matches repo with diff: ${matchingRepo.rootUri.fsPath}`,
+        );
         return matchingRepo;
       }
     }
@@ -218,10 +222,10 @@ export class GitService implements vscode.Disposable {
 
     // Multiple repos with diffs - ask user
     log(`selectRepository: ${reposWithDiffs.length} repos with diffs, prompting user`);
-    const items = reposWithDiffs.map(repo => ({
+    const items = reposWithDiffs.map((repo) => ({
       label: path.basename(repo.rootUri.fsPath),
       description: repo.rootUri.fsPath,
-      repo
+      repo,
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
@@ -371,12 +375,16 @@ export class GitService implements vscode.Disposable {
    * @param repoPath - Optional path to specific repository (use to ensure message goes to correct repo)
    * @returns Promise resolving to true if message was set, false if cancelled or no repo
    */
-  async setCommitMessage(message: string, confirmOverwrite: boolean = true, repoPath?: string): Promise<boolean> {
+  async setCommitMessage(
+    message: string,
+    confirmOverwrite: boolean = true,
+    repoPath?: string,
+  ): Promise<boolean> {
     let repository: Repository | undefined;
 
     // If repoPath provided, find that specific repository
     if (repoPath && this.api) {
-      repository = this.api.repositories.find(repo => repo.rootUri.fsPath === repoPath);
+      repository = this.api.repositories.find((repo) => repo.rootUri.fsPath === repoPath);
       if (!repository) {
         log(`setCommitMessage: Repository not found for path: ${repoPath}`);
       }
@@ -400,7 +408,7 @@ export class GitService implements vscode.Disposable {
       const choice = await vscode.window.showWarningMessage(
         'Replace existing commit message?',
         'Replace',
-        'Cancel'
+        'Cancel',
       );
       if (choice !== 'Replace') {
         log('setCommitMessage: User cancelled overwrite');
@@ -463,11 +471,14 @@ export class GitService implements vscode.Disposable {
       const output = await this.execGit(repository.rootUri.fsPath, [
         'log',
         `${baseBranch}..HEAD`,
-        '--format=%s'  // Subject line only
+        '--format=%s', // Subject line only
       ]);
 
       // Split by newlines, filter empty
-      const commits = output.trim().split('\n').filter(line => line.length > 0);
+      const commits = output
+        .trim()
+        .split('\n')
+        .filter((line) => line.length > 0);
       log(`Found ${commits.length} commits on branch vs ${baseBranch}`);
       return commits;
     } catch (error) {
@@ -488,7 +499,7 @@ export class GitService implements vscode.Disposable {
     try {
       const diff = await this.execGit(repository.rootUri.fsPath, [
         'diff',
-        `${baseBranch}...HEAD`  // Triple-dot: compare since divergence
+        `${baseBranch}...HEAD`, // Triple-dot: compare since divergence
       ]);
       log(`Branch diff: ${diff.length} characters vs ${baseBranch}`);
       return diff;
@@ -504,6 +515,6 @@ export class GitService implements vscode.Disposable {
    * Cleans up any event listeners or resources.
    */
   dispose(): void {
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
   }
 }

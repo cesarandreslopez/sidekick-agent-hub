@@ -70,7 +70,7 @@ describe('AccountService account management 2.0 facade', () => {
     mockSpawnAccountLogin.mockResolvedValue({ success: true });
     const service = new AccountService();
     const changes: string[] = [];
-    service.onAccountChange(provider => changes.push(provider));
+    service.onAccountChange((provider) => changes.push(provider));
     mockGetActiveClaudeAccount.mockReturnValue({
       uuid: 'claude-1',
       email: 'work@example.com',

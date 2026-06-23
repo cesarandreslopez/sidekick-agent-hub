@@ -19,12 +19,17 @@ const CATCHUP_INTERVAL_MS = 30_000;
 function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
   const events: FollowEvent[] = [];
   const ts = raw.timestamp || new Date().toISOString();
-  const permissionMode = (raw as unknown as Record<string, unknown>).permissionMode as string | undefined;
+  const permissionMode = (raw as unknown as Record<string, unknown>).permissionMode as
+    | string
+    | undefined;
   const usage = raw.message?.usage;
-  const tokens = usage ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 } : undefined;
-  const cacheTokens = usage && (usage.cache_read_input_tokens || usage.cache_creation_input_tokens)
-    ? { read: usage.cache_read_input_tokens || 0, write: usage.cache_creation_input_tokens || 0 }
+  const tokens = usage
+    ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 }
     : undefined;
+  const cacheTokens =
+    usage && (usage.cache_read_input_tokens || usage.cache_creation_input_tokens)
+      ? { read: usage.cache_read_input_tokens || 0, write: usage.cache_creation_input_tokens || 0 }
+      : undefined;
   const cost = usage?.reported_cost;
   const model = raw.message?.model;
 
@@ -34,12 +39,13 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
     if (Array.isArray(content)) {
       for (const block of content as Array<Record<string, unknown>>) {
         if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-          const resultText = typeof block.content === 'string'
-            ? truncate(block.content, 120)
-            : '';
+          const resultText = typeof block.content === 'string' ? truncate(block.content, 120) : '';
           events.push({
-            providerId: 'claude-code', type: 'tool_result', timestamp: ts,
-            summary: resultText || '(tool result)', raw: block,
+            providerId: 'claude-code',
+            type: 'tool_result',
+            timestamp: ts,
+            summary: resultText || '(tool result)',
+            raw: block,
           });
         }
       }
@@ -47,8 +53,12 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
     const text = extractTextContent(content);
     if (text || events.length === 0) {
       events.push({
-        providerId: 'claude-code', type: 'user', timestamp: ts,
-        summary: text || '(user message)', model, raw,
+        providerId: 'claude-code',
+        type: 'user',
+        timestamp: ts,
+        summary: text || '(user message)',
+        model,
+        raw,
       });
     }
   } else if (raw.type === 'assistant') {
@@ -57,11 +67,18 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
     if (Array.isArray(content)) {
       for (const block of content as Array<Record<string, unknown>>) {
         if (block.type === 'tool_use' && typeof block.name === 'string') {
-          const input = block.input ? summarizeToolInput(block.name as string, block.input as Record<string, unknown>) : '';
+          const input = block.input
+            ? summarizeToolInput(block.name as string, block.input as Record<string, unknown>)
+            : '';
           events.push({
-            providerId: 'claude-code', type: 'tool_use', timestamp: ts,
+            providerId: 'claude-code',
+            type: 'tool_use',
+            timestamp: ts,
             summary: input ? `${block.name} ${input}` : block.name,
-            toolName: block.name, toolInput: input, model, raw: block,
+            toolName: block.name,
+            toolInput: input,
+            model,
+            raw: block,
           });
         }
       }
@@ -70,8 +87,15 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
     const text = extractTextContent(content);
     if (text || events.length === 0) {
       events.push({
-        providerId: 'claude-code', type: 'assistant', timestamp: ts,
-        summary: text || '(thinking...)', tokens, cacheTokens, cost, model, raw,
+        providerId: 'claude-code',
+        type: 'assistant',
+        timestamp: ts,
+        summary: text || '(thinking...)',
+        tokens,
+        cacheTokens,
+        cost,
+        model,
+        raw,
       });
     } else if (tokens) {
       // Attach tokens to the last tool_use event if no separate text
@@ -82,15 +106,21 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
     }
   } else if (raw.type === 'summary') {
     events.push({
-      providerId: 'claude-code', type: 'summary', timestamp: ts,
-      summary: 'Context compacted', raw,
+      providerId: 'claude-code',
+      type: 'summary',
+      timestamp: ts,
+      summary: 'Context compacted',
+      raw,
     });
   } else {
     // system / result events
     if (raw.type === 'result') {
       events.push({
-        providerId: 'claude-code', type: 'system', timestamp: ts,
-        summary: 'Session ended', raw,
+        providerId: 'claude-code',
+        type: 'system',
+        timestamp: ts,
+        summary: 'Session ended',
+        raw,
       });
     }
   }
@@ -142,16 +172,20 @@ function extractRateLimits(rl: Record<string, unknown>): FollowEvent['rateLimits
   const secondary = rl.secondary as Record<string, unknown> | undefined;
   if (!primary && !secondary) return undefined;
   return {
-    primary: primary ? {
-      usedPercent: (primary.used_percent as number) || 0,
-      windowMinutes: (primary.window_minutes as number) || 0,
-      resetsAt: (primary.resets_at as number) || 0,
-    } : undefined,
-    secondary: secondary ? {
-      usedPercent: (secondary.used_percent as number) || 0,
-      windowMinutes: (secondary.window_minutes as number) || 0,
-      resetsAt: (secondary.resets_at as number) || 0,
-    } : undefined,
+    primary: primary
+      ? {
+          usedPercent: (primary.used_percent as number) || 0,
+          windowMinutes: (primary.window_minutes as number) || 0,
+          resetsAt: (primary.resets_at as number) || 0,
+        }
+      : undefined,
+    secondary: secondary
+      ? {
+          usedPercent: (secondary.used_percent as number) || 0,
+          windowMinutes: (secondary.window_minutes as number) || 0,
+          resetsAt: (secondary.resets_at as number) || 0,
+        }
+      : undefined,
   };
 }
 
@@ -184,7 +218,9 @@ export class JsonlSessionWatcher implements SessionWatcher {
     });
   }
 
-  get isActive(): boolean { return this._isActive; }
+  get isActive(): boolean {
+    return this._isActive;
+  }
 
   /** Seek to a byte offset. Must be called before start(). */
   seekTo(position: number): void {
@@ -237,9 +273,18 @@ export class JsonlSessionWatcher implements SessionWatcher {
     if (!this._isActive) return;
     this._isActive = false;
 
-    if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
-    if (this.fsWatcher) { this.fsWatcher.close(); this.fsWatcher = null; }
-    if (this.catchupTimer) { clearInterval(this.catchupTimer); this.catchupTimer = null; }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (this.fsWatcher) {
+      this.fsWatcher.close();
+      this.fsWatcher = null;
+    }
+    if (this.catchupTimer) {
+      clearInterval(this.catchupTimer);
+      this.catchupTimer = null;
+    }
 
     this.parser.flush();
     this.codexInPlanMode = false;
@@ -279,7 +324,13 @@ export class JsonlSessionWatcher implements SessionWatcher {
         this.parser.processChunk(chunk);
       }
     } catch (err) {
-      if (fd !== null) { try { fs.closeSync(fd); } catch { /* ignore */ } }
+      if (fd !== null) {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          /* ignore */
+        }
+      }
       this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
     }
   }
@@ -287,9 +338,10 @@ export class JsonlSessionWatcher implements SessionWatcher {
   private handleRawEvent(event: RawSessionEvent): void {
     // For codex, raw events don't match RawSessionEvent shape exactly, but
     // JsonlParser parses any JSON object. Cast to Record for codex normalizer.
-    const followEvents = this.providerId === 'codex'
-      ? this.normalizeCodexEvent(event as unknown as Record<string, unknown>)
-      : normalizeClaudeCodeEvent(event);
+    const followEvents =
+      this.providerId === 'codex'
+        ? this.normalizeCodexEvent(event as unknown as Record<string, unknown>)
+        : normalizeClaudeCodeEvent(event);
     for (const fe of followEvents) {
       this.callbacks.onEvent(fe);
     }
@@ -302,15 +354,22 @@ export class JsonlSessionWatcher implements SessionWatcher {
 
     if (type === 'session_meta') {
       events.push({
-        providerId: 'codex', type: 'system', timestamp: ts,
-        summary: `Session started in ${(raw.payload as Record<string, unknown>)?.cwd || '?'}`, raw,
+        providerId: 'codex',
+        type: 'system',
+        timestamp: ts,
+        summary: `Session started in ${(raw.payload as Record<string, unknown>)?.cwd || '?'}`,
+        raw,
       });
     } else if (type === 'turn_context') {
       const payload = raw.payload as Record<string, unknown> | undefined;
       if (payload?.model) {
         events.push({
-          providerId: 'codex', type: 'system', timestamp: ts,
-          summary: `Model: ${payload.model}`, model: payload.model as string, raw,
+          providerId: 'codex',
+          type: 'system',
+          timestamp: ts,
+          summary: `Model: ${payload.model}`,
+          model: payload.model as string,
+          raw,
         });
       }
     } else if (type === 'response_item') {
@@ -319,36 +378,58 @@ export class JsonlSessionWatcher implements SessionWatcher {
       if (p.role === 'user') {
         const text = extractPayloadContent(p);
         events.push({
-          providerId: 'codex', type: 'user', timestamp: ts,
-          summary: text || '(user message)', raw,
+          providerId: 'codex',
+          type: 'user',
+          timestamp: ts,
+          summary: text || '(user message)',
+          raw,
         });
       } else if (p.role === 'assistant' || p.type === 'message') {
         const text = extractPayloadContent(p);
         events.push({
-          providerId: 'codex', type: 'assistant', timestamp: ts,
-          summary: text || '(thinking...)', raw,
+          providerId: 'codex',
+          type: 'assistant',
+          timestamp: ts,
+          summary: text || '(thinking...)',
+          raw,
         });
       } else if (p.type === 'function_call' || p.type === 'custom_tool_call') {
         const rawName = (p.name as string) || 'unknown';
         const name = normalizeCodexToolName(rawName);
         let parsedArgs: Record<string, unknown> = {};
-        try { parsedArgs = JSON.parse(p.arguments as string); } catch { /* keep empty */ }
+        try {
+          parsedArgs = JSON.parse(p.arguments as string);
+        } catch {
+          /* keep empty */
+        }
         const args = typeof p.arguments === 'string' ? truncate(p.arguments, 80) : '';
         events.push({
-          providerId: 'codex', type: 'tool_use', timestamp: ts,
+          providerId: 'codex',
+          type: 'tool_use',
+          timestamp: ts,
           summary: args ? `${name} ${args}` : name,
-          toolName: name, toolInput: args, raw: { input: parsedArgs },
+          toolName: name,
+          toolInput: args,
+          raw: { input: parsedArgs },
         });
       } else if (p.type === 'local_shell_call') {
         const cmd = truncate(JSON.stringify(p.command ?? p.arguments ?? ''), 80);
         events.push({
-          providerId: 'codex', type: 'tool_use', timestamp: ts,
-          summary: `Bash ${cmd}`, toolName: 'Bash', toolInput: cmd, raw,
+          providerId: 'codex',
+          type: 'tool_use',
+          timestamp: ts,
+          summary: `Bash ${cmd}`,
+          toolName: 'Bash',
+          toolInput: cmd,
+          raw,
         });
       } else if (p.type === 'function_call_output') {
         events.push({
-          providerId: 'codex', type: 'tool_result', timestamp: ts,
-          summary: truncate(String(p.output ?? ''), 120), raw,
+          providerId: 'codex',
+          type: 'tool_result',
+          timestamp: ts,
+          summary: truncate(String(p.output ?? ''), 120),
+          raw,
         });
       }
     } else if (type === 'event_msg') {
@@ -356,17 +437,24 @@ export class JsonlSessionWatcher implements SessionWatcher {
       const evtType = payload?.type as string | undefined;
       if (evtType === 'token_count') {
         const info = payload?.info as Record<string, unknown> | undefined;
-        const usage = (info?.last_token_usage || info?.total_token_usage) as Record<string, unknown> | undefined;
+        const usage = (info?.last_token_usage || info?.total_token_usage) as
+          | Record<string, unknown>
+          | undefined;
         const rl = payload?.rate_limits as Record<string, unknown> | undefined;
         const rateLimits = rl ? extractRateLimits(rl) : undefined;
         if (usage || rateLimits) {
           events.push({
-            providerId: 'codex', type: 'system', timestamp: ts,
+            providerId: 'codex',
+            type: 'system',
+            timestamp: ts,
             summary: usage
               ? `Tokens: ${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out`
               : 'Rate limits updated',
             tokens: usage
-              ? { input: (usage.input_tokens as number) || 0, output: (usage.output_tokens as number) || 0 }
+              ? {
+                  input: (usage.input_tokens as number) || 0,
+                  output: (usage.output_tokens as number) || 0,
+                }
               : undefined,
             rateLimits,
             raw,
@@ -377,8 +465,11 @@ export class JsonlSessionWatcher implements SessionWatcher {
         if (collaboration === 'plan' && !this.codexInPlanMode) {
           this.codexInPlanMode = true;
           events.push({
-            providerId: 'codex', type: 'tool_use', timestamp: ts,
-            summary: 'EnterPlanMode', toolName: 'EnterPlanMode',
+            providerId: 'codex',
+            type: 'tool_use',
+            timestamp: ts,
+            summary: 'EnterPlanMode',
+            toolName: 'EnterPlanMode',
             raw: { input: { source: 'codex_task_started' } },
           });
         }
@@ -386,16 +477,22 @@ export class JsonlSessionWatcher implements SessionWatcher {
         if (this.codexInPlanMode) {
           this.codexInPlanMode = false;
           events.push({
-            providerId: 'codex', type: 'tool_use', timestamp: ts,
-            summary: 'ExitPlanMode', toolName: 'ExitPlanMode',
+            providerId: 'codex',
+            type: 'tool_use',
+            timestamp: ts,
+            summary: 'ExitPlanMode',
+            toolName: 'ExitPlanMode',
             raw: { input: { source: 'codex_task_complete' } },
           });
         }
       }
     } else if (type === 'compacted') {
       events.push({
-        providerId: 'codex', type: 'summary', timestamp: ts,
-        summary: 'Context compacted', raw,
+        providerId: 'codex',
+        type: 'summary',
+        timestamp: ts,
+        summary: 'Context compacted',
+        raw,
       });
     }
 

@@ -1,0 +1,68 @@
+name: Format
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'sidekick-vscode/**'
+      - 'sidekick-cli/**'
+      - 'sidekick-shared/**'
+      - 'docs/**'
+      - '*.md'
+      - '*.yml'
+      - '.github/**/*.md'
+      - '.github/**/*.yml'
+      - '.github/**/*.yaml'
+      - '.prettierignore'
+      - 'prettier.config.cjs'
+      - 'scripts/format-all.sh'
+      - 'scripts/format-check-all.sh'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'sidekick-vscode/**'
+      - 'sidekick-cli/**'
+      - 'sidekick-shared/**'
+      - 'docs/**'
+      - '*.md'
+      - '*.yml'
+      - '.github/**/*.md'
+      - '.github/**/*.yml'
+      - '.github/**/*.yaml'
+      - '.prettierignore'
+      - 'prettier.config.cjs'
+      - 'scripts/format-all.sh'
+      - 'scripts/format-check-all.sh'
+
+jobs:
+  prettier:
+    name: Prettier
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            sidekick-shared/package-lock.json
+            sidekick-vscode/package-lock.json
+            sidekick-cli/package-lock.json
+
+      - name: Install shared dependencies
+        working-directory: sidekick-shared
+        run: npm ci
+
+      - name: Install extension dependencies
+        working-directory: sidekick-vscode
+        run: npm ci
+
+      - name: Install CLI dependencies
+        working-directory: sidekick-cli
+        run: npm ci
+
+      - name: Check formatting
+        run: bash scripts/format-check-all.sh

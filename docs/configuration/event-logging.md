@@ -12,11 +12,11 @@ Event logs are stored in `~/.config/sidekick/event-logs/` as JSONL files (one JS
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.enableEventLog` | `false` | Enable event logging |
-| `sidekick.eventLogMaxSizeMB` | `500` | Max total size before oldest files are cleaned up |
-| `sidekick.eventLogMaxAgeDays` | `30` | Max age before cleanup |
+| Setting                       | Default | Description                                       |
+| ----------------------------- | ------- | ------------------------------------------------- |
+| `sidekick.enableEventLog`     | `false` | Enable event logging                              |
+| `sidekick.eventLogMaxSizeMB`  | `500`   | Max total size before oldest files are cleaned up |
+| `sidekick.eventLogMaxAgeDays` | `30`    | Max age before cleanup                            |
 
 ## Use Cases
 

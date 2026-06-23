@@ -57,7 +57,9 @@ export function formatSessionText(
   if (metrics.modelStats.length > 0) {
     lines.push('Models:');
     for (const m of metrics.modelStats) {
-      lines.push(`  ${m.model}: ${m.calls} calls, ${fmtTokens(m.tokens)} tokens, ${fmtCost(m.cost)}`);
+      lines.push(
+        `  ${m.model}: ${m.calls} calls, ${fmtTokens(m.tokens)} tokens, ${fmtCost(m.cost)}`,
+      );
     }
     lines.push('');
   }
@@ -65,7 +67,9 @@ export function formatSessionText(
   // Tool stats
   if (metrics.toolStats.length > 0) {
     lines.push('Tools:');
-    const sorted = [...metrics.toolStats].sort((a, b) => (b.successCount + b.failureCount) - (a.successCount + a.failureCount));
+    const sorted = [...metrics.toolStats].sort(
+      (a, b) => b.successCount + b.failureCount - (a.successCount + a.failureCount),
+    );
     for (const t of sorted) {
       const total = t.successCount + t.failureCount;
       const failStr = t.failureCount > 0 ? ` (${t.failureCount} failed)` : '';
@@ -92,7 +96,7 @@ export function formatSessionText(
 
   const filteredEvents = expand
     ? metrics.timeline
-    : metrics.timeline.filter(e => e.noiseLevel !== 'noise');
+    : metrics.timeline.filter((e) => e.noiseLevel !== 'noise');
 
   if (filteredEvents.length === 0) {
     lines.push('  (no events)');
@@ -176,11 +180,15 @@ export function formatSessionMarkdown(
     lines.push('');
     lines.push(`| Tool | Total | Failed | Avg Duration |`);
     lines.push(`|------|-------|--------|--------------|`);
-    const sorted = [...metrics.toolStats].sort((a, b) => (b.successCount + b.failureCount) - (a.successCount + a.failureCount));
+    const sorted = [...metrics.toolStats].sort(
+      (a, b) => b.successCount + b.failureCount - (a.successCount + a.failureCount),
+    );
     for (const t of sorted) {
       const total = t.successCount + t.failureCount;
       const avgMs = t.completedCount > 0 ? Math.round(t.totalDuration / t.completedCount) : 0;
-      lines.push(`| ${t.name} | ${total} | ${t.failureCount} | ${avgMs > 0 ? `${avgMs}ms` : '-'} |`);
+      lines.push(
+        `| ${t.name} | ${total} | ${t.failureCount} | ${avgMs > 0 ? `${avgMs}ms` : '-'} |`,
+      );
     }
     lines.push('');
   }
@@ -192,7 +200,9 @@ export function formatSessionMarkdown(
     if (metrics.compactionCount > 0) {
       lines.push(`- **Compactions:** ${metrics.compactionCount}`);
       for (const c of metrics.compactionEvents) {
-        lines.push(`  - At ${formatTimestamp(c.timestamp instanceof Date ? c.timestamp.toISOString() : String(c.timestamp))}: ${fmtTokens(c.contextBefore)} -> ${fmtTokens(c.contextAfter)} tokens`);
+        lines.push(
+          `  - At ${formatTimestamp(c.timestamp instanceof Date ? c.timestamp.toISOString() : String(c.timestamp))}: ${fmtTokens(c.contextBefore)} -> ${fmtTokens(c.contextAfter)} tokens`,
+        );
       }
     }
     if (metrics.truncationCount > 0) {
@@ -220,7 +230,7 @@ export function formatSessionMarkdown(
 
   const filteredEvents = expand
     ? metrics.timeline
-    : metrics.timeline.filter(e => e.noiseLevel !== 'noise');
+    : metrics.timeline.filter((e) => e.noiseLevel !== 'noise');
 
   if (filteredEvents.length === 0) {
     lines.push('_(no events)_');
@@ -306,15 +316,24 @@ export function formatDuration(start: string | null, end: string | null): string
 /** Map TimelineEvent.type to a display icon. */
 function getTimelineEventIcon(type: string): string {
   switch (type) {
-    case 'user_prompt': return '\u25b6';        // right-pointing triangle
-    case 'assistant_response': return '\u2726';  // four-pointed star
-    case 'tool_call': return '\u2699';           // gear
-    case 'tool_result': return '\u2190';         // left arrow
-    case 'compaction': return '\u21bb';          // clockwise arrow
-    case 'error': return '\u2718';               // heavy ballot X
-    case 'session_start': return '\u25cf';       // black circle
-    case 'session_end': return '\u25cb';         // white circle
-    default: return ' ';
+    case 'user_prompt':
+      return '\u25b6'; // right-pointing triangle
+    case 'assistant_response':
+      return '\u2726'; // four-pointed star
+    case 'tool_call':
+      return '\u2699'; // gear
+    case 'tool_result':
+      return '\u2190'; // left arrow
+    case 'compaction':
+      return '\u21bb'; // clockwise arrow
+    case 'error':
+      return '\u2718'; // heavy ballot X
+    case 'session_start':
+      return '\u25cf'; // black circle
+    case 'session_end':
+      return '\u25cb'; // white circle
+    default:
+      return ' ';
   }
 }
 

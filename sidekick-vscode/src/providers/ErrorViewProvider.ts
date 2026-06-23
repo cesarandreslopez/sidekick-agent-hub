@@ -32,7 +32,7 @@ export class ErrorViewProvider implements vscode.Disposable {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly errorExplanationService: ErrorExplanationService
+    private readonly errorExplanationService: ErrorExplanationService,
   ) {}
 
   /**
@@ -49,7 +49,7 @@ export class ErrorViewProvider implements vscode.Disposable {
     diagnostic: vscode.Diagnostic,
     mode: 'explain' | 'fix',
     complexity?: ComplexityLevel,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     // Store code context
     this._code = document.getText(diagnostic.range);
@@ -108,7 +108,7 @@ export class ErrorViewProvider implements vscode.Disposable {
         enableScripts: true,
         retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'out', 'webview')],
-      }
+      },
     );
 
     // Set HTML content
@@ -130,7 +130,7 @@ export class ErrorViewProvider implements vscode.Disposable {
         }
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     // Handle panel disposal
@@ -140,7 +140,7 @@ export class ErrorViewProvider implements vscode.Disposable {
         this._code = undefined;
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
   }
 
@@ -152,13 +152,18 @@ export class ErrorViewProvider implements vscode.Disposable {
     code: string,
     errorContext: ErrorContext,
     complexity?: ComplexityLevel,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const requestId = this.generateRequestId();
     this.pendingRequests.set(requestId, { timestamp: Date.now() });
 
     try {
-      const explanation = await this.errorExplanationService.explainError(code, errorContext, complexity, signal);
+      const explanation = await this.errorExplanationService.explainError(
+        code,
+        errorContext,
+        complexity,
+        signal,
+      );
 
       if (this.pendingRequests.has(requestId)) {
         this._panel?.webview.postMessage({
@@ -185,12 +190,20 @@ export class ErrorViewProvider implements vscode.Disposable {
    * Handle fix request.
    * Calls ErrorExplanationService and sends fix suggestion back.
    */
-  private async handleFixRequest(code: string, errorContext: ErrorContext, signal?: AbortSignal): Promise<void> {
+  private async handleFixRequest(
+    code: string,
+    errorContext: ErrorContext,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const requestId = this.generateRequestId();
     this.pendingRequests.set(requestId, { timestamp: Date.now() });
 
     try {
-      const fixSuggestion = await this.errorExplanationService.generateFix(code, errorContext, signal);
+      const fixSuggestion = await this.errorExplanationService.generateFix(
+        code,
+        errorContext,
+        signal,
+      );
 
       if (!this.pendingRequests.has(requestId)) {
         return;
@@ -233,7 +246,7 @@ export class ErrorViewProvider implements vscode.Disposable {
       // Build VS Code range from fix suggestion
       const range = new vscode.Range(
         new vscode.Position(fixSuggestion.range.startLine, fixSuggestion.range.startCharacter),
-        new vscode.Position(fixSuggestion.range.endLine, fixSuggestion.range.endCharacter)
+        new vscode.Position(fixSuggestion.range.endLine, fixSuggestion.range.endCharacter),
       );
 
       // Parse URI from string
@@ -293,7 +306,7 @@ export class ErrorViewProvider implements vscode.Disposable {
 
     // Build URI for webview script
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'error.js')
+      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'error.js'),
     );
 
     return `<!DOCTYPE html>
@@ -324,4 +337,3 @@ export class ErrorViewProvider implements vscode.Disposable {
     this.pendingRequests.clear();
   }
 }
-

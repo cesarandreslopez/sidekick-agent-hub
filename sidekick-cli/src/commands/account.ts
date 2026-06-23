@@ -27,7 +27,12 @@ import {
   getCodexProfileHome,
   DEFAULT_AUTO_SWITCH_CONFIG,
 } from 'sidekick-shared';
-import type { AccountManagerResult, AccountProviderId, AutoSwitchConfig, SavedAccountProfile } from 'sidekick-shared';
+import type {
+  AccountManagerResult,
+  AccountProviderId,
+  AutoSwitchConfig,
+  SavedAccountProfile,
+} from 'sidekick-shared';
 import { resolveProviderId } from '../cli';
 
 interface AccountCommandOptions {
@@ -121,10 +126,14 @@ function configureAutoSwitch(value: string, jsonOutput: boolean): void {
     if (jsonOutput) {
       process.stdout.write(JSON.stringify({ action: 'auto-switch', autoSwitch }) + '\n');
     } else {
-      process.stdout.write(autoSwitch.enabled
-        ? chalk.green(`Auto-switch threshold set to ${autoSwitch.thresholdPct}%.\n`)
-        : chalk.green('Auto-switch disabled.\n'));
-      process.stdout.write(chalk.dim('Continuous auto-switch runs in a long-running host such as VS Code.\n'));
+      process.stdout.write(
+        autoSwitch.enabled
+          ? chalk.green(`Auto-switch threshold set to ${autoSwitch.thresholdPct}%.\n`)
+          : chalk.green('Auto-switch disabled.\n'),
+      );
+      process.stdout.write(
+        chalk.dim('Continuous auto-switch runs in a long-running host such as VS Code.\n'),
+      );
     }
   } catch (error) {
     process.stderr.write(chalk.red(error instanceof Error ? error.message : String(error)) + '\n');
@@ -153,11 +162,18 @@ function listAllProviderAccounts(jsonOutput: boolean): void {
     const isActive = account.id === accounts.activeByProvider.codex;
     const marker = isActive ? chalk.green('  * ') : '    ';
     const details = [account.email, account.metadata?.planType].filter(Boolean).join(' · ');
-    process.stdout.write(`${marker}${account.label ?? account.id}${details ? chalk.dim(` (${details})`) : ''}\n`);
+    process.stdout.write(
+      `${marker}${account.label ?? account.id}${details ? chalk.dim(` (${details})`) : ''}\n`,
+    );
   }
 }
 
-function printLoginResult(provider: AccountProviderId, result: AccountManagerResult, opts: AccountCommandOptions, jsonOutput: boolean): void {
+function printLoginResult(
+  provider: AccountProviderId,
+  result: AccountManagerResult,
+  opts: AccountCommandOptions,
+  jsonOutput: boolean,
+): void {
   if (!result.success) {
     process.stderr.write(chalk.red(result.error ?? 'Account login failed.') + '\n');
     process.exit(1);
@@ -166,24 +182,35 @@ function printLoginResult(provider: AccountProviderId, result: AccountManagerRes
 
   const active = provider === 'codex' ? getActiveCodexAccount() : getActiveAccount();
   if (jsonOutput) {
-    process.stdout.write(JSON.stringify({
-      action: 'login',
-      provider,
-      success: true,
-      account: active ?? null,
-      warning: result.warning ?? null,
-    }) + '\n');
+    process.stdout.write(
+      JSON.stringify({
+        action: 'login',
+        provider,
+        success: true,
+        account: active ?? null,
+        warning: result.warning ?? null,
+      }) + '\n',
+    );
     return;
   }
 
   if (result.warning) process.stderr.write(chalk.yellow(result.warning) + '\n');
-  const display = provider === 'codex'
-    ? (active && 'id' in active ? formatCodexAccount(active as SavedAccountProfile) : opts.label)
-    : (active && 'email' in active ? `${active.email}${active.label ? ` (${active.label})` : ''}` : opts.label);
+  const display =
+    provider === 'codex'
+      ? active && 'id' in active
+        ? formatCodexAccount(active as SavedAccountProfile)
+        : opts.label
+      : active && 'email' in active
+        ? `${active.email}${active.label ? ` (${active.label})` : ''}`
+        : opts.label;
   process.stdout.write(chalk.green('Account saved: ') + (display ?? 'unknown') + '\n');
 }
 
-async function handleLogin(provider: AccountProviderId, opts: AccountCommandOptions, jsonOutput: boolean): Promise<void> {
+async function handleLogin(
+  provider: AccountProviderId,
+  opts: AccountCommandOptions,
+  jsonOutput: boolean,
+): Promise<void> {
   if (!opts.label?.trim()) {
     process.stderr.write(chalk.red('Account login requires `--label`.\n'));
     process.exit(1);
@@ -193,7 +220,11 @@ async function handleLogin(provider: AccountProviderId, opts: AccountCommandOpti
   printLoginResult(provider, result, opts, jsonOutput);
 }
 
-function createLauncher(provider: AccountProviderId, opts: AccountCommandOptions, jsonOutput: boolean): void {
+function createLauncher(
+  provider: AccountProviderId,
+  opts: AccountCommandOptions,
+  jsonOutput: boolean,
+): void {
   const name = opts.launcher!;
   const active = provider === 'codex' ? getActiveCodexAccount() : getActiveAccount();
   if (!active) {
@@ -202,9 +233,10 @@ function createLauncher(provider: AccountProviderId, opts: AccountCommandOptions
     return;
   }
 
-  const profileHome = provider === 'codex'
-    ? getCodexProfileHome((active as SavedAccountProfile).id)
-    : getClaudeProfileHome((active as ReturnType<typeof getActiveAccount>)!.uuid);
+  const profileHome =
+    provider === 'codex'
+      ? getCodexProfileHome((active as SavedAccountProfile).id)
+      : getClaudeProfileHome((active as ReturnType<typeof getActiveAccount>)!.uuid);
 
   try {
     writeLauncher(name, provider, profileHome);
@@ -216,14 +248,20 @@ function createLauncher(provider: AccountProviderId, opts: AccountCommandOptions
 
   const launcherPath = path.join(os.homedir(), '.local', 'bin', name);
   if (jsonOutput) {
-    process.stdout.write(JSON.stringify({ action: 'launcher', provider, name, path: launcherPath, profileHome }) + '\n');
+    process.stdout.write(
+      JSON.stringify({ action: 'launcher', provider, name, path: launcherPath, profileHome }) +
+        '\n',
+    );
   } else {
     process.stdout.write(chalk.green('Launcher created: ') + launcherPath + '\n');
     process.stdout.write(chalk.dim(`Open a new terminal or run \`${name}\` directly.\n`));
   }
 }
 
-async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: boolean): Promise<void> {
+async function claudeAccountAction(
+  opts: AccountCommandOptions,
+  jsonOutput: boolean,
+): Promise<void> {
   if (opts.login) {
     await handleLogin('claude-code', opts, jsonOutput);
     return;
@@ -244,10 +282,21 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
 
     const active = readActiveClaudeAccount();
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'added', provider: 'claude-code', email: active?.email, label: opts.label }) + '\n');
+      process.stdout.write(
+        JSON.stringify({
+          action: 'added',
+          provider: 'claude-code',
+          email: active?.email,
+          label: opts.label,
+        }) + '\n',
+      );
     } else {
-      process.stdout.write(chalk.green('Account saved: ') + (active?.email ?? 'unknown') +
-        (opts.label ? chalk.dim(` (${opts.label})`) : '') + '\n');
+      process.stdout.write(
+        chalk.green('Account saved: ') +
+          (active?.email ?? 'unknown') +
+          (opts.label ? chalk.dim(` (${opts.label})`) : '') +
+          '\n',
+      );
     }
     return;
   }
@@ -269,7 +318,9 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
     }
 
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'removed', provider: 'claude-code', email: target.email }) + '\n');
+      process.stdout.write(
+        JSON.stringify({ action: 'removed', provider: 'claude-code', email: target.email }) + '\n',
+      );
     } else {
       process.stdout.write(chalk.green('Removed: ') + target.email + '\n');
     }
@@ -293,10 +344,16 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
     }
 
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'claude-code', email: target.email }) + '\n');
+      process.stdout.write(
+        JSON.stringify({ action: 'switched', provider: 'claude-code', email: target.email }) + '\n',
+      );
     } else {
-      process.stdout.write(chalk.green('Switched to: ') + target.email +
-        (target.label ? chalk.dim(` (${target.label})`) : '') + '\n');
+      process.stdout.write(
+        chalk.green('Switched to: ') +
+          target.email +
+          (target.label ? chalk.dim(` (${target.label})`) : '') +
+          '\n',
+      );
     }
     return;
   }
@@ -310,7 +367,7 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
     }
 
     const active = getActiveAccount();
-    const currentIdx = active ? accounts.findIndex(a => a.uuid === active.uuid) : -1;
+    const currentIdx = active ? accounts.findIndex((a) => a.uuid === active.uuid) : -1;
     const nextIdx = (currentIdx + 1) % accounts.length;
     const target = accounts[nextIdx];
     const result = switchToAccount(target.uuid);
@@ -321,10 +378,16 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
     }
 
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'claude-code', email: target.email }) + '\n');
+      process.stdout.write(
+        JSON.stringify({ action: 'switched', provider: 'claude-code', email: target.email }) + '\n',
+      );
     } else {
-      process.stdout.write(chalk.green('Switched to: ') + target.email +
-        (target.label ? chalk.dim(` (${target.label})`) : '') + '\n');
+      process.stdout.write(
+        chalk.green('Switched to: ') +
+          target.email +
+          (target.label ? chalk.dim(` (${target.label})`) : '') +
+          '\n',
+      );
     }
     return;
   }
@@ -333,9 +396,13 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
   if (accounts.length === 0) {
     const current = readActiveClaudeAccount();
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ provider: 'claude-code', accounts: [], current: current ?? null }) + '\n');
+      process.stdout.write(
+        JSON.stringify({ provider: 'claude-code', accounts: [], current: current ?? null }) + '\n',
+      );
     } else if (current) {
-      process.stdout.write(chalk.dim('No saved accounts. Currently signed in as: ') + current.email + '\n');
+      process.stdout.write(
+        chalk.dim('No saved accounts. Currently signed in as: ') + current.email + '\n',
+      );
       process.stdout.write(chalk.dim('Run `sidekick account --add` to save this account.\n'));
     } else {
       process.stdout.write(chalk.dim('No saved accounts. Sign in with `claude` first.\n'));
@@ -345,10 +412,16 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
 
   if (jsonOutput) {
     const active = getActiveAccount();
-    process.stdout.write(JSON.stringify({
-      provider: 'claude-code',
-      accounts: accounts.map(a => ({ ...a, active: a.uuid === active?.uuid })),
-    }, null, 2) + '\n');
+    process.stdout.write(
+      JSON.stringify(
+        {
+          provider: 'claude-code',
+          accounts: accounts.map((a) => ({ ...a, active: a.uuid === active?.uuid })),
+        },
+        null,
+        2,
+      ) + '\n',
+    );
     return;
   }
 
@@ -363,21 +436,29 @@ async function claudeAccountAction(opts: AccountCommandOptions, jsonOutput: bool
   }
 }
 
-function findClaudeAccount(identifier: string, accounts: ReturnType<typeof listAccounts>): ReturnType<typeof listAccounts>[number] | undefined {
+function findClaudeAccount(
+  identifier: string,
+  accounts: ReturnType<typeof listAccounts>,
+): ReturnType<typeof listAccounts>[number] | undefined {
   const normalized = identifier.trim().toLowerCase();
-  return accounts.find(a =>
-    a.uuid === identifier ||
-    a.email.toLowerCase() === normalized ||
-    (a.label ?? '').trim().toLowerCase() === normalized,
+  return accounts.find(
+    (a) =>
+      a.uuid === identifier ||
+      a.email.toLowerCase() === normalized ||
+      (a.label ?? '').trim().toLowerCase() === normalized,
   );
 }
 
-function findCodexAccount(identifier: string, accounts: SavedAccountProfile[]): SavedAccountProfile | undefined {
+function findCodexAccount(
+  identifier: string,
+  accounts: SavedAccountProfile[],
+): SavedAccountProfile | undefined {
   const normalized = identifier.trim().toLowerCase();
-  return accounts.find(account =>
-    account.id === identifier ||
-    (account.label ?? '').trim().toLowerCase() === normalized ||
-    (account.email ?? '').trim().toLowerCase() === normalized,
+  return accounts.find(
+    (account) =>
+      account.id === identifier ||
+      (account.label ?? '').trim().toLowerCase() === normalized ||
+      (account.email ?? '').trim().toLowerCase() === normalized,
   );
 }
 
@@ -419,7 +500,11 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
 
     const warning = prepared.warning;
     if (prepared.needsLogin) {
-      process.stderr.write(chalk.red('No current Codex auth was importable. Use `sidekick account --provider codex --login --label <name>`.\n'));
+      process.stderr.write(
+        chalk.red(
+          'No current Codex auth was importable. Use `sidekick account --provider codex --login --label <name>`.\n',
+        ),
+      );
       process.exit(1);
       return;
     }
@@ -427,17 +512,23 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
     const active = getActiveCodexAccount();
     printCodexWarning(warning, jsonOutput);
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({
-        action: 'added',
-        provider: 'codex',
-        id: active?.id,
-        label: active?.label,
-        email: active?.email ?? null,
-        authMode: active?.metadata?.authMode ?? null,
-        warning: warning ?? null,
-      }) + '\n');
+      process.stdout.write(
+        JSON.stringify({
+          action: 'added',
+          provider: 'codex',
+          id: active?.id,
+          label: active?.label,
+          email: active?.email ?? null,
+          authMode: active?.metadata?.authMode ?? null,
+          warning: warning ?? null,
+        }) + '\n',
+      );
     } else {
-      process.stdout.write(chalk.green('Codex account saved: ') + (active ? formatCodexAccount(active) : opts.label) + '\n');
+      process.stdout.write(
+        chalk.green('Codex account saved: ') +
+          (active ? formatCodexAccount(active) : opts.label) +
+          '\n',
+      );
     }
     return;
   }
@@ -460,11 +551,22 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
     }
 
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'removed', provider: 'codex', id: target.id, label: target.label }) + '\n');
+      process.stdout.write(
+        JSON.stringify({
+          action: 'removed',
+          provider: 'codex',
+          id: target.id,
+          label: target.label,
+        }) + '\n',
+      );
     } else {
       process.stdout.write(chalk.green('Removed: ') + formatCodexAccount(target) + '\n');
       if (wasActive) {
-        process.stdout.write(chalk.dim('The live ~/.codex credentials are unchanged. Use `--switch-to` to activate another saved account.\n'));
+        process.stdout.write(
+          chalk.dim(
+            'The live ~/.codex credentials are unchanged. Use `--switch-to` to activate another saved account.\n',
+          ),
+        );
       }
     }
     return;
@@ -488,7 +590,15 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
 
     printCodexWarning(result.warning, jsonOutput);
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'codex', id: target.id, label: target.label, warning: result.warning ?? null }) + '\n');
+      process.stdout.write(
+        JSON.stringify({
+          action: 'switched',
+          provider: 'codex',
+          id: target.id,
+          label: target.label,
+          warning: result.warning ?? null,
+        }) + '\n',
+      );
     } else {
       process.stdout.write(chalk.green('Switched to: ') + formatCodexAccount(target) + '\n');
     }
@@ -504,7 +614,7 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
     }
 
     const active = getActiveCodexAccount();
-    const currentIdx = active ? accounts.findIndex(account => account.id === active.id) : -1;
+    const currentIdx = active ? accounts.findIndex((account) => account.id === active.id) : -1;
     const nextIdx = (currentIdx + 1) % accounts.length;
     const target = accounts[nextIdx];
     const result = switchToCodexAccount(target.id);
@@ -516,7 +626,15 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
 
     printCodexWarning(result.warning, jsonOutput);
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ action: 'switched', provider: 'codex', id: target.id, label: target.label, warning: result.warning ?? null }) + '\n');
+      process.stdout.write(
+        JSON.stringify({
+          action: 'switched',
+          provider: 'codex',
+          id: target.id,
+          label: target.label,
+          warning: result.warning ?? null,
+        }) + '\n',
+      );
     } else {
       process.stdout.write(chalk.green('Switched to: ') + formatCodexAccount(target) + '\n');
     }
@@ -526,22 +644,34 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
   const accounts = listCodexAccounts();
   if (accounts.length === 0) {
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify({ provider: 'codex', accounts: [], current: null }) + '\n');
+      process.stdout.write(
+        JSON.stringify({ provider: 'codex', accounts: [], current: null }) + '\n',
+      );
     } else {
-      process.stdout.write(chalk.dim('No saved Codex accounts. Run `sidekick account --provider codex --add --label <name>` to create one.\n'));
+      process.stdout.write(
+        chalk.dim(
+          'No saved Codex accounts. Run `sidekick account --provider codex --add --label <name>` to create one.\n',
+        ),
+      );
     }
     return;
   }
 
   if (jsonOutput) {
     const active = getActiveCodexAccount();
-    process.stdout.write(JSON.stringify({
-      provider: 'codex',
-      accounts: accounts.map(account => ({
-        ...account,
-        active: account.id === active?.id,
-      })),
-    }, null, 2) + '\n');
+    process.stdout.write(
+      JSON.stringify(
+        {
+          provider: 'codex',
+          accounts: accounts.map((account) => ({
+            ...account,
+            active: account.id === active?.id,
+          })),
+        },
+        null,
+        2,
+      ) + '\n',
+    );
     return;
   }
 
@@ -552,6 +682,8 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
     const isActive = account.id === active?.id;
     const marker = isActive ? chalk.green('  * ') : '    ';
     const details = [account.email, account.metadata?.planType].filter(Boolean).join(' · ');
-    process.stdout.write(`${marker}${account.label ?? account.id}${details ? chalk.dim(` (${details})`) : ''}\n`);
+    process.stdout.write(
+      `${marker}${account.label ?? account.id}${details ? chalk.dim(` (${details})`) : ''}\n`,
+    );
   }
 }

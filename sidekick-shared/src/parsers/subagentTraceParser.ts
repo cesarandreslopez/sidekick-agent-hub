@@ -71,10 +71,7 @@ const AGENT_FILE_PATTERN = /^agent-(.+)\.jsonl$/;
  * @param sessionId - Session ID (filename without .jsonl extension)
  * @returns Array of SubagentTrace objects forming a tree
  */
-export function scanSubagentTraces(
-  sessionDir: string,
-  sessionId: string,
-): SubagentTrace[] {
+export function scanSubagentTraces(sessionDir: string, sessionId: string): SubagentTrace[] {
   const subagentsDir = path.join(sessionDir, sessionId, 'subagents');
 
   try {
@@ -97,7 +94,7 @@ export function scanSubagentTraces(
     linkTraces(traces);
 
     // Return only top-level traces (those without parents)
-    return traces.filter(t => !t.parentToolUseId);
+    return traces.filter((t) => !t.parentToolUseId);
   } catch {
     return [];
   }
@@ -108,7 +105,7 @@ export function scanSubagentTraces(
 function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | null {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n').filter(l => l.trim());
+    const lines = content.split('\n').filter((l) => l.trim());
 
     const events: SubagentTraceEvent[] = [];
     const toolCalls: ToolCall[] = [];
@@ -138,11 +135,21 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
         // Compute noise level
         let noiseLevel: SubagentTraceEvent['noiseLevel'] = 'system';
         switch (sessionEvent.type) {
-          case 'user': noiseLevel = 'user'; break;
-          case 'assistant': noiseLevel = 'ai'; break;
-          case 'tool_use': noiseLevel = 'system'; break;
-          case 'tool_result': noiseLevel = 'noise'; break;
-          case 'summary': noiseLevel = 'system'; break;
+          case 'user':
+            noiseLevel = 'user';
+            break;
+          case 'assistant':
+            noiseLevel = 'ai';
+            break;
+          case 'tool_use':
+            noiseLevel = 'system';
+            break;
+          case 'tool_result':
+            noiseLevel = 'noise';
+            break;
+          case 'summary':
+            noiseLevel = 'system';
+            break;
         }
 
         // Format tool summary
@@ -163,7 +170,10 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
         // Extract token usage
         if (raw.type === 'assistant' && raw.message?.usage) {
           const usage = raw.message.usage;
-          inputTokens += (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+          inputTokens +=
+            (usage.input_tokens || 0) +
+            (usage.cache_creation_input_tokens || 0) +
+            (usage.cache_read_input_tokens || 0);
           outputTokens += usage.output_tokens || 0;
         }
 
@@ -192,9 +202,10 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
 
         // Extract agent type from system messages
         if (raw.type === 'system' && raw.message?.content) {
-          const contentStr = typeof raw.message.content === 'string'
-            ? raw.message.content
-            : JSON.stringify(raw.message.content);
+          const contentStr =
+            typeof raw.message.content === 'string'
+              ? raw.message.content
+              : JSON.stringify(raw.message.content);
           const typeMatch = contentStr.match(/subagent_type['":\s]+(\w+)/i);
           if (typeMatch && !agentType) {
             agentType = typeMatch[1];
@@ -275,7 +286,7 @@ function linkTraces(traces: SubagentTrace[]): void {
 
   // Phase 3: Positional fallback — timestamp proximity
   // Traces without parents that fall within another trace's time window
-  const parentless = traces.filter(t => !t.parentToolUseId);
+  const parentless = traces.filter((t) => !t.parentToolUseId);
   for (const child of parentless) {
     if (!child.stats.startTime) continue;
     const childStart = child.stats.startTime.getTime();

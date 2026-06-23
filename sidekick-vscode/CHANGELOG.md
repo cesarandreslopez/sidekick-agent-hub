@@ -714,7 +714,6 @@ _No VS Code extension changes in this release._
   - Groups tasks by status with real-time updates
   - Collapsible columns with hidden-task summaries
 
-
 ## [0.8.1] - 2026-02-07
 
 ### Fixed
@@ -948,6 +947,7 @@ _No VS Code extension changes in this release._
   - Press `Ctrl+Shift+D` (Cmd+Shift+D on Mac) with cursor in a function
   - Supports all major languages (TypeScript, JavaScript, Python, etc.)
   - Configurable model via `sidekick.docModel` (default: haiku)
+
 - **Explain Code**: Get AI-powered explanations for selected code
 
   - Press `Ctrl+Shift+E` (Cmd+Shift+E on Mac) with code selected
@@ -955,12 +955,14 @@ _No VS Code extension changes in this release._
   - Rich webview panel with markdown rendering
   - Regenerate with custom instructions
   - Configurable model via `sidekick.explainModel` (default: sonnet)
+
 - **Error Explanations**: Understand and fix errors with AI assistance
 
   - Lightbulb quick action on diagnostics: "Explain Error with AI"
   - "Fix Error with AI" command applies suggested fixes directly
   - Five complexity levels for explanations
   - Configurable model via `sidekick.errorModel` (default: sonnet)
+
 - **Quick Ask (Inline Chat)**: Ask questions about code without leaving the editor
 
   - Press `Ctrl+I` (Cmd+I on Mac) to open quick input
@@ -968,6 +970,7 @@ _No VS Code extension changes in this release._
   - Diff preview for proposed changes with Accept/Reject
   - Context-aware: uses selected code or cursor context
   - Configurable model via `sidekick.inlineChatModel` (default: sonnet)
+
 - **Pre-commit AI Review**: Review your changes before committing
 
   - Click the eye icon in Source Control toolbar
@@ -975,6 +978,7 @@ _No VS Code extension changes in this release._
   - Highlights bugs, security concerns, code smells
   - Results shown as inline decorations in editor
   - Configurable model via `sidekick.reviewModel` (default: sonnet)
+
 - **PR Description Generation**: Generate pull request descriptions automatically
 
   - Click the PR icon in Source Control toolbar
@@ -982,10 +986,12 @@ _No VS Code extension changes in this release._
   - Generates summary, change list, and test plan
   - Copies to clipboard, ready to paste
   - Configurable model via `sidekick.prDescriptionModel` (default: sonnet)
+
 - **Context Menu Submenu**: All Sidekick commands organized under "Sidekick" submenu
 
   - Quick Ask, Generate Docs, Explain Code, Explain Error, Fix Error, Transform, RSVP Reader
   - Complexity level submenus for Explain Code and RSVP Reader
+
 - **Completion Hint**: Visual indicator suggesting AI completion shortcut
 
   - Shows hint at cursor after typing stops

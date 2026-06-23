@@ -19,7 +19,7 @@ export async function readTasks(slug: string, opts?: ReadTasksOptions): Promise<
 
   const status = opts?.status ?? 'all';
   if (status !== 'all') {
-    tasks = tasks.filter(t => t.status === status);
+    tasks = tasks.filter((t) => t.status === status);
   }
 
   // Sort by updatedAt descending

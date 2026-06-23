@@ -98,7 +98,8 @@ export class CodexQuotaWatcher implements Disposable {
 
   constructor(workspacePath: string, options: CodexQuotaWatcherOptions = {}) {
     this.workspacePath = workspacePath;
-    this.discoveryPollIntervalMs = options.discoveryPollIntervalMs ?? DEFAULT_DISCOVERY_POLL_INTERVAL_MS;
+    this.discoveryPollIntervalMs =
+      options.discoveryPollIntervalMs ?? DEFAULT_DISCOVERY_POLL_INTERVAL_MS;
     this.providerFactory = options.providerFactory ?? (() => new CodexProvider());
     this.getActiveAccount = options.getActiveAccount ?? getActiveCodexAccount;
     this.readSnapshot = options.readSnapshot ?? readQuotaSnapshot;
@@ -224,8 +225,14 @@ export class CodexQuotaWatcher implements Disposable {
           runtimeProvider: 'codex',
           providerId: account.id,
           workspaceId: this.workspaceId,
-          fiveHour: { utilization: liveQuota.fiveHour.utilization, resetsAt: liveQuota.fiveHour.resetsAt },
-          sevenDay: { utilization: liveQuota.sevenDay.utilization, resetsAt: liveQuota.sevenDay.resetsAt },
+          fiveHour: {
+            utilization: liveQuota.fiveHour.utilization,
+            resetsAt: liveQuota.fiveHour.resetsAt,
+          },
+          sevenDay: {
+            utilization: liveQuota.sevenDay.utilization,
+            resetsAt: liveQuota.sevenDay.resetsAt,
+          },
           available: liveQuota.available,
           error: liveQuota.error,
           source: liveQuota.source,

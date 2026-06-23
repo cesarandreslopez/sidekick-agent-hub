@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { parsePlanMarkdown, PlanExtractor } from './planExtractor';
 import type { FollowEvent } from '../watchers/types';
 
-function mkEvent(overrides: Partial<FollowEvent> & Pick<FollowEvent, 'type' | 'summary'>): FollowEvent {
+function mkEvent(
+  overrides: Partial<FollowEvent> & Pick<FollowEvent, 'type' | 'summary'>,
+): FollowEvent {
   return {
     providerId: 'claude-code',
     timestamp: new Date().toISOString(),
@@ -134,23 +136,29 @@ describe('PlanExtractor', () => {
     const extractor = new PlanExtractor();
     const markdown = '# My Plan\n\nThis is a narrative plan with no structured steps.';
 
-    extractor.processEvent(mkEvent({
-      type: 'tool_use',
-      toolName: 'EnterPlanMode',
-      summary: 'Entering plan mode',
-    }));
+    extractor.processEvent(
+      mkEvent({
+        type: 'tool_use',
+        toolName: 'EnterPlanMode',
+        summary: 'Entering plan mode',
+      }),
+    );
 
-    extractor.processEvent(mkEvent({
-      type: 'assistant',
-      summary: markdown,
-      raw: { message: { content: [{ type: 'text', text: markdown }] } },
-    }));
+    extractor.processEvent(
+      mkEvent({
+        type: 'assistant',
+        summary: markdown,
+        raw: { message: { content: [{ type: 'text', text: markdown }] } },
+      }),
+    );
 
-    extractor.processEvent(mkEvent({
-      type: 'tool_use',
-      toolName: 'ExitPlanMode',
-      summary: 'Exiting plan mode',
-    }));
+    extractor.processEvent(
+      mkEvent({
+        type: 'tool_use',
+        toolName: 'ExitPlanMode',
+        summary: 'Exiting plan mode',
+      }),
+    );
 
     expect(extractor.plan).not.toBeNull();
     expect(extractor.plan!.rawMarkdown).toBe(markdown);
@@ -165,23 +173,29 @@ describe('PlanExtractor', () => {
 - Remove unused imports
 - Update tests`;
 
-    extractor.processEvent(mkEvent({
-      type: 'tool_use',
-      toolName: 'EnterPlanMode',
-      summary: '',
-    }));
+    extractor.processEvent(
+      mkEvent({
+        type: 'tool_use',
+        toolName: 'EnterPlanMode',
+        summary: '',
+      }),
+    );
 
-    extractor.processEvent(mkEvent({
-      type: 'assistant',
-      summary: markdown,
-      raw: { message: { content: [{ type: 'text', text: markdown }] } },
-    }));
+    extractor.processEvent(
+      mkEvent({
+        type: 'assistant',
+        summary: markdown,
+        raw: { message: { content: [{ type: 'text', text: markdown }] } },
+      }),
+    );
 
-    extractor.processEvent(mkEvent({
-      type: 'tool_use',
-      toolName: 'ExitPlanMode',
-      summary: '',
-    }));
+    extractor.processEvent(
+      mkEvent({
+        type: 'tool_use',
+        toolName: 'ExitPlanMode',
+        summary: '',
+      }),
+    );
 
     expect(extractor.plan).not.toBeNull();
     expect(extractor.plan!.steps).toHaveLength(3);

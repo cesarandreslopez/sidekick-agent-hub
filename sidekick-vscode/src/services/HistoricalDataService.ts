@@ -58,7 +58,9 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
   }
 
   protected override onStoreLoaded(): void {
-    log(`Loaded historical data: ${Object.keys(this.store.daily).length} days, ${this.store.allTime.sessionCount} sessions`);
+    log(
+      `Loaded historical data: ${Object.keys(this.store.daily).length} days, ${this.store.allTime.sessionCount} sessions`,
+    );
   }
 
   /**
@@ -93,8 +95,16 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
    * Accumulates tokens, cost, message count, and usage from a summary into a bucket.
    */
   private accumulateSummary(
-    bucket: { tokens: TokenTotals; totalCost: number; messageCount: number; sessionCount: number; modelUsage: ModelUsageRecord[]; toolUsage: ToolUsageRecord[]; updatedAt: string },
-    summary: SessionSummary
+    bucket: {
+      tokens: TokenTotals;
+      totalCost: number;
+      messageCount: number;
+      sessionCount: number;
+      modelUsage: ModelUsageRecord[];
+      toolUsage: ToolUsageRecord[];
+      updatedAt: string;
+    },
+    summary: SessionSummary,
   ): void {
     bucket.tokens.inputTokens += summary.tokens.inputTokens;
     bucket.tokens.outputTokens += summary.tokens.outputTokens;
@@ -149,7 +159,7 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
     const hour = startDate.getHours();
 
     // Find or create the hourly bucket
-    let bucket = this.store.hourly[date].find(h => h.hour === hour);
+    let bucket = this.store.hourly[date].find((h) => h.hour === hour);
     if (!bucket) {
       bucket = {
         hour,
@@ -211,7 +221,10 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
   /**
    * Merges model usage records, combining by model name.
    */
-  private mergeModelUsage(existing: ModelUsageRecord[], incoming: ModelUsageRecord[]): ModelUsageRecord[] {
+  private mergeModelUsage(
+    existing: ModelUsageRecord[],
+    incoming: ModelUsageRecord[],
+  ): ModelUsageRecord[] {
     const map = new Map<string, ModelUsageRecord>();
 
     for (const record of existing) {
@@ -240,7 +253,10 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
   /**
    * Merges tool usage records, combining by tool name.
    */
-  private mergeToolUsage(existing: ToolUsageRecord[], incoming: ToolUsageRecord[]): ToolUsageRecord[] {
+  private mergeToolUsage(
+    existing: ToolUsageRecord[],
+    incoming: ToolUsageRecord[],
+  ): ToolUsageRecord[] {
     const map = new Map<string, ToolUsageRecord>();
 
     for (const record of existing) {
@@ -303,13 +319,15 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
     // so the chart shows something meaningful for legacy data
     const dailyData = this.store.daily[date];
     if (dailyData) {
-      return [{
-        hour: 12,
-        tokens: { ...dailyData.tokens },
-        totalCost: dailyData.totalCost,
-        messageCount: dailyData.messageCount,
-        sessionCount: dailyData.sessionCount,
-      }];
+      return [
+        {
+          hour: 12,
+          tokens: { ...dailyData.tokens },
+          totalCost: dailyData.totalCost,
+          messageCount: dailyData.messageCount,
+          sessionCount: dailyData.sessionCount,
+        },
+      ];
     }
 
     return [];

@@ -24,12 +24,14 @@ describe('buildHandoffMarkdown', () => {
   });
 
   it('includes pending tasks section when tasks exist', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      pendingTasks: [
-        { name: 'Fix bug', description: 'In the auth module' },
-        { name: 'Write tests' },
-      ],
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        pendingTasks: [
+          { name: 'Fix bug', description: 'In the auth module' },
+          { name: 'Write tests' },
+        ],
+      }),
+    );
     expect(md).toContain('## Pending Tasks');
     expect(md).toContain('**Fix bug** — In the auth module');
     expect(md).toContain('- Write tests');
@@ -41,9 +43,11 @@ describe('buildHandoffMarkdown', () => {
   });
 
   it('includes files in progress section', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      filesInProgress: ['src/main.ts', 'src/utils.ts'],
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        filesInProgress: ['src/main.ts', 'src/utils.ts'],
+      }),
+    );
     expect(md).toContain('## Files In Progress');
     expect(md).toContain('- src/main.ts');
   });
@@ -54,24 +58,30 @@ describe('buildHandoffMarkdown', () => {
   });
 
   it('includes recovery patterns', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      recoveryPatterns: [{
-        type: 'command_fallback',
-        description: 'pnpm works instead of npm',
-        failedApproach: 'npm install',
-        successfulApproach: 'pnpm install',
-        occurrences: 2,
-      }],
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        recoveryPatterns: [
+          {
+            type: 'command_fallback',
+            description: 'pnpm works instead of npm',
+            failedApproach: 'npm install',
+            successfulApproach: 'pnpm install',
+            occurrences: 2,
+          },
+        ],
+      }),
+    );
     expect(md).toContain('## What Worked');
     expect(md).toContain('"npm install" failed');
     expect(md).toContain('"pnpm install" instead');
   });
 
   it('includes failed commands in avoid section', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      failedCommands: ['rm -rf /', 'sudo make install'],
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        failedCommands: ['rm -rf /', 'sudo make install'],
+      }),
+    );
     expect(md).toContain('## Avoid');
     expect(md).toContain('- rm -rf /');
   });
@@ -92,31 +102,37 @@ describe('buildHandoffMarkdown', () => {
   });
 
   it('includes context health warning when health is low', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      contextHealth: 35,
-      compactionCount: 4,
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        contextHealth: 35,
+        compactionCount: 4,
+      }),
+    );
     expect(md).toContain('## Context Health Warning');
     expect(md).toContain('35% fidelity');
     expect(md).toContain('4 compactions');
   });
 
   it('omits context health warning when health is adequate', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      contextHealth: 80,
-      compactionCount: 1,
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        contextHealth: 80,
+        compactionCount: 1,
+      }),
+    );
     expect(md).not.toContain('## Context Health Warning');
   });
 
   it('includes truncation summary', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      truncationCount: 5,
-      truncationsByTool: [
-        { tool: 'Read', count: 3 },
-        { tool: 'Bash', count: 2 },
-      ],
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        truncationCount: 5,
+        truncationsByTool: [
+          { tool: 'Read', count: 3 },
+          { tool: 'Bash', count: 2 },
+        ],
+      }),
+    );
     expect(md).toContain('## Truncated Outputs');
     expect(md).toContain('5 truncated tool outputs');
     expect(md).toContain('**Read**: 3');
@@ -129,9 +145,11 @@ describe('buildHandoffMarkdown', () => {
   });
 
   it('includes incomplete goal gates', () => {
-    const md = buildHandoffMarkdown(makeInput({
-      goalGates: ['Fix auth system', 'Deploy to prod'],
-    }));
+    const md = buildHandoffMarkdown(
+      makeInput({
+        goalGates: ['Fix auth system', 'Deploy to prod'],
+      }),
+    );
     expect(md).toContain('## CRITICAL: Incomplete Goal Gates');
     expect(md).toContain('**Fix auth system** was NOT completed');
     expect(md).toContain('**Deploy to prod** was NOT completed');

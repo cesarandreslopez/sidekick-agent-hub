@@ -70,13 +70,15 @@ describe('KnowledgeCandidateExtractor', () => {
 
   describe('extractPatternCandidates', () => {
     it('extracts pattern from recovery pattern with file path', () => {
-      const patterns: RecoveryPattern[] = [{
-        type: 'approach_switch',
-        description: 'Fixed /project/src/api.ts by switching approach',
-        failedApproach: 'direct import',
-        successfulApproach: 'dynamic import',
-        occurrences: 1,
-      }];
+      const patterns: RecoveryPattern[] = [
+        {
+          type: 'approach_switch',
+          description: 'Fixed /project/src/api.ts by switching approach',
+          failedApproach: 'direct import',
+          successfulApproach: 'dynamic import',
+          occurrences: 1,
+        },
+      ];
 
       const candidates = extractPatternCandidates(patterns, [], PROJECT_PATH);
       expect(candidates).toHaveLength(1);
@@ -86,13 +88,15 @@ describe('KnowledgeCandidateExtractor', () => {
     });
 
     it('skips recovery patterns without file paths', () => {
-      const patterns: RecoveryPattern[] = [{
-        type: 'command_fallback',
-        description: 'Used pnpm instead of npm',
-        failedApproach: 'npm install',
-        successfulApproach: 'pnpm install',
-        occurrences: 1,
-      }];
+      const patterns: RecoveryPattern[] = [
+        {
+          type: 'command_fallback',
+          description: 'Used pnpm instead of npm',
+          failedApproach: 'npm install',
+          successfulApproach: 'pnpm install',
+          occurrences: 1,
+        },
+      ];
 
       const candidates = extractPatternCandidates(patterns, [], PROJECT_PATH);
       expect(candidates).toHaveLength(0);
@@ -101,12 +105,14 @@ describe('KnowledgeCandidateExtractor', () => {
 
   describe('extractGuidelineCandidates', () => {
     it('extracts guideline from suggestion mentioning a file', () => {
-      const suggestions = [{
-        title: 'Improve API error handling',
-        observed: 'Multiple errors in src/services/auth.ts',
-        suggestion: 'Add retry logic for transient failures',
-        reasoning: 'The auth service fails often on network issues',
-      }];
+      const suggestions = [
+        {
+          title: 'Improve API error handling',
+          observed: 'Multiple errors in src/services/auth.ts',
+          suggestion: 'Add retry logic for transient failures',
+          reasoning: 'The auth service fails often on network issues',
+        },
+      ];
 
       const candidates = extractGuidelineCandidates(suggestions, PROJECT_PATH);
       expect(candidates).toHaveLength(1);
@@ -115,12 +121,14 @@ describe('KnowledgeCandidateExtractor', () => {
     });
 
     it('skips suggestions without file paths', () => {
-      const suggestions = [{
-        title: 'General improvement',
-        observed: 'Session was slow',
-        suggestion: 'Use caching',
-        reasoning: 'Reduce API calls',
-      }];
+      const suggestions = [
+        {
+          title: 'General improvement',
+          observed: 'Session was slow',
+          suggestion: 'Use caching',
+          reasoning: 'Reduce API calls',
+        },
+      ];
 
       const candidates = extractGuidelineCandidates(suggestions, PROJECT_PATH);
       expect(candidates).toHaveLength(0);
@@ -135,22 +143,22 @@ describe('KnowledgeCandidateExtractor', () => {
         makeToolCall({ input: { file_path: '/project/src/tricky.ts' }, errorMessage: 'Error 3' }),
       ];
 
-      const patterns: RecoveryPattern[] = [{
-        type: 'approach_switch',
-        description: 'Fixed /project/src/api.ts',
-        failedApproach: 'approach A',
-        successfulApproach: 'approach B',
-        occurrences: 1,
-      }];
+      const patterns: RecoveryPattern[] = [
+        {
+          type: 'approach_switch',
+          description: 'Fixed /project/src/api.ts',
+          failedApproach: 'approach A',
+          successfulApproach: 'approach B',
+          occurrences: 1,
+        },
+      ];
 
-      const candidates = extractKnowledgeCandidates(
-        [], patterns, toolCalls, [], PROJECT_PATH
-      );
+      const candidates = extractKnowledgeCandidates([], patterns, toolCalls, [], PROJECT_PATH);
 
       expect(candidates.length).toBeGreaterThanOrEqual(2);
       // Should have one gotcha and one pattern
-      expect(candidates.some(c => c.noteType === 'gotcha')).toBe(true);
-      expect(candidates.some(c => c.noteType === 'pattern')).toBe(true);
+      expect(candidates.some((c) => c.noteType === 'gotcha')).toBe(true);
+      expect(candidates.some((c) => c.noteType === 'pattern')).toBe(true);
     });
 
     it('deduplicates by filePath + noteType', () => {
@@ -161,11 +169,11 @@ describe('KnowledgeCandidateExtractor', () => {
         makeToolCall({ input: { file_path: '/project/src/dup.ts' }, errorMessage: 'Error C' }),
       ];
 
-      const candidates = extractKnowledgeCandidates(
-        [], [], toolCalls, [], PROJECT_PATH
-      );
+      const candidates = extractKnowledgeCandidates([], [], toolCalls, [], PROJECT_PATH);
 
-      const dupCandidates = candidates.filter(c => c.filePath === 'src/dup.ts' && c.noteType === 'gotcha');
+      const dupCandidates = candidates.filter(
+        (c) => c.filePath === 'src/dup.ts' && c.noteType === 'gotcha',
+      );
       expect(dupCandidates).toHaveLength(1);
     });
 

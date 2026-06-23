@@ -117,7 +117,8 @@ export class MultiProviderQuotaService implements Disposable {
   constructor(options: MultiProviderQuotaServiceOptions = {}) {
     this.activeIntervalMs = options.activeIntervalMs ?? ACTIVE_POLL_INTERVAL_MS;
     this.idleIntervalMs = options.idleIntervalMs ?? IDLE_POLL_INTERVAL_MS;
-    this.transientFailureBackoffMs = options.transientFailureBackoffMs ?? TRANSIENT_FAILURE_BACKOFF_MS;
+    this.transientFailureBackoffMs =
+      options.transientFailureBackoffMs ?? TRANSIENT_FAILURE_BACKOFF_MS;
     this.peakHoursCacheMaxAgeMs = options.peakHoursCacheMaxAgeMs ?? PEAK_HOURS_CACHE_MAX_AGE_MS;
     this.includePeakHours = options.includePeakHours ?? true;
     this.readClaudeCredentials = options.readClaudeCredentials ?? readClaudeMaxCredentials;
@@ -137,9 +138,10 @@ export class MultiProviderQuotaService implements Disposable {
       this.ownsCodexWatcher = false;
     }
 
-    this.codexSubscription = this.codexWatcher?.onUpdate((state) => {
-      this.updateProviderQuota('codex', state);
-    }) ?? null;
+    this.codexSubscription =
+      this.codexWatcher?.onUpdate((state) => {
+        this.updateProviderQuota('codex', state);
+      }) ?? null;
 
     if (options.zaiWatcher !== undefined) {
       this.zaiWatcher = options.zaiWatcher;
@@ -149,9 +151,10 @@ export class MultiProviderQuotaService implements Disposable {
       this.ownsZaiWatcher = false;
     }
 
-    this.zaiSubscription = this.zaiWatcher?.onUpdate((state) => {
-      this.updateProviderQuota('zai', state);
-    }) ?? null;
+    this.zaiSubscription =
+      this.zaiWatcher?.onUpdate((state) => {
+        this.updateProviderQuota('zai', state);
+      }) ?? null;
   }
 
   startPolling(): void {
@@ -375,7 +378,9 @@ export class MultiProviderQuotaService implements Disposable {
 
     if (this.transientFailureStreak === 1) {
       if (hasVisibleCachedSuccess) {
-        this.log?.(`[Quota] Fetch failed, using cached data; retrying in ${formatDelay(retryDelay)}`);
+        this.log?.(
+          `[Quota] Fetch failed, using cached data; retrying in ${formatDelay(retryDelay)}`,
+        );
       } else {
         this.log?.(`[Quota] Fetch unavailable; retrying in ${formatDelay(retryDelay)}`);
       }
@@ -416,7 +421,9 @@ export class MultiProviderQuotaService implements Disposable {
     this.timer = setTimeout(() => void this.poll(), delay);
   }
 
-  private withClaudeAccountDetails(state: ProviderQuotaState<'claude'>): ProviderQuotaState<'claude'> {
+  private withClaudeAccountDetails(
+    state: ProviderQuotaState<'claude'>,
+  ): ProviderQuotaState<'claude'> {
     const accountEmail = this.readClaudeAccount()?.email;
     if (!accountEmail) {
       const nextState = { ...state };

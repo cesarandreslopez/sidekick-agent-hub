@@ -13,22 +13,24 @@ Contributions are welcome! Whether it's bug fixes, new features, or documentatio
 ### Development Setup
 
 1. Clone the repository:
-    ```bash
-    git clone https://github.com/cesarandreslopez/sidekick-agent-hub.git
-    cd sidekick-agent-hub
-    ```
+
+   ```bash
+   git clone https://github.com/cesarandreslopez/sidekick-agent-hub.git
+   cd sidekick-agent-hub
+   ```
 
 2. Set up the VS Code extension:
-    ```bash
-    cd sidekick-vscode
-    npm install
-    npm run compile
-    ```
+
+   ```bash
+   cd sidekick-vscode
+   npm install
+   npm run compile
+   ```
 
 3. Run tests to verify setup:
-    ```bash
-    npm test
-    ```
+   ```bash
+   npm test
+   ```
 
 ### Running Locally
 
@@ -69,10 +71,10 @@ cd sidekick-cli && npm install && npm run build
 
 - ESLint for linting across all three packages (`sidekick-vscode`, `sidekick-cli`, `sidekick-shared`)
 - Lint the entire project before committing:
-    ```bash
-    bash scripts/lint-all.sh         # Check all packages
-    bash scripts/lint-all.sh --fix   # Auto-fix across all packages
-    ```
+  ```bash
+  bash scripts/lint-all.sh         # Check all packages
+  bash scripts/lint-all.sh --fix   # Auto-fix across all packages
+  ```
 - TypeScript strict mode
 - Tests co-located with source files (`Foo.ts` / `Foo.test.ts`)
 

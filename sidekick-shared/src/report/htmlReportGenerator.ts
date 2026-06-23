@@ -6,7 +6,15 @@
 
 import type { AggregatedMetrics } from '../aggregation/types';
 import type { TranscriptEntry, TranscriptContentBlock, HtmlReportOptions } from './types';
-import { escapeHtml, simpleMarkdownToHtml, highlightCodeBlock, fmtTokens, fmtCost, formatTimestamp, formatDuration } from './htmlHelpers';
+import {
+  escapeHtml,
+  simpleMarkdownToHtml,
+  highlightCodeBlock,
+  fmtTokens,
+  fmtCost,
+  formatTimestamp,
+  formatDuration,
+} from './htmlHelpers';
 import { SIDEKICK_LOGO_BASE64 } from './logo';
 
 /**
@@ -416,7 +424,11 @@ tr:hover td { background: rgba(155,109,255,0.05); }
 </style>`;
 }
 
-function generateHeader(metrics: AggregatedMetrics, sessionFileName: string | undefined, duration: string): string {
+function generateHeader(
+  metrics: AggregatedMetrics,
+  sessionFileName: string | undefined,
+  duration: string,
+): string {
   const startDate = metrics.sessionStartTime
     ? new Date(metrics.sessionStartTime).toLocaleString()
     : 'N/A';
@@ -436,15 +448,35 @@ function generateHeader(metrics: AggregatedMetrics, sessionFileName: string | un
 </div>`;
 }
 
-function generateStatsCards(metrics: AggregatedMetrics, totalTokens: number, duration: string): string {
+function generateStatsCards(
+  metrics: AggregatedMetrics,
+  totalTokens: number,
+  duration: string,
+): string {
   const toolCount = metrics.toolStats.reduce((sum, t) => sum + t.successCount + t.failureCount, 0);
 
   const cards = [
     { label: 'Messages', value: String(metrics.messageCount), sub: `${metrics.eventCount} events` },
-    { label: 'Duration', value: duration, sub: metrics.sessionStartTime ? formatTimestamp(metrics.sessionStartTime) + ' start' : '' },
-    { label: 'Total Tokens', value: fmtTokens(totalTokens), sub: `${fmtTokens(metrics.tokens.inputTokens)} in / ${fmtTokens(metrics.tokens.outputTokens)} out` },
-    { label: 'Cache', value: fmtTokens(metrics.tokens.cacheReadTokens), sub: `${fmtTokens(metrics.tokens.cacheWriteTokens)} written` },
-    { label: 'Tool Calls', value: String(toolCount), sub: `${metrics.toolStats.length} unique tools` },
+    {
+      label: 'Duration',
+      value: duration,
+      sub: metrics.sessionStartTime ? formatTimestamp(metrics.sessionStartTime) + ' start' : '',
+    },
+    {
+      label: 'Total Tokens',
+      value: fmtTokens(totalTokens),
+      sub: `${fmtTokens(metrics.tokens.inputTokens)} in / ${fmtTokens(metrics.tokens.outputTokens)} out`,
+    },
+    {
+      label: 'Cache',
+      value: fmtTokens(metrics.tokens.cacheReadTokens),
+      sub: `${fmtTokens(metrics.tokens.cacheWriteTokens)} written`,
+    },
+    {
+      label: 'Tool Calls',
+      value: String(toolCount),
+      sub: `${metrics.toolStats.length} unique tools`,
+    },
   ];
 
   if (metrics.tokens.reportedCost > 0) {
@@ -453,20 +485,27 @@ function generateStatsCards(metrics: AggregatedMetrics, totalTokens: number, dur
 
   return `<div class="container">
 <div class="stats-grid">
-${cards.map(c => `  <div class="stat-card">
+${cards
+  .map(
+    (c) => `  <div class="stat-card">
     <div class="label">${c.label}</div>
     <div class="value">${c.value}</div>
     ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
-  </div>`).join('\n')}
+  </div>`,
+  )
+  .join('\n')}
 </div>`;
 }
 
 function generateModelBreakdown(metrics: AggregatedMetrics): string {
   if (metrics.modelStats.length === 0) return '';
 
-  const rows = metrics.modelStats.map(m =>
-    `<tr><td>${escapeHtml(m.model)}</td><td>${m.calls}</td><td>${fmtTokens(m.tokens)}</td><td>${fmtTokens(m.inputTokens)} / ${fmtTokens(m.outputTokens)}</td><td>${fmtCost(m.cost)}</td></tr>`
-  ).join('\n');
+  const rows = metrics.modelStats
+    .map(
+      (m) =>
+        `<tr><td>${escapeHtml(m.model)}</td><td>${m.calls}</td><td>${fmtTokens(m.tokens)}</td><td>${fmtTokens(m.inputTokens)} / ${fmtTokens(m.outputTokens)}</td><td>${fmtCost(m.cost)}</td></tr>`,
+    )
+    .join('\n');
 
   return `<div class="section">
 <div class="section-title">Model Breakdown</div>
@@ -480,13 +519,18 @@ function generateModelBreakdown(metrics: AggregatedMetrics): string {
 function generateToolBreakdown(metrics: AggregatedMetrics): string {
   if (metrics.toolStats.length === 0) return '';
 
-  const sorted = [...metrics.toolStats].sort((a, b) => (b.successCount + b.failureCount) - (a.successCount + a.failureCount));
-  const rows = sorted.map(t => {
-    const total = t.successCount + t.failureCount;
-    const avgMs = t.completedCount > 0 ? Math.round(t.totalDuration / t.completedCount) : 0;
-    const failHtml = t.failureCount > 0 ? `<span style="color:var(--accent-red)">${t.failureCount}</span>` : '0';
-    return `<tr><td><code>${escapeHtml(t.name)}</code></td><td>${total}</td><td>${failHtml}</td><td>${avgMs > 0 ? `${avgMs}ms` : '-'}</td></tr>`;
-  }).join('\n');
+  const sorted = [...metrics.toolStats].sort(
+    (a, b) => b.successCount + b.failureCount - (a.successCount + a.failureCount),
+  );
+  const rows = sorted
+    .map((t) => {
+      const total = t.successCount + t.failureCount;
+      const avgMs = t.completedCount > 0 ? Math.round(t.totalDuration / t.completedCount) : 0;
+      const failHtml =
+        t.failureCount > 0 ? `<span style="color:var(--accent-red)">${t.failureCount}</span>` : '0';
+      return `<tr><td><code>${escapeHtml(t.name)}</code></td><td>${total}</td><td>${failHtml}</td><td>${avgMs > 0 ? `${avgMs}ms` : '-'}</td></tr>`;
+    })
+    .join('\n');
 
   return `<div class="section">
 <div class="section-title">Tool Breakdown</div>
@@ -531,11 +575,19 @@ function generateTranscript(
   return parts.join('\n');
 }
 
-function renderMessage(entry: TranscriptEntry, includeThinking: boolean, includeToolDetail: boolean): string {
+function renderMessage(
+  entry: TranscriptEntry,
+  includeThinking: boolean,
+  includeToolDetail: boolean,
+): string {
   const ts = entry.timestamp ? formatTimestamp(entry.timestamp) : '';
   const roleBadge = `<span class="role-badge ${entry.type}">${entry.type}</span>`;
-  const sourceStr = entry.sourceLabel ? `<span class="message-source">${escapeHtml(entry.sourceLabel)}</span>` : '';
-  const modelStr = entry.model ? `<span class="message-model">${escapeHtml(entry.model)}</span>` : '';
+  const sourceStr = entry.sourceLabel
+    ? `<span class="message-source">${escapeHtml(entry.sourceLabel)}</span>`
+    : '';
+  const modelStr = entry.model
+    ? `<span class="message-model">${escapeHtml(entry.model)}</span>`
+    : '';
   const tokenStr = entry.usage
     ? `<span class="message-tokens">${fmtTokens(entry.usage.input_tokens + entry.usage.output_tokens)} tokens</span>`
     : '';
@@ -563,7 +615,11 @@ function renderMessage(entry: TranscriptEntry, includeThinking: boolean, include
 </div>`;
 }
 
-function renderContentBlock(block: TranscriptContentBlock, includeThinking: boolean, includeToolDetail: boolean): string {
+function renderContentBlock(
+  block: TranscriptContentBlock,
+  includeThinking: boolean,
+  includeToolDetail: boolean,
+): string {
   switch (block.type) {
     case 'text':
       return `<div class="text-content">${simpleMarkdownToHtml(block.text || '')}</div>`;
@@ -631,9 +687,10 @@ function renderToolResult(block: TranscriptContentBlock, includeDetail: boolean)
 
   // Truncate extremely long output in the HTML to prevent huge files
   const maxLen = 50000;
-  const displayOutput = output.length > maxLen
-    ? output.substring(0, maxLen) + `\n\n... (truncated ${output.length - maxLen} characters)`
-    : output;
+  const displayOutput =
+    output.length > maxLen
+      ? output.substring(0, maxLen) + `\n\n... (truncated ${output.length - maxLen} characters)`
+      : output;
 
   return `<details class="tool-result-block${errorClass}" data-block-type="tool">
   <summary class="${errorClass}">${label} (${formatOutputSize(output.length)})</summary>

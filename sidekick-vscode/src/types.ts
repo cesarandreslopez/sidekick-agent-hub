@@ -74,7 +74,10 @@ export interface CompletionContext {
  * at any level of the call stack.
  */
 export class TimeoutError extends Error {
-  constructor(message: string, public readonly timeoutMs: number) {
+  constructor(
+    message: string,
+    public readonly timeoutMs: number,
+  ) {
     super(message);
     this.name = 'TimeoutError';
   }

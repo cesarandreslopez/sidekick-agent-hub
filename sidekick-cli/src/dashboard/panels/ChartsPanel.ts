@@ -10,7 +10,14 @@
 
 import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
 import type { DashboardMetrics } from '../DashboardState';
-import { makeColorBar, makeHeatmap, makeSparkline, sectionHeader, fmtNum, detailWidth } from '../formatters';
+import {
+  makeColorBar,
+  makeHeatmap,
+  makeSparkline,
+  sectionHeader,
+  fmtNum,
+  detailWidth,
+} from '../formatters';
 
 export class ChartsPanel implements SidePanel {
   readonly id = 'charts';
@@ -27,12 +34,14 @@ export class ChartsPanel implements SidePanel {
 
   getItems(_metrics: DashboardMetrics): PanelItem[] {
     // Single item: the current session's analytics
-    return [{
-      id: 'analytics',
-      label: '{bold}Session Analytics{/bold}',
-      sortKey: 0,
-      data: { type: 'analytics' },
-    }];
+    return [
+      {
+        id: 'analytics',
+        label: '{bold}Session Analytics{/bold}',
+        sortKey: 0,
+        data: { type: 'analytics' },
+      },
+    ];
   }
 
   getActions(): PanelAction[] {
@@ -55,7 +64,7 @@ export class ChartsPanel implements SidePanel {
 
     const top = toolFreq.slice(0, 15);
     const maxCount = top[0]?.count ?? 1;
-    const maxNameLen = Math.min(20, Math.max(...top.map(t => t.name.length)));
+    const maxNameLen = Math.min(20, Math.max(...top.map((t) => t.name.length)));
     const barWidth = Math.max(10, w - maxNameLen - 15);
 
     for (const tool of top) {
@@ -119,7 +128,9 @@ export class ChartsPanel implements SidePanel {
       lines.push(sectionHeader('Burn Rate', w));
       lines.push('');
       const { spark, max, latest } = makeSparkline(metrics.burnRate, Math.min(w - 10, 50));
-      lines.push(`{cyan-fg}${spark}{/cyan-fg}  {grey-fg}max: ${fmtNum(max)} | latest: ${fmtNum(latest)} tok/min{/grey-fg}`);
+      lines.push(
+        `{cyan-fg}${spark}{/cyan-fg}  {grey-fg}max: ${fmtNum(max)} | latest: ${fmtNum(latest)} tok/min{/grey-fg}`,
+      );
     }
 
     return lines.join('\n');
@@ -141,9 +152,9 @@ export class ChartsPanel implements SidePanel {
     lines.push('');
 
     // Stats
-    const maxCount = Math.max(...buckets.map(b => b.count));
+    const maxCount = Math.max(...buckets.map((b) => b.count));
     const totalEvents = buckets.reduce((sum, b) => sum + b.count, 0);
-    const activeMins = buckets.filter(b => b.count > 0).length;
+    const activeMins = buckets.filter((b) => b.count > 0).length;
 
     lines.push('{grey-fg}Legend: \u2591 low  \u2592 medium  \u2593 high  \u2588 peak{/grey-fg}');
     lines.push('');
@@ -178,9 +189,10 @@ export class ChartsPanel implements SidePanel {
 
       // Show first example in grey
       if (pattern.examples.length > 0) {
-        const example = pattern.examples[0].length > w - 15
-          ? pattern.examples[0].substring(0, w - 18) + '...'
-          : pattern.examples[0];
+        const example =
+          pattern.examples[0].length > w - 15
+            ? pattern.examples[0].substring(0, w - 18) + '...'
+            : pattern.examples[0];
         lines.push(`${''.padStart(barWidth + 8)}{grey-fg}e.g. ${example}{/grey-fg}`);
       }
     }

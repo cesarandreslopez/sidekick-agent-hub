@@ -20,12 +20,12 @@ After generation, you can:
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.commitMessageModel` | `auto` | Model tier — resolves to `balanced` |
-| `sidekick.commitMessageStyle` | `conventional` | Format: `conventional` or `simple` |
-| `sidekick.commitMessageGuidance` | (empty) | Default guidance applied to all commits |
-| `sidekick.showCommitButton` | `true` | Show sparkle button in Source Control |
+| Setting                          | Default        | Description                             |
+| -------------------------------- | -------------- | --------------------------------------- |
+| `sidekick.commitMessageModel`    | `auto`         | Model tier — resolves to `balanced`     |
+| `sidekick.commitMessageStyle`    | `conventional` | Format: `conventional` or `simple`      |
+| `sidekick.commitMessageGuidance` | (empty)        | Default guidance applied to all commits |
+| `sidekick.showCommitButton`      | `true`         | Show sparkle button in Source Control   |
 
 ## Commit Styles
 

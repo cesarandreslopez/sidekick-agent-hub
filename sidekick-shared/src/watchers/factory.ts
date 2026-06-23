@@ -23,7 +23,10 @@ function getOpenCodeDataDir(): string {
   return path.join(os.homedir(), '.local', 'share', 'opencode');
 }
 
-export function createWatcher(options: CreateWatcherOptions): { watcher: SessionWatcher; sessionPath: string } {
+export function createWatcher(options: CreateWatcherOptions): {
+  watcher: SessionWatcher;
+  sessionPath: string;
+} {
   const { provider, workspacePath, sessionId, callbacks } = options;
   const sessions = provider.findAllSessions(workspacePath);
 
@@ -33,9 +36,14 @@ export function createWatcher(options: CreateWatcherOptions): { watcher: Session
 
   let sessionPath: string;
   if (sessionId) {
-    const match = sessions.find(s => s.includes(sessionId));
+    const match = sessions.find((s) => s.includes(sessionId));
     if (!match) {
-      throw new Error(`Session ${sessionId} not found. Available: ${sessions.slice(0, 5).map(s => path.basename(s)).join(', ')}`);
+      throw new Error(
+        `Session ${sessionId} not found. Available: ${sessions
+          .slice(0, 5)
+          .map((s) => path.basename(s))
+          .join(', ')}`,
+      );
     }
     sessionPath = match;
   } else {

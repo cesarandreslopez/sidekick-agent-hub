@@ -55,7 +55,10 @@ describe('OpenCodeProvider', () => {
   it('falls back to the workspace path when the git probe is killed', () => {
     const workspace = workspaceDir();
     mockExecSync.mockImplementation(() => {
-      throw Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT', signal: 'SIGKILL' });
+      throw Object.assign(new Error('spawnSync timed out'), {
+        code: 'ETIMEDOUT',
+        signal: 'SIGKILL',
+      });
     });
 
     expect(new OpenCodeProvider().encodeWorkspacePath(workspace)).toBe(workspace);

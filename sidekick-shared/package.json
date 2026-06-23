@@ -55,6 +55,8 @@
     "clean": "rm -rf dist",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
+    "format": "prettier --config ../prettier.config.cjs --ignore-path ../.prettierignore --write \"src/**/*.{ts,tsx,js,jsx,json,md,css,html,yml,yaml}\" \"*.{js,cjs,mjs,json,md,yml,yaml}\"",
+    "format:check": "prettier --config ../prettier.config.cjs --ignore-path ../.prettierignore --check \"src/**/*.{ts,tsx,js,jsx,json,md,css,html,yml,yaml}\" \"*.{js,cjs,mjs,json,md,yml,yaml}\"",
     "pretest": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -64,6 +66,7 @@
     "@eslint/js": "^9.0.0",
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",
+    "prettier": "3.8.4",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^3.0.0"

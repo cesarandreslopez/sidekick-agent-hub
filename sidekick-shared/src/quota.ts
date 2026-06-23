@@ -77,7 +77,8 @@ export interface QuotaProjectionInput {
  */
 export function projectQuotaWindow(input: QuotaProjectionInput): number | undefined {
   const { utilization, resetsAt, windowMs, capturedAt } = input;
-  if (!resetsAt || utilization <= 0 || !Number.isFinite(utilization) || windowMs <= 0) return undefined;
+  if (!resetsAt || utilization <= 0 || !Number.isFinite(utilization) || windowMs <= 0)
+    return undefined;
   const resetTime = new Date(resetsAt).getTime();
   if (!Number.isFinite(resetTime)) return undefined;
 
@@ -167,7 +168,7 @@ export async function fetchQuota(accessToken: string): Promise<QuotaState> {
     const res = await fetch(USAGE_URL, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         'anthropic-beta': BETA_HEADER,
         'Content-Type': 'application/json',
       },

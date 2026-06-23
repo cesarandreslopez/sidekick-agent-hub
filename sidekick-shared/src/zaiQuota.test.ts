@@ -15,10 +15,7 @@ import {
 
 const NOW = Date.parse('2025-06-01T12:00:00Z');
 
-function turn(
-  minutesAgo: number,
-  partial: Partial<ZaiAssistantTurn> = {},
-): ZaiAssistantTurn {
+function turn(minutesAgo: number, partial: Partial<ZaiAssistantTurn> = {}): ZaiAssistantTurn {
   return {
     timestampMs: NOW - minutesAgo * 60_000,
     inputTokens: 1000,
@@ -42,13 +39,15 @@ describe('zaiQuota', () => {
 
   describe('turnTokenWeight', () => {
     it('weights cache reads at 0.1x', () => {
-      expect(turnTokenWeight({
-        inputTokens: 1000,
-        outputTokens: 500,
-        cacheReadTokens: 1000,
-        cacheWriteTokens: 200,
-        reasoningTokens: 50,
-      })).toBe(1000 + 500 + 100 + 200 + 50);
+      expect(
+        turnTokenWeight({
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheReadTokens: 1000,
+          cacheWriteTokens: 200,
+          reasoningTokens: 50,
+        }),
+      ).toBe(1000 + 500 + 100 + 200 + 50);
     });
   });
 
@@ -63,11 +62,11 @@ describe('zaiQuota', () => {
 
     it('buckets turns inside vs outside the 5-hour window', () => {
       const turns = [
-        turn(10),               // inside 5h
-        turn(60),               // inside 5h
-        turn(60 * 4),           // exactly 4h ago — still inside
-        turn(60 * 6),           // 6h ago — outside 5h, inside 7d
-        turn(60 * 24 * 8),      // 8d ago — outside 7d
+        turn(10), // inside 5h
+        turn(60), // inside 5h
+        turn(60 * 4), // exactly 4h ago — still inside
+        turn(60 * 6), // 6h ago — outside 5h, inside 7d
+        turn(60 * 24 * 8), // 8d ago — outside 7d
       ];
       const result = accumulateZaiUsage(turns, NOW);
       expect(result.fiveHourTurns).toBe(3);
@@ -137,14 +136,10 @@ describe('zaiQuota', () => {
     });
 
     it('uses authoritative reset timestamps when supplied', () => {
-      const state = inferZaiQuotaState(
-        accumulateZaiUsage([turn(10)], NOW),
-        'max',
-        {
-          authoritativeFiveHourResetAt: '2025-06-01T15:00:00Z',
-          authoritativeWeeklyResetAt: '2025-06-05T00:00:00Z',
-        },
-      );
+      const state = inferZaiQuotaState(accumulateZaiUsage([turn(10)], NOW), 'max', {
+        authoritativeFiveHourResetAt: '2025-06-01T15:00:00Z',
+        authoritativeWeeklyResetAt: '2025-06-05T00:00:00Z',
+      });
       expect(state.fiveHour.resetsAt).toBe('2025-06-01T15:00:00Z');
       expect(state.sevenDay.resetsAt).toBe('2025-06-05T00:00:00Z');
     });
@@ -209,7 +204,9 @@ describe('zaiQuota', () => {
 
   describe('extractNextFlushTime', () => {
     it('parses ISO 8601 timestamps', () => {
-      expect(extractNextFlushTime('resets 2025-06-01T17:00:00Z please')).toBe('2025-06-01T17:00:00.000Z');
+      expect(extractNextFlushTime('resets 2025-06-01T17:00:00Z please')).toBe(
+        '2025-06-01T17:00:00.000Z',
+      );
     });
 
     it('parses space-separated timestamps as UTC', () => {

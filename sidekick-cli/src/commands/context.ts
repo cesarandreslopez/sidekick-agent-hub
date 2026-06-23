@@ -6,12 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import {
-  composeContext,
-  getProjectSlug,
-  getProjectSlugRaw,
-  formatCost,
-} from 'sidekick-shared';
+import { composeContext, getProjectSlug, getProjectSlugRaw, formatCost } from 'sidekick-shared';
 import type { ContextResult, Fidelity } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 
@@ -84,8 +79,12 @@ function formatContextText(ctx: ContextResult, slug: string): string {
   if (ctx.stats) {
     lines.push('## Stats');
     const t = ctx.stats.tokens;
-    lines.push(`Tokens: ${t.inputTokens.toLocaleString()} in / ${t.outputTokens.toLocaleString()} out`);
-    lines.push(`Cache: ${t.cacheReadTokens.toLocaleString()} read / ${t.cacheWriteTokens.toLocaleString()} write`);
+    lines.push(
+      `Tokens: ${t.inputTokens.toLocaleString()} in / ${t.outputTokens.toLocaleString()} out`,
+    );
+    lines.push(
+      `Cache: ${t.cacheReadTokens.toLocaleString()} read / ${t.cacheWriteTokens.toLocaleString()} write`,
+    );
     lines.push(`Cost: ${formatCost(ctx.stats.cost)}`);
     lines.push('');
   }
@@ -129,6 +128,10 @@ export async function contextAction(_opts: Record<string, unknown>, cmd: Command
     process.stderr.write(`Error: ${msg}\n`);
     process.exit(1);
   } finally {
-    try { provider.dispose(); } catch { /* ignore */ }
+    try {
+      provider.dispose();
+    } catch {
+      /* ignore */
+    }
   }
 }

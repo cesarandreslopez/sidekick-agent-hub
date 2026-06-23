@@ -98,7 +98,7 @@ export function findSubdirectorySessionDirs(workspacePath: string): string[] {
     const encodedPrefix = encodeWorkspacePath(workspacePath).toLowerCase();
 
     // Get all directories in projects folder
-    const allDirs = fs.readdirSync(projectsDir).filter(name => {
+    const allDirs = fs.readdirSync(projectsDir).filter((name) => {
       const fullPath = path.join(projectsDir, name);
       try {
         return fs.statSync(fullPath).isDirectory();
@@ -149,8 +149,7 @@ export function getMostRecentlyActiveSessionDir(sessionDirs: string[]): string |
   for (const dir of sessionDirs) {
     try {
       // Find most recent .jsonl file in this directory
-      const files = fs.readdirSync(dir)
-        .filter(file => file.endsWith('.jsonl'));
+      const files = fs.readdirSync(dir).filter((file) => file.endsWith('.jsonl'));
 
       for (const file of files) {
         try {
@@ -208,7 +207,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
   // Strategy 2: Scan ~/.claude/projects/ for matching directories
   try {
     if (fs.existsSync(projectsDir)) {
-      const existingDirs = fs.readdirSync(projectsDir).filter(name => {
+      const existingDirs = fs.readdirSync(projectsDir).filter((name) => {
         const fullPath = path.join(projectsDir, name);
         try {
           return fs.statSync(fullPath).isDirectory();
@@ -234,9 +233,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
       }
 
       // Fallback: match by final path component (project name)
-      const workspaceBasename = path.basename(workspacePath)
-        .replace(/_/g, '-')
-        .toLowerCase();
+      const workspaceBasename = path.basename(workspacePath).replace(/_/g, '-').toLowerCase();
 
       for (const dir of existingDirs) {
         const dirLower = dir.toLowerCase();
@@ -255,7 +252,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
   try {
     const claudeTempDir = path.join(os.tmpdir(), 'claude');
     if (fs.existsSync(claudeTempDir)) {
-      const tempDirs = fs.readdirSync(claudeTempDir).filter(name => {
+      const tempDirs = fs.readdirSync(claudeTempDir).filter((name) => {
         const fullPath = path.join(claudeTempDir, name);
         try {
           return fs.statSync(fullPath).isDirectory();
@@ -265,9 +262,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
       });
 
       // Match by workspace basename
-      const workspaceBasename = path.basename(workspacePath)
-        .replace(/_/g, '-')
-        .toLowerCase();
+      const workspaceBasename = path.basename(workspacePath).replace(/_/g, '-').toLowerCase();
 
       for (const encodedDir of tempDirs) {
         const encodedLower = encodedDir.toLowerCase();
@@ -319,9 +314,10 @@ export function findActiveSession(workspacePath: string): string | null {
     const now = Date.now();
 
     // Find all .jsonl files with stats
-    const files = fs.readdirSync(sessionDir)
-      .filter(file => file.endsWith('.jsonl'))
-      .map(file => {
+    const files = fs
+      .readdirSync(sessionDir)
+      .filter((file) => file.endsWith('.jsonl'))
+      .map((file) => {
         const fullPath = path.join(sessionDir, file);
         const stats = fs.statSync(fullPath);
         const mtime = stats.mtime.getTime();
@@ -329,11 +325,11 @@ export function findActiveSession(workspacePath: string): string | null {
           path: fullPath,
           mtime,
           size: stats.size,
-          isActive: (now - mtime) < ACTIVE_SESSION_THRESHOLD_MS
+          isActive: now - mtime < ACTIVE_SESSION_THRESHOLD_MS,
         };
       })
       // Filter out empty files
-      .filter(file => file.size > 0);
+      .filter((file) => file.size > 0);
 
     // Return null if no session files
     if (files.length === 0) {
@@ -350,7 +346,6 @@ export function findActiveSession(workspacePath: string): string | null {
     });
 
     return files[0].path;
-
   } catch (error) {
     // Handle errors gracefully - missing directory, permission issues, etc.
     console.error('Error finding active session:', error);
@@ -386,21 +381,21 @@ export function findAllSessions(workspacePath: string): string[] {
     }
 
     // Find and sort all .jsonl files
-    const files = fs.readdirSync(sessionDir)
-      .filter(file => file.endsWith('.jsonl'))
-      .map(file => {
+    const files = fs
+      .readdirSync(sessionDir)
+      .filter((file) => file.endsWith('.jsonl'))
+      .map((file) => {
         const fullPath = path.join(sessionDir, file);
         const stats = fs.statSync(fullPath);
         return {
           path: fullPath,
-          mtime: stats.mtime.getTime()
+          mtime: stats.mtime.getTime(),
         };
       })
       .sort((a, b) => b.mtime - a.mtime)
-      .map(file => file.path);
+      .map((file) => file.path);
 
     return files;
-
   } catch (error) {
     // Handle errors gracefully
     console.error('Error finding sessions:', error);
@@ -496,8 +491,7 @@ export function getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[
         }
 
         // Count session files and find most recent modification
-        const sessionFiles = fs.readdirSync(fullPath)
-          .filter(f => f.endsWith('.jsonl'));
+        const sessionFiles = fs.readdirSync(fullPath).filter((f) => f.endsWith('.jsonl'));
 
         let lastModified = stats.mtime;
         let sessionCount = 0;
@@ -522,7 +516,7 @@ export function getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[
           encodedName: entry,
           name: decodeEncodedPath(entry),
           sessionCount,
-          lastModified
+          lastModified,
         });
       } catch {
         // Skip directories we can't read
@@ -582,16 +576,17 @@ export function findSessionsInDirectory(sessionDir: string): string[] {
       return [];
     }
 
-    const files = fs.readdirSync(sessionDir)
-      .filter(file => file.endsWith('.jsonl'))
-      .map(file => {
+    const files = fs
+      .readdirSync(sessionDir)
+      .filter((file) => file.endsWith('.jsonl'))
+      .map((file) => {
         const fullPath = path.join(sessionDir, file);
         try {
           const stats = fs.statSync(fullPath);
           return {
             path: fullPath,
             mtime: stats.mtime.getTime(),
-            size: stats.size
+            size: stats.size,
           };
         } catch {
           return null;
@@ -599,7 +594,7 @@ export function findSessionsInDirectory(sessionDir: string): string[] {
       })
       .filter((f): f is { path: string; mtime: number; size: number } => f !== null && f.size > 0)
       .sort((a, b) => b.mtime - a.mtime)
-      .map(f => f.path);
+      .map((f) => f.path);
 
     return files;
   } catch {
@@ -636,9 +631,7 @@ export function resolveWorktreeMainRepo(workspacePath: string): string | null {
     const gitdir = match[1].trim();
     // gitdir points to something like /main-repo/.git/worktrees/<name>
     // Resolve to absolute path
-    const resolvedGitdir = path.isAbsolute(gitdir)
-      ? gitdir
-      : path.resolve(workspacePath, gitdir);
+    const resolvedGitdir = path.isAbsolute(gitdir) ? gitdir : path.resolve(workspacePath, gitdir);
 
     // Navigate up from .git/worktrees/<name> to the main repo
     const worktreesDir = path.dirname(resolvedGitdir);
@@ -736,7 +729,7 @@ export function findAllSessionsWithWorktrees(workspacePath: string): string[] {
 
   // Sort by mtime (most recent first)
   return Array.from(allPaths)
-    .map(sessionPath => {
+    .map((sessionPath) => {
       try {
         const stat = fs.statSync(sessionPath);
         return { path: sessionPath, mtime: stat.mtime.getTime() };
@@ -745,5 +738,5 @@ export function findAllSessionsWithWorktrees(workspacePath: string): string[] {
       }
     })
     .sort((a, b) => b.mtime - a.mtime)
-    .map(f => f.path);
+    .map((f) => f.path);
 }

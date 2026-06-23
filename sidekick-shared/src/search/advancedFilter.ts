@@ -140,7 +140,7 @@ export class FilterEngine {
 
   private matchFuzzy(text: string): boolean {
     const lower = text.toLowerCase();
-    return this.fuzzyWords.every(w => lower.includes(w));
+    return this.fuzzyWords.every((w) => lower.includes(w));
   }
 
   private matchRegex(text: string): boolean {
@@ -165,7 +165,7 @@ export class FilterEngine {
   private highlightFuzzy(text: string, format: HighlightFormat): string {
     if (this.fuzzyWords.length === 0) return text;
     // Highlight each fuzzy word independently
-    const pattern = this.fuzzyWords.map(w => this.escapeRegex(w)).join('|');
+    const pattern = this.fuzzyWords.map((w) => this.escapeRegex(w)).join('|');
     return this.wrapMatches(text, pattern, format, 'gi');
   }
 
@@ -220,7 +220,7 @@ export class FilterEngine {
         this.fuzzyWords = this.query
           .toLowerCase()
           .split(/\s+/)
-          .filter(w => w.length > 0);
+          .filter((w) => w.length > 0);
         break;
     }
   }

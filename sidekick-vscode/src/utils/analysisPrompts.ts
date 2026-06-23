@@ -8,7 +8,13 @@
  * @module utils/analysisPrompts
  */
 
-import type { SessionAnalysisData, AnalyzedError, ToolPattern, Inefficiency, RecoveryPattern } from '../types/analysis';
+import type {
+  SessionAnalysisData,
+  AnalyzedError,
+  ToolPattern,
+  Inefficiency,
+  RecoveryPattern,
+} from '../types/analysis';
 import type { InstructionFileTarget } from '../types/instructionFile';
 import { formatDurationMs } from 'sidekick-shared';
 
@@ -43,10 +49,12 @@ function formatErrors(errors: AnalyzedError[]): string {
     return 'None';
   }
 
-  return errors.map(e => {
-    const examples = e.examples.slice(0, 2).join('; ');
-    return `- ${e.category} (${e.count}x): ${examples}`;
-  }).join('\n');
+  return errors
+    .map((e) => {
+      const examples = e.examples.slice(0, 2).join('; ');
+      return `- ${e.category} (${e.count}x): ${examples}`;
+    })
+    .join('\n');
 }
 
 /**
@@ -56,14 +64,16 @@ function formatErrors(errors: AnalyzedError[]): string {
  * @returns Formatted tool usage section
  */
 function formatToolPatterns(patterns: ToolPattern[]): string {
-  return patterns.map(t => {
-    const failurePercent = Math.round(t.failureRate * 100);
-    let line = `- ${t.tool}: ${t.callCount} calls, ${failurePercent}% failure rate`;
-    if (t.repeatedTargets.length > 0) {
-      line += `\n  Repeated: ${t.repeatedTargets.join(', ')}`;
-    }
-    return line;
-  }).join('\n');
+  return patterns
+    .map((t) => {
+      const failurePercent = Math.round(t.failureRate * 100);
+      let line = `- ${t.tool}: ${t.callCount} calls, ${failurePercent}% failure rate`;
+      if (t.repeatedTargets.length > 0) {
+        line += `\n  Repeated: ${t.repeatedTargets.join(', ')}`;
+      }
+      return line;
+    })
+    .join('\n');
 }
 
 /**
@@ -77,9 +87,7 @@ function formatInefficiencies(inefficiencies: Inefficiency[]): string {
     return 'None detected';
   }
 
-  return inefficiencies.map(i =>
-    `- ${i.type}: ${i.description} (${i.occurrences}x)`
-  ).join('\n');
+  return inefficiencies.map((i) => `- ${i.type}: ${i.description} (${i.occurrences}x)`).join('\n');
 }
 
 /**
@@ -95,9 +103,12 @@ function formatRecoveryPatterns(patterns: RecoveryPattern[]): string {
     return 'None detected';
   }
 
-  return patterns.map(p =>
-    `- ${p.type}: "${p.failedApproach}" failed → "${p.successfulApproach}" worked (${p.occurrences}x)\n  ${p.description}`
-  ).join('\n');
+  return patterns
+    .map(
+      (p) =>
+        `- ${p.type}: "${p.failedApproach}" failed → "${p.successfulApproach}" worked (${p.occurrences}x)\n  ${p.description}`,
+    )
+    .join('\n');
 }
 
 /**
@@ -108,9 +119,9 @@ function formatKnowledgeNotes(notes?: SessionAnalysisData['knowledgeNotes']): st
     return '';
   }
 
-  const formatted = notes.map(n =>
-    `- [${n.noteType}] ${n.filePath}: ${n.content} (${n.importance}, ${n.status})`
-  ).join('\n');
+  const formatted = notes
+    .map((n) => `- [${n.noteType}] ${n.filePath}: ${n.content} (${n.importance}, ${n.status})`)
+    .join('\n');
 
   return `
 <existing_knowledge_notes>
@@ -150,9 +161,14 @@ function formatInstructionFileContent(content: string | undefined, filename: str
  * @param target - The instruction file target for the active provider
  * @returns Complete prompt for guidance analysis
  */
-export function buildGuidanceAnalysisPrompt(data: SessionAnalysisData, target: InstructionFileTarget): string {
-  const primaryContent = target.primaryFile === 'CLAUDE.md' ? data.currentClaudeMd : data.currentAgentsMd;
-  const secondaryContent = target.primaryFile === 'CLAUDE.md' ? data.currentAgentsMd : data.currentClaudeMd;
+export function buildGuidanceAnalysisPrompt(
+  data: SessionAnalysisData,
+  target: InstructionFileTarget,
+): string {
+  const primaryContent =
+    target.primaryFile === 'CLAUDE.md' ? data.currentClaudeMd : data.currentAgentsMd;
+  const secondaryContent =
+    target.primaryFile === 'CLAUDE.md' ? data.currentAgentsMd : data.currentClaudeMd;
 
   let secondarySection = '';
   if (secondaryContent) {
@@ -286,7 +302,9 @@ export function parseGuidanceSuggestions(response: string): Array<{
 
   // Try new consolidated format first — accept either file name
   const summaryMatch = response.match(/\*\*Summary:\*\*\s*([^\n]+)/);
-  const codeBlockMatch = response.match(/\*\*Append this to (?:CLAUDE\.md|AGENTS\.md):\*\*\s*\n```(?:\w*\n)?([\s\S]*?)\n```/);
+  const codeBlockMatch = response.match(
+    /\*\*Append this to (?:CLAUDE\.md|AGENTS\.md):\*\*\s*\n```(?:\w*\n)?([\s\S]*?)\n```/,
+  );
   const rationaleMatch = response.match(/\*\*Rationale:\*\*\s*\n((?:[-•]\s*[^\n]+\n?)+)/);
 
   if (codeBlockMatch) {
@@ -295,8 +313,8 @@ export function parseGuidanceSuggestions(response: string): Array<{
     if (rationaleMatch) {
       const bulletPoints = rationaleMatch[1]
         .split(/\n/)
-        .filter(line => line.trim().match(/^[-•]/))
-        .map(line => line.replace(/^[-•]\s*/, '').trim())
+        .filter((line) => line.trim().match(/^[-•]/))
+        .map((line) => line.replace(/^[-•]\s*/, '').trim())
         .filter(Boolean);
       rationaleText = bulletPoints.join(' | ');
     }
@@ -305,14 +323,15 @@ export function parseGuidanceSuggestions(response: string): Array<{
       title: 'Recommended Addition',
       observed: summaryMatch?.[1]?.trim() || 'Based on session analysis',
       suggestion: codeBlockMatch[1].trim(),
-      reasoning: rationaleText || 'See rationale above'
+      reasoning: rationaleText || 'See rationale above',
     });
 
     return suggestions;
   }
 
   // Fallback: try old multi-suggestion format for backwards compatibility
-  const oldPattern = /### Suggestion \d+:\s*([^\n]+)\n\*\*Observed:\*\*\s*([^\n]+)\n\*\*Add to (?:CLAUDE\.md|AGENTS\.md):\*\*\s*\n```\n?([\s\S]*?)\n?```\n\*\*Why:\*\*\s*([^\n]+)/g;
+  const oldPattern =
+    /### Suggestion \d+:\s*([^\n]+)\n\*\*Observed:\*\*\s*([^\n]+)\n\*\*Add to (?:CLAUDE\.md|AGENTS\.md):\*\*\s*\n```\n?([\s\S]*?)\n?```\n\*\*Why:\*\*\s*([^\n]+)/g;
 
   let match;
   while ((match = oldPattern.exec(response)) !== null) {
@@ -320,7 +339,7 @@ export function parseGuidanceSuggestions(response: string): Array<{
       title: match[1].trim(),
       observed: match[2].trim(),
       suggestion: match[3].trim(),
-      reasoning: match[4].trim()
+      reasoning: match[4].trim(),
     });
   }
 
@@ -338,7 +357,7 @@ export function parseGuidanceSuggestions(response: string): Array<{
           title: titleMatch?.[1]?.trim() || 'Suggestion',
           observed: observedMatch?.[1]?.trim() || '',
           suggestion: suggestionMatch[1].trim(),
-          reasoning: whyMatch?.[1]?.trim() || ''
+          reasoning: whyMatch?.[1]?.trim() || '',
         });
       }
     }

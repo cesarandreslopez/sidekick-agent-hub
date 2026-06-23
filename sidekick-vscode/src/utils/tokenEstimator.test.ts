@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  estimateTokens,
-  truncateDiffIntelligently,
-  DEFAULT_MAX_TOKENS,
-} from './tokenEstimator';
+import { estimateTokens, truncateDiffIntelligently, DEFAULT_MAX_TOKENS } from './tokenEstimator';
 
 describe('estimateTokens', () => {
   it('returns 0 for an empty string', () => {

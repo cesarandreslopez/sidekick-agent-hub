@@ -25,6 +25,6 @@ Automatically generate JSDoc/docstrings for functions, classes, and methods.
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.docModel` | `auto` | Model tier — resolves to `fast` for quick generation |
+| Setting             | Default | Description                                          |
+| ------------------- | ------- | ---------------------------------------------------- |
+| `sidekick.docModel` | `auto`  | Model tier — resolves to `fast` for quick generation |

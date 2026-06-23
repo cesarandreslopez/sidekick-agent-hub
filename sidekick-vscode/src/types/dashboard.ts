@@ -13,7 +13,7 @@ import type {
   CacheEffectivenessData,
   RecoveryPatternData,
   AdvancedBurnRateData,
-  ToolEfficiencyData
+  ToolEfficiencyData,
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
 import type { KnowledgeNoteDisplay, KnowledgeCandidateDisplay } from './knowledgeNote';
@@ -152,8 +152,18 @@ export type DashboardMessage =
   | { type: 'updateTimeline'; events: TimelineEventDisplay[] }
   | { type: 'sessionStart'; sessionPath: string }
   | { type: 'sessionEnd' }
-  | { type: 'updateSessionProvider'; providerId: 'claude-code' | 'opencode' | 'codex'; displayName: string }
-  | { type: 'updateSessionList'; groups: SessionGroup[]; isPinned: boolean; isUsingCustomPath?: boolean; customPathDisplay?: string | null }
+  | {
+      type: 'updateSessionProvider';
+      providerId: 'claude-code' | 'opencode' | 'codex';
+      displayName: string;
+    }
+  | {
+      type: 'updateSessionList';
+      groups: SessionGroup[];
+      isPinned: boolean;
+      isUsingCustomPath?: boolean;
+      customPathDisplay?: string | null;
+    }
   | { type: 'discoveryModeChange'; inDiscoveryMode: boolean }
   | { type: 'updateQuota'; quota: QuotaState; quotaFailure?: QuotaFailureDisplay }
   | { type: 'updateQuotaHistory'; payload: QuotaHistoryPayload }
@@ -185,7 +195,11 @@ export type DashboardMessage =
   | { type: 'updateTruncations'; count: number; byTool: Array<{ tool: string; count: number }> }
   | { type: 'updateTurnAttributions'; turns: TurnAttributionDisplay[] }
   | { type: 'updateContextWaterfall'; waterfall: ContextWaterfallDisplay }
-  | { type: 'updateNotificationHistory'; notifications: NotificationHistoryDisplay[]; unreadCount: number }
+  | {
+      type: 'updateNotificationHistory';
+      notifications: NotificationHistoryDisplay[];
+      unreadCount: number;
+    }
   | { type: 'updatePhrase'; phrase: string }
   | { type: 'updateEmptyPhrase'; phrase: string }
   | { type: 'updatePlan'; plan: PlanDisplay }

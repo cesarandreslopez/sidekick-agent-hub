@@ -13,7 +13,10 @@ interface ChangelogOverlayProps {
   scrollOffset: number;
 }
 
-export function ChangelogOverlay({ entries, scrollOffset }: ChangelogOverlayProps): React.ReactElement {
+export function ChangelogOverlay({
+  entries,
+  scrollOffset,
+}: ChangelogOverlayProps): React.ReactElement {
   const width = 64;
   const maxVisibleLines = Math.max(process.stdout.rows - 12, 10);
 
@@ -25,9 +28,16 @@ export function ChangelogOverlay({ entries, scrollOffset }: ChangelogOverlayProp
   lines.push(
     <Text key="ver">
       {'  '}
-      <Text bold color="cyan">Terminal Dashboard v{__CLI_VERSION__}</Text>
-      {latestDate ? <Text color="gray">{' — '}{latestDate}</Text> : null}
-    </Text>
+      <Text bold color="cyan">
+        Terminal Dashboard v{__CLI_VERSION__}
+      </Text>
+      {latestDate ? (
+        <Text color="gray">
+          {' — '}
+          {latestDate}
+        </Text>
+      ) : null}
+    </Text>,
   );
   lines.push(<Text key="sep"> </Text>);
 
@@ -39,16 +49,21 @@ export function ChangelogOverlay({ entries, scrollOffset }: ChangelogOverlayProp
         <Text key={`v-${i}`}>
           {'  '}
           <Text bold>v{entry.version}</Text>
-          <Text color="gray">{' — '}{entry.date}</Text>
-        </Text>
+          <Text color="gray">
+            {' — '}
+            {entry.date}
+          </Text>
+        </Text>,
       );
     }
     for (const section of entry.sections) {
       lines.push(
         <Text key={`h-${i}-${section.heading}`}>
           {'  '}
-          <Text bold color="yellow">{section.heading}</Text>
-        </Text>
+          <Text bold color="yellow">
+            {section.heading}
+          </Text>
+        </Text>,
       );
       for (let j = 0; j < section.items.length; j++) {
         // Truncate long items to fit in the box
@@ -59,8 +74,9 @@ export function ChangelogOverlay({ entries, scrollOffset }: ChangelogOverlayProp
         }
         lines.push(
           <Text key={`item-${i}-${section.heading}-${j}`}>
-            {'    '}<Text color="gray">{'\u2022'}</Text> {text}
-          </Text>
+            {'    '}
+            <Text color="gray">{'\u2022'}</Text> {text}
+          </Text>,
         );
       }
     }
@@ -76,32 +92,44 @@ export function ChangelogOverlay({ entries, scrollOffset }: ChangelogOverlayProp
 
   return (
     <Box flexGrow={1} alignItems="center" justifyContent="center">
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor="magenta"
-      paddingX={1}
-      paddingY={1}
-      width={width}
-    >
-      {/* Logo */}
-      <Text>  <Text bold color="magenta">{'\u26A1'} W H A T ' S   N E W</Text></Text>
-      <Text> </Text>
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="magenta"
+        paddingX={1}
+        paddingY={1}
+        width={width}
+      >
+        {/* Logo */}
+        <Text>
+          {' '}
+          <Text bold color="magenta">
+            {'\u26A1'} W H A T ' S N E W
+          </Text>
+        </Text>
+        <Text> </Text>
 
-      {/* Scroll indicator top */}
-      {canScrollUp && <Text color="gray">{'  \u25B2 scroll up (k)'}</Text>}
+        {/* Scroll indicator top */}
+        {canScrollUp && <Text color="gray">{'  \u25B2 scroll up (k)'}</Text>}
 
-      {/* Content */}
-      {visibleLines}
+        {/* Content */}
+        {visibleLines}
 
-      {/* Scroll indicator bottom */}
-      {canScrollDown && <Text color="gray">{'  \u25BC scroll down (j)'}</Text>}
+        {/* Scroll indicator bottom */}
+        {canScrollDown && <Text color="gray">{'  \u25BC scroll down (j)'}</Text>}
 
-      <Text> </Text>
-      <Text color="gray">  Full changelog: <Text color="cyan">https://cesarandreslopez.github.io/sidekick-agent-hub/changelog/</Text></Text>
-      <Text> </Text>
-      <Text color="gray">  Press <Text bold>Esc</Text> or <Text bold>V</Text> to close</Text>
-    </Box>
+        <Text> </Text>
+        <Text color="gray">
+          {' '}
+          Full changelog:{' '}
+          <Text color="cyan">https://cesarandreslopez.github.io/sidekick-agent-hub/changelog/</Text>
+        </Text>
+        <Text> </Text>
+        <Text color="gray">
+          {' '}
+          Press <Text bold>Esc</Text> or <Text bold>V</Text> to close
+        </Text>
+      </Box>
     </Box>
   );
 }

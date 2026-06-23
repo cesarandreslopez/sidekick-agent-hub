@@ -15,16 +15,16 @@ export class AccountStatusBar implements vscode.Disposable {
     private readonly accountService: AccountService,
     private readonly authService: AuthService,
   ) {
-    this.statusBarItem = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Right,
-      98,
-    );
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
     this.statusBarItem.command = 'sidekick.switchAnyAccount';
 
     this.disposables.push(
       this.accountService.onAccountChange(() => this.updateDisplay()),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('sidekick.inferenceProvider') || event.affectsConfiguration('sidekick.authMode')) {
+        if (
+          event.affectsConfiguration('sidekick.inferenceProvider') ||
+          event.affectsConfiguration('sidekick.authMode')
+        ) {
           this.updateDisplay();
         }
       }),
@@ -63,17 +63,20 @@ export class AccountStatusBar implements vscode.Disposable {
       return;
     }
 
-    const displayName = providerId === 'codex'
-      ? (active.label ?? active.email ?? ('id' in active ? active.id : 'codex'))
-      : (active.label ?? this.abbreviateEmail(active.email ?? 'unknown'));
+    const displayName =
+      providerId === 'codex'
+        ? (active.label ?? active.email ?? ('id' in active ? active.id : 'codex'))
+        : (active.label ?? this.abbreviateEmail(active.email ?? 'unknown'));
 
     this.statusBarItem.text = `$(account) ${displayName}`;
 
     const tooltipLines = [
       `Provider: ${providerId === 'codex' ? 'Codex' : 'Claude Max'}`,
-      `Account: ${providerId === 'codex'
-        ? (active.label ?? ('id' in active ? active.id : 'codex'))
-        : (active.email ?? 'unknown')}`,
+      `Account: ${
+        providerId === 'codex'
+          ? (active.label ?? ('id' in active ? active.id : 'codex'))
+          : (active.email ?? 'unknown')
+      }`,
     ];
     if (active.email && providerId === 'codex') {
       tooltipLines.push(`Identity: ${active.email}`);
@@ -98,6 +101,6 @@ export class AccountStatusBar implements vscode.Disposable {
 
   dispose(): void {
     this.statusBarItem.dispose();
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
   }
 }

@@ -7,10 +7,37 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 
-export interface DbProject { id: string; worktree: string; name: string | null; sandboxes: string[]; time_created: number; time_updated: number; }
-export interface DbSession { id: string; project_id: string; title: string; directory: string; time_created: number; time_updated: number; }
-export interface DbMessage { id: string; session_id: string; time_created: number; time_updated: number; data: string; }
-export interface DbPart { id: string; message_id: string; session_id: string; time_created: number; time_updated: number; data: string; }
+export interface DbProject {
+  id: string;
+  worktree: string;
+  name: string | null;
+  sandboxes: string[];
+  time_created: number;
+  time_updated: number;
+}
+export interface DbSession {
+  id: string;
+  project_id: string;
+  title: string;
+  directory: string;
+  time_created: number;
+  time_updated: number;
+}
+export interface DbMessage {
+  id: string;
+  session_id: string;
+  time_created: number;
+  time_updated: number;
+  data: string;
+}
+export interface DbPart {
+  id: string;
+  message_id: string;
+  session_id: string;
+  time_created: number;
+  time_updated: number;
+  data: string;
+}
 type DbProjectRow = Omit<DbProject, 'sandboxes'> & { sandboxes?: string | null };
 
 export interface OpenCodeDbRuntimeStatus {
@@ -27,7 +54,9 @@ export class OpenCodeDatabase {
     this.dbPath = path.join(dataDir, 'opencode.db');
   }
 
-  isAvailable(): boolean { return fs.existsSync(this.dbPath); }
+  isAvailable(): boolean {
+    return fs.existsSync(this.dbPath);
+  }
 
   getRuntimeStatus(): OpenCodeDbRuntimeStatus {
     if (this.runtimeStatus) return this.runtimeStatus;
@@ -35,7 +64,11 @@ export class OpenCodeDatabase {
       this.runtimeStatus = { available: false, kind: 'db_missing' };
       return this.runtimeStatus;
     }
-    return { available: false, kind: 'query_failed', message: 'OpenCode database has not been initialized yet.' };
+    return {
+      available: false,
+      kind: 'query_failed',
+      message: 'OpenCode database has not been initialized yet.',
+    };
   }
 
   open(): boolean {
@@ -122,7 +155,7 @@ export class OpenCodeDatabase {
   findProjectBySessionDirectory(workspacePath: string): DbProject | null {
     const normalized = normalizePath(workspacePath);
     const sessions = this.query<DbSession>(
-      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id IS NULL ORDER BY time_updated DESC'
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id IS NULL ORDER BY time_updated DESC',
     );
 
     let bestProjectId: string | null = null;
@@ -136,24 +169,29 @@ export class OpenCodeDatabase {
     }
 
     if (!bestProjectId) return null;
-    return this.getAllProjects().find(project => project.id === bestProjectId) ?? null;
+    return this.getAllProjects().find((project) => project.id === bestProjectId) ?? null;
   }
 
   getAllProjects(): DbProject[] {
-    return this.query<DbProjectRow>('SELECT id, worktree, name, sandboxes, time_created, time_updated FROM project')
-      .map(project => ({
-        ...project,
-        sandboxes: parseStringArray(project.sandboxes),
-      }));
+    return this.query<DbProjectRow>(
+      'SELECT id, worktree, name, sandboxes, time_created, time_updated FROM project',
+    ).map((project) => ({
+      ...project,
+      sandboxes: parseStringArray(project.sandboxes),
+    }));
   }
 
   hasProject(projectId: string): boolean {
-    return this.queryOne<{ id: string }>('SELECT id FROM project WHERE id = ? LIMIT 1', [projectId]) !== null;
+    return (
+      this.queryOne<{ id: string }>('SELECT id FROM project WHERE id = ? LIMIT 1', [projectId]) !==
+      null
+    );
   }
 
   getSessionsForProject(projectId: string): DbSession[] {
     return this.query<DbSession>(
-      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC', [projectId]
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC',
+      [projectId],
     );
   }
 
@@ -161,7 +199,7 @@ export class OpenCodeDatabase {
   getMostRecentSession(projectId: string): DbSession | null {
     return this.queryOne<DbSession>(
       'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC LIMIT 1',
-      [projectId]
+      [projectId],
     );
   }
 
@@ -169,17 +207,21 @@ export class OpenCodeDatabase {
   getChildSessions(parentSessionId: string): DbSession[] {
     return this.query<DbSession>(
       'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id = ? ORDER BY time_created ASC',
-      [parentSessionId]
+      [parentSessionId],
     );
   }
 
   getSession(sessionId: string): DbSession | null {
-    return this.queryOne<DbSession>('SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE id = ?', [sessionId]);
+    return this.queryOne<DbSession>(
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE id = ?',
+      [sessionId],
+    );
   }
 
   getMessagesForSession(sessionId: string): DbMessage[] {
     return this.query<DbMessage>(
-      'SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? ORDER BY time_created ASC', [sessionId]
+      'SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? ORDER BY time_created ASC',
+      [sessionId],
     );
   }
 
@@ -189,7 +231,7 @@ export class OpenCodeDatabase {
     const placeholders = messageIds.map(() => '?').join(', ');
     return this.query<DbMessage>(
       `SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? AND id IN (${placeholders}) ORDER BY time_created ASC`,
-      [sessionId, ...messageIds]
+      [sessionId, ...messageIds],
     );
   }
 
@@ -197,7 +239,7 @@ export class OpenCodeDatabase {
   getMessagesNewerThan(sessionId: string, afterTimeUpdated: number): DbMessage[] {
     return this.query<DbMessage>(
       'SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? AND time_updated > ? ORDER BY time_created ASC',
-      [sessionId, afterTimeUpdated]
+      [sessionId, afterTimeUpdated],
     );
   }
 
@@ -205,7 +247,7 @@ export class OpenCodeDatabase {
   getLatestMessageTimeUpdated(sessionId: string): number {
     const row = this.queryOne<{ maxTimeUpdated: number }>(
       'SELECT COALESCE(MAX(time_updated), 0) AS maxTimeUpdated FROM message WHERE session_id = ?',
-      [sessionId]
+      [sessionId],
     );
     return row?.maxTimeUpdated ?? 0;
   }
@@ -220,10 +262,10 @@ export class OpenCodeDatabase {
        WHERE session_id = ?
          AND json_extract(data, '$.role') = 'assistant'
          AND json_extract(data, '$.parentID') IN (${placeholders})`,
-      [sessionId, ...userMessageIds]
+      [sessionId, ...userMessageIds],
     );
     return rows
-      .map(r => r.parentId)
+      .map((r) => r.parentId)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
   }
 
@@ -266,7 +308,7 @@ export class OpenCodeDatabase {
          )
        ORDER BY time_created DESC
        LIMIT 1`,
-      [sessionId]
+      [sessionId],
     );
   }
 
@@ -274,7 +316,7 @@ export class OpenCodeDatabase {
   getPartsForMessage(messageId: string): DbPart[] {
     return this.query<DbPart>(
       'SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE message_id = ? ORDER BY time_created ASC',
-      [messageId]
+      [messageId],
     );
   }
 
@@ -284,13 +326,14 @@ export class OpenCodeDatabase {
     const placeholders = messageIds.map(() => '?').join(', ');
     return this.query<DbPart>(
       `SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? AND message_id IN (${placeholders}) ORDER BY time_created ASC`,
-      [sessionId, ...messageIds]
+      [sessionId, ...messageIds],
     );
   }
 
   getPartsForSession(sessionId: string): DbPart[] {
     return this.query<DbPart>(
-      'SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? ORDER BY time_created ASC', [sessionId]
+      'SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? ORDER BY time_created ASC',
+      [sessionId],
     );
   }
 
@@ -298,7 +341,7 @@ export class OpenCodeDatabase {
   getPartsNewerThan(sessionId: string, afterTimeUpdated: number): DbPart[] {
     return this.query<DbPart>(
       'SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? AND time_updated > ? ORDER BY time_created ASC',
-      [sessionId, afterTimeUpdated]
+      [sessionId, afterTimeUpdated],
     );
   }
 
@@ -306,14 +349,18 @@ export class OpenCodeDatabase {
   getLatestPartTimeUpdated(sessionId: string): number {
     const row = this.queryOne<{ maxTimeUpdated: number }>(
       'SELECT COALESCE(MAX(time_updated), 0) AS maxTimeUpdated FROM part WHERE session_id = ?',
-      [sessionId]
+      [sessionId],
     );
     return row?.maxTimeUpdated ?? 0;
   }
 
-  getProjectSessionStats(): Array<{ projectId: string; sessionCount: number; maxTimeUpdated: number }> {
+  getProjectSessionStats(): Array<{
+    projectId: string;
+    sessionCount: number;
+    maxTimeUpdated: number;
+  }> {
     return this.query<{ projectId: string; sessionCount: number; maxTimeUpdated: number }>(
-      'SELECT project_id AS projectId, COUNT(*) AS sessionCount, MAX(time_updated) AS maxTimeUpdated FROM session GROUP BY project_id'
+      'SELECT project_id AS projectId, COUNT(*) AS sessionCount, MAX(time_updated) AS maxTimeUpdated FROM session GROUP BY project_id',
     );
   }
 
@@ -340,7 +387,9 @@ export class OpenCodeDatabase {
     errorCode: string | null;
   }> {
     if (providerIds.length === 0) return [];
-    const providerClauses = providerIds.map(() => 'json_extract(data, \'$.providerID\') = ?').join(' OR ');
+    const providerClauses = providerIds
+      .map(() => "json_extract(data, '$.providerID') = ?")
+      .join(' OR ');
     return this.query<{
       timeCreated: number;
       modelId: string;
@@ -384,8 +433,11 @@ export class OpenCodeDatabase {
 }
 
 function normalizePath(input: string): string {
-  try { return fs.realpathSync(input); }
-  catch { return path.resolve(input); }
+  try {
+    return fs.realpathSync(input);
+  } catch {
+    return path.resolve(input);
+  }
 }
 
 function parseStringArray(value: string | null | undefined): string[] {
@@ -393,7 +445,9 @@ function parseStringArray(value: string | null | undefined): string[] {
   try {
     const parsed = JSON.parse(value) as unknown;
     return Array.isArray(parsed)
-      ? parsed.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0).map(normalizePath)
+      ? parsed
+          .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+          .map(normalizePath)
       : [];
   } catch {
     return [];
@@ -425,12 +479,23 @@ function pathMatchScore(candidate: string, workspacePath: string): number {
   return -1;
 }
 
-function toRuntimeStatus(error: unknown, fallback: OpenCodeDbRuntimeStatus['kind'] = 'sqlite_missing'): OpenCodeDbRuntimeStatus {
+function toRuntimeStatus(
+  error: unknown,
+  fallback: OpenCodeDbRuntimeStatus['kind'] = 'sqlite_missing',
+): OpenCodeDbRuntimeStatus {
   if (isErrno(error, 'ENOENT')) {
-    return { available: false, kind: 'sqlite_missing', message: 'sqlite3 executable not found in PATH.' };
+    return {
+      available: false,
+      kind: 'sqlite_missing',
+      message: 'sqlite3 executable not found in PATH.',
+    };
   }
   if (isErrno(error, 'EPERM') || isErrno(error, 'EACCES')) {
-    return { available: false, kind: 'sqlite_blocked', message: 'sqlite3 exists but could not be executed.' };
+    return {
+      available: false,
+      kind: 'sqlite_blocked',
+      message: 'sqlite3 exists but could not be executed.',
+    };
   }
 
   const message = error instanceof Error ? error.message : String(error);
@@ -438,8 +503,10 @@ function toRuntimeStatus(error: unknown, fallback: OpenCodeDbRuntimeStatus['kind
 }
 
 function isErrno(error: unknown, code: string): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && (error as { code?: unknown }).code === code;
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  );
 }

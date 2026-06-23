@@ -7,7 +7,15 @@
  * @module services/MindMapDataService
  */
 
-import { SessionStats, ToolCall, TimelineEvent, SubagentStats, TaskState, TrackedTask, PlanState } from '../types/claudeSession';
+import {
+  SessionStats,
+  ToolCall,
+  TimelineEvent,
+  SubagentStats,
+  TaskState,
+  TrackedTask,
+  PlanState,
+} from '../types/claudeSession';
 import { GraphNode, GraphLink, GraphData, TaskNodeStatus, PlanStepStatus } from '../types/mindMap';
 import type { KnowledgeNoteDisplay } from '../types/knowledgeNote';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
@@ -38,10 +46,19 @@ export class MindMapDataService {
   private static readonly SHELL_TOOLS = ['Bash'];
 
   /** Common command names to extract from bash commands */
-  private static readonly COMMAND_PATTERNS = /^(git|npm|npx|yarn|pnpm|node|python|pip|docker|make|cargo|go|rustc|tsc|eslint|prettier|vitest|jest|pytest)/i;
+  private static readonly COMMAND_PATTERNS =
+    /^(git|npm|npx|yarn|pnpm|node|python|pip|docker|make|cargo|go|rustc|tsc|eslint|prettier|vitest|jest|pytest)/i;
 
   /** Task-related tools (not visualized as separate nodes) */
-  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'TodoWrite', 'TodoRead', 'UpdatePlan'];
+  private static readonly TASK_TOOLS = [
+    'TaskCreate',
+    'TaskUpdate',
+    'TaskGet',
+    'TaskList',
+    'TodoWrite',
+    'TodoRead',
+    'UpdatePlan',
+  ];
 
   /**
    * Builds complete graph from session statistics.
@@ -59,14 +76,20 @@ export class MindMapDataService {
    * @param subagents - Optional subagent statistics for expanded visualization
    * @returns Graph data with nodes and links
    */
-  static buildGraph(stats: SessionStats, subagents?: SubagentStats[], knowledgeNotes?: KnowledgeNoteDisplay[]): GraphData {
+  static buildGraph(
+    stats: SessionStats,
+    subagents?: SubagentStats[],
+    knowledgeNotes?: KnowledgeNoteDisplay[],
+  ): GraphData {
     // Debug logging for subagent data
     if (subagents && subagents.length > 0) {
       log(`[MindMap] Building graph with ${subagents.length} subagents:`);
       for (const agent of subagents) {
-        log(`  - Agent ${agent.agentId}: type=${agent.agentType}, toolCalls=${agent.toolCalls.length}`);
+        log(
+          `  - Agent ${agent.agentId}: type=${agent.agentType}, toolCalls=${agent.toolCalls.length}`,
+        );
         if (agent.toolCalls.length > 0) {
-          const toolNames = [...new Set(agent.toolCalls.map(c => c.name))];
+          const toolNames = [...new Set(agent.toolCalls.map((c) => c.name))];
           log(`    Tools: ${toolNames.join(', ')}`);
         }
       }
@@ -227,7 +250,9 @@ export class MindMapDataService {
       const nodesBefore = nodes.length;
       const linksBefore = links.length;
       this.addSubagentNodes(subagents, nodes, links, nodeIds);
-      log(`[MindMap] addSubagentNodes added ${nodes.length - nodesBefore} nodes and ${links.length - linksBefore} links`);
+      log(
+        `[MindMap] addSubagentNodes added ${nodes.length - nodesBefore} nodes and ${links.length - linksBefore} links`,
+      );
     } else {
       // Fallback: extract subagents from timeline (legacy behavior)
       const legacySubagents = this.extractSubagents(stats.timeline);
@@ -261,7 +286,7 @@ export class MindMapDataService {
     // Mark the latest file/URL link based on last tool call
     const lastFileUrlCall = [...stats.toolCalls]
       .reverse()
-      .find(c => this.FILE_TOOLS.includes(c.name) || this.URL_TOOLS.includes(c.name));
+      .find((c) => this.FILE_TOOLS.includes(c.name) || this.URL_TOOLS.includes(c.name));
 
     if (lastFileUrlCall) {
       const toolId = `tool-${lastFileUrlCall.name}`;
@@ -276,10 +301,10 @@ export class MindMapDataService {
       }
 
       if (targetId) {
-        const latestLink = links.find(l => l.source === toolId && l.target === targetId);
+        const latestLink = links.find((l) => l.source === toolId && l.target === targetId);
         if (latestLink) latestLink.isLatest = true;
         // Mark the target node as latest too
-        const latestNode = nodes.find(n => n.id === targetId);
+        const latestNode = nodes.find((n) => n.id === targetId);
         if (latestNode) latestNode.isLatest = true;
       }
     }
@@ -290,7 +315,9 @@ export class MindMapDataService {
   /**
    * File statistics including touch count and line changes.
    */
-  private static extractFiles(toolCalls: ToolCall[]): Map<string, { touchCount: number; additions: number; deletions: number }> {
+  private static extractFiles(
+    toolCalls: ToolCall[],
+  ): Map<string, { touchCount: number; additions: number; deletions: number }> {
     const files = new Map<string, { touchCount: number; additions: number; deletions: number }>();
 
     for (const call of toolCalls) {
@@ -342,7 +369,9 @@ export class MindMapDataService {
    * @param toolCalls - Array of tool calls from session
    * @returns Map of directory paths to search stats (count and patterns used)
    */
-  private static extractDirectories(toolCalls: ToolCall[]): Map<string, { count: number; patterns: string[] }> {
+  private static extractDirectories(
+    toolCalls: ToolCall[],
+  ): Map<string, { count: number; patterns: string[] }> {
     const dirs = new Map<string, { count: number; patterns: string[] }>();
 
     for (const call of toolCalls) {
@@ -372,7 +401,9 @@ export class MindMapDataService {
    * @param toolCalls - Array of tool calls from session
    * @returns Map of command names to execution stats (count and example commands)
    */
-  private static extractCommands(toolCalls: ToolCall[]): Map<string, { count: number; examples: string[] }> {
+  private static extractCommands(
+    toolCalls: ToolCall[],
+  ): Map<string, { count: number; examples: string[] }> {
     const commands = new Map<string, { count: number; examples: string[] }>();
 
     for (const call of toolCalls) {
@@ -479,7 +510,7 @@ export class MindMapDataService {
     toolNames: string[],
     getTargetId: (call: ToolCall) => string | null,
     existingNodeIds: Set<string>,
-    links: GraphLink[]
+    links: GraphLink[],
   ): void {
     const addedLinks = new Set<string>();
 
@@ -503,43 +534,83 @@ export class MindMapDataService {
   /**
    * Creates links between files and the tools that touched them.
    */
-  private static addFileToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
-    this.addToolTargetLinks(toolCalls, this.FILE_TOOLS, call => {
-      const filePath = call.input.file_path as string;
-      return filePath && typeof filePath === 'string' ? `file-${filePath}` : null;
-    }, existingNodeIds, links);
+  private static addFileToolLinks(
+    toolCalls: ToolCall[],
+    existingNodeIds: Set<string>,
+    links: GraphLink[],
+  ): void {
+    this.addToolTargetLinks(
+      toolCalls,
+      this.FILE_TOOLS,
+      (call) => {
+        const filePath = call.input.file_path as string;
+        return filePath && typeof filePath === 'string' ? `file-${filePath}` : null;
+      },
+      existingNodeIds,
+      links,
+    );
   }
 
   /**
    * Creates links between URLs/queries and the tools that accessed them.
    */
-  private static addUrlToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
-    this.addToolTargetLinks(toolCalls, this.URL_TOOLS, call => {
-      const url = (call.input.url as string) || (call.input.query as string);
-      return url && typeof url === 'string' ? `url-${url}` : null;
-    }, existingNodeIds, links);
+  private static addUrlToolLinks(
+    toolCalls: ToolCall[],
+    existingNodeIds: Set<string>,
+    links: GraphLink[],
+  ): void {
+    this.addToolTargetLinks(
+      toolCalls,
+      this.URL_TOOLS,
+      (call) => {
+        const url = (call.input.url as string) || (call.input.query as string);
+        return url && typeof url === 'string' ? `url-${url}` : null;
+      },
+      existingNodeIds,
+      links,
+    );
   }
 
   /**
    * Creates links between directories and the tools that searched them.
    */
-  private static addDirectoryToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
-    this.addToolTargetLinks(toolCalls, this.SEARCH_TOOLS, call => {
-      const dirPath = call.input.path as string;
-      return dirPath && typeof dirPath === 'string' ? `directory-${dirPath}` : null;
-    }, existingNodeIds, links);
+  private static addDirectoryToolLinks(
+    toolCalls: ToolCall[],
+    existingNodeIds: Set<string>,
+    links: GraphLink[],
+  ): void {
+    this.addToolTargetLinks(
+      toolCalls,
+      this.SEARCH_TOOLS,
+      (call) => {
+        const dirPath = call.input.path as string;
+        return dirPath && typeof dirPath === 'string' ? `directory-${dirPath}` : null;
+      },
+      existingNodeIds,
+      links,
+    );
   }
 
   /**
    * Creates links between command types and the Bash tool that ran them.
    */
-  private static addCommandToolLinks(toolCalls: ToolCall[], existingNodeIds: Set<string>, links: GraphLink[]): void {
-    this.addToolTargetLinks(toolCalls, this.SHELL_TOOLS, call => {
-      const cmd = call.input.command as string;
-      if (!cmd || typeof cmd !== 'string') return null;
-      const match = cmd.match(this.COMMAND_PATTERNS);
-      return match ? `command-${match[1].toLowerCase()}` : null;
-    }, existingNodeIds, links);
+  private static addCommandToolLinks(
+    toolCalls: ToolCall[],
+    existingNodeIds: Set<string>,
+    links: GraphLink[],
+  ): void {
+    this.addToolTargetLinks(
+      toolCalls,
+      this.SHELL_TOOLS,
+      (call) => {
+        const cmd = call.input.command as string;
+        if (!cmd || typeof cmd !== 'string') return null;
+        const match = cmd.match(this.COMMAND_PATTERNS);
+        return match ? `command-${match[1].toLowerCase()}` : null;
+      },
+      existingNodeIds,
+      links,
+    );
   }
 
   /**
@@ -559,11 +630,12 @@ export class MindMapDataService {
     taskState: TaskState,
     nodes: GraphNode[],
     links: GraphLink[],
-    nodeIds: Set<string>
+    nodeIds: Set<string>,
   ): void {
     // Filter out deleted tasks
-    const visibleTasks = Array.from(taskState.tasks.values())
-      .filter(task => task.status !== 'deleted');
+    const visibleTasks = Array.from(taskState.tasks.values()).filter(
+      (task) => task.status !== 'deleted',
+    );
 
     for (const task of visibleTasks) {
       const taskNodeId = `task-${task.taskId}`;
@@ -610,7 +682,7 @@ export class MindMapDataService {
     task: TrackedTask,
     taskNodeId: string,
     nodeIds: Set<string>,
-    links: GraphLink[]
+    links: GraphLink[],
   ): void {
     const addedLinks = new Set<string>();
 
@@ -665,7 +737,7 @@ export class MindMapDataService {
     task: TrackedTask,
     taskNodeId: string,
     nodeIds: Set<string>,
-    links: GraphLink[]
+    links: GraphLink[],
   ): void {
     for (const blockingTaskId of task.blockedBy) {
       const blockingNodeId = `task-${blockingTaskId}`;
@@ -700,22 +772,22 @@ export class MindMapDataService {
     nodes: GraphNode[],
     links: GraphLink[],
     nodeIds: Set<string>,
-    taskState?: TaskState
+    taskState?: TaskState,
   ): void {
     // Create plan root node
     const planRootId = 'plan-root';
-    const completedSteps = planState.steps.filter(s => s.status === 'completed').length;
-    const completionPct = planState.steps.length > 0
-      ? Math.round((completedSteps / planState.steps.length) * 100)
-      : 0;
+    const completedSteps = planState.steps.filter((s) => s.status === 'completed').length;
+    const completionPct =
+      planState.steps.length > 0 ? Math.round((completedSteps / planState.steps.length) * 100) : 0;
     if (!nodeIds.has(planRootId)) {
       const totalTokens = planState.steps.reduce((sum, s) => sum + (s.tokensUsed || 0), 0);
       const durationStr = planState.totalDurationMs
         ? ` · ${Math.round(planState.totalDurationMs / 1000)}s`
         : '';
-      const tokenStr = totalTokens > 0
-        ? ` · ${totalTokens >= 1000 ? (totalTokens / 1000).toFixed(1) + 'k' : totalTokens} tokens`
-        : '';
+      const tokenStr =
+        totalTokens > 0
+          ? ` · ${totalTokens >= 1000 ? (totalTokens / 1000).toFixed(1) + 'k' : totalTokens} tokens`
+          : '';
       nodes.push({
         id: planRootId,
         label: planState.title || 'Plan',
@@ -734,7 +806,10 @@ export class MindMapDataService {
       const phase = planState.steps[i].phase;
       if (phase) {
         let group = phaseGroups.get(phase);
-        if (!group) { group = []; phaseGroups.set(phase, group); }
+        if (!group) {
+          group = [];
+          phaseGroups.set(phase, group);
+        }
         group.push(i);
       } else {
         noPhaseIndices.push(i);
@@ -749,7 +824,9 @@ export class MindMapDataService {
       if (indices.length >= 2) {
         const phaseNodeId = `plan-phase-${phaseName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
         if (!nodeIds.has(phaseNodeId)) {
-          const phaseCompleted = indices.filter(i => planState.steps[i].status === 'completed').length;
+          const phaseCompleted = indices.filter(
+            (i) => planState.steps[i].status === 'completed',
+          ).length;
           nodes.push({
             id: phaseNodeId,
             label: phaseName,
@@ -798,7 +875,9 @@ export class MindMapDataService {
           tooltipParts.push(`Duration: ${min > 0 ? min + 'm ' + (sec % 60) + 's' : sec + 's'}`);
         }
         if (step.tokensUsed) {
-          tooltipParts.push(`Tokens: ${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed}`);
+          tooltipParts.push(
+            `Tokens: ${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed}`,
+          );
         }
         if (step.toolCalls) tooltipParts.push(`Tool calls: ${step.toolCalls}`);
         if (step.errorMessage) tooltipParts.push(`Error: ${step.errorMessage.substring(0, 100)}`);
@@ -833,7 +912,7 @@ export class MindMapDataService {
 
     // Cross-reference: link plan steps to matching task nodes
     if (taskState) {
-      const tasks = Array.from(taskState.tasks.values()).filter(t => t.status !== 'deleted');
+      const tasks = Array.from(taskState.tasks.values()).filter((t) => t.status !== 'deleted');
 
       for (let i = 0; i < planState.steps.length; i++) {
         const step = planState.steps[i];
@@ -888,7 +967,7 @@ export class MindMapDataService {
     notes: KnowledgeNoteDisplay[],
     nodes: GraphNode[],
     links: GraphLink[],
-    nodeIds: Set<string>
+    nodeIds: Set<string>,
   ): void {
     for (const note of notes) {
       const noteNodeId = `knowledge-note-${note.id}`;
@@ -896,9 +975,14 @@ export class MindMapDataService {
       if (nodeIds.has(noteNodeId)) continue;
 
       // Build label: type icon + truncated content
-      const typePrefix = note.noteType === 'gotcha' ? '!' :
-                         note.noteType === 'pattern' ? '~' :
-                         note.noteType === 'guideline' ? '#' : '*';
+      const typePrefix =
+        note.noteType === 'gotcha'
+          ? '!'
+          : note.noteType === 'pattern'
+            ? '~'
+            : note.noteType === 'guideline'
+              ? '#'
+              : '*';
       const label = `${typePrefix} ${this.truncateLabel(note.content, 22)}`;
 
       nodes.push({
@@ -967,7 +1051,7 @@ export class MindMapDataService {
     subagents: SubagentStats[],
     nodes: GraphNode[],
     links: GraphLink[],
-    nodeIds: Set<string>
+    nodeIds: Set<string>,
   ): void {
     for (const agent of subagents) {
       // Create subagent node
@@ -1044,7 +1128,9 @@ export class MindMapDataService {
             if (callFilePath === filePath) {
               const toolNodeId = `subagent-${agent.agentId}-tool-${call.name}`;
               // Check if link already exists
-              const linkExists = links.some(l => l.source === toolNodeId && l.target === fileNodeId);
+              const linkExists = links.some(
+                (l) => l.source === toolNodeId && l.target === fileNodeId,
+              );
               if (!linkExists && nodeIds.has(toolNodeId)) {
                 links.push({ source: toolNodeId, target: fileNodeId });
               }
@@ -1076,7 +1162,9 @@ export class MindMapDataService {
             if (callUrl === url) {
               const toolNodeId = `subagent-${agent.agentId}-tool-${call.name}`;
               // Check if link already exists
-              const linkExists = links.some(l => l.source === toolNodeId && l.target === urlNodeId);
+              const linkExists = links.some(
+                (l) => l.source === toolNodeId && l.target === urlNodeId,
+              );
               if (!linkExists && nodeIds.has(toolNodeId)) {
                 links.push({ source: toolNodeId, target: urlNodeId });
               }
@@ -1106,13 +1194,14 @@ export class MindMapDataService {
     agentNodeId: string,
     nodes: GraphNode[],
     links: GraphLink[],
-    nodeIds: Set<string>
+    nodeIds: Set<string>,
   ): void {
     if (!agent.taskState) return;
 
     // Filter out deleted tasks
-    const visibleTasks = Array.from(agent.taskState.tasks.values())
-      .filter(task => task.status !== 'deleted');
+    const visibleTasks = Array.from(agent.taskState.tasks.values()).filter(
+      (task) => task.status !== 'deleted',
+    );
 
     for (const task of visibleTasks) {
       const taskNodeId = `subagent-${agent.agentId}-task-${task.taskId}`;

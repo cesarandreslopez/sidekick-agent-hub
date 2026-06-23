@@ -128,10 +128,7 @@ export function deleteSnapshot(sessionId: string): void {
  * For DB-backed providers: sourceSize is 0, so we always consider valid
  * (the DB reader's timestamp-based cursor handles staleness naturally).
  */
-export function isSnapshotValid(
-  snapshot: SessionSnapshot,
-  currentSourceSize: number,
-): boolean {
+export function isSnapshotValid(snapshot: SessionSnapshot, currentSourceSize: number): boolean {
   // DB-backed providers store sourceSize=0 — always valid (cursor is a timestamp)
   if (snapshot.sourceSize === 0) {
     return true;

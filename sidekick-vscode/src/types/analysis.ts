@@ -37,7 +37,13 @@ export interface ToolPattern {
  */
 export interface Inefficiency {
   /** Inefficiency type */
-  type: 'repeated_read' | 'glob_overlap' | 'retry_loop' | 'command_failure' | 'search_spam' | 'cycle_detected';
+  type:
+    | 'repeated_read'
+    | 'glob_overlap'
+    | 'retry_loop'
+    | 'command_failure'
+    | 'search_spam'
+    | 'cycle_detected';
   /** Human-readable description */
   description: string;
   /** Number of occurrences */

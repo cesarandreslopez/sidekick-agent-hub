@@ -28,7 +28,9 @@ describe('SessionPathResolver', () => {
     });
 
     it('encodes Windows path with underscores (OneDrive)', () => {
-      const result = encodeWorkspacePath('C:\\Users\\andre\\OneDrive\\Documents\\humans_are_awesome_epub');
+      const result = encodeWorkspacePath(
+        'C:\\Users\\andre\\OneDrive\\Documents\\humans_are_awesome_epub',
+      );
       expect(result).toBe('C--Users-andre-OneDrive-Documents-humans-are-awesome-epub');
     });
 

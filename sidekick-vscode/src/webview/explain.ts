@@ -11,7 +11,12 @@
 
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import type { ExplainExtensionMessage, ExplainWebviewMessage, ExplainState, FileContext } from '../types/explain';
+import type {
+  ExplainExtensionMessage,
+  ExplainWebviewMessage,
+  ExplainState,
+  FileContext,
+} from '../types/explain';
 import type { ComplexityLevel } from '../types/explain';
 import { COMPLEXITY_LABELS } from '../types/explain';
 import { DEFAULT_EXPLAIN_STATE } from '../types/explain';
@@ -412,7 +417,13 @@ function renderComplexityBar() {
   if (!complexityBar) return;
 
   // Create button for each complexity level
-  const levels: ComplexityLevel[] = ['eli5', 'curious-amateur', 'imposter-syndrome', 'senior', 'phd'];
+  const levels: ComplexityLevel[] = [
+    'eli5',
+    'curious-amateur',
+    'imposter-syndrome',
+    'senior',
+    'phd',
+  ];
 
   complexityBar.setAttribute('role', 'tablist');
   complexityBar.setAttribute('aria-label', 'Explanation complexity level');
@@ -546,7 +557,7 @@ function requestExplanation(code: string, complexity: ComplexityLevel, fileConte
     requestId: currentRequestId,
     code,
     complexity,
-    fileContext
+    fileContext,
   } as ExplainWebviewMessage);
 }
 
@@ -568,7 +579,7 @@ function changeComplexity(complexity: ComplexityLevel) {
   // Also notify extension of complexity change
   vscode.postMessage({
     type: 'changeComplexity',
-    complexity
+    complexity,
   } as ExplainWebviewMessage);
 }
 
@@ -584,8 +595,24 @@ function renderExplanation(markdown: string) {
 
   // Sanitize HTML
   const cleanHtml = DOMPurify.sanitize(rawHtml, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote', 'span'],
-    ALLOWED_ATTR: ['class']
+    ALLOWED_TAGS: [
+      'p',
+      'br',
+      'strong',
+      'em',
+      'code',
+      'pre',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'span',
+    ],
+    ALLOWED_ATTR: ['class'],
   });
 
   contentEl.innerHTML = cleanHtml;

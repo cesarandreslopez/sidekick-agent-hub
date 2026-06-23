@@ -10,7 +10,7 @@ It extracts four kinds of assets:
 
 - **URLs** — links from messages and from `WebFetch` / `WebSearch` / `Bash` tool inputs
 - **File paths** — on-disk paths (with optional `:line`), validated against the filesystem
-- **Commands** — shell commands the agent *presented for you to run* (fenced shell blocks and `$`-prefixed lines), not the ones it ran itself
+- **Commands** — shell commands the agent _presented for you to run_ (fenced shell blocks and `$`-prefixed lines), not the ones it ran itself
 - **Plans** — plan-mode plans (Claude `ExitPlanMode` / plan files, Codex finalized `Plan` items)
 
 Results are merged across supported agents, sorted by recency, deduped, and capped
@@ -26,12 +26,12 @@ Run **`Sidekick: Extract Session Assets`** from the Command Palette (or the
 Sidekick dashboard view's title menu). It opens a searchable QuickPick of the
 assets found for the current workspace. Selecting an item runs its default action:
 
-| Asset | Action on select |
-|-------|------------------|
-| **URL** | Opens externally in your browser |
+| Asset         | Action on select                                                   |
+| ------------- | ------------------------------------------------------------------ |
+| **URL**       | Opens externally in your browser                                   |
 | **File path** | Opens in the editor, jumping to the referenced line when available |
-| **Command** | Copies to the clipboard, ready to paste into a terminal |
-| **Plan** | Opens as a Markdown scratch document |
+| **Command**   | Copies to the clipboard, ready to paste into a terminal            |
+| **Plan**      | Opens as a Markdown scratch document                               |
 
 A workspace folder is required. If no assets are found, Sidekick distinguishes
 "no recent sessions for this directory" from "sessions found, but no assets."
@@ -45,12 +45,12 @@ sidekick extract [options]
 See the [CLI Dashboard reference](cli.md#extract-session-assets) for the full
 flag list. In short:
 
-| Flag | Description |
-|------|-------------|
-| `--type <types>` | Comma list: `url`, `path`, `command`, `plan` (default: all). Aliases: `urls`, `files`, `cmds`, `plans` |
-| `--limit <n>` | Positive integer maximum items per type |
-| `-i`, `--interactive` | Interactive fuzzy picker; Enter opens URLs and copies paths, commands, or plans |
-| `--json` | Emit grouped JSON (includes `inChat` and per-item `agent` / `sessionPath` / `source` provenance) for scripting |
+| Flag                  | Description                                                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--type <types>`      | Comma list: `url`, `path`, `command`, `plan` (default: all). Aliases: `urls`, `files`, `cmds`, `plans`         |
+| `--limit <n>`         | Positive integer maximum items per type                                                                        |
+| `-i`, `--interactive` | Interactive fuzzy picker; Enter opens URLs and copies paths, commands, or plans                                |
+| `--json`              | Emit grouped JSON (includes `inChat` and per-item `agent` / `sessionPath` / `source` provenance) for scripting |
 
 Global flags `--project` and `--provider` apply: `--provider claude-code` reads
 Claude Code only, `--provider codex` reads Codex only, and `auto` reads both.

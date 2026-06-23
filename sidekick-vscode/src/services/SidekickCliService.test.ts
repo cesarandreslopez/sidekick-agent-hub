@@ -49,7 +49,13 @@ vi.mock('./Logger', () => ({
   log: vi.fn(),
 }));
 
-import { findSidekickCli, openCliDashboard, disposeDashboardTerminal, checkCliVersion, isNewer } from './SidekickCliService';
+import {
+  findSidekickCli,
+  openCliDashboard,
+  disposeDashboardTerminal,
+  checkCliVersion,
+  isNewer,
+} from './SidekickCliService';
 import { clearCliCache } from '../utils/cliPathResolver';
 import { execSync, execFileSync, spawnSync } from 'child_process';
 
@@ -239,7 +245,7 @@ describe('SidekickCliService', () => {
       expect(mockShowErrorMessage).toHaveBeenCalledWith(
         'Sidekick CLI not found. Install sidekick-agent-hub to use the CLI dashboard.',
         'Install in Terminal',
-        'Learn More'
+        'Learn More',
       );
     });
 
@@ -248,7 +254,11 @@ describe('SidekickCliService', () => {
         get: vi.fn().mockReturnValue('/usr/local/bin/sidekick'),
       });
       mockExistsSync.mockReturnValue(true);
-      vi.mocked(spawnSync).mockReturnValue({ stdout: '0.11.0\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: '0.11.0\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
 
       openCliDashboard();
@@ -267,7 +277,11 @@ describe('SidekickCliService', () => {
         get: vi.fn().mockReturnValue('/usr/local/bin/sidekick'),
       });
       mockExistsSync.mockReturnValue(true);
-      vi.mocked(spawnSync).mockReturnValue({ stdout: '0.12.0\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: '0.12.0\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
 
       openCliDashboard();
@@ -280,7 +294,11 @@ describe('SidekickCliService', () => {
         get: vi.fn().mockReturnValue('/usr/local/bin/sidekick'),
       });
       mockExistsSync.mockReturnValue(true);
-      vi.mocked(spawnSync).mockReturnValue({ stdout: '0.11.0\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: '0.11.0\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
 
       const exitedTerminal = {
@@ -316,7 +334,11 @@ describe('SidekickCliService', () => {
 
   describe('checkCliVersion', () => {
     it('returns version info when CLI outputs a version', () => {
-      vi.mocked(spawnSync).mockReturnValue({ stdout: '0.11.0\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: '0.11.0\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
 
       const result = checkCliVersion('/usr/local/bin/sidekick');
@@ -329,7 +351,11 @@ describe('SidekickCliService', () => {
     });
 
     it('returns needsUpdate false when versions match', () => {
-      vi.mocked(spawnSync).mockReturnValue({ stdout: '0.12.0\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: '0.12.0\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
 
       const result = checkCliVersion('/usr/local/bin/sidekick');
@@ -342,7 +368,11 @@ describe('SidekickCliService', () => {
     });
 
     it('parses version from prefixed output like "sidekick/0.12.0"', () => {
-      vi.mocked(spawnSync).mockReturnValue({ stdout: 'sidekick/0.11.0\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: 'sidekick/0.11.0\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
 
       const result = checkCliVersion('/usr/local/bin/sidekick');
@@ -351,20 +381,32 @@ describe('SidekickCliService', () => {
     });
 
     it('returns null when spawnSync returns an error', () => {
-      vi.mocked(spawnSync).mockReturnValue({ stdout: '', status: null, error: new Error('not found') } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: '',
+        status: null,
+        error: new Error('not found'),
+      } as ReturnType<typeof spawnSync>);
 
       expect(checkCliVersion('/usr/local/bin/sidekick')).toBeNull();
     });
 
     it('returns null when output has no version pattern', () => {
-      vi.mocked(spawnSync).mockReturnValue({ stdout: 'unknown\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: 'unknown\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue({ packageJSON: { version: '0.12.0' } });
 
       expect(checkCliVersion('/usr/local/bin/sidekick')).toBeNull();
     });
 
     it('returns null when extension version is unavailable', () => {
-      vi.mocked(spawnSync).mockReturnValue({ stdout: '0.12.0\n', status: 0, error: undefined } as ReturnType<typeof spawnSync>);
+      vi.mocked(spawnSync).mockReturnValue({
+        stdout: '0.12.0\n',
+        status: 0,
+        error: undefined,
+      } as ReturnType<typeof spawnSync>);
       mockGetExtension.mockReturnValue(undefined);
 
       expect(checkCliVersion('/usr/local/bin/sidekick')).toBeNull();

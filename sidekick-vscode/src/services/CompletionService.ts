@@ -84,19 +84,24 @@ export class CompletionService implements vscode.Disposable {
   async getCompletion(
     document: vscode.TextDocument,
     position: vscode.Position,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
   ): Promise<string | undefined> {
     // Read configuration
     const config = vscode.workspace.getConfiguration('sidekick');
     const debounceMs = config.get<number>('debounceMs') ?? 300;
     const contextLines = config.get<number>('inlineContextLines') ?? 30;
     const multilineSetting = config.get<boolean>('multiline') ?? false;
-    const model = resolveModel(config.get<string>('inlineModel') ?? 'auto', this.authService.getProviderId(), 'inlineModel');
+    const model = resolveModel(
+      config.get<string>('inlineModel') ?? 'auto',
+      this.authService.getProviderId(),
+      'inlineModel',
+    );
     // Resolve inline completion timeout:
     // 1. Check legacy `sidekick.inlineTimeout` (deprecated) — honour if user explicitly set it
     // 2. Otherwise use TimeoutManager which reads `sidekick.timeouts.inlineCompletion`
     const legacyTimeout = config.get<number>('inlineTimeout');
-    const legacyIsCustom = legacyTimeout !== undefined && legacyTimeout !== DEFAULT_TIMEOUTS.inlineCompletion;
+    const legacyIsCustom =
+      legacyTimeout !== undefined && legacyTimeout !== DEFAULT_TIMEOUTS.inlineCompletion;
     const timeoutMs = legacyIsCustom
       ? legacyTimeout
       : getTimeoutManager().getTimeoutConfig('inlineCompletion').baseTimeout;
@@ -107,7 +112,9 @@ export class CompletionService implements vscode.Disposable {
 
     // Increment request ID for tracking
     const requestId = ++this.lastRequestId;
-    log(`Service: request #${requestId}, model=${model}, debounce=${debounceMs}ms, timeout=${timeoutMs}ms`);
+    log(
+      `Service: request #${requestId}, model=${model}, debounce=${debounceMs}ms, timeout=${timeoutMs}ms`,
+    );
 
     // Cancel any pending request
     if (this.pendingController) {
@@ -116,7 +123,7 @@ export class CompletionService implements vscode.Disposable {
     }
 
     // Debounce: wait before making API call
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve) => {
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
       }
@@ -140,7 +147,9 @@ export class CompletionService implements vscode.Disposable {
       model,
     });
 
-    log(`Service: language=${context.language}, file=${context.filename}, prefix=${context.prefix.length} chars, suffix=${context.suffix.length} chars`);
+    log(
+      `Service: language=${context.language}, file=${context.filename}, prefix=${context.prefix.length} chars, suffix=${context.suffix.length} chars`,
+    );
 
     // Check cache
     const cached = this.cache.get(context);
@@ -161,7 +170,9 @@ export class CompletionService implements vscode.Disposable {
     try {
       // Build prompt
       const prompt = this.buildPrompt(context);
-      log(`Service: prompt (${prompt.length} chars):\n--- PROMPT START ---\n${prompt.substring(0, 500)}${prompt.length > 500 ? '\n... [truncated]' : ''}\n--- PROMPT END ---`);
+      log(
+        `Service: prompt (${prompt.length} chars):\n--- PROMPT START ---\n${prompt.substring(0, 500)}${prompt.length > 500 ? '\n... [truncated]' : ''}\n--- PROMPT END ---`,
+      );
 
       // Make API call
       const completion = await this.authService.complete(prompt, {
@@ -180,12 +191,16 @@ export class CompletionService implements vscode.Disposable {
         return undefined;
       }
 
-      log(`Service: API returned ${completion.length} chars for request #${requestId}: "${completion.substring(0, 100)}${completion.length > 100 ? '...' : ''}"`);
+      log(
+        `Service: API returned ${completion.length} chars for request #${requestId}: "${completion.substring(0, 100)}${completion.length > 100 ? '...' : ''}"`,
+      );
 
       // Clean and validate completion
       const cleaned = cleanCompletion(completion, context.multiline, context.language);
       if (!cleaned) {
-        log(`Service: cleaning filtered out response for request #${requestId} (raw: "${completion.substring(0, 50)}")`);
+        log(
+          `Service: cleaning filtered out response for request #${requestId} (raw: "${completion.substring(0, 50)}")`,
+        );
         return undefined;
       }
 
@@ -220,27 +235,21 @@ export class CompletionService implements vscode.Disposable {
   private buildContext(
     document: vscode.TextDocument,
     position: vscode.Position,
-    config: { contextLines: number; multiline: boolean; model: string }
+    config: { contextLines: number; multiline: boolean; model: string },
   ): CompletionContext {
     const language = document.languageId;
     const filename = document.fileName.split('/').pop() ?? 'unknown';
 
     // Calculate prefix (lines before cursor up to contextLines)
     const startLine = Math.max(0, position.line - config.contextLines);
-    const prefixRange = new vscode.Range(
-      new vscode.Position(startLine, 0),
-      position
-    );
+    const prefixRange = new vscode.Range(new vscode.Position(startLine, 0), position);
     const prefix = document.getText(prefixRange);
 
     // Calculate suffix (lines after cursor up to contextLines)
-    const endLine = Math.min(
-      document.lineCount - 1,
-      position.line + config.contextLines
-    );
+    const endLine = Math.min(document.lineCount - 1, position.line + config.contextLines);
     const suffixRange = new vscode.Range(
       position,
-      new vscode.Position(endLine, document.lineAt(endLine).text.length)
+      new vscode.Position(endLine, document.lineAt(endLine).text.length),
     );
     const suffix = document.getText(suffixRange);
 
@@ -266,7 +275,7 @@ export class CompletionService implements vscode.Disposable {
       context.language,
       context.filename,
       context.prefix,
-      context.suffix
+      context.suffix,
     );
     return systemPrompt + '\n\n' + userPrompt;
   }

@@ -48,8 +48,8 @@ describe('BurnRateCalculator', () => {
     });
 
     it('prunes events outside the window', () => {
-      calc.addEvent(5000, baseTime);                      // will be pruned
-      calc.addEvent(1000, minutesAfter(baseTime, 4));     // inside window
+      calc.addEvent(5000, baseTime); // will be pruned
+      calc.addEvent(1000, minutesAfter(baseTime, 4)); // inside window
 
       // Query at minute 6 — window is [1, 6], so baseTime event is pruned
       const now = minutesAfter(baseTime, 6);

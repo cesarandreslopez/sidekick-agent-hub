@@ -21,11 +21,11 @@ export type ComplexityLevel = 'eli5' | 'curious-amateur' | 'imposter-syndrome' |
  * Display labels for complexity levels
  */
 export const COMPLEXITY_LABELS: Record<ComplexityLevel, string> = {
-  'eli5': 'ELI5',
+  eli5: 'ELI5',
   'curious-amateur': 'Curious Amateur',
   'imposter-syndrome': 'Imposter Syndrome',
-  'senior': 'Senior',
-  'phd': 'PhD Mode'
+  senior: 'Senior',
+  phd: 'PhD Mode',
 };
 
 /**
@@ -42,12 +42,12 @@ export interface FileContext {
  * Persisted via vscode.setState() to survive hide/show cycles.
  */
 export interface ExplainState {
-  code: string;                      // Selected code to explain
-  fileContext?: FileContext;         // File name and language for context
-  currentExplanation?: string;       // AI-generated explanation (markdown)
-  complexity: ComplexityLevel;       // Current explanation depth
-  isLoading: boolean;                // AI request in progress
-  error?: string;                    // Error message if request failed
+  code: string; // Selected code to explain
+  fileContext?: FileContext; // File name and language for context
+  currentExplanation?: string; // AI-generated explanation (markdown)
+  complexity: ComplexityLevel; // Current explanation depth
+  isLoading: boolean; // AI request in progress
+  error?: string; // Error message if request failed
 }
 
 /**
@@ -64,7 +64,13 @@ export type ExplainExtensionMessage =
  */
 export type ExplainWebviewMessage =
   | { type: 'webviewReady' }
-  | { type: 'requestExplanation'; requestId: string; code: string; complexity: ComplexityLevel; fileContext?: FileContext }
+  | {
+      type: 'requestExplanation';
+      requestId: string;
+      code: string;
+      complexity: ComplexityLevel;
+      fileContext?: FileContext;
+    }
   | { type: 'changeComplexity'; complexity: ComplexityLevel }
   | { type: 'close' };
 

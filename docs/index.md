@@ -15,6 +15,7 @@
 [![npm](https://img.shields.io/npm/v/sidekick-agent-hub?label=npm)](https://www.npmjs.com/package/sidekick-agent-hub)
 [![npm Downloads](https://img.shields.io/npm/dt/sidekick-agent-hub?label=npm%20Downloads)](https://www.npmjs.com/package/sidekick-agent-hub)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/LICENSE)
+
 ## What Sidekick Does For You
 
 **Code faster.** AI handles the mechanical work — boilerplate, commit messages, docs, PR descriptions, error explanations — so you focus on design and logic. Inline completions understand your project context, not just syntax.
@@ -53,12 +54,12 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 
 ## Supported Providers
 
-| Provider | Inference | Session Monitoring | Cost |
-|----------|-----------|-------------------|------|
-| **Claude Max** | :white_check_mark: | :white_check_mark: | Included in subscription |
-| **Claude API** | :white_check_mark: | :x: | Per-token billing |
-| **OpenCode** | :white_check_mark: | :white_check_mark: | Depends on configured provider |
-| **Codex CLI** | :white_check_mark: | :white_check_mark: | OpenAI API billing |
+| Provider       | Inference          | Session Monitoring | Cost                           |
+| -------------- | ------------------ | ------------------ | ------------------------------ |
+| **Claude Max** | :white_check_mark: | :white_check_mark: | Included in subscription       |
+| **Claude API** | :white_check_mark: | :x:                | Per-token billing              |
+| **OpenCode**   | :white_check_mark: | :white_check_mark: | Depends on configured provider |
+| **Codex CLI**  | :white_check_mark: | :white_check_mark: | OpenAI API billing             |
 
 ## Feature Highlights
 

@@ -19,15 +19,11 @@ export function TooSmallOverlay({ columns, rows }: TooSmallOverlayProps): React.
       justifyContent="center"
       alignItems="center"
     >
-      <Box
-        flexDirection="column"
-        borderStyle="single"
-        borderColor="red"
-        paddingX={2}
-        paddingY={1}
-      >
+      <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={2} paddingY={1}>
         <Text color="red">Terminal too small</Text>
-        <Text color="gray">Need at least 60x15 (current: {columns}x{rows})</Text>
+        <Text color="gray">
+          Need at least 60x15 (current: {columns}x{rows})
+        </Text>
       </Box>
     </Box>
   );

@@ -40,7 +40,7 @@ export interface InstructionFileTarget {
  * @returns The instruction file target configuration
  */
 export function resolveInstructionTarget(
-  providerId: 'claude-code' | 'opencode' | 'codex'
+  providerId: 'claude-code' | 'opencode' | 'codex',
 ): InstructionFileTarget {
   switch (providerId) {
     case 'claude-code':
@@ -49,7 +49,8 @@ export function resolveInstructionTarget(
         secondaryFile: 'AGENTS.md',
         displayName: 'CLAUDE.md',
         tip: 'After adding suggestions to your CLAUDE.md, run /init in Claude Code to consolidate and optimize the file.',
-        notFoundMessage: 'No CLAUDE.md found. Run /init in Claude Code to create one, or run: touch CLAUDE.md',
+        notFoundMessage:
+          'No CLAUDE.md found. Run /init in Claude Code to create one, or run: touch CLAUDE.md',
         docsUrl: 'https://docs.anthropic.com/en/docs/claude-code/memory#claudemd',
       };
 

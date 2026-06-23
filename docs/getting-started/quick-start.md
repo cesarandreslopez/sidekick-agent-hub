@@ -36,16 +36,16 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 
 ## Key Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
+| Action             | Shortcut           |
+| ------------------ | ------------------ |
 | Trigger Completion | `Ctrl+Shift+Space` |
-| Transform Code | `Ctrl+Shift+M` |
-| Generate Docs | `Ctrl+Shift+D` |
-| Explain Code | `Ctrl+Shift+E` |
-| Quick Ask | `Ctrl+I` |
+| Transform Code     | `Ctrl+Shift+M`     |
+| Generate Docs      | `Ctrl+Shift+D`     |
+| Explain Code       | `Ctrl+Shift+E`     |
+| Quick Ask          | `Ctrl+I`           |
 
 !!! tip
-    Click "Sidekick" in the status bar for quick access to settings, logs, and provider switching.
+Click "Sidekick" in the status bar for quick access to settings, logs, and provider switching.
 
 ## CLI Dashboard
 

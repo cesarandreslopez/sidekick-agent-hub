@@ -91,10 +91,12 @@ export function getCommonCliPaths(binaryName: string, extraPaths: string[] = [])
     // macOS Homebrew
     `/opt/homebrew/bin/${binaryName}`,
     // Windows npm/pnpm global
-    ...(isWindows ? [
-      path.join(process.env.APPDATA || '', 'npm', `${binaryName}.cmd`),
-      path.join(process.env.LOCALAPPDATA || '', 'pnpm', `${binaryName}.cmd`),
-    ] : []),
+    ...(isWindows
+      ? [
+          path.join(process.env.APPDATA || '', 'npm', `${binaryName}.cmd`),
+          path.join(process.env.LOCALAPPDATA || '', 'pnpm', `${binaryName}.cmd`),
+        ]
+      : []),
   ];
 }
 

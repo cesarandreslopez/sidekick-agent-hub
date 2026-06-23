@@ -16,18 +16,18 @@ Completions appear as ghost text that you can accept with Tab.
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.enabled` | `true` | Enable/disable inline completions |
-| `sidekick.inlineModel` | `auto` | Model tier — resolves to `fast` for low latency |
-| `sidekick.debounceMs` | `1000` | Delay before requesting completion (ms) |
-| `sidekick.inlineContextLines` | `30` | Lines of context before/after cursor |
-| `sidekick.multiline` | `false` | Enable multi-line completions (up to 10 lines) |
-| `sidekick.showCompletionHint` | `true` | Show visual hint at cursor |
-| `sidekick.completionHintDelayMs` | `1500` | Delay before showing hint (ms) |
+| Setting                          | Default | Description                                     |
+| -------------------------------- | ------- | ----------------------------------------------- |
+| `sidekick.enabled`               | `true`  | Enable/disable inline completions               |
+| `sidekick.inlineModel`           | `auto`  | Model tier — resolves to `fast` for low latency |
+| `sidekick.debounceMs`            | `1000`  | Delay before requesting completion (ms)         |
+| `sidekick.inlineContextLines`    | `30`    | Lines of context before/after cursor            |
+| `sidekick.multiline`             | `false` | Enable multi-line completions (up to 10 lines)  |
+| `sidekick.showCompletionHint`    | `true`  | Show visual hint at cursor                      |
+| `sidekick.completionHintDelayMs` | `1500`  | Delay before showing hint (ms)                  |
 
 !!! note
-    Prose files (Markdown, plaintext, HTML, XML, LaTeX) automatically use multiline mode regardless of the `multiline` setting.
+Prose files (Markdown, plaintext, HTML, XML, LaTeX) automatically use multiline mode regardless of the `multiline` setting.
 
 ## Multiple Windows
 

@@ -115,15 +115,19 @@ function extractSessions(history: HistoricalDataStore | null): SessionRecord[] {
       outputTokens: day.tokens.outputTokens,
       totalCost: day.totalCost,
       messageCount: day.messageCount,
-      modelUsage: day.modelUsage.map(m => ({ model: m.model, calls: m.calls })),
-      toolUsage: day.toolUsage.map(t => ({ tool: t.tool, calls: t.calls })),
+      modelUsage: day.modelUsage.map((m) => ({ model: m.model, calls: m.calls })),
+      toolUsage: day.toolUsage.map((t) => ({ tool: t.tool, calls: t.calls })),
     });
   }
 
   return records;
 }
 
-function computeTotals(history: HistoricalDataStore | null): { tokens: number; cost: number; sessions: number } {
+function computeTotals(history: HistoricalDataStore | null): {
+  tokens: number;
+  cost: number;
+  sessions: number;
+} {
   if (!history?.allTime) return { tokens: 0, cost: 0, sessions: 0 };
   const at = history.allTime;
   return {

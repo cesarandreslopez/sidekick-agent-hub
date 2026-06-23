@@ -37,19 +37,29 @@ describe('StaticDataLoader', () => {
       daily: {
         '2025-02-20': {
           date: '2025-02-20',
-          tokens: { inputTokens: 100000, outputTokens: 50000, cacheWriteTokens: 0, cacheReadTokens: 0 },
-          totalCost: 8.50,
+          tokens: {
+            inputTokens: 100000,
+            outputTokens: 50000,
+            cacheWriteTokens: 0,
+            cacheReadTokens: 0,
+          },
+          totalCost: 8.5,
           messageCount: 42,
           sessionCount: 2,
-          modelUsage: [{ model: 'claude-sonnet-4', calls: 20, tokens: 150000, cost: 8.50 }],
+          modelUsage: [{ model: 'claude-sonnet-4', calls: 20, tokens: 150000, cost: 8.5 }],
           toolUsage: [{ tool: 'Read', calls: 15, successCount: 15, failureCount: 0 }],
           updatedAt: '2025-02-20T14:00:00Z',
         },
       },
       monthly: {},
       allTime: {
-        tokens: { inputTokens: 100000, outputTokens: 50000, cacheWriteTokens: 0, cacheReadTokens: 0 },
-        totalCost: 8.50,
+        tokens: {
+          inputTokens: 100000,
+          outputTokens: 50000,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+        },
+        totalCost: 8.5,
         messageCount: 42,
         sessionCount: 2,
         firstDate: '2025-02-20',
@@ -69,9 +79,9 @@ describe('StaticDataLoader', () => {
     expect(data.sessions).toHaveLength(1);
     expect(data.sessions[0].date).toBe('2025-02-20');
     expect(data.sessions[0].inputTokens).toBe(100000);
-    expect(data.sessions[0].totalCost).toBe(8.50);
+    expect(data.sessions[0].totalCost).toBe(8.5);
     expect(data.totalTokens).toBe(150000);
-    expect(data.totalCost).toBe(8.50);
+    expect(data.totalCost).toBe(8.5);
     expect(data.totalSessions).toBe(2);
   });
 
@@ -80,24 +90,42 @@ describe('StaticDataLoader', () => {
     vi.mocked(readPlans).mockResolvedValue([]);
     vi.mocked(readTasks).mockResolvedValue([
       {
-        taskId: '1', subject: 'Test task', status: 'pending',
-        createdAt: '', updatedAt: '', toolCallCount: 0,
-        blockedBy: [], blocks: [], sessionOrigin: 'abc',
-        carriedOver: false, sessionAge: 0,
+        taskId: '1',
+        subject: 'Test task',
+        status: 'pending',
+        createdAt: '',
+        updatedAt: '',
+        toolCallCount: 0,
+        blockedBy: [],
+        blocks: [],
+        sessionOrigin: 'abc',
+        carriedOver: false,
+        sessionAge: 0,
       },
     ]);
     vi.mocked(readDecisions).mockResolvedValue([
       {
-        id: 'd1', description: 'Use JWT', rationale: 'Stateless',
-        chosenOption: 'JWT', source: 'plan_mode',
-        sessionId: 'abc', timestamp: '2025-02-20T10:00:00Z',
+        id: 'd1',
+        description: 'Use JWT',
+        rationale: 'Stateless',
+        chosenOption: 'JWT',
+        source: 'plan_mode',
+        sessionId: 'abc',
+        timestamp: '2025-02-20T10:00:00Z',
       },
     ]);
     vi.mocked(readNotes).mockResolvedValue([
       {
-        id: 'n1', noteType: 'gotcha', content: 'Always hash with bcrypt',
-        filePath: 'src/auth.ts', source: 'manual', status: 'active',
-        importance: 'high', createdAt: '', updatedAt: '', lastReviewedAt: '',
+        id: 'n1',
+        noteType: 'gotcha',
+        content: 'Always hash with bcrypt',
+        filePath: 'src/auth.ts',
+        source: 'manual',
+        status: 'active',
+        importance: 'high',
+        createdAt: '',
+        updatedAt: '',
+        lastReviewedAt: '',
       },
     ]);
 

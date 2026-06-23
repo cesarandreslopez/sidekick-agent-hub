@@ -54,15 +54,17 @@ export class AccountService implements vscode.Disposable {
   };
 
   constructor() {
-    this.lastKnownActiveIds['claude-code'] = getActiveClaudeAccount()?.uuid ?? readActiveClaudeAccount()?.uuid ?? null;
+    this.lastKnownActiveIds['claude-code'] =
+      getActiveClaudeAccount()?.uuid ?? readActiveClaudeAccount()?.uuid ?? null;
     this.lastKnownActiveIds.codex = getActiveCodexAccount()?.id ?? null;
     this.startWatching();
   }
 
   addCurrentAccount(providerId: AccountProviderId, label?: string): AccountManagerResult {
-    const result = providerId === 'claude-code'
-      ? addCurrentClaudeAccount(label)
-      : prepareCodexAccount(label ?? '');
+    const result =
+      providerId === 'claude-code'
+        ? addCurrentClaudeAccount(label)
+        : prepareCodexAccount(label ?? '');
 
     if (result.success) {
       this.refresh();
@@ -99,9 +101,10 @@ export class AccountService implements vscode.Disposable {
   }
 
   switchToAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
-    const result = providerId === 'claude-code'
-      ? switchToClaudeAccount(accountId)
-      : switchToCodexAccount(accountId);
+    const result =
+      providerId === 'claude-code'
+        ? switchToClaudeAccount(accountId)
+        : switchToCodexAccount(accountId);
 
     if (result.success) {
       this.refresh();
@@ -110,9 +113,8 @@ export class AccountService implements vscode.Disposable {
   }
 
   removeAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
-    const result = providerId === 'claude-code'
-      ? removeClaudeAccount(accountId)
-      : removeCodexAccount(accountId);
+    const result =
+      providerId === 'claude-code' ? removeClaudeAccount(accountId) : removeCodexAccount(accountId);
 
     if (result.success) {
       this.refresh();
@@ -124,18 +126,14 @@ export class AccountService implements vscode.Disposable {
   listAccounts(providerId: 'codex'): SavedAccountProfile[];
   listAccounts(providerId: AccountProviderId): ManagedAccount[];
   listAccounts(providerId: AccountProviderId): ManagedAccount[] {
-    return providerId === 'claude-code'
-      ? listClaudeAccounts()
-      : listCodexAccounts();
+    return providerId === 'claude-code' ? listClaudeAccounts() : listCodexAccounts();
   }
 
   getActiveAccount(providerId: 'claude-code'): AccountEntry | null;
   getActiveAccount(providerId: 'codex'): SavedAccountProfile | null;
   getActiveAccount(providerId: AccountProviderId): ManagedAccount | null;
   getActiveAccount(providerId: AccountProviderId): ManagedAccount | null {
-    return providerId === 'claude-code'
-      ? getActiveClaudeAccount()
-      : getActiveCodexAccount();
+    return providerId === 'claude-code' ? getActiveClaudeAccount() : getActiveCodexAccount();
   }
 
   isMultiAccountEnabled(providerId: AccountProviderId): boolean {
@@ -152,7 +150,9 @@ export class AccountService implements vscode.Disposable {
       if (currentIds[providerId] !== this.lastKnownActiveIds[providerId]) {
         this.lastKnownActiveIds[providerId] = currentIds[providerId];
         this._onAccountChange.fire(providerId);
-        log(`AccountService: active ${providerId} account changed to ${currentIds[providerId] ?? 'none'}`);
+        log(
+          `AccountService: active ${providerId} account changed to ${currentIds[providerId] ?? 'none'}`,
+        );
       }
     }
   }

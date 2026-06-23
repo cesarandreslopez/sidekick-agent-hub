@@ -20,17 +20,48 @@ function makeMetrics(overrides: Partial<AggregatedMetrics> = {}): AggregatedMetr
       reportedCost: 0.15,
     },
     modelStats: [
-      { model: 'claude-sonnet-4-20250514', calls: 5, tokens: 15000, inputTokens: 10000, outputTokens: 5000, cacheWriteTokens: 2000, cacheReadTokens: 8000, cost: 0.15 },
+      {
+        model: 'claude-sonnet-4-20250514',
+        calls: 5,
+        tokens: 15000,
+        inputTokens: 10000,
+        outputTokens: 5000,
+        cacheWriteTokens: 2000,
+        cacheReadTokens: 8000,
+        cost: 0.15,
+      },
     ],
     currentContextSize: 50000,
-    contextAttribution: { systemPrompt: 0, userMessages: 0, assistantResponses: 0, toolInputs: 0, toolOutputs: 0, thinking: 0, other: 0 },
+    contextAttribution: {
+      systemPrompt: 0,
+      userMessages: 0,
+      assistantResponses: 0,
+      toolInputs: 0,
+      toolOutputs: 0,
+      thinking: 0,
+      other: 0,
+    },
     compactionCount: 0,
     compactionEvents: [],
     truncationCount: 0,
     truncationEvents: [],
     toolStats: [
-      { name: 'Read', successCount: 3, failureCount: 0, completedCount: 3, totalDuration: 600, pendingCount: 0 },
-      { name: 'Edit', successCount: 2, failureCount: 1, completedCount: 2, totalDuration: 400, pendingCount: 0 },
+      {
+        name: 'Read',
+        successCount: 3,
+        failureCount: 0,
+        completedCount: 3,
+        totalDuration: 600,
+        pendingCount: 0,
+      },
+      {
+        name: 'Edit',
+        successCount: 2,
+        failureCount: 1,
+        completedCount: 2,
+        totalDuration: 400,
+        pendingCount: 0,
+      },
     ],
     burnRate: { tokensPerMinute: 500, points: [], sampleCount: 0 },
     taskState: { tasks: new Map(), activeTaskId: null },
@@ -60,13 +91,20 @@ describe('generateHtmlReport', () => {
       content: [
         { type: 'thinking', text: 'Let me analyze...' },
         { type: 'text', text: 'I found the issue.' },
-        { type: 'tool_use', toolName: 'Read', toolUseId: 'toolu_1', toolInput: { file_path: '/src/main.ts' } },
+        {
+          type: 'tool_use',
+          toolName: 'Read',
+          toolUseId: 'toolu_1',
+          toolInput: { file_path: '/src/main.ts' },
+        },
       ],
     },
     {
       type: 'user',
       timestamp: '2025-01-15T10:00:02Z',
-      content: [{ type: 'tool_result', toolUseId: 'toolu_1', output: 'const x = 1;', isError: false }],
+      content: [
+        { type: 'tool_result', toolUseId: 'toolu_1', output: 'const x = 1;', isError: false },
+      ],
     },
   ];
 
@@ -191,7 +229,7 @@ describe('generateHtmlReport', () => {
 describe('escapeHtml', () => {
   it('escapes all special HTML characters', () => {
     expect(escapeHtml('<script>alert("xss")</script>')).toBe(
-      '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;'
+      '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;',
     );
   });
 
@@ -200,7 +238,7 @@ describe('escapeHtml', () => {
   });
 
   it('escapes single quotes', () => {
-    expect(escapeHtml("it's")).toBe("it&#39;s");
+    expect(escapeHtml("it's")).toBe('it&#39;s');
   });
 
   it('handles empty string', () => {

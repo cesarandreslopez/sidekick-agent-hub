@@ -162,7 +162,9 @@ describe('TimeoutManager', () => {
       const error = new Error('Test error');
       const result = await manager.executeWithTimeout({
         operation: 'Test operation',
-        task: async () => { throw error; },
+        task: async () => {
+          throw error;
+        },
         config,
         showProgress: false,
       });
@@ -182,7 +184,9 @@ describe('TimeoutManager', () => {
 
       const result = await manager.executeWithTimeout({
         operation: 'Test operation',
-        task: async () => { throw new TimeoutError('Timed out', 30000); },
+        task: async () => {
+          throw new TimeoutError('Timed out', 30000);
+        },
         config,
         showProgress: false,
       });
@@ -326,7 +330,7 @@ describe('TimeoutManager', () => {
         'Test operation',
         async () => 'success',
         'explanation',
-        1024
+        1024,
       );
 
       expect(result).toBe('success');
@@ -336,10 +340,12 @@ describe('TimeoutManager', () => {
       await expect(
         manager.execute(
           'Test operation',
-          async () => { throw new TimeoutError('Timed out', 30000); },
+          async () => {
+            throw new TimeoutError('Timed out', 30000);
+          },
           'explanation',
-          1024
-        )
+          1024,
+        ),
       ).rejects.toThrow(TimeoutError);
     });
 
@@ -348,10 +354,12 @@ describe('TimeoutManager', () => {
       await expect(
         manager.execute(
           'Test operation',
-          async () => { throw error; },
+          async () => {
+            throw error;
+          },
           'explanation',
-          1024
-        )
+          1024,
+        ),
       ).rejects.toThrow('Test error');
     });
   });
@@ -390,7 +398,7 @@ describe('TimeoutManager', () => {
       expect(DEFAULT_TIMEOUTS.codeTransform).toBeGreaterThanOrEqual(45000);
 
       // All timeouts should be at least 5 seconds
-      Object.values(DEFAULT_TIMEOUTS).forEach(timeout => {
+      Object.values(DEFAULT_TIMEOUTS).forEach((timeout) => {
         expect(timeout).toBeGreaterThanOrEqual(5000);
       });
     });

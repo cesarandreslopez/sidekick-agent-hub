@@ -19,7 +19,7 @@ function peakHours(): PeakHoursState {
 }
 
 function flushPromises(): Promise<void> {
-  return new Promise(resolve => setImmediate(resolve));
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 describe('MultiProviderQuotaService', () => {
@@ -35,7 +35,7 @@ describe('MultiProviderQuotaService', () => {
         available: true,
       }),
     });
-    service.onUpdate(update => updates.push(update));
+    service.onUpdate((update) => updates.push(update));
 
     service.startPolling();
     await flushPromises();
@@ -54,7 +54,7 @@ describe('MultiProviderQuotaService', () => {
   it('merges externally pushed Codex quota into the provider map', () => {
     const updates: ProviderQuotaMap[] = [];
     const service = new MultiProviderQuotaService({ includePeakHours: false });
-    service.onUpdate(update => updates.push(update));
+    service.onUpdate((update) => updates.push(update));
 
     const codex: ProviderQuotaState<'codex'> = {
       runtimeProvider: 'codex',

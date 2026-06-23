@@ -6,12 +6,12 @@ Multi-provider AI coding assistant for VS Code — inline completions, code tran
 
 AI coding agents are powerful, but they run autonomously — tokens burn silently, context fills up without warning, and everything is lost when a session ends. Sidekick gives you real-time visibility into what your agent is doing, AI-powered coding features that eliminate mechanical work, and session intelligence that preserves context across sessions.
 
-| Provider | Inference | Session Monitoring | Cost |
-|----------|-----------|-------------------|------|
-| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes | Yes | Included in subscription |
-| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes | — | Per-token billing |
-| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)** | Yes | Yes | Depends on provider |
-| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)** | Yes | Yes | OpenAI API billing |
+| Provider                                                                                      | Inference | Session Monitoring | Cost                     |
+| --------------------------------------------------------------------------------------------- | --------- | ------------------ | ------------------------ |
+| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes       | Yes                | Included in subscription |
+| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes       | —                  | Per-token billing        |
+| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)**     | Yes       | Yes                | Depends on provider      |
+| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)**       | Yes       | Yes                | OpenAI API billing       |
 
 ## What's New
 
@@ -144,48 +144,48 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.inferenceProvider` | `auto` | Provider: `auto`, `claude-max`, `claude-api`, `opencode`, `codex` |
-| `sidekick.sessionProvider` | `auto` | Session monitor: `auto`, `claude-code`, `opencode`, `codex` |
-| `sidekick.zai.tier` | `auto` | Deprecated compatibility setting from the former z.ai quota estimator |
-| `sidekick.inlineModel` | `auto` | Model for completions (fast tier) |
-| `sidekick.transformModel` | `auto` | Model for transforms (powerful tier) |
-| `sidekick.debounceMs` | `1000` | Completion delay (ms) |
-| `sidekick.commitMessageStyle` | `conventional` | Commit format: `conventional` or `simple` |
-| `sidekick.enableSessionMonitoring` | `true` | Enable agent session monitoring |
-| `sidekick.autoHandoff` | `off` | Session handoff: `off`, `generate-only`, `generate-and-notify` |
-| `sidekick.pricing.hydrateFromLiteLLM` | `true` | Fetch model prices from LiteLLM on activation |
-| `sidekick.pricing.cacheTtlHours` | `24` | LiteLLM catalog cache lifetime (hours) |
-| `sidekick.peakHours.enabled` | `true` | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only) |
-| `sidekick.peakHours.notifyOnTransition` | `false` | One-time toast when peak hours start or end (opt-in) |
+| Setting                                 | Default        | Description                                                                        |
+| --------------------------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| `sidekick.inferenceProvider`            | `auto`         | Provider: `auto`, `claude-max`, `claude-api`, `opencode`, `codex`                  |
+| `sidekick.sessionProvider`              | `auto`         | Session monitor: `auto`, `claude-code`, `opencode`, `codex`                        |
+| `sidekick.zai.tier`                     | `auto`         | Deprecated compatibility setting from the former z.ai quota estimator              |
+| `sidekick.inlineModel`                  | `auto`         | Model for completions (fast tier)                                                  |
+| `sidekick.transformModel`               | `auto`         | Model for transforms (powerful tier)                                               |
+| `sidekick.debounceMs`                   | `1000`         | Completion delay (ms)                                                              |
+| `sidekick.commitMessageStyle`           | `conventional` | Commit format: `conventional` or `simple`                                          |
+| `sidekick.enableSessionMonitoring`      | `true`         | Enable agent session monitoring                                                    |
+| `sidekick.autoHandoff`                  | `off`          | Session handoff: `off`, `generate-only`, `generate-and-notify`                     |
+| `sidekick.pricing.hydrateFromLiteLLM`   | `true`         | Fetch model prices from LiteLLM on activation                                      |
+| `sidekick.pricing.cacheTtlHours`        | `24`           | LiteLLM catalog cache lifetime (hours)                                             |
+| `sidekick.peakHours.enabled`            | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only) |
+| `sidekick.peakHours.notifyOnTransition` | `false`        | One-time toast when peak hours start or end (opt-in)                               |
 
 Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — including **Claude Opus 4.8** and **Fable 5** with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
 ## Commands
 
-| Command | Keybinding | Description |
-|---------|------------|-------------|
-| Toggle Completions | — | Enable/disable inline completions |
-| Trigger Completion | `Ctrl+Shift+Space` | Manually request completion |
-| Transform Code | `Ctrl+Shift+M` | Transform selected code |
-| Quick Ask | `Ctrl+I` | Inline chat |
-| Generate Docs | `Ctrl+Shift+D` | Generate documentation |
-| Explain Code | `Ctrl+Shift+E` | Explain selected code |
-| Generate Commit Message | SCM sparkle icon | AI commit message |
-| Review Changes | SCM eye icon | Pre-commit review |
-| Generate PR Description | SCM PR icon | Auto-generate PR description |
-| Switch Provider | — | Change inference provider |
-| Save Current Account | — | Save the active Claude Code/Codex account |
-| Add Account (Sign In) | — | Sign in and save a new account via the integrated terminal |
-| Switch Account | — | Switch the active provider's account |
-| Switch Account (All Providers) | — | Pick any saved Claude Code/Codex account |
-| Remove Account | — | Remove a saved account |
-| Open Dashboard | — | Open session analytics |
-| Dump Session Report | — | Export session data as text/markdown/JSON/HTML |
-| Generate HTML Report | — | Full transcript report in a webview panel |
-| Set Session Provider | — | Switch session monitoring provider |
-| Browse Session Folders | — | Select session folder to monitor |
+| Command                        | Keybinding         | Description                                                |
+| ------------------------------ | ------------------ | ---------------------------------------------------------- |
+| Toggle Completions             | —                  | Enable/disable inline completions                          |
+| Trigger Completion             | `Ctrl+Shift+Space` | Manually request completion                                |
+| Transform Code                 | `Ctrl+Shift+M`     | Transform selected code                                    |
+| Quick Ask                      | `Ctrl+I`           | Inline chat                                                |
+| Generate Docs                  | `Ctrl+Shift+D`     | Generate documentation                                     |
+| Explain Code                   | `Ctrl+Shift+E`     | Explain selected code                                      |
+| Generate Commit Message        | SCM sparkle icon   | AI commit message                                          |
+| Review Changes                 | SCM eye icon       | Pre-commit review                                          |
+| Generate PR Description        | SCM PR icon        | Auto-generate PR description                               |
+| Switch Provider                | —                  | Change inference provider                                  |
+| Save Current Account           | —                  | Save the active Claude Code/Codex account                  |
+| Add Account (Sign In)          | —                  | Sign in and save a new account via the integrated terminal |
+| Switch Account                 | —                  | Switch the active provider's account                       |
+| Switch Account (All Providers) | —                  | Pick any saved Claude Code/Codex account                   |
+| Remove Account                 | —                  | Remove a saved account                                     |
+| Open Dashboard                 | —                  | Open session analytics                                     |
+| Dump Session Report            | —                  | Export session data as text/markdown/JSON/HTML             |
+| Generate HTML Report           | —                  | Full transcript report in a webview panel                  |
+| Set Session Provider           | —                  | Switch session monitoring provider                         |
+| Browse Session Folders         | —                  | Select session folder to monitor                           |
 
 ## Troubleshooting
 

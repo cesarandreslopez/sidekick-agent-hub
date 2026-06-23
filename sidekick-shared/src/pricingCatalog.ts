@@ -85,9 +85,7 @@ const DEFAULT_TIMEOUT_MS = 3_000;
  *
  * Always resolves — never throws. Offline-safe.
  */
-export async function hydratePricingCatalog(
-  options: HydrateOptions,
-): Promise<HydrateResult> {
+export async function hydratePricingCatalog(options: HydrateOptions): Promise<HydrateResult> {
   const {
     cacheDir,
     fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch,
@@ -149,9 +147,7 @@ export async function hydratePricingCatalog(
  * Convert a LiteLLM catalog payload to our `ModelPricing` override map.
  * Exported for tests; rarely called directly.
  */
-export function normalizeLiteLlmCatalog(
-  raw: unknown,
-): Record<string, ModelPricing> {
+export function normalizeLiteLlmCatalog(raw: unknown): Record<string, ModelPricing> {
   const out: Record<string, ModelPricing> = {};
   if (!raw || typeof raw !== 'object') return out;
 

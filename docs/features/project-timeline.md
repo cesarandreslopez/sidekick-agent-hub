@@ -22,11 +22,11 @@ Each session appears as a card with:
 
 Filter sessions by time range using the controls at the top:
 
-| Range | Shows |
-|-------|-------|
-| **24h** | Sessions from the last 24 hours |
-| **7d** | Sessions from the last 7 days (default) |
-| **30d** | Sessions from the last 30 days |
+| Range   | Shows                                        |
+| ------- | -------------------------------------------- |
+| **24h** | Sessions from the last 24 hours              |
+| **7d**  | Sessions from the last 7 days (default)      |
+| **30d** | Sessions from the last 30 days               |
 | **All** | Every session ever recorded for this project |
 
 ## Expandable Details

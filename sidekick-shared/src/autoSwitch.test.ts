@@ -53,26 +53,41 @@ describe('decideAutoSwitch', () => {
 
   it('defaults to disabled', () => {
     expect(DEFAULT_AUTO_SWITCH_CONFIG).toEqual({ enabled: false, thresholdPct: 90 });
-    expect(decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(95) }, candidates))
-      .toBeNull();
+    expect(
+      decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(95) }, candidates),
+    ).toBeNull();
   });
 
   it('returns null when disabled, under threshold, or no candidate is materially better', () => {
-    expect(decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(95) }, candidates, { enabled: false, thresholdPct: 90 }))
-      .toBeNull();
-    expect(decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(50) }, candidates, { enabled: true, thresholdPct: 90 }))
-      .toBeNull();
-    expect(decideAutoSwitch(
-      'claude-code',
-      { accountId: 'active', quota: quota(95) },
-      [{ accountId: 'slightly-better', quota: quota(91) }],
-      { enabled: true, thresholdPct: 90 },
-    )).toBeNull();
+    expect(
+      decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(95) }, candidates, {
+        enabled: false,
+        thresholdPct: 90,
+      }),
+    ).toBeNull();
+    expect(
+      decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(50) }, candidates, {
+        enabled: true,
+        thresholdPct: 90,
+      }),
+    ).toBeNull();
+    expect(
+      decideAutoSwitch(
+        'claude-code',
+        { accountId: 'active', quota: quota(95) },
+        [{ accountId: 'slightly-better', quota: quota(91) }],
+        { enabled: true, thresholdPct: 90 },
+      ),
+    ).toBeNull();
   });
 
   it('returns the best candidate when active quota crosses threshold', () => {
-    expect(decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(95) }, candidates, { enabled: true, thresholdPct: 90 }))
-      .toEqual({ switchTo: 'better' });
+    expect(
+      decideAutoSwitch('claude-code', { accountId: 'active', quota: quota(95) }, candidates, {
+        enabled: true,
+        thresholdPct: 90,
+      }),
+    ).toEqual({ switchTo: 'better' });
   });
 });
 
@@ -88,8 +103,12 @@ describe('AutoSwitchController', () => {
         { uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' },
         { uuid: 'better', email: 'better@example.com', addedAt: '2026-01-01T00:00:00Z' },
       ],
-      getActiveClaudeAccount: () => ({ uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' }),
-      readSnapshot: (_provider, accountId) => accountId === 'better' ? quota(20) : quota(95),
+      getActiveClaudeAccount: () => ({
+        uuid: 'active',
+        email: 'active@example.com',
+        addedAt: '2026-01-01T00:00:00Z',
+      }),
+      readSnapshot: (_provider, accountId) => (accountId === 'better' ? quota(20) : quota(95)),
       switchAccount,
       onTransition,
     });
@@ -119,15 +138,25 @@ describe('AutoSwitchController', () => {
         { uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' },
         { uuid: 'better', email: 'better@example.com', addedAt: '2026-01-01T00:00:00Z' },
       ],
-      getActiveClaudeAccount: () => ({ uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' }),
+      getActiveClaudeAccount: () => ({
+        uuid: 'active',
+        email: 'active@example.com',
+        addedAt: '2026-01-01T00:00:00Z',
+      }),
       readSnapshot: () => quota(20),
       switchAccount,
     });
     const singleAccount = new AutoSwitchController({
       quotaService,
       config: { enabled: true, thresholdPct: 90 },
-      getClaudeAccounts: () => [{ uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' }],
-      getActiveClaudeAccount: () => ({ uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' }),
+      getClaudeAccounts: () => [
+        { uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' },
+      ],
+      getActiveClaudeAccount: () => ({
+        uuid: 'active',
+        email: 'active@example.com',
+        addedAt: '2026-01-01T00:00:00Z',
+      }),
       readSnapshot: () => quota(20),
       switchAccount,
     });

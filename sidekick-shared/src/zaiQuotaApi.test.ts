@@ -80,10 +80,13 @@ describe('zaiQuotaApi', () => {
 
   it('prefers OpenCode zai-coding-plan auth over environment credentials', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-zai-auth-'));
-    fs.writeFileSync(path.join(tmpDir, 'auth.json'), JSON.stringify({
-      zai: { type: 'api', key: 'zai-token' },
-      'zai-coding-plan': { type: 'api', key: 'coding-plan-token' },
-    }));
+    fs.writeFileSync(
+      path.join(tmpDir, 'auth.json'),
+      JSON.stringify({
+        zai: { type: 'api', key: 'zai-token' },
+        'zai-coding-plan': { type: 'api', key: 'coding-plan-token' },
+      }),
+    );
 
     try {
       const credentials = readZaiCredentials({
@@ -128,10 +131,10 @@ describe('zaiQuotaApi', () => {
   });
 
   it('returns an auth failure without leaking the token when credentials are rejected', async () => {
-    const fetchImpl = vi.fn(async () => new Response(
-      JSON.stringify({ code: 401, msg: 'bad token secret-token' }),
-      { status: 401 },
-    ));
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ code: 401, msg: 'bad token secret-token' }), { status: 401 }),
+    );
 
     const quota = await resolveZaiQuota({
       credentials: {

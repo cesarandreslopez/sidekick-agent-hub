@@ -64,32 +64,26 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    */
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _sessionMonitor: SessionMonitor
+    private readonly _sessionMonitor: SessionMonitor,
   ) {
-    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
+    this._phrases = new PhraseRotationManager((msg) => this._postMessage(msg));
     // Initialize empty state
     this._state = {
       graph: { nodes: [], links: [] },
       sessionActive: false,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
     };
 
     // Subscribe to session events
-    this._disposables.push(
-      this._sessionMonitor.onTokenUsage(() => this._updateGraph())
-    );
+    this._disposables.push(this._sessionMonitor.onTokenUsage(() => this._updateGraph()));
+
+    this._disposables.push(this._sessionMonitor.onToolCall(() => this._updateGraph()));
 
     this._disposables.push(
-      this._sessionMonitor.onToolCall(() => this._updateGraph())
+      this._sessionMonitor.onSessionStart((path) => this._handleSessionStart(path)),
     );
 
-    this._disposables.push(
-      this._sessionMonitor.onSessionStart(path => this._handleSessionStart(path))
-    );
-
-    this._disposables.push(
-      this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd())
-    );
+    this._disposables.push(this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd()));
 
     // Initialize state from existing session if active
     if (this._sessionMonitor.isActive()) {
@@ -118,7 +112,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
@@ -127,8 +121,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'out', 'webview'),
-        vscode.Uri.joinPath(this._extensionUri, 'images')
-      ]
+        vscode.Uri.joinPath(this._extensionUri, 'images'),
+      ],
     };
 
     // Set HTML content
@@ -138,7 +132,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     webviewView.webview.onDidReceiveMessage(
       (message: WebviewMindMapMessage) => this._handleWebviewMessage(message),
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     // Resend state when view becomes visible
@@ -149,7 +143,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         }
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     this._phrases.start(() => this._state.sessionActive);
@@ -193,8 +187,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       const filePath = nodeId.replace('file-', '');
       const uri = vscode.Uri.file(filePath);
       vscode.workspace.openTextDocument(uri).then(
-        doc => vscode.window.showTextDocument(doc),
-        () => log(`Could not open file: ${filePath}`)
+        (doc) => vscode.window.showTextDocument(doc),
+        () => log(`Could not open file: ${filePath}`),
       );
     }
     // If it's a URL node, open in browser
@@ -283,11 +277,11 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
     // Build URI for bundled D3.js vendor script
     const d3Uri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'd3-vendor.js')
+      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'd3-vendor.js'),
     );
 
     const iconUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
+      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png'),
     );
 
     return `<!DOCTYPE html>
@@ -1934,7 +1928,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    */
   dispose(): void {
     this._phrases.stop();
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     log('MindMapViewProvider disposed');
   }

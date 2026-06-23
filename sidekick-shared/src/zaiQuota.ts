@@ -107,10 +107,12 @@ export interface ZaiAccumulatedUsage {
  * Cache reads are weighted at 0.1× (Anthropic convention) to avoid
  * over-counting repeated context. Output and reasoning tokens are weighted 1×.
  */
-export function turnTokenWeight(turn: Pick<
-  ZaiAssistantTurn,
-  'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'reasoningTokens'
->): number {
+export function turnTokenWeight(
+  turn: Pick<
+    ZaiAssistantTurn,
+    'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'reasoningTokens'
+  >,
+): number {
   return (
     turn.inputTokens +
     turn.outputTokens +
@@ -226,19 +228,19 @@ export function inferZaiQuotaState(
   const budget = ZAI_TIER_BUDGETS[tier];
   const capturedAt = options.capturedAt ?? new Date().toISOString();
 
-  const fiveHourUtil = budget.fiveHour > 0
-    ? Math.min((accumulated.fiveHourPrompts / budget.fiveHour) * 100, 200)
-    : 0;
-  const weeklyUtil = budget.weekly > 0
-    ? Math.min((accumulated.weeklyPrompts / budget.weekly) * 100, 200)
-    : 0;
+  const fiveHourUtil =
+    budget.fiveHour > 0 ? Math.min((accumulated.fiveHourPrompts / budget.fiveHour) * 100, 200) : 0;
+  const weeklyUtil =
+    budget.weekly > 0 ? Math.min((accumulated.weeklyPrompts / budget.weekly) * 100, 200) : 0;
 
-  const fiveHourResetsAt = options.authoritativeFiveHourResetAt
-    ?? (accumulated.fiveHourStartedAtMs !== null
+  const fiveHourResetsAt =
+    options.authoritativeFiveHourResetAt ??
+    (accumulated.fiveHourStartedAtMs !== null
       ? new Date(accumulated.fiveHourStartedAtMs + FIVE_HOUR_MS).toISOString()
       : '');
-  const sevenDayResetsAt = options.authoritativeWeeklyResetAt
-    ?? (accumulated.weeklyStartedAtMs !== null
+  const sevenDayResetsAt =
+    options.authoritativeWeeklyResetAt ??
+    (accumulated.weeklyStartedAtMs !== null
       ? new Date(accumulated.weeklyStartedAtMs + SEVEN_DAY_MS).toISOString()
       : '');
 
@@ -290,8 +292,8 @@ export interface ZaiQuotaError {
 const ZAI_ERROR_CODES: Record<string, ZaiQuotaErrorKind> = {
   '1308': 'exhausted', // Usage limit reached for `{number} {unit}` (includes next_flush_time)
   '1310': 'exhausted', // Weekly/Monthly limit exhausted (resets at next_flush_time)
-  '1313': 'fup',       // Fair-Use-Policy violation — request rate restricted
-  '1309': 'expired',   // GLM Coding Plan package has expired
+  '1313': 'fup', // Fair-Use-Policy violation — request rate restricted
+  '1309': 'expired', // GLM Coding Plan package has expired
 };
 
 /**
@@ -331,7 +333,9 @@ export function extractNextFlushTime(message: string): string | undefined {
   if (!message) return undefined;
 
   // ISO 8601 with optional timezone.
-  const isoMatch = message.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/);
+  const isoMatch = message.match(
+    /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/,
+  );
   if (isoMatch) {
     const ms = Date.parse(isoMatch[1]);
     if (Number.isFinite(ms)) return new Date(ms).toISOString();
@@ -411,9 +415,10 @@ export interface ZaiOpenCodeRow {
  * Returns `{ turns, errors }` so callers can replay them through
  * `ZaiQuotaWatcher.ingestAssistantTurns` and `ingestError`.
  */
-export function rowsToZaiTurnsAndErrors(
-  rows: readonly ZaiOpenCodeRow[],
-): { turns: ZaiAssistantTurn[]; errors: ZaiQuotaError[] } {
+export function rowsToZaiTurnsAndErrors(rows: readonly ZaiOpenCodeRow[]): {
+  turns: ZaiAssistantTurn[];
+  errors: ZaiQuotaError[];
+} {
   const turns: ZaiAssistantTurn[] = [];
   const errors: ZaiQuotaError[] = [];
 

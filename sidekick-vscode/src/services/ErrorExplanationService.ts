@@ -50,11 +50,15 @@ export class ErrorExplanationService {
     code: string,
     errorContext: ErrorContext,
     complexity?: ComplexityLevel,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<ErrorExplanation> {
     // Read model from configuration (default: sonnet)
     const config = vscode.workspace.getConfiguration('sidekick');
-    const model = resolveModel(config.get<string>('errorModel') ?? 'auto', this.authService.getProviderId(), 'errorModel');
+    const model = resolveModel(
+      config.get<string>('errorModel') ?? 'auto',
+      this.authService.getProviderId(),
+      'errorModel',
+    );
 
     // Build prompt for error explanation
     const prompt = getErrorExplanationPrompt(code, errorContext, complexity);
@@ -65,11 +69,12 @@ export class ErrorExplanationService {
     const opLabel = `Explaining error via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
       operation: opLabel,
-      task: (taskSignal: AbortSignal) => this.authService.complete(prompt, {
-        model,
-        maxTokens: 2000,
-        signal: taskSignal,
-      }),
+      task: (taskSignal: AbortSignal) =>
+        this.authService.complete(prompt, {
+          model,
+          maxTokens: 2000,
+          signal: taskSignal,
+        }),
       config: timeoutConfig,
       contextSize,
       showProgress: true,
@@ -106,11 +111,15 @@ export class ErrorExplanationService {
   async generateFix(
     code: string,
     errorContext: ErrorContext,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<FixSuggestion | null> {
     // Read model from configuration (default: sonnet)
     const config = vscode.workspace.getConfiguration('sidekick');
-    const model = resolveModel(config.get<string>('errorModel') ?? 'auto', this.authService.getProviderId(), 'errorModel');
+    const model = resolveModel(
+      config.get<string>('errorModel') ?? 'auto',
+      this.authService.getProviderId(),
+      'errorModel',
+    );
 
     // Build prompt for fix generation
     const prompt = getErrorFixPrompt(code, errorContext);
@@ -121,11 +130,12 @@ export class ErrorExplanationService {
     const fixLabel = `Generating fix via ${this.authService.getProviderDisplayName()} · ${model}`;
     const result = await this.timeoutManager.executeWithTimeout({
       operation: fixLabel,
-      task: (taskSignal: AbortSignal) => this.authService.complete(prompt, {
-        model,
-        maxTokens: 2000,
-        signal: taskSignal,
-      }),
+      task: (taskSignal: AbortSignal) =>
+        this.authService.complete(prompt, {
+          model,
+          maxTokens: 2000,
+          signal: taskSignal,
+        }),
       config: timeoutConfig,
       contextSize,
       showProgress: true,
@@ -181,9 +191,12 @@ export class ErrorExplanationService {
    */
   private parseExplanation(response: string): ErrorExplanation {
     // Try to split by section headers
-    const rootCause = response.match(/ROOT CAUSE[:\s]+(.*?)(?=WHY IT HAPPENS|HOW TO FIX|$)/is)?.[1]?.trim() ?? '';
-    const whyItHappens = response.match(/WHY IT HAPPENS[:\s]+(.*?)(?=ROOT CAUSE|HOW TO FIX|$)/is)?.[1]?.trim() ?? '';
-    const suggestedFix = response.match(/HOW TO FIX[:\s]+(.*?)(?=ROOT CAUSE|WHY IT HAPPENS|$)/is)?.[1]?.trim() ?? '';
+    const rootCause =
+      response.match(/ROOT CAUSE[:\s]+(.*?)(?=WHY IT HAPPENS|HOW TO FIX|$)/is)?.[1]?.trim() ?? '';
+    const whyItHappens =
+      response.match(/WHY IT HAPPENS[:\s]+(.*?)(?=ROOT CAUSE|HOW TO FIX|$)/is)?.[1]?.trim() ?? '';
+    const suggestedFix =
+      response.match(/HOW TO FIX[:\s]+(.*?)(?=ROOT CAUSE|WHY IT HAPPENS|$)/is)?.[1]?.trim() ?? '';
 
     // If no sections found, treat entire response as root cause
     if (!rootCause && !whyItHappens && !suggestedFix) {

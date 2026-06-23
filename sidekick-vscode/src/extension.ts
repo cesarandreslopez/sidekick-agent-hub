@@ -16,22 +16,22 @@
  * @module extension
  */
 
-import * as vscode from "vscode";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { AuthService } from "./services/AuthService";
-import { CompletionService } from "./services/CompletionService";
-import { warmupSdk } from "./services/MaxSubscriptionClient";
-import { GitService } from "./services/GitService";
-import { CommitMessageService } from "./services/CommitMessageService";
-import { DocumentationService } from "./services/DocumentationService";
-import { ExplanationService } from "./services/ExplanationService";
-import { ErrorExplanationService } from "./services/ErrorExplanationService";
-import { InlineChatService } from "./services/InlineChatService";
-import { PreCommitReviewService } from "./services/PreCommitReviewService";
-import { PrDescriptionService } from "./services/PrDescriptionService";
-import { getTimeoutManager } from "./services/TimeoutManager";
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { AuthService } from './services/AuthService';
+import { CompletionService } from './services/CompletionService';
+import { warmupSdk } from './services/MaxSubscriptionClient';
+import { GitService } from './services/GitService';
+import { CommitMessageService } from './services/CommitMessageService';
+import { DocumentationService } from './services/DocumentationService';
+import { ExplanationService } from './services/ExplanationService';
+import { ErrorExplanationService } from './services/ErrorExplanationService';
+import { InlineChatService } from './services/InlineChatService';
+import { PreCommitReviewService } from './services/PreCommitReviewService';
+import { PrDescriptionService } from './services/PrDescriptionService';
+import { getTimeoutManager } from './services/TimeoutManager';
 import { SessionMonitor } from './services/SessionMonitor';
 import { detectProvider } from './services/providers/ProviderDetector';
 import { CodexSessionProvider } from './services/providers/CodexSessionProvider';
@@ -53,41 +53,41 @@ import { SessionEventLogger } from './services/SessionEventLogger';
 import { ConversationViewProvider } from './providers/ConversationViewProvider';
 import { CrossSessionSearch } from './services/CrossSessionSearch';
 import { ToolInspectorProvider } from './providers/ToolInspectorProvider';
-import { InlineCompletionProvider } from "./providers/InlineCompletionProvider";
-import { InlineChatProvider } from "./providers/InlineChatProvider";
-import { ExplainViewProvider } from "./providers/ExplainViewProvider";
-import { ErrorExplanationProvider } from "./providers/ErrorExplanationProvider";
-import { ErrorViewProvider } from "./providers/ErrorViewProvider";
-import { DashboardViewProvider } from "./providers/DashboardViewProvider";
-import { MindMapViewProvider } from "./providers/MindMapViewProvider";
-import { TaskBoardViewProvider } from "./providers/TaskBoardViewProvider";
-import { PlanBoardViewProvider } from "./providers/PlanBoardViewProvider";
-import { ProjectTimelineViewProvider } from "./providers/ProjectTimelineViewProvider";
-import { TaskPersistenceService } from "./services/TaskPersistenceService";
-import { PlanPersistenceService } from "./services/PlanPersistenceService";
-import { DecisionLogService } from "./services/DecisionLogService";
-import { NotificationPersistenceService } from "./services/NotificationPersistenceService";
-import { KnowledgeNoteService } from "./services/KnowledgeNoteService";
-import { encodeWorkspacePath } from "./services/SessionPathResolver";
-import { TempFilesTreeProvider } from "./providers/TempFilesTreeProvider";
-import { KnowledgeNoteTreeProvider } from "./providers/KnowledgeNoteTreeProvider";
-import { KnowledgeNoteDecorationProvider } from "./providers/KnowledgeNoteDecorationProvider";
-import { SubagentTreeProvider } from "./providers/SubagentTreeProvider";
-import { EventStreamTreeProvider } from "./providers/EventStreamTreeProvider";
-import { StatusBarManager } from "./services/StatusBarManager";
-import { AccountService, isSavedAccountProfile } from "./services/AccountService";
-import { AccountStatusBar } from "./services/AccountStatusBar";
-import { openCliDashboard, disposeDashboardTerminal } from "./services/SidekickCliService";
-import { showExtractedSessionAssets } from "./services/SessionAssetService";
-import { initLogger, log, logError, showLog } from "./services/Logger";
+import { InlineCompletionProvider } from './providers/InlineCompletionProvider';
+import { InlineChatProvider } from './providers/InlineChatProvider';
+import { ExplainViewProvider } from './providers/ExplainViewProvider';
+import { ErrorExplanationProvider } from './providers/ErrorExplanationProvider';
+import { ErrorViewProvider } from './providers/ErrorViewProvider';
+import { DashboardViewProvider } from './providers/DashboardViewProvider';
+import { MindMapViewProvider } from './providers/MindMapViewProvider';
+import { TaskBoardViewProvider } from './providers/TaskBoardViewProvider';
+import { PlanBoardViewProvider } from './providers/PlanBoardViewProvider';
+import { ProjectTimelineViewProvider } from './providers/ProjectTimelineViewProvider';
+import { TaskPersistenceService } from './services/TaskPersistenceService';
+import { PlanPersistenceService } from './services/PlanPersistenceService';
+import { DecisionLogService } from './services/DecisionLogService';
+import { NotificationPersistenceService } from './services/NotificationPersistenceService';
+import { KnowledgeNoteService } from './services/KnowledgeNoteService';
+import { encodeWorkspacePath } from './services/SessionPathResolver';
+import { TempFilesTreeProvider } from './providers/TempFilesTreeProvider';
+import { KnowledgeNoteTreeProvider } from './providers/KnowledgeNoteTreeProvider';
+import { KnowledgeNoteDecorationProvider } from './providers/KnowledgeNoteDecorationProvider';
+import { SubagentTreeProvider } from './providers/SubagentTreeProvider';
+import { EventStreamTreeProvider } from './providers/EventStreamTreeProvider';
+import { StatusBarManager } from './services/StatusBarManager';
+import { AccountService, isSavedAccountProfile } from './services/AccountService';
+import { AccountStatusBar } from './services/AccountStatusBar';
+import { openCliDashboard, disposeDashboardTerminal } from './services/SidekickCliService';
+import { showExtractedSessionAssets } from './services/SessionAssetService';
+import { initLogger, log, logError, showLog } from './services/Logger';
 import {
   getTransformSystemPrompt,
   getTransformUserPrompt,
   cleanTransformResponse,
-} from "./utils/prompts";
-import { resolveModel } from "./services/ModelResolver";
-import { PROVIDER_DISPLAY_NAMES } from "./types/inferenceProvider";
-import { getNonce } from "./utils/nonce";
+} from './utils/prompts';
+import { resolveModel } from './services/ModelResolver';
+import { PROVIDER_DISPLAY_NAMES } from './types/inferenceProvider';
+import { getNonce } from './utils/nonce';
 import type { AccountProviderId } from 'sidekick-shared';
 import {
   AutoSwitchController,
@@ -168,7 +168,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initialize logger first
   const outputChannel = initLogger();
   context.subscriptions.push(outputChannel);
-  log("Sidekick Agent Hub extension activated");
+  log('Sidekick Agent Hub extension activated');
 
   await ensureDefaultAccounts({
     logger: (message, error) => logError(message, error),
@@ -185,11 +185,13 @@ export async function activate(context: vscode.ExtensionContext) {
       cacheDir,
       ttlMs: Math.max(1, ttlHours) * 60 * 60 * 1000,
       logger: (msg) => log(msg),
-    }).then((result) => {
-      log(`Pricing catalog ready (${result.source}, ${result.entries} entries).`);
-    }).catch((err) => {
-      logError('pricing catalog hydration failed', err);
-    });
+    })
+      .then((result) => {
+        log(`Pricing catalog ready (${result.source}, ${result.entries} entries).`);
+      })
+      .catch((err) => {
+        logError('pricing catalog hydration failed', err);
+      });
   }
 
   // Create status bar manager
@@ -198,19 +200,19 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusBarManager);
 
   // Initialize status bar with configured model
-  const config = vscode.workspace.getConfiguration("sidekick");
-  const inlineModel = config.get<string>("inlineModel") ?? "haiku";
+  const config = vscode.workspace.getConfiguration('sidekick');
+  const inlineModel = config.get<string>('inlineModel') ?? 'haiku';
   statusBarManager.setModel(inlineModel);
 
   // Update status bar when model configuration changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("sidekick.inlineModel")) {
-        const config = vscode.workspace.getConfiguration("sidekick");
-        const model = config.get<string>("inlineModel") ?? "haiku";
+      if (e.affectsConfiguration('sidekick.inlineModel')) {
+        const config = vscode.workspace.getConfiguration('sidekick');
+        const model = config.get<string>('inlineModel') ?? 'haiku';
         statusBarManager?.setModel(model);
       }
-    })
+    }),
   );
 
   // Initialize auth service
@@ -223,12 +225,15 @@ export async function activate(context: vscode.ExtensionContext) {
   // Update status bar when inference provider changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("sidekick.inferenceProvider") || e.affectsConfiguration("sidekick.authMode")) {
+      if (
+        e.affectsConfiguration('sidekick.inferenceProvider') ||
+        e.affectsConfiguration('sidekick.authMode')
+      ) {
         if (authService && statusBarManager) {
           statusBarManager.setProvider(PROVIDER_DISPLAY_NAMES[authService.getProviderId()]);
         }
       }
-    })
+    }),
   );
 
   // Migrate legacy authMode -> inferenceProvider (one-time)
@@ -242,7 +247,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (authModeExplicit === 'api-key' && !providerExplicit) {
       cfg.update('inferenceProvider', 'claude-api', vscode.ConfigurationTarget.Global).then(() => {
         vscode.window.showInformationMessage(
-          "Sidekick now supports multiple AI providers. Your Claude API key setup is unchanged."
+          'Sidekick now supports multiple AI providers. Your Claude API key setup is unchanged.',
         );
       });
     }
@@ -302,47 +307,58 @@ export async function activate(context: vscode.ExtensionContext) {
       const customPath = sessionMonitor.getCustomPath();
       if (customPath) {
         log(`Using saved custom session path: ${customPath}`);
-        sessionMonitor.startWithCustomPath(customPath).then(active => {
-          if (active) {
-            log(`Claude Code session monitoring started (custom path): ${sessionMonitor!.getSessionPath()}`);
-          } else {
-            log('No active Claude Code session in custom path, will poll...');
-          }
-        }).catch(error => {
-          logError('Failed to start session monitor with custom path', error);
-        });
+        sessionMonitor
+          .startWithCustomPath(customPath)
+          .then((active) => {
+            if (active) {
+              log(
+                `Claude Code session monitoring started (custom path): ${sessionMonitor!.getSessionPath()}`,
+              );
+            } else {
+              log('No active Claude Code session in custom path, will poll...');
+            }
+          })
+          .catch((error) => {
+            logError('Failed to start session monitor with custom path', error);
+          });
       } else {
-        sessionMonitor.start(workspaceFolder.uri.fsPath).then(active => {
-          if (active) {
-            log(`Claude Code session monitoring started: ${sessionMonitor!.getSessionPath()}`);
-          } else {
-            log('No active Claude Code session detected');
-          }
-        }).catch(error => {
-          logError('Failed to start session monitor', error);
-        });
+        sessionMonitor
+          .start(workspaceFolder.uri.fsPath)
+          .then((active) => {
+            if (active) {
+              log(`Claude Code session monitoring started: ${sessionMonitor!.getSessionPath()}`);
+            } else {
+              log('No active Claude Code session detected');
+            }
+          })
+          .catch((error) => {
+            logError('Failed to start session monitor', error);
+          });
       }
     }
 
     // Log token usage events for debugging
-    sessionMonitor.onTokenUsage(usage => {
+    sessionMonitor.onTokenUsage((usage) => {
       log(`Token usage: ${usage.inputTokens} in, ${usage.outputTokens} out, model: ${usage.model}`);
     });
 
     // Initialize historical data service for long-term analytics
     historicalDataService = new HistoricalDataService();
-    historicalDataService.initialize().then(async () => {
-      log('HistoricalDataService initialized');
+    historicalDataService
+      .initialize()
+      .then(async () => {
+        log('HistoricalDataService initialized');
 
-      // Auto-import historical data on first activation (if no historical data exists)
-      const allTimeStats = historicalDataService!.getAllTimeStats();
-      if (allTimeStats.sessionCount === 0) {
-        log('No historical data found, triggering auto-import');
-        vscode.commands.executeCommand('sidekick.importHistoricalData');
-      }
-    }).catch(error => {
-      logError('Failed to initialize HistoricalDataService', error);
-    });
+        // Auto-import historical data on first activation (if no historical data exists)
+        const allTimeStats = historicalDataService!.getAllTimeStats();
+        if (allTimeStats.sessionCount === 0) {
+          log('No historical data found, triggering auto-import');
+          vscode.commands.executeCommand('sidekick.importHistoricalData');
+        }
+      })
+      .catch((error) => {
+        logError('Failed to initialize HistoricalDataService', error);
+      });
     context.subscriptions.push(historicalDataService);
 
     // Register import historical data command
@@ -359,7 +375,7 @@ export async function activate(context: vscode.ExtensionContext) {
           {
             location: vscode.ProgressLocation.Notification,
             title: 'Importing historical Claude Code data...',
-            cancellable: false
+            cancellable: false,
           },
           async (progress) => {
             let lastPercent = 0;
@@ -370,31 +386,29 @@ export async function activate(context: vscode.ExtensionContext) {
               if (increment > 0) {
                 progress.report({
                   increment,
-                  message: `${loaded}/${total} session files`
+                  message: `${loaded}/${total} session files`,
                 });
               }
             });
 
             if (result.sessionsCreated > 0) {
               vscode.window.showInformationMessage(
-                `Imported ${result.recordsImported.toLocaleString()} records from ${result.sessionsCreated} sessions`
+                `Imported ${result.recordsImported.toLocaleString()} records from ${result.sessionsCreated} sessions`,
               );
               // Notify dashboard to refresh
               dashboardProvider?.refresh();
             } else if (result.filesSkipped > 0 && result.filesProcessed === 0) {
-              vscode.window.showInformationMessage(
-                'All historical data already imported'
-              );
+              vscode.window.showInformationMessage('All historical data already imported');
             } else {
-              vscode.window.showInformationMessage(
-                'No historical session data found'
-              );
+              vscode.window.showInformationMessage('No historical session data found');
             }
 
-            log(`Import complete: ${result.filesProcessed} files, ${result.recordsImported} records, ${result.sessionsCreated} sessions, ${result.filesSkipped} skipped`);
-          }
+            log(
+              `Import complete: ${result.filesProcessed} files, ${result.recordsImported} records, ${result.sessionsCreated} sessions, ${result.filesSkipped} skipped`,
+            );
+          },
         );
-      })
+      }),
     );
 
     // Save session summary to historical data when session ends
@@ -429,17 +443,23 @@ export async function activate(context: vscode.ExtensionContext) {
     log('ProviderStatusService initialized');
 
     // Peak-hours tracker (gated on claude-max + Claude Code session provider; silent no-op otherwise)
-    peakHoursService = new PeakHoursService(authService, () => sessionMonitor?.getProvider().id ?? 'claude-code');
+    peakHoursService = new PeakHoursService(
+      authService,
+      () => sessionMonitor?.getProvider().id ?? 'claude-code',
+    );
     context.subscriptions.push(peakHoursService);
     log('PeakHoursService initialized');
 
     // Initialize session event logger for JSONL audit trail
     const eventLogger = new SessionEventLogger();
-    eventLogger.initialize().then(() => {
-      log('SessionEventLogger initialized');
-    }).catch(error => {
-      logError('Failed to initialize SessionEventLogger', error);
-    });
+    eventLogger
+      .initialize()
+      .then(() => {
+        log('SessionEventLogger initialized');
+      })
+      .catch((error) => {
+        logError('Failed to initialize SessionEventLogger', error);
+      });
     context.subscriptions.push(eventLogger);
 
     const config = vscode.workspace.getConfiguration('sidekick');
@@ -459,7 +479,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (decisionWorkspaceFolder) {
       const decisionSlug = encodeWorkspacePath(decisionWorkspaceFolder.uri.fsPath);
       decisionLogService = new DecisionLogService(decisionSlug);
-      decisionLogService.initialize().catch(error => {
+      decisionLogService.initialize().catch((error) => {
         logError('Failed to initialize DecisionLogService', error);
       });
       context.subscriptions.push(decisionLogService);
@@ -471,7 +491,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (notificationWorkspaceFolder) {
       const notificationSlug = encodeWorkspacePath(notificationWorkspaceFolder.uri.fsPath);
       notificationPersistenceService = new NotificationPersistenceService(notificationSlug);
-      notificationPersistenceService.initialize().catch(error => {
+      notificationPersistenceService.initialize().catch((error) => {
         logError('Failed to initialize NotificationPersistenceService', error);
       });
       context.subscriptions.push(notificationPersistenceService);
@@ -483,7 +503,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (knowledgeWorkspaceFolder) {
       const knowledgeSlug = encodeWorkspacePath(knowledgeWorkspaceFolder.uri.fsPath);
       knowledgeNoteService = new KnowledgeNoteService(knowledgeSlug);
-      knowledgeNoteService.initialize().catch(error => {
+      knowledgeNoteService.initialize().catch((error) => {
         logError('Failed to initialize KnowledgeNoteService', error);
       });
       context.subscriptions.push(knowledgeNoteService);
@@ -498,7 +518,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (handoffWorkspaceFolder) {
       const handoffSlug = encodeWorkspacePath(handoffWorkspaceFolder.uri.fsPath);
       handoffService = new HandoffService(handoffSlug);
-      handoffService.initialize().catch(error => {
+      handoffService.initialize().catch((error) => {
         logError('Failed to initialize HandoffService', error);
       });
       context.subscriptions.push(handoffService);
@@ -506,7 +526,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Auto-generate handoff on session end
     sessionMonitor.onSessionEnd(() => {
-      const autoHandoff = vscode.workspace.getConfiguration('sidekick').get<string>('autoHandoff', 'off');
+      const autoHandoff = vscode.workspace
+        .getConfiguration('sidekick')
+        .get<string>('autoHandoff', 'off');
       if (autoHandoff === 'off' || !handoffService || !sessionAnalyzer) return;
 
       const stats = sessionMonitor?.getStats();
@@ -515,33 +537,38 @@ export async function activate(context: vscode.ExtensionContext) {
       const summaryService = new SessionSummaryService();
       const analysisData = sessionAnalyzer.getCachedData();
       const provider = sessionMonitor!.getProvider();
-      const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
+      const contextLimit =
+        provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
       const summaryData = summaryService.generateSummary(stats, analysisData, contextLimit);
 
-      handoffService.generateHandoff(summaryData, analysisData, stats).then(handoffPath => {
-        log(`Handoff generated: ${handoffPath}`);
-      }).catch(error => {
-        logError('Failed to generate handoff', error);
-      });
+      handoffService
+        .generateHandoff(summaryData, analysisData, stats)
+        .then((handoffPath) => {
+          log(`Handoff generated: ${handoffPath}`);
+        })
+        .catch((error) => {
+          logError('Failed to generate handoff', error);
+        });
     });
 
     // Notify on session start if a handoff exists
     sessionMonitor.onSessionStart(() => {
-      const autoHandoff = vscode.workspace.getConfiguration('sidekick').get<string>('autoHandoff', 'off');
+      const autoHandoff = vscode.workspace
+        .getConfiguration('sidekick')
+        .get<string>('autoHandoff', 'off');
       if (autoHandoff !== 'generate-and-notify' || !handoffService) return;
 
       const latestPath = handoffService.getLatestHandoffPath();
       if (latestPath) {
-        vscode.window.showInformationMessage(
-          'Previous session context available.',
-          'Open Handoff'
-        ).then(action => {
-          if (action === 'Open Handoff') {
-            vscode.workspace.openTextDocument(latestPath).then(doc => {
-              vscode.window.showTextDocument(doc);
-            });
-          }
-        });
+        vscode.window
+          .showInformationMessage('Previous session context available.', 'Open Handoff')
+          .then((action) => {
+            if (action === 'Open Handoff') {
+              vscode.workspace.openTextDocument(latestPath).then((doc) => {
+                vscode.window.showTextDocument(doc);
+              });
+            }
+          });
       }
     });
 
@@ -574,17 +601,29 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         if (existingContent.includes('sidekick/handoffs/')) {
-          vscode.window.showInformationMessage(`Handoff reference already set up in ${target.primaryFile}.`);
+          vscode.window.showInformationMessage(
+            `Handoff reference already set up in ${target.primaryFile}.`,
+          );
           return;
         }
 
         await fs.promises.writeFile(filePath, existingContent + oneLiner, 'utf-8');
         vscode.window.showInformationMessage(`Added handoff reference to ${target.primaryFile}.`);
-      })
+      }),
     );
 
     // Register dashboard view provider (depends on sessionMonitor, quotaService, historicalDataService, and guidanceAdvisor)
-    dashboardProvider = new DashboardViewProvider(context.extensionUri, sessionMonitor, quotaService, historicalDataService, guidanceAdvisor, sessionAnalyzer, authService, decisionLogService, notificationPersistenceService);
+    dashboardProvider = new DashboardViewProvider(
+      context.extensionUri,
+      sessionMonitor,
+      quotaService,
+      historicalDataService,
+      guidanceAdvisor,
+      sessionAnalyzer,
+      authService,
+      decisionLogService,
+      notificationPersistenceService,
+    );
     dashboardProvider.setEventLogger(eventLogger);
     if (providerStatusService) {
       dashboardProvider.setProviderStatusService(providerStatusService);
@@ -600,12 +639,15 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     context.subscriptions.push(dashboardProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, dashboardProvider)
+      vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, dashboardProvider),
     );
     log('Dashboard view provider registered');
 
     // Initialize notification trigger service for session monitoring alerts
-    const notificationTriggerService = new NotificationTriggerService(sessionMonitor, notificationPersistenceService);
+    const notificationTriggerService = new NotificationTriggerService(
+      sessionMonitor,
+      notificationPersistenceService,
+    );
     context.subscriptions.push(notificationTriggerService);
     log('NotificationTriggerService initialized');
 
@@ -615,7 +657,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.commands.registerCommand('sidekick.openConversation', () => {
         conversationViewer.open();
-      })
+      }),
     );
     log('ConversationViewProvider initialized');
 
@@ -625,7 +667,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.commands.registerCommand('sidekick.searchSessions', () => {
         crossSessionSearch.search();
-      })
+      }),
     );
     log('CrossSessionSearch initialized');
 
@@ -635,7 +677,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.commands.registerCommand('sidekick.openToolInspector', () => {
         toolInspector.open();
-      })
+      }),
     );
     log('ToolInspectorProvider initialized');
 
@@ -645,7 +687,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (dashboardProvider) {
           dashboardProvider.generateSummaryOnDemand();
         }
-      })
+      }),
     );
 
     // Register mind map view provider (depends on sessionMonitor)
@@ -655,7 +697,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     context.subscriptions.push(mindMapProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(MindMapViewProvider.viewType, mindMapProvider)
+      vscode.window.registerWebviewViewProvider(MindMapViewProvider.viewType, mindMapProvider),
     );
     log('Mind map view provider registered');
 
@@ -666,13 +708,13 @@ export async function activate(context: vscode.ExtensionContext) {
     if (taskWorkspaceFolder) {
       const projectSlug = encodeWorkspacePath(taskWorkspaceFolder.uri.fsPath);
       taskPersistenceService = new TaskPersistenceService(projectSlug);
-      taskPersistenceService.initialize().catch(error => {
+      taskPersistenceService.initialize().catch((error) => {
         logError('Failed to initialize TaskPersistenceService', error);
       });
       context.subscriptions.push(taskPersistenceService);
 
       planPersistenceService = new PlanPersistenceService(projectSlug);
-      planPersistenceService.initialize().catch(error => {
+      planPersistenceService.initialize().catch((error) => {
         logError('Failed to initialize PlanPersistenceService', error);
       });
       context.subscriptions.push(planPersistenceService);
@@ -680,17 +722,25 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     // Register task board view provider (depends on sessionMonitor + taskPersistenceService)
-    const taskBoardProvider = new TaskBoardViewProvider(context.extensionUri, sessionMonitor, taskPersistenceService);
+    const taskBoardProvider = new TaskBoardViewProvider(
+      context.extensionUri,
+      sessionMonitor,
+      taskPersistenceService,
+    );
     context.subscriptions.push(taskBoardProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(TaskBoardViewProvider.viewType, taskBoardProvider)
+      vscode.window.registerWebviewViewProvider(TaskBoardViewProvider.viewType, taskBoardProvider),
     );
     log('Task board view provider registered');
 
-    const planBoardProvider = new PlanBoardViewProvider(context.extensionUri, sessionMonitor, planPersistenceService);
+    const planBoardProvider = new PlanBoardViewProvider(
+      context.extensionUri,
+      sessionMonitor,
+      planPersistenceService,
+    );
     context.subscriptions.push(planBoardProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(PlanBoardViewProvider.viewType, planBoardProvider)
+      vscode.window.registerWebviewViewProvider(PlanBoardViewProvider.viewType, planBoardProvider),
     );
     log('Plan board view provider registered');
 
@@ -698,7 +748,10 @@ export async function activate(context: vscode.ExtensionContext) {
     const timelineProvider = new ProjectTimelineViewProvider(context.extensionUri, sessionMonitor);
     context.subscriptions.push(timelineProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(ProjectTimelineViewProvider.viewType, timelineProvider)
+      vscode.window.registerWebviewViewProvider(
+        ProjectTimelineViewProvider.viewType,
+        timelineProvider,
+      ),
     );
     log('Project timeline view provider registered');
 
@@ -706,7 +759,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const tempFilesProvider = new TempFilesTreeProvider(sessionMonitor);
     context.subscriptions.push(tempFilesProvider);
     context.subscriptions.push(
-      vscode.window.registerTreeDataProvider('sidekick.tempFiles', tempFilesProvider)
+      vscode.window.registerTreeDataProvider('sidekick.tempFiles', tempFilesProvider),
     );
     log('Temp files tree provider registered');
 
@@ -714,7 +767,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const subagentProvider = new SubagentTreeProvider(sessionMonitor);
     context.subscriptions.push(subagentProvider);
     context.subscriptions.push(
-      vscode.window.registerTreeDataProvider('sidekick.subagents', subagentProvider)
+      vscode.window.registerTreeDataProvider('sidekick.subagents', subagentProvider),
     );
     log('Subagent tree provider registered');
 
@@ -722,7 +775,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const eventStreamProvider = new EventStreamTreeProvider(sessionMonitor);
     context.subscriptions.push(eventStreamProvider);
     context.subscriptions.push(
-      vscode.window.registerTreeDataProvider('sidekick.eventStream', eventStreamProvider)
+      vscode.window.registerTreeDataProvider('sidekick.eventStream', eventStreamProvider),
     );
     log('Event stream tree provider registered');
 
@@ -738,7 +791,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const knowledgeNoteDecorationProvider = new KnowledgeNoteDecorationProvider(
         knowledgeNoteService,
-        context.extensionUri
+        context.extensionUri,
       );
       context.subscriptions.push(knowledgeNoteDecorationProvider);
 
@@ -761,10 +814,26 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Pick note type
         const typeItems = [
-          { label: '$(warning) Gotcha', description: 'Something that can trip you up', value: 'gotcha' as const },
-          { label: '$(symbol-misc) Pattern', description: 'A recurring code pattern to follow', value: 'pattern' as const },
-          { label: '$(law) Guideline', description: 'A rule or convention to adhere to', value: 'guideline' as const },
-          { label: '$(lightbulb) Tip', description: 'A helpful insight or shortcut', value: 'tip' as const },
+          {
+            label: '$(warning) Gotcha',
+            description: 'Something that can trip you up',
+            value: 'gotcha' as const,
+          },
+          {
+            label: '$(symbol-misc) Pattern',
+            description: 'A recurring code pattern to follow',
+            value: 'pattern' as const,
+          },
+          {
+            label: '$(law) Guideline',
+            description: 'A rule or convention to adhere to',
+            value: 'guideline' as const,
+          },
+          {
+            label: '$(lightbulb) Tip',
+            description: 'A helpful insight or shortcut',
+            value: 'tip' as const,
+          },
         ];
 
         const selectedType = await vscode.window.showQuickPick(typeItems, {
@@ -798,7 +867,7 @@ export async function activate(context: vscode.ExtensionContext) {
         });
 
         vscode.window.showInformationMessage(`Knowledge note added to ${relativePath}`);
-      })
+      }),
     );
 
     // Register injectKnowledgeNotes command
@@ -827,9 +896,14 @@ export async function activate(context: vscode.ExtensionContext) {
         for (const [filePath, notes] of notesByFile) {
           markdown += `### ${filePath}\n`;
           for (const note of notes) {
-            const icon = note.noteType === 'gotcha' ? '⚠️' :
-                         note.noteType === 'pattern' ? '🔄' :
-                         note.noteType === 'guideline' ? '📏' : '💡';
+            const icon =
+              note.noteType === 'gotcha'
+                ? '⚠️'
+                : note.noteType === 'pattern'
+                  ? '🔄'
+                  : note.noteType === 'guideline'
+                    ? '📏'
+                    : '💡';
             markdown += `- ${icon} **${note.noteType}**: ${note.content}\n`;
           }
           markdown += '\n';
@@ -857,87 +931,111 @@ export async function activate(context: vscode.ExtensionContext) {
           const action = await vscode.window.showWarningMessage(
             `${target.primaryFile} already has a "File-Specific Knowledge" section. Replace it?`,
             'Replace',
-            'Cancel'
+            'Cancel',
           );
           if (action !== 'Replace') return;
 
           // Remove existing section (from header to next ## or end)
           existingContent = existingContent.replace(
             /\n## File-Specific Knowledge\n[\s\S]*?(?=\n## |\n*$)/,
-            ''
+            '',
           );
         }
 
         await fs.promises.writeFile(filePath, existingContent + markdown, 'utf-8');
         vscode.window.showInformationMessage(
-          `Injected ${activeNotes.length} knowledge note${activeNotes.length === 1 ? '' : 's'} into ${target.primaryFile}`
+          `Injected ${activeNotes.length} knowledge note${activeNotes.length === 1 ? '' : 's'} into ${target.primaryFile}`,
         );
-      })
+      }),
     );
 
     // Register knowledge note management commands (delete, edit, confirm)
     context.subscriptions.push(
-      vscode.commands.registerCommand('sidekick.deleteKnowledgeNote', async (item: { kind: string; note?: { id: string; content: string } }) => {
-        if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
+      vscode.commands.registerCommand(
+        'sidekick.deleteKnowledgeNote',
+        async (item: { kind: string; note?: { id: string; content: string } }) => {
+          if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
 
-        const confirm = await vscode.window.showWarningMessage(
-          `Delete this note?\n\n"${item.note.content.slice(0, 80)}"`,
-          { modal: true },
-          'Delete'
-        );
-        if (confirm !== 'Delete') return;
+          const confirm = await vscode.window.showWarningMessage(
+            `Delete this note?\n\n"${item.note.content.slice(0, 80)}"`,
+            { modal: true },
+            'Delete',
+          );
+          if (confirm !== 'Delete') return;
 
-        knowledgeNoteService.deleteNote(item.note.id);
-      }),
+          knowledgeNoteService.deleteNote(item.note.id);
+        },
+      ),
 
-      vscode.commands.registerCommand('sidekick.editKnowledgeNote', async (item: { kind: string; note?: { id: string; content: string; noteType: string; importance: string } }) => {
-        if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
+      vscode.commands.registerCommand(
+        'sidekick.editKnowledgeNote',
+        async (item: {
+          kind: string;
+          note?: { id: string; content: string; noteType: string; importance: string };
+        }) => {
+          if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
 
-        const content = await vscode.window.showInputBox({
-          prompt: 'Edit note content',
-          value: item.note.content,
-          placeHolder: 'Enter updated note content',
-        });
-        if (content === undefined) return;
+          const content = await vscode.window.showInputBox({
+            prompt: 'Edit note content',
+            value: item.note.content,
+            placeHolder: 'Enter updated note content',
+          });
+          if (content === undefined) return;
 
-        const typeItems = [
-          { label: 'Gotcha', value: 'gotcha' as const, description: 'Something surprising or error-prone' },
-          { label: 'Pattern', value: 'pattern' as const, description: 'A recurring approach or convention' },
-          { label: 'Guideline', value: 'guideline' as const, description: 'A rule or constraint' },
-          { label: 'Tip', value: 'tip' as const, description: 'A useful shortcut or technique' },
-        ];
-        const currentType = typeItems.find(t => t.value === item.note!.noteType);
-        const selectedType = await vscode.window.showQuickPick(typeItems, {
-          placeHolder: `Note type (current: ${currentType?.label ?? item.note.noteType})`,
-        });
-        if (!selectedType) return;
+          const typeItems = [
+            {
+              label: 'Gotcha',
+              value: 'gotcha' as const,
+              description: 'Something surprising or error-prone',
+            },
+            {
+              label: 'Pattern',
+              value: 'pattern' as const,
+              description: 'A recurring approach or convention',
+            },
+            {
+              label: 'Guideline',
+              value: 'guideline' as const,
+              description: 'A rule or constraint',
+            },
+            { label: 'Tip', value: 'tip' as const, description: 'A useful shortcut or technique' },
+          ];
+          const currentType = typeItems.find((t) => t.value === item.note!.noteType);
+          const selectedType = await vscode.window.showQuickPick(typeItems, {
+            placeHolder: `Note type (current: ${currentType?.label ?? item.note.noteType})`,
+          });
+          if (!selectedType) return;
 
-        const importanceItems = [
-          { label: 'Critical', value: 'critical' as const },
-          { label: 'High', value: 'high' as const },
-          { label: 'Medium', value: 'medium' as const },
-          { label: 'Low', value: 'low' as const },
-        ];
-        const currentImportance = importanceItems.find(i => i.value === item.note!.importance);
-        const selectedImportance = await vscode.window.showQuickPick(importanceItems, {
-          placeHolder: `Importance (current: ${currentImportance?.label ?? item.note.importance})`,
-        });
-        if (!selectedImportance) return;
+          const importanceItems = [
+            { label: 'Critical', value: 'critical' as const },
+            { label: 'High', value: 'high' as const },
+            { label: 'Medium', value: 'medium' as const },
+            { label: 'Low', value: 'low' as const },
+          ];
+          const currentImportance = importanceItems.find((i) => i.value === item.note!.importance);
+          const selectedImportance = await vscode.window.showQuickPick(importanceItems, {
+            placeHolder: `Importance (current: ${currentImportance?.label ?? item.note.importance})`,
+          });
+          if (!selectedImportance) return;
 
-        knowledgeNoteService.updateNote(item.note.id, {
-          content,
-          noteType: selectedType.value,
-          importance: selectedImportance.value,
-        });
-        vscode.window.showInformationMessage('Knowledge note updated.');
-      }),
+          knowledgeNoteService.updateNote(item.note.id, {
+            content,
+            noteType: selectedType.value,
+            importance: selectedImportance.value,
+          });
+          vscode.window.showInformationMessage('Knowledge note updated.');
+        },
+      ),
 
-      vscode.commands.registerCommand('sidekick.confirmKnowledgeNote', async (item: { kind: string; note?: { id: string } }) => {
-        if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
+      vscode.commands.registerCommand(
+        'sidekick.confirmKnowledgeNote',
+        async (item: { kind: string; note?: { id: string } }) => {
+          if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
 
-        knowledgeNoteService.confirmNote(item.note.id);
-        vscode.window.showInformationMessage('Note confirmed — marked as reviewed and active.');
-      }),
+          knowledgeNoteService.confirmNote(item.note.id);
+          vscode.window.showInformationMessage('Note confirmed — marked as reviewed and active.');
+        },
+      ),
     );
 
     // Create monitor status bar (depends on sessionMonitor)
@@ -989,7 +1087,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 
-  const runTerminalAccountLogin = async (providerId: AccountProviderId, label: string): Promise<void> => {
+  const runTerminalAccountLogin = async (
+    providerId: AccountProviderId,
+    label: string,
+  ): Promise<void> => {
     const begin = beginAccountLogin(providerId, label);
     if (!begin.success) {
       vscode.window.showErrorMessage(`Account login failed: ${begin.error}`);
@@ -1027,7 +1128,9 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     terminal.show();
     terminal.sendText([begin.command, ...(begin.args ?? [])].map(shellQuote).join(' '), true);
-    vscode.window.showInformationMessage('Complete the browser login in the Sidekick terminal. Sidekick will save the account automatically.');
+    vscode.window.showInformationMessage(
+      'Complete the browser login in the Sidekick terminal. Sidekick will save the account automatically.',
+    );
 
     const startedAt = Date.now();
     const timeoutMs = 180_000;
@@ -1076,7 +1179,9 @@ export async function activate(context: vscode.ExtensionContext) {
   };
   const configureAutoSwitch = (): void => {
     disposeAutoSwitch();
-    const thresholdPct = vscode.workspace.getConfiguration('sidekick').get<number>('accounts.autoSwitchThreshold', 0);
+    const thresholdPct = vscode.workspace
+      .getConfiguration('sidekick')
+      .get<number>('accounts.autoSwitchThreshold', 0);
     if (!thresholdPct || thresholdPct <= 0) return;
 
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -1084,7 +1189,8 @@ export async function activate(context: vscode.ExtensionContext) {
     autoSwitchController = new AutoSwitchController({
       quotaService: autoSwitchQuotaService,
       config: { enabled: true, thresholdPct },
-      switchAccount: (providerId, accountId) => accountService.switchToAccount(providerId, accountId),
+      switchAccount: (providerId, accountId) =>
+        accountService.switchToAccount(providerId, accountId),
       onTransition: (event) => {
         accountService.refresh();
         vscode.window.showInformationMessage(`Sidekick auto-switched ${event.provider} account.`);
@@ -1108,7 +1214,9 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.switchAccount', async () => {
       const managedProvider = getManagedAccountProvider();
       if (!managedProvider) {
-        vscode.window.showInformationMessage('Account switching is available when the inference provider is Claude Max or Codex.');
+        vscode.window.showInformationMessage(
+          'Account switching is available when the inference provider is Claude Max or Codex.',
+        );
         return;
       }
 
@@ -1117,7 +1225,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (accounts.length === 0) {
           const action = await vscode.window.showInformationMessage(
             'No accounts saved. Save the current account first?',
-            'Save Current Account'
+            'Save Current Account',
           );
           if (action) {
             vscode.commands.executeCommand('sidekick.addAccount');
@@ -1140,8 +1248,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const result = accountService.switchToAccount('codex', picked.accountId);
         if (result.success) {
-          const entry = accounts.find(account => account.id === picked.accountId);
-          vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'Codex account'}`);
+          const entry = accounts.find((account) => account.id === picked.accountId);
+          vscode.window.showInformationMessage(
+            `Switched to ${entry?.label ?? entry?.email ?? 'Codex account'}`,
+          );
           if (result.warning) vscode.window.showWarningMessage(result.warning);
         } else {
           vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
@@ -1151,7 +1261,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (accounts.length === 0) {
           const action = await vscode.window.showInformationMessage(
             'No accounts saved. Save the current account first?',
-            'Save Current Account'
+            'Save Current Account',
           );
           if (action) {
             vscode.commands.executeCommand('sidekick.addAccount');
@@ -1174,8 +1284,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const result = accountService.switchToAccount('claude-code', picked.accountId);
         if (result.success) {
-          const entry = accounts.find(account => account.uuid === picked.accountId);
-          vscode.window.showInformationMessage(`Switched to ${entry?.label ?? entry?.email ?? 'Claude account'}`);
+          const entry = accounts.find((account) => account.uuid === picked.accountId);
+          vscode.window.showInformationMessage(
+            `Switched to ${entry?.label ?? entry?.email ?? 'Claude account'}`,
+          );
           if (result.warning) vscode.window.showWarningMessage(result.warning);
         } else {
           vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
@@ -1186,17 +1298,23 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.switchAnyAccount', async () => {
       const all = accountService.listAllAccounts();
       const items = [
-        ...all.claude.map(account => ({
+        ...all.claude.map((account) => ({
           label: `$(account) ${account.label ?? account.email}`,
           description: 'Claude',
-          detail: account.uuid === all.activeByProvider['claude-code'] ? '$(check) Active' : account.email,
+          detail:
+            account.uuid === all.activeByProvider['claude-code']
+              ? '$(check) Active'
+              : account.email,
           providerId: 'claude-code' as const,
           accountId: account.uuid,
         })),
-        ...all.codex.map(account => ({
+        ...all.codex.map((account) => ({
           label: `$(account) ${account.label ?? account.id}`,
           description: 'Codex',
-          detail: account.id === all.activeByProvider.codex ? '$(check) Active' : (account.email ?? account.metadata?.authMode),
+          detail:
+            account.id === all.activeByProvider.codex
+              ? '$(check) Active'
+              : (account.email ?? account.metadata?.authMode),
           providerId: 'codex' as const,
           accountId: account.id,
         })),
@@ -1216,22 +1334,27 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
         return;
       }
-      vscode.window.showInformationMessage(`Switched to ${picked.label.replace('$(account) ', '')}`);
+      vscode.window.showInformationMessage(
+        `Switched to ${picked.label.replace('$(account) ', '')}`,
+      );
       if (result.warning) vscode.window.showWarningMessage(result.warning);
     }),
 
     vscode.commands.registerCommand('sidekick.signInAccount', async () => {
-      const providerPick = await vscode.window.showQuickPick([
-        { label: 'Claude', providerId: 'claude-code' as const },
-        { label: 'Codex', providerId: 'codex' as const },
-      ], { placeHolder: 'Select provider to sign in' });
+      const providerPick = await vscode.window.showQuickPick(
+        [
+          { label: 'Claude', providerId: 'claude-code' as const },
+          { label: 'Codex', providerId: 'codex' as const },
+        ],
+        { placeHolder: 'Select provider to sign in' },
+      );
       if (!providerPick) return;
 
       const label = await vscode.window.showInputBox({
         prompt: `Label for this ${providerPick.label} account`,
         placeHolder: 'Work, Personal, Client',
         ignoreFocusOut: true,
-        validateInput: value => value.trim() ? null : 'A label is required.',
+        validateInput: (value) => (value.trim() ? null : 'A label is required.'),
       });
       if (label === undefined) return;
 
@@ -1241,7 +1364,9 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.addAccount', async () => {
       const managedProvider = getManagedAccountProvider();
       if (!managedProvider) {
-        vscode.window.showInformationMessage('Account saving is available when the inference provider is Claude Max or Codex.');
+        vscode.window.showInformationMessage(
+          'Account saving is available when the inference provider is Claude Max or Codex.',
+        );
         return;
       }
 
@@ -1250,7 +1375,8 @@ export async function activate(context: vscode.ExtensionContext) {
           prompt: 'Label for this Codex account (e.g., "Work", "Personal")',
           placeHolder: 'Required label',
           ignoreFocusOut: true,
-          validateInput: value => value.trim() ? null : 'A label is required for Codex accounts.',
+          validateInput: (value) =>
+            value.trim() ? null : 'A label is required for Codex accounts.',
         });
         if (label === undefined) return;
 
@@ -1272,7 +1398,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const finalized = accountService.finalizeCodexAccount(result.profileId!);
             if (!finalized.success) {
-              vscode.window.showErrorMessage(`Failed to finalize Codex account: ${finalized.error}`);
+              vscode.window.showErrorMessage(
+                `Failed to finalize Codex account: ${finalized.error}`,
+              );
               return;
             }
 
@@ -1288,7 +1416,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
           terminal.show();
           terminal.sendText('codex login', true);
-          vscode.window.showInformationMessage('Complete the Codex login in the terminal. Sidekick will save the profile when the terminal closes.');
+          vscode.window.showInformationMessage(
+            'Complete the Codex login in the terminal. Sidekick will save the profile when the terminal closes.',
+          );
           return;
         }
 
@@ -1313,21 +1443,24 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.removeAccount', async () => {
       const managedProvider = getManagedAccountProvider();
       if (!managedProvider) {
-        vscode.window.showInformationMessage('Account removal is available when the inference provider is Claude Max or Codex.');
+        vscode.window.showInformationMessage(
+          'Account removal is available when the inference provider is Claude Max or Codex.',
+        );
         return;
       }
 
-      const items = managedProvider === 'codex'
-        ? accountService.listAccounts('codex').map((account) => ({
-            label: account.label ?? account.id,
-            description: account.email ?? undefined,
-            accountId: account.id,
-          }))
-        : accountService.listAccounts('claude-code').map((account) => ({
-            label: account.label ?? account.email,
-            description: account.label ? account.email : undefined,
-            accountId: account.uuid,
-          }));
+      const items =
+        managedProvider === 'codex'
+          ? accountService.listAccounts('codex').map((account) => ({
+              label: account.label ?? account.id,
+              description: account.email ?? undefined,
+              accountId: account.id,
+            }))
+          : accountService.listAccounts('claude-code').map((account) => ({
+              label: account.label ?? account.email,
+              description: account.label ? account.email : undefined,
+              accountId: account.uuid,
+            }));
 
       if (items.length === 0) {
         vscode.window.showInformationMessage('No accounts saved.');
@@ -1342,7 +1475,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const confirm = await vscode.window.showWarningMessage(
         `Remove account "${picked.label}"? This deletes backed-up credentials.`,
         { modal: true },
-        'Remove'
+        'Remove',
       );
       if (confirm !== 'Remove') return;
 
@@ -1359,8 +1492,8 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register inline completion provider using CompletionService
   const inlineProvider = new InlineCompletionProvider(completionService);
   const inlineDisposable = vscode.languages.registerInlineCompletionItemProvider(
-    { pattern: "**" }, // All files
-    inlineProvider
+    { pattern: '**' }, // All files
+    inlineProvider,
   );
   context.subscriptions.push(inlineDisposable);
 
@@ -1391,13 +1524,13 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.languages.registerCodeActionsProvider(
       ['typescript', 'javascript', 'typescriptreact', 'javascriptreact', 'python'],
       errorProvider,
-      { providedCodeActionKinds: ErrorExplanationProvider.providedCodeActionKinds }
-    )
+      { providedCodeActionKinds: ErrorExplanationProvider.providedCodeActionKinds },
+    ),
   );
 
   // Register commands
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.toggle", async () => {
+    vscode.commands.registerCommand('sidekick.toggle', async () => {
       enabled = !enabled;
       await vscode.workspace.getConfiguration('sidekick').update('enabled', enabled, true);
       if (enabled) {
@@ -1405,17 +1538,15 @@ export async function activate(context: vscode.ExtensionContext) {
       } else {
         statusBarManager?.setDisconnected();
       }
-      vscode.window.showInformationMessage(
-        `Sidekick: ${enabled ? "Enabled" : "Disabled"}`
-      );
-    })
+      vscode.window.showInformationMessage(`Sidekick: ${enabled ? 'Enabled' : 'Disabled'}`);
+    }),
   );
 
   // Register show logs command
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.showLogs", () => {
+    vscode.commands.registerCommand('sidekick.showLogs', () => {
       showLog();
-    })
+    }),
   );
 
   // Register open dashboard command
@@ -1423,7 +1554,7 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.openDashboard', () => {
       // Focus the dashboard view in the sidebar
       vscode.commands.executeCommand('sidekick.dashboard.focus');
-    })
+    }),
   );
 
   // Register open CLI dashboard command
@@ -1432,7 +1563,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       const providerId = sessionMonitor?.getProvider().id;
       openCliDashboard({ workspacePath, providerId });
-    })
+    }),
   );
 
   // Register native extracted session assets command
@@ -1441,7 +1572,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       const providerId = sessionMonitor?.getProvider().id;
       await showExtractedSessionAssets({ workspacePath, providerId });
-    })
+    }),
   );
 
   // Register start monitoring command
@@ -1468,10 +1599,12 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage('Session monitoring started');
         log(`Session monitoring started: ${sessionMonitor.getSessionPath()}`);
       } else {
-        vscode.window.showInformationMessage('No active session found. Waiting for Claude Code to start...');
+        vscode.window.showInformationMessage(
+          'No active session found. Waiting for Claude Code to start...',
+        );
         log('Session monitor in discovery mode, waiting for session');
       }
-    })
+    }),
   );
 
   // Register stop monitoring command
@@ -1499,7 +1632,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       vscode.window.showInformationMessage('Session monitoring stopped');
       log('Session monitoring stopped by user');
-    })
+    }),
   );
 
   // Register refresh session command
@@ -1517,7 +1650,7 @@ export async function activate(context: vscode.ExtensionContext) {
       } else {
         vscode.window.showInformationMessage('No active session found. Still searching...');
       }
-    })
+    }),
   );
 
   // Register session provider switch command
@@ -1553,7 +1686,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       peakHoursService?.reconcile();
       dashboardProvider?.refreshSessionView();
-    })
+    }),
   );
 
   // Register session diagnostics command (helps debug path resolution issues)
@@ -1579,10 +1712,10 @@ export async function activate(context: vscode.ExtensionContext) {
       log(`Expected dir exists: ${diag.expectedDirExists}`);
       log(`Discovered session dir: ${diag.discoveredSessionDir || '(not found)'}`);
       log(`Existing project dirs (${diag.existingProjectDirs.length}):`);
-      diag.existingProjectDirs.forEach(dir => log(`  - ${dir}`));
+      diag.existingProjectDirs.forEach((dir) => log(`  - ${dir}`));
       if (diag.similarDirs.length > 0) {
         log(`Similar dirs (possible matches):`);
-        diag.similarDirs.forEach(dir => log(`  - ${dir}`));
+        diag.similarDirs.forEach((dir) => log(`  - ${dir}`));
       }
       log('=== End Diagnostics ===');
 
@@ -1591,20 +1724,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
       // Show summary to user
       if (diag.discoveredSessionDir) {
-        const message = diag.discoveredSessionDir === diag.expectedSessionDir
-          ? `Session directory found: ${diag.discoveredSessionDir}`
-          : `Session directory discovered (encoding differs): ${diag.discoveredSessionDir}`;
+        const message =
+          diag.discoveredSessionDir === diag.expectedSessionDir
+            ? `Session directory found: ${diag.discoveredSessionDir}`
+            : `Session directory discovered (encoding differs): ${diag.discoveredSessionDir}`;
         vscode.window.showInformationMessage(message);
       } else if (diag.similarDirs.length > 0) {
         vscode.window.showWarningMessage(
-          `Expected dir not found. Similar dirs exist: ${diag.similarDirs.join(', ')}. Check Sidekick logs for details.`
+          `Expected dir not found. Similar dirs exist: ${diag.similarDirs.join(', ')}. Check Sidekick logs for details.`,
         );
       } else {
         vscode.window.showWarningMessage(
-          `No session directory found. Expected: ${diag.encodedPath}. Check Sidekick logs for details.`
+          `No session directory found. Expected: ${diag.encodedPath}. Check Sidekick logs for details.`,
         );
       }
-    })
+    }),
   );
 
   // Register select session folder command
@@ -1616,7 +1750,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       await sessionFolderPicker.selectAndMonitorSession();
-    })
+    }),
   );
 
   // Register clear custom session path command
@@ -1642,13 +1776,17 @@ export async function activate(context: vscode.ExtensionContext) {
           vscode.window.showInformationMessage('Switched to auto-detect mode');
           log(`Reset to auto-detect, now monitoring: ${sessionMonitor.getSessionPath()}`);
         } else {
-          vscode.window.showInformationMessage('Switched to auto-detect mode. Waiting for session...');
+          vscode.window.showInformationMessage(
+            'Switched to auto-detect mode. Waiting for session...',
+          );
           log('Reset to auto-detect, no session found yet');
         }
       } else {
-        vscode.window.showInformationMessage('Custom path cleared. Open a workspace to auto-detect sessions.');
+        vscode.window.showInformationMessage(
+          'Custom path cleared. Open a workspace to auto-detect sessions.',
+        );
       }
-    })
+    }),
   );
 
   // Register dump session report command
@@ -1667,10 +1805,18 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const formatPick = await vscode.window.showQuickPick(
         [
-          { label: 'Markdown', description: 'Structured report with tables', value: 'markdown' as const },
+          {
+            label: 'Markdown',
+            description: 'Structured report with tables',
+            value: 'markdown' as const,
+          },
           { label: 'Text', description: 'Plain text timeline', value: 'text' as const },
           { label: 'JSON', description: 'Raw metrics object', value: 'json' as const },
-          { label: 'HTML Report', description: 'Full transcript report in browser', value: 'html' as const },
+          {
+            label: 'HTML Report',
+            description: 'Full transcript report in browser',
+            value: 'html' as const,
+          },
         ],
         { placeHolder: 'Select output format' },
       );
@@ -1683,7 +1829,8 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const { formatSessionText, formatSessionMarkdown, formatSessionJson } = await import('sidekick-shared');
+      const { formatSessionText, formatSessionMarkdown, formatSessionJson } =
+        await import('sidekick-shared');
       const metrics = sessionMonitor.getAggregatedMetrics();
       const sessionFileName = path.basename(sessionPath);
 
@@ -1707,7 +1854,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const doc = await vscode.workspace.openTextDocument({ content, language });
       await vscode.window.showTextDocument(doc);
-    })
+    }),
   );
 
   // Register HTML report generation command
@@ -1724,13 +1871,15 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const { generateHtmlReport, parseTranscript, parseTranscriptFromEvents } = await import('sidekick-shared');
+      const { generateHtmlReport, parseTranscript, parseTranscriptFromEvents } =
+        await import('sidekick-shared');
 
       const metrics = sessionMonitor.getAggregatedMetrics();
       const provider = sessionMonitor.getProvider();
-      const transcript = provider.id === 'codex'
-        ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
-        : parseTranscript(sessionPath);
+      const transcript =
+        provider.id === 'codex'
+          ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
+          : parseTranscript(sessionPath);
       const sessionFileName = path.basename(sessionPath);
       const html = generateHtmlReport(metrics, transcript, { sessionFileName });
 
@@ -1750,62 +1899,64 @@ export async function activate(context: vscode.ExtensionContext) {
         .replace(/<style>/g, `<style nonce="${nonce}">`)
         .replace(/<script>/g, `<script nonce="${nonce}">`);
       panel.webview.html = securedHtml;
-    })
+    }),
   );
 
   // Register status bar menu command
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.showMenu", async () => {
-      const providerName = authService ? PROVIDER_DISPLAY_NAMES[authService.getProviderId()] : 'Claude';
+    vscode.commands.registerCommand('sidekick.showMenu', async () => {
+      const providerName = authService
+        ? PROVIDER_DISPLAY_NAMES[authService.getProviderId()]
+        : 'Claude';
       const items: Array<{ label: string; description: string; action: string }> = [
         {
-          label: enabled ? "$(circle-slash) Disable" : "$(sparkle) Enable",
-          description: enabled ? "Turn off inline completions" : "Turn on inline completions",
-          action: "toggle",
+          label: enabled ? '$(circle-slash) Disable' : '$(sparkle) Enable',
+          description: enabled ? 'Turn off inline completions' : 'Turn on inline completions',
+          action: 'toggle',
         },
         {
-          label: "$(cloud) Switch Inference Provider",
+          label: '$(cloud) Switch Inference Provider',
           description: `Current: ${providerName}`,
-          action: "switchProvider",
+          action: 'switchProvider',
         },
         {
-          label: "$(gear) Configure Extension",
-          description: "Open Sidekick settings",
-          action: "configure",
+          label: '$(gear) Configure Extension',
+          description: 'Open Sidekick settings',
+          action: 'configure',
         },
         {
-          label: "$(output) View Logs",
-          description: "Open the Sidekick output channel",
-          action: "logs",
+          label: '$(output) View Logs',
+          description: 'Open the Sidekick output channel',
+          action: 'logs',
         },
         {
-          label: "$(plug) Test Connection",
-          description: "Verify provider connection",
-          action: "test",
+          label: '$(plug) Test Connection',
+          description: 'Verify provider connection',
+          action: 'test',
         },
         {
-          label: "$(terminal) Open CLI Dashboard",
-          description: "Launch Sidekick TUI in terminal",
-          action: "cliDashboard",
+          label: '$(terminal) Open CLI Dashboard',
+          description: 'Launch Sidekick TUI in terminal',
+          action: 'cliDashboard',
         },
         {
-          label: "$(list-tree) Extract Session Assets",
-          description: "Find URLs, files, commands, and plans from recent sessions",
-          action: "extractAssets",
+          label: '$(list-tree) Extract Session Assets',
+          description: 'Find URLs, files, commands, and plans from recent sessions',
+          action: 'extractAssets',
         },
         {
-          label: "$(output) Dump Session Report",
-          description: "Export session as text, markdown, or JSON",
-          action: "dumpSession",
+          label: '$(output) Dump Session Report',
+          description: 'Export session as text, markdown, or JSON',
+          action: 'dumpSession',
         },
       ];
 
       // Only show Set API Key when using claude-api provider
       if (authService?.getProviderId() === 'claude-api') {
         items.push({
-          label: "$(key) Set API Key",
-          description: "Configure Anthropic API key",
-          action: "apiKey",
+          label: '$(key) Set API Key',
+          description: 'Configure Anthropic API key',
+          action: 'apiKey',
         });
       }
 
@@ -1813,158 +1964,182 @@ export async function activate(context: vscode.ExtensionContext) {
       if (managedProvider) {
         const accounts = accountService.listAccounts(managedProvider);
         const active = accountService.getActiveAccount(managedProvider);
-        const displayName = active && isSavedAccountProfile(active)
-          ? active.label ?? active.email ?? active.id ?? 'unknown'
-          : active?.label ?? active?.email ?? 'unknown';
+        const displayName =
+          active && isSavedAccountProfile(active)
+            ? (active.label ?? active.email ?? active.id ?? 'unknown')
+            : (active?.label ?? active?.email ?? 'unknown');
 
         if (accounts.length >= 2) {
           items.splice(2, 0, {
-            label: "$(account) Switch Account",
+            label: '$(account) Switch Account',
             description: `Active: ${displayName}`,
-            action: "switchAccount",
+            action: 'switchAccount',
           });
         } else {
           items.splice(2, 0, {
-            label: "$(account) Save Current Account",
-            description: managedProvider === 'codex'
-              ? "Save or create a managed Codex profile for account switching"
-              : "Save Claude Code credentials for multi-account switching",
-            action: "saveAccount",
+            label: '$(account) Save Current Account',
+            description:
+              managedProvider === 'codex'
+                ? 'Save or create a managed Codex profile for account switching'
+                : 'Save Claude Code credentials for multi-account switching',
+            action: 'saveAccount',
           });
         }
       }
 
       const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: "Sidekick Options",
+        placeHolder: 'Sidekick Options',
       });
 
       if (selected) {
         switch (selected.action) {
-          case "toggle":
-            vscode.commands.executeCommand("sidekick.toggle");
+          case 'toggle':
+            vscode.commands.executeCommand('sidekick.toggle');
             break;
-          case "switchProvider":
-            vscode.commands.executeCommand("sidekick.setInferenceProvider");
+          case 'switchProvider':
+            vscode.commands.executeCommand('sidekick.setInferenceProvider');
             break;
-          case "configure":
-            vscode.commands.executeCommand("workbench.action.openSettings", "sidekick");
+          case 'configure':
+            vscode.commands.executeCommand('workbench.action.openSettings', 'sidekick');
             break;
-          case "logs":
+          case 'logs':
             showLog();
             break;
-          case "test":
-            vscode.commands.executeCommand("sidekick.testConnection");
+          case 'test':
+            vscode.commands.executeCommand('sidekick.testConnection');
             break;
-          case "apiKey":
-            vscode.commands.executeCommand("sidekick.setApiKey");
+          case 'apiKey':
+            vscode.commands.executeCommand('sidekick.setApiKey');
             break;
-          case "switchAccount":
-            vscode.commands.executeCommand("sidekick.switchAccount");
+          case 'switchAccount':
+            vscode.commands.executeCommand('sidekick.switchAccount');
             break;
-          case "saveAccount":
-            vscode.commands.executeCommand("sidekick.addAccount");
+          case 'saveAccount':
+            vscode.commands.executeCommand('sidekick.addAccount');
             break;
-          case "cliDashboard":
-            vscode.commands.executeCommand("sidekick.openCliDashboard");
+          case 'cliDashboard':
+            vscode.commands.executeCommand('sidekick.openCliDashboard');
             break;
-          case "extractAssets":
-            vscode.commands.executeCommand("sidekick.extractAssets");
+          case 'extractAssets':
+            vscode.commands.executeCommand('sidekick.extractAssets');
             break;
-          case "dumpSession":
-            vscode.commands.executeCommand("sidekick.dumpSession");
+          case 'dumpSession':
+            vscode.commands.executeCommand('sidekick.dumpSession');
             break;
         }
       }
-    })
+    }),
   );
 
   // Register switch inference provider command
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.setInferenceProvider", async () => {
+    vscode.commands.registerCommand('sidekick.setInferenceProvider', async () => {
       const current = authService?.getProviderId() ?? 'claude-max';
       const providers: Array<{ label: string; description: string; id: string }> = [
-        { label: "$(sparkle) Claude (Max Subscription)", description: "Uses Claude Code CLI — no extra API cost", id: "claude-max" },
-        { label: "$(key) Claude (API Key)", description: "Direct Anthropic API — per-token billing", id: "claude-api" },
-        { label: "$(cloud) OpenCode", description: "Uses your configured OpenCode model/provider", id: "opencode" },
-        { label: "$(terminal) Codex CLI", description: "Uses OpenAI API", id: "codex" },
-        { label: "$(search) Auto-Detect", description: "Detect most recently used agent", id: "auto" },
+        {
+          label: '$(sparkle) Claude (Max Subscription)',
+          description: 'Uses Claude Code CLI — no extra API cost',
+          id: 'claude-max',
+        },
+        {
+          label: '$(key) Claude (API Key)',
+          description: 'Direct Anthropic API — per-token billing',
+          id: 'claude-api',
+        },
+        {
+          label: '$(cloud) OpenCode',
+          description: 'Uses your configured OpenCode model/provider',
+          id: 'opencode',
+        },
+        { label: '$(terminal) Codex CLI', description: 'Uses OpenAI API', id: 'codex' },
+        {
+          label: '$(search) Auto-Detect',
+          description: 'Detect most recently used agent',
+          id: 'auto',
+        },
       ];
 
       // Mark current provider
       for (const p of providers) {
-        if (p.id === current || (current === 'claude-max' && p.id === 'auto' && !vscode.workspace.getConfiguration('sidekick').get('inferenceProvider'))) {
-          p.description += " (current)";
+        if (
+          p.id === current ||
+          (current === 'claude-max' &&
+            p.id === 'auto' &&
+            !vscode.workspace.getConfiguration('sidekick').get('inferenceProvider'))
+        ) {
+          p.description += ' (current)';
         }
       }
 
       const selected = await vscode.window.showQuickPick(providers, {
-        placeHolder: "Select inference provider",
+        placeHolder: 'Select inference provider',
       });
 
       if (selected) {
-        await vscode.workspace.getConfiguration('sidekick').update('inferenceProvider', selected.id, vscode.ConfigurationTarget.Global);
+        await vscode.workspace
+          .getConfiguration('sidekick')
+          .update('inferenceProvider', selected.id, vscode.ConfigurationTarget.Global);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "sidekick.triggerCompletion",
-      async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-          // Clear highlight before triggering
-          statusBarManager?.clearHighlight();
-          // Trigger inline completion manually
-          vscode.commands.executeCommand("editor.action.inlineSuggest.trigger");
-        }
+    vscode.commands.registerCommand('sidekick.triggerCompletion', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor) {
+        // Clear highlight before triggering
+        statusBarManager?.clearHighlight();
+        // Trigger inline completion manually
+        vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
       }
-    )
+    }),
   );
 
   // Register set API key command
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.setApiKey", async () => {
+    vscode.commands.registerCommand('sidekick.setApiKey', async () => {
       const key = await vscode.window.showInputBox({
-        prompt: "Enter your Anthropic API Key",
-        placeHolder: "sk-ant-...",
+        prompt: 'Enter your Anthropic API Key',
+        placeHolder: 'sk-ant-...',
         password: true,
         ignoreFocusOut: true,
       });
 
       if (key) {
         await authService?.getSecretsManager().setApiKey(key);
-        vscode.window.showInformationMessage("API key saved securely.");
+        vscode.window.showInformationMessage('API key saved securely.');
       }
-    })
+    }),
   );
 
   // Register test connection command
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.testConnection", async () => {
+    vscode.commands.registerCommand('sidekick.testConnection', async () => {
       if (!authService) {
-        vscode.window.showErrorMessage("Auth service not initialized");
+        vscode.window.showErrorMessage('Auth service not initialized');
         return;
       }
 
       statusBarManager?.setLoading('Testing connection');
 
-      const result = await Promise.resolve(vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "Testing connection...",
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          const testResult = authService!.testConnection();
-          return new Promise<Awaited<typeof testResult>>((resolve, reject) => {
-            token.onCancellationRequested(() => {
-              reject(new Error('Cancelled'));
+      const result = await Promise.resolve(
+        vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Testing connection...',
+            cancellable: true,
+          },
+          async (_progress, token) => {
+            const testResult = authService!.testConnection();
+            return new Promise<Awaited<typeof testResult>>((resolve, reject) => {
+              token.onCancellationRequested(() => {
+                reject(new Error('Cancelled'));
+              });
+              testResult.then(resolve, reject);
             });
-            testResult.then(resolve, reject);
-          });
-        }
-      )).catch((error: Error) => {
+          },
+        ),
+      ).catch((error: Error) => {
         if (error.message === 'Cancelled') {
           return null;
         }
@@ -1983,7 +2158,7 @@ export async function activate(context: vscode.ExtensionContext) {
         statusBarManager?.setError(result.message);
         vscode.window.showErrorMessage(result.message);
       }
-    })
+    }),
   );
 
   /**
@@ -2000,7 +2175,7 @@ export async function activate(context: vscode.ExtensionContext) {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.SourceControl,
-        title: isRegenerate ? "Regenerating commit message" : "Generating commit message",
+        title: isRegenerate ? 'Regenerating commit message' : 'Generating commit message',
         cancellable: true,
       },
       async (progress, token) => {
@@ -2009,9 +2184,12 @@ export async function activate(context: vscode.ExtensionContext) {
         token.onCancellationRequested(() => abortController.abort());
 
         try {
-          progress.report({ message: "Reading changes..." });
+          progress.report({ message: 'Reading changes...' });
 
-          const result = await commitMessageService!.generateCommitMessage(guidance, abortController.signal);
+          const result = await commitMessageService!.generateCommitMessage(
+            guidance,
+            abortController.signal,
+          );
 
           if (result.error) {
             statusBarManager?.setError(result.error);
@@ -2022,57 +2200,68 @@ export async function activate(context: vscode.ExtensionContext) {
           if (result.message) {
             // Set message in SCM input box (skip confirmation if regenerating)
             // Pass repoPath to ensure message goes to the correct repository
-            const success = await gitService!.setCommitMessage(result.message, !isRegenerate, result.repoPath);
+            const success = await gitService!.setCommitMessage(
+              result.message,
+              !isRegenerate,
+              result.repoPath,
+            );
 
             if (success) {
               statusBarManager?.setConnected();
 
               // Show success with regenerate option (don't await - let progress complete)
-              vscode.window.showInformationMessage(
-                `Commit message generated`,
-                "Regenerate",
-                "Regenerate with guidance"
-              ).then(async (action) => {
-                if (action === "Regenerate") {
-                  generateCommitMessageWithProgress("");
-                } else if (action === "Regenerate with guidance") {
-                  const userGuidance = await vscode.window.showInputBox({
-                    prompt: "How should the commit message be different?",
-                    placeHolder: "e.g., focus on the bug fix, make it shorter, mention the refactoring",
-                    ignoreFocusOut: true,
-                  });
-                  if (userGuidance) {
-                    generateCommitMessageWithProgress(userGuidance);
+              vscode.window
+                .showInformationMessage(
+                  `Commit message generated`,
+                  'Regenerate',
+                  'Regenerate with guidance',
+                )
+                .then(async (action) => {
+                  if (action === 'Regenerate') {
+                    generateCommitMessageWithProgress('');
+                  } else if (action === 'Regenerate with guidance') {
+                    const userGuidance = await vscode.window.showInputBox({
+                      prompt: 'How should the commit message be different?',
+                      placeHolder:
+                        'e.g., focus on the bug fix, make it shorter, mention the refactoring',
+                      ignoreFocusOut: true,
+                    });
+                    if (userGuidance) {
+                      generateCommitMessageWithProgress(userGuidance);
+                    }
                   }
-                }
-              });
+                });
             } else {
               // User cancelled overwrite or no repo
               statusBarManager?.setConnected();
             }
           } else {
             statusBarManager?.setConnected();
-            vscode.window.showWarningMessage("Could not generate a valid commit message. Try with different changes.");
+            vscode.window.showWarningMessage(
+              'Could not generate a valid commit message. Try with different changes.',
+            );
           }
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Unknown error";
+          const message = error instanceof Error ? error.message : 'Unknown error';
           statusBarManager?.setError(message);
           vscode.window.showErrorMessage(`Commit message generation failed: ${message}`);
         }
-      }
+      },
     );
   }
 
   // Register generate commit message command
   context.subscriptions.push(
-    vscode.commands.registerCommand("sidekick.generateCommitMessage", async () => {
+    vscode.commands.registerCommand('sidekick.generateCommitMessage', async () => {
       if (!commitMessageService || !gitService) {
-        vscode.window.showErrorMessage("Git integration not available. Cannot generate commit message.");
+        vscode.window.showErrorMessage(
+          'Git integration not available. Cannot generate commit message.',
+        );
         return;
       }
 
       await generateCommitMessageWithProgress();
-    })
+    }),
   );
 
   // Register review changes command
@@ -2087,7 +2276,7 @@ export async function activate(context: vscode.ExtensionContext) {
         {
           location: vscode.ProgressLocation.Notification,
           title: 'Reviewing changes with AI...',
-          cancellable: true
+          cancellable: true,
         },
         async (progress, token) => {
           // Handle cancellation
@@ -2115,14 +2304,16 @@ export async function activate(context: vscode.ExtensionContext) {
             if (result.issueCount === 0) {
               vscode.window.showInformationMessage('AI Review complete: No issues found!');
             } else {
-              vscode.window.showInformationMessage(
-                `AI Review complete: ${result.issueCount} suggestion${result.issueCount === 1 ? '' : 's'}. Check Problems panel.`,
-                'Clear Review'
-              ).then(action => {
-                if (action === 'Clear Review') {
-                  vscode.commands.executeCommand('sidekick.clearReview');
-                }
-              });
+              vscode.window
+                .showInformationMessage(
+                  `AI Review complete: ${result.issueCount} suggestion${result.issueCount === 1 ? '' : 's'}. Check Problems panel.`,
+                  'Clear Review',
+                )
+                .then((action) => {
+                  if (action === 'Clear Review') {
+                    vscode.commands.executeCommand('sidekick.clearReview');
+                  }
+                });
             }
           } catch (error) {
             if (!token.isCancellationRequested) {
@@ -2130,9 +2321,9 @@ export async function activate(context: vscode.ExtensionContext) {
               vscode.window.showErrorMessage(`Review failed: ${message}`);
             }
           }
-        }
+        },
       );
-    })
+    }),
   );
 
   // Register clear review command
@@ -2142,14 +2333,16 @@ export async function activate(context: vscode.ExtensionContext) {
         preCommitReviewService.clearReview();
         vscode.window.showInformationMessage('AI Review diagnostics cleared');
       }
-    })
+    }),
   );
 
   // Register generate PR description command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.generatePrDescription', async () => {
       if (!prDescriptionService) {
-        vscode.window.showErrorMessage('Git integration not available. Cannot generate PR description.');
+        vscode.window.showErrorMessage(
+          'Git integration not available. Cannot generate PR description.',
+        );
         return;
       }
 
@@ -2157,7 +2350,7 @@ export async function activate(context: vscode.ExtensionContext) {
         {
           location: vscode.ProgressLocation.Notification,
           title: 'Generating PR description...',
-          cancellable: true
+          cancellable: true,
         },
         async (progress, token) => {
           try {
@@ -2177,14 +2370,16 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
             if (result.description) {
-              vscode.window.showInformationMessage(
-                `PR description copied to clipboard! (${result.commitCount} commit${result.commitCount === 1 ? '' : 's'} analyzed)`,
-                'Open GitHub'
-              ).then(action => {
-                if (action === 'Open GitHub') {
-                  vscode.env.openExternal(vscode.Uri.parse('https://github.com'));
-                }
-              });
+              vscode.window
+                .showInformationMessage(
+                  `PR description copied to clipboard! (${result.commitCount} commit${result.commitCount === 1 ? '' : 's'} analyzed)`,
+                  'Open GitHub',
+                )
+                .then((action) => {
+                  if (action === 'Open GitHub') {
+                    vscode.env.openExternal(vscode.Uri.parse('https://github.com'));
+                  }
+                });
             }
           } catch (error) {
             if (!token.isCancellationRequested) {
@@ -2192,148 +2387,147 @@ export async function activate(context: vscode.ExtensionContext) {
               vscode.window.showErrorMessage(`PR description failed: ${message}`);
             }
           }
-        }
+        },
       );
-    })
+    }),
   );
 
   // Register transform selected code command
   context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "sidekick.transform",
-      async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.selection.isEmpty) {
-          vscode.window.showWarningMessage("Select code to transform first");
-          return;
-        }
+    vscode.commands.registerCommand('sidekick.transform', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.selection.isEmpty) {
+        vscode.window.showWarningMessage('Select code to transform first');
+        return;
+      }
 
-        const instruction = await vscode.window.showInputBox({
-          prompt: "How should this code be transformed?",
-          placeHolder: "e.g., Add error handling, Convert to async/await, Add types",
-          ignoreFocusOut: true,
-        });
+      const instruction = await vscode.window.showInputBox({
+        prompt: 'How should this code be transformed?',
+        placeHolder: 'e.g., Add error handling, Convert to async/await, Add types',
+        ignoreFocusOut: true,
+      });
 
-        if (!instruction) {
-          return; // User cancelled
-        }
+      if (!instruction) {
+        return; // User cancelled
+      }
 
-        const language = editor.document.languageId;
-        const config = vscode.workspace.getConfiguration("sidekick");
-        const model = resolveModel(config.get<string>("transformModel") ?? "auto", authService!.getProviderId(), "transformModel");
-        const contextLines = config.get<number>("transformContextLines") ?? 50;
+      const language = editor.document.languageId;
+      const config = vscode.workspace.getConfiguration('sidekick');
+      const model = resolveModel(
+        config.get<string>('transformModel') ?? 'auto',
+        authService!.getProviderId(),
+        'transformModel',
+      );
+      const contextLines = config.get<number>('transformContextLines') ?? 50;
 
-        // Get context before selection
-        const selectionStart = editor.selection.start;
-        const prefixStartLine = Math.max(0, selectionStart.line - contextLines);
-        const prefixRange = new vscode.Range(
-          new vscode.Position(prefixStartLine, 0),
-          selectionStart
-        );
-        const prefix = editor.document.getText(prefixRange);
+      // Get context before selection
+      const selectionStart = editor.selection.start;
+      const prefixStartLine = Math.max(0, selectionStart.line - contextLines);
+      const prefixRange = new vscode.Range(new vscode.Position(prefixStartLine, 0), selectionStart);
+      const prefix = editor.document.getText(prefixRange);
 
-        // Get context after selection
-        const selectionEnd = editor.selection.end;
-        const suffixEndLine = Math.min(
-          editor.document.lineCount - 1,
-          selectionEnd.line + contextLines
-        );
-        const suffixRange = new vscode.Range(
-          selectionEnd,
-          new vscode.Position(suffixEndLine, editor.document.lineAt(suffixEndLine).text.length)
-        );
-        const suffix = editor.document.getText(suffixRange);
+      // Get context after selection
+      const selectionEnd = editor.selection.end;
+      const suffixEndLine = Math.min(
+        editor.document.lineCount - 1,
+        selectionEnd.line + contextLines,
+      );
+      const suffixRange = new vscode.Range(
+        selectionEnd,
+        new vscode.Position(suffixEndLine, editor.document.lineAt(suffixEndLine).text.length),
+      );
+      const suffix = editor.document.getText(suffixRange);
 
-        // Capture selection state before async operation
-        const originalSelection = editor.selection;
-        const selectedText = editor.document.getText(originalSelection);
+      // Capture selection state before async operation
+      const originalSelection = editor.selection;
+      const selectedText = editor.document.getText(originalSelection);
 
-        statusBarManager?.setLoading("Transforming");
+      statusBarManager?.setLoading('Transforming');
 
-        try {
-          log(`Transform starting: model=${model}, language=${language}`);
+      try {
+        log(`Transform starting: model=${model}, language=${language}`);
 
-          // Build prompt using prompt templates
-          const prompt =
-            getTransformSystemPrompt() +
-            "\n\n" +
-            getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
+        // Build prompt using prompt templates
+        const prompt =
+          getTransformSystemPrompt() +
+          '\n\n' +
+          getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
 
-          log(`Calling authService.complete...`);
+        log(`Calling authService.complete...`);
 
-          // Calculate context size for timeout scaling
-          const contextSize = new TextEncoder().encode(prompt).length;
-          const timeoutManager = getTimeoutManager();
-          const timeoutConfig = timeoutManager.getTimeoutConfig('codeTransform');
+        // Calculate context size for timeout scaling
+        const contextSize = new TextEncoder().encode(prompt).length;
+        const timeoutManager = getTimeoutManager();
+        const timeoutConfig = timeoutManager.getTimeoutConfig('codeTransform');
 
-          // Execute with timeout management and retry support
-          const operationLabel = `Transforming code via ${authService!.getProviderDisplayName()} · ${model}`;
-          const result = await timeoutManager.executeWithTimeout({
-            operation: operationLabel,
-            task: (signal: AbortSignal) => authService!.complete(prompt, {
+        // Execute with timeout management and retry support
+        const operationLabel = `Transforming code via ${authService!.getProviderDisplayName()} · ${model}`;
+        const result = await timeoutManager.executeWithTimeout({
+          operation: operationLabel,
+          task: (signal: AbortSignal) =>
+            authService!.complete(prompt, {
               model,
               maxTokens: 4096,
               signal,
             }),
-            config: timeoutConfig,
-            contextSize,
-            showProgress: true,
-            cancellable: true,
-            onTimeout: (timeoutMs: number, contextKb: number) =>
-              timeoutManager.promptRetry(operationLabel, timeoutMs, contextKb),
-          });
+          config: timeoutConfig,
+          contextSize,
+          showProgress: true,
+          cancellable: true,
+          onTimeout: (timeoutMs: number, contextKb: number) =>
+            timeoutManager.promptRetry(operationLabel, timeoutMs, contextKb),
+        });
 
-          if (!result.success) {
-            if (result.timedOut) {
-              statusBarManager?.setError("Timeout");
-              vscode.window.showErrorMessage(`Transform timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`);
-              return;
-            }
-            if (result.error?.name === 'AbortError') {
-              statusBarManager?.setConnected();
-              return; // User cancelled
-            }
-            throw result.error ?? new Error('Unknown error');
-          }
-
-          log(`Transform completed, result length: ${result.result!.length}`);
-
-          // Clean the response
-          const cleaned = cleanTransformResponse(result.result!);
-          if (!cleaned) {
-            vscode.window.showWarningMessage("No transformation returned");
-            statusBarManager?.setConnected();
-            return;
-          }
-
-          // Verify selection hasn't changed
-          if (!editor.selection.isEqual(originalSelection)) {
-            vscode.window.showWarningMessage(
-              "Selection changed during transform. Please try again."
+        if (!result.success) {
+          if (result.timedOut) {
+            statusBarManager?.setError('Timeout');
+            vscode.window.showErrorMessage(
+              `Transform timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
             );
-            statusBarManager?.setConnected();
             return;
           }
-
-          // Apply the edit
-          const success = await editor.edit((editBuilder) => {
-            editBuilder.replace(originalSelection, cleaned);
-          });
-
-          if (success) {
+          if (result.error?.name === 'AbortError') {
             statusBarManager?.setConnected();
-          } else {
-            statusBarManager?.setError("Edit failed");
-            vscode.window.showErrorMessage("Failed to apply transformation");
+            return; // User cancelled
           }
-        } catch (error) {
-          logError("Transform failed", error);
-          const message = error instanceof Error ? error.message : "Unknown error";
-          statusBarManager?.setError(message);
-          vscode.window.showErrorMessage(`Transform failed: ${message}`);
+          throw result.error ?? new Error('Unknown error');
         }
+
+        log(`Transform completed, result length: ${result.result!.length}`);
+
+        // Clean the response
+        const cleaned = cleanTransformResponse(result.result!);
+        if (!cleaned) {
+          vscode.window.showWarningMessage('No transformation returned');
+          statusBarManager?.setConnected();
+          return;
+        }
+
+        // Verify selection hasn't changed
+        if (!editor.selection.isEqual(originalSelection)) {
+          vscode.window.showWarningMessage('Selection changed during transform. Please try again.');
+          statusBarManager?.setConnected();
+          return;
+        }
+
+        // Apply the edit
+        const success = await editor.edit((editBuilder) => {
+          editBuilder.replace(originalSelection, cleaned);
+        });
+
+        if (success) {
+          statusBarManager?.setConnected();
+        } else {
+          statusBarManager?.setError('Edit failed');
+          vscode.window.showErrorMessage('Failed to apply transformation');
+        }
+      } catch (error) {
+        logError('Transform failed', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        statusBarManager?.setError(message);
+        vscode.window.showErrorMessage(`Transform failed: ${message}`);
       }
-    )
+    }),
   );
 
   // Register generate documentation command
@@ -2367,7 +2561,10 @@ export async function activate(context: vscode.ExtensionContext) {
           token.onCancellationRequested(() => abortController.abort());
 
           try {
-            const result = await documentationService!.generateDocumentation(originalEditor, abortController.signal);
+            const result = await documentationService!.generateDocumentation(
+              originalEditor,
+              abortController.signal,
+            );
 
             if (result.error) {
               statusBarManager?.setError(result.error);
@@ -2378,14 +2575,16 @@ export async function activate(context: vscode.ExtensionContext) {
             if (result.documentation && result.insertLine !== undefined) {
               // Verify we're still in the same editor and position hasn't changed drastically
               if (vscode.window.activeTextEditor !== originalEditor) {
-                vscode.window.showWarningMessage('Editor changed during generation. Please try again.');
+                vscode.window.showWarningMessage(
+                  'Editor changed during generation. Please try again.',
+                );
                 statusBarManager?.setConnected();
                 return;
               }
 
               // Insert documentation above the function/class
               const insertPosition = new vscode.Position(result.insertLine, 0);
-              const success = await originalEditor.edit(editBuilder => {
+              const success = await originalEditor.edit((editBuilder) => {
                 editBuilder.insert(insertPosition, result.documentation!);
               });
 
@@ -2398,7 +2597,9 @@ export async function activate(context: vscode.ExtensionContext) {
               }
             } else {
               statusBarManager?.setConnected();
-              vscode.window.showWarningMessage('Could not generate documentation. Try selecting the code to document.');
+              vscode.window.showWarningMessage(
+                'Could not generate documentation. Try selecting the code to document.',
+              );
             }
           } catch (error) {
             logError('Documentation generation failed', error);
@@ -2406,13 +2607,15 @@ export async function activate(context: vscode.ExtensionContext) {
             statusBarManager?.setError(message);
             vscode.window.showErrorMessage(`Documentation generation failed: ${message}`);
           }
-        }
+        },
       );
-    })
+    }),
   );
 
   // Helper for explain code with specific complexity
-  const explainCodeWithComplexity = async (complexity: 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd') => {
+  const explainCodeWithComplexity = async (
+    complexity: 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd',
+  ) => {
     const editor = vscode.window.activeTextEditor;
 
     if (!editor || editor.selection.isEmpty) {
@@ -2436,12 +2639,8 @@ export async function activate(context: vscode.ExtensionContext) {
         cancellable: true,
       },
       async (_progress, _token) => {
-        explainProvider!.showExplanation(
-          selectedText,
-          complexity,
-          { fileName, languageId }
-        );
-      }
+        explainProvider!.showExplanation(selectedText, complexity, { fileName, languageId });
+      },
     );
   };
 
@@ -2450,13 +2649,25 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.explainCode', () => {
       const config = vscode.workspace.getConfiguration('sidekick');
       const complexity = config.get<string>('explanationComplexity') ?? 'imposter-syndrome';
-      return explainCodeWithComplexity(complexity as 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd');
+      return explainCodeWithComplexity(
+        complexity as 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd',
+      );
     }),
-    vscode.commands.registerCommand('sidekick.explainCode.eli5', () => explainCodeWithComplexity('eli5')),
-    vscode.commands.registerCommand('sidekick.explainCode.curiousAmateur', () => explainCodeWithComplexity('curious-amateur')),
-    vscode.commands.registerCommand('sidekick.explainCode.imposterSyndrome', () => explainCodeWithComplexity('imposter-syndrome')),
-    vscode.commands.registerCommand('sidekick.explainCode.senior', () => explainCodeWithComplexity('senior')),
-    vscode.commands.registerCommand('sidekick.explainCode.phd', () => explainCodeWithComplexity('phd'))
+    vscode.commands.registerCommand('sidekick.explainCode.eli5', () =>
+      explainCodeWithComplexity('eli5'),
+    ),
+    vscode.commands.registerCommand('sidekick.explainCode.curiousAmateur', () =>
+      explainCodeWithComplexity('curious-amateur'),
+    ),
+    vscode.commands.registerCommand('sidekick.explainCode.imposterSyndrome', () =>
+      explainCodeWithComplexity('imposter-syndrome'),
+    ),
+    vscode.commands.registerCommand('sidekick.explainCode.senior', () =>
+      explainCodeWithComplexity('senior'),
+    ),
+    vscode.commands.registerCommand('sidekick.explainCode.phd', () =>
+      explainCodeWithComplexity('phd'),
+    ),
   );
 
   // Register inline chat command
@@ -2468,11 +2679,15 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       await inlineChatProvider.showInlineChat();
-    })
+    }),
   );
 
   // Helper for explain error with specific complexity
-  const explainErrorWithComplexity = async (uri: vscode.Uri, diagnostic: vscode.Diagnostic, complexity?: 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd') => {
+  const explainErrorWithComplexity = async (
+    uri: vscode.Uri,
+    diagnostic: vscode.Diagnostic,
+    complexity?: 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd',
+  ) => {
     const document = await vscode.workspace.openTextDocument(uri);
     await vscode.window.withProgress(
       {
@@ -2483,52 +2698,84 @@ export async function activate(context: vscode.ExtensionContext) {
       async (_progress, token) => {
         const abortController = new AbortController();
         token.onCancellationRequested(() => abortController.abort());
-        await errorViewProvider.showErrorExplanation(document, diagnostic, 'explain', complexity, abortController.signal);
-      }
+        await errorViewProvider.showErrorExplanation(
+          document,
+          diagnostic,
+          'explain',
+          complexity,
+          abortController.signal,
+        );
+      },
     );
   };
 
   // Register explain error commands (base + complexity levels)
   context.subscriptions.push(
-    vscode.commands.registerCommand('sidekick.explainError', async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-      return explainErrorWithComplexity(uri, diagnostic);
-    }),
-    vscode.commands.registerCommand('sidekick.explainError.eli5', async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-      return explainErrorWithComplexity(uri, diagnostic, 'eli5');
-    }),
-    vscode.commands.registerCommand('sidekick.explainError.curiousAmateur', async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-      return explainErrorWithComplexity(uri, diagnostic, 'curious-amateur');
-    }),
-    vscode.commands.registerCommand('sidekick.explainError.imposterSyndrome', async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-      return explainErrorWithComplexity(uri, diagnostic, 'imposter-syndrome');
-    }),
-    vscode.commands.registerCommand('sidekick.explainError.senior', async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-      return explainErrorWithComplexity(uri, diagnostic, 'senior');
-    }),
-    vscode.commands.registerCommand('sidekick.explainError.phd', async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-      return explainErrorWithComplexity(uri, diagnostic, 'phd');
-    })
+    vscode.commands.registerCommand(
+      'sidekick.explainError',
+      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+        return explainErrorWithComplexity(uri, diagnostic);
+      },
+    ),
+    vscode.commands.registerCommand(
+      'sidekick.explainError.eli5',
+      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+        return explainErrorWithComplexity(uri, diagnostic, 'eli5');
+      },
+    ),
+    vscode.commands.registerCommand(
+      'sidekick.explainError.curiousAmateur',
+      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+        return explainErrorWithComplexity(uri, diagnostic, 'curious-amateur');
+      },
+    ),
+    vscode.commands.registerCommand(
+      'sidekick.explainError.imposterSyndrome',
+      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+        return explainErrorWithComplexity(uri, diagnostic, 'imposter-syndrome');
+      },
+    ),
+    vscode.commands.registerCommand(
+      'sidekick.explainError.senior',
+      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+        return explainErrorWithComplexity(uri, diagnostic, 'senior');
+      },
+    ),
+    vscode.commands.registerCommand(
+      'sidekick.explainError.phd',
+      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+        return explainErrorWithComplexity(uri, diagnostic, 'phd');
+      },
+    ),
   );
 
   // Register fix error command
   context.subscriptions.push(
-    vscode.commands.registerCommand('sidekick.fixError', async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-      const document = await vscode.workspace.openTextDocument(uri);
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Generating fix...',
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          const abortController = new AbortController();
-          token.onCancellationRequested(() => abortController.abort());
-          await errorViewProvider.showErrorExplanation(document, diagnostic, 'fix', undefined, abortController.signal);
-        }
-      );
-    })
+    vscode.commands.registerCommand(
+      'sidekick.fixError',
+      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+        const document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Generating fix...',
+            cancellable: true,
+          },
+          async (_progress, token) => {
+            const abortController = new AbortController();
+            token.onCancellationRequested(() => abortController.abort());
+            await errorViewProvider.showErrorExplanation(
+              document,
+              diagnostic,
+              'fix',
+              undefined,
+              abortController.signal,
+            );
+          },
+        );
+      },
+    ),
   );
-
 }
 
 /**

@@ -173,7 +173,7 @@ describe('CompletionCache', () => {
       // Adding a new entry should evict p1 (the current oldest)
       cache.set(makeContext({ prefix: 'pNew' }), 'vNew');
 
-      expect(cache.get(makeContext({ prefix: 'p0' }))).toBe('v0');   // promoted, still here
+      expect(cache.get(makeContext({ prefix: 'p0' }))).toBe('v0'); // promoted, still here
       expect(cache.get(makeContext({ prefix: 'p1' }))).toBeUndefined(); // evicted
       expect(cache.get(makeContext({ prefix: 'pNew' }))).toBe('vNew');
     });

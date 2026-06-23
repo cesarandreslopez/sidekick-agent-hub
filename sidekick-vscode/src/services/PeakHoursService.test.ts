@@ -12,7 +12,9 @@ const {
     enabled: true,
     notifyOnTransition: false,
   },
-  configurationListeners: [] as Array<(event: { affectsConfiguration: (section: string) => boolean }) => void>,
+  configurationListeners: [] as Array<
+    (event: { affectsConfiguration: (section: string) => boolean }) => void
+  >,
 }));
 
 vi.mock('vscode', () => ({
@@ -37,11 +39,14 @@ vi.mock('vscode', () => ({
     getConfiguration: (section: string) => ({
       get: (key: string, fallback: unknown) => {
         if (section === 'sidekick.peakHours' && key === 'enabled') return configState.enabled;
-        if (section === 'sidekick.peakHours' && key === 'notifyOnTransition') return configState.notifyOnTransition;
+        if (section === 'sidekick.peakHours' && key === 'notifyOnTransition')
+          return configState.notifyOnTransition;
         return fallback;
       },
     }),
-    onDidChangeConfiguration: (listener: (event: { affectsConfiguration: (section: string) => boolean }) => void) => {
+    onDidChangeConfiguration: (
+      listener: (event: { affectsConfiguration: (section: string) => boolean }) => void,
+    ) => {
       configurationListeners.push(listener);
       return {
         dispose: () => {

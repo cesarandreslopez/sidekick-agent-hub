@@ -85,11 +85,7 @@ describe('DecisionExtractor', () => {
             questions: [
               {
                 question: 'Which database should we use?',
-                options: [
-                  { label: 'PostgreSQL' },
-                  { label: 'SQLite' },
-                  { label: 'MongoDB' },
-                ],
+                options: [{ label: 'PostgreSQL' }, { label: 'SQLite' }, { label: 'MongoDB' }],
               },
             ],
           },
@@ -116,9 +112,7 @@ describe('DecisionExtractor', () => {
     });
 
     it('handles missing questions array', () => {
-      const toolCalls: ToolCall[] = [
-        makeToolCall({ name: 'AskUserQuestion', input: {} }),
-      ];
+      const toolCalls: ToolCall[] = [makeToolCall({ name: 'AskUserQuestion', input: {} })];
 
       const entries = fromUserQuestions(toolCalls, SESSION_ID);
       expect(entries).toEqual([]);
@@ -195,9 +189,7 @@ describe('DecisionExtractor', () => {
     });
 
     it('returns empty for no plan mode calls', () => {
-      const toolCalls: ToolCall[] = [
-        makeToolCall({ name: 'Read' }),
-      ];
+      const toolCalls: ToolCall[] = [makeToolCall({ name: 'Read' })];
 
       const entries = fromPlanMode(toolCalls, SESSION_ID);
       expect(entries).toEqual([]);
@@ -341,7 +333,7 @@ describe('DecisionExtractor', () => {
 
       const entries = extractDecisions(analysisData, toolCalls, assistantTexts, SESSION_ID);
 
-      const sources = entries.map(e => e.source);
+      const sources = entries.map((e) => e.source);
       expect(sources).toContain('recovery_pattern');
       expect(sources).toContain('user_question');
       expect(sources).toContain('plan_mode');

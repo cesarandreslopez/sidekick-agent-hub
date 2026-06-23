@@ -30,7 +30,7 @@ describe('PatternExtractor', () => {
     const patterns = extractor.getPatterns();
     expect(patterns).toHaveLength(2);
     // Both patterns should have count 2
-    const counts = patterns.map(p => p.count).sort();
+    const counts = patterns.map((p) => p.count).sort();
     expect(counts).toEqual([2, 2]);
   });
 

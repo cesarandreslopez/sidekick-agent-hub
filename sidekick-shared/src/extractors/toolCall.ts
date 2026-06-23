@@ -37,12 +37,7 @@ export function extractToolCalls(event: SessionEvent): ToolCall[] {
   const calls: ToolCall[] = [];
 
   for (const block of content) {
-    if (
-      block &&
-      typeof block === 'object' &&
-      'type' in block &&
-      block.type === 'tool_use'
-    ) {
+    if (block && typeof block === 'object' && 'type' in block && block.type === 'tool_use') {
       const toolBlock = block as {
         id?: string;
         name?: string;

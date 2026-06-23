@@ -60,7 +60,7 @@ export class PrDescriptionService implements vscode.Disposable {
    */
   constructor(
     private readonly gitService: GitService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
   ) {
     this.timeoutManager = getTimeoutManager();
   }
@@ -89,7 +89,7 @@ export class PrDescriptionService implements vscode.Disposable {
       if (commits.length === 0) {
         return {
           description: null,
-          error: `No commits found on current branch vs ${baseBranch}. Are you on a feature branch?`
+          error: `No commits found on current branch vs ${baseBranch}. Are you on a feature branch?`,
         };
       }
 
@@ -100,7 +100,7 @@ export class PrDescriptionService implements vscode.Disposable {
       if (diff.trim().length === 0) {
         return {
           description: null,
-          error: `No diff found vs ${baseBranch}. Branch may already be merged.`
+          error: `No diff found vs ${baseBranch}. Branch may already be merged.`,
         };
       }
 
@@ -110,7 +110,11 @@ export class PrDescriptionService implements vscode.Disposable {
 
       // Get model preference
       const config = vscode.workspace.getConfiguration('sidekick');
-      const model = resolveModel(config.get<string>('prDescriptionModel') ?? 'auto', this.authService.getProviderId(), 'prDescriptionModel');
+      const model = resolveModel(
+        config.get<string>('prDescriptionModel') ?? 'auto',
+        this.authService.getProviderId(),
+        'prDescriptionModel',
+      );
 
       log(`PrDescriptionService: Calling Claude (model: ${model})`);
 
@@ -122,11 +126,12 @@ export class PrDescriptionService implements vscode.Disposable {
       const opLabel = `Generating PR description via ${this.authService.getProviderDisplayName()} · ${model}`;
       const result = await this.timeoutManager.executeWithTimeout({
         operation: opLabel,
-        task: (signal: AbortSignal) => this.authService.complete(prompt, {
-          model,
-          maxTokens: 1000,
-          signal,
-        }),
+        task: (signal: AbortSignal) =>
+          this.authService.complete(prompt, {
+            model,
+            maxTokens: 1000,
+            signal,
+          }),
         config: timeoutConfig,
         contextSize,
         showProgress: true,
@@ -137,7 +142,10 @@ export class PrDescriptionService implements vscode.Disposable {
 
       if (!result.success) {
         if (result.timedOut) {
-          return { description: null, error: `Request timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.` };
+          return {
+            description: null,
+            error: `Request timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+          };
         }
         if (result.error?.name === 'AbortError') {
           return { description: null, error: 'Request cancelled' };
@@ -160,7 +168,7 @@ export class PrDescriptionService implements vscode.Disposable {
 
       return {
         description,
-        commitCount: commits.length
+        commitCount: commits.length,
       };
     } catch (error) {
       logError('PrDescriptionService: Generation failed', error);
@@ -180,10 +188,7 @@ export class PrDescriptionService implements vscode.Disposable {
     try {
       // Try to get upstream tracking branch
       // execGit accepts repoPath string directly (no type casting needed)
-      const result = await this.gitService.execGit(
-        repoPath,
-        ['rev-parse', '--abbrev-ref', '@{u}']
-      );
+      const result = await this.gitService.execGit(repoPath, ['rev-parse', '--abbrev-ref', '@{u}']);
 
       // Parse "origin/main" -> "main"
       const upstream = result.trim();
@@ -196,7 +201,7 @@ export class PrDescriptionService implements vscode.Disposable {
       const branch = await vscode.window.showInputBox({
         prompt: 'Compare with which base branch?',
         value: 'main',
-        placeHolder: 'main, master, develop...'
+        placeHolder: 'main, master, develop...',
       });
       return branch || 'main';
     }

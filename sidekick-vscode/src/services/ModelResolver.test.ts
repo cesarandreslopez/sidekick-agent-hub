@@ -66,7 +66,9 @@ describe('ModelResolver', () => {
 
   describe('full model ID passthrough', () => {
     it('passes through full Claude model ID', () => {
-      expect(resolveModel('claude-3-5-haiku-20241022', 'claude-max', 'inlineModel')).toBe('claude-3-5-haiku-20241022');
+      expect(resolveModel('claude-3-5-haiku-20241022', 'claude-max', 'inlineModel')).toBe(
+        'claude-3-5-haiku-20241022',
+      );
     });
 
     it('passes through full OpenAI model ID', () => {
@@ -95,7 +97,11 @@ describe('ModelResolver', () => {
       it(`auto for ${feature} resolves to ${expectedTier} tier`, () => {
         // For claude-max, tier names match model names
         const result = resolveModel('auto', 'claude-max', feature);
-        const tierToModel: Record<string, string> = { fast: 'haiku', balanced: 'sonnet', powerful: 'opus' };
+        const tierToModel: Record<string, string> = {
+          fast: 'haiku',
+          balanced: 'sonnet',
+          powerful: 'opus',
+        };
         expect(result).toBe(tierToModel[expectedTier]);
       });
     }

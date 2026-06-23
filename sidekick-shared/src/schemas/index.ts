@@ -43,11 +43,7 @@ export {
 export type { QuotaWindow, QuotaState } from '../quota';
 export type { PeakHoursState } from '../peakHours';
 export type { QuotaFailureDescriptor } from '../quotaPresentation';
-export type {
-  ProviderQuotaState,
-  ProviderQuotaMap,
-  RuntimeQuotaProvider,
-} from '../providerQuota';
+export type { ProviderQuotaState, ProviderQuotaMap, RuntimeQuotaProvider } from '../providerQuota';
 
 export {
   quotaHistoryRuntimeProviderSchema,
@@ -60,14 +56,8 @@ export type {
   QuotaHistoryDailyBucket,
 } from '../quotaHistory';
 
-export {
-  activeProviderAccountStatusSchema,
-  activeAccountStatusSchema,
-} from './accountStatus';
-export type {
-  ActiveProviderAccountStatus,
-  ActiveAccountStatus,
-} from '../accountStatus';
+export { activeProviderAccountStatusSchema, activeAccountStatusSchema } from './accountStatus';
+export type { ActiveProviderAccountStatus, ActiveAccountStatus } from '../accountStatus';
 
 export {
   accountProviderIdSchema,
@@ -79,10 +69,7 @@ export {
   listAllAccountsResultSchema,
 } from './accountManager';
 export type { AccountEntry, AccountManagerResult } from '../accounts';
-export type {
-  AccountProviderId,
-  SavedAccountProfile,
-} from '../accountRegistry';
+export type { AccountProviderId, SavedAccountProfile } from '../accountRegistry';
 export type {
   AccountLoginStatus,
   BeginAccountLoginResult,

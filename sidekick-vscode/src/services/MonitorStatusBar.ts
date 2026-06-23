@@ -86,7 +86,7 @@ export class MonitorStatusBar implements vscode.Disposable {
     // Create status bar item
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
-      99 // Appear next to existing Sidekick status bar
+      99, // Appear next to existing Sidekick status bar
     );
     this.statusBarItem.command = 'sidekick.openDashboard';
 
@@ -94,8 +94,8 @@ export class MonitorStatusBar implements vscode.Disposable {
     this.disposables.push(
       this.monitor.onSessionStart(() => this.handleSessionStart()),
       this.monitor.onSessionEnd(() => this.handleSessionEnd()),
-      this.monitor.onTokenUsage(usage => this.handleTokenUsage(usage)),
-      this.monitor.onReplayStateChange(replaying => this.handleReplayState(replaying))
+      this.monitor.onTokenUsage((usage) => this.handleTokenUsage(usage)),
+      this.monitor.onReplayStateChange((replaying) => this.handleReplayState(replaying)),
     );
 
     // Initialize display
@@ -172,16 +172,16 @@ export class MonitorStatusBar implements vscode.Disposable {
     const stats = this.monitor.getStats();
     const provider = this.monitor.getProvider();
 
-    this.totalTokens = stats.totalInputTokens
-      + stats.totalOutputTokens
-      + stats.totalCacheWriteTokens
-      + stats.totalCacheReadTokens;
+    this.totalTokens =
+      stats.totalInputTokens +
+      stats.totalOutputTokens +
+      stats.totalCacheWriteTokens +
+      stats.totalCacheReadTokens;
 
     const modelId = stats.lastModelId ?? usageHint?.model;
     const contextLimit = provider.getContextWindowLimit?.(modelId) ?? DEFAULT_CONTEXT_WINDOW;
-    this.contextPercent = contextLimit > 0
-      ? Math.round((stats.currentContextSize / contextLimit) * 100)
-      : 0;
+    this.contextPercent =
+      contextLimit > 0 ? Math.round((stats.currentContextSize / contextLimit) * 100) : 0;
 
     // Context trend detection
     const currentSize = stats.currentContextSize;
@@ -212,9 +212,12 @@ export class MonitorStatusBar implements vscode.Disposable {
     const tokensFormatted = formatTokenCount(this.totalTokens, { suffixCase: 'upper' });
 
     // Context trend indicator
-    const trendIcon = this.contextTrend === 'up' ? '$(arrow-up)'
-      : this.contextTrend === 'down' ? '$(arrow-down)'
-      : '';
+    const trendIcon =
+      this.contextTrend === 'up'
+        ? '$(arrow-up)'
+        : this.contextTrend === 'down'
+          ? '$(arrow-down)'
+          : '';
     const contextFormatted = `${this.contextPercent}%${trendIcon}`;
 
     // Permission mode indicator
@@ -227,13 +230,12 @@ export class MonitorStatusBar implements vscode.Disposable {
 
     // Add skull emoji when context is critically high (>= 80%)
     const icon = this.contextPercent >= 80 ? '💀' : '$(pulse)';
-    const showPeakHours = this.monitor.getProvider().id === 'claude-code'
-      && this.peakHours !== null
-      && this.peakHours.isPeak
-      && !this.peakHours.unavailable;
-    const peakIndicator = showPeakHours
-      ? ' 🟠'
-      : '';
+    const showPeakHours =
+      this.monitor.getProvider().id === 'claude-code' &&
+      this.peakHours !== null &&
+      this.peakHours.isPeak &&
+      !this.peakHours.unavailable;
+    const peakIndicator = showPeakHours ? ' 🟠' : '';
     this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}${peakIndicator}`;
 
     // Color code based on context usage and permission mode
@@ -250,7 +252,8 @@ export class MonitorStatusBar implements vscode.Disposable {
     // Build detailed tooltip
     const stats = this.monitor.getStats();
     const provider = this.monitor.getProvider();
-    const contextLimit = provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
+    const contextLimit =
+      provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
     const tooltipLines = [
       `${provider.displayName} Session`,
       `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,
@@ -268,7 +271,10 @@ export class MonitorStatusBar implements vscode.Disposable {
 
     if (showPeakHours && this.peakHours) {
       let peakLine = `🟠 ${this.peakHours.label || 'Claude peak hours'}`;
-      if (typeof this.peakHours.minutesUntilChange === 'number' && this.peakHours.minutesUntilChange > 0) {
+      if (
+        typeof this.peakHours.minutesUntilChange === 'number' &&
+        this.peakHours.minutesUntilChange > 0
+      ) {
         const h = Math.floor(this.peakHours.minutesUntilChange / 60);
         const m = this.peakHours.minutesUntilChange % 60;
         peakLine += ` (off-peak in ${h > 0 ? `${h}h ${m}m` : `${m}m`})`;
@@ -299,7 +305,7 @@ export class MonitorStatusBar implements vscode.Disposable {
       '',
       getRandomPhrase(),
       '',
-      'Click to open dashboard'
+      'Click to open dashboard',
     ].join('\n');
     this.statusBarItem.backgroundColor = undefined;
   }
@@ -309,6 +315,6 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   dispose(): void {
     this.statusBarItem.dispose();
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
   }
 }

@@ -76,7 +76,10 @@ function parsePathTarget(text: string): { file: string; line?: number } {
   return { file: match[1], line: Number(match[2]) };
 }
 
-async function copyAssetText(asset: ExtractedAsset, message = 'Copied asset to clipboard.'): Promise<void> {
+async function copyAssetText(
+  asset: ExtractedAsset,
+  message = 'Copied asset to clipboard.',
+): Promise<void> {
   await vscode.env.clipboard.writeText(asset.text);
   vscode.window.showInformationMessage(message);
 }
@@ -113,7 +116,9 @@ export async function runAssetDefaultAction(asset: ExtractedAsset): Promise<void
   }
 }
 
-export async function showExtractedSessionAssets(options: ShowExtractedSessionAssetsOptions = {}): Promise<void> {
+export async function showExtractedSessionAssets(
+  options: ShowExtractedSessionAssetsOptions = {},
+): Promise<void> {
   const workspacePath = options.workspacePath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspacePath) {
     vscode.window.showErrorMessage('Open a workspace folder before extracting session assets.');
@@ -133,7 +138,9 @@ export async function showExtractedSessionAssets(options: ShowExtractedSessionAs
     assets = (options.gatherAssets ?? gatherAssetsForCwd)({ cwd: workspacePath, agents });
   } catch (error) {
     logError('Failed to extract session assets', error);
-    vscode.window.showErrorMessage('Failed to extract session assets. See Sidekick logs for details.');
+    vscode.window.showErrorMessage(
+      'Failed to extract session assets. See Sidekick logs for details.',
+    );
     return;
   }
 
@@ -160,7 +167,9 @@ export async function showExtractedSessionAssets(options: ShowExtractedSessionAs
     if (selected) {
       runAssetDefaultAction(selected.asset).catch((error) => {
         logError('Failed to open extracted session asset', error);
-        vscode.window.showErrorMessage('Failed to open extracted session asset. See Sidekick logs for details.');
+        vscode.window.showErrorMessage(
+          'Failed to open extracted session asset. See Sidekick logs for details.',
+        );
       });
     }
   });
@@ -168,7 +177,9 @@ export async function showExtractedSessionAssets(options: ShowExtractedSessionAs
   quickPick.onDidTriggerItemButton((event) => {
     copyAssetText(event.item.asset).catch((error) => {
       logError('Failed to copy extracted session asset', error);
-      vscode.window.showErrorMessage('Failed to copy extracted session asset. See Sidekick logs for details.');
+      vscode.window.showErrorMessage(
+        'Failed to copy extracted session asset. See Sidekick logs for details.',
+      );
     });
   });
 

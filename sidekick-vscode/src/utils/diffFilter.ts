@@ -60,11 +60,29 @@ const GENERATED_PATTERNS = [
  * extensions for additional safety.
  */
 const BINARY_EXTENSIONS = [
-  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp',
-  '.pdf', '.zip', '.tar', '.gz', '.rar',
-  '.exe', '.dll', '.so', '.dylib',
-  '.woff', '.woff2', '.ttf', '.eot',
-  '.mp3', '.mp4', '.wav', '.avi',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.ico',
+  '.webp',
+  '.pdf',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.rar',
+  '.exe',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.eot',
+  '.mp3',
+  '.mp4',
+  '.wav',
+  '.avi',
 ];
 
 /**
@@ -130,9 +148,12 @@ export function filterDiff(diff: string, options?: FilterOptions): string {
 
     // Check exclusion rules
     const isBinaryContent = opts.excludeBinary && section.includes('Binary files');
-    const isBinaryExt = opts.excludeBinary && BINARY_EXTENSIONS.some(ext => filepath.endsWith(ext));
-    const isLockfile = opts.excludeLockfiles && LOCKFILE_PATTERNS.some(pattern => pattern.test(filepath));
-    const isGenerated = opts.excludeGenerated && GENERATED_PATTERNS.some(pattern => pattern.test(filepath));
+    const isBinaryExt =
+      opts.excludeBinary && BINARY_EXTENSIONS.some((ext) => filepath.endsWith(ext));
+    const isLockfile =
+      opts.excludeLockfiles && LOCKFILE_PATTERNS.some((pattern) => pattern.test(filepath));
+    const isGenerated =
+      opts.excludeGenerated && GENERATED_PATTERNS.some((pattern) => pattern.test(filepath));
 
     if (isBinaryContent || isBinaryExt || isLockfile || isGenerated) {
       continue;

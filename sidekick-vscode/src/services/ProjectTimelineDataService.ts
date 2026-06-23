@@ -47,7 +47,7 @@ export class ProjectTimelineDataService {
   getTimelineEntries(
     workspacePath: string,
     range: TimelineRange,
-    currentSessionPath?: string | null
+    currentSessionPath?: string | null,
   ): TimelineSessionEntry[] {
     const sessionPaths = this._provider.findAllSessions(workspacePath);
     log(`[Timeline] Found ${sessionPaths.length} sessions for workspace`);
@@ -102,15 +102,16 @@ export class ProjectTimelineDataService {
         }
 
         const content = Array.isArray(event.message?.content)
-          ? event.message.content as Array<Record<string, unknown>>
+          ? (event.message.content as Array<Record<string, unknown>>)
           : [];
 
         for (const block of content) {
           if (block.type !== 'tool_use') continue;
           const toolName = typeof block.name === 'string' ? block.name : 'unknown';
-          const input = block.input && typeof block.input === 'object'
-            ? block.input as Record<string, unknown>
-            : {};
+          const input =
+            block.input && typeof block.input === 'object'
+              ? (block.input as Record<string, unknown>)
+              : {};
           this._recordToolUseForDetail(toolName, input, toolMap, tasks);
         }
 
@@ -161,7 +162,7 @@ export class ProjectTimelineDataService {
    */
   private _getOrParseEntry(
     sessionPath: string,
-    currentSessionPath?: string | null
+    currentSessionPath?: string | null,
   ): TimelineSessionEntry | null {
     // Get file mtime
     let mtime: number;
@@ -200,7 +201,7 @@ export class ProjectTimelineDataService {
    */
   private _parseSession(
     sessionPath: string,
-    currentSessionPath?: string | null
+    currentSessionPath?: string | null,
   ): TimelineSessionEntry | null {
     const sessionId = this._provider.getSessionId(sessionPath);
 
@@ -273,9 +274,10 @@ export class ProjectTimelineDataService {
     for (const event of allSampled) {
       const timestamp = typeof event.timestamp === 'string' ? event.timestamp : '';
       const type = typeof event.type === 'string' ? event.type : '';
-      const message = event.message && typeof event.message === 'object'
-        ? event.message as Record<string, unknown>
-        : undefined;
+      const message =
+        event.message && typeof event.message === 'object'
+          ? (event.message as Record<string, unknown>)
+          : undefined;
 
       if (timestamp) {
         if (!startTime || timestamp < startTime) startTime = timestamp;
@@ -286,9 +288,10 @@ export class ProjectTimelineDataService {
         messageCount++;
       }
 
-      const usage = message?.usage && typeof message.usage === 'object'
-        ? message.usage as Record<string, unknown>
-        : undefined;
+      const usage =
+        message?.usage && typeof message.usage === 'object'
+          ? (message.usage as Record<string, unknown>)
+          : undefined;
       if (usage) {
         totalInputTokens += typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
         totalOutputTokens += typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
@@ -298,16 +301,18 @@ export class ProjectTimelineDataService {
         modelSet.add(message.model);
       }
 
-      const tool = event.tool && typeof event.tool === 'object'
-        ? event.tool as Record<string, unknown>
-        : undefined;
+      const tool =
+        event.tool && typeof event.tool === 'object'
+          ? (event.tool as Record<string, unknown>)
+          : undefined;
       if (type === 'tool_use' && tool?.name === 'TaskCreate') {
         taskCount++;
       }
 
-      const result = event.result && typeof event.result === 'object'
-        ? event.result as Record<string, unknown>
-        : undefined;
+      const result =
+        event.result && typeof event.result === 'object'
+          ? (event.result as Record<string, unknown>)
+          : undefined;
       if (type === 'tool_result' && result?.is_error === true) {
         errorCount++;
       }
@@ -387,10 +392,14 @@ export class ProjectTimelineDataService {
   private _getRangeCutoff(range: TimelineRange): number | null {
     const now = Date.now();
     switch (range) {
-      case '24h': return now - 24 * 60 * 60 * 1000;
-      case '7d': return now - 7 * 24 * 60 * 60 * 1000;
-      case '30d': return now - 30 * 24 * 60 * 60 * 1000;
-      case 'all': return null;
+      case '24h':
+        return now - 24 * 60 * 60 * 1000;
+      case '7d':
+        return now - 7 * 24 * 60 * 60 * 1000;
+      case '30d':
+        return now - 30 * 24 * 60 * 60 * 1000;
+      case 'all':
+        return null;
     }
   }
 
@@ -413,7 +422,7 @@ export class ProjectTimelineDataService {
       const status = input.status as string;
       const taskId = input.taskId as string;
       if (status && taskId) {
-        const task = tasks.find(t => t.subject.includes(taskId));
+        const task = tasks.find((t) => t.subject.includes(taskId));
         if (task) task.status = status;
       }
     }

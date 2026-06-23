@@ -19,6 +19,6 @@ Ask questions about code or request changes without leaving your editor.
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.inlineChatModel` | `auto` | Model tier — resolves to `balanced` |
+| Setting                    | Default | Description                         |
+| -------------------------- | ------- | ----------------------------------- |
+| `sidekick.inlineChatModel` | `auto`  | Model tier — resolves to `balanced` |

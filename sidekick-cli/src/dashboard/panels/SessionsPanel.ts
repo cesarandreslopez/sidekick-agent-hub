@@ -7,7 +7,20 @@
 import type { SidePanel, PanelItem, PanelAction, DetailTab, KeyBinding } from './types';
 import type { DashboardMetrics, ContextAttribution } from '../DashboardState';
 import type { StaticData, SessionRecord } from '../StaticDataLoader';
-import { fmtNum, formatDuration, formatElapsed, formatTime, makeColorBar, makeSparkline, sectionHeader, shortenPath, wordWrap, detailWidth, visibleLength, truncate } from '../formatters';
+import {
+  fmtNum,
+  formatDuration,
+  formatElapsed,
+  formatTime,
+  makeColorBar,
+  makeSparkline,
+  sectionHeader,
+  shortenPath,
+  wordWrap,
+  detailWidth,
+  visibleLength,
+  truncate,
+} from '../formatters';
 import { formatCost } from 'sidekick-shared';
 
 function getUtilizationColor(percent: number): string {
@@ -23,8 +36,25 @@ import type { ProviderId } from 'sidekick-shared';
 import { describeQuotaFailure, highlightEvent } from 'sidekick-shared';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
-type MindMapFilter = 'all' | 'file' | 'tool' | 'task' | 'subagent' | 'command' | 'plan' | 'knowledge-note';
-const MINDMAP_FILTERS: MindMapFilter[] = ['all', 'file', 'tool', 'task', 'subagent', 'command', 'plan', 'knowledge-note'];
+type MindMapFilter =
+  | 'all'
+  | 'file'
+  | 'tool'
+  | 'task'
+  | 'subagent'
+  | 'command'
+  | 'plan'
+  | 'knowledge-note';
+const MINDMAP_FILTERS: MindMapFilter[] = [
+  'all',
+  'file',
+  'tool',
+  'task',
+  'subagent',
+  'command',
+  'plan',
+  'knowledge-note',
+];
 
 export class SessionsPanel implements SidePanel {
   readonly id = 'sessions';
@@ -46,7 +76,9 @@ export class SessionsPanel implements SidePanel {
     if (providerId) {
       this.inferenceClient = new CliInferenceClient(providerId);
       // Fire-and-forget availability check
-      this.inferenceClient.checkAvailability().catch(() => { /* ignore */ });
+      this.inferenceClient.checkAvailability().catch(() => {
+        /* ignore */
+      });
     }
   }
   /** Set by PanelLayout to track which detail tab is active. */
@@ -54,7 +86,11 @@ export class SessionsPanel implements SidePanel {
 
   readonly detailTabs: DetailTab[] = [
     { label: 'Summary', render: (item, m) => this.renderSummary(item, m) },
-    { label: 'Timeline', render: (item, m) => this.renderTimeline(item, m), autoScrollBottom: true },
+    {
+      label: 'Timeline',
+      render: (item, m) => this.renderTimeline(item, m),
+      autoScrollBottom: true,
+    },
     { label: 'Mind Map', render: (item, m, sd) => this.renderMindMap(item, m, sd) },
     { label: 'Tools', render: (item, m) => this.renderTools(item, m) },
     { label: 'Files', render: (item, m) => this.renderFiles(item, m) },
@@ -69,8 +105,9 @@ export class SessionsPanel implements SidePanel {
     if (metrics.eventCount > 0) {
       const sessionId = (metrics.sessionStartTime || 'active').substring(0, 8);
       const providerSuffix = metrics.providerName ? ` (${metrics.providerName})` : '';
-      const runningAgents = metrics.subagents.filter(a => a.status === 'running').length;
-      const agentBadge = runningAgents > 0 ? ` {magenta-fg}[${runningAgents}\u229B]{/magenta-fg}` : '';
+      const runningAgents = metrics.subagents.filter((a) => a.status === 'running').length;
+      const agentBadge =
+        runningAgents > 0 ? ` {magenta-fg}[${runningAgents}\u229B]{/magenta-fg}` : '';
       items.push({
         id: 'active',
         label: `{green-fg}\u25CF{/green-fg} session-${sessionId}${providerSuffix}${agentBadge}`,
@@ -101,16 +138,18 @@ export class SessionsPanel implements SidePanel {
     const d = item.data as { type: string; metrics?: DashboardMetrics; session?: SessionRecord };
     if (d.type === 'active' && d.metrics) {
       const parts = [
-        ...d.metrics.toolStats.map(t => t.name),
-        ...d.metrics.fileTouches.map(f => f.path),
-        ...d.metrics.timeline.slice(-30).map(e => e.summary || ''),
+        ...d.metrics.toolStats.map((t) => t.name),
+        ...d.metrics.fileTouches.map((f) => f.path),
+        ...d.metrics.timeline.slice(-30).map((e) => e.summary || ''),
         d.metrics.currentModel || '',
       ];
       return parts.join(' ');
     }
     if (d.type === 'historical' && d.session) {
       const s = d.session;
-      return [s.date, ...s.modelUsage.map(m => m.model), ...s.toolUsage.map(t => t.tool)].join(' ');
+      return [s.date, ...s.modelUsage.map((m) => m.model), ...s.toolUsage.map((t) => t.tool)].join(
+        ' ',
+      );
     }
     return '';
   }
@@ -172,19 +211,22 @@ export class SessionsPanel implements SidePanel {
     // We need metrics at generation time — store a reference via the last render
     const prompt = buildNarrativePrompt(this._lastMetrics, this.diffCache?.getStats());
 
-    this.inferenceClient.complete(prompt).then(result => {
-      this.narrativeLoading = false;
-      if (result.error) {
-        this.narrativeError = result.error;
-      } else {
-        this.narrativeText = result.text;
-      }
-      this.onNarrativeComplete?.();
-    }).catch(err => {
-      this.narrativeLoading = false;
-      this.narrativeError = (err as Error).message;
-      this.onNarrativeComplete?.();
-    });
+    this.inferenceClient
+      .complete(prompt)
+      .then((result) => {
+        this.narrativeLoading = false;
+        if (result.error) {
+          this.narrativeError = result.error;
+        } else {
+          this.narrativeText = result.text;
+        }
+        this.onNarrativeComplete?.();
+      })
+      .catch((err) => {
+        this.narrativeLoading = false;
+        this.narrativeError = (err as Error).message;
+        this.onNarrativeComplete?.();
+      });
   }
 
   /** Stored reference to last metrics for async narrative generation. */
@@ -227,7 +269,7 @@ export class SessionsPanel implements SidePanel {
       'summary of this session — what was accomplished, patterns in tool',
       'and token usage, and suggestions for future sessions.{/grey-fg}',
       '',
-      "Press {bold}n{/bold} to generate.",
+      'Press {bold}n{/bold} to generate.',
     ].join('\n');
   }
 
@@ -245,9 +287,9 @@ export class SessionsPanel implements SidePanel {
       const elapsed = m.sessionStartTime ? formatElapsed(m.sessionStartTime) : '--:--:--';
 
       // Most recent non-user, non-tool_result timeline event
-      const recentEvent = [...m.timeline].reverse().find(
-        e => e.type !== 'user' && e.type !== 'tool_result'
-      );
+      const recentEvent = [...m.timeline]
+        .reverse()
+        .find((e) => e.type !== 'user' && e.type !== 'tool_result');
       const recentLine = recentEvent
         ? (() => {
             const prefix = `[${formatTime(recentEvent.timestamp)}] ${recentEvent.type.padEnd(12)} `;
@@ -257,7 +299,10 @@ export class SessionsPanel implements SidePanel {
         : '{grey-fg}(no events yet){/grey-fg}';
 
       // Compact top line: elapsed, events, compactions
-      const compactionSuffix = m.compactionCount > 0 ? `  {bold}${m.compactionCount}{/bold}{grey-fg} compaction${m.compactionCount !== 1 ? 's' : ''}{/grey-fg}` : '';
+      const compactionSuffix =
+        m.compactionCount > 0
+          ? `  {bold}${m.compactionCount}{/bold}{grey-fg} compaction${m.compactionCount !== 1 ? 's' : ''}{/grey-fg}`
+          : '';
       const lines = [
         `{bold}${elapsed}{/bold}{grey-fg} elapsed{/grey-fg}  {bold}${m.eventCount}{/bold}{grey-fg} events{/grey-fg}${compactionSuffix}`,
         `{grey-fg}Provider{/grey-fg} {bold}${m.providerName || 'unknown'}{/bold}  {grey-fg}Model{/grey-fg} {bold}${m.currentModel || 'unknown'}{/bold}`,
@@ -266,24 +311,37 @@ export class SessionsPanel implements SidePanel {
 
       // Permission mode (inline)
       if (m.permissionMode && m.permissionMode !== 'default') {
-        const modeColors: Record<string, string> = { bypassPermissions: 'red', acceptEdits: 'magenta', plan: 'green' };
-        const modeLabels: Record<string, string> = { bypassPermissions: 'Bypass Permissions', acceptEdits: 'Accept Edits', plan: 'Plan Mode' };
+        const modeColors: Record<string, string> = {
+          bypassPermissions: 'red',
+          acceptEdits: 'magenta',
+          plan: 'green',
+        };
+        const modeLabels: Record<string, string> = {
+          bypassPermissions: 'Bypass Permissions',
+          acceptEdits: 'Accept Edits',
+          plan: 'Plan Mode',
+        };
         const modeColor = modeColors[m.permissionMode] || 'grey';
         const modeLabel = modeLabels[m.permissionMode] || m.permissionMode;
-        lines.push(`{grey-fg}Permission{/grey-fg} {${modeColor}-fg}{bold}${modeLabel}{/bold}{/${modeColor}-fg}`);
+        lines.push(
+          `{grey-fg}Permission{/grey-fg} {${modeColor}-fg}{bold}${modeLabel}{/bold}{/${modeColor}-fg}`,
+        );
       }
 
       // Subagents (inline if present)
       if (m.subagents.length > 0) {
-        const runningAgents = m.subagents.filter(a => a.status === 'running').length;
-        const completedAgents = m.subagents.filter(a => a.status === 'completed').length;
-        lines.push(`{grey-fg}Subagents{/grey-fg} {bold}${m.subagents.length}{/bold} ({green-fg}${runningAgents} running{/green-fg}, ${completedAgents} done)`);
+        const runningAgents = m.subagents.filter((a) => a.status === 'running').length;
+        const completedAgents = m.subagents.filter((a) => a.status === 'completed').length;
+        lines.push(
+          `{grey-fg}Subagents{/grey-fg} {bold}${m.subagents.length}{/bold} ({green-fg}${runningAgents} running{/green-fg}, ${completedAgents} done)`,
+        );
       }
 
       // ── Tokens section
-      const cacheRate = t.cacheRead + t.input > 0
-        ? `{grey-fg}Cache{/grey-fg} {bold}${((t.cacheRead / (t.cacheRead + t.input)) * 100).toFixed(1)}%{/bold}`
-        : '';
+      const cacheRate =
+        t.cacheRead + t.input > 0
+          ? `{grey-fg}Cache{/grey-fg} {bold}${((t.cacheRead / (t.cacheRead + t.input)) * 100).toFixed(1)}%{/bold}`
+          : '';
       lines.push(
         '',
         sectionHeader('Tokens', w),
@@ -300,9 +358,11 @@ export class SessionsPanel implements SidePanel {
 
       // Context history sparkline with metadata
       if (m.contextTimeline && m.contextTimeline.length > 1) {
-        const ctxData = m.contextTimeline.slice(-25).map(p => p.inputTokens);
+        const ctxData = m.contextTimeline.slice(-25).map((p) => p.inputTokens);
         const ctxSpark = makeSparkline(ctxData);
-        lines.push(`  {grey-fg}${ctxSpark.spark}{/grey-fg}  {grey-fg}peak ${fmtNum(ctxSpark.max)}{/grey-fg}`);
+        lines.push(
+          `  {grey-fg}${ctxSpark.spark}{/grey-fg}  {grey-fg}peak ${fmtNum(ctxSpark.max)}{/grey-fg}`,
+        );
       }
 
       // ── Burn Rate section
@@ -316,9 +376,9 @@ export class SessionsPanel implements SidePanel {
 
       // ── Tasks section
       if (m.tasks.length > 0) {
-        const completed = m.tasks.filter(t => t.status === 'completed').length;
-        const active = m.tasks.filter(t => t.status === 'in_progress').length;
-        const pending = m.tasks.filter(t => t.status === 'pending').length;
+        const completed = m.tasks.filter((t) => t.status === 'completed').length;
+        const active = m.tasks.filter((t) => t.status === 'in_progress').length;
+        const pending = m.tasks.filter((t) => t.status === 'pending').length;
         lines.push(
           '',
           sectionHeader('Tasks', w),
@@ -329,7 +389,8 @@ export class SessionsPanel implements SidePanel {
       // ── File Changes section
       const diffStats = this.diffCache?.getStats() ?? new Map();
       if (diffStats.size > 0) {
-        let totalAdd = 0, totalDel = 0;
+        let totalAdd = 0,
+          totalDel = 0;
         for (const s of diffStats.values()) {
           totalAdd += s.additions;
           totalDel += s.deletions;
@@ -347,10 +408,13 @@ export class SessionsPanel implements SidePanel {
         for (const ms of m.modelStats) {
           const modelName = ms.model.length > 20 ? ms.model.substring(0, 17) + '...' : ms.model;
           // priced === false means pricing is unknown — show "—" not "$0".
-          const costDisplay = ms.priced === false
-            ? '{yellow-fg}—{/yellow-fg}'
-            : `{green-fg}${formatCost(ms.cost)}{/green-fg}`;
-          lines.push(`  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  ${costDisplay}`);
+          const costDisplay =
+            ms.priced === false
+              ? '{yellow-fg}—{/yellow-fg}'
+              : `{green-fg}${formatCost(ms.cost)}{/green-fg}`;
+          lines.push(
+            `  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  ${costDisplay}`,
+          );
         }
       }
 
@@ -361,20 +425,37 @@ export class SessionsPanel implements SidePanel {
         lines.push('', sectionHeader(quotaLabel, w));
         const fiveColor = getUtilizationColor(q.fiveHour.utilization);
         const fiveBar = makeColorBar(q.fiveHour.utilization, 18, fiveColor);
-        const fiveProj = q.projectedFiveHour != null
-          ? (() => { const pc = getUtilizationColor(q.projectedFiveHour!); return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedFiveHour!.toFixed(0)}%{/${pc}-fg}`; })()
-          : '';
-        lines.push(`  {grey-fg}5h{/grey-fg}  ${fiveBar} {bold}${q.fiveHour.utilization.toFixed(0)}%{/bold}${fiveProj}`);
+        const fiveProj =
+          q.projectedFiveHour != null
+            ? (() => {
+                const pc = getUtilizationColor(q.projectedFiveHour!);
+                return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedFiveHour!.toFixed(0)}%{/${pc}-fg}`;
+              })()
+            : '';
+        lines.push(
+          `  {grey-fg}5h{/grey-fg}  ${fiveBar} {bold}${q.fiveHour.utilization.toFixed(0)}%{/bold}${fiveProj}`,
+        );
         const sevenColor = getUtilizationColor(q.sevenDay.utilization);
         const sevenBar = makeColorBar(q.sevenDay.utilization, 18, sevenColor);
-        const sevenProj = q.projectedSevenDay != null
-          ? (() => { const pc = getUtilizationColor(q.projectedSevenDay!); return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedSevenDay!.toFixed(0)}%{/${pc}-fg}`; })()
-          : '';
-        lines.push(`  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}${sevenProj}`);
+        const sevenProj =
+          q.projectedSevenDay != null
+            ? (() => {
+                const pc = getUtilizationColor(q.projectedSevenDay!);
+                return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedSevenDay!.toFixed(0)}%{/${pc}-fg}`;
+              })()
+            : '';
+        lines.push(
+          `  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}${sevenProj}`,
+        );
       } else if ((m.providerId === 'claude-code' || m.providerId === 'codex') && m.quota) {
         const descriptor = describeQuotaFailure(m.quota);
         if (descriptor) {
-          const severityColor = descriptor.severity === 'warning' ? 'yellow' : descriptor.severity === 'info' ? 'cyan' : 'red';
+          const severityColor =
+            descriptor.severity === 'warning'
+              ? 'yellow'
+              : descriptor.severity === 'info'
+                ? 'cyan'
+                : 'red';
           lines.push('', sectionHeader(quotaLabel, w));
           lines.push(`  {${severityColor}-fg}${descriptor.title}{/${severityColor}-fg}`);
           const failureText = [descriptor.message, descriptor.detail].filter(Boolean).join(' ');
@@ -386,7 +467,10 @@ export class SessionsPanel implements SidePanel {
       }
 
       // ── Provider Status sections (Claude + OpenAI)
-      const statusEntries: Array<{ label: string; status: import('../DashboardState').DashboardMetrics['providerStatus'] }> = [
+      const statusEntries: Array<{
+        label: string;
+        status: import('../DashboardState').DashboardMetrics['providerStatus'];
+      }> = [
         { label: 'Claude API Status', status: m.providerStatus },
         { label: 'OpenAI API Status', status: m.openaiStatus },
       ];
@@ -397,7 +481,9 @@ export class SessionsPanel implements SidePanel {
           lines.push(`  {${statusColor}-fg}\u25cf ${ps.description}{/${statusColor}-fg}`);
           for (const c of ps.affectedComponents) {
             const cColor = c.status.includes('major') ? 'red' : 'yellow';
-            lines.push(`  {${cColor}-fg}\u2022{/${cColor}-fg} ${c.name} {grey-fg}\u2014 ${c.status.replace(/_/g, ' ')}{/grey-fg}`);
+            lines.push(
+              `  {${cColor}-fg}\u2022{/${cColor}-fg} ${c.name} {grey-fg}\u2014 ${c.status.replace(/_/g, ' ')}{/grey-fg}`,
+            );
           }
           if (ps.activeIncident) {
             lines.push(`  {${statusColor}-fg}${ps.activeIncident.name}{/${statusColor}-fg}`);
@@ -426,12 +512,13 @@ export class SessionsPanel implements SidePanel {
       `{grey-fg}Tokens{/grey-fg} {bold}${fmtNum(totalTokens)}{/bold} ({grey-fg}In{/grey-fg} ${fmtNum(s.inputTokens)}  {grey-fg}Out{/grey-fg} ${fmtNum(s.outputTokens)})  {green-fg}${formatCost(s.totalCost)}{/green-fg}`,
       '',
       sectionHeader('Models', w),
-      ...s.modelUsage.map(u => `  ${u.model}: {bold}${u.calls}{/bold} calls`),
+      ...s.modelUsage.map((u) => `  ${u.model}: {bold}${u.calls}{/bold} calls`),
       '',
       sectionHeader('Tools', w),
-      ...s.toolUsage.sort((a, b) => b.calls - a.calls).slice(0, 10).map(u =>
-        `  ${u.tool.padEnd(16)} {bold}${u.calls}{/bold} calls`
-      ),
+      ...s.toolUsage
+        .sort((a, b) => b.calls - a.calls)
+        .slice(0, 10)
+        .map((u) => `  ${u.tool.padEnd(16)} {bold}${u.calls}{/bold} calls`),
     ].join('\n');
   }
 
@@ -445,48 +532,70 @@ export class SessionsPanel implements SidePanel {
     if (events.length === 0) return '{grey-fg}(no events yet){/grey-fg}';
 
     const w = detailWidth();
-    return events.map(ev => {
-      const time = formatTime(ev.timestamp);
-      const color = EVENT_COLORS[ev.type] || 'white';
-      const label = ev.type.padEnd(12);
-      // Build suffix first so we know how much space is left for the summary
-      let suffix = '';
-      if (ev.tokens) {
-        suffix = `  (${fmtNum(ev.tokens.input)} in / ${fmtNum(ev.tokens.output)} out)`;
-        if (ev.cost) suffix += ` ${formatCost(ev.cost)}`;
-      }
-      // Prefix visible width: "[HH:MM:SS] event_type   " = ~23 chars
-      const prefixLen = 1 + time.length + 2 + 12; // [time] + space + label
-      const summaryMax = Math.max(10, w - prefixLen - suffix.length);
-      const rawSummary = truncate(ev.summary || '', summaryMax);
-      const summary = highlightEvent(rawSummary, 'blessed');
-      let line = `{${color}-fg}[${time}] ${label}{/${color}-fg} ${summary}`;
-      if (suffix) {
-        line += `  {grey-fg}${suffix.trimStart()}{/grey-fg}`;
-      }
-      return line;
-    }).join('\n');
+    return events
+      .map((ev) => {
+        const time = formatTime(ev.timestamp);
+        const color = EVENT_COLORS[ev.type] || 'white';
+        const label = ev.type.padEnd(12);
+        // Build suffix first so we know how much space is left for the summary
+        let suffix = '';
+        if (ev.tokens) {
+          suffix = `  (${fmtNum(ev.tokens.input)} in / ${fmtNum(ev.tokens.output)} out)`;
+          if (ev.cost) suffix += ` ${formatCost(ev.cost)}`;
+        }
+        // Prefix visible width: "[HH:MM:SS] event_type   " = ~23 chars
+        const prefixLen = 1 + time.length + 2 + 12; // [time] + space + label
+        const summaryMax = Math.max(10, w - prefixLen - suffix.length);
+        const rawSummary = truncate(ev.summary || '', summaryMax);
+        const summary = highlightEvent(rawSummary, 'blessed');
+        let line = `{${color}-fg}[${time}] ${label}{/${color}-fg} ${summary}`;
+        if (suffix) {
+          line += `  {grey-fg}${suffix.trimStart()}{/grey-fg}`;
+        }
+        return line;
+      })
+      .join('\n');
   }
 
-  private renderMindMap(item: PanelItem, metrics: DashboardMetrics, staticData: StaticData): string {
+  private renderMindMap(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    staticData: StaticData,
+  ): string {
     const d = item.data as { type: string };
     if (d.type !== 'active') {
       return '{grey-fg}(mind map only available for active session){/grey-fg}';
     }
 
     const diffStats = this.diffCache?.getStats() ?? new Map();
-    const filterLabel = this.mindMapFilter !== 'all' ? ` {yellow-fg}[f: ${this.mindMapFilter}]{/yellow-fg}` : ' {grey-fg}[f: all]{/grey-fg}';
+    const filterLabel =
+      this.mindMapFilter !== 'all'
+        ? ` {yellow-fg}[f: ${this.mindMapFilter}]{/yellow-fg}`
+        : ' {grey-fg}[f: all]{/grey-fg}';
     const viewLabel = `{grey-fg}[v: ${this.mindMapView}]{/grey-fg}${filterLabel}`;
 
     if (this.mindMapView === 'boxed') {
-      return viewLabel + '\n' + renderMindMapBoxed(metrics, staticData, { blessedTags: true, center: false, filter: this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined }).join('\n');
+      return (
+        viewLabel +
+        '\n' +
+        renderMindMapBoxed(metrics, staticData, {
+          blessedTags: true,
+          center: false,
+          filter: this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined,
+        }).join('\n')
+      );
     }
 
     if (this.mindMapView === 'flow') {
       return viewLabel + '\n' + this.renderTimeFlow(metrics);
     }
 
-    const tree = buildMindMapTree(metrics, staticData, diffStats, this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined);
+    const tree = buildMindMapTree(
+      metrics,
+      staticData,
+      diffStats,
+      this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined,
+    );
     return viewLabel + '\n' + renderTreeToText(tree, 0).join('\n');
   }
 
@@ -517,7 +626,9 @@ export class SessionsPanel implements SidePanel {
         const summaryMax = Math.max(10, detailWidth() - prefixLen);
         const summary = truncate(ev.summary || '', summaryMax);
         const toolTag = ev.toolName ? ` {green-fg}[${ev.toolName}]{/green-fg}` : '';
-        lines.push(`  {grey-fg}:${sec}{/grey-fg} {${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}${toolTag} ${summary}`);
+        lines.push(
+          `  {grey-fg}:${sec}{/grey-fg} {${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}${toolTag} ${summary}`,
+        );
       }
     }
 
@@ -529,18 +640,21 @@ export class SessionsPanel implements SidePanel {
     if (d.type === 'active') {
       const tools = metrics.toolStats.slice().sort((a, b) => b.calls - a.calls);
       if (tools.length === 0) return '{grey-fg}(no tools used){/grey-fg}';
-      return tools.map(t => {
-        const pending = t.pending > 0 ? `  {yellow-fg}(${t.pending} pending){/yellow-fg}` : '';
-        return `{cyan-fg}${t.name.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} calls${pending}`;
-      }).join('\n');
+      return tools
+        .map((t) => {
+          const pending = t.pending > 0 ? `  {yellow-fg}(${t.pending} pending){/yellow-fg}` : '';
+          return `{cyan-fg}${t.name.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} calls${pending}`;
+        })
+        .join('\n');
     }
 
     // Historical
     const s = d.session!;
     if (s.toolUsage.length === 0) return '{grey-fg}(no tool data){/grey-fg}';
-    return s.toolUsage.sort((a, b) => b.calls - a.calls).map(t =>
-      `{cyan-fg}${t.tool.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} calls`
-    ).join('\n');
+    return s.toolUsage
+      .sort((a, b) => b.calls - a.calls)
+      .map((t) => `{cyan-fg}${t.tool.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} calls`)
+      .join('\n');
   }
 
   private renderFiles(item: PanelItem, metrics: DashboardMetrics): string {
@@ -549,8 +663,9 @@ export class SessionsPanel implements SidePanel {
       return '{grey-fg}(file data only available for active session){/grey-fg}';
     }
 
-    const files = metrics.fileTouches.slice()
-      .sort((a, b) => (b.reads + b.writes + b.edits) - (a.reads + a.writes + a.edits));
+    const files = metrics.fileTouches
+      .slice()
+      .sort((a, b) => b.reads + b.writes + b.edits - (a.reads + a.writes + a.edits));
     if (files.length === 0) return '{grey-fg}(no file touches){/grey-fg}';
 
     const diffStats = this.diffCache?.getStats() ?? new Map();
@@ -558,7 +673,8 @@ export class SessionsPanel implements SidePanel {
     // Build header summary if there are any diff stats
     const lines: string[] = [];
     if (diffStats.size > 0) {
-      let totalAdd = 0, totalDel = 0;
+      let totalAdd = 0,
+        totalDel = 0;
       for (const s of diffStats.values()) {
         totalAdd += s.additions;
         totalDel += s.deletions;
@@ -598,9 +714,9 @@ export class SessionsPanel implements SidePanel {
     const agents = metrics.subagents;
     if (agents.length === 0) return '{grey-fg}(no subagents spawned){/grey-fg}';
 
-    const running = agents.filter(a => a.status === 'running').length;
-    const completed = agents.filter(a => a.status === 'completed').length;
-    const parallel = agents.filter(a => a.isParallel).length;
+    const running = agents.filter((a) => a.status === 'running').length;
+    const completed = agents.filter((a) => a.status === 'completed').length;
+    const parallel = agents.filter((a) => a.isParallel).length;
     const w = detailWidth();
 
     const lines: string[] = [
@@ -611,15 +727,17 @@ export class SessionsPanel implements SidePanel {
     ];
 
     for (const a of agents) {
-      const icon = a.status === 'running'
-        ? '{green-fg}\u21BB{/green-fg}'   // ↻
-        : a.isParallel
-          ? '{magenta-fg}\u229A{/magenta-fg}' // ⊚
-          : '{cyan-fg}\u2713{/cyan-fg}';      // ✓
+      const icon =
+        a.status === 'running'
+          ? '{green-fg}\u21BB{/green-fg}' // ↻
+          : a.isParallel
+            ? '{magenta-fg}\u229A{/magenta-fg}' // ⊚
+            : '{cyan-fg}\u2713{/cyan-fg}'; // ✓
 
       const duration = a.durationMs !== undefined ? formatDuration(a.durationMs) : '';
       const durationSuffix = duration ? `  {grey-fg}${duration}{/grey-fg}` : '';
-      const parallelFlag = a.isParallel && a.status === 'completed' ? ' {magenta-fg}(parallel){/magenta-fg}' : '';
+      const parallelFlag =
+        a.isParallel && a.status === 'completed' ? ' {magenta-fg}(parallel){/magenta-fg}' : '';
 
       // Compute available width for description, accounting for suffix on first line
       const prefixVisible = 2 + visibleLength(a.subagentType) + 1; // "icon type "
@@ -630,20 +748,23 @@ export class SessionsPanel implements SidePanel {
       const firstLine = wrapped.split('\n')[0];
       const restLines = wrapped.split('\n').slice(1);
       lines.push(
-        `${icon} {magenta-fg}${a.subagentType}{/magenta-fg} ${firstLine}${durationSuffix}${parallelFlag}`
+        `${icon} {magenta-fg}${a.subagentType}{/magenta-fg} ${firstLine}${durationSuffix}${parallelFlag}`,
       );
       for (const rl of restLines) lines.push(rl);
     }
 
     // Cross-reference: tasks created by subagents
-    const subagentTasks = metrics.tasks.filter(t => t.subagentType);
+    const subagentTasks = metrics.tasks.filter((t) => t.subagentType);
     if (subagentTasks.length > 0) {
       lines.push('', sectionHeader('Tasks from Subagents', w), '');
       for (const t of subagentTasks) {
-        const statusIcon = t.status === 'completed' ? '\u2713' : t.status === 'in_progress' ? '\u2192' : '\u25CB';
+        const statusIcon =
+          t.status === 'completed' ? '\u2713' : t.status === 'in_progress' ? '\u2192' : '\u25CB';
         const taskPrefix = `  ${statusIcon} ${t.subagentType} #${t.taskId}: `;
         const taskIndent = ' '.repeat(taskPrefix.length);
-        lines.push(`  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${t.taskId}: ${wordWrap(t.subject, detailWidth() - taskPrefix.length, taskIndent)}`);
+        lines.push(
+          `  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${t.taskId}: ${wordWrap(t.subject, detailWidth() - taskPrefix.length, taskIndent)}`,
+        );
       }
     }
 
@@ -654,8 +775,12 @@ export class SessionsPanel implements SidePanel {
 // ── Helpers ──
 
 const EVENT_COLORS: Record<string, string> = {
-  user: 'cyan', assistant: 'green', tool_use: 'yellow',
-  tool_result: 'grey', summary: 'magenta', system: 'grey',
+  user: 'cyan',
+  assistant: 'green',
+  tool_use: 'yellow',
+  tool_result: 'grey',
+  summary: 'magenta',
+  system: 'grey',
 };
 
 function renderContextAttribution(attr: ContextAttribution): string[] {
@@ -690,7 +815,7 @@ function renderContextAttribution(attr: ContextAttribution): string[] {
     if (cat.tokens === 0) continue;
     const pct = ((cat.tokens / total) * 100).toFixed(0);
     lines.push(
-      `  {${cat.color}-fg}${cat.char}{/${cat.color}-fg} ${cat.label.padEnd(16)} ${fmtNum(cat.tokens).padStart(7)}  ${pct.padStart(3)}%`
+      `  {${cat.color}-fg}${cat.char}{/${cat.color}-fg} ${cat.label.padEnd(16)} ${fmtNum(cat.tokens).padStart(7)}  ${pct.padStart(3)}%`,
     );
   }
 

@@ -62,14 +62,14 @@ export class AuthService implements vscode.Disposable {
 
     // Listen for configuration changes
     this.disposables.push(
-      vscode.workspace.onDidChangeConfiguration(e => {
+      vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           e.affectsConfiguration('sidekick.inferenceProvider') ||
           e.affectsConfiguration('sidekick.authMode')
         ) {
           this.handleProviderChange();
         }
-      })
+      }),
     );
   }
 
@@ -132,9 +132,7 @@ export class AuthService implements vscode.Disposable {
       case 'claude-api': {
         const apiKey = await this.secretsManager.getApiKey();
         if (!apiKey) {
-          throw new Error(
-            'API key not configured. Run "Sidekick: Set API Key" command.'
-          );
+          throw new Error('API key not configured. Run "Sidekick: Set API Key" command.');
         }
         this.client = new ApiKeyClient(apiKey);
         break;
@@ -208,8 +206,7 @@ export class AuthService implements vscode.Disposable {
           };
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Unknown error';
       return { success: false, message };
     }
   }
@@ -243,6 +240,6 @@ export class AuthService implements vscode.Disposable {
 
   dispose(): void {
     this.client?.dispose();
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
   }
 }

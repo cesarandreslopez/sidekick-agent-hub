@@ -3,21 +3,25 @@ import { describeQuotaFailure } from './quotaPresentation';
 
 describe('describeQuotaFailure', () => {
   it('returns null for available quota', () => {
-    expect(describeQuotaFailure({
-      fiveHour: { utilization: 10, resetsAt: '2026-03-12T14:00:00Z' },
-      sevenDay: { utilization: 20, resetsAt: '2026-03-13T12:00:00Z' },
-      available: true,
-    })).toBeNull();
+    expect(
+      describeQuotaFailure({
+        fiveHour: { utilization: 10, resetsAt: '2026-03-12T14:00:00Z' },
+        sevenDay: { utilization: 20, resetsAt: '2026-03-13T12:00:00Z' },
+        available: true,
+      }),
+    ).toBeNull();
   });
 
   it('describes missing credentials as a non-retryable auth failure', () => {
-    expect(describeQuotaFailure({
-      fiveHour: { utilization: 0, resetsAt: '' },
-      sevenDay: { utilization: 0, resetsAt: '' },
-      available: false,
-      error: 'No OAuth token available',
-      failureKind: 'auth',
-    })).toEqual({
+    expect(
+      describeQuotaFailure({
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 0, resetsAt: '' },
+        available: false,
+        error: 'No OAuth token available',
+        failureKind: 'auth',
+      }),
+    ).toEqual({
       severity: 'error',
       title: 'Sign in required',
       message: 'No Claude Code credentials are available in this environment.',
@@ -77,14 +81,16 @@ describe('describeQuotaFailure', () => {
   });
 
   it('describes server failures as retryable warnings', () => {
-    expect(describeQuotaFailure({
-      fiveHour: { utilization: 0, resetsAt: '' },
-      sevenDay: { utilization: 0, resetsAt: '' },
-      available: false,
-      error: 'API error: 503',
-      failureKind: 'server',
-      httpStatus: 503,
-    })).toMatchObject({
+    expect(
+      describeQuotaFailure({
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 0, resetsAt: '' },
+        available: false,
+        error: 'API error: 503',
+        failureKind: 'server',
+        httpStatus: 503,
+      }),
+    ).toMatchObject({
       severity: 'warning',
       title: 'Quota API unavailable',
       alertKey: 'server:503',
@@ -93,13 +99,15 @@ describe('describeQuotaFailure', () => {
   });
 
   it('describes network failures as retryable warnings', () => {
-    expect(describeQuotaFailure({
-      fiveHour: { utilization: 0, resetsAt: '' },
-      sevenDay: { utilization: 0, resetsAt: '' },
-      available: false,
-      error: 'Network error',
-      failureKind: 'network',
-    })).toMatchObject({
+    expect(
+      describeQuotaFailure({
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 0, resetsAt: '' },
+        available: false,
+        error: 'Network error',
+        failureKind: 'network',
+      }),
+    ).toMatchObject({
       severity: 'warning',
       title: 'Quota API unreachable',
       alertKey: 'network',
@@ -108,14 +116,16 @@ describe('describeQuotaFailure', () => {
   });
 
   it('describes unknown failures as non-retryable errors', () => {
-    expect(describeQuotaFailure({
-      fiveHour: { utilization: 0, resetsAt: '' },
-      sevenDay: { utilization: 0, resetsAt: '' },
-      available: false,
-      error: 'API error: 403',
-      failureKind: 'unknown',
-      httpStatus: 403,
-    })).toEqual({
+    expect(
+      describeQuotaFailure({
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 0, resetsAt: '' },
+        available: false,
+        error: 'API error: 403',
+        failureKind: 'unknown',
+        httpStatus: 403,
+      }),
+    ).toEqual({
       severity: 'error',
       title: 'Unexpected quota response',
       message: 'Anthropic returned HTTP 403.',

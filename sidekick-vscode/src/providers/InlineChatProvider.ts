@@ -79,17 +79,14 @@ export class InlineChatProvider implements vscode.Disposable {
 
     // Context before selection/cursor
     const startLine = Math.max(0, selection.start.line - contextLines);
-    const contextBeforeRange = new vscode.Range(
-      new vscode.Position(startLine, 0),
-      selection.start
-    );
+    const contextBeforeRange = new vscode.Range(new vscode.Position(startLine, 0), selection.start);
     const contextBefore = document.getText(contextBeforeRange);
 
     // Context after selection/cursor
     const endLine = Math.min(document.lineCount - 1, selection.end.line + contextLines);
     const contextAfterRange = new vscode.Range(
       selection.end,
-      new vscode.Position(endLine, document.lineAt(endLine).text.length)
+      new vscode.Position(endLine, document.lineAt(endLine).text.length),
     );
     const contextAfter = document.getText(contextAfterRange);
 
@@ -112,7 +109,7 @@ export class InlineChatProvider implements vscode.Disposable {
    */
   private async processWithProgress(
     editor: vscode.TextEditor,
-    request: InlineChatRequest
+    request: InlineChatRequest,
   ): Promise<void> {
     // Cancel any previous request
     this.abortController?.abort();
@@ -132,7 +129,7 @@ export class InlineChatProvider implements vscode.Disposable {
         });
 
         return await this.inlineChatService.process(request, this.abortController!.signal);
-      }
+      },
     );
 
     // Handle result
@@ -166,14 +163,13 @@ export class InlineChatProvider implements vscode.Disposable {
       const outputChannel = vscode.window.createOutputChannel('Sidekick: Quick Ask', { log: true });
       outputChannel.appendLine(answer);
       outputChannel.show(true);
-      vscode.window.showInformationMessage(
-        'Answer displayed in output panel',
-        'Copy to Clipboard'
-      ).then((action) => {
-        if (action === 'Copy to Clipboard') {
-          vscode.env.clipboard.writeText(answer);
-        }
-      });
+      vscode.window
+        .showInformationMessage('Answer displayed in output panel', 'Copy to Clipboard')
+        .then((action) => {
+          if (action === 'Copy to Clipboard') {
+            vscode.env.clipboard.writeText(answer);
+          }
+        });
     } else {
       // Short answers can be shown in information message
       vscode.window.showInformationMessage(answer, 'Copy').then((action) => {
@@ -190,7 +186,7 @@ export class InlineChatProvider implements vscode.Disposable {
   private async handleEditResponse(
     editor: vscode.TextEditor,
     request: InlineChatRequest,
-    newCode: string
+    newCode: string,
   ): Promise<void> {
     const document = editor.document;
     const selection = editor.selection;
@@ -211,7 +207,8 @@ export class InlineChatProvider implements vscode.Disposable {
 
     // Apply edit - VS Code will show diff preview for large changes
     // For small changes, apply directly
-    const isLargeChange = newCode.split('\n').length > 5 || request.selectedText.split('\n').length > 5;
+    const isLargeChange =
+      newCode.split('\n').length > 5 || request.selectedText.split('\n').length > 5;
 
     if (isLargeChange) {
       // Show diff preview via refactor preview
@@ -232,7 +229,7 @@ export class InlineChatProvider implements vscode.Disposable {
         { modal: false },
         'Apply',
         'Preview',
-        'Cancel'
+        'Cancel',
       );
 
       if (confirm === 'Apply') {
@@ -242,7 +239,9 @@ export class InlineChatProvider implements vscode.Disposable {
         }
       } else if (confirm === 'Preview') {
         // Show the code in output channel
-        const outputChannel = vscode.window.createOutputChannel('Sidekick: Suggested Code', { log: true });
+        const outputChannel = vscode.window.createOutputChannel('Sidekick: Suggested Code', {
+          log: true,
+        });
         outputChannel.appendLine('Suggested replacement:');
         outputChannel.appendLine('---');
         outputChannel.appendLine(newCode);

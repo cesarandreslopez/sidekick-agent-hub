@@ -23,7 +23,12 @@ export type { QuotaWindow, QuotaState };
 const NO_CREDENTIALS_ERROR = 'No OAuth token available';
 
 function shouldKeepCachedQuota(state: QuotaState): boolean {
-  return !state.available && (state.failureKind === 'network' || state.failureKind === 'rate_limit' || state.failureKind === 'server');
+  return (
+    !state.available &&
+    (state.failureKind === 'network' ||
+      state.failureKind === 'rate_limit' ||
+      state.failureKind === 'server')
+  );
 }
 
 /**
@@ -82,7 +87,9 @@ export class QuotaService implements vscode.Disposable {
     if (!state.available && state.error) {
       this._onQuotaError.fire(state.error);
     } else if (state.available) {
-      log(`Quota fetched: 5h=${state.fiveHour.utilization.toFixed(1)}%${state.projectedFiveHour !== undefined ? ` (proj: ${state.projectedFiveHour.toFixed(0)}%)` : ''}, 7d=${state.sevenDay.utilization.toFixed(1)}%${state.projectedSevenDay !== undefined ? ` (proj: ${state.projectedSevenDay.toFixed(0)}%)` : ''}`);
+      log(
+        `Quota fetched: 5h=${state.fiveHour.utilization.toFixed(1)}%${state.projectedFiveHour !== undefined ? ` (proj: ${state.projectedFiveHour.toFixed(0)}%)` : ''}, 7d=${state.sevenDay.utilization.toFixed(1)}%${state.projectedSevenDay !== undefined ? ` (proj: ${state.projectedSevenDay.toFixed(0)}%)` : ''}`,
+      );
     }
 
     return state;
@@ -123,7 +130,9 @@ export class QuotaService implements vscode.Disposable {
       error: state.error,
       source: state.source,
       stale: state.stale,
-    }).catch(err => log(`Quota history append failed: ${err instanceof Error ? err.message : String(err)}`));
+    }).catch((err) =>
+      log(`Quota history append failed: ${err instanceof Error ? err.message : String(err)}`),
+    );
   }
 
   async isAvailable(): Promise<boolean> {
@@ -133,7 +142,7 @@ export class QuotaService implements vscode.Disposable {
 
   dispose(): void {
     this.stopRefresh();
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     log('QuotaService disposed');
   }
 }

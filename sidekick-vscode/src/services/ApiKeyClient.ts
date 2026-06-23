@@ -51,10 +51,10 @@ export class ApiKeyClient implements ClaudeClient {
           max_tokens: options?.maxTokens ?? 1024,
           messages: [{ role: 'user', content: prompt }],
         },
-        { signal }
+        { signal },
       );
 
-      const textBlock = message.content.find(b => b.type === 'text');
+      const textBlock = message.content.find((b) => b.type === 'text');
       return textBlock?.text ?? '';
     });
   }

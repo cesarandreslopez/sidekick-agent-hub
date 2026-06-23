@@ -88,7 +88,9 @@ interface SubagentItem {
  * // Provider automatically updates when timeline events fire
  * ```
  */
-export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentItem>, vscode.Disposable {
+export class SubagentTreeProvider
+  implements vscode.TreeDataProvider<SubagentItem>, vscode.Disposable
+{
   /** View type identifier for registration */
   static readonly viewType = 'sidekick.subagents';
 
@@ -127,14 +129,14 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
         this.topLevelAgents = [];
         this.scanForAgentFiles();
         this.refresh();
-      })
+      }),
     );
 
     // Subscribe to timeline events for subagent detection
     this.disposables.push(
       sessionMonitor.onTimelineEvent((event: TimelineEvent) => {
         this.handleTimelineEvent(event);
-      })
+      }),
     );
 
     // Initialize from current session if available
@@ -170,9 +172,10 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
     // Detect Task tool calls — the new rich formatters produce "Task: [Explore] description"
     const isTaskTool = event.metadata?.toolName === 'Task';
     const description = event.description.toLowerCase();
-    const isSubagentKeyword = description.includes('subagent') ||
-        description.includes('sidechain') ||
-        description.includes('spawned');
+    const isSubagentKeyword =
+      description.includes('subagent') ||
+      description.includes('sidechain') ||
+      description.includes('spawned');
 
     if (!isTaskTool && !isSubagentKeyword) {
       return;
@@ -250,7 +253,12 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       return 'Plan';
     }
 
-    if (lower.includes('task') || lower.includes('execute') || lower.includes('implement') || lower.includes('build')) {
+    if (
+      lower.includes('task') ||
+      lower.includes('execute') ||
+      lower.includes('implement') ||
+      lower.includes('build')
+    ) {
       return 'Task';
     }
 
@@ -278,7 +286,7 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
   private traceToItem(trace: SubagentTrace): SubagentItem {
     const agentType = this.classifyAgentType(trace.agentType);
     const label = `${trace.agentId.substring(0, 8)} (${agentType})`;
-    const children = trace.children.map(c => this.traceToItem(c));
+    const children = trace.children.map((c) => this.traceToItem(c));
 
     const item: SubagentItem = {
       id: trace.agentId,
@@ -342,7 +350,7 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
 
     // Build tree from traces
     this.subagents.clear();
-    this.topLevelAgents = traces.map(t => this.traceToItem(t));
+    this.topLevelAgents = traces.map((t) => this.traceToItem(t));
 
     // Re-add running agents that weren't found in trace results
     for (const running of runningAgents) {
@@ -452,7 +460,8 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
     const lower = raw.toLowerCase();
     if (lower.includes('explore') || lower === 'explore') return 'Explore';
     if (lower.includes('plan') || lower === 'plan') return 'Plan';
-    if (lower.includes('task') || lower.includes('bash') || lower.includes('general')) return 'Task';
+    if (lower.includes('task') || lower.includes('bash') || lower.includes('general'))
+      return 'Task';
     return 'Unknown';
   }
 
@@ -460,8 +469,7 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
    * Detects agents that ran in parallel (overlapping time ranges within 100ms).
    */
   private detectParallelExecution(): void {
-    const agents = Array.from(this.subagents.values())
-      .filter(a => a.timestamp && a.durationMs);
+    const agents = Array.from(this.subagents.values()).filter((a) => a.timestamp && a.durationMs);
 
     for (let i = 0; i < agents.length; i++) {
       const a = agents[i];
@@ -489,9 +497,10 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
    * @returns VS Code TreeItem for display
    */
   getTreeItem(element: SubagentItem): vscode.TreeItem {
-    const collapsible = element.children.length > 0
-      ? vscode.TreeItemCollapsibleState.Collapsed
-      : vscode.TreeItemCollapsibleState.None;
+    const collapsible =
+      element.children.length > 0
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None;
     const treeItem = new vscode.TreeItem(element.label, collapsible);
 
     // Set icon based on status
@@ -511,7 +520,9 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
     } else {
       const descParts: string[] = [];
       if (element.inputTokens || element.outputTokens) {
-        const totalK = Math.round(((element.inputTokens || 0) + (element.outputTokens || 0)) / 1000);
+        const totalK = Math.round(
+          ((element.inputTokens || 0) + (element.outputTokens || 0)) / 1000,
+        );
         descParts.push(`${totalK}K tok`);
       }
       if (element.durationMs) {
@@ -522,7 +533,9 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
         descParts.push('parallel');
       }
       if (element.children.length > 0) {
-        descParts.push(`${element.children.length} child${element.children.length > 1 ? 'ren' : ''}`);
+        descParts.push(
+          `${element.children.length} child${element.children.length > 1 ? 'ren' : ''}`,
+        );
       }
       treeItem.description = descParts.length > 0 ? descParts.join(' | ') : 'Completed';
     }
@@ -532,12 +545,13 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
       treeItem.command = {
         command: 'vscode.open',
         title: 'Open Transcript',
-        arguments: [vscode.Uri.file(element.transcriptPath)]
+        arguments: [vscode.Uri.file(element.transcriptPath)],
       };
       const tooltipParts = [element.transcriptPath];
       if (element.description) tooltipParts.unshift(element.description);
       if (element.isParallel) tooltipParts.push('Ran in parallel with other agents');
-      if (element.children.length > 0) tooltipParts.push(`${element.children.length} child agent(s)`);
+      if (element.children.length > 0)
+        tooltipParts.push(`${element.children.length} child agent(s)`);
       treeItem.tooltip = tooltipParts.join('\n');
     } else {
       treeItem.tooltip = element.description || 'Transcript not yet available';
@@ -562,8 +576,7 @@ export class SubagentTreeProvider implements vscode.TreeDataProvider<SubagentIte
     }
 
     // Return top-level subagents sorted by timestamp (most recent first)
-    return [...this.topLevelAgents]
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return [...this.topLevelAgents].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
   /**

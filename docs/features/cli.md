@@ -5,7 +5,7 @@ The Sidekick CLI provides a full-screen terminal dashboard for monitoring agent 
 ![Sidekick CLI Dashboard](../images/sidekick-cli.gif)
 
 !!! warning "Package name vs binary name"
-    The npm package is `sidekick-agent-hub`, but the binary it installs is called **`sidekick`**. After installation, run `sidekick dashboard` — not `sidekick-agent-hub`.
+The npm package is `sidekick-agent-hub`, but the binary it installs is called **`sidekick`**. After installation, run `sidekick dashboard` — not `sidekick-agent-hub`.
 
 ## Installation
 
@@ -38,12 +38,12 @@ If you have sessions from multiple providers, the most recently active one is se
 sidekick dashboard [options]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--project <path>` | Override project path (default: current working directory) |
-| `--provider <id>` | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
-| `--session <id>` | Follow a specific session by ID (default: most recent or session picker) |
-| `--replay` | Replay existing events from the beginning before streaming live |
+| Flag               | Description                                                               |
+| ------------------ | ------------------------------------------------------------------------- |
+| `--project <path>` | Override project path (default: current working directory)                |
+| `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
+| `--session <id>`   | Follow a specific session by ID (default: most recent or session picker)  |
+| `--replay`         | Replay existing events from the beginning before streaming live           |
 
 ### Examples
 
@@ -69,13 +69,13 @@ sidekick dump [options]
 
 Dump session data as a text timeline, JSON metrics, or markdown report for sharing or archiving.
 
-| Flag | Description |
-|------|-------------|
-| `--list` | List available session IDs for the current project |
+| Flag             | Description                                            |
+| ---------------- | ------------------------------------------------------ |
+| `--list`         | List available session IDs for the current project     |
 | `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
-| `--width <cols>` | Terminal width for text output (default: auto-detect) |
-| `--expand` | Show all events including noise |
-| `--session <id>` | Target a specific session (default: most recent) |
+| `--width <cols>` | Terminal width for text output (default: auto-detect)  |
+| `--expand`       | Show all events including noise                        |
+| `--session <id>` | Target a specific session (default: most recent)       |
 
 Global flags `--project`, `--provider`, and `--json` also apply (see above).
 
@@ -102,13 +102,13 @@ Generate a self-contained HTML session report and open it in the default browser
 
 ![HTML Session Report](../images/session_html_report.png)
 
-| Flag | Description |
-|------|-------------|
-| `--session <id>` | Target a specific session (default: most recent) |
-| `--output <path>` | Write to a specific file (default: temp file) |
-| `--theme <theme>` | Color theme: `dark` (default) or `light` |
-| `--no-open` | Write the file without opening the browser |
-| `--no-thinking` | Omit thinking blocks from the transcript |
+| Flag              | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| `--session <id>`  | Target a specific session (default: most recent) |
+| `--output <path>` | Write to a specific file (default: temp file)    |
+| `--theme <theme>` | Color theme: `dark` (default) or `light`         |
+| `--no-open`       | Write the file without opening the browser       |
+| `--no-thinking`   | Omit thinking blocks from the transcript         |
 
 Global flags `--project` and `--provider` also apply (see above).
 
@@ -144,12 +144,12 @@ Results are merged across supported agents, sorted by recency, deduped, capped, 
 
 This feature was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) and adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
 
-| Flag | Description |
-|------|-------------|
-| `--type <types>` | Comma list: `url`, `path`, `command`, `plan` (default: all). Aliases include `urls`, `files`, `cmds`, and `plans` |
-| `--limit <n>` | Positive integer maximum items per type |
-| `-i`, `--interactive` | Interactive picker; Enter opens URLs and copies paths, commands, or plans |
-| `--json` | Emit grouped JSON for scripting |
+| Flag                  | Description                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `--type <types>`      | Comma list: `url`, `path`, `command`, `plan` (default: all). Aliases include `urls`, `files`, `cmds`, and `plans` |
+| `--limit <n>`         | Positive integer maximum items per type                                                                           |
+| `-i`, `--interactive` | Interactive picker; Enter opens URLs and copies paths, commands, or plans                                         |
+| `--json`              | Emit grouped JSON for scripting                                                                                   |
 
 Global flags `--project` and `--provider` also apply. `--provider claude-code` reads Claude Code only, `--provider codex` reads Codex only, and `auto` reads both. Invalid `--type` or `--limit` values fail fast with a clear error. OpenCode extraction is not supported yet.
 
@@ -181,8 +181,8 @@ sidekick tasks [options]
 
 List persisted tasks for the current project. Tasks carry over across sessions from `~/.config/sidekick/tasks/`.
 
-| Flag | Description |
-|------|-------------|
+| Flag                | Description                                                         |
+| ------------------- | ------------------------------------------------------------------- |
 | `--status <status>` | Filter by status: `pending`, `completed`, or `all` (default: `all`) |
 
 #### Examples
@@ -206,10 +206,10 @@ sidekick decisions [options]
 
 List architectural decisions extracted from sessions. Stored in `~/.config/sidekick/decisions/`.
 
-| Flag | Description |
-|------|-------------|
-| `--search <query>` | Filter decisions by keyword |
-| `--limit <n>` | Maximum number of decisions to show |
+| Flag               | Description                         |
+| ------------------ | ----------------------------------- |
+| `--search <query>` | Filter decisions by keyword         |
+| `--limit <n>`      | Maximum number of decisions to show |
 
 #### Examples
 
@@ -232,10 +232,10 @@ sidekick notes [options]
 
 List knowledge notes (gotchas, patterns, guidelines, tips) attached to files in the current project.
 
-| Flag | Description |
-|------|-------------|
-| `--file <path>` | Filter notes by file path |
-| `--type <type>` | Filter by type: `gotcha`, `pattern`, `guideline`, or `tip` |
+| Flag                | Description                                                        |
+| ------------------- | ------------------------------------------------------------------ |
+| `--file <path>`     | Filter notes by file path                                          |
+| `--type <type>`     | Filter by type: `gotcha`, `pattern`, `guideline`, or `tip`         |
 | `--status <status>` | Filter by status: `active`, `needs_review`, `stale`, or `obsolete` |
 
 #### Examples
@@ -373,12 +373,12 @@ sidekick quota history
 
 Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one calendar day; brightness encodes the peak utilization observed that day (≤0% empty, <25% low, <50% mid, <75% high, ≥75% peak). Days that had at least one `available: false` sample render as a red `×`.
 
-| Flag | Description |
-|------|-------------|
-| `--weeks <n>` | Weeks of history to render (default `13`, clamped 1-26) |
-| `--provider <id>` | Limit to a single runtime provider: `claude`, `codex`, or `zai`. Default: all available, in stacked grids |
-| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()` |
-| `--json` | Emit a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
+| Flag                 | Description                                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `--weeks <n>`        | Weeks of history to render (default `13`, clamped 1-26)                                                                             |
+| `--provider <id>`    | Limit to a single runtime provider: `claude`, `codex`, or `zai`. Default: all available, in stacked grids                           |
+| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()`                                                           |
+| `--json`             | Emit a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
 
 History is sourced from per-workspace JSONL written by both the CLI's quota path and the VS Code extension (Claude via `QuotaService`, Codex via the session provider and `CodexQuotaWatcher`), stored under `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` with `0600` file permissions, a 60-second per-sample debounce, and a 91-day retention window. The workspace id is `sha256(realpath(workspace))[0..16]` — stable across CLI invocations and VS Code sessions for the same folder.
 
@@ -403,16 +403,16 @@ sidekick account [options]
 
 Manage accounts across providers — save, list, switch, and remove without manual login/logout cycles. Supports Claude Code and Codex profiles. Account data is stored in `~/.config/sidekick/accounts/`.
 
-| Flag | Description |
-|------|-------------|
-| `--provider <id>` | Provider: `claude-code` (default), `codex`, or `all` |
-| `--add` | Save the currently signed-in account |
-| `--login` | Sign in and save a **new** account via a provider-isolated login flow that leaves the active account untouched until finalization |
-| `--label <name>` | Label for the account (required for Codex and `--login`; optional for Claude `--add`) |
-| `--switch` | Switch to the next saved account in the list |
-| `--switch-to <id>` | Switch to a specific account by email, label, or ID |
-| `--remove <id>` | Remove a saved account by email, label, or ID |
-| `--launcher <name>` | Create an opt-in per-account terminal launcher for the active account |
+| Flag                       | Description                                                                                                                                     |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--provider <id>`          | Provider: `claude-code` (default), `codex`, or `all`                                                                                            |
+| `--add`                    | Save the currently signed-in account                                                                                                            |
+| `--login`                  | Sign in and save a **new** account via a provider-isolated login flow that leaves the active account untouched until finalization               |
+| `--label <name>`           | Label for the account (required for Codex and `--login`; optional for Claude `--add`)                                                           |
+| `--switch`                 | Switch to the next saved account in the list                                                                                                    |
+| `--switch-to <id>`         | Switch to a specific account by email, label, or ID                                                                                             |
+| `--remove <id>`            | Remove a saved account by email, label, or ID                                                                                                   |
+| `--launcher <name>`        | Create an opt-in per-account terminal launcher for the active account                                                                           |
 | `--auto-switch <pct\|off>` | Persist the auto-switch quota threshold (`1`–`100`), or `off` to disable. Continuous auto-switching runs in a long-running host such as VS Code |
 
 With no flags, lists all saved accounts and marks the active one. `--provider all` lists Claude and Codex accounts together; with `--json` the output is provider-keyed.
@@ -485,8 +485,8 @@ sidekick search <query> [options]
 
 Full-text search across all sessions. Results include matched snippets with highlighted terms, event types, timestamps, and session/project paths.
 
-| Flag | Description |
-|------|-------------|
+| Flag          | Description                             |
+| ------------- | --------------------------------------- |
 | `--limit <n>` | Maximum number of results (default: 50) |
 
 #### Examples
@@ -510,8 +510,8 @@ sidekick context [options]
 
 Output composite project context — tasks, decisions, notes, handoff, stats, and recent sessions in a single document. Useful for piping into LLM prompts or other tools.
 
-| Flag | Description |
-|------|-------------|
+| Flag                 | Description                                           |
+| -------------------- | ----------------------------------------------------- |
 | `--fidelity <level>` | Detail level: `full` (default), `compact`, or `brief` |
 
 #### Examples
@@ -535,11 +535,11 @@ The dashboard is a two-pane Ink-based terminal UI. The left pane shows a navigab
 
 Press `z` to cycle through three layout modes:
 
-| Mode | Description |
-|------|-------------|
-| **Normal** | Default two-pane split — side list and detail pane side by side |
-| **Expanded** | Side list hidden, detail pane fills the entire screen |
-| **Wide Side** | Wider side list for longer item labels |
+| Mode          | Description                                                     |
+| ------------- | --------------------------------------------------------------- |
+| **Normal**    | Default two-pane split — side list and detail pane side by side |
+| **Expanded**  | Side list hidden, detail pane fills the entire screen           |
+| **Wide Side** | Wider side list for longer item labels                          |
 
 Minimum terminal size: 60 columns wide, 15 rows tall.
 
@@ -551,15 +551,15 @@ Switch panels with number keys `1`–`8`.
 
 Browse and select from recent agent sessions. The detail pane has seven tabs:
 
-| Tab | Description |
-|-----|-------------|
-| **Summary** | Token usage, cost, duration, model, and session metadata |
-| **Timeline** | Chronological activity feed with tool calls, messages, and events |
-| **Mind Map** | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `f` to filter node types |
-| **Tools** | Breakdown of tool usage with counts and categories |
-| **Files** | Files touched during the session |
-| **Agents** | Subagent activity and delegation chain |
-| **AI Summary** | AI-generated narrative of the session. Press `n` to generate |
+| Tab            | Description                                                                                                                                                 |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Summary**    | Token usage, cost, duration, model, and session metadata                                                                                                    |
+| **Timeline**   | Chronological activity feed with tool calls, messages, and events                                                                                           |
+| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `f` to filter node types |
+| **Tools**      | Breakdown of tool usage with counts and categories                                                                                                          |
+| **Files**      | Files touched during the session                                                                                                                            |
+| **Agents**     | Subagent activity and delegation chain                                                                                                                      |
+| **AI Summary** | AI-generated narrative of the session. Press `n` to generate                                                                                                |
 
 ### Tasks (2)
 
@@ -589,10 +589,10 @@ Live scrollable stream of session events. Each event shows a timestamp, colored 
 
 The detail pane has two tabs:
 
-| Tab | Description |
-|-----|-------------|
-| **Full Event** | Event metadata (type, timestamp, tool name) plus the raw JSON payload |
-| **Context** | Three events before and after the selected event for surrounding context |
+| Tab            | Description                                                              |
+| -------------- | ------------------------------------------------------------------------ |
+| **Full Event** | Event metadata (type, timestamp, tool name) plus the raw JSON payload    |
+| **Context**    | Three events before and after the selected event for surrounding context |
 
 ### Charts (8)
 
@@ -600,73 +600,73 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 
 ![Charts Panel](../images/charts_cli.png)
 
-| Tab | Description |
-|-----|-------------|
-| **Tools** | Horizontal bar chart of the top 10 most-used tools with counts |
-| **Events** | Event type distribution (user, assistant, tool_use, tool_result) with percentage bars |
-| **Heatmap** | 60-minute rolling activity heatmap using `░▒▓█` intensity characters — one column per minute with peak rate and active minute count |
-| **Patterns** | Detected event patterns from template clustering (e.g. `Read src/<*>.ts`) with frequency bars and example summaries |
+| Tab          | Description                                                                                                                         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Tools**    | Horizontal bar chart of the top 10 most-used tools with counts                                                                      |
+| **Events**   | Event type distribution (user, assistant, tool_use, tool_result) with percentage bars                                               |
+| **Heatmap**  | 60-minute rolling activity heatmap using `░▒▓█` intensity characters — one column per minute with peak rate and active minute count |
+| **Patterns** | Detected event patterns from template clustering (e.g. `Read src/<*>.ts`) with frequency bars and example summaries                 |
 
 ## Keybindings
 
 ### Navigation
 
-| Key | Action |
-|-----|--------|
-| `1`–`8` | Switch panel |
-| `Tab` | Toggle focus between side list and detail pane |
-| `j` / `↓` | Next item (side list) or scroll down (detail pane) |
+| Key       | Action                                               |
+| --------- | ---------------------------------------------------- |
+| `1`–`8`   | Switch panel                                         |
+| `Tab`     | Toggle focus between side list and detail pane       |
+| `j` / `↓` | Next item (side list) or scroll down (detail pane)   |
 | `k` / `↑` | Previous item (side list) or scroll up (detail pane) |
-| `g` | Jump to first item / scroll to top |
-| `G` | Jump to last item / scroll to bottom |
-| `h` / `←` | Return focus to side list (from detail pane) |
-| `Enter` | Move focus to detail pane (from side list) |
+| `g`       | Jump to first item / scroll to top                   |
+| `G`       | Jump to last item / scroll to bottom                 |
+| `h` / `←` | Return focus to side list (from detail pane)         |
+| `Enter`   | Move focus to detail pane (from side list)           |
 
 ### Detail Tabs
 
-| Key | Action |
-|-----|--------|
+| Key | Action              |
+| --- | ------------------- |
 | `[` | Previous detail tab |
-| `]` | Next detail tab |
+| `]` | Next detail tab     |
 
 ### Session Management
 
-| Key | Action |
-|-----|--------|
-| `p` | Pin session — prevent auto-switching to the newest session |
+| Key | Action                                                                |
+| --- | --------------------------------------------------------------------- |
+| `p` | Pin session — prevent auto-switching to the newest session            |
 | `s` | Switch to pending session (when a newer session arrives while pinned) |
-| `f` | Toggle session filter — filter the side list to the selected session |
+| `f` | Toggle session filter — filter the side list to the selected session  |
 
 ### Session Panel — Mind Map Tab
 
-| Key | Action |
-|-----|--------|
-| `v` | Cycle mind map view: tree → boxed → flow |
+| Key | Action                                                                                   |
+| --- | ---------------------------------------------------------------------------------------- |
+| `v` | Cycle mind map view: tree → boxed → flow                                                 |
 | `f` | Cycle node filter: all → file → tool → task → subagent → command → plan → knowledge-note |
 
 ### Session Panel — AI Summary Tab
 
-| Key | Action |
-|-----|--------|
+| Key | Action                                         |
+| --- | ---------------------------------------------- |
 | `n` | Generate or retry AI narrative for the session |
 
 ### Actions
 
-| Key | Action |
-|-----|--------|
-| `r` | Generate HTML report for the current session and open in browser |
+| Key | Action                                                                                    |
+| --- | ----------------------------------------------------------------------------------------- |
+| `r` | Generate HTML report for the current session and open in browser                          |
 | `/` | Open filter overlay — supports substring, fuzzy, regex, and date modes (Tab cycles modes) |
-| `x` | Open context menu for the selected item |
-| `z` | Cycle layout mode (Normal → Expanded → Wide Side) |
+| `x` | Open context menu for the selected item                                                   |
+| `z` | Cycle layout mode (Normal → Expanded → Wide Side)                                         |
 
 ### General
 
-| Key | Action |
-|-----|--------|
-| `?` | Show help overlay |
-| `V` | Show version / changelog |
-| `Esc` | Clear filter, close overlay, or return focus to side list |
-| `q` / `Ctrl+C` | Quit (or close overlay if one is open) |
+| Key            | Action                                                    |
+| -------------- | --------------------------------------------------------- |
+| `?`            | Show help overlay                                         |
+| `V`            | Show version / changelog                                  |
+| `Esc`          | Clear filter, close overlay, or return focus to side list |
+| `q` / `Ctrl+C` | Quit (or close overlay if one is open)                    |
 
 ## Mouse Support
 
@@ -704,16 +704,16 @@ Press `f` to toggle session filtering, which limits the side list to items from 
 
 The CLI reads from the same `~/.config/sidekick/` directory as the VS Code extension:
 
-| File | Contents |
-|------|----------|
-| `historical-data.json` | Token/cost/tool usage statistics |
-| `tasks/{projectSlug}.json` | Kanban board task data |
-| `decisions/{projectSlug}.json` | Decision log entries |
-| `accounts/accounts.json` | Multi-provider account registry (v2) |
-| `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per Claude account |
-| `accounts/configs/*.config.json` | Backed-up account identity per Claude account |
-| `accounts/codex/profiles/*/codex-home/` | Backed-up credentials per Codex profile (swapped into `~/.codex/auth.json` on switch) |
-| `quota-snapshots.json` | Cached rate-limit snapshots per provider/account |
+| File                                      | Contents                                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- |
+| `historical-data.json`                    | Token/cost/tool usage statistics                                                      |
+| `tasks/{projectSlug}.json`                | Kanban board task data                                                                |
+| `decisions/{projectSlug}.json`            | Decision log entries                                                                  |
+| `accounts/accounts.json`                  | Multi-provider account registry (v2)                                                  |
+| `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per Claude account                                        |
+| `accounts/configs/*.config.json`          | Backed-up account identity per Claude account                                         |
+| `accounts/codex/profiles/*/codex-home/`   | Backed-up credentials per Codex profile (swapped into `~/.codex/auth.json` on switch) |
+| `quota-snapshots.json`                    | Cached rate-limit snapshots per provider/account                                      |
 
 Any data written by the VS Code extension is immediately visible in the CLI, and vice versa.
 

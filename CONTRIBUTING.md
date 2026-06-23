@@ -13,12 +13,14 @@ Thank you for your interest in contributing! This document provides guidelines a
 ### Development Setup
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/cesarandreslopez/sidekick-agent-hub.git
    cd sidekick-agent-hub
    ```
 
 2. **Set up the VS Code extension**
+
    ```bash
    cd sidekick-vscode
    npm install
@@ -27,6 +29,7 @@ Thank you for your interest in contributing! This document provides guidelines a
    ```
 
 3. **Build all packages** (optional)
+
    ```bash
    bash scripts/build-all.sh
    ```
@@ -180,6 +183,7 @@ refactor(session): extract path resolution logic
 ```
 
 Guidelines:
+
 - Use present tense, imperative mood ("add feature" not "added feature")
 - Keep the first line under 72 characters
 - Reference issues when applicable (`Fix #123`)

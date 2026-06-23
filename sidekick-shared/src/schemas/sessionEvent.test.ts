@@ -70,7 +70,7 @@ describe('permissionModeSchema', () => {
     'accepts "%s"',
     (mode) => {
       expect(permissionModeSchema.safeParse(mode).success).toBe(true);
-    }
+    },
   );
 
   it('rejects unknown mode', () => {
@@ -187,7 +187,10 @@ describe('extractSessionEvents', () => {
     ['bare progress', { type: 'progress' }],
     ['progress with empty data', { type: 'progress', data: {} }],
     ['progress with non-object message', { type: 'progress', data: { message: 'nope' } }],
-    ['progress with invalid inner event', { type: 'progress', data: { message: { type: 'bogus' } } }],
+    [
+      'progress with invalid inner event',
+      { type: 'progress', data: { message: { type: 'bogus' } } },
+    ],
     ['non-progress unknown type', { type: 'file-history-snapshot' }],
   ])('returns [] for %s without throwing', (_label, raw) => {
     expect(extractSessionEvents(raw)).toEqual([]);

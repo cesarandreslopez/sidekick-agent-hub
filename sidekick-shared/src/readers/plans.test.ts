@@ -51,9 +51,7 @@ const mockStore = {
       source: 'codex',
       createdAt: '2025-01-01T00:00:00Z',
       status: 'abandoned',
-      steps: [
-        { id: 'step-0', description: 'Extract routes', status: 'skipped' },
-      ],
+      steps: [{ id: 'step-0', description: 'Extract routes', status: 'skipped' }],
       completionRate: 0,
     },
   ],

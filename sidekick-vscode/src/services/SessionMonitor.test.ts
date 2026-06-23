@@ -54,7 +54,13 @@ function createProvider(overrides: Partial<Record<string, unknown>> = {}) {
     findSessionsInDirectory: vi.fn(() => []),
     getAllProjectFolders: vi.fn(() => []),
     isSessionFile: vi.fn(() => true),
-    getSessionId: vi.fn((sessionPath: string) => sessionPath.split('/').pop()?.replace(/\.json$/, '') || 'session'),
+    getSessionId: vi.fn(
+      (sessionPath: string) =>
+        sessionPath
+          .split('/')
+          .pop()
+          ?.replace(/\.json$/, '') || 'session',
+    ),
     encodeWorkspacePath: vi.fn((workspacePath: string) => workspacePath),
     extractSessionLabel: vi.fn(() => null),
     createReader: vi.fn(() => ({
@@ -119,13 +125,16 @@ describe('SessionMonitor', () => {
       findSessionsInDirectory: vi.fn(() => []),
     });
 
-    const monitor = new SessionMonitor(provider as never, { get: vi.fn(() => null), update: vi.fn() } as never);
+    const monitor = new SessionMonitor(
+      provider as never,
+      { get: vi.fn(() => null), update: vi.fn() } as never,
+    );
 
     const active = await monitor.startWithCustomPath('/tmp/db-sessions/proj_1');
 
     expect(active).toBe(false);
     expect(mockShowErrorMessage).toHaveBeenCalledWith(
-      'OpenCode session database is unavailable. sqlite3 exists but could not be executed. Recommendation: ensure `sqlite3` is executable in the same environment as VS Code, then reload the window.'
+      'OpenCode session database is unavailable. sqlite3 exists but could not be executed. Recommendation: ensure `sqlite3` is executable in the same environment as VS Code, then reload the window.',
     );
 
     monitor.dispose();
@@ -142,8 +151,11 @@ describe('SessionMonitor', () => {
     const provider = createProvider({
       getQuotaFromSession: vi.fn().mockResolvedValue(quota),
     });
-    const monitor = new SessionMonitor(provider as never, { get: vi.fn(() => null), update: vi.fn() } as never);
-    const updates: typeof quota[] = [];
+    const monitor = new SessionMonitor(
+      provider as never,
+      { get: vi.fn(() => null), update: vi.fn() } as never,
+    );
+    const updates: (typeof quota)[] = [];
     monitor.onQuotaUpdate((state) => updates.push(state as typeof quota));
 
     await (monitor as unknown as { emitQuotaFromSession(): Promise<void> }).emitQuotaFromSession();

@@ -104,15 +104,50 @@ export type { PersistedTask, TaskPersistenceStore, TaskStatus } from './types/ta
 export { TASK_PERSISTENCE_SCHEMA_VERSION, normalizeTaskStatus } from './types/taskPersistence';
 export type { DecisionEntry, DecisionLogStore, DecisionSource } from './types/decisionLog';
 export { DECISION_LOG_SCHEMA_VERSION } from './types/decisionLog';
-export type { KnowledgeNote, KnowledgeNoteStore, KnowledgeNoteType, KnowledgeNoteSource, KnowledgeNoteStatus, KnowledgeNoteImportance } from './types/knowledgeNote';
-export { KNOWLEDGE_NOTE_SCHEMA_VERSION, IMPORTANCE_DECAY_FACTORS, STALENESS_THRESHOLDS } from './types/knowledgeNote';
-export type { HistoricalDataStore, DailyData, MonthlyData, AllTimeStats, TokenTotals, ModelUsageRecord, ToolUsageRecord, SessionSummary } from './types/historicalData';
+export type {
+  KnowledgeNote,
+  KnowledgeNoteStore,
+  KnowledgeNoteType,
+  KnowledgeNoteSource,
+  KnowledgeNoteStatus,
+  KnowledgeNoteImportance,
+} from './types/knowledgeNote';
+export {
+  KNOWLEDGE_NOTE_SCHEMA_VERSION,
+  IMPORTANCE_DECAY_FACTORS,
+  STALENESS_THRESHOLDS,
+} from './types/knowledgeNote';
+export type {
+  HistoricalDataStore,
+  DailyData,
+  MonthlyData,
+  AllTimeStats,
+  TokenTotals,
+  ModelUsageRecord,
+  ToolUsageRecord,
+  SessionSummary,
+} from './types/historicalData';
 export { HISTORICAL_DATA_SCHEMA_VERSION, createEmptyTokenTotals } from './types/historicalData';
-export type { PersistedPlan, PersistedPlanStep, PlanHistoryStore, PlanStepStatus, PlanStatus, PlanSource, PlanStepComplexity } from './types/plan';
+export type {
+  PersistedPlan,
+  PersistedPlanStep,
+  PlanHistoryStore,
+  PlanStepStatus,
+  PlanStatus,
+  PlanSource,
+  PlanStepComplexity,
+} from './types/plan';
 export { PLAN_SCHEMA_VERSION, MAX_PLANS_PER_PROJECT } from './types/plan';
 
 // Paths
-export { getConfigDir, getProjectDataPath, getGlobalDataPath, encodeWorkspacePath, getProjectSlug, getProjectSlugRaw } from './paths';
+export {
+  getConfigDir,
+  getProjectDataPath,
+  getGlobalDataPath,
+  encodeWorkspacePath,
+  getProjectSlug,
+  getProjectSlugRaw,
+} from './paths';
 
 // Readers
 export { readTasks } from './readers/tasks';
@@ -123,11 +158,27 @@ export { readNotes } from './readers/notes';
 export type { ReadNotesOptions } from './readers/notes';
 export { readHistory } from './readers/history';
 export { readLatestHandoff } from './readers/handoff';
-export { readPlans, getLatestPlan, writePlans, getPlanAnalytics, readClaudeCodePlanFiles } from './readers/plans';
+export {
+  readPlans,
+  getLatestPlan,
+  writePlans,
+  getPlanAnalytics,
+  readClaudeCodePlanFiles,
+} from './readers/plans';
 export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 
 // Providers
-export type { ProviderId, SessionProvider, SessionProviderBase, SessionFileStats, SessionFileInfo, SearchHit, ProjectFolderInfo, SessionReader, ProviderRuntimeStatus } from './providers/types';
+export type {
+  ProviderId,
+  SessionProvider,
+  SessionProviderBase,
+  SessionFileStats,
+  SessionFileInfo,
+  SearchHit,
+  ProjectFolderInfo,
+  SessionReader,
+  ProviderRuntimeStatus,
+} from './providers/types';
 export { detectProvider, getAllDetectedProviders } from './providers/detect';
 export { ClaudeCodeProvider } from './providers/claudeCode';
 export { OpenCodeProvider, getOpenCodeDataDir } from './providers/openCode';
@@ -148,14 +199,22 @@ export {
 } from './parsers/openCodeParser';
 
 // Parsers — Codex
-export { CodexRolloutParser, extractPatchFilePaths, normalizeCodexToolName, normalizeCodexToolInput } from './parsers/codexParser';
+export {
+  CodexRolloutParser,
+  extractPatchFilePaths,
+  normalizeCodexToolName,
+  normalizeCodexToolInput,
+} from './parsers/codexParser';
 
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo } from './parsers/subagentScanner';
 
 // Parsers — Session activity detection
 export { detectSessionActivity } from './parsers/sessionActivityDetector';
-export type { SessionActivityState, SessionActivityResult } from './parsers/sessionActivityDetector';
+export type {
+  SessionActivityState,
+  SessionActivityResult,
+} from './parsers/sessionActivityDetector';
 
 // Parsers — Session path resolution (Claude Code)
 export {
@@ -195,7 +254,11 @@ export { CodexDatabase } from './providers/codexDatabase';
 export { searchSessions } from './search/sessionSearch';
 export type { SearchResult } from './search/sessionSearch';
 export { FilterEngine } from './search/advancedFilter';
-export type { FilterMode, FilterState, HighlightFormat as FilterHighlightFormat } from './search/advancedFilter';
+export type {
+  FilterMode,
+  FilterState,
+  HighlightFormat as FilterHighlightFormat,
+} from './search/advancedFilter';
 
 // Context
 export { composeContext } from './context/composer';
@@ -242,7 +305,11 @@ export type {
 } from './turns/assistantTurn';
 
 // Plan Extraction
-export { PlanExtractor, parsePlanMarkdown as parsePlanMarkdownShared, extractProposedPlan as extractProposedPlanShared } from './parsers/planExtractor';
+export {
+  PlanExtractor,
+  parsePlanMarkdown as parsePlanMarkdownShared,
+  extractProposedPlan as extractProposedPlanShared,
+} from './parsers/planExtractor';
 export type { ExtractedPlan, ExtractedPlanStep } from './parsers/planExtractor';
 
 // Changelog Parsing
@@ -250,7 +317,12 @@ export { parseChangelog } from './parsers/changelogParser';
 export type { ChangelogEntry } from './parsers/changelogParser';
 
 // Watchers
-export type { FollowEvent, FollowEventType, SessionWatcher, SessionWatcherCallbacks } from './watchers/types';
+export type {
+  FollowEvent,
+  FollowEventType,
+  SessionWatcher,
+  SessionWatcherCallbacks,
+} from './watchers/types';
 export { createWatcher } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
 export { toFollowEvents } from './watchers/eventBridge';
@@ -271,9 +343,17 @@ export {
   classifyNoise,
 } from './formatters/noiseClassifier';
 export type { MessageClassification, NoiseResult } from './formatters/noiseClassifier';
-export { formatSessionText, formatSessionMarkdown, formatSessionJson } from './formatters/sessionDump';
+export {
+  formatSessionText,
+  formatSessionMarkdown,
+  formatSessionJson,
+} from './formatters/sessionDump';
 export type { SessionDumpOptions } from './formatters/sessionDump';
-export { highlight as highlightEvent, clearHighlightCache, HIGHLIGHT_CSS } from './formatters/eventHighlighter';
+export {
+  highlight as highlightEvent,
+  clearHighlightCache,
+  HIGHLIGHT_CSS,
+} from './formatters/eventHighlighter';
 export type { HighlightFormat } from './formatters/eventHighlighter';
 
 // Phrases
@@ -283,7 +363,13 @@ export type { PhraseCategory } from './phrases';
 // Aggregation
 export { EventAggregator, parseTodoDependencies } from './aggregation/EventAggregator';
 export type { SerializedAggregatorState } from './aggregation/EventAggregator';
-export { saveSnapshot, loadSnapshot, deleteSnapshot, isSnapshotValid, getSnapshotPath } from './aggregation/snapshot';
+export {
+  saveSnapshot,
+  loadSnapshot,
+  deleteSnapshot,
+  isSnapshotValid,
+  getSnapshotPath,
+} from './aggregation/snapshot';
 export type { SessionSnapshot } from './aggregation/snapshot';
 export type {
   EventAggregatorOptions,
@@ -306,7 +392,12 @@ export { PatternExtractor } from './aggregation/PatternExtractor';
 export type { PatternCluster, SerializedPatternState } from './aggregation/PatternExtractor';
 
 // Report — HTML session report generation
-export { generateHtmlReport, parseTranscript, parseTranscriptFromEvents, openInBrowser } from './report';
+export {
+  generateHtmlReport,
+  parseTranscript,
+  parseTranscriptFromEvents,
+  openInBrowser,
+} from './report';
 export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './report';
 
 // Credential I/O (platform-aware: Keychain on macOS, file on Linux/Windows)
@@ -317,9 +408,7 @@ export { readClaudeMaxCredentials, readClaudeMaxAccessTokenSync } from './creden
 export type { ClaudeMaxCredentials } from './credentials';
 
 // Accounts
-export {
-  ensureDefaultAccounts,
-} from './ensureDefaultAccounts';
+export { ensureDefaultAccounts } from './ensureDefaultAccounts';
 export type {
   EnsureDefaultAccountStatus,
   EnsureDefaultAccountsOptions,
@@ -339,7 +428,12 @@ export {
   getActiveAccount,
   isMultiAccountEnabled,
 } from './accounts';
-export type { AccountEntry, AccountRegistry, ActiveAccountInfo, AccountManagerResult } from './accounts';
+export type {
+  AccountEntry,
+  AccountRegistry,
+  ActiveAccountInfo,
+  AccountManagerResult,
+} from './accounts';
 export {
   beginAccountLogin,
   getAccountLoginStatus,
@@ -409,11 +503,7 @@ export {
   writeLauncher,
   removeLauncher,
 } from './terminalSync';
-export {
-  DEFAULT_AUTO_SWITCH_CONFIG,
-  decideAutoSwitch,
-  AutoSwitchController,
-} from './autoSwitch';
+export { DEFAULT_AUTO_SWITCH_CONFIG, decideAutoSwitch, AutoSwitchController } from './autoSwitch';
 export type {
   AutoSwitchActiveAccount,
   AutoSwitchCandidate,
@@ -543,7 +633,11 @@ export type {
 
 // Pricing Catalog (LiteLLM hydration) — Node-only. Safe for extension host
 // and CLI; do NOT import from browser bundles (webviews).
-export { hydratePricingCatalog, normalizeLiteLlmCatalog, LITELLM_CATALOG_URL } from './pricingCatalog';
+export {
+  hydratePricingCatalog,
+  normalizeLiteLlmCatalog,
+  LITELLM_CATALOG_URL,
+} from './pricingCatalog';
 export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 
 // Extractors — per-event token usage and tool call extraction
@@ -551,11 +645,7 @@ export { extractTokenUsage } from './extractors/tokenUsage';
 export { extractToolCall, extractToolCalls } from './extractors/toolCall';
 // Extractors — actionable session assets. Node-only: safe for CLI and
 // extension-host code, not for browser/webview bundles.
-export {
-  extractUrls,
-  extractFilePaths,
-  extractCommands,
-} from './extractors/sessionAssets';
+export { extractUrls, extractFilePaths, extractCommands } from './extractors/sessionAssets';
 export type {
   AssetAgent,
   ExtractedAsset,

@@ -13,11 +13,7 @@
  * @module services/providers/OpenCodeSessionProvider
  */
 
-import {
-  OpenCodeProvider,
-  appendQuotaHistorySample,
-  resolveZaiQuota,
-} from 'sidekick-shared';
+import { OpenCodeProvider, appendQuotaHistorySample, resolveZaiQuota } from 'sidekick-shared';
 import type { QuotaState } from 'sidekick-shared';
 import type { SessionProvider } from '../../types/sessionProvider';
 import { getWorkspaceId } from '../../utils/workspaceId';
@@ -44,16 +40,18 @@ export class OpenCodeSessionProvider extends OpenCodeProvider implements Session
    */
   async getQuotaFromSession(): Promise<QuotaState | null> {
     const now = Date.now();
-    if (this.lastZaiQuota && now - this.lastZaiQuotaFetchMs < OpenCodeSessionProvider.ZAI_QUOTA_REFRESH_INTERVAL_MS) {
+    if (
+      this.lastZaiQuota &&
+      now - this.lastZaiQuotaFetchMs < OpenCodeSessionProvider.ZAI_QUOTA_REFRESH_INTERVAL_MS
+    ) {
       return this.lastZaiQuota;
     }
 
     if (this.pendingZaiQuota) return this.pendingZaiQuota;
 
-    this.pendingZaiQuota = this.fetchAndRecordZaiQuota()
-      .finally(() => {
-        this.pendingZaiQuota = null;
-      });
+    this.pendingZaiQuota = this.fetchAndRecordZaiQuota().finally(() => {
+      this.pendingZaiQuota = null;
+    });
     return this.pendingZaiQuota;
   }
 

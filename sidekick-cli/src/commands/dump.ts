@@ -53,7 +53,11 @@ function formatAge(mtime: Date): string {
 /**
  * List available sessions for the current project and output as table or JSON.
  */
-function listSessions(provider: ReturnType<typeof resolveProvider>, workspacePath: string, asJson: boolean): void {
+function listSessions(
+  provider: ReturnType<typeof resolveProvider>,
+  workspacePath: string,
+  asJson: boolean,
+): void {
   const sessionPaths = provider.findAllSessions(workspacePath);
 
   if (sessionPaths.length === 0) {
@@ -105,10 +109,10 @@ function listSessions(provider: ReturnType<typeof resolveProvider>, workspacePat
 
   // Table output
   // Determine column widths
-  const idWidth = Math.max(10, ...sessions.map(s => s.id.length));
+  const idWidth = Math.max(10, ...sessions.map((s) => s.id.length));
   const tsWidth = 16; // "YYYY-MM-DD HH:MM"
-  const ageWidth = Math.max(3, ...sessions.map(s => s.age.length));
-  const labelWidth = Math.min(50, Math.max(5, ...sessions.map(s => s.label.length)));
+  const ageWidth = Math.max(3, ...sessions.map((s) => s.age.length));
+  const labelWidth = Math.min(50, Math.max(5, ...sessions.map((s) => s.label.length)));
 
   const header = [
     'ID'.padEnd(idWidth),
@@ -121,7 +125,8 @@ function listSessions(provider: ReturnType<typeof resolveProvider>, workspacePat
   process.stdout.write('-'.repeat(header.length) + '\n');
 
   for (const s of sessions) {
-    const truncatedLabel = s.label.length > labelWidth ? s.label.substring(0, labelWidth - 1) + '\u2026' : s.label;
+    const truncatedLabel =
+      s.label.length > labelWidth ? s.label.substring(0, labelWidth - 1) + '\u2026' : s.label;
     const row = [
       s.id.padEnd(idWidth),
       s.timestamp.padEnd(tsWidth),
@@ -145,14 +150,20 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
     try {
       listSessions(provider, workspacePath, !!globalOpts.json);
     } finally {
-      try { provider.dispose(); } catch { /* ignore */ }
+      try {
+        provider.dispose();
+      } catch {
+        /* ignore */
+      }
     }
     return;
   }
 
   const sessionId: string | undefined = opts.session;
   const format: OutputFormat = (opts.format as OutputFormat) || 'text';
-  const termWidth: number = opts.width ? parseInt(opts.width as string, 10) : (process.stdout.columns || 120);
+  const termWidth: number = opts.width
+    ? parseInt(opts.width as string, 10)
+    : process.stdout.columns || 120;
   const expand: boolean = !!opts.expand;
 
   // Collect all events by replaying through the watcher
@@ -169,7 +180,9 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
           onEvent: (event: FollowEvent) => {
             events.push(event);
           },
-          onError: (_err: Error) => { /* ignore */ },
+          onError: (_err: Error) => {
+            /* ignore */
+          },
         },
       });
       sessionPath = result.sessionPath;
@@ -184,7 +197,9 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
     }
 
     // Process all events through the aggregator
-    const aggregator = new EventAggregator({ providerId: provider.id as 'claude-code' | 'opencode' | 'codex' });
+    const aggregator = new EventAggregator({
+      providerId: provider.id as 'claude-code' | 'opencode' | 'codex',
+    });
     for (const event of events) {
       aggregator.processFollowEvent(event);
     }
@@ -205,6 +220,10 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
         break;
     }
   } finally {
-    try { provider.dispose(); } catch { /* ignore */ }
+    try {
+      provider.dispose();
+    } catch {
+      /* ignore */
+    }
   }
 }

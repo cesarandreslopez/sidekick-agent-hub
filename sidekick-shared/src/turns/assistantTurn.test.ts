@@ -13,15 +13,25 @@ describe('segmentAssistantTurn', () => {
   }
 
   function flattenedProcessTools(projection: ReturnType<typeof segmentAssistantTurn>) {
-    return projection.process.steps.flatMap((step) => (step.kind === 'toolGroup' ? step.tools : []));
+    return projection.process.steps.flatMap((step) =>
+      step.kind === 'toolGroup' ? step.tools : [],
+    );
   }
 
   it('keeps only the final text run as the answer and moves earlier text/tools to process', () => {
     const projection = segmentAssistantTurn([
       { eventType: 'text', content: 'I will inspect the provider.' },
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolInput: { file_path: 'src/provider.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolInput: { file_path: 'src/provider.ts' },
+      },
       { eventType: 'text', content: 'The provider wires the parser.' },
-      { eventType: 'thinking', content: '**Check parser**\n\nNeed to verify the normalized events.' },
+      {
+        eventType: 'thinking',
+        content: '**Check parser**\n\nNeed to verify the normalized events.',
+      },
       { eventType: 'text', content: 'The provider uses the canonical parser path.' },
     ]);
 
@@ -45,9 +55,19 @@ describe('segmentAssistantTurn', () => {
 
   it('does not split adjacent tool groups on blank text events', () => {
     const projection = segmentAssistantTurn([
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolInput: { file_path: 'src/a.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolInput: { file_path: 'src/a.ts' },
+      },
       { eventType: 'text', content: '\n' },
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolInput: { file_path: 'src/b.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolInput: { file_path: 'src/b.ts' },
+      },
       { eventType: 'text', content: 'Both files use the same helper.' },
     ]);
 
@@ -65,9 +85,19 @@ describe('segmentAssistantTurn', () => {
 
   it('keeps reasoning between two tool runs in timeline order', () => {
     const projection = segmentAssistantTurn([
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolInput: { file_path: 'src/a.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolInput: { file_path: 'src/a.ts' },
+      },
       { eventType: 'thinking', content: 'Need the related file before answering.' },
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolInput: { file_path: 'src/b.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolInput: { file_path: 'src/b.ts' },
+      },
       { eventType: 'text', content: 'Both files use the helper.' },
     ]);
 
@@ -83,16 +113,30 @@ describe('segmentAssistantTurn', () => {
     const projection = segmentAssistantTurn([
       { eventType: 'thinking', content: '**Plan**\n\nInspect first.' },
       { eventType: 'text', content: 'I will inspect the provider.' },
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolUseId: 'read-1', toolInput: { file_path: 'src/provider.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolUseId: 'read-1',
+        toolInput: { file_path: 'src/provider.ts' },
+      },
       { eventType: 'thinking', content: '**Check**\n\nRun the test.' },
-      { eventType: 'tool_use', content: '', toolName: 'Bash', toolUseId: 'bash-1', toolInput: { command: 'npm test' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Bash',
+        toolUseId: 'bash-1',
+        toolInput: { command: 'npm test' },
+      },
       { eventType: 'text', content: 'The provider is wired correctly.' },
     ]);
 
-    expect(projection.timeline.filter((item) => item.kind === 'reasoning').map((item) => item.text)).toEqual(
-      projection.reasoningBlocks,
-    );
-    expect(projection.timeline.filter((item) => item.kind === 'narration').map((item) => item.text)).toEqual(
+    expect(
+      projection.timeline.filter((item) => item.kind === 'reasoning').map((item) => item.text),
+    ).toEqual(projection.reasoningBlocks);
+    expect(
+      projection.timeline.filter((item) => item.kind === 'narration').map((item) => item.text),
+    ).toEqual(
       projection.process.steps.filter((step) => step.kind === 'narration').map((step) => step.text),
     );
     expect(flattenedTimelineTools(projection)).toEqual(flattenedProcessTools(projection));
@@ -104,14 +148,22 @@ describe('segmentAssistantTurn', () => {
         { eventType: 'thinking', content: 'first reasoning block' },
         { eventType: 'thinking', content: 'second reasoning block' },
         { eventType: 'text', content: 'first narration' },
-        { eventType: 'tool_use', content: '', toolName: 'Bash', toolInput: { command: 'npm test' } },
+        {
+          eventType: 'tool_use',
+          content: '',
+          toolName: 'Bash',
+          toolInput: { command: 'npm test' },
+        },
         { eventType: 'text', content: 'final answer with full detail' },
       ],
       { maxReasoningBlocks: 1, maxProcessSteps: 1 },
     );
 
     expect(projection.answer).toBe('final answer with full detail');
-    expect(projection.reasoningBlocks).toEqual(['first reasoning block', '... 1 more reasoning block omitted']);
+    expect(projection.reasoningBlocks).toEqual([
+      'first reasoning block',
+      '... 1 more reasoning block omitted',
+    ]);
     expect(projection.process.steps).toEqual([
       { kind: 'narration', text: '... 1 earlier process step omitted' },
       { kind: 'toolGroup', tools: [{ toolName: 'Bash', toolInput: 'npm test' }] },
@@ -131,7 +183,12 @@ describe('segmentAssistantTurn', () => {
     ]);
     const endingOnTool = segmentAssistantTurn([
       { eventType: 'text', content: 'I will inspect the file.' },
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolInput: { file_path: 'src/index.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolInput: { file_path: 'src/index.ts' },
+      },
     ]);
 
     expect(withAnswer.answer).toBe('Final answer.');
@@ -145,17 +202,26 @@ describe('segmentAssistantTurn', () => {
 
   it('returns an empty timeline for empty and pure-answer turns', () => {
     expect(segmentAssistantTurn([]).timeline).toEqual([]);
-    expect(segmentAssistantTurn([{ eventType: 'text', content: 'Only the final answer.' }]).timeline).toEqual([]);
+    expect(
+      segmentAssistantTurn([{ eventType: 'text', content: 'Only the final answer.' }]).timeline,
+    ).toEqual([]);
   });
 
   it('applies sanitized tool input to process and timeline tool groups', () => {
     const projection = segmentAssistantTurn(
       [
-        { eventType: 'tool_use', content: '', toolName: 'Custom', toolUseId: 'tool-1', toolInput: { hidden: true } },
+        {
+          eventType: 'tool_use',
+          content: '',
+          toolName: 'Custom',
+          toolUseId: 'tool-1',
+          toolInput: { hidden: true },
+        },
         { eventType: 'text', content: 'Done.' },
       ],
       {
-        sanitizeToolInput: ({ toolName, toolInput, toolUseId }) => JSON.stringify({ toolName, toolInput, toolUseId }),
+        sanitizeToolInput: ({ toolName, toolInput, toolUseId }) =>
+          JSON.stringify({ toolName, toolInput, toolUseId }),
       },
     );
 
@@ -164,7 +230,11 @@ describe('segmentAssistantTurn', () => {
       {
         toolName: 'Custom',
         toolUseId: 'tool-1',
-        toolInput: JSON.stringify({ toolName: 'Custom', toolInput: { hidden: true }, toolUseId: 'tool-1' }),
+        toolInput: JSON.stringify({
+          toolName: 'Custom',
+          toolInput: { hidden: true },
+          toolUseId: 'tool-1',
+        }),
       },
     ]);
   });
@@ -200,9 +270,10 @@ describe('segmentAssistantTurn', () => {
         ],
       },
     ]);
-    expect(projection.process.steps[0].kind === 'toolGroup' && projection.process.steps[0].tools[0].toolInput).not.toContain(
-      'SECRET',
-    );
+    expect(
+      projection.process.steps[0].kind === 'toolGroup' &&
+        projection.process.steps[0].tools[0].toolInput,
+    ).not.toContain('SECRET');
     expect(projection.subagents).toEqual([
       {
         id: 'toolu_1',
@@ -245,15 +316,28 @@ describe('segmentAssistantTurn', () => {
       },
     ];
 
-    expect(segmentAssistantTurn(assistantTurnEventsFromSessionEvents(claudeEvents)).timeline).toEqual([
+    expect(
+      segmentAssistantTurn(assistantTurnEventsFromSessionEvents(claudeEvents)).timeline,
+    ).toEqual([
       { kind: 'reasoning', text: 'Need to inspect the file.' },
-      { kind: 'toolGroup', tools: [{ toolName: 'Read', toolUseId: 'read-claude', toolInput: 'a.ts' }] },
+      {
+        kind: 'toolGroup',
+        tools: [{ toolName: 'Read', toolUseId: 'read-claude', toolInput: 'a.ts' }],
+      },
     ]);
-    expect(segmentAssistantTurn(assistantTurnEventsFromSessionEvents(codexEvents)).timeline).toEqual([
+    expect(
+      segmentAssistantTurn(assistantTurnEventsFromSessionEvents(codexEvents)).timeline,
+    ).toEqual([
       { kind: 'reasoning', text: '**Inspect files**\n\nNeed the current implementation.' },
-      { kind: 'toolGroup', tools: [{ toolName: 'Read', toolUseId: 'read-codex', toolInput: 'b.ts' }] },
+      {
+        kind: 'toolGroup',
+        tools: [{ toolName: 'Read', toolUseId: 'read-codex', toolInput: 'b.ts' }],
+      },
       { kind: 'reasoning', text: '**Verify**\n\nCheck the tests.' },
-      { kind: 'toolGroup', tools: [{ toolName: 'Bash', toolUseId: 'bash-codex', toolInput: 'npm test' }] },
+      {
+        kind: 'toolGroup',
+        tools: [{ toolName: 'Bash', toolUseId: 'bash-codex', toolInput: 'npm test' }],
+      },
     ]);
   });
 });
@@ -285,7 +369,13 @@ describe('assistantTurnEventsFromSessionEvents', () => {
     expect(assistantTurnEventsFromSessionEvents(events)).toEqual([
       { eventType: 'thinking', content: '**Plan**\n\nInspect before answering.' },
       { eventType: 'text', content: 'I will read the file.' },
-      { eventType: 'tool_use', content: '', toolName: 'Read', toolUseId: 'read-1', toolInput: { file_path: 'src/index.ts' } },
+      {
+        eventType: 'tool_use',
+        content: '',
+        toolName: 'Read',
+        toolUseId: 'read-1',
+        toolInput: { file_path: 'src/index.ts' },
+      },
       { eventType: 'text', content: 'The package exports the helper.' },
       { eventType: 'tool_use', content: '', toolName: 'Bash', toolInput: { command: 'npm test' } },
     ]);
@@ -310,7 +400,11 @@ describe('extractTurnSubagents', () => {
     expect(
       extractTurnSubagents(
         [
-          { toolName: 'Task', toolUseId: 'a', toolInput: { description: 'Investigate', subagent_type: 'Explore' } },
+          {
+            toolName: 'Task',
+            toolUseId: 'a',
+            toolInput: { description: 'Investigate', subagent_type: 'Explore' },
+          },
           { toolName: 'Task', toolUseId: 'b', toolInput: { subagent_type: 'Plan' } },
           { toolName: 'Task', toolUseId: 'c', toolInput: {} },
           { toolName: 'Read', toolInput: { file_path: 'src/index.ts' } },

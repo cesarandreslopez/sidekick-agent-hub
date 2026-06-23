@@ -43,24 +43,26 @@ const NOTE_TYPE_LABELS: Record<KnowledgeNoteType, string> = {
 const EMPTY_MESSAGE =
   'Capture reusable knowledge — gotchas, patterns, guidelines, tips — attached to files.\n\n' +
   'Notes persist across sessions and can be injected into your instruction file ' +
-  '(CLAUDE.md or AGENTS.md) so your AI agent benefits from what you\'ve learned.\n\n' +
+  "(CLAUDE.md or AGENTS.md) so your AI agent benefits from what you've learned.\n\n" +
   'Select code, then right-click → Add Knowledge Note.';
 
 const POPULATED_MESSAGE =
   'Right-click a note to edit, confirm, or delete. ' +
   'Use "Inject Knowledge Notes" to add them to your instruction file.';
 
-export class KnowledgeNoteTreeProvider implements vscode.TreeDataProvider<TreeElement>, vscode.Disposable {
-  private readonly _onDidChangeTreeData = new vscode.EventEmitter<TreeElement | undefined | null | void>();
+export class KnowledgeNoteTreeProvider
+  implements vscode.TreeDataProvider<TreeElement>, vscode.Disposable
+{
+  private readonly _onDidChangeTreeData = new vscode.EventEmitter<
+    TreeElement | undefined | null | void
+  >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private _treeView: vscode.TreeView<TreeElement> | undefined;
   private disposables: vscode.Disposable[] = [];
 
   constructor(private readonly knowledgeNoteService: KnowledgeNoteService) {
-    this.disposables.push(
-      this.knowledgeNoteService.onDidChange(() => this.refresh())
-    );
+    this.disposables.push(this.knowledgeNoteService.onDidChange(() => this.refresh()));
 
     log('KnowledgeNoteTreeProvider initialized');
   }
@@ -72,10 +74,7 @@ export class KnowledgeNoteTreeProvider implements vscode.TreeDataProvider<TreeEl
 
   getTreeItem(element: TreeElement): vscode.TreeItem {
     if (element.kind === 'file') {
-      const item = new vscode.TreeItem(
-        element.filePath,
-        vscode.TreeItemCollapsibleState.Expanded
-      );
+      const item = new vscode.TreeItem(element.filePath, vscode.TreeItemCollapsibleState.Expanded);
       item.description = `${element.noteCount} note${element.noteCount !== 1 ? 's' : ''}`;
       item.iconPath = new vscode.ThemeIcon('file');
       item.contextValue = 'knowledgeNoteFile';
@@ -114,7 +113,7 @@ export class KnowledgeNoteTreeProvider implements vscode.TreeDataProvider<TreeEl
       // Root level: files with notes
       const files = this.knowledgeNoteService.getFilesWithNotes();
       return files
-        .map(filePath => {
+        .map((filePath) => {
           const notes = this.knowledgeNoteService.getNotesForFile(filePath);
           return { kind: 'file' as const, filePath, noteCount: notes.length };
         })
@@ -125,8 +124,8 @@ export class KnowledgeNoteTreeProvider implements vscode.TreeDataProvider<TreeEl
       // Children: notes for this file
       const notes = this.knowledgeNoteService.getNotesForFile(element.filePath);
       return notes
-        .filter(n => n.status !== 'obsolete')
-        .map(note => ({ kind: 'note' as const, note }));
+        .filter((n) => n.status !== 'obsolete')
+        .map((note) => ({ kind: 'note' as const, note }));
     }
 
     return [];
@@ -170,7 +169,7 @@ export class KnowledgeNoteTreeProvider implements vscode.TreeDataProvider<TreeEl
 
   dispose(): void {
     this._onDidChangeTreeData.dispose();
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
     log('KnowledgeNoteTreeProvider disposed');
   }

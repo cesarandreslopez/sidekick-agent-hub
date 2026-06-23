@@ -106,14 +106,18 @@ export class CliInferenceClient {
     try {
       execSync('which claude', { ...EXEC_OPTS, timeout: 5_000, stdio: 'pipe' });
       return true;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
 
   private hasCodexCli(): boolean {
     try {
       execSync('which codex', { ...EXEC_OPTS, timeout: 5_000, stdio: 'pipe' });
       return true;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
 
   private completeViaClaude(prompt: string): Promise<InferenceResult> {
@@ -145,8 +149,8 @@ export class CliInferenceClient {
         return { text: '', error: `API error ${response.status}: ${body.substring(0, 200)}` };
       }
 
-      const data = await response.json() as { content: Array<{ text: string }> };
-      const text = data.content?.map(b => b.text).join('') || '';
+      const data = (await response.json()) as { content: Array<{ text: string }> };
+      const text = data.content?.map((b) => b.text).join('') || '';
       return { text };
     } catch (err) {
       return { text: '', error: `Anthropic API failed: ${(err as Error).message}` };
@@ -162,7 +166,7 @@ export class CliInferenceClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model: DEFAULT_OPENAI_MODEL,
@@ -176,7 +180,7 @@ export class CliInferenceClient {
         return { text: '', error: `API error ${response.status}: ${body.substring(0, 200)}` };
       }
 
-      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+      const data = (await response.json()) as { choices: Array<{ message: { content: string } }> };
       const text = data.choices?.[0]?.message?.content || '';
       return { text };
     } catch (err) {
@@ -210,13 +214,20 @@ function spawnWithStdin(
       resolve({ text: '', error: `${cmd} CLI timed out after 60s` });
     }, 60_000);
 
-    proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    proc.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        resolve({ text: '', error: `${cmd} CLI failed (exit ${code}): ${stderr.substring(0, 200)}` });
+        resolve({
+          text: '',
+          error: `${cmd} CLI failed (exit ${code}): ${stderr.substring(0, 200)}`,
+        });
       } else {
         resolve({ text: stdout.trim() });
       }

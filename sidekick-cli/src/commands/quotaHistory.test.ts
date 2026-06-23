@@ -13,7 +13,9 @@ import {
 // Sidekick-shared resolves history paths via getConfigDir(); pin that to a temp dir for the test.
 let tmpDir: string;
 vi.mock('sidekick-shared/dist/paths', async () => {
-  const actual = (await vi.importActual<typeof import('sidekick-shared/dist/paths')>('sidekick-shared/dist/paths'));
+  const actual = await vi.importActual<typeof import('sidekick-shared/dist/paths')>(
+    'sidekick-shared/dist/paths',
+  );
   return {
     ...actual,
     getConfigDir: () => tmpDir,
@@ -91,7 +93,10 @@ describe('quotaHistoryAction end-to-end', () => {
     fs.rmSync(workspacePath, { recursive: true, force: true });
   });
 
-  function makeCmd(overrideOpts: Record<string, unknown> = {}, globalOpts: Record<string, unknown> = {}) {
+  function makeCmd(
+    overrideOpts: Record<string, unknown> = {},
+    globalOpts: Record<string, unknown> = {},
+  ) {
     return {
       opts: () => ({ weeks: '4', ...overrideOpts }),
       parent: {
@@ -124,7 +129,9 @@ describe('quotaHistoryAction end-to-end', () => {
     expect(parsed.weeks).toBe(4);
     expect(parsed.providers.claude).toBeDefined();
     expect(parsed.providers.claude.cells.length).toBe(4 * 7);
-    expect(parsed.providers.claude.cells.some((c: { utilization: number }) => c.utilization === 60)).toBe(true);
+    expect(
+      parsed.providers.claude.cells.some((c: { utilization: number }) => c.utilization === 60),
+    ).toBe(true);
   });
 
   it('reports an empty-history hint when no samples exist for either provider', async () => {

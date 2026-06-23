@@ -10,10 +10,7 @@
  */
 
 import type { TaskState } from '../types/claudeSession';
-import type {
-  PersistedTask,
-  TaskPersistenceStore,
-} from '../types/taskPersistence';
+import type { PersistedTask, TaskPersistenceStore } from '../types/taskPersistence';
 import { TASK_PERSISTENCE_SCHEMA_VERSION } from '../types/taskPersistence';
 import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
 import { log } from './Logger';
@@ -57,7 +54,9 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
   }
 
   protected override onStoreLoaded(): void {
-    log(`Loaded persisted tasks: ${Object.keys(this.store.tasks).length} tasks from ${this.store.sessionCount} sessions`);
+    log(
+      `Loaded persisted tasks: ${Object.keys(this.store.tasks).length} tasks from ${this.store.sessionCount} sessions`,
+    );
   }
 
   /**
@@ -124,7 +123,7 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
    */
   loadPersistedTasks(): PersistedTask[] {
     const lastSessionId = this.store.lastSessionId;
-    return Object.values(this.store.tasks).map(task => {
+    return Object.values(this.store.tasks).map((task) => {
       const copy = { ...task };
 
       // Tasks from prior sessions are carried over

@@ -21,17 +21,20 @@ function writeRollout(lines: unknown[]): string {
 
 function writeRolloutAt(filePath: string, lines: unknown[]): string {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, lines.map(line => JSON.stringify(line)).join('\n') + '\n');
+  fs.writeFileSync(filePath, lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
   return filePath;
 }
 
 function writeAuth(accessToken = 'codex-access-token'): string {
   const codexHome = path.join(tmpDir, '.codex');
   fs.mkdirSync(codexHome, { recursive: true });
-  fs.writeFileSync(path.join(codexHome, 'auth.json'), JSON.stringify({
-    auth_mode: 'chatgpt',
-    tokens: { access_token: accessToken },
-  }));
+  fs.writeFileSync(
+    path.join(codexHome, 'auth.json'),
+    JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: { access_token: accessToken },
+    }),
+  );
   return codexHome;
 }
 
@@ -46,13 +49,17 @@ describe('codexQuota', () => {
   });
 
   it('converts upstream rate-limit snapshots with nullable reset fields', () => {
-    const quota = quotaFromCodexRateLimits({
-      limit_id: 'codex',
-      primary: { used_percent: 12, window_minutes: 300, resets_at: null },
-      secondary: { used_percent: 34, window_minutes: null, resets_at: 1_900_000_000 },
-      plan_type: 'pro',
-      rate_limit_reached_type: 'workspace_member_usage_limit_reached',
-    }, 'session', '2026-05-19T12:00:00Z');
+    const quota = quotaFromCodexRateLimits(
+      {
+        limit_id: 'codex',
+        primary: { used_percent: 12, window_minutes: 300, resets_at: null },
+        secondary: { used_percent: 34, window_minutes: null, resets_at: 1_900_000_000 },
+        plan_type: 'pro',
+        rate_limit_reached_type: 'workspace_member_usage_limit_reached',
+      },
+      'session',
+      '2026-05-19T12:00:00Z',
+    );
 
     expect(quota).toMatchObject({
       available: true,
@@ -68,19 +75,23 @@ describe('codexQuota', () => {
   });
 
   it('adds elapsed-window projections to Codex quota snapshots', () => {
-    const quota = quotaFromCodexRateLimits({
-      limit_id: 'codex',
-      primary: {
-        used_percent: 40,
-        window_minutes: 300,
-        resets_at: Date.parse('2026-03-12T14:00:00Z') / 1000,
+    const quota = quotaFromCodexRateLimits(
+      {
+        limit_id: 'codex',
+        primary: {
+          used_percent: 40,
+          window_minutes: 300,
+          resets_at: Date.parse('2026-03-12T14:00:00Z') / 1000,
+        },
+        secondary: {
+          used_percent: 70,
+          window_minutes: 10_080,
+          resets_at: Date.parse('2026-03-13T12:00:00Z') / 1000,
+        },
       },
-      secondary: {
-        used_percent: 70,
-        window_minutes: 10_080,
-        resets_at: Date.parse('2026-03-13T12:00:00Z') / 1000,
-      },
-    }, 'api', '2026-03-12T12:00:00Z');
+      'api',
+      '2026-03-12T12:00:00Z',
+    );
 
     expect(quota).toMatchObject({
       projectedFiveHour: 67,
@@ -89,18 +100,22 @@ describe('codexQuota', () => {
   });
 
   it('uses 5-hour and 7-day projection defaults when Codex window lengths are missing', () => {
-    const quota = quotaFromCodexRateLimits({
-      limit_id: 'codex',
-      primary: {
-        used_percent: 40,
-        window_minutes: null,
-        resets_at: Date.parse('2026-03-12T14:00:00Z') / 1000,
+    const quota = quotaFromCodexRateLimits(
+      {
+        limit_id: 'codex',
+        primary: {
+          used_percent: 40,
+          window_minutes: null,
+          resets_at: Date.parse('2026-03-12T14:00:00Z') / 1000,
+        },
+        secondary: {
+          used_percent: 70,
+          resets_at: Date.parse('2026-03-13T12:00:00Z') / 1000,
+        },
       },
-      secondary: {
-        used_percent: 70,
-        resets_at: Date.parse('2026-03-13T12:00:00Z') / 1000,
-      },
-    }, 'api', '2026-03-12T12:00:00Z');
+      'api',
+      '2026-03-12T12:00:00Z',
+    );
 
     expect(quota).toMatchObject({
       projectedFiveHour: 67,
@@ -146,33 +161,39 @@ describe('codexQuota', () => {
   });
 
   it('selects the newest quota snapshot from multiple rollout files', () => {
-    const older = writeRolloutAt(path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-old.jsonl'), [
-      {
-        timestamp: '2026-05-19T10:00:00Z',
-        type: 'event_msg',
-        payload: {
-          type: 'token_count',
-          info: null,
-          rate_limits: {
-            primary: { used_percent: 8, window_minutes: 300, resets_at: 1_779_235_112 },
+    const older = writeRolloutAt(
+      path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-old.jsonl'),
+      [
+        {
+          timestamp: '2026-05-19T10:00:00Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: null,
+            rate_limits: {
+              primary: { used_percent: 8, window_minutes: 300, resets_at: 1_779_235_112 },
+            },
           },
         },
-      },
-    ]);
-    const newer = writeRolloutAt(path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-new.jsonl'), [
-      {
-        timestamp: '2026-05-19T10:15:00Z',
-        type: 'event_msg',
-        payload: {
-          type: 'token_count',
-          info: null,
-          rate_limits: {
-            primary: { used_percent: 49, window_minutes: 300, resets_at: 1_779_236_012 },
-            secondary: { used_percent: 44, window_minutes: 10_080, resets_at: 1_779_822_812 },
+      ],
+    );
+    const newer = writeRolloutAt(
+      path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-new.jsonl'),
+      [
+        {
+          timestamp: '2026-05-19T10:15:00Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: null,
+            rate_limits: {
+              primary: { used_percent: 49, window_minutes: 300, resets_at: 1_779_236_012 },
+              secondary: { used_percent: 44, window_minutes: 10_080, resets_at: 1_779_822_812 },
+            },
           },
         },
-      },
-    ]);
+      ],
+    );
 
     const quota = readLatestCodexQuotaFromRollouts([older, newer]);
 
@@ -184,34 +205,40 @@ describe('codexQuota', () => {
   });
 
   it('keeps the highest same-window utilization when Codex snapshots disagree', () => {
-    const lowerNewer = writeRolloutAt(path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-lower-newer.jsonl'), [
-      {
-        timestamp: '2026-05-19T10:15:00Z',
-        type: 'event_msg',
-        payload: {
-          type: 'token_count',
-          info: null,
-          rate_limits: {
-            primary: { used_percent: 50, window_minutes: 300, resets_at: 1_779_236_012 },
-            secondary: { used_percent: 44, window_minutes: 10_080, resets_at: 1_779_822_812 },
+    const lowerNewer = writeRolloutAt(
+      path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-lower-newer.jsonl'),
+      [
+        {
+          timestamp: '2026-05-19T10:15:00Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: null,
+            rate_limits: {
+              primary: { used_percent: 50, window_minutes: 300, resets_at: 1_779_236_012 },
+              secondary: { used_percent: 44, window_minutes: 10_080, resets_at: 1_779_822_812 },
+            },
           },
         },
-      },
-    ]);
-    const higherOlder = writeRolloutAt(path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-higher-older.jsonl'), [
-      {
-        timestamp: '2026-05-19T10:10:00Z',
-        type: 'event_msg',
-        payload: {
-          type: 'token_count',
-          info: null,
-          rate_limits: {
-            primary: { used_percent: 52, window_minutes: 300, resets_at: 1_779_236_012 },
-            secondary: { used_percent: 45, window_minutes: 10_080, resets_at: 1_779_822_812 },
+      ],
+    );
+    const higherOlder = writeRolloutAt(
+      path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-higher-older.jsonl'),
+      [
+        {
+          timestamp: '2026-05-19T10:10:00Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: null,
+            rate_limits: {
+              primary: { used_percent: 52, window_minutes: 300, resets_at: 1_779_236_012 },
+              secondary: { used_percent: 45, window_minutes: 10_080, resets_at: 1_779_822_812 },
+            },
           },
         },
-      },
-    ]);
+      ],
+    );
 
     const quota = readLatestCodexQuotaFromRollouts([lowerNewer, higherOlder]);
 
@@ -223,20 +250,23 @@ describe('codexQuota', () => {
   });
 
   it('prefers the newest quota across workspace and account Codex sessions', () => {
-    const workspaceRollout = writeRolloutAt(path.join(tmpDir, 'workspace-rollouts', 'rollout-workspace.jsonl'), [
-      {
-        timestamp: '2026-05-19T10:00:00Z',
-        type: 'event_msg',
-        payload: {
-          type: 'token_count',
-          info: null,
-          rate_limits: {
-            primary: { used_percent: 8, window_minutes: 300, resets_at: 1_779_235_112 },
-            secondary: { used_percent: 2, window_minutes: 10_080, resets_at: 1_779_821_912 },
+    const workspaceRollout = writeRolloutAt(
+      path.join(tmpDir, 'workspace-rollouts', 'rollout-workspace.jsonl'),
+      [
+        {
+          timestamp: '2026-05-19T10:00:00Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: null,
+            rate_limits: {
+              primary: { used_percent: 8, window_minutes: 300, resets_at: 1_779_235_112 },
+              secondary: { used_percent: 2, window_minutes: 10_080, resets_at: 1_779_821_912 },
+            },
           },
         },
-      },
-    ]);
+      ],
+    );
     const codexHome = path.join(tmpDir, '.codex');
     writeRolloutAt(path.join(codexHome, 'sessions', '2026', '05', '19', 'rollout-account.jsonl'), [
       {
@@ -281,8 +311,16 @@ describe('codexQuota', () => {
       json: async () => ({
         plan_type: 'pro',
         rate_limit: {
-          primary_window: { used_percent: 21, limit_window_seconds: 18_000, reset_at: 1_900_000_000 },
-          secondary_window: { used_percent: 4, limit_window_seconds: 604_800, reset_at: 1_900_100_000 },
+          primary_window: {
+            used_percent: 21,
+            limit_window_seconds: 18_000,
+            reset_at: 1_900_000_000,
+          },
+          secondary_window: {
+            used_percent: 4,
+            limit_window_seconds: 604_800,
+            reset_at: 1_900_100_000,
+          },
         },
       }),
     });
@@ -314,10 +352,13 @@ describe('codexQuota', () => {
   it('does not refresh from the API without ChatGPT auth', async () => {
     const codexHome = path.join(tmpDir, '.codex');
     fs.mkdirSync(codexHome, { recursive: true });
-    fs.writeFileSync(path.join(codexHome, 'auth.json'), JSON.stringify({
-      auth_mode: 'api_key',
-      OPENAI_API_KEY: 'sk-test',
-    }));
+    fs.writeFileSync(
+      path.join(codexHome, 'auth.json'),
+      JSON.stringify({
+        auth_mode: 'api_key',
+        OPENAI_API_KEY: 'sk-test',
+      }),
+    );
 
     const quota = await fetchCodexQuotaFromApi({ codexHome, fetchImpl: vi.fn() });
 

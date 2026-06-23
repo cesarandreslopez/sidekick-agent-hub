@@ -13,8 +13,20 @@ import type { ToolCall, ToolAnalytics, TimelineEvent } from '../types/claudeSess
 import { detectCycle } from '../utils/cycleDetector';
 
 // Re-export analysis types so existing consumers don't break
-export type { AnalyzedError, ToolPattern, Inefficiency, RecoveryPattern, SessionAnalysisData } from '../types/analysis';
-import type { AnalyzedError, ToolPattern, Inefficiency, RecoveryPattern, SessionAnalysisData } from '../types/analysis';
+export type {
+  AnalyzedError,
+  ToolPattern,
+  Inefficiency,
+  RecoveryPattern,
+  SessionAnalysisData,
+} from '../types/analysis';
+import type {
+  AnalyzedError,
+  ToolPattern,
+  Inefficiency,
+  RecoveryPattern,
+  SessionAnalysisData,
+} from '../types/analysis';
 
 /**
  * Analyzes session data to generate structured input for CLAUDE.md suggestions.
@@ -50,7 +62,7 @@ export class SessionAnalyzer {
    */
   getCachedData(): SessionAnalysisData {
     const now = Date.now();
-    if (this._cachedData && (now - this._cacheTimestamp) < SessionAnalyzer.CACHE_TTL_MS) {
+    if (this._cachedData && now - this._cacheTimestamp < SessionAnalyzer.CACHE_TTL_MS) {
       return this._cachedData;
     }
     this._cachedData = this.collectData();
@@ -83,9 +95,7 @@ export class SessionAnalyzer {
     const projectPath = this.extractProjectPath(sessionPath);
 
     // Determine if we have enough data for meaningful analysis
-    const hasEnoughData = stats.toolCalls.length >= 5 ||
-      errors.length > 0 ||
-      totalTokens > 1000;
+    const hasEnoughData = stats.toolCalls.length >= 5 || errors.length > 0 || totalTokens > 1000;
 
     return {
       errors,
@@ -113,9 +123,7 @@ export class SessionAnalyzer {
     const patternMap = new Map<string, RecoveryPattern>();
 
     // Sort by timestamp (chronological)
-    const sorted = [...toolCalls].sort((a, b) =>
-      a.timestamp.getTime() - b.timestamp.getTime()
-    );
+    const sorted = [...toolCalls].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
     // Look for failure → success sequences
     for (let i = 0; i < sorted.length; i++) {
@@ -144,8 +152,7 @@ export class SessionAnalyzer {
       }
     }
 
-    return Array.from(patternMap.values())
-      .sort((a, b) => b.occurrences - a.occurrences);
+    return Array.from(patternMap.values()).sort((a, b) => b.occurrences - a.occurrences);
   }
 
   /**
@@ -216,7 +223,7 @@ export class SessionAnalyzer {
           description: `Use ${succeededBase} instead of ${failedBase}`,
           failedApproach: this.truncateCommand(failedCmd),
           successfulApproach: this.truncateCommand(succeededCmd),
-          occurrences: 1
+          occurrences: 1,
         };
       }
     }
@@ -228,19 +235,21 @@ export class SessionAnalyzer {
 
       // Different git subcommands that accomplish similar goals
       const gitAliases: Record<string, string[]> = {
-        'pull': ['fetch', 'merge', 'rebase'],
-        'checkout': ['switch', 'restore'],
-        'reset': ['restore', 'checkout'],
+        pull: ['fetch', 'merge', 'rebase'],
+        checkout: ['switch', 'restore'],
+        reset: ['restore', 'checkout'],
       };
 
-      if (gitAliases[failedGitCmd]?.includes(succeededGitCmd) ||
-          gitAliases[succeededGitCmd]?.includes(failedGitCmd)) {
+      if (
+        gitAliases[failedGitCmd]?.includes(succeededGitCmd) ||
+        gitAliases[succeededGitCmd]?.includes(failedGitCmd)
+      ) {
         return {
           type: 'command_fallback',
           description: `Use "${succeededCmd.split(/\s+/).slice(0, 3).join(' ')}" instead of "${failedCmd.split(/\s+/).slice(0, 3).join(' ')}"`,
           failedApproach: this.truncateCommand(failedCmd),
           successfulApproach: this.truncateCommand(succeededCmd),
-          occurrences: 1
+          occurrences: 1,
         };
       }
     }
@@ -252,7 +261,7 @@ export class SessionAnalyzer {
         description: `Modified ${failedBase} command succeeded`,
         failedApproach: this.truncateCommand(failedCmd),
         successfulApproach: this.truncateCommand(succeededCmd),
-        occurrences: 1
+        occurrences: 1,
       };
     }
 
@@ -288,7 +297,7 @@ export class SessionAnalyzer {
         description: `${failedFilename} is in ${this.shortenPath(succeededDir)}, not ${this.shortenPath(failedDir)}`,
         failedApproach: this.shortenPath(failedPath),
         successfulApproach: this.shortenPath(succeededPath),
-        occurrences: 1
+        occurrences: 1,
       };
     }
 
@@ -305,7 +314,7 @@ export class SessionAnalyzer {
         description: `Use ${succeededFilename} (${succeededExt}) instead of ${failedFilename} (${failedExt})`,
         failedApproach: this.shortenPath(failedPath),
         successfulApproach: this.shortenPath(succeededPath),
-        occurrences: 1
+        occurrences: 1,
       };
     }
 
@@ -332,7 +341,7 @@ export class SessionAnalyzer {
     const failedKeywords = this.extractPatternKeywords(failedPattern);
     const succeededKeywords = this.extractPatternKeywords(succeededPattern);
 
-    const sharedKeywords = failedKeywords.filter(k => succeededKeywords.includes(k));
+    const sharedKeywords = failedKeywords.filter((k) => succeededKeywords.includes(k));
 
     if (sharedKeywords.length > 0) {
       return {
@@ -340,7 +349,7 @@ export class SessionAnalyzer {
         description: `Search pattern "${this.truncatePattern(succeededPattern)}" worked instead of "${this.truncatePattern(failedPattern)}"`,
         failedApproach: failedPattern,
         successfulApproach: succeededPattern,
-        occurrences: 1
+        occurrences: 1,
       };
     }
 
@@ -366,7 +375,7 @@ export class SessionAnalyzer {
       description: `${failed.name} succeeded with different parameters`,
       failedApproach: this.summarizeInput(failed.input),
       successfulApproach: this.summarizeInput(succeeded.input),
-      occurrences: 1
+      occurrences: 1,
     };
   }
 
@@ -381,8 +390,8 @@ export class SessionAnalyzer {
     return pattern
       .replace(/[*?[\]{}()\\^$.|+]/g, ' ')
       .split(/\s+/)
-      .filter(w => w.length >= 3)
-      .map(w => w.toLowerCase());
+      .filter((w) => w.length >= 3)
+      .map((w) => w.toLowerCase());
   }
 
   /**
@@ -451,7 +460,7 @@ export class SessionAnalyzer {
       errors.push({
         category,
         count: messages.length,
-        examples: messages.slice(0, 3)
+        examples: messages.slice(0, 3),
       });
     }
 
@@ -470,7 +479,7 @@ export class SessionAnalyzer {
    */
   private extractToolPatterns(
     toolAnalytics: Map<string, ToolAnalytics>,
-    toolCalls: ToolCall[]
+    toolCalls: ToolCall[],
   ): ToolPattern[] {
     const patterns: ToolPattern[] = [];
 
@@ -479,7 +488,10 @@ export class SessionAnalyzer {
 
     for (const call of toolCalls) {
       let toolTargets = targetCounts.get(call.name);
-      if (!toolTargets) { toolTargets = new Map(); targetCounts.set(call.name, toolTargets); }
+      if (!toolTargets) {
+        toolTargets = new Map();
+        targetCounts.set(call.name, toolTargets);
+      }
       const target = this.extractTarget(call);
       if (target) {
         toolTargets.set(target, (toolTargets.get(target) || 0) + 1);
@@ -507,7 +519,7 @@ export class SessionAnalyzer {
         tool: name,
         callCount: totalCalls,
         failureRate,
-        repeatedTargets: repeatedTargets.slice(0, 5) // Limit to 5
+        repeatedTargets: repeatedTargets.slice(0, 5), // Limit to 5
       });
     }
 
@@ -528,7 +540,7 @@ export class SessionAnalyzer {
 
     // Detect repeated reads (same file 3+ times)
     const readCounts = new Map<string, number>();
-    for (const call of toolCalls.filter(c => c.name === 'Read')) {
+    for (const call of toolCalls.filter((c) => c.name === 'Read')) {
       const filePath = call.input.file_path as string;
       if (filePath) {
         readCounts.set(filePath, (readCounts.get(filePath) || 0) + 1);
@@ -539,14 +551,14 @@ export class SessionAnalyzer {
         inefficiencies.push({
           type: 'repeated_read',
           description: `${path.basename(filePath)} read ${count} times`,
-          occurrences: count
+          occurrences: count,
         });
       }
     }
 
     // Detect Bash command failures (same base command failing 3+ times)
     const bashFailureCounts = new Map<string, number>();
-    for (const call of toolCalls.filter(c => c.name === 'Bash' && c.isError === true)) {
+    for (const call of toolCalls.filter((c) => c.name === 'Bash' && c.isError === true)) {
       const command = call.input.command as string;
       if (command) {
         const baseCommand = command.trim().split(/\s+/)[0];
@@ -591,7 +603,7 @@ export class SessionAnalyzer {
     }
 
     // Detect search spam (many Glob/Grep calls in short window)
-    const searchCalls = toolCalls.filter(c => c.name === 'Glob' || c.name === 'Grep');
+    const searchCalls = toolCalls.filter((c) => c.name === 'Glob' || c.name === 'Grep');
     if (searchCalls.length >= 10) {
       // Check for overlapping patterns
       const patterns = new Set<string>();
@@ -605,21 +617,21 @@ export class SessionAnalyzer {
         inefficiencies.push({
           type: 'search_spam',
           description: `${searchCalls.length} search calls with ${patterns.size} unique patterns`,
-          occurrences: searchCalls.length
+          occurrences: searchCalls.length,
         });
       }
     }
 
     // Detect glob overlap (similar glob patterns)
-    const globCalls = toolCalls.filter(c => c.name === 'Glob');
+    const globCalls = toolCalls.filter((c) => c.name === 'Glob');
     if (globCalls.length >= 5) {
-      const globPatterns = globCalls.map(c => c.input.pattern as string).filter(Boolean);
+      const globPatterns = globCalls.map((c) => c.input.pattern as string).filter(Boolean);
       const similarPatterns = this.findSimilarPatterns(globPatterns);
       if (similarPatterns.length > 0) {
         inefficiencies.push({
           type: 'glob_overlap',
           description: `Multiple similar glob patterns: ${similarPatterns.slice(0, 3).join(', ')}`,
-          occurrences: similarPatterns.length
+          occurrences: similarPatterns.length,
         });
       }
     }
@@ -644,7 +656,7 @@ export class SessionAnalyzer {
    * @returns Array of summarized activity strings (last 20 events)
    */
   private summarizeTimeline(timeline: TimelineEvent[]): string[] {
-    return timeline.slice(0, 20).map(event => {
+    return timeline.slice(0, 20).map((event) => {
       const time = new Date(event.timestamp).toLocaleTimeString();
       return `[${time}] ${event.type}: ${event.description}`;
     });
@@ -714,7 +726,10 @@ export class SessionAnalyzer {
     for (const pattern of patterns) {
       const dir = path.dirname(pattern) || '.';
       let group = byDir.get(dir);
-      if (!group) { group = []; byDir.set(dir, group); }
+      if (!group) {
+        group = [];
+        byDir.set(dir, group);
+      }
       group.push(pattern);
     }
 

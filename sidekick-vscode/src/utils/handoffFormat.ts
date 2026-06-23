@@ -85,14 +85,18 @@ export function buildHandoffMarkdown(input: HandoffInput): string {
   // Context Health Warning
   if (input.contextHealth !== undefined && input.contextHealth < 50) {
     lines.push('## Context Health Warning');
-    lines.push(`Context at ${input.contextHealth}% fidelity after ${input.compactionCount ?? 0} compactions. Decisions in the latter half of this session should be re-verified.`);
+    lines.push(
+      `Context at ${input.contextHealth}% fidelity after ${input.compactionCount ?? 0} compactions. Decisions in the latter half of this session should be re-verified.`,
+    );
     lines.push('');
   }
 
   // Truncation Summary
   if (input.truncationCount && input.truncationCount > 0) {
     lines.push('## Truncated Outputs');
-    lines.push(`Session had ${input.truncationCount} truncated tool output${input.truncationCount === 1 ? '' : 's'}.`);
+    lines.push(
+      `Session had ${input.truncationCount} truncated tool output${input.truncationCount === 1 ? '' : 's'}.`,
+    );
     if (input.truncationsByTool && input.truncationsByTool.length > 0) {
       for (const { tool, count } of input.truncationsByTool) {
         lines.push(`- **${tool}**: ${count}`);
@@ -114,7 +118,9 @@ export function buildHandoffMarkdown(input: HandoffInput): string {
   if (input.planProgress) {
     const pp = input.planProgress;
     lines.push('## Plan Progress');
-    lines.push(`**Plan:** "${pp.title}" (${pp.completedCount}/${pp.totalCount} steps completed, ${pp.completionPercent}%)`);
+    lines.push(
+      `**Plan:** "${pp.title}" (${pp.completedCount}/${pp.totalCount} steps completed, ${pp.completionPercent}%)`,
+    );
     if (pp.completedSteps.length > 0) {
       lines.push(`**Completed:** ${pp.completedSteps.join(', ')}`);
     }

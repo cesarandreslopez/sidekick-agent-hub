@@ -26,7 +26,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly sessionMonitor: SessionMonitor
+    private readonly sessionMonitor: SessionMonitor,
   ) {}
 
   /**
@@ -52,18 +52,20 @@ export class ToolInspectorProvider implements vscode.Disposable {
         {
           enableScripts: true,
           retainContextWhenHidden: true,
-          localResourceRoots: [this.extensionUri]
-        }
+          localResourceRoots: [this.extensionUri],
+        },
       );
 
-      this.panel.onDidDispose(() => {
-        this.panel = null;
-      }, null, this.disposables);
+      this.panel.onDidDispose(
+        () => {
+          this.panel = null;
+        },
+        null,
+        this.disposables,
+      );
     }
 
-    const filtered = filterTool
-      ? toolCalls.filter(c => c.name === filterTool)
-      : toolCalls;
+    const filtered = filterTool ? toolCalls.filter((c) => c.name === filterTool) : toolCalls;
 
     this.panel.title = filterTool ? `Tools: ${filterTool}` : 'Tool Inspector';
     this.panel.webview.html = this.getHtml(this.panel.webview, filtered, toolCalls);
@@ -83,9 +85,11 @@ export class ToolInspectorProvider implements vscode.Disposable {
     }
     const filterButtons = Array.from(toolCounts.entries())
       .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) =>
-        `<button class="filter-btn" data-tool="${this.escapeHtml(name)}" aria-pressed="false">${this.escapeHtml(name)} (${count})</button>`
-      ).join('');
+      .map(
+        ([name, count]) =>
+          `<button class="filter-btn" data-tool="${this.escapeHtml(name)}" aria-pressed="false">${this.escapeHtml(name)} (${count})</button>`,
+      )
+      .join('');
 
     // Render tool calls
     const callsHtml = calls.map((call, i) => this.renderToolCall(call, i)).join('\n');
@@ -334,13 +338,18 @@ export class ToolInspectorProvider implements vscode.Disposable {
    */
   private renderToolCall(call: ToolCall, index: number): string {
     const time = call.timestamp
-      ? new Date(call.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+      ? new Date(call.timestamp).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+        })
       : '';
     const durationStr = call.duration ? `${Math.round(call.duration)}ms` : '';
     const errorBadge = call.isError ? '<span class="tool-error-badge">ERROR</span>' : '';
-    const rawNameBadge = call.rawName && call.rawName !== call.name
-      ? `<span class="tool-raw-name">raw: ${this.escapeHtml(call.rawName)}</span>`
-      : '';
+    const rawNameBadge =
+      call.rawName && call.rawName !== call.name
+        ? `<span class="tool-raw-name">raw: ${this.escapeHtml(call.rawName)}</span>`
+        : '';
     const toolSummary = formatToolSummary(call.name, call.input);
 
     let bodyContent = '';
@@ -384,10 +393,13 @@ export class ToolInspectorProvider implements vscode.Disposable {
   }
 
   private renderReadCall(call: ToolCall): string {
-    const filePath = call.input.file_path as string || '';
+    const filePath = (call.input.file_path as string) || '';
     const offset = call.input.offset as number | undefined;
     const limit = call.input.limit as number | undefined;
-    const range = offset || limit ? ` (${offset ? 'from line ' + offset : ''}${limit ? ', limit ' + limit : ''})` : '';
+    const range =
+      offset || limit
+        ? ` (${offset ? 'from line ' + offset : ''}${limit ? ', limit ' + limit : ''})`
+        : '';
 
     return `<div class="tool-section">
       <div class="tool-section-label">File</div>
@@ -396,8 +408,8 @@ export class ToolInspectorProvider implements vscode.Disposable {
   }
 
   private renderWriteCall(call: ToolCall): string {
-    const filePath = call.input.file_path as string || '';
-    const content = call.input.content as string || '';
+    const filePath = (call.input.file_path as string) || '';
+    const content = (call.input.content as string) || '';
     const preview = content.substring(0, 1000);
 
     return `<div class="tool-section">
@@ -411,9 +423,9 @@ export class ToolInspectorProvider implements vscode.Disposable {
   }
 
   private renderEditCall(call: ToolCall): string {
-    const filePath = call.input.file_path as string || '';
-    const oldStr = call.input.old_string as string || '';
-    const newStr = call.input.new_string as string || '';
+    const filePath = (call.input.file_path as string) || '';
+    const oldStr = (call.input.old_string as string) || '';
+    const newStr = (call.input.new_string as string) || '';
 
     const diffLines: string[] = [];
     if (oldStr) {
@@ -438,8 +450,8 @@ export class ToolInspectorProvider implements vscode.Disposable {
   }
 
   private renderBashCall(call: ToolCall): string {
-    const command = call.input.command as string || '';
-    const description = call.input.description as string || '';
+    const command = (call.input.command as string) || '';
+    const description = (call.input.description as string) || '';
 
     let html = '';
     if (description) {
@@ -460,7 +472,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
   private renderSearchCall(call: ToolCall): string {
     const pattern = (call.input.pattern || call.input.query || '') as string;
     const searchPath = (call.input.path || call.input.file_path || '') as string;
-    const glob = call.input.glob as string || '';
+    const glob = (call.input.glob as string) || '';
 
     const parts: string[] = [];
     if (pattern) parts.push(`Pattern: ${this.escapeHtml(pattern)}`);
@@ -489,7 +501,9 @@ export class ToolInspectorProvider implements vscode.Disposable {
     const preview = call.output.substring(0, 3000);
     const isError = call.isError;
     const label = isError ? 'Error Output' : 'Output';
-    const labelClass = isError ? 'tool-section-label tool-error-output-label' : 'tool-section-label tool-output-label';
+    const labelClass = isError
+      ? 'tool-section-label tool-error-output-label'
+      : 'tool-section-label tool-output-label';
     const contentClass = isError ? 'tool-content tool-error-output' : 'tool-content tool-output';
 
     return `<div class="tool-section">

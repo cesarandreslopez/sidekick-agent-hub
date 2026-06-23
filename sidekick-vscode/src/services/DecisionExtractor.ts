@@ -23,9 +23,9 @@ import type { DecisionEntry } from '../types/decisionLog';
  */
 export function fromRecoveryPatterns(
   patterns: RecoveryPattern[],
-  sessionId: string
+  sessionId: string,
 ): DecisionEntry[] {
-  return patterns.map(pattern => ({
+  return patterns.map((pattern) => ({
     id: randomUUID(),
     description: pattern.description,
     rationale: `${pattern.failedApproach} failed, switched to ${pattern.successfulApproach}`,
@@ -40,10 +40,7 @@ export function fromRecoveryPatterns(
 /**
  * Extracts decisions from AskUserQuestion tool calls.
  */
-export function fromUserQuestions(
-  toolCalls: ToolCall[],
-  sessionId: string
-): DecisionEntry[] {
+export function fromUserQuestions(toolCalls: ToolCall[], sessionId: string): DecisionEntry[] {
   const entries: DecisionEntry[] = [];
 
   for (const call of toolCalls) {
@@ -62,7 +59,7 @@ export function fromUserQuestions(
       if (!q.question) continue;
 
       const alternatives = (q.options ?? [])
-        .map(o => {
+        .map((o) => {
           if (typeof o === 'string') return o;
           return o.label;
         })
@@ -87,10 +84,7 @@ export function fromUserQuestions(
 /**
  * Extracts decisions from plan mode tool calls (EnterPlanMode/ExitPlanMode pairs).
  */
-export function fromPlanMode(
-  toolCalls: ToolCall[],
-  sessionId: string
-): DecisionEntry[] {
+export function fromPlanMode(toolCalls: ToolCall[], sessionId: string): DecisionEntry[] {
   const entries: DecisionEntry[] = [];
   const enterTimes: string[] = [];
 
@@ -136,7 +130,7 @@ const DECISION_PATTERNS = [
  */
 export function fromAssistantTexts(
   texts: Array<{ text: string; timestamp: string }>,
-  sessionId: string
+  sessionId: string,
 ): DecisionEntry[] {
   const entries: DecisionEntry[] = [];
 
@@ -190,7 +184,7 @@ export function extractDecisions(
   analysisData: SessionAnalysisData | null,
   toolCalls: ToolCall[],
   assistantTexts: Array<{ text: string; timestamp: string }>,
-  sessionId: string
+  sessionId: string,
 ): DecisionEntry[] {
   const all: DecisionEntry[] = [];
 
@@ -204,7 +198,7 @@ export function extractDecisions(
 
   // Deduplicate by description+source fingerprint
   const seen = new Set<string>();
-  return all.filter(entry => {
+  return all.filter((entry) => {
     const fp = fingerprint(entry);
     if (seen.has(fp)) return false;
     seen.add(fp);

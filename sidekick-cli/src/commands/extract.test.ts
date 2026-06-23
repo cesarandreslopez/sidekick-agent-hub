@@ -81,10 +81,12 @@ describe('formatAssetsForText', () => {
   });
 
   it('distinguishes no-session and no-asset empty states', () => {
-    expect(formatAssetsForText({ urls: [], paths: [], commands: [], plans: [], inChat: false }, ['url']))
-      .toContain('No recent Claude Code or Codex sessions found for this project.');
-    expect(formatAssetsForText({ urls: [], paths: [], commands: [], plans: [], inChat: true }, ['url']))
-      .toContain('No extractable assets found in recent sessions.');
+    expect(
+      formatAssetsForText({ urls: [], paths: [], commands: [], plans: [], inChat: false }, ['url']),
+    ).toContain('No recent Claude Code or Codex sessions found for this project.');
+    expect(
+      formatAssetsForText({ urls: [], paths: [], commands: [], plans: [], inChat: true }, ['url']),
+    ).toContain('No extractable assets found in recent sessions.');
   });
 });
 

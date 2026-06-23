@@ -7,7 +7,5 @@
  * @returns The text with code fences removed
  */
 export function stripMarkdownFences(text: string): string {
-  return text
-    .replace(/^```[\w-]*\s*\n?/gm, '')
-    .replace(/\n?\s*```\s*$/gm, '');
+  return text.replace(/^```[\w-]*\s*\n?/gm, '').replace(/\n?\s*```\s*$/gm, '');
 }

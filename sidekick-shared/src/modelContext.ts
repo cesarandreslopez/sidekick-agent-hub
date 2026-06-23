@@ -33,22 +33,21 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'gpt-5.3-codex': 400_000,
   'gpt-5': 400_000,
   // OpenAI reasoning
-  'o1': 200_000,
-  'o3': 200_000,
-  'o4': 200_000,
+  o1: 200_000,
+  o3: 200_000,
+  o4: 200_000,
   // OpenAI GPT-4 series
   'gpt-4o': 128_000,
   'gpt-4-turbo': 128_000,
   'gpt-4': 8_192,
   // Gemini
-  'gemini': 1_000_000,
+  gemini: 1_000_000,
   // DeepSeek
-  'deepseek': 128_000,
+  deepseek: 128_000,
 };
 
 /** Prefix keys sorted longest-first for correct prefix matching. */
-const SORTED_KEYS = Object.keys(MODEL_CONTEXT_SIZES)
-  .sort((a, b) => b.length - a.length);
+const SORTED_KEYS = Object.keys(MODEL_CONTEXT_SIZES).sort((a, b) => b.length - a.length);
 
 /** Default context window size when model is unknown. */
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
@@ -75,7 +74,10 @@ export function getModelContextWindowSize(modelId?: string): number {
   // Strip the suffix if present, so the normal lookup still succeeds when
   // a caller passes e.g. "claude-opus-4-7[1m]" and we've already handled it.
   // Trim/lowercase so padded or mixed-case IDs match the lowercase table keys.
-  const normalized = modelId.replace(/\[1m\]/gi, '').trim().toLowerCase();
+  const normalized = modelId
+    .replace(/\[1m\]/gi, '')
+    .trim()
+    .toLowerCase();
 
   // Exact match
   if (MODEL_CONTEXT_SIZES[normalized] !== undefined) {

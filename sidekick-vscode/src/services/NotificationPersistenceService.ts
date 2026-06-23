@@ -11,10 +11,7 @@
 
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import type {
-  PersistedNotification,
-  NotificationStore,
-} from '../types/notificationPersistence';
+import type { PersistedNotification, NotificationStore } from '../types/notificationPersistence';
 import { NOTIFICATION_SCHEMA_VERSION } from '../types/notificationPersistence';
 import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
 import { log } from './Logger';
@@ -100,14 +97,14 @@ export class NotificationPersistenceService extends PersistenceService<Notificat
    * Returns count of unread notifications.
    */
   getUnreadCount(): number {
-    return this.store.notifications.filter(n => !n.isRead).length;
+    return this.store.notifications.filter((n) => !n.isRead).length;
   }
 
   /**
    * Marks a single notification as read.
    */
   markRead(id: string): void {
-    const notification = this.store.notifications.find(n => n.id === id);
+    const notification = this.store.notifications.find((n) => n.id === id);
     if (notification && !notification.isRead) {
       notification.isRead = true;
       this.markDirtyAndNotify();

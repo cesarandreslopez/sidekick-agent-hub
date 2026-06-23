@@ -19,7 +19,10 @@ import type {
 
 const ALL_TYPES: ExtractedAssetType[] = ['url', 'path', 'command', 'plan'];
 
-const TYPE_META: Record<ExtractedAssetType, { tag: string; color: (value: string) => string; heading: string }> = {
+const TYPE_META: Record<
+  ExtractedAssetType,
+  { tag: string; color: (value: string) => string; heading: string }
+> = {
   url: { tag: 'url', color: chalk.cyan, heading: 'URLs' },
   path: { tag: 'path', color: chalk.yellow, heading: 'Paths' },
   command: { tag: 'cmd', color: chalk.green, heading: 'Commands' },
@@ -47,7 +50,10 @@ export function parseTypes(raw: string | undefined): ExtractedAssetType[] {
   if (!raw) return ALL_TYPES;
 
   const types: ExtractedAssetType[] = [];
-  for (const token of raw.split(',').map((part) => part.trim().toLowerCase()).filter(Boolean)) {
+  for (const token of raw
+    .split(',')
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean)) {
     const type = TYPE_ALIASES[token];
     if (!type) {
       throw new Error(`Invalid asset type '${token}'. Use one of: url, path, command, plan.`);
@@ -66,7 +72,10 @@ export function parseLimit(raw: string | undefined): number | undefined {
   return Number.parseInt(raw, 10);
 }
 
-export function filterByTypes(assets: ExtractedAssets & { inChat?: boolean }, types: ExtractedAssetType[]): AssetFilterResult {
+export function filterByTypes(
+  assets: ExtractedAssets & { inChat?: boolean },
+  types: ExtractedAssetType[],
+): AssetFilterResult {
   const wanted = new Set(types);
   return {
     urls: wanted.has('url') ? assets.urls : [],
@@ -93,18 +102,26 @@ export function resolveAssetAgents(globalOpts: { provider?: string }): {
 
 function listFor(assets: ExtractedAssets, type: ExtractedAssetType): ExtractedAsset[] {
   switch (type) {
-    case 'url': return assets.urls;
-    case 'path': return assets.paths;
-    case 'command': return assets.commands;
-    case 'plan': return assets.plans;
+    case 'url':
+      return assets.urls;
+    case 'path':
+      return assets.paths;
+    case 'command':
+      return assets.commands;
+    case 'plan':
+      return assets.plans;
   }
 }
 
-export function formatAssetsForText(assets: AssetFilterResult, types: ExtractedAssetType[]): string {
+export function formatAssetsForText(
+  assets: AssetFilterResult,
+  types: ExtractedAssetType[],
+): string {
   if (flattenAssets(assets).length === 0) {
-    const message = assets.inChat === false
-      ? 'No recent Claude Code or Codex sessions found for this project.'
-      : 'No extractable assets found in recent sessions.';
+    const message =
+      assets.inChat === false
+        ? 'No recent Claude Code or Codex sessions found for this project.'
+        : 'No extractable assets found in recent sessions.';
     return `${chalk.dim(message)}\n`;
   }
 
@@ -140,13 +157,14 @@ export async function extractAction(_opts: Record<string, unknown>, cmd: Command
     const { agents, unsupportedProvider } = resolveAssetAgents(globalOpts);
 
     if (unsupportedProvider) {
-      process.stderr.write(`Error: sidekick extract supports Claude Code and Codex sessions; provider '${unsupportedProvider}' is not supported yet.\n`);
+      process.stderr.write(
+        `Error: sidekick extract supports Claude Code and Codex sessions; provider '${unsupportedProvider}' is not supported yet.\n`,
+      );
       process.exit(1);
     }
 
-    const caps = limit && limit > 0
-      ? { url: limit, path: limit, command: limit, plan: limit }
-      : undefined;
+    const caps =
+      limit && limit > 0 ? { url: limit, path: limit, command: limit, plan: limit } : undefined;
     const assets: GatherAssetsResult = gatherAssetsForCwd({ cwd: workspacePath, agents, caps });
     const filtered = filterByTypes(assets, types);
 

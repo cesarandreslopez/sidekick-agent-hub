@@ -30,8 +30,11 @@ function getNvmSidekickPaths(): string[] {
   const nvmDir = path.join(os.homedir(), '.nvm', 'versions', 'node');
   if (process.platform === 'win32' || !fs.existsSync(nvmDir)) return [];
   try {
-    return fs.readdirSync(nvmDir).sort().reverse()
-      .map(v => path.join(nvmDir, v, 'bin', 'sidekick'));
+    return fs
+      .readdirSync(nvmDir)
+      .sort()
+      .reverse()
+      .map((v) => path.join(nvmDir, v, 'bin', 'sidekick'));
   } catch {
     return [];
   }
@@ -193,7 +196,7 @@ function showNotInstalledError(): void {
     .showErrorMessage(
       'Sidekick CLI not found. Install sidekick-agent-hub to use the CLI dashboard.',
       'Install in Terminal',
-      'Learn More'
+      'Learn More',
     )
     .then((choice) => {
       if (choice === 'Install in Terminal') {

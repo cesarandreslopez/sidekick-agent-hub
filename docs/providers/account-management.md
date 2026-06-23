@@ -11,11 +11,7 @@ Requires `sidekick-shared@^0.21.0`.
 Use the provider-neutral helpers when building account switchers:
 
 ```ts
-import {
-  getActiveAccountStatus,
-  listAllAccounts,
-  switchAccount,
-} from 'sidekick-shared';
+import { getActiveAccountStatus, listAllAccounts, switchAccount } from 'sidekick-shared';
 
 const status = getActiveAccountStatus();
 const all = listAllAccounts();
@@ -43,11 +39,7 @@ interface ListAllAccountsResult {
 process and does not change the active account.
 
 ```ts
-import {
-  beginAccountLogin,
-  getAccountLoginStatus,
-  finalizeAccountLogin,
-} from 'sidekick-shared';
+import { beginAccountLogin, getAccountLoginStatus, finalizeAccountLogin } from 'sidekick-shared';
 
 const begin = beginAccountLogin('claude-code', 'Work');
 if (!begin.success) throw new Error(begin.error);
@@ -76,7 +68,7 @@ import { spawnAccountLogin } from 'sidekick-shared';
 
 const res = await spawnAccountLogin('codex', 'Work', {
   stdio: 'inherit',
-  onStatus: status => updateLoginUi(status),
+  onStatus: (status) => updateLoginUi(status),
   timeoutMs: 180_000,
 });
 ```
@@ -102,15 +94,15 @@ const payload = listAllAccountsResultSchema.parse(await sidecar.invoke('listAcco
 
 Available account-management schemas:
 
-| Schema | Validates |
-|---|---|
-| `accountProviderIdSchema` | `'claude-code'` or `'codex'` |
-| `beginAccountLoginResultSchema` | login begin success/failure payloads |
-| `accountLoginStatusSchema` | `pending`, `authenticated`, or `failed` status |
-| `accountManagerResultSchema` | switch/finalize result payloads |
-| `accountEntrySchema` | Claude account registry entries |
-| `savedAccountProfileSchema` | provider-neutral saved account profiles |
-| `listAllAccountsResultSchema` | provider-neutral account list payloads |
+| Schema                          | Validates                                      |
+| ------------------------------- | ---------------------------------------------- |
+| `accountProviderIdSchema`       | `'claude-code'` or `'codex'`                   |
+| `beginAccountLoginResultSchema` | login begin success/failure payloads           |
+| `accountLoginStatusSchema`      | `pending`, `authenticated`, or `failed` status |
+| `accountManagerResultSchema`    | switch/finalize result payloads                |
+| `accountEntrySchema`            | Claude account registry entries                |
+| `savedAccountProfileSchema`     | provider-neutral saved account profiles        |
+| `listAllAccountsResultSchema`   | provider-neutral account list payloads         |
 
 ## Operational Notes
 

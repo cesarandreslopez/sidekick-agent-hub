@@ -4,11 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import {
-  readLatestHandoff,
-  getProjectSlug,
-  getProjectSlugRaw,
-} from 'sidekick-shared';
+import { readLatestHandoff, getProjectSlug, getProjectSlugRaw } from 'sidekick-shared';
 
 export async function handoffAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();

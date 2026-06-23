@@ -27,9 +27,10 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
   const tokens = usage
     ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 }
     : undefined;
-  const cacheTokens = usage && (usage.cache_read_input_tokens || usage.cache_creation_input_tokens)
-    ? { read: usage.cache_read_input_tokens || 0, write: usage.cache_creation_input_tokens || 0 }
-    : undefined;
+  const cacheTokens =
+    usage && (usage.cache_read_input_tokens || usage.cache_creation_input_tokens)
+      ? { read: usage.cache_read_input_tokens || 0, write: usage.cache_creation_input_tokens || 0 }
+      : undefined;
   const cost = usage?.reported_cost;
   const model = event.message?.model;
   const rateLimits = event.rateLimits;
@@ -41,12 +42,14 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       if (Array.isArray(content)) {
         for (const block of content as Array<Record<string, unknown>>) {
           if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-            const resultText = typeof block.content === 'string'
-              ? truncate(block.content, 120)
-              : '';
+            const resultText =
+              typeof block.content === 'string' ? truncate(block.content, 120) : '';
             events.push({
-              providerId, type: 'tool_result', timestamp: ts,
-              summary: resultText || '(tool result)', raw: block,
+              providerId,
+              type: 'tool_result',
+              timestamp: ts,
+              summary: resultText || '(tool result)',
+              raw: block,
             });
           }
         }
@@ -54,8 +57,12 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       const text = extractTextContent(content);
       if (text || events.length === 0) {
         events.push({
-          providerId, type: 'user', timestamp: ts,
-          summary: text || '(user message)', model, raw: event,
+          providerId,
+          type: 'user',
+          timestamp: ts,
+          summary: text || '(user message)',
+          model,
+          raw: event,
         });
       }
       break;
@@ -71,9 +78,14 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
               ? summarizeToolInput(block.name as string, block.input as Record<string, unknown>)
               : '';
             events.push({
-              providerId, type: 'tool_use', timestamp: ts,
-              summary: input ? `${block.name} ${input}` : block.name as string,
-              toolName: block.name as string, toolInput: input, model, raw: block,
+              providerId,
+              type: 'tool_use',
+              timestamp: ts,
+              summary: input ? `${block.name} ${input}` : (block.name as string),
+              toolName: block.name as string,
+              toolInput: input,
+              model,
+              raw: block,
             });
           }
         }
@@ -82,8 +94,15 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       const text = extractTextContent(content);
       if (text || events.length === 0) {
         events.push({
-          providerId, type: 'assistant', timestamp: ts,
-          summary: text || '(thinking...)', tokens, cacheTokens, cost, model, raw: event,
+          providerId,
+          type: 'assistant',
+          timestamp: ts,
+          summary: text || '(thinking...)',
+          tokens,
+          cacheTokens,
+          cost,
+          model,
+          raw: event,
         });
       } else if (tokens) {
         // Attach tokens to the last tool_use event if no separate text
@@ -97,13 +116,16 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
 
     case 'tool_use': {
       const name = event.tool?.name || 'unknown';
-      const input = event.tool?.input
-        ? summarizeToolInput(name, event.tool.input)
-        : '';
+      const input = event.tool?.input ? summarizeToolInput(name, event.tool.input) : '';
       events.push({
-        providerId, type: 'tool_use', timestamp: ts,
+        providerId,
+        type: 'tool_use',
+        timestamp: ts,
         summary: input ? `${name} ${input}` : name,
-        toolName: name, toolInput: input, model, raw: event,
+        toolName: name,
+        toolInput: input,
+        model,
+        raw: event,
       });
       break;
     }
@@ -112,16 +134,22 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       const output = event.result?.output;
       const text = typeof output === 'string' ? truncate(output, 120) : '';
       events.push({
-        providerId, type: 'tool_result', timestamp: ts,
-        summary: text || '(tool result)', raw: event,
+        providerId,
+        type: 'tool_result',
+        timestamp: ts,
+        summary: text || '(tool result)',
+        raw: event,
       });
       break;
     }
 
     case 'summary': {
       events.push({
-        providerId, type: 'summary', timestamp: ts,
-        summary: 'Context compacted', raw: event,
+        providerId,
+        type: 'summary',
+        timestamp: ts,
+        summary: 'Context compacted',
+        raw: event,
       });
       break;
     }
@@ -129,11 +157,13 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
     case 'system': {
       const text = extractTextContent(event.message?.content);
       const label = event.message?.sourceLabel || event.message?.role || 'system';
-      const summary = text || (usage
-        ? `Tokens: ${usage.input_tokens || 0} in / ${usage.output_tokens || 0} out`
-        : label);
+      const summary =
+        text ||
+        (usage ? `Tokens: ${usage.input_tokens || 0} in / ${usage.output_tokens || 0} out` : label);
       events.push({
-        providerId, type: 'system', timestamp: ts,
+        providerId,
+        type: 'system',
+        timestamp: ts,
         summary: label && text ? `${label}: ${text}` : summary,
         tokens,
         cacheTokens,
@@ -150,8 +180,11 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       const evtType = (event as { type: string }).type;
       if (evtType === 'result') {
         events.push({
-          providerId, type: 'system', timestamp: ts,
-          summary: 'Session ended', raw: event,
+          providerId,
+          type: 'system',
+          timestamp: ts,
+          summary: 'Session ended',
+          raw: event,
         });
       }
       break;

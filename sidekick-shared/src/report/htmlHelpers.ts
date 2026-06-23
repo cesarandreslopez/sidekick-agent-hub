@@ -28,7 +28,7 @@ export function simpleMarkdownToHtml(text: string): string {
     const highlighted = highlightCodeBlock(code.trimEnd(), lang);
     codeBlocks.push(
       `<div class="code-block-wrapper"><pre class="code-block" data-lang="${escapeHtml(lang || 'text')}"><code>${highlighted}</code></pre>` +
-      `<button class="copy-btn" onclick="copyCode(this)" title="Copy">Copy</button></div>`
+        `<button class="copy-btn" onclick="copyCode(this)" title="Copy">Copy</button></div>`,
     );
     return `\x00CODEBLOCK${idx}\x00`;
   });
@@ -54,7 +54,10 @@ export function simpleMarkdownToHtml(text: string): string {
   result = result.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
 
   // Links [text](url)
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  result = result.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener">$1</a>',
+  );
 
   // Unordered lists
   result = result.replace(/^(\s*)[-*] (.+)$/gm, '$1<li>$2</li>');
@@ -76,37 +79,156 @@ export function simpleMarkdownToHtml(text: string): string {
   result = result.replace(/<p>\s*<\/p>/g, '');
 
   // Single newlines to <br> within paragraphs (but not before block elements)
-  result = result.replace(/(?<!<\/(?:h[1-4]|ul|li|blockquote|hr|div|pre)>)\n(?!<(?:h[1-4]|ul|li|blockquote|hr|div|pre|p|\/))/g, '<br>\n');
+  result = result.replace(
+    /(?<!<\/(?:h[1-4]|ul|li|blockquote|hr|div|pre)>)\n(?!<(?:h[1-4]|ul|li|blockquote|hr|div|pre|p|\/))/g,
+    '<br>\n',
+  );
 
   // Restore code blocks
-  // eslint-disable-next-line no-control-regex
-  result = result.replace(/\x00CODEBLOCK(\d+)\x00/g, (_match, idx: string) => codeBlocks[parseInt(idx, 10)]);
+  result = result.replace(
+    // eslint-disable-next-line no-control-regex
+    /\x00CODEBLOCK(\d+)\x00/g,
+    (_match, idx: string) => codeBlocks[parseInt(idx, 10)],
+  );
 
   return result;
 }
 
 // Keyword sets for syntax highlighting
 const JS_KEYWORDS = new Set([
-  'const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do',
-  'switch', 'case', 'break', 'continue', 'new', 'this', 'class', 'extends', 'super',
-  'import', 'export', 'from', 'default', 'try', 'catch', 'finally', 'throw',
-  'async', 'await', 'yield', 'typeof', 'instanceof', 'in', 'of', 'delete', 'void',
-  'true', 'false', 'null', 'undefined', 'interface', 'type', 'enum', 'implements',
-  'public', 'private', 'protected', 'readonly', 'static', 'abstract', 'as',
+  'const',
+  'let',
+  'var',
+  'function',
+  'return',
+  'if',
+  'else',
+  'for',
+  'while',
+  'do',
+  'switch',
+  'case',
+  'break',
+  'continue',
+  'new',
+  'this',
+  'class',
+  'extends',
+  'super',
+  'import',
+  'export',
+  'from',
+  'default',
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'async',
+  'await',
+  'yield',
+  'typeof',
+  'instanceof',
+  'in',
+  'of',
+  'delete',
+  'void',
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'interface',
+  'type',
+  'enum',
+  'implements',
+  'public',
+  'private',
+  'protected',
+  'readonly',
+  'static',
+  'abstract',
+  'as',
 ]);
 
 const PYTHON_KEYWORDS = new Set([
-  'def', 'class', 'return', 'if', 'elif', 'else', 'for', 'while', 'import', 'from',
-  'as', 'try', 'except', 'finally', 'raise', 'with', 'yield', 'lambda', 'pass',
-  'break', 'continue', 'and', 'or', 'not', 'in', 'is', 'None', 'True', 'False',
-  'self', 'async', 'await', 'global', 'nonlocal', 'del', 'assert',
+  'def',
+  'class',
+  'return',
+  'if',
+  'elif',
+  'else',
+  'for',
+  'while',
+  'import',
+  'from',
+  'as',
+  'try',
+  'except',
+  'finally',
+  'raise',
+  'with',
+  'yield',
+  'lambda',
+  'pass',
+  'break',
+  'continue',
+  'and',
+  'or',
+  'not',
+  'in',
+  'is',
+  'None',
+  'True',
+  'False',
+  'self',
+  'async',
+  'await',
+  'global',
+  'nonlocal',
+  'del',
+  'assert',
 ]);
 
 const BASH_KEYWORDS = new Set([
-  'if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'do', 'done', 'case', 'esac',
-  'function', 'return', 'exit', 'echo', 'export', 'source', 'local', 'readonly',
-  'set', 'unset', 'shift', 'cd', 'pwd', 'mkdir', 'rm', 'cp', 'mv', 'cat', 'grep',
-  'sed', 'awk', 'find', 'xargs', 'chmod', 'chown', 'sudo', 'apt', 'npm', 'git',
+  'if',
+  'then',
+  'else',
+  'elif',
+  'fi',
+  'for',
+  'while',
+  'do',
+  'done',
+  'case',
+  'esac',
+  'function',
+  'return',
+  'exit',
+  'echo',
+  'export',
+  'source',
+  'local',
+  'readonly',
+  'set',
+  'unset',
+  'shift',
+  'cd',
+  'pwd',
+  'mkdir',
+  'rm',
+  'cp',
+  'mv',
+  'cat',
+  'grep',
+  'sed',
+  'awk',
+  'find',
+  'xargs',
+  'chmod',
+  'chown',
+  'sudo',
+  'apt',
+  'npm',
+  'git',
 ]);
 
 /**
@@ -151,11 +273,20 @@ function getKeywordSet(lang: string): Set<string> | null {
 
 function highlightWithKeywords(escaped: string, keywords: Set<string>, lang: string): string {
   // Highlight strings
-  let result = escaped.replace(/(&#39;(?:[^&#]|&(?!#39;))*&#39;|&quot;(?:[^&]|&(?!quot;))*&quot;)/g,
-    '<span class="hl-string">$1</span>');
+  let result = escaped.replace(
+    /(&#39;(?:[^&#]|&(?!#39;))*&#39;|&quot;(?:[^&]|&(?!quot;))*&quot;)/g,
+    '<span class="hl-string">$1</span>',
+  );
 
   // Highlight comments
-  if (lang === 'python' || lang === 'py' || lang === 'bash' || lang === 'sh' || lang === 'shell' || lang === 'zsh') {
+  if (
+    lang === 'python' ||
+    lang === 'py' ||
+    lang === 'bash' ||
+    lang === 'sh' ||
+    lang === 'shell' ||
+    lang === 'zsh'
+  ) {
     result = result.replace(/(#[^\n]*)/g, '<span class="hl-comment">$1</span>');
   } else {
     result = result.replace(/(\/\/[^\n]*)/g, '<span class="hl-comment">$1</span>');
@@ -178,12 +309,16 @@ function highlightWithKeywords(escaped: string, keywords: Set<string>, lang: str
 
 function highlightJson(escaped: string): string {
   // Highlight keys
-  let result = escaped.replace(/(&quot;)([^&]*?)(&quot;)\s*:/g,
-    '<span class="hl-key">$1$2$3</span>:');
+  let result = escaped.replace(
+    /(&quot;)([^&]*?)(&quot;)\s*:/g,
+    '<span class="hl-key">$1$2$3</span>:',
+  );
 
   // Highlight string values
-  result = result.replace(/:\s*(&quot;)([^&]*?)(&quot;)/g,
-    ': <span class="hl-string">$1$2$3</span>');
+  result = result.replace(
+    /:\s*(&quot;)([^&]*?)(&quot;)/g,
+    ': <span class="hl-string">$1$2$3</span>',
+  );
 
   // Highlight numbers, booleans, null
   result = result.replace(/:\s*(\d+(\.\d+)?)/g, ': <span class="hl-number">$1</span>');

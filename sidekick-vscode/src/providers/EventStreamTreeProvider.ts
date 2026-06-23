@@ -45,7 +45,9 @@ const EVENT_ICONS: Record<string, vscode.ThemeIcon> = {
  * Monitors timeline events from SessionMonitor and displays them in
  * the sidebar as a flat list, most recent first.
  */
-export class EventStreamTreeProvider implements vscode.TreeDataProvider<EventItem>, vscode.Disposable {
+export class EventStreamTreeProvider
+  implements vscode.TreeDataProvider<EventItem>, vscode.Disposable
+{
   static readonly viewType = 'sidekick.eventStream';
 
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<EventItem | undefined>();
@@ -64,26 +66,31 @@ export class EventStreamTreeProvider implements vscode.TreeDataProvider<EventIte
     this.disposables.push(
       sessionMonitor.onTimelineEvent((event: TimelineEvent) => {
         this.addEvent(event);
-      })
+      }),
     );
 
     this.disposables.push(
       sessionMonitor.onSessionStart(() => {
         this.events = [];
         this.scheduleRefresh();
-      })
+      }),
     );
   }
 
   private addEvent(event: TimelineEvent): void {
     const time = event.timestamp
-      ? new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      ? new Date(event.timestamp).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
       : '';
 
     const item: EventItem = {
-      label: event.description.length > 80
-        ? event.description.substring(0, 77) + '...'
-        : event.description,
+      label:
+        event.description.length > 80
+          ? event.description.substring(0, 77) + '...'
+          : event.description,
       type: event.type,
       time,
       description: event.description,
@@ -113,7 +120,7 @@ export class EventStreamTreeProvider implements vscode.TreeDataProvider<EventIte
     item.description = element.time;
     item.iconPath = EVENT_ICONS[element.type] || new vscode.ThemeIcon('circle-outline');
     item.tooltip = new vscode.MarkdownString(
-      `**${element.type}** at ${element.time}\n\n${element.description}`
+      `**${element.type}** at ${element.time}\n\n${element.description}`,
     );
     return item;
   }

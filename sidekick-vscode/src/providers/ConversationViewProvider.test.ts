@@ -23,7 +23,12 @@ describe('conversationChunksFromSessionEvents', () => {
           model: 'claude-sonnet-4-6',
           content: [
             { type: 'thinking', thinking: 'Need to inspect the file.' },
-            { type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: '/workspace/src/a.ts' } },
+            {
+              type: 'tool_use',
+              id: 'read-1',
+              name: 'Read',
+              input: { file_path: '/workspace/src/a.ts' },
+            },
             { type: 'text', text: 'The answer is ready.' },
           ],
         },
@@ -55,7 +60,9 @@ describe('conversationChunksFromSessionEvents', () => {
         message: {
           role: 'assistant',
           model: 'gpt-5-codex',
-          content: [{ type: 'thinking', thinking: '**Inspect files**\n\nNeed the implementation.' }],
+          content: [
+            { type: 'thinking', thinking: '**Inspect files**\n\nNeed the implementation.' },
+          ],
         },
       },
       {
@@ -64,7 +71,9 @@ describe('conversationChunksFromSessionEvents', () => {
         message: {
           role: 'assistant',
           model: 'gpt-5-codex',
-          content: [{ type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'src/a.ts' } }],
+          content: [
+            { type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'src/a.ts' } },
+          ],
         },
       },
       {
@@ -82,7 +91,9 @@ describe('conversationChunksFromSessionEvents', () => {
         message: {
           role: 'assistant',
           model: 'gpt-5-codex',
-          content: [{ type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'npm test' } }],
+          content: [
+            { type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'npm test' } },
+          ],
         },
       },
       {
@@ -98,7 +109,13 @@ describe('conversationChunksFromSessionEvents', () => {
 
     const chunks = conversationChunksFromSessionEvents(events);
 
-    expect(chunks.map((chunk) => chunk.role)).toEqual(['reasoning', 'tool', 'reasoning', 'tool', 'assistant']);
+    expect(chunks.map((chunk) => chunk.role)).toEqual([
+      'reasoning',
+      'tool',
+      'reasoning',
+      'tool',
+      'assistant',
+    ]);
     expect(chunks.map((chunk) => chunk.toolName).filter(Boolean)).toEqual(['Read', 'Bash']);
     expect(chunks[chunks.length - 1].content).toBe('Tests are passing.');
   });

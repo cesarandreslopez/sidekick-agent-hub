@@ -20,7 +20,12 @@ import * as path from 'path';
 import * as os from 'os';
 import type { HistoricalDataService } from './HistoricalDataService';
 import { ModelPricingService } from './ModelPricingService';
-import type { SessionSummary, ModelUsageRecord, ToolUsageRecord, TokenTotals } from '../types/historicalData';
+import type {
+  SessionSummary,
+  ModelUsageRecord,
+  ToolUsageRecord,
+  TokenTotals,
+} from '../types/historicalData';
 import { createEmptyTokenTotals } from '../types/historicalData';
 import { log, logError } from './Logger';
 
@@ -295,8 +300,8 @@ export class RetroactiveDataLoader {
     const sessionId = filename;
 
     // Sort records by timestamp
-    const sorted = [...records].sort((a, b) =>
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    const sorted = [...records].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
 
     return {
@@ -331,12 +336,15 @@ export class RetroactiveDataLoader {
       // Calculate cost for this record. `null` means pricing is unknown —
       // treat contribution as 0 and mark the aggregate as unpriced.
       const pricing = ModelPricingService.getPricing(record.model);
-      const cost = ModelPricingService.calculateCost({
-        inputTokens: record.inputTokens,
-        outputTokens: record.outputTokens,
-        cacheWriteTokens: record.cacheWriteTokens,
-        cacheReadTokens: record.cacheReadTokens,
-      }, pricing);
+      const cost = ModelPricingService.calculateCost(
+        {
+          inputTokens: record.inputTokens,
+          outputTokens: record.outputTokens,
+          cacheWriteTokens: record.cacheWriteTokens,
+          cacheReadTokens: record.cacheReadTokens,
+        },
+        pricing,
+      );
       const priced = cost !== null;
       const contribution = cost ?? 0;
 
@@ -365,9 +373,9 @@ export class RetroactiveDataLoader {
         tokens: data.tokens,
         cost: data.cost,
         priced: data.priced,
-      })
+      }),
     );
-    const unpricedModelIds = modelUsage.filter(m => !m.priced).map(m => m.model);
+    const unpricedModelIds = modelUsage.filter((m) => !m.priced).map((m) => m.model);
 
     // Calculate total cost from priced portion.
     const totalCost = modelUsage.reduce((sum, m) => sum + m.cost, 0);
@@ -396,7 +404,7 @@ export class RetroactiveDataLoader {
    * @returns Import result with statistics
    */
   async loadHistoricalData(
-    onProgress?: (loaded: number, total: number) => void
+    onProgress?: (loaded: number, total: number) => void,
   ): Promise<ImportResult> {
     const result: ImportResult = {
       filesProcessed: 0,
@@ -466,7 +474,9 @@ export class RetroactiveDataLoader {
     // Force save after import
     await this.historicalDataService.forceSave();
 
-    log(`RetroactiveDataLoader: Import complete - ${result.filesProcessed} files, ${result.recordsImported} records, ${result.sessionsCreated} sessions`);
+    log(
+      `RetroactiveDataLoader: Import complete - ${result.filesProcessed} files, ${result.recordsImported} records, ${result.sessionsCreated} sessions`,
+    );
 
     return result;
   }

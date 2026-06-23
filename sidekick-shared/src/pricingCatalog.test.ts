@@ -3,10 +3,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import {
-  hydratePricingCatalog,
-  normalizeLiteLlmCatalog,
-} from './pricingCatalog';
+import { hydratePricingCatalog, normalizeLiteLlmCatalog } from './pricingCatalog';
 import { _clearPricingOverrides, _getPricingOverrides, getModelPricing } from './modelInfo';
 
 // ── Test helpers ──
@@ -30,8 +27,7 @@ function mockFetchFails(error: Error): typeof fetch {
 }
 
 function mockFetchHttpError(status: number): typeof fetch {
-  return (async () =>
-    new Response('nope', { status })) as unknown as typeof fetch;
+  return (async () => new Response('nope', { status })) as unknown as typeof fetch;
 }
 
 const SAMPLE_CATALOG = {
@@ -146,7 +142,14 @@ describe('hydratePricingCatalog', () => {
       JSON.stringify({
         fetchedAt: new Date(0).toISOString(),
         url: 'test',
-        overrides: { 'gpt-4o': { inputCostPerMillion: 1, outputCostPerMillion: 1, cacheWriteCostPerMillion: 0, cacheReadCostPerMillion: 0 } },
+        overrides: {
+          'gpt-4o': {
+            inputCostPerMillion: 1,
+            outputCostPerMillion: 1,
+            cacheWriteCostPerMillion: 0,
+            cacheReadCostPerMillion: 0,
+          },
+        },
       }),
     );
 

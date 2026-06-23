@@ -31,7 +31,10 @@ vi.mock('./credentialIO', () => ({
   readActiveCredentials: (configDir?: string) => {
     try {
       return JSON.parse(
-        fs.readFileSync(path.join(configDir ?? path.join(tmpDir, '.claude'), '.credentials.json'), 'utf8')
+        fs.readFileSync(
+          path.join(configDir ?? path.join(tmpDir, '.claude'), '.credentials.json'),
+          'utf8',
+        ),
       );
     } catch {
       return null;
@@ -40,10 +43,7 @@ vi.mock('./credentialIO', () => ({
   writeActiveCredentials: (credentials: unknown, configDir?: string) => {
     const claudeDir = configDir ?? path.join(tmpDir, '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(claudeDir, '.credentials.json'),
-      JSON.stringify(credentials)
-    );
+    fs.writeFileSync(path.join(claudeDir, '.credentials.json'), JSON.stringify(credentials));
   },
 }));
 
@@ -61,7 +61,7 @@ function writeClaudeConfig(email: string, uuid: string): void {
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(
     path.join(claudeDir, '.claude.json'),
-    JSON.stringify({ oauthAccount: { emailAddress: email, accountUuid: uuid } })
+    JSON.stringify({ oauthAccount: { emailAddress: email, accountUuid: uuid } }),
   );
 }
 
@@ -70,7 +70,7 @@ function writeClaudeCredentials(token: string): void {
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(
     path.join(claudeDir, '.credentials.json'),
-    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } })
+    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } }),
   );
 }
 
@@ -79,11 +79,11 @@ function writeClaudeProfileAccount(uuid: string, email: string, token: string): 
   fs.mkdirSync(home, { recursive: true });
   fs.writeFileSync(
     path.join(home, '.claude.json'),
-    JSON.stringify({ oauthAccount: { emailAddress: email, accountUuid: uuid } })
+    JSON.stringify({ oauthAccount: { emailAddress: email, accountUuid: uuid } }),
   );
   fs.writeFileSync(
     path.join(home, '.credentials.json'),
-    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } })
+    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } }),
   );
 }
 
@@ -94,11 +94,11 @@ function writeLegacyBackup(uuid: string, email: string, token: string): void {
   fs.mkdirSync(configsDir, { recursive: true });
   fs.writeFileSync(
     path.join(credentialsDir, `${uuid}.credentials.json`),
-    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } })
+    JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken: 'rt_' + token } }),
   );
   fs.writeFileSync(
     path.join(configsDir, `${uuid}.config.json`),
-    JSON.stringify({ emailAddress: email, accountUuid: uuid })
+    JSON.stringify({ emailAddress: email, accountUuid: uuid }),
   );
 }
 
@@ -232,7 +232,7 @@ describe('switchToAccount', () => {
 
     // Verify credentials were swapped
     const creds = JSON.parse(
-      fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')
+      fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'),
     );
     expect(creds.claudeAiOauth.accessToken).toBe('tok_personal');
   });
@@ -275,7 +275,9 @@ describe('switchToAccount', () => {
 
     expect(switchToAccount('uuid-a')).toEqual({ success: true });
 
-    const liveCreds = JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'));
+    const liveCreds = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'),
+    );
     expect(getActiveAccount()?.uuid).toBe('uuid-a');
     expect(readActiveClaudeAccount()).toEqual({ email: 'a@example.com', uuid: 'uuid-a' });
     expect(liveCreds.claudeAiOauth.accessToken).toBe('tok_a_rotated');
@@ -285,7 +287,9 @@ describe('switchToAccount', () => {
     const registry: AccountRegistry = {
       version: 1,
       activeAccountUuid: null,
-      accounts: [{ uuid: 'uuid-b', email: 'b@example.com', label: 'B', addedAt: '2026-01-01T00:00:00Z' }],
+      accounts: [
+        { uuid: 'uuid-b', email: 'b@example.com', label: 'B', addedAt: '2026-01-01T00:00:00Z' },
+      ],
     };
     writeAccountRegistry(registry);
     writeLegacyBackup('uuid-b', 'b@example.com', 'tok_b');
@@ -293,7 +297,9 @@ describe('switchToAccount', () => {
     expect(switchToAccount('uuid-b')).toEqual({ success: true });
 
     expect(readActiveClaudeAccount()).toEqual({ email: 'b@example.com', uuid: 'uuid-b' });
-    expect(fs.existsSync(path.join(getClaudeProfileHome('uuid-b'), '.credentials.json'))).toBe(true);
+    expect(fs.existsSync(path.join(getClaudeProfileHome('uuid-b'), '.credentials.json'))).toBe(
+      true,
+    );
   });
 });
 
@@ -321,8 +327,10 @@ describe('Claude profile-home apply and migration', () => {
     expect(applyActiveClaudeToLiveHome()).toEqual({ success: true });
 
     expect(readActiveClaudeAccount()).toEqual({ email: 'a@example.com', uuid: 'uuid-a' });
-    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')).claudeAiOauth.accessToken)
-      .toBe('tok_a');
+    expect(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'))
+        .claudeAiOauth.accessToken,
+    ).toBe('tok_a');
   });
 
   it('migrates flat backup accounts into profile homes once', () => {
@@ -337,12 +345,16 @@ describe('Claude profile-home apply and migration', () => {
 
     const markerPath = path.join(tmpDir, 'accounts', 'claude', '.profiles-migrated-v1');
     expect(fs.existsSync(markerPath)).toBe(true);
-    expect(readActiveCredentialsFrom(getClaudeProfileHome('uuid-a')).claudeAiOauth.accessToken).toBe('tok_a');
+    expect(
+      readActiveCredentialsFrom(getClaudeProfileHome('uuid-a')).claudeAiOauth.accessToken,
+    ).toBe('tok_a');
 
     writeLegacyBackup('uuid-a', 'a@example.com', 'tok_modified');
     reconcileClaudeAuthState();
 
-    expect(readActiveCredentialsFrom(getClaudeProfileHome('uuid-a')).claudeAiOauth.accessToken).toBe('tok_a');
+    expect(
+      readActiveCredentialsFrom(getClaudeProfileHome('uuid-a')).claudeAiOauth.accessToken,
+    ).toBe('tok_a');
   });
 
   it('does not throw when migration sees malformed flat backup data', () => {
@@ -356,7 +368,9 @@ describe('Claude profile-home apply and migration', () => {
     fs.writeFileSync(path.join(configsDir, 'uuid-bad.config.json'), '{not-json');
 
     expect(() => reconcileClaudeAuthState()).not.toThrow();
-    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'claude', '.profiles-migrated-v1'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'claude', '.profiles-migrated-v1'))).toBe(
+      true,
+    );
   });
 });
 
@@ -379,8 +393,12 @@ describe('removeAccount', () => {
     expect(listAccounts()).toHaveLength(0);
 
     // Backed-up files should be deleted
-    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'credentials', 'uuid-a.credentials.json'))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'configs', 'uuid-a.config.json'))).toBe(false);
+    expect(
+      fs.existsSync(path.join(tmpDir, 'accounts', 'credentials', 'uuid-a.credentials.json')),
+    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'configs', 'uuid-a.config.json'))).toBe(
+      false,
+    );
   });
 
   it('returns error for unknown uuid', () => {

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { fmtNum, formatDuration, stripBlessedTags, visibleLength, wordWrap, detailWidth, truncate } from './formatters';
+import {
+  fmtNum,
+  formatDuration,
+  stripBlessedTags,
+  visibleLength,
+  wordWrap,
+  detailWidth,
+  truncate,
+} from './formatters';
 
 describe('shared display formatting', () => {
   it('delegates compact number formatting through the shared helper', () => {

@@ -12,7 +12,10 @@ export interface ReadDecisionsOptions {
   limit?: number;
 }
 
-export async function readDecisions(slug: string, opts?: ReadDecisionsOptions): Promise<DecisionEntry[]> {
+export async function readDecisions(
+  slug: string,
+  opts?: ReadDecisionsOptions,
+): Promise<DecisionEntry[]> {
   const filePath = getProjectDataPath(slug, 'decisions');
   const store = await readJsonStore<DecisionLogStore>(filePath);
   if (!store) return [];
@@ -24,10 +27,11 @@ export async function readDecisions(slug: string, opts?: ReadDecisionsOptions): 
 
   if (opts?.search) {
     const q = opts.search.toLowerCase();
-    decisions = decisions.filter(d =>
-      d.description.toLowerCase().includes(q) ||
-      d.rationale.toLowerCase().includes(q) ||
-      d.chosenOption.toLowerCase().includes(q)
+    decisions = decisions.filter(
+      (d) =>
+        d.description.toLowerCase().includes(q) ||
+        d.rationale.toLowerCase().includes(q) ||
+        d.chosenOption.toLowerCase().includes(q),
     );
   }
 

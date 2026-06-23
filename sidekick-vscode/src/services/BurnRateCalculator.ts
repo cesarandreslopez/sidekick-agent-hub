@@ -56,7 +56,7 @@ export class BurnRateCalculator {
    */
   private pruneOldEvents(now: Date): void {
     const cutoff = new Date(now.getTime() - this.windowMs);
-    this.events = this.events.filter(e => e.timestamp >= cutoff);
+    this.events = this.events.filter((e) => e.timestamp >= cutoff);
   }
 
   /**
@@ -93,7 +93,7 @@ export class BurnRateCalculator {
   estimateTimeToQuota(
     currentTokens: number,
     quotaLimit: number,
-    now: Date = new Date()
+    now: Date = new Date(),
   ): number | null {
     const burnRate = this.calculateBurnRate(now);
 

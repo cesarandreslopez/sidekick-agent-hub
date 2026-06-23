@@ -74,14 +74,14 @@ export interface FileTouch {
 }
 
 export interface SubagentInfo {
-  id: string;                // tool_use_id from spawn event
+  id: string; // tool_use_id from spawn event
   description: string;
   subagentType: string;
-  spawnTime: string;         // ISO timestamp
-  completionTime?: string;   // set when tool_result arrives
+  spawnTime: string; // ISO timestamp
+  completionTime?: string; // set when tool_result arrives
   status: 'running' | 'completed';
-  durationMs?: number;       // computed on completion
-  isParallel?: boolean;      // true if time overlaps another agent
+  durationMs?: number; // computed on completion
+  isParallel?: boolean; // true if time overlaps another agent
 }
 
 /** @deprecated Use SubagentInfo instead */
@@ -186,8 +186,8 @@ export interface DashboardMetrics {
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   'claude-code': 'Claude Code',
-  'opencode': 'OpenCode',
-  'codex': 'Codex CLI',
+  opencode: 'OpenCode',
+  codex: 'Codex CLI',
 };
 
 const TIMELINE_RING_SIZE = 200;
@@ -198,7 +198,13 @@ export class DashboardState {
   // Shared aggregator — handles tokens, models, tools, tasks, subagents,
   // plan, context attribution, compaction, burn rate
   private _aggregator = new EventAggregator({
-    readPlanFile: (p) => { try { return fs.readFileSync(p, 'utf-8'); } catch { return null; } },
+    readPlanFile: (p) => {
+      try {
+        return fs.readFileSync(p, 'utf-8');
+      } catch {
+        return null;
+      }
+    },
   });
 
   // Timeline ring buffer (FollowEvent[] for CLI display — different from aggregator's TimelineEvent[])
@@ -298,8 +304,8 @@ export class DashboardState {
       // `metadata.toolName`) mixed with proper FollowEvents (`summary`, `toolName`).
       for (const ev of this._timeline) {
         // Normalize old type names
-        if (ev.type === 'tool_call' as string) ev.type = 'tool_use';
-        if (ev.type === 'assistant_response' as string) ev.type = 'assistant';
+        if (ev.type === ('tool_call' as string)) ev.type = 'tool_use';
+        if (ev.type === ('assistant_response' as string)) ev.type = 'assistant';
 
         // Migrate TimelineEvent fields → FollowEvent fields
         const anyEv = ev as unknown as Record<string, unknown>;
@@ -316,13 +322,13 @@ export class DashboardState {
         // Backfill still-empty summaries
         if (!ev.summary) {
           if (ev.toolName) {
-            ev.summary = ev.toolInput
-              ? `${ev.toolName} ${ev.toolInput}`
-              : ev.toolName;
+            ev.summary = ev.toolInput ? `${ev.toolName} ${ev.toolInput}` : ev.toolName;
           } else {
             const fallbacks: Record<string, string> = {
-              user: '(user message)', assistant: '(assistant)',
-              tool_result: '(tool result)', summary: 'Context compacted',
+              user: '(user message)',
+              assistant: '(assistant)',
+              tool_result: '(tool result)',
+              summary: 'Context compacted',
               system: '(system)',
             };
             ev.summary = fallbacks[ev.type] || ev.type;
@@ -406,8 +412,11 @@ export class DashboardState {
     }
 
     // Count non-task-management tool_use events against in-progress tasks
-    if (event.type === 'tool_use' && event.toolName &&
-        !DashboardState.TASK_MGMT_TOOLS.includes(event.toolName)) {
+    if (
+      event.type === 'tool_use' &&
+      event.toolName &&
+      !DashboardState.TASK_MGMT_TOOLS.includes(event.toolName)
+    ) {
       const taskState = this._aggregator.getTaskState();
       for (const [taskId, task] of taskState.tasks) {
         if (task.status === 'in_progress') {
@@ -435,9 +444,10 @@ export class DashboardState {
           providerId: 'claude-code',
           type: 'summary',
           timestamp: ts,
-          summary: ce.contextBefore > 0 && ce.contextAfter > 0
-            ? `Context compacted: ${fmtTokens(ce.contextBefore)} \u2192 ${fmtTokens(ce.contextAfter)} (${fmtTokens(ce.tokensReclaimed)} reclaimed)`
-            : 'Context compacted',
+          summary:
+            ce.contextBefore > 0 && ce.contextAfter > 0
+              ? `Context compacted: ${fmtTokens(ce.contextBefore)} \u2192 ${fmtTokens(ce.contextAfter)} (${fmtTokens(ce.tokensReclaimed)} reclaimed)`
+              : 'Context compacted',
         });
         if (this._timeline.length > TIMELINE_RING_SIZE) {
           this._timeline.shift();
@@ -478,7 +488,7 @@ export class DashboardState {
     const m = this._aggregator.getMetrics();
 
     // Map subagents from aggregator's SubagentLifecycle to CLI's SubagentInfo
-    const subagents: SubagentInfo[] = m.subagents.map(s => ({
+    const subagents: SubagentInfo[] = m.subagents.map((s) => ({
       id: s.id,
       description: s.description,
       subagentType: s.subagentType,
@@ -491,7 +501,7 @@ export class DashboardState {
     this.detectParallelSubagents(subagents);
 
     // Map tool stats from aggregator's ToolAnalytics to CLI's ToolStats
-    const toolStats: ToolStats[] = m.toolStats.map(t => ({
+    const toolStats: ToolStats[] = m.toolStats.map((t) => ({
       name: t.name,
       calls: t.successCount + t.failureCount + t.pendingCount,
       pending: t.pendingCount,
@@ -501,7 +511,7 @@ export class DashboardState {
     // Map model stats from aggregator's ModelUsageStats to CLI's ModelStats.
     // Aggregator's `priced` flag flows through so the UI renders "—" for
     // models without a known pricing entry.
-    const modelStats: ModelStats[] = m.modelStats.map(ms => ({
+    const modelStats: ModelStats[] = m.modelStats.map((ms) => ({
       model: ms.model,
       calls: ms.calls,
       tokens: ms.tokens,
@@ -546,9 +556,12 @@ export class DashboardState {
       for (const step of m.plan.steps) {
         const planTaskId = `plan-${step.id}`;
         if (!taskMap.has(planTaskId)) {
-          const stepStatus = step.status === 'completed' ? 'completed'
-            : step.status === 'in_progress' ? 'in_progress'
-            : 'pending';
+          const stepStatus =
+            step.status === 'completed'
+              ? 'completed'
+              : step.status === 'in_progress'
+                ? 'in_progress'
+                : 'pending';
           taskMap.set(planTaskId, {
             taskId: planTaskId,
             subject: step.description,
@@ -556,7 +569,8 @@ export class DashboardState {
             blockedBy: [],
             blocks: [],
             toolCallCount: 0,
-            activeForm: step.status === 'in_progress' ? `Working on ${step.description}` : undefined,
+            activeForm:
+              step.status === 'in_progress' ? `Working on ${step.description}` : undefined,
           });
         }
       }
@@ -565,7 +579,7 @@ export class DashboardState {
     const tasks = Array.from(taskMap.values());
 
     // Map compaction events (Date timestamps to string)
-    const compactionEvents: CompactionEvent[] = m.compactionEvents.map(ce => ({
+    const compactionEvents: CompactionEvent[] = m.compactionEvents.map((ce) => ({
       timestamp: ce.timestamp instanceof Date ? ce.timestamp.toISOString() : String(ce.timestamp),
       contextBefore: ce.contextBefore,
       contextAfter: ce.contextAfter,
@@ -589,8 +603,8 @@ export class DashboardState {
       modelStats,
       timeline: [...this._timeline],
       tasks,
-      fileTouches: Array.from(this._fileMap.values()).sort((a, b) =>
-        (b.reads + b.writes + b.edits) - (a.reads + a.writes + a.edits)
+      fileTouches: Array.from(this._fileMap.values()).sort(
+        (a, b) => b.reads + b.writes + b.edits - (a.reads + a.writes + a.edits),
       ),
       subagents,
       compactionCount: m.compactionCount,
@@ -657,7 +671,7 @@ export class DashboardState {
     if (!planState) return null;
     return {
       title: planState.title ?? 'Plan',
-      steps: planState.steps.map(s => ({
+      steps: planState.steps.map((s) => ({
         id: s.id,
         description: s.description,
         status: s.status,
@@ -697,7 +711,8 @@ export class DashboardState {
 
   private static readonly URL_TOOLS = ['WebFetch', 'WebSearch'];
   private static readonly SEARCH_TOOLS = ['Grep', 'Glob'];
-  private static readonly COMMAND_PATTERN = /^(git|npm|npx|yarn|pnpm|node|python|pip|docker|make|cargo|go|rustc|tsc|eslint|prettier|vitest|jest|pytest)/i;
+  private static readonly COMMAND_PATTERN =
+    /^(git|npm|npx|yarn|pnpm|node|python|pip|docker|make|cargo|go|rustc|tsc|eslint|prettier|vitest|jest|pytest)/i;
   private static readonly TODO_PATTERN = /TODO:?\s*(.+?)(?:\n|$)/gi;
 
   private extractUrl(event: FollowEvent): void {
@@ -719,7 +734,7 @@ export class DashboardState {
     const raw = event.raw as Record<string, unknown> | undefined;
     if (!raw?.input) return;
     const input = raw.input as Record<string, unknown>;
-    const dirPath = (input.path as string);
+    const dirPath = input.path as string;
     if (!dirPath) return;
     const existing = this._dirMap.get(dirPath) || { path: dirPath, count: 0, patterns: [] };
     existing.count++;
@@ -783,22 +798,23 @@ export class DashboardState {
   private extractCodexQuota(event: FollowEvent): void {
     const rl = event.rateLimits;
     if (!rl?.primary && !rl?.secondary) return;
-    this._quota = quotaFromCodexRateLimits({
-      primary: rl.primary
-        ? {
-            used_percent: rl.primary.usedPercent,
-            window_minutes: rl.primary.windowMinutes,
-            resets_at: rl.primary.resetsAt,
-          }
-        : undefined,
-      secondary: rl.secondary
-        ? {
-            used_percent: rl.secondary.usedPercent,
-            window_minutes: rl.secondary.windowMinutes,
-            resets_at: rl.secondary.resetsAt,
-          }
-        : undefined,
-    }) ?? this._quota;
+    this._quota =
+      quotaFromCodexRateLimits({
+        primary: rl.primary
+          ? {
+              used_percent: rl.primary.usedPercent,
+              window_minutes: rl.primary.windowMinutes,
+              resets_at: rl.primary.resetsAt,
+            }
+          : undefined,
+        secondary: rl.secondary
+          ? {
+              used_percent: rl.secondary.usedPercent,
+              window_minutes: rl.secondary.windowMinutes,
+              resets_at: rl.secondary.resetsAt,
+            }
+          : undefined,
+      }) ?? this._quota;
   }
 }
 

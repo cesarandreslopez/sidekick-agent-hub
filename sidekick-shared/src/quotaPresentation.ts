@@ -27,7 +27,9 @@ function formatRetryAfter(ms: number): string {
   return parts.join(' ');
 }
 
-export function describeQuotaFailure(quota: QuotaState | null | undefined): QuotaFailureDescriptor | null {
+export function describeQuotaFailure(
+  quota: QuotaState | null | undefined,
+): QuotaFailureDescriptor | null {
   if (!quota || quota.available || !quota.failureKind) return null;
 
   switch (quota.failureKind) {
@@ -66,10 +68,12 @@ export function describeQuotaFailure(quota: QuotaState | null | undefined): Quot
       return {
         severity: 'warning',
         title: 'Quota API rate limited',
-        message: quota.retryAfterMs != null
-          ? `Retry in ${formatRetryAfter(quota.retryAfterMs)}.`
-          : 'Retry shortly.',
-        detail: quota.httpStatus != null ? `Anthropic returned HTTP ${quota.httpStatus}.` : undefined,
+        message:
+          quota.retryAfterMs != null
+            ? `Retry in ${formatRetryAfter(quota.retryAfterMs)}.`
+            : 'Retry shortly.',
+        detail:
+          quota.httpStatus != null ? `Anthropic returned HTTP ${quota.httpStatus}.` : undefined,
         alertKey: `rate_limit:${quota.httpStatus ?? 429}`,
         isRetryable: true,
       };
@@ -78,9 +82,10 @@ export function describeQuotaFailure(quota: QuotaState | null | undefined): Quot
       return {
         severity: 'warning',
         title: 'Quota API unavailable',
-        message: quota.httpStatus != null
-          ? `Anthropic returned HTTP ${quota.httpStatus}. Try again shortly.`
-          : 'Anthropic quota data is temporarily unavailable.',
+        message:
+          quota.httpStatus != null
+            ? `Anthropic returned HTTP ${quota.httpStatus}. Try again shortly.`
+            : 'Anthropic quota data is temporarily unavailable.',
         alertKey: `server:${quota.httpStatus ?? 'unknown'}`,
         isRetryable: true,
       };
@@ -89,9 +94,10 @@ export function describeQuotaFailure(quota: QuotaState | null | undefined): Quot
       return {
         severity: 'error',
         title: 'Unexpected quota response',
-        message: quota.httpStatus != null
-          ? `Anthropic returned HTTP ${quota.httpStatus}.`
-          : (quota.error ?? 'Quota data could not be retrieved.'),
+        message:
+          quota.httpStatus != null
+            ? `Anthropic returned HTTP ${quota.httpStatus}.`
+            : (quota.error ?? 'Quota data could not be retrieved.'),
         detail: 'This failure is not classified as retryable.',
         alertKey: `unknown:${quota.httpStatus ?? 'none'}`,
         isRetryable: false,

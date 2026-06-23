@@ -115,7 +115,12 @@ export interface BuildSessionContextSnapshotOptions {
 
 export type ReadSessionContextSnapshotOptions = Omit<
   BuildSessionContextSnapshotOptions,
-  'providerId' | 'providerLabel' | 'sessionId' | 'sessionPath' | 'contextWindowForModel' | 'computeContextSize'
+  | 'providerId'
+  | 'providerLabel'
+  | 'sessionId'
+  | 'sessionPath'
+  | 'contextWindowForModel'
+  | 'computeContextSize'
 >;
 
 export interface SessionContextProjector {
@@ -187,11 +192,15 @@ export function buildSessionContextSnapshot(
     getModelContextWindowSize(model);
 
   const allSources = sourceState.sources;
-  const limitedSources = limitSources(allSources, options.sourceLimit ?? DEFAULT_CONTEXT_SOURCE_LIMIT);
+  const limitedSources = limitSources(
+    allSources,
+    options.sourceLimit ?? DEFAULT_CONTEXT_SOURCE_LIMIT,
+  );
   const breakdown = buildLayerBreakdown(limitedSources);
-  const layers = breakdown.map(row => row.layer);
+  const layers = breakdown.map((row) => row.layer);
   const sourceTokenTotal = allSources.reduce((sum, source) => sum + source.tokenEstimate, 0);
-  const contextTokens = metrics.currentContextSize > 0 ? metrics.currentContextSize : sourceTokenTotal;
+  const contextTokens =
+    metrics.currentContextSize > 0 ? metrics.currentContextSize : sourceTokenTotal;
   const { pressure, ratio } = calculateSessionContextPressure(contextTokens, contextWindow);
 
   return {
@@ -294,7 +303,9 @@ interface SourceSeed {
   metadata?: Record<string, unknown>;
 }
 
-function createSourceExtractionState(options: BuildSessionContextSnapshotOptions): SourceExtractionState {
+function createSourceExtractionState(
+  options: BuildSessionContextSnapshotOptions,
+): SourceExtractionState {
   return {
     options,
     sources: [],
@@ -549,7 +560,9 @@ function addSource(state: SourceExtractionState, seed: SourceSeed): void {
   });
 }
 
-function buildLayerBreakdown(sources: readonly SessionContextSource[]): SessionContextLayerBreakdown[] {
+function buildLayerBreakdown(
+  sources: readonly SessionContextSource[],
+): SessionContextLayerBreakdown[] {
   const byLayer = new Map<string, SessionContextLayerBreakdown>();
   for (const source of sources) {
     const row = byLayer.get(source.layer) ?? {
@@ -571,18 +584,19 @@ function limitSources(
   if (!Number.isFinite(limit) || limit <= 0) return [];
   if (sources.length <= limit) return [...sources];
 
-  const pinned = sources.filter(source =>
-    source.sourceType === 'system' ||
-    source.sourceType === 'runtime' ||
-    source.sourceType === 'rate_limit'
+  const pinned = sources.filter(
+    (source) =>
+      source.sourceType === 'system' ||
+      source.sourceType === 'runtime' ||
+      source.sourceType === 'rate_limit',
   );
   const pinnedLimit = Math.min(pinned.length, Math.max(1, Math.floor(limit / 4)));
   const pinnedKept = pinned.slice(0, pinnedLimit);
-  const pinnedIds = new Set(pinnedKept.map(source => source.id));
-  const remaining = sources.filter(source => !pinnedIds.has(source.id));
+  const pinnedIds = new Set(pinnedKept.map((source) => source.id));
+  const remaining = sources.filter((source) => !pinnedIds.has(source.id));
   const latest = remaining.slice(-(limit - pinnedKept.length));
-  const keepIds = new Set([...pinnedKept, ...latest].map(source => source.id));
-  return sources.filter(source => keepIds.has(source.id));
+  const keepIds = new Set([...pinnedKept, ...latest].map((source) => source.id));
+  return sources.filter((source) => keepIds.has(source.id));
 }
 
 function latestModel(events: readonly SessionEvent[]): string | undefined {
@@ -615,7 +629,8 @@ function describeUsage(
     parts.push(`Input tokens: ${usage.input_tokens || 0}`);
     parts.push(`Output tokens: ${usage.output_tokens || 0}`);
     if (usage.cache_read_input_tokens) parts.push(`Cache read: ${usage.cache_read_input_tokens}`);
-    if (usage.cache_creation_input_tokens) parts.push(`Cache write: ${usage.cache_creation_input_tokens}`);
+    if (usage.cache_creation_input_tokens)
+      parts.push(`Cache write: ${usage.cache_creation_input_tokens}`);
     if (usage.reasoning_tokens) parts.push(`Reasoning tokens: ${usage.reasoning_tokens}`);
   }
   if (rateLimits?.primary) {
@@ -634,7 +649,7 @@ function inferSourceFile(input: Record<string, unknown>): string | undefined {
   }
   const files = input.files;
   if (Array.isArray(files)) {
-    const first = files.find(value => typeof value === 'string' && value.trim());
+    const first = files.find((value) => typeof value === 'string' && value.trim());
     if (typeof first === 'string') return first.trim();
   }
   return undefined;
@@ -644,7 +659,12 @@ function inferCommand(input: Record<string, unknown>): string | undefined {
   const command = input.command ?? input.cmd;
   if (typeof command === 'string' && command.trim()) return command.trim();
   if (Array.isArray(command)) {
-    return command.map(part => String(part)).join(' ').trim() || undefined;
+    return (
+      command
+        .map((part) => String(part))
+        .join(' ')
+        .trim() || undefined
+    );
   }
   return undefined;
 }
@@ -662,7 +682,7 @@ function extractText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
-      .map(block => isRecord(block) ? blockText(block) : '')
+      .map((block) => (isRecord(block) ? blockText(block) : ''))
       .filter(Boolean)
       .join('\n');
   }

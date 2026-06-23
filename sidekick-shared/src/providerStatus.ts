@@ -77,12 +77,13 @@ async function fetchStatusPage(baseUrl: string): Promise<ProviderStatusState> {
 
     // Filter to non-operational components only
     const affectedComponents = (summaryData.components ?? [])
-      .filter(c => c.status && c.status !== 'operational')
-      .map(c => ({ name: c.name ?? 'Unknown', status: c.status ?? 'unknown' }));
+      .filter((c) => c.status && c.status !== 'operational')
+      .map((c) => ({ name: c.name ?? 'Unknown', status: c.status ?? 'unknown' }));
 
     // Pick first unresolved incident
-    const unresolvedIncident = (summaryData.incidents ?? [])
-      .find(i => i.status !== 'resolved' && i.status !== 'postmortem');
+    const unresolvedIncident = (summaryData.incidents ?? []).find(
+      (i) => i.status !== 'resolved' && i.status !== 'postmortem',
+    );
 
     const activeIncident = unresolvedIncident
       ? {

@@ -43,9 +43,11 @@ export class PeakHoursService implements vscode.Disposable {
     // claude-max, and clear any stale cached state from the UI.
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('sidekick.inferenceProvider')
-          || e.affectsConfiguration('sidekick.sessionProvider')
-          || e.affectsConfiguration('sidekick.peakHours.enabled')) {
+        if (
+          e.affectsConfiguration('sidekick.inferenceProvider') ||
+          e.affectsConfiguration('sidekick.sessionProvider') ||
+          e.affectsConfiguration('sidekick.peakHours.enabled')
+        ) {
           this.reconcile();
         }
       }),
@@ -57,14 +59,14 @@ export class PeakHoursService implements vscode.Disposable {
   /** Whether the user's current configuration makes peak-hours relevant. */
   private isApplicable(): boolean {
     if (!this.isEnabledInSettings()) return false;
-    return this.authService.getProviderId() === 'claude-max'
-      && isClaudeCodeSessionProvider(this.getSessionProviderId());
+    return (
+      this.authService.getProviderId() === 'claude-max' &&
+      isClaudeCodeSessionProvider(this.getSessionProviderId())
+    );
   }
 
   private isEnabledInSettings(): boolean {
-    return vscode.workspace
-      .getConfiguration('sidekick.peakHours')
-      .get<boolean>('enabled', true);
+    return vscode.workspace.getConfiguration('sidekick.peakHours').get<boolean>('enabled', true);
   }
 
   async fetchStatus(): Promise<PeakHoursState | null> {
@@ -84,10 +86,7 @@ export class PeakHoursService implements vscode.Disposable {
     return state;
   }
 
-  private maybeNotifyTransition(
-    previous: PeakHoursState | null,
-    current: PeakHoursState,
-  ): void {
+  private maybeNotifyTransition(previous: PeakHoursState | null, current: PeakHoursState): void {
     if (current.unavailable) return;
     const notifyEnabled = vscode.workspace
       .getConfiguration('sidekick.peakHours')

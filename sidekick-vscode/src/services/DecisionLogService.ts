@@ -9,11 +9,7 @@
  * @module services/DecisionLogService
  */
 
-import type {
-  DecisionEntry,
-  DecisionLogStore,
-  DecisionEntryDisplay,
-} from '../types/decisionLog';
+import type { DecisionEntry, DecisionLogStore, DecisionEntryDisplay } from '../types/decisionLog';
 import { DECISION_LOG_SCHEMA_VERSION } from '../types/decisionLog';
 import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
 import { log } from './Logger';
@@ -50,8 +46,8 @@ export class DecisionLogService extends PersistenceService<DecisionLogStore> {
   addEntries(entries: DecisionEntry[]): void {
     const existingFingerprints = new Set(
       Object.values(this.store.decisions).map(
-        d => `${d.source}::${d.description.toLowerCase().trim()}`
-      )
+        (d) => `${d.source}::${d.description.toLowerCase().trim()}`,
+      ),
     );
 
     let added = 0;
@@ -79,17 +75,17 @@ export class DecisionLogService extends PersistenceService<DecisionLogStore> {
     if (query && query.trim().length > 0) {
       const q = query.toLowerCase().trim();
       entries = entries.filter(
-        d =>
+        (d) =>
           d.description.toLowerCase().includes(q) ||
           d.rationale.toLowerCase().includes(q) ||
-          d.chosenOption.toLowerCase().includes(q)
+          d.chosenOption.toLowerCase().includes(q),
       );
     }
 
     // Sort by timestamp descending (most recent first)
     entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-    return entries.map(d => ({
+    return entries.map((d) => ({
       id: d.id,
       description: d.description,
       rationale: d.rationale,

@@ -41,8 +41,10 @@ If you discover a security vulnerability, please report it responsibly:
 ## Scope
 
 This security policy covers:
+
 - The VS Code extension (`sidekick-vscode/`)
 
 It does not cover:
+
 - Claude Code CLI (report to Anthropic)
 - Third-party dependencies (report to respective maintainers)

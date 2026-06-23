@@ -4,7 +4,13 @@
 
 import type { ProviderId } from '../providers/types';
 
-export type FollowEventType = 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'summary' | 'system';
+export type FollowEventType =
+  | 'user'
+  | 'assistant'
+  | 'tool_use'
+  | 'tool_result'
+  | 'summary'
+  | 'system';
 
 export interface FollowEvent {
   providerId: ProviderId;

@@ -31,7 +31,12 @@ function getOpenCodeDataDir(): string {
     return path.join(os.homedir(), 'Library', 'Application Support', 'opencode');
   }
   if (process.platform === 'win32') {
-    return path.join(process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'opencode');
+    return path.join(
+      process.env.LOCALAPPDATA ||
+        process.env.APPDATA ||
+        path.join(os.homedir(), 'AppData', 'Local'),
+      'opencode',
+    );
   }
   return path.join(os.homedir(), '.local', 'share', 'opencode');
 }
@@ -152,11 +157,15 @@ export function detectProvider(): SessionProvider {
 
   const hasOpenCode = fs.existsSync(openCodeStorage) || fs.existsSync(openCodeDbPath);
   const hasClaude = fs.existsSync(claudeBase);
-  const hasCodex = codexHomes.some(codexHome =>
-    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+  const hasCodex = codexHomes.some(
+    (codexHome) =>
+      fs.existsSync(path.join(codexHome, 'sessions')) ||
+      fs.existsSync(path.join(codexHome, 'state.sqlite')),
   );
 
-  log(`Auto-detecting session provider: Claude Code=${hasClaude}, OpenCode=${hasOpenCode}, Codex=${hasCodex}`);
+  log(
+    `Auto-detecting session provider: Claude Code=${hasClaude}, OpenCode=${hasOpenCode}, Codex=${hasCodex}`,
+  );
 
   // Count how many providers are available
   const available: Array<{ name: string; mtime: number; create: () => SessionProvider }> = [];
@@ -215,8 +224,10 @@ export function detectInferenceProvider(): InferenceProviderId {
 
   const hasOpenCode = fs.existsSync(openCodeStorage) || fs.existsSync(openCodeDbPath);
   const hasClaude = fs.existsSync(claudeBase);
-  const hasCodex = codexHomes.some(codexHome =>
-    fs.existsSync(path.join(codexHome, 'sessions')) || fs.existsSync(path.join(codexHome, 'state.sqlite'))
+  const hasCodex = codexHomes.some(
+    (codexHome) =>
+      fs.existsSync(path.join(codexHome, 'sessions')) ||
+      fs.existsSync(path.join(codexHome, 'state.sqlite')),
   );
 
   const available: Array<{ id: InferenceProviderId; mtime: number }> = [];

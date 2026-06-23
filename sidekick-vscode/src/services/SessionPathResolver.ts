@@ -74,8 +74,9 @@ export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics
 
   try {
     if (fs.existsSync(projectsDir)) {
-      existingProjectDirs = fs.readdirSync(projectsDir)
-        .filter(name => {
+      existingProjectDirs = fs
+        .readdirSync(projectsDir)
+        .filter((name) => {
           const fullPath = path.join(projectsDir, name);
           return fs.statSync(fullPath).isDirectory();
         })
@@ -91,14 +92,15 @@ export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics
   const workspaceBasename = path.basename(workspacePath).toLowerCase();
   const similarDirs = existingProjectDirs.filter((dir: string) => {
     const dirLower = dir.toLowerCase();
-    return dirLower.includes(workspaceBasename) ||
-           workspaceBasename.includes(dirLower.split('-').pop() || '');
+    return (
+      dirLower.includes(workspaceBasename) ||
+      workspaceBasename.includes(dirLower.split('-').pop() || '')
+    );
   });
 
   const subdirectoryMatches = findSubdirectorySessionDirs(workspacePath);
-  const selectedSubdirectoryMatch = subdirectoryMatches.length > 0
-    ? getMostRecentlyActiveSessionDir(subdirectoryMatches)
-    : null;
+  const selectedSubdirectoryMatch =
+    subdirectoryMatches.length > 0 ? getMostRecentlyActiveSessionDir(subdirectoryMatches) : null;
 
   return {
     workspacePath,
@@ -110,6 +112,6 @@ export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics
     similarDirs,
     platform: process.platform,
     subdirectoryMatches,
-    selectedSubdirectoryMatch
+    selectedSubdirectoryMatch,
   };
 }

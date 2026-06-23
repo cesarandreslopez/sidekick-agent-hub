@@ -69,13 +69,17 @@ export function normalizeToolName(name: string): string {
  */
 export function detectPlanModeFromText(text: string): 'enter' | 'exit' | null {
   // Check exit first (more specific patterns)
-  if (/(exiting|leaving|deactivat(?:e|ing)|left) plan mode/i.test(text) ||
-      /plan mode (?:is )?(?:off|disabled|ended|complete)/i.test(text)) {
+  if (
+    /(exiting|leaving|deactivat(?:e|ing)|left) plan mode/i.test(text) ||
+    /plan mode (?:is )?(?:off|disabled|ended|complete)/i.test(text)
+  ) {
     return 'exit';
   }
   // Check enter
-  if (/(entering|switch(?:ed|ing)? to|activat(?:e|ing)|now in) plan mode/i.test(text) ||
-      /plan mode (?:is )?(?:active|enabled|on)/i.test(text)) {
+  if (
+    /(entering|switch(?:ed|ing)? to|activat(?:e|ing)|now in) plan mode/i.test(text) ||
+    /plan mode (?:is )?(?:active|enabled|on)/i.test(text)
+  ) {
     return 'enter';
   }
   return null;
@@ -131,7 +135,7 @@ function toISOString(time: string | number | undefined): string {
  */
 export function convertOpenCodeMessage(
   message: OpenCodeMessage,
-  parts: OpenCodePart[]
+  parts: OpenCodePart[],
 ): SessionEvent[] {
   const events: SessionEvent[] = [];
 
@@ -150,10 +154,7 @@ export function convertOpenCodeMessage(
 /**
  * Converts a user-role message to events.
  */
-function convertUserMessage(
-  message: OpenCodeMessage,
-  parts: OpenCodePart[]
-): SessionEvent[] {
+function convertUserMessage(message: OpenCodeMessage, parts: OpenCodePart[]): SessionEvent[] {
   const events: SessionEvent[] = [];
   const content: unknown[] = [];
 
@@ -161,7 +162,10 @@ function convertUserMessage(
     if (part.type === 'text') {
       content.push({ type: 'text', text: part.text });
     } else if (part.type === 'file') {
-      content.push({ type: 'text', text: `[File: ${part.filename || 'unknown'} (${part.mime || 'unknown'})]` });
+      content.push({
+        type: 'text',
+        text: `[File: ${part.filename || 'unknown'} (${part.mime || 'unknown'})]`,
+      });
     } else if (part.type === 'subtask') {
       content.push({ type: 'text', text: `[Subtask: ${part.description || 'unknown'}]` });
     }
@@ -171,7 +175,7 @@ function convertUserMessage(
     events.push({
       type: 'user',
       message: { role: 'user', id: message.id, content },
-      timestamp: toISOString(message.time.created)
+      timestamp: toISOString(message.time.created),
     });
   }
 
@@ -186,10 +190,7 @@ function convertUserMessage(
  * 2. Synthetic user events for completed tool results
  * 3. A summary event if compaction was detected
  */
-function convertAssistantMessage(
-  message: OpenCodeMessage,
-  parts: OpenCodePart[]
-): SessionEvent[] {
+function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]): SessionEvent[] {
   const events: SessionEvent[] = [];
   const content: unknown[] = [];
 
@@ -208,7 +209,7 @@ function convertAssistantMessage(
           type: 'tool_use',
           id: part.callID,
           name: normalizeToolName(part.tool),
-          input: normalizeToolInput(part.state.input || {})
+          input: normalizeToolInput(part.state.input || {}),
         });
         break;
 
@@ -217,7 +218,7 @@ function convertAssistantMessage(
           type: 'tool_use',
           id: part.callID,
           name: normalizeToolName(part.tool),
-          input: normalizeToolInput(part.state.input || {})
+          input: normalizeToolInput(part.state.input || {}),
         });
         break;
 
@@ -231,7 +232,7 @@ function convertAssistantMessage(
               type: 'tool_use',
               id: `patch-${part.id}-${i}`,
               name: 'Write',
-              input: { file_path: part.files[i] }
+              input: { file_path: part.files[i] },
             });
           }
         } else {
@@ -239,7 +240,7 @@ function convertAssistantMessage(
             type: 'tool_use',
             id: `patch-${part.id}`,
             name: 'Patch',
-            input: { hash: part.hash, files: part.files }
+            input: { hash: part.hash, files: part.files },
           });
         }
         break;
@@ -260,21 +261,21 @@ function convertAssistantMessage(
             model: part.model,
             prompt: part.prompt,
             command: part.command,
-          }
+          },
         });
         break;
 
       case 'file':
         content.push({
           type: 'text',
-          text: `[File: ${part.filename || 'unknown'} (${part.mime || 'unknown'})]`
+          text: `[File: ${part.filename || 'unknown'} (${part.mime || 'unknown'})]`,
         });
         break;
 
       case 'retry':
         content.push({
           type: 'text',
-          text: `[Retry attempt ${part.attempt ?? '?'}: ${part.error?.message || 'unknown error'}]`
+          text: `[Retry attempt ${part.attempt ?? '?'}: ${part.error?.message || 'unknown error'}]`,
         });
         break;
 
@@ -297,19 +298,18 @@ function convertAssistantMessage(
     const errCode = message.error.code ? ` (code: ${message.error.code})` : '';
     content.push({
       type: 'text',
-      text: `[${errType}]${errCode} ${errMsg}`
+      text: `[${errType}]${errCode} ${errMsg}`,
     });
   }
 
   // Detect plan mode mentions in text/thinking blocks and inject synthetic
   // tool_use blocks (OpenCode doesn't emit plan_enter/plan_exit tools).
-  const hasExistingPlanMode = content.some(
-    (b: unknown) => {
-      const block = b as Record<string, unknown>;
-      return block.type === 'tool_use' &&
-        (block.name === 'EnterPlanMode' || block.name === 'ExitPlanMode');
-    }
-  );
+  const hasExistingPlanMode = content.some((b: unknown) => {
+    const block = b as Record<string, unknown>;
+    return (
+      block.type === 'tool_use' && (block.name === 'EnterPlanMode' || block.name === 'ExitPlanMode')
+    );
+  });
   if (!hasExistingPlanMode) {
     for (const block of content) {
       const b = block as Record<string, unknown>;
@@ -325,7 +325,7 @@ function convertAssistantMessage(
           type: 'tool_use',
           id: `plan-${direction}-${message.id}`,
           name: toolName,
-          input: { source: 'opencode_text_heuristic', _sidekickRawToolName: rawName }
+          input: { source: 'opencode_text_heuristic', _sidekickRawToolName: rawName },
         });
         break; // Only inject one plan mode block per message
       }
@@ -343,9 +343,12 @@ function convertAssistantMessage(
   }
 
   // Build usage data from message tokens
-  const reportedCost = (message.cost && message.cost > 0)
-    ? message.cost
-    : (stepFinishCost > 0 ? stepFinishCost : undefined);
+  const reportedCost =
+    message.cost && message.cost > 0
+      ? message.cost
+      : stepFinishCost > 0
+        ? stepFinishCost
+        : undefined;
 
   const usage = {
     input_tokens: message.tokens.input || 0,
@@ -367,9 +370,9 @@ function convertAssistantMessage(
         id: message.id,
         model: message.modelID,
         usage,
-        content
+        content,
       },
-      timestamp
+      timestamp,
     });
   }
 
@@ -377,39 +380,46 @@ function convertAssistantMessage(
   // and subtask parts. In Claude Code's format, tool results come as
   // user messages with tool_result content blocks.
   for (const part of parts) {
-    if ((part.type === 'tool-invocation' || part.type === 'tool') &&
-        (part.state.status === 'completed' || part.state.status === 'error')) {
-
+    if (
+      (part.type === 'tool-invocation' || part.type === 'tool') &&
+      (part.state.status === 'completed' || part.state.status === 'error')
+    ) {
       // Calculate duration from provider-supplied timestamps when available
       let duration: number | undefined;
       if (part.state.time?.start && part.state.time?.end) {
-        const startMs = typeof part.state.time.start === 'number'
-          ? part.state.time.start
-          : new Date(part.state.time.start).getTime();
-        const endMs = typeof part.state.time.end === 'number'
-          ? part.state.time.end
-          : new Date(part.state.time.end).getTime();
+        const startMs =
+          typeof part.state.time.start === 'number'
+            ? part.state.time.start
+            : new Date(part.state.time.start).getTime();
+        const endMs =
+          typeof part.state.time.end === 'number'
+            ? part.state.time.end
+            : new Date(part.state.time.end).getTime();
         if (endMs > startMs) {
           duration = endMs - startMs;
         }
       }
 
-      const resultContent: unknown[] = [{
-        type: 'tool_result',
-        tool_use_id: part.callID,
-        content: part.state.status === 'error' ? part.state.error : part.state.output,
-        is_error: part.state.status === 'error',
-        ...(duration !== undefined && { duration }),
-      }];
+      const resultContent: unknown[] = [
+        {
+          type: 'tool_result',
+          tool_use_id: part.callID,
+          content: part.state.status === 'error' ? part.state.error : part.state.output,
+          is_error: part.state.status === 'error',
+          ...(duration !== undefined && { duration }),
+        },
+      ];
 
-      const resultTimestamp = part.state.time?.end
-        ? toISOString(part.state.time.end)
-        : timestamp;
+      const resultTimestamp = part.state.time?.end ? toISOString(part.state.time.end) : timestamp;
 
       events.push({
         type: 'user',
-        message: { role: 'user', id: `${message.id}:${part.callID}:result`, content: resultContent },
-        timestamp: resultTimestamp
+        message: {
+          role: 'user',
+          id: `${message.id}:${part.callID}:result`,
+          content: resultContent,
+        },
+        timestamp: resultTimestamp,
       });
     }
 
@@ -420,25 +430,27 @@ function convertAssistantMessage(
         message: {
           role: 'user',
           id: `${message.id}:subtask-${part.id}:result`,
-          content: [{
-            type: 'tool_result',
-            tool_use_id: `subtask-${part.id}`,
-            content: part.description || 'Subtask completed',
-            is_error: false
-          }]
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: `subtask-${part.id}`,
+              content: part.description || 'Subtask completed',
+              is_error: false,
+            },
+          ],
         },
-        timestamp
+        timestamp,
       });
     }
   }
 
   // Detect compaction via summary flag or compaction part
-  const hasCompaction = message.summary || parts.some(p => p.type === 'compaction');
+  const hasCompaction = message.summary || parts.some((p) => p.type === 'compaction');
   if (hasCompaction) {
     events.push({
       type: 'summary',
       message: { role: 'assistant', id: `${message.id}:summary`, content: 'Context compacted' },
-      timestamp
+      timestamp,
     });
   }
 
@@ -463,16 +475,18 @@ export function parseDbMessageData(row: DbMessage): OpenCodeMessage {
 
   // Parse error field if present (AuthError, APIError, OutputLengthError, etc.)
   const errorData = data.error as Record<string, unknown> | undefined;
-  const error = errorData ? {
-    type: (errorData.type as string) || undefined,
-    message: (errorData.message as string) || undefined,
-    code: errorData.code as string | number | undefined,
-  } : undefined;
+  const error = errorData
+    ? {
+        type: (errorData.type as string) || undefined,
+        message: (errorData.message as string) || undefined,
+        code: errorData.code as string | number | undefined,
+      }
+    : undefined;
 
   return {
     id: row.id,
     sessionID: row.session_id,
-    role: (data.role as string) as 'user' | 'assistant' | 'system',
+    role: data.role as string as 'user' | 'assistant' | 'system',
     modelID: data.modelID as string | undefined,
     summary: summary != null ? true : undefined,
     cost: (data.cost as number) || undefined,
@@ -515,13 +529,19 @@ export function parseDbPartData(row: DbPart): OpenCodePart {
         callID: (data.callID as string) || '',
         tool: (data.tool as string) || '',
         state: {
-          status: ((state?.status as string) || 'completed') as 'pending' | 'running' | 'completed' | 'error',
+          status: ((state?.status as string) || 'completed') as
+            | 'pending'
+            | 'running'
+            | 'completed'
+            | 'error',
           input: state?.input as Record<string, unknown> | undefined,
           output: state?.output as string | undefined,
           error: state?.error as string | undefined,
           title: state?.title as string | undefined,
           metadata: state?.metadata as Record<string, unknown> | undefined,
-          time: state?.time as { start?: string | number; end?: string | number; compacted?: string | number } | undefined,
+          time: state?.time as
+            | { start?: string | number; end?: string | number; compacted?: string | number }
+            | undefined,
         },
       };
     }
@@ -534,7 +554,11 @@ export function parseDbPartData(row: DbPart): OpenCodePart {
         callID: (data.callID as string) || '',
         tool: (data.tool as string) || '',
         state: {
-          status: ((state?.status as string) || 'completed') as 'pending' | 'running' | 'completed' | 'error',
+          status: ((state?.status as string) || 'completed') as
+            | 'pending'
+            | 'running'
+            | 'completed'
+            | 'error',
           input: state?.input as Record<string, unknown> | undefined,
           output: state?.output as string | undefined,
           error: state?.error as string | undefined,
@@ -558,15 +582,19 @@ export function parseDbPartData(row: DbPart): OpenCodePart {
         reason: data.reason as string | undefined,
         snapshot: data.snapshot as string | undefined,
         cost: data.cost as number | undefined,
-        tokens: tokensData ? {
-          input: tokensData.input as number | undefined,
-          output: tokensData.output as number | undefined,
-          reasoning: tokensData.reasoning as number | undefined,
-          cache: cacheData ? {
-            read: cacheData.read as number | undefined,
-            write: cacheData.write as number | undefined,
-          } : undefined,
-        } : undefined,
+        tokens: tokensData
+          ? {
+              input: tokensData.input as number | undefined,
+              output: tokensData.output as number | undefined,
+              reasoning: tokensData.reasoning as number | undefined,
+              cache: cacheData
+                ? {
+                    read: cacheData.read as number | undefined,
+                    write: cacheData.write as number | undefined,
+                  }
+                : undefined,
+            }
+          : undefined,
       };
     }
 
@@ -612,10 +640,12 @@ export function parseDbPartData(row: DbPart): OpenCodePart {
         ...base,
         type: 'retry',
         attempt: data.attempt as number | undefined,
-        error: errorData ? {
-          message: errorData.message as string | undefined,
-          code: errorData.code as string | undefined,
-        } : undefined,
+        error: errorData
+          ? {
+              message: errorData.message as string | undefined,
+              code: errorData.code as string | undefined,
+            }
+          : undefined,
         time: data.time as string | number | undefined,
       };
     }

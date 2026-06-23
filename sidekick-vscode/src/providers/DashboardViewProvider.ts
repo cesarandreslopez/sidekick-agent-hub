@@ -21,14 +21,34 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { QuotaService } from '../services/QuotaService';
 import type { HistoricalDataService } from '../services/HistoricalDataService';
 import type { GuidanceAdvisor } from '../services/GuidanceAdvisor';
-import type { QuotaState as DashboardQuotaState, QuotaFailureDisplay, HistoricalSummary, HistoricalDataPoint, LatencyDisplay, ClaudeMdSuggestionDisplay } from '../types/dashboard';
+import type {
+  QuotaState as DashboardQuotaState,
+  QuotaFailureDisplay,
+  HistoricalSummary,
+  HistoricalDataPoint,
+  LatencyDisplay,
+  ClaudeMdSuggestionDisplay,
+} from '../types/dashboard';
 import { resolveInstructionTarget } from '../types/instructionFile';
 import type { HandoffService } from '../services/HandoffService';
 import { encodeWorkspacePath } from '../services/SessionPathResolver';
 import { resolveModel } from '../services/ModelResolver';
 import { TimeoutError } from '../types';
-import type { TokenUsage, SessionStats, ToolAnalytics, TimelineEvent, ToolCall, LatencyStats } from '../types/claudeSession';
-import type { DashboardMessage, DashboardWebviewMessage, DashboardState, CompactionEventDisplay, ToolCallDetailDisplay } from '../types/dashboard';
+import type {
+  TokenUsage,
+  SessionStats,
+  ToolAnalytics,
+  TimelineEvent,
+  ToolCall,
+  LatencyStats,
+} from '../types/claudeSession';
+import type {
+  DashboardMessage,
+  DashboardWebviewMessage,
+  DashboardState,
+  CompactionEventDisplay,
+  ToolCallDetailDisplay,
+} from '../types/dashboard';
 import type { SessionAnalyzer } from '../services/SessionAnalyzer';
 import type { AuthService } from '../services/AuthService';
 import type { SessionEventLogger } from '../services/SessionEventLogger';
@@ -60,7 +80,10 @@ import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
-import { scopeProviderStatuses, type DashboardSessionProviderId } from '../utils/providerStatusScope';
+import {
+  scopeProviderStatuses,
+  type DashboardSessionProviderId,
+} from '../utils/providerStatusScope';
 import { formatProviderStatusDisplay } from '../utils/providerStatusDisplay';
 import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
 
@@ -103,7 +126,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Timeline events (most recent first) */
   private _timeline: TimelineEvent[] = [];
-
 
   /** QuotaService for subscription quota data */
   private readonly _quotaService?: QuotaService;
@@ -189,7 +211,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /**
    * Sets the plan persistence service for historical plan analytics.
    */
-  setPlanPersistenceService(service: import('../services/PlanPersistenceService').PlanPersistenceService): void {
+  setPlanPersistenceService(
+    service: import('../services/PlanPersistenceService').PlanPersistenceService,
+  ): void {
     this._planPersistenceService = service;
   }
 
@@ -201,11 +225,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * - codex → OpenAI status
    * - opencode → no provider status card
    */
-  setProviderStatusService(service: import('../services/ProviderStatusService').ProviderStatusService): void {
+  setProviderStatusService(
+    service: import('../services/ProviderStatusService').ProviderStatusService,
+  ): void {
     this._providerStatusService = service;
     this._disposables.push(
       service.onStatusUpdate(() => this._syncProviderStatusCards()),
-      service.onOpenAIStatusUpdate(() => this._syncProviderStatusCards())
+      service.onOpenAIStatusUpdate(() => this._syncProviderStatusCards()),
     );
   }
 
@@ -216,9 +242,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   setPeakHoursService(service: import('../services/PeakHoursService').PeakHoursService): void {
     this._peakHoursService = service;
-    this._disposables.push(
-      service.onStatusUpdate(() => this._syncPeakHoursCard())
-    );
+    this._disposables.push(service.onStatusUpdate(() => this._syncPeakHoursCard()));
   }
 
   /**
@@ -242,7 +266,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     sessionAnalyzer?: SessionAnalyzer,
     authService?: AuthService,
     decisionLogService?: DecisionLogService,
-    private readonly _notificationPersistence?: NotificationPersistenceService
+    private readonly _notificationPersistence?: NotificationPersistenceService,
   ) {
     this._quotaService = quotaService;
     this._historicalDataService = historicalDataService;
@@ -250,7 +274,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sessionAnalyzer = sessionAnalyzer;
     this._authService = authService;
     this._decisionLogService = decisionLogService;
-    this._phrases = new PhraseRotationManager(msg => this._postMessage(msg));
+    this._phrases = new PhraseRotationManager((msg) => this._postMessage(msg));
     // Initialize empty state
     this._state = {
       totalInputTokens: 0,
@@ -264,62 +288,60 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       lastUpdated: new Date().toISOString(),
       toolAnalytics: [],
       timeline: [],
-      errorDetails: []
+      errorDetails: [],
     };
 
     // Subscribe to session events
     this._disposables.push(
-      this._sessionMonitor.onTokenUsage(usage => this._handleTokenUsage(usage))
+      this._sessionMonitor.onTokenUsage((usage) => this._handleTokenUsage(usage)),
     );
 
     this._disposables.push(
-      this._sessionMonitor.onSessionStart(path => this._handleSessionStart(path))
+      this._sessionMonitor.onSessionStart((path) => this._handleSessionStart(path)),
+    );
+
+    this._disposables.push(this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd()));
+
+    this._disposables.push(
+      this._sessionMonitor.onToolAnalytics((analytics) => this._handleToolAnalytics(analytics)),
     );
 
     this._disposables.push(
-      this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd())
+      this._sessionMonitor.onTimelineEvent((event) => this._handleTimelineEvent(event)),
     );
 
     this._disposables.push(
-      this._sessionMonitor.onToolAnalytics(analytics => this._handleToolAnalytics(analytics))
+      this._sessionMonitor.onDiscoveryModeChange((inDiscoveryMode) =>
+        this._handleDiscoveryModeChange(inDiscoveryMode),
+      ),
     );
 
     this._disposables.push(
-      this._sessionMonitor.onTimelineEvent(event => this._handleTimelineEvent(event))
+      this._sessionMonitor.onLatencyUpdate((stats) => this._handleLatencyUpdate(stats)),
     );
 
     this._disposables.push(
-      this._sessionMonitor.onDiscoveryModeChange(inDiscoveryMode => this._handleDiscoveryModeChange(inDiscoveryMode))
+      this._sessionMonitor.onCompaction((event) => this._handleCompaction(event)),
     );
 
-    this._disposables.push(
-      this._sessionMonitor.onLatencyUpdate(stats => this._handleLatencyUpdate(stats))
-    );
-
-    this._disposables.push(
-      this._sessionMonitor.onCompaction(event => this._handleCompaction(event))
-    );
-
-    this._disposables.push(
-      this._sessionMonitor.onTruncation(() => this._handleTruncation())
-    );
+    this._disposables.push(this._sessionMonitor.onTruncation(() => this._handleTruncation()));
 
     // Subscribe to quota updates if service available
     if (this._quotaService) {
       this._disposables.push(
-        this._quotaService.onQuotaUpdate(quota => this._handleQuotaUpdate(quota))
+        this._quotaService.onQuotaUpdate((quota) => this._handleQuotaUpdate(quota)),
       );
     }
 
     // Subscribe to session-based quota updates (e.g., Codex rate_limits)
     this._disposables.push(
-      this._sessionMonitor.onQuotaUpdate(quota => this._handleQuotaUpdate(quota))
+      this._sessionMonitor.onQuotaUpdate((quota) => this._handleQuotaUpdate(quota)),
     );
 
     // Subscribe to notification persistence changes
     if (this._notificationPersistence) {
       this._disposables.push(
-        this._notificationPersistence.onDidChange(() => this._sendNotificationHistoryToWebview())
+        this._notificationPersistence.onDidChange(() => this._sendNotificationHistoryToWebview()),
       );
     }
 
@@ -344,7 +366,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
@@ -353,8 +375,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'out', 'webview'),
-        vscode.Uri.joinPath(this._extensionUri, 'images')
-      ]
+        vscode.Uri.joinPath(this._extensionUri, 'images'),
+      ],
     };
 
     // Set HTML content
@@ -364,7 +386,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     webviewView.webview.onDidReceiveMessage(
       (message: DashboardWebviewMessage) => this._handleDashboardWebviewMessage(message),
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     // Resend state when view becomes visible, manage quota + status refresh
@@ -386,7 +408,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       },
       undefined,
-      this._disposables
+      this._disposables,
     );
 
     // Start quota + status refresh if view is initially visible
@@ -495,7 +517,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'analyzeSession':
-        this._handleAnalyzeSession().catch(err => {
+        this._handleAnalyzeSession().catch((err) => {
           logError('Dashboard: Unhandled error in _handleAnalyzeSession', err);
         });
         break;
@@ -510,7 +532,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'generateNarrative':
-        this._handleGenerateNarrative().catch(err => {
+        this._handleGenerateNarrative().catch((err) => {
           logError('Dashboard: Unhandled error in _handleGenerateNarrative', err);
         });
         break;
@@ -535,7 +557,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       case 'toggleEventLog': {
         const enabled = message.enabled;
         log(`Dashboard: event log toggled: ${enabled}`);
-        vscode.workspace.getConfiguration('sidekick').update('enableEventLog', enabled, vscode.ConfigurationTarget.Global);
+        vscode.workspace
+          .getConfiguration('sidekick')
+          .update('enableEventLog', enabled, vscode.ConfigurationTarget.Global);
         if (this._eventLogger) {
           this._sessionMonitor.setEventLogger(enabled ? this._eventLogger : null);
         }
@@ -551,7 +575,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'generateHandoff':
-        this._handleGenerateHandoff().catch(err => {
+        this._handleGenerateHandoff().catch((err) => {
           logError('Dashboard: Unhandled error in _handleGenerateHandoff', err);
         });
         break;
@@ -645,8 +669,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const allTimeline = stats.timeline;
 
     // Convert all events to display format (no cap)
-    const allEvents = allTimeline.map(e => ({
-      type: e.type as 'user_prompt' | 'tool_call' | 'tool_result' | 'error' | 'assistant_response' | 'compaction',
+    const allEvents = allTimeline.map((e) => ({
+      type: e.type as
+        | 'user_prompt'
+        | 'tool_call'
+        | 'tool_result'
+        | 'error'
+        | 'assistant_response'
+        | 'compaction',
       time: new Date(e.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
       description: e.description,
       isError: e.metadata?.isError,
@@ -655,12 +685,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       isSidechain: e.isSidechain,
       contextBefore: e.metadata?.contextBefore,
       contextAfter: e.metadata?.contextAfter,
-      tokensReclaimed: e.metadata?.tokensReclaimed
+      tokensReclaimed: e.metadata?.tokensReclaimed,
     }));
 
     this._postMessage({
       type: 'updateTimeline',
-      events: allEvents
+      events: allEvents,
     });
   }
 
@@ -673,8 +703,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _handleToolCallDetails(toolName: string): void {
     const stats = this._sessionMonitor.getStats();
     const calls = stats.toolCalls
-      .filter(tc => tc.name === toolName)
-      .map(tc => {
+      .filter((tc) => tc.name === toolName)
+      .map((tc) => {
         const durationMs = tc.duration ?? 0;
         let durationStr: string;
         if (durationMs < 1000) {
@@ -699,7 +729,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           description: desc,
           duration: durationStr,
           isError: tc.isError ?? false,
-          errorMessage: tc.errorMessage
+          errorMessage: tc.errorMessage,
         } as ToolCallDetailDisplay;
       })
       .reverse(); // Most recent first
@@ -707,7 +737,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({
       type: 'toolCallDetails',
       toolName,
-      calls
+      calls,
     });
   }
 
@@ -724,7 +754,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       log('Dashboard: _guidanceAdvisor is not available');
       this._postMessage({
         type: 'suggestionsError',
-        error: 'Agent guidance analysis is not available. Please check extension configuration.'
+        error: 'Agent guidance analysis is not available. Please check extension configuration.',
       });
       return;
     }
@@ -748,35 +778,39 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           cancellable: false,
         },
         async (progress) => {
-          progress.report({ message: `Using ${inferenceProvider} (${model})... This may take 30-60 seconds.` });
+          progress.report({
+            message: `Using ${inferenceProvider} (${model})... This may take 30-60 seconds.`,
+          });
 
           const result = await this._guidanceAdvisor!.analyze(
-            timeoutOverride ? { timeout: timeoutOverride } : undefined
+            timeoutOverride ? { timeout: timeoutOverride } : undefined,
           );
 
           if (result.success) {
-            const suggestions: ClaudeMdSuggestionDisplay[] = result.suggestions.map(s => ({
+            const suggestions: ClaudeMdSuggestionDisplay[] = result.suggestions.map((s) => ({
               title: s.title,
               observed: s.observed,
               suggestion: s.suggestion,
-              reasoning: s.reasoning
+              reasoning: s.reasoning,
             }));
             this._postMessage({ type: 'showSuggestions', suggestions });
             log(`Dashboard: Analysis complete, ${suggestions.length} suggestions`);
           } else {
             this._postMessage({
               type: 'suggestionsError',
-              error: result.error || 'Analysis failed'
+              error: result.error || 'Analysis failed',
             });
             logError(`Dashboard: Analysis failed: ${result.error}`);
           }
-        }
+        },
       );
     } catch (error) {
       if (error instanceof TimeoutError) {
         const retry = await vscode.window.showWarningMessage(
           `Analysis timed out after ${error.timeoutMs / 1000}s. Try again with a longer timeout?`,
-          'Retry (3 min)', 'Retry (5 min)', 'Cancel'
+          'Retry (3 min)',
+          'Retry (5 min)',
+          'Cancel',
         );
         if (retry?.startsWith('Retry')) {
           const newTimeout = retry.includes('3') ? 180000 : 300000;
@@ -787,7 +821,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const message = error instanceof Error ? error.message : 'Unknown error';
       this._postMessage({
         type: 'suggestionsError',
-        error: `Analysis failed: ${message}`
+        error: `Analysis failed: ${message}`,
       });
       logError('Dashboard: Analysis error', error);
     } finally {
@@ -816,7 +850,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     } else {
       const action = await vscode.window.showInformationMessage(
         target.notFoundMessage,
-        `Create ${target.primaryFile}`
+        `Create ${target.primaryFile}`,
       );
       if (action) {
         const wsFolder = vscode.workspace.workspaceFolders?.[0];
@@ -836,16 +870,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private async _handleGenerateHandoff(): Promise<void> {
     if (!this._handoffService || !this._sessionAnalyzer) {
-      vscode.window.showWarningMessage('Handoff service is not available. Ensure a workspace is open.');
+      vscode.window.showWarningMessage(
+        'Handoff service is not available. Ensure a workspace is open.',
+      );
       return;
     }
 
     const stats = this._sessionMonitor.getStats();
     const analysisData = this._sessionAnalyzer.getCachedData();
-    const summaryData = this._summaryService.generateSummary(stats, analysisData, this._getContextWindowLimit());
+    const summaryData = this._summaryService.generateSummary(
+      stats,
+      analysisData,
+      this._getContextWindowLimit(),
+    );
 
     try {
-      const handoffPath = await this._handoffService.generateHandoff(summaryData, analysisData, stats);
+      const handoffPath = await this._handoffService.generateHandoff(
+        summaryData,
+        analysisData,
+        stats,
+      );
 
       // Check if instruction file already has the pointer
       const target = resolveInstructionTarget(this._sessionMonitor.getProvider().id);
@@ -868,7 +912,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Pointer already set up — just confirm
         const action = await vscode.window.showInformationMessage(
           `Handoff generated.`,
-          'Open Handoff'
+          'Open Handoff',
         );
         if (action === 'Open Handoff') {
           const doc = await vscode.workspace.openTextDocument(handoffPath);
@@ -880,7 +924,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           `Handoff generated. Add a pointer to ${target.primaryFile} so your agent knows where to find it?`,
           `Add to ${target.primaryFile}`,
           'Open Handoff',
-          'Skip'
+          'Skip',
         );
         if (action === `Add to ${target.primaryFile}` && wsFolder) {
           const slug = encodeWorkspacePath(wsFolder.uri.fsPath);
@@ -953,20 +997,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           cancellable: false,
         },
         async (progress) => {
-          progress.report({ message: `Using ${inferenceProvider} (${model})... This may take 15-30 seconds.` });
+          progress.report({
+            message: `Using ${inferenceProvider} (${model})... This may take 15-30 seconds.`,
+          });
           const narrative = await this._summaryService.generateNarrative(
             this._cachedSummary!,
             this._authService!,
-            timeoutOverride ? { timeout: timeoutOverride } : undefined
+            timeoutOverride ? { timeout: timeoutOverride } : undefined,
           );
           this._postMessage({ type: 'sessionNarrative', narrative });
-        }
+        },
       );
     } catch (error) {
       if (error instanceof TimeoutError) {
         const retry = await vscode.window.showWarningMessage(
           `Narrative generation timed out after ${error.timeoutMs / 1000}s. Try again with a longer timeout?`,
-          'Retry (3 min)', 'Retry (5 min)', 'Cancel'
+          'Retry (3 min)',
+          'Retry (5 min)',
+          'Cancel',
         );
         if (retry?.startsWith('Retry')) {
           const newTimeout = retry.includes('3') ? 180000 : 300000;
@@ -975,7 +1023,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this._postMessage({ type: 'narrativeError', error: `Narrative generation failed: ${message}` });
+      this._postMessage({
+        type: 'narrativeError',
+        error: `Narrative generation failed: ${message}`,
+      });
       logError('Dashboard: Narrative generation error', error);
     } finally {
       this._postMessage({ type: 'narrativeLoading', loading: false });
@@ -1002,7 +1053,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     const stats = this._sessionMonitor.getStats();
     const analysisData = this._sessionAnalyzer.getCachedData();
-    this._cachedSummary = this._summaryService.generateSummary(stats, analysisData, this._getContextWindowLimit());
+    this._cachedSummary = this._summaryService.generateSummary(
+      stats,
+      analysisData,
+      this._getContextWindowLimit(),
+    );
     this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
   }
 
@@ -1038,7 +1093,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const burnData = this._summaryService.getAdvancedBurnRate(
         stats,
         this._burnRateCalculator,
-        quotaState
+        quotaState,
       );
       this._postMessage({ type: 'updateAdvancedBurnRate', data: burnData });
 
@@ -1048,7 +1103,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // Context Attribution
       if (this._state.contextAttribution && this._state.contextAttribution.length > 0) {
-        this._postMessage({ type: 'updateContextAttribution', attribution: this._state.contextAttribution });
+        this._postMessage({
+          type: 'updateContextAttribution',
+          attribution: this._state.contextAttribution,
+        });
       }
 
       // Decision + knowledge note extraction
@@ -1110,7 +1168,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         stats.toolCalls,
         [], // suggestions - populated during guidance analysis
         projectPath,
-        stats.truncationEvents
+        stats.truncationEvents,
       );
 
       if (candidates.length > 0) {
@@ -1244,8 +1302,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           const months = this._historicalDataService.getMonthlyData(startMonth, endMonth);
           for (const month of months) {
             const [year, mon] = month.month.split('-');
-            const monthName = new Date(parseInt(year), parseInt(mon) - 1, 1)
-              .toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+            const monthName = new Date(parseInt(year), parseInt(mon) - 1, 1).toLocaleDateString(
+              'en-US',
+              { month: 'short', year: '2-digit' },
+            );
             dataPoints.push({
               timestamp: month.month,
               label: monthName,
@@ -1296,7 +1356,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const monthEnd = `${timestamp}-${lastDay.toString().padStart(2, '0')}`;
 
         const days = this._historicalDataService.getDailyData(monthStart, monthEnd);
-        const dataPoints: HistoricalDataPoint[] = days.map(day => {
+        const dataPoints: HistoricalDataPoint[] = days.map((day) => {
           const date = new Date(day.date);
           return {
             timestamp: day.date,
@@ -1328,7 +1388,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       } else {
         // Drilling down from daily to hourly — show hourly breakdown for the day
         const hourlyBuckets = this._historicalDataService.getHourlyData(timestamp);
-        const dataPoints: HistoricalDataPoint[] = hourlyBuckets.map(bucket => {
+        const dataPoints: HistoricalDataPoint[] = hourlyBuckets.map((bucket) => {
           const hour = bucket.hour;
           const ampm = hour < 12 ? 'AM' : 'PM';
           const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
@@ -1389,13 +1449,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       priced = true;
     } else {
       const pricing = ModelPricingService.getPricing(usage.model);
-      const computed = ModelPricingService.calculateCost({
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        cacheWriteTokens: usage.cacheWriteTokens,
-        cacheReadTokens: usage.cacheReadTokens,
-        reasoningTokens: usage.reasoningTokens,
-      }, pricing);
+      const computed = ModelPricingService.calculateCost(
+        {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheWriteTokens: usage.cacheWriteTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          reasoningTokens: usage.reasoningTokens,
+        },
+        pricing,
+      );
       if (computed !== null) {
         cost = computed;
         priced = true;
@@ -1423,7 +1486,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Update model breakdown (keep `priced` sticky: one unpriced event taints
     // the aggregate so the UI shows "—" for the row).
-    const existingModel = this._state.modelBreakdown.find(m => m.model === usage.model);
+    const existingModel = this._state.modelBreakdown.find((m) => m.model === usage.model);
     if (existingModel) {
       existingModel.calls += 1;
       existingModel.tokens += usage.inputTokens + usage.outputTokens;
@@ -1447,11 +1510,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // OpenCode emits some assistant step rows with zero token signal; those
     // should not zero out the gauge between real updates.
     const provider = this._sessionMonitor.getProvider();
-    const hasContextSignal = usage.inputTokens > 0
-      || usage.outputTokens > 0
-      || usage.cacheWriteTokens > 0
-      || usage.cacheReadTokens > 0
-      || (usage.reasoningTokens ?? 0) > 0;
+    const hasContextSignal =
+      usage.inputTokens > 0 ||
+      usage.outputTokens > 0 ||
+      usage.cacheWriteTokens > 0 ||
+      usage.cacheReadTokens > 0 ||
+      (usage.reasoningTokens ?? 0) > 0;
 
     if (hasContextSignal) {
       this._currentContextSize = provider.computeContextSize
@@ -1497,16 +1561,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _updateToolAnalyticsState(): void {
     this._state.toolAnalytics = Array.from(this._toolAnalytics.values())
-      .map(a => ({
+      .map((a) => ({
         name: a.name,
         totalCalls: a.completedCount,
-        successRate: a.completedCount > 0
-          ? (a.successCount / a.completedCount) * 100
-          : 0,
-        avgDuration: a.completedCount > 0
-          ? Math.round(a.totalDuration / a.completedCount)
-          : 0,
-        pendingCount: a.pendingCount
+        successRate: a.completedCount > 0 ? (a.successCount / a.completedCount) * 100 : 0,
+        avgDuration: a.completedCount > 0 ? Math.round(a.totalDuration / a.completedCount) : 0,
+        pendingCount: a.pendingCount,
       }))
       .sort((a, b) => b.totalCalls - a.totalCalls); // Sort by most used
   }
@@ -1515,8 +1575,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Converts internal timeline to display format.
    */
   private _updateTimelineState(): void {
-    this._state.timeline = this._timeline.map(e => ({
-      type: e.type as 'user_prompt' | 'tool_call' | 'tool_result' | 'error' | 'assistant_response' | 'compaction',
+    this._state.timeline = this._timeline.map((e) => ({
+      type: e.type as
+        | 'user_prompt'
+        | 'tool_call'
+        | 'tool_result'
+        | 'error'
+        | 'assistant_response'
+        | 'compaction',
       time: new Date(e.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
       description: e.description,
       isError: e.metadata?.isError,
@@ -1525,7 +1591,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       isSidechain: e.isSidechain,
       contextBefore: e.metadata?.contextBefore,
       contextAfter: e.metadata?.contextAfter,
-      tokensReclaimed: e.metadata?.tokensReclaimed
+      tokensReclaimed: e.metadata?.tokensReclaimed,
     }));
   }
 
@@ -1535,7 +1601,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _sendToolAnalyticsToWebview(): void {
     this._postMessage({
       type: 'updateToolAnalytics',
-      analytics: this._state.toolAnalytics
+      analytics: this._state.toolAnalytics,
     });
   }
 
@@ -1545,7 +1611,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _sendTimelineToWebview(): void {
     this._postMessage({
       type: 'updateTimeline',
-      events: this._state.timeline
+      events: this._state.timeline,
     });
   }
 
@@ -1599,7 +1665,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     log(`Dashboard: discovery mode changed to ${inDiscoveryMode}`);
     this._postMessage({
       type: 'discoveryModeChange',
-      inDiscoveryMode
+      inDiscoveryMode,
     });
     this._sendSessionList();
   }
@@ -1702,16 +1768,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         readQuotaHistoryDailyBuckets({ workspaceId, provider: 'codex', from, to }),
         readQuotaHistoryDailyBuckets({ workspaceId, provider: 'zai', from, to }),
       ]);
-      const toCells = (buckets: Awaited<ReturnType<typeof readQuotaHistoryDailyBuckets>>): QuotaHistoryDailyCell[] =>
-        buckets.map(b => ({
+      const toCells = (
+        buckets: Awaited<ReturnType<typeof readQuotaHistoryDailyBuckets>>,
+      ): QuotaHistoryDailyCell[] =>
+        buckets.map((b) => ({
           date: b.date,
           utilization: Math.max(b.maxUtilizationFiveHour, b.maxUtilizationSevenDay),
           unavailable: b.anyUnavailable,
           samples: b.samples,
         }));
-      const claudeHasData = claude.some(b => b.samples > 0);
-      const codexHasData = codex.some(b => b.samples > 0);
-      const zaiHasData = zai.some(b => b.samples > 0);
+      const claudeHasData = claude.some((b) => b.samples > 0);
+      const codexHasData = codex.some((b) => b.samples > 0);
+      const zaiHasData = zai.some((b) => b.samples > 0);
       const payload: QuotaHistoryPayload = {
         weeks,
         providers: {
@@ -1729,12 +1797,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   private _maybeEmitQuotaAlert(
     quota: DashboardQuotaState,
-    quotaFailure?: QuotaFailureDisplay
+    quotaFailure?: QuotaFailureDisplay,
   ): void {
     const providerId = this._sessionMonitor.getProvider().id;
     // z.ai rides on OpenCode sessions, so an opencode session provider with
     // active z.ai routing also surfaces quota alerts.
-    const supportsQuotaAlerts = providerId === 'claude-code' || providerId === 'codex' || providerId === 'opencode';
+    const supportsQuotaAlerts =
+      providerId === 'claude-code' || providerId === 'codex' || providerId === 'opencode';
     if (!supportsQuotaAlerts || quota.available || !quotaFailure) {
       this._lastQuotaAlertKey = null;
       return;
@@ -1773,15 +1842,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Handles compaction events from SessionMonitor.
    * Updates the compaction display list in the dashboard state.
    */
-  private _handleCompaction(event: { contextBefore: number; contextAfter: number; tokensReclaimed: number; timestamp: Date }): void {
+  private _handleCompaction(event: {
+    contextBefore: number;
+    contextAfter: number;
+    tokensReclaimed: number;
+    timestamp: Date;
+  }): void {
     const display: CompactionEventDisplay = {
       time: event.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
       contextBefore: event.contextBefore,
       contextAfter: event.contextAfter,
       tokensReclaimed: event.tokensReclaimed,
-      reclaimedPercent: event.contextBefore > 0
-        ? Math.round((event.tokensReclaimed / event.contextBefore) * 100)
-        : 0
+      reclaimedPercent:
+        event.contextBefore > 0
+          ? Math.round((event.tokensReclaimed / event.contextBefore) * 100)
+          : 0,
     };
 
     if (!this._state.compactions) {
@@ -1791,7 +1866,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     this._postMessage({
       type: 'updateCompactions',
-      compactions: this._state.compactions
+      compactions: this._state.compactions,
     });
 
     // Also update context health after each compaction
@@ -1839,19 +1914,20 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         lastFirstToken: '-',
         avgTotal: '-',
         cycleCount: 0,
-        hasData: false
+        hasData: false,
       };
     }
 
     return {
       avgFirstToken: this._formatDuration(stats.avgFirstTokenLatencyMs),
       maxFirstToken: this._formatDuration(stats.maxFirstTokenLatencyMs),
-      lastFirstToken: stats.lastFirstTokenLatencyMs !== null
-        ? this._formatDuration(stats.lastFirstTokenLatencyMs)
-        : '-',
+      lastFirstToken:
+        stats.lastFirstTokenLatencyMs !== null
+          ? this._formatDuration(stats.lastFirstTokenLatencyMs)
+          : '-',
       avgTotal: this._formatDuration(stats.avgTotalResponseTimeMs),
       cycleCount: stats.completedCycles,
-      hasData: true
+      hasData: true,
     };
   }
 
@@ -1874,7 +1950,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _syncFromSessionMonitor(): void {
     const stats: SessionStats = this._sessionMonitor.getStats();
 
-    log(`Sync from SessionMonitor - input: ${stats.totalInputTokens}, output: ${stats.totalOutputTokens}, cacheWrite: ${stats.totalCacheWriteTokens}, cacheRead: ${stats.totalCacheReadTokens}, contextSize: ${stats.currentContextSize}, recentEvents: ${stats.recentUsageEvents.length}`);
+    log(
+      `Sync from SessionMonitor - input: ${stats.totalInputTokens}, output: ${stats.totalOutputTokens}, cacheWrite: ${stats.totalCacheWriteTokens}, cacheRead: ${stats.totalCacheReadTokens}, contextSize: ${stats.currentContextSize}, recentEvents: ${stats.recentUsageEvents.length}`,
+    );
 
     this._state.totalInputTokens = stats.totalInputTokens;
     this._state.totalOutputTokens = stats.totalOutputTokens;
@@ -1898,8 +1976,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (stats.totalReportedCost !== undefined && stats.totalReportedCost > 0) {
       // Use provider-reported cost, distribute proportionally by token count.
       // Provider-reported cost is assumed authoritative — mark each row as priced.
-      const totalTokens = Array.from(stats.modelUsage.values())
-        .reduce((sum, u) => sum + u.tokens, 0);
+      const totalTokens = Array.from(stats.modelUsage.values()).reduce(
+        (sum, u) => sum + u.tokens,
+        0,
+      );
 
       stats.modelUsage.forEach((usage, model) => {
         const proportion = totalTokens > 0 ? usage.tokens / totalTokens : 0;
@@ -1919,12 +1999,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       stats.modelUsage.forEach((usage, model) => {
         // Honest pricing: null pricing → priced=false, cost=0, row renders as "—".
         const pricing = ModelPricingService.getPricing(model);
-        const computed = ModelPricingService.calculateCost({
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-        }, pricing);
+        const computed = ModelPricingService.calculateCost(
+          {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+          },
+          pricing,
+        );
         const priced = computed !== null;
         const cost = computed ?? 0;
         if (!priced) unpricedThisRebuild.push(model);
@@ -1954,8 +2037,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._updateTimelineState();
 
     // Sync error details
-    this._state.errorDetails = Array.from(stats.errorDetails.entries())
-      .map(([type, messages]) => ({ type, count: messages.length, messages }));
+    this._state.errorDetails = Array.from(stats.errorDetails.entries()).map(([type, messages]) => ({
+      type,
+      count: messages.length,
+      messages,
+    }));
 
     // Pre-populate burn rate calculator with recent events from session
     // This ensures burn rate shows correctly when loading existing sessions
@@ -1974,22 +2060,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Sync compaction events
     if (stats.compactionEvents && stats.compactionEvents.length > 0) {
-      this._state.compactions = stats.compactionEvents.map(e => ({
+      this._state.compactions = stats.compactionEvents.map((e) => ({
         time: e.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
         contextBefore: e.contextBefore,
         contextAfter: e.contextAfter,
         tokensReclaimed: e.tokensReclaimed,
-        reclaimedPercent: e.contextBefore > 0
-          ? Math.round((e.tokensReclaimed / e.contextBefore) * 100)
-          : 0
+        reclaimedPercent:
+          e.contextBefore > 0 ? Math.round((e.tokensReclaimed / e.contextBefore) * 100) : 0,
       }));
     }
 
     // Sync context attribution
     if (stats.contextAttribution) {
       const attr = stats.contextAttribution;
-      const total = attr.systemPrompt + attr.userMessages + attr.assistantResponses +
-        attr.toolInputs + attr.toolOutputs + attr.thinking + attr.other;
+      const total =
+        attr.systemPrompt +
+        attr.userMessages +
+        attr.assistantResponses +
+        attr.toolInputs +
+        attr.toolOutputs +
+        attr.thinking +
+        attr.other;
 
       if (total > 0) {
         const COLORS = {
@@ -1999,7 +2090,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           toolInputs: '#c678dd',
           toolOutputs: '#d19a66',
           thinking: '#56b6c2',
-          other: '#abb2bf'
+          other: '#abb2bf',
         };
         const LABELS: Record<string, string> = {
           systemPrompt: 'System Prompt',
@@ -2008,7 +2099,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           toolInputs: 'Tool Inputs',
           toolOutputs: 'Tool Outputs',
           thinking: 'Thinking',
-          other: 'Other'
+          other: 'Other',
         };
 
         this._state.contextAttribution = Object.entries(attr)
@@ -2017,7 +2108,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             category: LABELS[category] || category,
             tokens,
             percent: Math.round((tokens / total) * 100),
-            color: COLORS[category as keyof typeof COLORS] || '#abb2bf'
+            color: COLORS[category as keyof typeof COLORS] || '#abb2bf',
           }))
           .sort((a, b) => b.tokens - a.tokens);
       }
@@ -2032,7 +2123,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         toolInputs: '#c678dd',
         toolOutputs: '#d19a66',
         thinking: '#56b6c2',
-        other: '#abb2bf'
+        other: '#abb2bf',
       };
       const LABELS: Record<string, string> = {
         systemPrompt: 'System Prompt',
@@ -2041,25 +2132,34 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         toolInputs: 'Tool Inputs',
         toolOutputs: 'Tool Outputs',
         thinking: 'Thinking',
-        other: 'Other'
+        other: 'Other',
       };
 
-      const turnDisplays = stats.turnAttributions.map(turn => {
+      const turnDisplays = stats.turnAttributions.map((turn) => {
         const bd = turn.breakdown;
-        const turnTotal = bd.systemPrompt + bd.userMessages + bd.assistantResponses +
-          bd.toolInputs + bd.toolOutputs + bd.thinking + bd.other;
+        const turnTotal =
+          bd.systemPrompt +
+          bd.userMessages +
+          bd.assistantResponses +
+          bd.toolInputs +
+          bd.toolOutputs +
+          bd.thinking +
+          bd.other;
         const categories = Object.entries(bd)
           .filter(([, tokens]) => tokens > 0)
           .map(([cat, tokens]) => ({
             category: LABELS[cat] || cat,
             tokens,
             percent: turnTotal > 0 ? Math.round((tokens / turnTotal) * 100) : 0,
-            color: COLORS[cat as keyof typeof COLORS] || '#abb2bf'
+            color: COLORS[cat as keyof typeof COLORS] || '#abb2bf',
           }));
 
         return {
           turnIndex: turn.turnIndex,
-          time: new Date(turn.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          time: new Date(turn.timestamp).toLocaleTimeString([], {
+            hour: 'numeric',
+            minute: '2-digit',
+          }),
           role: turn.role,
           inputTokens: turn.inputTokens,
           outputTokens: turn.outputTokens,
@@ -2080,12 +2180,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Sync context waterfall
     if (stats.contextTimeline && stats.contextTimeline.length > 0) {
       const waterfallDisplay = {
-        points: stats.contextTimeline.map(p => ({
-          time: new Date(p.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        points: stats.contextTimeline.map((p) => ({
+          time: new Date(p.timestamp).toLocaleTimeString([], {
+            hour: 'numeric',
+            minute: '2-digit',
+          }),
           tokens: p.inputTokens,
           turnIndex: p.turnIndex,
         })),
-        compactions: (stats.compactionEvents || []).map(c => ({
+        compactions: (stats.compactionEvents || []).map((c) => ({
           time: c.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
           before: c.contextBefore,
           after: c.contextAfter,
@@ -2121,7 +2224,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const notifications = this._notificationPersistence.getNotifications(50);
     const unreadCount = this._notificationPersistence.getUnreadCount();
 
-    const displays = notifications.map(n => ({
+    const displays = notifications.map((n) => ({
       id: n.id,
       triggerId: n.triggerId,
       triggerName: n.triggerName,
@@ -2167,7 +2270,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     return {
       totalFilesChanged: filesModified.size,
       totalAdditions,
-      totalDeletions
+      totalDeletions,
     };
   }
 
@@ -2191,28 +2294,34 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const plans = this._planPersistenceService.getPlans();
     if (plans.length === 0) return;
 
-    const completedPlans = plans.filter(p => p.status === 'completed').length;
-    const failedPlans = plans.filter(p => p.status === 'failed').length;
+    const completedPlans = plans.filter((p) => p.status === 'completed').length;
+    const failedPlans = plans.filter((p) => p.status === 'failed').length;
     const avgCompletionRate = plans.reduce((s, p) => s + p.completionRate, 0) / plans.length;
 
-    const plansWithDuration = plans.filter(p => p.totalDurationMs != null && p.totalDurationMs > 0);
-    const avgDurationMs = plansWithDuration.length > 0
-      ? plansWithDuration.reduce((s, p) => s + (p.totalDurationMs || 0), 0) / plansWithDuration.length
-      : 0;
+    const plansWithDuration = plans.filter(
+      (p) => p.totalDurationMs != null && p.totalDurationMs > 0,
+    );
+    const avgDurationMs =
+      plansWithDuration.length > 0
+        ? plansWithDuration.reduce((s, p) => s + (p.totalDurationMs || 0), 0) /
+          plansWithDuration.length
+        : 0;
 
     const avgStepsPerPlan = plans.reduce((s, p) => s + p.steps.length, 0) / plans.length;
 
-    const plansWithTokens = plans.filter(p => p.totalTokensUsed != null && p.totalTokensUsed > 0);
-    const avgTokensPerPlan = plansWithTokens.length > 0
-      ? plansWithTokens.reduce((s, p) => s + (p.totalTokensUsed || 0), 0) / plansWithTokens.length
-      : 0;
+    const plansWithTokens = plans.filter((p) => p.totalTokensUsed != null && p.totalTokensUsed > 0);
+    const avgTokensPerPlan =
+      plansWithTokens.length > 0
+        ? plansWithTokens.reduce((s, p) => s + (p.totalTokensUsed || 0), 0) / plansWithTokens.length
+        : 0;
 
-    const plansWithCost = plans.filter(p => p.totalCostUsd != null && p.totalCostUsd > 0);
-    const avgCostPerPlan = plansWithCost.length > 0
-      ? plansWithCost.reduce((s, p) => s + (p.totalCostUsd || 0), 0) / plansWithCost.length
-      : 0;
+    const plansWithCost = plans.filter((p) => p.totalCostUsd != null && p.totalCostUsd > 0);
+    const avgCostPerPlan =
+      plansWithCost.length > 0
+        ? plansWithCost.reduce((s, p) => s + (p.totalCostUsd || 0), 0) / plansWithCost.length
+        : 0;
 
-    const recentPlans = plans.slice(0, 10).map(p => ({
+    const recentPlans = plans.slice(0, 10).map((p) => ({
       title: p.title,
       status: p.status,
       completionRate: p.completionRate,
@@ -2286,7 +2395,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({
       type: 'updateBurnRate',
       burnRate: this._burnRateCalculator.calculateBurnRate(),
-      sessionStartTime: stats.sessionStartTime?.toISOString() ?? null
+      sessionStartTime: stats.sessionStartTime?.toISOString() ?? null,
     });
   }
 
@@ -2308,7 +2417,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       groups,
       isPinned: this._sessionMonitor.isPinned(),
       isUsingCustomPath: this._sessionMonitor.isUsingCustomPath(),
-      customPathDisplay: customPath ? this._getShortPath(customPath) : null
+      customPathDisplay: customPath ? this._getShortPath(customPath) : null,
     });
   }
 
@@ -2320,7 +2429,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({
       type: 'updateSessionProvider',
       providerId: provider.id,
-      displayName: provider.displayName
+      displayName: provider.displayName,
     });
     this._syncProviderStatusCards();
     this._syncPeakHoursCard();
@@ -2330,7 +2439,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Sends the current event log enabled state to the webview.
    */
   private _sendEventLogState(): void {
-    const enabled = vscode.workspace.getConfiguration('sidekick').get<boolean>('enableEventLog', false);
+    const enabled = vscode.workspace
+      .getConfiguration('sidekick')
+      .get<boolean>('enableEventLog', false);
     this._postMessage({ type: 'syncEventLogState', enabled });
   }
 
@@ -2354,8 +2465,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _safeJsonForScript(data: unknown): string {
     return JSON.stringify(data)
-      .replace(/</g, '\\u003c')     // Prevents </script> breaking HTML parser
-      .replace(/>/g, '\\u003e')     // Prevents --> breaking HTML comments
+      .replace(/</g, '\\u003c') // Prevents </script> breaking HTML parser
+      .replace(/>/g, '\\u003e') // Prevents --> breaking HTML comments
       .replace(/\u2028/g, '\\u2028') // Line separator (breaks JS strings)
       .replace(/\u2029/g, '\\u2029'); // Paragraph separator (breaks JS strings)
   }
@@ -2375,7 +2486,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _updateContextUsage(): void {
     // Context window = actual tokens in context from most recent message
     // This is input + cache_write + cache_read tokens
-    this._state.contextUsagePercent = (this._currentContextSize / this._getContextWindowLimit()) * 100;
+    this._state.contextUsagePercent =
+      (this._currentContextSize / this._getContextWindowLimit()) * 100;
   }
 
   /**
@@ -2398,8 +2510,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._providerStatusService?.getCachedOpenAIStatus(),
     );
 
-    this._postMessage({ type: 'updateProviderStatus', display: formatProviderStatusDisplay('Claude', claude) });
-    this._postMessage({ type: 'updateOpenAIStatus', display: formatProviderStatusDisplay('OpenAI', openai) });
+    this._postMessage({
+      type: 'updateProviderStatus',
+      display: formatProviderStatusDisplay('Claude', claude),
+    });
+    this._postMessage({
+      type: 'updateOpenAIStatus',
+      display: formatProviderStatusDisplay('OpenAI', openai),
+    });
   }
 
   /**
@@ -2427,12 +2545,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Build URI for bundled Chart.js vendor script
     const chartjsUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'chartjs-vendor.js')
+      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'chartjs-vendor.js'),
     );
 
     // Get icon URI for branding
     const iconUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png')
+      vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png'),
     );
 
     // Read and parse changelog for version badge + modal
@@ -2441,9 +2559,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     try {
       const raw = fs.readFileSync(changelogPath, 'utf-8');
       changelogEntries = parseChangelog(raw, 5);
-    } catch { /* graceful fallback — no modal available */ }
+    } catch {
+      /* graceful fallback — no modal available */
+    }
 
-    const extVersion = vscode.extensions.getExtension('CesarAndresLopez.sidekick-for-max')?.packageJSON?.version || changelogEntries[0]?.version || '?';
+    const extVersion =
+      vscode.extensions.getExtension('CesarAndresLopez.sidekick-for-max')?.packageJSON?.version ||
+      changelogEntries[0]?.version ||
+      '?';
     const extDate = changelogEntries[0]?.date || '';
 
     // Pre-compute session groups for initial render (avoids reliance on postMessage)
@@ -6024,7 +6147,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       isUsingCustomPath: initialIsUsingCustomPath,
       customPathDisplay: initialCustomPath ? this._getShortPath(initialCustomPath) : null,
       providerId: initialProvider.id,
-      providerName: initialProvider.displayName
+      providerName: initialProvider.displayName,
     })};
   </script>
   <script nonce="${nonce}">
@@ -9237,7 +9360,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       clearTimeout(this._richerPanelTimer);
     }
     this._phrases.stop();
-    this._disposables.forEach(d => d.dispose());
+    this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     log('DashboardViewProvider disposed');
   }

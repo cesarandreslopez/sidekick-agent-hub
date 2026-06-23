@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getActiveCodexAccount, getCodexMonitoringHomes, resolveSidekickCodexHome } from './codexProfiles';
+import {
+  getActiveCodexAccount,
+  getCodexMonitoringHomes,
+  resolveSidekickCodexHome,
+} from './codexProfiles';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { QuotaState } from './quota';
 import { FIVE_HOUR_WINDOW_MS, SEVEN_DAY_WINDOW_MS, withQuotaProjections } from './quota';
@@ -110,14 +114,18 @@ function isPreferredQuotaHit(candidate: RolloutQuotaHit, current: RolloutQuotaHi
 
   const candidatePrimaryReset = timestampMs(candidate.quota.fiveHour.resetsAt);
   const currentPrimaryReset = timestampMs(current.quota.fiveHour.resetsAt);
-  if (candidatePrimaryReset !== currentPrimaryReset) return candidatePrimaryReset > currentPrimaryReset;
+  if (candidatePrimaryReset !== currentPrimaryReset)
+    return candidatePrimaryReset > currentPrimaryReset;
 
   const candidateSecondaryReset = timestampMs(candidate.quota.sevenDay.resetsAt);
   const currentSecondaryReset = timestampMs(current.quota.sevenDay.resetsAt);
-  if (candidateSecondaryReset !== currentSecondaryReset) return candidateSecondaryReset > currentSecondaryReset;
+  if (candidateSecondaryReset !== currentSecondaryReset)
+    return candidateSecondaryReset > currentSecondaryReset;
 
-  const candidateUtilization = candidate.quota.fiveHour.utilization + candidate.quota.sevenDay.utilization;
-  const currentUtilization = current.quota.fiveHour.utilization + current.quota.sevenDay.utilization;
+  const candidateUtilization =
+    candidate.quota.fiveHour.utilization + candidate.quota.sevenDay.utilization;
+  const currentUtilization =
+    current.quota.fiveHour.utilization + current.quota.sevenDay.utilization;
   if (candidateUtilization !== currentUtilization) return candidateUtilization > currentUtilization;
 
   const candidateMs = timestampMs(candidate.quota.capturedAt, candidate.mtimeMs);
@@ -167,16 +175,19 @@ function unavailableCodexQuota(
   account: SavedAccountProfile | null,
   meta: Pick<QuotaState, 'failureKind' | 'httpStatus' | 'retryAfterMs' | 'source'> = {},
 ): ProviderQuotaState<'codex'> {
-  return enrichCodexQuota({
-    fiveHour: { utilization: 0, resetsAt: '' },
-    sevenDay: { utilization: 0, resetsAt: '' },
-    available: false,
-    error,
-    providerId: 'codex',
-    fiveHourLabel: 'Primary',
-    sevenDayLabel: 'Secondary',
-    ...meta,
-  }, account);
+  return enrichCodexQuota(
+    {
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error,
+      providerId: 'codex',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+      ...meta,
+    },
+    account,
+  );
 }
 
 function parseRetryAfterMs(retryAfter: string | null): number | undefined {
@@ -197,7 +208,9 @@ function firstString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
-function normalizeCredits(credits: CodexUsageApiCredits | null | undefined): CodexQuotaCreditsSnapshot | undefined {
+function normalizeCredits(
+  credits: CodexUsageApiCredits | null | undefined,
+): CodexQuotaCreditsSnapshot | undefined {
   if (!credits) return undefined;
   return {
     hasCredits: credits.has_credits ?? credits.hasCredits,
@@ -206,12 +219,16 @@ function normalizeCredits(credits: CodexUsageApiCredits | null | undefined): Cod
   };
 }
 
-function normalizeRateLimitReachedType(value: CodexUsageApiPayload['rate_limit_reached_type']): string | undefined {
+function normalizeRateLimitReachedType(
+  value: CodexUsageApiPayload['rate_limit_reached_type'],
+): string | undefined {
   if (typeof value === 'string') return value;
   return firstString(value?.kind);
 }
 
-function normalizeApiWindow(window: CodexUsageApiWindow | null | undefined): CodexRateLimits['primary'] {
+function normalizeApiWindow(
+  window: CodexUsageApiWindow | null | undefined,
+): CodexRateLimits['primary'] {
   if (!window) return undefined;
   const windowMinutes =
     typeof window.window_minutes === 'number' || window.window_minutes === null
@@ -264,30 +281,39 @@ export function quotaFromCodexRateLimits(
   const secondary = rateLimits?.secondary;
   if (!primary && !secondary) return null;
 
-  return withQuotaProjections({
-    fiveHour: primary
-      ? { utilization: normalizePercent(primary.used_percent), resetsAt: timestampToIso(primary.resets_at) }
-      : { utilization: 0, resetsAt: '' },
-    sevenDay: secondary
-      ? { utilization: normalizePercent(secondary.used_percent), resetsAt: timestampToIso(secondary.resets_at) }
-      : { utilization: 0, resetsAt: '' },
-    available: true,
-    providerId: 'codex',
-    source,
-    capturedAt,
-    stale: source === 'cache',
-    fiveHourLabel: 'Primary',
-    sevenDayLabel: 'Secondary',
-    limitId: rateLimits?.limit_id,
-    limitName: rateLimits?.limit_name ?? undefined,
-    credits: rateLimits?.credits,
-    planType: rateLimits?.plan_type,
-    rateLimitReachedType: rateLimits?.rate_limit_reached_type,
-  }, {
-    fiveHourWindowMs: windowMinutesToMs(primary?.window_minutes, FIVE_HOUR_WINDOW_MS),
-    sevenDayWindowMs: windowMinutesToMs(secondary?.window_minutes, SEVEN_DAY_WINDOW_MS),
-    capturedAt,
-  });
+  return withQuotaProjections(
+    {
+      fiveHour: primary
+        ? {
+            utilization: normalizePercent(primary.used_percent),
+            resetsAt: timestampToIso(primary.resets_at),
+          }
+        : { utilization: 0, resetsAt: '' },
+      sevenDay: secondary
+        ? {
+            utilization: normalizePercent(secondary.used_percent),
+            resetsAt: timestampToIso(secondary.resets_at),
+          }
+        : { utilization: 0, resetsAt: '' },
+      available: true,
+      providerId: 'codex',
+      source,
+      capturedAt,
+      stale: source === 'cache',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+      limitId: rateLimits?.limit_id,
+      limitName: rateLimits?.limit_name ?? undefined,
+      credits: rateLimits?.credits,
+      planType: rateLimits?.plan_type,
+      rateLimitReachedType: rateLimits?.rate_limit_reached_type,
+    },
+    {
+      fiveHourWindowMs: windowMinutesToMs(primary?.window_minutes, FIVE_HOUR_WINDOW_MS),
+      sevenDayWindowMs: windowMinutesToMs(secondary?.window_minutes, SEVEN_DAY_WINDOW_MS),
+      capturedAt,
+    },
+  );
 }
 
 export function readLatestCodexQuotaFromRollouts(
@@ -361,31 +387,40 @@ function findAccountRolloutFiles(codexHome?: string): string[] {
 export function resolveCodexQuotaFromLocalSources(
   options: CodexQuotaResolveOptions = {},
 ): ProviderQuotaState<'codex'> | null {
-  const account = options.activeAccount !== undefined ? options.activeAccount : getActiveCodexAccount();
+  const account =
+    options.activeAccount !== undefined ? options.activeAccount : getActiveCodexAccount();
   const readSnapshot = options.readSnapshot ?? readQuotaSnapshot;
   const writeSnapshot = options.writeSnapshot ?? writeQuotaSnapshot;
   const maxTailBytes = options.maxTailBytes ?? DEFAULT_TAIL_BYTES;
   const maxSessionFiles = options.maxSessionFiles ?? DEFAULT_MAX_SESSION_FILES;
   let ownProvider = false;
-  const provider = options.provider ?? (() => {
-    ownProvider = true;
-    return new CodexProvider();
-  })();
+  const provider =
+    options.provider ??
+    (() => {
+      ownProvider = true;
+      return new CodexProvider();
+    })();
 
   try {
     const candidates: RolloutQuotaHit[] = [];
     if (options.workspacePath) {
       const workspaceSessions = provider.findAllSessions(options.workspacePath);
-      const workspaceHit = readLatestCodexQuotaHitFromRollouts(workspaceSessions, { maxTailBytes, maxSessionFiles });
+      const workspaceHit = readLatestCodexQuotaHitFromRollouts(workspaceSessions, {
+        maxTailBytes,
+        maxSessionFiles,
+      });
       if (workspaceHit) candidates.push(workspaceHit);
     }
 
     const accountSessions = findAccountRolloutFiles(options.codexHome);
-    const accountHit = readLatestCodexQuotaHitFromRollouts(accountSessions, { maxTailBytes, maxSessionFiles });
+    const accountHit = readLatestCodexQuotaHitFromRollouts(accountSessions, {
+      maxTailBytes,
+      maxSessionFiles,
+    });
     if (accountHit) candidates.push(accountHit);
 
     const latestHit = candidates.reduce<RolloutQuotaHit | null>(
-      (latest, candidate) => isPreferredQuotaHit(candidate, latest) ? candidate : latest,
+      (latest, candidate) => (isPreferredQuotaHit(candidate, latest) ? candidate : latest),
       null,
     );
     if (latestHit) {
@@ -395,14 +430,17 @@ export function resolveCodexQuotaFromLocalSources(
 
     const cached = account ? readSnapshot('codex', account.id) : null;
     if (cached) {
-      return enrichCodexQuota({
-        ...cached,
-        providerId: 'codex',
-        source: 'cache',
-        stale: true,
-        fiveHourLabel: cached.fiveHourLabel ?? 'Primary',
-        sevenDayLabel: cached.sevenDayLabel ?? 'Secondary',
-      }, account);
+      return enrichCodexQuota(
+        {
+          ...cached,
+          providerId: 'codex',
+          source: 'cache',
+          stale: true,
+          fiveHourLabel: cached.fiveHourLabel ?? 'Primary',
+          sevenDayLabel: cached.sevenDayLabel ?? 'Secondary',
+        },
+        account,
+      );
     }
   } finally {
     if (ownProvider) provider.dispose();
@@ -415,7 +453,8 @@ export async function resolveCodexQuota(
   options: CodexQuotaResolveOptions = {},
 ): Promise<ProviderQuotaState<'codex'>> {
   const source = options.source ?? 'local';
-  const account = options.activeAccount !== undefined ? options.activeAccount : getActiveCodexAccount();
+  const account =
+    options.activeAccount !== undefined ? options.activeAccount : getActiveCodexAccount();
   const writeSnapshot = options.writeSnapshot ?? writeQuotaSnapshot;
 
   if (source === 'api') {
@@ -449,9 +488,12 @@ export async function resolveCodexQuota(
   );
 }
 
-export async function fetchCodexQuotaFromApi(options: CodexQuotaApiOptions = {}): Promise<QuotaState> {
+export async function fetchCodexQuotaFromApi(
+  options: CodexQuotaApiOptions = {},
+): Promise<QuotaState> {
   const capturedAt = options.capturedAt ?? new Date().toISOString();
-  const accessToken = options.accessToken ?? readCodexAccessToken(options.codexHome ?? resolveSidekickCodexHome());
+  const accessToken =
+    options.accessToken ?? readCodexAccessToken(options.codexHome ?? resolveSidekickCodexHome());
 
   if (!accessToken) {
     return {
@@ -484,15 +526,19 @@ export async function fetchCodexQuotaFromApi(options: CodexQuotaApiOptions = {})
         sevenDay: { utilization: 0, resetsAt: '' },
         available: false,
         error: `Codex usage API error: ${response.status}`,
-        failureKind: response.status === 401 || response.status === 403
-          ? 'auth'
-          : response.status === 429
-            ? 'rate_limit'
-            : response.status >= 500 && response.status <= 599
-              ? 'server'
-              : 'unknown',
+        failureKind:
+          response.status === 401 || response.status === 403
+            ? 'auth'
+            : response.status === 429
+              ? 'rate_limit'
+              : response.status >= 500 && response.status <= 599
+                ? 'server'
+                : 'unknown',
         httpStatus: response.status,
-        retryAfterMs: response.status === 429 ? parseRetryAfterMs(response.headers.get('retry-after')) : undefined,
+        retryAfterMs:
+          response.status === 429
+            ? parseRetryAfterMs(response.headers.get('retry-after'))
+            : undefined,
         providerId: 'codex',
         source: 'api',
         capturedAt,
@@ -501,7 +547,7 @@ export async function fetchCodexQuotaFromApi(options: CodexQuotaApiOptions = {})
       };
     }
 
-    const payload = await response.json() as CodexUsageApiPayload;
+    const payload = (await response.json()) as CodexUsageApiPayload;
     const quota = quotaFromCodexRateLimits(rateLimitsFromUsagePayload(payload), 'api', capturedAt);
     if (!quota) {
       return {
@@ -536,7 +582,9 @@ export async function fetchCodexQuotaFromApi(options: CodexQuotaApiOptions = {})
 
 function readCodexAccessToken(codexHome: string): string | null {
   try {
-    const parsed = JSON.parse(fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8')) as CodexAuthJson;
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'),
+    ) as CodexAuthJson;
     if (parsed.OPENAI_API_KEY || parsed.auth_mode === 'api_key') return null;
     return parsed.tokens?.access_token || null;
   } catch {
@@ -580,7 +628,11 @@ function readLatestQuotaFromRollout(
           payload?: { type?: string; rate_limits?: CodexRateLimits | null };
         };
         if (parsed.type !== 'event_msg' || parsed.payload?.type !== 'token_count') continue;
-        const quota = quotaFromCodexRateLimits(parsed.payload.rate_limits, source, parsed.timestamp ?? new Date(stat.mtime).toISOString());
+        const quota = quotaFromCodexRateLimits(
+          parsed.payload.rate_limits,
+          source,
+          parsed.timestamp ?? new Date(stat.mtime).toISOString(),
+        );
         if (quota) return { quota, filePath: sessionPath, mtimeMs: stat.mtime.getTime() };
       } catch {
         // Ignore malformed or partial lines.
@@ -590,7 +642,11 @@ function readLatestQuotaFromRollout(
     return null;
   } finally {
     if (fd !== null) {
-      try { fs.closeSync(fd); } catch { /* ignore */ }
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -614,7 +670,8 @@ function findRolloutFiles(sessionsDir: string): string[] {
         visit(fullPath);
         continue;
       }
-      if (!entry.isFile() || !entry.name.startsWith('rollout-') || !entry.name.endsWith('.jsonl')) continue;
+      if (!entry.isFile() || !entry.name.startsWith('rollout-') || !entry.name.endsWith('.jsonl'))
+        continue;
       try {
         const stat = fs.statSync(fullPath);
         if (stat.size > 0) {
@@ -628,5 +685,5 @@ function findRolloutFiles(sessionsDir: string): string[] {
 
   visit(sessionsDir);
   results.sort((a, b) => b.mtime - a.mtime);
-  return results.map(item => item.path);
+  return results.map((item) => item.path);
 }

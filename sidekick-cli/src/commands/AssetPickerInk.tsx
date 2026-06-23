@@ -93,20 +93,25 @@ function AssetPickerInk({ items, onDone }: AssetPickerInkProps): React.ReactElem
   const viewportHeight = Math.max(5, rows - 8);
   const scrollOffset = Math.max(
     0,
-    Math.min(selectedClamped - Math.floor(viewportHeight / 2), Math.max(0, visible.length - viewportHeight)),
+    Math.min(
+      selectedClamped - Math.floor(viewportHeight / 2),
+      Math.max(0, visible.length - viewportHeight),
+    ),
   );
   const windowItems = visible.slice(scrollOffset, scrollOffset + viewportHeight);
 
   return (
     <Box flexDirection="column" width="100%">
       <Box>
-        <Text color="magenta" bold>extract</Text>
+        <Text color="magenta" bold>
+          extract
+        </Text>
         <Text> </Text>
         <Text dimColor>filter:</Text>
         <Text> {typeFilter}</Text>
-        <Text dimColor>  query:</Text>
+        <Text dimColor> query:</Text>
         <Text> {query}</Text>
-        <Text inverse>{' '}</Text>
+        <Text inverse> </Text>
       </Box>
       <Box flexDirection="column" borderStyle="single" borderColor="magenta" paddingX={1}>
         {visible.length === 0 && <Text dimColor>No matches.</Text>}
@@ -125,7 +130,8 @@ function AssetPickerInk({ items, onDone }: AssetPickerInkProps): React.ReactElem
       </Box>
       <Box height={1}>
         <Text dimColor>
-          <Text bold>↑/↓</Text> nav  <Text bold>Tab</Text> filter  <Text bold>Enter</Text> open/copy  <Text bold>^Y</Text> copy  <Text bold>Esc</Text> quit  ({visible.length}/{items.length})
+          <Text bold>↑/↓</Text> nav <Text bold>Tab</Text> filter <Text bold>Enter</Text> open/copy{' '}
+          <Text bold>^Y</Text> copy <Text bold>Esc</Text> quit ({visible.length}/{items.length})
         </Text>
       </Box>
     </Box>
@@ -135,23 +141,30 @@ function AssetPickerInk({ items, onDone }: AssetPickerInkProps): React.ReactElem
 export async function showAssetPicker(items: ExtractedAsset[]): Promise<void> {
   const { render } = await import('ink');
 
-  const action = await new Promise<{ kind: 'open' | 'copy' | 'quit'; asset?: ExtractedAsset }>((resolve) => {
-    let settled = false;
-    const finish = (nextAction: { kind: 'open' | 'copy' | 'quit'; asset?: ExtractedAsset }) => {
-      if (settled) return;
-      settled = true;
-      instance.unmount();
-      resolve(nextAction);
-    };
-    const instance = render(<AssetPickerInk items={items} onDone={finish} />);
-    instance.waitUntilExit().then(() => finish({ kind: 'quit' })).catch(() => finish({ kind: 'quit' }));
-  });
+  const action = await new Promise<{ kind: 'open' | 'copy' | 'quit'; asset?: ExtractedAsset }>(
+    (resolve) => {
+      let settled = false;
+      const finish = (nextAction: { kind: 'open' | 'copy' | 'quit'; asset?: ExtractedAsset }) => {
+        if (settled) return;
+        settled = true;
+        instance.unmount();
+        resolve(nextAction);
+      };
+      const instance = render(<AssetPickerInk items={items} onDone={finish} />);
+      instance
+        .waitUntilExit()
+        .then(() => finish({ kind: 'quit' }))
+        .catch(() => finish({ kind: 'quit' }));
+    },
+  );
 
   if (action.kind === 'quit' || !action.asset) return;
 
   if (action.kind === 'open') {
     const opened = openUrl(action.asset.text);
-    process.stdout.write(opened ? `Opened ${action.asset.text}\n` : `Could not open ${action.asset.text}\n`);
+    process.stdout.write(
+      opened ? `Opened ${action.asset.text}\n` : `Could not open ${action.asset.text}\n`,
+    );
   } else {
     const copied = copyToClipboard(action.asset.text);
     process.stdout.write(copied ? 'Copied to clipboard.\n' : 'Could not copy to clipboard.\n');

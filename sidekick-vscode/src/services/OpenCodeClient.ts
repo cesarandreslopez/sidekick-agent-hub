@@ -46,7 +46,7 @@ export class OpenCodeClient implements ClaudeClient {
       } catch {
         throw new ConnectionError(
           'OpenCode SDK not installed. Install @opencode-ai/sdk or choose a different inference provider.',
-          'opencode'
+          'opencode',
         );
       }
     }
@@ -78,7 +78,7 @@ export class OpenCodeClient implements ClaudeClient {
     } catch (err) {
       throw new ConnectionError(
         `Failed to connect to OpenCode: ${err instanceof Error ? err.message : String(err)}`,
-        'opencode'
+        'opencode',
       );
     }
   }
@@ -108,7 +108,9 @@ export class OpenCodeClient implements ClaudeClient {
           const [providerID, modelID] = m.split('/', 2);
           body.model = { providerID, modelID };
         } else {
-          log(`OpenCodeClient: model "${m}" has no provider prefix (expected "provider/model"), using OpenCode default`);
+          log(
+            `OpenCodeClient: model "${m}" has no provider prefix (expected "provider/model"), using OpenCode default`,
+          );
         }
       }
 
@@ -166,7 +168,11 @@ export class OpenCodeClient implements ClaudeClient {
 
   dispose(): void {
     if (serverHandle?.close) {
-      try { serverHandle.close(); } catch { /* ignore */ }
+      try {
+        serverHandle.close();
+      } catch {
+        /* ignore */
+      }
     }
     clientInstance = null;
     serverHandle = null;

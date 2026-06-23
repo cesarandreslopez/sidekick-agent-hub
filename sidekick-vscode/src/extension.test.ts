@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock vscode module
-vi.mock("vscode", () => ({
+vi.mock('vscode', () => ({
   window: {
     createStatusBarItem: vi.fn(() => ({
       show: vi.fn(),
       hide: vi.fn(),
       dispose: vi.fn(),
-      text: "",
-      tooltip: "",
-      command: "",
+      text: '',
+      tooltip: '',
+      command: '',
     })),
     showInformationMessage: vi.fn(),
     activeTextEditor: undefined,
@@ -22,7 +22,7 @@ vi.mock("vscode", () => ({
           debounceMs: 300,
           maxContextLines: 50,
           maxTokens: 150,
-          model: "haiku",
+          model: 'haiku',
         };
         return defaults[key];
       }),
@@ -39,24 +39,24 @@ vi.mock("vscode", () => ({
   Position: class {
     constructor(
       public line: number,
-      public character: number
+      public character: number,
     ) {}
   },
   Range: class {
     constructor(
       public start: unknown,
-      public end: unknown
+      public end: unknown,
     ) {}
   },
   InlineCompletionItem: class {
     constructor(
       public text: string,
-      public range: unknown
+      public range: unknown,
     ) {}
   },
 }));
 
-describe("Extension Configuration", () => {
+describe('Extension Configuration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -65,83 +65,83 @@ describe("Extension Configuration", () => {
     vi.restoreAllMocks();
   });
 
-  it("should have correct default configuration values", async () => {
-    const vscode = await import("vscode");
-    const config = vscode.workspace.getConfiguration("sidekick");
+  it('should have correct default configuration values', async () => {
+    const vscode = await import('vscode');
+    const config = vscode.workspace.getConfiguration('sidekick');
 
-    expect(config.get("enabled")).toBe(true);
-    expect(config.get("debounceMs")).toBe(300);
-    expect(config.get("maxContextLines")).toBe(50);
-    expect(config.get("maxTokens")).toBe(150);
-    expect(config.get("model")).toBe("haiku");
+    expect(config.get('enabled')).toBe(true);
+    expect(config.get('debounceMs')).toBe(300);
+    expect(config.get('maxContextLines')).toBe(50);
+    expect(config.get('maxTokens')).toBe(150);
+    expect(config.get('model')).toBe('haiku');
   });
 });
 
-describe("HTTP Request Formation", () => {
+describe('HTTP Request Formation', () => {
   // Test the request body formation logic
-  it("should form correct request body with all fields", () => {
+  it('should form correct request body with all fields', () => {
     const requestBody = {
-      prefix: "function add(a, b) {\n  return ",
-      suffix: "\n}",
-      language: "javascript",
-      filename: "math.js",
+      prefix: 'function add(a, b) {\n  return ',
+      suffix: '\n}',
+      language: 'javascript',
+      filename: 'math.js',
       max_tokens: 150,
-      model: "haiku",
+      model: 'haiku',
     };
 
-    expect(requestBody.prefix).toContain("function add");
-    expect(requestBody.suffix).toBe("\n}");
-    expect(requestBody.language).toBe("javascript");
-    expect(requestBody.filename).toBe("math.js");
-    expect(requestBody.model).toBe("haiku");
+    expect(requestBody.prefix).toContain('function add');
+    expect(requestBody.suffix).toBe('\n}');
+    expect(requestBody.language).toBe('javascript');
+    expect(requestBody.filename).toBe('math.js');
+    expect(requestBody.model).toBe('haiku');
   });
 
-  it("should include model in request body", () => {
+  it('should include model in request body', () => {
     const requestBody = {
-      prefix: "test",
-      suffix: "",
-      language: "python",
-      filename: "test.py",
+      prefix: 'test',
+      suffix: '',
+      language: 'python',
+      filename: 'test.py',
       max_tokens: 100,
-      model: "haiku",
+      model: 'haiku',
     };
 
-    expect(requestBody.model).toBe("haiku");
+    expect(requestBody.model).toBe('haiku');
   });
 });
 
-describe("Completion Response Parsing", () => {
-  it("should handle successful response", () => {
+describe('Completion Response Parsing', () => {
+  it('should handle successful response', () => {
     const response = {
-      completion: "a + b;",
+      completion: 'a + b;',
     };
 
-    expect(response.completion).toBe("a + b;");
+    expect(response.completion).toBe('a + b;');
     expect(response.completion).toBeTruthy();
   });
 
-  it("should handle error response", () => {
+  it('should handle error response', () => {
     const response = {
-      completion: "",
-      error: "Server error",
+      completion: '',
+      error: 'Server error',
     };
 
-    expect(response.completion).toBe("");
-    expect(response.error).toBe("Server error");
+    expect(response.completion).toBe('');
+    expect(response.error).toBe('Server error');
   });
 
-  it("should handle empty completion", () => {
+  it('should handle empty completion', () => {
     const response: { completion: string; error?: string } = {
-      completion: "",
+      completion: '',
     };
 
-    expect(response.completion).toBe("");
+    expect(response.completion).toBe('');
     expect(response.error).toBeUndefined();
   });
 });
 
-describe("Debounce Logic", () => {
-  it("should respect debounce timing", async () => {
+describe('Debounce Logic', () => {
+  it('should respect debounce timing', async () => {
     const debounceMs = 300;
     let executed = false;
 
@@ -157,7 +157,7 @@ describe("Debounce Logic", () => {
     expect(executed).toBe(true);
   });
 
-  it("should cancel previous request when new one arrives", async () => {
+  it('should cancel previous request when new one arrives', async () => {
     let lastRequestId = 0;
     const requests: number[] = [];
 
@@ -176,41 +176,38 @@ describe("Debounce Logic", () => {
   });
 });
 
-describe("Model Configuration", () => {
-  it("should support sonnet model", () => {
-    const validModels = ["sonnet", "haiku"];
-    expect(validModels).toContain("sonnet");
+describe('Model Configuration', () => {
+  it('should support sonnet model', () => {
+    const validModels = ['sonnet', 'haiku'];
+    expect(validModels).toContain('sonnet');
   });
 
-  it("should support haiku model", () => {
-    const validModels = ["sonnet", "haiku"];
-    expect(validModels).toContain("haiku");
+  it('should support haiku model', () => {
+    const validModels = ['sonnet', 'haiku'];
+    expect(validModels).toContain('haiku');
   });
 
-  it("should default to haiku when not specified", () => {
+  it('should default to haiku when not specified', () => {
     const config = { model: undefined };
-    const model = config.model || "haiku";
-    expect(model).toBe("haiku");
+    const model = config.model || 'haiku';
+    expect(model).toBe('haiku');
   });
 });
 
-describe("Context Extraction", () => {
-  it("should calculate correct line ranges", () => {
+describe('Context Extraction', () => {
+  it('should calculate correct line ranges', () => {
     const position = { line: 100, character: 0 };
     const maxContextLines = 30;
     const documentLineCount = 200;
 
     const startLine = Math.max(0, position.line - maxContextLines);
-    const endLine = Math.min(
-      documentLineCount - 1,
-      position.line + maxContextLines
-    );
+    const endLine = Math.min(documentLineCount - 1, position.line + maxContextLines);
 
     expect(startLine).toBe(70);
     expect(endLine).toBe(130);
   });
 
-  it("should handle start of file", () => {
+  it('should handle start of file', () => {
     const position = { line: 10, character: 0 };
     const maxContextLines = 30;
 
@@ -219,15 +216,12 @@ describe("Context Extraction", () => {
     expect(startLine).toBe(0);
   });
 
-  it("should handle end of file", () => {
+  it('should handle end of file', () => {
     const position = { line: 190, character: 0 };
     const maxContextLines = 30;
     const documentLineCount = 200;
 
-    const endLine = Math.min(
-      documentLineCount - 1,
-      position.line + maxContextLines
-    );
+    const endLine = Math.min(documentLineCount - 1, position.line + maxContextLines);
 
     expect(endLine).toBe(199);
   });

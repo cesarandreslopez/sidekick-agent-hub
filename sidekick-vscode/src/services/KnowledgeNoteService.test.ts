@@ -24,8 +24,12 @@ vi.mock('vscode', () => ({
       this.listeners.push(listener);
       return { dispose: () => {} };
     };
-    fire() { this.listeners.forEach(l => l()); }
-    dispose() { this.listeners = []; }
+    fire() {
+      this.listeners.forEach((l) => l());
+    }
+    dispose() {
+      this.listeners = [];
+    }
   },
 }));
 
@@ -67,27 +71,26 @@ describe('KnowledgeNoteService', () => {
       const store: KnowledgeNoteStore = {
         schemaVersion: KNOWLEDGE_NOTE_SCHEMA_VERSION,
         notesByFile: {
-          'src/foo.ts': [{
-            id: 'note-1',
-            noteType: 'gotcha',
-            content: 'Watch out for null',
-            filePath: 'src/foo.ts',
-            source: 'manual',
-            status: 'active',
-            importance: 'medium',
-            createdAt: '2026-02-18T10:00:00Z',
-            updatedAt: '2026-02-18T10:00:00Z',
-            lastReviewedAt: '2026-02-18T10:00:00Z',
-          }],
+          'src/foo.ts': [
+            {
+              id: 'note-1',
+              noteType: 'gotcha',
+              content: 'Watch out for null',
+              filePath: 'src/foo.ts',
+              source: 'manual',
+              status: 'active',
+              importance: 'medium',
+              createdAt: '2026-02-18T10:00:00Z',
+              updatedAt: '2026-02-18T10:00:00Z',
+              lastReviewedAt: '2026-02-18T10:00:00Z',
+            },
+          ],
         },
         lastSaved: '2026-02-18T10:00:00Z',
         totalNotes: 1,
       };
 
-      fs.writeFileSync(
-        path.join(tmpDir, 'test-project.json'),
-        JSON.stringify(store)
-      );
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), JSON.stringify(store));
 
       const service = createService();
       await service.initialize();
@@ -99,10 +102,7 @@ describe('KnowledgeNoteService', () => {
     });
 
     it('falls back to empty store on corrupt JSON', async () => {
-      fs.writeFileSync(
-        path.join(tmpDir, 'test-project.json'),
-        'not valid json{{{'
-      );
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), 'not valid json{{{');
 
       const service = createService();
       await service.initialize();
@@ -292,7 +292,11 @@ describe('KnowledgeNoteService', () => {
       const service = createService();
       await service.initialize();
 
-      service.addNote({ noteType: 'gotcha', content: 'Cache invalidation required', filePath: 'a.ts' });
+      service.addNote({
+        noteType: 'gotcha',
+        content: 'Cache invalidation required',
+        filePath: 'a.ts',
+      });
       service.addNote({ noteType: 'tip', content: 'Use async/await', filePath: 'b.ts' });
 
       const results = service.getAllNotes({ query: 'cache' });
@@ -371,7 +375,12 @@ describe('KnowledgeNoteService', () => {
       const service = createService();
       await service.initialize();
 
-      service.addNote({ noteType: 'gotcha', content: 'Critical', filePath: 'a.ts', importance: 'critical' });
+      service.addNote({
+        noteType: 'gotcha',
+        content: 'Critical',
+        filePath: 'a.ts',
+        importance: 'critical',
+      });
       service.addNote({ noteType: 'gotcha', content: 'Low', filePath: 'b.ts', importance: 'low' });
 
       // Set both to same age (35 days ago) - above needsReview threshold for medium
@@ -427,7 +436,7 @@ describe('KnowledgeNoteService', () => {
 
       const active = service.getActiveNotes();
       expect(active).toHaveLength(2);
-      expect(active.map(n => n.content).sort()).toEqual(['Active', 'Needs review']);
+      expect(active.map((n) => n.content).sort()).toEqual(['Active', 'Needs review']);
       service.dispose();
     });
   });

@@ -72,7 +72,7 @@ describe('collapseDuplicates', () => {
     const entries = parseDebugLog(SAMPLE_LOG);
     const collapsed = collapseDuplicates(entries);
     // "Reconnecting" appears twice consecutively
-    const reconnecting = collapsed.find(e => e.message === 'Reconnecting');
+    const reconnecting = collapsed.find((e) => e.message === 'Reconnecting');
     expect(reconnecting?.duplicateCount).toBe(2);
   });
 
@@ -80,7 +80,7 @@ describe('collapseDuplicates', () => {
     const entries = parseDebugLog(SAMPLE_LOG);
     const collapsed = collapseDuplicates(entries);
     // "Connected to server" appears at positions 1 and 7 (not consecutive)
-    const connected = collapsed.filter(e => e.message === 'Connected to server');
+    const connected = collapsed.filter((e) => e.message === 'Connected to server');
     expect(connected.length).toBe(2);
     expect(connected[0].duplicateCount).toBe(1);
     expect(connected[1].duplicateCount).toBe(1);

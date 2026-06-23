@@ -68,45 +68,45 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-    - Installation: getting-started/installation.md
-    - Quick Start: getting-started/quick-start.md
-    - Context Management: getting-started/context-management.md
-    - Provider Setup: getting-started/provider-setup.md
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+      - Context Management: getting-started/context-management.md
+      - Provider Setup: getting-started/provider-setup.md
   - CLI Dashboard: features/cli.md
   - VS Code Features:
-    - Inline Completions: features/inline-completions.md
-    - Code Transforms: features/code-transforms.md
-    - Commit Messages: features/commit-messages.md
-    - Session Monitor: features/session-monitor.md
-    - Extract Session Assets: features/session-asset-extraction.md
-    - Peak Hours: features/peak-hours.md
-    - Mind Map: features/mind-map.md
-    - Kanban Board: features/kanban-board.md
-    - Project Timeline: features/project-timeline.md
-    - Knowledge Notes: features/knowledge-notes.md
-    - Tool Inspector: features/tool-inspector.md
-    - Session Handoff: features/session-handoff.md
-    - Decision Log: features/decision-log.md
-    - Error Analysis: features/error-analysis.md
-    - Code Review: features/code-review.md
-    - Inline Chat: features/inline-chat.md
-    - PR Descriptions: features/pr-descriptions.md
-    - Explain Code: features/explain-code.md
-    - Generate Docs: features/generate-docs.md
-    - CLAUDE.md Suggestions: features/claude-md-suggestions.md
+      - Inline Completions: features/inline-completions.md
+      - Code Transforms: features/code-transforms.md
+      - Commit Messages: features/commit-messages.md
+      - Session Monitor: features/session-monitor.md
+      - Extract Session Assets: features/session-asset-extraction.md
+      - Peak Hours: features/peak-hours.md
+      - Mind Map: features/mind-map.md
+      - Kanban Board: features/kanban-board.md
+      - Project Timeline: features/project-timeline.md
+      - Knowledge Notes: features/knowledge-notes.md
+      - Tool Inspector: features/tool-inspector.md
+      - Session Handoff: features/session-handoff.md
+      - Decision Log: features/decision-log.md
+      - Error Analysis: features/error-analysis.md
+      - Code Review: features/code-review.md
+      - Inline Chat: features/inline-chat.md
+      - PR Descriptions: features/pr-descriptions.md
+      - Explain Code: features/explain-code.md
+      - Generate Docs: features/generate-docs.md
+      - CLAUDE.md Suggestions: features/claude-md-suggestions.md
   - Providers:
-    - Account Management: providers/account-management.md
-    - Claude Max: providers/claude-max.md
-    - Claude API: providers/claude-api.md
-    - OpenCode: providers/opencode.md
-    - Codex CLI: providers/codex.md
+      - Account Management: providers/account-management.md
+      - Claude Max: providers/claude-max.md
+      - Claude API: providers/claude-api.md
+      - OpenCode: providers/opencode.md
+      - Codex CLI: providers/codex.md
   - Configuration:
-    - Settings Reference: configuration/settings.md
-    - Model Resolution: configuration/model-resolution.md
-    - Event Logging: configuration/event-logging.md
+      - Settings Reference: configuration/settings.md
+      - Model Resolution: configuration/model-resolution.md
+      - Event Logging: configuration/event-logging.md
   - Architecture:
-    - Overview: architecture/overview.md
-    - Session Pipeline: architecture/session-pipeline.md
-    - Provider System: architecture/provider-system.md
+      - Overview: architecture/overview.md
+      - Session Pipeline: architecture/session-pipeline.md
+      - Provider System: architecture/provider-system.md
   - Contributing: contributing.md
   - Changelog: changelog.md

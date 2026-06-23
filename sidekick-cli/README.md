@@ -53,12 +53,12 @@ sidekick tasks|decisions|notes|stats|quota|status|account|handoff|search|context
 
 The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
 
-| Flag | Description |
-|------|-------------|
-| `--project <path>` | Override project path (default: current working directory) |
-| `--provider <id>` | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
-| `--session <id>` | Follow a specific session by ID |
-| `--replay` | Replay existing events from the beginning before streaming live |
+| Flag               | Description                                                               |
+| ------------------ | ------------------------------------------------------------------------- |
+| `--project <path>` | Override project path (default: current working directory)                |
+| `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
+| `--session <id>`   | Follow a specific session by ID                                           |
+| `--replay`         | Replay existing events from the beginning before streaming live           |
 
 ## Session Dump
 
@@ -68,13 +68,13 @@ sidekick dump [options]
 
 Export session data as text, markdown, or JSON.
 
-| Flag | Description |
-|------|-------------|
+| Flag             | Description                                            |
+| ---------------- | ------------------------------------------------------ |
 | `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
-| `--width <cols>` | Terminal width for text output (default: auto-detect) |
-| `--expand` | Show all events including noise |
-| `--session <id>` | Target a specific session (default: most recent) |
-| `--list` | List available sessions and exit |
+| `--width <cols>` | Terminal width for text output (default: auto-detect)  |
+| `--expand`       | Show all events including noise                        |
+| `--session <id>` | Target a specific session (default: most recent)       |
+| `--list`         | List available sessions and exit                       |
 
 Global flags `--project` and `--provider` also apply.
 
@@ -86,13 +86,13 @@ sidekick report [options]
 
 Generate a self-contained HTML session report and open it in the default browser. Includes full transcript, token/cost stats, model breakdown, and tool-use summary.
 
-| Flag | Description |
-|------|-------------|
-| `--session <id>` | Target a specific session (default: most recent) |
-| `--output <path>` | Write to a specific file (default: temp file) |
-| `--theme <theme>` | Color theme: `dark` (default) or `light` |
-| `--no-open` | Write the file without opening the browser |
-| `--no-thinking` | Omit thinking blocks from the transcript |
+| Flag              | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| `--session <id>`  | Target a specific session (default: most recent) |
+| `--output <path>` | Write to a specific file (default: temp file)    |
+| `--theme <theme>` | Color theme: `dark` (default) or `light`         |
+| `--no-open`       | Write the file without opening the browser       |
+| `--no-thinking`   | Omit thinking blocks from the transcript         |
 
 Global flags `--project` and `--provider` also apply.
 
@@ -108,11 +108,11 @@ Pull actionable assets from recent Claude Code and Codex sessions for exactly th
 
 This feature was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan Fourie) and adapted from his MIT-licensed [`trawl`](https://github.com/B33pBeeps/trawl) project.
 
-| Flag | Description |
-|------|-------------|
-| `--type <types>` | Comma list: `url`, `path`, `command`, `plan` (aliases: `urls`, `files`, `cmds`, `plans`) |
-| `--limit <n>` | Positive integer maximum items per type |
-| `-i`, `--interactive` | Interactive picker with copy/open actions |
+| Flag                  | Description                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| `--type <types>`      | Comma list: `url`, `path`, `command`, `plan` (aliases: `urls`, `files`, `cmds`, `plans`) |
+| `--limit <n>`         | Positive integer maximum items per type                                                  |
+| `-i`, `--interactive` | Interactive picker with copy/open actions                                                |
 
 Global flags `--project`, `--provider`, and `--json` also apply. `--provider claude-code` scopes to Claude Code, `--provider codex` scopes to Codex, and `auto` reads both. Invalid `--type` or `--limit` values fail fast with a clear error. OpenCode extraction is not supported yet.
 
@@ -205,16 +205,16 @@ Manage accounts across providers — save, list, switch, and remove without manu
 
 On first CLI startup, Sidekick auto-registers the active system Claude Code and Codex credentials as a **"Default"** account (when no saved account exists for that provider yet). Existing manually saved accounts are never overwritten — the flags below are only needed to add additional accounts or switch between them.
 
-| Flag | Description |
-|------|-------------|
-| `--provider <id>` | Provider: `claude-code` (default), `codex`, or `all` |
-| `--add` | Save the currently signed-in account |
-| `--login` | Sign in and save a **new** account via a provider-isolated login flow, without disturbing the active account until finalization |
-| `--label <name>` | Label for the account (required for Codex and `--login`; optional for Claude `--add`) |
-| `--switch` | Switch to the next saved account |
-| `--switch-to <id>` | Switch to a specific account by email, label, or ID |
-| `--remove <id>` | Remove a saved account by email, label, or ID |
-| `--launcher <name>` | Create an opt-in per-account terminal launcher for the active account |
+| Flag                       | Description                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--provider <id>`          | Provider: `claude-code` (default), `codex`, or `all`                                                                                        |
+| `--add`                    | Save the currently signed-in account                                                                                                        |
+| `--login`                  | Sign in and save a **new** account via a provider-isolated login flow, without disturbing the active account until finalization             |
+| `--label <name>`           | Label for the account (required for Codex and `--login`; optional for Claude `--add`)                                                       |
+| `--switch`                 | Switch to the next saved account                                                                                                            |
+| `--switch-to <id>`         | Switch to a specific account by email, label, or ID                                                                                         |
+| `--remove <id>`            | Remove a saved account by email, label, or ID                                                                                               |
+| `--launcher <name>`        | Create an opt-in per-account terminal launcher for the active account                                                                       |
 | `--auto-switch <pct\|off>` | Persist the auto-switch quota threshold (1–100), or `off` to disable. Continuous auto-switching runs in a long-running host such as VS Code |
 
 With no flags, lists all saved accounts and marks the active one. `--provider all` lists Claude and Codex accounts together. Use `--json` for machine-readable output (provider-keyed when `--provider all`).
@@ -223,81 +223,81 @@ With no flags, lists all saved accounts and marks the active one. `--provider al
 
 The dashboard is a two-pane terminal UI. The left side shows a navigable list, the right side shows details for the selected item.
 
-| # | Panel | Description |
-|---|-------|-------------|
-| 1 | **Sessions** | Browse recent sessions with detail tabs: Summary, Timeline, Mind Map, Tools, Files, Agents, AI Summary |
-| 2 | **Tasks** | View persisted tasks filtered by status |
-| 3 | **Kanban** | Task board with status columns |
-| 4 | **Notes** | Knowledge notes attached to files |
-| 5 | **Decisions** | Architectural decisions from sessions |
-| 6 | **Plans** | Discovered agent plans from `~/.claude/plans/` |
-| 7 | **Events** | Live event stream with type badges, timestamps, and keyword-highlighted summaries |
-| 8 | **Charts** | Tool frequency bars, event distribution, activity heatmap, and pattern analysis |
+| #   | Panel         | Description                                                                                            |
+| --- | ------------- | ------------------------------------------------------------------------------------------------------ |
+| 1   | **Sessions**  | Browse recent sessions with detail tabs: Summary, Timeline, Mind Map, Tools, Files, Agents, AI Summary |
+| 2   | **Tasks**     | View persisted tasks filtered by status                                                                |
+| 3   | **Kanban**    | Task board with status columns                                                                         |
+| 4   | **Notes**     | Knowledge notes attached to files                                                                      |
+| 5   | **Decisions** | Architectural decisions from sessions                                                                  |
+| 6   | **Plans**     | Discovered agent plans from `~/.claude/plans/`                                                         |
+| 7   | **Events**    | Live event stream with type badges, timestamps, and keyword-highlighted summaries                      |
+| 8   | **Charts**    | Tool frequency bars, event distribution, activity heatmap, and pattern analysis                        |
 
 ## Layout Modes
 
 Press `z` to cycle through layout modes:
 
-| Mode | Description |
-|------|-------------|
-| **Normal** | Default two-pane split |
-| **Expanded** | Side list hidden, detail pane fills the screen |
-| **Wide Side** | Wider side list for longer item labels |
+| Mode          | Description                                    |
+| ------------- | ---------------------------------------------- |
+| **Normal**    | Default two-pane split                         |
+| **Expanded**  | Side list hidden, detail pane fills the screen |
+| **Wide Side** | Wider side list for longer item labels         |
 
 ## Keybindings
 
 ### Navigation
 
-| Key | Action |
-|-----|--------|
-| `1`–`8` | Switch panel |
-| `Tab` | Toggle focus between side list and detail pane |
-| `j` / `↓` | Next item (side) or scroll down (detail) |
-| `k` / `↑` | Previous item (side) or scroll up (detail) |
-| `g` | Jump to first item / scroll to top |
-| `G` | Jump to last item / scroll to bottom |
-| `h` / `←` | Return focus to side list (from detail) |
-| `Enter` | Move focus to detail pane (from side list) |
+| Key       | Action                                         |
+| --------- | ---------------------------------------------- |
+| `1`–`8`   | Switch panel                                   |
+| `Tab`     | Toggle focus between side list and detail pane |
+| `j` / `↓` | Next item (side) or scroll down (detail)       |
+| `k` / `↑` | Previous item (side) or scroll up (detail)     |
+| `g`       | Jump to first item / scroll to top             |
+| `G`       | Jump to last item / scroll to bottom           |
+| `h` / `←` | Return focus to side list (from detail)        |
+| `Enter`   | Move focus to detail pane (from side list)     |
 
 ### Detail Tabs
 
-| Key | Action |
-|-----|--------|
+| Key | Action              |
+| --- | ------------------- |
 | `[` | Previous detail tab |
-| `]` | Next detail tab |
+| `]` | Next detail tab     |
 
 ### Session Management
 
-| Key | Action |
-|-----|--------|
+| Key | Action                                         |
+| --- | ---------------------------------------------- |
 | `p` | Pin session (prevent auto-switching to newest) |
-| `s` | Switch to pending session |
-| `f` | Toggle session filter |
+| `s` | Switch to pending session                      |
+| `f` | Toggle session filter                          |
 
 ### Session Panel — Mind Map Tab
 
-| Key | Action |
-|-----|--------|
-| `v` | Cycle mind map view: tree → boxed → flow |
+| Key | Action                                                                                   |
+| --- | ---------------------------------------------------------------------------------------- |
+| `v` | Cycle mind map view: tree → boxed → flow                                                 |
 | `f` | Cycle node filter: all → file → tool → task → subagent → command → plan → knowledge-note |
 
 ### Session Panel — AI Summary Tab
 
-| Key | Action |
-|-----|--------|
+| Key | Action                        |
+| --- | ----------------------------- |
 | `n` | Generate / retry AI narrative |
 
 ### General
 
-| Key | Action |
-|-----|--------|
-| `z` | Cycle layout mode |
-| `/` | Open filter overlay (supports substring, fuzzy, regex, and date modes — Tab cycles modes) |
-| `x` | Open context menu for selected item |
-| `?` | Show help |
-| `r` | Generate HTML report for the current session |
-| `V` | Show version / changelog |
-| `q` / `Ctrl+C` | Quit |
+| Key            | Action                                                                                    |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| `z`            | Cycle layout mode                                                                         |
+| `/`            | Open filter overlay (supports substring, fuzzy, regex, and date modes — Tab cycles modes) |
+| `x`            | Open context menu for selected item                                                       |
+| `?`            | Show help                                                                                 |
+| `r`            | Generate HTML report for the current session                                              |
+| `V`            | Show version / changelog                                                                  |
+| `q` / `Ctrl+C` | Quit                                                                                      |
 
 ## Mouse Support
 

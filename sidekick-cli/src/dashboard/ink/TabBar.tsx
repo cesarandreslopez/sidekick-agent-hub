@@ -28,15 +28,22 @@ export function TabBar({ panels, activeIndex, layoutMode }: TabBarProps): React.
         {panels.map((p, i) => (
           <Box key={p.id} marginRight={1}>
             {i === activeIndex ? (
-              <Text bold underline color="magenta">{p.shortcutKey} {p.title}</Text>
+              <Text bold underline color="magenta">
+                {p.shortcutKey} {p.title}
+              </Text>
             ) : (
-              <><Text dimColor>{p.shortcutKey}</Text><Text color="gray"> {p.title}</Text></>
+              <>
+                <Text dimColor>{p.shortcutKey}</Text>
+                <Text color="gray"> {p.title}</Text>
+              </>
             )}
           </Box>
         ))}
       </Box>
       <Box>
-        <Text dimColor>z: {modeLabel} {'\u25B8'}</Text>
+        <Text dimColor>
+          z: {modeLabel} {'\u25B8'}
+        </Text>
       </Box>
     </Box>
   );

@@ -140,20 +140,40 @@ describe('accountManager', () => {
 
     expect(result).toEqual({ success: true });
     expect(getActiveAccount()?.uuid).toBe('uuid-work');
-    expect(fs.existsSync(path.join(tmpDir, '.config', 'sidekick', 'accounts', 'credentials', 'uuid-work.credentials.json'))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, '.config', 'sidekick', 'accounts', 'configs', 'uuid-work.config.json'))).toBe(true);
-    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')))
-      .toEqual({ claudeAiOauth: { accessToken: 'access-uuid-work' } });
+    expect(
+      fs.existsSync(
+        path.join(
+          tmpDir,
+          '.config',
+          'sidekick',
+          'accounts',
+          'credentials',
+          'uuid-work.credentials.json',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, '.config', 'sidekick', 'accounts', 'configs', 'uuid-work.config.json'),
+      ),
+    ).toBe(true);
+    expect(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')),
+    ).toEqual({ claudeAiOauth: { accessToken: 'access-uuid-work' } });
   });
 
   it('can finalize Claude and Codex logins without activation', () => {
     const claude = beginAccountLogin('claude-code', 'Work');
     writeClaudeLoginFiles(claude.configDir!);
-    expect(finalizeAccountLogin('claude-code', claude.loginId, { activate: false })).toEqual({ success: true });
+    expect(finalizeAccountLogin('claude-code', claude.loginId, { activate: false })).toEqual({
+      success: true,
+    });
 
     const codex = beginAccountLogin('codex', 'Personal');
     writeCodexAuth(codex.configDir!);
-    expect(finalizeAccountLogin('codex', codex.loginId, { activate: false })).toEqual({ success: true });
+    expect(finalizeAccountLogin('codex', codex.loginId, { activate: false })).toEqual({
+      success: true,
+    });
 
     const registry = readSavedAccountRegistry();
     expect(registry?.activeByProvider).toEqual({ 'claude-code': null, codex: null });
@@ -172,14 +192,19 @@ describe('accountManager', () => {
   });
 
   it('spawns a Claude login and finalizes when the isolated profile authenticates', async () => {
-    mockSpawn.mockImplementation((_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
-      writeClaudeLoginFiles(options.env!.CLAUDE_CONFIG_DIR!);
-      const child = makeChildProcess();
-      queueMicrotask(() => child.emit('exit', 0, null));
-      return child;
-    });
+    mockSpawn.mockImplementation(
+      (_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
+        writeClaudeLoginFiles(options.env!.CLAUDE_CONFIG_DIR!);
+        const child = makeChildProcess();
+        queueMicrotask(() => child.emit('exit', 0, null));
+        return child;
+      },
+    );
 
-    const result = await spawnAccountLogin('claude-code', 'Work', { stdio: 'pipe', timeoutMs: 100 });
+    const result = await spawnAccountLogin('claude-code', 'Work', {
+      stdio: 'pipe',
+      timeoutMs: 100,
+    });
 
     expect(result).toEqual({ success: true });
     expect(mockSpawn).toHaveBeenCalledWith(

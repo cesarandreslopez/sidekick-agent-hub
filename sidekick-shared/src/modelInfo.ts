@@ -272,7 +272,7 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.55,
   },
-  'o3': {
+  o3: {
     inputCostPerMillion: 2.0,
     outputCostPerMillion: 8.0,
     cacheWriteCostPerMillion: 0,
@@ -284,7 +284,7 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 1.5,
   },
-  'o1': {
+  o1: {
     inputCostPerMillion: 15.0,
     outputCostPerMillion: 60.0,
     cacheWriteCostPerMillion: 0,
@@ -293,9 +293,7 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
 };
 
 /** Static-table keys sorted longest-first so longest-prefix wins. */
-const STATIC_SORTED_KEYS = Object.keys(PRICING_TABLE).sort(
-  (a, b) => b.length - a.length,
-);
+const STATIC_SORTED_KEYS = Object.keys(PRICING_TABLE).sort((a, b) => b.length - a.length);
 
 // ── Override Table (populated at runtime by pricingCatalog) ──
 
@@ -310,9 +308,7 @@ let overrideSortedKeys: string[] = [];
  */
 export function _setPricingOverrides(overrides: Record<string, ModelPricing>): void {
   overrideTable = { ...overrides };
-  overrideSortedKeys = Object.keys(overrideTable).sort(
-    (a, b) => b.length - a.length,
-  );
+  overrideSortedKeys = Object.keys(overrideTable).sort((a, b) => b.length - a.length);
 }
 
 /** Internal: snapshot current overrides (test + diagnostics). */
@@ -345,7 +341,10 @@ const GEMINI_RE = /^gemini-([0-9][0-9.A-Za-z-]*)/i;
  */
 export function parseModelId(modelId: string): ParsedModelId | null {
   if (!modelId) return null;
-  const normalized = modelId.replace(/\[1m\]/gi, '').trim().toLowerCase();
+  const normalized = modelId
+    .replace(/\[1m\]/gi, '')
+    .trim()
+    .toLowerCase();
 
   const claude = normalized.match(CLAUDE_RE);
   if (claude) {
@@ -460,10 +459,7 @@ export function getModelInfo(modelId: string): ModelInfo {
  * Reasoning tokens (OpenAI o-series / Codex) are billed at the output rate,
  * matching OpenAI's billing behavior.
  */
-export function calculateCostWithPricing(
-  usage: CostTokenUsage,
-  pricing: ModelPricing,
-): number {
+export function calculateCostWithPricing(usage: CostTokenUsage, pricing: ModelPricing): number {
   const reasoning = usage.reasoningTokens ?? 0;
   return (
     (usage.inputTokens / 1_000_000) * pricing.inputCostPerMillion +
@@ -480,10 +476,7 @@ export function calculateCostWithPricing(
  * Returns `null` for unknown models. Callers should render `—` in that case,
  * not $0 — so users don't confuse "missing pricing" with "free".
  */
-export function calculateCost(
-  usage: CostTokenUsage,
-  modelId: string,
-): number | null {
+export function calculateCost(usage: CostTokenUsage, modelId: string): number | null {
   const pricing = getModelPricing(modelId);
   if (!pricing) return null;
   return calculateCostWithPricing(usage, pricing);
@@ -494,10 +487,7 @@ export function calculateCost(
  * locally estimated from pricing, or unavailable because the model is unpriced.
  */
 export function calculateCostWithProvenance(input: CostProvenanceInput): CostWithProvenance {
-  if (
-    typeof input.reportedCostUsd === 'number' &&
-    Number.isFinite(input.reportedCostUsd)
-  ) {
+  if (typeof input.reportedCostUsd === 'number' && Number.isFinite(input.reportedCostUsd)) {
     return { costUsd: input.reportedCostUsd, source: 'reported' };
   }
 
@@ -582,7 +572,10 @@ export function getModelDisplayInfo(modelId: string): ModelDisplayInfo {
   } else if (normalized.includes('codex')) {
     rank = 200;
   } else if (parsed?.provider === 'openai') {
-    rank = parsed.family === 'gpt' ? 300 + versionRank(parsed.version) : 400 + versionRank(parsed.version);
+    rank =
+      parsed.family === 'gpt'
+        ? 300 + versionRank(parsed.version)
+        : 400 + versionRank(parsed.version);
   } else if (parsed?.provider === 'google') {
     rank = 500 + versionRank(parsed.version);
   }

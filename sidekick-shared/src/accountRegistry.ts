@@ -77,23 +77,26 @@ function normalizeRegistry(registry: Partial<SavedAccountRegistry>): SavedAccoun
   normalized.activeByProvider.codex = registry.activeByProvider?.codex ?? null;
   normalized.accounts = Array.isArray(registry.accounts)
     ? registry.accounts
-        .filter((account): account is SavedAccountProfile =>
-          !!account &&
-          (account.providerId === 'claude-code' || account.providerId === 'codex') &&
-          typeof account.id === 'string' &&
-          typeof account.addedAt === 'string',
+        .filter(
+          (account): account is SavedAccountProfile =>
+            !!account &&
+            (account.providerId === 'claude-code' || account.providerId === 'codex') &&
+            typeof account.id === 'string' &&
+            typeof account.addedAt === 'string',
         )
-        .map(account => ({
+        .map((account) => ({
           ...account,
           label: account.label || undefined,
           email: account.email || undefined,
           providerAccountId: account.providerAccountId || undefined,
-          metadata: account.metadata ? {
-            email: account.metadata.email || undefined,
-            workspaceId: account.metadata.workspaceId || undefined,
-            planType: account.metadata.planType || undefined,
-            authMode: account.metadata.authMode || undefined,
-          } : undefined,
+          metadata: account.metadata
+            ? {
+                email: account.metadata.email || undefined,
+                workspaceId: account.metadata.workspaceId || undefined,
+                planType: account.metadata.planType || undefined,
+                authMode: account.metadata.authMode || undefined,
+              }
+            : undefined,
         }))
     : [];
   return normalized;
@@ -106,7 +109,7 @@ function migrateLegacyRegistry(legacy: LegacyAccountRegistry): SavedAccountRegis
       'claude-code': legacy.activeAccountUuid,
       codex: null,
     },
-    accounts: legacy.accounts.map(account => ({
+    accounts: legacy.accounts.map((account) => ({
       id: account.uuid,
       providerId: 'claude-code' as const,
       providerAccountId: account.uuid,
@@ -148,7 +151,7 @@ export function listSavedAccountProfiles(providerId?: AccountProviderId): SavedA
   const registry = readSavedAccountRegistry();
   if (!registry) return [];
   return providerId
-    ? registry.accounts.filter(account => account.providerId === providerId)
+    ? registry.accounts.filter((account) => account.providerId === providerId)
     : registry.accounts;
 }
 
@@ -157,12 +160,18 @@ export function getActiveSavedAccount(providerId: AccountProviderId): SavedAccou
   if (!registry) return null;
   const activeId = registry.activeByProvider[providerId];
   if (!activeId) return null;
-  return registry.accounts.find(account => account.providerId === providerId && account.id === activeId) ?? null;
+  return (
+    registry.accounts.find(
+      (account) => account.providerId === providerId && account.id === activeId,
+    ) ?? null
+  );
 }
 
 export function upsertSavedAccountProfile(profile: SavedAccountProfile): SavedAccountRegistry {
   const registry = readSavedAccountRegistry() ?? createEmptyRegistry();
-  const index = registry.accounts.findIndex(account => account.providerId === profile.providerId && account.id === profile.id);
+  const index = registry.accounts.findIndex(
+    (account) => account.providerId === profile.providerId && account.id === profile.id,
+  );
   if (index >= 0) {
     registry.accounts[index] = profile;
   } else {
@@ -172,7 +181,10 @@ export function upsertSavedAccountProfile(profile: SavedAccountProfile): SavedAc
   return registry;
 }
 
-export function setActiveSavedAccount(providerId: AccountProviderId, accountId: string | null): SavedAccountRegistry {
+export function setActiveSavedAccount(
+  providerId: AccountProviderId,
+  accountId: string | null,
+): SavedAccountRegistry {
   const registry = readSavedAccountRegistry() ?? createEmptyRegistry();
   registry.activeByProvider[providerId] = accountId;
   writeSavedAccountRegistry(registry);
@@ -185,23 +197,30 @@ export function replaceSavedAccountProfiles(
   activeId: string | null,
 ): SavedAccountRegistry {
   const registry = readSavedAccountRegistry() ?? createEmptyRegistry();
-  registry.accounts = registry.accounts.filter(account => account.providerId !== providerId).concat(accounts);
+  registry.accounts = registry.accounts
+    .filter((account) => account.providerId !== providerId)
+    .concat(accounts);
   registry.activeByProvider[providerId] = activeId;
   writeSavedAccountRegistry(registry);
   return registry;
 }
 
-export function removeSavedAccountProfile(providerId: AccountProviderId, accountId: string): SavedAccountProfile | null {
+export function removeSavedAccountProfile(
+  providerId: AccountProviderId,
+  accountId: string,
+): SavedAccountProfile | null {
   const registry = readSavedAccountRegistry();
   if (!registry) return null;
 
-  const index = registry.accounts.findIndex(account => account.providerId === providerId && account.id === accountId);
+  const index = registry.accounts.findIndex(
+    (account) => account.providerId === providerId && account.id === accountId,
+  );
   if (index === -1) return null;
 
   const [removed] = registry.accounts.splice(index, 1);
   if (registry.activeByProvider[providerId] === accountId) {
     registry.activeByProvider[providerId] =
-      registry.accounts.find(account => account.providerId === providerId)?.id ?? null;
+      registry.accounts.find((account) => account.providerId === providerId)?.id ?? null;
   }
   writeSavedAccountRegistry(registry);
   return removed;

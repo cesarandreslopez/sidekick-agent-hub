@@ -31,11 +31,11 @@ Only `vscode` is externalized from the extension-host bundle. Other extension de
 
 ## Package Structure
 
-| Package | Purpose | Build |
-|---------|---------|-------|
-| `sidekick-vscode/` | VS Code extension (UI, monitoring, inference) | esbuild |
-| `sidekick-shared/` | Pure TS library — readers, types, session providers, schemas, extractors, model pricing, quota polling (no VS Code deps) | tsc |
-| `sidekick-cli/` | CLI binary — dashboard, one-shot commands, markdown/JSON output | esbuild |
+| Package            | Purpose                                                                                                                  | Build   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `sidekick-vscode/` | VS Code extension (UI, monitoring, inference)                                                                            | esbuild |
+| `sidekick-shared/` | Pure TS library — readers, types, session providers, schemas, extractors, model pricing, quota polling (no VS Code deps) | tsc     |
+| `sidekick-cli/`    | CLI binary — dashboard, one-shot commands, markdown/JSON output                                                          | esbuild |
 
 [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) extracts the data access layer from the extension so it can be consumed by the CLI, third-party tools, and custom integrations. It is published as a standalone npm package (`npm install sidekick-shared`) with no VS Code dependencies. Key modules include Zod schemas for runtime JSONL validation, pure extractors (`extractTokenUsage`, `extractToolCall`, `extractToolCalls`), Node-only actionable asset extraction (`gatherAssetsForCwd`, `readClaudeAssets`, `readCodexAssets`), model info and pricing (`getModelInfo`, `calculateCost`, `calculateCostWithProvenance`, `shortModelName`, `formatCost`), a typed `JsonlParser` with optional schema validation, the single-poller `QuotaPoller` class with exponential backoff, and the higher-level `MultiProviderQuotaService` + `CodexQuotaWatcher` that coordinate Claude polling, peak-hours enrichment, and Codex rate-limit watching behind one typed `{ claude?, codex? }` event stream.
 
@@ -43,15 +43,15 @@ Starting in 0.17.4, `sidekick-shared` ships typed subpath entries via a `package
 
 ## Key Source Locations
 
-| Area | Location |
-|------|----------|
-| Entry point | `src/extension.ts` |
-| Core types | `src/types.ts`, `src/types/` |
-| Prompt templates | `src/utils/prompts.ts`, `src/utils/analysisPrompts.ts` |
+| Area              | Location                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Entry point       | `src/extension.ts`                                                                                                  |
+| Core types        | `src/types.ts`, `src/types/`                                                                                        |
+| Prompt templates  | `src/utils/prompts.ts`, `src/utils/analysisPrompts.ts`                                                              |
 | Inference clients | `src/services/AuthService.ts`, `MaxSubscriptionClient.ts`, `ApiKeyClient.ts`, `OpenCodeClient.ts`, `CodexClient.ts` |
-| Session providers | `src/services/providers/ClaudeCodeSessionProvider.ts`, `OpenCodeSessionProvider.ts`, `CodexSessionProvider.ts` |
-| Webview UI | `src/webview/` (vanilla TS, bundled as IIFE) |
-| Session analysis | `src/services/SessionAnalyzer.ts`, `src/utils/cycleDetector.ts` |
+| Session providers | `src/services/providers/ClaudeCodeSessionProvider.ts`, `OpenCodeSessionProvider.ts`, `CodexSessionProvider.ts`      |
+| Webview UI        | `src/webview/` (vanilla TS, bundled as IIFE)                                                                        |
+| Session analysis  | `src/services/SessionAnalyzer.ts`, `src/utils/cycleDetector.ts`                                                     |
 
 ## Request Management
 
@@ -74,14 +74,14 @@ flowchart LR
 
 Cross-session data stored in `~/.config/sidekick/`:
 
-| File | Purpose |
-|------|---------|
-| `historical-data.json` | Token/cost/tool usage stats (schema v2: adds `priced` flag and `unpricedModelIds`) |
-| `tasks/{projectSlug}.json` | Kanban board carry-over |
-| `decisions/{projectSlug}.json` | Decision log |
-| `handoffs/` | Session handoff documents |
-| `knowledge-notes/{projectSlug}.json` | Knowledge notes per project |
-| `event-logs/` | Optional JSONL audit trail |
-| `pricing-catalog.json` | Cached LiteLLM pricing table (24h TTL, auto-refreshed on activation) |
+| File                                 | Purpose                                                                            |
+| ------------------------------------ | ---------------------------------------------------------------------------------- |
+| `historical-data.json`               | Token/cost/tool usage stats (schema v2: adds `priced` flag and `unpricedModelIds`) |
+| `tasks/{projectSlug}.json`           | Kanban board carry-over                                                            |
+| `decisions/{projectSlug}.json`       | Decision log                                                                       |
+| `handoffs/`                          | Session handoff documents                                                          |
+| `knowledge-notes/{projectSlug}.json` | Knowledge notes per project                                                        |
+| `event-logs/`                        | Optional JSONL audit trail                                                         |
+| `pricing-catalog.json`               | Cached LiteLLM pricing table (24h TTL, auto-refreshed on activation)               |
 
 The Sidekick CLI reads from these same files, providing terminal access to persisted data without VS Code.

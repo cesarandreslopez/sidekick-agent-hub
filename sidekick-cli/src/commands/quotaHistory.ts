@@ -64,7 +64,7 @@ export function colorForBucket(bucket: number): ChalkInstance {
 }
 
 function bucketsToCells(buckets: QuotaHistoryDailyBucket[]): QuotaHistoryDailyCell[] {
-  return buckets.map(b => ({
+  return buckets.map((b) => ({
     date: b.date,
     utilization: Math.max(b.maxUtilizationFiveHour, b.maxUtilizationSevenDay),
     unavailable: b.anyUnavailable,
@@ -72,7 +72,11 @@ function bucketsToCells(buckets: QuotaHistoryDailyBucket[]): QuotaHistoryDailyCe
   }));
 }
 
-export function renderProviderHeatmap(label: string, cells: QuotaHistoryDailyCell[], weeks: number): string {
+export function renderProviderHeatmap(
+  label: string,
+  cells: QuotaHistoryDailyCell[],
+  weeks: number,
+): string {
   // Pad the start so we always render exactly weeks*7 cells with day-of-week aligned to the first sample.
   const cols = weeks;
   const rows = 7;
@@ -126,7 +130,8 @@ export function renderProviderHeatmap(label: string, cells: QuotaHistoryDailyCel
   const peakColor = colorForBucket(bucketForUtilization(peak));
   const avgColor = colorForBucket(bucketForUtilization(avg));
 
-  const header = chalk.bold(label) + chalk.dim(`  ·  ${weeks} weeks  ·  ${sampledDays} day(s) with samples`);
+  const header =
+    chalk.bold(label) + chalk.dim(`  ·  ${weeks} weeks  ·  ${sampledDays} day(s) with samples`);
   const footer = [
     `Peak ${peakColor(`${peak}%`)}`,
     `Avg ${avgColor(`${avg}%`)}`,
@@ -154,7 +159,8 @@ function parseProviderFilter(value: unknown): QuotaHistoryRuntimeProvider | 'aut
 }
 
 function clampWeeks(value: unknown): number {
-  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : (typeof value === 'number' ? value : 13);
+  const parsed =
+    typeof value === 'string' ? Number.parseInt(value, 10) : typeof value === 'number' ? value : 13;
   if (!Number.isFinite(parsed)) return 13;
   return Math.max(1, Math.min(26, parsed));
 }
@@ -169,9 +175,10 @@ export async function quotaHistoryAction(
 
   const weeks = clampWeeks(localOpts.weeks);
   const providerFilter = parseProviderFilter(localOpts.provider ?? globalOpts.provider);
-  const workspacePath = typeof localOpts.workspace === 'string' && localOpts.workspace
-    ? localOpts.workspace
-    : process.cwd();
+  const workspacePath =
+    typeof localOpts.workspace === 'string' && localOpts.workspace
+      ? localOpts.workspace
+      : process.cwd();
   const workspaceId = getWorkspaceIdFromPath(workspacePath);
 
   const toMs = Date.now();
@@ -206,14 +213,18 @@ export async function quotaHistoryAction(
   }
 
   const sections: string[] = [];
-  const claudeHasData = (payload.providers.claude?.cells ?? []).some(c => c.samples > 0);
-  const codexHasData = (payload.providers.codex?.cells ?? []).some(c => c.samples > 0);
-  const zaiHasData = (payload.providers.zai?.cells ?? []).some(c => c.samples > 0);
+  const claudeHasData = (payload.providers.claude?.cells ?? []).some((c) => c.samples > 0);
+  const codexHasData = (payload.providers.codex?.cells ?? []).some((c) => c.samples > 0);
+  const zaiHasData = (payload.providers.zai?.cells ?? []).some((c) => c.samples > 0);
 
   if (providerFilter === 'auto' && !claudeHasData && !codexHasData && !zaiHasData) {
     process.stdout.write(
-      chalk.yellow(`No quota history yet for workspace ${chalk.bold(workspaceId)}.`) + '\n' +
-        chalk.dim(`Run a Claude Max, Codex, or z.ai/OpenCode session in this workspace, or override with --workspace <path>.`) + '\n',
+      chalk.yellow(`No quota history yet for workspace ${chalk.bold(workspaceId)}.`) +
+        '\n' +
+        chalk.dim(
+          `Run a Claude Max, Codex, or z.ai/OpenCode session in this workspace, or override with --workspace <path>.`,
+        ) +
+        '\n',
     );
     return;
   }
@@ -228,6 +239,8 @@ export async function quotaHistoryAction(
     sections.push(renderProviderHeatmap('z.ai', payload.providers.zai.cells, weeks));
   }
 
-  const header = chalk.dim(`workspace ${workspaceId}  ·  ${from.slice(0, 10)} → ${to.slice(0, 10)}`);
+  const header = chalk.dim(
+    `workspace ${workspaceId}  ·  ${from.slice(0, 10)} → ${to.slice(0, 10)}`,
+  );
   process.stdout.write(`${header}\n${legend()}\n\n${sections.join('\n\n')}\n`);
 }

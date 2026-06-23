@@ -43,7 +43,8 @@ export interface DebugLogFile {
 
 // ── Constants ──
 
-const LOG_LINE_PATTERN = /^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.\d]*Z?)\s+(DEBUG|INFO|WARN|ERROR)\s+(.*)$/;
+const LOG_LINE_PATTERN =
+  /^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.\d]*Z?)\s+(DEBUG|INFO|WARN|ERROR)\s+(.*)$/;
 const LEVEL_ORDER: Record<DebugLogLevel, number> = {
   DEBUG: 0,
   INFO: 1,
@@ -102,7 +103,7 @@ export function parseDebugLog(content: string): DebugLogEntry[] {
  */
 export function filterByLevel(entries: DebugLogEntry[], minLevel: DebugLogLevel): DebugLogEntry[] {
   const minOrder = LEVEL_ORDER[minLevel];
-  return entries.filter(e => LEVEL_ORDER[e.level] >= minOrder);
+  return entries.filter((e) => LEVEL_ORDER[e.level] >= minOrder);
 }
 
 /**
@@ -141,9 +142,10 @@ export function discoverDebugLogs(): DebugLogFile[] {
   try {
     if (!fs.existsSync(debugDir)) return [];
 
-    return fs.readdirSync(debugDir)
-      .filter(f => f.endsWith('.log') || f.endsWith('.txt'))
-      .map(name => {
+    return fs
+      .readdirSync(debugDir)
+      .filter((f) => f.endsWith('.log') || f.endsWith('.txt'))
+      .map((name) => {
         const fullPath = path.join(debugDir, name);
         try {
           const stat = fs.statSync(fullPath);

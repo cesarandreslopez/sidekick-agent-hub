@@ -77,7 +77,7 @@ export function estimateTokens(text: string): number {
  */
 export function truncateDiffIntelligently(
   diff: string,
-  maxTokens: number = DEFAULT_MAX_TOKENS
+  maxTokens: number = DEFAULT_MAX_TOKENS,
 ): string {
   // Convert token limit to character limit using conservative estimate
   const maxChars = maxTokens * 4;

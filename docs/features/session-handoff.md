@@ -20,20 +20,20 @@ When a session ends, Sidekick can generate a handoff document summarizing:
 On the next session start, Sidekick can notify you that a handoff is available.
 
 !!! tip "New to context management?"
-    Handoffs work by writing session context into files that your agent reads at the start of the next session. If you're not familiar with how agent context, instruction files, and session boundaries work, see the [Context Management primer](../getting-started/context-management.md).
+Handoffs work by writing session context into files that your agent reads at the start of the next session. If you're not familiar with how agent context, instruction files, and session boundaries work, see the [Context Management primer](../getting-started/context-management.md).
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.autoHandoff` | `off` | Handoff mode |
+| Setting                | Default | Description  |
+| ---------------------- | ------- | ------------ |
+| `sidekick.autoHandoff` | `off`   | Handoff mode |
 
 ### Handoff Modes
 
-| Mode | Behavior |
-|------|----------|
-| `off` | No handoff generation |
-| `generate-only` | Generate handoff document at session end |
+| Mode                  | Behavior                                             |
+| --------------------- | ---------------------------------------------------- |
+| `off`                 | No handoff generation                                |
+| `generate-only`       | Generate handoff document at session end             |
 | `generate-and-notify` | Generate and show notification at next session start |
 
 ## Setup

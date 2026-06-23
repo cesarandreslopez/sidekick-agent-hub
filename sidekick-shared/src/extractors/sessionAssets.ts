@@ -14,7 +14,15 @@ import { isAbsolute, resolve } from 'node:path';
 const URL_RE = /(?:https?|file):\/\/[^\s"'<>)\]`\\]+/g;
 const PATH_RE =
   /(?:~|\.{0,2}\/)?[A-Za-z0-9_@.-]*(?:\/[A-Za-z0-9_@.-]+)+(?::\d+){0,2}|[A-Za-z0-9_@-]+\.[A-Za-z0-9]{1,8}(?::\d+){0,2}/g;
-const SHELL_TAGS = new Set(['sh', 'bash', 'shell', 'zsh', 'console', 'shellscript', 'shell-session']);
+const SHELL_TAGS = new Set([
+  'sh',
+  'bash',
+  'shell',
+  'zsh',
+  'console',
+  'shellscript',
+  'shell-session',
+]);
 
 export type ExtractedAssetType = 'url' | 'path' | 'command' | 'plan';
 export type AssetAgent = 'claude' | 'codex';
@@ -59,7 +67,10 @@ export function extractUrls(text: unknown): string[] {
   return urls;
 }
 
-export function extractFilePaths(text: unknown, cwd?: string): Array<{ file: string; line?: number }> {
+export function extractFilePaths(
+  text: unknown,
+  cwd?: string,
+): Array<{ file: string; line?: number }> {
   if (!text) return [];
 
   const home = os.homedir();
@@ -133,11 +144,19 @@ export function extractCommands(text: unknown): string[] {
   return commands;
 }
 
-export function urlAsset(url: string, timestamp?: string, provenance: ExtractedAssetProvenance = {}): ExtractedAsset {
+export function urlAsset(
+  url: string,
+  timestamp?: string,
+  provenance: ExtractedAssetProvenance = {},
+): ExtractedAsset {
   return { type: 'url', text: url, display: url, timestamp, ...provenance };
 }
 
-export function commandAsset(command: string, timestamp?: string, provenance: ExtractedAssetProvenance = {}): ExtractedAsset {
+export function commandAsset(
+  command: string,
+  timestamp?: string,
+  provenance: ExtractedAssetProvenance = {},
+): ExtractedAsset {
   return { type: 'command', text: command, display: flat(command), timestamp, ...provenance };
 }
 

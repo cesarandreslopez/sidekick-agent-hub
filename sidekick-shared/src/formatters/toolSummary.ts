@@ -209,9 +209,7 @@ function genericFallback(input: ToolInput): string {
  */
 export function formatToolSummary(toolName: string, input: Record<string, unknown>): string {
   // Strip MCP prefixes: "mcp__server__tool" → use "tool" for matching
-  const baseName = toolName.includes('__')
-    ? toolName.split('__').pop() ?? toolName
-    : toolName;
+  const baseName = toolName.includes('__') ? (toolName.split('__').pop() ?? toolName) : toolName;
 
   const formatter = TOOL_FORMATTERS[toolName] ?? TOOL_FORMATTERS[baseName];
   if (formatter) {

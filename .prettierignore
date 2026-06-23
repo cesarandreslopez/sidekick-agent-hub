@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+site/
+.cache/
+coverage/
+.coverage
+htmlcov/
+*.vsix
+*.tsbuildinfo
+**/package-lock.json

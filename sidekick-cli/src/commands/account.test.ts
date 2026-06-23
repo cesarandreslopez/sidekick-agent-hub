@@ -53,10 +53,11 @@ describe('accountAction', () => {
   const makeCmd = (
     localOpts: Record<string, unknown> = {},
     globalOpts: Record<string, unknown> = {},
-  ) => ({
-    parent: { opts: () => ({ json: false, ...globalOpts }) },
-    opts: () => localOpts,
-  }) as unknown as import('commander').Command;
+  ) =>
+    ({
+      parent: { opts: () => ({ json: false, ...globalOpts }) },
+      opts: () => localOpts,
+    }) as unknown as import('commander').Command;
 
   beforeEach(() => {
     stdoutData = '';
@@ -101,7 +102,12 @@ describe('accountAction', () => {
   it('lists Claude accounts by default', async () => {
     mockResolveProviderId.mockReturnValue('claude-code');
     mockListAccounts.mockReturnValue([
-      { uuid: 'claude-1', email: 'user@example.com', label: 'Work', addedAt: '2026-01-01T00:00:00Z' },
+      {
+        uuid: 'claude-1',
+        email: 'user@example.com',
+        label: 'Work',
+        addedAt: '2026-01-01T00:00:00Z',
+      },
     ]);
     mockGetActiveAccount.mockReturnValue({
       uuid: 'claude-1',
@@ -161,7 +167,12 @@ describe('accountAction', () => {
   it('finds Claude account by email case-insensitively for --remove', async () => {
     mockResolveProviderId.mockReturnValue('claude-code');
     mockListAccounts.mockReturnValue([
-      { uuid: 'claude-1', email: 'User@Example.com', label: 'Work', addedAt: '2026-01-01T00:00:00Z' },
+      {
+        uuid: 'claude-1',
+        email: 'User@Example.com',
+        label: 'Work',
+        addedAt: '2026-01-01T00:00:00Z',
+      },
     ]);
     mockRemoveAccount.mockReturnValue({ success: true });
 
@@ -203,7 +214,9 @@ describe('accountAction', () => {
   it('lists all providers as stable JSON with --provider all', async () => {
     mockListAllAccounts.mockReturnValue({
       claude: [{ uuid: 'claude-1', email: 'claude@example.com', addedAt: '2026-01-01T00:00:00Z' }],
-      codex: [{ id: 'codex-1', providerId: 'codex', label: 'Codex', addedAt: '2026-01-01T00:00:00Z' }],
+      codex: [
+        { id: 'codex-1', providerId: 'codex', label: 'Codex', addedAt: '2026-01-01T00:00:00Z' },
+      ],
       activeByProvider: { 'claude-code': 'claude-1', codex: 'codex-1' },
     });
 
@@ -212,7 +225,9 @@ describe('accountAction', () => {
 
     expect(JSON.parse(stdoutData)).toEqual({
       claude: [{ uuid: 'claude-1', email: 'claude@example.com', addedAt: '2026-01-01T00:00:00Z' }],
-      codex: [{ id: 'codex-1', providerId: 'codex', label: 'Codex', addedAt: '2026-01-01T00:00:00Z' }],
+      codex: [
+        { id: 'codex-1', providerId: 'codex', label: 'Codex', addedAt: '2026-01-01T00:00:00Z' },
+      ],
       activeByProvider: { 'claude-code': 'claude-1', codex: 'codex-1' },
     });
     expect(mockResolveProviderId).not.toHaveBeenCalled();
@@ -230,7 +245,11 @@ describe('accountAction', () => {
     const { accountAction } = await import('./account');
     await accountAction({}, makeCmd({ launcher: 'claude-work' }));
 
-    expect(mockWriteLauncher).toHaveBeenCalledWith('claude-work', 'claude-code', '/tmp/claude-profile');
+    expect(mockWriteLauncher).toHaveBeenCalledWith(
+      'claude-work',
+      'claude-code',
+      '/tmp/claude-profile',
+    );
     expect(stdoutData).toContain('claude-work');
   });
 

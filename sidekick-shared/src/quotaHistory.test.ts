@@ -51,8 +51,14 @@ describe('quotaHistory', () => {
 
   it('round-trips append → read across three UTC days', async () => {
     const day1 = makeSample({ timestamp: '2026-05-17T08:00:00.000Z' });
-    const day2 = makeSample({ timestamp: '2026-05-18T08:00:00.000Z', fiveHour: { utilization: 55, resetsAt: 'x' } });
-    const day3 = makeSample({ timestamp: '2026-05-19T08:00:00.000Z', fiveHour: { utilization: 70, resetsAt: 'x' } });
+    const day2 = makeSample({
+      timestamp: '2026-05-18T08:00:00.000Z',
+      fiveHour: { utilization: 55, resetsAt: 'x' },
+    });
+    const day3 = makeSample({
+      timestamp: '2026-05-19T08:00:00.000Z',
+      fiveHour: { utilization: 70, resetsAt: 'x' },
+    });
 
     await appendQuotaHistorySample(day1, { minIntervalMs: 0 });
     await appendQuotaHistorySample(day2, { minIntervalMs: 0 });
@@ -64,12 +70,12 @@ describe('quotaHistory', () => {
       from: '2026-05-17T00:00:00.000Z',
       to: '2026-05-19T23:59:59.999Z',
     });
-    expect(samples.map(s => s.timestamp)).toEqual([
+    expect(samples.map((s) => s.timestamp)).toEqual([
       '2026-05-17T08:00:00.000Z',
       '2026-05-18T08:00:00.000Z',
       '2026-05-19T08:00:00.000Z',
     ]);
-    expect(samples.map(s => s.fiveHour.utilization)).toEqual([40, 55, 70]);
+    expect(samples.map((s) => s.fiveHour.utilization)).toEqual([40, 55, 70]);
   });
 
   it('prunes samples older than the retention window during append', async () => {
@@ -96,10 +102,10 @@ describe('quotaHistory', () => {
     // File needs to exceed the prune-skip threshold (16 KB) for the opportunistic prune to fire.
     expect(fs.statSync(filePath).size).toBeGreaterThan(16 * 1024);
 
-    await appendQuotaHistorySample(
-      makeSample({ timestamp: new Date(now).toISOString() }),
-      { minIntervalMs: 0, retentionDays: 91 },
-    );
+    await appendQuotaHistorySample(makeSample({ timestamp: new Date(now).toISOString() }), {
+      minIntervalMs: 0,
+      retentionDays: 91,
+    });
 
     const remaining = await readQuotaHistoryRange({
       workspaceId: WORKSPACE,
@@ -152,7 +158,10 @@ describe('quotaHistory', () => {
 
   it('emits empty buckets for days with no samples', async () => {
     await appendQuotaHistorySample(
-      makeSample({ timestamp: '2026-05-19T12:00:00.000Z', fiveHour: { utilization: 50, resetsAt: 'x' } }),
+      makeSample({
+        timestamp: '2026-05-19T12:00:00.000Z',
+        fiveHour: { utilization: 50, resetsAt: 'x' },
+      }),
       { minIntervalMs: 0 },
     );
 
@@ -163,8 +172,12 @@ describe('quotaHistory', () => {
       to: '2026-05-19T23:59:59.999Z',
     });
 
-    expect(buckets.map(b => b.date)).toEqual(['2026-05-17', '2026-05-18', '2026-05-19']);
-    expect(buckets[0]).toMatchObject({ samples: 0, maxUtilizationFiveHour: 0, anyUnavailable: false });
+    expect(buckets.map((b) => b.date)).toEqual(['2026-05-17', '2026-05-18', '2026-05-19']);
+    expect(buckets[0]).toMatchObject({
+      samples: 0,
+      maxUtilizationFiveHour: 0,
+      anyUnavailable: false,
+    });
     expect(buckets[1]).toMatchObject({ samples: 0 });
     expect(buckets[2]).toMatchObject({ samples: 1, maxUtilizationFiveHour: 50 });
   });
@@ -172,10 +185,9 @@ describe('quotaHistory', () => {
   it('debounces consecutive appends within minIntervalMs', async () => {
     const ts = '2026-05-19T12:00:00.000Z';
     await appendQuotaHistorySample(makeSample({ timestamp: ts }), { minIntervalMs: 60_000 });
-    await appendQuotaHistorySample(
-      makeSample({ timestamp: '2026-05-19T12:00:30.000Z' }),
-      { minIntervalMs: 60_000 },
-    );
+    await appendQuotaHistorySample(makeSample({ timestamp: '2026-05-19T12:00:30.000Z' }), {
+      minIntervalMs: 60_000,
+    });
 
     const samples = await readQuotaHistoryRange({
       workspaceId: WORKSPACE,
@@ -204,7 +216,7 @@ describe('quotaHistory', () => {
     await Promise.all(tasks);
 
     const raw = fs.readFileSync(historyFilePath('claude'), 'utf8');
-    const lines = raw.split('\n').filter(line => line.length > 0);
+    const lines = raw.split('\n').filter((line) => line.length > 0);
     expect(lines).toHaveLength(10);
     for (const line of lines) {
       expect(() => JSON.parse(line)).not.toThrow();
@@ -225,7 +237,7 @@ describe('quotaHistory', () => {
       to: '2026-05-20T00:00:00.000Z',
     });
     expect(samples).toHaveLength(2);
-    expect(samples.map(s => s.timestamp)).toEqual([
+    expect(samples.map((s) => s.timestamp)).toEqual([
       '2026-05-18T08:00:00.000Z',
       '2026-05-19T08:00:00.000Z',
     ]);
@@ -244,7 +256,7 @@ describe('quotaHistory', () => {
       from: '2026-05-17T00:00:00.000Z',
       to: '2026-05-19T23:59:59.999Z',
     });
-    expect(buckets.every(b => b.samples === 0)).toBe(true);
+    expect(buckets.every((b) => b.samples === 0)).toBe(true);
   });
 
   it('also refreshes the latest-snapshot store for backward compatibility', async () => {

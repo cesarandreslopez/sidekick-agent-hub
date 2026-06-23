@@ -62,7 +62,7 @@ export class HandoffService implements vscode.Disposable {
   async generateHandoff(
     summary: SessionSummaryData,
     analysis: SessionAnalysisData,
-    stats: SessionStats
+    stats: SessionStats,
   ): Promise<string> {
     await this.initialize();
 
@@ -112,26 +112,24 @@ export class HandoffService implements vscode.Disposable {
   private extractHandoffInput(
     summary: SessionSummaryData,
     analysis: SessionAnalysisData,
-    stats: SessionStats
+    stats: SessionStats,
   ): HandoffInput {
     // Pending tasks: only unfinished ones
     const pendingTasks = summary.tasks
-      .filter(t => t.status !== 'completed' && t.status !== 'done')
-      .map(t => ({ name: t.subject, description: undefined }));
+      .filter((t) => t.status !== 'completed' && t.status !== 'done')
+      .map((t) => ({ name: t.subject, description: undefined }));
 
     // Files in progress: from summary's filesChanged (most recently modified)
     // Only include the last few files as "in progress"
-    const filesInProgress = summary.filesChanged
-      .slice(0, 10)
-      .map(f => f.path);
+    const filesInProgress = summary.filesChanged.slice(0, 10).map((f) => f.path);
 
     // Recovery patterns from analysis
     const recoveryPatterns = analysis.recoveryPatterns || [];
 
     // Failed commands: extract from errors that are command failures
     const failedCommands = analysis.errors
-      .filter(e => e.category === 'exit_code' || e.category === 'command_failure')
-      .flatMap(e => e.examples.slice(0, 2));
+      .filter((e) => e.category === 'exit_code' || e.category === 'command_failure')
+      .flatMap((e) => e.examples.slice(0, 2));
 
     // Context health and truncation data from stats
     const contextHealth = stats.contextHealth;
@@ -152,17 +150,21 @@ export class HandoffService implements vscode.Disposable {
 
     // Goal gates: incomplete tasks flagged as critical
     const goalGates = summary.tasks
-      .filter(t => t.status !== 'completed' && t.status !== 'done' && t.isGoalGate)
-      .map(t => t.subject);
+      .filter((t) => t.status !== 'completed' && t.status !== 'done' && t.isGoalGate)
+      .map((t) => t.subject);
 
     // Plan progress
     let planProgress: HandoffInput['planProgress'];
     if (stats.planState && stats.planState.steps.length > 0) {
       const ps = stats.planState;
-      const completedSteps = ps.steps.filter(s => s.status === 'completed').map(s => s.description);
-      const remainingSteps = ps.steps.filter(s => s.status !== 'completed' && s.status !== 'skipped').map(s => s.description);
-      const failedStep = ps.steps.find(s => s.status === 'failed');
-      const inProgressStep = ps.steps.find(s => s.status === 'in_progress');
+      const completedSteps = ps.steps
+        .filter((s) => s.status === 'completed')
+        .map((s) => s.description);
+      const remainingSteps = ps.steps
+        .filter((s) => s.status !== 'completed' && s.status !== 'skipped')
+        .map((s) => s.description);
+      const failedStep = ps.steps.find((s) => s.status === 'failed');
+      const inProgressStep = ps.steps.find((s) => s.status === 'in_progress');
       const lastActive = failedStep || inProgressStep;
       const completedCount = completedSteps.length;
       const totalCount = ps.steps.length;

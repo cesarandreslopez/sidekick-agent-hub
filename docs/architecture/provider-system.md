@@ -30,12 +30,12 @@ flowchart LR
 
 Defined as `InferenceProviderId` in `src/types/inferenceProvider.ts`:
 
-| ID | Description | Client |
-|----|-------------|--------|
+| ID           | Description                 | Client                  |
+| ------------ | --------------------------- | ----------------------- |
 | `claude-max` | Claude via Max subscription | `MaxSubscriptionClient` |
-| `claude-api` | Claude via API key | `ApiKeyClient` |
-| `opencode` | OpenCode local server | `OpenCodeClient` |
-| `codex` | Codex CLI subprocess | `CodexClient` |
+| `claude-api` | Claude via API key          | `ApiKeyClient`          |
+| `opencode`   | OpenCode local server       | `OpenCodeClient`        |
+| `codex`      | Codex CLI subprocess        | `CodexClient`           |
 
 All inference clients implement the `ClaudeClient` interface:
 
@@ -53,11 +53,11 @@ interface ClaudeClient {
 
 Defined as `SessionProvider` in `src/types/sessionProvider.ts`:
 
-| ID | Description | Data Source |
-|----|-------------|------------|
-| `claude-code` | Claude Code sessions | `~/.claude/projects/` |
-| `opencode` | OpenCode sessions | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) |
-| `codex` | Codex CLI sessions | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model) |
+| ID            | Description          | Data Source                                                                                                        |
+| ------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `claude-code` | Claude Code sessions | `~/.claude/projects/`                                                                                              |
+| `opencode`    | OpenCode sessions    | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) |
+| `codex`       | Codex CLI sessions   | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model)              |
 
 Each session provider normalizes raw data into the common `ClaudeSessionEvent` format.
 

@@ -1,4 +1,9 @@
-import { getActiveAccount, listAccounts, type AccountEntry, type AccountManagerResult } from './accounts';
+import {
+  getActiveAccount,
+  listAccounts,
+  type AccountEntry,
+  type AccountManagerResult,
+} from './accounts';
 import { switchAccount as defaultSwitchAccount } from './accountManager';
 import { getActiveCodexAccount, listCodexAccounts } from './codexProfiles';
 import { readQuotaSnapshot } from './quotaSnapshots';
@@ -91,15 +96,17 @@ export function decideAutoSwitch(
 
   const activeRemaining = quotaRemaining(active.quota);
   const best = candidates
-    .filter(candidate =>
-      candidate.accountId !== active.accountId &&
-      candidate.switchable !== false &&
-      candidate.quota?.available,
+    .filter(
+      (candidate) =>
+        candidate.accountId !== active.accountId &&
+        candidate.switchable !== false &&
+        candidate.quota?.available,
     )
     .sort((a, b) => quotaRemaining(b.quota) - quotaRemaining(a.quota))[0];
 
   if (!best) return null;
-  if (quotaRemaining(best.quota) < activeRemaining + MATERIAL_REMAINING_IMPROVEMENT_PCT) return null;
+  if (quotaRemaining(best.quota) < activeRemaining + MATERIAL_REMAINING_IMPROVEMENT_PCT)
+    return null;
   return { switchTo: best.accountId };
 }
 
@@ -107,7 +114,10 @@ function runtimeStateToProvider(provider: 'claude' | 'codex'): AccountProviderId
   return provider === 'claude' ? 'claude-code' : 'codex';
 }
 
-function accountIdFor(provider: AccountProviderId, account: AccountEntry | SavedAccountProfile): string {
+function accountIdFor(
+  provider: AccountProviderId,
+  account: AccountEntry | SavedAccountProfile,
+): string {
   return provider === 'claude-code'
     ? (account as AccountEntry).uuid
     : (account as SavedAccountProfile).id;
@@ -119,8 +129,14 @@ export class AutoSwitchController implements Disposable {
   private readonly getActiveClaudeAccount: () => AccountEntry | null;
   private readonly getCodexAccounts: () => SavedAccountProfile[];
   private readonly getActiveCodexAccount: () => SavedAccountProfile | null;
-  private readonly readSnapshot: (providerId: AccountProviderId, accountId: string) => QuotaState | null;
-  private readonly switchAccount: (providerId: AccountProviderId, accountId: string) => AccountManagerResult;
+  private readonly readSnapshot: (
+    providerId: AccountProviderId,
+    accountId: string,
+  ) => QuotaState | null;
+  private readonly switchAccount: (
+    providerId: AccountProviderId,
+    accountId: string,
+  ) => AccountManagerResult;
   private readonly onTransition?: (event: AutoSwitchTransitionEvent) => void;
   private readonly log?: (message: string, error?: unknown) => void;
   private readonly cooldownMs: number;
@@ -147,7 +163,7 @@ export class AutoSwitchController implements Disposable {
 
   start(): void {
     if (this.subscription) return;
-    this.subscription = this.quotaService.onUpdate(state => this.handleUpdate(state));
+    this.subscription = this.quotaService.onUpdate((state) => this.handleUpdate(state));
   }
 
   stop(): void {
@@ -176,9 +192,8 @@ export class AutoSwitchController implements Disposable {
     activeQuota: ProviderQuotaState,
   ): void {
     const providerId = runtimeStateToProvider(runtimeProvider);
-    const activeAccount = providerId === 'claude-code'
-      ? this.getActiveClaudeAccount()
-      : this.getActiveCodexAccount();
+    const activeAccount =
+      providerId === 'claude-code' ? this.getActiveClaudeAccount() : this.getActiveCodexAccount();
     if (!activeAccount) return;
 
     const activeAccountId = accountIdFor(providerId, activeAccount);
@@ -186,18 +201,16 @@ export class AutoSwitchController implements Disposable {
       this.switchedDuringCrossing.delete(providerId);
     }
 
-    const accounts = providerId === 'claude-code'
-      ? this.getClaudeAccounts()
-      : this.getCodexAccounts();
+    const accounts =
+      providerId === 'claude-code' ? this.getClaudeAccounts() : this.getCodexAccounts();
     if (accounts.length <= 1) return;
 
-    const candidates: AutoSwitchCandidate[] = accounts.map(account => {
+    const candidates: AutoSwitchCandidate[] = accounts.map((account) => {
       const accountId = accountIdFor(providerId, account);
       return {
         accountId,
-        quota: accountId === activeAccountId
-          ? activeQuota
-          : this.readSnapshot(providerId, accountId),
+        quota:
+          accountId === activeAccountId ? activeQuota : this.readSnapshot(providerId, accountId),
       };
     });
 
@@ -215,7 +228,10 @@ export class AutoSwitchController implements Disposable {
 
     const result = this.switchAccount(providerId, decision.switchTo);
     if (!result.success) {
-      this.log?.(`[AutoSwitch] Could not switch ${providerId} to ${decision.switchTo}.`, result.error);
+      this.log?.(
+        `[AutoSwitch] Could not switch ${providerId} to ${decision.switchTo}.`,
+        result.error,
+      );
       return;
     }
 

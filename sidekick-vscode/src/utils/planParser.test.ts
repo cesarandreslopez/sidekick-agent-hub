@@ -158,7 +158,7 @@ More text between steps.
 - [ ] C`;
 
       const result = parsePlanMarkdown(md);
-      expect(result.steps.map(s => s.id)).toEqual(['step-0', 'step-1', 'step-2']);
+      expect(result.steps.map((s) => s.id)).toEqual(['step-0', 'step-1', 'step-2']);
     });
   });
 

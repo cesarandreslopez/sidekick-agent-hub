@@ -10,7 +10,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ToolCall, SubagentStats, TaskState, TrackedTask, TaskStatus } from '../types/sessionEvent';
+import type {
+  ToolCall,
+  SubagentStats,
+  TaskState,
+  TrackedTask,
+  TaskStatus,
+} from '../types/sessionEvent';
 
 /**
  * Pattern for matching subagent JSONL files.
@@ -27,9 +33,8 @@ const TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'];
  * Looks for "Task #N" or JSON taskId patterns in the result string.
  */
 function extractTaskIdFromResult(resultContent: unknown): string | null {
-  const resultStr = typeof resultContent === 'string'
-    ? resultContent
-    : JSON.stringify(resultContent || '');
+  const resultStr =
+    typeof resultContent === 'string' ? resultContent : JSON.stringify(resultContent || '');
 
   // Try to match "Task #N" pattern
   const taskIdMatch = resultStr.match(/Task #(\d+)/i);
@@ -70,7 +75,7 @@ const reportedMissing = new Set<string>();
 export function scanSubagentDir(
   sessionDir: string,
   sessionId: string,
-  logger?: (msg: string) => void
+  logger?: (msg: string) => void,
 ): SubagentStats[] {
   const log = logger || (() => {});
   const subagentsDir = path.join(sessionDir, sessionId, 'subagents');
@@ -127,11 +132,11 @@ export function scanSubagentDir(
 function parseAgentFile(
   filePath: string,
   agentId: string,
-  log: (msg: string) => void
+  log: (msg: string) => void,
 ): SubagentStats | null {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n').filter(line => line.trim());
+    const lines = content.split('\n').filter((line) => line.trim());
 
     const toolCalls: ToolCall[] = [];
     let agentType: string | undefined;
@@ -144,14 +149,17 @@ function parseAgentFile(
     // Task tracking state
     const taskState: TaskState = {
       tasks: new Map(),
-      activeTaskId: null
+      activeTaskId: null,
     };
-    const pendingTaskCreates = new Map<string, {
-      subject: string;
-      description?: string;
-      activeForm?: string;
-      timestamp: Date;
-    }>();
+    const pendingTaskCreates = new Map<
+      string,
+      {
+        subject: string;
+        description?: string;
+        activeForm?: string;
+        timestamp: Date;
+      }
+    >();
 
     for (const line of lines) {
       try {
@@ -165,7 +173,10 @@ function parseAgentFile(
         // Extract token usage from assistant messages
         if (event.type === 'assistant' && event.message?.usage) {
           const usage = event.message.usage;
-          inputTokens += (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+          inputTokens +=
+            (usage.input_tokens || 0) +
+            (usage.cache_creation_input_tokens || 0) +
+            (usage.cache_read_input_tokens || 0);
           outputTokens += usage.output_tokens || 0;
         }
 
@@ -173,9 +184,10 @@ function parseAgentFile(
         // This appears in the parent session, but we can also look for it
         // in the first system message or context
         if (event.type === 'system' && event.message?.content) {
-          const contentStr = typeof event.message.content === 'string'
-            ? event.message.content
-            : JSON.stringify(event.message.content);
+          const contentStr =
+            typeof event.message.content === 'string'
+              ? event.message.content
+              : JSON.stringify(event.message.content);
 
           // Try to extract agent type from system message
           const typeMatch = contentStr.match(/subagent_type['":\s]+(\w+)/i);
@@ -186,9 +198,7 @@ function parseAgentFile(
 
         // Look for tool_use events in assistant messages
         if (event.type === 'assistant' && event.message?.content) {
-          const contentArray = Array.isArray(event.message.content)
-            ? event.message.content
-            : [];
+          const contentArray = Array.isArray(event.message.content) ? event.message.content : [];
 
           for (const block of contentArray) {
             if (block && typeof block === 'object' && block.type === 'tool_use') {
@@ -202,16 +212,20 @@ function parseAgentFile(
               const toolCall: ToolCall = {
                 name: toolUse.name,
                 input: toolUse.input || {},
-                timestamp: eventTimestamp
+                timestamp: eventTimestamp,
               };
 
               // Handle task tools
               if (toolUse.name === 'TaskCreate') {
                 pendingTaskCreates.set(toolUse.id, {
                   subject: String(toolUse.input.subject || ''),
-                  description: toolUse.input.description ? String(toolUse.input.description) : undefined,
-                  activeForm: toolUse.input.activeForm ? String(toolUse.input.activeForm) : undefined,
-                  timestamp: eventTimestamp
+                  description: toolUse.input.description
+                    ? String(toolUse.input.description)
+                    : undefined,
+                  activeForm: toolUse.input.activeForm
+                    ? String(toolUse.input.activeForm)
+                    : undefined,
+                  timestamp: eventTimestamp,
                 });
               } else if (toolUse.name === 'TaskUpdate') {
                 handleTaskUpdate(taskState, toolUse.input, eventTimestamp);
@@ -242,9 +256,7 @@ function parseAgentFile(
 
         // Look for tool_result events in user messages
         if (event.type === 'user' && event.message?.content) {
-          const contentArray = Array.isArray(event.message.content)
-            ? event.message.content
-            : [];
+          const contentArray = Array.isArray(event.message.content) ? event.message.content : [];
 
           for (const block of contentArray) {
             if (block && typeof block === 'object' && block.type === 'tool_result') {
@@ -270,7 +282,7 @@ function parseAgentFile(
                     activeForm: pendingCreate.activeForm,
                     blockedBy: [],
                     blocks: [],
-                    associatedToolCalls: []
+                    associatedToolCalls: [],
                   };
                   taskState.tasks.set(taskId, task);
                 }
@@ -297,7 +309,7 @@ function parseAgentFile(
         outputTokens,
         startTime,
         endTime,
-        durationMs
+        durationMs,
       };
     }
 
@@ -314,7 +326,7 @@ function parseAgentFile(
 export function handleTaskUpdate(
   taskState: TaskState,
   input: Record<string, unknown>,
-  timestamp: Date
+  timestamp: Date,
 ): void {
   const taskId = String(input.taskId || '');
   let task = taskState.tasks.get(taskId);
@@ -330,7 +342,7 @@ export function handleTaskUpdate(
       updatedAt: timestamp,
       blockedBy: [],
       blocks: [],
-      associatedToolCalls: []
+      associatedToolCalls: [],
     };
     taskState.tasks.set(taskId, task);
   }
@@ -386,6 +398,6 @@ export function extractTaskInfo(input: Record<string, unknown>): {
 } {
   return {
     agentType: input.subagent_type ? String(input.subagent_type) : undefined,
-    description: input.description ? String(input.description) : undefined
+    description: input.description ? String(input.description) : undefined,
   };
 }

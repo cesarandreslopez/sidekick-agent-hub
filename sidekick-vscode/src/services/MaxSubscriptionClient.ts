@@ -80,8 +80,8 @@ function findClaudeCli(): string {
 
   throw new ConnectionError(
     'Claude CLI not found. Please install Claude Code (https://claude.ai/download) ' +
-    'or set the path manually in Settings > Sidekick: Claude Path',
-    'claude-max'
+      'or set the path manually in Settings > Sidekick: Claude Path',
+    'claude-max',
   );
 }
 
@@ -142,7 +142,7 @@ export async function suggestClaudePath(): Promise<{
   const resolvedPath = resolveCommandPath('claude');
   if (!resolvedPath) {
     vscode.window.showErrorMessage(
-      'Claude CLI not found. Please install Claude Code from https://claude.ai/download'
+      'Claude CLI not found. Please install Claude Code from https://claude.ai/download',
     );
     return { found: false, savedToSettings: false };
   }
@@ -151,7 +151,7 @@ export async function suggestClaudePath(): Promise<{
   const action = await vscode.window.showInformationMessage(
     `Found Claude CLI at: ${resolvedPath}`,
     'Save to Settings',
-    'Dismiss'
+    'Dismiss',
   );
 
   if (action === 'Save to Settings') {
@@ -208,7 +208,9 @@ export class MaxSubscriptionClient implements ClaudeClient {
    * @throws Error if request times out or fails
    */
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
-    log(`MaxSubscriptionClient.complete called, model=${options?.model}, timeout=${options?.timeout ?? 30000}`);
+    log(
+      `MaxSubscriptionClient.complete called, model=${options?.model}, timeout=${options?.timeout ?? 30000}`,
+    );
 
     return requestWithTimeout(options, async (signal) => {
       const abortController = new AbortController();
@@ -237,7 +239,9 @@ export class MaxSubscriptionClient implements ClaudeClient {
           persistSession: false,
         },
       })) {
-        log(`Received message: type=${message.type}, subtype=${'subtype' in message ? message.subtype : 'n/a'}`);
+        log(
+          `Received message: type=${message.type}, subtype=${'subtype' in message ? message.subtype : 'n/a'}`,
+        );
         if (message.type === 'result') {
           if (message.subtype === 'success') {
             log('Query succeeded');

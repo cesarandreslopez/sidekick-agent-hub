@@ -23,8 +23,9 @@ export function formatProviderStatusDisplay(
   const hidden = createHiddenDisplay(providerLabel);
   if (!status || status.indicator === 'none') return hidden;
 
-  const description = status.description || status.indicator.charAt(0).toUpperCase() + status.indicator.slice(1);
-  const components = (status.affectedComponents ?? []).map(component => ({
+  const description =
+    status.description || status.indicator.charAt(0).toUpperCase() + status.indicator.slice(1);
+  const components = (status.affectedComponents ?? []).map((component) => ({
     name: component.name || 'Unknown',
     status: formatComponentStatus(component.status),
   }));

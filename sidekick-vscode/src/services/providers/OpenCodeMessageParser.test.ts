@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput, detectPlanModeFromText } from './OpenCodeMessageParser';
+import {
+  convertOpenCodeMessage,
+  parseDbMessageData,
+  parseDbPartData,
+  normalizeToolName,
+  normalizeToolInput,
+  detectPlanModeFromText,
+} from './OpenCodeMessageParser';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../../types/opencode';
 
 describe('OpenCodeMessageParser', () => {
@@ -10,10 +17,10 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'user',
         tokens: { input: 0, output: 0 },
-        time: { created: '2025-01-15T10:00:00Z' }
+        time: { created: '2025-01-15T10:00:00Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-1', type: 'text', text: 'Hello, please help me.' }
+        { id: 'part-1', messageID: 'msg-1', type: 'text', text: 'Hello, please help me.' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -21,9 +28,7 @@ describe('OpenCodeMessageParser', () => {
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
       expect(events[0].message.role).toBe('user');
-      expect(events[0].message.content).toEqual([
-        { type: 'text', text: 'Hello, please help me.' }
-      ]);
+      expect(events[0].message.content).toEqual([{ type: 'text', text: 'Hello, please help me.' }]);
       expect(events[0].timestamp).toBe('2025-01-15T10:00:00Z');
     });
 
@@ -34,10 +39,10 @@ describe('OpenCodeMessageParser', () => {
         role: 'assistant',
         modelID: 'claude-sonnet-4-20250514',
         tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 100 },
-        time: { created: '2025-01-15T10:00:01Z', completed: '2025-01-15T10:00:05Z' }
+        time: { created: '2025-01-15T10:00:01Z', completed: '2025-01-15T10:00:05Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-2', type: 'text', text: 'Sure, I can help!' }
+        { id: 'part-1', messageID: 'msg-2', type: 'text', text: 'Sure, I can help!' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -53,9 +58,7 @@ describe('OpenCodeMessageParser', () => {
         cache_read_input_tokens: 200,
         reasoning_tokens: 0,
       });
-      expect(events[0].message.content).toEqual([
-        { type: 'text', text: 'Sure, I can help!' }
-      ]);
+      expect(events[0].message.content).toEqual([{ type: 'text', text: 'Sure, I can help!' }]);
       expect(events[0].timestamp).toBe('2025-01-15T10:00:05Z');
     });
 
@@ -66,10 +69,10 @@ describe('OpenCodeMessageParser', () => {
         role: 'assistant',
         modelID: 'claude-sonnet-4-20250514',
         tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 100, reasoning: 300 },
-        time: { created: '2025-01-15T10:00:01Z', completed: '2025-01-15T10:00:05Z' }
+        time: { created: '2025-01-15T10:00:01Z', completed: '2025-01-15T10:00:05Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-reason', type: 'text', text: 'Answer with reasoning' }
+        { id: 'part-1', messageID: 'msg-reason', type: 'text', text: 'Answer with reasoning' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -89,11 +92,11 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         { id: 'part-1', messageID: 'msg-3', type: 'reasoning', text: 'Let me think about this...' },
-        { id: 'part-2', messageID: 'msg-3', type: 'text', text: 'Here is my answer.' }
+        { id: 'part-2', messageID: 'msg-3', type: 'text', text: 'Here is my answer.' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -111,7 +114,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 300 },
-        time: { created: '2025-01-15T10:00:01Z', completed: '2025-01-15T10:00:03Z' }
+        time: { created: '2025-01-15T10:00:01Z', completed: '2025-01-15T10:00:03Z' },
       };
       const parts: OpenCodePart[] = [
         {
@@ -124,9 +127,9 @@ describe('OpenCodeMessageParser', () => {
             status: 'completed',
             input: { file_path: '/tmp/test.ts' },
             output: 'file contents here',
-            time: { start: '2025-01-15T10:00:01Z', end: '2025-01-15T10:00:02Z' }
-          }
-        }
+            time: { start: '2025-01-15T10:00:01Z', end: '2025-01-15T10:00:02Z' },
+          },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -143,7 +146,7 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_use',
         id: 'call-123',
         name: 'Read',
-        input: { file_path: '/tmp/test.ts' }
+        input: { file_path: '/tmp/test.ts' },
       });
 
       // Synthetic tool_result event
@@ -156,7 +159,7 @@ describe('OpenCodeMessageParser', () => {
         tool_use_id: 'call-123',
         content: 'file contents here',
         is_error: false,
-        duration: 1000
+        duration: 1000,
       });
     });
 
@@ -166,7 +169,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 300 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         {
@@ -178,9 +181,9 @@ describe('OpenCodeMessageParser', () => {
           state: {
             status: 'error',
             input: { command: 'cat /nonexistent' },
-            error: 'No such file or directory'
-          }
-        }
+            error: 'No such file or directory',
+          },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -193,7 +196,7 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_result',
         tool_use_id: 'call-456',
         content: 'No such file or directory',
-        is_error: true
+        is_error: true,
       });
     });
 
@@ -204,16 +207,16 @@ describe('OpenCodeMessageParser', () => {
         role: 'assistant',
         summary: true,
         tokens: { input: 100, output: 50 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-6', type: 'text', text: 'Summary of conversation...' }
+        { id: 'part-1', messageID: 'msg-6', type: 'text', text: 'Summary of conversation...' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
 
       // Should produce: assistant event + summary event
-      const summaryEvent = events.find(e => e.type === 'summary');
+      const summaryEvent = events.find((e) => e.type === 'summary');
       expect(summaryEvent).toBeDefined();
       expect(summaryEvent!.message.content).toBe('Context compacted');
     });
@@ -224,15 +227,15 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 100, output: 50 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-7', type: 'compaction', text: 'Context was compacted' }
+        { id: 'part-1', messageID: 'msg-7', type: 'compaction', text: 'Context was compacted' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const summaryEvent = events.find(e => e.type === 'summary');
+      const summaryEvent = events.find((e) => e.type === 'summary');
       expect(summaryEvent).toBeDefined();
     });
 
@@ -242,11 +245,11 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         { id: 'part-2', messageID: 'msg-8', index: 1, type: 'text', text: 'Second' },
-        { id: 'part-1', messageID: 'msg-8', index: 0, type: 'text', text: 'First' }
+        { id: 'part-1', messageID: 'msg-8', index: 0, type: 'text', text: 'First' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -262,7 +265,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'user',
         tokens: { input: 0, output: 0 },
-        time: { created: '2025-01-15T10:00:00Z' }
+        time: { created: '2025-01-15T10:00:00Z' },
       };
 
       const events = convertOpenCodeMessage(message, []);
@@ -275,7 +278,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 300 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         {
@@ -286,9 +289,9 @@ describe('OpenCodeMessageParser', () => {
           tool: 'Write',
           state: {
             status: 'running',
-            input: { file_path: '/tmp/out.ts', content: 'hello' }
-          }
-        }
+            input: { file_path: '/tmp/out.ts', content: 'hello' },
+          },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -304,10 +307,10 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'user',
         tokens: { input: 0, output: 0 },
-        time: { created: 1705312800000 }
+        time: { created: 1705312800000 },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-11', type: 'text', text: 'Test' }
+        { id: 'part-1', messageID: 'msg-11', type: 'text', text: 'Test' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -324,7 +327,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 300 },
-        time: { created: 1705312800000, completed: 1705312803000 }
+        time: { created: 1705312800000, completed: 1705312803000 },
       };
       const parts: OpenCodePart[] = [
         {
@@ -337,9 +340,9 @@ describe('OpenCodeMessageParser', () => {
             status: 'completed',
             input: { path: '/src', pattern: '*.ts' },
             output: 'file1.ts\nfile2.ts',
-            time: { start: 1705312801000, end: 1705312802000 }
-          }
-        }
+            time: { start: 1705312801000, end: 1705312802000 },
+          },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -352,7 +355,7 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_use',
         id: 'call_abc',
         name: 'Glob',
-        input: { path: '/src', pattern: '*.ts' }
+        input: { path: '/src', pattern: '*.ts' },
       });
 
       const resultEvent = events[1];
@@ -363,7 +366,7 @@ describe('OpenCodeMessageParser', () => {
         tool_use_id: 'call_abc',
         content: 'file1.ts\nfile2.ts',
         is_error: false,
-        duration: 1000
+        duration: 1000,
       });
     });
 
@@ -373,12 +376,18 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 100, output: 50 },
-        time: { created: 1705312800000 }
+        time: { created: 1705312800000 },
       };
       const parts: OpenCodePart[] = [
         { id: 'part-1', messageID: 'msg-step', type: 'step-start', snapshot: 'abc123' },
         { id: 'part-2', messageID: 'msg-step', type: 'text', text: 'Hello' },
-        { id: 'part-3', messageID: 'msg-step', type: 'step-finish', reason: 'tool-calls', snapshot: 'abc123' }
+        {
+          id: 'part-3',
+          messageID: 'msg-step',
+          type: 'step-finish',
+          reason: 'tool-calls',
+          snapshot: 'abc123',
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -397,7 +406,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: 1705312800000 }
+        time: { created: 1705312800000 },
       };
       const parts: OpenCodePart[] = [
         {
@@ -405,8 +414,8 @@ describe('OpenCodeMessageParser', () => {
           messageID: 'msg-patch',
           type: 'patch',
           hash: 'abc123def',
-          files: ['/src/foo.ts', '/src/bar.ts']
-        }
+          files: ['/src/foo.ts', '/src/bar.ts'],
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -418,13 +427,13 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_use',
         id: 'patch-part-1-0',
         name: 'Write',
-        input: { file_path: '/src/foo.ts' }
+        input: { file_path: '/src/foo.ts' },
       });
       expect(content[1]).toEqual({
         type: 'tool_use',
         id: 'patch-part-1-1',
         name: 'Write',
-        input: { file_path: '/src/bar.ts' }
+        input: { file_path: '/src/bar.ts' },
       });
     });
 
@@ -434,7 +443,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: 1705312800000 }
+        time: { created: 1705312800000 },
       };
       const parts: OpenCodePart[] = [
         {
@@ -442,7 +451,7 @@ describe('OpenCodeMessageParser', () => {
           messageID: 'msg-patch-empty',
           type: 'patch',
           hash: 'abc123def',
-        }
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -453,7 +462,7 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_use',
         id: 'patch-part-1',
         name: 'Patch',
-        input: { hash: 'abc123def', files: undefined }
+        input: { hash: 'abc123def', files: undefined },
       });
     });
   });
@@ -469,8 +478,8 @@ describe('OpenCodeMessageParser', () => {
           role: 'assistant',
           time: { created: 1705312800000, completed: 1705312805000 },
           modelID: 'claude-sonnet-4-20250514',
-          tokens: { input: 1000, output: 500, reasoning: 64, cache: { read: 200, write: 100 } }
-        })
+          tokens: { input: 1000, output: 500, reasoning: 64, cache: { read: 200, write: 100 } },
+        }),
       };
 
       const msg = parseDbMessageData(row);
@@ -498,8 +507,8 @@ describe('OpenCodeMessageParser', () => {
           role: 'user',
           time: { created: 1705312800000 },
           summary: { title: 'Some summary' },
-          tokens: {}
-        })
+          tokens: {},
+        }),
       };
 
       const msg = parseDbMessageData(row);
@@ -516,7 +525,7 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'text', text: 'Hello world' })
+        data: JSON.stringify({ type: 'text', text: 'Hello world' }),
       };
 
       const part = parseDbPartData(row);
@@ -540,9 +549,9 @@ describe('OpenCodeMessageParser', () => {
           state: {
             status: 'completed',
             input: { command: 'ls' },
-            output: 'file1\nfile2'
-          }
-        })
+            output: 'file1\nfile2',
+          },
+        }),
       };
 
       const part = parseDbPartData(row);
@@ -562,7 +571,7 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'step-start', snapshot: 'abc123' })
+        data: JSON.stringify({ type: 'step-start', snapshot: 'abc123' }),
       };
 
       const startPart = parseDbPartData(startRow);
@@ -577,7 +586,12 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'step-finish', reason: 'tool-calls', snapshot: 'abc123', cost: 0 })
+        data: JSON.stringify({
+          type: 'step-finish',
+          reason: 'tool-calls',
+          snapshot: 'abc123',
+          cost: 0,
+        }),
       };
 
       const finishPart = parseDbPartData(finishRow);
@@ -594,7 +608,7 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'patch', hash: 'def456', files: ['/src/a.ts'] })
+        data: JSON.stringify({ type: 'patch', hash: 'def456', files: ['/src/a.ts'] }),
       };
 
       const part = parseDbPartData(row);
@@ -612,7 +626,7 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'future-type', someField: 'value' })
+        data: JSON.stringify({ type: 'future-type', someField: 'value' }),
       };
 
       const part = parseDbPartData(row);
@@ -635,8 +649,8 @@ describe('OpenCodeMessageParser', () => {
           description: 'Search for TS files',
           agent: 'Explore',
           model: 'claude-sonnet-4-20250514',
-          command: 'explore'
-        })
+          command: 'explore',
+        }),
       };
 
       const part = parseDbPartData(row);
@@ -657,7 +671,7 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'agent', name: 'code-reviewer', source: 'builtin' })
+        data: JSON.stringify({ type: 'agent', name: 'code-reviewer', source: 'builtin' }),
       };
 
       const part = parseDbPartData(row);
@@ -675,7 +689,12 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'file', mime: 'image/png', filename: 'screenshot.png', url: 'file:///tmp/screenshot.png' })
+        data: JSON.stringify({
+          type: 'file',
+          mime: 'image/png',
+          filename: 'screenshot.png',
+          url: 'file:///tmp/screenshot.png',
+        }),
       };
 
       const part = parseDbPartData(row);
@@ -698,8 +717,8 @@ describe('OpenCodeMessageParser', () => {
           type: 'retry',
           attempt: 2,
           error: { message: 'Rate limited', code: '429' },
-          time: 1705312805000
-        })
+          time: 1705312805000,
+        }),
       };
 
       const part = parseDbPartData(row);
@@ -719,7 +738,7 @@ describe('OpenCodeMessageParser', () => {
         session_id: 'ses_1',
         time_created: 1705312800000,
         time_updated: 1705312800000,
-        data: JSON.stringify({ type: 'snapshot', snapshot: 'abc123def456' })
+        data: JSON.stringify({ type: 'snapshot', snapshot: 'abc123def456' }),
       };
 
       const part = parseDbPartData(row);
@@ -740,8 +759,8 @@ describe('OpenCodeMessageParser', () => {
           type: 'step-finish',
           reason: 'end-turn',
           cost: 0.005,
-          tokens: { input: 1000, output: 500, reasoning: 200, cache: { read: 300, write: 100 } }
-        })
+          tokens: { input: 1000, output: 500, reasoning: 200, cache: { read: 300, write: 100 } },
+        }),
       };
 
       const part = parseDbPartData(row);
@@ -765,7 +784,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 300 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         {
@@ -776,7 +795,7 @@ describe('OpenCodeMessageParser', () => {
           agent: 'Explore',
           model: 'claude-sonnet-4-20250514',
           prompt: 'Find all API endpoints',
-        }
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -797,7 +816,7 @@ describe('OpenCodeMessageParser', () => {
           model: 'claude-sonnet-4-20250514',
           prompt: 'Find all API endpoints',
           command: undefined,
-        }
+        },
       });
 
       const resultEvent = events[1];
@@ -807,7 +826,7 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_result',
         tool_use_id: 'subtask-part-sub-1',
         content: 'Explore codebase',
-        is_error: false
+        is_error: false,
       });
     });
 
@@ -817,10 +836,16 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 100, output: 50 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-f1', messageID: 'msg-file', type: 'file', mime: 'text/plain', filename: 'output.log' }
+        {
+          id: 'part-f1',
+          messageID: 'msg-file',
+          type: 'file',
+          mime: 'text/plain',
+          filename: 'output.log',
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -836,10 +861,16 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 100, output: 50 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-r1', messageID: 'msg-retry', type: 'retry', attempt: 3, error: { message: 'Timeout' } }
+        {
+          id: 'part-r1',
+          messageID: 'msg-retry',
+          type: 'retry',
+          attempt: 3,
+          error: { message: 'Timeout' },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -855,12 +886,12 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 100, output: 50 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         { id: 'part-a1', messageID: 'msg-meta', type: 'agent', name: 'reviewer', source: 'plugin' },
         { id: 'part-s1', messageID: 'msg-meta', type: 'snapshot', snapshot: 'snap123' },
-        { id: 'part-t1', messageID: 'msg-meta', type: 'text', text: 'Hello' }
+        { id: 'part-t1', messageID: 'msg-meta', type: 'text', text: 'Hello' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -878,12 +909,18 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'user',
         tokens: { input: 0, output: 0 },
-        time: { created: '2025-01-15T10:00:00Z' }
+        time: { created: '2025-01-15T10:00:00Z' },
       };
       const parts: OpenCodePart[] = [
         { id: 'part-1', messageID: 'msg-user-new', type: 'text', text: 'Check this file' },
-        { id: 'part-2', messageID: 'msg-user-new', type: 'file', mime: 'image/png', filename: 'screen.png' },
-        { id: 'part-3', messageID: 'msg-user-new', type: 'subtask', description: 'Run analysis' }
+        {
+          id: 'part-2',
+          messageID: 'msg-user-new',
+          type: 'file',
+          mime: 'image/png',
+          filename: 'screen.png',
+        },
+        { id: 'part-3', messageID: 'msg-user-new', type: 'subtask', description: 'Run analysis' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -977,7 +1014,14 @@ describe('OpenCodeMessageParser', () => {
     });
 
     it('should not overwrite existing old_string/new_string/replace_all', () => {
-      const input = { oldString: 'camel', old_string: 'snake', newString: 'camel2', new_string: 'snake2', replaceAll: true, replace_all: false };
+      const input = {
+        oldString: 'camel',
+        old_string: 'snake',
+        newString: 'camel2',
+        new_string: 'snake2',
+        replaceAll: true,
+        replace_all: false,
+      };
       const result = normalizeToolInput(input);
       expect(result.old_string).toBe('snake');
       expect(result.new_string).toBe('snake2');
@@ -985,7 +1029,12 @@ describe('OpenCodeMessageParser', () => {
     });
 
     it('should normalize all Edit tool fields together', () => {
-      const input = { filePath: '/src/foo.ts', oldString: 'foo', newString: 'bar', replaceAll: false };
+      const input = {
+        filePath: '/src/foo.ts',
+        oldString: 'foo',
+        newString: 'bar',
+        replaceAll: false,
+      };
       const result = normalizeToolInput(input);
       expect(result.file_path).toBe('/src/foo.ts');
       expect(result.old_string).toBe('foo');
@@ -1002,10 +1051,10 @@ describe('OpenCodeMessageParser', () => {
         role: 'assistant',
         tokens: { input: 100, output: 0 },
         time: { created: '2025-01-15T10:00:01Z' },
-        error: { type: 'APIError', message: 'Rate limit exceeded', code: 429 }
+        error: { type: 'APIError', message: 'Rate limit exceeded', code: 429 },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-err', type: 'text', text: 'Partial response' }
+        { id: 'part-1', messageID: 'msg-err', type: 'text', text: 'Partial response' },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -1015,7 +1064,10 @@ describe('OpenCodeMessageParser', () => {
       // Text part + error block
       expect(content).toHaveLength(2);
       expect(content[0]).toEqual({ type: 'text', text: 'Partial response' });
-      expect(content[1]).toEqual({ type: 'text', text: '[APIError] (code: 429) Rate limit exceeded' });
+      expect(content[1]).toEqual({
+        type: 'text',
+        text: '[APIError] (code: 429) Rate limit exceeded',
+      });
     });
 
     it('should handle error without code', () => {
@@ -1025,7 +1077,7 @@ describe('OpenCodeMessageParser', () => {
         role: 'assistant',
         tokens: { input: 100, output: 0 },
         time: { created: '2025-01-15T10:00:01Z' },
-        error: { type: 'AuthError', message: 'Invalid API key' }
+        error: { type: 'AuthError', message: 'Invalid API key' },
       };
       const parts: OpenCodePart[] = [];
 
@@ -1043,7 +1095,7 @@ describe('OpenCodeMessageParser', () => {
         role: 'assistant',
         tokens: { input: 100, output: 0 },
         time: { created: '2025-01-15T10:00:01Z' },
-        error: {}
+        error: {},
       };
       const parts: OpenCodePart[] = [];
 
@@ -1066,8 +1118,8 @@ describe('OpenCodeMessageParser', () => {
           role: 'assistant',
           time: { created: 1705312800000 },
           tokens: { input: 100, output: 0 },
-          error: { type: 'OutputLengthError', message: 'Output too long', code: 'max_tokens' }
-        })
+          error: { type: 'OutputLengthError', message: 'Output too long', code: 'max_tokens' },
+        }),
       };
 
       const msg = parseDbMessageData(row);
@@ -1087,8 +1139,8 @@ describe('OpenCodeMessageParser', () => {
         data: JSON.stringify({
           role: 'assistant',
           time: { created: 1705312800000 },
-          tokens: { input: 100, output: 50 }
-        })
+          tokens: { input: 100, output: 50 },
+        }),
       };
 
       const msg = parseDbMessageData(row);
@@ -1103,7 +1155,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 300 },
-        time: { created: 1705312800000, completed: 1705312803000 }
+        time: { created: 1705312800000, completed: 1705312803000 },
       };
       const parts: OpenCodePart[] = [
         {
@@ -1116,9 +1168,9 @@ describe('OpenCodeMessageParser', () => {
             status: 'completed',
             input: { path: '/src', pattern: '*.ts' },
             output: 'file1.ts\nfile2.ts',
-            time: { start: 1705312801000, end: 1705312802000 }
-          }
-        }
+            time: { start: 1705312801000, end: 1705312802000 },
+          },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -1133,7 +1185,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 300 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         {
@@ -1146,14 +1198,18 @@ describe('OpenCodeMessageParser', () => {
             status: 'completed',
             input: { filePath: '/tmp/test.ts' },
             output: 'contents',
-            time: { start: '2025-01-15T10:00:01Z', end: '2025-01-15T10:00:02Z' }
-          }
-        }
+            time: { start: '2025-01-15T10:00:01Z', end: '2025-01-15T10:00:02Z' },
+          },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as Array<{ type: string; name: string; input: Record<string, unknown> }>;
+      const content = events[0].message.content as Array<{
+        type: string;
+        name: string;
+        input: Record<string, unknown>;
+      }>;
       expect(content[0].name).toBe('Read');
       expect(content[0].input.file_path).toBe('/tmp/test.ts');
       expect(content[0].input.filePath).toBe('/tmp/test.ts');
@@ -1163,7 +1219,9 @@ describe('OpenCodeMessageParser', () => {
   describe('plan mode heuristic detection', () => {
     describe('detectPlanModeFromText', () => {
       it('should detect entering plan mode', () => {
-        expect(detectPlanModeFromText('I am entering plan mode to design the approach.')).toBe('enter');
+        expect(detectPlanModeFromText('I am entering plan mode to design the approach.')).toBe(
+          'enter',
+        );
         expect(detectPlanModeFromText('Switching to plan mode.')).toBe('enter');
         expect(detectPlanModeFromText('I switched to plan mode now.')).toBe('enter');
         expect(detectPlanModeFromText('Activating plan mode for this task.')).toBe('enter');
@@ -1198,10 +1256,15 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-plan-enter', type: 'text', text: 'I am entering plan mode to design the approach.' }
+        {
+          id: 'part-1',
+          messageID: 'msg-plan-enter',
+          type: 'text',
+          text: 'I am entering plan mode to design the approach.',
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -1213,7 +1276,7 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_use',
         id: 'plan-enter-msg-plan-enter',
         name: 'EnterPlanMode',
-        input: { source: 'opencode_text_heuristic', _sidekickRawToolName: 'plan_enter' }
+        input: { source: 'opencode_text_heuristic', _sidekickRawToolName: 'plan_enter' },
       });
     });
 
@@ -1223,10 +1286,15 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-plan-exit', type: 'text', text: 'Exiting plan mode to begin implementation.' }
+        {
+          id: 'part-1',
+          messageID: 'msg-plan-exit',
+          type: 'text',
+          text: 'Exiting plan mode to begin implementation.',
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -1237,7 +1305,7 @@ describe('OpenCodeMessageParser', () => {
         type: 'tool_use',
         id: 'plan-exit-msg-plan-exit',
         name: 'ExitPlanMode',
-        input: { source: 'opencode_text_heuristic', _sidekickRawToolName: 'plan_exit' }
+        input: { source: 'opencode_text_heuristic', _sidekickRawToolName: 'plan_exit' },
       });
     });
 
@@ -1247,11 +1315,21 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-plan-think', type: 'reasoning', text: 'I should be entering plan mode for this task.' },
-        { id: 'part-2', messageID: 'msg-plan-think', type: 'text', text: 'Let me plan the approach.' }
+        {
+          id: 'part-1',
+          messageID: 'msg-plan-think',
+          type: 'reasoning',
+          text: 'I should be entering plan mode for this task.',
+        },
+        {
+          id: 'part-2',
+          messageID: 'msg-plan-think',
+          type: 'text',
+          text: 'Let me plan the approach.',
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -1268,7 +1346,7 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
         { id: 'part-1', messageID: 'msg-plan-dup', type: 'text', text: 'I am entering plan mode.' },
@@ -1278,8 +1356,8 @@ describe('OpenCodeMessageParser', () => {
           type: 'tool-invocation',
           callID: 'call-plan',
           tool: 'plan_enter',
-          state: { status: 'completed', input: {} }
-        }
+          state: { status: 'completed', input: {} },
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);
@@ -1287,7 +1365,7 @@ describe('OpenCodeMessageParser', () => {
       const content = events[0].message.content as Array<Record<string, unknown>>;
       // text + real tool_use — no synthetic duplicate
       const planModeBlocks = content.filter(
-        (b) => b.type === 'tool_use' && (b.name === 'EnterPlanMode' || b.name === 'ExitPlanMode')
+        (b) => b.type === 'tool_use' && (b.name === 'EnterPlanMode' || b.name === 'ExitPlanMode'),
       );
       expect(planModeBlocks).toHaveLength(1);
     });
@@ -1298,10 +1376,15 @@ describe('OpenCodeMessageParser', () => {
         sessionID: 'sess-1',
         role: 'assistant',
         tokens: { input: 500, output: 200 },
-        time: { created: '2025-01-15T10:00:01Z' }
+        time: { created: '2025-01-15T10:00:01Z' },
       };
       const parts: OpenCodePart[] = [
-        { id: 'part-1', messageID: 'msg-no-plan', type: 'text', text: 'Let me read the file and implement the changes.' }
+        {
+          id: 'part-1',
+          messageID: 'msg-no-plan',
+          type: 'text',
+          text: 'Let me read the file and implement the changes.',
+        },
       ];
 
       const events = convertOpenCodeMessage(message, parts);

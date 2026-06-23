@@ -12,13 +12,13 @@ Understand and fix errors with AI assistance.
 
 ### Complexity Levels
 
-| Level | Description |
-|-------|-------------|
-| **ELI5** | Complete beginner explanations |
-| **Curious Amateur** | Learning mode with defined terms |
+| Level                 | Description                                   |
+| --------------------- | --------------------------------------------- |
+| **ELI5**              | Complete beginner explanations                |
+| **Curious Amateur**   | Learning mode with defined terms              |
 | **Imposter Syndrome** | Fill knowledge gaps, assume basic familiarity |
-| **Senior** | High-level summary, skip basics |
-| **PhD Mode** | Expert-level analysis |
+| **Senior**            | High-level summary, skip basics               |
+| **PhD Mode**          | Expert-level analysis                         |
 
 ## Fix Error
 
@@ -46,6 +46,6 @@ Explanation sections (Root Cause / Why It Happens / How to Fix) are displayed as
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.errorModel` | `auto` | Model tier — resolves to `balanced` |
+| Setting               | Default | Description                         |
+| --------------------- | ------- | ----------------------------------- |
+| `sidekick.errorModel` | `auto`  | Model tier — resolves to `balanced` |

@@ -63,7 +63,10 @@ function inferComplexity(description: string): PlanStepComplexity | undefined {
 /**
  * Parses plan markdown into structured plan steps.
  */
-export function parsePlanMarkdown(markdown: string): { title?: string; steps: ExtractedPlanStep[] } {
+export function parsePlanMarkdown(markdown: string): {
+  title?: string;
+  steps: ExtractedPlanStep[];
+} {
   if (!markdown || !markdown.trim()) return { steps: [] };
 
   const lines = markdown.split('\n');
@@ -340,9 +343,10 @@ export class PlanExtractor {
     this._planModeActive = false;
 
     // Prefer plan file content (from Write tool) → accumulated assistant text → disk read fallback
-    const markdown = this._planFileContent
-      || (this._planTexts.length > 0 ? this._planTexts.join('\n') : null)
-      || (this._planFilePath && this._readFile ? this._readFile(this._planFilePath) : null);
+    const markdown =
+      this._planFileContent ||
+      (this._planTexts.length > 0 ? this._planTexts.join('\n') : null) ||
+      (this._planFilePath && this._readFile ? this._readFile(this._planFilePath) : null);
     this._planFileContent = null;
     this._planFilePath = null;
     this._planTexts = [];
@@ -351,7 +355,10 @@ export class PlanExtractor {
     return this.extractFromMarkdown(markdown, 'claude-code');
   }
 
-  private extractFromMarkdown(markdown: string, source: 'claude-code' | 'opencode' | 'codex'): boolean {
+  private extractFromMarkdown(
+    markdown: string,
+    source: 'claude-code' | 'opencode' | 'codex',
+  ): boolean {
     const parsed = parsePlanMarkdown(markdown);
 
     this._plan = {

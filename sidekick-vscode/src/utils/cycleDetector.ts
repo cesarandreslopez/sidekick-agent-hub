@@ -100,7 +100,12 @@ export function detectCycle(calls: ToolCall[], windowSize: number = 10): CycleDe
         }
       }
 
-      const patternDesc = pattern.map(s => `${s.toolName}(${s.argHash.length > 30 ? '...' + s.argHash.slice(-27) : s.argHash})`).join(' → ');
+      const patternDesc = pattern
+        .map(
+          (s) =>
+            `${s.toolName}(${s.argHash.length > 30 ? '...' + s.argHash.slice(-27) : s.argHash})`,
+        )
+        .join(' → ');
 
       return {
         pattern,

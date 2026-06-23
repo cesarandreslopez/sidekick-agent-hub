@@ -148,8 +148,8 @@ describe('TaskPersistenceService', () => {
       const tasks = service2.loadPersistedTasks();
 
       expect(tasks).toHaveLength(2);
-      expect(tasks.find(t => t.taskId === '1')?.subject).toBe('Fix bug');
-      expect(tasks.find(t => t.taskId === '2')?.subject).toBe('Add feature');
+      expect(tasks.find((t) => t.taskId === '1')?.subject).toBe('Fix bug');
+      expect(tasks.find((t) => t.taskId === '2')?.subject).toBe('Add feature');
       service2.dispose();
     });
 
@@ -230,13 +230,13 @@ describe('TaskPersistenceService', () => {
       // Session 1: task ID "1"
       service.saveSessionTasks(
         'session-aaaa1111-bbbb-cccc-dddd-eeeeeeee',
-        makeTaskState([makeTask({ taskId: '1', subject: 'Old task' })])
+        makeTaskState([makeTask({ taskId: '1', subject: 'Old task' })]),
       );
 
       // Session 2: same task ID "1"
       service.saveSessionTasks(
         'session-2222',
-        makeTaskState([makeTask({ taskId: '1', subject: 'New task' })])
+        makeTaskState([makeTask({ taskId: '1', subject: 'New task' })]),
       );
 
       service.dispose();
@@ -247,12 +247,12 @@ describe('TaskPersistenceService', () => {
 
       // Both tasks should exist
       expect(tasks).toHaveLength(2);
-      const subjects = tasks.map(t => t.subject).sort();
+      const subjects = tasks.map((t) => t.subject).sort();
       expect(subjects).toEqual(['New task', 'Old task']);
 
       // The new task should be under "1", old under namespaced key
       const rawStore = JSON.parse(
-        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8')
+        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8'),
       ) as TaskPersistenceStore;
       expect(rawStore.tasks['1'].subject).toBe('New task');
       expect(rawStore.tasks['session-:1'].subject).toBe('Old task');
@@ -284,10 +284,7 @@ describe('TaskPersistenceService', () => {
         lastSaved: '2026-02-18T10:06:00.000Z',
       };
 
-      fs.writeFileSync(
-        path.join(tmpDir, 'test-project.json'),
-        JSON.stringify(store)
-      );
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), JSON.stringify(store));
 
       const service = createService();
       await service.initialize();
@@ -321,10 +318,7 @@ describe('TaskPersistenceService', () => {
         lastSaved: '2026-02-18T10:06:00.000Z',
       };
 
-      fs.writeFileSync(
-        path.join(tmpDir, 'test-project.json'),
-        JSON.stringify(store)
-      );
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), JSON.stringify(store));
 
       const service = createService();
       await service.initialize();
@@ -357,10 +351,7 @@ describe('TaskPersistenceService', () => {
         lastSaved: '2026-02-18T10:06:00.000Z',
       };
 
-      fs.writeFileSync(
-        path.join(tmpDir, 'test-project.json'),
-        JSON.stringify(store)
-      );
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), JSON.stringify(store));
 
       const service = createService();
       await service.initialize();
@@ -379,11 +370,14 @@ describe('TaskPersistenceService', () => {
       const service = createService();
       await service.initialize();
 
-      service.saveSessionTasks('session-111', makeTaskState([
-        makeTask({ taskId: '1', status: 'completed' }),
-        makeTask({ taskId: '2', status: 'pending' }),
-        makeTask({ taskId: '3', status: 'completed' }),
-      ]));
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([
+          makeTask({ taskId: '1', status: 'completed' }),
+          makeTask({ taskId: '2', status: 'pending' }),
+          makeTask({ taskId: '3', status: 'completed' }),
+        ]),
+      );
 
       service.clearCompleted();
       service.dispose();
@@ -403,10 +397,13 @@ describe('TaskPersistenceService', () => {
       const service = createService();
       await service.initialize();
 
-      service.saveSessionTasks('session-111', makeTaskState([
-        makeTask({ taskId: '1', status: 'completed' }),
-        makeTask({ taskId: '2', status: 'pending' }),
-      ]));
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([
+          makeTask({ taskId: '1', status: 'completed' }),
+          makeTask({ taskId: '2', status: 'pending' }),
+        ]),
+      );
 
       service.archiveAll();
       service.dispose();
@@ -425,9 +422,10 @@ describe('TaskPersistenceService', () => {
       const service = createService();
       await service.initialize();
 
-      service.saveSessionTasks('session-111', makeTaskState([
-        makeTask({ taskId: '1', status: 'pending' }),
-      ]));
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([makeTask({ taskId: '1', status: 'pending' })]),
+      );
 
       // Don't wait for debounce — just dispose
       service.dispose();
@@ -457,17 +455,13 @@ describe('TaskPersistenceService', () => {
       const service = createService();
       await service.initialize();
 
-      service.saveSessionTasks('session-1', makeTaskState([
-        makeTask({ taskId: '1' }),
-      ]));
-      service.saveSessionTasks('session-2', makeTaskState([
-        makeTask({ taskId: '2' }),
-      ]));
+      service.saveSessionTasks('session-1', makeTaskState([makeTask({ taskId: '1' })]));
+      service.saveSessionTasks('session-2', makeTaskState([makeTask({ taskId: '2' })]));
 
       service.dispose();
 
       const store = JSON.parse(
-        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8')
+        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8'),
       ) as TaskPersistenceStore;
       expect(store.sessionCount).toBe(2);
       expect(store.lastSessionId).toBe('session-2');

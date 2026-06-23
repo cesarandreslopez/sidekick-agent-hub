@@ -76,7 +76,7 @@ export class NotesPanel implements SidePanel {
     if (!n.filePath) return '{grey-fg}(global note — no file-specific relations){/grey-fg}';
 
     const related = staticData.notes.filter(
-      other => other !== n && other.filePath === n.filePath
+      (other) => other !== n && other.filePath === n.filePath,
     );
 
     if (related.length === 0) {
@@ -93,4 +93,3 @@ export class NotesPanel implements SidePanel {
     return lines.join('\n');
   }
 }
-

@@ -87,7 +87,7 @@ export class GuidanceAdvisor {
   constructor(
     private readonly authService: AuthService,
     private readonly sessionAnalyzer: SessionAnalyzer,
-    private readonly sessionMonitor: SessionMonitor
+    private readonly sessionMonitor: SessionMonitor,
   ) {}
 
   /**
@@ -130,12 +130,16 @@ export class GuidanceAdvisor {
   async analyze(options?: AnalyzeOptions): Promise<AnalysisResult> {
     const providerId = this.sessionMonitor.getProvider().id;
     const target = resolveInstructionTarget(providerId);
-    log(`GuidanceAdvisor: Starting analysis targeting ${target.primaryFile} (provider: ${providerId})`);
+    log(
+      `GuidanceAdvisor: Starting analysis targeting ${target.primaryFile} (provider: ${providerId})`,
+    );
 
     try {
       // 1. Collect session data
       const sessionData = this.sessionAnalyzer.collectData();
-      log(`GuidanceAdvisor: Collected data - ${sessionData.toolPatterns.length} tool patterns, ${sessionData.errors.length} error types, ${sessionData.inefficiencies.length} inefficiencies`);
+      log(
+        `GuidanceAdvisor: Collected data - ${sessionData.toolPatterns.length} tool patterns, ${sessionData.errors.length} error types, ${sessionData.inefficiencies.length} inefficiencies`,
+      );
 
       // 2. Read both instruction files
       const primaryContent = await this.readInstructionFile(target.primaryFile);
@@ -156,9 +160,10 @@ export class GuidanceAdvisor {
         return {
           success: false,
           suggestions: [],
-          error: 'Not enough session data for analysis. Try using your agent more before analyzing.',
+          error:
+            'Not enough session data for analysis. Try using your agent more before analyzing.',
           sessionData,
-          target
+          target,
         };
       }
 
@@ -181,7 +186,7 @@ export class GuidanceAdvisor {
       const timeout = options?.timeout ?? 90000;
       const response = await this.authService.complete(prompt, {
         model,
-        timeout
+        timeout,
       });
       log(`GuidanceAdvisor: Received response (${response.length} chars)`);
 
@@ -194,9 +199,10 @@ export class GuidanceAdvisor {
         return {
           success: false,
           suggestions: [],
-          error: 'Could not parse suggestions from the analysis. The response may have been in an unexpected format.',
+          error:
+            'Could not parse suggestions from the analysis. The response may have been in an unexpected format.',
           sessionData,
-          target
+          target,
         };
       }
 
@@ -204,9 +210,8 @@ export class GuidanceAdvisor {
         success: true,
         suggestions,
         sessionData,
-        target
+        target,
       };
-
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       logError('GuidanceAdvisor: Analysis failed', error);
@@ -215,7 +220,7 @@ export class GuidanceAdvisor {
         success: false,
         suggestions: [],
         error: `Analysis failed: ${message}`,
-        target
+        target,
       };
     }
   }

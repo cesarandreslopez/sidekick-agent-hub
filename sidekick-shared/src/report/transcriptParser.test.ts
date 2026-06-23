@@ -16,7 +16,9 @@ describe('parseTranscript', () => {
   });
 
   it('returns empty array for non-existent file', () => {
-    mockedFs.readFileSync.mockImplementation(() => { throw new Error('ENOENT'); });
+    mockedFs.readFileSync.mockImplementation(() => {
+      throw new Error('ENOENT');
+    });
     expect(parseTranscript('/nonexistent.jsonl')).toEqual([]);
   });
 
@@ -46,15 +48,17 @@ describe('parseTranscript', () => {
   });
 
   it('parses canonical Codex system audit events', () => {
-    const events: SessionEvent[] = [{
-      type: 'system',
-      timestamp: '2026-06-01T12:00:00Z',
-      message: {
-        role: 'developer',
-        sourceLabel: 'developer',
-        content: [{ type: 'text', text: 'Use the repo conventions.' }],
+    const events: SessionEvent[] = [
+      {
+        type: 'system',
+        timestamp: '2026-06-01T12:00:00Z',
+        message: {
+          role: 'developer',
+          sourceLabel: 'developer',
+          content: [{ type: 'text', text: 'Use the repo conventions.' }],
+        },
       },
-    }];
+    ];
 
     const result = parseTranscriptFromEvents(events);
     expect(result).toHaveLength(1);
@@ -66,36 +70,51 @@ describe('parseTranscript', () => {
   });
 
   it('preserves canonical Codex tool calls and results', () => {
-    const events: SessionEvent[] = [{
-      type: 'assistant',
-      timestamp: '2026-06-01T12:00:00Z',
-      message: {
-        role: 'assistant',
-        content: [{
-          type: 'tool_use',
-          id: 'call-1',
-          name: 'Bash',
-          input: { command: 'npm test' },
-        }],
+    const events: SessionEvent[] = [
+      {
+        type: 'assistant',
+        timestamp: '2026-06-01T12:00:00Z',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'Bash',
+              input: { command: 'npm test' },
+            },
+          ],
+        },
       },
-    }, {
-      type: 'user',
-      timestamp: '2026-06-01T12:00:01Z',
-      message: {
-        role: 'user',
-        content: [{
-          type: 'tool_result',
-          tool_use_id: 'call-1',
-          content: 'Process exited with code 1',
-          is_error: true,
-        }],
+      {
+        type: 'user',
+        timestamp: '2026-06-01T12:00:01Z',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'call-1',
+              content: 'Process exited with code 1',
+              is_error: true,
+            },
+          ],
+        },
       },
-    }];
+    ];
 
     const result = parseTranscriptFromEvents(events);
     expect(result).toHaveLength(2);
-    expect(result[0].content[0]).toMatchObject({ type: 'tool_use', toolName: 'Bash', toolUseId: 'call-1' });
-    expect(result[1].content[0]).toMatchObject({ type: 'tool_result', toolUseId: 'call-1', isError: true });
+    expect(result[0].content[0]).toMatchObject({
+      type: 'tool_use',
+      toolName: 'Bash',
+      toolUseId: 'call-1',
+    });
+    expect(result[1].content[0]).toMatchObject({
+      type: 'tool_result',
+      toolUseId: 'call-1',
+      isError: true,
+    });
   });
 
   it('parses assistant message with text and usage', () => {
@@ -130,12 +149,14 @@ describe('parseTranscript', () => {
       timestamp: '2025-01-15T10:00:02Z',
       message: {
         role: 'assistant',
-        content: [{
-          type: 'tool_use',
-          id: 'toolu_123',
-          name: 'Read',
-          input: { file_path: '/src/main.ts', offset: 1, limit: 50 },
-        }],
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_123',
+            name: 'Read',
+            input: { file_path: '/src/main.ts', offset: 1, limit: 50 },
+          },
+        ],
       },
     });
     mockedFs.readFileSync.mockReturnValue(line + '\n');
@@ -156,11 +177,13 @@ describe('parseTranscript', () => {
       timestamp: '2025-01-15T10:00:03Z',
       message: {
         role: 'user',
-        content: [{
-          type: 'tool_result',
-          tool_use_id: 'toolu_123',
-          content: 'File contents here...',
-        }],
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_123',
+            content: 'File contents here...',
+          },
+        ],
       },
     });
     mockedFs.readFileSync.mockReturnValue(line + '\n');
@@ -180,12 +203,14 @@ describe('parseTranscript', () => {
       timestamp: '2025-01-15T10:00:03Z',
       message: {
         role: 'user',
-        content: [{
-          type: 'tool_result',
-          tool_use_id: 'toolu_456',
-          content: 'Command failed with exit code 1',
-          is_error: true,
-        }],
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_456',
+            content: 'Command failed with exit code 1',
+            is_error: true,
+          },
+        ],
       },
     });
     mockedFs.readFileSync.mockReturnValue(line + '\n');
@@ -238,7 +263,8 @@ describe('parseTranscript', () => {
   });
 
   it('handles malformed JSONL lines gracefully', () => {
-    const data = '{"type":"user","timestamp":"T","message":{"role":"user","content":"hi"}}\n{bad json\n{"type":"assistant","timestamp":"T2","message":{"role":"assistant","content":"hello"}}\n';
+    const data =
+      '{"type":"user","timestamp":"T","message":{"role":"user","content":"hi"}}\n{bad json\n{"type":"assistant","timestamp":"T2","message":{"role":"assistant","content":"hello"}}\n';
     mockedFs.readFileSync.mockReturnValue(data);
 
     const result = parseTranscript('/test.jsonl');
@@ -268,14 +294,16 @@ describe('parseTranscript', () => {
       timestamp: '2025-01-15T10:00:08Z',
       message: {
         role: 'user',
-        content: [{
-          type: 'tool_result',
-          tool_use_id: 'toolu_789',
-          content: [
-            { type: 'text', text: 'Part one' },
-            { type: 'text', text: 'Part two' },
-          ],
-        }],
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_789',
+            content: [
+              { type: 'text', text: 'Part one' },
+              { type: 'text', text: 'Part two' },
+            ],
+          },
+        ],
       },
     });
     mockedFs.readFileSync.mockReturnValue(line + '\n');

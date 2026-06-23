@@ -34,7 +34,9 @@ describe('detectSessionActivity', () => {
   });
 
   it('returns ended for non-existent file', () => {
-    mockFs.statSync.mockImplementation(() => { throw new Error('ENOENT'); });
+    mockFs.statSync.mockImplementation(() => {
+      throw new Error('ENOENT');
+    });
     const result = detectSessionActivity('/no/such/file.jsonl');
     expect(result.state).toBe('ended');
     expect(result.reason).toBe('file-not-found');

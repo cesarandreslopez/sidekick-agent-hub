@@ -92,10 +92,7 @@ export class StatusBarManager implements vscode.Disposable {
    * and the toggle command. Shows the status bar immediately.
    */
   constructor() {
-    this.statusBarItem = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Right,
-      100
-    );
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.statusBarItem.command = 'sidekick.showMenu';
 
     const isMac = process.platform === 'darwin';
@@ -118,7 +115,7 @@ export class StatusBarManager implements vscode.Disposable {
         if (this._activeEditor && e.document === this._activeEditor.document) {
           this.onTextChange();
         }
-      })
+      }),
     );
 
     // Listen for active editor changes
@@ -126,13 +123,16 @@ export class StatusBarManager implements vscode.Disposable {
       vscode.window.onDidChangeActiveTextEditor((editor) => {
         this._activeEditor = editor;
         this.clearHighlight();
-      })
+      }),
     );
 
     // Listen for configuration changes
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('sidekick.showCompletionHint') || e.affectsConfiguration('sidekick.completionHintDelayMs')) {
+        if (
+          e.affectsConfiguration('sidekick.showCompletionHint') ||
+          e.affectsConfiguration('sidekick.completionHintDelayMs')
+        ) {
           const updated = vscode.workspace.getConfiguration('sidekick');
           this._showCompletionHint = updated.get<boolean>('showCompletionHint', true);
           this._completionHintDelayMs = updated.get<number>('completionHintDelayMs', 1500);
@@ -142,7 +142,7 @@ export class StatusBarManager implements vscode.Disposable {
             this.clearHighlight();
           }
         }
-      })
+      }),
     );
   }
 
@@ -303,7 +303,9 @@ export class StatusBarManager implements vscode.Disposable {
         if (this.highlightActive) {
           this.statusBarItem.text = `$(sparkle) Sidekick [${this._shortcut}]`;
           this.statusBarItem.tooltip = `Press ${this._shortcut} for AI completion`;
-          this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+          this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+            'statusBarItem.warningBackground',
+          );
         } else {
           this.statusBarItem.text = `$(sparkle) Sidekick \u00B7 ${this.currentProvider}`;
           this.statusBarItem.tooltip = `Sidekick (${this.currentProvider} \u00B7 ${this.currentModel}) \u00B7 AI Complete: ${this._shortcut}`;
@@ -326,9 +328,7 @@ export class StatusBarManager implements vscode.Disposable {
       case 'error':
         this.statusBarItem.text = '$(error) Sidekick';
         this.statusBarItem.tooltip = `Sidekick Error: ${this.errorMessage}`;
-        this.statusBarItem.backgroundColor = new vscode.ThemeColor(
-          'statusBarItem.errorBackground'
-        );
+        this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         break;
     }
   }

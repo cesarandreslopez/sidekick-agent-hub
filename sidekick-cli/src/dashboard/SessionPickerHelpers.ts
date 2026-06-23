@@ -19,8 +19,8 @@ export interface SessionPickerItem {
 /** Provider badge colors and short labels for the session picker. */
 export const PROVIDER_BADGES: Record<ProviderId, { badge: string; color: string }> = {
   'claude-code': { badge: 'CC', color: 'green' },
-  'opencode': { badge: 'OC', color: 'cyan' },
-  'codex': { badge: 'CX', color: 'yellow' },
+  opencode: { badge: 'OC', color: 'cyan' },
+  codex: { badge: 'CX', color: 'yellow' },
 };
 
 const MAX_ITEMS = 50;
@@ -99,7 +99,15 @@ export function collectMultiProviderItems(
       const age = formatRelativeTime(mtime, now);
       const isActive = now.getTime() - mtime.getTime() < ACTIVE_THRESHOLD_MS;
 
-      allItems.push({ sessionPath: sp, label, sessionId, age, isActive, providerId: provider.id, mtime: mtime.getTime() });
+      allItems.push({
+        sessionPath: sp,
+        label,
+        sessionId,
+        age,
+        isActive,
+        providerId: provider.id,
+        mtime: mtime.getTime(),
+      });
     }
   }
 

@@ -8,7 +8,15 @@ import * as path from 'path';
 import * as os from 'os';
 import type { Command } from 'commander';
 import * as fs from 'fs';
-import { createWatcher, getAllDetectedProviders, EventAggregator, generateHtmlReport, parseTranscript, parseTranscriptFromEvents, openInBrowser } from 'sidekick-shared';
+import {
+  createWatcher,
+  getAllDetectedProviders,
+  EventAggregator,
+  generateHtmlReport,
+  parseTranscript,
+  parseTranscriptFromEvents,
+  openInBrowser,
+} from 'sidekick-shared';
 import type { FollowEvent, ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -34,14 +42,19 @@ import { disableMouse } from '../dashboard/ink/mouse';
 
 function createProviderById(id: ProviderId) {
   switch (id) {
-    case 'opencode': return new OpenCodeProvider();
-    case 'codex': return new CodexProvider();
+    case 'opencode':
+      return new OpenCodeProvider();
+    case 'codex':
+      return new CodexProvider();
     case 'claude-code':
-    default: return new ClaudeCodeProvider();
+    default:
+      return new ClaudeCodeProvider();
   }
 }
 
-export function getProviderRuntimeIssue(provider: Pick<SessionProviderBase, 'id' | 'displayName' | 'getRuntimeStatus'>): string | null {
+export function getProviderRuntimeIssue(
+  provider: Pick<SessionProviderBase, 'id' | 'displayName' | 'getRuntimeStatus'>,
+): string | null {
   if (provider.id !== 'opencode') {
     return null;
   }
@@ -51,11 +64,12 @@ export function getProviderRuntimeIssue(provider: Pick<SessionProviderBase, 'id'
     return null;
   }
   const detail = status.message ? ` ${status.message}` : '';
-  const recommendation = status.kind === 'sqlite_missing'
-    ? ' Recommendation: install `sqlite3`, ensure it is on PATH for the current shell, then retry.'
-    : status.kind === 'sqlite_blocked'
-      ? ' Recommendation: ensure `sqlite3` is executable in the same environment as this shell, then retry.'
-      : ' Recommendation: verify `sqlite3` can read `opencode.db` in the current environment, then retry.';
+  const recommendation =
+    status.kind === 'sqlite_missing'
+      ? ' Recommendation: install `sqlite3`, ensure it is on PATH for the current shell, then retry.'
+      : status.kind === 'sqlite_blocked'
+        ? ' Recommendation: ensure `sqlite3` is executable in the same environment as this shell, then retry.'
+        : ' Recommendation: verify `sqlite3` can read `opencode.db` in the current environment, then retry.';
   return `${provider.displayName} session database is unavailable.${detail}${recommendation}`;
 }
 
@@ -86,13 +100,23 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   if (!sessionId) {
     const sessions = providerIssue ? [] : provider.findAllSessions(workspacePath);
-    const healthyAdditionalProviders = additionalProviders.filter(p => !getProviderRuntimeIssue(p));
-    const hasAnySessions = sessions.length > 0 || healthyAdditionalProviders.some(p => p.findAllSessions(workspacePath).length > 0);
+    const healthyAdditionalProviders = additionalProviders.filter(
+      (p) => !getProviderRuntimeIssue(p),
+    );
+    const hasAnySessions =
+      sessions.length > 0 ||
+      healthyAdditionalProviders.some((p) => p.findAllSessions(workspacePath).length > 0);
     if (hasAnySessions) {
       try {
         const pickerProvider = providerIssue ? healthyAdditionalProviders[0] || provider : provider;
-        const pickerAdditionalProviders = providerIssue ? healthyAdditionalProviders.slice(1) : healthyAdditionalProviders;
-        const result = await showSessionPicker(pickerProvider, workspacePath, pickerAdditionalProviders);
+        const pickerAdditionalProviders = providerIssue
+          ? healthyAdditionalProviders.slice(1)
+          : healthyAdditionalProviders;
+        const result = await showSessionPicker(
+          pickerProvider,
+          workspacePath,
+          pickerAdditionalProviders,
+        );
         if (result.sessionPath) {
           sessionId = path.basename(result.sessionPath, path.extname(result.sessionPath));
           replay = true;
@@ -132,8 +156,14 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     staticData = await loadStaticData(workspacePath);
   } catch {
     staticData = {
-      sessions: [], tasks: [], decisions: [], notes: [], plans: [],
-      totalTokens: 0, totalCost: 0, totalSessions: 0,
+      sessions: [],
+      tasks: [],
+      decisions: [],
+      notes: [],
+      plans: [],
+      totalTokens: 0,
+      totalCost: 0,
+      totalSessions: 0,
     };
   }
 
@@ -180,12 +210,20 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     // Save snapshot for current session before switching
     if (watcher?.getPosition && sessionPath) {
       let sourceSize = 0;
-      try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+      try {
+        sourceSize = fs.statSync(sessionPath).size;
+      } catch {
+        /* ignore */
+      }
       state.persistSnapshot(watcher.getPosition(), sourceSize);
     }
 
     // Stop current watcher
-    try { watcher?.stop(); } catch { /* ignore */ }
+    try {
+      watcher?.stop();
+    } catch {
+      /* ignore */
+    }
 
     // TODO: Plan persistence disabled — plan file content capture not working yet.
     // persistPlan(state, workspacePath).catch(() => {});
@@ -217,13 +255,19 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
             if (now - lastSnapshotTime > SNAPSHOT_INTERVAL_MS && watcher?.getPosition) {
               lastSnapshotTime = now;
               let ss = 0;
-              try { if (sessionPath) ss = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+              try {
+                if (sessionPath) ss = fs.statSync(sessionPath).size;
+              } catch {
+                /* ignore */
+              }
               state.persistSnapshot(watcher.getPosition(), ss);
             }
 
             scheduleRender();
           },
-          onError: (_err: Error) => { /* non-fatal */ },
+          onError: (_err: Error) => {
+            /* non-fatal */
+          },
         },
       });
       watcher = result.watcher;
@@ -233,7 +277,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       let switchRestored = false;
       if (watcher.seekTo) {
         let sourceSize = 0;
-        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* DB-backed */ }
+        try {
+          sourceSize = fs.statSync(sessionPath).size;
+        } catch {
+          /* DB-backed */
+        }
         const seekPos = state.tryRestoreFromSnapshot(newSessionId, activeProvider.id, sourceSize);
         if (seekPos !== null) {
           watcher.seekTo(seekPos);
@@ -246,11 +294,17 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       // Save snapshot after catching up
       if (!switchRestored && watcher.getPosition) {
         let sourceSize = 0;
-        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+        try {
+          sourceSize = fs.statSync(sessionPath).size;
+        } catch {
+          /* ignore */
+        }
         state.persistSnapshot(watcher.getPosition(), sourceSize);
         lastSnapshotTime = Date.now();
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     lastNotifiedSessionPath = newSessionPath;
     scheduleRender();
@@ -272,7 +326,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         }
         lastNotifiedSessionPath = latest;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, 10_000);
 
   // ── Render with Ink ──
@@ -290,13 +346,16 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     replayResult.watcher.start(true);
     replayResult.watcher.stop();
 
-    const aggregator = new EventAggregator({ providerId: activeProvider.id as 'claude-code' | 'opencode' | 'codex' });
+    const aggregator = new EventAggregator({
+      providerId: activeProvider.id as 'claude-code' | 'opencode' | 'codex',
+    });
     for (const e of events) aggregator.processFollowEvent(e);
 
     const metrics = aggregator.getMetrics();
-    const transcript = activeProvider.id === 'codex'
-      ? parseTranscriptFromEvents(activeProvider.createReader(sessionPath).readAll())
-      : parseTranscript(sessionPath);
+    const transcript =
+      activeProvider.id === 'codex'
+        ? parseTranscriptFromEvents(activeProvider.createReader(sessionPath).readAll())
+        : parseTranscript(sessionPath);
     const html = generateHtmlReport(metrics, transcript, {
       sessionFileName: path.basename(sessionPath),
       includeThinking: true,
@@ -313,13 +372,20 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       panels,
       metrics: {
         ...state.getMetrics(),
-        ...scopeDashboardProviderStatuses(activeProvider.id as 'claude-code' | 'opencode' | 'codex', state.getMetrics().providerStatus, state.getMetrics().openaiStatus),
+        ...scopeDashboardProviderStatuses(
+          activeProvider.id as 'claude-code' | 'opencode' | 'codex',
+          state.getMetrics().providerStatus,
+          state.getMetrics().openaiStatus,
+        ),
       },
       staticData,
       isPinned,
       pendingSessionPath,
       onSessionSwitch: switchToSession,
-      onTogglePin: () => { isPinned = !isPinned; scheduleRender(); },
+      onTogglePin: () => {
+        isPinned = !isPinned;
+        scheduleRender();
+      },
       onGenerateReport: generateReport,
     }),
   );
@@ -336,13 +402,20 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           panels,
           metrics: {
             ...metrics,
-            ...scopeDashboardProviderStatuses(activeProvider.id as 'claude-code' | 'opencode' | 'codex', metrics.providerStatus, metrics.openaiStatus),
+            ...scopeDashboardProviderStatuses(
+              activeProvider.id as 'claude-code' | 'opencode' | 'codex',
+              metrics.providerStatus,
+              metrics.openaiStatus,
+            ),
           },
           staticData,
           isPinned,
           pendingSessionPath,
           onSessionSwitch: switchToSession,
-          onTogglePin: () => { isPinned = !isPinned; scheduleRender(); },
+          onTogglePin: () => {
+            isPinned = !isPinned;
+            scheduleRender();
+          },
           onGenerateReport: generateReport,
         }),
       );
@@ -372,11 +445,31 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     stopped = true;
     // TODO: Plan persistence disabled — plan file content capture not working yet.
     // persistPlan(state, workspacePath).catch(() => {});
-    try { clearInterval(sessionPollInterval); } catch { /* ignore */ }
-    try { quotaService.stop(); } catch { /* ignore */ }
-    try { providerStatusService.stop(); } catch { /* ignore */ }
-    try { watcher?.stop(); } catch { /* ignore */ }
-    try { activeProvider.dispose(); } catch { /* ignore */ }
+    try {
+      clearInterval(sessionPollInterval);
+    } catch {
+      /* ignore */
+    }
+    try {
+      quotaService.stop();
+    } catch {
+      /* ignore */
+    }
+    try {
+      providerStatusService.stop();
+    } catch {
+      /* ignore */
+    }
+    try {
+      watcher?.stop();
+    } catch {
+      /* ignore */
+    }
+    try {
+      activeProvider.dispose();
+    } catch {
+      /* ignore */
+    }
     for (const panel of panels) {
       panel.dispose?.();
     }
@@ -421,7 +514,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           if (now - lastSnapshotTime > SNAPSHOT_INTERVAL_MS && watcher?.getPosition) {
             lastSnapshotTime = now;
             let sourceSize = 0;
-            try { if (sessionPath) sourceSize = fs.statSync(sessionPath).size; } catch { /* DB-backed */ }
+            try {
+              if (sessionPath) sourceSize = fs.statSync(sessionPath).size;
+            } catch {
+              /* DB-backed */
+            }
             state.persistSnapshot(watcher.getPosition(), sourceSize);
           }
 
@@ -438,7 +535,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     // Try snapshot restore before starting the watcher
     if (sessionId && replay && watcher.seekTo) {
       let sourceSize = 0;
-      try { sourceSize = fs.statSync(sessionPath).size; } catch { /* DB-backed */ }
+      try {
+        sourceSize = fs.statSync(sessionPath).size;
+      } catch {
+        /* DB-backed */
+      }
       const seekPosition = state.tryRestoreFromSnapshot(sessionId, activeProvider.id, sourceSize);
       if (seekPosition !== null) {
         watcher.seekTo(seekPosition);
@@ -468,7 +569,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       // Save updated snapshot after catching up
       if (watcher.getPosition && sessionPath) {
         let sourceSize = 0;
-        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+        try {
+          sourceSize = fs.statSync(sessionPath).size;
+        } catch {
+          /* ignore */
+        }
         state.persistSnapshot(watcher.getPosition(), sourceSize);
         lastSnapshotTime = Date.now();
       }
@@ -477,7 +582,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       // Save initial snapshot after full replay
       if (replay && watcher.getPosition && sessionPath) {
         let sourceSize = 0;
-        try { sourceSize = fs.statSync(sessionPath).size; } catch { /* ignore */ }
+        try {
+          sourceSize = fs.statSync(sessionPath).size;
+        } catch {
+          /* ignore */
+        }
         state.persistSnapshot(watcher.getPosition(), sourceSize);
         lastSnapshotTime = Date.now();
       }

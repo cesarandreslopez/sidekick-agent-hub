@@ -12,13 +12,13 @@ Get AI-powered explanations for selected code at your preferred complexity level
 
 ## Complexity Levels
 
-| Level | Best For |
-|-------|----------|
-| **ELI5** | Complete beginners, simple analogies |
-| **Curious Amateur** | Learners, defines technical terms |
-| **Imposter Syndrome** | Filling knowledge gaps (default) |
-| **Senior** | Experienced devs, key points only |
-| **PhD Mode** | Expert-level analysis |
+| Level                 | Best For                             |
+| --------------------- | ------------------------------------ |
+| **ELI5**              | Complete beginners, simple analogies |
+| **Curious Amateur**   | Learners, defines technical terms    |
+| **Imposter Syndrome** | Filling knowledge gaps (default)     |
+| **Senior**            | Experienced devs, key points only    |
+| **PhD Mode**          | Expert-level analysis                |
 
 ## Features
 
@@ -39,7 +39,7 @@ Get AI-powered explanations for selected code at your preferred complexity level
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sidekick.explanationModel` | `auto` | Model tier — resolves to `balanced` |
-| `sidekick.explanationComplexity` | `imposter-syndrome` | Default complexity level |
+| Setting                          | Default             | Description                         |
+| -------------------------------- | ------------------- | ----------------------------------- |
+| `sidekick.explanationModel`      | `auto`              | Model tier — resolves to `balanced` |
+| `sidekick.explanationComplexity` | `imposter-syndrome` | Default complexity level            |

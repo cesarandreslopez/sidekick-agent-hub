@@ -36,7 +36,10 @@ export class CrossSessionSearch implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
   constructor(
-    private readonly _sessionMonitor: { getSessionPath(): string | null; getProvider(): SessionProvider }
+    private readonly _sessionMonitor: {
+      getSessionPath(): string | null;
+      getProvider(): SessionProvider;
+    },
   ) {}
 
   /**
@@ -51,7 +54,7 @@ export class CrossSessionSearch implements vscode.Disposable {
 
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
-    quickPick.onDidChangeValue(query => {
+    quickPick.onDidChangeValue((query) => {
       if (searchTimer) clearTimeout(searchTimer);
       if (query.length < 3) {
         quickPick.items = [];
@@ -60,7 +63,7 @@ export class CrossSessionSearch implements vscode.Disposable {
       quickPick.busy = true;
       searchTimer = setTimeout(async () => {
         const results = await this.performSearch(query);
-        quickPick.items = results.map(r => new SearchResultItem(r));
+        quickPick.items = results.map((r) => new SearchResultItem(r));
         quickPick.busy = false;
       }, 300);
     });
@@ -105,7 +108,8 @@ export class CrossSessionSearch implements vscode.Disposable {
         }
 
         // Find session files in this project directory
-        const sessionFiles = provider.findSessionsInDirectory(projectPath)
+        const sessionFiles = provider
+          .findSessionsInDirectory(projectPath)
           .slice(0, MAX_FILES_PER_PROJECT);
 
         for (const filePath of sessionFiles) {
@@ -124,7 +128,7 @@ export class CrossSessionSearch implements vscode.Disposable {
               projectPath: displayPath,
               snippet: hit.line,
               eventType: hit.eventType,
-              timestamp: hit.timestamp
+              timestamp: hit.timestamp,
             });
           }
         }
@@ -162,9 +166,14 @@ class SearchResultItem implements vscode.QuickPickItem {
 
   constructor(public readonly result: SearchResult) {
     // Show event type icon + snippet
-    const icon = result.eventType === 'user' ? '$(person)' :
-      result.eventType === 'assistant' ? '$(hubot)' :
-      result.eventType === 'tool_use' ? '$(tools)' : '$(file)';
+    const icon =
+      result.eventType === 'user'
+        ? '$(person)'
+        : result.eventType === 'assistant'
+          ? '$(hubot)'
+          : result.eventType === 'tool_use'
+            ? '$(tools)'
+            : '$(file)';
 
     this.label = `${icon} ${result.snippet}`;
 

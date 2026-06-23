@@ -204,11 +204,13 @@ function initContextGauge(): void {
   contextChart = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      datasets: [{
-        data: [0, 100],
-        backgroundColor: [getGaugeColors().green, getGaugeColors().background],
-        borderWidth: 0
-      }]
+      datasets: [
+        {
+          data: [0, 100],
+          backgroundColor: [getGaugeColors().green, getGaugeColors().background],
+          borderWidth: 0,
+        },
+      ],
     },
     options: {
       responsive: true,
@@ -218,9 +220,9 @@ function initContextGauge(): void {
       cutout: '70%',
       plugins: {
         legend: { display: false },
-        tooltip: { enabled: false }
-      }
-    }
+        tooltip: { enabled: false },
+      },
+    },
   });
 }
 
@@ -239,7 +241,7 @@ function updateContextGauge(percent: number): void {
     contextChart.data.datasets[0].data = [clampedPercent, 100 - clampedPercent];
     contextChart.data.datasets[0].backgroundColor = [
       getGaugeColor(clampedPercent),
-      getGaugeColors().background
+      getGaugeColors().background,
     ];
     contextChart.update('none');
   }
@@ -261,10 +263,22 @@ function updateTokenCards(state: DashboardState): void {
   const cacheWriteEl = document.querySelector('#cache-write-tokens .value');
   const cacheReadEl = document.querySelector('#cache-read-tokens .value');
 
-  if (inputEl) { inputEl.textContent = formatTokenCount(state.totalInputTokens); pulseValue(inputEl); }
-  if (outputEl) { outputEl.textContent = formatTokenCount(state.totalOutputTokens); pulseValue(outputEl); }
-  if (cacheWriteEl) { cacheWriteEl.textContent = formatTokenCount(state.totalCacheWriteTokens); pulseValue(cacheWriteEl); }
-  if (cacheReadEl) { cacheReadEl.textContent = formatTokenCount(state.totalCacheReadTokens); pulseValue(cacheReadEl); }
+  if (inputEl) {
+    inputEl.textContent = formatTokenCount(state.totalInputTokens);
+    pulseValue(inputEl);
+  }
+  if (outputEl) {
+    outputEl.textContent = formatTokenCount(state.totalOutputTokens);
+    pulseValue(outputEl);
+  }
+  if (cacheWriteEl) {
+    cacheWriteEl.textContent = formatTokenCount(state.totalCacheWriteTokens);
+    pulseValue(cacheWriteEl);
+  }
+  if (cacheReadEl) {
+    cacheReadEl.textContent = formatTokenCount(state.totalCacheReadTokens);
+    pulseValue(cacheReadEl);
+  }
 }
 
 /**
@@ -366,13 +380,14 @@ function updateModelBreakdown(state: DashboardState): void {
   // Sort by tokens descending
   const sorted = [...state.modelBreakdown].sort((a, b) => b.tokens - a.tokens);
 
-  sorted.forEach(model => {
+  sorted.forEach((model) => {
     const row = document.createElement('tr');
     // priced===false means pricing was unknown; cost is 0 but we render "—"
     // with a tooltip so users don't mistake it for "free".
-    const costCell = model.priced === false
-      ? '<td class="model-cost" title="No pricing available for this model">—</td>'
-      : `<td class="model-cost">${formatCost(model.cost)}</td>`;
+    const costCell =
+      model.priced === false
+        ? '<td class="model-cost" title="No pricing available for this model">—</td>'
+        : `<td class="model-cost">${formatCost(model.cost)}</td>`;
     row.innerHTML = `
       <td class="model-name">${getShortModelName(model.model)}</td>
       <td class="model-calls">${model.calls}</td>
@@ -524,7 +539,11 @@ function updateDisplay(state: DashboardState): void {
  */
 function escapeHtml(text: string): string {
   if (!text) return '';
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /**
@@ -563,7 +582,10 @@ function showToast(message: string, durationMs = 2500): void {
   dismiss.textContent = '\u00D7';
   dismiss.addEventListener('click', () => {
     toast!.classList.remove('sk-toast--visible');
-    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
   });
   toast.replaceChildren(span, dismiss);
 
@@ -583,7 +605,7 @@ function copySuggestion(index: number): void {
   if (index >= 0 && index < currentSuggestions.length) {
     vscode.postMessage({
       type: 'copySuggestion',
-      text: currentSuggestions[index].suggestion
+      text: currentSuggestions[index].suggestion,
     });
     showToast('Copied to clipboard');
   }
@@ -648,11 +670,14 @@ function renderSuggestions(suggestions: ClaudeMdSuggestion[]): void {
   if (!content) return;
 
   if (suggestions.length === 0) {
-    content.innerHTML = '<div class="suggestions-empty">No suggestions generated. Try using Claude Code more before analyzing.</div>';
+    content.innerHTML =
+      '<div class="suggestions-empty">No suggestions generated. Try using Claude Code more before analyzing.</div>';
     return;
   }
 
-  const html = suggestions.map((s, i) => `
+  const html = suggestions
+    .map(
+      (s, i) => `
     <div class="suggestion-card">
       <div class="suggestion-header">${i + 1}. ${escapeHtml(s.title)}</div>
       <div class="suggestion-observed">
@@ -666,9 +691,13 @@ function renderSuggestions(suggestions: ClaudeMdSuggestion[]): void {
         <button class="copy-btn" onclick="copySuggestion(${i})" aria-label="Copy suggestion to clipboard">Copy</button>
       </div>
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 
-  content.innerHTML = html + `
+  content.innerHTML =
+    html +
+    `
     <div class="suggestions-footer">
       <button class="open-claude-md-btn" onclick="openInstructionFile()">Open Instruction File</button>
     </div>
@@ -689,9 +718,12 @@ function updateContextHealthDisplay(score: number, compactionCount: number): voi
   const el = document.getElementById('context-health');
   if (!el) return;
 
-  const color = score >= 70 ? 'var(--vscode-charts-green, #4ec9b0)'
-    : score >= 40 ? 'var(--vscode-charts-yellow, #cca700)'
-    : 'var(--vscode-charts-red, #f14c4c)';
+  const color =
+    score >= 70
+      ? 'var(--vscode-charts-green, #4ec9b0)'
+      : score >= 40
+        ? 'var(--vscode-charts-yellow, #cca700)'
+        : 'var(--vscode-charts-red, #f14c4c)';
 
   el.innerHTML = `
     <span class="sk-context-health-score" style="color: ${color};">${score}%</span>
@@ -703,7 +735,10 @@ function updateContextHealthDisplay(score: number, compactionCount: number): voi
 /**
  * Updates truncation count badge and per-tool breakdown.
  */
-function updateTruncationDisplay(count: number, byTool: Array<{ tool: string; count: number }>): void {
+function updateTruncationDisplay(
+  count: number,
+  byTool: Array<{ tool: string; count: number }>,
+): void {
   const el = document.getElementById('truncation-info');
   if (!el) return;
 
@@ -712,7 +747,7 @@ function updateTruncationDisplay(count: number, byTool: Array<{ tool: string; co
     return;
   }
 
-  const breakdown = byTool.map(t => `${escapeHtml(t.tool)}: ${t.count}`).join(', ');
+  const breakdown = byTool.map((t) => `${escapeHtml(t.tool)}: ${t.count}`).join(', ');
   el.innerHTML = `
     <span class="sk-truncation-warning">⚠ ${count} truncated</span>
     ${breakdown ? `<span class="sk-context-health-note"> (${breakdown})</span>` : ''}
@@ -800,10 +835,7 @@ function quotaHistoryBucket(utilization: number): number {
   return 4;
 }
 
-function renderQuotaHistoryGrid(
-  cells: QuotaHistoryDailyCell[],
-  weeks: number,
-): SVGSVGElement {
+function renderQuotaHistoryGrid(cells: QuotaHistoryDailyCell[], weeks: number): SVGSVGElement {
   const cols = weeks;
   const rows = 7;
   const width = cols * (QUOTA_HISTORY_CELL_SIZE + QUOTA_HISTORY_CELL_GAP) - QUOTA_HISTORY_CELL_GAP;

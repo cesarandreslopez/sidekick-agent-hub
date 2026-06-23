@@ -60,10 +60,7 @@ export class ProviderStatusService {
   }
 
   private async _fetchAll(): Promise<void> {
-    const [claude, openai] = await Promise.all([
-      fetchProviderStatus(),
-      fetchOpenAIStatus(),
-    ]);
+    const [claude, openai] = await Promise.all([fetchProviderStatus(), fetchOpenAIStatus()]);
     this._cached = claude;
     this._callback?.(claude);
     this._cachedOpenAI = openai;

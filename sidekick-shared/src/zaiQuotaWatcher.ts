@@ -42,7 +42,11 @@ const SEVEN_DAY_MS = 7 * 86_400_000;
 
 type TierResolver = (configured: ZaiTier | 'auto', accumulated: ZaiAccumulatedUsage) => ZaiTier;
 type SnapshotReader = (providerId: ZaiSnapshotProvider, accountId: string) => QuotaState | null;
-type SnapshotWriter = (providerId: ZaiSnapshotProvider, accountId: string, quota: QuotaState) => void;
+type SnapshotWriter = (
+  providerId: ZaiSnapshotProvider,
+  accountId: string,
+  quota: QuotaState,
+) => void;
 type HistoryAppender = (sample: QuotaHistorySample) => void | Promise<void>;
 
 export interface ZaiQuotaWatcherOptions {
@@ -226,14 +230,15 @@ export class ZaiQuotaWatcher implements Disposable {
     const accumulated = accumulateZaiUsage(this.turns, nowMs);
     const tier = this.resolveTier(this.tier, accumulated);
 
-    const state: QuotaState = accumulated.fiveHourTurns > 0 || accumulated.weeklyTurns > 0
-      ? inferZaiQuotaState(accumulated, tier, {
-        capturedAt: new Date(nowMs).toISOString(),
-        stale: false,
-        authoritativeFiveHourResetAt: this.authoritativeFiveHourResetAt,
-        authoritativeWeeklyResetAt: this.authoritativeWeeklyResetAt,
-      })
-      : makeUnavailableZaiQuotaState(undefined, tier, new Date(nowMs).toISOString());
+    const state: QuotaState =
+      accumulated.fiveHourTurns > 0 || accumulated.weeklyTurns > 0
+        ? inferZaiQuotaState(accumulated, tier, {
+            capturedAt: new Date(nowMs).toISOString(),
+            stale: false,
+            authoritativeFiveHourResetAt: this.authoritativeFiveHourResetAt,
+            authoritativeWeeklyResetAt: this.authoritativeWeeklyResetAt,
+          })
+        : makeUnavailableZaiQuotaState(undefined, tier, new Date(nowMs).toISOString());
 
     // If we recently saw an error, override availability so the UI shows it.
     if (this.lastError) {
@@ -277,14 +282,16 @@ export class ZaiQuotaWatcher implements Disposable {
   private emitCachedOrUnavailable(): void {
     const cached = this.readSnapshot('zai', this.accountId);
     if (cached) {
-      this.emitState(enrichZaiState({
-        ...cached,
-        providerId: 'zai',
-        source: 'cache',
-        stale: true,
-        fiveHourLabel: cached.fiveHourLabel ?? '5-Hour',
-        sevenDayLabel: cached.sevenDayLabel ?? 'Weekly',
-      }));
+      this.emitState(
+        enrichZaiState({
+          ...cached,
+          providerId: 'zai',
+          source: 'cache',
+          stale: true,
+          fiveHourLabel: cached.fiveHourLabel ?? '5-Hour',
+          sevenDayLabel: cached.sevenDayLabel ?? 'Weekly',
+        }),
+      );
       return;
     }
     // Initial state with no observations yet.
@@ -309,7 +316,7 @@ export class ZaiQuotaWatcher implements Disposable {
   private pruneOldTurns(): void {
     const cutoff = this.now() - SEVEN_DAY_MS;
     if (this.turns.length === 0) return;
-    const next = this.turns.filter(turn => turn.timestampMs >= cutoff);
+    const next = this.turns.filter((turn) => turn.timestampMs >= cutoff);
     if (next.length !== this.turns.length) {
       this.turns = next;
     }

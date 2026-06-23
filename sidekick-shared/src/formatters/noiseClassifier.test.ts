@@ -11,7 +11,9 @@ import {
 import type { SessionEvent } from '../types/sessionEvent';
 import type { FollowEvent } from '../watchers/types';
 
-function makeEvent(overrides: Partial<SessionEvent> & { type: SessionEvent['type'] }): SessionEvent {
+function makeEvent(
+  overrides: Partial<SessionEvent> & { type: SessionEvent['type'] },
+): SessionEvent {
   return {
     message: { role: 'assistant', content: 'hello' },
     timestamp: new Date().toISOString(),
@@ -39,80 +41,123 @@ describe('isHardNoise', () => {
   });
 
   it('marks synthetic model entries as hard noise', () => {
-    expect(isHardNoise(makeEvent({
-      type: 'assistant',
-      message: { role: 'assistant', model: '<synthetic>test' },
-    }))).toBe(true);
+    expect(
+      isHardNoise(
+        makeEvent({
+          type: 'assistant',
+          message: { role: 'assistant', model: '<synthetic>test' },
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('does not mark normal user events as hard noise', () => {
-    expect(isHardNoise(makeEvent({ type: 'user', message: { role: 'user', content: 'hi' } }))).toBe(false);
+    expect(isHardNoise(makeEvent({ type: 'user', message: { role: 'user', content: 'hi' } }))).toBe(
+      false,
+    );
   });
 });
 
 describe('isHardNoiseFollowEvent', () => {
   it('marks token count system events as hard noise', () => {
-    expect(isHardNoiseFollowEvent(makeFollowEvent({
-      type: 'system',
-      summary: 'Tokens: 500 in / 100 out',
-    }))).toBe(true);
+    expect(
+      isHardNoiseFollowEvent(
+        makeFollowEvent({
+          type: 'system',
+          summary: 'Tokens: 500 in / 100 out',
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('marks model system events as hard noise', () => {
-    expect(isHardNoiseFollowEvent(makeFollowEvent({
-      type: 'system',
-      summary: 'Model: claude-sonnet-4-20250514',
-    }))).toBe(true);
+    expect(
+      isHardNoiseFollowEvent(
+        makeFollowEvent({
+          type: 'system',
+          summary: 'Model: claude-sonnet-4-20250514',
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('keeps session ended system events', () => {
-    expect(isHardNoiseFollowEvent(makeFollowEvent({
-      type: 'system',
-      summary: 'Session ended',
-    }))).toBe(false);
+    expect(
+      isHardNoiseFollowEvent(
+        makeFollowEvent({
+          type: 'system',
+          summary: 'Session ended',
+        }),
+      ),
+    ).toBe(false);
   });
 
   it('keeps non-system events', () => {
-    expect(isHardNoiseFollowEvent(makeFollowEvent({
-      type: 'assistant',
-      summary: 'hello',
-    }))).toBe(false);
+    expect(
+      isHardNoiseFollowEvent(
+        makeFollowEvent({
+          type: 'assistant',
+          summary: 'hello',
+        }),
+      ),
+    ).toBe(false);
   });
 });
 
 describe('getSoftNoiseReason', () => {
   it('detects system-reminder tags', () => {
-    expect(getSoftNoiseReason(makeEvent({
-      type: 'user',
-      message: { role: 'user', content: 'hello <system-reminder>secret</system-reminder> world' },
-    }))).toBe('system-reminder');
+    expect(
+      getSoftNoiseReason(
+        makeEvent({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: 'hello <system-reminder>secret</system-reminder> world',
+          },
+        }),
+      ),
+    ).toBe('system-reminder');
   });
 
   it('detects empty tool outputs', () => {
-    expect(getSoftNoiseReason(makeEvent({
-      type: 'tool_result',
-      result: { tool_use_id: 'abc', output: '' },
-    }))).toBe('empty-tool-output');
+    expect(
+      getSoftNoiseReason(
+        makeEvent({
+          type: 'tool_result',
+          result: { tool_use_id: 'abc', output: '' },
+        }),
+      ),
+    ).toBe('empty-tool-output');
   });
 
   it('detects interruption markers', () => {
-    expect(getSoftNoiseReason(makeEvent({
-      type: 'assistant',
-      message: { role: 'assistant', content: 'Operation cancelled by user' },
-    }))).toBe('interruption');
+    expect(
+      getSoftNoiseReason(
+        makeEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'Operation cancelled by user' },
+        }),
+      ),
+    ).toBe('interruption');
   });
 
   it('returns null for normal events', () => {
-    expect(getSoftNoiseReason(makeEvent({
-      type: 'assistant',
-      message: { role: 'assistant', content: 'Here is the result' },
-    }))).toBeNull();
+    expect(
+      getSoftNoiseReason(
+        makeEvent({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'Here is the result' },
+        }),
+      ),
+    ).toBeNull();
   });
 });
 
 describe('classifyMessage', () => {
   it('classifies user messages', () => {
-    expect(classifyMessage(makeEvent({ type: 'user', message: { role: 'user', content: 'hi' } }))).toBe('user');
+    expect(
+      classifyMessage(makeEvent({ type: 'user', message: { role: 'user', content: 'hi' } })),
+    ).toBe('user');
   });
 
   it('classifies assistant messages', () => {
@@ -132,10 +177,17 @@ describe('classifyMessage', () => {
   });
 
   it('classifies teammate messages', () => {
-    expect(classifyMessage(makeEvent({
-      type: 'user',
-      message: { role: 'user', content: '<teammate-message>Agent says hello</teammate-message>' },
-    }))).toBe('teammate');
+    expect(
+      classifyMessage(
+        makeEvent({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: '<teammate-message>Agent says hello</teammate-message>',
+          },
+        }),
+      ),
+    ).toBe('teammate');
   });
 });
 
@@ -155,8 +207,14 @@ describe('classifyFollowEvent', () => {
 
 describe('shouldMergeWithPrevious', () => {
   it('merges consecutive assistant text messages', () => {
-    const prev = makeEvent({ type: 'assistant', message: { role: 'assistant', content: 'part 1' } });
-    const curr = makeEvent({ type: 'assistant', message: { role: 'assistant', content: 'part 2' } });
+    const prev = makeEvent({
+      type: 'assistant',
+      message: { role: 'assistant', content: 'part 1' },
+    });
+    const curr = makeEvent({
+      type: 'assistant',
+      message: { role: 'assistant', content: 'part 2' },
+    });
     expect(shouldMergeWithPrevious(curr, prev)).toBe(true);
   });
 
@@ -174,7 +232,10 @@ describe('shouldMergeWithPrevious', () => {
   it('does not merge when tool_use blocks present', () => {
     const prev = makeEvent({
       type: 'assistant',
-      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Read', input: {} }] as unknown },
+      message: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', name: 'Read', input: {} }] as unknown,
+      },
     });
     const curr = makeEvent({ type: 'assistant', message: { role: 'assistant', content: 'text' } });
     expect(shouldMergeWithPrevious(curr, prev)).toBe(false);

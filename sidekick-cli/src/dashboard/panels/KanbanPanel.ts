@@ -33,9 +33,9 @@ export class KanbanPanel implements SidePanel {
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
     const tasks = mergeTasks(metrics.tasks, staticData.tasks);
 
-    const pending = tasks.filter(t => t.status === 'pending');
-    const active = tasks.filter(t => t.status === 'in_progress');
-    const completed = tasks.filter(t => t.status === 'completed');
+    const pending = tasks.filter((t) => t.status === 'pending');
+    const active = tasks.filter((t) => t.status === 'in_progress');
+    const completed = tasks.filter((t) => t.status === 'completed');
 
     return [
       {
@@ -65,7 +65,7 @@ export class KanbanPanel implements SidePanel {
 
   getSearchableText(item: PanelItem): string {
     const col = item.data as ColumnData;
-    return col.tasks.map(t => t.subject).join(' ');
+    return col.tasks.map((t) => t.subject).join(' ');
   }
 
   // ── Detail renderer ──
@@ -74,7 +74,10 @@ export class KanbanPanel implements SidePanel {
     const col = item.data as ColumnData;
     const lines: string[] = [];
 
-    const statusLabel = col.status === 'in_progress' ? 'Active' : col.status.charAt(0).toUpperCase() + col.status.slice(1);
+    const statusLabel =
+      col.status === 'in_progress'
+        ? 'Active'
+        : col.status.charAt(0).toUpperCase() + col.status.slice(1);
     lines.push(`{bold}${statusLabel}{/bold} (${col.tasks.length} tasks)`);
     lines.push('');
 
@@ -91,7 +94,8 @@ export class KanbanPanel implements SidePanel {
       if (t.subagentType) details.push(`{magenta-fg}\u229B ${t.subagentType}{/magenta-fg}`);
       if (t.isGoalGate) details.push('{red-fg}\u2691 goal gate{/red-fg}');
       if (t.toolCallCount > 0) details.push(`${t.toolCallCount} tool calls`);
-      if (t.activeForm && t.status === 'in_progress') details.push(`{green-fg}${t.activeForm}{/green-fg}`);
+      if (t.activeForm && t.status === 'in_progress')
+        details.push(`{green-fg}${t.activeForm}{/green-fg}`);
 
       if (details.length > 0) {
         lines.push(`    ${details.join('  ')}`);
@@ -99,14 +103,18 @@ export class KanbanPanel implements SidePanel {
 
       // Dependencies
       if (t.blockedBy.length > 0) {
-        const blockerSubjects = t.blockedBy.map(id => {
-          const blocker = metrics.tasks.find(o => o.taskId === id);
+        const blockerSubjects = t.blockedBy.map((id) => {
+          const blocker = metrics.tasks.find((o) => o.taskId === id);
           return blocker ? `#${id} ${blocker.subject}` : `#${id}`;
         });
-        lines.push(`    {yellow-fg}\u25CB blocked by: ${wordWrap(blockerSubjects.join(', '), detailWidth() - 20)}{/yellow-fg}`);
+        lines.push(
+          `    {yellow-fg}\u25CB blocked by: ${wordWrap(blockerSubjects.join(', '), detailWidth() - 20)}{/yellow-fg}`,
+        );
       }
       if (t.blocks.length > 0) {
-        lines.push(`    {cyan-fg}\u25B6 blocks: ${t.blocks.map(id => '#' + id).join(', ')}{/cyan-fg}`);
+        lines.push(
+          `    {cyan-fg}\u25B6 blocks: ${t.blocks.map((id) => '#' + id).join(', ')}{/cyan-fg}`,
+        );
       }
 
       lines.push('');

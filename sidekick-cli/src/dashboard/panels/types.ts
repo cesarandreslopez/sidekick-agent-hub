@@ -9,15 +9,15 @@ import type { StaticData } from '../StaticDataLoader';
 /** An item displayed in the side panel list. */
 export interface PanelItem {
   id: string;
-  label: string;        // blessed-tagged string for display
-  sortKey: number;       // lower = higher in list
-  data: unknown;         // underlying domain object
+  label: string; // blessed-tagged string for display
+  sortKey: number; // lower = higher in list
+  data: unknown; // underlying domain object
 }
 
 /** An action available for the selected item (shown in context menu and as keybinding). */
 export interface PanelAction {
-  key: string;           // single char shortcut
-  label: string;         // display label (e.g. "Mark completed")
+  key: string; // single char shortcut
+  label: string; // display label (e.g. "Mark completed")
   /** Return a string to show it as a toast notification. */
   handler: (item: PanelItem) => string | void;
   /** If provided, action only appears when this returns true. */

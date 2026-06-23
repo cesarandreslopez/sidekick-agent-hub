@@ -25,15 +25,45 @@ import type {
   ReadSessionContextSnapshotOptions,
   SessionContextSnapshot,
 } from '../context/sessionContext';
-import { convertOpenCodeMessage, parseDbMessageData, parseDbPartData, normalizeToolName, normalizeToolInput } from '../parsers/openCodeParser';
+import {
+  convertOpenCodeMessage,
+  parseDbMessageData,
+  parseDbPartData,
+  normalizeToolName,
+  normalizeToolInput,
+} from '../parsers/openCodeParser';
 import { OpenCodeDatabase } from './openCodeDatabase';
 import type { DbPart } from './openCodeDatabase';
-import { accumulateZaiUsage, inferZaiQuotaState, parseZaiQuotaError, ZAI_PROVIDER_IDS } from '../zaiQuota';
+import {
+  accumulateZaiUsage,
+  inferZaiQuotaState,
+  parseZaiQuotaError,
+  ZAI_PROVIDER_IDS,
+} from '../zaiQuota';
 import type { ZaiAssistantTurn, ZaiTier } from '../zaiQuota';
 import type { QuotaState } from '../quota';
-import type { SessionProviderBase, SessionReader, ProjectFolderInfo, SearchHit, SessionFileStats, ProviderId, ProviderRuntimeStatus } from './types';
-import type { SessionEvent, TokenUsage, SubagentStats, ContextAttribution, ToolCall } from '../types/sessionEvent';
-import type { OpenCodeSession, OpenCodeMessage, OpenCodePart, OpenCodeProject } from '../types/opencode';
+import type {
+  SessionProviderBase,
+  SessionReader,
+  ProjectFolderInfo,
+  SearchHit,
+  SessionFileStats,
+  ProviderId,
+  ProviderRuntimeStatus,
+} from './types';
+import type {
+  SessionEvent,
+  TokenUsage,
+  SubagentStats,
+  ContextAttribution,
+  ToolCall,
+} from '../types/sessionEvent';
+import type {
+  OpenCodeSession,
+  OpenCodeMessage,
+  OpenCodePart,
+  OpenCodeProject,
+} from '../types/opencode';
 import { getModelContextWindowSize } from '../modelContext';
 
 // ---------------------------------------------------------------------------
@@ -57,10 +87,14 @@ export function getOpenCodeDataDir(): string {
   if (process.platform === 'darwin') {
     candidates.push(path.join(os.homedir(), 'Library', 'Application Support', 'opencode'));
   } else if (process.platform === 'win32') {
-    candidates.push(path.join(
-      process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'),
-      'opencode',
-    ));
+    candidates.push(
+      path.join(
+        process.env.LOCALAPPDATA ||
+          process.env.APPDATA ||
+          path.join(os.homedir(), 'AppData', 'Local'),
+        'opencode',
+      ),
+    );
   }
   for (const candidate of candidates) {
     try {
@@ -76,7 +110,9 @@ export function getOpenCodeDataDir(): string {
   }
   if (process.platform === 'win32') {
     return path.join(
-      process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local'),
+      process.env.LOCALAPPDATA ||
+        process.env.APPDATA ||
+        path.join(os.homedir(), 'AppData', 'Local'),
       'opencode',
     );
   }
@@ -115,7 +151,12 @@ function detectAgentTypeFromDescription(desc: string): string | undefined {
   if (lower.includes('plan') || lower.includes('architect') || lower.includes('design')) {
     return 'Plan';
   }
-  if (lower.includes('task') || lower.includes('execute') || lower.includes('implement') || lower.includes('build')) {
+  if (
+    lower.includes('task') ||
+    lower.includes('execute') ||
+    lower.includes('implement') ||
+    lower.includes('build')
+  ) {
     return 'Task';
   }
   return undefined;
@@ -125,7 +166,10 @@ function detectAgentTypeFromDescription(desc: string): string | undefined {
  * Normalizes a raw agent type. If the raw type is a model ID or generic name,
  * falls back to keyword detection from the description.
  */
-function normalizeAgentType(rawType: string | undefined, description: string | undefined): string | undefined {
+function normalizeAgentType(
+  rawType: string | undefined,
+  description: string | undefined,
+): string | undefined {
   if (!rawType) return rawType;
   if (!isGenericAgentType(rawType)) return rawType;
   // Raw type is a model ID or generic name -- try to detect from description
@@ -159,7 +203,9 @@ function extractProjectIdFromDbPath(sessionPath: string): string | null {
 }
 
 /** Extract role from a DB message row payload. */
-function extractRoleFromDbMessage(row: { data: string }): 'user' | 'assistant' | 'system' | 'unknown' {
+function extractRoleFromDbMessage(row: {
+  data: string;
+}): 'user' | 'assistant' | 'system' | 'unknown' {
   try {
     const data = JSON.parse(row.data) as { role?: unknown };
     if (data.role === 'user' || data.role === 'assistant' || data.role === 'system') {
@@ -175,9 +221,7 @@ function extractRoleFromDbMessage(row: { data: string }): 'user' | 'assistant' |
 function extractParentIdFromDbMessage(row: { data: string }): string | null {
   try {
     const data = JSON.parse(row.data) as { parentID?: unknown };
-    return typeof data.parentID === 'string' && data.parentID.length > 0
-      ? data.parentID
-      : null;
+    return typeof data.parentID === 'string' && data.parentID.length > 0 ? data.parentID : null;
   } catch {
     return null;
   }
@@ -217,12 +261,12 @@ function resolveProjectIdFromFiles(workspacePath: string): string | null {
     const projectDir = path.join(getStorageDir(), 'project');
     if (!fs.existsSync(projectDir)) return resolveProjectIdFromGit(workspacePath);
 
-    const files = fs.readdirSync(projectDir).filter(f => f.endsWith('.json'));
+    const files = fs.readdirSync(projectDir).filter((f) => f.endsWith('.json'));
     const matches: Array<{ id: string; path: string }> = [];
     for (const file of files) {
       try {
         const project: OpenCodeProject = JSON.parse(
-          fs.readFileSync(path.join(projectDir, file), 'utf-8')
+          fs.readFileSync(path.join(projectDir, file), 'utf-8'),
         );
         if (project.path) {
           const projectPath = normalizePath(project.path);
@@ -261,8 +305,10 @@ function resolveProjectIdFromGit(workspacePath: string): string | null {
       encoding: 'utf-8',
       timeout: 4000,
       killSignal: 'SIGKILL',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim().split('\n')[0];
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+      .trim()
+      .split('\n')[0];
 
     if (hash && /^[a-f0-9]+$/i.test(hash)) {
       return hash;
@@ -316,9 +362,7 @@ class OpenCodeFileReader implements SessionReader {
   private seenMessages = new Map<string, { partIds: Set<string>; mtimeMs: number }>();
   private readonly storageBase: string;
 
-  constructor(
-    private readonly sessionId: string
-  ) {
+  constructor(private readonly sessionId: string) {
     this.storageBase = getStorageDir();
   }
 
@@ -329,7 +373,7 @@ class OpenCodeFileReader implements SessionReader {
 
     let messageFiles: string[];
     try {
-      messageFiles = fs.readdirSync(messageDir).filter(f => f.endsWith('.json'));
+      messageFiles = fs.readdirSync(messageDir).filter((f) => f.endsWith('.json'));
     } catch {
       return [];
     }
@@ -355,16 +399,17 @@ class OpenCodeFileReader implements SessionReader {
 
       if (fs.existsSync(partDir)) {
         try {
-          parts = fs.readdirSync(partDir)
-            .filter(f => f.endsWith('.json'))
-            .map(f => readJsonSafe<OpenCodePart>(path.join(partDir, f)))
+          parts = fs
+            .readdirSync(partDir)
+            .filter((f) => f.endsWith('.json'))
+            .map((f) => readJsonSafe<OpenCodePart>(path.join(partDir, f)))
             .filter((p): p is OpenCodePart => p !== null);
         } catch {
           // Skip unreadable part directories
         }
       }
 
-      const partIds = new Set(parts.map(part => part.id));
+      const partIds = new Set(parts.map((part) => part.id));
       const previous = this.seenMessages.get(msgId);
       const isNewMessage = !previous;
       let hasNewParts = false;
@@ -391,8 +436,8 @@ class OpenCodeFileReader implements SessionReader {
     }
 
     // Sort by timestamp
-    return newEvents.sort((a, b) =>
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    return newEvents.sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
   }
 
@@ -442,7 +487,7 @@ class OpenCodeDbReader implements SessionReader {
 
   constructor(
     private readonly sessionId: string,
-    private readonly db: OpenCodeDatabase
+    private readonly db: OpenCodeDatabase,
   ) {}
 
   readNew(): SessionEvent[] {
@@ -488,23 +533,31 @@ class OpenCodeDbReader implements SessionReader {
 
     // Filter user messages that haven't been processed yet
     const userMessageIds = messages
-      .filter(m => extractRoleFromDbMessage(m) === 'user')
-      .map(m => m.id);
+      .filter((m) => extractRoleFromDbMessage(m) === 'user')
+      .map((m) => m.id);
     const processedUserMessageIds = new Set(
-      this.db.getProcessedUserMessageIds(this.sessionId, userMessageIds)
+      this.db.getProcessedUserMessageIds(this.sessionId, userMessageIds),
     );
 
     for (const msgRow of messages) {
       try {
-        if (extractRoleFromDbMessage(msgRow) === 'user' && !processedUserMessageIds.has(msgRow.id)) {
+        if (
+          extractRoleFromDbMessage(msgRow) === 'user' &&
+          !processedUserMessageIds.has(msgRow.id)
+        ) {
           continue;
         }
 
         const message = parseDbMessageData(msgRow);
-        const msgParts = (partsByMessage.get(msgRow.id) || []).map(row => {
-          try { return parseDbPartData(row); }
-          catch { return null; }
-        }).filter((p): p is OpenCodePart => p !== null);
+        const msgParts = (partsByMessage.get(msgRow.id) || [])
+          .map((row) => {
+            try {
+              return parseDbPartData(row);
+            } catch {
+              return null;
+            }
+          })
+          .filter((p): p is OpenCodePart => p !== null);
 
         events.push(...convertOpenCodeMessage(message, msgParts));
       } catch {
@@ -522,9 +575,7 @@ class OpenCodeDbReader implements SessionReader {
     }
     this.lastTimeUpdated = maxTimeUpdated;
 
-    return events.sort((a, b) =>
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
+    return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 
   /**
@@ -543,7 +594,7 @@ class OpenCodeDbReader implements SessionReader {
     }
 
     // Build set of affected message IDs from both message and part changes
-    const affectedMessageIds = new Set<string>(messages.map(m => m.id));
+    const affectedMessageIds = new Set<string>(messages.map((m) => m.id));
     for (const part of parts) {
       affectedMessageIds.add(part.message_id);
     }
@@ -558,15 +609,15 @@ class OpenCodeDbReader implements SessionReader {
     }
 
     // Fetch missing message rows for part-only updates
-    const messageMap = new Map(messages.map(m => [m.id, m]));
-    const missingMessageIds = [...affectedMessageIds].filter(id => !messageMap.has(id));
+    const messageMap = new Map(messages.map((m) => [m.id, m]));
+    const missingMessageIds = [...affectedMessageIds].filter((id) => !messageMap.has(id));
     if (missingMessageIds.length > 0) {
       const missingRows = this.db.getMessagesByIds(this.sessionId, missingMessageIds);
       for (const row of missingRows) {
         messageMap.set(row.id, row);
       }
 
-      const unresolved = missingMessageIds.filter(id => !messageMap.has(id));
+      const unresolved = missingMessageIds.filter((id) => !messageMap.has(id));
       if (unresolved.length > 0) {
         // Keep cursor unchanged so we can retry on next polling cycle.
         return [];
@@ -574,7 +625,7 @@ class OpenCodeDbReader implements SessionReader {
     }
 
     const targetMessages = [...messageMap.values()];
-    const targetMessageIds = targetMessages.map(m => m.id);
+    const targetMessageIds = targetMessages.map((m) => m.id);
 
     // Fetch complete part sets for all affected messages in one batched query
     const allParts = this.db.getPartsForMessages(this.sessionId, targetMessageIds);
@@ -602,23 +653,31 @@ class OpenCodeDbReader implements SessionReader {
     targetMessages.sort((a, b) => a.time_created - b.time_created);
 
     const userMessageIds = targetMessages
-      .filter(m => extractRoleFromDbMessage(m) === 'user')
-      .map(m => m.id);
+      .filter((m) => extractRoleFromDbMessage(m) === 'user')
+      .map((m) => m.id);
     const processedUserMessageIds = new Set(
-      this.db.getProcessedUserMessageIds(this.sessionId, userMessageIds)
+      this.db.getProcessedUserMessageIds(this.sessionId, userMessageIds),
     );
 
     for (const msgRow of targetMessages) {
       try {
-        if (extractRoleFromDbMessage(msgRow) === 'user' && !processedUserMessageIds.has(msgRow.id)) {
+        if (
+          extractRoleFromDbMessage(msgRow) === 'user' &&
+          !processedUserMessageIds.has(msgRow.id)
+        ) {
           continue;
         }
 
         const message = parseDbMessageData(msgRow);
-        const msgParts = (partsByMessage.get(msgRow.id) || []).map(row => {
-          try { return parseDbPartData(row); }
-          catch { return null; }
-        }).filter((p): p is OpenCodePart => p !== null);
+        const msgParts = (partsByMessage.get(msgRow.id) || [])
+          .map((row) => {
+            try {
+              return parseDbPartData(row);
+            } catch {
+              return null;
+            }
+          })
+          .filter((p): p is OpenCodePart => p !== null);
 
         events.push(...convertOpenCodeMessage(message, msgParts));
       } catch {
@@ -714,7 +773,8 @@ export class OpenCodeProvider implements SessionProviderBase {
     const db = this.ensureDb();
     if (!db) return false;
 
-    const projectId = extractProjectIdFromDbPath(dir + path.sep + 'dummy.json') || path.basename(dir);
+    const projectId =
+      extractProjectIdFromDbPath(dir + path.sep + 'dummy.json') || path.basename(dir);
     return projectId.length > 0 && db.hasProject(projectId);
   }
 
@@ -724,7 +784,7 @@ export class OpenCodeProvider implements SessionProviderBase {
 
     const sessions = db.getSessionsForProject(projectId);
     const dataDir = getOpenCodeDataDir();
-    return sessions.map(session => {
+    return sessions.map((session) => {
       const syntheticPath = makeDbSessionPath(dataDir, projectId, session.id);
       this.sessionMetaCache.set(syntheticPath, {
         title: session.title,
@@ -812,7 +872,7 @@ export class OpenCodeProvider implements SessionProviderBase {
     let bestMtime = 0;
 
     try {
-      const files = fs.readdirSync(sessionDir).filter(f => f.endsWith('.json'));
+      const files = fs.readdirSync(sessionDir).filter((f) => f.endsWith('.json'));
       for (const file of files) {
         const fullPath = path.join(sessionDir, file);
         try {
@@ -835,7 +895,7 @@ export class OpenCodeProvider implements SessionProviderBase {
 
       if (fs.existsSync(messageDir)) {
         try {
-          const messageFiles = fs.readdirSync(messageDir).filter(f => f.endsWith('.json'));
+          const messageFiles = fs.readdirSync(messageDir).filter((f) => f.endsWith('.json'));
           for (const mf of messageFiles) {
             try {
               const mstat = fs.statSync(path.join(messageDir, mf));
@@ -914,9 +974,10 @@ export class OpenCodeProvider implements SessionProviderBase {
     try {
       if (!fs.existsSync(dir)) return [];
 
-      return fs.readdirSync(dir)
-        .filter(f => f.endsWith('.json'))
-        .map(f => {
+      return fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith('.json'))
+        .map((f) => {
           const fullPath = path.join(dir, f);
           try {
             const stats = fs.statSync(fullPath);
@@ -925,11 +986,9 @@ export class OpenCodeProvider implements SessionProviderBase {
             return null;
           }
         })
-        .filter((f): f is { path: string; mtime: number; size: number } =>
-          f !== null && f.size > 0
-        )
+        .filter((f): f is { path: string; mtime: number; size: number } => f !== null && f.size > 0)
         .sort((a, b) => b.mtime - a.mtime)
-        .map(f => f.path);
+        .map((f) => f.path);
     } catch {
       return [];
     }
@@ -944,7 +1003,7 @@ export class OpenCodeProvider implements SessionProviderBase {
     if (db) {
       const projects = db.getAllProjects();
       const stats = db.getProjectSessionStats();
-      const statsMap = new Map(stats.map(s => [s.projectId, s]));
+      const statsMap = new Map(stats.map((s) => [s.projectId, s]));
 
       let currentProjectId: string | null = null;
       if (workspacePath) {
@@ -995,7 +1054,7 @@ export class OpenCodeProvider implements SessionProviderBase {
     try {
       if (!fs.existsSync(sessionBase)) return [];
 
-      const projectIds = fs.readdirSync(sessionBase).filter(name => {
+      const projectIds = fs.readdirSync(sessionBase).filter((name) => {
         try {
           return fs.statSync(path.join(sessionBase, name)).isDirectory();
         } catch {
@@ -1007,7 +1066,7 @@ export class OpenCodeProvider implements SessionProviderBase {
       const projectNames = new Map<string, string>();
       if (fs.existsSync(projectDir)) {
         try {
-          for (const file of fs.readdirSync(projectDir).filter(f => f.endsWith('.json'))) {
+          for (const file of fs.readdirSync(projectDir).filter((f) => f.endsWith('.json'))) {
             const proj = readJsonSafe<OpenCodeProject>(path.join(projectDir, file));
             if (proj) {
               projectNames.set(proj.id, proj.path || proj.name || proj.id);
@@ -1029,7 +1088,7 @@ export class OpenCodeProvider implements SessionProviderBase {
         let lastModified = new Date(0);
 
         try {
-          const sessions = fs.readdirSync(projSessionDir).filter(f => f.endsWith('.json'));
+          const sessions = fs.readdirSync(projSessionDir).filter((f) => f.endsWith('.json'));
           for (const session of sessions) {
             try {
               const fstats = fs.statSync(path.join(projSessionDir, session));
@@ -1052,7 +1111,7 @@ export class OpenCodeProvider implements SessionProviderBase {
           name: projectNames.get(projectId) || projectId,
           encodedName: projectId,
           sessionCount,
-          lastModified
+          lastModified,
         });
       }
 
@@ -1121,8 +1180,9 @@ export class OpenCodeProvider implements SessionProviderBase {
     if (!fs.existsSync(messageDir)) return null;
 
     try {
-      const files = fs.readdirSync(messageDir)
-        .filter(f => f.endsWith('.json'))
+      const files = fs
+        .readdirSync(messageDir)
+        .filter((f) => f.endsWith('.json'))
         .slice(0, 5);
 
       for (const file of files) {
@@ -1130,7 +1190,7 @@ export class OpenCodeProvider implements SessionProviderBase {
         if (msg?.role === 'user') {
           const partDir = path.join(getStorageDir(), 'part', msg.id);
           if (fs.existsSync(partDir)) {
-            const partFiles = fs.readdirSync(partDir).filter(f => f.endsWith('.json'));
+            const partFiles = fs.readdirSync(partDir).filter((f) => f.endsWith('.json'));
             for (const pf of partFiles) {
               const part = readJsonSafe<OpenCodePart>(path.join(partDir, pf));
               if (part?.type === 'text' && part.text.trim().length > 0) {
@@ -1178,7 +1238,12 @@ export class OpenCodeProvider implements SessionProviderBase {
     try {
       // Get subtask parts from the parent session for metadata
       const parts = db.getPartsForSession(sessionId);
-      const subtaskParts: Array<{ id: string; agent?: string; description?: string; timeCreated: number }> = [];
+      const subtaskParts: Array<{
+        id: string;
+        agent?: string;
+        description?: string;
+        timeCreated: number;
+      }> = [];
 
       for (const partRow of parts) {
         try {
@@ -1240,8 +1305,14 @@ export class OpenCodeProvider implements SessionProviderBase {
               let duration: number | undefined;
               const timeInfo = state?.time as Record<string, unknown> | undefined;
               if (timeInfo?.start && timeInfo?.end) {
-                const startMs = typeof timeInfo.start === 'number' ? timeInfo.start : new Date(timeInfo.start as string).getTime();
-                const endMs = typeof timeInfo.end === 'number' ? timeInfo.end : new Date(timeInfo.end as string).getTime();
+                const startMs =
+                  typeof timeInfo.start === 'number'
+                    ? timeInfo.start
+                    : new Date(timeInfo.start as string).getTime();
+                const endMs =
+                  typeof timeInfo.end === 'number'
+                    ? timeInfo.end
+                    : new Date(timeInfo.end as string).getTime();
                 if (endMs > startMs) duration = endMs - startMs;
               }
 
@@ -1270,8 +1341,8 @@ export class OpenCodeProvider implements SessionProviderBase {
             startTime = new Date(child.time_created);
           }
 
-          const rawAgentType = subtask?.agent || (child.title || undefined);
-          const description = subtask?.description || (child.title || undefined);
+          const rawAgentType = subtask?.agent || child.title || undefined;
+          const description = subtask?.description || child.title || undefined;
           results.push({
             agentId: subtask?.id || child.id,
             agentType: normalizeAgentType(rawAgentType, description),
@@ -1316,7 +1387,15 @@ export class OpenCodeProvider implements SessionProviderBase {
     if (db) {
       const dbSession = db.getSession(sessionId);
       if (dbSession) {
-        return this.searchInSessionFromDb(db, sessionId, sessionPath, dbSession.project_id, queryLower, query, maxResults);
+        return this.searchInSessionFromDb(
+          db,
+          sessionId,
+          sessionPath,
+          dbSession.project_id,
+          queryLower,
+          query,
+          maxResults,
+        );
       }
     }
 
@@ -1325,15 +1404,20 @@ export class OpenCodeProvider implements SessionProviderBase {
   }
 
   private searchInSessionFromDb(
-    db: OpenCodeDatabase, sessionId: string, sessionPath: string,
-    projectId: string, queryLower: string, query: string, maxResults: number
+    db: OpenCodeDatabase,
+    sessionId: string,
+    sessionPath: string,
+    projectId: string,
+    queryLower: string,
+    query: string,
+    maxResults: number,
   ): SearchHit[] {
     const results: SearchHit[] = [];
 
     try {
       const parts = db.getPartsForSession(sessionId);
       const messages = db.getMessagesForSession(sessionId);
-      const messageMap = new Map(messages.map(m => [m.id, m]));
+      const messageMap = new Map(messages.map((m) => [m.id, m]));
 
       for (const partRow of parts) {
         if (results.length >= maxResults) break;
@@ -1346,7 +1430,8 @@ export class OpenCodeProvider implements SessionProviderBase {
         // Extract a snippet from the raw data
         const start = Math.max(0, matchIdx - 40);
         const end = Math.min(dataStr.length, matchIdx + query.length + 40);
-        const snippet = (start > 0 ? '...' : '') +
+        const snippet =
+          (start > 0 ? '...' : '') +
           dataStr.substring(start, end) +
           (end < dataStr.length ? '...' : '');
 
@@ -1369,8 +1454,11 @@ export class OpenCodeProvider implements SessionProviderBase {
   }
 
   private searchInSessionFromFiles(
-    sessionPath: string, sessionId: string,
-    queryLower: string, query: string, maxResults: number
+    sessionPath: string,
+    sessionId: string,
+    queryLower: string,
+    query: string,
+    maxResults: number,
   ): SearchHit[] {
     const results: SearchHit[] = [];
     const messageDir = path.join(getStorageDir(), 'message', sessionId);
@@ -1381,7 +1469,7 @@ export class OpenCodeProvider implements SessionProviderBase {
       const session = readJsonSafe<OpenCodeSession>(sessionPath);
       const projectPath = session?.projectID || sessionId;
 
-      const messageFiles = fs.readdirSync(messageDir).filter(f => f.endsWith('.json'));
+      const messageFiles = fs.readdirSync(messageDir).filter((f) => f.endsWith('.json'));
 
       for (const file of messageFiles) {
         if (results.length >= maxResults) break;
@@ -1393,7 +1481,7 @@ export class OpenCodeProvider implements SessionProviderBase {
         if (!fs.existsSync(partDir)) continue;
 
         try {
-          const partFiles = fs.readdirSync(partDir).filter(f => f.endsWith('.json'));
+          const partFiles = fs.readdirSync(partDir).filter((f) => f.endsWith('.json'));
           for (const pf of partFiles) {
             if (results.length >= maxResults) break;
 
@@ -1414,7 +1502,8 @@ export class OpenCodeProvider implements SessionProviderBase {
 
             const start = Math.max(0, matchIdx - 40);
             const end = Math.min(text.length, matchIdx + query.length + 40);
-            const snippet = (start > 0 ? '...' : '') +
+            const snippet =
+              (start > 0 ? '...' : '') +
               text.substring(start, end) +
               (end < text.length ? '...' : '');
 
@@ -1423,7 +1512,7 @@ export class OpenCodeProvider implements SessionProviderBase {
               line: snippet.replace(/\n/g, ' '),
               eventType: msg.role,
               timestamp: String(msg.time.created),
-              projectPath
+              projectPath,
             });
           }
         } catch {
@@ -1475,9 +1564,12 @@ export class OpenCodeProvider implements SessionProviderBase {
           if (role === 'assistant' && msgTokens) {
             if (!modelUsage[modelId]) modelUsage[modelId] = { calls: 0, tokens: 0 };
             modelUsage[modelId].calls++;
-            modelUsage[modelId].tokens += ((msgTokens.input as number) || 0) + ((msgTokens.output as number) || 0);
+            modelUsage[modelId].tokens +=
+              ((msgTokens.input as number) || 0) + ((msgTokens.output as number) || 0);
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
         if (!startTime) startTime = new Date(msg.time_created).toISOString();
         endTime = new Date(msg.time_updated || msg.time_created).toISOString();
       }
@@ -1488,7 +1580,9 @@ export class OpenCodeProvider implements SessionProviderBase {
             const toolName = (data.tool as string) || 'unknown';
             toolUsage[toolName] = (toolUsage[toolName] || 0) + 1;
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
     }
 
@@ -1673,9 +1767,14 @@ export class OpenCodeProvider implements SessionProviderBase {
         attribution.userMessages -= toolTokens;
       }
 
-      const total = attribution.systemPrompt + attribution.userMessages +
-        attribution.assistantResponses + attribution.toolInputs +
-        attribution.toolOutputs + attribution.thinking + attribution.other;
+      const total =
+        attribution.systemPrompt +
+        attribution.userMessages +
+        attribution.assistantResponses +
+        attribution.toolInputs +
+        attribution.toolOutputs +
+        attribution.thinking +
+        attribution.other;
 
       return total > 0 ? attribution : null;
     } catch {
@@ -1731,7 +1830,7 @@ export class OpenCodeProvider implements SessionProviderBase {
     }
     if (rawRows.length === 0) return null;
 
-    const turns: ZaiAssistantTurn[] = rawRows.map(row => ({
+    const turns: ZaiAssistantTurn[] = rawRows.map((row) => ({
       timestampMs: row.timeCreated,
       model: row.modelId,
       inputTokens: row.inputTokens || 0,
@@ -1744,9 +1843,8 @@ export class OpenCodeProvider implements SessionProviderBase {
     const accumulated = accumulateZaiUsage(turns, Date.now());
     // Default to 'max' on auto when usage is non-zero — overestimating the
     // tier gives a lower (safer) utilization % until calibration runs.
-    const resolvedTier: ZaiTier = tier === 'auto'
-      ? (accumulated.weeklyTurns > 0 ? 'max' : 'lite')
-      : tier;
+    const resolvedTier: ZaiTier =
+      tier === 'auto' ? (accumulated.weeklyTurns > 0 ? 'max' : 'lite') : tier;
 
     // Walk rows again to trap any captured z.ai business errors.
     let authoritativeFiveHourResetAt: string | undefined;

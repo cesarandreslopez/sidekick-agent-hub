@@ -70,16 +70,13 @@ describe('DecisionLogService', () => {
       const store: DecisionLogStore = {
         schemaVersion: DECISION_LOG_SCHEMA_VERSION,
         decisions: {
-          'd1': makeEntry({ id: 'd1', description: 'Use vitest' }),
+          d1: makeEntry({ id: 'd1', description: 'Use vitest' }),
         },
         lastSessionId: 'session-abc',
         lastSaved: '2026-02-18T10:06:00.000Z',
       };
 
-      fs.writeFileSync(
-        path.join(tmpDir, 'test-project.json'),
-        JSON.stringify(store)
-      );
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), JSON.stringify(store));
 
       const service = createService();
       await service.initialize();
@@ -90,10 +87,7 @@ describe('DecisionLogService', () => {
     });
 
     it('falls back to empty store on corrupt JSON', async () => {
-      fs.writeFileSync(
-        path.join(tmpDir, 'test-project.json'),
-        'not valid json{{{'
-      );
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), 'not valid json{{{');
 
       const service = createService();
       await service.initialize();
@@ -165,7 +159,7 @@ describe('DecisionLogService', () => {
       ]);
 
       const entries = service.getEntries();
-      expect(entries.map(e => e.description)).toEqual(['Newer', 'Middle', 'Older']);
+      expect(entries.map((e) => e.description)).toEqual(['Newer', 'Middle', 'Older']);
       service.dispose();
     });
 
@@ -174,9 +168,23 @@ describe('DecisionLogService', () => {
       await service.initialize();
 
       service.addEntries([
-        makeEntry({ id: 'd1', description: 'Use pnpm for package management', chosenOption: 'pnpm' }),
-        makeEntry({ id: 'd2', description: 'Use vitest for testing', chosenOption: 'vitest', rationale: 'Fast test runner' }),
-        makeEntry({ id: 'd3', description: 'Use TypeScript', chosenOption: 'TypeScript', rationale: 'Better pnpm compat' }),
+        makeEntry({
+          id: 'd1',
+          description: 'Use pnpm for package management',
+          chosenOption: 'pnpm',
+        }),
+        makeEntry({
+          id: 'd2',
+          description: 'Use vitest for testing',
+          chosenOption: 'vitest',
+          rationale: 'Fast test runner',
+        }),
+        makeEntry({
+          id: 'd3',
+          description: 'Use TypeScript',
+          chosenOption: 'TypeScript',
+          rationale: 'Better pnpm compat',
+        }),
       ]);
 
       const results = service.getEntries('pnpm');
@@ -190,7 +198,11 @@ describe('DecisionLogService', () => {
 
       service.addEntries([
         makeEntry({ id: 'd1', description: 'Database choice', chosenOption: 'PostgreSQL' }),
-        makeEntry({ id: 'd2', description: 'ORM choice', rationale: 'PostgreSQL works well with Prisma' }),
+        makeEntry({
+          id: 'd2',
+          description: 'ORM choice',
+          rationale: 'PostgreSQL works well with Prisma',
+        }),
       ]);
 
       const results = service.getEntries('postgresql');

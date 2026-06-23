@@ -31,7 +31,7 @@ build({
     ].join('\n'),
   },
   define: {
-    '__CLI_VERSION__': JSON.stringify(pkg.version),
+    __CLI_VERSION__: JSON.stringify(pkg.version),
   },
   loader: { '.md': 'text' },
   plugins: [stubDevtools],

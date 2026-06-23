@@ -4,11 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import {
-  readDecisions,
-  getProjectSlug,
-  getProjectSlugRaw,
-} from 'sidekick-shared';
+import { readDecisions, getProjectSlug, getProjectSlugRaw } from 'sidekick-shared';
 import type { DecisionEntry } from 'sidekick-shared';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -39,21 +35,21 @@ function printDecisionsList(decisions: DecisionEntry[]): void {
     meta.push(chalk.dim(formatDate(d.timestamp)));
     meta.push(chalk.cyan(SOURCE_LABELS[d.source] || d.source));
     if (d.tags && d.tags.length > 0) {
-      meta.push(chalk.dim(d.tags.map(t => `#${t}`).join(' ')));
+      meta.push(chalk.dim(d.tags.map((t) => `#${t}`).join(' ')));
     }
     process.stdout.write(`  ${meta.join(chalk.dim(' · '))}\n`);
 
     process.stdout.write(`  ${chalk.green('Chosen:')} ${d.chosenOption}\n`);
 
     if (d.rationale) {
-      const rationale = d.rationale.length > 140
-        ? d.rationale.slice(0, 137) + '...'
-        : d.rationale;
+      const rationale = d.rationale.length > 140 ? d.rationale.slice(0, 137) + '...' : d.rationale;
       process.stdout.write(`  ${chalk.dim('Rationale:')} ${chalk.dim(rationale)}\n`);
     }
 
     if (d.alternatives && d.alternatives.length > 0) {
-      process.stdout.write(`  ${chalk.dim('Alternatives:')} ${chalk.dim(d.alternatives.join(', '))}\n`);
+      process.stdout.write(
+        `  ${chalk.dim('Alternatives:')} ${chalk.dim(d.alternatives.join(', '))}\n`,
+      );
     }
 
     process.stdout.write('\n');

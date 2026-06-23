@@ -33,7 +33,7 @@ export class TasksPanel implements SidePanel {
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
     const tasks = mergeTasks(metrics.tasks, staticData.tasks);
-    return tasks.map(t => ({
+    return tasks.map((t) => ({
       id: t.taskId,
       label: `${STATUS_ICON[t.status] || ' '} ${t.subject}`,
       sortKey: (STATUS_SORT[t.status] ?? 3) * 1000 + parseInt(t.taskId, 10),
@@ -77,17 +77,19 @@ export class TasksPanel implements SidePanel {
 
     // Show related tasks from live task list
     const related = metrics.tasks.filter(
-      other => other.taskId !== t.taskId &&
-      (t.blockedBy.includes(other.taskId) || t.blocks.includes(other.taskId))
+      (other) =>
+        other.taskId !== t.taskId &&
+        (t.blockedBy.includes(other.taskId) || t.blocks.includes(other.taskId)),
     );
     if (related.length > 0) {
       lines.push('', '{bold}Related Tasks{/bold}');
       for (const r of related) {
-        lines.push(`  ${STATUS_ICON[r.status] || ' '} #${r.taskId}: ${wordWrap(r.subject, detailWidth() - 8)}`);
+        lines.push(
+          `  ${STATUS_ICON[r.status] || ' '} #${r.taskId}: ${wordWrap(r.subject, detailWidth() - 8)}`,
+        );
       }
     }
 
     return lines.join('\n');
   }
-
 }

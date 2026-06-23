@@ -35,7 +35,11 @@ function setPlatform(platform: NodeJS.Platform): void {
   });
 }
 
-function writeClaudeProfileIdentity(home: string, email = 'work@example.com', uuid = 'uuid-work'): void {
+function writeClaudeProfileIdentity(
+  home: string,
+  email = 'work@example.com',
+  uuid = 'uuid-work',
+): void {
   fs.mkdirSync(home, { recursive: true });
   fs.writeFileSync(
     path.join(home, '.claude.json'),
@@ -47,7 +51,9 @@ function writeClaudeProfileCredentials(home: string): void {
   fs.mkdirSync(home, { recursive: true });
   fs.writeFileSync(
     path.join(home, '.credentials.json'),
-    JSON.stringify({ claudeAiOauth: { accessToken: 'access-token', refreshToken: 'refresh-token' } }),
+    JSON.stringify({
+      claudeAiOauth: { accessToken: 'access-token', refreshToken: 'refresh-token' },
+    }),
   );
 }
 
@@ -71,14 +77,19 @@ describe('claudeProfiles', () => {
   });
 
   it('matches the verified Claude Code keychain suffix vectors', () => {
-    expect(claudeKeychainSuffix('/Users/hoangphan/Library/Application Support/dev.hoangphan.AI-Account-Switcher/accounts/claude/53d79dfb-fbe4-41fb-9827-e8afd2e128bb')).toBe('e3c60653');
+    expect(
+      claudeKeychainSuffix(
+        '/Users/hoangphan/Library/Application Support/dev.hoangphan.AI-Account-Switcher/accounts/claude/53d79dfb-fbe4-41fb-9827-e8afd2e128bb',
+      ),
+    ).toBe('e3c60653');
     expect(claudeKeychainSuffix('/Users/hoangphan/.ai-switcher-logintest')).toBe('8244da8e');
   });
 
   it('derives the default and isolated Claude Code keychain service names', () => {
     expect(claudeKeychainService()).toBe('Claude Code-credentials');
-    expect(claudeKeychainService('/Users/hoangphan/.ai-switcher-logintest'))
-      .toBe('Claude Code-credentials-8244da8e');
+    expect(claudeKeychainService('/Users/hoangphan/.ai-switcher-logintest')).toBe(
+      'Claude Code-credentials-8244da8e',
+    );
   });
 
   it('reads profile identity from the profile home config', () => {
@@ -123,7 +134,10 @@ describe('claudeProfiles', () => {
     const home = getClaudeProfileHome('uuid-work');
     writeClaudeProfileIdentity(home);
     mockExecFileSync.mockImplementation(() => {
-      throw Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT', signal: 'SIGKILL' });
+      throw Object.assign(new Error('spawnSync timed out'), {
+        code: 'ETIMEDOUT',
+        signal: 'SIGKILL',
+      });
     });
 
     expect(isClaudeProfileAuthenticated(home)).toBe(false);

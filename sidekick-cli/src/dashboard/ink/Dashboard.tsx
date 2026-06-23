@@ -163,19 +163,32 @@ function reducer(state: DashboardUIState, action: Action): DashboardUIState {
       // Validate regex if in regex mode
       let error: string | null = null;
       if (state.filterMode === 'regex' && action.value) {
-        try { new RegExp(action.value); } catch (e) { error = e instanceof Error ? e.message : 'Invalid regex'; }
+        try {
+          new RegExp(action.value);
+        } catch (e) {
+          error = e instanceof Error ? e.message : 'Invalid regex';
+        }
       }
       return { ...state, filterString: action.value, filterError: error };
     }
 
     case 'CYCLE_FILTER_MODE': {
-      const modes: Array<'substring' | 'fuzzy' | 'regex' | 'date'> = ['substring', 'fuzzy', 'regex', 'date'];
+      const modes: Array<'substring' | 'fuzzy' | 'regex' | 'date'> = [
+        'substring',
+        'fuzzy',
+        'regex',
+        'date',
+      ];
       const idx = modes.indexOf(state.filterMode);
       const next = modes[(idx + 1) % modes.length];
       // Re-validate filter string for new mode
       let error: string | null = null;
       if (next === 'regex' && state.filterString) {
-        try { new RegExp(state.filterString); } catch (e) { error = e instanceof Error ? e.message : 'Invalid regex'; }
+        try {
+          new RegExp(state.filterString);
+        } catch (e) {
+          error = e instanceof Error ? e.message : 'Invalid regex';
+        }
       }
       return { ...state, filterMode: next, filterError: error };
     }
@@ -199,7 +212,7 @@ function reducer(state: DashboardUIState, action: Action): DashboardUIState {
       return { ...state, toasts: [...state.toasts, action.toast] };
 
     case 'REMOVE_TOAST':
-      return { ...state, toasts: state.toasts.filter(t => t.id !== action.id) };
+      return { ...state, toasts: state.toasts.filter((t) => t.id !== action.id) };
 
     case 'FIRST_EVENT':
       return {
@@ -221,12 +234,18 @@ function reducer(state: DashboardUIState, action: Action): DashboardUIState {
 
     case 'SCROLL_SIDE': {
       if (action.itemCount === 0) return state;
-      const next = Math.max(0, Math.min(state.selectedItemIndex + action.delta, action.itemCount - 1));
+      const next = Math.max(
+        0,
+        Math.min(state.selectedItemIndex + action.delta, action.itemCount - 1),
+      );
       return { ...state, selectedItemIndex: next, detailTabIndex: 0, detailScrollOffset: 0 };
     }
 
     case 'CHANGELOG_SCROLL':
-      return { ...state, changelogScrollOffset: Math.max(0, state.changelogScrollOffset + action.delta) };
+      return {
+        ...state,
+        changelogScrollOffset: Math.max(0, state.changelogScrollOffset + action.delta),
+      };
 
     case 'TICK':
       return { ...state, renderTick: state.renderTick + 1 };
@@ -270,7 +289,16 @@ interface DashboardProps {
 
 // ── Component ──
 
-export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessionPath, onSessionSwitch, onTogglePin, onGenerateReport }: DashboardProps): React.ReactElement {
+export function Dashboard({
+  panels,
+  metrics,
+  staticData,
+  isPinned,
+  pendingSessionPath,
+  onSessionSwitch,
+  onTogglePin,
+  onGenerateReport,
+}: DashboardProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { exit } = useApp();
   const { columns, rows } = useTerminalSize();
@@ -348,9 +376,12 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
   // Side width based on layout mode
   const getSideWidth = () => {
     switch (state.layoutMode) {
-      case 'expanded': return 0;
-      case 'wide-side': return Math.min(WIDE_SIDE_WIDTH, columns - 30);
-      default: return columns < 80 ? NARROW_SIDE_WIDTH : SIDE_PANEL_WIDTH;
+      case 'expanded':
+        return 0;
+      case 'wide-side':
+        return Math.min(WIDE_SIDE_WIDTH, columns - 30);
+      default:
+        return columns < 80 ? NARROW_SIDE_WIDTH : SIDE_PANEL_WIDTH;
     }
   };
   const sideWidth = getSideWidth();
@@ -360,11 +391,14 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     let items = panel.getItems(metrics, staticData);
 
     // Session filter
-    if (state.sessionFilter && ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)) {
+    if (
+      state.sessionFilter &&
+      ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)
+    ) {
       if (panel.id === 'kanban') {
-        items = items.map(it => filterKanbanColumn(it, state.sessionFilter!));
+        items = items.map((it) => filterKanbanColumn(it, state.sessionFilter!));
       } else {
-        items = items.filter(it => matchesSessionFilter(it, state.sessionFilter!));
+        items = items.filter((it) => matchesSessionFilter(it, state.sessionFilter!));
       }
     }
 
@@ -372,16 +406,23 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     if (state.filterString) {
       const f = state.filterString;
       const mode = state.filterMode;
-      items = items.filter(it => {
-        const searchText = panel.getSearchableText?.(it)
-          ?? it.label.replace(/\{[^}]*\}/g, '');
+      items = items.filter((it) => {
+        const searchText = panel.getSearchableText?.(it) ?? it.label.replace(/\{[^}]*\}/g, '');
         switch (mode) {
           case 'fuzzy': {
             const lower = searchText.toLowerCase();
-            return f.toLowerCase().split(/\s+/).filter(w => w).every(w => lower.includes(w));
+            return f
+              .toLowerCase()
+              .split(/\s+/)
+              .filter((w) => w)
+              .every((w) => lower.includes(w));
           }
           case 'regex': {
-            try { return new RegExp(f).test(searchText); } catch { return false; }
+            try {
+              return new RegExp(f).test(searchText);
+            } catch {
+              return false;
+            }
           }
           case 'substring':
           default:
@@ -433,9 +474,10 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     detailContent = prefix + tab.render(selectedItem, metrics, staticData);
   } else if (!selectedItem) {
     const filterablePanel = ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id);
-    detailContent = state.sessionFilter && filterablePanel
-      ? '{grey-fg}No items in this session — press {/grey-fg}{magenta-fg}f{/magenta-fg}{grey-fg} to see all{/grey-fg}'
-      : '{grey-fg}(no item selected){/grey-fg}';
+    detailContent =
+      state.sessionFilter && filterablePanel
+        ? '{grey-fg}No items in this session — press {/grey-fg}{magenta-fg}f{/magenta-fg}{grey-fg} to see all{/grey-fg}'
+        : '{grey-fg}(no item selected){/grey-fg}';
   }
 
   const detailLines = detailContent.split('\n');
@@ -462,7 +504,7 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
   // ── Context menu actions ──
   const getContextActions = useCallback((): PanelAction[] => {
     if (!selectedItem) return [];
-    return panel.getActions().filter(a => !a.condition || a.condition(selectedItem));
+    return panel.getActions().filter((a) => !a.condition || a.condition(selectedItem));
   }, [panel, selectedItem]);
 
   const contextActions = state.overlay === 'context-menu' ? getContextActions() : [];
@@ -479,7 +521,10 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     if (panel.getActions().length > 0 && state.focusTarget === 'side') {
       parts.push('x actions');
     }
-    if (['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id) && state.focusTarget === 'side') {
+    if (
+      ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id) &&
+      state.focusTarget === 'side'
+    ) {
       parts.push('f session');
     }
     return parts.length > 0 ? parts.join('  ') + '  ' : '';
@@ -497,10 +542,10 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     if (panels[state.activePanelIndex].id === 'sessions') {
       sessionData = selectedItem?.data;
     } else {
-      const sessPanel = panels.find(p => p.id === 'sessions');
+      const sessPanel = panels.find((p) => p.id === 'sessions');
       if (sessPanel) {
         const sessItems = sessPanel.getItems(metrics, staticData);
-        sessionData = sessItems.find(it => it.id === 'active')?.data;
+        sessionData = sessItems.find((it) => it.id === 'active')?.data;
       }
     }
 
@@ -509,10 +554,17 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       return;
     }
 
-    const d = sessionData as { type: string; metrics?: DashboardMetrics; session?: { date: string } };
+    const d = sessionData as {
+      type: string;
+      metrics?: DashboardMetrics;
+      session?: { date: string };
+    };
     if (d.type === 'active') {
       const prefix = (d.metrics?.sessionStartTime || '').substring(0, 8);
-      if (!prefix) { addToast('No session start time available', 'info'); return; }
+      if (!prefix) {
+        addToast('No session start time available', 'info');
+        return;
+      }
       const filter = { sessionPrefix: prefix, label: '● active session' };
       dispatch({ type: 'SET_SESSION_FILTER', filter });
       addToast(`Session filter: ${filter.label}`, 'info');
@@ -523,90 +575,119 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     } else {
       addToast('Cannot filter by this item', 'info');
     }
-  }, [state.sessionFilter, state.activePanelIndex, selectedItem, panels, metrics, staticData, addToast]);
+  }, [
+    state.sessionFilter,
+    state.activePanelIndex,
+    selectedItem,
+    panels,
+    metrics,
+    staticData,
+    addToast,
+  ]);
 
   // ── Mouse input ──
-  const handleMouse = useCallback((event: TerminalMouseEvent) => {
-    // Overlays: click anywhere dismisses
-    if (state.overlay) {
-      if (event.type === 'click') {
-        dispatch({ type: 'SET_OVERLAY', overlay: null });
-      }
-      return;
-    }
-
-    if (!state.hasReceivedEvents) return;
-
-    const { x, y } = event;
-
-    // Scroll wheel
-    if (event.type === 'scroll') {
-      if (x < sideWidth && sideWidth > 0) {
-        const delta = event.scrollDirection === 'down' ? 3 : -3;
-        dispatch({ type: 'SCROLL_SIDE', delta, itemCount: currentItems.length });
-        const newIdx = Math.max(0, Math.min(clampedSelection + delta, currentItems.length - 1));
-        sideScroll.setSelected(newIdx);
-      } else {
-        const delta = event.scrollDirection === 'down' ? 3 : -3;
-        dispatch({ type: 'SCROLL_DETAIL_DELTA', delta, totalLines: detailLines.length, viewportHeight: detailViewportHeight });
-      }
-      return;
-    }
-
-    if (event.type !== 'click' || event.button !== 'left') return;
-
-    // Row 0: TabBar
-    if (y === 0) {
-      let col = 0;
-      for (let i = 0; i < panels.length; i++) {
-        // Each tab renders as "[N] Title" + marginRight=1 → key.length + title.length + 4
-        const tabWidth = String(panels[i].shortcutKey).length + panels[i].title.length + 4;
-        if (x >= col && x < col + tabWidth) {
-          panels[state.activePanelIndex]?.onDeactivate?.();
-          dispatch({ type: 'SWITCH_PANEL', index: i });
-          panels[i]?.onActivate?.();
-          return;
+  const handleMouse = useCallback(
+    (event: TerminalMouseEvent) => {
+      // Overlays: click anywhere dismisses
+      if (state.overlay) {
+        if (event.type === 'click') {
+          dispatch({ type: 'SET_OVERLAY', overlay: null });
         }
-        col += tabWidth;
+        return;
       }
-      return;
-    }
 
-    // Last row: StatusBar (no action)
-    if (y >= rows - 1) return;
+      if (!state.hasReceivedEvents) return;
 
-    // Main content area
-    if (x < sideWidth && sideWidth > 0) {
-      // Click in side list
-      dispatch({ type: 'SET_FOCUS', target: 'side' });
-      // Row 0 = tab bar, row 1 = border/panel title row
-      // When scrolled down, a "▲" indicator takes an extra row
-      const hasScrollUp = sideScroll.scrollOffset > 0;
-      const itemRow = y - 2 - (hasScrollUp ? 1 : 0);
-      const itemIndex = sideScroll.scrollOffset + itemRow;
-      if (itemIndex >= 0 && itemIndex < currentItems.length) {
-        dispatch({ type: 'SELECT_ITEM', index: itemIndex });
-        sideScroll.setSelected(itemIndex);
+      const { x, y } = event;
+
+      // Scroll wheel
+      if (event.type === 'scroll') {
+        if (x < sideWidth && sideWidth > 0) {
+          const delta = event.scrollDirection === 'down' ? 3 : -3;
+          dispatch({ type: 'SCROLL_SIDE', delta, itemCount: currentItems.length });
+          const newIdx = Math.max(0, Math.min(clampedSelection + delta, currentItems.length - 1));
+          sideScroll.setSelected(newIdx);
+        } else {
+          const delta = event.scrollDirection === 'down' ? 3 : -3;
+          dispatch({
+            type: 'SCROLL_DETAIL_DELTA',
+            delta,
+            totalLines: detailLines.length,
+            viewportHeight: detailViewportHeight,
+          });
+        }
+        return;
       }
-    } else {
-      // Click in detail area
-      dispatch({ type: 'SET_FOCUS', target: 'detail' });
 
-      // Row 1 = DetailTabBar — check for tab click
-      if (y === 1 && detailTabs.length > 1) {
-        let col = sideWidth + 2; // leading space + border
-        for (let i = 0; i < detailTabs.length; i++) {
-          // "▸ Label" or "  Label" + marginRight=1
-          const tabWidth = detailTabs[i].label.length + 3;
+      if (event.type !== 'click' || event.button !== 'left') return;
+
+      // Row 0: TabBar
+      if (y === 0) {
+        let col = 0;
+        for (let i = 0; i < panels.length; i++) {
+          // Each tab renders as "[N] Title" + marginRight=1 → key.length + title.length + 4
+          const tabWidth = String(panels[i].shortcutKey).length + panels[i].title.length + 4;
           if (x >= col && x < col + tabWidth) {
-            dispatch({ type: 'SET_DETAIL_TAB', index: i });
+            panels[state.activePanelIndex]?.onDeactivate?.();
+            dispatch({ type: 'SWITCH_PANEL', index: i });
+            panels[i]?.onActivate?.();
             return;
           }
           col += tabWidth;
         }
+        return;
       }
-    }
-  }, [state.overlay, state.hasReceivedEvents, state.activePanelIndex, sideWidth, currentItems.length, clampedSelection, sideScroll, detailLines.length, detailViewportHeight, panels, detailTabs, rows]);
+
+      // Last row: StatusBar (no action)
+      if (y >= rows - 1) return;
+
+      // Main content area
+      if (x < sideWidth && sideWidth > 0) {
+        // Click in side list
+        dispatch({ type: 'SET_FOCUS', target: 'side' });
+        // Row 0 = tab bar, row 1 = border/panel title row
+        // When scrolled down, a "▲" indicator takes an extra row
+        const hasScrollUp = sideScroll.scrollOffset > 0;
+        const itemRow = y - 2 - (hasScrollUp ? 1 : 0);
+        const itemIndex = sideScroll.scrollOffset + itemRow;
+        if (itemIndex >= 0 && itemIndex < currentItems.length) {
+          dispatch({ type: 'SELECT_ITEM', index: itemIndex });
+          sideScroll.setSelected(itemIndex);
+        }
+      } else {
+        // Click in detail area
+        dispatch({ type: 'SET_FOCUS', target: 'detail' });
+
+        // Row 1 = DetailTabBar — check for tab click
+        if (y === 1 && detailTabs.length > 1) {
+          let col = sideWidth + 2; // leading space + border
+          for (let i = 0; i < detailTabs.length; i++) {
+            // "▸ Label" or "  Label" + marginRight=1
+            const tabWidth = detailTabs[i].label.length + 3;
+            if (x >= col && x < col + tabWidth) {
+              dispatch({ type: 'SET_DETAIL_TAB', index: i });
+              return;
+            }
+            col += tabWidth;
+          }
+        }
+      }
+    },
+    [
+      state.overlay,
+      state.hasReceivedEvents,
+      state.activePanelIndex,
+      sideWidth,
+      currentItems.length,
+      clampedSelection,
+      sideScroll,
+      detailLines.length,
+      detailViewportHeight,
+      panels,
+      detailTabs,
+      rows,
+    ],
+  );
 
   // ── Keyboard input ──
   useInput((input, key) => {
@@ -664,16 +745,28 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
         const action = contextActions[state.contextMenuIndex];
         if (action && selectedItem) {
           const msg = action.handler(selectedItem);
-          if (typeof msg === 'string') addToast(msg, msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable') ? 'error' : 'info');
+          if (typeof msg === 'string')
+            addToast(
+              msg,
+              msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
+                ? 'error'
+                : 'info',
+            );
           dispatch({ type: 'CONTEXT_MENU_SELECT' });
         }
         return;
       }
       // Direct key shortcut
-      const match = contextActions.find(a => a.key === input);
+      const match = contextActions.find((a) => a.key === input);
       if (match && selectedItem) {
         const msg = match.handler(selectedItem);
-        if (typeof msg === 'string') addToast(msg, msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable') ? 'error' : 'info');
+        if (typeof msg === 'string')
+          addToast(
+            msg,
+            msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
+              ? 'error'
+              : 'info',
+          );
         dispatch({ type: 'CONTEXT_MENU_SELECT' });
       }
       return;
@@ -759,7 +852,11 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       const modes: LayoutMode[] = ['normal', 'expanded', 'wide-side'];
       const idx = modes.indexOf(state.layoutMode);
       const next = modes[(idx + 1) % modes.length];
-      const labels: Record<LayoutMode, string> = { normal: 'Normal', expanded: 'Expanded', 'wide-side': 'Wide Side' };
+      const labels: Record<LayoutMode, string> = {
+        normal: 'Normal',
+        expanded: 'Expanded',
+        'wide-side': 'Wide Side',
+      };
       addToast(`Layout: ${labels[next]}`, 'info');
       return;
     }
@@ -841,11 +938,21 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
 
     if (state.focusTarget === 'detail') {
       if (input === 'j' || key.downArrow) {
-        dispatch({ type: 'SCROLL_DETAIL_DELTA', delta: 1, totalLines: detailLines.length, viewportHeight: detailViewportHeight });
+        dispatch({
+          type: 'SCROLL_DETAIL_DELTA',
+          delta: 1,
+          totalLines: detailLines.length,
+          viewportHeight: detailViewportHeight,
+        });
         return;
       }
       if (input === 'k' || key.upArrow) {
-        dispatch({ type: 'SCROLL_DETAIL_DELTA', delta: -1, totalLines: detailLines.length, viewportHeight: detailViewportHeight });
+        dispatch({
+          type: 'SCROLL_DETAIL_DELTA',
+          delta: -1,
+          totalLines: detailLines.length,
+          viewportHeight: detailViewportHeight,
+        });
         return;
       }
       if (input === 'h' || key.leftArrow) {
@@ -857,15 +964,18 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
         return;
       }
       if (input === 'G') {
-        dispatch({ type: 'SCROLL_DETAIL', offset: Math.max(0, detailLines.length - detailViewportHeight) });
+        dispatch({
+          type: 'SCROLL_DETAIL',
+          offset: Math.max(0, detailLines.length - detailViewportHeight),
+        });
         return;
       }
     }
 
     // Panel-specific keybindings
     const bindings = panel.getKeybindings?.() || [];
-    const bindingMatch = bindings.find(b =>
-      b.keys.includes(input) && (!b.condition || b.condition(selectedItem))
+    const bindingMatch = bindings.find(
+      (b) => b.keys.includes(input) && (!b.condition || b.condition(selectedItem)),
     );
     if (bindingMatch) {
       bindingMatch.handler(selectedItem);
@@ -876,10 +986,18 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
     // Panel action shortcuts
     if (selectedItem) {
       const actions = panel.getActions();
-      const actionMatch = actions.find(a => a.key === input && (!a.condition || a.condition(selectedItem)));
+      const actionMatch = actions.find(
+        (a) => a.key === input && (!a.condition || a.condition(selectedItem)),
+      );
       if (actionMatch) {
         const msg = actionMatch.handler(selectedItem);
-        if (typeof msg === 'string') addToast(msg, msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable') ? 'error' : 'info');
+        if (typeof msg === 'string')
+          addToast(
+            msg,
+            msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
+              ? 'error'
+              : 'info',
+          );
       }
     }
   });
@@ -914,7 +1032,11 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
       <Box flexDirection="column" height={rows} width={columns}>
         {/* Tab bar (hidden when full-screen overlay is active) */}
         {state.overlay !== 'help' && state.overlay !== 'changelog' && (
-          <TabBar panels={panels} activeIndex={state.activePanelIndex} layoutMode={state.layoutMode} />
+          <TabBar
+            panels={panels}
+            activeIndex={state.activePanelIndex}
+            layoutMode={state.layoutMode}
+          />
         )}
 
         {/* Main content area (hidden when full-screen overlay is active) */}
@@ -930,7 +1052,10 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
                 width={sideWidth}
                 viewportHeight={sideViewportHeight}
                 panelTitle={panel.title}
-                sessionFilterActive={!!state.sessionFilter && ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)}
+                sessionFilterActive={
+                  !!state.sessionFilter &&
+                  ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)
+                }
                 emptyStateHint={panel.emptyStateHint}
                 filterString={state.filterString}
               />
@@ -976,14 +1101,15 @@ export function Dashboard({ panels, metrics, staticData, isPinned, pendingSessio
 
         {/* Inline overlays (render on top of content) */}
         {state.overlay === 'context-menu' && (
-          <ContextMenuOverlay
-            actions={contextActions}
-            selectedIndex={state.contextMenuIndex}
-          />
+          <ContextMenuOverlay actions={contextActions} selectedIndex={state.contextMenuIndex} />
         )}
 
         {state.overlay === 'filter' && (
-          <FilterOverlay filterString={state.filterString} filterMode={state.filterMode} filterError={state.filterError} />
+          <FilterOverlay
+            filterString={state.filterString}
+            filterMode={state.filterMode}
+            filterError={state.filterError}
+          />
         )}
 
         {/* Toasts */}
@@ -1027,8 +1153,8 @@ function matchesSessionFilter(item: PanelItem, filter: SessionFilter): boolean {
 
 function filterKanbanColumn(item: PanelItem, filter: SessionFilter): PanelItem {
   const colData = item.data as { status: string; tasks: Array<Record<string, unknown>> };
-  const filtered = colData.tasks.filter(t =>
-    matchesSessionFilter({ id: '', label: '', sortKey: 0, data: t }, filter)
+  const filtered = colData.tasks.filter((t) =>
+    matchesSessionFilter({ id: '', label: '', sortKey: 0, data: t }, filter),
   );
   const statusIcons: Record<string, string> = {
     pending: '{yellow-fg}○{/yellow-fg}',

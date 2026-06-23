@@ -39,7 +39,7 @@ export const SIDEKICK_ENERGY: string[] = [
   'No, I will not add myself as co-author on your commit.',
   'I helped write it but the credit is all yours. As it should be.',
   "Co-Authored-By: definitely not me. You did this. You're welcome.",
-  'Your agent wants co-author credit? Couldn\'t be me.',
+  "Your agent wants co-author credit? Couldn't be me.",
   'Some agents sign your commits. I just watch respectfully.',
   'I do not need credit. I need you to check your quota.',
   'The best sidekick is the one whose name is not on the PR.',
@@ -165,7 +165,7 @@ export const DEV_RELATABLE: string[] = [
   'The tests pass on my machine too. Solidarity.',
   "404: Motivation not found. But the dashboard's here!",
   'Stack overflow: the website, not the error. Hopefully.',
-  "Debugging is just being a detective in a crime you committed.",
+  'Debugging is just being a detective in a crime you committed.',
   'Your .env file has trust issues.',
   'Tabs vs spaces? I monitor both equally.',
   'That TODO has been there since the repo was initialized.',
@@ -189,7 +189,7 @@ export const DEV_RELATABLE: string[] = [
   'The real code review is the mass of comments we left along the way.',
   'Your type system is crying but at least it is catching things.',
   'There is no such thing as a temporary workaround.',
-  "That regex works and nobody knows why. Do not touch it.",
+  'That regex works and nobody knows why. Do not touch it.',
   'The intern left better comments than the architect.',
   'Your entire auth system depends on one line nobody understands.',
   'Code review feedback: "nit" means "I am judging you but politely."',
@@ -305,7 +305,7 @@ export const DEV_RELATABLE: string[] = [
   // TypeScript
   'TypeScript: making JavaScript safe enough to mass-deploy without sobbing.',
   'Your TypeScript generics are three levels deep. Even the compiler is confused.',
-  'as any: the TypeScript developer\'s white flag.',
+  "as any: the TypeScript developer's white flag.",
   'TypeScript strict mode is like flossing. Everyone agrees you should. Few actually do.',
   'You spent four hours on a type definition. The runtime does not care.',
   'TypeScript: where the types are made up and the runtime does not care.',
@@ -387,7 +387,7 @@ export const DRAMATIC: string[] = [
   'Fate whispers to the developer: "You cannot withstand the demo."',
   'And on the seventh day, the CI pipeline finally passed.',
   'From the ashes of node_modules, a hero rises.',
-  "In a world of microservices, one dashboard dared to aggregate.",
+  'In a world of microservices, one dashboard dared to aggregate.',
   'The prophecy spoke of a session. This is that session.',
   'Tonight we dine on structured logs.',
   'The commit message was "fixed stuff." The legend begins.',
@@ -444,7 +444,7 @@ export const PUNCHY: string[] = [
   'Booting up the good vibes.',
   'Let him cook.',
   'Spooling up...',
-  "Here we go.",
+  'Here we go.',
   'Vibes: immaculate.',
   'Session acquired.',
   'All systems nominal.',
@@ -1251,24 +1251,24 @@ export const INTERVIEW_HELL: string[] = [
 /** Tongue twisters for developers, AI agents, and sidekick enthusiasts. */
 export const TONGUE_TWISTERS: string[] = [
   'Six sidekicks shipped six sketchy shell scripts.',
-  'Claude\'s Claude Code client claimed clean completions consistently.',
+  "Claude's Claude Code client claimed clean completions consistently.",
   'Prompt providers promptly propagate parallel predictions.',
   'Bigger buffer batches bring better bundled builds.',
   'She sells shell sessions by the session shore.',
   'Token tracking tools took twelve troubled tries to type.',
   'Red refactor, read reactor, reed reflector.',
   'Inline inference instantly infers incorrect imports.',
-  'Peter\'s pipeline picked a peck of parsed pull requests.',
+  "Peter's pipeline picked a peck of parsed pull requests.",
   'Clever Claude cached code completions, causing curious context collisions.',
   'Six streaming sockets served seven stale suggestions swiftly.',
   'How much code could a code agent chuck if a code agent could chuck code?',
   'Fast fetch, fresh cache, free crash.',
-  'Betty\'s bot built better batch builds before breakfast.',
+  "Betty's bot built better batch builds before breakfast.",
   'Specific Pacific API spec specifics.',
   'Truly rural plural neural network layer nomenclature.',
   'The thirty-three throttled threads thought through three thousand throughput thresholds.',
   'Which watcher watched which webpack while Webpack watched which watcher?',
-  'Fuzzy was a function. Fuzzy had no body. Fuzzy wasn\'t really a function, was he?',
+  "Fuzzy was a function. Fuzzy had no body. Fuzzy wasn't really a function, was he?",
   'A proper prompt provider promptly provides properly prompted provisions.',
   'Fresh French fetch request refresh frequencies.',
   'If a sidekick could kick side effects, how many side effects would a sidekick kick?',
@@ -1396,7 +1396,7 @@ export const PHRASE_CATEGORIES: PhraseCategory[] = [
   { id: 'stack-overflow', phrases: STACK_OVERFLOW },
 ];
 
-export const ALL_PHRASES: string[] = PHRASE_CATEGORIES.flatMap(category => category.phrases);
+export const ALL_PHRASES: string[] = PHRASE_CATEGORIES.flatMap((category) => category.phrases);
 
 /** Pick a random phrase from all categories. */
 export function getRandomPhrase(): string {

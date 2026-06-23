@@ -289,7 +289,8 @@ function appendMessageContentEvents(result: AssistantTurnEvent[], content: unkno
       continue;
     }
     if (type === 'thinking' || type === 'reasoning') {
-      const text = stringValue(block.thinking) ?? stringValue(block.text) ?? stringValue(block.content);
+      const text =
+        stringValue(block.thinking) ?? stringValue(block.text) ?? stringValue(block.content);
       if (text != null) result.push({ eventType: 'thinking', content: text });
       continue;
     }
@@ -362,7 +363,8 @@ function capProcessSteps(
   maxRetainedSteps: number,
 ): CappedProcessSteps {
   const retainedIndexes = new Set<number>();
-  if (!Number.isFinite(maxRetainedSteps) || maxRetainedSteps < 0) return { steps: [], retainedIndexes };
+  if (!Number.isFinite(maxRetainedSteps) || maxRetainedSteps < 0)
+    return { steps: [], retainedIndexes };
   const retainedCount = Math.floor(maxRetainedSteps);
   if (steps.length <= retainedCount) {
     steps.forEach((_step, index) => retainedIndexes.add(index));
@@ -375,12 +377,17 @@ function capProcessSteps(
   }
   const omitted = steps.length - kept.length;
   const omittedMarker = `... ${omitted} earlier process step${omitted === 1 ? '' : 's'} omitted`;
-  return { steps: [{ kind: 'narration', text: omittedMarker }, ...kept], retainedIndexes, omittedMarker };
+  return {
+    steps: [{ kind: 'narration', text: omittedMarker }, ...kept],
+    retainedIndexes,
+    omittedMarker,
+  };
 }
 
 function capReasoningBlocks(blocks: string[], maxRetainedBlocks: number): CappedReasoningBlocks {
   const retainedIndexes = new Set<number>();
-  if (!Number.isFinite(maxRetainedBlocks) || maxRetainedBlocks < 0) return { blocks: [], retainedIndexes };
+  if (!Number.isFinite(maxRetainedBlocks) || maxRetainedBlocks < 0)
+    return { blocks: [], retainedIndexes };
   const retainedCount = Math.floor(maxRetainedBlocks);
   if (blocks.length <= retainedCount) {
     blocks.forEach((_block, index) => retainedIndexes.add(index));

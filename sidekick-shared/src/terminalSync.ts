@@ -35,7 +35,11 @@ function atomicWriteFile(filePath: string, content: string, mode = 0o600): void 
     fs.writeFileSync(tmp, content, { encoding: 'utf8', mode });
     fs.renameSync(tmp, filePath);
   } catch (err) {
-    try { fs.rmSync(tmp, { force: true }); } catch { /* nothing to clean up */ }
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      /* nothing to clean up */
+    }
     throw err;
   }
 }
@@ -106,7 +110,7 @@ export function uninstallShellHook(): void {
 }
 
 export function isShellHookInstalled(): boolean {
-  return getShellRcPaths().some(rcPath => {
+  return getShellRcPaths().some((rcPath) => {
     try {
       const content = fs.readFileSync(rcPath, 'utf8');
       return content.includes(HOOK_START) && content.includes(HOOK_END);
@@ -126,7 +130,9 @@ function getLauncherPath(name: string): string {
 
 function assertValidLauncherName(name: string): void {
   if (!LAUNCHER_NAME_PATTERN.test(name)) {
-    throw new Error(`Invalid launcher name "${name}". Use letters, numbers, underscores, and hyphens only.`);
+    throw new Error(
+      `Invalid launcher name "${name}". Use letters, numbers, underscores, and hyphens only.`,
+    );
   }
 }
 
@@ -152,7 +158,11 @@ function assertNoLauncherCollision(name: string, targetPath: string): void {
   }
 }
 
-export function writeLauncher(name: string, provider: AccountProviderId, profileHome: string): void {
+export function writeLauncher(
+  name: string,
+  provider: AccountProviderId,
+  profileHome: string,
+): void {
   assertValidLauncherName(name);
   const launcherPath = getLauncherPath(name);
   assertNoLauncherCollision(name, launcherPath);

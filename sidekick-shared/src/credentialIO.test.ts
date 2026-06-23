@@ -79,13 +79,16 @@ describe('credentialIO', () => {
 
     expect(readActiveCredentials()).toEqual(defaultCredentials);
     expect(readActiveCredentials(profileHome)).toEqual(profileCredentials);
-    expect(JSON.parse(fs.readFileSync(path.join(profileHome, '.credentials.json'), 'utf8')))
-      .toEqual(profileCredentials);
+    expect(
+      JSON.parse(fs.readFileSync(path.join(profileHome, '.credentials.json'), 'utf8')),
+    ).toEqual(profileCredentials);
   });
 
   it('reads macOS credentials from the default keychain service without a config dir', () => {
     setPlatform('darwin');
-    mockExecFileSync.mockReturnValue(JSON.stringify({ claudeAiOauth: { accessToken: 'default-access' } }));
+    mockExecFileSync.mockReturnValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: 'default-access' } }),
+    );
 
     expect(readActiveCredentials()).toEqual({ claudeAiOauth: { accessToken: 'default-access' } });
 
@@ -99,7 +102,10 @@ describe('credentialIO', () => {
   it('returns null when a macOS keychain read probe is killed', () => {
     setPlatform('darwin');
     mockExecFileSync.mockImplementation(() => {
-      throw Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT', signal: 'SIGKILL' });
+      throw Object.assign(new Error('spawnSync timed out'), {
+        code: 'ETIMEDOUT',
+        signal: 'SIGKILL',
+      });
     });
 
     expect(readActiveCredentials()).toBeNull();
@@ -135,10 +141,14 @@ describe('credentialIO', () => {
       2,
       'security',
       [
-        'add-generic-password', '-U',
-        '-s', service,
-        '-a', 'sidekick-test-user',
-        '-w', JSON.stringify(credentials),
+        'add-generic-password',
+        '-U',
+        '-s',
+        service,
+        '-a',
+        'sidekick-test-user',
+        '-w',
+        JSON.stringify(credentials),
       ],
       { stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
     );

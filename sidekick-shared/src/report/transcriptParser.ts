@@ -75,7 +75,10 @@ function eventToTranscriptEntry(event: RawSessionEvent | SessionEvent): Transcri
   // Skip empty entries (warmup messages, etc.)
   if (content.length === 0) {
     if (usage || sourceLabel) {
-      content.push({ type: 'text', text: sourceLabel ? `${sourceLabel} updated` : 'Usage updated' });
+      content.push({
+        type: 'text',
+        text: sourceLabel ? `${sourceLabel} updated` : 'Usage updated',
+      });
     } else {
       return null;
     }
@@ -132,9 +135,10 @@ function extractContentBlocks(content: unknown): TranscriptContentBlock[] {
 
       case 'tool_use': {
         const toolName = typeof block.name === 'string' ? block.name : 'unknown';
-        const toolInput = block.input && typeof block.input === 'object'
-          ? block.input as Record<string, unknown>
-          : {};
+        const toolInput =
+          block.input && typeof block.input === 'object'
+            ? (block.input as Record<string, unknown>)
+            : {};
         const toolUseId = typeof block.id === 'string' ? block.id : undefined;
         blocks.push({ type: 'tool_use', toolName, toolInput, toolUseId });
         break;
@@ -169,7 +173,12 @@ function extractToolResultContent(content: unknown): string {
   if (Array.isArray(content)) {
     const parts: string[] = [];
     for (const part of content as Array<Record<string, unknown>>) {
-      if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
+      if (
+        part &&
+        typeof part === 'object' &&
+        part.type === 'text' &&
+        typeof part.text === 'string'
+      ) {
         parts.push(part.text);
       }
     }

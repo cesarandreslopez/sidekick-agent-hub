@@ -29,7 +29,7 @@ export async function composeContext(
   slug: string,
   fidelity: Fidelity,
   provider: SessionProvider,
-  workspacePath?: string
+  workspacePath?: string,
 ): Promise<ContextResult> {
   // Fetch all data in parallel
   const [allTasks, allDecisions, allNotes, history, handoff] = await Promise.all([
@@ -51,7 +51,9 @@ export async function composeContext(
   for (const sp of sessionPaths) {
     try {
       sessionSummaries.push(provider.readSessionStats(sp));
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Apply fidelity filtering
@@ -64,25 +66,25 @@ export async function composeContext(
     case 'full':
       tasks = allTasks;
       decisions = allDecisions;
-      notes = allNotes.filter(n => n.status === 'active' || n.status === 'needs_review');
+      notes = allNotes.filter((n) => n.status === 'active' || n.status === 'needs_review');
       if (history) {
         stats = { tokens: { ...history.allTime.tokens }, cost: history.allTime.totalCost };
       }
       break;
 
     case 'compact':
-      tasks = allTasks.filter(t => t.status === 'pending');
+      tasks = allTasks.filter((t) => t.status === 'pending');
       decisions = allDecisions.slice(0, 10);
-      notes = allNotes.filter(n => n.status === 'active');
+      notes = allNotes.filter((n) => n.status === 'active');
       if (history) {
         stats = { tokens: { ...history.allTime.tokens }, cost: history.allTime.totalCost };
       }
       break;
 
     case 'brief':
-      tasks = allTasks.filter(t => t.status === 'pending').slice(0, 3);
+      tasks = allTasks.filter((t) => t.status === 'pending').slice(0, 3);
       decisions = []; // Count only
-      notes = allNotes.filter(n => n.importance === 'critical');
+      notes = allNotes.filter((n) => n.importance === 'critical');
       stats = null;
       break;
   }

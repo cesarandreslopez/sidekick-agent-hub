@@ -32,9 +32,10 @@ const SAVE_DEBOUNCE_MS = 5000;
 let _sidekickBase: string | undefined;
 function getSidekickBase(): string {
   if (!_sidekickBase) {
-    _sidekickBase = process.platform === 'win32'
-      ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
-      : path.join(os.homedir(), '.config', 'sidekick');
+    _sidekickBase =
+      process.platform === 'win32'
+        ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
+        : path.join(os.homedir(), '.config', 'sidekick');
   }
   return _sidekickBase;
 }
@@ -47,9 +48,7 @@ function getSidekickBase(): string {
  */
 export function resolveSidekickDataPath(subdirectory: string, filename: string): string {
   const base = getSidekickBase();
-  return subdirectory
-    ? path.join(base, subdirectory, filename)
-    : path.join(base, filename);
+  return subdirectory ? path.join(base, subdirectory, filename) : path.join(base, filename);
 }
 
 /**
@@ -88,7 +87,9 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
       const loaded = JSON.parse(content) as T;
 
       if (loaded.schemaVersion !== this._schemaVersion) {
-        log(`${this.logLabel} schema version mismatch: ${loaded.schemaVersion} vs ${this._schemaVersion}`);
+        log(
+          `${this.logLabel} schema version mismatch: ${loaded.schemaVersion} vs ${this._schemaVersion}`,
+        );
       }
 
       this.store = loaded;

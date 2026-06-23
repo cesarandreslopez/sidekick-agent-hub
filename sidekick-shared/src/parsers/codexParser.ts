@@ -58,19 +58,25 @@ interface PendingMcpToolCall {
   timestamp: string;
 }
 
-function normalizeRateLimits(rateLimits: CodexRateLimits | null | undefined): SessionEvent['rateLimits'] | undefined {
+function normalizeRateLimits(
+  rateLimits: CodexRateLimits | null | undefined,
+): SessionEvent['rateLimits'] | undefined {
   if (!rateLimits?.primary && !rateLimits?.secondary) return undefined;
   return {
-    primary: rateLimits.primary ? {
-      usedPercent: rateLimits.primary.used_percent || 0,
-      windowMinutes: rateLimits.primary.window_minutes || 0,
-      resetsAt: rateLimits.primary.resets_at || 0,
-    } : undefined,
-    secondary: rateLimits.secondary ? {
-      usedPercent: rateLimits.secondary.used_percent || 0,
-      windowMinutes: rateLimits.secondary.window_minutes || 0,
-      resetsAt: rateLimits.secondary.resets_at || 0,
-    } : undefined,
+    primary: rateLimits.primary
+      ? {
+          usedPercent: rateLimits.primary.used_percent || 0,
+          windowMinutes: rateLimits.primary.window_minutes || 0,
+          resetsAt: rateLimits.primary.resets_at || 0,
+        }
+      : undefined,
+    secondary: rateLimits.secondary
+      ? {
+          usedPercent: rateLimits.secondary.used_percent || 0,
+          windowMinutes: rateLimits.secondary.window_minutes || 0,
+          resetsAt: rateLimits.secondary.resets_at || 0,
+        }
+      : undefined,
   };
 }
 
@@ -96,13 +102,17 @@ export function normalizeCodexToolName(name: string): string {
 export function normalizeCodexToolInput(
   canonicalToolName: string,
   rawToolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
 ): Record<string, unknown> {
   const normalized = { ...input };
   normalized._sidekickRawToolName = rawToolName;
 
   // Codex exec_command uses cmd; monitor expects command for Bash context extraction.
-  if (canonicalToolName === 'Bash' && typeof normalized.cmd === 'string' && normalized.command === undefined) {
+  if (
+    canonicalToolName === 'Bash' &&
+    typeof normalized.cmd === 'string' &&
+    normalized.command === undefined
+  ) {
     normalized.command = normalized.cmd;
   }
 
@@ -232,16 +242,18 @@ export class CodexRolloutParser {
     this.sessionMeta = payload;
     const text = payload.base_instructions?.text?.trim();
     if (!text) return [];
-    return [{
-      type: 'system',
-      message: {
-        role: 'system',
-        id: `${payload.id}:base-instructions`,
-        sourceLabel: 'base instructions',
-        content: [{ type: 'text', text }],
+    return [
+      {
+        type: 'system',
+        message: {
+          role: 'system',
+          id: `${payload.id}:base-instructions`,
+          sourceLabel: 'base instructions',
+          content: [{ type: 'text', text }],
+        },
+        timestamp,
       },
-      timestamp,
-    }];
+    ];
   }
 
   private handleResponseItem(timestamp: string, payload: CodexResponseItem): SessionEvent[] {
@@ -273,41 +285,47 @@ export class CodexRolloutParser {
     if (!text) return [];
 
     if (item.role === 'user') {
-      return [{
-        type: 'user',
-        message: {
-          role: 'user',
-          id: item.id,
-          content: [{ type: 'text', text }],
+      return [
+        {
+          type: 'user',
+          message: {
+            role: 'user',
+            id: item.id,
+            content: [{ type: 'text', text }],
+          },
+          timestamp,
         },
-        timestamp,
-      }];
+      ];
     }
 
     if (item.role === 'assistant') {
-      return [{
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          id: item.id,
-          model: this.currentModel || undefined,
-          content: [{ type: 'text', text }],
+      return [
+        {
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            id: item.id,
+            model: this.currentModel || undefined,
+            content: [{ type: 'text', text }],
+          },
+          timestamp,
         },
-        timestamp,
-      }];
+      ];
     }
 
     if (item.role === 'developer' || item.role === 'system') {
-      return [{
-        type: 'system',
-        message: {
-          role: item.role,
-          id: item.id,
-          sourceLabel: item.role,
-          content: [{ type: 'text', text }],
+      return [
+        {
+          type: 'system',
+          message: {
+            role: item.role,
+            id: item.id,
+            sourceLabel: item.role,
+            content: [{ type: 'text', text }],
+          },
+          timestamp,
         },
-        timestamp,
-      }];
+      ];
     }
 
     return [];
@@ -315,21 +333,23 @@ export class CodexRolloutParser {
 
   private handleReasoning(timestamp: string, item: CodexReasoningItem): SessionEvent[] {
     const summaryTexts = (item.summary || [])
-      .filter(s => s.type === 'summary_text' && s.text)
-      .map(s => s.text);
+      .filter((s) => s.type === 'summary_text' && s.text)
+      .map((s) => s.text);
 
     if (summaryTexts.length === 0) return [];
 
-    return [{
-      type: 'assistant',
-      message: {
-        role: 'assistant',
-        id: item.id,
-        model: this.currentModel || undefined,
-        content: [{ type: 'thinking', thinking: summaryTexts.join('\n') }],
+    return [
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          id: item.id,
+          model: this.currentModel || undefined,
+          content: [{ type: 'thinking', thinking: summaryTexts.join('\n') }],
+        },
+        timestamp,
       },
-      timestamp,
-    }];
+    ];
   }
 
   private handleFunctionCall(timestamp: string, item: CodexFunctionCallItem): SessionEvent[] {
@@ -344,89 +364,106 @@ export class CodexRolloutParser {
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedArgs);
     this.emittedToolUseIds.add(item.call_id);
 
-    return [{
-      type: 'assistant',
-      message: {
-        role: 'assistant',
-        id: item.id,
-        model: this.currentModel || undefined,
-        content: [{
-          type: 'tool_use',
-          id: item.call_id,
-          name: canonicalName,
-          input: normalizedInput,
-        }],
+    return [
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          id: item.id,
+          model: this.currentModel || undefined,
+          content: [
+            {
+              type: 'tool_use',
+              id: item.call_id,
+              name: canonicalName,
+              input: normalizedInput,
+            },
+          ],
+        },
+        timestamp,
       },
-      timestamp,
-    }];
+    ];
   }
 
-  private handleFunctionCallOutput(timestamp: string, item: CodexFunctionCallOutputItem): SessionEvent[] {
+  private handleFunctionCallOutput(
+    timestamp: string,
+    item: CodexFunctionCallOutputItem,
+  ): SessionEvent[] {
     const isError = parsePlainTextFailure(item.output);
-    return [{
-      type: 'user',
-      message: {
-        role: 'user',
-        id: `${item.call_id}:result`,
-        content: [{
-          type: 'tool_result',
-          tool_use_id: item.call_id,
-          content: item.output,
-          is_error: isError,
-        }],
+    return [
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          id: `${item.call_id}:result`,
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: item.call_id,
+              content: item.output,
+              is_error: isError,
+            },
+          ],
+        },
+        timestamp,
       },
-      timestamp,
-    }];
+    ];
   }
 
   private handleLocalShellCall(timestamp: string, item: CodexLocalShellCallItem): SessionEvent[] {
     const command = item.action?.command?.join(' ') || '';
     this.emittedToolUseIds.add(item.call_id);
-    return [{
-      type: 'assistant',
-      message: {
-        role: 'assistant',
-        id: item.id,
-        model: this.currentModel || undefined,
-        content: [{
-          type: 'tool_use',
-          id: item.call_id,
-          name: 'Bash',
-          input: {
-            command,
-            workdir: item.action?.workdir,
-            _sidekickRawToolName: 'local_shell_call',
-          },
-        }],
+    return [
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          id: item.id,
+          model: this.currentModel || undefined,
+          content: [
+            {
+              type: 'tool_use',
+              id: item.call_id,
+              name: 'Bash',
+              input: {
+                command,
+                workdir: item.action?.workdir,
+                _sidekickRawToolName: 'local_shell_call',
+              },
+            },
+          ],
+        },
+        timestamp,
       },
-      timestamp,
-    }];
+    ];
   }
 
   private handleCustomToolCall(timestamp: string, item: CodexCustomToolCallItem): SessionEvent[] {
     if (item.name === 'apply_patch') {
       const filePaths = extractPatchFilePaths(item.input);
       if (filePaths.length === 0) return [];
-      const toolUseIds = filePaths.map(fp => `${item.call_id}-${fp}`);
+      const toolUseIds = filePaths.map((fp) => `${item.call_id}-${fp}`);
       this.patchExpandedToolUseIds.set(item.call_id, toolUseIds);
       for (const id of toolUseIds) {
         this.emittedToolUseIds.add(id);
       }
-      return filePaths.map(fp => ({
+      return filePaths.map((fp) => ({
         type: 'assistant' as const,
         message: {
           role: 'assistant' as const,
           id: `${item.call_id}-${fp}`,
           model: this.currentModel || undefined,
-          content: [{
-            type: 'tool_use',
-            id: `${item.call_id}-${fp}`,
-            name: 'Edit',
-            input: {
-              file_path: fp,
-              _sidekickRawToolName: 'apply_patch',
+          content: [
+            {
+              type: 'tool_use',
+              id: `${item.call_id}-${fp}`,
+              name: 'Edit',
+              input: {
+                file_path: fp,
+                _sidekickRawToolName: 'apply_patch',
+              },
             },
-          }],
+          ],
         },
         timestamp,
       }));
@@ -444,24 +481,31 @@ export class CodexRolloutParser {
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedInput);
     this.emittedToolUseIds.add(item.call_id);
 
-    return [{
-      type: 'assistant',
-      message: {
-        role: 'assistant',
-        id: item.call_id,
-        model: this.currentModel || undefined,
-        content: [{
-          type: 'tool_use',
+    return [
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
           id: item.call_id,
-          name: canonicalName,
-          input: normalizedInput,
-        }],
+          model: this.currentModel || undefined,
+          content: [
+            {
+              type: 'tool_use',
+              id: item.call_id,
+              name: canonicalName,
+              input: normalizedInput,
+            },
+          ],
+        },
+        timestamp,
       },
-      timestamp,
-    }];
+    ];
   }
 
-  private handleCustomToolCallOutput(timestamp: string, item: CodexCustomToolCallOutputItem): SessionEvent[] {
+  private handleCustomToolCallOutput(
+    timestamp: string,
+    item: CodexCustomToolCallOutputItem,
+  ): SessionEvent[] {
     let isError = false;
     let duration: number | undefined;
     try {
@@ -476,33 +520,37 @@ export class CodexRolloutParser {
 
     const toolUseIds = this.patchExpandedToolUseIds.get(item.call_id) ?? [item.call_id];
     this.patchExpandedToolUseIds.delete(item.call_id);
-    return toolUseIds.map(toolUseId => ({
+    return toolUseIds.map((toolUseId) => ({
       type: 'user',
       message: {
         role: 'user',
         id: `${toolUseId}:result`,
-        content: [{
-          type: 'tool_result',
-          tool_use_id: toolUseId,
-          content: item.output,
-          is_error: isError,
-          duration,
-        }],
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: item.output,
+            is_error: isError,
+            duration,
+          },
+        ],
       },
       timestamp,
     }));
   }
 
   private handleCompacted(timestamp: string, payload: CodexCompacted): SessionEvent[] {
-    return [{
-      type: 'summary',
-      message: {
-        role: 'assistant',
-        id: `compacted-${timestamp}`,
-        content: payload.summary || 'Context compacted',
+    return [
+      {
+        type: 'summary',
+        message: {
+          role: 'assistant',
+          id: `compacted-${timestamp}`,
+          content: payload.summary || 'Context compacted',
+        },
+        timestamp,
       },
-      timestamp,
-    }];
+    ];
   }
 
   private handleTurnContext(payload: CodexTurnContext): SessionEvent[] {
@@ -561,16 +609,18 @@ export class CodexRolloutParser {
               role: 'assistant',
               id: `exec-${e.call_id}`,
               model: this.currentModel || undefined,
-              content: [{
-                type: 'tool_use',
-                id: e.call_id,
-                name: 'Bash',
-                input: {
-                  command,
-                  workdir: pending?.workdir,
-                  _sidekickRawToolName: 'exec_command',
+              content: [
+                {
+                  type: 'tool_use',
+                  id: e.call_id,
+                  name: 'Bash',
+                  input: {
+                    command,
+                    workdir: pending?.workdir,
+                    _sidekickRawToolName: 'exec_command',
+                  },
                 },
-              }],
+              ],
             },
             timestamp: pending?.timestamp || timestamp,
           });
@@ -582,13 +632,15 @@ export class CodexRolloutParser {
           message: {
             role: 'user',
             id: `exec-${e.call_id}:result`,
-            content: [{
-              type: 'tool_result',
-              tool_use_id: e.call_id,
-              content: output,
-              is_error: e.exit_code !== 0,
-              duration: e.duration_ms,
-            }],
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: e.call_id,
+                content: output,
+                is_error: e.exit_code !== 0,
+                duration: e.duration_ms,
+              },
+            ],
           },
           timestamp,
         });
@@ -623,16 +675,18 @@ export class CodexRolloutParser {
               role: 'assistant',
               id: `mcp-${e.call_id}`,
               model: this.currentModel || undefined,
-              content: [{
-                type: 'tool_use',
-                id: e.call_id,
-                name: normalizeCodexToolName(toolName),
-                input: {
-                  ...(pendingMcp?.arguments || {}),
-                  _sidekickRawToolName: toolName,
-                  _sidekickMcpServerName: pendingMcp?.server_name,
+              content: [
+                {
+                  type: 'tool_use',
+                  id: e.call_id,
+                  name: normalizeCodexToolName(toolName),
+                  input: {
+                    ...(pendingMcp?.arguments || {}),
+                    _sidekickRawToolName: toolName,
+                    _sidekickMcpServerName: pendingMcp?.server_name,
+                  },
                 },
-              }],
+              ],
             },
             timestamp: pendingMcp?.timestamp || timestamp,
           });
@@ -643,13 +697,15 @@ export class CodexRolloutParser {
           message: {
             role: 'user',
             id: `mcp-${e.call_id}:result`,
-            content: [{
-              type: 'tool_result',
-              tool_use_id: e.call_id,
-              content: e.result || '',
-              is_error: e.is_error || false,
-              duration: e.duration_ms,
-            }],
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: e.call_id,
+                content: e.result || '',
+                is_error: e.is_error || false,
+                duration: e.duration_ms,
+              },
+            ],
           },
           timestamp,
         });
@@ -659,105 +715,122 @@ export class CodexRolloutParser {
 
       case 'error': {
         const e = event as CodexErrorEvent;
-        return [{
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            id: `error-${timestamp}`,
-            model: this.currentModel || undefined,
-            content: [{ type: 'text', text: `[Error${e.code ? ` (${e.code})` : ''}] ${e.message}` }],
+        return [
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              id: `error-${timestamp}`,
+              model: this.currentModel || undefined,
+              content: [
+                { type: 'text', text: `[Error${e.code ? ` (${e.code})` : ''}] ${e.message}` },
+              ],
+            },
+            timestamp,
           },
-          timestamp,
-        }];
+        ];
       }
 
       case 'context_compacted': {
         const e = event as CodexContextCompactedEvent;
-        return [{
-          type: 'summary',
-          message: {
-            role: 'assistant',
-            id: `ctx-compacted-${timestamp}`,
-            content: e.summary || 'Context compacted',
+        return [
+          {
+            type: 'summary',
+            message: {
+              role: 'assistant',
+              id: `ctx-compacted-${timestamp}`,
+              content: e.summary || 'Context compacted',
+            },
+            timestamp,
           },
-          timestamp,
-        }];
+        ];
       }
 
       case 'patch_applied': {
         const e = event as CodexPatchAppliedEvent;
         if (!e.file_path) return [];
         const patchId = `patch-${timestamp}-${e.file_path}`;
-        return [{
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            id: patchId,
-            model: this.currentModel || undefined,
-            content: [{
-              type: 'tool_use',
+        return [
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
               id: patchId,
-              name: 'Edit',
-              input: {
-                file_path: e.file_path,
-                additions: e.additions ?? 0,
-                deletions: e.deletions ?? 0,
-                _sidekickRawToolName: 'patch_applied',
-              },
-            }],
+              model: this.currentModel || undefined,
+              content: [
+                {
+                  type: 'tool_use',
+                  id: patchId,
+                  name: 'Edit',
+                  input: {
+                    file_path: e.file_path,
+                    additions: e.additions ?? 0,
+                    deletions: e.deletions ?? 0,
+                    _sidekickRawToolName: 'patch_applied',
+                  },
+                },
+              ],
+            },
+            timestamp,
           },
-          timestamp,
-        }];
+        ];
       }
 
       case 'turn_started':
       case 'turn_complete':
-      case 'task_started':
-      {
+      case 'task_started': {
         const collaborationMode = (event as CodexTaskStartedEvent).collaboration_mode_kind;
         if (collaborationMode !== 'plan' || this.inPlanMode) return [];
         this.inPlanMode = true;
-        return [{
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            id: `plan-enter-${timestamp}`,
-            model: this.currentModel || undefined,
-            content: [{
-              type: 'tool_use',
+        return [
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
               id: `plan-enter-${timestamp}`,
-              name: 'EnterPlanMode',
-              input: {
-                source: 'codex_task_started',
-                _sidekickRawToolName: 'task_started',
-              },
-            }],
+              model: this.currentModel || undefined,
+              content: [
+                {
+                  type: 'tool_use',
+                  id: `plan-enter-${timestamp}`,
+                  name: 'EnterPlanMode',
+                  input: {
+                    source: 'codex_task_started',
+                    _sidekickRawToolName: 'task_started',
+                  },
+                },
+              ],
+            },
+            timestamp,
           },
-          timestamp,
-        }];
+        ];
       }
 
       case 'task_complete':
         if (!this.inPlanMode) return [];
         this.inPlanMode = false;
-        return [{
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            id: `plan-exit-${timestamp}`,
-            model: this.currentModel || undefined,
-            content: [{
-              type: 'tool_use',
+        return [
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
               id: `plan-exit-${timestamp}`,
-              name: 'ExitPlanMode',
-              input: {
-                source: 'codex_task_complete',
-                _sidekickRawToolName: 'task_complete',
-              },
-            }],
+              model: this.currentModel || undefined,
+              content: [
+                {
+                  type: 'tool_use',
+                  id: `plan-exit-${timestamp}`,
+                  name: 'ExitPlanMode',
+                  input: {
+                    source: 'codex_task_complete',
+                    _sidekickRawToolName: 'task_complete',
+                  },
+                },
+              ],
+            },
+            timestamp,
           },
-          timestamp,
-        }];
+        ];
 
       case 'turn_aborted':
       case 'agent_reasoning':
@@ -779,30 +852,34 @@ export class CodexRolloutParser {
     const normalizedRateLimits = normalizeRateLimits(rateLimits);
     if (!usage && !normalizedRateLimits) return [];
 
-    const mappedUsage: MessageUsage | undefined = usage ? {
-      input_tokens: usage.input_tokens || 0,
-      output_tokens: usage.output_tokens || 0,
-      cache_read_input_tokens: usage.cached_input_tokens || 0,
-      cache_creation_input_tokens: 0,
-      reasoning_tokens: usage.reasoning_output_tokens || 0,
-    } : undefined;
+    const mappedUsage: MessageUsage | undefined = usage
+      ? {
+          input_tokens: usage.input_tokens || 0,
+          output_tokens: usage.output_tokens || 0,
+          cache_read_input_tokens: usage.cached_input_tokens || 0,
+          cache_creation_input_tokens: 0,
+          reasoning_tokens: usage.reasoning_output_tokens || 0,
+        }
+      : undefined;
 
     if (usage) {
       this.lastTokenUsage = usage;
     }
 
-    return [{
-      type: 'system',
-      message: {
-        role: 'system',
-        id: `token-count-${timestamp}`,
-        sourceLabel: 'token count',
-        model: this.currentModel || undefined,
-        usage: mappedUsage,
-        content: [],
+    return [
+      {
+        type: 'system',
+        message: {
+          role: 'system',
+          id: `token-count-${timestamp}`,
+          sourceLabel: 'token count',
+          model: this.currentModel || undefined,
+          usage: mappedUsage,
+          content: [],
+        },
+        timestamp,
+        rateLimits: normalizedRateLimits,
       },
-      timestamp,
-      rateLimits: normalizedRateLimits,
-    }];
+    ];
   }
 }

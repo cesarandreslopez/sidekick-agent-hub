@@ -14,10 +14,7 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { ClaudeSessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log, logError } from '../services/Logger';
-import {
-  assistantTurnEventsFromSessionEvents,
-  segmentAssistantTurn,
-} from 'sidekick-shared';
+import { assistantTurnEventsFromSessionEvents, segmentAssistantTurn } from 'sidekick-shared';
 import type { AssistantTurnToolRef } from 'sidekick-shared';
 
 /** Parsed message chunk for display */
@@ -37,7 +34,9 @@ export interface ConversationChunk {
 
 type PendingTool = { name: string };
 
-export function conversationChunksFromSessionEvents(events: readonly ClaudeSessionEvent[]): ConversationChunk[] {
+export function conversationChunksFromSessionEvents(
+  events: readonly ClaudeSessionEvent[],
+): ConversationChunk[] {
   const chunks: ConversationChunk[] = [];
   const pendingTools = new Map<string, PendingTool>();
   let assistantEvents: ClaudeSessionEvent[] = [];
@@ -46,7 +45,9 @@ export function conversationChunksFromSessionEvents(events: readonly ClaudeSessi
     if (assistantEvents.length === 0) return;
 
     const timestamp = assistantEvents[assistantEvents.length - 1]?.timestamp ?? '';
-    const assistantEvent = [...assistantEvents].reverse().find((event) => event.type === 'assistant');
+    const assistantEvent = [...assistantEvents]
+      .reverse()
+      .find((event) => event.type === 'assistant');
     const model = assistantEvent?.message?.model;
     const isSidechain = assistantEvents.some((event) => event.isSidechain);
     const projection = segmentAssistantTurn(assistantTurnEventsFromSessionEvents(assistantEvents));
@@ -188,7 +189,9 @@ function userEventToChunks(
     }
 
     if (type === 'tool_result') {
-      chunks.push(toolResultBlockToChunk(block, event.timestamp, event.isSidechain === true, pendingTools));
+      chunks.push(
+        toolResultBlockToChunk(block, event.timestamp, event.isSidechain === true, pendingTools),
+      );
     }
   }
 
@@ -308,7 +311,7 @@ export class ConversationViewProvider implements vscode.Disposable {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly sessionMonitor: SessionMonitor
+    private readonly sessionMonitor: SessionMonitor,
   ) {}
 
   /**
@@ -332,13 +335,17 @@ export class ConversationViewProvider implements vscode.Disposable {
         {
           enableScripts: true,
           retainContextWhenHidden: true,
-          localResourceRoots: [this.extensionUri]
-        }
+          localResourceRoots: [this.extensionUri],
+        },
       );
 
-      this.panel.onDidDispose(() => {
-        this.panel = null;
-      }, null, this.disposables);
+      this.panel.onDidDispose(
+        () => {
+          this.panel = null;
+        },
+        null,
+        this.disposables,
+      );
     }
 
     // Set title to session filename
@@ -375,28 +382,33 @@ export class ConversationViewProvider implements vscode.Disposable {
     const nonce = getNonce();
     const cspSource = webview.cspSource;
 
-    const chunksHtml = chunks.map((chunk, i) => {
-      const time = new Date(chunk.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-      const sidechain = chunk.isSidechain ? ' sidechain' : '';
+    const chunksHtml = chunks
+      .map((chunk, i) => {
+        const time = new Date(chunk.timestamp).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+        const sidechain = chunk.isSidechain ? ' sidechain' : '';
 
-      if (chunk.isCompaction) {
-        return `<div class="chunk compaction-marker">
+        if (chunk.isCompaction) {
+          return `<div class="chunk compaction-marker">
           <div class="chunk-meta">${time}</div>
           <div class="compaction-badge">Context Compacted</div>
         </div>`;
-      }
+        }
 
-      if (chunk.role === 'tool') {
-        const errorClass = chunk.isError ? ' tool-error' : '';
-        const summary = chunk.toolSummary
-          ? `<span class="tool-summary">${this.escapeHtml(chunk.toolSummary)}</span>`
-          : '';
+        if (chunk.role === 'tool') {
+          const errorClass = chunk.isError ? ' tool-error' : '';
+          const summary = chunk.toolSummary
+            ? `<span class="tool-summary">${this.escapeHtml(chunk.toolSummary)}</span>`
+            : '';
 
-        // Tool-call rows carry their gist in the header summary, so they render
-        // as concise, non-expandable rows. Only tool-result rows (which have
-        // output) get a collapsible body.
-        if (!chunk.toolOutput) {
-          return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
+          // Tool-call rows carry their gist in the header summary, so they render
+          // as concise, non-expandable rows. Only tool-result rows (which have
+          // output) get a collapsible body.
+          if (!chunk.toolOutput) {
+            return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
           <div class="tool-header tool-header-static">
             <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
             <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
@@ -404,11 +416,11 @@ export class ConversationViewProvider implements vscode.Disposable {
             <span class="chunk-time">${time}</span>
           </div>
         </div>`;
-        }
+          }
 
-        const outputSection = `<div class="tool-section"><div class="tool-section-label">${chunk.isError ? 'Error' : 'Output'}</div><pre class="tool-content${errorClass}">${this.escapeHtml(chunk.toolOutput)}</pre></div>`;
+          const outputSection = `<div class="tool-section"><div class="tool-section-label">${chunk.isError ? 'Error' : 'Output'}</div><pre class="tool-content${errorClass}">${this.escapeHtml(chunk.toolOutput)}</pre></div>`;
 
-        return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
+          return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
           <div class="tool-header" data-toggle="tool-body-${i}">
             <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
             <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
@@ -420,10 +432,10 @@ export class ConversationViewProvider implements vscode.Disposable {
             ${outputSection}
           </div>
         </div>`;
-      }
+        }
 
-      if (chunk.role === 'reasoning') {
-        return `<details class="chunk reasoning-chunk${sidechain}" id="chunk-${i}">
+        if (chunk.role === 'reasoning') {
+          return `<details class="chunk reasoning-chunk${sidechain}" id="chunk-${i}">
           <summary>
             <span class="role-label reasoning">Reasoning</span>
             ${chunk.model ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>` : ''}
@@ -431,13 +443,15 @@ export class ConversationViewProvider implements vscode.Disposable {
           </summary>
           <div class="reasoning-body">${this.escapeHtml(chunk.content)}</div>
         </details>`;
-      }
+        }
 
-      const ROLE_LABELS: Record<string, string> = { user: 'You', assistant: 'Assistant' };
-      const roleLabel = ROLE_LABELS[chunk.role] ?? 'System';
-      const modelTag = chunk.model ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>` : '';
+        const ROLE_LABELS: Record<string, string> = { user: 'You', assistant: 'Assistant' };
+        const roleLabel = ROLE_LABELS[chunk.role] ?? 'System';
+        const modelTag = chunk.model
+          ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>`
+          : '';
 
-      return `<div class="chunk ${chunk.role}-chunk${sidechain}" id="chunk-${i}">
+        return `<div class="chunk ${chunk.role}-chunk${sidechain}" id="chunk-${i}">
         <div class="chunk-header">
           <span class="role-label ${chunk.role}">${roleLabel}</span>
           ${modelTag}
@@ -445,7 +459,8 @@ export class ConversationViewProvider implements vscode.Disposable {
         </div>
         <div class="chunk-body">${this.escapeHtml(chunk.content)}</div>
       </div>`;
-    }).join('\n');
+      })
+      .join('\n');
 
     return `<!DOCTYPE html>
 <html lang="en">

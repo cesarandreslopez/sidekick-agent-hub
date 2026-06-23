@@ -11,12 +11,15 @@ interface ContextMenuOverlayProps {
   selectedIndex: number;
 }
 
-export function ContextMenuOverlay({ actions, selectedIndex }: ContextMenuOverlayProps): React.ReactElement {
+export function ContextMenuOverlay({
+  actions,
+  selectedIndex,
+}: ContextMenuOverlayProps): React.ReactElement {
   if (actions.length === 0) {
     return <Box />;
   }
 
-  const maxLen = Math.max(...actions.map(a => a.key.length + a.label.length + 4), 20);
+  const maxLen = Math.max(...actions.map((a) => a.key.length + a.label.length + 4), 20);
   const width = Math.min(maxLen + 6, 50);
 
   return (
@@ -33,9 +36,15 @@ export function ContextMenuOverlay({ actions, selectedIndex }: ContextMenuOverla
       {actions.map((a, i) => (
         <Box key={a.key}>
           {i === selectedIndex ? (
-            <Text inverse> <Text bold>{a.key}</Text>  {a.label}</Text>
+            <Text inverse>
+              {' '}
+              <Text bold>{a.key}</Text> {a.label}
+            </Text>
           ) : (
-            <Text> <Text bold>{a.key}</Text>  {a.label}</Text>
+            <Text>
+              {' '}
+              <Text bold>{a.key}</Text> {a.label}
+            </Text>
           )}
         </Box>
       ))}

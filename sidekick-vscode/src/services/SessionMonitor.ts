@@ -23,8 +23,30 @@ import * as os from 'os';
 import path from 'path';
 import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
 import type { SessionProvider, SessionReader } from '../types/sessionProvider';
-import { ClaudeSessionEvent, TokenUsage, ToolCall, SessionStats, ToolAnalytics, TimelineEvent, PendingToolCall, SubagentStats, LatencyStats, CompactionEvent, TruncationEvent, ContextAttribution, PlanState, PlanStep, TurnAttribution, ContextSizePoint } from '../types/claudeSession';
-import { SessionSummary, ModelUsageRecord, ToolUsageRecord, createEmptyTokenTotals } from '../types/historicalData';
+import {
+  ClaudeSessionEvent,
+  TokenUsage,
+  ToolCall,
+  SessionStats,
+  ToolAnalytics,
+  TimelineEvent,
+  PendingToolCall,
+  SubagentStats,
+  LatencyStats,
+  CompactionEvent,
+  TruncationEvent,
+  ContextAttribution,
+  PlanState,
+  PlanStep,
+  TurnAttribution,
+  ContextSizePoint,
+} from '../types/claudeSession';
+import {
+  SessionSummary,
+  ModelUsageRecord,
+  ToolUsageRecord,
+  createEmptyTokenTotals,
+} from '../types/historicalData';
 import { estimateTokens } from '../utils/tokenEstimator';
 import { ModelPricingService } from './ModelPricingService';
 import { log, logError } from './Logger';
@@ -82,7 +104,11 @@ const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
-  return block !== null && typeof block === 'object' && typeof (block as Record<string, unknown>).type === 'string';
+  return (
+    block !== null &&
+    typeof block === 'object' &&
+    typeof (block as Record<string, unknown>).type === 'string'
+  );
 }
 
 export class SessionMonitor implements vscode.Disposable {
@@ -147,7 +173,18 @@ export class SessionMonitor implements vscode.Disposable {
   private readonly MAX_SEEN_HASHES = 10000;
 
   /** Task-related tool names */
-  private static readonly TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'Task', 'TodoWrite', 'TodoRead', 'UpdatePlan', 'EnterPlanMode', 'ExitPlanMode'];
+  private static readonly TASK_TOOLS = [
+    'TaskCreate',
+    'TaskUpdate',
+    'TaskGet',
+    'TaskList',
+    'Task',
+    'TodoWrite',
+    'TodoRead',
+    'UpdatePlan',
+    'EnterPlanMode',
+    'ExitPlanMode',
+  ];
 
   /** Creates an empty context attribution object */
   private static emptyAttribution(): ContextAttribution {
@@ -158,7 +195,7 @@ export class SessionMonitor implements vscode.Disposable {
       toolInputs: 0,
       toolOutputs: 0,
       thinking: 0,
-      other: 0
+      other: 0,
     };
   }
 
@@ -220,7 +257,9 @@ export class SessionMonitor implements vscode.Disposable {
   private readonly _onLatencyUpdate = new vscode.EventEmitter<LatencyStats>();
   private readonly _onCompaction = new vscode.EventEmitter<CompactionEvent>();
   private readonly _onTruncation = new vscode.EventEmitter<TruncationEvent>();
-  private readonly _onCycleDetected = new vscode.EventEmitter<import('../types/analysis').CycleDetection>();
+  private readonly _onCycleDetected = new vscode.EventEmitter<
+    import('../types/analysis').CycleDetection
+  >();
   private readonly _onQuotaUpdate = new vscode.EventEmitter<QuotaState>();
   private readonly _onReplayStateChange = new vscode.EventEmitter<boolean>();
 
@@ -293,7 +332,13 @@ export class SessionMonitor implements vscode.Disposable {
         ? (usage) => provider.computeContextSize!(usage as TokenUsage)
         : undefined,
       providerId: provider.id as 'claude-code' | 'opencode' | 'codex',
-      readPlanFile: (p) => { try { return fs.readFileSync(p, 'utf-8'); } catch { return null; } },
+      readPlanFile: (p) => {
+        try {
+          return fs.readFileSync(p, 'utf-8');
+        } catch {
+          return null;
+        }
+      },
     });
     // Initialize empty statistics
     this.stats = this.createEmptyStats();
@@ -335,11 +380,12 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     const detail = status.message ? ` ${status.message}` : '';
-    const recommendation = status.kind === 'sqlite_missing'
-      ? ' Recommendation: install `sqlite3`, ensure it is on PATH for the VS Code environment, then reload the window.'
-      : status.kind === 'sqlite_blocked'
-        ? ' Recommendation: ensure `sqlite3` is executable in the same environment as VS Code, then reload the window.'
-        : ' Recommendation: verify `sqlite3` can read `opencode.db` in the current environment, then retry.';
+    const recommendation =
+      status.kind === 'sqlite_missing'
+        ? ' Recommendation: install `sqlite3`, ensure it is on PATH for the VS Code environment, then reload the window.'
+        : status.kind === 'sqlite_blocked'
+          ? ' Recommendation: ensure `sqlite3` is executable in the same environment as VS Code, then reload the window.'
+          : ' Recommendation: verify `sqlite3` can read `opencode.db` in the current environment, then retry.';
     return `${this.provider.displayName} session database is unavailable.${detail}${recommendation}`;
   }
 
@@ -390,7 +436,9 @@ export class SessionMonitor implements vscode.Disposable {
 
     // Log diagnostic information for debugging path resolution issues
     const sessionDir = this.provider.getSessionDirectory(workspacePath);
-    log(`Session monitoring starting for workspace: ${workspacePath} (provider: ${this.provider.displayName})`);
+    log(
+      `Session monitoring starting for workspace: ${workspacePath} (provider: ${this.provider.displayName})`,
+    );
     log(`Looking for sessions in: ${sessionDir}`);
 
     // Find active session
@@ -422,7 +470,9 @@ export class SessionMonitor implements vscode.Disposable {
       if (usageSnapshot) {
         const snapshotContextSize = this.provider.computeContextSize
           ? this.provider.computeContextSize(usageSnapshot)
-          : usageSnapshot.inputTokens + usageSnapshot.cacheWriteTokens + usageSnapshot.cacheReadTokens;
+          : usageSnapshot.inputTokens +
+            usageSnapshot.cacheWriteTokens +
+            usageSnapshot.cacheReadTokens;
         this.aggregator.seedContextSize(snapshotContextSize);
         this.stats.currentContextSize = snapshotContextSize;
         this.lastModelId = usageSnapshot.model;
@@ -531,7 +581,13 @@ export class SessionMonitor implements vscode.Disposable {
         ? (usage) => newProvider.computeContextSize!(usage as TokenUsage)
         : undefined,
       providerId: newProvider.id as 'claude-code' | 'opencode' | 'codex',
-      readPlanFile: (p) => { try { return fs.readFileSync(p, 'utf-8'); } catch { return null; } },
+      readPlanFile: (p) => {
+        try {
+          return fs.readFileSync(p, 'utf-8');
+        } catch {
+          return null;
+        }
+      },
     });
     oldProvider.dispose();
 
@@ -570,7 +626,9 @@ export class SessionMonitor implements vscode.Disposable {
     if (this.customSessionDir) {
       sessionDir = this.customSessionDir;
     } else {
-      sessionDir = this.provider.discoverSessionDirectory(this.workspacePath!) || this.provider.getSessionDirectory(this.workspacePath!);
+      sessionDir =
+        this.provider.discoverSessionDirectory(this.workspacePath!) ||
+        this.provider.getSessionDirectory(this.workspacePath!);
     }
 
     // If directory doesn't exist, try watching the DB file for DB-backed providers
@@ -610,7 +668,7 @@ export class SessionMonitor implements vscode.Disposable {
               this.checkForNewerSession();
             }
           }
-        }
+        },
       );
 
       log(`Session directory watcher established: ${sessionDir}`);
@@ -809,7 +867,9 @@ export class SessionMonitor implements vscode.Disposable {
     if (this.customSessionDir) {
       sessionDir = this.customSessionDir;
     } else {
-      sessionDir = this.provider.discoverSessionDirectory(this.workspacePath!) || this.provider.getSessionDirectory(this.workspacePath!);
+      sessionDir =
+        this.provider.discoverSessionDirectory(this.workspacePath!) ||
+        this.provider.getSessionDirectory(this.workspacePath!);
     }
 
     // For file-based providers, wait for the directory to be created on disk.
@@ -890,7 +950,9 @@ export class SessionMonitor implements vscode.Disposable {
       if (usageSnapshot) {
         const snapshotContextSize = this.provider.computeContextSize
           ? this.provider.computeContextSize(usageSnapshot)
-          : usageSnapshot.inputTokens + usageSnapshot.cacheWriteTokens + usageSnapshot.cacheReadTokens;
+          : usageSnapshot.inputTokens +
+            usageSnapshot.cacheWriteTokens +
+            usageSnapshot.cacheReadTokens;
         this.aggregator.seedContextSize(snapshotContextSize);
         this.stats.currentContextSize = snapshotContextSize;
         this.lastModelId = usageSnapshot.model;
@@ -1030,7 +1092,9 @@ export class SessionMonitor implements vscode.Disposable {
       turnAttributions: this.turnAttributions.length > 0 ? [...this.turnAttributions] : undefined,
       contextTimeline: this.contextTimeline.length > 0 ? [...this.contextTimeline] : undefined,
       totalReportedCost: aggTokens.reportedCost > 0 ? aggTokens.reportedCost : undefined,
-      planState: this.planState ? { ...this.planState, steps: [...this.planState.steps] } : undefined,
+      planState: this.planState
+        ? { ...this.planState, steps: [...this.planState.steps] }
+        : undefined,
       contextHealth: this.calculateContextHealth(),
       truncationCount: aggTruncations.length,
       truncationEvents: aggTruncations.length > 0 ? aggTruncations : undefined,
@@ -1052,7 +1116,7 @@ export class SessionMonitor implements vscode.Disposable {
       }
     }
 
-    return Math.max(0, Math.round(100 - (compactions.length * 15) - (totalReclaimedPercent * 0.3)));
+    return Math.max(0, Math.round(100 - compactions.length * 15 - totalReclaimedPercent * 0.3));
   }
 
   // Truncation detection is now handled by the shared aggregator.
@@ -1159,16 +1223,25 @@ export class SessionMonitor implements vscode.Disposable {
     const unpricedModelIds: string[] = [];
     this.stats.modelUsage.forEach((usage, model) => {
       const pricing = ModelPricingService.getPricing(model);
-      const cost = ModelPricingService.calculateCost({
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        cacheWriteTokens: usage.cacheWriteTokens,
-        cacheReadTokens: usage.cacheReadTokens,
-        reasoningTokens: usage.reasoningTokens,
-      }, pricing);
+      const cost = ModelPricingService.calculateCost(
+        {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheWriteTokens: usage.cacheWriteTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          reasoningTokens: usage.reasoningTokens,
+        },
+        pricing,
+      );
       if (cost === null) {
         unpricedModelIds.push(model);
-        modelUsage.push({ model, calls: usage.calls, tokens: usage.tokens, cost: 0, priced: false });
+        modelUsage.push({
+          model,
+          calls: usage.calls,
+          tokens: usage.tokens,
+          cost: 0,
+          priced: false,
+        });
       } else {
         modelUsage.push({ model, calls: usage.calls, tokens: usage.tokens, cost, priced: true });
       }
@@ -1242,24 +1315,26 @@ export class SessionMonitor implements vscode.Disposable {
       const now = Date.now();
       const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
-      return sessions.map(sessionPath => {
-        let mtime: Date;
-        try {
-          mtime = fs.statSync(sessionPath).mtime;
-        } catch {
-          const meta = this.provider.getSessionMetadata?.(sessionPath);
-          if (!meta) return null;
-          mtime = meta.mtime;
-        }
-        return {
-          path: sessionPath,
-          filename: this.provider.getSessionId(sessionPath),
-          modifiedTime: mtime,
-          isCurrent: sessionPath === this.sessionPath,
-          label: this.provider.extractSessionLabel(sessionPath),
-          isActive: (now - mtime.getTime()) < ACTIVE_THRESHOLD_MS
-        };
-      }).filter((s): s is NonNullable<typeof s> => s !== null);
+      return sessions
+        .map((sessionPath) => {
+          let mtime: Date;
+          try {
+            mtime = fs.statSync(sessionPath).mtime;
+          } catch {
+            const meta = this.provider.getSessionMetadata?.(sessionPath);
+            if (!meta) return null;
+            mtime = meta.mtime;
+          }
+          return {
+            path: sessionPath,
+            filename: this.provider.getSessionId(sessionPath),
+            modifiedTime: mtime,
+            isCurrent: sessionPath === this.sessionPath,
+            label: this.provider.extractSessionLabel(sessionPath),
+            isActive: now - mtime.getTime() < ACTIVE_THRESHOLD_MS,
+          };
+        })
+        .filter((s): s is NonNullable<typeof s> => s !== null);
     } catch (error) {
       logError('Error getting available sessions', error);
       return [];
@@ -1359,24 +1434,26 @@ export class SessionMonitor implements vscode.Disposable {
       const now = Date.now();
       const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
 
-      return sessions.map(sessionPath => {
-        let mtime: Date;
-        try {
-          mtime = fs.statSync(sessionPath).mtime;
-        } catch {
-          const meta = this.provider.getSessionMetadata?.(sessionPath);
-          if (!meta) return null;
-          mtime = meta.mtime;
-        }
-        return {
-          path: sessionPath,
-          filename: this.provider.getSessionId(sessionPath),
-          modifiedTime: mtime,
-          isCurrent: sessionPath === this.sessionPath,
-          label: this.provider.extractSessionLabel(sessionPath),
-          isActive: (now - mtime.getTime()) < ACTIVE_THRESHOLD_MS
-        };
-      }).filter((s): s is NonNullable<typeof s> => s !== null);
+      return sessions
+        .map((sessionPath) => {
+          let mtime: Date;
+          try {
+            mtime = fs.statSync(sessionPath).mtime;
+          } catch {
+            const meta = this.provider.getSessionMetadata?.(sessionPath);
+            if (!meta) return null;
+            mtime = meta.mtime;
+          }
+          return {
+            path: sessionPath,
+            filename: this.provider.getSessionId(sessionPath),
+            modifiedTime: mtime,
+            isCurrent: sessionPath === this.sessionPath,
+            label: this.provider.extractSessionLabel(sessionPath),
+            isActive: now - mtime.getTime() < ACTIVE_THRESHOLD_MS,
+          };
+        })
+        .filter((s): s is NonNullable<typeof s> => s !== null);
     } catch (error) {
       logError('Error getting sessions from directory', error);
       return [];
@@ -1400,7 +1477,6 @@ export class SessionMonitor implements vscode.Disposable {
     const MAX_SESSIONS_PER_PROJECT = 5;
     const MAX_OTHER_PROJECTS = 3;
 
-
     try {
       // Custom directory overrides workspace-based discovery (same pattern as
       // performNewSessionCheck, performSessionDiscovery, getAvailableSessions)
@@ -1413,7 +1489,7 @@ export class SessionMonitor implements vscode.Disposable {
             projectPath: this.customSessionDir,
             displayPath: SessionMonitor.shortenPathForDisplay(this.customSessionDir),
             proximity: 'current',
-            sessions: sessionInfos
+            sessions: sessionInfos,
           });
         }
         return groups;
@@ -1427,7 +1503,9 @@ export class SessionMonitor implements vscode.Disposable {
         ? this.provider.encodeWorkspacePath(this.workspacePath).toLowerCase()
         : '';
 
-      log(`getAllSessionsGrouped: ${allFolders.length} folders, encodedWorkspace=${encodedWorkspace}, workspacePath=${this.workspacePath}`);
+      log(
+        `getAllSessionsGrouped: ${allFolders.length} folders, encodedWorkspace=${encodedWorkspace}, workspacePath=${this.workspacePath}`,
+      );
 
       let otherProjectCount = 0;
 
@@ -1436,7 +1514,10 @@ export class SessionMonitor implements vscode.Disposable {
 
         // Determine proximity tier using encoded names (lossless comparison)
         let proximity: 'current' | 'related' | 'other';
-        if (encodedWorkspace && (encodedLower === encodedWorkspace || encodedLower.startsWith(encodedWorkspace + '-'))) {
+        if (
+          encodedWorkspace &&
+          (encodedLower === encodedWorkspace || encodedLower.startsWith(encodedWorkspace + '-'))
+        ) {
           proximity = 'current';
         } else if (encodedWorkspace && this.sharesEncodedPrefix(encodedLower, encodedWorkspace)) {
           proximity = 'related';
@@ -1454,13 +1535,17 @@ export class SessionMonitor implements vscode.Disposable {
         const sessions = this.provider.findSessionsInDirectory(folder.dir);
         const limitedSessions = sessions.slice(0, MAX_SESSIONS_PER_PROJECT);
 
-        log(`getAllSessionsGrouped: folder=${folder.name}, encoded=${encodedLower}, proximity=${proximity}, sessions=${sessions.length}, limited=${limitedSessions.length}`);
+        log(
+          `getAllSessionsGrouped: folder=${folder.name}, encoded=${encodedLower}, proximity=${proximity}, sessions=${sessions.length}, limited=${limitedSessions.length}`,
+        );
 
         if (limitedSessions.length === 0) continue;
 
         const sessionInfos = this.mapSessionPaths(limitedSessions, now, ACTIVE_THRESHOLD_MS);
 
-        log(`getAllSessionsGrouped: mapped ${sessionInfos.length} session infos for ${folder.name}`);
+        log(
+          `getAllSessionsGrouped: mapped ${sessionInfos.length} session infos for ${folder.name}`,
+        );
 
         if (sessionInfos.length === 0) continue;
 
@@ -1468,7 +1553,7 @@ export class SessionMonitor implements vscode.Disposable {
           projectPath: folder.name,
           displayPath: SessionMonitor.shortenPathForDisplay(folder.name),
           proximity,
-          sessions: sessionInfos
+          sessions: sessionInfos,
         });
       }
     } catch (error) {
@@ -1493,29 +1578,35 @@ export class SessionMonitor implements vscode.Disposable {
   /**
    * Maps raw session file paths to SessionInfo objects with metadata.
    */
-  private mapSessionPaths(sessionPaths: string[], now: number, activeThresholdMs: number): SessionInfo[] {
-    return sessionPaths.map(sessionPath => {
-      let mtime: Date;
-      try {
-        mtime = fs.statSync(sessionPath).mtime;
-      } catch {
-        const meta = this.provider.getSessionMetadata?.(sessionPath);
-        if (!meta) {
-          log(`mapSessionPaths: no metadata for ${sessionPath}, filtering out`);
-          return null;
+  private mapSessionPaths(
+    sessionPaths: string[],
+    now: number,
+    activeThresholdMs: number,
+  ): SessionInfo[] {
+    return sessionPaths
+      .map((sessionPath) => {
+        let mtime: Date;
+        try {
+          mtime = fs.statSync(sessionPath).mtime;
+        } catch {
+          const meta = this.provider.getSessionMetadata?.(sessionPath);
+          if (!meta) {
+            log(`mapSessionPaths: no metadata for ${sessionPath}, filtering out`);
+            return null;
+          }
+          mtime = meta.mtime;
         }
-        mtime = meta.mtime;
-      }
-      log(`mapSessionPaths: ${path.basename(sessionPath)} mtime=${mtime.toISOString()}`);
-      return {
-        path: sessionPath,
-        filename: this.provider.getSessionId(sessionPath),
-        modifiedTime: mtime.toISOString(),
-        isCurrent: sessionPath === this.sessionPath,
-        label: this.provider.extractSessionLabel(sessionPath),
-        isActive: (now - mtime.getTime()) < activeThresholdMs
-      };
-    }).filter((s): s is NonNullable<typeof s> => s !== null);
+        log(`mapSessionPaths: ${path.basename(sessionPath)} mtime=${mtime.toISOString()}`);
+        return {
+          path: sessionPath,
+          filename: this.provider.getSessionId(sessionPath),
+          modifiedTime: mtime.toISOString(),
+          isCurrent: sessionPath === this.sessionPath,
+          label: this.provider.extractSessionLabel(sessionPath),
+          isActive: now - mtime.getTime() < activeThresholdMs,
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
   }
 
   /**
@@ -1660,7 +1751,9 @@ export class SessionMonitor implements vscode.Disposable {
         this.handleEvent(event);
       }
       this.reader.flush();
-      log(`Initial content parsed: ${this.reader.getPosition()} position, stats: input=${this.stats.totalInputTokens}, output=${this.stats.totalOutputTokens}`);
+      log(
+        `Initial content parsed: ${this.reader.getPosition()} position, stats: input=${this.stats.totalInputTokens}, output=${this.stats.totalOutputTokens}`,
+      );
     } catch (error) {
       logError('Failed to read initial session content', error);
       throw error;
@@ -1724,10 +1817,25 @@ export class SessionMonitor implements vscode.Disposable {
 
       // Restore Maps from serialized arrays
       if (Array.isArray(s.modelUsage)) {
-        this.stats.modelUsage = new Map(s.modelUsage as Array<[string, { calls: number; tokens: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; reasoningTokens?: number }]>);
+        this.stats.modelUsage = new Map(
+          s.modelUsage as Array<
+            [
+              string,
+              {
+                calls: number;
+                tokens: number;
+                inputTokens: number;
+                outputTokens: number;
+                cacheWriteTokens: number;
+                cacheReadTokens: number;
+                reasoningTokens?: number;
+              },
+            ]
+          >,
+        );
       }
       if (Array.isArray(s.toolCalls)) {
-        this.stats.toolCalls = (s.toolCalls as ToolCall[]).map(tc => ({
+        this.stats.toolCalls = (s.toolCalls as ToolCall[]).map((tc) => ({
           ...tc,
           timestamp: new Date(tc.timestamp),
         }));
@@ -1758,10 +1866,14 @@ export class SessionMonitor implements vscode.Disposable {
             ev.description = ev.metadata.toolName;
           } else {
             const fallbacks: Record<string, string> = {
-              user_prompt: '(user message)', assistant_response: '(assistant)',
-              tool_call: '(tool call)', tool_result: '(tool result)',
-              compaction: 'Context compacted', error: '(error)',
-              session_start: 'Session started', session_end: 'Session ended',
+              user_prompt: '(user message)',
+              assistant_response: '(assistant)',
+              tool_call: '(tool call)',
+              tool_result: '(tool result)',
+              compaction: 'Context compacted',
+              error: '(error)',
+              session_start: 'Session started',
+              session_end: 'Session ended',
             };
             ev.description = fallbacks[ev.type] || ev.type;
           }
@@ -1778,7 +1890,9 @@ export class SessionMonitor implements vscode.Disposable {
     // Seek reader past already-processed content
     this.reader.seekTo(snapshot.readerPosition);
 
-    log(`Restored snapshot for ${this.sessionId}: position=${snapshot.readerPosition}, events=${snapshot.aggregator.eventCount}`);
+    log(
+      `Restored snapshot for ${this.sessionId}: position=${snapshot.readerPosition}, events=${snapshot.aggregator.eventCount}`,
+    );
     return true;
   }
 
@@ -2023,7 +2137,9 @@ export class SessionMonitor implements vscode.Disposable {
     // Enforce cooldown to prevent rapid session bouncing
     const now = Date.now();
     if (now - this.lastSessionSwitchTime < this.SESSION_SWITCH_COOLDOWN_MS) {
-      log(`performNewSessionCheck: in cooldown period, skipping (${now - this.lastSessionSwitchTime}ms since last switch)`);
+      log(
+        `performNewSessionCheck: in cooldown period, skipping (${now - this.lastSessionSwitchTime}ms since last switch)`,
+      );
       return;
     }
 
@@ -2166,7 +2282,9 @@ export class SessionMonitor implements vscode.Disposable {
       if (compactions.length > prevCompactionCount) {
         const newCompaction = compactions[compactions.length - 1];
         this._onCompaction.fire(newCompaction);
-        log(`Compaction detected: ${newCompaction.contextBefore} -> ${newCompaction.contextAfter} (reclaimed ${newCompaction.tokensReclaimed} tokens, health: ${this.calculateContextHealth()}%)`);
+        log(
+          `Compaction detected: ${newCompaction.contextBefore} -> ${newCompaction.contextAfter} (reclaimed ${newCompaction.tokensReclaimed} tokens, health: ${this.calculateContextHealth()}%)`,
+        );
       }
 
       // Fire VS Code events for newly detected truncations
@@ -2195,8 +2313,8 @@ export class SessionMonitor implements vscode.Disposable {
         metadata: {
           contextBefore: newCompaction.contextBefore,
           contextAfter: newCompaction.contextAfter,
-          tokensReclaimed: newCompaction.tokensReclaimed
-        }
+          tokensReclaimed: newCompaction.tokensReclaimed,
+        },
       });
       if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
         this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
@@ -2221,7 +2339,8 @@ export class SessionMonitor implements vscode.Disposable {
     // ── VS Code-specific processing below ──
 
     // Exclude synthetic provider token-count events from user-facing message count.
-    const isSyntheticTokenCount = event.type === 'assistant' &&
+    const isSyntheticTokenCount =
+      event.type === 'assistant' &&
       typeof event.message?.id === 'string' &&
       event.message.id.startsWith('token-count-');
 
@@ -2243,7 +2362,9 @@ export class SessionMonitor implements vscode.Disposable {
     // Extract token usage for stats and event emission
     const usage = extractTokenUsage(event);
     if (usage) {
-      log(`Token usage extracted - input: ${usage.inputTokens}, output: ${usage.outputTokens}, cacheWrite: ${usage.cacheWriteTokens}, cacheRead: ${usage.cacheReadTokens}`);
+      log(
+        `Token usage extracted - input: ${usage.inputTokens}, output: ${usage.outputTokens}, cacheWrite: ${usage.cacheWriteTokens}, cacheRead: ${usage.cacheReadTokens}`,
+      );
       this.lastModelId = usage.model;
       this.stats.lastModelId = usage.model;
       // Update local stats (kept for SessionSummary and model pricing)
@@ -2253,7 +2374,15 @@ export class SessionMonitor implements vscode.Disposable {
       this.stats.totalCacheReadTokens += usage.cacheReadTokens;
 
       // Update per-model usage (kept for SessionSummary cost calculation)
-      const modelStats = this.stats.modelUsage.get(usage.model) || { calls: 0, tokens: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, reasoningTokens: 0 };
+      const modelStats = this.stats.modelUsage.get(usage.model) || {
+        calls: 0,
+        tokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        reasoningTokens: 0,
+      };
       modelStats.calls++;
       modelStats.tokens += usage.inputTokens + usage.outputTokens;
       modelStats.inputTokens += usage.inputTokens;
@@ -2265,11 +2394,12 @@ export class SessionMonitor implements vscode.Disposable {
 
       // Track context size for waterfall chart
       const newContextSize = this.aggregator.getMetrics().currentContextSize;
-      const hasContextSignal = usage.inputTokens > 0
-        || usage.outputTokens > 0
-        || usage.cacheWriteTokens > 0
-        || usage.cacheReadTokens > 0
-        || (usage.reasoningTokens ?? 0) > 0;
+      const hasContextSignal =
+        usage.inputTokens > 0 ||
+        usage.outputTokens > 0 ||
+        usage.cacheWriteTokens > 0 ||
+        usage.cacheReadTokens > 0 ||
+        (usage.reasoningTokens ?? 0) > 0;
 
       if (hasContextSignal) {
         this.addContextTimelinePoint(event.timestamp, newContextSize, this.currentTurnIndex);
@@ -2277,7 +2407,7 @@ export class SessionMonitor implements vscode.Disposable {
 
       // Attribute tokens to active plan step
       if (this.planState && !this.planState.active) {
-        const activeStep = this.planState.steps.find(s => s.status === 'in_progress');
+        const activeStep = this.planState.steps.find((s) => s.status === 'in_progress');
         if (activeStep) {
           const stepTokens = usage.inputTokens + usage.outputTokens;
           activeStep.tokensUsed = (activeStep.tokensUsed ?? 0) + stepTokens;
@@ -2298,14 +2428,22 @@ export class SessionMonitor implements vscode.Disposable {
       // Collect assistant text snippets for decision extraction and plan extraction
       if (Array.isArray(event.message.content)) {
         for (const block of event.message.content) {
-          if (block && typeof block === 'object' && 'type' in block && block.type === 'text' && 'text' in block && typeof block.text === 'string') {
+          if (
+            block &&
+            typeof block === 'object' &&
+            'type' in block &&
+            block.type === 'text' &&
+            'text' in block &&
+            typeof block.text === 'string'
+          ) {
             const fullText = block.text as string;
 
             // Decision extraction (capped)
             if (this.assistantTexts.length < this.MAX_ASSISTANT_TEXTS) {
-              const text = fullText.length > this.MAX_ASSISTANT_TEXT_LENGTH
-                ? fullText.slice(0, this.MAX_ASSISTANT_TEXT_LENGTH)
-                : fullText;
+              const text =
+                fullText.length > this.MAX_ASSISTANT_TEXT_LENGTH
+                  ? fullText.slice(0, this.MAX_ASSISTANT_TEXT_LENGTH)
+                  : fullText;
               this.assistantTexts.push({ text, timestamp: event.timestamp });
             }
 
@@ -2318,9 +2456,12 @@ export class SessionMonitor implements vscode.Disposable {
             const proposedPlan = extractProposedPlan(fullText);
             if (proposedPlan) {
               const parsed = parsePlanMarkdown(proposedPlan);
-              const source = this.provider.id === 'opencode' ? 'opencode' as const
-                : this.provider.id === 'codex' ? 'codex' as const
-                : 'claude-code' as const;
+              const source =
+                this.provider.id === 'opencode'
+                  ? ('opencode' as const)
+                  : this.provider.id === 'codex'
+                    ? ('codex' as const)
+                    : ('claude-code' as const);
               this.planState = {
                 active: false,
                 steps: parsed.steps,
@@ -2359,11 +2500,12 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     if (Array.isArray(content)) {
-      return content.some((block: unknown) =>
-        isTypedBlock(block) &&
-        block.type === 'text' &&
-        typeof block.text === 'string' &&
-        (block.text as string).trim().length > 0
+      return content.some(
+        (block: unknown) =>
+          isTypedBlock(block) &&
+          block.type === 'text' &&
+          typeof block.text === 'string' &&
+          (block.text as string).trim().length > 0,
       );
     }
 
@@ -2389,14 +2531,19 @@ export class SessionMonitor implements vscode.Disposable {
           if (!isTypedBlock(block)) continue;
 
           if (block.type === 'tool_result') {
-            const resultText = typeof block.content === 'string'
-              ? block.content
-              : JSON.stringify(block.content || '');
+            const resultText =
+              typeof block.content === 'string'
+                ? block.content
+                : JSON.stringify(block.content || '');
             turnBreakdown.toolOutputs += estimateTokens(resultText);
           } else if (block.type === 'text' && typeof block.text === 'string') {
             const text = block.text as string;
-            if (text.includes('<system-reminder>') || text.includes('CLAUDE.md') ||
-                text.includes('# System') || text.includes('<claude_code_instructions>')) {
+            if (
+              text.includes('<system-reminder>') ||
+              text.includes('CLAUDE.md') ||
+              text.includes('# System') ||
+              text.includes('<claude_code_instructions>')
+            ) {
               turnBreakdown.systemPrompt += estimateTokens(text);
             } else {
               turnBreakdown.userMessages += estimateTokens(text);
@@ -2411,9 +2558,14 @@ export class SessionMonitor implements vscode.Disposable {
         }
       }
 
-      const totalEstimated = turnBreakdown.systemPrompt + turnBreakdown.userMessages +
-        turnBreakdown.toolOutputs + turnBreakdown.toolInputs +
-        turnBreakdown.assistantResponses + turnBreakdown.thinking + turnBreakdown.other;
+      const totalEstimated =
+        turnBreakdown.systemPrompt +
+        turnBreakdown.userMessages +
+        turnBreakdown.toolOutputs +
+        turnBreakdown.toolInputs +
+        turnBreakdown.assistantResponses +
+        turnBreakdown.thinking +
+        turnBreakdown.other;
       if (totalEstimated > 0) {
         this.addTurnAttribution({
           turnIndex: this.currentTurnIndex++,
@@ -2445,9 +2597,14 @@ export class SessionMonitor implements vscode.Disposable {
       const actualInput = usage?.input_tokens ?? 0;
       const actualOutput = usage?.output_tokens ?? 0;
 
-      const totalEstimated = turnBreakdown.systemPrompt + turnBreakdown.userMessages +
-        turnBreakdown.toolOutputs + turnBreakdown.toolInputs +
-        turnBreakdown.assistantResponses + turnBreakdown.thinking + turnBreakdown.other;
+      const totalEstimated =
+        turnBreakdown.systemPrompt +
+        turnBreakdown.userMessages +
+        turnBreakdown.toolOutputs +
+        turnBreakdown.toolInputs +
+        turnBreakdown.assistantResponses +
+        turnBreakdown.thinking +
+        turnBreakdown.other;
       if (totalEstimated > 0 || actualInput > 0 || actualOutput > 0) {
         this.addTurnAttribution({
           turnIndex: this.currentTurnIndex++,
@@ -2490,14 +2647,16 @@ export class SessionMonitor implements vscode.Disposable {
    * Delegates to the shared aggregator.
    */
   getLatencyStats(): LatencyStats {
-    return this.aggregator.getLatencyStats() ?? {
-      recentLatencies: [],
-      avgFirstTokenLatencyMs: 0,
-      maxFirstTokenLatencyMs: 0,
-      avgTotalResponseTimeMs: 0,
-      lastFirstTokenLatencyMs: null,
-      completedCycles: 0
-    };
+    return (
+      this.aggregator.getLatencyStats() ?? {
+        recentLatencies: [],
+        avgFirstTokenLatencyMs: 0,
+        maxFirstTokenLatencyMs: 0,
+        avgTotalResponseTimeMs: 0,
+        lastFirstTokenLatencyMs: null,
+        completedCycles: 0,
+      }
+    );
   }
 
   /**
@@ -2671,7 +2830,7 @@ export class SessionMonitor implements vscode.Disposable {
             description: promptText,
             noiseLevel,
             isSidechain: event.isSidechain,
-            metadata: {}
+            metadata: {},
           };
         }
         return null;
@@ -2685,12 +2844,13 @@ export class SessionMonitor implements vscode.Disposable {
             type: 'assistant_response',
             timestamp: event.timestamp,
             description: responseText.truncated,
-            noiseLevel: event.isSidechain ? 'noise' : 'ai' as const,
+            noiseLevel: event.isSidechain ? 'noise' : ('ai' as const),
             isSidechain: event.isSidechain,
             metadata: {
               model: event.message?.model,
-              fullText: responseText.full !== responseText.truncated ? responseText.full : undefined
-            }
+              fullText:
+                responseText.full !== responseText.truncated ? responseText.full : undefined,
+            },
           };
         }
         return null;
@@ -2701,7 +2861,7 @@ export class SessionMonitor implements vscode.Disposable {
           type: 'tool_call',
           timestamp: event.timestamp,
           description: `Called ${event.tool?.name || 'unknown'}`,
-          metadata: { toolName: event.tool?.name }
+          metadata: { toolName: event.tool?.name },
         };
 
       case 'tool_result': {
@@ -2712,12 +2872,10 @@ export class SessionMonitor implements vscode.Disposable {
         return {
           type: event.result?.is_error ? 'error' : 'tool_result',
           timestamp: event.timestamp,
-          description: event.result?.is_error
-            ? `${toolName} failed`
-            : `${toolName} completed`,
-          noiseLevel: event.result?.is_error ? 'system' : 'ai' as const,
+          description: event.result?.is_error ? `${toolName} failed` : `${toolName} completed`,
+          noiseLevel: event.result?.is_error ? 'system' : ('ai' as const),
           isSidechain: event.isSidechain,
-          metadata: { isError: event.result?.is_error, toolName }
+          metadata: { isError: event.result?.is_error, toolName },
         };
       }
 
@@ -2728,7 +2886,7 @@ export class SessionMonitor implements vscode.Disposable {
           timestamp: event.timestamp,
           description: 'Context compacted (summary event)',
           noiseLevel: 'system' as const,
-          metadata: {}
+          metadata: {},
         };
 
       default:
@@ -2752,8 +2910,10 @@ export class SessionMonitor implements vscode.Disposable {
       text = content;
     } else if (Array.isArray(content)) {
       // Content may be array of content blocks
-      const textBlock = content.find((c: unknown) => isTypedBlock(c) && c.type === 'text' && typeof c.text === 'string');
-      text = (isTypedBlock(textBlock) && typeof textBlock.text === 'string') ? textBlock.text : '';
+      const textBlock = content.find(
+        (c: unknown) => isTypedBlock(c) && c.type === 'text' && typeof c.text === 'string',
+      );
+      text = isTypedBlock(textBlock) && typeof textBlock.text === 'string' ? textBlock.text : '';
     } else {
       return null;
     }
@@ -2777,7 +2937,9 @@ export class SessionMonitor implements vscode.Disposable {
    * @param event - Assistant event
    * @returns Object with truncated and full text, or null if no text content
    */
-  private extractAssistantResponseText(event: ClaudeSessionEvent): { truncated: string; full: string } | null {
+  private extractAssistantResponseText(
+    event: ClaudeSessionEvent,
+  ): { truncated: string; full: string } | null {
     const content = event.message?.content;
     if (!content) return null;
 
@@ -2820,13 +2982,18 @@ export class SessionMonitor implements vscode.Disposable {
 
     for (const block of content) {
       if (isTypedBlock(block) && block.type === 'tool_use') {
-        const toolUse = block as { type: string; id: string; name: string; input: Record<string, unknown> };
+        const toolUse = block as {
+          type: string;
+          id: string;
+          name: string;
+          input: Record<string, unknown>;
+        };
 
         // Store pending call for duration calculation
         this.pendingToolCalls.set(toolUse.id, {
           toolUseId: toolUse.id,
           name: toolUse.name,
-          startTime: new Date(timestamp)
+          startTime: new Date(timestamp),
         });
 
         // Handle VS Code-specific plan mode tools (aggregator handles task tools)
@@ -2841,7 +3008,7 @@ export class SessionMonitor implements vscode.Disposable {
             failureCount: 0,
             totalDuration: 0,
             completedCount: 0,
-            pendingCount: 0
+            pendingCount: 0,
           };
           this.toolAnalyticsMap.set(toolUse.name, analytics);
         }
@@ -2858,7 +3025,7 @@ export class SessionMonitor implements vscode.Disposable {
           type: 'tool_call',
           timestamp,
           description: toolContext,
-          metadata: { toolName: toolUse.name }
+          metadata: { toolName: toolUse.name },
         });
         if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
           this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
@@ -2868,9 +3035,10 @@ export class SessionMonitor implements vscode.Disposable {
         }
 
         // Build tool call object
-        const rawToolName = typeof toolUse.input?._sidekickRawToolName === 'string'
-          ? String(toolUse.input._sidekickRawToolName)
-          : undefined;
+        const rawToolName =
+          typeof toolUse.input?._sidekickRawToolName === 'string'
+            ? String(toolUse.input._sidekickRawToolName)
+            : undefined;
 
         const toolCall: ToolCall = {
           name: toolUse.name,
@@ -2894,7 +3062,7 @@ export class SessionMonitor implements vscode.Disposable {
 
         // Attribute tool calls to active plan step
         if (this.planState && !this.planState.active) {
-          const activeStep = this.planState.steps.find(s => s.status === 'in_progress');
+          const activeStep = this.planState.steps.find((s) => s.status === 'in_progress');
           if (activeStep) {
             activeStep.toolCalls = (activeStep.toolCalls ?? 0) + 1;
             this.planStepToolCalls++;
@@ -2923,7 +3091,7 @@ export class SessionMonitor implements vscode.Disposable {
    */
   private handlePlanModeToolUse(
     toolUse: { id: string; name: string; input: Record<string, unknown> },
-    timestamp: string
+    timestamp: string,
   ): void {
     const now = new Date(timestamp);
 
@@ -2952,7 +3120,8 @@ export class SessionMonitor implements vscode.Disposable {
         const rawStatus = String(toolUse.input.status).toLowerCase();
         let planStatus: PlanStep['status'];
         if (rawStatus === 'completed') planStatus = 'completed';
-        else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') planStatus = 'in_progress';
+        else if (rawStatus === 'in_progress' || rawStatus === 'in-progress')
+          planStatus = 'in_progress';
         else if (rawStatus === 'deleted') planStatus = 'skipped';
         else planStatus = 'pending';
         this.transitionPlanStep(stepId, planStatus, now);
@@ -2969,12 +3138,15 @@ export class SessionMonitor implements vscode.Disposable {
           const rawStatus = String(entry.status || 'pending').toLowerCase();
           let stepStatus: 'pending' | 'in_progress' | 'completed';
           if (rawStatus === 'completed') stepStatus = 'completed';
-          else if (rawStatus === 'in_progress' || rawStatus === 'in-progress') stepStatus = 'in_progress';
+          else if (rawStatus === 'in_progress' || rawStatus === 'in-progress')
+            stepStatus = 'in_progress';
           else stepStatus = 'pending';
           planSteps.push({ id: `step-${i}`, description: step, status: stepStatus });
         }
 
-        const hasActive = planSteps.some(s => s.status === 'in_progress' || s.status === 'pending');
+        const hasActive = planSteps.some(
+          (s) => s.status === 'in_progress' || s.status === 'pending',
+        );
         this.planState = {
           active: hasActive,
           steps: planSteps,
@@ -3018,7 +3190,9 @@ export class SessionMonitor implements vscode.Disposable {
       revision: this.planRevisionCount > 0 ? this.planRevisionCount : undefined,
     };
 
-    log(`Plan mode entered at ${now.toISOString()} (${this.provider.id}), revision: ${this.planRevisionCount}`);
+    log(
+      `Plan mode entered at ${now.toISOString()} (${this.provider.id}), revision: ${this.planRevisionCount}`,
+    );
   }
 
   /**
@@ -3032,9 +3206,10 @@ export class SessionMonitor implements vscode.Disposable {
       this.planState.exitedAt = now;
 
       // Prefer plan file content (from Write tool) → accumulated assistant text → disk read fallback
-      const source = this.planFileContent
-        || (this.planAssistantTexts.length > 0 ? this.planAssistantTexts.join('\n') : null)
-        || this.readPlanFileFromDisk();
+      const source =
+        this.planFileContent ||
+        (this.planAssistantTexts.length > 0 ? this.planAssistantTexts.join('\n') : null) ||
+        this.readPlanFileFromDisk();
       this.planFileContent = null;
       this.planFilePath = null;
 
@@ -3062,17 +3237,17 @@ export class SessionMonitor implements vscode.Disposable {
     this.planModeEnteredAt = null;
     this.planAssistantTexts = [];
 
-    log(`Plan mode exited at ${now.toISOString()}, ${this.planState?.steps.length ?? 0} steps extracted`);
+    log(
+      `Plan mode exited at ${now.toISOString()}, ${this.planState?.steps.length ?? 0} steps extracted`,
+    );
   }
-
-
 
   /**
    * Updates the completion rate on the current plan state.
    */
   private updatePlanCompletionRate(): void {
     if (!this.planState || this.planState.steps.length === 0) return;
-    const completed = this.planState.steps.filter(s => s.status === 'completed').length;
+    const completed = this.planState.steps.filter((s) => s.status === 'completed').length;
     this.planState.completionRate = completed / this.planState.steps.length;
   }
 
@@ -3082,9 +3257,15 @@ export class SessionMonitor implements vscode.Disposable {
    * Called by task status changes (TaskUpdate) that map to plan steps,
    * or inferred from sequential plan execution.
    */
-  private transitionPlanStep(stepId: string, newStatus: PlanStep['status'], now: Date, output?: string, errorMessage?: string): void {
+  private transitionPlanStep(
+    stepId: string,
+    newStatus: PlanStep['status'],
+    now: Date,
+    output?: string,
+    errorMessage?: string,
+  ): void {
     if (!this.planState) return;
-    const step = this.planState.steps.find(s => s.id === stepId);
+    const step = this.planState.steps.find((s) => s.id === stepId);
     if (!step) return;
 
     if (newStatus === 'in_progress' && step.status === 'pending') {
@@ -3100,7 +3281,8 @@ export class SessionMonitor implements vscode.Disposable {
         step.output = output.length > 200 ? output.slice(0, 200) + '...' : output;
       }
       if (errorMessage) {
-        step.errorMessage = errorMessage.length > 200 ? errorMessage.slice(0, 200) + '...' : errorMessage;
+        step.errorMessage =
+          errorMessage.length > 200 ? errorMessage.slice(0, 200) + '...' : errorMessage;
       }
     }
 
@@ -3126,7 +3308,10 @@ export class SessionMonitor implements vscode.Disposable {
           step.durationMs = now.getTime() - new Date(step.startedAt).getTime();
         }
         if (lastErrorMessage) {
-          step.errorMessage = lastErrorMessage.length > 200 ? lastErrorMessage.slice(0, 200) + '...' : lastErrorMessage;
+          step.errorMessage =
+            lastErrorMessage.length > 200
+              ? lastErrorMessage.slice(0, 200) + '...'
+              : lastErrorMessage;
         }
       } else if (step.status === 'pending') {
         step.status = 'skipped';
@@ -3152,7 +3337,14 @@ export class SessionMonitor implements vscode.Disposable {
     if (Array.isArray(content)) {
       const texts: string[] = [];
       for (const block of content) {
-        if (block && typeof block === 'object' && 'type' in block && block.type === 'text' && 'text' in block && typeof block.text === 'string') {
+        if (
+          block &&
+          typeof block === 'object' &&
+          'type' in block &&
+          block.type === 'text' &&
+          'text' in block &&
+          typeof block.text === 'string'
+        ) {
           texts.push(block.text as string);
         }
       }
@@ -3173,7 +3365,13 @@ export class SessionMonitor implements vscode.Disposable {
 
     for (const block of content) {
       if (isTypedBlock(block) && block.type === 'tool_result') {
-        const toolResult = block as { type: string; tool_use_id: string; content?: unknown; is_error?: boolean; duration?: number };
+        const toolResult = block as {
+          type: string;
+          tool_use_id: string;
+          content?: unknown;
+          is_error?: boolean;
+          duration?: number;
+        };
 
         const pending = this.pendingToolCalls.get(toolResult.tool_use_id);
         if (pending) {
@@ -3187,29 +3385,33 @@ export class SessionMonitor implements vscode.Disposable {
           // calculated duration from event timestamps which can be inaccurate
           // when both tool_use and tool_result are emitted in the same batch.
           const endTime = new Date(timestamp);
-          const duration = (typeof toolResult.duration === 'number' && toolResult.duration > 0)
-            ? toolResult.duration
-            : endTime.getTime() - pending.startTime.getTime();
+          const duration =
+            typeof toolResult.duration === 'number' && toolResult.duration > 0
+              ? toolResult.duration
+              : endTime.getTime() - pending.startTime.getTime();
 
           // Update the corresponding ToolCall with result data
           // Prefer toolUseId match (reliable), fall back to timestamp+name (legacy)
-          const toolCall = this.stats.toolCalls.find(
-            tc => tc.toolUseId === toolResult.tool_use_id
-          ) ?? this.stats.toolCalls.find(
-            tc => tc.timestamp.getTime() === pending.startTime.getTime() && tc.name === pending.name
-          );
+          const toolCall =
+            this.stats.toolCalls.find((tc) => tc.toolUseId === toolResult.tool_use_id) ??
+            this.stats.toolCalls.find(
+              (tc) =>
+                tc.timestamp.getTime() === pending.startTime.getTime() && tc.name === pending.name,
+            );
           if (toolCall) {
             toolCall.isError = toolResult.is_error ?? false;
             toolCall.duration = duration;
 
             // Store truncated output for Tool Inspector
             if (toolResult.content != null) {
-              const outputStr = typeof toolResult.content === 'string'
-                ? toolResult.content
-                : JSON.stringify(toolResult.content, null, 2);
-              toolCall.output = outputStr.length > 5000
-                ? outputStr.substring(0, 5000) + '\n...(truncated)'
-                : outputStr;
+              const outputStr =
+                typeof toolResult.content === 'string'
+                  ? toolResult.content
+                  : JSON.stringify(toolResult.content, null, 2);
+              toolCall.output =
+                outputStr.length > 5000
+                  ? outputStr.substring(0, 5000) + '\n...(truncated)'
+                  : outputStr;
             }
 
             if (toolResult.is_error && toolResult.content) {
@@ -3245,8 +3447,10 @@ export class SessionMonitor implements vscode.Disposable {
           this.timeline.unshift({
             type: toolResult.is_error ? 'error' : 'tool_result',
             timestamp,
-            description: toolResult.is_error ? `${pending.name} failed` : `${pending.name} completed`,
-            metadata: { isError: toolResult.is_error, toolName: pending.name }
+            description: toolResult.is_error
+              ? `${pending.name} failed`
+              : `${pending.name} completed`,
+            metadata: { isError: toolResult.is_error, toolName: pending.name },
           });
           if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
             this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
@@ -3279,18 +3483,22 @@ export class SessionMonitor implements vscode.Disposable {
     if (!content || !Array.isArray(content)) return 'user';
 
     // Check if the event contains only tool_result blocks (no user text)
-    const hasText = content.some((block: unknown) =>
-      isTypedBlock(block) && block.type === 'text' &&
-      typeof block.text === 'string' && (block.text as string).trim().length > 0
+    const hasText = content.some(
+      (block: unknown) =>
+        isTypedBlock(block) &&
+        block.type === 'text' &&
+        typeof block.text === 'string' &&
+        (block.text as string).trim().length > 0,
     );
-    const hasToolResult = content.some((block: unknown) =>
-      isTypedBlock(block) && block.type === 'tool_result'
+    const hasToolResult = content.some(
+      (block: unknown) => isTypedBlock(block) && block.type === 'tool_result',
     );
 
     // System reminder patterns in text content
     if (hasText) {
-      const textBlock = content.find((block: unknown) =>
-        isTypedBlock(block) && block.type === 'text' && typeof block.text === 'string'
+      const textBlock = content.find(
+        (block: unknown) =>
+          isTypedBlock(block) && block.type === 'text' && typeof block.text === 'string',
       );
       if (textBlock && isTypedBlock(textBlock) && typeof textBlock.text === 'string') {
         const text = textBlock.text as string;

@@ -23,15 +23,15 @@ export function DetailTabBar({ tabs, activeIndex }: DetailTabBarProps): React.Re
       {tabs.map((tab, i) => (
         <Box key={tab.label} marginRight={1}>
           {i === activeIndex ? (
-            <Text bold color="magenta">▸ {tab.label}</Text>
+            <Text bold color="magenta">
+              ▸ {tab.label}
+            </Text>
           ) : (
-            <Text color="gray">  {tab.label}</Text>
+            <Text color="gray"> {tab.label}</Text>
           )}
         </Box>
       ))}
-      {tabs.length > 1 && (
-        <Text color="gray">  ← [ ] →</Text>
-      )}
+      {tabs.length > 1 && <Text color="gray"> ← [ ] →</Text>}
     </Box>
   );
 }

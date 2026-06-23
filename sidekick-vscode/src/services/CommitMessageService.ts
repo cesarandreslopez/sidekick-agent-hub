@@ -70,7 +70,7 @@ export class CommitMessageService implements vscode.Disposable {
    */
   constructor(
     private readonly gitService: GitService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
   ) {
     this.timeoutManager = getTimeoutManager();
   }
@@ -90,7 +90,10 @@ export class CommitMessageService implements vscode.Disposable {
    * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to commit message result
    */
-  async generateCommitMessage(guidance?: string, signal?: AbortSignal): Promise<CommitMessageResult> {
+  async generateCommitMessage(
+    guidance?: string,
+    signal?: AbortSignal,
+  ): Promise<CommitMessageResult> {
     try {
       log('CommitMessageService: Starting commit message generation');
 
@@ -124,20 +127,28 @@ export class CommitMessageService implements vscode.Disposable {
 
       const truncated = truncateDiffIntelligently(filtered);
       if (truncated.length < filtered.length) {
-        log(`CommitMessageService: Truncated diff from ${filtered.length} to ${truncated.length} characters`);
+        log(
+          `CommitMessageService: Truncated diff from ${filtered.length} to ${truncated.length} characters`,
+        );
       }
 
       // Read user's preferences
       const config = vscode.workspace.getConfiguration('sidekick');
       const style = config.get<'conventional' | 'simple'>('commitMessageStyle') ?? 'conventional';
-      const model = resolveModel(config.get<string>('commitMessageModel') ?? 'auto', this.authService.getProviderId(), 'commitMessageModel');
+      const model = resolveModel(
+        config.get<string>('commitMessageModel') ?? 'auto',
+        this.authService.getProviderId(),
+        'commitMessageModel',
+      );
       const defaultGuidance = config.get<string>('commitMessageGuidance') ?? '';
 
       // Combine default guidance with user-provided guidance
       const combinedGuidance = [defaultGuidance, guidance]
         .filter((g): g is string => typeof g === 'string' && g.trim().length > 0)
         .join('. ');
-      log(`CommitMessageService: Using style=${style}, model=${model}, guidance=${combinedGuidance || 'none'}`);
+      log(
+        `CommitMessageService: Using style=${style}, model=${model}, guidance=${combinedGuidance || 'none'}`,
+      );
 
       // Build prompt
       const systemPrompt = getCommitMessageSystemPrompt(style);
@@ -154,11 +165,12 @@ export class CommitMessageService implements vscode.Disposable {
       const opLabel = `Generating commit message via ${this.authService.getProviderDisplayName()} · ${model}`;
       const result = await this.timeoutManager.executeWithTimeout({
         operation: opLabel,
-        task: (taskSignal: AbortSignal) => this.authService.complete(fullPrompt, {
-          model,
-          maxTokens: 100,
-          signal: taskSignal,
-        }),
+        task: (taskSignal: AbortSignal) =>
+          this.authService.complete(fullPrompt, {
+            model,
+            maxTokens: 100,
+            signal: taskSignal,
+          }),
         config: timeoutConfig,
         contextSize,
         showProgress: true,
@@ -216,9 +228,15 @@ export class CommitMessageService implements vscode.Disposable {
       const msg = error instanceof Error ? error.message : '';
       if (/rate.?limit/i.test(msg) || (error instanceof Error && error.name === 'RateLimitError')) {
         errorMessage = 'API rate limit exceeded. Please try again in a moment.';
-      } else if (/auth/i.test(msg) || (error instanceof Error && error.name === 'AuthenticationError')) {
+      } else if (
+        /auth/i.test(msg) ||
+        (error instanceof Error && error.name === 'AuthenticationError')
+      ) {
         errorMessage = 'Authentication failed. Check your API key or provider setup.';
-      } else if (/internal.?server/i.test(msg) || (error instanceof Error && error.name === 'InternalServerError')) {
+      } else if (
+        /internal.?server/i.test(msg) ||
+        (error instanceof Error && error.name === 'InternalServerError')
+      ) {
         errorMessage = 'The AI provider is experiencing issues. Please try again.';
       } else if (error instanceof Error) {
         errorMessage = error.message;

@@ -42,7 +42,11 @@ import { getModelContextWindowSize } from '../modelContext';
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
-  return block !== null && typeof block === 'object' && typeof (block as Record<string, unknown>).type === 'string';
+  return (
+    block !== null &&
+    typeof block === 'object' &&
+    typeof (block as Record<string, unknown>).type === 'string'
+  );
 }
 
 /**
@@ -255,11 +259,12 @@ export class ClaudeCodeProvider implements SessionProviderBase {
           if (typeof content === 'string') {
             text = content.trim();
           } else if (Array.isArray(content)) {
-            const textBlock = content.find((block: unknown) =>
-              isTypedBlock(block) &&
-              block.type === 'text' &&
-              typeof block.text === 'string' &&
-              (block.text as string).trim().length > 0
+            const textBlock = content.find(
+              (block: unknown) =>
+                isTypedBlock(block) &&
+                block.type === 'text' &&
+                typeof block.text === 'string' &&
+                (block.text as string).trim().length > 0,
             );
             if (textBlock && isTypedBlock(textBlock) && typeof textBlock.text === 'string') {
               text = (textBlock.text as string).trim();

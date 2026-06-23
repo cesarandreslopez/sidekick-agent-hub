@@ -20,21 +20,39 @@ export function buildNarrativePrompt(summary: SessionSummaryData): string {
   const durationMin = Math.round(summary.duration / 60000);
   const costStr = ModelPricingService.formatCost(summary.totalCost);
 
-  const taskLines = summary.tasks.length > 0
-    ? summary.tasks.map(t => `  - "${t.subject}" (${t.status}, ${t.toolCallCount} tool calls)`).join('\n')
-    : '  (no tasks tracked)';
+  const taskLines =
+    summary.tasks.length > 0
+      ? summary.tasks
+          .map((t) => `  - "${t.subject}" (${t.status}, ${t.toolCallCount} tool calls)`)
+          .join('\n')
+      : '  (no tasks tracked)';
 
-  const fileLines = summary.filesChanged.length > 0
-    ? summary.filesChanged.slice(0, 10).map(f => `  - ${f.path}: +${f.additions}/-${f.deletions}`).join('\n')
-    : '  (no file changes)';
+  const fileLines =
+    summary.filesChanged.length > 0
+      ? summary.filesChanged
+          .slice(0, 10)
+          .map((f) => `  - ${f.path}: +${f.additions}/-${f.deletions}`)
+          .join('\n')
+      : '  (no file changes)';
 
-  const modelLines = summary.costByModel.length > 0
-    ? summary.costByModel.map(m => `  - ${m.model}: ${ModelPricingService.formatCost(m.cost)} (${Math.round(m.percentage)}%)`).join('\n')
-    : '  (no model data)';
+  const modelLines =
+    summary.costByModel.length > 0
+      ? summary.costByModel
+          .map(
+            (m) =>
+              `  - ${m.model}: ${ModelPricingService.formatCost(m.cost)} (${Math.round(m.percentage)}%)`,
+          )
+          .join('\n')
+      : '  (no model data)';
 
-  const errorLines = summary.errors.length > 0
-    ? summary.errors.map(e => `  - ${e.category}: ${e.count} occurrences${e.recovered ? ' (recovered)' : ''}`).join('\n')
-    : '  (no errors)';
+  const errorLines =
+    summary.errors.length > 0
+      ? summary.errors
+          .map(
+            (e) => `  - ${e.category}: ${e.count} occurrences${e.recovered ? ' (recovered)' : ''}`,
+          )
+          .join('\n')
+      : '  (no errors)';
 
   return `You are a helpful assistant summarizing a Claude Code session. Write a concise 2-3 paragraph natural language summary based on this data. Focus on what was accomplished, notable patterns, and any suggestions for future sessions.
 
