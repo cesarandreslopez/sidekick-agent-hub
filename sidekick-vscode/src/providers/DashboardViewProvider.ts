@@ -61,6 +61,7 @@ import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashbo
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 import { scopeProviderStatuses, type DashboardSessionProviderId } from '../utils/providerStatusScope';
+import { formatProviderStatusDisplay } from '../utils/providerStatusDisplay';
 import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
 
 /**
@@ -2397,8 +2398,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._providerStatusService?.getCachedOpenAIStatus(),
     );
 
-    this._postMessage({ type: 'updateProviderStatus', status: claude });
-    this._postMessage({ type: 'updateOpenAIStatus', status: openai });
+    this._postMessage({ type: 'updateProviderStatus', display: formatProviderStatusDisplay('Claude', claude) });
+    this._postMessage({ type: 'updateOpenAIStatus', display: formatProviderStatusDisplay('OpenAI', openai) });
   }
 
   /**
@@ -3502,6 +3503,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .gauge-row {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 16px;
     }
@@ -3521,15 +3523,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .gauge-row .context-item {
-      flex: 0 0 35%;
+      flex: 1 1 180px;
     }
 
     .gauge-row.opencode-provider .context-item {
-      flex: 1;
+      flex: 1 1 100%;
     }
 
     .gauge-row .quota-item {
-      flex: 1;
+      flex: 2 1 250px;
     }
 
     .gauge-row .context-gauge {
@@ -3634,7 +3636,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .quota-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
       gap: 6px;
     }
 
@@ -3873,6 +3875,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       max-height: 2.4em;
     }
 
+    .provider-status-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
     .provider-status-section {
       display: none;
     }
@@ -3883,38 +3892,132 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     .provider-status-content {
       background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-left-width: 3px;
       border-radius: 4px;
-      padding: 8px;
+      padding: 6px 8px;
       font-size: 11px;
     }
 
     .provider-status-section.status-minor .provider-status-content {
-      border: 1px solid var(--vscode-charts-yellow);
+      border-left-color: var(--vscode-charts-yellow);
     }
 
     .provider-status-section.status-major .provider-status-content,
     .provider-status-section.status-critical .provider-status-content {
-      border: 1px solid var(--vscode-errorForeground);
+      border-left-color: var(--vscode-errorForeground);
     }
 
-    .provider-status-indicator {
+    .provider-status-summary-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .provider-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      background: var(--vscode-descriptionForeground);
+    }
+
+    .provider-status-section.status-minor .provider-status-dot {
+      background: var(--vscode-charts-yellow);
+    }
+
+    .provider-status-section.status-major .provider-status-dot,
+    .provider-status-section.status-critical .provider-status-dot {
+      background: var(--vscode-errorForeground);
+    }
+
+    .provider-status-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .provider-status-title {
       font-weight: 600;
-      margin-bottom: 4px;
+      color: var(--vscode-foreground);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .provider-status-summary {
+      color: var(--vscode-descriptionForeground);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-top: 1px;
+    }
+
+    .provider-status-affected {
+      flex: 0 0 auto;
+      color: var(--vscode-descriptionForeground);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .provider-status-toggle {
+      flex: 0 0 auto;
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 3px;
+      background: transparent;
+      color: var(--vscode-foreground);
+      cursor: pointer;
+      font-size: 10px;
+      padding: 2px 6px;
+    }
+
+    .provider-status-toggle:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+
+    .provider-status-link {
+      flex: 0 0 auto;
+      color: var(--vscode-textLink-foreground);
+      text-decoration: none;
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    .provider-status-link:hover {
+      text-decoration: underline;
     }
 
     .provider-status-details {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--vscode-input-border);
+      max-height: 96px;
+      overflow-y: auto;
       font-size: 10px;
       color: var(--vscode-descriptionForeground);
       line-height: 1.4;
     }
 
-    .provider-status-details a {
-      color: var(--vscode-textLink-foreground);
-      text-decoration: none;
+    .provider-status-component {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 1px 0;
     }
 
-    .provider-status-details a:hover {
-      text-decoration: underline;
+    .provider-status-component-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .provider-status-component-state {
+      flex: 0 0 auto;
+      color: var(--vscode-foreground);
+      opacity: 0.8;
+      white-space: nowrap;
     }
 
     .peak-hours-section {
@@ -5308,6 +5411,40 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         <button class="metric-btn" data-metric="cache" aria-pressed="false">Cache</button>
       </div>
 
+      <div class="provider-status-stack" aria-live="polite">
+        <div class="provider-status-section" id="provider-status-section" title="Claude API status from status.claude.com">
+          <div class="provider-status-content" id="provider-status-content">
+            <div class="provider-status-summary-row">
+              <span class="provider-status-dot" id="provider-status-dot" aria-hidden="true"></span>
+              <div class="provider-status-main">
+                <div class="provider-status-title" id="provider-status-title"></div>
+                <div class="provider-status-summary" id="provider-status-summary"></div>
+              </div>
+              <span class="provider-status-affected" id="provider-status-affected"></span>
+              <button class="provider-status-toggle" id="provider-status-toggle" type="button" aria-expanded="false" aria-controls="provider-status-details">Details</button>
+              <a class="provider-status-link" id="provider-status-link" href="#" aria-label="Open Claude status incident">&#8599;</a>
+            </div>
+            <div class="provider-status-details" id="provider-status-details" hidden></div>
+          </div>
+        </div>
+
+        <div class="provider-status-section" id="openai-status-section" title="OpenAI API status from status.openai.com">
+          <div class="provider-status-content" id="openai-status-content">
+            <div class="provider-status-summary-row">
+              <span class="provider-status-dot" id="openai-status-dot" aria-hidden="true"></span>
+              <div class="provider-status-main">
+                <div class="provider-status-title" id="openai-status-title"></div>
+                <div class="provider-status-summary" id="openai-status-summary"></div>
+              </div>
+              <span class="provider-status-affected" id="openai-status-affected"></span>
+              <button class="provider-status-toggle" id="openai-status-toggle" type="button" aria-expanded="false" aria-controls="openai-status-details">Details</button>
+              <a class="provider-status-link" id="openai-status-link" href="#" aria-label="Open OpenAI status incident">&#8599;</a>
+            </div>
+            <div class="provider-status-details" id="openai-status-details" hidden></div>
+          </div>
+        </div>
+      </div>
+
       <div class="gauge-row" id="gauge-row">
         <div class="gauge-row-item context-item" title="How much of the model's context window (200K–1M tokens depending on model) is currently in use">
           <div class="section-title">Context Window</div>
@@ -5345,20 +5482,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             </div>
           </div>
           <div class="quota-error" id="quota-error" style="display: none;"></div>
-        </div>
-
-        <div class="gauge-row-item provider-status-section" id="provider-status-section" title="Claude API status from status.claude.com">
-          <div class="provider-status-content" id="provider-status-content">
-            <div class="provider-status-indicator" id="provider-status-indicator"></div>
-            <div class="provider-status-details" id="provider-status-details"></div>
-          </div>
-        </div>
-
-        <div class="gauge-row-item provider-status-section" id="openai-status-section" title="OpenAI API status from status.openai.com">
-          <div class="provider-status-content" id="openai-status-content">
-            <div class="provider-status-indicator" id="openai-status-indicator"></div>
-            <div class="provider-status-details" id="openai-status-details"></div>
-          </div>
         </div>
 
         <div class="gauge-row-item peak-hours-section" id="peak-hours-section" title="Claude peak-hours tracker — data from promoclock.co (third-party, unaffiliated)">
@@ -6784,84 +6907,95 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       /**
        * Updates the provider status display.
        */
-      function updateProviderStatus(status) {
-        const sectionEl = document.getElementById('provider-status-section');
-        const indicatorEl = document.getElementById('provider-status-indicator');
-        const detailsEl = document.getElementById('provider-status-details');
-        if (!sectionEl || !indicatorEl || !detailsEl) return;
-
-        // Remove previous indicator classes
-        sectionEl.classList.remove('status-minor', 'status-major', 'status-critical');
-
-        if (!status || status.indicator === 'none') {
-          sectionEl.classList.remove('visible');
-          return;
-        }
-
-        sectionEl.classList.add('visible', 'status-' + status.indicator);
-
-        // Indicator dot and description
-        const dot = status.indicator === 'minor' ? '\u25cf' : '\u25cf';
-        const color = status.indicator === 'minor'
-          ? 'var(--vscode-charts-yellow)'
-          : 'var(--vscode-errorForeground)';
-        indicatorEl.innerHTML = '<span style="color: ' + color + '">' + dot + '</span> Claude: ' +
-          (status.description || status.indicator.charAt(0).toUpperCase() + status.indicator.slice(1));
-
-        // Details: components + incident
-        let html = '';
-        if (status.affectedComponents && status.affectedComponents.length > 0) {
-          for (const c of status.affectedComponents) {
-            html += c.name + ' \u2014 ' + c.status.replace(/_/g, ' ') + '<br>';
-          }
-        }
-        if (status.activeIncident) {
-          html += '<strong>' + status.activeIncident.name + '</strong>';
-          if (status.activeIncident.shortlink) {
-            html += ' <a href="' + status.activeIncident.shortlink + '">\u2197</a>';
-          }
-        }
-        detailsEl.innerHTML = html;
+      function updateProviderStatus(display) {
+        renderProviderStatus('provider-status', display);
       }
 
       /**
        * Updates the OpenAI provider status display.
        */
-      function updateOpenAIStatus(status) {
-        const sectionEl = document.getElementById('openai-status-section');
-        const indicatorEl = document.getElementById('openai-status-indicator');
-        const detailsEl = document.getElementById('openai-status-details');
-        if (!sectionEl || !indicatorEl || !detailsEl) return;
+      function updateOpenAIStatus(display) {
+        renderProviderStatus('openai-status', display);
+      }
 
-        sectionEl.classList.remove('status-minor', 'status-major', 'status-critical');
+      function renderProviderStatus(idPrefix, display) {
+        const sectionEl = document.getElementById(idPrefix + '-section');
+        const titleEl = document.getElementById(idPrefix + '-title');
+        const summaryEl = document.getElementById(idPrefix + '-summary');
+        const affectedEl = document.getElementById(idPrefix + '-affected');
+        const toggleEl = document.getElementById(idPrefix + '-toggle');
+        const linkEl = document.getElementById(idPrefix + '-link');
+        const detailsEl = document.getElementById(idPrefix + '-details');
+        if (!sectionEl || !titleEl || !summaryEl || !affectedEl || !toggleEl || !linkEl || !detailsEl) return;
 
-        if (!status || status.indicator === 'none') {
+        sectionEl.classList.remove('visible', 'status-minor', 'status-major', 'status-critical');
+
+        if (!display || !display.visible) {
           sectionEl.classList.remove('visible');
+          detailsEl.hidden = true;
+          sectionEl.removeAttribute('data-status-key');
           return;
         }
 
-        sectionEl.classList.add('visible', 'status-' + status.indicator);
+        const components = display.components || [];
+        const statusKey = [
+          display.severity,
+          display.title,
+          display.summary,
+          components.map(function(component) {
+            return component.name + ':' + component.status;
+          }).join('|')
+        ].join('\\n');
+        const keepExpanded = sectionEl.getAttribute('data-status-key') === statusKey && detailsEl.hidden === false;
+        sectionEl.setAttribute('data-status-key', statusKey);
 
-        const dot = '\u25cf';
-        const color = status.indicator === 'minor'
-          ? 'var(--vscode-charts-yellow)'
-          : 'var(--vscode-errorForeground)';
-        indicatorEl.innerHTML = '<span style="color: ' + color + '">' + dot + '</span> OpenAI: ' +
-          (status.description || status.indicator.charAt(0).toUpperCase() + status.indicator.slice(1));
+        sectionEl.classList.add('visible', 'status-' + display.severity);
+        titleEl.textContent = display.title || display.providerLabel || 'Provider status';
+        summaryEl.textContent = display.summary || '';
+        affectedEl.textContent = components.length > 0 ? display.affectedSummary || '' : '';
+        affectedEl.style.display = components.length > 0 ? '' : 'none';
 
-        let html = '';
-        if (status.affectedComponents && status.affectedComponents.length > 0) {
-          for (const c of status.affectedComponents) {
-            html += c.name + ' \u2014 ' + c.status.replace(/_/g, ' ') + '<br>';
-          }
+        if (display.incidentUrl) {
+          linkEl.setAttribute('href', display.incidentUrl);
+          linkEl.setAttribute('rel', 'noopener noreferrer');
+          linkEl.style.display = '';
+        } else {
+          linkEl.removeAttribute('href');
+          linkEl.style.display = 'none';
         }
-        if (status.activeIncident) {
-          html += '<strong>' + status.activeIncident.name + '</strong>';
-          if (status.activeIncident.shortlink) {
-            html += ' <a href="' + status.activeIncident.shortlink + '">\u2197</a>';
-          }
+
+        detailsEl.textContent = '';
+        for (const component of components) {
+          const row = document.createElement('div');
+          row.className = 'provider-status-component';
+          const name = document.createElement('span');
+          name.className = 'provider-status-component-name';
+          name.textContent = component.name || 'Unknown';
+          const state = document.createElement('span');
+          state.className = 'provider-status-component-state';
+          state.textContent = component.status || 'unknown';
+          row.appendChild(name);
+          row.appendChild(state);
+          detailsEl.appendChild(row);
         }
-        detailsEl.innerHTML = html;
+
+        if (components.length > 0) {
+          detailsEl.hidden = !keepExpanded;
+          toggleEl.hidden = false;
+          toggleEl.textContent = keepExpanded ? 'Hide' : 'Details';
+          toggleEl.setAttribute('aria-expanded', String(keepExpanded));
+          toggleEl.onclick = function() {
+            const expanded = detailsEl.hidden;
+            detailsEl.hidden = !expanded;
+            toggleEl.textContent = expanded ? 'Hide' : 'Details';
+            toggleEl.setAttribute('aria-expanded', String(expanded));
+          };
+        } else {
+          detailsEl.hidden = true;
+          toggleEl.hidden = true;
+          toggleEl.onclick = null;
+          toggleEl.setAttribute('aria-expanded', 'false');
+        }
       }
 
       /**
@@ -8298,11 +8432,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             break;
 
           case 'updateProviderStatus':
-            updateProviderStatus(message.status);
+            updateProviderStatus(message.display);
             break;
 
           case 'updateOpenAIStatus':
-            updateOpenAIStatus(message.status);
+            updateOpenAIStatus(message.display);
             break;
 
           case 'updatePeakHours':

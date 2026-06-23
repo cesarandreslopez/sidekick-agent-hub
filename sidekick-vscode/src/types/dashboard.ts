@@ -17,7 +17,8 @@ import type {
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
 import type { KnowledgeNoteDisplay, KnowledgeCandidateDisplay } from './knowledgeNote';
-import type { ProviderStatusState, PeakHoursState } from 'sidekick-shared';
+import type { PeakHoursState } from 'sidekick-shared';
+import type { ProviderStatusDisplay } from '../utils/providerStatusDisplay';
 
 /**
  * Session info for the session card navigator.
@@ -190,8 +191,8 @@ export type DashboardMessage =
   | { type: 'updatePlan'; plan: PlanDisplay }
   | { type: 'updatePlanHistory'; history: PlanHistoryDisplay }
   | { type: 'updateAnalytics'; analytics: AnalyticsDisplay }
-  | { type: 'updateProviderStatus'; status: ProviderStatusState }
-  | { type: 'updateOpenAIStatus'; status: ProviderStatusState }
+  | { type: 'updateProviderStatus'; display: ProviderStatusDisplay }
+  | { type: 'updateOpenAIStatus'; display: ProviderStatusDisplay }
   | { type: 'updatePeakHours'; status: PeakHoursState | null };
 
 /**
