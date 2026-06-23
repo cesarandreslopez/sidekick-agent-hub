@@ -36,6 +36,16 @@ describe('OpenCodeDatabase', () => {
       kind: 'sqlite_missing',
       message: 'sqlite3 executable not found in PATH.',
     });
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'sqlite3',
+      ['--version'],
+      expect.objectContaining({
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }),
+    );
   });
 
   it('matches projects by worktree sandboxes and session directories', () => {
@@ -85,5 +95,30 @@ describe('OpenCodeDatabase', () => {
     expect(db.findProjectBySessionDirectory('/repo-sandbox/current/app')?.id).toBe('proj_1');
     expect(db.hasProject('proj_1')).toBe(true);
     expect(db.hasProject('missing')).toBe(false);
+
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'sqlite3',
+      ['--version'],
+      expect.objectContaining({
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }),
+    );
+    const queryCalls = mockExecFileSync.mock.calls.filter((call) => {
+      const args = call[1];
+      return Array.isArray(args) && args[0] === '-json';
+    });
+    expect(queryCalls.length).toBeGreaterThan(0);
+    for (const call of queryCalls) {
+      expect(call[2]).toEqual(expect.objectContaining({
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 50 * 1024 * 1024,
+      }));
+    }
   });
 });

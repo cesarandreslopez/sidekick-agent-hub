@@ -50,6 +50,8 @@ export function keychainServiceExists(service: string): boolean {
   try {
     execFileSync('security', ['find-generic-password', '-s', service], {
       stdio: ['ignore', 'ignore', 'ignore'],
+      timeout: 4000,
+      killSignal: 'SIGKILL',
     });
     return true;
   } catch {

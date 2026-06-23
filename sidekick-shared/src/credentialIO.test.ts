@@ -92,7 +92,26 @@ describe('credentialIO', () => {
     expect(mockExecFileSync).toHaveBeenCalledWith(
       'security',
       ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
+    );
+  });
+
+  it('returns null when a macOS keychain read probe is killed', () => {
+    setPlatform('darwin');
+    mockExecFileSync.mockImplementation(() => {
+      throw Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT', signal: 'SIGKILL' });
+    });
+
+    expect(readActiveCredentials()).toBeNull();
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      expect.objectContaining({
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+      }),
     );
   });
 
@@ -110,7 +129,7 @@ describe('credentialIO', () => {
       1,
       'security',
       ['find-generic-password', '-s', service, '-w'],
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
     );
     expect(mockExecFileSync).toHaveBeenNthCalledWith(
       2,
@@ -121,7 +140,7 @@ describe('credentialIO', () => {
         '-a', 'sidekick-test-user',
         '-w', JSON.stringify(credentials),
       ],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
+      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
     );
   });
 });

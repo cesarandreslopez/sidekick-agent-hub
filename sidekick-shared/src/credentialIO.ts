@@ -34,7 +34,7 @@ export function readActiveCredentials(configDir?: string): unknown {
     try {
       const raw = execFileSync('security', [
         'find-generic-password', '-s', claudeKeychainService(configDir), '-w',
-      ], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+      ], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' });
       return JSON.parse(raw.trim());
     } catch {
       return null;
@@ -66,7 +66,7 @@ export function writeActiveCredentials(credentials: unknown, configDir?: string)
       '-s', claudeKeychainService(configDir),
       '-a', process.env.USER || 'user',
       '-w', json,
-    ], { stdio: ['pipe', 'pipe', 'pipe'] });
+    ], { stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' });
     return;
   }
   // Linux / WSL / Windows — file-based

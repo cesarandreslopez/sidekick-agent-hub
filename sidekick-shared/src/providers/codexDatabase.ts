@@ -36,7 +36,12 @@ export class CodexDatabase {
   open(): boolean {
     if (this.sqlite3Available !== null) return this.sqlite3Available;
     try {
-      execFileSync('sqlite3', ['--version'], { encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] });
+      execFileSync('sqlite3', ['--version'], {
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
       this.sqlite3Available = true;
       return true;
     } catch {
@@ -62,7 +67,11 @@ export class CodexDatabase {
     });
     try {
       const result = execFileSync('sqlite3', ['-json', '-readonly', this.dbPath, query], {
-        encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 10 * 1024 * 1024,
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 10 * 1024 * 1024,
       });
       const trimmed = result.trim();
       if (!trimmed) return [];

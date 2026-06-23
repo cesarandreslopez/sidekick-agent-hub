@@ -45,7 +45,12 @@ export class OpenCodeDatabase {
       return false;
     }
     try {
-      execFileSync('sqlite3', ['--version'], { encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] });
+      execFileSync('sqlite3', ['--version'], {
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
       this.runtimeStatus = { available: true, kind: 'available' };
       return true;
     } catch (error) {
@@ -68,7 +73,11 @@ export class OpenCodeDatabase {
     }
     try {
       const result = execFileSync('sqlite3', ['-json', '-readonly', this.dbPath, query], {
-        encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 50 * 1024 * 1024,
+        encoding: 'utf-8',
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 50 * 1024 * 1024,
       });
       this.runtimeStatus = { available: true, kind: 'available' };
       const trimmed = result.trim();

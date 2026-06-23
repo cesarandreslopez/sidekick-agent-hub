@@ -275,6 +275,8 @@ function getCodexLoginStatus(codexHome: string): { loggedIn: boolean; authMode?:
     const result = spawnSync('codex', ['login', 'status'], {
       encoding: 'utf8',
       env,
+      timeout: 4000,
+      killSignal: 'SIGKILL',
     });
     const stdout = String(result.stdout ?? '').trim();
     if (result.status === 0 && /^Logged in/i.test(stdout)) {
@@ -295,7 +297,11 @@ function getCodexLoginStatus(codexHome: string): { loggedIn: boolean; authMode?:
 function detectRunningCodexProcess(): boolean {
   if (process.platform === 'win32') return false;
   try {
-    return spawnSync('pgrep', ['-x', 'codex'], { encoding: 'utf8' }).status === 0;
+    return spawnSync('pgrep', ['-x', 'codex'], {
+      encoding: 'utf8',
+      timeout: 4000,
+      killSignal: 'SIGKILL',
+    }).status === 0;
   } catch {
     return false;
   }

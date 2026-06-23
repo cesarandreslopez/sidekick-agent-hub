@@ -259,7 +259,8 @@ function resolveProjectIdFromGit(workspacePath: string): string | null {
     const hash = execSync('git rev-list --max-parents=0 HEAD', {
       cwd: workspacePath,
       encoding: 'utf-8',
-      timeout: 5000,
+      timeout: 4000,
+      killSignal: 'SIGKILL',
       stdio: ['pipe', 'pipe', 'pipe']
     }).trim().split('\n')[0];
 

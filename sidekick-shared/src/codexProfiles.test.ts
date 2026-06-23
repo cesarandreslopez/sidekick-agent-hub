@@ -36,6 +36,7 @@ import {
   removeCodexAccount,
   getCodexProfileHome,
   getCodexMonitoringHomes,
+  readCodexAccountMetadata,
   resolveSidekickCodexHome,
   reconcileCodexAuthState,
 } from './codexProfiles';
@@ -96,6 +97,16 @@ function mockCodexCli({ loggedIn, pgrepHit = false }: { loggedIn: boolean; pgrep
       error: undefined,
     };
   });
+}
+
+function timeoutSpawnResult(): { status: null; signal: 'SIGKILL'; error: Error; stdout: string; stderr: string } {
+  return {
+    status: null,
+    signal: 'SIGKILL',
+    error: Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT' }),
+    stdout: '',
+    stderr: '',
+  };
 }
 
 // Creates two saved accounts; leaves "Personal" live in the system home and active.
@@ -168,6 +179,23 @@ describe('codexProfiles', () => {
         metadata: expect.objectContaining({
           authMode: 'chatgpt',
         }),
+      }),
+    );
+  });
+
+  it('bounds codex login status probes and treats killed probes as logged out', () => {
+    mockSpawnSync.mockReturnValue(timeoutSpawnResult());
+
+    expect(readCodexAccountMetadata(systemHome())).toEqual({});
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      'codex',
+      ['login', 'status'],
+      expect.objectContaining({
+        encoding: 'utf8',
+        env: expect.objectContaining({ CODEX_HOME: systemHome() }),
+        timeout: 4000,
+        killSignal: 'SIGKILL',
       }),
     );
   });
@@ -338,6 +366,28 @@ describe('codexProfiles', () => {
 
       expect(result.success).toBe(true);
       expect(result.warning).toMatch(/codex process/i);
+    });
+
+    it('bounds pgrep probes and ignores killed running-process checks', () => {
+      const { work } = setupTwoAccounts();
+      mockSpawnSync.mockImplementation((command: unknown) => {
+        if (command === 'pgrep') return timeoutSpawnResult();
+        return { status: 1, stdout: '', stderr: '', error: undefined };
+      });
+
+      const result = switchToCodexAccount(work);
+
+      expect(result.success).toBe(true);
+      expect(result.warning ?? '').not.toMatch(/codex process/i);
+      expect(mockSpawnSync).toHaveBeenCalledWith(
+        'pgrep',
+        ['-x', 'codex'],
+        expect.objectContaining({
+          encoding: 'utf8',
+          timeout: 4000,
+          killSignal: 'SIGKILL',
+        }),
+      );
     });
 
     it('warns when the stored credentials are older than the refresh window', () => {

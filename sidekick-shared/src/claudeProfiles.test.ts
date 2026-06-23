@@ -5,10 +5,19 @@ import * as path from 'path';
 
 let tmpDir: string;
 const originalPlatform = process.platform;
+const mockExecFileSync = vi.hoisted(() => vi.fn());
 
 vi.mock('./paths', () => ({
   getConfigDir: () => tmpDir,
 }));
+
+vi.mock('child_process', async () => {
+  const actual = await vi.importActual<typeof import('child_process')>('child_process');
+  return {
+    ...actual,
+    execFileSync: (...args: unknown[]) => mockExecFileSync(...args),
+  };
+});
 
 import {
   claudeKeychainService,
@@ -45,6 +54,7 @@ function writeClaudeProfileCredentials(home: string): void {
 describe('claudeProfiles', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-claude-profiles-test-'));
+    mockExecFileSync.mockReset();
     setPlatform(originalPlatform);
   });
 
@@ -106,6 +116,26 @@ describe('claudeProfiles', () => {
 
     fs.rmSync(path.join(home, '.credentials.json'));
     expect(isClaudeProfileAuthenticated(home)).toBe(false);
+  });
+
+  it('bounds macOS keychain checks and treats killed checks as unauthenticated', () => {
+    setPlatform('darwin');
+    const home = getClaudeProfileHome('uuid-work');
+    writeClaudeProfileIdentity(home);
+    mockExecFileSync.mockImplementation(() => {
+      throw Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT', signal: 'SIGKILL' });
+    });
+
+    expect(isClaudeProfileAuthenticated(home)).toBe(false);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'security',
+      ['find-generic-password', '-s', claudeKeychainService(home)],
+      expect.objectContaining({
+        stdio: ['ignore', 'ignore', 'ignore'],
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+      }),
+    );
   });
 
   it('bootstraps the profile home directory with owner-only permissions', () => {
