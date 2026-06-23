@@ -157,14 +157,17 @@ sidekick quota
 Provider-aware quota and rate-limit display. The command auto-detects the active provider:
 
 - **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns. Includes a peak-hours summary line.
-- **Codex**: Shows rate limits from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars and reset countdowns. The default path is local-only: current workspace rollout, recent account-level rollouts, then the active account's cached snapshot. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
-- **OpenCode / z.ai**: OpenCode has no native rate-limit data, but when z.ai Coding Plan credentials are available, `sidekick quota --provider opencode` can auto-route to authoritative z.ai quota (5-Hour / Weekly). Use `--provider zai` to request it explicitly. z.ai quota is read from z.ai's quota API using OpenCode's stored token, with fallback support for `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`.
+- **Codex**: Shows rate limits from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars, projected end-of-window utilization, and reset countdowns. The default path is local-only: current workspace rollout, recent account-level rollouts, then the active account's cached snapshot. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
+- **OpenCode / z.ai**: OpenCode has no native rate-limit data, but when z.ai Coding Plan credentials are available, `sidekick quota --provider opencode` can auto-route to authoritative z.ai quota (5-Hour / Weekly, with projected end-of-window utilization). Use `--provider zai` to request it explicitly. z.ai quota is read from z.ai's quota API using OpenCode's stored token, with fallback support for `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`.
+
+Every provider renders in the same aligned table — a `now` column (current utilization), a `projected` column (estimated end-of-window utilization, or `—` when it can't be computed), and a `resets` countdown:
 
 ```
-Subscription Quota
-──────────────────────────────────────────────────
-  5-Hour   ████████████░░░░░░░░░░░░░░░░░░ 40%   resets in 2h 15m
-  7-Day    ██████████████████████░░░░░░░░ 72%   resets in 4d 6h
+Subscription Quota                          now projected resets
+────────────────────────────────────────────────────────────────
+  5-Hour    ████████████░░░░░░░░░░░░░░░░░░  40%      100% 2h 15m
+  7-Day     ██████████████████████░░░░░░░░  72%       88% 4d 6h
+  Peak      ● Peak Hours — Limits Drain Faster (off-peak in 2h 45m)
 ```
 
 When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota/rate-limit state visible instead of hiding the section entirely.

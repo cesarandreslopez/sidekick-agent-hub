@@ -31,7 +31,7 @@ Codex CLI embeds rate-limit data in its event stream (via `token_count` events w
 
 - **VS Code dashboard**: The quota section shows "Rate Limits" with primary and secondary window gauges
 - **CLI dashboard**: The Sessions panel Summary tab shows a "Rate Limits" section with utilization bars
-- **`sidekick quota`**: When the active provider is Codex, shows rate-limit bars with reset countdowns
+- **`sidekick quota`**: When the active provider is Codex, shows rate-limit bars with projected end-of-window utilization and reset countdowns
 
 No separate API polling is needed by default — rate-limit data arrives as part of normal session monitoring. For one-shot CLI checks, `sidekick quota --provider codex --refresh` explicitly refreshes from Codex's usage API first, then falls back to local rollout data and cached snapshots if the API is unavailable.
 

@@ -5,6 +5,32 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.3] - 2026-06-23
+
+### Added (sidekick-shared)
+
+- **Quota projection helpers**: New exported `projectQuotaWindow()` / `withQuotaProjections()`, the `FIVE_HOUR_WINDOW_MS` / `SEVEN_DAY_WINDOW_MS` constants, and the `QuotaProjectionInput` type generalize the previously Claude-only end-of-window utilization projection, so Codex and z.ai quota states now populate `projectedFiveHour` / `projectedSevenDay`. Projection is idempotent and honors a `capturedAt` timestamp
+
+### Changed (CLI)
+
+- **`sidekick quota` projects every provider**: Quota output is now a unified table with aligned `now` / `projected` / `resets` columns, and projected end-of-window utilization is shown for all providers (Claude, Codex, z.ai) — previously Claude only. Bars are clamped to 0–100% and a `—` placeholder shows when a projection is unavailable; `sidekick quota --all` uses the same layout
+
+### Fixed (sidekick-shared)
+
+- **Bounded synchronous CLI probes**: Every synchronous `execFileSync` / `spawnSync` / `execSync` probe (keychain, Codex login / `pgrep`, `git rev-list`, `sqlite3`) now runs with `timeout: 4000` and `killSignal: 'SIGKILL'`, so a hung CLI, keychain prompt, or database can no longer block the caller indefinitely
+
+### Fixed (VS Code extension)
+
+- **Compact provider-outage status**: The dashboard's provider-status card now renders through a dedicated, testable display model (`providerStatusDisplay`) with severity, title, summary, an "N affected" count, and an `http(s)`-validated incident link, and inserts upstream status text/links via `textContent` / `createElement` instead of `innerHTML` (removing an HTML-injection vector)
+
+### Security
+
+- **npm audit**: Resolved reported dependency advisories across the monorepo — `dompurify` `^3.4.11` (VS Code webview sanitizer), `esbuild` `^0.28.1`, and `vitest` `^4.1.9`
+
+### Changed (repo)
+
+- **Repo-wide Prettier formatting**: Added a shared `prettier.config.cjs`, `format` / `format:check` scripts in all three packages, `scripts/format-all.sh` / `scripts/format-check-all.sh`, a `Format` CI workflow, and formatting gates in the release workflow
+
 ## [0.21.2] - 2026-06-22
 
 ### Changed (sidekick-shared)

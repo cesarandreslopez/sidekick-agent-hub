@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.3] - 2026-06-23
+
+### Changed
+
+- **`sidekick quota` projects every provider**: Quota output is now rendered as a unified table with aligned `now` / `projected` / `resets` columns, and projected end-of-window utilization is shown for **all** providers (Claude, Codex, z.ai) — previously only Claude displayed a projection. A `—` placeholder appears when a projection is unavailable, and utilization bars are clamped to 0–100% so over-limit projections render cleanly. `sidekick quota --all` uses the same table for each provider section
+- **Bundled `sidekick-shared` 0.21.3**: Picks up the quota projection helpers and the bounded synchronous CLI probes
+
+### Security
+
+- **npm audit**: Bumped `esbuild` to `^0.28.1` and `vitest` to `^4.1.9` to clear reported dev-dependency advisories
+
 ## [0.21.2] - 2026-06-22
 
 ### Changed

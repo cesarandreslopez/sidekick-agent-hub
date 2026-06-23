@@ -5,6 +5,20 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.3] - 2026-06-23
+
+### Added
+
+- **Quota projection helpers**: New exported `projectQuotaWindow()` and `withQuotaProjections()`, plus the `FIVE_HOUR_WINDOW_MS` / `SEVEN_DAY_WINDOW_MS` constants and the `QuotaProjectionInput` type, generalize the previously Claude-only end-of-window utilization projection. Codex (`quotaFromCodexRateLimits`, using each window's real `window_minutes`) and z.ai (`quotaStateFromZaiQuotaLimitPayload`) quota states now populate `projectedFiveHour` / `projectedSevenDay`. Projection is idempotent (it only fills fields that are still null, so it never double-counts) and honors a `capturedAt` timestamp so cached snapshots project from capture time
+
+### Fixed
+
+- **Bounded synchronous CLI probes**: Every synchronous `execFileSync` / `spawnSync` / `execSync` probe — keychain reads/writes (`credentialIO`, `claudeProfiles`), Codex login status and `pgrep` (`codexProfiles`), `git rev-list` (`providers/openCode`), and `sqlite3` (`providers/codexDatabase`, `providers/openCodeDatabase`) — now runs with `timeout: 4000` and `killSignal: 'SIGKILL'`, so a hung CLI, keychain prompt, or database can no longer block the caller indefinitely
+
+### Security
+
+- **npm audit**: Bumped `vitest` to `^4.1.9` to clear reported dev-dependency advisories
+
 ## [0.21.2] - 2026-06-22
 
 ### Changed

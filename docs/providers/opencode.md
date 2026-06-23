@@ -31,7 +31,7 @@ Sidekick reads `opencode.db` for DB-backed session discovery and monitoring. If 
 
 When OpenCode is configured with a z.ai Coding Plan (GLM), Sidekick reads the same quota endpoint used by z.ai's first-party usage plugin and displays the account's current 5-hour and weekly token quota.
 
-- **CLI**: `sidekick quota --provider zai` renders authoritative 5-Hour / Weekly utilization from z.ai; `sidekick quota --provider opencode` auto-routes to z.ai when z.ai traffic is detected; `sidekick quota --all` includes the z.ai section when available; `sidekick quota history --provider zai` renders the 13-week heatmap.
+- **CLI**: `sidekick quota --provider zai` renders authoritative 5-Hour / Weekly utilization from z.ai, including projected end-of-window utilization; `sidekick quota --provider opencode` auto-routes to z.ai when z.ai traffic is detected; `sidekick quota --all` includes the z.ai section when available; `sidekick quota history --provider zai` renders the 13-week heatmap.
 - **VS Code**: the dashboard shows a z.ai quota card labeled **"Live z.ai API"** or **"Cached z.ai API snapshot"**.
 
 How it works: Sidekick calls `GET https://api.z.ai/api/monitor/usage/quota/limit` with the z.ai token already stored by OpenCode (`auth.json`, preferring `zai-coding-plan` over `zai`). If those credentials are not available, Sidekick falls back to the official plugin environment variables: `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`.

@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.3] - 2026-06-23
+
+### Fixed
+
+- **Compact provider-outage status**: The dashboard's provider-status card is now rendered through a dedicated, testable display model (`providerStatusDisplay`) — severity, title, summary, an "N affected" component count, and an `http(s)`-validated incident link — instead of building markup from raw provider-status state. Incident text and links from the upstream status page are now inserted via `textContent` / `createElement` rather than `innerHTML`, removing an HTML-injection vector
+- **Bundled `sidekick-shared` 0.21.3**: Picks up the quota projection helpers and the bounded synchronous CLI probes
+
+### Security
+
+- **npm audit**: Bumped `dompurify` to `^3.4.11` (the webview HTML sanitizer) and the `esbuild` (`^0.28.1`) and `vitest` (`^4.1.9`) dev dependencies to clear reported advisories
+
 ## [0.21.2] - 2026-06-22
 
 ### Changed
