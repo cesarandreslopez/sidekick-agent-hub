@@ -1171,12 +1171,12 @@
     "@types/dompurify": "^3.0.0",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
-    "esbuild": "^0.27.2",
+    "esbuild": "^0.28.1",
     "eslint": "^9.0.0",
     "prettier": "3.8.4",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.0.0",
-    "vitest": "^2.0.0"
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.12",
@@ -1184,7 +1184,7 @@
     "@opencode-ai/sdk": "^1.2.0",
     "chart.js": "^4.5.1",
     "d3": "^7.9.0",
-    "dompurify": "^3.0.0",
+    "dompurify": "^3.4.11",
     "marked": "^12.0.0",
     "sidekick-shared": "file:../sidekick-shared"
   }

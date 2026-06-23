@@ -2,6 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { formatRelativeTime, collectSessionItems } from './SessionPickerHelpers';
 import type { SessionProvider } from 'sidekick-shared';
 
+// Mock fs.statSync. Vitest hoists vi.mock calls, so keep this top-level.
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    statSync: vi.fn(),
+  };
+});
+
 // ── formatRelativeTime ──
 
 describe('formatRelativeTime', () => {
@@ -46,15 +55,6 @@ describe('formatRelativeTime', () => {
 
 describe('collectSessionItems', () => {
   const now = new Date('2026-02-20T12:00:00Z');
-
-  // Mock fs.statSync — we need to mock the module
-  vi.mock('fs', async () => {
-    const actual = await vi.importActual<typeof import('fs')>('fs');
-    return {
-      ...actual,
-      statSync: vi.fn(),
-    };
-  });
 
   function makeMockProvider(labels: Record<string, string | null>): SessionProvider {
     return {
