@@ -45,6 +45,12 @@ describe('makeChalkBar', () => {
     expect((bar.match(/█/g) || []).length).toBe(10);
     expect((bar.match(/░/g) || []).length).toBe(0);
   });
+
+  it('clamps over-limit utilization to the available bar width', () => {
+    const bar = makeChalkBar(150, 10);
+    expect((bar.match(/█/g) || []).length).toBe(10);
+    expect((bar.match(/░/g) || []).length).toBe(0);
+  });
 });
 
 // ── formatTimeUntil ──
@@ -78,13 +84,14 @@ describe('formatTimeUntil', () => {
 
 // ── quotaAction ──
 
-const { mockFetchOnce, mockResolveCodexQuota, mockResolveZaiQuota, mockResolveProvider, mockFetchPeakHoursStatus, mockZaiRows } = vi.hoisted(() => ({
+const { mockFetchOnce, mockResolveCodexQuota, mockResolveZaiQuota, mockResolveProvider, mockFetchPeakHoursStatus, mockZaiRows, mockActiveCodexAccount } = vi.hoisted(() => ({
   mockFetchOnce: vi.fn(),
   mockResolveCodexQuota: vi.fn(),
   mockResolveZaiQuota: vi.fn(),
   mockResolveProvider: vi.fn(),
   mockFetchPeakHoursStatus: vi.fn(),
   mockZaiRows: vi.fn(() => []),
+  mockActiveCodexAccount: vi.fn(),
 }));
 
 vi.mock('sidekick-shared', () => ({
@@ -110,7 +117,7 @@ vi.mock('sidekick-shared', () => ({
     weeklyStartedAtMs: turns.length ? Date.now() - 60_000 : null,
   }),
   getActiveAccount: () => null,
-  getActiveCodexAccount: () => ({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' }),
+  getActiveCodexAccount: () => mockActiveCodexAccount(),
   getOpenCodeDataDir: () => '/tmp/opencode',
   inferZaiQuotaState: (_acc: unknown, tier: string) => ({
     fiveHour: { utilization: 5, resetsAt: '' },
@@ -246,6 +253,8 @@ describe('quotaAction', () => {
     mockFetchPeakHoursStatus.mockReset();
     mockZaiRows.mockReset();
     mockZaiRows.mockReturnValue([]);
+    mockActiveCodexAccount.mockReset();
+    mockActiveCodexAccount.mockReturnValue({ id: 'codex-account', providerId: 'codex', addedAt: '2026-05-19T00:00:00Z', label: 'Work' });
     mockResolveProvider.mockReturnValue({ id: 'claude-code', dispose: () => {} });
     mockResolveZaiQuota.mockResolvedValue({
       runtimeProvider: 'zai',
@@ -433,6 +442,45 @@ describe('quotaAction', () => {
     expect(provider.dispose).toHaveBeenCalledOnce();
   });
 
+  it('prints Codex quota with projected column and deduplicated account detail', async () => {
+    const provider = { id: 'codex', dispose: vi.fn() };
+    mockResolveProvider.mockReturnValue(provider);
+    mockActiveCodexAccount.mockReturnValue({
+      id: 'codex-account',
+      providerId: 'codex',
+      addedAt: '2026-05-19T00:00:00Z',
+      label: 'cal@contextful.com',
+      email: 'cal@contextful.com',
+    });
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 7, resetsAt: new Date(Date.now() + 2 * 3600_000).toISOString() },
+      sevenDay: { utilization: 30, resetsAt: new Date(Date.now() + 5 * 86400_000).toISOString() },
+      available: true,
+      source: 'session',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+      projectedFiveHour: 10,
+      projectedSevenDay: 36,
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stdoutData).toContain('Account: cal@contextful.com\n');
+    expect(stdoutData).not.toContain('cal@contextful.com (cal@contextful.com)');
+    expect(stdoutData).toContain('now');
+    expect(stdoutData).toContain('projected');
+    expect(stdoutData).toContain('resets');
+    expect(stdoutData).toContain('Primary');
+    expect(stdoutData).toContain('7%');
+    expect(stdoutData).toContain('10%');
+    expect(stdoutData).toContain('Secondary');
+    expect(stdoutData).toContain('30%');
+    expect(stdoutData).toContain('36%');
+  });
+
   it('uses explicit API Codex quota refresh with --refresh', async () => {
     const provider = { id: 'codex', dispose: vi.fn() };
     mockResolveProvider.mockReturnValue(provider);
@@ -465,11 +513,38 @@ describe('quotaAction', () => {
 
     expect(mockResolveZaiQuota).toHaveBeenCalledOnce();
     expect(stdoutData).toContain('z.ai Coding Plan');
+    expect(stdoutData).toContain('now');
+    expect(stdoutData).toContain('projected');
+    expect(stdoutData).toContain('resets');
     expect(stdoutData).toContain('1%');
     expect(stdoutData).toContain('20%');
     expect(stdoutData).not.toContain('estimated');
     expect(stdoutData).not.toContain('budgets:');
     expect(stdoutData).not.toContain('exposes no quota API');
+  });
+
+  it('prints projection placeholders when z.ai projection data is unavailable', async () => {
+    mockResolveZaiQuota.mockResolvedValue({
+      runtimeProvider: 'zai',
+      providerId: 'zai',
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 22, resetsAt: new Date(Date.now() + 2 * 86400_000).toISOString() },
+      available: true,
+      source: 'api',
+      fiveHourLabel: '5-Hour',
+      sevenDayLabel: 'Weekly',
+      planType: 'pro',
+      limitName: 'z.ai Pro',
+      projectedSevenDay: 31,
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { provider: 'zai' }));
+
+    expect(stdoutData).toContain('5-Hour');
+    expect(stdoutData).toContain('—');
+    expect(stdoutData).toContain('Weekly');
+    expect(stdoutData).toContain('31%');
   });
 
   it('auto-routes OpenCode quota to authoritative z.ai quota when z.ai traffic is detected', async () => {

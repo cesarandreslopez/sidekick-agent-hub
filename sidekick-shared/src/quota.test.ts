@@ -1,5 +1,58 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchQuota } from './quota';
+import {
+  FIVE_HOUR_WINDOW_MS,
+  SEVEN_DAY_WINDOW_MS,
+  fetchQuota,
+  projectQuotaWindow,
+} from './quota';
+
+describe('projectQuotaWindow', () => {
+  it('projects utilization from captured time, reset time, and window duration', () => {
+    expect(projectQuotaWindow({
+      utilization: 40,
+      resetsAt: '2026-03-12T14:00:00Z',
+      windowMs: FIVE_HOUR_WINDOW_MS,
+      capturedAt: '2026-03-12T12:00:00Z',
+    })).toBe(67);
+
+    expect(projectQuotaWindow({
+      utilization: 70,
+      resetsAt: '2026-03-13T12:00:00Z',
+      windowMs: SEVEN_DAY_WINDOW_MS,
+      capturedAt: '2026-03-12T12:00:00Z',
+    })).toBe(82);
+  });
+
+  it('returns undefined when projection inputs are unusable', () => {
+    expect(projectQuotaWindow({
+      utilization: 0,
+      resetsAt: '2026-03-12T14:00:00Z',
+      windowMs: FIVE_HOUR_WINDOW_MS,
+      capturedAt: '2026-03-12T12:00:00Z',
+    })).toBeUndefined();
+    expect(projectQuotaWindow({
+      utilization: 10,
+      resetsAt: '',
+      windowMs: FIVE_HOUR_WINDOW_MS,
+      capturedAt: '2026-03-12T12:00:00Z',
+    })).toBeUndefined();
+    expect(projectQuotaWindow({
+      utilization: 10,
+      resetsAt: '2026-03-12T14:00:00Z',
+      windowMs: FIVE_HOUR_WINDOW_MS,
+      capturedAt: '2026-03-12T08:00:00Z',
+    })).toBeUndefined();
+  });
+
+  it('caps projections at 200 percent', () => {
+    expect(projectQuotaWindow({
+      utilization: 80,
+      resetsAt: '2026-03-12T14:00:00Z',
+      windowMs: FIVE_HOUR_WINDOW_MS,
+      capturedAt: '2026-03-12T09:12:00Z',
+    })).toBe(200);
+  });
+});
 
 describe('fetchQuota', () => {
   let mockFetch: ReturnType<typeof vi.fn>;

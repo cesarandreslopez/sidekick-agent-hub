@@ -65,6 +65,19 @@ describe('zaiQuotaApi', () => {
     expect(quota.sevenDay.utilization).toBe(24);
   });
 
+  it('adds elapsed-window projections from z.ai reset timestamps', () => {
+    const quota = quotaStateFromZaiQuotaLimitPayload(
+      payloadWithLimits([
+        { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 40, nextResetTime: FIVE_RESET },
+        { type: 'TOKENS_LIMIT', unit: 6, number: 1, percentage: 20, nextResetTime: WEEKLY_RESET },
+      ]),
+      new Date(FIVE_RESET - 3 * 60 * 60_000).toISOString(),
+    );
+
+    expect(quota.projectedFiveHour).toBe(100);
+    expect(quota.projectedSevenDay).toBe(36);
+  });
+
   it('prefers OpenCode zai-coding-plan auth over environment credentials', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-zai-auth-'));
     fs.writeFileSync(path.join(tmpDir, 'auth.json'), JSON.stringify({

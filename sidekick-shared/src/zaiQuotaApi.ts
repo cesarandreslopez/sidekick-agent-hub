@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { QuotaState } from './quota';
+import { FIVE_HOUR_WINDOW_MS, SEVEN_DAY_WINDOW_MS, withQuotaProjections } from './quota';
 import type { ProviderQuotaState } from './providerQuota';
 
 const DEFAULT_ZAI_BASE_URL = 'https://api.z.ai/api/anthropic';
@@ -197,7 +198,7 @@ export function quotaStateFromZaiQuotaLimitPayload(
     }, capturedAt);
   }
 
-  return {
+  return withQuotaProjections({
     fiveHour: {
       utilization: fiveHourLimit.percentage ?? 0,
       resetsAt: isoFromEpochMs(fiveHourLimit.nextResetTime),
@@ -215,7 +216,11 @@ export function quotaStateFromZaiQuotaLimitPayload(
     planType: level,
     limitId: level ? `zai-${level}` : 'zai-coding-plan',
     limitName: displayPlanName(level),
-  };
+  }, {
+    fiveHourWindowMs: FIVE_HOUR_WINDOW_MS,
+    sevenDayWindowMs: SEVEN_DAY_WINDOW_MS,
+    capturedAt,
+  });
 }
 
 function parseRetryAfterMs(retryAfter: string | null): number | undefined {
@@ -314,8 +319,9 @@ export async function fetchZaiQuotaFromApi(options: ZaiQuotaApiOptions = {}): Pr
 }
 
 function enrichZaiQuota(state: QuotaState): ProviderQuotaState<'zai'> {
+  const withProjections = withQuotaProjections(state);
   return {
-    ...state,
+    ...withProjections,
     runtimeProvider: 'zai',
     providerId: 'zai',
     fiveHourLabel: state.fiveHourLabel ?? '5-Hour',

@@ -28,7 +28,8 @@ export function getUtilizationColor(percent: number): ChalkInstance {
 }
 
 export function makeChalkBar(percent: number, width: number): string {
-  const filled = Math.round((percent / 100) * width);
+  const clamped = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+  const filled = Math.round((clamped / 100) * width);
   const empty = width - filled;
   const color = getUtilizationColor(percent);
   return color('█'.repeat(filled)) + chalk.dim('░'.repeat(empty));
@@ -54,6 +55,85 @@ export function formatTimeUntil(isoString: string): string {
 function formatSnapshotTime(isoString?: string): string {
   if (!isoString) return 'unknown time';
   return new Date(isoString).toLocaleString();
+}
+
+const QUOTA_BAR_WIDTH = 30;
+const QUOTA_LABEL_WIDTH = 9;
+const QUOTA_NOW_WIDTH = 4;
+const QUOTA_PROJECTED_WIDTH = 9;
+const MISSING_VALUE = '—';
+
+interface QuotaTableRow {
+  label: string;
+  utilization: number;
+  projected?: number;
+  resetsAt?: string;
+}
+
+interface QuotaMetaRow {
+  label: string;
+  value: string;
+  color?: (value: string) => string;
+}
+
+function compactResetTime(isoString?: string): string {
+  if (!isoString) return MISSING_VALUE;
+  const value = formatTimeUntil(isoString);
+  return value.startsWith('in ') ? value.slice(3) : (value || MISSING_VALUE);
+}
+
+function formatColoredPercent(percent: number, width: number): string {
+  const rounded = Math.round(percent);
+  return getUtilizationColor(rounded)(`${rounded}%`.padStart(width));
+}
+
+function formatProjection(percent?: number): string {
+  if (percent == null || !Number.isFinite(percent)) {
+    return chalk.dim(MISSING_VALUE.padStart(QUOTA_PROJECTED_WIDTH));
+  }
+  return formatColoredPercent(percent, QUOTA_PROJECTED_WIDTH);
+}
+
+function formatAccountIdentity(label?: string, detail?: string): string | null {
+  const primary = label?.trim();
+  const secondary = detail?.trim();
+  if (!primary && !secondary) return null;
+  if (!primary) return secondary ?? null;
+  if (!secondary || primary === secondary) return primary;
+  return `${primary} (${secondary})`;
+}
+
+function sourceLabel(source?: string, stale?: boolean): string | null {
+  if (stale) return 'cached snapshot';
+  switch (source) {
+    case 'api': return 'API';
+    case 'session': return 'local session snapshot';
+    case 'cache': return 'cached snapshot';
+    default: return null;
+  }
+}
+
+function printQuotaTable(title: string, rows: QuotaTableRow[], metaRows: QuotaMetaRow[] = []): void {
+  const labelWidth = Math.max(QUOTA_LABEL_WIDTH, ...rows.map(row => row.label.length), ...metaRows.map(row => row.label.length));
+  const headerLeftWidth = 2 + labelWidth + 1 + QUOTA_BAR_WIDTH;
+  const tableWidth = headerLeftWidth + 1 + QUOTA_NOW_WIDTH + 1 + QUOTA_PROJECTED_WIDTH + 1 + 'resets'.length;
+
+  process.stdout.write(
+    `${chalk.bold(title.padEnd(headerLeftWidth))} ${chalk.dim('now'.padStart(QUOTA_NOW_WIDTH))} ${chalk.dim('projected'.padStart(QUOTA_PROJECTED_WIDTH))} ${chalk.dim('resets')}\n`,
+  );
+  process.stdout.write(chalk.dim('─'.repeat(Math.max(60, tableWidth)) + '\n'));
+
+  for (const row of rows) {
+    const pct = Math.round(row.utilization);
+    process.stdout.write(
+      `  ${chalk.dim(row.label.padEnd(labelWidth))} ${makeChalkBar(pct, QUOTA_BAR_WIDTH)} ${formatColoredPercent(pct, QUOTA_NOW_WIDTH)} ${formatProjection(row.projected)} ${chalk.dim(compactResetTime(row.resetsAt))}\n`,
+    );
+  }
+
+  for (const row of metaRows) {
+    const color = row.color ?? chalk.dim;
+    process.stdout.write(`  ${chalk.dim(row.label.padEnd(labelWidth))} ${color(row.value)}\n`);
+  }
 }
 
 export async function quotaAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
@@ -160,29 +240,27 @@ function printClaudeQuotaError(quota: ClaudeQuota): void {
 }
 
 function printClaudeQuota(quota: ClaudeQuota, peak: PeakHoursState): void {
-  const barWidth = 30;
-  const fivePct = Math.round(quota.fiveHour.utilization);
-  const sevenPct = Math.round(quota.sevenDay.utilization);
-  const fiveReset = formatTimeUntil(quota.fiveHour.resetsAt);
-  const sevenReset = formatTimeUntil(quota.sevenDay.resetsAt);
-
-  const fiveProj = quota.projectedFiveHour != null
-    ? ` ${chalk.dim('→')} ${getUtilizationColor(quota.projectedFiveHour)(String(Math.round(quota.projectedFiveHour)).padStart(3) + '%')}`
-    : '';
-  const sevenProj = quota.projectedSevenDay != null
-    ? ` ${chalk.dim('→')} ${getUtilizationColor(quota.projectedSevenDay)(String(Math.round(quota.projectedSevenDay)).padStart(3) + '%')}`
-    : '';
-
   const active = getActiveAccount();
-  if (active) {
-    process.stdout.write(chalk.dim(`Account: ${active.email}${active.label ? ` (${active.label})` : ''}\n`));
+  const account = active ? formatAccountIdentity(active.email, active.label) : null;
+  if (account) {
+    process.stdout.write(chalk.dim(`Account: ${account}\n`));
   }
-  process.stdout.write(chalk.bold('Subscription Quota\n'));
-  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
-  process.stdout.write(`  ${chalk.dim('5-Hour')}   ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%${fiveProj}   ${chalk.dim('resets ' + fiveReset)}\n`);
-  process.stdout.write(`  ${chalk.dim('7-Day')}    ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%${sevenProj}   ${chalk.dim('resets ' + sevenReset)}\n`);
 
-  printPeakHoursSummary(peak);
+  const peakLine = formatPeakHoursLine(peak);
+  printQuotaTable('Subscription Quota', [
+    {
+      label: '5-Hour',
+      utilization: quota.fiveHour.utilization,
+      projected: quota.projectedFiveHour,
+      resetsAt: quota.fiveHour.resetsAt,
+    },
+    {
+      label: '7-Day',
+      utilization: quota.sevenDay.utilization,
+      projected: quota.projectedSevenDay,
+      resetsAt: quota.sevenDay.resetsAt,
+    },
+  ], peakLine ? [{ label: 'Peak', value: peakLine, color: value => value }] : []);
 }
 
 async function fetchClaudeQuotaPayload(): Promise<{ quota: Awaited<ReturnType<QuotaService['fetchOnce']>>; peak: PeakHoursState }> {
@@ -192,12 +270,6 @@ async function fetchClaudeQuotaPayload(): Promise<{ quota: Awaited<ReturnType<Qu
     fetchPeakHoursStatus(),
   ]);
   return { quota, peak };
-}
-
-function printPeakHoursSummary(peak: PeakHoursState): void {
-  const line = formatPeakHoursLine(peak);
-  if (!line) return;
-  process.stdout.write(`  ${chalk.dim('Peak')}     ${line}\n`);
 }
 
 async function codexQuotaAction(
@@ -248,28 +320,47 @@ function printCodexQuota(
   quota: Awaited<ReturnType<typeof resolveCodexQuota>>,
   activeAccount: ReturnType<typeof getActiveCodexAccount> = getActiveCodexAccount(),
 ): void {
-  const barWidth = 30;
-  const fivePct = Math.round(quota.fiveHour.utilization);
-  const sevenPct = Math.round(quota.sevenDay.utilization);
-  const fiveReset = quota.fiveHour.resetsAt ? formatTimeUntil(quota.fiveHour.resetsAt) : '';
-  const sevenReset = quota.sevenDay.resetsAt ? formatTimeUntil(quota.sevenDay.resetsAt) : '';
   const fiveLabel = quota.fiveHourLabel ?? '5-Hour';
   const sevenLabel = quota.sevenDayLabel ?? '7-Day';
+  const account = activeAccount
+    ? formatAccountIdentity(activeAccount.label ?? activeAccount.id, activeAccount.email)
+    : null;
 
-  if (activeAccount) {
-    process.stdout.write(chalk.dim(`Account: ${activeAccount.label ?? activeAccount.id}${activeAccount.email ? ` (${activeAccount.email})` : ''}\n`));
+  if (account) {
+    process.stdout.write(chalk.dim(`Account: ${account}\n`));
   }
-  if (quota.stale) {
-    process.stdout.write(chalk.yellow(`Using cached rate-limit snapshot from ${formatSnapshotTime(quota.capturedAt)}.\n`));
-  }
-  process.stdout.write(chalk.bold('Rate Limits\n'));
-  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
+
+  const rows: QuotaTableRow[] = [];
   if (quota.fiveHour.resetsAt || quota.fiveHour.utilization > 0) {
-    process.stdout.write(`  ${chalk.dim(fiveLabel.padEnd(9))} ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%   ${fiveReset ? chalk.dim('resets ' + fiveReset) : ''}\n`);
+    rows.push({
+      label: fiveLabel,
+      utilization: quota.fiveHour.utilization,
+      projected: quota.projectedFiveHour,
+      resetsAt: quota.fiveHour.resetsAt,
+    });
   }
   if (quota.sevenDay.resetsAt || quota.sevenDay.utilization > 0) {
-    process.stdout.write(`  ${chalk.dim(sevenLabel.padEnd(9))} ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
+    rows.push({
+      label: sevenLabel,
+      utilization: quota.sevenDay.utilization,
+      projected: quota.projectedSevenDay,
+      resetsAt: quota.sevenDay.resetsAt,
+    });
   }
+
+  const source = sourceLabel(quota.source, quota.stale);
+  const metaRows: QuotaMetaRow[] = [];
+  if (quota.stale) {
+    metaRows.push({
+      label: 'Source',
+      value: `cached snapshot from ${formatSnapshotTime(quota.capturedAt)}`,
+      color: chalk.yellow,
+    });
+  } else if (source) {
+    metaRows.push({ label: 'Source', value: source });
+  }
+
+  printQuotaTable('Rate Limits', rows, metaRows);
 }
 
 // ── z.ai (GLM Coding Plan) ──
@@ -328,21 +419,31 @@ async function zaiQuotaAction(
 }
 
 function printZaiQuota(quota: Awaited<ReturnType<typeof resolveZaiQuota>>): void {
-  const barWidth = 30;
-  const fivePct = Math.round(quota.fiveHour.utilization);
-  const sevenPct = Math.round(quota.sevenDay.utilization);
-  const fiveReset = quota.fiveHour.resetsAt ? formatTimeUntil(quota.fiveHour.resetsAt) : '';
-  const sevenReset = quota.sevenDay.resetsAt ? formatTimeUntil(quota.sevenDay.resetsAt) : '';
   const tier = quota.planType ?? 'auto';
+  const title = 'z.ai Coding Plan' + (tier !== 'auto' ? ` (plan: ${tier})` : '');
 
-  process.stdout.write(chalk.bold('z.ai Coding Plan') + (tier !== 'auto' ? chalk.dim(` (plan: ${tier})\n`) : '\n'));
-  if (quota.stale) {
-    process.stdout.write(chalk.yellow(`Using cached z.ai quota snapshot from ${formatSnapshotTime(quota.capturedAt)}.\n`));
-  }
-  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
-  process.stdout.write(`  ${chalk.dim('5-Hour')}   ${makeChalkBar(fivePct, barWidth)} ${String(fivePct).padStart(3)}%   ${fiveReset ? chalk.dim('resets ' + fiveReset) : ''}\n`);
-  process.stdout.write(`  ${chalk.dim('Weekly')}    ${makeChalkBar(sevenPct, barWidth)} ${String(sevenPct).padStart(3)}%   ${sevenReset ? chalk.dim('resets ' + sevenReset) : ''}\n`);
-  process.stdout.write(chalk.dim(quota.stale ? '  Source: cached z.ai API snapshot.\n' : '  Source: z.ai quota API.\n'));
+  printQuotaTable(title, [
+    {
+      label: quota.fiveHourLabel ?? '5-Hour',
+      utilization: quota.fiveHour.utilization,
+      projected: quota.projectedFiveHour,
+      resetsAt: quota.fiveHour.resetsAt,
+    },
+    {
+      label: quota.sevenDayLabel ?? 'Weekly',
+      utilization: quota.sevenDay.utilization,
+      projected: quota.projectedSevenDay,
+      resetsAt: quota.sevenDay.resetsAt,
+    },
+  ], [
+    quota.stale
+      ? {
+        label: 'Source',
+        value: `cached z.ai API snapshot from ${formatSnapshotTime(quota.capturedAt)}`,
+        color: chalk.yellow,
+      }
+      : { label: 'Source', value: 'z.ai quota API' },
+  ]);
 }
 
 async function allQuotaAction(

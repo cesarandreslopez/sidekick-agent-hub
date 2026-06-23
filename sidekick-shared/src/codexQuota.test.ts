@@ -67,6 +67,47 @@ describe('codexQuota', () => {
     });
   });
 
+  it('adds elapsed-window projections to Codex quota snapshots', () => {
+    const quota = quotaFromCodexRateLimits({
+      limit_id: 'codex',
+      primary: {
+        used_percent: 40,
+        window_minutes: 300,
+        resets_at: Date.parse('2026-03-12T14:00:00Z') / 1000,
+      },
+      secondary: {
+        used_percent: 70,
+        window_minutes: 10_080,
+        resets_at: Date.parse('2026-03-13T12:00:00Z') / 1000,
+      },
+    }, 'api', '2026-03-12T12:00:00Z');
+
+    expect(quota).toMatchObject({
+      projectedFiveHour: 67,
+      projectedSevenDay: 82,
+    });
+  });
+
+  it('uses 5-hour and 7-day projection defaults when Codex window lengths are missing', () => {
+    const quota = quotaFromCodexRateLimits({
+      limit_id: 'codex',
+      primary: {
+        used_percent: 40,
+        window_minutes: null,
+        resets_at: Date.parse('2026-03-12T14:00:00Z') / 1000,
+      },
+      secondary: {
+        used_percent: 70,
+        resets_at: Date.parse('2026-03-13T12:00:00Z') / 1000,
+      },
+    }, 'api', '2026-03-12T12:00:00Z');
+
+    expect(quota).toMatchObject({
+      projectedFiveHour: 67,
+      projectedSevenDay: 82,
+    });
+  });
+
   it('tails rollout files for the latest token_count rate_limits even when usage info is null', () => {
     const rollout = writeRollout([
       {

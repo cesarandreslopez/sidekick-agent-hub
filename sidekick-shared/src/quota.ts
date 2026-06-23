@@ -60,21 +60,68 @@ interface UsageApiResponse {
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const BETA_HEADER = 'oauth-2025-04-20';
-const FIVE_HOUR_MS = 5 * 3_600_000;
-const SEVEN_DAY_MS = 7 * 86_400_000;
+export const FIVE_HOUR_WINDOW_MS = 5 * 3_600_000;
+export const SEVEN_DAY_WINDOW_MS = 7 * 86_400_000;
+
+export interface QuotaProjectionInput {
+  utilization: number;
+  resetsAt: string;
+  windowMs: number;
+  capturedAt?: string;
+}
 
 /**
  * Projects utilization at end of window based on elapsed time.
  *
  * Formula: `current * (windowDuration / elapsed)`, capped at 200%.
  */
-function projectFromElapsed(utilization: number, resetsAt: string, windowMs: number): number | undefined {
-  if (!resetsAt || utilization <= 0) return undefined;
+export function projectQuotaWindow(input: QuotaProjectionInput): number | undefined {
+  const { utilization, resetsAt, windowMs, capturedAt } = input;
+  if (!resetsAt || utilization <= 0 || !Number.isFinite(utilization) || windowMs <= 0) return undefined;
   const resetTime = new Date(resetsAt).getTime();
-  const now = Date.now();
+  if (!Number.isFinite(resetTime)) return undefined;
+
+  const capturedTime = capturedAt ? Date.parse(capturedAt) : NaN;
+  const now = Number.isFinite(capturedTime) ? capturedTime : Date.now();
   const elapsed = windowMs - (resetTime - now);
   if (elapsed <= 0) return undefined;
   return Math.min(Math.round(utilization * (windowMs / elapsed)), 200);
+}
+
+export function withQuotaProjections<T extends QuotaState>(
+  state: T,
+  options: {
+    fiveHourWindowMs?: number;
+    sevenDayWindowMs?: number;
+    capturedAt?: string;
+  } = {},
+): T {
+  if (!state.available) return state;
+
+  const next = { ...state };
+  const capturedAt = options.capturedAt ?? state.capturedAt;
+
+  if (next.projectedFiveHour == null) {
+    const projected = projectQuotaWindow({
+      utilization: next.fiveHour.utilization,
+      resetsAt: next.fiveHour.resetsAt,
+      windowMs: options.fiveHourWindowMs ?? FIVE_HOUR_WINDOW_MS,
+      capturedAt,
+    });
+    if (projected !== undefined) next.projectedFiveHour = projected;
+  }
+
+  if (next.projectedSevenDay == null) {
+    const projected = projectQuotaWindow({
+      utilization: next.sevenDay.utilization,
+      resetsAt: next.sevenDay.resetsAt,
+      windowMs: options.sevenDayWindowMs ?? SEVEN_DAY_WINDOW_MS,
+      capturedAt,
+    });
+    if (projected !== undefined) next.projectedSevenDay = projected;
+  }
+
+  return next;
 }
 
 type QuotaFailureMeta = Pick<QuotaState, 'failureKind' | 'httpStatus' | 'retryAfterMs'>;
@@ -165,8 +212,16 @@ export async function fetchQuota(accessToken: string): Promise<QuotaState> {
       fiveHour: { utilization: fiveUtil, resetsAt: fiveResetsAt },
       sevenDay: { utilization: sevenUtil, resetsAt: sevenResetsAt },
       available: true,
-      projectedFiveHour: projectFromElapsed(fiveUtil, fiveResetsAt, FIVE_HOUR_MS),
-      projectedSevenDay: projectFromElapsed(sevenUtil, sevenResetsAt, SEVEN_DAY_MS),
+      projectedFiveHour: projectQuotaWindow({
+        utilization: fiveUtil,
+        resetsAt: fiveResetsAt,
+        windowMs: FIVE_HOUR_WINDOW_MS,
+      }),
+      projectedSevenDay: projectQuotaWindow({
+        utilization: sevenUtil,
+        resetsAt: sevenResetsAt,
+        windowMs: SEVEN_DAY_WINDOW_MS,
+      }),
     };
   } catch {
     return unavailableState('Network error', { failureKind: 'network' });

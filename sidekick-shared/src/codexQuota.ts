@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getActiveCodexAccount, getCodexMonitoringHomes, resolveSidekickCodexHome } from './codexProfiles';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { QuotaState } from './quota';
+import { FIVE_HOUR_WINDOW_MS, SEVEN_DAY_WINDOW_MS, withQuotaProjections } from './quota';
 import { CodexProvider } from './providers/codex';
 import type { ProviderQuotaState } from './providerQuota';
 import type { SavedAccountProfile } from './accountRegistry';
@@ -130,6 +131,12 @@ function normalizePercent(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function windowMinutesToMs(value: number | null | undefined, fallbackMs: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value * 60_000
+    : fallbackMs;
+}
+
 function timestampToIso(seconds: number | null | undefined): string {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
     return '';
@@ -145,8 +152,9 @@ function enrichCodexQuota(
   state: QuotaState,
   account: SavedAccountProfile | null,
 ): ProviderQuotaState<'codex'> {
+  const withProjections = withQuotaProjections(state);
   return {
-    ...state,
+    ...withProjections,
     runtimeProvider: 'codex',
     providerId: 'codex',
     accountLabel: account?.label,
@@ -256,7 +264,7 @@ export function quotaFromCodexRateLimits(
   const secondary = rateLimits?.secondary;
   if (!primary && !secondary) return null;
 
-  return {
+  return withQuotaProjections({
     fiveHour: primary
       ? { utilization: normalizePercent(primary.used_percent), resetsAt: timestampToIso(primary.resets_at) }
       : { utilization: 0, resetsAt: '' },
@@ -275,7 +283,11 @@ export function quotaFromCodexRateLimits(
     credits: rateLimits?.credits,
     planType: rateLimits?.plan_type,
     rateLimitReachedType: rateLimits?.rate_limit_reached_type,
-  };
+  }, {
+    fiveHourWindowMs: windowMinutesToMs(primary?.window_minutes, FIVE_HOUR_WINDOW_MS),
+    sevenDayWindowMs: windowMinutesToMs(secondary?.window_minutes, SEVEN_DAY_WINDOW_MS),
+    capturedAt,
+  });
 }
 
 export function readLatestCodexQuotaFromRollouts(

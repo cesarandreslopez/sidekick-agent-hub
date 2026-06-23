@@ -424,8 +424,14 @@ export type {
 } from './autoSwitch';
 
 // Quota
-export { fetchQuota } from './quota';
-export type { QuotaWindow, QuotaState } from './quota';
+export {
+  FIVE_HOUR_WINDOW_MS,
+  SEVEN_DAY_WINDOW_MS,
+  fetchQuota,
+  projectQuotaWindow,
+  withQuotaProjections,
+} from './quota';
+export type { QuotaProjectionInput, QuotaWindow, QuotaState } from './quota';
 export { describeQuotaFailure } from './quotaPresentation';
 export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
