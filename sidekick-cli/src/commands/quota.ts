@@ -17,7 +17,7 @@ import {
   resolveZaiQuota,
   fetchPeakHoursStatus,
 } from 'sidekick-shared';
-import type { PeakHoursState } from 'sidekick-shared';
+import type { PeakHoursState, ResolvedActiveAccount } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
 import { formatPeakHoursLine } from './peakHoursRender';
@@ -299,6 +299,10 @@ async function codexQuotaAction(
   localOpts: Record<string, unknown>,
   jsonOutput: boolean,
 ): Promise<void> {
+  // Resolve the live Codex account once: this self-heals the saved pointer to the
+  // current login (so the fetched snapshot keys correctly) and yields the display
+  // identity reused by printCodexQuota, avoiding a redundant second resolve.
+  const resolvedAccount = resolveActiveCodexAccount();
   const quota = await fetchCodexQuotaPayload(provider, globalOpts, localOpts);
 
   if (!quota.available) {
@@ -317,7 +321,7 @@ async function codexQuotaAction(
     return;
   }
 
-  printCodexQuota(quota);
+  printCodexQuota(quota, resolvedAccount);
 }
 
 async function fetchCodexQuotaPayload(
@@ -326,9 +330,9 @@ async function fetchCodexQuotaPayload(
   localOpts: Record<string, unknown>,
 ): Promise<Awaited<ReturnType<typeof resolveCodexQuota>>> {
   const workspacePath = (globalOpts.project as string) || process.cwd();
-  // Self-heal the registry pointer to the live login before reading it, so any
-  // snapshot written by resolveCodexQuota is keyed to the current account.
-  resolveActiveCodexAccount();
+  // Callers self-heal the active pointer (resolveActiveCodexAccount) before invoking
+  // this, so getActiveCodexAccount() already reflects the live login and any snapshot
+  // written by resolveCodexQuota is keyed to the current account.
   const activeAccount = getActiveCodexAccount();
   try {
     return await resolveCodexQuota({
@@ -342,12 +346,14 @@ async function fetchCodexQuotaPayload(
   }
 }
 
-function printCodexQuota(quota: Awaited<ReturnType<typeof resolveCodexQuota>>): void {
+function printCodexQuota(
+  quota: Awaited<ReturnType<typeof resolveCodexQuota>>,
+  resolved: ResolvedActiveAccount,
+): void {
   const fiveLabel = quota.fiveHourLabel ?? '5-Hour';
   const sevenLabel = quota.sevenDayLabel ?? '7-Day';
-  // Live-first identity: reflects the currently logged-in Codex account even
-  // after a native `codex login`, not the stale saved registry pointer.
-  const resolved = resolveActiveCodexAccount();
+  // Live-first identity (resolved once by the caller): reflects the currently
+  // logged-in Codex account even after a native `codex login`, not the stale pointer.
   const account = formatAccountIdentity(resolved.label ?? resolved.email, resolved.email);
 
   if (account) {
@@ -477,6 +483,9 @@ async function allQuotaAction(
   jsonOutput: boolean,
 ): Promise<void> {
   const codexProvider = new CodexProvider();
+  // Self-heal the live Codex account once up front (before the fetch keys its
+  // snapshot) and reuse the resolved identity when printing below.
+  const resolvedCodex = resolveActiveCodexAccount();
   const [{ quota: claude, peak }, codex, zai] = await Promise.all([
     fetchClaudeQuotaPayload(),
     fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts),
@@ -510,7 +519,7 @@ async function allQuotaAction(
 
   process.stdout.write('\n' + chalk.bold('Codex\n'));
   if (codex.available) {
-    printCodexQuota(codex);
+    printCodexQuota(codex, resolvedCodex);
   } else {
     process.stderr.write(
       chalk.yellow(codex.error ?? 'Codex rate-limit data is unavailable.') + '\n',
