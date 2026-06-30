@@ -39,6 +39,7 @@ import type {
   CodexContextCompactedEvent,
   CodexPatchAppliedEvent,
 } from '../types/codex';
+import { isAggregateCodexLimit } from '../types/codex';
 import { normalizeToolName } from './openCodeParser';
 
 /** Pending exec command awaiting its end event. */
@@ -173,6 +174,7 @@ export class CodexRolloutParser {
   private lastTokenUsage: CodexTokenUsage | null = null;
   private modelContextWindow: number | null = null;
   private lastRateLimits: CodexRateLimits | null = null;
+  private hasAggregateRateLimits = false;
   private inPlanMode = false;
   private emittedToolUseIds = new Set<string>();
   private patchExpandedToolUseIds = new Map<string, string[]>();
@@ -231,6 +233,7 @@ export class CodexRolloutParser {
     this.lastTokenUsage = null;
     this.modelContextWindow = null;
     this.lastRateLimits = null;
+    this.hasAggregateRateLimits = false;
     this.inPlanMode = false;
     this.emittedToolUseIds.clear();
     this.patchExpandedToolUseIds.clear();
@@ -571,9 +574,18 @@ export class CodexRolloutParser {
         if (e.info?.model_context_window) {
           this.modelContextWindow = e.info.model_context_window;
         }
-        // Store rate_limits if provided (subscription quota data)
+        // Store rate_limits if provided (subscription quota data). Codex interleaves
+        // multiple families (aggregate "codex" plus per-model ones like codex_bengalfox);
+        // keep the latest aggregate sample so a trailing model-specific event at 0% does
+        // not mask the plan quota. Fall back to a non-aggregate sample only until an
+        // aggregate one has been seen.
         if (e.rate_limits) {
-          this.lastRateLimits = e.rate_limits;
+          if (isAggregateCodexLimit(e.rate_limits.limit_id)) {
+            this.lastRateLimits = e.rate_limits;
+            this.hasAggregateRateLimits = true;
+          } else if (!this.hasAggregateRateLimits) {
+            this.lastRateLimits = e.rate_limits;
+          }
         }
         // Usage data is nested under info.last_token_usage (info can be null)
         const usage = e.info?.last_token_usage || e.info?.total_token_usage;

@@ -98,6 +98,7 @@ export type {
   CodexDbThread,
   CodexReasoningSummary,
 } from './types/codex';
+export { isAggregateCodexLimit } from './types/codex';
 
 // Persistence types
 export type { PersistedTask, TaskPersistenceStore, TaskStatus } from './types/taskPersistence';

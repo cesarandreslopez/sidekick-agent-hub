@@ -108,6 +108,53 @@ describe('quotaSnapshots', () => {
     });
   });
 
+  it('lets an aggregate codex snapshot replace a model-specific one with a later window', () => {
+    // A per-model family at 0% whose window resets later would normally be "kept".
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(0),
+      limitId: 'codex_bengalfox',
+      fiveHour: { utilization: 0, resetsAt: '2026-04-20T20:00:00Z' },
+      sevenDay: { utilization: 0, resetsAt: '2026-04-27T20:00:00Z' },
+      capturedAt: '2026-05-19T10:15:00Z',
+    });
+    // The aggregate plan quota (earlier window) must still replace it.
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(17),
+      limitId: 'codex',
+      capturedAt: '2026-05-19T10:10:00Z',
+    });
+
+    const cached = readQuotaSnapshot('codex', 'codex-1');
+
+    expect(cached).toMatchObject({
+      limitId: 'codex',
+      fiveHour: { utilization: 17 },
+    });
+  });
+
+  it('does not let a model-specific snapshot overwrite an aggregate codex snapshot', () => {
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(17),
+      limitId: 'codex',
+      capturedAt: '2026-05-19T10:10:00Z',
+    });
+    // A later-resetting per-model family at 0% must not mask the aggregate.
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(0),
+      limitId: 'codex_bengalfox',
+      fiveHour: { utilization: 0, resetsAt: '2026-04-20T20:00:00Z' },
+      sevenDay: { utilization: 0, resetsAt: '2026-04-27T20:00:00Z' },
+      capturedAt: '2026-05-19T10:15:00Z',
+    });
+
+    const cached = readQuotaSnapshot('codex', 'codex-1');
+
+    expect(cached).toMatchObject({
+      limitId: 'codex',
+      fiveHour: { utilization: 17 },
+    });
+  });
+
   it('supports concurrent quota snapshot writes from multiple processes', async () => {
     const workerScript = `
       const fs = require('fs');

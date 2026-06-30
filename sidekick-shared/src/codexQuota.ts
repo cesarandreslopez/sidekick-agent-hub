@@ -12,6 +12,7 @@ import { CodexProvider } from './providers/codex';
 import type { ProviderQuotaState } from './providerQuota';
 import type { SavedAccountProfile } from './accountRegistry';
 import type { CodexRateLimits } from './types/codex';
+import { isAggregateCodexLimit } from './types/codex';
 
 const DEFAULT_TAIL_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_SESSION_FILES = 50;
@@ -107,10 +108,18 @@ function timestampMs(value: string | undefined, fallbackMs = 0): number {
 }
 
 // Codex can report slightly different percentages for the same reset window
-// across recent sessions. Prefer newer reset windows, then the highest observed
-// same-window utilization so local fallbacks do not under-report quota usage.
+// across recent sessions. Prefer the aggregate plan family ("codex") over
+// model/feature-specific families (which can read 0% while the plan is busy),
+// then newer reset windows, then the highest observed same-window utilization so
+// local fallbacks do not under-report quota usage.
 function isPreferredQuotaHit(candidate: RolloutQuotaHit, current: RolloutQuotaHit | null): boolean {
   if (!current) return true;
+
+  // Family rank first: an aggregate hit always outranks a model-specific one, so a
+  // freshly-used per-model family (e.g. codex_bengalfox at 0%) can never mask the plan quota.
+  const candidateAggregate = isAggregateCodexLimit(candidate.quota.limitId);
+  const currentAggregate = isAggregateCodexLimit(current.quota.limitId);
+  if (candidateAggregate !== currentAggregate) return candidateAggregate;
 
   const candidatePrimaryReset = timestampMs(candidate.quota.fiveHour.resetsAt);
   const currentPrimaryReset = timestampMs(current.quota.fiveHour.resetsAt);
@@ -616,7 +625,11 @@ function readLatestQuotaFromRollout(
       text = firstNewline >= 0 ? text.slice(firstNewline + 1) : '';
     }
 
+    // Scan from the end for the latest aggregate ("codex") rate-limit sample, which
+    // is what the plan quota represents. Keep the latest sample of any family as a
+    // fallback so a model-only session still surfaces something.
     const lines = text.split('\n');
+    let fallback: RolloutQuotaHit | null = null;
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i].trim();
       if (!line || !line.includes('rate_limits')) continue;
@@ -633,11 +646,15 @@ function readLatestQuotaFromRollout(
           source,
           parsed.timestamp ?? new Date(stat.mtime).toISOString(),
         );
-        if (quota) return { quota, filePath: sessionPath, mtimeMs: stat.mtime.getTime() };
+        if (!quota) continue;
+        const hit = { quota, filePath: sessionPath, mtimeMs: stat.mtime.getTime() };
+        if (isAggregateCodexLimit(quota.limitId)) return hit;
+        if (!fallback) fallback = hit;
       } catch {
         // Ignore malformed or partial lines.
       }
     }
+    if (fallback) return fallback;
   } catch {
     return null;
   } finally {

@@ -90,6 +90,58 @@ describe('CodexRolloutParser', () => {
     });
   });
 
+  it('keeps the aggregate codex rate limits when a later model-specific event reports 0%', () => {
+    const parser = new CodexRolloutParser();
+
+    parser.convertLine(
+      line('event_msg', {
+        type: 'token_count',
+        info: null,
+        rate_limits: {
+          limit_id: 'codex',
+          primary: { used_percent: 17, window_minutes: 300, resets_at: 1790000000 },
+          secondary: { used_percent: 3, window_minutes: 10080, resets_at: 1790600000 },
+        },
+      }),
+    );
+    // A trailing per-model family at 0% must not overwrite the aggregate plan quota.
+    parser.convertLine(
+      line('event_msg', {
+        type: 'token_count',
+        info: null,
+        rate_limits: {
+          limit_id: 'codex_bengalfox',
+          primary: { used_percent: 0, window_minutes: 300, resets_at: 1790900000 },
+        },
+      }),
+    );
+
+    expect(parser.getLastRateLimits()).toMatchObject({
+      limit_id: 'codex',
+      primary: { used_percent: 17 },
+    });
+  });
+
+  it('falls back to a model-specific family when no aggregate rate limits were seen', () => {
+    const parser = new CodexRolloutParser();
+
+    parser.convertLine(
+      line('event_msg', {
+        type: 'token_count',
+        info: null,
+        rate_limits: {
+          limit_id: 'codex_bengalfox',
+          primary: { used_percent: 9, window_minutes: 300, resets_at: 1790900000 },
+        },
+      }),
+    );
+
+    expect(parser.getLastRateLimits()).toMatchObject({
+      limit_id: 'codex_bengalfox',
+      primary: { used_percent: 9 },
+    });
+  });
+
   it('fans apply_patch output out to each synthetic Edit tool result', () => {
     const parser = new CodexRolloutParser();
 

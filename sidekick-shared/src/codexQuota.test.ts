@@ -304,6 +304,121 @@ describe('codexQuota', () => {
     });
   });
 
+  it('prefers the aggregate codex family over a newer model-specific family at 0%', () => {
+    // The aggregate plan quota: real usage, but its window resets sooner.
+    const aggregate = writeRolloutAt(
+      path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-aggregate.jsonl'),
+      [
+        {
+          timestamp: '2026-05-19T10:00:00Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: null,
+            rate_limits: {
+              limit_id: 'codex',
+              primary: { used_percent: 17, window_minutes: 300, resets_at: 1_779_235_112 },
+              secondary: { used_percent: 3, window_minutes: 10_080, resets_at: 1_779_821_912 },
+            },
+          },
+        },
+      ],
+    );
+    // A freshly-used per-model family: 0%, but its window resets later, so the
+    // reset-window comparison would otherwise let it mask the plan quota.
+    const modelSpecific = writeRolloutAt(
+      path.join(tmpDir, 'sessions', '2026', '05', '19', 'rollout-bengalfox.jsonl'),
+      [
+        {
+          timestamp: '2026-05-19T10:15:00Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: null,
+            rate_limits: {
+              limit_id: 'codex_bengalfox',
+              primary: { used_percent: 0, window_minutes: 300, resets_at: 1_779_300_000 },
+              secondary: { used_percent: 0, window_minutes: 10_080, resets_at: 1_779_900_000 },
+            },
+          },
+        },
+      ],
+    );
+
+    const quota = readLatestCodexQuotaFromRollouts([modelSpecific, aggregate]);
+
+    expect(quota).toMatchObject({
+      limitId: 'codex',
+      fiveHour: { utilization: 17 },
+      sevenDay: { utilization: 3 },
+    });
+  });
+
+  it('falls back to a model-specific family when no aggregate sample exists', () => {
+    const modelSpecific = writeRollout([
+      {
+        timestamp: '2026-05-19T10:15:00Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: null,
+          rate_limits: {
+            limit_id: 'codex_bengalfox',
+            primary: { used_percent: 9, window_minutes: 300, resets_at: 1_779_300_000 },
+            secondary: { used_percent: 2, window_minutes: 10_080, resets_at: 1_779_900_000 },
+          },
+        },
+      },
+    ]);
+
+    const quota = readLatestCodexQuotaFromRollouts([modelSpecific]);
+
+    expect(quota).toMatchObject({
+      limitId: 'codex_bengalfox',
+      fiveHour: { utilization: 9 },
+      sevenDay: { utilization: 2 },
+    });
+  });
+
+  it('returns the aggregate line even when a later model-specific line follows it in the same file', () => {
+    const rollout = writeRollout([
+      {
+        timestamp: '2026-05-19T10:05:00Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: null,
+          rate_limits: {
+            limit_id: 'codex',
+            primary: { used_percent: 15, window_minutes: 300, resets_at: 1_779_235_112 },
+            secondary: { used_percent: 2, window_minutes: 10_080, resets_at: 1_779_821_912 },
+          },
+        },
+      },
+      // Trailing per-model event at 0% — must not become the file's selected hit.
+      {
+        timestamp: '2026-05-19T10:06:00Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: null,
+          rate_limits: {
+            limit_id: 'codex_bengalfox',
+            primary: { used_percent: 0, window_minutes: 300, resets_at: 1_779_300_000 },
+          },
+        },
+      },
+    ]);
+
+    const quota = readLatestCodexQuotaFromRollouts([rollout]);
+
+    expect(quota).toMatchObject({
+      limitId: 'codex',
+      fiveHour: { utilization: 15 },
+      sevenDay: { utilization: 2 },
+    });
+  });
+
   it('fetches Codex quota from the ChatGPT usage API with explicit auth', async () => {
     const codexHome = writeAuth('fresh-token');
     const fetchImpl = vi.fn().mockResolvedValue({

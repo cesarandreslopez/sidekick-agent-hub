@@ -4,6 +4,7 @@ import * as path from 'path';
 import { getConfigDir } from './paths';
 import type { QuotaState } from './quota';
 import type { AccountProviderId } from './accountRegistry';
+import { isAggregateCodexLimit } from './types/codex';
 
 /**
  * Storage key for a quota snapshot. Extends `AccountProviderId` with `'zai'`
@@ -85,6 +86,15 @@ function windowResetMs(value: string): number {
 // Preserve the best-known same-window snapshot while still allowing lower
 // utilization after Codex advances to a newer reset window.
 function shouldKeepExistingSnapshot(existing: QuotaState, next: QuotaState): boolean {
+  // Family rank first (Codex): the aggregate plan-quota family ("codex") must never be
+  // replaced or blocked by a model/feature-specific family (e.g. codex_bengalfox), whose
+  // later-resetting 0% window would otherwise win the reset-window comparison below. This
+  // is a no-op for providers whose limitId is consistent across samples (Claude: absent;
+  // z.ai: zai-*), where both sides share the same aggregate-ness.
+  const existingAggregate = isAggregateCodexLimit(existing.limitId);
+  const nextAggregate = isAggregateCodexLimit(next.limitId);
+  if (existingAggregate !== nextAggregate) return existingAggregate;
+
   const existingPrimaryReset = windowResetMs(existing.fiveHour.resetsAt);
   const nextPrimaryReset = windowResetMs(next.fiveHour.resetsAt);
   if (existingPrimaryReset !== nextPrimaryReset) return existingPrimaryReset > nextPrimaryReset;

@@ -242,6 +242,18 @@ export interface CodexRateLimits {
   rate_limit_reached_type?: string;
 }
 
+/**
+ * Codex reports several rate-limit families per session, keyed by `limit_id`.
+ * The aggregate plan quota — what the usage API surfaces — is `limit_id: "codex"`
+ * (or absent on older payloads). Model/feature-specific families (e.g.
+ * `codex_bengalfox`, `premium`) report their own windows and can read 0% while the
+ * plan is heavily used, so they must never mask the aggregate in the standard
+ * quota view. Returns true only for the aggregate family.
+ */
+export function isAggregateCodexLimit(limitId?: string | null): boolean {
+  return !limitId || limitId === 'codex';
+}
+
 export interface CodexTokenUsage {
   input_tokens: number;
   cached_input_tokens?: number;

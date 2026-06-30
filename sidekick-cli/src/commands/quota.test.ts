@@ -545,6 +545,35 @@ describe('quotaAction', () => {
     expect(provider.dispose).toHaveBeenCalledOnce();
   });
 
+  it('fetches Codex API-first in the --all aggregate view', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 13, resetsAt: new Date(Date.now() + 3 * 3600_000).toISOString() },
+      sevenDay: { utilization: 48, resetsAt: new Date(Date.now() + 3 * 86400_000).toISOString() },
+      available: true,
+    });
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 17, resetsAt: '2026-05-19T15:00:00Z' },
+      sevenDay: { utilization: 3, resetsAt: '2026-05-26T15:00:00Z' },
+      available: true,
+      source: 'api',
+      fiveHourLabel: 'Primary',
+      sevenDayLabel: 'Secondary',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { all: true }));
+
+    // Codex must be resolved API-first in --all (no --refresh needed), matching the
+    // live Claude/z.ai legs. The single-provider command stays local-by-default.
+    expect(mockResolveCodexQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'api' }),
+    );
+    expect(stdoutData).toContain('Codex');
+    expect(stdoutData).toContain('17%');
+  });
+
   it('prints authoritative z.ai quota without estimated budget text', async () => {
     const { quotaAction } = await import('./quota');
     await quotaAction({}, makeCmd(false, { provider: 'zai' }));

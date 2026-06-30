@@ -328,6 +328,7 @@ async function fetchCodexQuotaPayload(
   provider: CodexProvider,
   globalOpts: Record<string, unknown>,
   localOpts: Record<string, unknown>,
+  apiFirst = false,
 ): Promise<Awaited<ReturnType<typeof resolveCodexQuota>>> {
   const workspacePath = (globalOpts.project as string) || process.cwd();
   // Callers self-heal the active pointer (resolveActiveCodexAccount) before invoking
@@ -335,11 +336,14 @@ async function fetchCodexQuotaPayload(
   // written by resolveCodexQuota is keyed to the current account.
   const activeAccount = getActiveCodexAccount();
   try {
+    // `--all` is API-first (apiFirst) to match the live Claude/z.ai legs; the
+    // single-provider command stays local-by-default unless `--refresh` is passed.
+    // `source: 'api'` already falls back to local rollouts/cache on any API failure.
     return await resolveCodexQuota({
       workspacePath,
       provider,
       activeAccount,
-      source: localOpts.refresh ? 'api' : 'local',
+      source: apiFirst || localOpts.refresh ? 'api' : 'local',
     });
   } finally {
     provider.dispose();
@@ -488,7 +492,9 @@ async function allQuotaAction(
   const resolvedCodex = resolveActiveCodexAccount();
   const [{ quota: claude, peak }, codex, zai] = await Promise.all([
     fetchClaudeQuotaPayload(),
-    fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts),
+    // API-first for the aggregate `--all` view, matching the live Claude/z.ai legs;
+    // falls back to local rollouts/cache on any API failure.
+    fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts, true),
     fetchZaiQuotaPayload(localOpts),
   ]);
 
