@@ -619,5 +619,23 @@ describe('codexProfiles', () => {
         fs.chmodSync(accountsDir, 0o700);
       }
     });
+
+    it('never spawns a `codex login status` subprocess (cheap JWT decode only)', () => {
+      setupTwoAccounts();
+      writeSystemAuth(makeAuthJson('work@example.com', 'ws-work'));
+      // Isolate the resolve from any spawn during setup.
+      mockSpawnSync.mockClear();
+
+      resolveActiveCodexAccount();
+
+      expect(mockSpawnSync).not.toHaveBeenCalled();
+    });
+
+    it("reports source 'none' with no live login and no saved account", () => {
+      // Fresh tmpDir: no auth.json, empty registry.
+      const resolved = resolveActiveCodexAccount();
+
+      expect(resolved).toEqual({ source: 'none' });
+    });
   });
 });

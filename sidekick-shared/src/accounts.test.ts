@@ -494,4 +494,33 @@ describe('resolveActiveClaudeAccount', () => {
     expect(resolved).toMatchObject({ email: 'b@y.com', label: 'B', source: 'registry' });
     expect(getActiveAccount()?.uuid).toBe('uuid-b');
   });
+
+  it('survives a registry write failure during self-heal and still returns the live identity', () => {
+    setupTwoClaudeAccounts(); // active = B
+
+    // Simulate a native `claude /login` back into account A (mismatch → self-heal).
+    writeClaudeConfig('a@x.com', 'uuid-a');
+
+    // Make the accounts dir read-only so the self-heal write fails. The invariant
+    // under test: resolution never throws and still reports account A.
+    const accountsDir = path.join(tmpDir, 'accounts');
+    fs.chmodSync(accountsDir, 0o500);
+    try {
+      expect(() => resolveActiveClaudeAccount()).not.toThrow();
+      expect(resolveActiveClaudeAccount()).toMatchObject({
+        email: 'a@x.com',
+        label: 'A',
+        source: 'live',
+      });
+    } finally {
+      fs.chmodSync(accountsDir, 0o700);
+    }
+  });
+
+  it("reports source 'none' with no live login and no saved account", () => {
+    // Fresh tmpDir: no .claude.json, empty registry.
+    const resolved = resolveActiveClaudeAccount();
+
+    expect(resolved).toEqual({ source: 'none' });
+  });
 });
