@@ -50,7 +50,7 @@ If you have multiple Claude Max subscriptions (e.g., personal and work), Sidekic
 4. Run **`Sidekick: Save Current Claude Account`** — label it "Work"
 5. Run **`Sidekick: Switch Claude Account`** to switch via QuickPick
 
-When 2+ accounts are saved, a status bar item shows the active account. Click it to switch. Switching automatically resets the auth client and refreshes quota — no restart needed.
+When 2+ accounts are saved, a status bar item shows the currently logged-in account (resolved live, so it stays correct even after a native `claude login`). Click it to switch. Switching automatically resets the auth client and refreshes quota — no restart needed.
 
 You can also reach account actions from the main **Sidekick · Claude** status bar menu — click it and select **Switch Account** (when 2+ accounts are saved) or **Save Current Account** (to start multi-account setup). These entries only appear when the inference provider is Claude Code.
 
@@ -67,7 +67,7 @@ sidekick account --remove work@co.com     # remove an account
 
 Account data is stored in `~/.config/sidekick/accounts/` with `0o700` directory and `0o600` file permissions. Credential swaps use atomic writes with rollback on failure.
 
-**macOS note:** Claude Code stores active credentials in the system Keychain (not a file). Sidekick reads and writes Keychain credentials automatically via the `security` CLI. One limitation: if you run `claude login` externally, VS Code cannot detect the change automatically — run **Save Current Claude Account** to pick up the new credentials.
+**macOS note:** Claude Code stores active credentials in the system Keychain (not a file). Sidekick reads and writes Keychain credentials automatically via the `security` CLI. The displayed active account now follows a native external `claude login` automatically — Sidekick resolves the live logged-in account and re-points the saved pointer to a matching profile. If you log into an account Sidekick hasn't saved yet, run **Save Current Claude Account** to label and manage it.
 
 ## Best For
 

@@ -5,6 +5,12 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.4] - 2026-06-30
+
+### Fixed
+
+- **Live-first active-account resolution**: New `resolveActiveClaudeAccount()` / `resolveActiveCodexAccount()` and the `ResolvedActiveAccount` type resolve the currently logged-in account from the live provider auth (`~/.claude/.claude.json` oauthAccount; the `~/.codex/auth.json` id_token JWT — a cheap JWT decode, never the slow `codex login status` subprocess) and fall back to the saved registry. On an unambiguous match they self-heal the stale active pointer (best-effort, never throwing, never creating or deleting profiles) so quota history and auto-switch track the real account. `getActiveAccountStatus()`, the multi-provider Claude path, and the Codex quota watcher now route through them
+
 ## [0.21.3] - 2026-06-23
 
 ### Added

@@ -5,6 +5,20 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.4] - 2026-06-30
+
+### Fixed (sidekick-shared)
+
+- **Live-first active-account resolution**: New `resolveActiveClaudeAccount()` / `resolveActiveCodexAccount()` (and the `ResolvedActiveAccount` type) resolve the currently logged-in account from the live provider auth (`~/.claude/.claude.json` oauthAccount; the `~/.codex/auth.json` id_token JWT) and fall back to the saved registry, mirroring the live-first z.ai path. On an unambiguous match to a saved profile they self-heal the stale active pointer — best-effort, never throwing, never creating or deleting profiles — so registry-keyed data (quota history, auto-switch) tracks the real account. `getActiveAccountStatus()`, the multi-provider Claude quota path, and the Codex quota watcher now route through these resolvers
+
+### Fixed (CLI)
+
+- **`sidekick quota` shows the logged-in account**: The account line now reflects the currently logged-in Claude/Codex account even after a native `claude /login` or `codex login`, instead of the stale saved registry pointer
+
+### Fixed (VS Code extension)
+
+- **Status bar, dashboard, and session provider track the live account**: The Claude status bar, dashboard Codex tile, account status, and Codex session provider now follow the live logged-in account and self-heal the saved active pointer, so an external login is detected as a change
+
 ## [0.21.3] - 2026-06-23
 
 ### Added (sidekick-shared)

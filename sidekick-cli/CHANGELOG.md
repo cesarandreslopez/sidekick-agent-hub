@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.4] - 2026-06-30
+
+### Fixed
+
+- **`sidekick quota` shows the logged-in account**: The account line now reflects the currently logged-in Claude/Codex account even after a native `claude /login` or `codex login`, instead of the stale saved registry pointer. The live Codex account is resolved once per invocation and reused across the fetch and the printed output
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.4**: Picks up the live-first active-account resolvers
+
 ## [0.21.3] - 2026-06-23
 
 ### Changed

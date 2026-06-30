@@ -47,7 +47,7 @@ npm install sidekick-shared
 | **Model Info & Pricing**        | Model family parsing (Anthropic / OpenAI / Google, including legacy `claude-3-opus-…` and `claude-3-5-sonnet-…` IDs), context-window lookup (including Fable 5 / Opus 4.8 / Opus 4.7 / Sonnet 4.7 1M and GPT-5.x variants), pricing tables with optional LiteLLM hydration, null-aware cost (`calculateCost()`), provenance-preserving cost (`calculateCostWithProvenance()`, `mergeCostSources()`), and display helpers (`shortModelName()`, `getModelDisplayInfo()`, `compareModelIds()`, `sortModelIds()`, `formatCost()`) |
 | **Quota Polling**               | `QuotaPoller` class with exponential backoff, active/idle intervals, and cached fallback                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **Multi-Provider Quota**        | `MultiProviderQuotaService` orchestrates Claude polling + peak-hours + account labels + Codex/z.ai quota updates behind one typed event stream. `CodexQuotaWatcher` watches the active Codex rollout for live rate limits with snapshot fallback; z.ai quota uses the API resolver with snapshot fallback                                                                                                                                                                                                                     |
-| **Accounts**                    | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, v1 migration, `ensureDefaultAccounts()` for first-run bootstrap of the active system Claude/Codex credentials as a "Default" saved account, and `getActiveAccountStatus()` for a single-pass active-account read across providers                                                                                                                                                                                                  |
+| **Accounts**                    | Multi-provider account registry (v2) with per-provider active account, save/switch/remove, v1 migration, `ensureDefaultAccounts()` for first-run bootstrap of the active system Claude/Codex credentials as a "Default" saved account, `getActiveAccountStatus()` for a single-pass active-account read across providers, and live-first `resolveActiveClaudeAccount()` / `resolveActiveCodexAccount()` that report the currently logged-in account (self-healing the saved pointer) for display                              |
 | **Account Management 2.0**      | Provider-neutral acquisition + switching: `beginAccountLogin()` / `getAccountLoginStatus()` / `finalizeAccountLogin()` / `spawnAccountLogin()` drive a TTY-less, profile-isolated login that doesn't disturb the active account until finalization; `listAllAccounts()` and `switchAccount()` expose a shared switcher across Claude and Codex. Claude accounts get canonical profile homes with account-scoped macOS keychain suffixes and startup migration from legacy flat backups                                        |
 | **Terminal sync & auto-switch** | Opt-in terminal profile pointers, shell-hook/launcher helpers, and a default-off `AutoSwitchController` (`decideAutoSwitch()`) that moves to a healthier saved account when quota crosses a configured threshold                                                                                                                                                                                                                                                                                                              |
 | **Codex Profiles**              | Codex account lifecycle — prepare, finalize, switch, remove — switching atomically swaps the profile's backed-up credentials into the system `~/.codex/auth.json`, with rotated-token staleness protection, one-time dual-home migration, and legacy multi-home session monitoring                                                                                                                                                                                                                                            |
@@ -357,6 +357,21 @@ const status = getActiveAccountStatus();
 if (!status.ok) console.log('No saved account active');
 console.log(status.claude.present, status.claude.email);
 console.log(status.codex.present, status.codex.label);
+```
+
+For display surfaces that must reflect the **currently logged-in** account — even after a native `claude /login` or `codex login` outside Sidekick — use the live-first resolvers. They prefer the live provider auth (`~/.claude/.claude.json` oauthAccount; the `~/.codex/auth.json` id_token JWT) over the saved `activeByProvider` pointer, fall back to the registry, and self-heal the saved pointer on an unambiguous match (best-effort, never creating or deleting profiles):
+
+```typescript
+import { resolveActiveClaudeAccount, resolveActiveCodexAccount } from 'sidekick-shared';
+import type { ResolvedActiveAccount } from 'sidekick-shared';
+
+const claude: ResolvedActiveAccount = resolveActiveClaudeAccount();
+// source: 'live'  → identity came from the live provider auth (label filled when it matches a saved profile)
+// source: 'registry' → no usable live identity; fell back to the saved active pointer
+// source: 'none'  → neither a live identity nor a saved active account
+console.log(claude.email, claude.label, claude.source);
+
+const codex = resolveActiveCodexAccount();
 ```
 
 ### Track cost provenance for honest UI rollups

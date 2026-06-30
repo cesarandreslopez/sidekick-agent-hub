@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.4] - 2026-06-30
+
+### Fixed
+
+- **Active account tracks the live login**: The Claude status bar, dashboard Codex tile, account status, and Codex session provider now follow the live logged-in account and self-heal the saved active pointer, so an external `claude /login` / `codex login` is detected as a change
+- **Bundled `sidekick-shared` 0.21.4**: Picks up the live-first active-account resolvers
+
 ## [0.21.3] - 2026-06-23
 
 ### Fixed

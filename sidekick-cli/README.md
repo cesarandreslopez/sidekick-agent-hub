@@ -174,7 +174,7 @@ When quota data is unavailable, `sidekick quota` shows structured auth, rate-lim
 
 Use `--json` for machine-readable output. Use `--provider codex` to explicitly check Codex rate limits, and `--refresh` to opt in to a Codex usage API refresh. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses.
 
-When multi-account is enabled, `sidekick quota` shows the active account email above the quota bars.
+When multi-account is enabled, `sidekick quota` shows the currently logged-in account email above the quota bars — resolved live from the provider's auth, so it stays correct even after a native `claude login` / `codex login`.
 
 Use `sidekick quota --all` to show Claude and Codex quota together in a single run, plus z.ai when API quota is available or z.ai traffic is active. Each provider degrades independently — if one provider's quota can't be fetched, its error is shown inline and the others still render (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed payload for dashboards and automation.
 

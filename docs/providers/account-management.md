@@ -33,6 +33,30 @@ interface ListAllAccountsResult {
 }
 ```
 
+### Live vs. saved active account
+
+The `activeByProvider` ids above come from the saved registry pointer, which only Sidekick's own switch flow
+updates. For **display** surfaces that must reflect the account a user is actually logged into — even after a
+native `claude /login` or `codex login` outside Sidekick — use the live-first resolvers instead:
+
+```ts
+import { resolveActiveClaudeAccount, resolveActiveCodexAccount } from 'sidekick-shared';
+import type { ResolvedActiveAccount } from 'sidekick-shared';
+
+const claude: ResolvedActiveAccount = resolveActiveClaudeAccount();
+// claude.source === 'live'     → from live provider auth (label set when it matches a saved profile)
+// claude.source === 'registry' → no usable live identity; fell back to the saved active pointer
+// claude.source === 'none'     → neither a live identity nor a saved active account
+
+const codex = resolveActiveCodexAccount();
+```
+
+Each resolver prefers the live provider auth (`~/.claude/.claude.json` oauthAccount; the `~/.codex/auth.json`
+id_token JWT) over the saved pointer, falls back to the registry, and — on an unambiguous match to a saved
+profile — self-heals the `activeByProvider` pointer so registry-keyed data (quota history, auto-switch) tracks
+the real account. Self-heal is best-effort and never creates or deletes profiles; an unknown live account is
+shown as-is with no label.
+
 ## TTY-Less Login
 
 `beginAccountLogin` creates an isolated profile and returns the command a host should run. It does not spawn a
