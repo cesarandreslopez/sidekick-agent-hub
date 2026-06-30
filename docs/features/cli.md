@@ -332,9 +332,9 @@ All providers render in a unified table with aligned `now` (current utilization)
 
 When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel keeps a compact inline quota/rate-limit state visible even when data is unavailable, and quota failure toasts only appear when the failure state changes.
 
-Use `--json` for machine-readable output. For Codex, use `--refresh` to explicitly call the Codex usage API; without it, no Codex quota network request is made.
+Use `--json` for machine-readable output. For a single-provider Codex check, use `--refresh` to explicitly call the Codex usage API; without it, no Codex quota network request is made. The combined `--all` view is API-first for Codex (see below).
 
-Use `--all` to show Claude and Codex quota together in one run, plus z.ai when available. The providers are fetched in parallel and rendered independently — if one provider's quota is unavailable, its error is shown inline and the others still print (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed payload.
+Use `--all` to show Claude and Codex quota together in one run, plus z.ai when available. The providers are fetched in parallel and rendered independently — if one provider's quota is unavailable, its error is shown inline and the others still print (the command never aborts on a single provider's failure). Codex is fetched **API-first** under `--all` (with automatic fallback to local rollouts and the cached snapshot), matching the live Claude and z.ai legs, so the combined view reflects the authoritative aggregate plan quota rather than a possibly-stale local sample. `--all --json` emits a provider-keyed payload.
 
 #### Examples
 

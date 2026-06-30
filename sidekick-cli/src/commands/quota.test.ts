@@ -567,9 +567,7 @@ describe('quotaAction', () => {
 
     // Codex must be resolved API-first in --all (no --refresh needed), matching the
     // live Claude/z.ai legs. The single-provider command stays local-by-default.
-    expect(mockResolveCodexQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'api' }),
-    );
+    expect(mockResolveCodexQuota).toHaveBeenCalledWith(expect.objectContaining({ source: 'api' }));
     expect(stdoutData).toContain('Codex');
     expect(stdoutData).toContain('17%');
   });

@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.5] - 2026-06-30
+
+### Fixed
+
+- **Dashboard Codex tile and status bar show the true plan quota**: Through the bundled `sidekick-shared` update, the Codex rate-limit tile, status bar, and Codex session provider now surface the aggregate plan quota (`limit_id` `codex`) instead of being masked by a trailing per-model family (e.g. `codex_bengalfox`) reporting 0%
+- **Bundled `sidekick-shared` 0.21.5**: Picks up the aggregate Codex rate-limit selection
+
 ## [0.21.4] - 2026-06-30
 
 ### Fixed

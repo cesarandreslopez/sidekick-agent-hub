@@ -5,6 +5,16 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.5] - 2026-06-30
+
+### Added
+
+- **`isAggregateCodexLimit(limitId)`**: Exported helper that identifies the aggregate Codex plan-quota family (`limit_id` `codex`, or absent on older payloads) versus model/feature-specific families (e.g. `codex_bengalfox`, `premium`)
+
+### Fixed
+
+- **Prefer the aggregate Codex rate-limit family over model-specific ones**: Codex emits multiple rate-limit families per session keyed by `limit_id` — the aggregate plan quota plus per-model/feature families that can read 0% while the plan is busy. Every local-data selector previously read "the latest `rate_limits`" without inspecting `limit_id`, so a freshly-used per-model family at 0% with a later-resetting window could win the newest-window comparison and mask the real plan quota. The aggregate family is now ranked first in every selection site — `readLatestQuotaFromRollout`, the live `CodexRolloutParser`, the cross-file `isPreferredQuotaHit` ranker, and the `shouldKeepExistingSnapshot` retention guard — falling back to a model-specific sample only when no aggregate one exists. No-op for Claude (no `limit_id`) and z.ai (`zai-*`), where every sample shares the same aggregate-ness
+
 ## [0.21.4] - 2026-06-30
 
 ### Fixed

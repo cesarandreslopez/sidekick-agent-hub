@@ -33,7 +33,9 @@ Codex CLI embeds rate-limit data in its event stream (via `token_count` events w
 - **CLI dashboard**: The Sessions panel Summary tab shows a "Rate Limits" section with utilization bars
 - **`sidekick quota`**: When the active provider is Codex, shows rate-limit bars with projected end-of-window utilization and reset countdowns
 
-No separate API polling is needed by default — rate-limit data arrives as part of normal session monitoring. For one-shot CLI checks, `sidekick quota --provider codex --refresh` explicitly refreshes from Codex's usage API first, then falls back to local rollout data and cached snapshots if the API is unavailable.
+No separate API polling is needed by default — rate-limit data arrives as part of normal session monitoring. For one-shot CLI checks, `sidekick quota --provider codex --refresh` explicitly refreshes from Codex's usage API first, then falls back to local rollout data and cached snapshots if the API is unavailable. The combined `sidekick quota --all` view is API-first for Codex (with the same local fallback), so it always reflects the aggregate plan quota.
+
+Codex reports several rate-limit families per session, keyed by `limit_id`: the aggregate plan quota (`codex`) plus model/feature-specific families (e.g. `codex_bengalfox`). Sidekick always prefers the aggregate family, so a freshly-used per-model family reading 0% can never mask real plan usage in the quota view.
 
 ## Account Management
 

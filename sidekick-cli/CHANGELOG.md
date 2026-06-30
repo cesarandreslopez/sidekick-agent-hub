@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.5] - 2026-06-30
+
+### Fixed
+
+- **`sidekick quota --all` no longer shows Codex at 0%**: Codex emits multiple rate-limit families per session (the aggregate plan quota plus per-model families like `codex_bengalfox`). A per-model family at 0% with a later reset window could mask the real plan quota in the local-data path; the aggregate family is now always preferred, so `--all` matches `--provider codex --refresh`. `quota --all` also fetches Codex API-first (with automatic local fallback), matching the live Claude/z.ai legs; the single-provider `quota --provider codex` stays local-by-default (live via `--refresh`)
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.5**: Picks up the aggregate Codex rate-limit selection
+
 ## [0.21.4] - 2026-06-30
 
 ### Fixed

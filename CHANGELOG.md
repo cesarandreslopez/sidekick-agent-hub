@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.5] - 2026-06-30
+
+### Fixed (sidekick-shared)
+
+- **Prefer the aggregate Codex rate-limit family over model-specific ones**: Codex emits multiple rate-limit families per session keyed by `limit_id` — the aggregate plan quota (`codex`, or absent on older payloads) plus per-model/feature families (e.g. `codex_bengalfox`, `premium`). Every local-data selector previously read "the latest `rate_limits`" without inspecting `limit_id`, so a freshly-used per-model family at 0% with a later-resetting window could win the newest-window comparison and mask the real plan quota. A new exported `isAggregateCodexLimit()` helper now ranks the aggregate family first in every selection site — the rollout reader, the live `CodexRolloutParser`, the cross-file quota ranker, and the snapshot-retention guard — falling back to a model-specific sample only when no aggregate one exists. No-op for Claude (no `limit_id`) and z.ai (`zai-*`)
+
+### Fixed (sidekick-cli)
+
+- **`sidekick quota --all` no longer shows Codex at 0%**: The aggregate plan quota is now always preferred over a per-model family that reads 0% with a later reset window, so `--all` matches `--provider codex --refresh`. `quota --all` also fetches Codex API-first (with automatic local fallback), matching the live Claude/z.ai legs; the single-provider `quota --provider codex` stays local-by-default (live via `--refresh`)
+
+### Fixed (sidekick-vscode)
+
+- **Dashboard Codex tile and status bar show the true plan quota**: Through the bundled `sidekick-shared` update, the Codex rate-limit tile, status bar, and Codex session provider now surface the aggregate plan quota instead of being masked by a trailing per-model family reporting 0%
+
 ## [0.21.4] - 2026-06-30
 
 ### Fixed (sidekick-shared)
