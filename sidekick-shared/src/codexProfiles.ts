@@ -11,7 +11,11 @@ import {
   setActiveSavedAccount,
   upsertSavedAccountProfile,
 } from './accountRegistry';
-import type { AccountIdentityMetadata, SavedAccountProfile } from './accountRegistry';
+import type {
+  AccountIdentityMetadata,
+  ResolvedActiveAccount,
+  SavedAccountProfile,
+} from './accountRegistry';
 import type { AccountManagerResult } from './accounts';
 
 interface PendingCodexProfile {
@@ -384,6 +388,60 @@ export function resolveSidekickCodexHome(): string {
   // Account switching swaps auth.json inside the system home, so the system
   // home (or an explicit CODEX_HOME) is always the single live home.
   return getSystemCodexHome();
+}
+
+/**
+ * Resolves the *currently logged-in* Codex account for display, preferring the
+ * live `auth.json` identity over the saved registry pointer (which only sidekick's
+ * own switch flow updates and therefore goes stale after a native `codex login`).
+ *
+ * Uses the cheap JWT decode from `auth.json` directly — NOT `readCodexAccountMetadata`,
+ * whose fallback spawns `codex login status` (a multi-second subprocess) unsuitable
+ * for a render path.
+ *
+ * Safe self-heal: when the live identity unambiguously matches a saved profile that
+ * isn't the current active pointer, the pointer is re-pointed so registry-keyed data
+ * (quota history, auto-switch) tracks reality too. Never creates or deletes profiles.
+ */
+export function resolveActiveCodexAccount(): ResolvedActiveAccount {
+  const identity = readAuthIdentityFromRaw(
+    readFileOrNull(path.join(resolveSidekickCodexHome(), 'auth.json')),
+  );
+
+  if (identity && (identity.email || identity.workspaceId)) {
+    const match = findProfileForIdentity(identity);
+    if (match) {
+      const active = getActiveSavedAccount('codex');
+      if (!active || active.id !== match.id) {
+        // Self-heal is best-effort: a registry write failure (read-only/full
+        // disk) must never break display, extension activation, or the quota
+        // watcher's hot path. We still return the correct live identity below.
+        try {
+          setActiveSavedAccount('codex', match.id);
+        } catch {
+          /* keep going with the live identity */
+        }
+      }
+    }
+    return {
+      email: identity.email ?? match?.email ?? match?.metadata?.email,
+      label: match?.label,
+      providerAccountId: match?.providerAccountId ?? identity.workspaceId,
+      source: 'live',
+    };
+  }
+
+  // api-key auth, unparseable token, or logged out → fall back to the registry.
+  const active = getActiveCodexAccount();
+  if (active) {
+    return {
+      email: active.email ?? active.metadata?.email,
+      label: active.label,
+      providerAccountId: active.providerAccountId,
+      source: 'registry',
+    };
+  }
+  return { source: 'none' };
 }
 
 export function getCodexExecutionEnv(baseEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {

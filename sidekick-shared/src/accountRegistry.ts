@@ -27,6 +27,24 @@ export interface SavedAccountRegistry {
   accounts: SavedAccountProfile[];
 }
 
+/**
+ * The currently active account resolved from the *live* provider auth, with the
+ * saved registry used only to enrich the display label.
+ *
+ * - `source: 'live'`   — identity came from the provider's live auth file. This
+ *   is the source of truth; `label` is filled in only when the live identity
+ *   matches a saved profile.
+ * - `source: 'registry'` — no usable live identity (logged out, api-key auth,
+ *   unparseable token); fell back to the saved active pointer.
+ * - `source: 'none'`   — neither a live identity nor a saved active account.
+ */
+export interface ResolvedActiveAccount {
+  email?: string;
+  label?: string;
+  providerAccountId?: string;
+  source: 'live' | 'registry' | 'none';
+}
+
 interface LegacyAccountEntry {
   uuid: string;
   email: string;

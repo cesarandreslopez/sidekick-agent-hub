@@ -16,6 +16,7 @@ import {
   readSavedAccountRegistry,
   replaceSavedAccountProfiles,
   setActiveSavedAccount,
+  type ResolvedActiveAccount,
   type SavedAccountProfile,
 } from './accountRegistry';
 import { getClaudeProfileHome } from './claudeProfiles';
@@ -554,6 +555,57 @@ export function getActiveAccount(): AccountEntry | null {
     label: active.label,
     addedAt: active.addedAt,
   };
+}
+
+/**
+ * Resolves the *currently logged-in* Claude account for display, preferring the
+ * live `~/.claude/.claude.json` identity over the saved registry pointer (which
+ * only sidekick's own switch flow updates and therefore goes stale after a native
+ * `claude /login`).
+ *
+ * Safe self-heal: when the live account matches a saved profile (by account UUID,
+ * email as fallback) that isn't the current active pointer, the pointer is
+ * re-pointed so registry-keyed data tracks reality too. Never creates or deletes
+ * profiles; an unknown live account is shown as-is with no label and no write.
+ */
+export function resolveActiveClaudeAccount(): ResolvedActiveAccount {
+  const live = readActiveClaudeAccount();
+  if (live) {
+    const profiles = listSavedAccountProfiles('claude-code');
+    const match =
+      profiles.find((p) => (p.providerAccountId ?? p.id) === live.uuid) ??
+      profiles.find((p) => (p.email ?? p.metadata?.email) === live.email);
+    if (match) {
+      const active = getActiveSavedAccount('claude-code');
+      if (!active || active.id !== match.id) {
+        // Self-heal is best-effort: a registry write failure (read-only/full
+        // disk) must never break display or extension activation. We still
+        // return the correct live identity below.
+        try {
+          setActiveSavedAccount('claude-code', match.id);
+        } catch {
+          /* keep going with the live identity */
+        }
+      }
+    }
+    return {
+      email: live.email,
+      label: match?.label,
+      providerAccountId: live.uuid,
+      source: 'live',
+    };
+  }
+
+  const active = getActiveAccount();
+  if (active) {
+    return {
+      email: active.email,
+      label: active.label,
+      providerAccountId: active.uuid,
+      source: 'registry',
+    };
+  }
+  return { source: 'none' };
 }
 
 export function isMultiAccountEnabled(): boolean {

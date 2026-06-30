@@ -132,8 +132,19 @@ vi.mock('sidekick-shared', () => ({
     fiveHourStartedAtMs: turns.length ? Date.now() - 60_000 : null,
     weeklyStartedAtMs: turns.length ? Date.now() - 60_000 : null,
   }),
-  getActiveAccount: () => null,
+  resolveActiveClaudeAccount: () => ({ source: 'none' }),
   getActiveCodexAccount: () => mockActiveCodexAccount(),
+  resolveActiveCodexAccount: () => {
+    const account = mockActiveCodexAccount();
+    return account
+      ? {
+          email: account.email,
+          label: account.label,
+          providerAccountId: account.providerAccountId,
+          source: 'live',
+        }
+      : { source: 'none' };
+  },
   getOpenCodeDataDir: () => '/tmp/opencode',
   inferZaiQuotaState: (_acc: unknown, tier: string) => ({
     fiveHour: { utilization: 5, resetsAt: '' },

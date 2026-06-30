@@ -15,6 +15,7 @@ import {
   removeAccount as removeClaudeAccount,
   listAccounts as listClaudeAccounts,
   getActiveAccount as getActiveClaudeAccount,
+  resolveActiveClaudeAccount,
   readActiveClaudeAccount,
   getAccountsDir,
   prepareCodexAccount,
@@ -23,6 +24,7 @@ import {
   removeCodexAccount,
   listCodexAccounts,
   getActiveCodexAccount,
+  resolveActiveCodexAccount,
   spawnAccountLogin,
   listAllAccounts as listAllManagedAccounts,
   switchAccount,
@@ -54,6 +56,9 @@ export class AccountService implements vscode.Disposable {
   };
 
   constructor() {
+    // Self-heal the saved active pointer to the live login before snapshotting ids.
+    resolveActiveClaudeAccount();
+    resolveActiveCodexAccount();
     this.lastKnownActiveIds['claude-code'] =
       getActiveClaudeAccount()?.uuid ?? readActiveClaudeAccount()?.uuid ?? null;
     this.lastKnownActiveIds.codex = getActiveCodexAccount()?.id ?? null;
@@ -133,7 +138,13 @@ export class AccountService implements vscode.Disposable {
   getActiveAccount(providerId: 'codex'): SavedAccountProfile | null;
   getActiveAccount(providerId: AccountProviderId): ManagedAccount | null;
   getActiveAccount(providerId: AccountProviderId): ManagedAccount | null {
-    return providerId === 'claude-code' ? getActiveClaudeAccount() : getActiveCodexAccount();
+    // Self-heal to the live login first, then return the (now-correct) saved profile.
+    if (providerId === 'claude-code') {
+      resolveActiveClaudeAccount();
+      return getActiveClaudeAccount();
+    }
+    resolveActiveCodexAccount();
+    return getActiveCodexAccount();
   }
 
   isMultiAccountEnabled(providerId: AccountProviderId): boolean {
@@ -141,6 +152,10 @@ export class AccountService implements vscode.Disposable {
   }
 
   refresh(): void {
+    // Reconcile the saved active pointer with the live login before diffing ids,
+    // so an external `claude /login` / `codex login` is detected as a change.
+    resolveActiveClaudeAccount();
+    resolveActiveCodexAccount();
     const currentIds: Record<AccountProviderId, string | null> = {
       'claude-code': getActiveClaudeAccount()?.uuid ?? readActiveClaudeAccount()?.uuid ?? null,
       codex: getActiveCodexAccount()?.id ?? null,

@@ -6,12 +6,13 @@ import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
 import {
   describeQuotaFailure,
-  getActiveAccount,
+  resolveActiveClaudeAccount,
   getOpenCodeDataDir,
   CodexProvider,
   OpenCodeDatabase,
   ZAI_PROVIDER_IDS,
   getActiveCodexAccount,
+  resolveActiveCodexAccount,
   resolveCodexQuota,
   resolveZaiQuota,
   fetchPeakHoursStatus,
@@ -254,8 +255,10 @@ function printClaudeQuotaError(quota: ClaudeQuota): void {
 }
 
 function printClaudeQuota(quota: ClaudeQuota, peak: PeakHoursState): void {
-  const active = getActiveAccount();
-  const account = active ? formatAccountIdentity(active.email, active.label) : null;
+  // Live-first identity: reflects the currently logged-in Claude account even
+  // after a native `claude /login`, not the stale saved registry pointer.
+  const active = resolveActiveClaudeAccount();
+  const account = formatAccountIdentity(active.email, active.label);
   if (account) {
     process.stdout.write(chalk.dim(`Account: ${account}\n`));
   }
@@ -314,7 +317,7 @@ async function codexQuotaAction(
     return;
   }
 
-  printCodexQuota(quota, getActiveCodexAccount());
+  printCodexQuota(quota);
 }
 
 async function fetchCodexQuotaPayload(
@@ -323,6 +326,9 @@ async function fetchCodexQuotaPayload(
   localOpts: Record<string, unknown>,
 ): Promise<Awaited<ReturnType<typeof resolveCodexQuota>>> {
   const workspacePath = (globalOpts.project as string) || process.cwd();
+  // Self-heal the registry pointer to the live login before reading it, so any
+  // snapshot written by resolveCodexQuota is keyed to the current account.
+  resolveActiveCodexAccount();
   const activeAccount = getActiveCodexAccount();
   try {
     return await resolveCodexQuota({
@@ -336,15 +342,13 @@ async function fetchCodexQuotaPayload(
   }
 }
 
-function printCodexQuota(
-  quota: Awaited<ReturnType<typeof resolveCodexQuota>>,
-  activeAccount: ReturnType<typeof getActiveCodexAccount> = getActiveCodexAccount(),
-): void {
+function printCodexQuota(quota: Awaited<ReturnType<typeof resolveCodexQuota>>): void {
   const fiveLabel = quota.fiveHourLabel ?? '5-Hour';
   const sevenLabel = quota.sevenDayLabel ?? '7-Day';
-  const account = activeAccount
-    ? formatAccountIdentity(activeAccount.label ?? activeAccount.id, activeAccount.email)
-    : null;
+  // Live-first identity: reflects the currently logged-in Codex account even
+  // after a native `codex login`, not the stale saved registry pointer.
+  const resolved = resolveActiveCodexAccount();
+  const account = formatAccountIdentity(resolved.label ?? resolved.email, resolved.email);
 
   if (account) {
     process.stdout.write(chalk.dim(`Account: ${account}\n`));

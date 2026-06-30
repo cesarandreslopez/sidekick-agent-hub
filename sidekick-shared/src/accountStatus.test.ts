@@ -1,39 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ActiveAccountInfo } from './accounts';
-import type { SavedAccountProfile } from './accountRegistry';
+import type { ResolvedActiveAccount } from './accountRegistry';
 
 const mocks = vi.hoisted(() => ({
-  readActiveClaudeAccount: vi.fn<() => ActiveAccountInfo | null>(),
-  getActiveCodexAccount: vi.fn<() => SavedAccountProfile | null>(),
+  resolveActiveClaudeAccount: vi.fn<() => ResolvedActiveAccount>(),
+  resolveActiveCodexAccount: vi.fn<() => ResolvedActiveAccount>(),
 }));
 
 vi.mock('./accounts', () => ({
-  readActiveClaudeAccount: mocks.readActiveClaudeAccount,
+  resolveActiveClaudeAccount: mocks.resolveActiveClaudeAccount,
 }));
 
 vi.mock('./codexProfiles', () => ({
-  getActiveCodexAccount: mocks.getActiveCodexAccount,
+  resolveActiveCodexAccount: mocks.resolveActiveCodexAccount,
 }));
 
 import { getActiveAccountStatus } from './accountStatus';
 
 beforeEach(() => {
-  mocks.readActiveClaudeAccount.mockReset();
-  mocks.getActiveCodexAccount.mockReset();
+  mocks.resolveActiveClaudeAccount.mockReset();
+  mocks.resolveActiveCodexAccount.mockReset();
 });
 
 describe('getActiveAccountStatus', () => {
   it('returns provider status for active Claude and Codex accounts', () => {
-    mocks.readActiveClaudeAccount.mockReturnValue({
+    mocks.resolveActiveClaudeAccount.mockReturnValue({
       email: 'claude@example.com',
-      uuid: 'claude-1',
+      source: 'live',
     });
-    mocks.getActiveCodexAccount.mockReturnValue({
-      id: 'codex-1',
-      providerId: 'codex',
-      addedAt: '2026-03-23T10:00:00Z',
-      label: 'Work',
+    mocks.resolveActiveCodexAccount.mockReturnValue({
       email: 'codex@example.com',
+      label: 'Work',
+      source: 'live',
     });
 
     expect(getActiveAccountStatus()).toEqual({
@@ -53,8 +50,8 @@ describe('getActiveAccountStatus', () => {
   });
 
   it('keeps the shape stable when accounts are missing', () => {
-    mocks.readActiveClaudeAccount.mockReturnValue(null);
-    mocks.getActiveCodexAccount.mockReturnValue(null);
+    mocks.resolveActiveClaudeAccount.mockReturnValue({ source: 'none' });
+    mocks.resolveActiveCodexAccount.mockReturnValue({ source: 'none' });
 
     expect(getActiveAccountStatus()).toEqual({
       ok: false,
@@ -65,11 +62,11 @@ describe('getActiveAccountStatus', () => {
   });
 
   it('can carry a bootstrap error while preserving account details', () => {
-    mocks.readActiveClaudeAccount.mockReturnValue({
+    mocks.resolveActiveClaudeAccount.mockReturnValue({
       email: 'claude@example.com',
-      uuid: 'claude-1',
+      source: 'live',
     });
-    mocks.getActiveCodexAccount.mockReturnValue(null);
+    mocks.resolveActiveCodexAccount.mockReturnValue({ source: 'none' });
 
     expect(getActiveAccountStatus('bootstrap failed')).toEqual({
       ok: true,
@@ -84,7 +81,7 @@ describe('getActiveAccountStatus', () => {
   });
 
   it('returns empty provider status if a read throws', () => {
-    mocks.readActiveClaudeAccount.mockImplementation(() => {
+    mocks.resolveActiveClaudeAccount.mockImplementation(() => {
       throw new Error('read failed');
     });
 

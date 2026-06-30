@@ -426,6 +426,7 @@ export {
   removeAccount,
   listAccounts,
   getActiveAccount,
+  resolveActiveClaudeAccount,
   isMultiAccountEnabled,
 } from './accounts';
 export type {
@@ -466,6 +467,7 @@ export {
 export type {
   AccountProviderId,
   AccountIdentityMetadata,
+  ResolvedActiveAccount,
   SavedAccountProfile,
   SavedAccountRegistry,
 } from './accountRegistry';
@@ -487,6 +489,7 @@ export {
   getSystemCodexHome,
   listCodexAccounts,
   getActiveCodexAccount,
+  resolveActiveCodexAccount,
   resolveSidekickCodexHome,
   getCodexExecutionEnv,
   prepareCodexAccount,

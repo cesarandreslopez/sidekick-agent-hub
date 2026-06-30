@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import type { FSWatcher } from 'fs';
-import { getActiveCodexAccount } from './codexProfiles';
+import { getActiveCodexAccount, resolveActiveCodexAccount } from './codexProfiles';
 import { quotaFromCodexRateLimits, resolveCodexQuotaFromLocalSources } from './codexQuota';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import { appendQuotaHistorySample } from './quotaHistory';
@@ -101,7 +101,15 @@ export class CodexQuotaWatcher implements Disposable {
     this.discoveryPollIntervalMs =
       options.discoveryPollIntervalMs ?? DEFAULT_DISCOVERY_POLL_INTERVAL_MS;
     this.providerFactory = options.providerFactory ?? (() => new CodexProvider());
-    this.getActiveAccount = options.getActiveAccount ?? getActiveCodexAccount;
+    // Self-heal the registry pointer to the live login before reading it, so the
+    // history key (account.id) and the display label track the currently
+    // logged-in account even after a native `codex login`. Overridable for tests.
+    this.getActiveAccount =
+      options.getActiveAccount ??
+      (() => {
+        resolveActiveCodexAccount();
+        return getActiveCodexAccount();
+      });
     this.readSnapshot = options.readSnapshot ?? readQuotaSnapshot;
     this.writeSnapshot = options.writeSnapshot ?? writeQuotaSnapshot;
     this.watchFile = options.watchFile ?? fs.watch;

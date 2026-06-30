@@ -6,6 +6,7 @@ import {
   CodexProvider,
   appendQuotaHistorySample,
   getActiveCodexAccount,
+  resolveActiveCodexAccount,
   quotaFromCodexRateLimits,
   writeQuotaSnapshot,
 } from 'sidekick-shared';
@@ -18,6 +19,9 @@ export class CodexSessionProvider extends CodexProvider implements SessionProvid
     const quota = quotaFromCodexRateLimits(this.getLastRateLimits());
     if (!quota) return null;
 
+    // Self-heal the saved active pointer to the live login, so the snapshot/history
+    // key and the displayed account track the currently logged-in Codex account.
+    resolveActiveCodexAccount();
     const active = getActiveCodexAccount();
     if (active) {
       writeQuotaSnapshot('codex', active.id, quota);

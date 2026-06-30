@@ -14,6 +14,7 @@ import {
   removeAccount,
   listAccounts,
   getActiveAccount,
+  resolveActiveClaudeAccount,
   isMultiAccountEnabled,
 } from './accounts';
 import type { AccountRegistry } from './accounts';
@@ -417,5 +418,80 @@ describe('isMultiAccountEnabled', () => {
     writeClaudeCredentials('tok');
     addCurrentAccount();
     expect(isMultiAccountEnabled()).toBe(true);
+  });
+});
+
+describe('resolveActiveClaudeAccount', () => {
+  // Saves accounts A and B; leaves B live in the system home and active.
+  function setupTwoClaudeAccounts(): void {
+    writeClaudeConfig('a@x.com', 'uuid-a');
+    writeClaudeCredentials('tok-a');
+    addCurrentAccount('A');
+    writeClaudeConfig('b@y.com', 'uuid-b');
+    writeClaudeCredentials('tok-b');
+    addCurrentAccount('B');
+  }
+
+  it('prefers the live login and self-heals the active pointer to the matching saved profile', () => {
+    setupTwoClaudeAccounts();
+    expect(getActiveAccount()?.uuid).toBe('uuid-b');
+
+    // Simulate a native `claude /login` back into account A (no sidekick switch).
+    writeClaudeConfig('a@x.com', 'uuid-a');
+
+    const resolved = resolveActiveClaudeAccount();
+
+    expect(resolved).toMatchObject({ email: 'a@x.com', label: 'A', source: 'live' });
+    // Registry pointer self-healed to the live login.
+    expect(getActiveAccount()?.uuid).toBe('uuid-a');
+  });
+
+  it('does not change the pointer when the live login already matches the active profile', () => {
+    setupTwoClaudeAccounts();
+
+    const resolved = resolveActiveClaudeAccount();
+
+    expect(resolved).toMatchObject({ email: 'b@y.com', label: 'B', source: 'live' });
+    expect(getActiveAccount()?.uuid).toBe('uuid-b');
+  });
+
+  it('matches a saved profile by email when the live account UUID changed (re-auth)', () => {
+    setupTwoClaudeAccounts(); // active = B
+
+    // Same account A email, but a re-auth produced a new accountUuid that does
+    // not match the saved providerAccountId.
+    writeClaudeConfig('a@x.com', 'uuid-a-rotated');
+
+    const resolved = resolveActiveClaudeAccount();
+
+    expect(resolved).toMatchObject({ email: 'a@x.com', label: 'A', source: 'live' });
+    // Self-healed to profile A via the email fallback.
+    expect(getActiveAccount()?.uuid).toBe('uuid-a');
+  });
+
+  it('shows an unknown live account as-is without saving it or moving the pointer', () => {
+    setupTwoClaudeAccounts();
+
+    // Logged into an account sidekick has never saved.
+    writeClaudeConfig('c@z.com', 'uuid-c');
+
+    const resolved = resolveActiveClaudeAccount();
+
+    expect(resolved.email).toBe('c@z.com');
+    expect(resolved.label).toBeUndefined();
+    expect(resolved.source).toBe('live');
+    // No matching profile → pointer untouched, no new profile created.
+    expect(getActiveAccount()?.uuid).toBe('uuid-b');
+    expect(listAccounts()).toHaveLength(2);
+  });
+
+  it('falls back to the saved account when there is no live auth', () => {
+    setupTwoClaudeAccounts();
+    fs.rmSync(path.join(tmpDir, '.claude', '.claude.json'));
+
+    const resolved = resolveActiveClaudeAccount();
+
+    expect(resolved).toMatchObject({ email: 'b@y.com', label: 'B', source: 'registry' });
+    expect(getActiveAccount()?.uuid).toBe('uuid-b');
   });
 });

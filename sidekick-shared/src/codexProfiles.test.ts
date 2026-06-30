@@ -38,6 +38,7 @@ import {
   getCodexMonitoringHomes,
   readCodexAccountMetadata,
   resolveSidekickCodexHome,
+  resolveActiveCodexAccount,
   reconcileCodexAuthState,
 } from './codexProfiles';
 
@@ -495,6 +496,128 @@ describe('codexProfiles', () => {
       expect(homes[0]).toBe(systemHome());
       expect(homes).toContain(getCodexProfileHome(work));
       expect(homes).not.toContain(getCodexProfileHome(personal));
+    });
+  });
+
+  describe('resolveActiveCodexAccount', () => {
+    it('prefers the live login and self-heals the active pointer to the matching saved profile', () => {
+      const { work, personal } = setupTwoAccounts(); // active = personal, live = personal
+      expect(getActiveCodexAccount()?.id).toBe(personal);
+
+      // Simulate a native `codex login` into the Work account (no sidekick switch).
+      writeSystemAuth(makeAuthJson('work@example.com', 'ws-work'));
+
+      const resolved = resolveActiveCodexAccount();
+
+      expect(resolved).toMatchObject({
+        email: 'work@example.com',
+        label: 'Work',
+        source: 'live',
+      });
+      // Registry pointer self-healed to the live login.
+      expect(getActiveCodexAccount()?.id).toBe(work);
+    });
+
+    it('does not change the pointer when the live login already matches the active profile', () => {
+      const { personal } = setupTwoAccounts();
+
+      const resolved = resolveActiveCodexAccount();
+
+      expect(resolved).toMatchObject({
+        email: 'personal@example.com',
+        label: 'Personal',
+        source: 'live',
+      });
+      expect(getActiveCodexAccount()?.id).toBe(personal);
+    });
+
+    it('shows an unknown live account as-is without saving it or moving the pointer', () => {
+      const { personal } = setupTwoAccounts();
+
+      // Logged into an account sidekick has never saved.
+      writeSystemAuth(makeAuthJson('stranger@example.com', 'ws-stranger'));
+
+      const resolved = resolveActiveCodexAccount();
+
+      expect(resolved.email).toBe('stranger@example.com');
+      expect(resolved.label).toBeUndefined();
+      expect(resolved.source).toBe('live');
+      // No matching profile → pointer untouched, no new profile created.
+      expect(getActiveCodexAccount()?.id).toBe(personal);
+      expect(listCodexAccounts()).toHaveLength(2);
+    });
+
+    it('falls back to the saved account when there is no live auth', () => {
+      const { personal } = setupTwoAccounts();
+      fs.rmSync(systemAuthPath());
+
+      const resolved = resolveActiveCodexAccount();
+
+      expect(resolved).toMatchObject({
+        email: 'personal@example.com',
+        label: 'Personal',
+        source: 'registry',
+      });
+      expect(getActiveCodexAccount()?.id).toBe(personal);
+    });
+
+    it('falls back to the saved account for api-key auth that carries no identity', () => {
+      const { personal } = setupTwoAccounts();
+      writeSystemAuth(
+        JSON.stringify({ auth_mode: 'api_key', OPENAI_API_KEY: 'sk-test', tokens: {} }),
+      );
+
+      const resolved = resolveActiveCodexAccount();
+
+      expect(resolved.source).toBe('registry');
+      expect(getActiveCodexAccount()?.id).toBe(personal);
+    });
+
+    it('resolves a live login whose token carries a workspace id but no email', () => {
+      const { work } = setupTwoAccounts(); // active = personal
+
+      // Token with chatgpt_account_id (workspace) but no email claim.
+      writeSystemAuth(
+        JSON.stringify({
+          auth_mode: 'chatgpt',
+          tokens: {
+            id_token: makeJwt({
+              'https://api.openai.com/auth': {
+                chatgpt_account_id: 'ws-work',
+                chatgpt_plan_type: 'plus',
+              },
+            }),
+            account_id: 'ws-work',
+          },
+        }),
+      );
+
+      const resolved = resolveActiveCodexAccount();
+
+      expect(resolved.source).toBe('live');
+      expect(resolved.label).toBe('Work');
+      // Self-healed to Work by workspace id even without an email claim.
+      expect(getActiveCodexAccount()?.id).toBe(work);
+    });
+
+    it('survives a registry write failure during self-heal and still returns the live identity', () => {
+      setupTwoAccounts(); // active = personal
+      writeSystemAuth(makeAuthJson('work@example.com', 'ws-work')); // live = Work (mismatch)
+
+      // Make the accounts dir read-only so the self-heal write fails. The
+      // invariant under test: resolution never throws and still reports Work.
+      const accountsDir = path.join(tmpDir, 'accounts');
+      fs.chmodSync(accountsDir, 0o500);
+      try {
+        expect(() => resolveActiveCodexAccount()).not.toThrow();
+        expect(resolveActiveCodexAccount()).toMatchObject({
+          email: 'work@example.com',
+          label: 'Work',
+          source: 'live',
+        });
+      } finally {
+        fs.chmodSync(accountsDir, 0o700);
+      }
     });
   });
 });

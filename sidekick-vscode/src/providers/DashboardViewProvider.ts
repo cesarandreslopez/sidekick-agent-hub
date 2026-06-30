@@ -71,6 +71,7 @@ import {
   describeQuotaFailure,
   formatDurationMs,
   getActiveCodexAccount,
+  resolveActiveCodexAccount,
   readQuotaSnapshot,
   readQuotaHistoryDailyBuckets,
   resolveCodexQuotaFromLocalSources,
@@ -1715,6 +1716,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private _getCodexLocalQuota(): DashboardQuotaState {
+    // Self-heal the saved active pointer to the live login before keying/labeling.
+    resolveActiveCodexAccount();
     const activeCodexAccount = getActiveCodexAccount();
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 

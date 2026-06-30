@@ -1,5 +1,5 @@
-import { readActiveClaudeAccount } from './accounts';
-import { getActiveCodexAccount } from './codexProfiles';
+import { resolveActiveClaudeAccount } from './accounts';
+import { resolveActiveCodexAccount } from './codexProfiles';
 
 export interface ActiveProviderAccountStatus {
   present: boolean;
@@ -26,27 +26,25 @@ function errorMessage(error: unknown): string {
  */
 export function getActiveAccountStatus(error?: string): ActiveAccountStatus {
   try {
-    const claudeAccount = readActiveClaudeAccount();
-    const codexAccount = getActiveCodexAccount();
+    const claudeAccount = resolveActiveClaudeAccount();
+    const codexAccount = resolveActiveCodexAccount();
 
-    const claude = claudeAccount
-      ? {
-          present: true,
-          email: claudeAccount.email,
-          label: claudeAccount.email,
-        }
-      : { present: false };
-    const codex = codexAccount
-      ? {
-          present: true,
-          email: codexAccount.email ?? codexAccount.metadata?.email,
-          label:
-            codexAccount.label ??
-            codexAccount.email ??
-            codexAccount.metadata?.email ??
-            codexAccount.id,
-        }
-      : { present: false };
+    const claude =
+      claudeAccount.source !== 'none'
+        ? {
+            present: true,
+            email: claudeAccount.email,
+            label: claudeAccount.label ?? claudeAccount.email,
+          }
+        : { present: false };
+    const codex =
+      codexAccount.source !== 'none'
+        ? {
+            present: true,
+            email: codexAccount.email,
+            label: codexAccount.label ?? codexAccount.email ?? codexAccount.providerAccountId,
+          }
+        : { present: false };
 
     return {
       ok: claude.present || codex.present,

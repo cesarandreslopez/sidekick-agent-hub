@@ -27,7 +27,7 @@ describe('MultiProviderQuotaService', () => {
     const updates: ProviderQuotaMap[] = [];
     const service = new MultiProviderQuotaService({
       readClaudeCredentials: async () => ({ accessToken: 'token' }),
-      readClaudeAccount: () => ({ email: 'claude@example.com', uuid: 'claude-account' }),
+      readClaudeAccount: () => ({ email: 'claude@example.com', source: 'live' as const }),
       fetchPeakHours: async () => peakHours(),
       fetchClaudeQuota: async () => ({
         fiveHour: { utilization: 12, resetsAt: '2026-05-08T12:00:00Z' },
@@ -48,6 +48,34 @@ describe('MultiProviderQuotaService', () => {
       accountLabel: 'claude@example.com',
       accountDetail: 'claude@example.com',
       peakHours: { label: 'Off-Peak' },
+    });
+  });
+
+  it('surfaces the saved profile label, keeping the email as the detail', async () => {
+    const updates: ProviderQuotaMap[] = [];
+    const service = new MultiProviderQuotaService({
+      readClaudeCredentials: async () => ({ accessToken: 'token' }),
+      readClaudeAccount: () => ({
+        email: 'work@example.com',
+        label: 'Work',
+        source: 'live' as const,
+      }),
+      fetchPeakHours: async () => peakHours(),
+      fetchClaudeQuota: async () => ({
+        fiveHour: { utilization: 12, resetsAt: '2026-05-08T12:00:00Z' },
+        sevenDay: { utilization: 34, resetsAt: '2026-05-09T12:00:00Z' },
+        available: true,
+      }),
+    });
+    service.onUpdate((update) => updates.push(update));
+
+    service.startPolling();
+    await flushPromises();
+    service.dispose();
+
+    expect(updates[0].claude).toMatchObject({
+      accountLabel: 'Work',
+      accountDetail: 'work@example.com',
     });
   });
 

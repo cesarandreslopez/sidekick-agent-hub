@@ -1,4 +1,4 @@
-import { readActiveClaudeAccount } from './accounts';
+import { resolveActiveClaudeAccount } from './accounts';
 import { CodexQuotaWatcher } from './codexQuotaWatcher';
 import { readClaudeMaxCredentials } from './credentials';
 import { fetchPeakHoursStatus } from './peakHours';
@@ -39,7 +39,7 @@ export interface MultiProviderQuotaServiceOptions {
   codexWatcher?: CodexWatcherLike | null;
   zaiWatcher?: ZaiWatcherLike | null;
   readClaudeCredentials?: () => Promise<ClaudeMaxCredentials | null>;
-  readClaudeAccount?: typeof readActiveClaudeAccount;
+  readClaudeAccount?: typeof resolveActiveClaudeAccount;
   fetchClaudeQuota?: (accessToken: string) => Promise<QuotaState>;
   fetchPeakHours?: () => Promise<PeakHoursState>;
   log?: Logger;
@@ -89,7 +89,7 @@ export class MultiProviderQuotaService implements Disposable {
   private readonly peakHoursCacheMaxAgeMs: number;
   private readonly includePeakHours: boolean;
   private readonly readClaudeCredentials: () => Promise<ClaudeMaxCredentials | null>;
-  private readonly readClaudeAccount: typeof readActiveClaudeAccount;
+  private readonly readClaudeAccount: typeof resolveActiveClaudeAccount;
   private readonly fetchClaudeQuota: (accessToken: string) => Promise<QuotaState>;
   private readonly fetchPeakHours: () => Promise<PeakHoursState>;
   private readonly log?: Logger;
@@ -122,7 +122,7 @@ export class MultiProviderQuotaService implements Disposable {
     this.peakHoursCacheMaxAgeMs = options.peakHoursCacheMaxAgeMs ?? PEAK_HOURS_CACHE_MAX_AGE_MS;
     this.includePeakHours = options.includePeakHours ?? true;
     this.readClaudeCredentials = options.readClaudeCredentials ?? readClaudeMaxCredentials;
-    this.readClaudeAccount = options.readClaudeAccount ?? readActiveClaudeAccount;
+    this.readClaudeAccount = options.readClaudeAccount ?? resolveActiveClaudeAccount;
     this.fetchClaudeQuota = options.fetchClaudeQuota ?? fetchQuota;
     this.fetchPeakHours = options.fetchPeakHours ?? fetchPeakHoursStatus;
     this.log = options.log;
@@ -424,7 +424,8 @@ export class MultiProviderQuotaService implements Disposable {
   private withClaudeAccountDetails(
     state: ProviderQuotaState<'claude'>,
   ): ProviderQuotaState<'claude'> {
-    const accountEmail = this.readClaudeAccount()?.email;
+    const resolved = this.readClaudeAccount();
+    const accountEmail = resolved.email;
     if (!accountEmail) {
       const nextState = { ...state };
       delete nextState.accountLabel;
@@ -434,7 +435,7 @@ export class MultiProviderQuotaService implements Disposable {
 
     return {
       ...state,
-      accountLabel: accountEmail,
+      accountLabel: resolved.label ?? accountEmail,
       accountDetail: accountEmail,
     };
   }
