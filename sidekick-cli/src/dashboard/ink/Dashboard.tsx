@@ -30,6 +30,7 @@ import changelogMd from '../../../CHANGELOG.md';
 import { describeQuotaFailure, parseChangelog } from 'sidekick-shared';
 import { initialState, reducer, type SessionFilter } from './dashboardReducer';
 import { handleDashboardInput } from './inputDispatch';
+import { itemTimestampMs, parseDateExpression } from '../dateFilterExpression';
 
 const changelogEntries = parseChangelog(changelogMd, 5);
 
@@ -169,33 +170,48 @@ export function Dashboard({
       }
     }
 
-    // Text filter (supports substring, fuzzy, regex modes)
+    // Text filter (supports substring, fuzzy, regex, and date modes)
     if (state.filterString) {
       const f = state.filterString;
       const mode = state.filterMode;
-      items = items.filter((it) => {
-        const searchText = panel.getSearchableText?.(it) ?? it.label.replace(/\{[^}]*\}/g, '');
-        switch (mode) {
-          case 'fuzzy': {
-            const lower = searchText.toLowerCase();
-            return f
-              .toLowerCase()
-              .split(/\s+/)
-              .filter((w) => w)
-              .every((w) => lower.includes(w));
-          }
-          case 'regex': {
-            try {
-              return new RegExp(f).test(searchText);
-            } catch {
-              return false;
-            }
-          }
-          case 'substring':
-          default:
-            return searchText.toLowerCase().includes(f.toLowerCase());
+      if (mode === 'date') {
+        const parsed = parseDateExpression(f);
+        // An invalid expression leaves the list unfiltered — the overlay
+        // shows the parse error; transiently-invalid typing ("2026-")
+        // must not blank the list.
+        if (!('error' in parsed)) {
+          const since = parsed.since ? Date.parse(parsed.since) : -Infinity;
+          const until = parsed.until ? Date.parse(parsed.until) : Infinity;
+          items = items.filter((it) => {
+            const ts = itemTimestampMs(it.data);
+            return ts !== null && ts >= since && ts < until;
+          });
         }
-      });
+      } else {
+        items = items.filter((it) => {
+          const searchText = panel.getSearchableText?.(it) ?? it.label.replace(/\{[^}]*\}/g, '');
+          switch (mode) {
+            case 'fuzzy': {
+              const lower = searchText.toLowerCase();
+              return f
+                .toLowerCase()
+                .split(/\s+/)
+                .filter((w) => w)
+                .every((w) => lower.includes(w));
+            }
+            case 'regex': {
+              try {
+                return new RegExp(f).test(searchText);
+              } catch {
+                return false;
+              }
+            }
+            case 'substring':
+            default:
+              return searchText.toLowerCase().includes(f.toLowerCase());
+          }
+        });
+      }
     }
 
     // Sort

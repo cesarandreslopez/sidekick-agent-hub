@@ -64,6 +64,20 @@ describe('filter validation', () => {
     expect(after.filterMode).toBe('regex');
     expect(after.filterError).not.toBeNull();
   });
+
+  it('SET_FILTER flags unparseable date expressions in date mode', () => {
+    const bad = reducer(state({ filterMode: 'date' }), { type: 'SET_FILTER', value: 'garbage' });
+    expect(bad.filterError).not.toBeNull();
+    const good = reducer(state({ filterMode: 'date' }), { type: 'SET_FILTER', value: '2d' });
+    expect(good.filterError).toBeNull();
+  });
+
+  it('CYCLE_FILTER_MODE re-validates the current string when landing on date mode', () => {
+    const s = state({ filterMode: 'regex', filterString: 'abc' });
+    const after = reducer(s, { type: 'CYCLE_FILTER_MODE' });
+    expect(after.filterMode).toBe('date');
+    expect(after.filterError).not.toBeNull();
+  });
 });
 
 describe('scrolling', () => {

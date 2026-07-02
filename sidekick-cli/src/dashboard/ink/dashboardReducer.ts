@@ -4,6 +4,8 @@
  * without a renderer.
  */
 
+import { parseDateExpression } from '../dateFilterExpression';
+
 export type LayoutMode = 'normal' | 'expanded' | 'wide-side';
 export type OverlayKind = null | 'help' | 'context-menu' | 'filter' | 'changelog';
 export type FocusTarget = 'side' | 'detail';
@@ -64,6 +66,24 @@ export type Action =
   | { type: 'CHANGELOG_SCROLL'; delta: number }
   | { type: 'TICK' };
 
+/** Validate a filter string for the given mode; null when valid. */
+function validateFilter(mode: DashboardUIState['filterMode'], value: string): string | null {
+  if (!value) return null;
+  if (mode === 'regex') {
+    try {
+      new RegExp(value);
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Invalid regex';
+    }
+    return null;
+  }
+  if (mode === 'date') {
+    const result = parseDateExpression(value);
+    return 'error' in result ? result.error : null;
+  }
+  return null;
+}
+
 export function reducer(state: DashboardUIState, action: Action): DashboardUIState {
   switch (action.type) {
     case 'SWITCH_PANEL':
@@ -120,18 +140,12 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
     case 'SET_OVERLAY':
       return { ...state, overlay: action.overlay, contextMenuIndex: 0, changelogScrollOffset: 0 };
 
-    case 'SET_FILTER': {
-      // Validate regex if in regex mode
-      let error: string | null = null;
-      if (state.filterMode === 'regex' && action.value) {
-        try {
-          new RegExp(action.value);
-        } catch (e) {
-          error = e instanceof Error ? e.message : 'Invalid regex';
-        }
-      }
-      return { ...state, filterString: action.value, filterError: error };
-    }
+    case 'SET_FILTER':
+      return {
+        ...state,
+        filterString: action.value,
+        filterError: validateFilter(state.filterMode, action.value),
+      };
 
     case 'CYCLE_FILTER_MODE': {
       const modes: Array<'substring' | 'fuzzy' | 'regex' | 'date'> = [
@@ -142,16 +156,11 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
       ];
       const idx = modes.indexOf(state.filterMode);
       const next = modes[(idx + 1) % modes.length];
-      // Re-validate filter string for new mode
-      let error: string | null = null;
-      if (next === 'regex' && state.filterString) {
-        try {
-          new RegExp(state.filterString);
-        } catch (e) {
-          error = e instanceof Error ? e.message : 'Invalid regex';
-        }
-      }
-      return { ...state, filterMode: next, filterError: error };
+      return {
+        ...state,
+        filterMode: next,
+        filterError: validateFilter(next, state.filterString),
+      };
     }
 
     case 'SET_FILTER_ERROR':

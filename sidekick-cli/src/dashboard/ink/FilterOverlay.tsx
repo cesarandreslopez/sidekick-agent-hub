@@ -54,6 +54,9 @@ export function FilterOverlay({
       {filterError ? <Text color="red">{filterString}</Text> : <Text>{filterString}</Text>}
       <Text color="gray">█</Text>
       {filterError && <Text color="red"> {filterError}</Text>}
+      {filterMode === 'date' && !filterString && (
+        <Text color="gray"> today · yesterday · 2d · 1w · YYYY-MM-DD · &gt;expr · &lt;expr</Text>
+      )}
     </Box>
   );
 }
