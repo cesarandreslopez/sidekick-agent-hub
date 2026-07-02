@@ -3,6 +3,15 @@ declare const __CLI_VERSION__: string;
 import { Command } from 'commander';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { DUMP_EXAMPLES, EXTRACT_EXAMPLES, QUOTA_EXAMPLES, ROOT_EXAMPLES } from './help';
+import {
+  quotaHistoryProviderOption,
+  quotaProviderOption,
+  reportThemeOption,
+  rootProviderOption,
+  tasksStatusOption,
+  zaiTierOption,
+} from './options';
 import { detectProvider, ensureDefaultAccounts } from 'sidekick-shared';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
@@ -29,7 +38,8 @@ program
   .version(__CLI_VERSION__)
   .option('--json', 'Output as JSON')
   .option('--project <path>', 'Override project path (default: cwd)')
-  .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)');
+  .addOption(rootProviderOption())
+  .addHelpText('after', ROOT_EXAMPLES);
 
 program.hook('preAction', async () => {
   await defaultAccountsReady;
@@ -81,6 +91,7 @@ const dumpCmd = new Command('dump')
   .option('--width <cols>', 'Terminal width for text output (default: auto-detect)')
   .option('--expand', 'Show all events including noise')
   .option('--format <fmt>', 'Output format: text, json, markdown (default: text)')
+  .addHelpText('after', DUMP_EXAMPLES)
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { dumpAction } = await import('./commands/dump');
     return dumpAction(_opts, cmd);
@@ -103,7 +114,7 @@ const reportCmd = new Command('report')
   .option('--session <id>', 'Target a specific session (default: most recent)')
   .option('--output <path>', 'Write report to a specific file path (default: temp file)')
   .option('--no-open', 'Do not auto-open the report in the browser')
-  .option('--theme <theme>', 'Color theme: dark, light (default: dark)')
+  .addOption(reportThemeOption())
   .option('--no-thinking', 'Exclude thinking blocks from the transcript')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { reportAction } = await import('./commands/report');
@@ -127,7 +138,7 @@ program.addCommand(searchCmd);
 // Tasks command — list persisted tasks for the current project
 const tasksCmd = new Command('tasks')
   .description('List persisted tasks for the current project')
-  .option('--status <status>', 'Filter by status: pending, completed, all (default: all)')
+  .addOption(tasksStatusOption())
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { tasksAction } = await import('./commands/tasks');
     return tasksAction(_opts, cmd);
@@ -169,13 +180,14 @@ program.addCommand(statsCmd);
 // Quota command — one-shot quota / rate-limit check
 const quotaCmd = new Command('quota')
   .description('Show quota or rate-limit utilization (auto-detects provider)')
-  .option('--provider <id>', 'Provider: claude-code, opencode, codex, zai, auto (default: auto)')
+  .addOption(quotaProviderOption())
   .option('--all', 'Show all providers (Claude, Codex, z.ai if active)')
   .option(
     '--refresh',
     'For Codex, explicitly refresh from the Codex usage API before falling back to local data',
   )
-  .option('--tier <id>', 'z.ai plan tier: lite, pro, max, auto (default: auto)', 'auto')
+  .addOption(zaiTierOption())
+  .addHelpText('after', QUOTA_EXAMPLES)
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaAction } = await import('./commands/quota');
     return quotaAction(_opts, cmd);
@@ -185,10 +197,7 @@ quotaCmd
   .command('history')
   .description('Render a 13-week heatmap of quota utilization for the current workspace')
   .option('--weeks <n>', 'Weeks of history to render (default: 13, clamped 1-26)', '13')
-  .option(
-    '--provider <id>',
-    'Limit to a single runtime provider: claude, codex, zai (default: all)',
-  )
+  .addOption(quotaHistoryProviderOption())
   .option('--workspace <path>', 'Workspace path used to derive the history scope (default: cwd)')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaHistoryAction } = await import('./commands/quotaHistory');
@@ -209,7 +218,7 @@ program.addCommand(statusCmd);
 // Peak command — one-shot Claude peak-hours check (promoclock.co)
 const peakCmd = new Command('peak')
   .description('Show whether Claude is currently in peak hours (faster session-limit drain)')
-  .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)')
+  .addOption(rootProviderOption())
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { peakAction } = await import('./commands/peak');
     return peakAction(_opts, cmd);
@@ -242,6 +251,7 @@ const extractCmd = new Command('extract')
   .option('--type <types>', 'Comma list: url, path, command, plan (default: all)')
   .option('--limit <n>', 'Maximum items per type')
   .option('-i, --interactive', 'Interactive picker with copy/open actions')
+  .addHelpText('after', EXTRACT_EXAMPLES)
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { extractAction } = await import('./commands/extract');
     return extractAction(_opts, cmd);
