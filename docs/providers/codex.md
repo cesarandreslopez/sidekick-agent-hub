@@ -35,6 +35,8 @@ Codex CLI embeds rate-limit data in its event stream (via `token_count` events w
 
 No separate API polling is needed by default — rate-limit data arrives as part of normal session monitoring. For one-shot CLI checks, `sidekick quota --provider codex --refresh` explicitly refreshes from Codex's usage API first, then falls back to local rollout data and cached snapshots if the API is unavailable. The combined `sidekick quota --all` view is API-first for Codex (with the same local fallback), so it always reflects the aggregate plan quota.
 
+When quota is refreshed from the API, Sidekick also reads ChatGPT's reset-credit endpoint and surfaces any available **reset credits** — one-off grants that reset your rate-limit windows — as a "Reset Credits: N available" line (with each credit's expiration) in both `sidekick quota` and the VS Code dashboard "Rate Limits" tile. The last fetched credits are cached alongside the quota snapshot, so they remain visible when a later refresh falls back to local data.
+
 Codex reports several rate-limit families per session, keyed by `limit_id`: the aggregate plan quota (`codex`) plus model/feature-specific families (e.g. `codex_bengalfox`). Sidekick always prefers the aggregate family, so a freshly-used per-model family reading 0% can never mask real plan usage in the quota view.
 
 ## Account Management

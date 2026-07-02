@@ -111,7 +111,7 @@ The relevant status page is shown based on the monitored provider — Claude sta
 The dashboard shows quota or rate-limit data depending on the active provider:
 
 - **Claude Max** ("Subscription Quota"): 5-hour and 7-day utilization from the Anthropic OAuth usage API, with color-coded gauges, elapsed-time projections (e.g., `40% → 100%`), countdown timers, and auto-refresh every 5 minutes.
-- **Codex** ("Rate Limits"): Primary and secondary rate-limit windows extracted from token_count events in the Codex event stream. Data arrives automatically during active sessions — no separate polling needed.
+- **Codex** ("Rate Limits"): Primary and secondary rate-limit windows extracted from token_count events in the Codex event stream. Data arrives automatically during active sessions — no separate polling needed. When the tile refreshes from Codex's API, it also lists available **reset credits** (rate-limit reset grants) and their expirations.
 - **OpenCode**: No quota display — OpenCode does not provide rate-limit data.
 
 When quota cannot be fetched, the dashboard keeps the section visible and shows a structured unavailable state for missing credentials, expired sign-in, rate limits, network/server failures, or unexpected API responses. Quota failure transitions appear as lightweight dashboard toasts and are recorded in notification history, without triggering native VS Code popup notifications.

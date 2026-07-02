@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **Codex reset credits** — the dashboard "Rate Limits" tile now shows available rate-limit reset credits and their expirations, resolving Codex quota API-first with local fallback.
 - **z.ai Coding Plan quota** — when OpenCode has z.ai Coding Plan credentials, the dashboard adds a z.ai quota card (5-Hour / Weekly) sourced from z.ai's quota API, with cached snapshot fallback.
 - **Claude Opus 4.8 & Fable 5** — full support for Anthropic's latest flagships, including 1M-token context windows, accurate pricing, and "Fable" display labels in model pickers.
 - **Richer conversation view** — the transcript now interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode sessions.

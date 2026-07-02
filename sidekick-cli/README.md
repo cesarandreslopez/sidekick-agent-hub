@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Co
 
 ## What's New
 
+- **Codex reset credits** — when Codex quota is refreshed from the API, `sidekick quota` now lists available rate-limit reset credits (`Reset Credits: N available`) and their expirations.
 - **`sidekick quota --provider zai`** — authoritative z.ai Coding Plan quota (5-Hour / Weekly) from z.ai's quota API, using OpenCode's stored z.ai token when available.
 - **`sidekick extract`** — pull URLs, file paths, commands, and plans out of recent Claude Code and Codex chats, with `--json` and an interactive picker.
 - **`sidekick quota history`** — a 13-week, per-workspace, GitHub-style heatmap of session-limit utilization.
@@ -157,7 +158,7 @@ sidekick quota
 Provider-aware quota and rate-limit display. The command auto-detects the active provider:
 
 - **Claude Code**: Shows Claude Max subscription quota — 5-hour and 7-day windows with color-coded progress bars, projections, and reset countdowns. Includes a peak-hours summary line.
-- **Codex**: Shows rate limits from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars, projected end-of-window utilization, and reset countdowns. The default path is local-only: current workspace rollout, recent account-level rollouts, then the active account's cached snapshot. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data.
+- **Codex**: Shows rate limits from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars, projected end-of-window utilization, and reset countdowns. The default path is local-only: current workspace rollout, recent account-level rollouts, then the active account's cached snapshot. Add `--refresh` to explicitly refresh from Codex's usage API before falling back to local data. When refreshed from the API, the output also lists any available **reset credits** — a `Reset Credits: N available` line plus each credit's expiration.
 - **OpenCode / z.ai**: OpenCode has no native rate-limit data, but when z.ai Coding Plan credentials are available, `sidekick quota --provider opencode` can auto-route to authoritative z.ai quota (5-Hour / Weekly, with projected end-of-window utilization). Use `--provider zai` to request it explicitly. z.ai quota is read from z.ai's quota API using OpenCode's stored token, with fallback support for `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`.
 
 Every provider renders in the same aligned table — a `now` column (current utilization), a `projected` column (estimated end-of-window utilization, or `—` when it can't be computed), and a `resets` countdown:

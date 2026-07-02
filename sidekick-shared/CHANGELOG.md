@@ -5,6 +5,12 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.6] - 2026-07-02
+
+### Added
+
+- **Codex reset credits**: New `fetchCodexResetCreditsFromApi()` reads ChatGPT's `wham/rate-limit-reset-credits` endpoint and returns a `CodexResetCreditsSnapshot` (available count plus per-credit title/status/expiry), with the new `CodexResetCredit` / `CodexResetCreditsSnapshot` types and `codexResetCreditSchema` / `codexResetCreditsSnapshotSchema` Zod validators. `fetchCodexQuotaFromApi()` now attaches this snapshot to the returned `QuotaState` (`resetCredits`), authenticating with the Codex `auth.json` `account_id` (sent as `ChatGPT-Account-ID`) when present. `writeQuotaSnapshot`, the `CodexQuotaWatcher`, and the Codex session provider preserve an existing reset-credits snapshot when a session-sourced write omits it (Codex-only), so local session updates never wipe API-fetched credits. Degrades gracefully — every reset-credit fetch failure is swallowed and leaves the quota otherwise intact
+
 ## [0.21.5] - 2026-06-30
 
 ### Added

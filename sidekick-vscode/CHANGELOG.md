@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.6] - 2026-07-02
+
+### Added
+
+- **Dashboard Codex reset credits**: The Codex "Rate Limits" tile now shows a reset-credits panel — the number of available reset grants and each one's expiration. To populate it, the dashboard resolves Codex quota API-first (falling back to local rollouts and the cached snapshot on any error), and preserves the last API-fetched credits across session-sourced snapshot writes
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.6**: Picks up `fetchCodexResetCreditsFromApi()` and the reset-credits snapshot on Codex quota state
+
 ## [0.21.5] - 2026-06-30
 
 ### Fixed

@@ -5,6 +5,24 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.6] - 2026-07-02
+
+### Added (sidekick-shared)
+
+- **Codex reset credits**: New `fetchCodexResetCreditsFromApi()` reads ChatGPT's `wham/rate-limit-reset-credits` endpoint and returns a `CodexResetCreditsSnapshot` (available count plus per-credit title/status/expiry), with the new `CodexResetCredit` / `CodexResetCreditsSnapshot` types and `codexResetCreditSchema` / `codexResetCreditsSnapshotSchema` validators. `fetchCodexQuotaFromApi()` now attaches this snapshot to the returned quota state, authenticating with the Codex `auth.json` `account_id` (sent as `ChatGPT-Account-ID`) when present. `writeQuotaSnapshot`, the `CodexQuotaWatcher`, and the Codex session provider preserve an existing reset-credits snapshot when a session-sourced write omits it (Codex-only), so local session updates never wipe API-fetched credits. Every reset-credit fetch failure is swallowed and leaves the quota otherwise intact
+
+### Added (CLI)
+
+- **Codex reset credits in `sidekick quota`**: When Codex quota is fetched from the API (`--refresh`, or the API-first `--all` view), the Rate Limits output now shows a `Reset Credits: N available` line plus a per-credit `Expires` row for each available reset grant
+
+### Added (VS Code extension)
+
+- **Dashboard Codex reset credits**: The Codex "Rate Limits" tile now shows a reset-credits panel — the number of available reset grants and each one's expiration. To populate it, the dashboard resolves Codex quota API-first (with automatic fallback to local rollouts and the cached snapshot), and preserves the last API-fetched credits across session-sourced snapshot writes
+
+### Changed (CLI, VS Code extension)
+
+- **Bundled `sidekick-shared` 0.21.6**: Both the CLI and the extension pick up `fetchCodexResetCreditsFromApi()` and the reset-credits snapshot on Codex quota state
+
 ## [0.21.5] - 2026-06-30
 
 ### Fixed (sidekick-shared)

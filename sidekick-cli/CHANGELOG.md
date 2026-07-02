@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.6] - 2026-07-02
+
+### Added
+
+- **Codex reset credits in `sidekick quota`**: When Codex quota is fetched from the API (`--refresh`, or the API-first `--all` view), the Rate Limits output now includes a `Reset Credits: N available` line plus a per-credit `Expires` row (expiry timestamp and title) for each available reset grant
+
+### Changed
+
+- **Bundled `sidekick-shared` 0.21.6**: Picks up `fetchCodexResetCreditsFromApi()` and the reset-credits snapshot on Codex quota state
+
 ## [0.21.5] - 2026-06-30
 
 ### Fixed
