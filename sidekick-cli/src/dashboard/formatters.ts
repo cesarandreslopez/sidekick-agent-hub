@@ -153,7 +153,10 @@ export function makeBar(percent: number, width: number): string {
 }
 
 /** Estimate the detail pane width (terminal minus side panel and borders).
- *  Side panel 26 + border 2 + padding 1 = 29. Fallback to 80 cols when unknown. */
+ *  Side panel 26 + border 2 + padding 1 = 29. Fallback to 80 cols when unknown.
+ *  @deprecated Assumes the default 26-column side panel, which is wrong in
+ *  narrow/wide-side/expanded layouts — prefer the DetailRenderContext width
+ *  threaded into DetailTab.render; this remains as a fallback only. */
 export function detailWidth(): number {
   return Math.max(40, (process.stdout.columns || 80) - 29);
 }

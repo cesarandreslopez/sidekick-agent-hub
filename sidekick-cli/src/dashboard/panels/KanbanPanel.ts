@@ -3,7 +3,7 @@
  * Shows Pending, Active, and Completed groups with task cards in the detail pane.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
+import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics, TaskItem } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import { wordWrap, detailWidth } from '../formatters';
@@ -27,7 +27,7 @@ export class KanbanPanel implements SidePanel {
   readonly emptyStateHint = 'Task board populates from active sessions.';
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Board', render: (item, m) => this.renderBoard(item, m) },
+    { label: 'Board', render: (item, m, _sd, ctx) => this.renderBoard(item, m, ctx) },
   ];
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
@@ -70,7 +70,12 @@ export class KanbanPanel implements SidePanel {
 
   // ── Detail renderer ──
 
-  private renderBoard(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderBoard(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
+    const w = ctx?.width ?? detailWidth();
     const col = item.data as ColumnData;
     const lines: string[] = [];
 
@@ -88,7 +93,7 @@ export class KanbanPanel implements SidePanel {
 
     for (const t of col.tasks) {
       const icon = STATUS_ICON[t.status] || ' ';
-      lines.push(`${icon} {bold}#${t.taskId}: ${wordWrap(t.subject, detailWidth() - 6)}{/bold}`);
+      lines.push(`${icon} {bold}#${t.taskId}: ${wordWrap(t.subject, w - 6)}{/bold}`);
 
       const details: string[] = [];
       if (t.subagentType) details.push(`{magenta-fg}\u229B ${t.subagentType}{/magenta-fg}`);
@@ -108,7 +113,7 @@ export class KanbanPanel implements SidePanel {
           return blocker ? `#${id} ${blocker.subject}` : `#${id}`;
         });
         lines.push(
-          `    {yellow-fg}\u25CB blocked by: ${wordWrap(blockerSubjects.join(', '), detailWidth() - 20)}{/yellow-fg}`,
+          `    {yellow-fg}\u25CB blocked by: ${wordWrap(blockerSubjects.join(', '), w - 20)}{/yellow-fg}`,
         );
       }
       if (t.blocks.length > 0) {

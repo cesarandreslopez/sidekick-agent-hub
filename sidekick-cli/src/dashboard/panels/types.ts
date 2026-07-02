@@ -38,11 +38,26 @@ export interface KeyBinding {
   condition?: (item?: PanelItem) => boolean;
 }
 
+/** Layout context passed to detail renderers. */
+export interface DetailRenderContext {
+  /** Usable content columns of the detail pane for the current layout mode. */
+  width: number;
+}
+
 /** A tab in the detail pane for a selected item. */
 export interface DetailTab {
   label: string;
-  /** Render blessed-tagged content for the given item. */
-  render: (item: PanelItem, metrics: DashboardMetrics, staticData: StaticData) => string;
+  /**
+   * Render blessed-tagged content for the given item. `ctx` carries the
+   * live detail-pane width; renderers fall back to the legacy full-terminal
+   * estimate when it is absent.
+   */
+  render: (
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    staticData: StaticData,
+    ctx?: DetailRenderContext,
+  ) => string;
   /** If true, detail pane scrolls to bottom after render. */
   autoScrollBottom?: boolean;
 }

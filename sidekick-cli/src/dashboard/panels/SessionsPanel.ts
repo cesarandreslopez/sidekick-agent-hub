@@ -4,7 +4,14 @@
  * with detail tabs for Summary, Timeline, Tools, and Files.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab, KeyBinding } from './types';
+import type {
+  SidePanel,
+  PanelItem,
+  PanelAction,
+  DetailTab,
+  DetailRenderContext,
+  KeyBinding,
+} from './types';
 import type { DashboardMetrics, ContextAttribution } from '../DashboardState';
 import type { StaticData, SessionRecord } from '../StaticDataLoader';
 import {
@@ -85,17 +92,17 @@ export class SessionsPanel implements SidePanel {
   activeDetailTabIndex = 0;
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Summary', render: (item, m) => this.renderSummary(item, m) },
+    { label: 'Summary', render: (item, m, _sd, ctx) => this.renderSummary(item, m, ctx) },
     {
       label: 'Timeline',
-      render: (item, m) => this.renderTimeline(item, m),
+      render: (item, m, _sd, ctx) => this.renderTimeline(item, m, ctx),
       autoScrollBottom: true,
     },
-    { label: 'Mind Map', render: (item, m, sd) => this.renderMindMap(item, m, sd) },
+    { label: 'Mind Map', render: (item, m, sd, ctx) => this.renderMindMap(item, m, sd, ctx) },
     { label: 'Tools', render: (item, m) => this.renderTools(item, m) },
-    { label: 'Files', render: (item, m) => this.renderFiles(item, m) },
-    { label: 'Agents', render: (item, m) => this.renderAgents(item, m) },
-    { label: 'AI Summary', render: (item, m) => this.renderAiSummary(item, m) },
+    { label: 'Files', render: (item, m, _sd, ctx) => this.renderFiles(item, m, ctx) },
+    { label: 'Agents', render: (item, m, _sd, ctx) => this.renderAgents(item, m, ctx) },
+    { label: 'AI Summary', render: (item, m, _sd, ctx) => this.renderAiSummary(item, m, ctx) },
   ];
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
@@ -234,7 +241,11 @@ export class SessionsPanel implements SidePanel {
 
   // ── Detail tab renderers ──
 
-  private renderAiSummary(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderAiSummary(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
     const d = item.data as { type: string };
     if (d.type !== 'active') {
       return '{grey-fg}(AI summary only available for active session){/grey-fg}';
@@ -252,7 +263,7 @@ export class SessionsPanel implements SidePanel {
 
     if (this.narrativeText) {
       // Wrap to detail pane width (terminal minus side panel and borders)
-      const wrapWidth = detailWidth();
+      const wrapWidth = ctx?.width ?? detailWidth();
       return '{bold}AI Session Narrative{/bold}\n\n' + wordWrap(this.narrativeText, wrapWidth);
     }
 
@@ -273,7 +284,11 @@ export class SessionsPanel implements SidePanel {
     ].join('\n');
   }
 
-  private renderSummary(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderSummary(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
     const d = item.data as { type: string; metrics?: DashboardMetrics; session?: SessionRecord };
     this._lastMetrics = metrics;
 
@@ -282,7 +297,7 @@ export class SessionsPanel implements SidePanel {
       const t = m.tokens;
       const c = m.context;
       const contextColor = getUtilizationColor(c.percent);
-      const w = detailWidth();
+      const w = ctx?.width ?? detailWidth();
 
       const elapsed = m.sessionStartTime ? formatElapsed(m.sessionStartTime) : '--:--:--';
 
@@ -459,7 +474,7 @@ export class SessionsPanel implements SidePanel {
           lines.push('', sectionHeader(quotaLabel, w));
           lines.push(`  {${severityColor}-fg}${descriptor.title}{/${severityColor}-fg}`);
           const failureText = [descriptor.message, descriptor.detail].filter(Boolean).join(' ');
-          const quotaTextWidth = Math.max(20, detailWidth() - 4);
+          const quotaTextWidth = Math.max(20, w - 4);
           for (const line of wordWrap(failureText, quotaTextWidth)) {
             lines.push(`  {grey-fg}${line}{/grey-fg}`);
           }
@@ -505,7 +520,7 @@ export class SessionsPanel implements SidePanel {
 
     // Historical session
     const s = d.session!;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
     const totalTokens = s.inputTokens + s.outputTokens;
     return [
       `{bold}${s.date}{/bold}  {bold}${s.sessionCount}{/bold}{grey-fg} sessions{/grey-fg}  {bold}${s.messageCount}{/bold}{grey-fg} messages{/grey-fg}`,
@@ -522,7 +537,11 @@ export class SessionsPanel implements SidePanel {
     ].join('\n');
   }
 
-  private renderTimeline(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderTimeline(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
     const d = item.data as { type: string };
     if (d.type !== 'active') {
       return '{grey-fg}(timeline only available for active session){/grey-fg}';
@@ -531,7 +550,7 @@ export class SessionsPanel implements SidePanel {
     const events = metrics.timeline.slice(-50);
     if (events.length === 0) return '{grey-fg}(no events yet){/grey-fg}';
 
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
     return events
       .map((ev) => {
         const time = formatTime(ev.timestamp);
@@ -561,6 +580,7 @@ export class SessionsPanel implements SidePanel {
     item: PanelItem,
     metrics: DashboardMetrics,
     staticData: StaticData,
+    ctx?: DetailRenderContext,
   ): string {
     const d = item.data as { type: string };
     if (d.type !== 'active') {
@@ -587,7 +607,7 @@ export class SessionsPanel implements SidePanel {
     }
 
     if (this.mindMapView === 'flow') {
-      return viewLabel + '\n' + this.renderTimeFlow(metrics);
+      return viewLabel + '\n' + this.renderTimeFlow(metrics, ctx);
     }
 
     const tree = buildMindMapTree(
@@ -600,7 +620,7 @@ export class SessionsPanel implements SidePanel {
   }
 
   /** Time-ordered flow view: recent events grouped by minute. */
-  private renderTimeFlow(metrics: DashboardMetrics): string {
+  private renderTimeFlow(metrics: DashboardMetrics, ctx?: DetailRenderContext): string {
     const events = metrics.timeline.slice(-60);
     if (events.length === 0) return '{grey-fg}(no events yet){/grey-fg}';
 
@@ -623,7 +643,7 @@ export class SessionsPanel implements SidePanel {
         const toolAnnotation = ev.toolName ? ` [${ev.toolName}]` : '';
         // Prefix visible width: "  :SS type       [toolName] "
         const prefixLen = 2 + 1 + 2 + 1 + 10 + toolAnnotation.length + 1;
-        const summaryMax = Math.max(10, detailWidth() - prefixLen);
+        const summaryMax = Math.max(10, (ctx?.width ?? detailWidth()) - prefixLen);
         const summary = truncate(ev.summary || '', summaryMax);
         const toolTag = ev.toolName ? ` {green-fg}[${ev.toolName}]{/green-fg}` : '';
         lines.push(
@@ -657,7 +677,11 @@ export class SessionsPanel implements SidePanel {
       .join('\n');
   }
 
-  private renderFiles(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderFiles(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
     const d = item.data as { type: string };
     if (d.type !== 'active') {
       return '{grey-fg}(file data only available for active session){/grey-fg}';
@@ -686,7 +710,7 @@ export class SessionsPanel implements SidePanel {
     }
 
     // Stats columns: " R:nn W:nn E:nn  +nn -nn" ≈ 30 chars
-    const pathColWidth = Math.max(20, detailWidth() - 30);
+    const pathColWidth = Math.max(20, (ctx?.width ?? detailWidth()) - 30);
     for (const f of files.slice(0, 40)) {
       const short = shortenPath(f.path);
       const r = f.reads > 0 ? `{green-fg}R:${f.reads}{/green-fg}` : `{grey-fg}R:0{/grey-fg}`;
@@ -705,7 +729,11 @@ export class SessionsPanel implements SidePanel {
 
     return lines.join('\n');
   }
-  private renderAgents(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderAgents(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
     const d = item.data as { type: string };
     if (d.type !== 'active') {
       return '{grey-fg}(agent data only available for active session){/grey-fg}';
@@ -717,7 +745,7 @@ export class SessionsPanel implements SidePanel {
     const running = agents.filter((a) => a.status === 'running').length;
     const completed = agents.filter((a) => a.status === 'completed').length;
     const parallel = agents.filter((a) => a.isParallel).length;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
 
     const lines: string[] = [
       sectionHeader('Subagents', w),
@@ -742,7 +770,7 @@ export class SessionsPanel implements SidePanel {
       // Compute available width for description, accounting for suffix on first line
       const prefixVisible = 2 + visibleLength(a.subagentType) + 1; // "icon type "
       const suffixVisible = visibleLength(durationSuffix) + visibleLength(parallelFlag);
-      const descWidth = Math.max(20, detailWidth() - prefixVisible - suffixVisible);
+      const descWidth = Math.max(20, w - prefixVisible - suffixVisible);
       const indent = ' '.repeat(prefixVisible);
       const wrapped = wordWrap(a.description, descWidth, indent);
       const firstLine = wrapped.split('\n')[0];
@@ -763,7 +791,7 @@ export class SessionsPanel implements SidePanel {
         const taskPrefix = `  ${statusIcon} ${t.subagentType} #${t.taskId}: `;
         const taskIndent = ' '.repeat(taskPrefix.length);
         lines.push(
-          `  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${t.taskId}: ${wordWrap(t.subject, detailWidth() - taskPrefix.length, taskIndent)}`,
+          `  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${t.taskId}: ${wordWrap(t.subject, w - taskPrefix.length, taskIndent)}`,
         );
       }
     }

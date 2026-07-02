@@ -3,7 +3,7 @@
  * Shows merged live + persisted tasks with status actions.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
+import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics, TaskItem } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import { wordWrap, detailWidth } from '../formatters';
@@ -28,7 +28,7 @@ export class TasksPanel implements SidePanel {
   readonly emptyStateHint = 'Tasks appear as your agent works.';
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Detail', render: (item, m) => this.renderDetail(item, m) },
+    { label: 'Detail', render: (item, m, _sd, ctx) => this.renderDetail(item, m, ctx) },
   ];
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
@@ -47,10 +47,15 @@ export class TasksPanel implements SidePanel {
 
   // ── Detail renderers ──
 
-  private renderDetail(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderDetail(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
+    const w = ctx?.width ?? detailWidth();
     const t = item.data as TaskItem;
     const lines = [
-      `{bold}${wordWrap(`#${t.taskId}: ${t.subject}`, detailWidth())}{/bold}`,
+      `{bold}${wordWrap(`#${t.taskId}: ${t.subject}`, w)}{/bold}`,
       '',
       `{bold}Status:{/bold}      ${STATUS_ICON[t.status] || ''} ${t.status}`,
     ];
@@ -84,9 +89,7 @@ export class TasksPanel implements SidePanel {
     if (related.length > 0) {
       lines.push('', '{bold}Related Tasks{/bold}');
       for (const r of related) {
-        lines.push(
-          `  ${STATUS_ICON[r.status] || ' '} #${r.taskId}: ${wordWrap(r.subject, detailWidth() - 8)}`,
-        );
+        lines.push(`  ${STATUS_ICON[r.status] || ' '} #${r.taskId}: ${wordWrap(r.subject, w - 8)}`);
       }
     }
 

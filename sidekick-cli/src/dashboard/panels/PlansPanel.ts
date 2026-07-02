@@ -3,7 +3,7 @@
  * Shows plan steps, metrics, and raw markdown across three detail tabs.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
+import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics, PlanInfo } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { PersistedPlan, PlanSource } from 'sidekick-shared';
@@ -48,9 +48,9 @@ export class PlansPanel implements SidePanel {
   private sourceFilter: PlanSource | 'all' = 'all';
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Steps', render: (item) => this.renderSteps(item) },
-    { label: 'Metrics', render: (item) => this.renderMetrics(item) },
-    { label: 'Raw', render: (item) => this.renderRaw(item) },
+    { label: 'Steps', render: (item, _m, _sd, ctx) => this.renderSteps(item, ctx) },
+    { label: 'Metrics', render: (item, _m, _sd, ctx) => this.renderMetrics(item, ctx) },
+    { label: 'Raw', render: (item, _m, _sd, ctx) => this.renderRaw(item, ctx) },
   ];
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
@@ -146,10 +146,10 @@ export class PlansPanel implements SidePanel {
 
   // ── Detail renderers ──
 
-  private renderSteps(item: PanelItem): string {
+  private renderSteps(item: PanelItem, ctx?: DetailRenderContext): string {
     const d = item.data as { type: string; plan: PlanInfo | PersistedPlan };
     const plan = d.plan;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
 
     lines.push(`{bold}${wordWrap(plan.title, w)}{/bold}`);
@@ -210,10 +210,10 @@ export class PlansPanel implements SidePanel {
     return `  ${icon}${complexity} ${wordWrap(s.description, w - 6)}`;
   }
 
-  private renderMetrics(item: PanelItem): string {
+  private renderMetrics(item: PanelItem, ctx?: DetailRenderContext): string {
     const d = item.data as { type: string; plan: PlanInfo | PersistedPlan };
     const plan = d.plan;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
 
     lines.push(`{bold}${wordWrap(plan.title, w)}{/bold}`);
@@ -282,10 +282,10 @@ export class PlansPanel implements SidePanel {
     return lines.join('\n');
   }
 
-  private renderRaw(item: PanelItem): string {
+  private renderRaw(item: PanelItem, ctx?: DetailRenderContext): string {
     const d = item.data as { type: string; plan: PlanInfo | PersistedPlan };
     const plan = d.plan;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
 
     const raw = plan.rawMarkdown;
     if (!raw) {

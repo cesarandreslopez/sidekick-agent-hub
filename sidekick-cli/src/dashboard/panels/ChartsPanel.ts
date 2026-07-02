@@ -8,7 +8,7 @@
  * 4. Patterns — detected event patterns with frequency bars
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
+import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics } from '../DashboardState';
 import {
   makeColorBar,
@@ -26,10 +26,10 @@ export class ChartsPanel implements SidePanel {
   readonly emptyStateHint = 'Charts will appear as data accumulates.';
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Tools', render: (item, m) => this.renderToolFrequency(item, m) },
-    { label: 'Events', render: (item, m) => this.renderEventDistribution(item, m) },
-    { label: 'Heatmap', render: (item, m) => this.renderHeatmap(item, m) },
-    { label: 'Patterns', render: (item, m) => this.renderPatterns(item, m) },
+    { label: 'Tools', render: (item, m, _sd, ctx) => this.renderToolFrequency(item, m, ctx) },
+    { label: 'Events', render: (item, m, _sd, ctx) => this.renderEventDistribution(item, m, ctx) },
+    { label: 'Heatmap', render: (item, m, _sd, ctx) => this.renderHeatmap(item, m, ctx) },
+    { label: 'Patterns', render: (item, m, _sd, ctx) => this.renderPatterns(item, m, ctx) },
   ];
 
   getItems(_metrics: DashboardMetrics): PanelItem[] {
@@ -50,8 +50,12 @@ export class ChartsPanel implements SidePanel {
 
   // ── Detail tab renderers ──
 
-  private renderToolFrequency(_item: PanelItem, metrics: DashboardMetrics): string {
-    const w = detailWidth();
+  private renderToolFrequency(
+    _item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
     lines.push(sectionHeader('Tool Frequency', w));
     lines.push('');
@@ -81,8 +85,12 @@ export class ChartsPanel implements SidePanel {
     return lines.join('\n');
   }
 
-  private renderEventDistribution(_item: PanelItem, metrics: DashboardMetrics): string {
-    const w = detailWidth();
+  private renderEventDistribution(
+    _item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
     lines.push(sectionHeader('Event Distribution', w));
     lines.push('');
@@ -136,8 +144,12 @@ export class ChartsPanel implements SidePanel {
     return lines.join('\n');
   }
 
-  private renderHeatmap(_item: PanelItem, metrics: DashboardMetrics): string {
-    const w = detailWidth();
+  private renderHeatmap(
+    _item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
     lines.push(sectionHeader('Activity Heatmap (60 min)', w));
     lines.push('');
@@ -165,8 +177,12 @@ export class ChartsPanel implements SidePanel {
     return lines.join('\n');
   }
 
-  private renderPatterns(_item: PanelItem, metrics: DashboardMetrics): string {
-    const w = detailWidth();
+  private renderPatterns(
+    _item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
     lines.push(sectionHeader('Event Patterns', w));
     lines.push('');

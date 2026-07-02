@@ -257,13 +257,18 @@ export function Dashboard({
 
   const detailPhrase = useMemo(() => getRandomPhraseBlessedTag(), [selectedItem?.id, tabIdx]);
 
+  // Usable detail-pane columns for the current layout: total minus the side
+  // panel minus border/padding overhead (parity with the legacy 29 - 26 = 3).
+  const detailContentWidth = Math.max(40, columns - sideWidth - 3);
+
   let detailContent = '';
   if (selectedItem && detailTabs.length > 0 && tabIdx >= 0) {
     const tab = detailTabs[tabIdx];
     const tabLabel = tab.label;
     const skipPhrase = tabLabel === 'Timeline' || tabLabel === 'Mind Map';
     const prefix = skipPhrase ? '' : detailPhrase + '\n';
-    detailContent = prefix + tab.render(selectedItem, metrics, staticData);
+    detailContent =
+      prefix + tab.render(selectedItem, metrics, staticData, { width: detailContentWidth });
   } else if (!selectedItem) {
     const filterablePanel = ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id);
     detailContent =

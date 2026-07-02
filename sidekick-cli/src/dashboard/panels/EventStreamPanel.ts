@@ -5,7 +5,7 @@
  * Detail tabs show full event JSON and surrounding context.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
+import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics } from '../DashboardState';
 import { formatTime, sectionHeader, wordWrap, detailWidth } from '../formatters';
 import { highlightEvent } from 'sidekick-shared';
@@ -26,8 +26,8 @@ export class EventStreamPanel implements SidePanel {
   readonly emptyStateHint = 'Events will appear here as the session runs.';
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Full Event', render: (item, m) => this.renderFullEvent(item, m) },
-    { label: 'Context', render: (item, m) => this.renderContext(item, m) },
+    { label: 'Full Event', render: (item, m, _sd, ctx) => this.renderFullEvent(item, m, ctx) },
+    { label: 'Context', render: (item, m, _sd, ctx) => this.renderContext(item, m, ctx) },
   ];
 
   getItems(metrics: DashboardMetrics): PanelItem[] {
@@ -60,10 +60,14 @@ export class EventStreamPanel implements SidePanel {
 
   // ── Detail tab renderers ──
 
-  private renderFullEvent(item: PanelItem, _metrics: DashboardMetrics): string {
+  private renderFullEvent(
+    item: PanelItem,
+    _metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
     const d = item.data as { index: number; event: Record<string, unknown> };
     const ev = d.event;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
 
     lines.push(sectionHeader('Event Details', w));
@@ -107,11 +111,15 @@ export class EventStreamPanel implements SidePanel {
     return lines.join('\n');
   }
 
-  private renderContext(item: PanelItem, metrics: DashboardMetrics): string {
+  private renderContext(
+    item: PanelItem,
+    metrics: DashboardMetrics,
+    ctx?: DetailRenderContext,
+  ): string {
     const d = item.data as { index: number };
     const idx = d.index;
     const events = metrics.timeline;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
     const lines: string[] = [];
 
     lines.push(sectionHeader('Surrounding Context', w));

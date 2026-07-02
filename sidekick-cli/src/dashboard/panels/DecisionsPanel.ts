@@ -3,7 +3,7 @@
  * Read-only: shows description, rationale, alternatives, tags.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
+import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { DecisionEntry } from 'sidekick-shared';
@@ -16,7 +16,7 @@ export class DecisionsPanel implements SidePanel {
   readonly emptyStateHint = 'Decisions logged by your agent show up here.';
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Detail', render: (item) => this.renderDetail(item) },
+    { label: 'Detail', render: (item, _m, _sd, ctx) => this.renderDetail(item, ctx) },
   ];
 
   getItems(_metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
@@ -49,9 +49,9 @@ export class DecisionsPanel implements SidePanel {
 
   // ── Detail renderer ──
 
-  private renderDetail(item: PanelItem): string {
+  private renderDetail(item: PanelItem, ctx?: DetailRenderContext): string {
     const d = item.data as DecisionEntry;
-    const w = detailWidth();
+    const w = ctx?.width ?? detailWidth();
     const lines = [
       `{bold}${wordWrap(d.description, w)}{/bold}`,
       '',

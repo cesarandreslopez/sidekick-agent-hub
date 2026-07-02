@@ -3,7 +3,7 @@
  * Read-only: displays notes grouped by file with detail view.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab } from './types';
+import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { KnowledgeNote } from 'sidekick-shared';
@@ -23,8 +23,8 @@ export class NotesPanel implements SidePanel {
   readonly emptyStateHint = 'Knowledge notes saved by your agent appear here.';
 
   readonly detailTabs: DetailTab[] = [
-    { label: 'Content', render: (item) => this.renderContent(item) },
-    { label: 'Related', render: (item, _m, sd) => this.renderRelated(item, sd) },
+    { label: 'Content', render: (item, _m, _sd, ctx) => this.renderContent(item, ctx) },
+    { label: 'Related', render: (item, _m, sd, ctx) => this.renderRelated(item, sd, ctx) },
   ];
 
   getItems(_metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
@@ -51,7 +51,7 @@ export class NotesPanel implements SidePanel {
 
   // ── Detail renderers ──
 
-  private renderContent(item: PanelItem): string {
+  private renderContent(item: PanelItem, ctx?: DetailRenderContext): string {
     const n = item.data as KnowledgeNote;
     const icon = NOTE_ICON[n.noteType] || '';
     const lines = [
@@ -61,7 +61,7 @@ export class NotesPanel implements SidePanel {
       `{bold}Importance:{/bold} ${n.importance || 'normal'}`,
       '',
       '{bold}Content{/bold}',
-      wordWrap(n.content, detailWidth()),
+      wordWrap(n.content, ctx?.width ?? detailWidth()),
     ];
 
     if (n.tags && n.tags.length > 0) {
@@ -71,7 +71,11 @@ export class NotesPanel implements SidePanel {
     return lines.join('\n');
   }
 
-  private renderRelated(item: PanelItem, staticData: StaticData): string {
+  private renderRelated(
+    item: PanelItem,
+    staticData: StaticData,
+    ctx?: DetailRenderContext,
+  ): string {
     const n = item.data as KnowledgeNote;
     if (!n.filePath) return '{grey-fg}(global note — no file-specific relations){/grey-fg}';
 
@@ -86,7 +90,7 @@ export class NotesPanel implements SidePanel {
     const lines = [`{bold}Other notes for ${shortenPath(n.filePath)}{/bold}`, ''];
     for (const r of related) {
       const icon = NOTE_ICON[r.noteType] || ' ';
-      const preview = wordWrap(r.content, detailWidth() - 6);
+      const preview = wordWrap(r.content, (ctx?.width ?? detailWidth()) - 6);
       lines.push(`${icon} {bold}[${r.noteType}]{/bold} ${preview}`);
     }
 
