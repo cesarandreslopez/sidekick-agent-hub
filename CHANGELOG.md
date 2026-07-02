@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added (sidekick-vscode)
+
+- **`Sidekick: Import Historical Session Data` in the Command Palette**: the command was registered but never contributed to the manifest, so it could previously only be triggered from the dashboard
+
+### Changed (sidekick-vscode)
+
+- **Command Palette hygiene**: every command now declares the `Sidekick` category, so palette labels render as `Sidekick: <title>` and all commands still match a "sidekick" search. The five Explain Code and five Explain Error complexity levels now have distinct titles (`Explain Code: ELI5` vs `Explain Error: ELI5`, etc.), and sixteen context-only or argument-only commands (explain-level variants, `Explain Error with AI`, `Fix Error with AI`, `Set Session Provider`, and the knowledge-note Edit/Delete/Confirm actions) are hidden from the palette because they would error when invoked bare; they remain available from their context menus, code actions, and the dashboard
+
+### Deprecated (sidekick-vscode)
+
+- **`sidekick.zai.tier`**: now marked with a deprecation message in the Settings UI. Authoritative z.ai quota is read directly from z.ai's quota API; the setting has no effect and is kept only so previously stored values remain valid
+
 ## [0.21.6] - 2026-07-02
 
 ### Added (sidekick-shared)

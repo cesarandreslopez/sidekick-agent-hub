@@ -257,7 +257,8 @@ describe('extension asset command contribution', () => {
 
     expect(manifest.contributes.commands).toContainEqual({
       command: 'sidekick.extractAssets',
-      title: 'Sidekick: Extract Session Assets',
+      title: 'Extract Session Assets',
+      category: 'Sidekick',
       icon: '$(list-tree)',
     });
     expect(manifest.contributes.menus['view/title']).toEqual(
