@@ -1271,7 +1271,21 @@
           "name": "Event Stream"
         }
       ]
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "sidekick.eventStream",
+        "contents": "No session events yet.\nOnce a coding-agent session is active, prompts, tool calls, errors, and compactions stream here live.\n[Open Session Dashboard](command:sidekick.openDashboard)"
+      },
+      {
+        "view": "sidekick.subagents",
+        "contents": "No subagents in this session yet.\nWhen your agent delegates work to subagents (Task, Explore, Plan), they appear here with status and token usage.\n[Open Session Dashboard](command:sidekick.openDashboard)"
+      },
+      {
+        "view": "sidekick.tempFiles",
+        "contents": "No files touched yet.\nFiles your agent reads, writes, or edits this session appear here for one-click access.\n[Refresh Session](command:sidekick.refreshSession)"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",

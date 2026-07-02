@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (sidekick-vscode)
 
+- **Welcome content for empty monitoring views**: the Event Stream, Subagents, and Latest Files Touched views no longer render as blank panes when no agent session is active. Each now explains what will appear there and offers a one-click action (Open Session Dashboard / Refresh Session)
 - **`Sidekick: Import Historical Session Data` in the Command Palette**: the command was registered but never contributed to the manifest, so it could previously only be triggered from the dashboard
 
 ### Changed (sidekick-vscode)
