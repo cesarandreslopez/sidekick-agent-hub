@@ -85,6 +85,38 @@ const BUILT_IN_TRIGGERS: NotificationTrigger[] = [
   },
 ];
 
+/** Labels for the action buttons shown on trigger notifications. */
+export const NOTIFICATION_BUTTONS = {
+  openDashboard: 'Open Dashboard',
+  snooze: 'Snooze 1h',
+  mute: 'Mute This Trigger',
+} as const;
+
+/** How long a snoozed trigger stays quiet (in-memory; cleared on reload). */
+const SNOOZE_DURATION_MS = 60 * 60 * 1000;
+
+/**
+ * Action buttons per trigger ID.
+ *
+ * Security triggers (env-access, destructive-cmd, sensitive-path-write) get
+ * no Snooze: temporarily quieting a security alert is a mixed signal, so the
+ * only opt-out is a deliberate, persistent Mute. Noisy mid-session triggers
+ * (tool-error, compaction, cycle-detected) get Snooze plus Mute.
+ * high-token-usage gets no Mute because it has no boolean config key (only
+ * the numeric `sidekick.notifications.tokenThreshold`); it gets Open
+ * Dashboard instead since token burn is exactly what the dashboard shows.
+ * Unknown trigger IDs fall back to a button-less notification.
+ */
+export const TRIGGER_BUTTONS: Record<string, string[]> = {
+  'env-access': [NOTIFICATION_BUTTONS.openDashboard, NOTIFICATION_BUTTONS.mute],
+  'destructive-cmd': [NOTIFICATION_BUTTONS.openDashboard, NOTIFICATION_BUTTONS.mute],
+  'sensitive-path-write': [NOTIFICATION_BUTTONS.openDashboard, NOTIFICATION_BUTTONS.mute],
+  'tool-error': [NOTIFICATION_BUTTONS.snooze, NOTIFICATION_BUTTONS.mute],
+  compaction: [NOTIFICATION_BUTTONS.snooze, NOTIFICATION_BUTTONS.mute],
+  'cycle-detected': [NOTIFICATION_BUTTONS.snooze, NOTIFICATION_BUTTONS.mute],
+  'high-token-usage': [NOTIFICATION_BUTTONS.openDashboard, NOTIFICATION_BUTTONS.snooze],
+};
+
 /**
  * Service that monitors session events and fires VS Code notifications
  * based on configurable triggers.
@@ -94,6 +126,12 @@ export class NotificationTriggerService implements vscode.Disposable {
   private triggers: NotificationTrigger[];
   private compiledPatterns: Map<string, RegExp> = new Map();
   private lastFiredAt: Map<string, number> = new Map();
+
+  /** Trigger ID -> epoch ms until which the trigger is snoozed */
+  private snoozedUntil: Map<string, number> = new Map();
+
+  /** Guards notification button handlers that resolve after dispose() */
+  private disposed = false;
 
   /** Track consecutive tool errors for burst detection */
   private recentToolErrors: number = 0;
@@ -186,9 +224,18 @@ export class NotificationTriggerService implements vscode.Disposable {
   }
 
   /**
-   * Checks if a trigger is throttled (fired too recently).
+   * Checks if a trigger is currently snoozed via the "Snooze 1h" button.
+   */
+  private isSnoozed(triggerId: string): boolean {
+    const until = this.snoozedUntil.get(triggerId);
+    return until !== undefined && Date.now() < until;
+  }
+
+  /**
+   * Checks if a trigger is throttled (fired too recently) or snoozed.
    */
   private isThrottled(triggerId: string, throttleSeconds: number): boolean {
+    if (this.isSnoozed(triggerId)) return true;
     const lastFired = this.lastFiredAt.get(triggerId);
     if (!lastFired) return false;
     return Date.now() - lastFired < throttleSeconds * 1000;
@@ -247,17 +294,45 @@ export class NotificationTriggerService implements vscode.Disposable {
   ): void {
     const message = `${title}: ${body}`;
 
+    // Snoozed triggers stay quiet but keep history complete. Checked here
+    // (not only in isThrottled) because cycle-detected and high-token-usage
+    // never go through isThrottled.
+    if (persistParams && this.isSnoozed(persistParams.triggerId)) {
+      if (this.notificationPersistence) {
+        this.notificationPersistence.addNotification({
+          triggerId: persistParams.triggerId,
+          triggerName: persistParams.triggerName,
+          severity,
+          title,
+          body,
+          wasThrottled: true,
+          context: persistParams.context,
+        });
+      }
+      return;
+    }
+
+    const buttons = persistParams ? (TRIGGER_BUTTONS[persistParams.triggerId] ?? []) : [];
+
+    let result: Thenable<string | undefined>;
     switch (severity) {
       case 'error':
-        vscode.window.showErrorMessage(message);
+        result = vscode.window.showErrorMessage(message, ...buttons);
         break;
       case 'warning':
-        vscode.window.showWarningMessage(message);
+        result = vscode.window.showWarningMessage(message, ...buttons);
         break;
       default:
-        vscode.window.showInformationMessage(message);
+        result = vscode.window.showInformationMessage(message, ...buttons);
         break;
     }
+
+    // Fire-and-forget: the promise resolves only when the user clicks a
+    // button or dismisses the toast, potentially long after this returns.
+    result.then(
+      (selection) => this.handleNotificationAction(selection, persistParams?.triggerId),
+      () => {},
+    );
 
     // Persist to notification history
     if (this.notificationPersistence && persistParams) {
@@ -271,6 +346,57 @@ export class NotificationTriggerService implements vscode.Disposable {
         context: persistParams.context,
       });
     }
+  }
+
+  /**
+   * Handles a click on a notification action button. May run long after the
+   * notification fired, so it guards against the service being disposed.
+   */
+  private handleNotificationAction(selection: string | undefined, triggerId?: string): void {
+    if (this.disposed || !selection || !triggerId) return;
+
+    switch (selection) {
+      case NOTIFICATION_BUTTONS.openDashboard:
+        vscode.commands.executeCommand('sidekick.openDashboard');
+        break;
+      case NOTIFICATION_BUTTONS.snooze:
+        this.snoozedUntil.set(triggerId, Date.now() + SNOOZE_DURATION_MS);
+        log(`NotificationTriggerService: trigger '${triggerId}' snoozed for 1h`);
+        break;
+      case NOTIFICATION_BUTTONS.mute:
+        this.muteTrigger(triggerId);
+        break;
+    }
+  }
+
+  /**
+   * Persists `sidekick.notifications.triggers.<id> = false`. Writes to the
+   * workspace when a folder is open (matching the setSessionProvider
+   * pattern), falling back to the user settings if the workspace write
+   * fails. The onDidChangeConfiguration listener reloads triggers, so the
+   * mute takes effect immediately.
+   */
+  private muteTrigger(triggerId: string): void {
+    const target =
+      vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+
+    vscode.workspace
+      .getConfiguration('sidekick.notifications')
+      .update(`triggers.${triggerId}`, false, target)
+      .then(
+        () => log(`NotificationTriggerService: trigger '${triggerId}' muted`),
+        () => {
+          vscode.workspace
+            .getConfiguration('sidekick.notifications')
+            .update(`triggers.${triggerId}`, false, vscode.ConfigurationTarget.Global)
+            .then(
+              () => log(`NotificationTriggerService: trigger '${triggerId}' muted (user settings)`),
+              (err) => log(`NotificationTriggerService: failed to mute '${triggerId}': ${err}`),
+            );
+        },
+      );
   }
 
   /**
@@ -409,10 +535,12 @@ export class NotificationTriggerService implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
     this.lastFiredAt.clear();
     this.compiledPatterns.clear();
+    this.snoozedUntil.clear();
     log('NotificationTriggerService disposed');
   }
 }

@@ -64,9 +64,9 @@ Let AI handle the mechanical work — boilerplate, commit messages, docs, PR des
 
 - **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware suggestions that understand your project, not just syntax (`Ctrl+Shift+Space` to trigger manually)
 - **[Code Transforms](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-transforms/)** — select code, describe changes in natural language (`Ctrl+Shift+M`)
-- **[Generate Documentation](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — auto-generate JSDoc/docstrings from implementation, not just signatures (`Ctrl+Shift+D`)
-- **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — five complexity levels from ELI5 to PhD Mode (`Ctrl+Shift+E`)
-- **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes (`Ctrl+I`)
+- **[Generate Documentation](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — auto-generate JSDoc/docstrings from implementation, not just signatures (`Ctrl+K Ctrl+G`)
+- **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — five complexity levels from ELI5 to PhD Mode (`Ctrl+K Ctrl+E`)
+- **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes (`Ctrl+K Ctrl+A`)
 - **[AI Commit Messages](https://cesarandreslopez.github.io/sidekick-agent-hub/features/commit-messages/)** — generate meaningful messages from staged changes (sparkle icon in SCM toolbar)
 - **[Pre-commit Review](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-review/)** — catch bugs, security concerns, and code smells before they reach your team (eye icon in SCM toolbar)
 - **[PR Descriptions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/pr-descriptions/)** — auto-generate structured summaries from branch diff (PR icon in SCM toolbar)
@@ -170,9 +170,9 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Toggle Completions             | —                  | Enable/disable inline completions                          |
 | Trigger Completion             | `Ctrl+Shift+Space` | Manually request completion                                |
 | Transform Code                 | `Ctrl+Shift+M`     | Transform selected code                                    |
-| Quick Ask                      | `Ctrl+I`           | Inline chat                                                |
-| Generate Docs                  | `Ctrl+Shift+D`     | Generate documentation                                     |
-| Explain Code                   | `Ctrl+Shift+E`     | Explain selected code                                      |
+| Quick Ask                      | `Ctrl+K Ctrl+A`    | Inline chat                                                |
+| Generate Docs                  | `Ctrl+K Ctrl+G`    | Generate documentation                                     |
+| Explain Code                   | `Ctrl+K Ctrl+E`    | Explain selected code                                      |
 | Generate Commit Message        | SCM sparkle icon   | AI commit message                                          |
 | Review Changes                 | SCM eye icon       | Pre-commit review                                          |
 | Generate PR Description        | SCM PR icon        | Auto-generate PR description                               |

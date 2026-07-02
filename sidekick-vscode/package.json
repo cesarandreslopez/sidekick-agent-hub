@@ -102,13 +102,8 @@
               "max"
             ],
             "default": "auto",
-            "description": "Deprecated compatibility setting from the former z.ai quota estimator. Authoritative z.ai quota is now read from z.ai's quota API.",
-            "enumDescriptions": [
-              "Deprecated — authoritative quota comes from z.ai.",
-              "Deprecated — authoritative quota comes from z.ai.",
-              "Deprecated — authoritative quota comes from z.ai.",
-              "Deprecated — authoritative quota comes from z.ai."
-            ]
+            "description": "Legacy z.ai tier setting from the former quota estimator. No longer used.",
+            "markdownDeprecationMessage": "**Deprecated:** authoritative z.ai quota is now read directly from z.ai's quota API. This setting has no effect and is kept only so previously stored values remain valid."
           }
         }
       },
@@ -674,178 +669,218 @@
     "commands": [
       {
         "command": "sidekick.toggle",
-        "title": "Sidekick: Toggle Inline Completions"
+        "title": "Toggle Inline Completions",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.triggerCompletion",
-        "title": "Sidekick: Trigger Completion"
+        "title": "Trigger Completion",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.generateDocs",
         "title": "Generate Documentation",
+        "category": "Sidekick",
         "icon": "$(book)"
       },
       {
         "command": "sidekick.explainCode",
-        "title": "Explain",
+        "title": "Explain Selected Code",
+        "category": "Sidekick",
         "icon": "$(lightbulb)"
       },
       {
         "command": "sidekick.explainCode.eli5",
-        "title": "ELI5"
+        "title": "Explain Code: ELI5",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainCode.curiousAmateur",
-        "title": "Curious Amateur"
+        "title": "Explain Code: Curious Amateur",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainCode.imposterSyndrome",
-        "title": "Imposter Syndrome"
+        "title": "Explain Code: Imposter Syndrome",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainCode.senior",
-        "title": "Senior"
+        "title": "Explain Code: Senior",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainCode.phd",
-        "title": "PhD Mode"
+        "title": "Explain Code: PhD Mode",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainError",
-        "title": "Explain Error with AI"
+        "title": "Explain Error with AI",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainError.eli5",
-        "title": "ELI5"
+        "title": "Explain Error: ELI5",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainError.curiousAmateur",
-        "title": "Curious Amateur"
+        "title": "Explain Error: Curious Amateur",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainError.imposterSyndrome",
-        "title": "Imposter Syndrome"
+        "title": "Explain Error: Imposter Syndrome",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainError.senior",
-        "title": "Senior"
+        "title": "Explain Error: Senior",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.explainError.phd",
-        "title": "PhD Mode"
+        "title": "Explain Error: PhD Mode",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.fixError",
-        "title": "Fix Error with AI"
+        "title": "Fix Error with AI",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.inlineChat",
-        "title": "Quick Ask",
+        "title": "Quick Ask (Inline Chat)",
+        "category": "Sidekick",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "sidekick.reviewChanges",
-        "title": "Sidekick: Review My Changes",
+        "title": "Review My Changes",
+        "category": "Sidekick",
         "icon": "$(eye)"
       },
       {
         "command": "sidekick.clearReview",
-        "title": "Sidekick: Clear AI Review"
+        "title": "Clear AI Review",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.generatePrDescription",
-        "title": "Sidekick: Generate PR Description",
+        "title": "Generate PR Description",
+        "category": "Sidekick",
         "icon": "$(git-pull-request)"
       },
       {
         "command": "sidekick.transform",
-        "title": "Sidekick: Transform Selected Code"
+        "title": "Transform Selected Code",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.setApiKey",
-        "title": "Sidekick: Set API Key"
+        "title": "Set API Key",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.testConnection",
-        "title": "Sidekick: Test Connection"
+        "title": "Test Connection",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.showLogs",
-        "title": "Sidekick: View Logs"
+        "title": "View Logs",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.showMenu",
-        "title": "Sidekick: Show Menu"
+        "title": "Show Menu",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.generateCommitMessage",
-        "title": "Sidekick: Generate Commit Message",
+        "title": "Generate Commit Message",
+        "category": "Sidekick",
         "icon": "$(sparkle)"
       },
       {
         "command": "sidekick.openDashboard",
-        "title": "Sidekick: Open Session Dashboard"
+        "title": "Open Session Dashboard",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.openCliDashboard",
-        "title": "Sidekick: Open CLI Dashboard",
+        "title": "Open CLI Dashboard",
+        "category": "Sidekick",
         "icon": "$(terminal)"
       },
       {
         "command": "sidekick.extractAssets",
-        "title": "Sidekick: Extract Session Assets",
+        "title": "Extract Session Assets",
+        "category": "Sidekick",
         "icon": "$(list-tree)"
       },
       {
         "command": "sidekick.openConversation",
-        "title": "Sidekick: View Session Conversation"
+        "title": "View Session Conversation",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.searchSessions",
-        "title": "Sidekick: Search Across Sessions"
+        "title": "Search Across Sessions",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.openToolInspector",
-        "title": "Sidekick: Open Tool Inspector"
+        "title": "Open Tool Inspector",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.startMonitoring",
-        "title": "Sidekick: Start Session Monitoring",
+        "title": "Start Session Monitoring",
+        "category": "Sidekick",
         "icon": "$(play)"
       },
       {
         "command": "sidekick.stopMonitoring",
-        "title": "Sidekick: Stop Session Monitoring",
+        "title": "Stop Session Monitoring",
+        "category": "Sidekick",
         "icon": "$(stop)"
       },
       {
         "command": "sidekick.refreshSession",
-        "title": "Sidekick: Refresh/Find Session",
+        "title": "Refresh/Find Session",
+        "category": "Sidekick",
         "icon": "$(refresh)"
       },
       {
         "command": "sidekick.sessionDiagnostics",
-        "title": "Sidekick: Session Path Diagnostics",
+        "title": "Session Path Diagnostics",
+        "category": "Sidekick",
         "icon": "$(info)"
       },
       {
         "command": "sidekick.selectSessionFolder",
-        "title": "Sidekick: Browse Session Folders...",
+        "title": "Browse Session Folders...",
+        "category": "Sidekick",
         "icon": "$(folder-opened)"
       },
       {
         "command": "sidekick.clearCustomSessionPath",
-        "title": "Sidekick: Reset to Auto-Detect Session",
+        "title": "Reset to Auto-Detect Session",
+        "category": "Sidekick",
         "icon": "$(sync)"
       },
       {
         "command": "sidekick.generateSessionSummary",
-        "title": "Sidekick: Generate Session Summary",
+        "title": "Generate Session Summary",
+        "category": "Sidekick",
         "icon": "$(notebook)"
       },
       {
         "command": "sidekick.setInferenceProvider",
-        "title": "Sidekick: Switch Inference Provider"
+        "title": "Switch Inference Provider",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.setSessionProvider",
@@ -854,61 +889,80 @@
       },
       {
         "command": "sidekick.setupHandoff",
-        "title": "Sidekick: Setup Handoff"
+        "title": "Set Up Session Handoff",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.addKnowledgeNote",
         "title": "Add Knowledge Note",
+        "category": "Sidekick",
         "icon": "$(note)"
       },
       {
         "command": "sidekick.editKnowledgeNote",
-        "title": "Edit Note",
+        "title": "Edit Knowledge Note",
+        "category": "Sidekick",
         "icon": "$(edit)"
       },
       {
         "command": "sidekick.deleteKnowledgeNote",
-        "title": "Delete Note",
+        "title": "Delete Knowledge Note",
+        "category": "Sidekick",
         "icon": "$(trash)"
       },
       {
         "command": "sidekick.confirmKnowledgeNote",
-        "title": "Confirm Note (Mark as Reviewed)",
+        "title": "Confirm Knowledge Note (Mark as Reviewed)",
+        "category": "Sidekick",
         "icon": "$(check)"
       },
       {
         "command": "sidekick.injectKnowledgeNotes",
-        "title": "Sidekick: Inject Knowledge Notes into CLAUDE.md"
+        "title": "Inject Knowledge Notes into CLAUDE.md",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.dumpSession",
-        "title": "Sidekick: Dump Session Report",
+        "title": "Dump Session Report",
+        "category": "Sidekick",
         "icon": "$(output)"
       },
       {
         "command": "sidekick.generateReport",
-        "title": "Sidekick: Generate HTML Report",
+        "title": "Generate HTML Report",
+        "category": "Sidekick",
         "icon": "$(globe)"
       },
       {
+        "command": "sidekick.importHistoricalData",
+        "title": "Import Historical Session Data",
+        "category": "Sidekick",
+        "icon": "$(history)"
+      },
+      {
         "command": "sidekick.switchAccount",
-        "title": "Sidekick: Switch Account"
+        "title": "Switch Account",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.switchAnyAccount",
-        "title": "Sidekick: Switch Account (All Providers)"
+        "title": "Switch Account (All Providers)",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.signInAccount",
-        "title": "Sidekick: Add Account (Sign In)"
+        "title": "Add Account (Sign In)",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.addAccount",
-        "title": "Sidekick: Save Current Account"
+        "title": "Save Current Account",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.removeAccount",
-        "title": "Sidekick: Remove Account"
+        "title": "Remove Account",
+        "category": "Sidekick"
       }
     ],
     "submenus": [
@@ -940,24 +994,90 @@
       },
       {
         "command": "sidekick.generateDocs",
-        "key": "ctrl+shift+d",
-        "mac": "cmd+shift+d",
+        "key": "ctrl+k ctrl+g",
+        "mac": "cmd+k cmd+g",
         "when": "editorTextFocus"
       },
       {
         "command": "sidekick.explainCode",
-        "key": "ctrl+shift+e",
-        "mac": "cmd+shift+e",
+        "key": "ctrl+k ctrl+e",
+        "mac": "cmd+k cmd+e",
         "when": "editorTextFocus && editorHasSelection"
       },
       {
         "command": "sidekick.inlineChat",
-        "key": "ctrl+i",
-        "mac": "cmd+i",
+        "key": "ctrl+k ctrl+a",
+        "mac": "cmd+k cmd+a",
         "when": "editorTextFocus && !editorReadonly && !suggestWidgetVisible && !inlineChatFocused"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "sidekick.explainCode.eli5",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainCode.curiousAmateur",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainCode.imposterSyndrome",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainCode.senior",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainCode.phd",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainError",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainError.eli5",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainError.curiousAmateur",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainError.imposterSyndrome",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainError.senior",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.explainError.phd",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.fixError",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.setSessionProvider",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.editKnowledgeNote",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.deleteKnowledgeNote",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.confirmKnowledgeNote",
+          "when": "false"
+        }
+      ],
       "scm/title": [
         {
           "command": "sidekick.reviewChanges",
@@ -1151,7 +1271,21 @@
           "name": "Event Stream"
         }
       ]
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "sidekick.eventStream",
+        "contents": "No session events yet.\nOnce a coding-agent session is active, prompts, tool calls, errors, and compactions stream here live.\n[Open Session Dashboard](command:sidekick.openDashboard)"
+      },
+      {
+        "view": "sidekick.subagents",
+        "contents": "No subagents in this session yet.\nWhen your agent delegates work to subagents (Task, Explore, Plan), they appear here with status and token usage.\n[Open Session Dashboard](command:sidekick.openDashboard)"
+      },
+      {
+        "view": "sidekick.tempFiles",
+        "contents": "No files touched yet.\nFiles your agent reads, writes, or edits this session appear here for one-click access.\n[Refresh Session](command:sidekick.refreshSession)"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
