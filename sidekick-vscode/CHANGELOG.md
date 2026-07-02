@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING — three default keyboard shortcuts have moved.** The old chords shadowed core VS Code defaults (Explorer view, Debug view, and inline suggest / Copilot inline chat), so those built-ins were unreachable while Sidekick was installed. The features now live on `Ctrl+K` / `Cmd+K` chords; if the old shortcuts are in your muscle memory, rebind them in Keyboard Shortcuts (search "sidekick"):
+
+  | Command                             | Old (Win/Linux / macOS)        | New (Win/Linux / macOS)         |
+  | ----------------------------------- | ------------------------------ | ------------------------------- |
+  | `Sidekick: Explain Selected Code`   | `Ctrl+Shift+E` / `Cmd+Shift+E` | `Ctrl+K Ctrl+E` / `Cmd+K Cmd+E` |
+  | `Sidekick: Generate Documentation`  | `Ctrl+Shift+D` / `Cmd+Shift+D` | `Ctrl+K Ctrl+G` / `Cmd+K Cmd+G` |
+  | `Sidekick: Quick Ask (Inline Chat)` | `Ctrl+I` / `Cmd+I`             | `Ctrl+K Ctrl+A` / `Cmd+K Cmd+A` |
+
+  `Ctrl/Cmd+Shift+Space` (Trigger Completion) and `Ctrl/Cmd+Shift+M` (Transform Selected Code) are unchanged; note that with a selection `Ctrl/Cmd+Shift+M` still shadows the Problems-panel toggle, and `Ctrl+Shift+Space` still shadows Trigger Parameter Hints on Windows/Linux
+
 - **Command Palette hygiene**: every command now declares the `Sidekick` category, so palette labels render as `Sidekick: <title>` and all commands still match a "sidekick" search. The five Explain Code and five Explain Error complexity levels now have distinct titles (`Explain Code: ELI5` vs `Explain Error: ELI5`, etc.) instead of five duplicated pairs. Sixteen context-only or argument-only commands (the ten explain-level variants, `Explain Error with AI`, `Fix Error with AI`, `Set Session Provider`, and the knowledge-note Edit/Delete/Confirm actions) are hidden from the palette because they require arguments or a tree-item/editor context and would error when invoked bare; they remain available from their context menus, code actions, and the dashboard
 
 ### Deprecated

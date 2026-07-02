@@ -994,20 +994,20 @@
       },
       {
         "command": "sidekick.generateDocs",
-        "key": "ctrl+shift+d",
-        "mac": "cmd+shift+d",
+        "key": "ctrl+k ctrl+g",
+        "mac": "cmd+k cmd+g",
         "when": "editorTextFocus"
       },
       {
         "command": "sidekick.explainCode",
-        "key": "ctrl+shift+e",
-        "mac": "cmd+shift+e",
+        "key": "ctrl+k ctrl+e",
+        "mac": "cmd+k cmd+e",
         "when": "editorTextFocus && editorHasSelection"
       },
       {
         "command": "sidekick.inlineChat",
-        "key": "ctrl+i",
-        "mac": "cmd+i",
+        "key": "ctrl+k ctrl+a",
+        "mac": "cmd+k cmd+a",
         "when": "editorTextFocus && !editorReadonly && !suggestWidgetVisible && !inlineChatFocused"
       }
     ],

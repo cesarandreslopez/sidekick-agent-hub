@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (sidekick-vscode)
 
+- **BREAKING — three default keyboard shortcuts have moved.** The old chords shadowed core VS Code defaults (Explorer view, Debug view, and inline suggest / Copilot inline chat). The features now live on `Ctrl+K` / `Cmd+K` chords; rebind in Keyboard Shortcuts (search "sidekick") if you prefer the old ones:
+
+  | Command                             | Old (Win/Linux / macOS)        | New (Win/Linux / macOS)         |
+  | ----------------------------------- | ------------------------------ | ------------------------------- |
+  | `Sidekick: Explain Selected Code`   | `Ctrl+Shift+E` / `Cmd+Shift+E` | `Ctrl+K Ctrl+E` / `Cmd+K Cmd+E` |
+  | `Sidekick: Generate Documentation`  | `Ctrl+Shift+D` / `Cmd+Shift+D` | `Ctrl+K Ctrl+G` / `Cmd+K Cmd+G` |
+  | `Sidekick: Quick Ask (Inline Chat)` | `Ctrl+I` / `Cmd+I`             | `Ctrl+K Ctrl+A` / `Cmd+K Cmd+A` |
+
+  `Ctrl/Cmd+Shift+Space` (Trigger Completion) and `Ctrl/Cmd+Shift+M` (Transform Selected Code) are unchanged
+
 - **Command Palette hygiene**: every command now declares the `Sidekick` category, so palette labels render as `Sidekick: <title>` and all commands still match a "sidekick" search. The five Explain Code and five Explain Error complexity levels now have distinct titles (`Explain Code: ELI5` vs `Explain Error: ELI5`, etc.), and sixteen context-only or argument-only commands (explain-level variants, `Explain Error with AI`, `Fix Error with AI`, `Set Session Provider`, and the knowledge-note Edit/Delete/Confirm actions) are hidden from the palette because they would error when invoked bare; they remain available from their context menus, code actions, and the dashboard
 
 ### Deprecated (sidekick-vscode)
