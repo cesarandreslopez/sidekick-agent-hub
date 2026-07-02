@@ -99,18 +99,18 @@ describe('scrolling', () => {
     expect(up.detailScrollOffset).toBe(0);
   });
 
-  it('CHANGELOG_SCROLL clamps at zero and accumulates', () => {
+  it('OVERLAY_SCROLL clamps at zero and accumulates', () => {
     let s = state();
-    s = reducer(s, { type: 'CHANGELOG_SCROLL', delta: -3 });
-    expect(s.changelogScrollOffset).toBe(0);
-    s = reducer(s, { type: 'CHANGELOG_SCROLL', delta: 5 });
-    expect(s.changelogScrollOffset).toBe(5);
+    s = reducer(s, { type: 'OVERLAY_SCROLL', delta: -3 });
+    expect(s.overlayScrollOffset).toBe(0);
+    s = reducer(s, { type: 'OVERLAY_SCROLL', delta: 5 });
+    expect(s.overlayScrollOffset).toBe(5);
   });
 
   it('SET_OVERLAY resets changelog scroll and context menu index', () => {
-    const s = state({ changelogScrollOffset: 7, contextMenuIndex: 3 });
+    const s = state({ overlayScrollOffset: 7, contextMenuIndex: 3 });
     const after = reducer(s, { type: 'SET_OVERLAY', overlay: 'changelog' });
-    expect(after.changelogScrollOffset).toBe(0);
+    expect(after.overlayScrollOffset).toBe(0);
     expect(after.contextMenuIndex).toBe(0);
   });
 

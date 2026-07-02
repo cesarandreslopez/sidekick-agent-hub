@@ -583,11 +583,15 @@ export function Dashboard({
 
         {/* Full-screen overlays (replace main content) */}
         {state.overlay === 'help' && (
-          <HelpOverlay panels={panels} activePanelIndex={state.activePanelIndex} />
+          <HelpOverlay
+            panels={panels}
+            activePanelIndex={state.activePanelIndex}
+            scrollOffset={state.overlayScrollOffset}
+          />
         )}
 
         {state.overlay === 'changelog' && (
-          <ChangelogOverlay entries={changelogEntries} scrollOffset={state.changelogScrollOffset} />
+          <ChangelogOverlay entries={changelogEntries} scrollOffset={state.overlayScrollOffset} />
         )}
 
         {/* Status bar — always visible */}

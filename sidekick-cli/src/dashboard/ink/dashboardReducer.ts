@@ -38,7 +38,7 @@ export interface DashboardUIState {
   toasts: ToastEntry[];
   hasReceivedEvents: boolean;
   contextMenuIndex: number;
-  changelogScrollOffset: number;
+  overlayScrollOffset: number;
   renderTick: number;
   mouseEnabled: boolean;
 }
@@ -64,7 +64,7 @@ export type Action =
   | { type: 'CONTEXT_MENU_NAV'; delta: number; itemCount: number }
   | { type: 'CONTEXT_MENU_SELECT' }
   | { type: 'SCROLL_SIDE'; delta: number; itemCount: number }
-  | { type: 'CHANGELOG_SCROLL'; delta: number }
+  | { type: 'OVERLAY_SCROLL'; delta: number }
   | { type: 'TOGGLE_MOUSE' }
   | { type: 'TICK' };
 
@@ -140,7 +140,7 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
       return { ...state, focusTarget: action.target };
 
     case 'SET_OVERLAY':
-      return { ...state, overlay: action.overlay, contextMenuIndex: 0, changelogScrollOffset: 0 };
+      return { ...state, overlay: action.overlay, contextMenuIndex: 0, overlayScrollOffset: 0 };
 
     case 'SET_FILTER':
       return {
@@ -213,10 +213,10 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
       return { ...state, selectedItemIndex: next, detailTabIndex: 0, detailScrollOffset: 0 };
     }
 
-    case 'CHANGELOG_SCROLL':
+    case 'OVERLAY_SCROLL':
       return {
         ...state,
-        changelogScrollOffset: Math.max(0, state.changelogScrollOffset + action.delta),
+        overlayScrollOffset: Math.max(0, state.overlayScrollOffset + action.delta),
       };
 
     case 'TOGGLE_MOUSE':
@@ -245,7 +245,7 @@ export const initialState: DashboardUIState = {
   toasts: [],
   hasReceivedEvents: false,
   contextMenuIndex: 0,
-  changelogScrollOffset: 0,
+  overlayScrollOffset: 0,
   renderTick: 0,
   mouseEnabled: true,
 };

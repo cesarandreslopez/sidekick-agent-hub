@@ -191,6 +191,10 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   if (state.overlay === 'help') {
     if (key.escape || input === '?' || input === 'q') {
       dispatch({ type: 'SET_OVERLAY', overlay: null });
+    } else if (input === 'j' || key.downArrow) {
+      dispatch({ type: 'OVERLAY_SCROLL', delta: 1 });
+    } else if (input === 'k' || key.upArrow) {
+      dispatch({ type: 'OVERLAY_SCROLL', delta: -1 });
     }
     return;
   }
@@ -200,9 +204,9 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     if (key.escape || input === 'V' || input === 'q') {
       dispatch({ type: 'SET_OVERLAY', overlay: null });
     } else if (input === 'j' || key.downArrow) {
-      dispatch({ type: 'CHANGELOG_SCROLL', delta: 1 });
+      dispatch({ type: 'OVERLAY_SCROLL', delta: 1 });
     } else if (input === 'k' || key.upArrow) {
-      dispatch({ type: 'CHANGELOG_SCROLL', delta: -1 });
+      dispatch({ type: 'OVERLAY_SCROLL', delta: -1 });
     }
     return;
   }

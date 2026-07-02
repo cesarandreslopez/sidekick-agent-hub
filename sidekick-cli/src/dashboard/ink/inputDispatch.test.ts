@@ -237,12 +237,17 @@ describe('context menu overlay', () => {
 });
 
 describe('help and changelog overlays', () => {
-  it("'?' closes the help overlay; other keys are inert", () => {
+  it("help overlay scrolls with j/k, ignores other keys, closes with '?'", () => {
     const { ctx, dispatched } = makeCtx({ overlay: 'help' });
     handleDashboardInput('j', makeKey(), ctx);
-    expect(dispatched).toEqual([]);
+    handleDashboardInput('k', makeKey(), ctx);
+    handleDashboardInput('x', makeKey(), ctx);
+    expect(dispatched).toEqual([
+      { type: 'OVERLAY_SCROLL', delta: 1 },
+      { type: 'OVERLAY_SCROLL', delta: -1 },
+    ]);
     handleDashboardInput('?', makeKey(), ctx);
-    expect(dispatched).toEqual([{ type: 'SET_OVERLAY', overlay: null }]);
+    expect(dispatched.at(-1)).toEqual({ type: 'SET_OVERLAY', overlay: null });
   });
 
   it('changelog scrolls with j/k and closes with V', () => {
@@ -251,8 +256,8 @@ describe('help and changelog overlays', () => {
     handleDashboardInput('k', makeKey(), ctx);
     handleDashboardInput('V', makeKey(), ctx);
     expect(dispatched).toEqual([
-      { type: 'CHANGELOG_SCROLL', delta: 1 },
-      { type: 'CHANGELOG_SCROLL', delta: -1 },
+      { type: 'OVERLAY_SCROLL', delta: 1 },
+      { type: 'OVERLAY_SCROLL', delta: -1 },
       { type: 'SET_OVERLAY', overlay: null },
     ]);
   });
