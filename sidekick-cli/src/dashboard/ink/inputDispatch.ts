@@ -3,11 +3,48 @@
  * Extracted from Dashboard.tsx's useInput callback so key handling is
  * unit-testable without a renderer. All state reads/writes flow through
  * the ctx object; this module owns no state of its own.
+ *
+ * Dispatch is tiered; earlier tiers always win:
+ *   0. Ctrl+C — hard exit, unconditional.
+ *   1. Active overlay — owns the whole key namespace (the filter overlay
+ *      consumes every printable character, including 'q').
+ *   2. Structural globals panels may never shadow: q / Esc / ? / digits.
+ *      These also work on the splash screen.
+ *   3. Focus toggle (Tab) and filter open (/) — require session data.
+ *   4. Panel layer — panel-declared keybindings, then action shortcuts,
+ *      both honoring their conditions. Reserved keys are ignored here so a
+ *      panel can never brick quit/help/navigation.
+ *   5. Shadowable global letters: z V r p s f x [ ].
+ *   6. Focus-dependent navigation: j k g G h Enter and arrows.
  */
 
 import type { Key } from 'ink';
 import type { Action, DashboardUIState, LayoutMode } from './dashboardReducer';
 import type { PanelAction, PanelItem, SidePanel } from '../panels/types';
+
+/**
+ * Keys panels are not allowed to bind: core navigation, quit, help, filter,
+ * and panel-switch digits. Panel bindings/actions on these are ignored.
+ */
+const RESERVED_KEYS = new Set([
+  'j',
+  'k',
+  'g',
+  'G',
+  'h',
+  'q',
+  '?',
+  '/',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+]);
 
 /** Subset of useWindowedScroll's API used by keyboard navigation. */
 export interface SideScrollControls {
@@ -67,17 +104,15 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     onSessionSwitch,
   } = ctx;
 
-  // Quit
-  if (input === 'q' || (key.ctrl && input === 'c')) {
-    if (state.overlay) {
-      dispatch({ type: 'SET_OVERLAY', overlay: null });
-      return;
-    }
+  // ── Tier 0: Ctrl+C always exits, even with an overlay open ──
+  if (key.ctrl && input === 'c') {
     exit();
     return;
   }
 
-  // Filter overlay captures all input
+  // ── Tier 1: active overlay owns the key namespace ──
+
+  // Filter overlay captures all input (including 'q' as a printable char)
   if (state.overlay === 'filter') {
     if (key.escape) {
       dispatch({ type: 'SET_FILTER', value: '' });
@@ -105,7 +140,7 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
 
   // Context menu overlay
   if (state.overlay === 'context-menu') {
-    if (key.escape) {
+    if (key.escape || input === 'q') {
       dispatch({ type: 'SET_OVERLAY', overlay: null });
       return;
     }
@@ -150,7 +185,7 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
 
   // Help overlay
   if (state.overlay === 'help') {
-    if (key.escape || input === '?') {
+    if (key.escape || input === '?' || input === 'q') {
       dispatch({ type: 'SET_OVERLAY', overlay: null });
     }
     return;
@@ -158,7 +193,7 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
 
   // Changelog overlay
   if (state.overlay === 'changelog') {
-    if (key.escape || input === 'V') {
+    if (key.escape || input === 'V' || input === 'q') {
       dispatch({ type: 'SET_OVERLAY', overlay: null });
     } else if (input === 'j' || key.downArrow) {
       dispatch({ type: 'CHANGELOG_SCROLL', delta: 1 });
@@ -168,7 +203,13 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     return;
   }
 
-  // ── Global keys (no overlay) ──
+  // ── Tier 2: structural globals (work on the splash screen too) ──
+
+  // Quit
+  if (input === 'q') {
+    exit();
+    return;
+  }
 
   // Escape
   if (key.escape) {
@@ -189,18 +230,6 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     return;
   }
 
-  // Changelog toggle
-  if (input === 'V') {
-    dispatch({ type: 'SET_OVERLAY', overlay: 'changelog' });
-    return;
-  }
-
-  // Generate HTML report
-  if (input === 'r') {
-    onGenerateReport?.();
-    return;
-  }
-
   // Panel switching (1-9)
   const num = parseInt(input, 10);
   if (num >= 1 && num <= panels.length) {
@@ -216,11 +245,51 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
 
   if (!state.hasReceivedEvents) return;
 
-  // Tab toggle focus
+  // ── Tier 3: focus toggle and filter open ──
+
   if (key.tab) {
     dispatch({ type: 'TOGGLE_FOCUS' });
     return;
   }
+
+  if (input === '/') {
+    dispatch({ type: 'SET_OVERLAY', overlay: 'filter' });
+    return;
+  }
+
+  // ── Tier 4: panel layer — declared bindings win over shadowable globals ──
+
+  if (input && !RESERVED_KEYS.has(input)) {
+    const bindings = panel.getKeybindings?.() || [];
+    const bindingMatch = bindings.find(
+      (b) => b.keys.includes(input) && (!b.condition || b.condition(selectedItem)),
+    );
+    if (bindingMatch) {
+      bindingMatch.handler(selectedItem);
+      dispatch({ type: 'TICK' });
+      return;
+    }
+
+    if (selectedItem) {
+      const actions = panel.getActions();
+      const actionMatch = actions.find(
+        (a) => a.key === input && (!a.condition || a.condition(selectedItem)),
+      );
+      if (actionMatch) {
+        const msg = actionMatch.handler(selectedItem);
+        if (typeof msg === 'string')
+          addToast(
+            msg,
+            msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
+              ? 'error'
+              : 'info',
+          );
+        return;
+      }
+    }
+  }
+
+  // ── Tier 5: shadowable global letters ──
 
   // Layout cycling
   if (input === 'z') {
@@ -237,9 +306,15 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     return;
   }
 
-  // Filter
-  if (input === '/') {
-    dispatch({ type: 'SET_OVERLAY', overlay: 'filter' });
+  // Changelog toggle
+  if (input === 'V') {
+    dispatch({ type: 'SET_OVERLAY', overlay: 'changelog' });
+    return;
+  }
+
+  // Generate HTML report
+  if (input === 'r') {
+    onGenerateReport?.();
     return;
   }
 
@@ -280,7 +355,8 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     return;
   }
 
-  // Navigation
+  // ── Tier 6: focus-dependent navigation ──
+
   if (state.focusTarget === 'side') {
     if (input === 'j' || key.downArrow) {
       if (clampedSelection < currentItemCount - 1) {
@@ -345,35 +421,6 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
         offset: Math.max(0, detailLineCount - detailViewportHeight),
       });
       return;
-    }
-  }
-
-  // Panel-specific keybindings
-  const bindings = panel.getKeybindings?.() || [];
-  const bindingMatch = bindings.find(
-    (b) => b.keys.includes(input) && (!b.condition || b.condition(selectedItem)),
-  );
-  if (bindingMatch) {
-    bindingMatch.handler(selectedItem);
-    dispatch({ type: 'TICK' });
-    return;
-  }
-
-  // Panel action shortcuts
-  if (selectedItem) {
-    const actions = panel.getActions();
-    const actionMatch = actions.find(
-      (a) => a.key === input && (!a.condition || a.condition(selectedItem)),
-    );
-    if (actionMatch) {
-      const msg = actionMatch.handler(selectedItem);
-      if (typeof msg === 'string')
-        addToast(
-          msg,
-          msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
-            ? 'error'
-            : 'info',
-        );
     }
   }
 }

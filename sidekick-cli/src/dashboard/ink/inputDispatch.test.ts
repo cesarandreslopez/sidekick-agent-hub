@@ -1,9 +1,7 @@
 /**
- * Characterization tests for the dashboard keyboard dispatch.
- *
- * These pin the CURRENT dispatch behavior so the input-pipeline reorder can
- * land as a small, fully covered diff. Cases marked CHARACTERIZATION document
- * known-buggy behavior on purpose; the reorder commit updates them.
+ * Tests for the tiered dashboard keyboard dispatch:
+ * Ctrl+C > active overlay > structural globals > panel layer > shadowable
+ * globals > navigation. See inputDispatch.ts for the tier definitions.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -120,22 +118,18 @@ describe('quit handling', () => {
     expect(dispatched).toEqual([{ type: 'SET_OVERLAY', overlay: null }]);
   });
 
-  // CHARACTERIZATION (bug): 'q' cannot be typed into the filter — the quit
-  // check runs before the filter-capture branch and closes the overlay.
-  it("'q' with filter overlay currently closes the overlay (not typed)", () => {
+  it("'q' with filter overlay is typed into the filter, not treated as quit", () => {
     const { ctx, exit, dispatched } = makeCtx({ overlay: 'filter', filterString: 's' });
     handleDashboardInput('q', makeKey(), ctx);
     expect(exit).not.toHaveBeenCalled();
-    expect(dispatched).toEqual([{ type: 'SET_OVERLAY', overlay: null }]);
+    expect(dispatched).toEqual([{ type: 'SET_FILTER', value: 'sq' }]);
   });
 
-  // CHARACTERIZATION: Ctrl+C with an overlay open currently only closes the
-  // overlay rather than exiting.
-  it('Ctrl+C with overlay currently closes overlay, no exit', () => {
+  it('Ctrl+C exits even with an overlay open', () => {
     const { ctx, exit, dispatched } = makeCtx({ overlay: 'changelog' });
     handleDashboardInput('c', makeKey({ ctrl: true }), ctx);
-    expect(exit).not.toHaveBeenCalled();
-    expect(dispatched).toEqual([{ type: 'SET_OVERLAY', overlay: null }]);
+    expect(exit).toHaveBeenCalledOnce();
+    expect(dispatched).toEqual([]);
   });
 
   it('Ctrl+C with no overlay exits', () => {
@@ -230,6 +224,16 @@ describe('context menu overlay', () => {
     handleDashboardInput('', makeKey({ escape: true }), ctx);
     expect(dispatched).toEqual([{ type: 'SET_OVERLAY', overlay: null }]);
   });
+
+  it("'q' closes the menu without exiting or running actions", () => {
+    const { ctx, dispatched, exit } = makeCtx(
+      { overlay: 'context-menu' },
+      { contextActions: actions, selectedItem: item },
+    );
+    handleDashboardInput('q', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'SET_OVERLAY', overlay: null }]);
+    expect(exit).not.toHaveBeenCalled();
+  });
 });
 
 describe('help and changelog overlays', () => {
@@ -251,6 +255,13 @@ describe('help and changelog overlays', () => {
       { type: 'CHANGELOG_SCROLL', delta: -1 },
       { type: 'SET_OVERLAY', overlay: null },
     ]);
+  });
+
+  it("'q' closes the changelog overlay without exiting", () => {
+    const { ctx, dispatched, exit } = makeCtx({ overlay: 'changelog' });
+    handleDashboardInput('q', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'SET_OVERLAY', overlay: null }]);
+    expect(exit).not.toHaveBeenCalled();
   });
 });
 
@@ -336,13 +347,20 @@ describe('global keys', () => {
 });
 
 describe('splash screen (hasReceivedEvents=false)', () => {
-  it('most keys are gated off', () => {
-    const { ctx, dispatched, toggleSessionFilter } = makeCtx({ hasReceivedEvents: false });
+  it('most keys are gated off, including V and r', () => {
+    const onGenerateReport = vi.fn();
+    const { ctx, dispatched, toggleSessionFilter } = makeCtx(
+      { hasReceivedEvents: false },
+      { onGenerateReport },
+    );
     handleDashboardInput('z', makeKey(), ctx);
     handleDashboardInput('/', makeKey(), ctx);
     handleDashboardInput('f', makeKey(), ctx);
+    handleDashboardInput('V', makeKey(), ctx);
+    handleDashboardInput('r', makeKey(), ctx);
     expect(dispatched).toEqual([]);
     expect(toggleSessionFilter).not.toHaveBeenCalled();
+    expect(onGenerateReport).not.toHaveBeenCalled();
   });
 
   it('digits 1-2 are blocked; higher panels force FIRST_EVENT', () => {
@@ -357,7 +375,7 @@ describe('splash screen (hasReceivedEvents=false)', () => {
     ]);
   });
 
-  // CHARACTERIZATION: '?', 'V', 'r', and 'q' run before the splash gate.
+  // Structural keys stay usable on the splash screen.
   it("'?' and 'q' still work on the splash screen", () => {
     const { ctx, dispatched, exit } = makeCtx({ hasReceivedEvents: false });
     handleDashboardInput('?', makeKey(), ctx);
@@ -368,13 +386,28 @@ describe('splash screen (hasReceivedEvents=false)', () => {
 });
 
 describe('panel keybindings and action shortcuts', () => {
-  // CHARACTERIZATION (bug): the global 'f' session filter fires before
-  // panel-declared bindings, so a panel's own 'f' binding is unreachable.
-  it("global 'f' currently shadows a panel-declared 'f' binding", () => {
+  it("a panel-declared 'f' binding wins over the global session filter when its condition holds", () => {
     const handler = vi.fn();
     const panels = [
       makePanel({
         bindings: [{ keys: ['f'], label: 'Filter nodes', handler, condition: () => true }],
+      }),
+    ];
+    const { ctx, dispatched, toggleSessionFilter } = makeCtx(
+      {},
+      { panels, panel: panels[0], selectedItem: item },
+    );
+    handleDashboardInput('f', makeKey(), ctx);
+    expect(handler).toHaveBeenCalledWith(item);
+    expect(dispatched).toEqual([{ type: 'TICK' }]);
+    expect(toggleSessionFilter).not.toHaveBeenCalled();
+  });
+
+  it("global 'f' fires when the panel binding's condition is false", () => {
+    const handler = vi.fn();
+    const panels = [
+      makePanel({
+        bindings: [{ keys: ['f'], label: 'Filter nodes', handler, condition: () => false }],
       }),
     ];
     const { ctx, toggleSessionFilter } = makeCtx(
@@ -382,13 +415,11 @@ describe('panel keybindings and action shortcuts', () => {
       { panels, panel: panels[0], selectedItem: item },
     );
     handleDashboardInput('f', makeKey(), ctx);
-    expect(toggleSessionFilter).toHaveBeenCalledOnce();
     expect(handler).not.toHaveBeenCalled();
+    expect(toggleSessionFilter).toHaveBeenCalledOnce();
   });
 
-  // CHARACTERIZATION (bug): same shadowing class for the global 's'
-  // pending-session switch vs a panel's 's' binding.
-  it("global 's' currently shadows a panel-declared 's' binding when a pending session exists", () => {
+  it("a panel-declared 's' binding wins over the global pending-session switch", () => {
     const handler = vi.fn();
     const onSessionSwitch = vi.fn();
     const panels = [makePanel({ bindings: [{ keys: ['s'], label: 'Sort', handler }] })];
@@ -397,8 +428,40 @@ describe('panel keybindings and action shortcuts', () => {
       { panels, panel: panels[0], pendingSessionPath: '/tmp/s.jsonl', onSessionSwitch },
     );
     handleDashboardInput('s', makeKey(), ctx);
-    expect(onSessionSwitch).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalled();
+    expect(onSessionSwitch).not.toHaveBeenCalled();
+  });
+
+  it("a panel binding can shadow the global 'z' layout toggle", () => {
+    const handler = vi.fn();
+    const panels = [makePanel({ bindings: [{ keys: ['z'], label: 'Zoom', handler }] })];
+    const { ctx, dispatched } = makeCtx({}, { panels, panel: panels[0] });
+    handleDashboardInput('z', makeKey(), ctx);
+    expect(handler).toHaveBeenCalled();
+    expect(dispatched).toEqual([{ type: 'TICK' }]);
+  });
+
+  it('panel bindings on reserved keys are ignored (q still quits)', () => {
+    const handler = vi.fn();
+    const panels = [makePanel({ bindings: [{ keys: ['q'], label: 'Quit hijack', handler }] })];
+    const { ctx, exit } = makeCtx({}, { panels, panel: panels[0], selectedItem: item });
+    handleDashboardInput('q', makeKey(), ctx);
     expect(handler).not.toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledOnce();
+  });
+
+  it('panel actions on reserved navigation keys are ignored (j still navigates)', () => {
+    const actionHandler = vi.fn(() => 'hijacked');
+    const panels = [
+      makePanel({ actions: [{ key: 'j', label: 'Hijack', handler: actionHandler }] }),
+    ];
+    const { ctx, dispatched } = makeCtx(
+      {},
+      { panels, panel: panels[0], selectedItem: item, currentItemCount: 3, clampedSelection: 0 },
+    );
+    handleDashboardInput('j', makeKey(), ctx);
+    expect(actionHandler).not.toHaveBeenCalled();
+    expect(dispatched).toEqual([{ type: 'SELECT_ITEM', index: 1 }]);
   });
 
   it('a panel binding on a free key fires and ticks', () => {
