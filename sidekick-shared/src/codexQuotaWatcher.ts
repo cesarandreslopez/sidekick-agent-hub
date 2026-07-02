@@ -225,26 +225,31 @@ export class CodexQuotaWatcher implements Disposable {
     }
 
     const account = this.getActiveAccount();
+    const cached = account ? this.readSnapshot('codex', account.id) : null;
+    const liveQuotaWithResetCredits: QuotaState = {
+      ...liveQuota,
+      resetCredits: liveQuota.resetCredits ?? cached?.resetCredits,
+    };
     if (account) {
-      this.writeSnapshot('codex', account.id, liveQuota);
+      this.writeSnapshot('codex', account.id, liveQuotaWithResetCredits);
       if (this.workspaceId) {
         const sample: QuotaHistorySample = {
-          timestamp: liveQuota.capturedAt ?? new Date().toISOString(),
+          timestamp: liveQuotaWithResetCredits.capturedAt ?? new Date().toISOString(),
           runtimeProvider: 'codex',
           providerId: account.id,
           workspaceId: this.workspaceId,
           fiveHour: {
-            utilization: liveQuota.fiveHour.utilization,
-            resetsAt: liveQuota.fiveHour.resetsAt,
+            utilization: liveQuotaWithResetCredits.fiveHour.utilization,
+            resetsAt: liveQuotaWithResetCredits.fiveHour.resetsAt,
           },
           sevenDay: {
-            utilization: liveQuota.sevenDay.utilization,
-            resetsAt: liveQuota.sevenDay.resetsAt,
+            utilization: liveQuotaWithResetCredits.sevenDay.utilization,
+            resetsAt: liveQuotaWithResetCredits.sevenDay.resetsAt,
           },
-          available: liveQuota.available,
-          error: liveQuota.error,
-          source: liveQuota.source,
-          stale: liveQuota.stale,
+          available: liveQuotaWithResetCredits.available,
+          error: liveQuotaWithResetCredits.error,
+          source: liveQuotaWithResetCredits.source,
+          stale: liveQuotaWithResetCredits.stale,
         };
         try {
           const result = this.appendHistorySample(sample);
@@ -262,7 +267,7 @@ export class CodexQuotaWatcher implements Disposable {
     this.emitState(
       enrichQuotaState(
         {
-          ...liveQuota,
+          ...liveQuotaWithResetCredits,
           runtimeProvider: 'codex',
           providerId: 'codex',
         },

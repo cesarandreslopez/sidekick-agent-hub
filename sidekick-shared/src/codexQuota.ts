@@ -6,7 +6,7 @@ import {
   resolveSidekickCodexHome,
 } from './codexProfiles';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
-import type { QuotaState } from './quota';
+import type { CodexResetCreditsSnapshot, QuotaState } from './quota';
 import { FIVE_HOUR_WINDOW_MS, SEVEN_DAY_WINDOW_MS, withQuotaProjections } from './quota';
 import { CodexProvider } from './providers/codex';
 import type { ProviderQuotaState } from './providerQuota';
@@ -17,6 +17,7 @@ import { isAggregateCodexLimit } from './types/codex';
 const DEFAULT_TAIL_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_SESSION_FILES = 50;
 const CHATGPT_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
+const CHATGPT_RESET_CREDITS_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits';
 
 type SnapshotReader = (providerId: 'codex', accountId: string) => QuotaState | null;
 type SnapshotWriter = (providerId: 'codex', accountId: string, quota: QuotaState) => void;
@@ -46,8 +47,10 @@ export interface CodexQuotaResolveOptions {
 export interface CodexQuotaApiOptions {
   codexHome?: string;
   accessToken?: string;
+  accountId?: string;
   fetchImpl?: typeof fetch;
   usageUrl?: string;
+  resetCreditsUrl?: string;
   capturedAt?: string;
 }
 
@@ -56,7 +59,13 @@ interface CodexAuthJson {
   OPENAI_API_KEY?: string;
   tokens?: {
     access_token?: string;
+    account_id?: string;
   };
+}
+
+interface CodexAuthCredentials {
+  accessToken: string;
+  accountId?: string;
 }
 
 interface CodexUsageApiPayload {
@@ -93,6 +102,20 @@ interface CodexUsageApiCredits {
   hasCredits?: boolean;
   unlimited?: boolean;
   balance?: string | null;
+}
+
+interface CodexResetCreditsApiPayload {
+  available_count?: number | null;
+  total_earned_count?: number | null;
+  credits?: CodexResetCreditsApiCredit[] | null;
+}
+
+interface CodexResetCreditsApiCredit {
+  title?: string | null;
+  status?: string | null;
+  reset_type?: string | null;
+  expires_at?: string | null;
+  granted_at?: string | null;
 }
 
 interface RolloutQuotaHit {
@@ -225,6 +248,43 @@ function normalizeCredits(
     hasCredits: credits.has_credits ?? credits.hasCredits,
     unlimited: credits.unlimited,
     balance: credits.balance ?? undefined,
+  };
+}
+
+function normalizeCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeResetCreditsPayload(
+  payload: CodexResetCreditsApiPayload,
+  capturedAt: string,
+): CodexResetCreditsSnapshot {
+  const credits = Array.isArray(payload.credits)
+    ? payload.credits.flatMap((credit) => {
+        const status = firstString(credit.status);
+        const expiresAt = firstString(credit.expires_at);
+        if (!status || !expiresAt) return [];
+        return [
+          {
+            title: firstString(credit.title),
+            status,
+            resetType: firstString(credit.reset_type),
+            expiresAt,
+            grantedAt: firstString(credit.granted_at),
+          },
+        ];
+      })
+    : [];
+
+  return {
+    availableCount: normalizeCount(payload.available_count),
+    totalEarnedCount:
+      typeof payload.total_earned_count === 'number' && Number.isFinite(payload.total_earned_count)
+        ? payload.total_earned_count
+        : undefined,
+    credits,
+    source: 'api',
+    capturedAt,
   };
 }
 
@@ -501,8 +561,11 @@ export async function fetchCodexQuotaFromApi(
   options: CodexQuotaApiOptions = {},
 ): Promise<QuotaState> {
   const capturedAt = options.capturedAt ?? new Date().toISOString();
-  const accessToken =
-    options.accessToken ?? readCodexAccessToken(options.codexHome ?? resolveSidekickCodexHome());
+  const auth =
+    options.accessToken != null
+      ? { accessToken: options.accessToken, accountId: options.accountId }
+      : readCodexAuth(options.codexHome ?? resolveSidekickCodexHome());
+  const accessToken = auth?.accessToken;
 
   if (!accessToken) {
     return {
@@ -572,6 +635,15 @@ export async function fetchCodexQuotaFromApi(
         sevenDayLabel: 'Secondary',
       };
     }
+    const resetCredits = await fetchCodexResetCreditsFromApi({
+      ...options,
+      accessToken,
+      accountId: auth?.accountId,
+      capturedAt,
+    });
+    if (resetCredits) {
+      quota.resetCredits = resetCredits;
+    }
     return quota;
   } catch {
     return {
@@ -589,13 +661,55 @@ export async function fetchCodexQuotaFromApi(
   }
 }
 
-function readCodexAccessToken(codexHome: string): string | null {
+export async function fetchCodexResetCreditsFromApi(
+  options: CodexQuotaApiOptions = {},
+): Promise<CodexResetCreditsSnapshot | undefined> {
+  const capturedAt = options.capturedAt ?? new Date().toISOString();
+  const auth =
+    options.accessToken != null
+      ? { accessToken: options.accessToken, accountId: options.accountId }
+      : readCodexAuth(options.codexHome ?? resolveSidekickCodexHome());
+  const accessToken = auth?.accessToken;
+  if (!accessToken) return undefined;
+
+  try {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      originator: 'Codex Desktop',
+      'OAI-Product-Sku': 'CODEX',
+      Accept: 'application/json',
+    };
+    if (auth?.accountId) {
+      headers['ChatGPT-Account-ID'] = auth.accountId;
+    }
+    const response = await fetchImpl(options.resetCreditsUrl ?? CHATGPT_RESET_CREDITS_URL, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) return undefined;
+
+    return normalizeResetCreditsPayload(
+      (await response.json()) as CodexResetCreditsApiPayload,
+      capturedAt,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function readCodexAuth(codexHome: string): CodexAuthCredentials | null {
   try {
     const parsed = JSON.parse(
       fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'),
     ) as CodexAuthJson;
     if (parsed.OPENAI_API_KEY || parsed.auth_mode === 'api_key') return null;
-    return parsed.tokens?.access_token || null;
+    const accessToken = parsed.tokens?.access_token;
+    if (!accessToken) return null;
+    return {
+      accessToken,
+      accountId: parsed.tokens?.account_id,
+    };
   } catch {
     return null;
   }

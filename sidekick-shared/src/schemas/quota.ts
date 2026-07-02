@@ -10,7 +10,12 @@
  */
 
 import { z } from 'zod';
-import type { QuotaWindow, QuotaState } from '../quota';
+import type {
+  CodexResetCredit,
+  CodexResetCreditsSnapshot,
+  QuotaWindow,
+  QuotaState,
+} from '../quota';
 import type { PeakHoursState } from '../peakHours';
 import type { QuotaFailureDescriptor } from '../quotaPresentation';
 import type { ProviderQuotaState, ProviderQuotaMap, RuntimeQuotaProvider } from '../providerQuota';
@@ -40,6 +45,22 @@ export const quotaSourceSchema = z.enum(['api', 'session', 'cache']) satisfies z
   NonNullable<QuotaState['source']>
 >;
 
+export const codexResetCreditSchema = z.object({
+  title: z.string().optional(),
+  status: z.string(),
+  resetType: z.string().optional(),
+  expiresAt: z.string(),
+  grantedAt: z.string().optional(),
+}) satisfies z.ZodType<CodexResetCredit>;
+
+export const codexResetCreditsSnapshotSchema = z.object({
+  availableCount: z.number(),
+  totalEarnedCount: z.number().optional(),
+  credits: z.array(codexResetCreditSchema),
+  source: z.enum(['api', 'cache']).optional(),
+  capturedAt: z.string().optional(),
+}) satisfies z.ZodType<CodexResetCreditsSnapshot>;
+
 export const quotaStateSchema = z.object({
   fiveHour: quotaWindowSchema,
   sevenDay: quotaWindowSchema,
@@ -59,6 +80,7 @@ export const quotaStateSchema = z.object({
   limitId: z.string().optional(),
   limitName: z.string().optional(),
   credits: z.unknown().optional(),
+  resetCredits: codexResetCreditsSnapshotSchema.optional(),
   planType: z.string().optional(),
   rateLimitReachedType: z.string().optional(),
 }) satisfies z.ZodType<QuotaState>;

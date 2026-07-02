@@ -6,6 +6,7 @@ import {
   CodexProvider,
   appendQuotaHistorySample,
   getActiveCodexAccount,
+  readQuotaSnapshot,
   resolveActiveCodexAccount,
   quotaFromCodexRateLimits,
   writeQuotaSnapshot,
@@ -23,21 +24,32 @@ export class CodexSessionProvider extends CodexProvider implements SessionProvid
     // key and the displayed account track the currently logged-in Codex account.
     resolveActiveCodexAccount();
     const active = getActiveCodexAccount();
+    const cached = active ? readQuotaSnapshot('codex', active.id) : null;
+    const quotaWithResetCredits = {
+      ...quota,
+      resetCredits: quota.resetCredits ?? cached?.resetCredits,
+    };
     if (active) {
-      writeQuotaSnapshot('codex', active.id, quota);
+      writeQuotaSnapshot('codex', active.id, quotaWithResetCredits);
       const workspaceId = getWorkspaceId();
       if (workspaceId) {
         void appendQuotaHistorySample({
-          timestamp: quota.capturedAt ?? new Date().toISOString(),
+          timestamp: quotaWithResetCredits.capturedAt ?? new Date().toISOString(),
           runtimeProvider: 'codex',
           providerId: active.id,
           workspaceId,
-          fiveHour: { utilization: quota.fiveHour.utilization, resetsAt: quota.fiveHour.resetsAt },
-          sevenDay: { utilization: quota.sevenDay.utilization, resetsAt: quota.sevenDay.resetsAt },
-          available: quota.available,
-          error: quota.error,
-          source: quota.source,
-          stale: quota.stale,
+          fiveHour: {
+            utilization: quotaWithResetCredits.fiveHour.utilization,
+            resetsAt: quotaWithResetCredits.fiveHour.resetsAt,
+          },
+          sevenDay: {
+            utilization: quotaWithResetCredits.sevenDay.utilization,
+            resetsAt: quotaWithResetCredits.sevenDay.resetsAt,
+          },
+          available: quotaWithResetCredits.available,
+          error: quotaWithResetCredits.error,
+          source: quotaWithResetCredits.source,
+          stale: quotaWithResetCredits.stale,
         }).catch(() => {
           // History append must not poison the session quota path.
         });
@@ -45,7 +57,7 @@ export class CodexSessionProvider extends CodexProvider implements SessionProvid
     }
 
     return {
-      ...quota,
+      ...quotaWithResetCredits,
       accountLabel: active?.label,
       accountDetail: active?.email,
     };

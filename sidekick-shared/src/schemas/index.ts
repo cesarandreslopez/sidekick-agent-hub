@@ -31,6 +31,8 @@ export {
   quotaFailureKindSchema,
   quotaProviderIdSchema,
   quotaSourceSchema,
+  codexResetCreditSchema,
+  codexResetCreditsSnapshotSchema,
   peakHoursStateSchema,
   quotaFailureDescriptorSchema,
   runtimeQuotaProviderSchema,
@@ -40,7 +42,12 @@ export {
   zaiProviderQuotaStateSchema,
   providerQuotaMapSchema,
 } from './quota';
-export type { QuotaWindow, QuotaState } from '../quota';
+export type {
+  CodexResetCredit,
+  CodexResetCreditsSnapshot,
+  QuotaWindow,
+  QuotaState,
+} from '../quota';
 export type { PeakHoursState } from '../peakHours';
 export type { QuotaFailureDescriptor } from '../quotaPresentation';
 export type { ProviderQuotaState, ProviderQuotaMap, RuntimeQuotaProvider } from '../providerQuota';

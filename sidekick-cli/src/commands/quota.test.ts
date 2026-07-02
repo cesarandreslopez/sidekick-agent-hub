@@ -499,6 +499,35 @@ describe('quotaAction', () => {
       sevenDayLabel: 'Secondary',
       projectedFiveHour: 10,
       projectedSevenDay: 36,
+      resetCredits: {
+        availableCount: 2,
+        totalEarnedCount: 3,
+        source: 'api',
+        capturedAt: '2026-07-02T12:00:00Z',
+        credits: [
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'available',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-26T23:06:33.770323Z',
+            grantedAt: '2026-06-26T23:06:33.770323Z',
+          },
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'used',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-20T23:06:33.770323Z',
+            grantedAt: '2026-06-20T23:06:33.770323Z',
+          },
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'AVAILABLE',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-31T19:46:05.257719Z',
+            grantedAt: '2026-07-01T19:46:05.257719Z',
+          },
+        ],
+      },
     });
 
     const { quotaAction } = await import('./quota');
@@ -515,6 +544,11 @@ describe('quotaAction', () => {
     expect(stdoutData).toContain('Secondary');
     expect(stdoutData).toContain('30%');
     expect(stdoutData).toContain('36%');
+    expect(stdoutData).toContain('Reset Credits');
+    expect(stdoutData).toContain('2 available');
+    expect(stdoutData).toContain('2026-07-26T23:06:33.770323Z');
+    expect(stdoutData).toContain('2026-07-31T19:46:05.257719Z');
+    expect(stdoutData).not.toContain('2026-07-20T23:06:33.770323Z');
   });
 
   it('uses explicit API Codex quota refresh with --refresh', async () => {
@@ -639,6 +673,19 @@ describe('quotaAction', () => {
       sevenDay: { utilization: 1, resetsAt: '2026-05-26T15:00:00Z' },
       available: true,
       source: 'session',
+      resetCredits: {
+        availableCount: 1,
+        source: 'api',
+        capturedAt: '2026-07-02T12:00:00Z',
+        credits: [
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'available',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-26T23:06:33.770323Z',
+          },
+        ],
+      },
     });
 
     const { quotaAction } = await import('./quota');
@@ -649,6 +696,8 @@ describe('quotaAction', () => {
     expect(parsed.claude.fiveHour.utilization).toBe(40);
     expect(parsed.codex.available).toBe(true);
     expect(parsed.codex.fiveHour.utilization).toBe(6);
+    expect(parsed.codex.resetCredits.availableCount).toBe(1);
+    expect(parsed.codex.resetCredits.credits[0].expiresAt).toBe('2026-07-26T23:06:33.770323Z');
     expect(parsed.zai.available).toBe(true);
     expect(parsed.zai.sevenDay.utilization).toBe(20);
     expect(mockResolveProvider).not.toHaveBeenCalled();

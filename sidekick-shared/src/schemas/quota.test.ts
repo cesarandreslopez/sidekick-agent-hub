@@ -69,6 +69,28 @@ describe('quotaStateSchema', () => {
       limitId: 'codex-primary',
       limitName: 'Primary window',
       credits: { remaining: 12.5 },
+      resetCredits: {
+        availableCount: 2,
+        totalEarnedCount: 3,
+        source: 'api',
+        capturedAt: '2026-06-09T08:00:00Z',
+        credits: [
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'available',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-26T23:06:33.770323Z',
+            grantedAt: '2026-06-26T23:06:33.770323Z',
+          },
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'available',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-31T19:46:05.257719Z',
+            grantedAt: '2026-07-01T19:46:05.257719Z',
+          },
+        ],
+      },
       planType: 'pro',
       rateLimitReachedType: 'secondary',
     };

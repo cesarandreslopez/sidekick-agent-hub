@@ -74,6 +74,7 @@ import {
   resolveActiveCodexAccount,
   readQuotaSnapshot,
   readQuotaHistoryDailyBuckets,
+  resolveCodexQuota,
   resolveCodexQuotaFromLocalSources,
   scopePeakHoursToSessionProvider,
 } from 'sidekick-shared';
@@ -1685,14 +1686,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private async _sendProviderQuotaToWebview(): Promise<void> {
     const provider = this._sessionMonitor.getProvider();
     try {
-      const sessionQuota = await Promise.resolve(provider.getQuotaFromSession?.() ?? null);
-      if (sessionQuota) {
-        this._handleQuotaUpdate(sessionQuota);
+      if (provider.id === 'codex') {
+        this._handleQuotaUpdate(await this._getCodexQuota());
         return;
       }
 
-      if (provider.id === 'codex') {
-        this._handleQuotaUpdate(this._getCodexLocalQuota());
+      const sessionQuota = await Promise.resolve(provider.getQuotaFromSession?.() ?? null);
+      if (sessionQuota) {
+        this._handleQuotaUpdate(sessionQuota);
         return;
       }
 
@@ -1712,6 +1713,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       });
     } catch (error) {
       logError('Dashboard failed to resolve provider quota', error);
+    }
+  }
+
+  private async _getCodexQuota(): Promise<DashboardQuotaState> {
+    // Self-heal the saved active pointer to the live login before keying/labeling.
+    resolveActiveCodexAccount();
+    const activeCodexAccount = getActiveCodexAccount();
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    try {
+      return await resolveCodexQuota({
+        workspacePath,
+        activeAccount: activeCodexAccount,
+        source: 'api',
+      });
+    } catch (error) {
+      logError('Failed to refresh Codex quota from API', error);
+      return this._getCodexLocalQuota();
     }
   }
 
@@ -3832,6 +3851,30 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       color: var(--vscode-editorError-foreground);
     }
 
+    .quota-reset-credits {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid var(--vscode-input-border);
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.35;
+    }
+
+    .quota-reset-credits-title {
+      color: var(--vscode-foreground);
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+
+    .quota-reset-credits-list {
+      display: grid;
+      gap: 2px;
+    }
+
+    .quota-reset-credit {
+      overflow-wrap: anywhere;
+    }
+
     .section-title-with-info {
       display: flex;
       align-items: center;
@@ -5606,6 +5649,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                 <div class="quota-projection" id="quota-7d-projection"></div>
               </div>
             </div>
+            <div class="quota-reset-credits" id="quota-reset-credits" style="display: none;"></div>
           </div>
           <div class="quota-error" id="quota-error" style="display: none;"></div>
         </div>
@@ -6911,6 +6955,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }, severity === 'error' ? 2400 : 1800);
       }
 
+      function renderResetCredits(containerEl, resetCredits) {
+        if (!containerEl) return;
+        if (!resetCredits || !Array.isArray(resetCredits.credits)) {
+          containerEl.style.display = 'none';
+          containerEl.innerHTML = '';
+          return;
+        }
+
+        const availableCredits = resetCredits.credits.filter(function(credit) {
+          return String(credit.status || '').toLowerCase() === 'available';
+        });
+        const count = Number.isFinite(resetCredits.availableCount) ? resetCredits.availableCount : availableCredits.length;
+        let html = '<div class="quota-reset-credits-title">Reset Credits: ' + count + ' available</div>';
+        if (availableCredits.length > 0) {
+          html += '<div class="quota-reset-credits-list">';
+          availableCredits.forEach(function(credit) {
+            const title = credit.title ? ' - ' + credit.title : '';
+            html += '<div class="quota-reset-credit">' + escapeHtml(credit.expiresAt || '') + escapeHtml(title) + '</div>';
+          });
+          html += '</div>';
+        }
+
+        containerEl.innerHTML = html;
+        containerEl.style.display = 'block';
+      }
+
       /**
        * Updates the quota display with new data.
        */
@@ -6924,6 +6994,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const metaEl = document.getElementById('quota-meta');
         const label5hEl = document.getElementById('quota-5h-label');
         const label7dEl = document.getElementById('quota-7d-label');
+        const resetCreditsEl = document.getElementById('quota-reset-credits');
 
         if (!sectionEl || !contentEl || !errorEl) return;
 
@@ -6932,6 +7003,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           contentEl.style.display = 'none';
           errorEl.style.display = 'none';
           if (metaEl) metaEl.style.display = 'none';
+          renderResetCredits(resetCreditsEl, null);
           return;
         }
 
@@ -6954,6 +7026,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           contentEl.style.display = 'none';
           errorEl.style.display = 'none';
           if (metaEl) metaEl.style.display = 'none';
+          renderResetCredits(resetCreditsEl, null);
           return;
         }
 
@@ -6983,6 +7056,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             errorEl.classList.remove('warning', 'error');
           }
           if (metaEl) metaEl.style.display = 'none';
+          renderResetCredits(resetCreditsEl, null);
           return;
         }
 
@@ -7008,6 +7082,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           metaEl.textContent = metaParts.join(' • ');
           metaEl.style.display = metaParts.length ? 'block' : 'none';
         }
+        renderResetCredits(resetCreditsEl, quota.resetCredits);
 
         // Update 5-hour gauge
         const percent5hEl = document.getElementById('quota-5h-percent');

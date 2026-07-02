@@ -17,7 +17,7 @@ import type {
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
 import type { KnowledgeNoteDisplay, KnowledgeCandidateDisplay } from './knowledgeNote';
-import type { PeakHoursState } from 'sidekick-shared';
+import type { CodexResetCreditsSnapshot, PeakHoursState } from 'sidekick-shared';
 import type { ProviderStatusDisplay } from '../utils/providerStatusDisplay';
 
 /**
@@ -100,6 +100,8 @@ export interface QuotaState {
   accountLabel?: string;
   /** Optional secondary identity detail */
   accountDetail?: string;
+  /** Codex reset credits available for rate-limit resets */
+  resetCredits?: CodexResetCreditsSnapshot;
 }
 
 export interface QuotaFailureDisplay {

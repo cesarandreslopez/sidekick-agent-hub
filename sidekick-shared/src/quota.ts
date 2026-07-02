@@ -12,6 +12,22 @@ export interface QuotaWindow {
   resetsAt: string;
 }
 
+export interface CodexResetCredit {
+  title?: string;
+  status: string;
+  resetType?: string;
+  expiresAt: string;
+  grantedAt?: string;
+}
+
+export interface CodexResetCreditsSnapshot {
+  availableCount: number;
+  totalEarnedCount?: number;
+  credits: CodexResetCredit[];
+  source?: 'api' | 'cache';
+  capturedAt?: string;
+}
+
 export interface QuotaState {
   fiveHour: QuotaWindow;
   sevenDay: QuotaWindow;
@@ -47,6 +63,8 @@ export interface QuotaState {
   limitName?: string;
   /** Provider-specific credits snapshot */
   credits?: unknown;
+  /** Codex reset credits snapshot from the ChatGPT reset-credit endpoint */
+  resetCredits?: CodexResetCreditsSnapshot;
   /** Provider-specific plan type */
   planType?: string;
   /** Provider-specific rate-limit reached reason */

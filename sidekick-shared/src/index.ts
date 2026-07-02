@@ -525,7 +525,13 @@ export {
   projectQuotaWindow,
   withQuotaProjections,
 } from './quota';
-export type { QuotaProjectionInput, QuotaWindow, QuotaState } from './quota';
+export type {
+  CodexResetCredit,
+  CodexResetCreditsSnapshot,
+  QuotaProjectionInput,
+  QuotaWindow,
+  QuotaState,
+} from './quota';
 export { describeQuotaFailure } from './quotaPresentation';
 export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
@@ -546,6 +552,7 @@ export type {
   QuotaHistoryRuntimeProvider,
 } from './quotaHistory';
 export {
+  fetchCodexResetCreditsFromApi,
   fetchCodexQuotaFromApi,
   quotaFromCodexRateLimits,
   readLatestCodexQuotaFromRollouts,
@@ -679,6 +686,8 @@ export {
   quotaFailureKindSchema,
   quotaProviderIdSchema,
   quotaSourceSchema,
+  codexResetCreditSchema,
+  codexResetCreditsSnapshotSchema,
   peakHoursStateSchema,
   quotaFailureDescriptorSchema,
   runtimeQuotaProviderSchema,

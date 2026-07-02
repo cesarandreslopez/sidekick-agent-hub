@@ -118,6 +118,32 @@ function sourceLabel(source?: string, stale?: boolean): string | null {
   }
 }
 
+function resetCreditMetaRows(
+  resetCredits: Awaited<ReturnType<typeof resolveCodexQuota>>['resetCredits'],
+): QuotaMetaRow[] {
+  if (!resetCredits) return [];
+
+  const availableCredits = resetCredits.credits.filter(
+    (credit) => credit.status.toLowerCase() === 'available',
+  );
+  const rows: QuotaMetaRow[] = [
+    {
+      label: 'Reset Credits',
+      value: `${resetCredits.availableCount} available`,
+      color: chalk.cyan,
+    },
+  ];
+
+  for (const credit of availableCredits) {
+    rows.push({
+      label: 'Expires',
+      value: credit.title ? `${credit.expiresAt} - ${credit.title}` : credit.expiresAt,
+    });
+  }
+
+  return rows;
+}
+
 function printQuotaTable(
   title: string,
   rows: QuotaTableRow[],
@@ -393,6 +419,7 @@ function printCodexQuota(
   } else if (source) {
     metaRows.push({ label: 'Source', value: source });
   }
+  metaRows.push(...resetCreditMetaRows(quota.resetCredits));
 
   printQuotaTable('Rate Limits', rows, metaRows);
 }

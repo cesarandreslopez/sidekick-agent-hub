@@ -50,6 +50,48 @@ describe('quotaSnapshots', () => {
     );
   });
 
+  it('preserves Codex reset credits when a local session snapshot omits them', () => {
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(20),
+      source: 'api',
+      capturedAt: '2026-05-19T10:00:00Z',
+      resetCredits: {
+        availableCount: 2,
+        totalEarnedCount: 3,
+        source: 'api',
+        capturedAt: '2026-05-19T10:00:00Z',
+        credits: [
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'available',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-26T23:06:33.770323Z',
+            grantedAt: '2026-06-26T23:06:33.770323Z',
+          },
+        ],
+      },
+    });
+    writeQuotaSnapshot('codex', 'codex-1', {
+      ...makeQuotaState(21),
+      source: 'session',
+      capturedAt: '2026-05-19T10:15:00Z',
+    });
+
+    const cached = readQuotaSnapshot('codex', 'codex-1');
+
+    expect(cached).toMatchObject({
+      fiveHour: { utilization: 21 },
+      resetCredits: {
+        availableCount: 2,
+        credits: [
+          {
+            expiresAt: '2026-07-26T23:06:33.770323Z',
+          },
+        ],
+      },
+    });
+  });
+
   it('does not use the legacy shared temp path when writing snapshots', () => {
     const legacyTempPath = path.join(tmpDir, 'quota-snapshots.json.tmp');
     fs.writeFileSync(legacyTempPath, 'legacy temp content', 'utf8');

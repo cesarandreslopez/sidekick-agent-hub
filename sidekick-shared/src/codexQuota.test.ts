@@ -25,14 +25,14 @@ function writeRolloutAt(filePath: string, lines: unknown[]): string {
   return filePath;
 }
 
-function writeAuth(accessToken = 'codex-access-token'): string {
+function writeAuth(accessToken = 'codex-access-token', accountId = 'account-123'): string {
   const codexHome = path.join(tmpDir, '.codex');
   fs.mkdirSync(codexHome, { recursive: true });
   fs.writeFileSync(
     path.join(codexHome, 'auth.json'),
     JSON.stringify({
       auth_mode: 'chatgpt',
-      tokens: { access_token: accessToken },
+      tokens: { access_token: accessToken, account_id: accountId },
     }),
   );
   return codexHome;
@@ -462,6 +462,155 @@ describe('codexQuota', () => {
       fiveHour: { utilization: 21, resetsAt: '2030-03-17T17:46:40.000Z' },
       sevenDay: { utilization: 4, resetsAt: '2030-03-18T21:33:20.000Z' },
     });
+  });
+
+  it('fetches available reset credits alongside Codex quota from the ChatGPT API', async () => {
+    const codexHome = writeAuth('fresh-token', 'account-456');
+    const fetchImpl = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/usage')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            rate_limit: {
+              primary_window: {
+                used_percent: 21,
+                limit_window_seconds: 18_000,
+                reset_at: 1_900_000_000,
+              },
+              secondary_window: {
+                used_percent: 4,
+                limit_window_seconds: 604_800,
+                reset_at: 1_900_100_000,
+              },
+            },
+          }),
+        } as Response);
+      }
+      if (href.endsWith('/rate-limit-reset-credits')) {
+        expect(init?.headers).toMatchObject({
+          Authorization: 'Bearer fresh-token',
+          'ChatGPT-Account-ID': 'account-456',
+          originator: 'Codex Desktop',
+          'OAI-Product-Sku': 'CODEX',
+          Accept: 'application/json',
+        });
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            available_count: 2,
+            total_earned_count: 3,
+            credits: [
+              {
+                title: 'Full reset (Weekly + 5 hr)',
+                status: 'available',
+                reset_type: 'codex_rate_limits',
+                expires_at: '2026-07-26T23:06:33.770323Z',
+                granted_at: '2026-06-26T23:06:33.770323Z',
+              },
+              {
+                title: 'Full reset (Weekly + 5 hr)',
+                status: 'used',
+                reset_type: 'codex_rate_limits',
+                expires_at: '2026-07-20T23:06:33.770323Z',
+                granted_at: '2026-06-20T23:06:33.770323Z',
+              },
+              {
+                title: 'Full reset (Weekly + 5 hr)',
+                status: 'AVAILABLE',
+                reset_type: 'codex_rate_limits',
+                expires_at: '2026-07-31T19:46:05.257719Z',
+                granted_at: '2026-07-01T19:46:05.257719Z',
+              },
+            ],
+          }),
+        } as Response);
+      }
+      throw new Error(`Unexpected URL ${href}`);
+    });
+
+    const quota = await fetchCodexQuotaFromApi({
+      codexHome,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      capturedAt: '2026-05-19T12:00:00Z',
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(quota).toMatchObject({
+      available: true,
+      resetCredits: {
+        availableCount: 2,
+        totalEarnedCount: 3,
+        source: 'api',
+        capturedAt: '2026-05-19T12:00:00Z',
+        credits: [
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'available',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-26T23:06:33.770323Z',
+            grantedAt: '2026-06-26T23:06:33.770323Z',
+          },
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'used',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-20T23:06:33.770323Z',
+            grantedAt: '2026-06-20T23:06:33.770323Z',
+          },
+          {
+            title: 'Full reset (Weekly + 5 hr)',
+            status: 'AVAILABLE',
+            resetType: 'codex_rate_limits',
+            expiresAt: '2026-07-31T19:46:05.257719Z',
+            grantedAt: '2026-07-01T19:46:05.257719Z',
+          },
+        ],
+      },
+    });
+  });
+
+  it('keeps Codex quota available when reset-credit refresh fails', async () => {
+    const codexHome = writeAuth('fresh-token');
+    const fetchImpl = vi.fn((url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith('/usage')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            rate_limit: {
+              primary_window: {
+                used_percent: 21,
+                limit_window_seconds: 18_000,
+                reset_at: 1_900_000_000,
+              },
+            },
+          }),
+        } as Response);
+      }
+      if (href.endsWith('/rate-limit-reset-credits')) {
+        return Promise.resolve({
+          ok: false,
+          status: 503,
+          headers: { get: () => null },
+        } as unknown as Response);
+      }
+      throw new Error(`Unexpected URL ${href}`);
+    });
+
+    const quota = await fetchCodexQuotaFromApi({
+      codexHome,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(quota).toMatchObject({
+      available: true,
+      providerId: 'codex',
+      source: 'api',
+      fiveHour: { utilization: 21 },
+    });
+    expect(quota.resetCredits).toBeUndefined();
   });
 
   it('does not refresh from the API without ChatGPT auth', async () => {

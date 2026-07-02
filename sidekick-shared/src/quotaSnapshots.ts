@@ -117,17 +117,20 @@ export function writeQuotaSnapshot(
   quota: QuotaState,
 ): void {
   const store = readStore();
+  const index = store.snapshots.findIndex(
+    (item) => item.providerId === providerId && item.accountId === accountId,
+  );
+  const existingQuota = index >= 0 ? store.snapshots[index].quota : undefined;
   const snapshot: QuotaState = {
     ...quota,
     providerId,
     capturedAt: quota.capturedAt ?? new Date().toISOString(),
     source: quota.source ?? 'session',
     stale: false,
+    resetCredits:
+      quota.resetCredits ?? (providerId === 'codex' ? existingQuota?.resetCredits : undefined),
   };
 
-  const index = store.snapshots.findIndex(
-    (item) => item.providerId === providerId && item.accountId === accountId,
-  );
   if (index >= 0 && shouldKeepExistingSnapshot(store.snapshots[index].quota, snapshot)) {
     return;
   }
