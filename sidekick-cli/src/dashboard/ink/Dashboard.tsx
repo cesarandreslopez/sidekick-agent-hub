@@ -519,7 +519,7 @@ export function Dashboard({
       <MouseProvider onMouse={handleMouse} enabled={state.mouseEnabled}>
         <Box flexDirection="column" height={rows} width={columns}>
           <Box flexGrow={1} justifyContent="center" alignItems="center">
-            <SplashOverlay />
+            <SplashOverlay panelCount={panels.length} />
           </Box>
           <StatusBar
             eventCount={0}

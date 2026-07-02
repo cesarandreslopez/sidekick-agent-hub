@@ -5,6 +5,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { PanelAction } from '../panels/types';
+import { useTerminalSize } from './useTerminalSize';
 
 interface ContextMenuOverlayProps {
   actions: PanelAction[];
@@ -15,12 +16,15 @@ export function ContextMenuOverlay({
   actions,
   selectedIndex,
 }: ContextMenuOverlayProps): React.ReactElement {
+  // Hook must run unconditionally, before the empty-actions early return
+  const { columns, rows } = useTerminalSize();
+
   if (actions.length === 0) {
     return <Box />;
   }
 
   const maxLen = Math.max(...actions.map((a) => a.key.length + a.label.length + 4), 20);
-  const width = Math.min(maxLen + 6, 50);
+  const width = Math.min(maxLen + 6, 50, columns - 2);
 
   return (
     <Box
@@ -29,8 +33,8 @@ export function ContextMenuOverlay({
       borderColor="magenta"
       width={width}
       position="absolute"
-      marginLeft={Math.floor((process.stdout.columns - width) / 2)}
-      marginTop={Math.floor((process.stdout.rows - actions.length - 2) / 2)}
+      marginLeft={Math.max(0, Math.floor((columns - width) / 2))}
+      marginTop={Math.max(0, Math.floor((rows - actions.length - 2) / 2))}
     >
       <Text color="magenta"> Actions </Text>
       {actions.map((a, i) => (

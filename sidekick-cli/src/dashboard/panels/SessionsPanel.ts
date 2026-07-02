@@ -382,7 +382,7 @@ export class SessionsPanel implements SidePanel {
         lines.push(
           '',
           sectionHeader('Tasks', w),
-          `  {bold}${completed}{/bold}/{m.tasks.length}{grey-fg} completed{/grey-fg}  {bold}${active}{/bold}{grey-fg} active{/grey-fg}  {bold}${pending}{/bold}{grey-fg} pending{/grey-fg}`,
+          `  {bold}${completed}{/bold}/${m.tasks.length}{grey-fg} completed{/grey-fg}  {bold}${active}{/bold}{grey-fg} active{/grey-fg}  {bold}${pending}{/bold}{grey-fg} pending{/grey-fg}`,
         );
       }
 

@@ -9,10 +9,18 @@ import { useSpinner } from './useSpinner';
 import { getRandomPhrase } from 'sidekick-shared';
 import { LOGO_ART } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';
+import { useTerminalSize } from './useTerminalSize';
 
-export function SplashOverlay(): React.ReactElement {
+interface SplashOverlayProps {
+  /** Number of dashboard panels, for the "1-N jump" hint. */
+  panelCount?: number;
+}
+
+export function SplashOverlay({ panelCount }: SplashOverlayProps): React.ReactElement {
   const spinner = useSpinner();
   const phrase = useMemo(() => getRandomPhrase(), []);
+  const { columns } = useTerminalSize();
+  const jumpHint = panelCount && panelCount > 1 ? `1-${Math.min(panelCount, 9)}` : '1-9';
 
   return (
     <Box
@@ -21,7 +29,7 @@ export function SplashOverlay(): React.ReactElement {
       borderColor="magenta"
       paddingX={2}
       paddingY={1}
-      width={60}
+      width={Math.min(60, columns - 2)}
     >
       {/* Logo */}
       {LOGO_ART.map((line, i) => (
@@ -38,8 +46,8 @@ export function SplashOverlay(): React.ReactElement {
       <Text> </Text>
       <Text>
         {' '}
-        <Text color="gray">Navigate:</Text> <Text bold>1-5</Text> jump <Text bold>?</Text> help{' '}
-        <Text bold>q</Text> quit
+        <Text color="gray">Navigate:</Text> <Text bold>{jumpHint}</Text> jump <Text bold>?</Text>{' '}
+        help <Text bold>q</Text> quit
       </Text>
       <Text> </Text>
       <Text color="gray"> Start a Claude Code, OpenCode, or Codex session</Text>

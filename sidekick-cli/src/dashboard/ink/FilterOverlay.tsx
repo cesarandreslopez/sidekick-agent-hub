@@ -6,6 +6,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { FilterMode } from 'sidekick-shared';
+import { useTerminalSize } from './useTerminalSize';
 
 interface FilterOverlayProps {
   filterString: string;
@@ -27,8 +28,9 @@ export function FilterOverlay({
   filterMode,
   filterError,
 }: FilterOverlayProps): React.ReactElement {
+  const { rows } = useTerminalSize();
   return (
-    <Box position="absolute" marginTop={process.stdout.rows - 2} width="100%" height={1}>
+    <Box position="absolute" marginTop={rows - 2} width="100%" height={1}>
       {/* Mode indicator */}
       {MODE_ORDER.map((mode) => {
         const { key, label } = MODE_LABELS[mode];

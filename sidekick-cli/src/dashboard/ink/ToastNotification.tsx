@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
+import { useTerminalSize } from './useTerminalSize';
 
 const SEVERITY_COLOR: Record<string, string> = {
   error: 'red',
@@ -29,15 +30,17 @@ interface ToastNotificationProps {
 }
 
 export function ToastNotification({ toast }: ToastNotificationProps): React.ReactElement {
+  const { columns } = useTerminalSize();
   const color = SEVERITY_COLOR[toast.severity] || 'cyan';
   const icon = SEVERITY_ICON[toast.severity] || '\u25CF';
+  const maxMsg = Math.max(16, Math.min(56, columns - 10));
   const truncMsg =
-    toast.message.length > 56 ? toast.message.substring(0, 53) + '...' : toast.message;
+    toast.message.length > maxMsg ? toast.message.substring(0, maxMsg - 3) + '...' : toast.message;
 
   return (
     <Box
       position="absolute"
-      marginLeft={Math.max(0, process.stdout.columns - truncMsg.length - 8)}
+      marginLeft={Math.max(0, columns - truncMsg.length - 8)}
       marginTop={0}
       borderStyle="single"
       borderColor={color}

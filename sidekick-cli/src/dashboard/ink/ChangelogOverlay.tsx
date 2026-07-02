@@ -5,6 +5,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ChangelogEntry } from 'sidekick-shared';
+import { useTerminalSize } from './useTerminalSize';
 
 declare const __CLI_VERSION__: string;
 
@@ -17,8 +18,9 @@ export function ChangelogOverlay({
   entries,
   scrollOffset,
 }: ChangelogOverlayProps): React.ReactElement {
-  const width = 64;
-  const maxVisibleLines = Math.max(process.stdout.rows - 12, 10);
+  const { columns, rows } = useTerminalSize();
+  const width = Math.min(64, columns - 2);
+  const maxVisibleLines = Math.max(rows - 12, 10);
 
   // Build all content lines
   const lines: React.ReactElement[] = [];
