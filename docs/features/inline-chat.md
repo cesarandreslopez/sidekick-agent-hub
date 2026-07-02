@@ -6,7 +6,7 @@ Ask questions about code or request changes without leaving your editor.
 
 ## Usage
 
-1. Press `Ctrl+I` (`Cmd+I` on Mac) to open the quick input
+1. Press `Ctrl+K Ctrl+A` (`Cmd+K Cmd+A` on Mac) to open the quick input
 2. Ask a question or request a change
 3. For changes: review the diff preview and Accept/Reject
 

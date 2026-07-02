@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.22.0] - 2026-07-02
 
 ### Added (sidekick-cli)
 
@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (sidekick-cli)
 
-- `q` is typable in the dashboard filter box; panel keybindings (e.g. Mind Map `f`) win over shadowable global keys while active; overlays reposition on terminal resize and clamp to narrow screens; the Sessions summary tasks line renders its total again; detail-pane wrapping matches the active layout mode instead of assuming the default side-panel width
+- `q` is typable in the dashboard filter box; panel keybindings (e.g. Mind Map `f`) win over shadowable global keys while active; overlays reposition on terminal resize and clamp to narrow screens; the help and changelog overlays clamp their scroll to content (no blank box or frozen scroll-up when over-scrolled); the Sessions summary tasks line renders its total again; detail-pane wrapping matches the active layout mode instead of assuming the default side-panel width
 
 ### Changed (sidekick-cli)
 
@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated (sidekick-vscode)
 
 - **`sidekick.zai.tier`**: now marked with a deprecation message in the Settings UI. Authoritative z.ai quota is read directly from z.ai's quota API; the setting has no effect and is kept only so previously stored values remain valid
+
+### Changed (sidekick-shared)
+
+- **Version bump to 0.22.0**: No functional changes; published only to keep the shared library in lockstep with the VS Code extension and CLI. Behavior is identical to 0.21.6
 
 ## [0.21.6] - 2026-07-02
 

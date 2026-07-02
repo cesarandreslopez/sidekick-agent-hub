@@ -49,6 +49,12 @@ export class EventStreamPanel implements SidePanel {
     });
   }
 
+  getItemTimestamp(item: PanelItem): number | null {
+    const { event } = item.data as { event?: { timestamp?: string } };
+    const ms = event?.timestamp ? Date.parse(event.timestamp) : NaN;
+    return Number.isNaN(ms) ? null : ms;
+  }
+
   getActions(): PanelAction[] {
     return [];
   }

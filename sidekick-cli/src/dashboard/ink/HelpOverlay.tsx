@@ -16,6 +16,8 @@ interface HelpOverlayProps {
   panels: SidePanel[];
   activePanelIndex: number;
   scrollOffset: number;
+  /** Report the real max scroll offset so state can be clamped to content. */
+  onClampScroll?: (maxOffset: number) => void;
 }
 
 /** Render a key-description row with dot-leader fill. */
@@ -36,6 +38,7 @@ export function HelpOverlay({
   panels,
   activePanelIndex,
   scrollOffset,
+  onClampScroll,
 }: HelpOverlayProps): React.ReactElement {
   const { columns, rows: termRows } = useTerminalSize();
   const panel = panels[activePanelIndex];
@@ -85,6 +88,9 @@ export function HelpOverlay({
   // scroll indicators(2) of chrome around the content.
   const maxVisible = Math.max(5, termRows - 12);
   const maxOffset = Math.max(0, rows.length - maxVisible);
+  React.useEffect(() => {
+    if (scrollOffset > maxOffset) onClampScroll?.(maxOffset);
+  }, [scrollOffset, maxOffset, onClampScroll]);
   const offset = Math.min(scrollOffset, maxOffset);
   const visible = rows.slice(offset, offset + maxVisible);
   const canScrollUp = offset > 0;

@@ -5,6 +5,52 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-07-02
+
+### Added (CLI)
+
+- **Working date filter mode**: The dashboard's `[D]ate` filter parses `today`, `yesterday`, `12h`/`2d`/`1w`, `YYYY-MM-DD`, and `>`/`<` prefixes instead of silently falling back to substring matching; invalid expressions show the filter error without blanking the list
+- **Mouse-capture toggle**: `M` key and `--no-mouse` flag restore terminal text selection/copy; state shows in the status bar and persists via `cli-config.json`
+- **Scrollable help overlay** with `j`/`k` and ▲/▼ indicators for short terminals
+- **`--help` examples** on the root command, `quota`, `extract`, and `dump`; **strict `choices()` validation** for `--provider`, `report --theme`, `tasks --status`, and `quota --tier`
+- **Confirmation before `account --remove`** (Claude and Codex paths): interactive y/N, or `--yes`/`--force` for automation; `--json`/non-TTY without the flag exits 1
+
+### Fixed (CLI)
+
+- `q` is typable in the dashboard filter box; panel keybindings (e.g. Mind Map `f`) win over shadowable global keys while active; overlays reposition on terminal resize and clamp to narrow screens; the help and changelog overlays clamp their scroll to content (no blank box or frozen scroll-up when over-scrolled); the Sessions summary tasks line renders its total again; detail-pane wrapping matches the active layout mode instead of assuming the default side-panel width
+
+### Changed (CLI)
+
+- Ctrl+C always quits the dashboard, even with an overlay open; `V`/`r` are inactive on the splash screen
+
+### Added (VS Code extension)
+
+- **Actionable trigger notifications**: session-monitoring toasts now carry action buttons. Security triggers (credential file access, destructive commands, sensitive path writes) offer **Open Dashboard** and **Mute This Trigger**; noisy mid-session triggers (tool-error bursts, context compaction, agent cycling) offer **Snooze 1h** and **Mute This Trigger**; the high-token-usage warning offers **Open Dashboard** and **Snooze 1h**. Mute persists `sidekick.notifications.triggers.<id>: false`; Snooze is in-memory and clears on window reload
+- **Welcome content for empty monitoring views**: the Event Stream, Subagents, and Latest Files Touched views no longer render as blank panes when no agent session is active. Each now explains what will appear there and offers a one-click action (Open Session Dashboard / Refresh Session)
+- **`Sidekick: Import Historical Session Data` in the Command Palette**: the command was registered but never contributed to the manifest, so it could previously only be triggered from the dashboard
+
+### Changed (VS Code extension)
+
+- **BREAKING — three default keyboard shortcuts have moved.** The old chords shadowed core VS Code defaults (Explorer view, Debug view, and inline suggest / Copilot inline chat). The features now live on `Ctrl+K` / `Cmd+K` chords; rebind in Keyboard Shortcuts (search "sidekick") if you prefer the old ones:
+
+  | Command                             | Old (Win/Linux / macOS)        | New (Win/Linux / macOS)         |
+  | ----------------------------------- | ------------------------------ | ------------------------------- |
+  | `Sidekick: Explain Selected Code`   | `Ctrl+Shift+E` / `Cmd+Shift+E` | `Ctrl+K Ctrl+E` / `Cmd+K Cmd+E` |
+  | `Sidekick: Generate Documentation`  | `Ctrl+Shift+D` / `Cmd+Shift+D` | `Ctrl+K Ctrl+G` / `Cmd+K Cmd+G` |
+  | `Sidekick: Quick Ask (Inline Chat)` | `Ctrl+I` / `Cmd+I`             | `Ctrl+K Ctrl+A` / `Cmd+K Cmd+A` |
+
+  `Ctrl/Cmd+Shift+Space` (Trigger Completion) and `Ctrl/Cmd+Shift+M` (Transform Selected Code) are unchanged
+
+- **Command Palette hygiene**: every command now declares the `Sidekick` category, so palette labels render as `Sidekick: <title>` and all commands still match a "sidekick" search. The five Explain Code and five Explain Error complexity levels now have distinct titles (`Explain Code: ELI5` vs `Explain Error: ELI5`, etc.), and sixteen context-only or argument-only commands (explain-level variants, `Explain Error with AI`, `Fix Error with AI`, `Set Session Provider`, and the knowledge-note Edit/Delete/Confirm actions) are hidden from the palette because they would error when invoked bare; they remain available from their context menus, code actions, and the dashboard
+
+### Deprecated (VS Code extension)
+
+- **`sidekick.zai.tier`**: now marked with a deprecation message in the Settings UI. Authoritative z.ai quota is read directly from z.ai's quota API; the setting has no effect and is kept only so previously stored values remain valid
+
+### Changed (sidekick-shared)
+
+- **Version bump to 0.22.0**: No functional changes; published only to keep the shared library in lockstep with the VS Code extension and CLI. Behavior is identical to 0.21.6
+
 ## [0.21.6] - 2026-07-02
 
 ### Added (sidekick-shared)

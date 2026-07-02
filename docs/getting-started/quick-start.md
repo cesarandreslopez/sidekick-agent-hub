@@ -40,9 +40,9 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 | ------------------ | ------------------ |
 | Trigger Completion | `Ctrl+Shift+Space` |
 | Transform Code     | `Ctrl+Shift+M`     |
-| Generate Docs      | `Ctrl+Shift+D`     |
-| Explain Code       | `Ctrl+Shift+E`     |
-| Quick Ask          | `Ctrl+I`           |
+| Generate Docs      | `Ctrl+K Ctrl+G`    |
+| Explain Code       | `Ctrl+K Ctrl+E`    |
+| Quick Ask          | `Ctrl+K Ctrl+A`    |
 
 !!! tip
 Click "Sidekick" in the status bar for quick access to settings, logs, and provider switching.

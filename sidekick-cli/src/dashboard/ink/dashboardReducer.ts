@@ -65,6 +65,7 @@ export type Action =
   | { type: 'CONTEXT_MENU_SELECT' }
   | { type: 'SCROLL_SIDE'; delta: number; itemCount: number }
   | { type: 'OVERLAY_SCROLL'; delta: number }
+  | { type: 'CLAMP_OVERLAY_SCROLL'; maxOffset: number }
   | { type: 'TOGGLE_MOUSE' }
   | { type: 'TICK' };
 
@@ -217,6 +218,15 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
       return {
         ...state,
         overlayScrollOffset: Math.max(0, state.overlayScrollOffset + action.delta),
+      };
+
+    // The overlay owns its content height, so it reports the real maximum
+    // offset back for clamping. Without this, scrolling past the bottom
+    // inflates the counter unboundedly and later scroll-ups appear frozen.
+    case 'CLAMP_OVERLAY_SCROLL':
+      return {
+        ...state,
+        overlayScrollOffset: Math.min(state.overlayScrollOffset, Math.max(0, action.maxOffset)),
       };
 
     case 'TOGGLE_MOUSE':

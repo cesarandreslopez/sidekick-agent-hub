@@ -87,6 +87,15 @@ export interface SidePanel {
   /** Optional: return full searchable text for an item (used by / filter and s search). */
   getSearchableText?(item: PanelItem): string;
 
+  /**
+   * Optional: epoch-ms timestamp for an item, used by the Date filter mode.
+   * Panels whose item `data` wraps the domain record in an envelope (so the
+   * timestamp is not a top-level `createdAt`/`timestamp`) must implement this;
+   * panels that expose the raw record as `data` rely on the generic
+   * `itemTimestampMs` fallback. Return null when the item has no timestamp.
+   */
+  getItemTimestamp?(item: PanelItem): number | null;
+
   /** Optional: extra status hints for this panel. */
   getStatusHints?(): string;
 

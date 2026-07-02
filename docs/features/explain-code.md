@@ -7,7 +7,7 @@ Get AI-powered explanations for selected code at your preferred complexity level
 ## Usage
 
 1. Select code you want to understand
-2. Press `Ctrl+Shift+E` (`Cmd+Shift+E` on Mac)
+2. Press `Ctrl+K Ctrl+E` (`Cmd+K Cmd+E` on Mac)
 3. Choose complexity level from the submenu (or use the default)
 
 ## Complexity Levels

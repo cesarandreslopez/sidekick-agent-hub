@@ -217,11 +217,14 @@ On first CLI startup, Sidekick auto-registers the active system Claude Code and 
 | `--label <name>`           | Label for the account (required for Codex and `--login`; optional for Claude `--add`)                                                       |
 | `--switch`                 | Switch to the next saved account                                                                                                            |
 | `--switch-to <id>`         | Switch to a specific account by email, label, or ID                                                                                         |
-| `--remove <id>`            | Remove a saved account by email, label, or ID                                                                                               |
+| `--remove <id>`            | Remove a saved account by email, label, or ID (prompts for y/N confirmation first)                                                          |
+| `-y`, `--yes` / `--force`  | Skip the `--remove` confirmation prompt (required for `--json` or non-interactive runs)                                                     |
 | `--launcher <name>`        | Create an opt-in per-account terminal launcher for the active account                                                                       |
 | `--auto-switch <pct\|off>` | Persist the auto-switch quota threshold (1–100), or `off` to disable. Continuous auto-switching runs in a long-running host such as VS Code |
 
 With no flags, lists all saved accounts and marks the active one. `--provider all` lists Claude and Codex accounts together. Use `--json` for machine-readable output (provider-keyed when `--provider all`).
+
+`--remove` prints the resolved account and asks for an interactive y/N answer (default No). Pass `-y`/`--yes` (or `--force`) to skip the prompt; `--json` and non-TTY contexts require the flag and exit `1` without it — **unattended automation that removes accounts must add `--yes`**.
 
 ## Dashboard Panels
 
@@ -298,6 +301,7 @@ Press `z` to cycle through layout modes:
 | `z`            | Cycle layout mode                                                                         |
 | `/`            | Open filter overlay (supports substring, fuzzy, regex, and date modes — Tab cycles modes) |
 | `x`            | Open context menu for selected item                                                       |
+| `M`            | Toggle mouse capture (turn off to restore terminal text selection/copy)                   |
 | `?`            | Show help                                                                                 |
 | `r`            | Generate HTML report for the current session                                              |
 | `V`            | Show version / changelog                                                                  |
@@ -311,6 +315,8 @@ The dashboard supports mouse input in terminals with SGR 1006 extended mouse enc
 - **Click** panel tabs or detail tabs to switch
 - **Scroll wheel** in either pane to navigate
 - **Click** anywhere to dismiss overlays
+
+While mouse capture is on, the terminal's own click-drag text selection and copy are suppressed. Press `M` to toggle capture off (the status bar shows `MOUSE OFF`), or launch with `--no-mouse` to start with it disabled. The interactive toggle persists to `cli-config.json`; the flag applies to that run only.
 
 ## Multi-Provider Support
 

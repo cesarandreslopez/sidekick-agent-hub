@@ -192,7 +192,9 @@ export function Dashboard({
           const since = parsed.since ? Date.parse(parsed.since) : -Infinity;
           const until = parsed.until ? Date.parse(parsed.until) : Infinity;
           items = items.filter((it) => {
-            const ts = itemTimestampMs(it.data);
+            const ts = panel.getItemTimestamp
+              ? panel.getItemTimestamp(it)
+              : itemTimestampMs(it.data);
             return ts !== null && ts >= since && ts < until;
           });
         }
@@ -592,11 +594,16 @@ export function Dashboard({
             panels={panels}
             activePanelIndex={state.activePanelIndex}
             scrollOffset={state.overlayScrollOffset}
+            onClampScroll={(maxOffset) => dispatch({ type: 'CLAMP_OVERLAY_SCROLL', maxOffset })}
           />
         )}
 
         {state.overlay === 'changelog' && (
-          <ChangelogOverlay entries={changelogEntries} scrollOffset={state.overlayScrollOffset} />
+          <ChangelogOverlay
+            entries={changelogEntries}
+            scrollOffset={state.overlayScrollOffset}
+            onClampScroll={(maxOffset) => dispatch({ type: 'CLAMP_OVERLAY_SCROLL', maxOffset })}
+          />
         )}
 
         {/* Status bar — always visible */}

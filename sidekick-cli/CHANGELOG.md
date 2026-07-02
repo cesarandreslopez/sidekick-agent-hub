@@ -5,7 +5,7 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.22.0] - 2026-07-02
 
 ### Added
 
@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Panel keybindings are reachable**: Panel-declared bindings now win over the shadowable global keys while their condition holds — the Sessions panel's Mind Map `f` (filter nodes) binding works when the Mind Map tab is active, falling back to the global session filter elsewhere. Reserved keys (`q ? / M j k g G h` and digits) can never be shadowed by a panel
 - **Overlays track terminal resize**: Filter, toast, context-menu, and changelog overlays reposition on resize and clamp their widths to narrow terminals; the splash `jump` hint reflects the real panel count instead of `1-5`; the Sessions summary tasks line no longer renders as `3/ completed`
 - **Detail pane wraps to the actual layout**: Word-wrap now derives from the live side-panel width (narrow/normal/wide-side/expanded) instead of assuming the default 26-column panel, fixing under-/over-wrapping in three of the four layout modes
+- **Overlay scroll clamps to content**: The `?` help and `V` changelog overlays no longer accumulate scroll past their last line — over-scrolling then reversing responds immediately, and the changelog overlay no longer shows a blank box when scrolled past the end
 
 ### Changed
 

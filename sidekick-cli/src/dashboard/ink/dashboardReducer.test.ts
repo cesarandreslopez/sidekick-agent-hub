@@ -107,6 +107,19 @@ describe('scrolling', () => {
     expect(s.overlayScrollOffset).toBe(5);
   });
 
+  it('CLAMP_OVERLAY_SCROLL caps an over-scrolled offset to the content max', () => {
+    // Regression: over-scrolling past the bottom used to inflate the counter
+    // unboundedly, so later scroll-ups appeared frozen until it drained.
+    let s = state({ overlayScrollOffset: 80 });
+    s = reducer(s, { type: 'CLAMP_OVERLAY_SCROLL', maxOffset: 10 });
+    expect(s.overlayScrollOffset).toBe(10);
+    // Never pushes the offset up or below zero.
+    s = reducer(state({ overlayScrollOffset: 3 }), { type: 'CLAMP_OVERLAY_SCROLL', maxOffset: 10 });
+    expect(s.overlayScrollOffset).toBe(3);
+    s = reducer(state({ overlayScrollOffset: 5 }), { type: 'CLAMP_OVERLAY_SCROLL', maxOffset: -2 });
+    expect(s.overlayScrollOffset).toBe(0);
+  });
+
   it('SET_OVERLAY resets changelog scroll and context menu index', () => {
     const s = state({ overlayScrollOffset: 7, contextMenuIndex: 3 });
     const after = reducer(s, { type: 'SET_OVERLAY', overlay: 'changelog' });

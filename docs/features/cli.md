@@ -38,12 +38,13 @@ If you have sessions from multiple providers, the most recently active one is se
 sidekick dashboard [options]
 ```
 
-| Flag               | Description                                                               |
-| ------------------ | ------------------------------------------------------------------------- |
-| `--project <path>` | Override project path (default: current working directory)                |
-| `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
-| `--session <id>`   | Follow a specific session by ID (default: most recent or session picker)  |
-| `--replay`         | Replay existing events from the beginning before streaming live           |
+| Flag               | Description                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `--project <path>` | Override project path (default: current working directory)                           |
+| `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)            |
+| `--session <id>`   | Follow a specific session by ID (default: most recent or session picker)             |
+| `--replay`         | Replay existing events from the beginning before streaming live                      |
+| `--no-mouse`       | Start with mouse capture disabled so terminal text selection works (toggle with `M`) |
 
 ### Examples
 
@@ -413,11 +414,14 @@ Manage accounts across providers — save, list, switch, and remove without manu
 | `--label <name>`           | Label for the account (required for Codex and `--login`; optional for Claude `--add`)                                                           |
 | `--switch`                 | Switch to the next saved account in the list                                                                                                    |
 | `--switch-to <id>`         | Switch to a specific account by email, label, or ID                                                                                             |
-| `--remove <id>`            | Remove a saved account by email, label, or ID                                                                                                   |
+| `--remove <id>`            | Remove a saved account by email, label, or ID (prompts for y/N confirmation first)                                                              |
+| `-y`, `--yes` / `--force`  | Skip the `--remove` confirmation prompt (required for `--json` or non-interactive runs)                                                         |
 | `--launcher <name>`        | Create an opt-in per-account terminal launcher for the active account                                                                           |
 | `--auto-switch <pct\|off>` | Persist the auto-switch quota threshold (`1`–`100`), or `off` to disable. Continuous auto-switching runs in a long-running host such as VS Code |
 
 With no flags, lists all saved accounts and marks the active one. `--provider all` lists Claude and Codex accounts together; with `--json` the output is provider-keyed.
+
+`--remove` prints the resolved account and asks for an interactive y/N answer (default No). Pass `-y`/`--yes` (or `--force`) to skip the prompt; `--json` and non-TTY contexts require the flag and exit `1` without it — unattended automation that removes accounts must add `--yes`.
 
 #### Examples
 
@@ -660,6 +664,7 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 | `/` | Open filter overlay — supports substring, fuzzy, regex, and date modes (Tab cycles modes) |
 | `x` | Open context menu for the selected item                                                   |
 | `z` | Cycle layout mode (Normal → Expanded → Wide Side)                                         |
+| `M` | Toggle mouse capture (turn off to restore terminal text selection/copy)                   |
 
 ### General
 
@@ -678,6 +683,8 @@ The dashboard supports mouse input in terminals with SGR 1006 extended mouse enc
 - **Click** panel tabs or detail tabs to switch
 - **Scroll wheel** in either pane to navigate (scrolls 3 items/lines at a time)
 - **Click** anywhere to dismiss overlays (help, filter, context menu)
+
+While capture is on, the terminal's native click-drag text selection and copy are suppressed. Press `M` to toggle capture off (the status bar shows `MOUSE OFF`), or start with `--no-mouse`. The `M` toggle persists to `cli-config.json`; the flag applies to that run only.
 
 ## Session Management
 

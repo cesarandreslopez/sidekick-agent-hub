@@ -7,7 +7,7 @@ Automatically generate JSDoc/docstrings for functions, classes, and methods.
 ## Usage
 
 1. Place your cursor in a function or select code
-2. Press `Ctrl+Shift+D` (`Cmd+Shift+D` on Mac)
+2. Press `Ctrl+K Ctrl+G` (`Cmd+K Cmd+G` on Mac)
 3. Documentation is inserted above the function
 
 ## Supported Languages

@@ -137,6 +137,15 @@ export class SessionsPanel implements SidePanel {
     return items;
   }
 
+  getItemTimestamp(item: PanelItem): number | null {
+    const data = item.data as
+      | { type: 'active'; metrics?: { sessionStartTime?: string } }
+      | { type: 'historical'; session?: { date?: string } };
+    const raw = data.type === 'active' ? data.metrics?.sessionStartTime : data.session?.date;
+    const ms = raw ? Date.parse(raw) : NaN;
+    return Number.isNaN(ms) ? null : ms;
+  }
+
   getActions(): PanelAction[] {
     return [];
   }

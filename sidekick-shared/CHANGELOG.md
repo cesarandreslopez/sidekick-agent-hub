@@ -5,6 +5,12 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-07-02
+
+### Changed
+
+- **Version bump to 0.22.0**: No functional changes. This release only keeps the shared library in lockstep with the VS Code extension and CLI (which ship user-facing changes this cycle); the published API and behavior are identical to 0.21.6
+
 ## [0.21.6] - 2026-07-02
 
 ### Added

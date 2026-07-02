@@ -111,6 +111,12 @@ export class PlansPanel implements SidePanel {
     return items;
   }
 
+  getItemTimestamp(item: PanelItem): number | null {
+    const { plan } = item.data as { plan?: { createdAt?: string } };
+    const ms = plan?.createdAt ? Date.parse(plan.createdAt) : NaN;
+    return Number.isNaN(ms) ? null : ms;
+  }
+
   getActions(): PanelAction[] {
     return [
       {

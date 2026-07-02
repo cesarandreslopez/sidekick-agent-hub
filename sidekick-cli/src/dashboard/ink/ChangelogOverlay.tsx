@@ -12,11 +12,14 @@ declare const __CLI_VERSION__: string;
 interface ChangelogOverlayProps {
   entries: ChangelogEntry[];
   scrollOffset: number;
+  /** Report the real max scroll offset so state can be clamped to content. */
+  onClampScroll?: (maxOffset: number) => void;
 }
 
 export function ChangelogOverlay({
   entries,
   scrollOffset,
+  onClampScroll,
 }: ChangelogOverlayProps): React.ReactElement {
   const { columns, rows } = useTerminalSize();
   const width = Math.min(64, columns - 2);
@@ -87,10 +90,16 @@ export function ChangelogOverlay({
     }
   }
 
-  // Apply scroll offset
-  const visibleLines = lines.slice(scrollOffset, scrollOffset + maxVisibleLines);
-  const canScrollUp = scrollOffset > 0;
-  const canScrollDown = scrollOffset + maxVisibleLines < lines.length;
+  // Apply scroll offset, clamped to content so over-scrolling never blanks
+  // the box or freezes later scroll-ups (the reducer counter is unbounded).
+  const maxOffset = Math.max(0, lines.length - maxVisibleLines);
+  React.useEffect(() => {
+    if (scrollOffset > maxOffset) onClampScroll?.(maxOffset);
+  }, [scrollOffset, maxOffset, onClampScroll]);
+  const offset = Math.min(scrollOffset, maxOffset);
+  const visibleLines = lines.slice(offset, offset + maxVisibleLines);
+  const canScrollUp = offset > 0;
+  const canScrollDown = offset + maxVisibleLines < lines.length;
 
   return (
     <Box flexGrow={1} alignItems="center" justifyContent="center">
