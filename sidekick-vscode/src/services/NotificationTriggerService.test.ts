@@ -2,10 +2,58 @@
  * @fileoverview Unit tests for NotificationTriggerService.
  *
  * Tests destructive command pattern matching, description field usage,
- * sensitive path triggers, and false positive avoidance.
+ * sensitive path triggers, false positive avoidance, and the notification
+ * action buttons (Open Dashboard / Snooze 1h / Mute This Trigger).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { SessionMonitor } from './SessionMonitor';
+import type { NotificationPersistenceService } from './NotificationPersistenceService';
+import type { ToolCall, CompactionEvent } from '../types/claudeSession';
+import {
+  NotificationTriggerService,
+  NOTIFICATION_BUTTONS,
+  TRIGGER_BUTTONS,
+} from './NotificationTriggerService';
+
+const mocks = vi.hoisted(() => {
+  const configUpdate = vi.fn((): Promise<void> => Promise.resolve());
+  return {
+    configUpdate,
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
+      update: configUpdate,
+    })),
+    showInformationMessage: vi.fn((): Promise<string | undefined> => Promise.resolve(undefined)),
+    showWarningMessage: vi.fn((): Promise<string | undefined> => Promise.resolve(undefined)),
+    showErrorMessage: vi.fn((): Promise<string | undefined> => Promise.resolve(undefined)),
+    executeCommand: vi.fn((): Promise<undefined> => Promise.resolve(undefined)),
+  };
+});
+
+// Mock vscode module
+vi.mock('vscode', () => ({
+  workspace: {
+    getConfiguration: mocks.getConfiguration,
+    onDidChangeConfiguration: vi.fn(() => ({ dispose: () => {} })),
+    workspaceFolders: undefined,
+  },
+  window: {
+    showInformationMessage: mocks.showInformationMessage,
+    showWarningMessage: mocks.showWarningMessage,
+    showErrorMessage: mocks.showErrorMessage,
+  },
+  commands: {
+    executeCommand: mocks.executeCommand,
+  },
+  ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
+}));
+
+// Mock Logger
+vi.mock('./Logger', () => ({
+  log: vi.fn(),
+  logError: vi.fn(),
+}));
 
 // Extract the patterns from BUILT_IN_TRIGGERS for direct regex testing.
 // These must stay in sync with the actual values in NotificationTriggerService.ts.
@@ -276,5 +324,220 @@ describe('NotificationTriggerService patterns', () => {
       const body = `${description} (${command.substring(0, 60)})`;
       expect(body.length).toBeLessThan(description.length + 65);
     });
+  });
+});
+
+describe('trigger action buttons', () => {
+  const { openDashboard, snooze, mute } = NOTIFICATION_BUTTONS;
+
+  it('covers every built-in and synthetic trigger id', () => {
+    expect(Object.keys(TRIGGER_BUTTONS).sort()).toEqual(
+      [
+        'env-access',
+        'destructive-cmd',
+        'sensitive-path-write',
+        'tool-error',
+        'compaction',
+        'cycle-detected',
+        'high-token-usage',
+      ].sort(),
+    );
+  });
+
+  it('gives security triggers Open Dashboard + Mute', () => {
+    for (const id of ['env-access', 'destructive-cmd', 'sensitive-path-write']) {
+      expect(TRIGGER_BUTTONS[id]).toEqual([openDashboard, mute]);
+    }
+  });
+
+  it('never offers Snooze on a security trigger', () => {
+    for (const id of ['env-access', 'destructive-cmd', 'sensitive-path-write']) {
+      expect(TRIGGER_BUTTONS[id]).not.toContain(snooze);
+    }
+  });
+
+  it('gives noisy triggers Snooze + Mute', () => {
+    for (const id of ['tool-error', 'compaction', 'cycle-detected']) {
+      expect(TRIGGER_BUTTONS[id]).toEqual([snooze, mute]);
+    }
+  });
+
+  it('gives high-token-usage Open Dashboard + Snooze but never Mute', () => {
+    expect(TRIGGER_BUTTONS['high-token-usage']).toEqual([openDashboard, snooze]);
+    expect(TRIGGER_BUTTONS['high-token-usage']).not.toContain(mute);
+  });
+
+  it('has no entry for unknown trigger ids (callers fall back to no buttons)', () => {
+    expect(TRIGGER_BUTTONS['some-future-trigger']).toBeUndefined();
+  });
+});
+
+interface CapturedHandlers {
+  toolCall?: (call: ToolCall) => void;
+  compaction?: (event: CompactionEvent) => void;
+  tokenUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
+  cycleDetected?: (cycle: { description: string; affectedFiles: string[] }) => void;
+}
+
+function createFakeSessionMonitor(): { monitor: SessionMonitor; handlers: CapturedHandlers } {
+  const handlers: CapturedHandlers = {};
+  const disposable = { dispose: () => {} };
+  const monitor = {
+    isReplaying: false,
+    onToolCall: (h: (call: ToolCall) => void) => {
+      handlers.toolCall = h;
+      return disposable;
+    },
+    onCompaction: (h: (event: CompactionEvent) => void) => {
+      handlers.compaction = h;
+      return disposable;
+    },
+    onTokenUsage: (h: (usage: { inputTokens: number; outputTokens: number }) => void) => {
+      handlers.tokenUsage = h;
+      return disposable;
+    },
+    onCycleDetected: (h: (cycle: { description: string; affectedFiles: string[] }) => void) => {
+      handlers.cycleDetected = h;
+      return disposable;
+    },
+    getStats: () => ({ totalInputTokens: 0, totalOutputTokens: 0 }),
+  };
+  return { monitor: monitor as unknown as SessionMonitor, handlers };
+}
+
+function createFakePersistence(): NotificationPersistenceService {
+  return { addNotification: vi.fn() } as unknown as NotificationPersistenceService;
+}
+
+function envAccessCall(): ToolCall {
+  return {
+    name: 'Read',
+    input: { file_path: '/project/.env' },
+    timestamp: new Date(),
+    isError: false,
+  };
+}
+
+/** Flush pending microtasks so notification .then handlers run. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('notification action handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows the per-trigger buttons on the notification', () => {
+    const { monitor, handlers } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    handlers.toolCall!(envAccessCall());
+
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('.env'),
+      NOTIFICATION_BUTTONS.openDashboard,
+      NOTIFICATION_BUTTONS.mute,
+    );
+
+    service.dispose();
+  });
+
+  it('shows no buttons for a trigger id without a TRIGGER_BUTTONS entry', () => {
+    const { monitor } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    (
+      service as unknown as {
+        fireNotification: (
+          title: string,
+          body: string,
+          severity: 'info' | 'warning' | 'error',
+          persistParams?: { triggerId: string; triggerName: string },
+        ) => void;
+      }
+    ).fireNotification('Sidekick', 'something new', 'info', {
+      triggerId: 'some-future-trigger',
+      triggerName: 'Some Future Trigger',
+    });
+
+    expect(mocks.showInformationMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.showInformationMessage).toHaveBeenCalledWith('Sidekick: something new');
+
+    service.dispose();
+  });
+
+  it('Open Dashboard runs the sidekick.openDashboard command', async () => {
+    mocks.showWarningMessage.mockResolvedValueOnce(NOTIFICATION_BUTTONS.openDashboard);
+    const { monitor, handlers } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    handlers.toolCall!(envAccessCall());
+    await flush();
+
+    expect(mocks.executeCommand).toHaveBeenCalledWith('sidekick.openDashboard');
+
+    service.dispose();
+  });
+
+  it('Snooze 1h suppresses subsequent fires of the trigger but keeps history', async () => {
+    mocks.showWarningMessage.mockResolvedValueOnce(NOTIFICATION_BUTTONS.snooze);
+    const { monitor, handlers } = createFakeSessionMonitor();
+    const persistence = createFakePersistence();
+    const service = new NotificationTriggerService(monitor, persistence);
+
+    handlers.cycleDetected!({ description: 'repeating edits', affectedFiles: ['/a/b.ts'] });
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('repeating edits'),
+      NOTIFICATION_BUTTONS.snooze,
+      NOTIFICATION_BUTTONS.mute,
+    );
+    await flush();
+
+    handlers.cycleDetected!({ description: 'repeating edits', affectedFiles: ['/a/b.ts'] });
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+
+    // Both fires are persisted; the snoozed one is recorded as throttled
+    expect(persistence.addNotification).toHaveBeenCalledTimes(2);
+    expect(persistence.addNotification).toHaveBeenLastCalledWith(
+      expect.objectContaining({ triggerId: 'cycle-detected', wasThrottled: true }),
+    );
+
+    service.dispose();
+  });
+
+  it('Mute This Trigger disables the trigger in configuration', async () => {
+    mocks.showWarningMessage.mockResolvedValueOnce(NOTIFICATION_BUTTONS.mute);
+    const { monitor, handlers } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    handlers.cycleDetected!({ description: 'repeating edits', affectedFiles: [] });
+    await flush();
+
+    expect(mocks.getConfiguration).toHaveBeenCalledWith('sidekick.notifications');
+    // No workspaceFolders in the mock, so the write targets Global (1)
+    expect(mocks.configUpdate).toHaveBeenCalledWith('triggers.cycle-detected', false, 1);
+
+    service.dispose();
+  });
+
+  it('ignores button clicks that resolve after dispose()', async () => {
+    let resolveSelection: (value: string | undefined) => void = () => {};
+    mocks.showWarningMessage.mockReturnValueOnce(
+      new Promise<string | undefined>((resolve) => {
+        resolveSelection = resolve;
+      }),
+    );
+    const { monitor, handlers } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    handlers.toolCall!(envAccessCall());
+    service.dispose();
+    resolveSelection(NOTIFICATION_BUTTONS.openDashboard);
+    await flush();
+
+    expect(mocks.executeCommand).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (sidekick-vscode)
 
+- **Actionable trigger notifications**: session-monitoring toasts now carry action buttons. Security triggers (credential file access, destructive commands, sensitive path writes) offer **Open Dashboard** and **Mute This Trigger**; noisy mid-session triggers (tool-error bursts, context compaction, agent cycling) offer **Snooze 1h** and **Mute This Trigger**; the high-token-usage warning offers **Open Dashboard** and **Snooze 1h**. Mute persists `sidekick.notifications.triggers.<id>: false`; Snooze is in-memory and clears on window reload
 - **Welcome content for empty monitoring views**: the Event Stream, Subagents, and Latest Files Touched views no longer render as blank panes when no agent session is active. Each now explains what will appear there and offers a one-click action (Open Session Dashboard / Refresh Session)
 - **`Sidekick: Import Historical Session Data` in the Command Palette**: the command was registered but never contributed to the manifest, so it could previously only be triggered from the dashboard
 
