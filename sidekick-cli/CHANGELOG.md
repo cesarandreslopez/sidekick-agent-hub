@@ -5,6 +5,29 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Date filter mode now actually filters by date**: The dashboard's `[D]ate` filter previously fell through to plain substring matching. It now parses `today`, `yesterday`, relative windows (`12h`, `2d`, `1w`), ISO days (`YYYY-MM-DD`), and `>`/`<` prefixes (`<2d` = older than two days); unparseable expressions show the red filter error while leaving the list unfiltered, and the overlay shows a grammar hint while empty
+- **Mouse-capture toggle**: Press `M` in the dashboard (works on the splash screen too) or launch with `--no-mouse` to disable mouse tracking so terminal click-drag text selection and copy work again. The status bar shows `MOUSE OFF` while disabled; the interactive toggle persists to `cli-config.json`, the flag is per-run
+- **Scrollable help overlay**: `?` help now windows its content with `j`/`k` scrolling and ▲/▼ indicators, so nothing is clipped on short terminals
+- **Examples in `--help`**: The root command plus `quota`, `extract`, and `dump` append real invocation examples showcasing `quota --all`, `quota history`, `extract -i`, `dump --list`, and the global `--json` flag
+- **Strict option validation**: `--provider` (root, `quota`, `quota history`, `peak`), `report --theme`, `tasks --status`, and `quota --tier` now reject unknown values at parse time with the allowed choices, instead of silently coercing typos to a default. `quota history` keeps its legacy `claude-code`/`z.ai` aliases
+- **Confirmation before `account --remove`**: Both the Claude and Codex remove paths now print the resolved account and require an interactive y/N answer (default No). `-y`/`--yes` (or `--force`) skips the prompt; `--json` and non-TTY contexts require the flag and exit 1 otherwise — **unattended automation that removes accounts must add `--yes`**
+
+### Fixed
+
+- **`q` is typable in the filter box**: The quit key no longer swallows `q` while the filter overlay is open, so queries like `query` or `sqlite` work; `q` still closes the help/changelog/context-menu overlays and quits the dashboard otherwise
+- **Panel keybindings are reachable**: Panel-declared bindings now win over the shadowable global keys while their condition holds — the Sessions panel's Mind Map `f` (filter nodes) binding works when the Mind Map tab is active, falling back to the global session filter elsewhere. Reserved keys (`q ? / M j k g G h` and digits) can never be shadowed by a panel
+- **Overlays track terminal resize**: Filter, toast, context-menu, and changelog overlays reposition on resize and clamp their widths to narrow terminals; the splash `jump` hint reflects the real panel count instead of `1-5`; the Sessions summary tasks line no longer renders as `3/ completed`
+- **Detail pane wraps to the actual layout**: Word-wrap now derives from the live side-panel width (narrow/normal/wide-side/expanded) instead of assuming the default 26-column panel, fixing under-/over-wrapping in three of the four layout modes
+
+### Changed
+
+- **Ctrl+C always quits the dashboard**, even while an overlay is open (previously it only closed the overlay)
+- **`V` (changelog) and `r` (report) are inactive on the splash screen**; `q`, `?`, `M`, and panel digits still work there
+
 ## [0.21.6] - 2026-07-02
 
 ### Added

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added (sidekick-cli)
+
+- **Working date filter mode**: The dashboard's `[D]ate` filter parses `today`, `yesterday`, `12h`/`2d`/`1w`, `YYYY-MM-DD`, and `>`/`<` prefixes instead of silently falling back to substring matching; invalid expressions show the filter error without blanking the list
+- **Mouse-capture toggle**: `M` key and `--no-mouse` flag restore terminal text selection/copy; state shows in the status bar and persists via `cli-config.json`
+- **Scrollable help overlay** with `j`/`k` and ▲/▼ indicators for short terminals
+- **`--help` examples** on the root command, `quota`, `extract`, and `dump`; **strict `choices()` validation** for `--provider`, `report --theme`, `tasks --status`, and `quota --tier`
+- **Confirmation before `account --remove`** (Claude and Codex paths): interactive y/N, or `--yes`/`--force` for automation; `--json`/non-TTY without the flag exits 1
+
+### Fixed (sidekick-cli)
+
+- `q` is typable in the dashboard filter box; panel keybindings (e.g. Mind Map `f`) win over shadowable global keys while active; overlays reposition on terminal resize and clamp to narrow screens; the Sessions summary tasks line renders its total again; detail-pane wrapping matches the active layout mode instead of assuming the default side-panel width
+
+### Changed (sidekick-cli)
+
+- Ctrl+C always quits the dashboard, even with an overlay open; `V`/`r` are inactive on the splash screen
+
 ## [0.21.6] - 2026-07-02
 
 ### Added (sidekick-shared)
