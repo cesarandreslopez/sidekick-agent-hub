@@ -33,6 +33,36 @@ import type {
 } from 'sidekick-shared';
 import { resolveProviderId } from '../cli';
 import { readCliConfig, writeCliConfig } from '../utils/cliConfig';
+import { confirmDestructive } from '../utils/confirm';
+
+/**
+ * Gate a destructive account removal: --yes/--force skips the prompt; in
+ * --json or non-TTY contexts the flag is required (exit 1 otherwise);
+ * interactively the user must answer y/yes (default No).
+ */
+async function confirmAccountRemoval(
+  description: string,
+  opts: AccountCommandOptions,
+  jsonOutput: boolean,
+): Promise<boolean> {
+  if (opts.yes || opts.force) return true;
+  if (jsonOutput || !process.stdin.isTTY) {
+    process.stderr.write(
+      chalk.red('Refusing to remove an account without confirmation. Re-run with --yes.') + '\n',
+    );
+    process.exit(1);
+    return false;
+  }
+  const confirmed = await confirmDestructive(
+    `Permanently remove ${description}? This deletes the saved credentials`,
+  );
+  if (!confirmed) {
+    process.stderr.write(chalk.dim('Aborted — account not removed.\n'));
+    process.exit(1);
+    return false;
+  }
+  return true;
+}
 
 interface AccountCommandOptions {
   provider?: string;
@@ -44,6 +74,8 @@ interface AccountCommandOptions {
   login?: boolean;
   launcher?: string;
   autoSwitch?: string;
+  yes?: boolean;
+  force?: boolean;
 }
 
 export async function accountAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
@@ -289,6 +321,13 @@ async function claudeAccountAction(
       return;
     }
 
+    const label = target.label ? ` (${target.label})` : '';
+    if (
+      !(await confirmAccountRemoval(`Claude account ${target.email}${label}`, opts, jsonOutput))
+    ) {
+      return;
+    }
+
     const result = removeAccount(target.uuid);
     if (!result.success) {
       process.stderr.write(chalk.red(result.error ?? 'Failed to remove account.') + '\n');
@@ -518,6 +557,16 @@ async function codexAccountAction(opts: AccountCommandOptions, jsonOutput: boole
     if (!target) {
       process.stderr.write(chalk.red(`Codex account "${opts.remove}" not found.`) + '\n');
       process.exit(1);
+      return;
+    }
+
+    if (
+      !(await confirmAccountRemoval(
+        `Codex account ${formatCodexAccount(target)}`,
+        opts,
+        jsonOutput,
+      ))
+    ) {
       return;
     }
 

@@ -226,6 +226,8 @@ const accountCmd = new Command('account')
   .option('--switch', 'Switch to the next saved account')
   .option('--switch-to <identifier>', 'Switch to a specific account by email, label, or id')
   .option('--remove <identifier>', 'Remove a saved account by email, label, or id')
+  .option('-y, --yes', 'Skip confirmation prompts for destructive actions')
+  .option('--force', 'Alias for --yes')
   .option('--launcher <name>', 'Create a per-account launcher for the active account')
   .option('--auto-switch <pct|off>', 'Persist auto-switch quota threshold, or off')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {

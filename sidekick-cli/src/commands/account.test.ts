@@ -45,6 +45,11 @@ vi.mock('../cli', () => ({
   resolveProviderId: mockResolveProviderId,
 }));
 
+const mockConfirmDestructive = vi.fn();
+vi.mock('../utils/confirm', () => ({
+  confirmDestructive: mockConfirmDestructive,
+}));
+
 describe('accountAction', () => {
   let stdoutData = '';
   let stderrData = '';
@@ -91,11 +96,18 @@ describe('accountAction', () => {
     mockGetCodexProfileHome.mockReset();
     mockGetConfigDir.mockReset();
     mockResolveProviderId.mockReset();
+    mockConfirmDestructive.mockReset();
     mockGetConfigDir.mockReturnValue('/tmp/sidekick-config');
   });
 
+  const originalIsTTY = process.stdin.isTTY;
+  const setStdinTTY = (value: boolean | undefined) => {
+    Object.defineProperty(process.stdin, 'isTTY', { value, configurable: true });
+  };
+
   afterEach(() => {
     process.exit = originalExit;
+    setStdinTTY(originalIsTTY);
     vi.restoreAllMocks();
   });
 
@@ -177,9 +189,93 @@ describe('accountAction', () => {
     mockRemoveAccount.mockReturnValue({ success: true });
 
     const { accountAction } = await import('./account');
-    await accountAction({}, makeCmd({ remove: 'user@example.com' }));
+    await accountAction({}, makeCmd({ remove: 'user@example.com', yes: true }));
 
     expect(mockRemoveAccount).toHaveBeenCalledWith('claude-1');
+    expect(mockConfirmDestructive).not.toHaveBeenCalled();
+  });
+
+  it('refuses --remove without --yes when stdin is not a TTY', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockListAccounts.mockReturnValue([
+      { uuid: 'claude-1', email: 'user@example.com', addedAt: '2026-01-01T00:00:00Z' },
+    ]);
+    setStdinTTY(undefined);
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ remove: 'user@example.com' }));
+
+    expect(stderrData).toContain('Re-run with --yes');
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(mockRemoveAccount).not.toHaveBeenCalled();
+  });
+
+  it('refuses --remove in --json mode without --yes even on a TTY', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockListAccounts.mockReturnValue([
+      { uuid: 'claude-1', email: 'user@example.com', addedAt: '2026-01-01T00:00:00Z' },
+    ]);
+    setStdinTTY(true);
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ remove: 'user@example.com' }, { json: true }));
+
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(mockRemoveAccount).not.toHaveBeenCalled();
+  });
+
+  it('prompts interactively and aborts when the user declines', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockListAccounts.mockReturnValue([
+      { uuid: 'claude-1', email: 'user@example.com', addedAt: '2026-01-01T00:00:00Z' },
+    ]);
+    setStdinTTY(true);
+    mockConfirmDestructive.mockResolvedValue(false);
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ remove: 'user@example.com' }));
+
+    expect(mockConfirmDestructive).toHaveBeenCalledOnce();
+    expect(stderrData).toContain('Aborted');
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(mockRemoveAccount).not.toHaveBeenCalled();
+  });
+
+  it('prompts interactively and removes when the user confirms', async () => {
+    mockResolveProviderId.mockReturnValue('claude-code');
+    mockListAccounts.mockReturnValue([
+      { uuid: 'claude-1', email: 'user@example.com', addedAt: '2026-01-01T00:00:00Z' },
+    ]);
+    setStdinTTY(true);
+    mockConfirmDestructive.mockResolvedValue(true);
+    mockRemoveAccount.mockReturnValue({ success: true });
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ remove: 'user@example.com' }));
+
+    expect(mockConfirmDestructive.mock.calls[0][0]).toContain('user@example.com');
+    expect(mockRemoveAccount).toHaveBeenCalledWith('claude-1');
+  });
+
+  it('gates the Codex remove path behind the same confirmation', async () => {
+    mockResolveProviderId.mockReturnValue('codex');
+    mockListCodexAccounts.mockReturnValue([
+      {
+        id: 'codex-1',
+        providerId: 'codex',
+        label: 'Work',
+        email: 'user@example.com',
+        addedAt: '2026-01-01T00:00:00Z',
+        metadata: {},
+      },
+    ]);
+    setStdinTTY(undefined);
+
+    const { accountAction } = await import('./account');
+    await accountAction({}, makeCmd({ provider: 'codex', remove: 'Work' }));
+
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(mockRemoveCodexAccount).not.toHaveBeenCalled();
   });
 
   it('signs in and saves a Claude account with --login', async () => {
