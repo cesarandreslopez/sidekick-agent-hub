@@ -89,6 +89,7 @@ export function HelpOverlay({ panels, activePanelIndex }: HelpOverlayProps): Rea
         <Text> </Text>
         <Text bold> General</Text>
         {helpRow('r', 'Generate HTML report')}
+        {helpRow('M', 'Toggle mouse capture (copy/select)')}
         {helpRow('V', 'Version & changelog')}
         {helpRow('?', 'Toggle this help')}
         {helpRow('Esc', 'Close overlay / clear filter')}

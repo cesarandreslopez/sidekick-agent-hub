@@ -163,6 +163,12 @@ describe('misc transitions', () => {
     expect(after.focusTarget).toBe('detail');
   });
 
+  it('TOGGLE_MOUSE flips mouse capture', () => {
+    const off = reducer(state(), { type: 'TOGGLE_MOUSE' });
+    expect(off.mouseEnabled).toBe(false);
+    expect(reducer(off, { type: 'TOGGLE_MOUSE' }).mouseEnabled).toBe(true);
+  });
+
   it('toasts add and remove by id', () => {
     const toast = { id: 1, message: 'hi', severity: 'info' as const, expiresAt: 99 };
     let s = reducer(state(), { type: 'ADD_TOAST', toast });

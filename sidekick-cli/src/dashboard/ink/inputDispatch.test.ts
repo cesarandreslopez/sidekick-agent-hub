@@ -383,6 +383,37 @@ describe('splash screen (hasReceivedEvents=false)', () => {
     handleDashboardInput('q', makeKey(), ctx);
     expect(exit).toHaveBeenCalledOnce();
   });
+
+  it("'M' toggles mouse capture on the splash screen", () => {
+    const onMouseSettingChange = vi.fn();
+    const { ctx, dispatched } = makeCtx({ hasReceivedEvents: false }, { onMouseSettingChange });
+    handleDashboardInput('M', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'TOGGLE_MOUSE' }]);
+    expect(onMouseSettingChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('mouse toggle', () => {
+  it("'M' flips capture, toasts, and reports the new value", () => {
+    const onMouseSettingChange = vi.fn();
+    const { ctx, dispatched, addToast } = makeCtx(
+      { mouseEnabled: false },
+      { onMouseSettingChange },
+    );
+    handleDashboardInput('M', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'TOGGLE_MOUSE' }]);
+    expect(onMouseSettingChange).toHaveBeenCalledWith(true);
+    expect(addToast).toHaveBeenCalledWith('Mouse capture on', 'info');
+  });
+
+  it("panel bindings on 'M' are ignored (reserved)", () => {
+    const handler = vi.fn();
+    const panels = [makePanel({ bindings: [{ keys: ['M'], label: 'Hijack', handler }] })];
+    const { ctx, dispatched } = makeCtx({}, { panels, panel: panels[0], selectedItem: item });
+    handleDashboardInput('M', makeKey(), ctx);
+    expect(handler).not.toHaveBeenCalled();
+    expect(dispatched).toEqual([{ type: 'TOGGLE_MOUSE' }]);
+  });
 });
 
 describe('panel keybindings and action shortcuts', () => {

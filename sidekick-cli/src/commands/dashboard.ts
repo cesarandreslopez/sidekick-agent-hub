@@ -39,6 +39,7 @@ import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
+import { readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
 
 function createProviderById(id: ProviderId) {
   switch (id) {
@@ -334,6 +335,20 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // ── Render with Ink ──
   const { render } = await import('ink');
 
+  // Mouse capture: --no-mouse flag > persisted preference > enabled.
+  // The flag is per-run and never persisted; only the interactive 'M'
+  // toggle writes the preference back.
+  const mouseInitiallyEnabled =
+    opts.mouse === false ? false : (readDashboardConfig().mouseEnabled ?? true);
+  const persistMouseSetting = (enabled: boolean) => {
+    try {
+      updateDashboardConfig({ mouseEnabled: enabled });
+    } catch {
+      // Persistence is best-effort (read-only HOME, CI); the in-session
+      // toggle must keep working regardless.
+    }
+  };
+
   const generateReport = () => {
     if (!sessionPath) return;
     const events: FollowEvent[] = [];
@@ -387,6 +402,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         scheduleRender();
       },
       onGenerateReport: generateReport,
+      mouseInitiallyEnabled,
+      onMouseSettingChange: persistMouseSetting,
     }),
   );
 
@@ -417,6 +434,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
             scheduleRender();
           },
           onGenerateReport: generateReport,
+          mouseInitiallyEnabled,
+          onMouseSettingChange: persistMouseSetting,
         }),
       );
     }, 100);

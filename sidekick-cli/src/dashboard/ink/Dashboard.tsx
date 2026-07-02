@@ -53,6 +53,10 @@ interface DashboardProps {
   onSessionSwitch?: (sessionPath: string) => void;
   onTogglePin?: () => void;
   onGenerateReport?: () => void;
+  /** Initial mouse-capture state (resolved from --no-mouse flag and cli-config). */
+  mouseInitiallyEnabled?: boolean;
+  /** Called when the user toggles mouse capture with 'M' (for persistence). */
+  onMouseSettingChange?: (enabled: boolean) => void;
 }
 
 // ── Component ──
@@ -66,8 +70,13 @@ export function Dashboard({
   onSessionSwitch,
   onTogglePin,
   onGenerateReport,
+  mouseInitiallyEnabled,
+  onMouseSettingChange,
 }: DashboardProps): React.ReactElement {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(reducer, initialState, (base) => ({
+    ...base,
+    mouseEnabled: mouseInitiallyEnabled !== false,
+  }));
   const { exit } = useApp();
   const { columns, rows } = useTerminalSize();
   const toastIdRef = useRef(0);
@@ -490,6 +499,7 @@ export function Dashboard({
       detailViewportHeight,
       addToast,
       toggleSessionFilter,
+      onMouseSettingChange,
       onGenerateReport,
       onTogglePin,
       isPinned,
@@ -506,7 +516,7 @@ export function Dashboard({
 
   if (!state.hasReceivedEvents) {
     return (
-      <MouseProvider onMouse={handleMouse}>
+      <MouseProvider onMouse={handleMouse} enabled={state.mouseEnabled}>
         <Box flexDirection="column" height={rows} width={columns}>
           <Box flexGrow={1} justifyContent="center" alignItems="center">
             <SplashOverlay />
@@ -517,6 +527,7 @@ export function Dashboard({
             panelHints=""
             sessionFilter={null}
             filterString=""
+            mouseEnabled={state.mouseEnabled}
           />
         </Box>
       </MouseProvider>
@@ -524,7 +535,7 @@ export function Dashboard({
   }
 
   return (
-    <MouseProvider onMouse={handleMouse}>
+    <MouseProvider onMouse={handleMouse} enabled={state.mouseEnabled}>
       <Box flexDirection="column" height={rows} width={columns}>
         {/* Tab bar (hidden when full-screen overlay is active) */}
         {state.overlay !== 'help' && state.overlay !== 'changelog' && (
@@ -593,6 +604,7 @@ export function Dashboard({
           updateInfo={metrics.updateInfo}
           providerStatus={metrics.providerStatus}
           openaiStatus={metrics.openaiStatus}
+          mouseEnabled={state.mouseEnabled}
         />
 
         {/* Inline overlays (render on top of content) */}

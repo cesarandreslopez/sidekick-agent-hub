@@ -40,6 +40,7 @@ export interface DashboardUIState {
   contextMenuIndex: number;
   changelogScrollOffset: number;
   renderTick: number;
+  mouseEnabled: boolean;
 }
 
 export type Action =
@@ -64,6 +65,7 @@ export type Action =
   | { type: 'CONTEXT_MENU_SELECT' }
   | { type: 'SCROLL_SIDE'; delta: number; itemCount: number }
   | { type: 'CHANGELOG_SCROLL'; delta: number }
+  | { type: 'TOGGLE_MOUSE' }
   | { type: 'TICK' };
 
 /** Validate a filter string for the given mode; null when valid. */
@@ -217,6 +219,9 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
         changelogScrollOffset: Math.max(0, state.changelogScrollOffset + action.delta),
       };
 
+    case 'TOGGLE_MOUSE':
+      return { ...state, mouseEnabled: !state.mouseEnabled };
+
     case 'TICK':
       return { ...state, renderTick: state.renderTick + 1 };
 
@@ -242,4 +247,5 @@ export const initialState: DashboardUIState = {
   contextMenuIndex: 0,
   changelogScrollOffset: 0,
   renderTick: 0,
+  mouseEnabled: true,
 };

@@ -11,6 +11,8 @@ import type { TerminalMouseEvent } from './parseMouseEvent';
 
 interface MouseProviderProps {
   onMouse: (event: TerminalMouseEvent) => void;
+  /** When false, mouse tracking stays off so terminal text selection works. */
+  enabled?: boolean;
   children: React.ReactNode;
 }
 
@@ -23,8 +25,13 @@ function InputSink(): null {
   return null;
 }
 
-export function MouseProvider({ onMouse, children }: MouseProviderProps): React.ReactElement {
+export function MouseProvider({
+  onMouse,
+  enabled = true,
+  children,
+}: MouseProviderProps): React.ReactElement {
   useEffect(() => {
+    if (!enabled) return;
     enableMouse();
 
     const handler = (data: Buffer) => {
@@ -45,7 +52,7 @@ export function MouseProvider({ onMouse, children }: MouseProviderProps): React.
       process.removeListener('exit', exitHandler);
       disableMouse();
     };
-  }, [onMouse]);
+  }, [enabled, onMouse]);
 
   return (
     <>

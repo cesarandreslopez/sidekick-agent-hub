@@ -66,6 +66,7 @@ const dashCmd = new Command('dashboard')
   .description('Full-screen TUI dashboard with live session metrics')
   .option('--session <id>', 'Follow a specific session (default: most recent)')
   .option('--replay', 'Replay existing events before streaming new ones')
+  .option('--no-mouse', 'Disable mouse capture so terminal text selection works (toggle with M)')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { dashboardAction } = await import('./commands/dashboard');
     return dashboardAction(_opts, cmd);

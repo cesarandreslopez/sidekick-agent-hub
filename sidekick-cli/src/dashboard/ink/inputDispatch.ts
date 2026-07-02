@@ -35,6 +35,7 @@ const RESERVED_KEYS = new Set([
   'q',
   '?',
   '/',
+  'M',
   '1',
   '2',
   '3',
@@ -73,6 +74,8 @@ export interface InputDispatchContext {
   detailViewportHeight: number;
   addToast: (message: string, severity: 'error' | 'warning' | 'info') => void;
   toggleSessionFilter: () => void;
+  /** Called after the mouse-capture toggle flips, with the new value. */
+  onMouseSettingChange?: (enabled: boolean) => void;
   onGenerateReport?: () => void;
   onTogglePin?: () => void;
   isPinned?: boolean;
@@ -97,6 +100,7 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     detailViewportHeight,
     addToast,
     toggleSessionFilter,
+    onMouseSettingChange,
     onGenerateReport,
     onTogglePin,
     isPinned,
@@ -227,6 +231,19 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   // Help toggle
   if (input === '?') {
     dispatch({ type: 'SET_OVERLAY', overlay: 'help' });
+    return;
+  }
+
+  // Mouse-capture toggle (works on the splash screen too, where the
+  // selection hijack is most surprising)
+  if (input === 'M') {
+    const next = !state.mouseEnabled;
+    dispatch({ type: 'TOGGLE_MOUSE' });
+    addToast(
+      next ? 'Mouse capture on' : 'Mouse capture off — terminal text selection enabled',
+      'info',
+    );
+    onMouseSettingChange?.(next);
     return;
   }
 

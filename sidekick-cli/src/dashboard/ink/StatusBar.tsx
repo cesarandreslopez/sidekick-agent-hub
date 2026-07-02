@@ -25,6 +25,7 @@ interface StatusBarProps {
   updateInfo?: UpdateInfo | null;
   providerStatus?: ProviderStatusState | null;
   openaiStatus?: ProviderStatusState | null;
+  mouseEnabled?: boolean;
 }
 
 export function StatusBar({
@@ -40,6 +41,7 @@ export function StatusBar({
   updateInfo,
   providerStatus,
   openaiStatus,
+  mouseEnabled,
 }: StatusBarProps): React.ReactElement {
   const evtLabel = eventCount > 0 ? `${eventCount} events` : 'waiting...';
 
@@ -105,6 +107,12 @@ export function StatusBar({
             <Text color={openaiColor}>
               {'\u25cf'} OpenAI {openaiStatus!.indicator}
             </Text>
+          </>
+        )}
+        {mouseEnabled === false && (
+          <>
+            <Text dimColor> {'\u2502'} </Text>
+            <Text color="yellow">MOUSE OFF</Text>
           </>
         )}
         {filterString && (
