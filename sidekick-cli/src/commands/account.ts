@@ -2,13 +2,11 @@
  * `sidekick account` — Manage saved Claude and Codex accounts.
  */
 
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import {
-  getConfigDir,
   listAccounts,
   getActiveAccount,
   addCurrentAccount,
@@ -34,6 +32,7 @@ import type {
   SavedAccountProfile,
 } from 'sidekick-shared';
 import { resolveProviderId } from '../cli';
+import { readCliConfig, writeCliConfig } from '../utils/cliConfig';
 
 interface AccountCommandOptions {
   provider?: string;
@@ -79,26 +78,6 @@ export async function accountAction(_opts: Record<string, unknown>, cmd: Command
   }
 
   await claudeAccountAction(opts, jsonOutput);
-}
-
-function autoSwitchConfigPath(): string {
-  return path.join(getConfigDir(), 'cli-config.json');
-}
-
-function readCliConfig(): Record<string, unknown> {
-  try {
-    return JSON.parse(fs.readFileSync(autoSwitchConfigPath(), 'utf8')) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-function writeCliConfig(config: Record<string, unknown>): void {
-  const filePath = autoSwitchConfigPath();
-  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  const tmp = `${filePath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(config, null, 2), { encoding: 'utf8', mode: 0o600 });
-  fs.renameSync(tmp, filePath);
 }
 
 function parseAutoSwitchConfig(value: string): AutoSwitchConfig {
