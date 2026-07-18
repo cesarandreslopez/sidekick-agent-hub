@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SessionProvider, ProviderId } from '../providers/types';
+import type { SessionProviderBase, ProviderId } from '../providers/types';
 
 export interface SearchResult {
   providerId: ProviderId;
@@ -16,7 +16,7 @@ export interface SearchResult {
 }
 
 export async function searchSessions(
-  provider: SessionProvider,
+  provider: SessionProviderBase,
   query: string,
   opts?: { projectSlug?: string; maxResults?: number },
 ): Promise<SearchResult[]> {
@@ -52,9 +52,8 @@ export async function searchSessions(
 
       // If no files found from dir scan, try findAllSessions with the folder name
       if (sessionFiles.length === 0) {
-        // Use provider.findSessionFiles with the folder path as workspace
-        // This handles DB-backed providers
-        sessionFiles = provider.findSessionFiles(folder.name);
+        // Let canonical directory discovery handle synthetic DB-backed paths.
+        sessionFiles = provider.findSessionsInDirectory(folder.dir);
       }
 
       for (const sessionPath of sessionFiles) {

@@ -24,9 +24,11 @@ import {
   createEmptyDataStore,
   createEmptyTokenTotals,
   HISTORICAL_DATA_SCHEMA_VERSION,
+  HISTORICAL_SESSION_RETENTION_LIMIT,
 } from '../types/historicalData';
 import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
 import { log } from './Logger';
+import { calculateQualityTrend } from 'sidekick-shared';
 
 /**
  * Service for persisting and aggregating historical session data.
@@ -58,6 +60,8 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
   }
 
   protected override onStoreLoaded(): void {
+    this.store.schemaVersion = HISTORICAL_DATA_SCHEMA_VERSION;
+    this.store.sessions ??= [];
     log(
       `Loaded historical data: ${Object.keys(this.store.daily).length} days, ${this.store.allTime.sessionCount} sessions`,
     );
@@ -85,6 +89,26 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
 
     // Update all-time stats
     this.updateAllTimeStats(date, summary);
+
+    const record = {
+      sessionId: summary.sessionId,
+      provider: summary.provider ?? 'unknown',
+      project: summary.project ?? 'unknown',
+      startTime: summary.startTime,
+      endTime: summary.endTime,
+      tokens: { ...summary.tokens },
+      totalCost: summary.totalCost,
+      messageCount: summary.messageCount,
+      qualityScore: summary.qualityScore ?? 0,
+      qualityFactors: summary.qualityFactors ?? [],
+      additions: summary.additions ?? 0,
+      deletions: summary.deletions ?? 0,
+      costPerChangedLine: summary.costPerChangedLine ?? null,
+    };
+    this.store.sessions = [
+      ...(this.store.sessions ?? []).filter((session) => session.sessionId !== summary.sessionId),
+      record,
+    ].slice(-HISTORICAL_SESSION_RETENTION_LIMIT);
 
     this.markDirty();
 
@@ -358,6 +382,18 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
    */
   getAllTimeStats(): HistoricalDataStore['allTime'] {
     return { ...this.store.allTime };
+  }
+
+  getSessionRecords() {
+    return [...(this.store.sessions ?? [])];
+  }
+
+  getQualityTrend() {
+    return calculateQualityTrend(this.store.sessions ?? []);
+  }
+
+  getLatestSessionRecord() {
+    return this.store.sessions?.[this.store.sessions.length - 1] ?? null;
   }
 
   /**

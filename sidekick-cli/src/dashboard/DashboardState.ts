@@ -92,6 +92,7 @@ export interface CompactionEvent {
   contextBefore: number;
   contextAfter: number;
   tokensReclaimed: number;
+  source: 'reported' | 'heuristic';
 }
 
 export interface UrlTouch {
@@ -121,6 +122,9 @@ export interface PlanStep {
   tokensUsed?: number;
   toolCalls?: number;
   errorMessage?: string;
+  startedAt?: string;
+  completedAt?: string;
+  costUsd?: number;
 }
 
 export interface PlanInfo {
@@ -130,6 +134,9 @@ export interface PlanInfo {
   completionRate?: number;
   totalDurationMs?: number;
   rawMarkdown?: string;
+  active?: boolean;
+  enteredAt?: string;
+  exitedAt?: string;
 }
 
 export interface ContextAttribution {
@@ -584,6 +591,7 @@ export class DashboardState {
       contextBefore: ce.contextBefore,
       contextAfter: ce.contextAfter,
       tokensReclaimed: ce.tokensReclaimed,
+      source: ce.source,
     }));
 
     // Convert plan from aggregator's PlanState to CLI's PlanInfo
@@ -677,11 +685,21 @@ export class DashboardState {
         status: s.status,
         phase: s.phase,
         complexity: s.complexity,
+        startedAt: s.startedAt,
+        completedAt: s.completedAt,
+        durationMs: s.durationMs,
+        tokensUsed: s.tokensUsed,
+        toolCalls: s.toolCalls,
+        errorMessage: s.errorMessage,
+        costUsd: s.costUsd,
       })),
       source: planState.source,
       completionRate: planState.completionRate,
       totalDurationMs: planState.totalDurationMs,
       rawMarkdown: planState.rawMarkdown,
+      active: planState.active,
+      enteredAt: planState.enteredAt?.toISOString(),
+      exitedAt: planState.exitedAt?.toISOString(),
     };
   }
 

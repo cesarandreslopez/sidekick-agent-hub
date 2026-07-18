@@ -40,6 +40,18 @@ export class DecisionLogService extends PersistenceService<DecisionLogStore> {
     log(`Loaded persisted decisions: ${Object.keys(this.store.decisions).length} entries`);
   }
 
+  protected override mergeStoreForSave(
+    latest: DecisionLogStore,
+    pending: DecisionLogStore,
+  ): DecisionLogStore {
+    return {
+      ...latest,
+      ...pending,
+      decisions: { ...latest.decisions, ...pending.decisions },
+      schemaVersion: DECISION_LOG_SCHEMA_VERSION,
+    };
+  }
+
   /**
    * Adds new decision entries, deduplicating against existing ones.
    */

@@ -33,7 +33,7 @@ import {
   normalizeToolInput,
 } from '../parsers/openCodeParser';
 import { OpenCodeDatabase } from './openCodeDatabase';
-import type { DbPart } from './openCodeDatabase';
+import type { DbPart } from '../types/opencode';
 import {
   accumulateZaiUsage,
   inferZaiQuotaState,

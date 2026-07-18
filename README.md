@@ -24,6 +24,9 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **Fast daily workflow** — `sidekick statusline`, `today`, `doctor`, atomic terminal capture, and generic external handoff keep common checks and updates one command away.
+- **Read-only MCP facts** — register `sidekick mcp` with Claude Code or Codex so the running agent can inspect quota, burn rate, context pressure, and project stores.
+- **Shared analytics and observed-session V1** — categorized failure history, beta quality trends, code-impact and compaction ledgers, plus versioned provider-neutral contracts for downstream tools.
 - **Codex reset credits** — when Codex quota is refreshed from the API, `sidekick quota` and the VS Code dashboard "Rate Limits" tile now surface available rate-limit reset credits and their expirations.
 - **z.ai Coding Plan quota** — when OpenCode routes to a z.ai Coding Plan (GLM), Sidekick shows authoritative 5-Hour / Weekly quota read from z.ai's quota API (with cached-snapshot fallback). z.ai is monitored-only and not yet a selectable inference provider — see [limitations](docs/providers/opencode.md#limitations).
 - **Claude Opus 4.8 & Fable 5** — recognized everywhere models are interpreted, with 1M-token context windows, accurate pricing, and "Fable" display labels.
@@ -72,6 +75,9 @@ Standalone commands jump directly to a specific panel or run one-shot queries, i
 sidekick tasks                                      # open tasks panel
 sidekick search "migration"                         # cross-session search
 sidekick stats                                      # session statistics
+sidekick today                                      # cache-only daily brief
+sidekick doctor                                     # installation/session diagnostics
+sidekick statusline                                 # one-line agent footer
 sidekick extract                                    # URLs, files, commands, plans from recent chats
 sidekick extract --type url,path --limit 10 --json  # script-friendly filtered extraction
 sidekick quota                                      # quota / rate-limit check
@@ -80,6 +86,7 @@ sidekick status                                     # API status check (Claude +
 sidekick peak                                       # Claude peak-hours check (faster session-limit drain)
 sidekick dump --format markdown > session-report.md
 sidekick report                                     # HTML report → browser
+sidekick mcp                                        # read-only facts server for Claude Code/Codex
 ```
 
 Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`, `sidekick peak`, `sidekick account`.

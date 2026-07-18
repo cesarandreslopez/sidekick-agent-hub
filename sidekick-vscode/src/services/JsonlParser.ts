@@ -7,8 +7,8 @@
  * @module services/JsonlParser
  */
 
-import type { ClaudeSessionEvent } from '../types/claudeSession';
+import type { SessionEvent } from '../types/claudeSession';
 import type { JsonlParserCallbacks } from 'sidekick-shared';
 
 export { JsonlParser, extractTokenUsage, extractToolCall } from 'sidekick-shared';
-export type JsonlParserOptions = JsonlParserCallbacks<ClaudeSessionEvent>;
+export type JsonlParserOptions = JsonlParserCallbacks<SessionEvent>;

@@ -6,6 +6,16 @@ import { describe, it, expect } from 'vitest';
 import { calculateLineChanges, aggregateLineChanges } from './lineChangeCalculator';
 
 describe('calculateLineChanges', () => {
+  it('prefers provider-reported additions and deletions for Codex synthetic edits', () => {
+    expect(
+      calculateLineChanges('Edit', {
+        file_path: '/repo/src/a.ts',
+        additions: 8,
+        deletions: 3,
+      }),
+    ).toEqual({ additions: 8, deletions: 3 });
+  });
+
   describe('Write tool', () => {
     it('counts all lines as additions for new file', () => {
       const result = calculateLineChanges('Write', {

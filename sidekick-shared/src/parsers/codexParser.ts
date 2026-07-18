@@ -50,6 +50,23 @@ interface PendingExecCommand {
   timestamp: string;
 }
 
+function reportedCompaction(
+  tokensBefore: number | undefined,
+  tokensAfter: number | undefined,
+): Pick<SessionEvent, 'compaction'> | Record<string, never> {
+  if (
+    typeof tokensBefore !== 'number' ||
+    typeof tokensAfter !== 'number' ||
+    !Number.isFinite(tokensBefore) ||
+    !Number.isFinite(tokensAfter) ||
+    tokensBefore < tokensAfter ||
+    tokensAfter < 0
+  ) {
+    return {};
+  }
+  return { compaction: { tokensBefore, tokensAfter } };
+}
+
 /** Pending MCP tool call awaiting its end event. */
 interface PendingMcpToolCall {
   call_id: string;
@@ -552,6 +569,7 @@ export class CodexRolloutParser {
           content: payload.summary || 'Context compacted',
         },
         timestamp,
+        ...reportedCompaction(payload.tokens_before, payload.tokens_after),
       },
     ];
   }
@@ -754,6 +772,7 @@ export class CodexRolloutParser {
               content: e.summary || 'Context compacted',
             },
             timestamp,
+            ...reportedCompaction(e.tokens_before, e.tokens_after),
           },
         ];
       }

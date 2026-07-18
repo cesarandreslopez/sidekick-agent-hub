@@ -132,6 +132,34 @@ describe('parsePlanMarkdown', () => {
 });
 
 describe('PlanExtractor', () => {
+  it('reads the final plan file after an Edit instead of parsing surrounding prose', () => {
+    const finalMarkdown = '# Edited Plan\n- First real step\n- Second real step';
+    const extractor = new PlanExtractor((path) =>
+      path.endsWith('edited.md') ? finalMarkdown : null,
+    );
+    extractor.processEvent(
+      mkEvent({ type: 'tool_use', toolName: 'EnterPlanMode', summary: 'enter' }),
+    );
+    extractor.processEvent(
+      mkEvent({
+        type: 'tool_use',
+        toolName: 'Edit',
+        summary: 'edit plan',
+        raw: { input: { file_path: '/tmp/.claude/plans/edited.md' } },
+      }),
+    );
+    extractor.processEvent(
+      mkEvent({ type: 'assistant', summary: 'I updated the plan and it is ready.' }),
+    );
+    extractor.processEvent(
+      mkEvent({ type: 'tool_use', toolName: 'ExitPlanMode', summary: 'exit' }),
+    );
+
+    expect(extractor.plan?.title).toBe('Edited Plan');
+    expect(extractor.plan?.steps).toHaveLength(2);
+    expect(extractor.plan?.rawMarkdown).toBe(finalMarkdown);
+  });
+
   it('stores plans with rawMarkdown even when 0 parsed steps', () => {
     const extractor = new PlanExtractor();
     const markdown = '# My Plan\n\nThis is a narrative plan with no structured steps.';

@@ -42,6 +42,8 @@ export interface ResolvedActiveAccount {
   email?: string;
   label?: string;
   providerAccountId?: string;
+  /** Stable Sidekick registry ID used by cache/history stores. */
+  registryAccountId?: string;
   source: 'live' | 'registry' | 'none';
 }
 

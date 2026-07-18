@@ -17,18 +17,26 @@ import { hydratePricingCatalog } from 'sidekick-shared/node';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 
+const isCacheOnlyCommand = process.argv
+  .slice(2)
+  .some((arg) => arg === 'statusline' || arg === 'today');
+
 // Fire-and-forget: warm the pricing catalog so `stats` / `dashboard` show
 // correct dollar figures for Codex/GPT/o-series sessions. Non-blocking and
 // offline-safe — failures fall through to the static baseline.
-hydratePricingCatalog({
-  cacheDir: path.join(os.homedir(), '.config', 'sidekick'),
-}).catch(() => {
-  /* non-fatal; static table still works */
-});
+if (!isCacheOnlyCommand) {
+  hydratePricingCatalog({
+    cacheDir: path.join(os.homedir(), '.config', 'sidekick'),
+  }).catch(() => {
+    /* non-fatal; static table still works */
+  });
+}
 
-const defaultAccountsReady = ensureDefaultAccounts().catch(() => {
-  /* non-fatal; account bootstrap must not block startup */
-});
+const defaultAccountsReady = isCacheOnlyCommand
+  ? Promise.resolve()
+  : ensureDefaultAccounts().catch(() => {
+      /* non-fatal; account bootstrap must not block startup */
+    });
 
 const program = new Command();
 
@@ -143,6 +151,24 @@ const tasksCmd = new Command('tasks')
     const { tasksAction } = await import('./commands/tasks');
     return tasksAction(_opts, cmd);
   });
+tasksCmd
+  .command('add')
+  .description('Add a task to the current project')
+  .argument('<subject>', 'Task subject')
+  .option('--description <text>', 'Longer task description')
+  .option('--tags <tags>', 'Comma-separated tags')
+  .action(async (subject: string, _opts: Record<string, unknown>, cmd: Command) => {
+    const { taskAddAction } = await import('./commands/capture');
+    return taskAddAction(subject, cmd);
+  });
+tasksCmd
+  .command('done')
+  .description('Mark a task completed by ID or unique prefix')
+  .argument('<id>', 'Task ID or unique prefix')
+  .action(async (id: string, _opts: Record<string, unknown>, cmd: Command) => {
+    const { taskDoneAction } = await import('./commands/capture');
+    return taskDoneAction(id, cmd);
+  });
 program.addCommand(tasksCmd);
 
 // Decisions command — list persisted decisions for the current project
@@ -167,6 +193,61 @@ const notesCmd = new Command('notes')
     return notesAction(_opts, cmd);
   });
 program.addCommand(notesCmd);
+
+const noteCmd = new Command('note').description('Capture project knowledge');
+noteCmd
+  .command('add')
+  .description('Add a knowledge note')
+  .argument('<content>', 'Note content')
+  .option('--file <path>', 'Related project file', '.')
+  .option('--title <title>', 'Short note title')
+  .option('--type <type>', 'gotcha, pattern, guideline, or tip', 'tip')
+  .option('--importance <level>', 'critical, high, medium, or low', 'medium')
+  .option('--tags <tags>', 'Comma-separated tags')
+  .action(async (content: string, _opts: Record<string, unknown>, cmd: Command) => {
+    const { noteAddAction } = await import('./commands/capture');
+    return noteAddAction(content, cmd);
+  });
+program.addCommand(noteCmd);
+
+const decisionCmd = new Command('decision').description('Capture architectural decisions');
+decisionCmd
+  .command('add')
+  .description('Add a decision')
+  .argument('<description>', 'What was decided')
+  .option('--rationale <text>', 'Why this choice was made')
+  .option('--chosen <text>', 'Chosen option')
+  .option('--alternatives <items>', 'Comma-separated alternatives')
+  .option('--tags <tags>', 'Comma-separated tags')
+  .action(async (description: string, _opts: Record<string, unknown>, cmd: Command) => {
+    const { decisionAddAction } = await import('./commands/capture');
+    return decisionAddAction(description, cmd);
+  });
+program.addCommand(decisionCmd);
+
+const doctorCmd = new Command('doctor')
+  .description('Diagnose project identity, sessions, accounts, providers, and dependencies')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { doctorAction } = await import('./commands/doctor');
+    return doctorAction(_opts, cmd);
+  });
+program.addCommand(doctorCmd);
+
+const todayCmd = new Command('today')
+  .description('Show a cache-only daily brief for this project')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { todayAction } = await import('./commands/today');
+    return todayAction(_opts, cmd);
+  });
+program.addCommand(todayCmd);
+
+const mcpCmd = new Command('mcp')
+  .description('Serve read-only Sidekick facts over MCP stdio')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { mcpAction } = await import('./commands/mcp');
+    return mcpAction(_opts, cmd);
+  });
+program.addCommand(mcpCmd);
 
 // Stats command — show historical stats summary
 const statsCmd = new Command('stats')
@@ -214,6 +295,14 @@ const statusCmd = new Command('status')
     return statusAction(_opts, cmd);
   });
 program.addCommand(statusCmd);
+
+const statuslineCmd = new Command('statusline')
+  .description('Render the cache-only one-line agent status footer')
+  .action(async () => {
+    const { statuslineAction } = await import('./commands/statusline');
+    statuslineAction();
+  });
+program.addCommand(statuslineCmd);
 
 // Peak command — one-shot Claude peak-hours check (promoclock.co)
 const peakCmd = new Command('peak')
@@ -264,6 +353,16 @@ const handoffCmd = new Command('handoff')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { handoffAction } = await import('./commands/handoff');
     return handoffAction(_opts, cmd);
+  });
+handoffCmd
+  .command('open')
+  .description('Open a configured external session-handoff target')
+  .option('--url-template <template>', 'URL with {sessionId}, {provider}, and {projectPath}')
+  .option('--session <id>', 'Override the active session ID')
+  .option('--no-open', 'Render without opening the URL')
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { externalHandoffAction } = await import('./commands/handoff');
+    return externalHandoffAction(_opts, cmd);
   });
 program.addCommand(handoffCmd);
 

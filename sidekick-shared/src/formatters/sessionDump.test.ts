@@ -301,6 +301,7 @@ describe('formatSessionMarkdown', () => {
             contextBefore: 100000,
             contextAfter: 30000,
             tokensReclaimed: 70000,
+            source: 'reported',
           },
         ],
       }),

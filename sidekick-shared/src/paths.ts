@@ -51,14 +51,37 @@ export function encodeWorkspacePath(workspacePath: string): string {
  * Resolves symlinks, then encodes for use as a filename.
  */
 export function getProjectSlug(cwd?: string): string {
-  const dir = cwd || process.cwd();
+  return resolveProjectIdentity(cwd).canonicalSlug;
+}
+
+export interface ProjectIdentity {
+  cwd: string;
+  resolvedCwd: string;
+  canonicalSlug: string;
+  legacySlug: string;
+  candidates: string[];
+  hasLegacyMismatch: boolean;
+}
+
+/** Resolves the canonical project identity used by all new readers and writers. */
+export function resolveProjectIdentity(cwd?: string): ProjectIdentity {
+  const dir = path.resolve(cwd || process.cwd());
   let resolved: string;
   try {
     resolved = fs.realpathSync(dir);
   } catch {
-    resolved = path.resolve(dir);
+    resolved = dir;
   }
-  return encodeWorkspacePath(resolved);
+  const canonicalSlug = encodeWorkspacePath(resolved);
+  const legacySlug = encodeWorkspacePath(dir);
+  return {
+    cwd: dir,
+    resolvedCwd: resolved,
+    canonicalSlug,
+    legacySlug,
+    candidates: canonicalSlug === legacySlug ? [canonicalSlug] : [canonicalSlug, legacySlug],
+    hasLegacyMismatch: canonicalSlug !== legacySlug,
+  };
 }
 
 /**
@@ -67,6 +90,5 @@ export function getProjectSlug(cwd?: string): string {
  * Use this when reading data written by the extension.
  */
 export function getProjectSlugRaw(cwd?: string): string {
-  const dir = cwd || process.cwd();
-  return encodeWorkspacePath(path.resolve(dir));
+  return resolveProjectIdentity(cwd).legacySlug;
 }

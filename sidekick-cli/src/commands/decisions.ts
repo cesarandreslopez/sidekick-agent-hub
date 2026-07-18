@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { readDecisions, getProjectSlug, getProjectSlugRaw } from 'sidekick-shared';
+import { readDecisions, resolveProjectIdentity } from 'sidekick-shared';
 import type { DecisionEntry } from 'sidekick-shared';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -65,15 +65,7 @@ export async function decisionsAction(_opts: Record<string, unknown>, cmd: Comma
   const limit: number | undefined = opts.limit ? parseInt(opts.limit as string, 10) : undefined;
 
   try {
-    const rawSlug = getProjectSlugRaw(workspacePath);
-    const resolvedSlug = getProjectSlug(workspacePath);
-    const slugs = rawSlug !== resolvedSlug ? [rawSlug, resolvedSlug] : [rawSlug];
-
-    let decisions: DecisionEntry[] = [];
-    for (const slug of slugs) {
-      decisions = await readDecisions(slug, { search, limit });
-      if (decisions.length > 0) break;
-    }
+    const decisions = await readDecisions(resolveProjectIdentity(workspacePath), { search, limit });
 
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(decisions, null, 2) + '\n');

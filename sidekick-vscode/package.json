@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -52,6 +52,59 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "walkthroughs": [
+      {
+        "id": "sidekick.getStarted",
+        "title": "Get started with Sidekick Agent Hub",
+        "description": "Connect a live coding-agent session and learn the core Sidekick surfaces.",
+        "steps": [
+          {
+            "id": "sidekick.detectSession",
+            "title": "Detect a live session",
+            "description": "Start Claude Code, OpenCode, or Codex in this workspace. Sidekick begins monitoring automatically.",
+            "media": {
+              "markdown": "media/walkthrough/session.md"
+            },
+            "completionEvents": [
+              "onCommand:sidekick.walkthrough.sessionDetected"
+            ]
+          },
+          {
+            "id": "sidekick.openDashboardStep",
+            "title": "Open the dashboard",
+            "description": "Run [Open Session Dashboard](command:sidekick.openDashboard) to inspect the live session.",
+            "media": {
+              "markdown": "media/walkthrough/dashboard.md"
+            },
+            "completionEvents": [
+              "onCommand:sidekick.openDashboard"
+            ]
+          },
+          {
+            "id": "sidekick.readStatusBar",
+            "title": "Pin and read the status bar",
+            "description": "Select the Sidekick badge in the status bar to open the command hub.",
+            "media": {
+              "markdown": "media/walkthrough/status.md"
+            },
+            "completionEvents": [
+              "onCommand:sidekick.showMenu"
+            ]
+          },
+          {
+            "id": "sidekick.captureNote",
+            "title": "Capture your first knowledge note",
+            "description": "Open a file and run [Add Knowledge Note](command:sidekick.addKnowledgeNote).",
+            "media": {
+              "markdown": "media/walkthrough/note.md"
+            },
+            "completionEvents": [
+              "onCommand:sidekick.walkthrough.noteCaptured"
+            ]
+          }
+        ]
+      }
+    ],
     "configuration": [
       {
         "title": "Provider",
@@ -642,6 +695,11 @@
               "Generate handoff document at session end (stored in ~/.config/sidekick/handoffs/)",
               "Generate handoff and show notification at next session start"
             ]
+          },
+          "sidekick.handoffUrlTemplate": {
+            "type": "string",
+            "default": "",
+            "description": "External handoff URL template. Available identifier placeholders: {sessionId}, {provider}, {projectPath}. No transcript content is included."
           }
         }
       },
@@ -798,6 +856,16 @@
         "category": "Sidekick"
       },
       {
+        "command": "sidekick.installStatusline",
+        "title": "Install Statusline",
+        "category": "Sidekick"
+      },
+      {
+        "command": "sidekick.uninstallStatusline",
+        "title": "Uninstall Statusline",
+        "category": "Sidekick"
+      },
+      {
         "command": "sidekick.generateCommitMessage",
         "title": "Generate Commit Message",
         "category": "Sidekick",
@@ -860,6 +928,12 @@
         "icon": "$(info)"
       },
       {
+        "command": "sidekick.doctor",
+        "title": "Run Doctor",
+        "category": "Sidekick",
+        "icon": "$(debug-alt)"
+      },
+      {
         "command": "sidekick.selectSessionFolder",
         "title": "Browse Session Folders...",
         "category": "Sidekick",
@@ -891,6 +965,12 @@
         "command": "sidekick.setupHandoff",
         "title": "Set Up Session Handoff",
         "category": "Sidekick"
+      },
+      {
+        "command": "sidekick.openExternalHandoff",
+        "title": "Open External Session Handoff",
+        "category": "Sidekick",
+        "icon": "$(link-external)"
       },
       {
         "command": "sidekick.addKnowledgeNote",

@@ -3,6 +3,7 @@ import { resolveActiveCodexAccount } from './codexProfiles';
 
 export interface ActiveProviderAccountStatus {
   present: boolean;
+  accountId?: string;
   email?: string;
   label?: string;
 }
@@ -33,6 +34,9 @@ export function getActiveAccountStatus(error?: string): ActiveAccountStatus {
       claudeAccount.source !== 'none'
         ? {
             present: true,
+            ...(claudeAccount.registryAccountId
+              ? { accountId: claudeAccount.registryAccountId }
+              : {}),
             email: claudeAccount.email,
             label: claudeAccount.label ?? claudeAccount.email,
           }
@@ -41,6 +45,9 @@ export function getActiveAccountStatus(error?: string): ActiveAccountStatus {
       codexAccount.source !== 'none'
         ? {
             present: true,
+            ...(codexAccount.registryAccountId
+              ? { accountId: codexAccount.registryAccountId }
+              : {}),
             email: codexAccount.email,
             label: codexAccount.label ?? codexAccount.email ?? codexAccount.providerAccountId,
           }

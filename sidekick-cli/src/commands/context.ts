@@ -6,7 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import { composeContext, getProjectSlug, getProjectSlugRaw, formatCost } from 'sidekick-shared';
+import { composeContext, resolveProjectIdentity, formatCost } from 'sidekick-shared';
 import type { ContextResult, Fidelity } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 
@@ -110,18 +110,15 @@ export async function contextAction(_opts: Record<string, unknown>, cmd: Command
   const jsonOutput: boolean = !!globalOpts.json || !!opts.json;
   const fidelity: Fidelity = (opts.fidelity as Fidelity) || 'full';
 
-  // Derive the project slug — try both symlink-resolved and raw to match persisted data
-  const slug = getProjectSlug(workspacePath);
-  const slugRaw = getProjectSlugRaw(workspacePath);
-  const effectiveSlug = slug !== slugRaw ? slugRaw : slug;
+  const project = resolveProjectIdentity(workspacePath);
 
   try {
-    const ctx = await composeContext(effectiveSlug, fidelity, provider, workspacePath);
+    const ctx = await composeContext(project, fidelity, provider, workspacePath);
 
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(ctx, null, 2) + '\n');
     } else {
-      process.stdout.write(formatContextText(ctx, effectiveSlug) + '\n');
+      process.stdout.write(formatContextText(ctx, project.canonicalSlug) + '\n');
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

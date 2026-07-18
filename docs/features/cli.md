@@ -174,6 +174,41 @@ sidekick extract -i
 
 Standalone commands that query Sidekick's persisted project data without launching the TUI dashboard. All accept the global flags `--project`, `--provider`, and `--json`.
 
+### Daily brief and diagnostics
+
+```bash
+sidekick today       # cache-only yesterday/tasks/decision/handoff/quota brief
+sidekick doctor      # diagnose project, session, account, provider, and dependency health
+sidekick statusline  # fast one-line account/quota/burn-rate footer
+```
+
+`today` and `statusline` bypass account bootstrap, pricing hydration, and quota network calls. Use `Sidekick: Install Statusline` in VS Code to merge the status-line command into Claude Code settings; uninstalling it restores the previous block.
+
+### Quick capture
+
+```bash
+sidekick tasks add "Investigate retry spike"
+sidekick tasks done <task-id>
+sidekick note add "Migration requires a cache clear" --type gotcha
+sidekick decision add "Use SQLite" --rationale "Local and portable"
+```
+
+Capture commands atomically merge with the same per-project stores used by VS Code. An open Kanban board refreshes when a CLI write lands, without restarting the extension.
+
+### External handoff
+
+```bash
+sidekick handoff open \
+  --url-template 'mytool://session/{sessionId}?provider={provider}' \
+  --session <session-id>
+```
+
+Templates accept identifiers only: `{sessionId}`, `{provider}`, and `{projectPath}`. Use `--no-open` to print the rendered URL. VS Code exposes the same behavior through `sidekick.handoffUrlTemplate` and **Sidekick: Open External Handoff**.
+
+### MCP facts server
+
+`sidekick mcp` serves seven read-only facts tools to Claude Code or Codex. See [MCP Facts Server](mcp.md) for registration and the complete tool list.
+
 ### Tasks
 
 ```bash

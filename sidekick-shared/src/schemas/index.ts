@@ -24,6 +24,24 @@ export type {
   SessionEvent,
   PermissionMode,
 } from '../types/sessionEvent';
+export {
+  observationProvenanceV1Schema,
+  observedAgentSessionV1Schema,
+  observedValueV1Schema,
+  pendingUserRequestV1Schema,
+  providerCapabilitiesV1Schema,
+  providerSessionAdapterV1Schema,
+  sessionEvidenceRefV1Schema,
+} from './observedSessionV1';
+export type {
+  ObservationProvenanceV1,
+  ObservedAgentSessionV1,
+  ObservedValueV1,
+  PendingUserRequestV1,
+  ProviderCapabilitiesV1,
+  ProviderSessionAdapterV1,
+  SessionEvidenceRefV1,
+} from '../types/observedSessionV1';
 
 export {
   quotaWindowSchema,

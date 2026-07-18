@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { readNotes, getProjectSlug, getProjectSlugRaw } from 'sidekick-shared';
+import { readNotes, resolveProjectIdentity } from 'sidekick-shared';
 import type { KnowledgeNote, KnowledgeNoteType, KnowledgeNoteStatus } from 'sidekick-shared';
 
 const TYPE_COLORS: Record<string, (s: string) => string> = {
@@ -73,15 +73,7 @@ export async function notesAction(_opts: Record<string, unknown>, cmd: Command):
   const status: KnowledgeNoteStatus | undefined = opts.status as KnowledgeNoteStatus | undefined;
 
   try {
-    const rawSlug = getProjectSlugRaw(workspacePath);
-    const resolvedSlug = getProjectSlug(workspacePath);
-    const slugs = rawSlug !== resolvedSlug ? [rawSlug, resolvedSlug] : [rawSlug];
-
-    let notes: KnowledgeNote[] = [];
-    for (const slug of slugs) {
-      notes = await readNotes(slug, { file, type, status });
-      if (notes.length > 0) break;
-    }
+    const notes = await readNotes(resolveProjectIdentity(workspacePath), { file, type, status });
 
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(notes, null, 2) + '\n');

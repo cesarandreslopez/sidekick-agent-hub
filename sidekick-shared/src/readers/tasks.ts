@@ -3,16 +3,18 @@
  */
 
 import type { PersistedTask, TaskPersistenceStore } from '../types/taskPersistence';
-import { getProjectDataPath } from '../paths';
-import { readJsonStore } from './helpers';
+import type { ProjectIdentity } from '../paths';
+import { readProjectJsonStore } from './helpers';
 
 export interface ReadTasksOptions {
   status?: 'pending' | 'completed' | 'all';
 }
 
-export async function readTasks(slug: string, opts?: ReadTasksOptions): Promise<PersistedTask[]> {
-  const filePath = getProjectDataPath(slug, 'tasks');
-  const store = await readJsonStore<TaskPersistenceStore>(filePath);
+export async function readTasks(
+  project: string | ProjectIdentity,
+  opts?: ReadTasksOptions,
+): Promise<PersistedTask[]> {
+  const store = await readProjectJsonStore<TaskPersistenceStore>(project, 'tasks');
   if (!store) return [];
 
   let tasks = Object.values(store.tasks);

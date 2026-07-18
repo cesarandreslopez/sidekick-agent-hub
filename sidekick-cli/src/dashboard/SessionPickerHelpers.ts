@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SessionProvider, ProviderId } from 'sidekick-shared';
+import type { SessionProviderBase, ProviderId } from 'sidekick-shared';
 
 export interface SessionPickerItem {
   sessionPath: string;
@@ -45,7 +45,7 @@ export function formatRelativeTime(mtime: Date, now: Date = new Date()): string 
 
 export function collectSessionItems(
   sessionPaths: string[],
-  provider: SessionProvider,
+  provider: SessionProviderBase,
   now: Date = new Date(),
 ): SessionPickerItem[] {
   const items: SessionPickerItem[] = [];
@@ -77,7 +77,7 @@ export function collectSessionItems(
  * Each item is tagged with its providerId.
  */
 export function collectMultiProviderItems(
-  providers: Array<{ provider: SessionProvider; workspacePath: string }>,
+  providers: Array<{ provider: SessionProviderBase; workspacePath: string }>,
   now: Date = new Date(),
 ): SessionPickerItem[] {
   const allItems: Array<SessionPickerItem & { mtime: number }> = [];

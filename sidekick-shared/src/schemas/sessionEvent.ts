@@ -72,6 +72,25 @@ export const sessionEventSchema = z.object({
         .optional(),
     })
     .optional(),
+  compaction: z
+    .object({
+      tokensBefore: z.number().nonnegative(),
+      tokensAfter: z.number().nonnegative(),
+    })
+    .optional(),
+  providerMetadata: z
+    .object({
+      retryAttempts: z.array(z.number()).optional(),
+      finishReasons: z.array(z.string()).optional(),
+      providerError: z
+        .object({
+          type: z.string().optional(),
+          message: z.string().optional(),
+          code: z.union([z.string(), z.number()]).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   tool: z
     .object({
       name: z.string(),

@@ -149,6 +149,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
         type: 'summary',
         timestamp: ts,
         summary: 'Context compacted',
+        compaction: event.compaction,
         raw: event,
       });
       break;

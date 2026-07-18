@@ -204,7 +204,7 @@ export type DashboardMessage =
     }
   | { type: 'updatePhrase'; phrase: string }
   | { type: 'updateEmptyPhrase'; phrase: string }
-  | { type: 'updatePlan'; plan: PlanDisplay }
+  | { type: 'updatePlan'; plan: PlanDisplay | null }
   | { type: 'updatePlanHistory'; history: PlanHistoryDisplay }
   | { type: 'updateAnalytics'; analytics: AnalyticsDisplay }
   | { type: 'updateProviderStatus'; display: ProviderStatusDisplay }
@@ -381,6 +381,8 @@ export interface CompactionEventDisplay {
   tokensReclaimed: number;
   /** Percentage of context reclaimed */
   reclaimedPercent: number;
+  source: 'reported' | 'heuristic';
+  reestablishmentCostUsd: number | null;
 }
 
 /**
@@ -450,6 +452,11 @@ export interface HistoricalSummary {
     messageCount: number;
     sessionCount: number;
   };
+  qualityTrend?: import('sidekick-shared').QualityTrend;
+  latestQuality?: {
+    score: number;
+    factors: import('./historicalData').SessionHistoryRecord['qualityFactors'];
+  } | null;
 }
 
 /**
@@ -548,6 +555,8 @@ export interface DashboardState {
     totalAdditions: number;
     /** Total lines deleted */
     totalDeletions: number;
+    /** Session cost divided by additions + deletions. */
+    costPerChangedLine: number | null;
   };
 
   /** Response latency metrics for display */

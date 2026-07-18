@@ -127,8 +127,13 @@ export type {
   ModelUsageRecord,
   ToolUsageRecord,
   SessionSummary,
+  SessionHistoryRecord,
 } from './types/historicalData';
-export { HISTORICAL_DATA_SCHEMA_VERSION, createEmptyTokenTotals } from './types/historicalData';
+export {
+  HISTORICAL_DATA_SCHEMA_VERSION,
+  HISTORICAL_SESSION_RETENTION_LIMIT,
+  createEmptyTokenTotals,
+} from './types/historicalData';
 export type {
   PersistedPlan,
   PersistedPlanStep,
@@ -148,7 +153,9 @@ export {
   encodeWorkspacePath,
   getProjectSlug,
   getProjectSlugRaw,
+  resolveProjectIdentity,
 } from './paths';
+export type { ProjectIdentity } from './paths';
 
 // Readers
 export { readTasks } from './readers/tasks';
@@ -168,6 +175,14 @@ export {
 } from './readers/plans';
 export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 
+// Atomic persistence writers
+export { atomicWriteJson, atomicWriteJsonSync, updateJsonStoreAtomic } from './writers/atomic';
+export { addTask, completeTask } from './writers/tasks';
+export { addDecision, decisionFingerprint } from './writers/decisions';
+export { addNote } from './writers/notes';
+export { renderHandoffUrlTemplate } from './handoffUrl';
+export type { HandoffUrlIdentifiers } from './handoffUrl';
+
 // Providers
 export type {
   ProviderId,
@@ -180,6 +195,19 @@ export type {
   SessionReader,
   ProviderRuntimeStatus,
 } from './providers/types';
+export {
+  createProviderSessionAdapterV1,
+  derivePendingUserRequestV1,
+} from './types/observedSessionV1';
+export type {
+  ObservationProvenanceV1,
+  ObservedAgentSessionV1,
+  ObservedValueV1,
+  PendingUserRequestV1,
+  ProviderCapabilitiesV1,
+  ProviderSessionAdapterV1,
+  SessionEvidenceRefV1,
+} from './types/observedSessionV1';
 export { detectProvider, getAllDetectedProviders } from './providers/detect';
 export { ClaudeCodeProvider } from './providers/claudeCode';
 export { OpenCodeProvider, getOpenCodeDataDir } from './providers/openCode';
@@ -363,6 +391,8 @@ export type { PhraseCategory } from './phrases';
 
 // Aggregation
 export { EventAggregator, parseTodoDependencies } from './aggregation/EventAggregator';
+export { SessionMonitor } from './sessionMonitor';
+export type { SessionMonitorOptions } from './sessionMonitor';
 export type { SerializedAggregatorState } from './aggregation/EventAggregator';
 export {
   saveSnapshot,
@@ -382,7 +412,17 @@ export type {
   FrequencyMetric,
   PatternMetric,
   HeatmapBucketMetric,
+  ErrorRollup,
+  ErrorRollupEntry,
+  ErrorBucketMetric,
 } from './aggregation/types';
+export {
+  ERROR_HISTORY_SCHEMA_VERSION,
+  appendErrorHistory,
+  getTopFailingTools,
+  readErrorHistory,
+} from './errorHistory';
+export type { ErrorHistorySessionRecord, ErrorHistoryStore, TopFailingTool } from './errorHistory';
 
 // Aggregation — analytics engines
 export { FrequencyTracker } from './aggregation/FrequencyTracker';
@@ -391,6 +431,17 @@ export { HeatmapTracker } from './aggregation/HeatmapTracker';
 export type { HeatmapBucket, SerializedHeatmapState } from './aggregation/HeatmapTracker';
 export { PatternExtractor } from './aggregation/PatternExtractor';
 export type { PatternCluster, SerializedPatternState } from './aggregation/PatternExtractor';
+export { calculateQualityTrend, scoreSessionQuality } from './analytics/qualityScore';
+export type {
+  QualityFactorContribution,
+  QualityFactorId,
+  SessionQualityScore,
+  QualityTrend,
+} from './analytics/qualityScore';
+export { calculateCodeImpact } from './analytics/codeImpact';
+export type { CodeImpact, ModelCostInput } from './analytics/codeImpact';
+export { calculateCompactionLedger, formatCompactionLedger } from './analytics/compactionLedger';
+export type { CompactionLedger } from './analytics/compactionLedger';
 
 // Report — HTML session report generation
 export {
@@ -568,32 +619,6 @@ export type {
 export { CodexQuotaWatcher } from './codexQuotaWatcher';
 export type { CodexQuotaWatcherOptions } from './codexQuotaWatcher';
 export {
-  accumulateZaiUsage,
-  extractNextFlushTime,
-  inferZaiQuotaState,
-  isZaiProviderId,
-  makeUnavailableZaiQuotaState,
-  parseZaiQuotaError,
-  resolveZaiTier,
-  rowsToZaiTurnsAndErrors,
-  turnTokenWeight,
-  ZAI_PROMPT_INVOCATIONS,
-  ZAI_PROVIDER_IDS,
-  ZAI_TIER_BUDGETS,
-} from './zaiQuota';
-export type {
-  ZaiAccumulatedUsage,
-  ZaiAssistantTurn,
-  ZaiOpenCodeRow,
-  ZaiProviderId,
-  ZaiQuotaError,
-  ZaiQuotaErrorKind,
-  ZaiTier,
-  InferZaiQuotaStateOptions,
-} from './zaiQuota';
-export { ZaiQuotaWatcher } from './zaiQuotaWatcher';
-export type { ZaiQuotaWatcherOptions } from './zaiQuotaWatcher';
-export {
   fetchZaiQuotaFromApi,
   quotaStateFromZaiQuotaLimitPayload,
   readZaiCredentials,
@@ -611,6 +636,9 @@ export { MultiProviderQuotaService } from './multiProviderQuotaService';
 export type { MultiProviderQuotaServiceOptions } from './multiProviderQuotaService';
 export type { ProviderQuotaMap, ProviderQuotaState, RuntimeQuotaProvider } from './providerQuota';
 export type { QuotaSnapshotProviderId } from './quotaSnapshots';
+export { BurnRateCalculator, estimateTimeToQuota } from './statusline/BurnRateCalculator';
+export { formatStatusline, selectStatuslineAccount } from './statusline/formatter';
+export type { StatuslineInput, StatuslineSelection } from './statusline/formatter';
 
 // Model Context
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
@@ -653,7 +681,6 @@ export type { HydrateOptions, HydrateResult } from './pricingCatalog';
 
 // Extractors — per-event token usage and tool call extraction
 export { extractTokenUsage } from './extractors/tokenUsage';
-export { extractToolCall, extractToolCalls } from './extractors/toolCall';
 // Extractors — actionable session assets. Node-only: safe for CLI and
 // extension-host code, not for browser/webview bundles.
 export { extractUrls, extractFilePaths, extractCommands } from './extractors/sessionAssets';
@@ -668,6 +695,9 @@ export type {
 export { readClaudeAssets, claudeSessions } from './extractors/sources/claudeAssets';
 export { readCodexAssets, codexSessions } from './extractors/sources/codexAssets';
 export { gatherAssetsForCwd } from './extractors/gatherAssets';
+export { categorizeError, extractErrorMessage } from './extractors/errorTaxonomy';
+export type { ErrorCategory } from './extractors/errorTaxonomy';
+export { extractToolCall, extractToolCalls, ToolCallTracker } from './extractors/toolCall';
 export type { GatherAssetsOptions, GatherAssetsResult } from './extractors/gatherAssets';
 
 // Schemas — Zod runtime validation for session events
@@ -737,6 +767,17 @@ export {
 // Provider Status
 export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';
 export type { ProviderStatusState } from './providerStatus';
+
+// Shared diagnostics / health report
+export { formatHealthReport, getSessionDiagnostics, runDoctor } from './doctor';
+export type {
+  DeprecatedSetting,
+  DoctorOptions,
+  HealthCheck,
+  HealthCheckStatus,
+  HealthReport,
+  SessionDiagnostics,
+} from './doctor';
 
 // Peak Hours (PromoClock — third-party)
 export {

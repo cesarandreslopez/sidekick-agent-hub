@@ -11,7 +11,7 @@
 
 import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
-import type { ClaudeSessionEvent } from '../types/claudeSession';
+import type { SessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log, logError } from '../services/Logger';
 import { assistantTurnEventsFromSessionEvents, segmentAssistantTurn } from 'sidekick-shared';
@@ -35,11 +35,11 @@ export interface ConversationChunk {
 type PendingTool = { name: string };
 
 export function conversationChunksFromSessionEvents(
-  events: readonly ClaudeSessionEvent[],
+  events: readonly SessionEvent[],
 ): ConversationChunk[] {
   const chunks: ConversationChunk[] = [];
   const pendingTools = new Map<string, PendingTool>();
-  let assistantEvents: ClaudeSessionEvent[] = [];
+  let assistantEvents: SessionEvent[] = [];
 
   function flushAssistantEvents(): void {
     if (assistantEvents.length === 0) return;
@@ -159,7 +159,7 @@ function toolRefToChunk(
 }
 
 function userEventToChunks(
-  event: ClaudeSessionEvent,
+  event: SessionEvent,
   pendingTools: Map<string, PendingTool>,
 ): ConversationChunk[] {
   const content = event.message?.content;
@@ -199,7 +199,7 @@ function userEventToChunks(
 }
 
 function topLevelToolResultToChunk(
-  event: ClaudeSessionEvent,
+  event: SessionEvent,
   pendingTools: Map<string, PendingTool>,
 ): ConversationChunk {
   const output = stringifyOutput(event.result?.output);

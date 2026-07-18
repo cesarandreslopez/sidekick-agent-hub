@@ -87,6 +87,19 @@ export interface SessionEvent {
     secondary?: { usedPercent: number; windowMinutes: number; resetsAt: number };
   };
 
+  /** Exact context compaction counts when reported by the provider. */
+  compaction?: {
+    tokensBefore: number;
+    tokensAfter: number;
+  };
+
+  /** Provider-specific signals normalized for shared analytics. */
+  providerMetadata?: {
+    retryAttempts?: number[];
+    finishReasons?: string[];
+    providerError?: { type?: string; message?: string; code?: string | number };
+  };
+
   /** Tool use details (when type is 'tool_use') */
   tool?: {
     name: string;
@@ -188,7 +201,7 @@ export interface ToolCall {
   errorMessage?: string;
 
   /** Error category (permission, not_found, timeout, syntax, exit_code, tool_error, other) */
-  errorCategory?: string;
+  errorCategory?: import('../extractors/errorTaxonomy').ErrorCategory;
 
   /** Tool use ID for correlation with tool_result */
   toolUseId?: string;
@@ -659,6 +672,9 @@ export interface CompactionEvent {
 
   /** Tokens reclaimed (contextBefore - contextAfter) */
   tokensReclaimed: number;
+
+  /** Whether the provider reported exact counts or Sidekick inferred them. */
+  source: 'reported' | 'heuristic';
 }
 
 /**

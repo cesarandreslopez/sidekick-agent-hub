@@ -10,9 +10,13 @@
  *     $0 because pricing was unknown — surfaced in the dashboard footer.
  * Legacy records (schemaVersion 1 or missing) have neither field and should
  * be treated as fully priced.
+ *
+ * Schema version 3 (2026-07-18) adds a capped per-session record list with
+ * provider/project dimensions, beta quality factors, churn, and impact cost.
  */
 
-export const HISTORICAL_DATA_SCHEMA_VERSION = 2;
+export const HISTORICAL_DATA_SCHEMA_VERSION = 3;
+export const HISTORICAL_SESSION_RETENTION_LIMIT = 500;
 
 export interface TokenTotals {
   inputTokens: number;
@@ -82,8 +86,32 @@ export interface HistoricalDataStore {
   monthly: Record<string, MonthlyData>;
   allTime: AllTimeStats;
   lastSaved: string;
+  /** Capped durable per-session records, newest last (schema v3). */
+  sessions?: SessionHistoryRecord[];
   importedFiles?: string[];
   lastImportTimestamp?: string;
+}
+
+export interface SessionHistoryRecord {
+  sessionId: string;
+  provider: string;
+  project: string;
+  startTime: string;
+  endTime: string;
+  tokens: TokenTotals;
+  totalCost: number;
+  messageCount: number;
+  qualityScore: number;
+  qualityFactors: Array<{
+    id: string;
+    label: string;
+    contribution: number;
+    maximum: number;
+    detail: string;
+  }>;
+  additions: number;
+  deletions: number;
+  costPerChangedLine: number | null;
 }
 
 export interface SessionSummary {
@@ -105,6 +133,13 @@ export interface SessionSummary {
    * Omitted on v1 records or when every model was priced.
    */
   unpricedModelIds?: string[];
+  provider?: string;
+  project?: string;
+  qualityScore?: number;
+  qualityFactors?: SessionHistoryRecord['qualityFactors'];
+  additions?: number;
+  deletions?: number;
+  costPerChangedLine?: number | null;
 }
 
 export function createEmptyTokenTotals(): TokenTotals {

@@ -5,6 +5,26 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-07-18
+
+### Added
+
+- **Observed-session V1 public API**: `ProviderSessionAdapterV1`, `ObservedAgentSessionV1`, `ProviderCapabilitiesV1`, `PendingUserRequestV1`, `SessionEvidenceRefV1`, provenance/confidence values, adapters for all session providers, and corresponding Zod schemas
+- **Shared operational primitives**: atomic and lock-coordinated task/decision/note writers, canonical project identity, typed doctor reports, status-line and burn-rate formatting, identifier-only external-handoff URL rendering, and a public `SessionMonitor`
+- **Analytics engines**: categorized per-tool/hour/model failure rollups and append-only error history, beta quality scoring with weekly trends, historical schema v3 session records, code-impact and per-model churn/cost metrics, and compaction-ledger estimates
+- **Consumer contract tests** for quota, accounts, sessions, assets, costs, turn/reasoning, and observed-session APIs
+
+### Changed
+
+- Codex compaction events retain exact before/after counts with reported/heuristic provenance; aggregator snapshots advance to v3
+- Shared ingest owns tool-error taxonomy across Claude Code, OpenCode, and Codex; OpenCode provider errors, retries, and finish reasons are normalized for analytics
+- Canonical symlink-aware project identity replaces duplicated slug probing; OpenCode SQL substitution is index-safe; Codex/OpenCode database row shapes have one source
+- Plan aggregation now records per-step start/completion time, duration, tokens, tool calls, and cost
+
+### Removed
+
+- **Potentially breaking**: deprecated observed-traffic z.ai estimator exports were removed from the package root. Use `resolveZaiQuota()` and the authoritative quota API surface instead
+
 ## [0.22.0] - 2026-07-02
 
 ### Changed

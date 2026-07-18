@@ -5,6 +5,30 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-07-18
+
+### Added (CLI)
+
+- Cache-only `statusline` and `today` commands, cross-provider `doctor`, atomic task/note/decision capture, generic external-handoff links, and a read-only MCP facts server for Claude Code and Codex
+- Failure forensics, beta quality trends, code impact, per-model churn/cost, and honest compaction-ledger summaries
+
+### Added (VS Code extension)
+
+- Four-step onboarding walkthrough and a manifest-generated command hub
+- Claude Code status-line install/uninstall, shared doctor diagnostics, live Kanban refresh after terminal capture, and generic external handoff
+- Dashboard views for categorized errors, beta session quality, code impact, and compaction re-establishment cost
+
+### Added (sidekick-shared)
+
+- Stable observed-session V1 adapters/contracts with evidence, provenance, confidence, and Zod schemas
+- Atomic store writers, canonical project identity, typed health reports, status/burn formatters, error history, quality/history v3, code-impact, and compaction-ledger engines
+
+### Changed
+
+- Plans are persisted end to end again with per-step timing, tokens, tools, and cost
+- Codex exact compaction/churn facts and OpenCode error/retry/finish facts are retained throughout normalization and analytics
+- Deprecated observed-traffic z.ai estimator exports were removed; authoritative z.ai quota remains available
+
 ## [0.22.0] - 2026-07-02
 
 ### Added (CLI)

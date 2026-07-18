@@ -9,8 +9,7 @@ import {
   readNotes,
   readPlans,
   readClaudeCodePlanFiles,
-  getProjectSlug,
-  getProjectSlugRaw,
+  resolveProjectIdentity,
 } from 'sidekick-shared';
 import type {
   HistoricalDataStore,
@@ -49,32 +48,22 @@ export interface StaticData {
 // ── Loader ──
 
 export async function loadStaticData(workspacePath?: string): Promise<StaticData> {
-  // Try raw slug first (matches VS Code extension behavior — no symlink resolution),
-  // fall back to resolved slug if no data found.
-  const rawSlug = getProjectSlugRaw(workspacePath);
-  const resolvedSlug = getProjectSlug(workspacePath);
-  const slugs = rawSlug !== resolvedSlug ? [rawSlug, resolvedSlug] : [rawSlug];
+  const project = resolveProjectIdentity(workspacePath);
 
   // Load history (global, not slug-dependent)
   const history = await readHistory().catch(() => null);
 
   // Try each slug, preferring raw (extension-written) data
-  let tasks: PersistedTask[] = [];
-  let decisions: DecisionEntry[] = [];
-  let notes: KnowledgeNote[] = [];
+  const [tasks, decisions, notes] = await Promise.all([
+    readTasks(project, { status: 'all' }).catch(() => []),
+    readDecisions(project).catch(() => []),
+    readNotes(project).catch(() => []),
+  ]);
   let plans: PersistedPlan[] = [];
 
-  for (const slug of slugs) {
-    const [t, d, n, p] = await Promise.all([
-      tasks.length === 0 ? readTasks(slug, { status: 'all' }).catch(() => []) : tasks,
-      decisions.length === 0 ? readDecisions(slug).catch(() => []) : decisions,
-      notes.length === 0 ? readNotes(slug).catch(() => []) : notes,
-      plans.length === 0 ? readPlans(slug).catch(() => []) : plans,
-    ]);
-    if (tasks.length === 0) tasks = t;
-    if (decisions.length === 0) decisions = d;
-    if (notes.length === 0) notes = n;
-    if (plans.length === 0) plans = p;
+  for (const slug of project.candidates) {
+    plans = await readPlans(slug).catch(() => []);
+    if (plans.length > 0) break;
   }
 
   // Supplement with raw plan files from ~/.claude/plans/ (always available,

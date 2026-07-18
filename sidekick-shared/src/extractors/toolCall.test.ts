@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { extractToolCall, extractToolCalls } from './toolCall';
+import { extractToolCall, extractToolCalls, ToolCallTracker } from './toolCall';
+import { categorizeError, extractErrorMessage } from './errorTaxonomy';
 import type { SessionEvent } from '../types/sessionEvent';
 
 function makeAssistantEvent(content: unknown[]): SessionEvent {
@@ -90,4 +91,64 @@ describe('extractToolCall', () => {
       ),
     ).toBeNull();
   });
+});
+
+describe('shared error taxonomy', () => {
+  it.each([
+    ['permission denied', undefined, 'permission'],
+    ['missing', 'AuthError', 'permission'],
+    ['No such file or directory', undefined, 'not_found'],
+    ['deadline exceeded', undefined, 'timeout'],
+    ['Syntax error near token', undefined, 'syntax'],
+    ['process exited with exit code 2', undefined, 'exit_code'],
+    ['response too long', 'OutputLengthError', 'tool_error'],
+    ['provider failed', 'APIError', 'tool_error'],
+  ])('classifies %s (%s)', (message, providerType, expected) => {
+    expect(categorizeError(message, providerType)).toBe(expected);
+  });
+
+  it('keeps the extension error label contract', () => {
+    expect(extractErrorMessage('<tool_use_error>bad input</tool_use_error>', 'Edit')).toBe(
+      'Edit: bad input',
+    );
+  });
+
+  it.each(['claude-code', 'opencode', 'codex'])(
+    'populates completed error calls for %s normalized fixtures',
+    (provider) => {
+      const tracker = new ToolCallTracker();
+      const started = makeAssistantEvent([
+        {
+          type: 'tool_use',
+          id: `${provider}-1`,
+          name: 'Bash',
+          input: { command: 'false', _sidekickProvider: provider },
+        },
+      ]);
+      const result: SessionEvent = {
+        type: 'user',
+        timestamp: '2026-03-23T10:00:01Z',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: `${provider}-1`,
+              content: 'process exited with exit code 1',
+              is_error: true,
+            },
+          ],
+        },
+      };
+
+      expect(tracker.process(started)).toEqual([]);
+      expect(tracker.process(result)).toEqual([
+        expect.objectContaining({
+          name: 'Bash',
+          isError: true,
+          errorCategory: 'exit_code',
+        }),
+      ]);
+    },
+  );
 });

@@ -16,8 +16,17 @@ import {
   parseTranscript,
   parseTranscriptFromEvents,
   openInBrowser,
+  readPlans,
+  writePlans,
+  resolveProjectIdentity,
 } from 'sidekick-shared';
-import type { FollowEvent, ProviderId, SessionProviderBase } from 'sidekick-shared';
+import type {
+  FollowEvent,
+  PersistedPlan,
+  PersistedPlanStep,
+  ProviderId,
+  SessionProviderBase,
+} from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { DashboardState } from '../dashboard/DashboardState';
@@ -40,6 +49,7 @@ import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
 import { readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
+import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
 
 function createProviderById(id: ProviderId) {
   switch (id) {
@@ -74,12 +84,66 @@ export function getProviderRuntimeIssue(
   return `${provider.displayName} session database is unavailable.${detail}${recommendation}`;
 }
 
-// TODO: Plan persistence disabled — plan file content capture not working yet.
-// Re-enable when EnterPlanMode/ExitPlanMode + Edit tool capture is fixed.
-// import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
-// function inferPlanStatus(plan: PlanInfo): 'in_progress' | 'completed' | 'failed' | 'abandoned' { ... }
-// function toPersistedStep(step: PlanStep): PersistedPlanStep { ... }
-// async function persistPlan(state: DashboardState, workspacePath: string): Promise<void> { ... }
+export function inferPlanStatus(
+  plan: PlanInfo,
+): 'in_progress' | 'completed' | 'failed' | 'abandoned' {
+  if (plan.steps.some((step) => step.status === 'failed')) return 'failed';
+  if (plan.steps.some((step) => step.status === 'pending' || step.status === 'in_progress')) {
+    return 'in_progress';
+  }
+  if (plan.steps.some((step) => step.status === 'completed')) return 'completed';
+  return 'abandoned';
+}
+
+function toPersistedStep(step: PlanStep): PersistedPlanStep {
+  return {
+    id: step.id,
+    description: step.description,
+    status: step.status as PersistedPlanStep['status'],
+    phase: step.phase,
+    complexity: step.complexity,
+    startedAt: step.startedAt,
+    completedAt: step.completedAt,
+    durationMs: step.durationMs,
+    tokensUsed: step.tokensUsed,
+    toolCalls: step.toolCalls,
+    errorMessage: step.errorMessage,
+    costUsd: step.costUsd,
+  };
+}
+
+export async function persistPlan(state: DashboardState, workspacePath: string): Promise<void> {
+  const metrics = state.getMetrics();
+  const plan = metrics.plan;
+  const sessionId = metrics.sessionId;
+  if (!plan || !sessionId || (plan.steps.length === 0 && !plan.rawMarkdown)) return;
+
+  const project = resolveProjectIdentity(workspacePath);
+  const existing = await readPlans(project.canonicalSlug);
+  const steps = plan.steps.map(toPersistedStep);
+  const completed = steps.filter((step) => step.status === 'completed').length;
+  const record: PersistedPlan = {
+    id: `${sessionId}:${plan.title}`,
+    projectSlug: project.canonicalSlug,
+    sessionId,
+    title: plan.title || 'Plan',
+    source: plan.source ?? 'claude-code',
+    createdAt: plan.enteredAt ?? new Date().toISOString(),
+    completedAt: plan.exitedAt,
+    status: inferPlanStatus(plan),
+    steps,
+    completionRate: steps.length > 0 ? completed / steps.length : 0,
+    totalDurationMs: plan.totalDurationMs,
+    totalTokensUsed: steps.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0) || undefined,
+    totalToolCalls: steps.reduce((sum, step) => sum + (step.toolCalls ?? 0), 0) || undefined,
+    totalCostUsd: steps.reduce((sum, step) => sum + (step.costUsd ?? 0), 0) || undefined,
+    rawMarkdown: plan.rawMarkdown,
+  };
+  const withoutCurrent = existing.filter(
+    (item) => !(item.sessionId === sessionId && item.title === record.title),
+  );
+  await writePlans(project.canonicalSlug, [record, ...withoutCurrent]);
+}
 
 export async function dashboardAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
@@ -226,8 +290,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       /* ignore */
     }
 
-    // TODO: Plan persistence disabled — plan file content capture not working yet.
-    // persistPlan(state, workspacePath).catch(() => {});
+    void persistPlan(state, workspacePath);
 
     // Reset state
     state.reset();
@@ -246,10 +309,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
             if (stopped) return;
             state.processEvent(event);
 
-            // TODO: Plan persistence disabled — plan file content capture not working yet.
-            // if (event.type === 'system' && event.summary === 'Session ended') {
-            //   persistPlan(state, workspacePath).catch(() => {});
-            // }
+            if (event.type === 'system' && event.summary === 'Session ended') {
+              void persistPlan(state, workspacePath);
+            }
 
             // Periodically save snapshot
             const now = Date.now();
@@ -462,8 +524,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   function cleanup() {
     if (stopped) return;
     stopped = true;
-    // TODO: Plan persistence disabled — plan file content capture not working yet.
-    // persistPlan(state, workspacePath).catch(() => {});
+    void persistPlan(state, workspacePath);
     try {
       clearInterval(sessionPollInterval);
     } catch {
@@ -523,10 +584,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           if (stopped) return;
           state.processEvent(event);
 
-          // TODO: Plan persistence disabled — plan file content capture not working yet.
-          // if (event.type === 'system' && event.summary === 'Session ended') {
-          //   persistPlan(state, workspacePath).catch(() => {});
-          // }
+          if (event.type === 'system' && event.summary === 'Session ended') {
+            void persistPlan(state, workspacePath);
+          }
 
           // Periodically save snapshot
           const now = Date.now();
@@ -550,6 +610,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     });
     watcher = result.watcher;
     sessionPath = result.sessionPath;
+    if (!sessionId && sessionPath) {
+      sessionId = path.basename(sessionPath, path.extname(sessionPath));
+      state.setSessionId(sessionId);
+    }
 
     // Try snapshot restore before starting the watcher
     if (sessionId && replay && watcher.seekTo) {

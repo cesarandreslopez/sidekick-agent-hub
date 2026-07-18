@@ -6,7 +6,6 @@
 // Re-export canonical types consumers will need
 export type {
   SessionEvent,
-  ClaudeSessionEvent,
   MessageUsage,
   TokenUsage,
   ToolCall,
@@ -45,6 +44,27 @@ import type {
   PermissionMode,
   PermissionModeChange,
 } from '../types/sessionEvent';
+import type { ErrorCategory } from '../extractors/errorTaxonomy';
+
+export interface ErrorRollupEntry {
+  tool: string;
+  category: ErrorCategory;
+  count: number;
+}
+
+export interface ErrorBucketMetric extends ErrorRollupEntry {
+  /** ISO hour bucket, e.g. 2026-07-18T14. */
+  hour: string;
+  model: string;
+}
+
+export interface ErrorRollup {
+  totalFailures: number;
+  byToolCategory: ErrorRollupEntry[];
+  byHourModel: ErrorBucketMetric[];
+  retryAttempts: number;
+  finishReasons: Array<{ reason: string; count: number }>;
+}
 
 /** Configuration options for EventAggregator. */
 export interface EventAggregatorOptions {
@@ -158,6 +178,7 @@ export interface AggregatedMetrics {
   truncationEvents: TruncationEvent[];
 
   toolStats: ToolAnalytics[];
+  errorRollup: ErrorRollup;
   burnRate: BurnRateInfo;
 
   taskState: TaskState;

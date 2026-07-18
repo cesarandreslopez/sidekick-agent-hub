@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { OpenCodeDatabase } from '../providers/openCodeDatabase';
-import type { DbMessage, DbPart } from '../providers/openCodeDatabase';
+import type { DbMessage, DbPart } from '../types/opencode';
 import { normalizeToolName, detectPlanModeFromText } from '../parsers/openCodeParser';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
 

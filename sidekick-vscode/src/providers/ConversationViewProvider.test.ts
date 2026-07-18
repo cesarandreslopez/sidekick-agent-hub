@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ClaudeSessionEvent } from '../types/claudeSession';
+import type { SessionEvent } from '../types/claudeSession';
 
 vi.mock('vscode', () => ({
   default: {},
@@ -14,7 +14,7 @@ import { conversationChunksFromSessionEvents } from './ConversationViewProvider'
 
 describe('conversationChunksFromSessionEvents', () => {
   it('renders Claude assistant thinking, tools, and answer from the shared timeline projection', () => {
-    const events: ClaudeSessionEvent[] = [
+    const events: SessionEvent[] = [
       {
         type: 'assistant',
         timestamp: '2026-06-17T10:00:00.000Z',
@@ -53,7 +53,7 @@ describe('conversationChunksFromSessionEvents', () => {
   });
 
   it('preserves Codex split reasoning and tool-call order before the final answer', () => {
-    const events: ClaudeSessionEvent[] = [
+    const events: SessionEvent[] = [
       {
         type: 'assistant',
         timestamp: '2026-06-17T10:00:00.000Z',
@@ -121,7 +121,7 @@ describe('conversationChunksFromSessionEvents', () => {
   });
 
   it('renders OpenCode-style tool results between projected assistant chunks', () => {
-    const events: ClaudeSessionEvent[] = [
+    const events: SessionEvent[] = [
       {
         type: 'assistant',
         timestamp: '2026-06-17T10:00:00.000Z',

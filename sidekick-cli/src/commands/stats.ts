@@ -4,8 +4,8 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { readHistory, formatCost } from 'sidekick-shared';
-import type { HistoricalDataStore } from 'sidekick-shared';
+import { readHistory, formatCost, getTopFailingTools } from 'sidekick-shared';
+import type { HistoricalDataStore, TopFailingTool } from 'sidekick-shared';
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -13,7 +13,7 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-function printStatsSummary(history: HistoricalDataStore): void {
+function printStatsSummary(history: HistoricalDataStore, topFailingTools: TopFailingTool[]): void {
   const at = history.allTime;
 
   process.stdout.write(chalk.bold('All-Time Stats\n'));
@@ -45,6 +45,17 @@ function printStatsSummary(history: HistoricalDataStore): void {
     `  ${chalk.dim('Total cost:')}     ${chalk.green(formatCost(at.totalCost))}\n`,
   );
   process.stdout.write(`  ${chalk.dim('Period:')}         ${at.firstDate} — ${at.lastDate}\n`);
+  const recordedSessions = history.sessions ?? [];
+  const changedLines = recordedSessions.reduce(
+    (sum, session) => sum + session.additions + session.deletions,
+    0,
+  );
+  const changedLineCost = recordedSessions.reduce((sum, session) => sum + session.totalCost, 0);
+  if (changedLines > 0) {
+    process.stdout.write(
+      `  ${chalk.dim('Code impact:')}    ${formatCost(changedLineCost / changedLines)} per changed line (${formatNumber(changedLines)} lines)\n`,
+    );
+  }
   process.stdout.write('\n');
 
   // Model usage
@@ -95,6 +106,21 @@ function printStatsSummary(history: HistoricalDataStore): void {
     process.stdout.write('\n');
   }
 
+  if (topFailingTools.length > 0) {
+    process.stdout.write(chalk.bold('Top Failing Tools (last 7 days)\n'));
+    process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
+    for (const tool of topFailingTools.slice(0, 10)) {
+      const categories = Object.entries(tool.categories)
+        .sort((left, right) => right[1] - left[1])
+        .map(([category, count]) => `${category}:${count}`)
+        .join(', ');
+      process.stdout.write(
+        `  ${chalk.red(tool.tool.padEnd(30))} ${String(tool.failures).padStart(5)} failures ${chalk.dim(categories)}\n`,
+      );
+    }
+    process.stdout.write('\n');
+  }
+
   // Recent daily breakdown (last 7 days)
   const days = Object.values(history.daily || {});
   if (days.length > 0) {
@@ -132,7 +158,7 @@ export async function statsAction(_opts: Record<string, unknown>, cmd: Command):
   const jsonOutput: boolean = !!globalOpts.json;
 
   try {
-    const history = await readHistory();
+    const [history, topFailingTools] = await Promise.all([readHistory(), getTopFailingTools(7)]);
 
     if (!history) {
       if (jsonOutput) {
@@ -147,7 +173,7 @@ export async function statsAction(_opts: Record<string, unknown>, cmd: Command):
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(history, null, 2) + '\n');
     } else {
-      printStatsSummary(history);
+      printStatsSummary(history, topFailingTools);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -11,6 +11,24 @@ function line(
 }
 
 describe('CodexRolloutParser', () => {
+  it('preserves exact context compaction token counts', () => {
+    const parser = new CodexRolloutParser();
+    const events = parser.convertLine(
+      line('event_msg', {
+        type: 'context_compacted',
+        summary: 'kept summary',
+        tokens_before: 121_400,
+        tokens_after: 27_900,
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'summary',
+      compaction: { tokensBefore: 121_400, tokensAfter: 27_900 },
+    });
+  });
+
   it('emits visible system audit events for base instructions and developer messages', () => {
     const parser = new CodexRolloutParser();
 

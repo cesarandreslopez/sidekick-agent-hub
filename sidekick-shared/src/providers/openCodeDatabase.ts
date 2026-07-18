@@ -6,38 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-
-export interface DbProject {
-  id: string;
-  worktree: string;
-  name: string | null;
-  sandboxes: string[];
-  time_created: number;
-  time_updated: number;
-}
-export interface DbSession {
-  id: string;
-  project_id: string;
-  title: string;
-  directory: string;
-  time_created: number;
-  time_updated: number;
-}
-export interface DbMessage {
-  id: string;
-  session_id: string;
-  time_created: number;
-  time_updated: number;
-  data: string;
-}
-export interface DbPart {
-  id: string;
-  message_id: string;
-  session_id: string;
-  time_created: number;
-  time_updated: number;
-  data: string;
-}
+import type { DbMessage, DbPart, DbProject, DbSession } from '../types/opencode';
 type DbProjectRow = Omit<DbProject, 'sandboxes'> & { sandboxes?: string | null };
 
 export interface OpenCodeDbRuntimeStatus {
@@ -96,14 +65,14 @@ export class OpenCodeDatabase {
 
   private query<T>(sql: string, params: (string | number)[] = []): T[] {
     if (!this.open()) return [];
-    let query = sql;
-    for (const param of params) {
-      if (typeof param === 'number') query = query.replace('?', String(param));
-      else {
-        const escaped = String(param).replace(/'/g, "''");
-        query = query.replace('?', `'${escaped}'`);
-      }
-    }
+    let paramIndex = 0;
+    const query = sql.replace(/\?/g, () => {
+      if (paramIndex >= params.length) return '?';
+      const param = params[paramIndex++];
+      if (typeof param === 'number') return Number.isFinite(param) ? String(param) : '0';
+      const escaped = String(param).replace(/'/g, "''");
+      return `'${escaped}'`;
+    });
     try {
       const result = execFileSync('sqlite3', ['-json', '-readonly', this.dbPath, query], {
         encoding: 'utf-8',

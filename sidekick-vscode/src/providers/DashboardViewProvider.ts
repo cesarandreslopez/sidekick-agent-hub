@@ -31,7 +31,7 @@ import type {
 } from '../types/dashboard';
 import { resolveInstructionTarget } from '../types/instructionFile';
 import type { HandoffService } from '../services/HandoffService';
-import { encodeWorkspacePath } from '../services/SessionPathResolver';
+import { getProjectSlug } from 'sidekick-shared';
 import { resolveModel } from '../services/ModelResolver';
 import { TimeoutError } from '../types';
 import type {
@@ -77,6 +77,7 @@ import {
   resolveCodexQuota,
   resolveCodexQuotaFromLocalSources,
   scopePeakHoursToSessionProvider,
+  calculateCompactionLedger,
 } from 'sidekick-shared';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
@@ -636,10 +637,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         vscode.commands.executeCommand('sidekick.openCliDashboard');
         break;
 
-      // TODO: Plan history disabled — plan file content capture not working yet.
-      // case 'requestPlanHistory':
-      //   this._sendPlanHistory();
-      //   break;
+      case 'requestPlanHistory':
+        this._sendPlanHistory();
+        break;
 
       case 'openExternal':
         if (message.url && /^https?:\/\//i.test(message.url)) {
@@ -929,7 +929,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           'Skip',
         );
         if (action === `Add to ${target.primaryFile}` && wsFolder) {
-          const slug = encodeWorkspacePath(wsFolder.uri.fsPath);
+          const slug = getProjectSlug(wsFolder.uri.fsPath);
           const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ~/.config/sidekick/handoffs/${slug}-latest.md\n`;
 
           let existingContent = '';
@@ -1334,7 +1334,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       sessionCount: dataPoints.reduce((sum, d) => sum + d.sessionCount, 0),
     };
 
-    return { range, granularity, dataPoints, totals };
+    const latestQuality = this._historicalDataService.getLatestSessionRecord();
+    return {
+      range,
+      granularity,
+      dataPoints,
+      totals,
+      qualityTrend: this._historicalDataService.getQualityTrend(),
+      latestQuality: latestQuality
+        ? { score: latestQuality.qualityScore, factors: latestQuality.qualityFactors }
+        : null,
+    };
   }
 
   /**
@@ -1869,7 +1879,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     contextAfter: number;
     tokensReclaimed: number;
     timestamp: Date;
+    source: 'reported' | 'heuristic';
   }): void {
+    const ledger = calculateCompactionLedger([event], this._sessionMonitor.getStats().lastModelId);
     const display: CompactionEventDisplay = {
       time: event.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
       contextBefore: event.contextBefore,
@@ -1879,6 +1891,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         event.contextBefore > 0
           ? Math.round((event.tokensReclaimed / event.contextBefore) * 100)
           : 0,
+      source: event.source,
+      reestablishmentCostUsd: ledger.reestablishmentCostUsd,
     };
 
     if (!this._state.compactions) {
@@ -2089,6 +2103,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         tokensReclaimed: e.tokensReclaimed,
         reclaimedPercent:
           e.contextBefore > 0 ? Math.round((e.tokensReclaimed / e.contextBefore) * 100) : 0,
+        source: e.source,
+        reestablishmentCostUsd: calculateCompactionLedger([e], stats.lastModelId)
+          .reestablishmentCostUsd,
       }));
     }
 
@@ -2197,6 +2214,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (aggregatedMetrics) {
       this._state.permissionMode = aggregatedMetrics.permissionMode ?? undefined;
       this._state.contextTimeline = aggregatedMetrics.contextTimeline ?? [];
+      if (aggregatedMetrics.errorRollup.totalFailures > 0) {
+        this._state.errorDetails = aggregatedMetrics.errorRollup.byToolCategory.map((entry) => ({
+          type: `${entry.tool} · ${entry.category}`,
+          count: entry.count,
+          messages: [`${entry.count} ${entry.category} failure${entry.count === 1 ? '' : 's'}`],
+        }));
+      }
     }
 
     // Sync context waterfall
@@ -2270,6 +2294,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     totalFilesChanged: number;
     totalAdditions: number;
     totalDeletions: number;
+    costPerChangedLine: number | null;
   } {
     const FILE_TOOLS = ['Write', 'Edit', 'MultiEdit'];
     const filesModified = new Set<string>();
@@ -2293,6 +2318,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       totalFilesChanged: filesModified.size,
       totalAdditions,
       totalDeletions,
+      costPerChangedLine:
+        totalAdditions + totalDeletions > 0
+          ? this._state.totalCost / (totalAdditions + totalDeletions)
+          : null,
     };
   }
 
@@ -2302,9 +2331,31 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _sendStateToWebview(): void {
     this._postMessage({ type: 'updateStats', state: this._state });
     this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
-
-    // TODO: Plan data messages disabled — plan file content capture not working yet.
-    // Re-enable when EnterPlanMode/ExitPlanMode + Edit tool capture is fixed.
+    const plan = this._sessionMonitor.getStats().planState;
+    this._postMessage({
+      type: 'updatePlan',
+      plan: plan
+        ? {
+            title: plan.title ?? 'Plan',
+            active: plan.active,
+            completionRate: plan.completionRate ?? 0,
+            totalDurationMs: plan.totalDurationMs,
+            steps: plan.steps.map((step) => ({
+              id: step.id,
+              description: step.description,
+              status: step.status,
+              phase: step.phase,
+              complexity: step.complexity,
+              durationMs: step.durationMs,
+              tokensUsed: step.tokensUsed,
+              toolCalls: step.toolCalls,
+              errorMessage: step.errorMessage,
+            })),
+            rawMarkdown: plan.rawMarkdown,
+          }
+        : null,
+    });
+    this._sendPlanHistory();
   }
 
   /**
@@ -5837,6 +5888,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               </div></span>
             </div>
             <div class="compaction-list" id="compaction-list"></div>
+            <div id="compaction-ledger" style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:6px;"></div>
           </div>
 
           <!-- Notification History -->
@@ -5906,6 +5958,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               <span class="deletions" id="file-deletions">-0</span>
               <span class="lines-label">lines</span>
             </div>
+            <div id="file-impact" style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:4px;"></div>
           </div>
 
           <div class="section" id="error-section" style="display: none;">
@@ -6148,6 +6201,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         <div class="stat-value" id="history-messages">0</div>
         <div class="stat-label">Messages</div>
       </div>
+    </div>
+
+    <div class="section" id="quality-trend-section" style="display: none; margin-top: 12px;">
+      <div class="section-title">Session Quality <span style="font-size:10px;color:var(--vscode-descriptionForeground);">BETA</span></div>
+      <div id="quality-trend-summary" style="font-size:12px;margin:6px 0;"></div>
+      <div id="quality-factor-breakdown" style="display:grid;gap:4px;font-size:11px;"></div>
     </div>
 
     <div class="history-empty" id="history-empty" style="display: none;">
@@ -6686,6 +6745,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           document.getElementById('history-total-cost').textContent = formatCost(data.totals.totalCost);
           document.getElementById('history-sessions').textContent = formatNumber(data.totals.sessionCount);
           document.getElementById('history-messages').textContent = formatNumber(data.totals.messageCount);
+        }
+
+        const qualitySection = document.getElementById('quality-trend-section');
+        const qualitySummary = document.getElementById('quality-trend-summary');
+        const qualityFactors = document.getElementById('quality-factor-breakdown');
+        if (qualitySection && data.qualityTrend && data.latestQuality) {
+          qualitySection.style.display = 'block';
+          const trend = data.qualityTrend;
+          const delta = trend.delta == null ? 'not enough prior data' : ((trend.delta >= 0 ? '+' : '') + trend.delta.toFixed(1) + ' week over week');
+          qualitySummary.textContent = 'Latest: ' + data.latestQuality.score + '/100 · ' + delta;
+          qualityFactors.innerHTML = data.latestQuality.factors.map(function(factor) {
+            return '<div title="' + escapeHtml(factor.detail) + '"><strong>' + escapeHtml(factor.label) + ':</strong> ' + factor.contribution + '/' + factor.maximum + '</div>';
+          }).join('');
+        } else if (qualitySection) {
+          qualitySection.style.display = 'none';
         }
 
         // Show/hide empty state
@@ -7486,6 +7560,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       function updateCompactions(compactions) {
         const sectionEl = document.getElementById('compaction-section');
         const listEl = document.getElementById('compaction-list');
+        const ledgerEl = document.getElementById('compaction-ledger');
         if (!sectionEl || !listEl) return;
 
         if (!compactions || compactions.length === 0) {
@@ -7494,6 +7569,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
 
         sectionEl.style.display = 'block';
+        if (ledgerEl) {
+          const evicted = compactions.reduce(function(sum, item) { return sum + item.tokensReclaimed; }, 0);
+          const priced = compactions.every(function(item) { return item.reestablishmentCostUsd != null; });
+          const cost = compactions.reduce(function(sum, item) { return sum + (item.reestablishmentCostUsd || 0); }, 0);
+          const sources = new Set(compactions.map(function(item) { return item.source; }));
+          const source = sources.size > 1 ? 'mixed' : (compactions[0].source || 'heuristic');
+          ledgerEl.textContent = compactions.length + ' compaction' + (compactions.length === 1 ? '' : 's') + ' · ' + formatNumber(evicted) + ' tokens evicted · ' + (priced ? ('~' + formatCost(cost) + ' re-establishing context') : 'cost unavailable') + ' · ' + source;
+        }
         listEl.innerHTML = compactions.map(function(c) {
           const beforeK = Math.round(c.contextBefore / 1000);
           const afterK = Math.round(c.contextAfter / 1000);
@@ -7501,7 +7584,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           return '<div class="compaction-item">' +
             '<span class="compaction-time">' + c.time + '</span>' +
             '<span class="compaction-delta">' + beforeK + 'K → ' + afterK + 'K</span>' +
-            '<span class="compaction-reclaimed">-' + reclaimedK + 'K (' + c.reclaimedPercent + '%)</span>' +
+            '<span class="compaction-reclaimed">-' + reclaimedK + 'K (' + c.reclaimedPercent + '% · ' + c.source + ')</span>' +
           '</div>';
         }).join('');
       }
@@ -8013,6 +8096,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const fileCountEl = document.getElementById('file-count');
         const additionsEl = document.getElementById('file-additions');
         const deletionsEl = document.getElementById('file-deletions');
+        const impactEl = document.getElementById('file-impact');
 
         if (!sectionEl || !fileCountEl || !additionsEl || !deletionsEl) return;
 
@@ -8028,6 +8112,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         fileCountEl.textContent = fileCount + ' file' + (fileCount !== 1 ? 's' : '');
         additionsEl.textContent = '+' + formatNumber(summary.totalAdditions || 0);
         deletionsEl.textContent = '-' + formatNumber(summary.totalDeletions || 0);
+        if (impactEl) {
+          impactEl.textContent = summary.costPerChangedLine == null ? 'Cost per changed line: —' : 'Cost per changed line: ' + formatCost(summary.costPerChangedLine);
+        }
       }
 
       /**
@@ -9162,7 +9249,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           if (summary.filesChanged.length === 0) {
             filesEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No files changed</div>';
           } else {
-            let fhtml = '<div style="margin-bottom:6px;font-size:11px;">' + summary.totalFilesChanged + ' files | <span style="color:var(--vscode-charts-green,#4caf50)">+' + summary.totalAdditions + '</span> / <span style="color:var(--vscode-charts-red,#f44336)">-' + summary.totalDeletions + '</span></div>';
+            let fhtml = '<div style="margin-bottom:6px;font-size:11px;">' + summary.totalFilesChanged + ' files | <span style="color:var(--vscode-charts-green,#4caf50)">+' + summary.totalAdditions + '</span> / <span style="color:var(--vscode-charts-red,#f44336)">-' + summary.totalDeletions + '</span> · ' + (summary.codeImpact.costPerChangedLine == null ? '—' : formatCost(summary.codeImpact.costPerChangedLine)) + '/line</div>';
             fhtml += '<table class="summary-file-table"><tr><th>File</th><th>+/-</th></tr>';
             summary.filesChanged.slice(0, 15).forEach(function(f) {
               fhtml += '<tr><td style="font-family:var(--vscode-editor-font-family)">' + escapeHtml(f.path) + '</td>' +
@@ -9181,7 +9268,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             chtml += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;">By Model</div>';
             chtml += '<table class="summary-cost-table"><tr><th>Model</th><th>Cost</th><th>%</th></tr>';
             summary.costByModel.forEach(function(m) {
-              chtml += '<tr><td>' + escapeHtml(getShortModelName(m.model)) + '</td><td>' + formatCost(m.cost) + '</td><td>' + Math.round(m.percentage) + '%</td></tr>';
+              const impact = summary.codeImpact.byModel.find(function(row) { return row.model === m.model; });
+              chtml += '<tr><td>' + escapeHtml(getShortModelName(m.model)) + '</td><td>' + formatCost(m.cost) + (impact && impact.costPerChangedLine != null ? ' (' + formatCost(impact.costPerChangedLine) + '/line)' : '') + '</td><td>' + Math.round(m.percentage) + '%</td></tr>';
             });
             chtml += '</table>';
           }

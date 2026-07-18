@@ -46,6 +46,9 @@ import type {
   BurnRateInfo,
   SubagentLifecycle,
   AggregatedMetrics,
+  ErrorRollup,
+  ErrorRollupEntry,
+  ErrorBucketMetric,
 } from './types';
 import { FrequencyTracker } from './FrequencyTracker';
 import type { SerializedFrequencyState } from './FrequencyTracker';
@@ -54,6 +57,7 @@ import type { SerializedHeatmapState } from './HeatmapTracker';
 import { PatternExtractor } from './PatternExtractor';
 import type { SerializedPatternState } from './PatternExtractor';
 import { getModelPricing, calculateCostWithPricing } from '../modelInfo';
+import { categorizeError, type ErrorCategory } from '../extractors/errorTaxonomy';
 
 // ── Defaults ──
 
@@ -64,7 +68,7 @@ const DEFAULT_BURN_SAMPLE_MS = 10_000;
 const COMPACTION_DROP_THRESHOLD = 0.8; // >20% drop
 
 /** Schema version for serialized snapshots. */
-const SNAPSHOT_SCHEMA_VERSION = 1;
+const SNAPSHOT_SCHEMA_VERSION = 3;
 
 /**
  * JSON-serializable snapshot of EventAggregator state.
@@ -100,6 +104,10 @@ export interface SerializedAggregatorState {
   compactionEvents: CompactionEvent[];
   truncationEvents: TruncationEvent[];
   toolAnalytics: Array<[string, ToolAnalytics]>;
+  errorByToolCategory: Array<[string, ErrorRollupEntry]>;
+  errorBuckets: Array<[string, ErrorBucketMetric]>;
+  retryAttempts: number;
+  finishReasons: Array<[string, number]>;
   contextAttribution: ContextAttribution;
   burnSamples: BurnSample[];
   lastBurnSampleTime: number;
@@ -246,6 +254,10 @@ export class EventAggregator {
   // Tool analytics
   private toolAnalytics = new Map<string, ToolAnalytics>();
   private pendingToolCalls = new Map<string, PendingToolCall>();
+  private errorByToolCategory = new Map<string, ErrorRollupEntry>();
+  private errorBuckets = new Map<string, ErrorBucketMetric>();
+  private retryAttempts = 0;
+  private finishReasons = new Map<string, number>();
 
   // Burn rate
   private burnSamples: BurnSample[] = [];
@@ -263,6 +275,8 @@ export class EventAggregator {
 
   // Plan state
   private planExtractor!: PlanExtractor;
+  private planState: PlanState | null = null;
+  private planEnteredAt: Date | undefined;
 
   // Context attribution
   private contextAttribution: ContextAttribution = {
@@ -336,6 +350,7 @@ export class EventAggregator {
     if (event.message.model) {
       this.currentModel = event.message.model;
     }
+    this.recordProviderMetadata(event);
 
     // 3. Skip system/audit events and synthetic token-count events for messageCount
     const msgId = event.message.id ?? '';
@@ -350,7 +365,15 @@ export class EventAggregator {
 
     // 5. Token accumulation
     if (event.message.usage) {
-      this.accumulateUsage(event.message.usage, event.timestamp, event.message.model);
+      const usageCost = this.accumulateUsage(
+        event.message.usage,
+        event.timestamp,
+        event.message.model,
+      );
+      this.attributePlanUsage(
+        event.message.usage.input_tokens + event.message.usage.output_tokens,
+        usageCost,
+      );
     }
 
     if (event.type !== 'system') {
@@ -372,6 +395,10 @@ export class EventAggregator {
 
     // 11. Permission mode tracking
     this.trackPermissionMode(event);
+
+    if (event.type === 'summary') {
+      this.recordExplicitCompaction(event.timestamp, event.compaction);
+    }
 
     // 12. Timeline
     this.addTimelineFromSessionEvent(event);
@@ -415,6 +442,7 @@ export class EventAggregator {
       this.outputTokens += outputTok;
       this.cacheReadTokens += cacheRead;
       this.cacheWriteTokens += cacheWrite;
+      this.attributePlanUsage(inputTok + outputTok, event.cost ?? 0);
 
       // Tokens since last burn sample
       this.tokensSinceLastSample += inputTok + outputTok;
@@ -442,6 +470,7 @@ export class EventAggregator {
           contextBefore: this.previousContextSize,
           contextAfter: contextSize,
           tokensReclaimed: this.previousContextSize - contextSize,
+          source: 'heuristic',
         });
       }
       this.previousContextSize = contextSize;
@@ -501,6 +530,7 @@ export class EventAggregator {
     // 4. Tool tracking from FollowEvent
     if (event.type === 'tool_use' && event.toolName) {
       this.recordFollowToolUse(event);
+      this.attributePlanToolCall(event.toolName);
     } else if (event.type === 'tool_result') {
       this.recordFollowToolResult(event);
     }
@@ -512,7 +542,7 @@ export class EventAggregator {
     this.extractSubagentFromFollowEvent(event);
 
     // 7. Plan extraction
-    this.planExtractor.processEvent(event);
+    this.processPlanFollowEvent(event);
 
     // 8. Context attribution
     this.attributeContextFromFollowEvent(event);
@@ -524,12 +554,7 @@ export class EventAggregator {
 
     // 10. Explicit compaction event (summary type)
     if (event.type === 'summary') {
-      this.compactionEvents.push({
-        timestamp: new Date(event.timestamp),
-        contextBefore: this.previousContextSize,
-        contextAfter: 0,
-        tokensReclaimed: this.previousContextSize,
-      });
+      this.recordExplicitCompaction(event.timestamp, event.compaction);
     }
 
     // 11. Timeline
@@ -574,6 +599,25 @@ export class EventAggregator {
     );
   }
 
+  getErrorRollup(): ErrorRollup {
+    return {
+      totalFailures: Array.from(this.errorByToolCategory.values()).reduce(
+        (sum, entry) => sum + entry.count,
+        0,
+      ),
+      byToolCategory: Array.from(this.errorByToolCategory.values()).sort(
+        (a, b) => b.count - a.count,
+      ),
+      byHourModel: Array.from(this.errorBuckets.values()).sort((a, b) =>
+        a.hour.localeCompare(b.hour),
+      ),
+      retryAttempts: this.retryAttempts,
+      finishReasons: Array.from(this.finishReasons, ([reason, count]) => ({ reason, count })).sort(
+        (a, b) => b.count - a.count,
+      ),
+    };
+  }
+
   getCompactionEvents(): CompactionEvent[] {
     return [...this.compactionEvents];
   }
@@ -604,9 +648,9 @@ export class EventAggregator {
   }
 
   getPlan(): PlanState | null {
-    const extracted = this.planExtractor.plan;
-    if (!extracted) return null;
-    return this.convertExtractedPlanToPlanState(extracted);
+    return this.planState
+      ? { ...this.planState, steps: this.planState.steps.map((step) => ({ ...step })) }
+      : null;
   }
 
   getContextAttribution(): ContextAttribution {
@@ -656,6 +700,7 @@ export class EventAggregator {
       truncationEvents: this.getTruncationEvents(),
 
       toolStats: this.getToolStats(),
+      errorRollup: this.getErrorRollup(),
       burnRate: this.getBurnRate(),
 
       taskState: this.getTaskState(),
@@ -694,6 +739,10 @@ export class EventAggregator {
     this.truncationEvents = [];
     this.toolAnalytics.clear();
     this.pendingToolCalls.clear();
+    this.errorByToolCategory.clear();
+    this.errorBuckets.clear();
+    this.retryAttempts = 0;
+    this.finishReasons.clear();
     this.burnSamples = [];
     this.lastBurnSampleTime = 0;
     this.tokensSinceLastSample = 0;
@@ -703,6 +752,8 @@ export class EventAggregator {
     this.subagents = [];
     this.pendingSubagents.clear();
     this.planExtractor.reset();
+    this.planState = null;
+    this.planEnteredAt = undefined;
     this.currentPermissionMode = null;
     this.permissionModeHistory = [];
     this.contextTimeline = [];
@@ -767,6 +818,10 @@ export class EventAggregator {
       compactionEvents: this.compactionEvents,
       truncationEvents: this.truncationEvents,
       toolAnalytics: Array.from(this.toolAnalytics.entries()),
+      errorByToolCategory: Array.from(this.errorByToolCategory.entries()),
+      errorBuckets: Array.from(this.errorBuckets.entries()),
+      retryAttempts: this.retryAttempts,
+      finishReasons: Array.from(this.finishReasons.entries()),
       contextAttribution: { ...this.contextAttribution },
       burnSamples: [...this.burnSamples],
       lastBurnSampleTime: this.lastBurnSampleTime,
@@ -810,6 +865,10 @@ export class EventAggregator {
     this.compactionEvents = [...state.compactionEvents];
     this.truncationEvents = [...state.truncationEvents];
     this.toolAnalytics = new Map(state.toolAnalytics);
+    this.errorByToolCategory = new Map(state.errorByToolCategory);
+    this.errorBuckets = new Map(state.errorBuckets);
+    this.retryAttempts = state.retryAttempts;
+    this.finishReasons = new Map(state.finishReasons);
     this.contextAttribution = { ...state.contextAttribution };
 
     this.burnSamples = [...state.burnSamples];
@@ -852,7 +911,7 @@ export class EventAggregator {
   // Private: Token & Context
   // ═══════════════════════════════════════════════════════════════════════
 
-  private accumulateUsage(usage: MessageUsage, timestamp: string, model?: string): void {
+  private accumulateUsage(usage: MessageUsage, timestamp: string, model?: string): number {
     const inputTok = usage.input_tokens;
     const outputTok = usage.output_tokens;
     const cacheWrite = usage.cache_creation_input_tokens ?? 0;
@@ -917,6 +976,7 @@ export class EventAggregator {
         contextBefore: this.previousContextSize,
         contextAfter: contextSize,
         tokensReclaimed: this.previousContextSize - contextSize,
+        source: 'heuristic',
       });
     }
     this.previousContextSize = contextSize;
@@ -956,6 +1016,7 @@ export class EventAggregator {
 
     // Burn rate sampling
     this.updateBurnRate(timestamp);
+    return cost;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1062,6 +1123,7 @@ export class EventAggregator {
           name,
           startTime: new Date(event.timestamp),
         });
+        this.attributePlanToolCall(name);
       } else if (block.type === 'tool_result') {
         // User content: tool_result block
         const toolUseId = block.tool_use_id as string;
@@ -1070,6 +1132,14 @@ export class EventAggregator {
 
         const pending = this.pendingToolCalls.get(toolUseId);
         if (pending) {
+          if (isError) {
+            this.recordError(
+              pending.name,
+              categorizeError(block.content),
+              event.timestamp,
+              this.currentModel ?? 'unknown',
+            );
+          }
           this.pendingToolCalls.delete(toolUseId);
           const analytics = this.toolAnalytics.get(pending.name);
           if (analytics) {
@@ -1168,6 +1238,12 @@ export class EventAggregator {
       const isError = raw.is_error === true;
       if (isError) {
         analytics.failureCount++;
+        this.recordError(
+          pending.name,
+          categorizeError(raw.content ?? event.summary),
+          event.timestamp,
+          event.model ?? this.currentModel ?? 'unknown',
+        );
       } else {
         analytics.successCount++;
       }
@@ -1177,6 +1253,44 @@ export class EventAggregator {
         analytics.totalDuration += duration;
       }
     }
+  }
+
+  private recordProviderMetadata(event: SessionEvent): void {
+    const metadata = event.providerMetadata;
+    if (!metadata) return;
+    this.retryAttempts += metadata.retryAttempts?.length ?? 0;
+    for (const reason of metadata.finishReasons ?? []) {
+      this.finishReasons.set(reason, (this.finishReasons.get(reason) ?? 0) + 1);
+    }
+    if (metadata.providerError) {
+      this.recordError(
+        'ProviderAPI',
+        categorizeError(metadata.providerError, metadata.providerError.type),
+        event.timestamp,
+        event.message.model ?? this.currentModel ?? 'unknown',
+      );
+    }
+  }
+
+  private recordError(
+    tool: string,
+    category: ErrorCategory,
+    timestamp: string,
+    model: string,
+  ): void {
+    const categoryKey = `${tool}\u0000${category}`;
+    const current = this.errorByToolCategory.get(categoryKey);
+    if (current) current.count++;
+    else this.errorByToolCategory.set(categoryKey, { tool, category, count: 1 });
+
+    const parsed = new Date(timestamp);
+    const hour = Number.isNaN(parsed.getTime())
+      ? timestamp.slice(0, 13)
+      : parsed.toISOString().slice(0, 13);
+    const bucketKey = `${hour}\u0000${model}\u0000${tool}\u0000${category}`;
+    const bucket = this.errorBuckets.get(bucketKey);
+    if (bucket) bucket.count++;
+    else this.errorBuckets.set(bucketKey, { hour, model, tool, category, count: 1 });
   }
 
   private detectTruncationFromFollowEvent(event: FollowEvent): void {
@@ -1213,6 +1327,35 @@ export class EventAggregator {
     }
   }
 
+  private recordExplicitCompaction(
+    timestamp: string,
+    reported?: { tokensBefore: number; tokensAfter: number },
+  ): void {
+    const hasReported =
+      reported !== undefined &&
+      Number.isFinite(reported.tokensBefore) &&
+      Number.isFinite(reported.tokensAfter) &&
+      reported.tokensBefore >= reported.tokensAfter &&
+      reported.tokensAfter >= 0;
+    const contextBefore = hasReported ? reported.tokensBefore : this.previousContextSize;
+    const contextAfter = hasReported
+      ? reported.tokensAfter
+      : Math.max(0, Math.round(contextBefore * COMPACTION_DROP_THRESHOLD));
+
+    this.compactionEvents.push({
+      timestamp: new Date(timestamp),
+      contextBefore,
+      contextAfter,
+      tokensReclaimed: Math.max(0, contextBefore - contextAfter),
+      source: hasReported ? 'reported' : 'heuristic',
+    });
+
+    if (hasReported) {
+      this.previousContextSize = contextAfter;
+      this.currentContextSize = contextAfter;
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // Private: Task State from SessionEvent
   // ═══════════════════════════════════════════════════════════════════════
@@ -1239,6 +1382,7 @@ export class EventAggregator {
           });
         } else if (name === 'TaskUpdate') {
           this.applyTaskUpdate(input);
+          this.syncPlanStepFromTaskUpdate(input, new Date(event.timestamp));
         } else if (name === 'TodoWrite') {
           this.handleTodoWrite(input, new Date(event.timestamp));
         } else if (name === 'UpdatePlan') {
@@ -1279,6 +1423,7 @@ export class EventAggregator {
         });
       } else if (event.toolName === 'TaskUpdate') {
         this.applyTaskUpdate(input);
+        this.syncPlanStepFromTaskUpdate(input, new Date(event.timestamp));
       } else if (event.toolName === 'TodoWrite') {
         this.handleTodoWrite(input, new Date(event.timestamp));
       } else if (event.toolName === 'UpdatePlan') {
@@ -1362,6 +1507,40 @@ export class EventAggregator {
         this.activeTaskId = taskId;
       }
     }
+  }
+
+  private syncPlanStepFromTaskUpdate(input: Record<string, unknown>, now: Date): void {
+    if (!this.planState || !input.status) return;
+    const taskId = String(input.taskId ?? input.task_id ?? '');
+    const stepId = taskId.startsWith('plan-') ? `step-${taskId.slice(5)}` : taskId;
+    const step = this.planState.steps.find((candidate) => candidate.id === stepId);
+    if (!step) return;
+
+    const rawStatus = String(input.status).toLowerCase();
+    const status: PlanState['steps'][number]['status'] =
+      rawStatus === 'completed'
+        ? 'completed'
+        : rawStatus === 'in_progress' || rawStatus === 'in-progress'
+          ? 'in_progress'
+          : rawStatus === 'deleted'
+            ? 'skipped'
+            : 'pending';
+
+    if (status === 'in_progress' && step.status !== 'in_progress') {
+      step.startedAt = now.toISOString();
+    }
+    if (status === 'completed' && step.status !== status) {
+      step.startedAt ??= now.toISOString();
+      step.completedAt = now.toISOString();
+      step.durationMs = Math.max(0, now.getTime() - new Date(step.startedAt).getTime());
+    }
+    step.status = status;
+    const completed = this.planState.steps.filter((candidate) => candidate.status === 'completed');
+    this.planState.completionRate =
+      this.planState.steps.length > 0 ? completed.length / this.planState.steps.length : 0;
+    this.planState.active = this.planState.steps.some(
+      (candidate) => candidate.status === 'pending' || candidate.status === 'in_progress',
+    );
   }
 
   private resolveTaskCreate(
@@ -1695,39 +1874,105 @@ export class EventAggregator {
     const providerId = (this._providerId as FollowEvent['providerId']) ?? 'claude-code';
     const followEvents = toFollowEvents(event, providerId);
     for (const fe of followEvents) {
-      this.planExtractor.processEvent(fe);
+      this.processPlanFollowEvent(fe);
     }
   }
 
-  private convertExtractedPlanToPlanState(extracted: {
-    title: string;
-    steps: Array<{
-      id: string;
-      description: string;
-      status: string;
-      phase?: string;
-      complexity?: string;
-    }>;
-    source: 'claude-code' | 'opencode' | 'codex';
-    rawMarkdown?: string;
-  }): PlanState {
+  private processPlanFollowEvent(event: FollowEvent): void {
+    const now = new Date(event.timestamp);
+    if (event.type === 'tool_use' && event.toolName === 'EnterPlanMode') {
+      this.planEnteredAt = now;
+      this.planState = {
+        active: true,
+        steps: [],
+        enteredAt: now,
+        source: event.providerId,
+      };
+    }
+
+    const updated = this.planExtractor.processEvent(event);
+    if (updated && this.planExtractor.plan) {
+      this.planState = this.convertExtractedPlanToPlanState(this.planExtractor.plan, now);
+    }
+
+    if (event.type === 'tool_use' && event.toolName === 'ExitPlanMode' && this.planState) {
+      this.planState.exitedAt = now;
+      if (this.planState.enteredAt) {
+        this.planState.totalDurationMs = now.getTime() - this.planState.enteredAt.getTime();
+      }
+    }
+  }
+
+  private convertExtractedPlanToPlanState(
+    extracted: {
+      title: string;
+      steps: Array<{
+        id: string;
+        description: string;
+        status: string;
+        phase?: string;
+        complexity?: string;
+      }>;
+      source: 'claude-code' | 'opencode' | 'codex';
+      rawMarkdown?: string;
+    },
+    now: Date,
+  ): PlanState {
+    const previous = this.planState;
+    const previousSteps = new Map(
+      (previous?.steps ?? []).map((step) => [`${step.id}\u0000${step.description}`, step]),
+    );
     const completed = extracted.steps.filter((s) => s.status === 'completed').length;
     const total = extracted.steps.length;
 
+    const steps = extracted.steps.map((step) => {
+      const old = previousSteps.get(`${step.id}\u0000${step.description}`);
+      const merged = { ...step, ...old, status: step.status } as PlanState['steps'][number];
+      if (step.status === 'in_progress' && old?.status !== 'in_progress' && !merged.startedAt) {
+        merged.startedAt = now.toISOString();
+      }
+      if (
+        (step.status === 'completed' || step.status === 'failed') &&
+        old?.status !== step.status &&
+        !merged.completedAt
+      ) {
+        merged.startedAt ??= previous?.enteredAt?.toISOString() ?? now.toISOString();
+        merged.completedAt = now.toISOString();
+        merged.durationMs = Math.max(0, now.getTime() - new Date(merged.startedAt).getTime());
+      }
+      return merged;
+    });
+
     return {
-      active: true,
-      steps: extracted.steps.map((s) => ({
-        id: s.id,
-        description: s.description,
-        status: s.status as PlanState['steps'][number]['status'],
-        phase: s.phase,
-        complexity: s.complexity as PlanState['steps'][number]['complexity'],
-      })),
+      active: steps.some((step) => step.status === 'pending' || step.status === 'in_progress'),
+      steps,
       title: extracted.title,
       source: extracted.source,
       completionRate: total > 0 ? completed / total : 0,
       rawMarkdown: extracted.rawMarkdown,
+      enteredAt: previous?.enteredAt ?? this.planEnteredAt ?? now,
+      exitedAt: previous?.exitedAt,
+      totalDurationMs: previous?.totalDurationMs,
+      prompt: previous?.prompt,
+      revision: previous?.revision,
     };
+  }
+
+  private getActivePlanStep(): PlanState['steps'][number] | undefined {
+    return this.planState?.steps.find((step) => step.status === 'in_progress');
+  }
+
+  private attributePlanUsage(tokens: number, costUsd: number): void {
+    const step = this.getActivePlanStep();
+    if (!step) return;
+    step.tokensUsed = (step.tokensUsed ?? 0) + tokens;
+    if (costUsd > 0) step.costUsd = (step.costUsd ?? 0) + costUsd;
+  }
+
+  private attributePlanToolCall(toolName: string): void {
+    if (['EnterPlanMode', 'ExitPlanMode', 'UpdatePlan', 'TaskUpdate'].includes(toolName)) return;
+    const step = this.getActivePlanStep();
+    if (step) step.toolCalls = (step.toolCalls ?? 0) + 1;
   }
 
   // ═══════════════════════════════════════════════════════════════════════

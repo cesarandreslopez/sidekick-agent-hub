@@ -10,7 +10,6 @@ import {
   getOpenCodeDataDir,
   CodexProvider,
   OpenCodeDatabase,
-  ZAI_PROVIDER_IDS,
   getActiveCodexAccount,
   resolveActiveCodexAccount,
   resolveCodexQuota,
@@ -21,6 +20,8 @@ import type { PeakHoursState, ResolvedActiveAccount } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { QuotaService } from '../dashboard/QuotaService';
 import { formatPeakHoursLine } from './peakHoursRender';
+
+const ZAI_ROUTING_PROVIDER_IDS = ['zai', 'zai-coding-plan'] as const;
 
 export function getUtilizationColor(percent: number): ChalkInstance {
   if (percent < 60) return chalk.green;
@@ -435,7 +436,7 @@ async function detectZaiRouting(): Promise<boolean> {
     const db = new OpenCodeDatabase(getOpenCodeDataDir());
     if (!db.isAvailable() || !db.open()) return false;
     const rows = db.getAssistantMessagesByProviderId(
-      [...ZAI_PROVIDER_IDS],
+      [...ZAI_ROUTING_PROVIDER_IDS],
       Date.now() - 7 * 86_400_000,
     );
     return rows.length > 0;

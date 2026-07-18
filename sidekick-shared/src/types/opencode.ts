@@ -262,6 +262,7 @@ export interface DbProject {
   id: string;
   worktree: string;
   name: string | null;
+  sandboxes: string[];
   time_created: number;
   time_updated: number;
 }

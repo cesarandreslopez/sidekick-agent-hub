@@ -26,7 +26,7 @@ import type {
 import { ModelPricingService } from './ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { buildNarrativePrompt } from '../utils/summaryPrompts';
-import { formatDurationMs } from 'sidekick-shared';
+import { calculateCodeImpact, formatDurationMs } from 'sidekick-shared';
 
 /**
  * Weights for tool cost attribution.
@@ -99,6 +99,12 @@ export class SessionSummaryService {
 
     // Cost by model
     const costByModel = this._buildCostByModel(stats);
+    const codeImpact = calculateCodeImpact(
+      totalCost,
+      totalAdditions,
+      totalDeletions,
+      costByModel.map((entry) => ({ model: entry.model, cost: entry.cost })),
+    );
 
     // Cost by tool
     const costByTool = this._buildCostByTool(stats.toolCalls, totalCost);
@@ -128,6 +134,7 @@ export class SessionSummaryService {
       totalDeletions,
       costByModel,
       costByTool,
+      codeImpact,
       errors,
       recoveryRate: Math.min(recoveryRate, 1),
     };

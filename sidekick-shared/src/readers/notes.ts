@@ -8,8 +8,8 @@ import type {
   KnowledgeNoteType,
   KnowledgeNoteStatus,
 } from '../types/knowledgeNote';
-import { getProjectDataPath } from '../paths';
-import { readJsonStore } from './helpers';
+import type { ProjectIdentity } from '../paths';
+import { readProjectJsonStore } from './helpers';
 
 export interface ReadNotesOptions {
   file?: string;
@@ -17,9 +17,11 @@ export interface ReadNotesOptions {
   status?: KnowledgeNoteStatus;
 }
 
-export async function readNotes(slug: string, opts?: ReadNotesOptions): Promise<KnowledgeNote[]> {
-  const filePath = getProjectDataPath(slug, 'knowledge-notes');
-  const store = await readJsonStore<KnowledgeNoteStore>(filePath);
+export async function readNotes(
+  project: string | ProjectIdentity,
+  opts?: ReadNotesOptions,
+): Promise<KnowledgeNote[]> {
+  const store = await readProjectJsonStore<KnowledgeNoteStore>(project, 'knowledge-notes');
   if (!store) return [];
 
   let notes: KnowledgeNote[] = [];

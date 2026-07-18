@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-07-18
+
+### Added
+
+- **`sidekick statusline`** renders a warm, cache-only account/quota/burn footer without account bootstrap, pricing hydration, or quota network access
+- **Quick capture** with `tasks add`, `tasks done`, `note add`, and `decision add`, using the shared atomic merge writers
+- **`sidekick doctor` and `sidekick today`** provide cross-provider health diagnostics and a cache-only daily brief
+- **`sidekick mcp`** exposes seven read-only facts tools for quota, burn rate, context pressure, tasks, decisions, notes, and composed project context over stdio MCP
+- **Generic handoff deep links** through `handoff open --url-template`, with identifier-only placeholders and a no-open mode
+- Failure-history, quality trend, code-impact, per-model churn/cost, and compaction-ledger summaries in terminal views
+
+### Changed
+
+- The Plans pipeline is active again: live plans persist to the shared plan store and carry per-step time, token, tool, and cost analytics into the dashboard
+- Static readers use canonical symlink-aware project identity, including legacy-store fallback
+
 ## [0.22.0] - 2026-07-02
 
 ### Added

@@ -10,7 +10,7 @@
 export type {
   MessageUsage,
   SessionMessage,
-  SessionEvent as ClaudeSessionEvent,
+  SessionEvent,
   TokenUsage,
   ToolCall,
   ToolAnalytics,

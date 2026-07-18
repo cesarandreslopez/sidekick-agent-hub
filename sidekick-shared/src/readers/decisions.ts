@@ -3,8 +3,8 @@
  */
 
 import type { DecisionEntry, DecisionLogStore } from '../types/decisionLog';
-import { getProjectDataPath } from '../paths';
-import { readJsonStore } from './helpers';
+import type { ProjectIdentity } from '../paths';
+import { readProjectJsonStore } from './helpers';
 
 export interface ReadDecisionsOptions {
   search?: string;
@@ -13,11 +13,10 @@ export interface ReadDecisionsOptions {
 }
 
 export async function readDecisions(
-  slug: string,
+  project: string | ProjectIdentity,
   opts?: ReadDecisionsOptions,
 ): Promise<DecisionEntry[]> {
-  const filePath = getProjectDataPath(slug, 'decisions');
-  const store = await readJsonStore<DecisionLogStore>(filePath);
+  const store = await readProjectJsonStore<DecisionLogStore>(project, 'decisions');
   if (!store) return [];
 
   let decisions = Object.values(store.decisions);

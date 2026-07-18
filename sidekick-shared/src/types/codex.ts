@@ -148,6 +148,8 @@ export interface CodexCustomToolCallOutputItem {
 /** Context compaction marker. */
 export interface CodexCompacted {
   summary?: string;
+  tokens_before?: number;
+  tokens_after?: number;
 }
 
 // --- turn_context ---

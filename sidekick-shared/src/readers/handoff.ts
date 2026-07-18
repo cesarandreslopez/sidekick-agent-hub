@@ -3,14 +3,18 @@
  */
 
 import * as fs from 'fs';
-import { getProjectDataPath } from '../paths';
+import { getProjectDataPath, type ProjectIdentity } from '../paths';
 
-export async function readLatestHandoff(slug: string): Promise<string | null> {
-  const filePath = getProjectDataPath(slug, 'handoffs').replace('.json', '-latest.md');
-  try {
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    return content.trim() || null;
-  } catch {
-    return null;
+export async function readLatestHandoff(project: string | ProjectIdentity): Promise<string | null> {
+  const candidates = typeof project === 'string' ? [project] : project.candidates;
+  for (const slug of candidates) {
+    const filePath = getProjectDataPath(slug, 'handoffs').replace('.json', '-latest.md');
+    try {
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      if (content.trim()) return content.trim();
+    } catch {
+      // Try the legacy candidate.
+    }
   }
+  return null;
 }

@@ -52,7 +52,10 @@ export class PlanPersistenceService extends PersistenceService<PlanHistoryStore>
     const totalSteps = planState.steps.length;
 
     let status: PlanStatus;
-    if (planState.active) {
+    if (
+      planState.active ||
+      planState.steps.some((step) => step.status === 'pending' || step.status === 'in_progress')
+    ) {
       status = 'in_progress';
     } else if (completedSteps === totalSteps) {
       status = 'completed';

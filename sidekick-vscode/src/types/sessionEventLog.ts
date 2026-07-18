@@ -7,7 +7,7 @@
  * @module types/sessionEventLog
  */
 
-import type { ClaudeSessionEvent } from './claudeSession';
+import type { SessionEvent } from './claudeSession';
 
 /**
  * A single line in a session event log JSONL file.
@@ -22,7 +22,7 @@ export interface SessionEventLogEntry {
   /** Provider-assigned session identifier */
   sessionId: string;
   /** The full normalized event */
-  event: ClaudeSessionEvent;
+  event: SessionEvent;
 }
 
 /**

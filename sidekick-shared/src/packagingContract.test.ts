@@ -8,6 +8,7 @@ const distDir = path.join(pkgRoot, 'dist');
 const browserJs = path.join(distDir, 'browser.js');
 const nodeJs = path.join(distDir, 'node.js');
 const schemasJs = path.join(distDir, 'schemas', 'index.js');
+const statuslineJs = path.join(distDir, 'statusline', 'index.js');
 
 // Rooted at the package itself so require.resolve exercises the real
 // package.json `exports` map as a self-consumer.
@@ -58,6 +59,11 @@ describe('packaging contract', () => {
       'sessionMessageSchema',
       'sessionEventSchema',
       'permissionModeSchema',
+      'sessionEvidenceRefV1Schema',
+      'pendingUserRequestV1Schema',
+      'observedAgentSessionV1Schema',
+      'providerCapabilitiesV1Schema',
+      'providerSessionAdapterV1Schema',
       'quotaWindowSchema',
       'quotaStateSchema',
       'peakHoursStateSchema',
@@ -85,7 +91,21 @@ describe('packaging contract', () => {
     ]) {
       expect(typeof m[k]?.safeParse).toBe('function');
     }
+    expect(typeof m.observedValueV1Schema).toBe('function');
     expect(typeof m.extractSessionEvents).toBe('function');
+  });
+
+  it('dist/statusline/index.js exposes the lightweight prompt-render surface', () => {
+    expect(existsSync(statuslineJs)).toBe(true);
+    const m = require(statuslineJs);
+    for (const name of [
+      'getActiveAccountStatus',
+      'readQuotaSnapshot',
+      'formatStatusline',
+      'estimateTimeToQuota',
+    ]) {
+      expect(typeof m[name]).toBe('function');
+    }
   });
 
   it('dist/node.js exposes pricing hydration', () => {
@@ -195,6 +215,7 @@ describe('packaging contract', () => {
       'sidekick-shared/modelContext': path.join(distDir, 'modelContext.js'),
       'sidekick-shared/modelInfo': path.join(distDir, 'modelInfo.js'),
       'sidekick-shared/formatting': path.join(distDir, 'formatting.js'),
+      'sidekick-shared/statusline': statuslineJs,
       // Compat path — downstream consumers still rely on these in this release.
       'sidekick-shared/dist/phrases': path.join(distDir, 'phrases.js'),
       'sidekick-shared/dist/providers/types': path.join(distDir, 'providers', 'types.js'),

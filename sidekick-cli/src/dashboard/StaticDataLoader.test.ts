@@ -2,8 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 
 // Mock sidekick-shared readers
 vi.mock('sidekick-shared', () => ({
-  getProjectSlug: () => 'test-project',
-  getProjectSlugRaw: () => 'test-project',
+  resolveProjectIdentity: () => ({
+    canonicalPath: '/test',
+    canonicalSlug: 'test-project',
+    legacySlug: 'test-project',
+    candidates: ['test-project'],
+    wasSymlinkResolved: false,
+  }),
   readHistory: vi.fn(),
   readTasks: vi.fn(),
   readDecisions: vi.fn(),

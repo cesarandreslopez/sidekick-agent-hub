@@ -35,12 +35,7 @@ export type {
 } from 'sidekick-shared';
 
 // Re-export session event types used by providers
-export type {
-  ClaudeSessionEvent,
-  ContextAttribution,
-  SubagentStats,
-  TokenUsage,
-} from './claudeSession';
+export type { SessionEvent, ContextAttribution, SubagentStats, TokenUsage } from './claudeSession';
 
 /**
  * Session provider interface for CLI agent integrations.

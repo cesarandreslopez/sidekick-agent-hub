@@ -1,0 +1,68 @@
+{
+  "evidence": {
+    "schemaVersion": 1,
+    "provider": "codex",
+    "sessionId": "session-1",
+    "sourcePath": "/tmp/session.jsonl",
+    "eventIndex": 3,
+    "eventId": "event-3",
+    "timestamp": "2026-07-18T00:00:00.000Z"
+  },
+  "pendingUserRequest": {
+    "schemaVersion": 1,
+    "id": "request-1",
+    "provider": "codex",
+    "sessionId": "session-1",
+    "kind": {
+      "value": "prompt_response",
+      "provenance": "inferred",
+      "confidence": 0.85,
+      "evidence": []
+    },
+    "requestedAt": {
+      "value": "2026-07-18T00:00:00.000Z",
+      "provenance": "reported",
+      "confidence": 1,
+      "evidence": []
+    },
+    "prompt": {
+      "value": "Continue?",
+      "provenance": "reported",
+      "confidence": 1,
+      "evidence": []
+    }
+  },
+  "capabilities": {
+    "schemaVersion": 1,
+    "provider": "codex",
+    "resume": { "value": true, "provenance": "inferred", "confidence": 1, "evidence": [] },
+    "forkLineage": { "value": true, "provenance": "inferred", "confidence": 1, "evidence": [] },
+    "quotaSource": { "value": "mixed", "provenance": "inferred", "confidence": 1, "evidence": [] },
+    "assetExtraction": { "value": true, "provenance": "inferred", "confidence": 1, "evidence": [] }
+  },
+  "session": {
+    "schemaVersion": 1,
+    "identity": {
+      "provider": "codex",
+      "sessionId": "session-1",
+      "sourcePath": "/tmp/session.jsonl"
+    },
+    "cwd": {
+      "value": "/tmp/project",
+      "provenance": "inferred",
+      "confidence": 0.95,
+      "evidence": []
+    },
+    "model": { "value": "gpt-5", "provenance": "reported", "confidence": 1, "evidence": [] },
+    "activity": { "value": "active", "provenance": "inferred", "confidence": 0.8, "evidence": [] },
+    "usage": {
+      "inputTokens": { "value": 100, "provenance": "reported", "confidence": 1, "evidence": [] },
+      "outputTokens": { "value": 20, "provenance": "reported", "confidence": 1, "evidence": [] },
+      "cacheReadTokens": { "value": 0, "provenance": "reported", "confidence": 1, "evidence": [] },
+      "cacheWriteTokens": { "value": 0, "provenance": "reported", "confidence": 1, "evidence": [] },
+      "costUsd": { "value": 0.01, "provenance": "estimated", "confidence": 0.8, "evidence": [] }
+    },
+    "pendingUserRequest": null,
+    "observedAt": "2026-07-18T00:01:00.000Z"
+  }
+}

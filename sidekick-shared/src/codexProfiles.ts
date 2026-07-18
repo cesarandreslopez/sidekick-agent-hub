@@ -427,6 +427,7 @@ export function resolveActiveCodexAccount(): ResolvedActiveAccount {
       email: identity.email ?? match?.email ?? match?.metadata?.email,
       label: match?.label,
       providerAccountId: match?.providerAccountId ?? identity.workspaceId,
+      registryAccountId: match?.id,
       source: 'live',
     };
   }
@@ -438,6 +439,7 @@ export function resolveActiveCodexAccount(): ResolvedActiveAccount {
       email: active.email ?? active.metadata?.email,
       label: active.label,
       providerAccountId: active.providerAccountId,
+      registryAccountId: active.id,
       source: 'registry',
     };
   }

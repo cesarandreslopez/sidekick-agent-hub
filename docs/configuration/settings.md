@@ -139,6 +139,7 @@ The catalog is cached at `~/.config/sidekick/pricing-catalog.json` with a 3s fet
 
 ## Session Handoff
 
-| Setting                | Default | Description                                                 |
-| ---------------------- | ------- | ----------------------------------------------------------- |
-| `sidekick.autoHandoff` | `off`   | Handoff mode: `off`, `generate-only`, `generate-and-notify` |
+| Setting                       | Default | Description                                                                          |
+| ----------------------------- | ------- | ------------------------------------------------------------------------------------ |
+| `sidekick.autoHandoff`        | `off`   | Handoff mode: `off`, `generate-only`, `generate-and-notify`                          |
+| `sidekick.handoffUrlTemplate` | (empty) | External URL with `{sessionId}`, `{provider}`, and `{projectPath}` identifier fields |

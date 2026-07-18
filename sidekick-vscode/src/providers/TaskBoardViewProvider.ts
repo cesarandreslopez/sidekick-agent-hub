@@ -92,6 +92,16 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     this._disposables.push(this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd()));
 
+    if (this._taskPersistence) {
+      this._disposables.push(
+        this._taskPersistence.onDidChange(() => {
+          this._persistedTasks = this._taskPersistence!.loadPersistedTasks();
+          this._syncFromSessionMonitor();
+          this._sendStateToWebview();
+        }),
+      );
+    }
+
     if (this._sessionMonitor.isActive()) {
       this._syncFromSessionMonitor();
     } else if (this._taskPersistence) {

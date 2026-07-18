@@ -6,7 +6,7 @@
 
 import React, { useState } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
-import type { SessionProvider, ProviderId } from 'sidekick-shared';
+import type { SessionProviderBase, ProviderId } from 'sidekick-shared';
 import {
   collectSessionItems,
   collectMultiProviderItems,
@@ -247,9 +247,9 @@ export interface SessionPickerResult {
  * If additionalProviders are supplied, sessions from all providers are shown.
  */
 export async function showSessionPicker(
-  provider: SessionProvider,
+  provider: SessionProviderBase,
   workspacePath: string,
-  additionalProviders?: SessionProvider[],
+  additionalProviders?: SessionProviderBase[],
 ): Promise<SessionPickerResult> {
   const { render } = await import('ink');
 

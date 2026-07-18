@@ -592,6 +592,7 @@ export function resolveActiveClaudeAccount(): ResolvedActiveAccount {
       email: live.email,
       label: match?.label,
       providerAccountId: live.uuid,
+      registryAccountId: match?.id,
       source: 'live',
     };
   }
@@ -602,6 +603,7 @@ export function resolveActiveClaudeAccount(): ResolvedActiveAccount {
       email: active.email,
       label: active.label,
       providerAccountId: active.uuid,
+      registryAccountId: active.uuid,
       source: 'registry',
     };
   }

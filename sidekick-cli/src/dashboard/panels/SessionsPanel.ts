@@ -28,7 +28,7 @@ import {
   visibleLength,
   truncate,
 } from '../formatters';
-import { formatCost } from 'sidekick-shared';
+import { calculateCompactionLedger, formatCompactionLedger, formatCost } from 'sidekick-shared';
 
 function getUtilizationColor(percent: number): string {
   if (percent < 60) return 'green';
@@ -332,6 +332,13 @@ export class SessionsPanel implements SidePanel {
         `{grey-fg}Provider{/grey-fg} {bold}${m.providerName || 'unknown'}{/bold}  {grey-fg}Model{/grey-fg} {bold}${m.currentModel || 'unknown'}{/bold}`,
         recentLine,
       ];
+      if (m.compactionEvents.length > 0) {
+        const ledger = calculateCompactionLedger(
+          m.compactionEvents.map((event) => ({ ...event, timestamp: new Date(event.timestamp) })),
+          m.currentModel,
+        );
+        lines.push(`{grey-fg}${formatCompactionLedger(ledger)}{/grey-fg}`);
+      }
 
       // Permission mode (inline)
       if (m.permissionMode && m.permissionMode !== 'default') {

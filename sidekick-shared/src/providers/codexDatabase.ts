@@ -6,18 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-
-export interface CodexDbThread {
-  id: string;
-  rollout_path: string;
-  cwd: string;
-  created_at: number;
-  updated_at: number;
-  title?: string;
-  tokens_used?: number;
-  first_user_message?: string;
-  forked_from_id?: string;
-}
+import type { CodexDbThread } from '../types/codex';
 
 export class CodexDatabase {
   private readonly dbPath: string;

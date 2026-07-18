@@ -14,7 +14,7 @@ import { getConfigDir } from '../paths';
 import type { SerializedAggregatorState } from './EventAggregator';
 
 /** Current schema version — bump when format changes. */
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 3;
 
 /** Snapshot sidecar file content. */
 export interface SessionSnapshot {

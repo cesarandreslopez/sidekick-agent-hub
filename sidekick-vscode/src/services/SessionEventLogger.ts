@@ -1,7 +1,7 @@
 /**
  * @fileoverview Session event logger for persisting normalized events to disk.
  *
- * Appends every ClaudeSessionEvent to a JSONL file as SessionMonitor processes it,
+ * Appends every SessionEvent to a JSONL file as SessionMonitor processes it,
  * creating an audit trail for debugging and replay. Each session gets its own file
  * under `~/.config/sidekick/event-logs/{provider}/{sessionId}.jsonl`.
  *
@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { ClaudeSessionEvent } from '../types/claudeSession';
+import type { SessionEvent } from '../types/claudeSession';
 import type {
   SessionEventLogEntry,
   SessionEventLogManifest,
@@ -148,7 +148,7 @@ export class SessionEventLogger implements vscode.Disposable {
    * Non-blocking — write failures are logged and the stream is closed.
    * Subsequent calls become no-ops until a new session is started.
    */
-  logEvent(event: ClaudeSessionEvent): void {
+  logEvent(event: SessionEvent): void {
     if (!this.stream || !this.activeProviderId || !this.activeSessionId || !this.activeKey) {
       return;
     }

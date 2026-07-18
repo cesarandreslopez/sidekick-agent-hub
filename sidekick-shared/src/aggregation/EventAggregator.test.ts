@@ -89,6 +89,61 @@ function makeToolResultEvent(
 // ── Tests ──
 
 describe('EventAggregator', () => {
+  describe('failure forensics rollup', () => {
+    it('groups tool failures by category/hour/model and includes provider retries', () => {
+      const aggregator = new EventAggregator({ providerId: 'opencode' });
+      aggregator.processEvent(
+        makeSessionEvent({
+          type: 'assistant',
+          timestamp: '2026-07-18T14:05:00.000Z',
+          message: {
+            role: 'assistant',
+            model: 'gpt-5',
+            content: [{ type: 'tool_use', id: 'call-1', name: 'Bash', input: {} }],
+          },
+          providerMetadata: {
+            retryAttempts: [1, 2],
+            finishReasons: ['tool-calls'],
+            providerError: { type: 'AuthError', message: 'Unauthorized' },
+          },
+        }),
+      );
+      aggregator.processEvent(
+        makeSessionEvent({
+          type: 'user',
+          timestamp: '2026-07-18T14:06:00.000Z',
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'call-1',
+                is_error: true,
+                content: 'Permission denied',
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(aggregator.getMetrics().errorRollup).toMatchObject({
+        totalFailures: 2,
+        retryAttempts: 2,
+        finishReasons: [{ reason: 'tool-calls', count: 1 }],
+      });
+      expect(aggregator.getMetrics().errorRollup.byToolCategory).toEqual(
+        expect.arrayContaining([
+          { tool: 'Bash', category: 'permission', count: 1 },
+          { tool: 'ProviderAPI', category: 'permission', count: 1 },
+        ]),
+      );
+      expect(aggregator.getMetrics().errorRollup.byHourModel).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ hour: '2026-07-18T14', model: 'gpt-5', tool: 'Bash' }),
+        ]),
+      );
+    });
+  });
   let agg: EventAggregator;
 
   beforeEach(() => {
@@ -322,6 +377,25 @@ describe('EventAggregator', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('compaction detection', () => {
+    it('uses reported Codex counts instead of estimating', () => {
+      agg.processEvent(
+        makeSessionEvent({
+          type: 'summary',
+          message: { role: 'assistant', content: 'Context compacted' },
+          compaction: { tokensBefore: 121_400, tokensAfter: 27_900 },
+        }),
+      );
+
+      expect(agg.getCompactionEvents()).toEqual([
+        expect.objectContaining({
+          contextBefore: 121_400,
+          contextAfter: 27_900,
+          tokensReclaimed: 93_500,
+          source: 'reported',
+        }),
+      ]);
+    });
+
     it('detects compaction when context drops by more than 20%', () => {
       // First event: set a high context
       agg.processEvent(makeAssistantWithUsage({ input_tokens: 10000, output_tokens: 500 }));
@@ -333,6 +407,7 @@ describe('EventAggregator', () => {
       expect(events[0].contextBefore).toBe(10000);
       expect(events[0].contextAfter).toBe(2000);
       expect(events[0].tokensReclaimed).toBe(8000);
+      expect(events[0].source).toBe('heuristic');
     });
 
     it('does not detect compaction for small context drops', () => {
@@ -352,6 +427,59 @@ describe('EventAggregator', () => {
       agg.processEvent(makeAssistantWithUsage({ input_tokens: 10000, output_tokens: 500 }));
       agg.processEvent(makeAssistantWithUsage({ input_tokens: 1000, output_tokens: 100 }));
       expect(agg.getMetrics().compactionCount).toBe(1);
+    });
+  });
+
+  describe('plan step analytics', () => {
+    it('records status timing, tokens, tool calls, and cost across Codex updates', () => {
+      agg.processFollowEvent(
+        makeFollowEvent({
+          providerId: 'codex',
+          type: 'tool_use',
+          toolName: 'UpdatePlan',
+          timestamp: '2026-07-18T10:00:00.000Z',
+          raw: { input: { plan: [{ step: 'Implement feature', status: 'in_progress' }] } },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          providerId: 'codex',
+          type: 'assistant',
+          timestamp: '2026-07-18T10:00:02.000Z',
+          model: 'gpt-5',
+          tokens: { input: 120, output: 30 },
+          cost: 0.02,
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          providerId: 'codex',
+          type: 'tool_use',
+          toolName: 'Bash',
+          timestamp: '2026-07-18T10:00:03.000Z',
+          raw: { id: 'bash-1', input: { command: 'npm test' } },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          providerId: 'codex',
+          type: 'tool_use',
+          toolName: 'UpdatePlan',
+          timestamp: '2026-07-18T10:00:05.000Z',
+          raw: { input: { plan: [{ step: 'Implement feature', status: 'completed' }] } },
+        }),
+      );
+
+      const step = agg.getPlan()?.steps[0];
+      expect(step).toMatchObject({
+        status: 'completed',
+        startedAt: '2026-07-18T10:00:00.000Z',
+        completedAt: '2026-07-18T10:00:05.000Z',
+        durationMs: 5000,
+        tokensUsed: 150,
+        toolCalls: 1,
+        costUsd: 0.02,
+      });
     });
   });
 

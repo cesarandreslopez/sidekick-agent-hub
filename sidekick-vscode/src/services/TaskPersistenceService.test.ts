@@ -117,6 +117,50 @@ describe('TaskPersistenceService', () => {
       expect(tasks[0].subject).toBe('Test task');
     });
 
+    it('refreshes after an external atomic replacement', async () => {
+      const service = createService();
+      await service.initialize();
+      const filePath = path.join(tmpDir, 'test-project.json');
+      const store: TaskPersistenceStore = {
+        schemaVersion: TASK_PERSISTENCE_SCHEMA_VERSION,
+        tasks: {
+          cli: {
+            taskId: 'cli',
+            subject: 'Captured from CLI',
+            status: 'pending',
+            createdAt: '2026-07-18T00:00:00.000Z',
+            updatedAt: '2026-07-18T00:00:00.000Z',
+            toolCallCount: 0,
+            blockedBy: [],
+            blocks: [],
+            sessionOrigin: 'cli',
+            carriedOver: false,
+            sessionAge: 0,
+          },
+        },
+        lastSessionId: 'cli',
+        sessionCount: 1,
+        lastSaved: '2026-07-18T00:00:00.000Z',
+      };
+      const changed = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('task watcher timed out')), 2_000);
+        service.onDidChange(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+
+      const temporaryPath = `${filePath}.external`;
+      fs.writeFileSync(temporaryPath, JSON.stringify(store));
+      fs.renameSync(temporaryPath, filePath);
+      await changed;
+
+      expect(service.loadPersistedTasks().map((task) => task.subject)).toContain(
+        'Captured from CLI',
+      );
+      service.dispose();
+    });
+
     it('falls back to empty store on corrupt JSON', async () => {
       const filePath = path.join(tmpDir, 'test-project.json');
       fs.writeFileSync(filePath, 'not valid json{{{');

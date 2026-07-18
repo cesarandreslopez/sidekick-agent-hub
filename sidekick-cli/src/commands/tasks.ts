@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { readTasks, getProjectSlug, getProjectSlugRaw } from 'sidekick-shared';
+import { readTasks, resolveProjectIdentity } from 'sidekick-shared';
 import type { PersistedTask } from 'sidekick-shared';
 
 const STATUS_COLORS: Record<string, (s: string) => string> = {
@@ -76,16 +76,9 @@ export async function tasksAction(_opts: Record<string, unknown>, cmd: Command):
   const statusFilter: string = (opts.status as string) || 'all';
 
   try {
-    // Try raw slug first (matches VS Code extension), then resolved slug
-    const rawSlug = getProjectSlugRaw(workspacePath);
-    const resolvedSlug = getProjectSlug(workspacePath);
-    const slugs = rawSlug !== resolvedSlug ? [rawSlug, resolvedSlug] : [rawSlug];
-
-    let tasks: PersistedTask[] = [];
-    for (const slug of slugs) {
-      tasks = await readTasks(slug, { status: statusFilter as 'pending' | 'completed' | 'all' });
-      if (tasks.length > 0) break;
-    }
+    const tasks = await readTasks(resolveProjectIdentity(workspacePath), {
+      status: statusFilter as 'pending' | 'completed' | 'all',
+    });
 
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(tasks, null, 2) + '\n');

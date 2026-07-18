@@ -24,7 +24,7 @@ import path from 'path';
 import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
 import type { SessionProvider, SessionReader } from '../types/sessionProvider';
 import {
-  ClaudeSessionEvent,
+  SessionEvent,
   TokenUsage,
   ToolCall,
   SessionStats,
@@ -61,7 +61,12 @@ import {
   loadSnapshot,
   saveSnapshot,
   type SessionSnapshot,
+  categorizeError,
+  extractErrorMessage,
+  calculateCodeImpact,
+  scoreSessionQuality,
 } from 'sidekick-shared';
+import { calculateLineChanges } from '../utils/lineChangeCalculator';
 
 /**
  * Session monitoring service for Claude Code sessions.
@@ -1267,6 +1272,15 @@ export class SessionMonitor implements vscode.Disposable {
 
     // Calculate total cost from model usage
     const totalCost = modelUsage.reduce((sum, m) => sum + m.cost, 0);
+    let additions = 0;
+    let deletions = 0;
+    for (const call of this.stats.toolCalls) {
+      const changes = calculateLineChanges(call.name, call.input);
+      additions += changes.additions;
+      deletions += changes.deletions;
+    }
+    const impact = calculateCodeImpact(totalCost, additions, deletions);
+    const quality = scoreSessionQuality(this.aggregator.getMetrics());
 
     return {
       sessionId: this.sessionId,
@@ -1278,6 +1292,13 @@ export class SessionMonitor implements vscode.Disposable {
       modelUsage,
       toolUsage,
       unpricedModelIds: unpricedModelIds.length > 0 ? unpricedModelIds : undefined,
+      provider: this.provider.id,
+      project: this.workspacePath ?? 'unknown',
+      qualityScore: quality.score,
+      qualityFactors: quality.factors,
+      additions,
+      deletions,
+      costPerChangedLine: impact.costPerChangedLine,
     };
   }
 
@@ -2213,7 +2234,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @param event - Session event to hash
    * @returns Hash string for deduplication
    */
-  private generateEventHash(event: ClaudeSessionEvent): string {
+  private generateEventHash(event: SessionEvent): string {
     const messageId = (event.message as unknown as { id?: string })?.id || '';
     const requestId = (event as unknown as { requestId?: string })?.requestId || '';
     return `${event.type}:${event.timestamp}:${messageId}:${requestId}`;
@@ -2228,7 +2249,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @param event - Session event to check
    * @returns True if this event has been seen before
    */
-  private isDuplicateEvent(event: ClaudeSessionEvent): boolean {
+  private isDuplicateEvent(event: SessionEvent): boolean {
     const hash = this.generateEventHash(event);
 
     if (this.seenHashes.has(hash)) {
@@ -2254,7 +2275,7 @@ export class SessionMonitor implements vscode.Disposable {
    *
    * @param event - Parsed session event
    */
-  private handleEvent(event: ClaudeSessionEvent): void {
+  private handleEvent(event: SessionEvent): void {
     // Deduplicate events to prevent double-counting when re-reading files
     if (this.isDuplicateEvent(event)) {
       return;
@@ -2491,7 +2512,7 @@ export class SessionMonitor implements vscode.Disposable {
   /**
    * Checks if a user event contains actual prompt content (not just tool_result).
    */
-  private hasTextContent(event: ClaudeSessionEvent): boolean {
+  private hasTextContent(event: SessionEvent): boolean {
     const content = event.message?.content;
     if (!content) return false;
 
@@ -2518,7 +2539,7 @@ export class SessionMonitor implements vscode.Disposable {
    * The cumulative contextAttribution is now handled by the aggregator.
    * This method only tracks the per-turn breakdown for the waterfall chart.
    */
-  private updateTurnAttribution(event: ClaudeSessionEvent): void {
+  private updateTurnAttribution(event: SessionEvent): void {
     const content = event.message?.content;
     if (!content) return;
 
@@ -2666,14 +2687,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns Error category string
    */
   private categorizeError(output: unknown): string {
-    const outputStr = String(output || '').toLowerCase();
-    if (outputStr.includes('permission denied')) return 'permission';
-    if (outputStr.includes('not found') || outputStr.includes('no such file')) return 'not_found';
-    if (outputStr.includes('timeout')) return 'timeout';
-    if (outputStr.includes('syntax error')) return 'syntax';
-    if (outputStr.includes('exit code')) return 'exit_code';
-    if (outputStr.includes('tool_use_error')) return 'tool_error';
-    return 'other';
+    return categorizeError(output);
   }
 
   /**
@@ -2684,18 +2698,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns Formatted error message (truncated to 150 chars)
    */
   private extractErrorMessage(content: unknown, toolName: string): string {
-    let msg = String(content || 'Unknown error');
-
-    // Clean up common patterns
-    msg = msg.replace(/<tool_use_error>|<\/tool_use_error>/g, '');
-    msg = msg.trim();
-
-    // Truncate long messages
-    if (msg.length > 150) {
-      msg = msg.substring(0, 147) + '...';
-    }
-
-    return `${toolName}: ${msg}`;
+    return extractErrorMessage(content, toolName);
   }
 
   /**
@@ -2793,7 +2796,7 @@ export class SessionMonitor implements vscode.Disposable {
    *
    * @param event - Session event to add to timeline
    */
-  private addTimelineEvent(event: ClaudeSessionEvent): void {
+  private addTimelineEvent(event: SessionEvent): void {
     const timelineEvent = this.createTimelineEvent(event);
     if (!timelineEvent) return;
 
@@ -2816,7 +2819,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @param event - Session event
    * @returns Timeline event or null if not relevant for timeline
    */
-  private createTimelineEvent(event: ClaudeSessionEvent): TimelineEvent | null {
+  private createTimelineEvent(event: SessionEvent): TimelineEvent | null {
     switch (event.type) {
       case 'user': {
         // Extract user prompt text
@@ -2900,7 +2903,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @param event - User event
    * @returns Prompt text truncated to 100 chars, or null if not extractable
    */
-  private extractUserPromptText(event: ClaudeSessionEvent): string | null {
+  private extractUserPromptText(event: SessionEvent): string | null {
     const content = event.message?.content;
     if (!content) return null;
 
@@ -2938,7 +2941,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns Object with truncated and full text, or null if no text content
    */
   private extractAssistantResponseText(
-    event: ClaudeSessionEvent,
+    event: SessionEvent,
   ): { truncated: string; full: string } | null {
     const content = event.message?.content;
     if (!content) return null;
@@ -3328,7 +3331,7 @@ export class SessionMonitor implements vscode.Disposable {
   /**
    * Extracts user text content from a user event.
    */
-  private extractUserText(event: ClaudeSessionEvent): string | undefined {
+  private extractUserText(event: SessionEvent): string | undefined {
     const content = event.message?.content;
     if (!content) return undefined;
 
@@ -3476,7 +3479,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @param event - User session event
    * @returns Noise classification
    */
-  private classifyUserEventNoise(event: ClaudeSessionEvent): 'user' | 'system' | 'noise' {
+  private classifyUserEventNoise(event: SessionEvent): 'user' | 'system' | 'noise' {
     if (event.isSidechain) return 'noise';
 
     const content = event.message?.content;

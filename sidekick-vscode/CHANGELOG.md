@@ -5,6 +5,23 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-07-18
+
+### Added
+
+- **Four-step first-run walkthrough** for live-session detection, dashboard discovery, status visibility, and first-note capture; the QuickPick command hub is generated from the extension manifest so it cannot drift
+- **Claude Code status-line management** with install/uninstall commands that merge settings safely and restore the prior `statusLine` block
+- **`Sidekick: Doctor`** using the same typed diagnostics as the CLI, plus external-handoff URLs through `sidekick.handoffUrlTemplate` and `Sidekick: Open External Handoff`
+- Dashboard History and post-mortem views for categorized failures, beta quality trends/factors, code impact, per-model churn/cost, and compaction re-establishment estimates
+- The Kanban board watches atomic task-store replacements, so terminal captures appear without an extension restart
+
+### Changed
+
+- The Plans board/history pipeline is enabled end to end again, with per-step timing, token, tool-call, and cost data
+- Codex line-change totals prefer provider-reported additions/deletions; exact compaction deltas and provenance flow into dashboard events
+- Persistence saves atomically reconcile the latest task/decision store instead of overwriting concurrent CLI changes
+- Historical data advances to schema v3 with capped session records and provider/project quality/impact dimensions
+
 ## [0.22.0] - 2026-07-02
 
 ### Added

@@ -46,6 +46,7 @@ import { SessionAnalyzer } from './services/SessionAnalyzer';
 import { GuidanceAdvisor } from './services/GuidanceAdvisor';
 import { HandoffService } from './services/HandoffService';
 import { SessionSummaryService } from './services/SessionSummaryService';
+import { ClaudeStatuslineInstaller } from './services/ClaudeStatuslineInstaller';
 import { resolveInstructionTarget } from './types/instructionFile';
 import { DEFAULT_CONTEXT_WINDOW } from './constants';
 import { NotificationTriggerService } from './services/NotificationTriggerService';
@@ -68,15 +69,22 @@ import { PlanPersistenceService } from './services/PlanPersistenceService';
 import { DecisionLogService } from './services/DecisionLogService';
 import { NotificationPersistenceService } from './services/NotificationPersistenceService';
 import { KnowledgeNoteService } from './services/KnowledgeNoteService';
-import { encodeWorkspacePath } from './services/SessionPathResolver';
+import {
+  appendErrorHistory,
+  formatHealthReport,
+  getProjectSlug,
+  renderHandoffUrlTemplate,
+  runDoctor,
+} from 'sidekick-shared';
 import { TempFilesTreeProvider } from './providers/TempFilesTreeProvider';
 import { KnowledgeNoteTreeProvider } from './providers/KnowledgeNoteTreeProvider';
 import { KnowledgeNoteDecorationProvider } from './providers/KnowledgeNoteDecorationProvider';
 import { SubagentTreeProvider } from './providers/SubagentTreeProvider';
 import { EventStreamTreeProvider } from './providers/EventStreamTreeProvider';
 import { StatusBarManager } from './services/StatusBarManager';
-import { AccountService, isSavedAccountProfile } from './services/AccountService';
+import { AccountService } from './services/AccountService';
 import { AccountStatusBar } from './services/AccountStatusBar';
+import { buildCommandCatalog } from './utils/commandCatalog';
 import { openCliDashboard, disposeDashboardTerminal } from './services/SidekickCliService';
 import { showExtractedSessionAssets } from './services/SessionAssetService';
 import { initLogger, log, logError, showLog } from './services/Logger';
@@ -198,6 +206,10 @@ export async function activate(context: vscode.ExtensionContext) {
   statusBarManager = new StatusBarManager();
   statusBarManager.setConnected(); // Start enabled
   context.subscriptions.push(statusBarManager);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.walkthrough.sessionDetected', () => undefined),
+    vscode.commands.registerCommand('sidekick.walkthrough.noteCaptured', () => undefined),
+  );
 
   // Initialize status bar with configured model
   const config = vscode.workspace.getConfiguration('sidekick');
@@ -417,6 +429,19 @@ export async function activate(context: vscode.ExtensionContext) {
       if (summary && historicalDataService) {
         historicalDataService.saveSessionSummary(summary);
         log(`Session summary saved for ${summary.sessionId.slice(0, 8)}`);
+        const metrics = sessionMonitor?.getAggregatedMetrics();
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (metrics && workspacePath) {
+          appendErrorHistory(
+            {
+              sessionId: summary.sessionId,
+              providerId: sessionMonitor!.getProvider().id,
+              project: getProjectSlug(workspacePath),
+              endedAt: summary.endTime,
+            },
+            metrics.errorRollup,
+          ).catch((error) => logError('Failed to save error history', error));
+        }
       }
 
       const stats = sessionMonitor?.getStats();
@@ -477,7 +502,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let decisionLogService: DecisionLogService | undefined;
     const decisionWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (decisionWorkspaceFolder) {
-      const decisionSlug = encodeWorkspacePath(decisionWorkspaceFolder.uri.fsPath);
+      const decisionSlug = getProjectSlug(decisionWorkspaceFolder.uri.fsPath);
       decisionLogService = new DecisionLogService(decisionSlug);
       decisionLogService.initialize().catch((error) => {
         logError('Failed to initialize DecisionLogService', error);
@@ -489,7 +514,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let notificationPersistenceService: NotificationPersistenceService | undefined;
     const notificationWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (notificationWorkspaceFolder) {
-      const notificationSlug = encodeWorkspacePath(notificationWorkspaceFolder.uri.fsPath);
+      const notificationSlug = getProjectSlug(notificationWorkspaceFolder.uri.fsPath);
       notificationPersistenceService = new NotificationPersistenceService(notificationSlug);
       notificationPersistenceService.initialize().catch((error) => {
         logError('Failed to initialize NotificationPersistenceService', error);
@@ -501,7 +526,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let knowledgeNoteService: KnowledgeNoteService | undefined;
     const knowledgeWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (knowledgeWorkspaceFolder) {
-      const knowledgeSlug = encodeWorkspacePath(knowledgeWorkspaceFolder.uri.fsPath);
+      const knowledgeSlug = getProjectSlug(knowledgeWorkspaceFolder.uri.fsPath);
       knowledgeNoteService = new KnowledgeNoteService(knowledgeSlug);
       knowledgeNoteService.initialize().catch((error) => {
         logError('Failed to initialize KnowledgeNoteService', error);
@@ -516,7 +541,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let handoffService: HandoffService | undefined;
     const handoffWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (handoffWorkspaceFolder) {
-      const handoffSlug = encodeWorkspacePath(handoffWorkspaceFolder.uri.fsPath);
+      const handoffSlug = getProjectSlug(handoffWorkspaceFolder.uri.fsPath);
       handoffService = new HandoffService(handoffSlug);
       handoffService.initialize().catch((error) => {
         logError('Failed to initialize HandoffService', error);
@@ -553,6 +578,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Notify on session start if a handoff exists
     sessionMonitor.onSessionStart(() => {
+      vscode.commands.executeCommand('sidekick.walkthrough.sessionDetected');
       const autoHandoff = vscode.workspace
         .getConfiguration('sidekick')
         .get<string>('autoHandoff', 'off');
@@ -589,7 +615,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         const filePath = path.join(wsFolder.uri.fsPath, target.primaryFile);
-        const handoffSlug = encodeWorkspacePath(wsFolder.uri.fsPath);
+        const handoffSlug = getProjectSlug(wsFolder.uri.fsPath);
         const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ~/.config/sidekick/handoffs/${handoffSlug}-latest.md\n`;
 
         // Check if file exists and if one-liner is already present
@@ -609,6 +635,39 @@ export async function activate(context: vscode.ExtensionContext) {
 
         await fs.promises.writeFile(filePath, existingContent + oneLiner, 'utf-8');
         vscode.window.showInformationMessage(`Added handoff reference to ${target.primaryFile}.`);
+      }),
+      vscode.commands.registerCommand('sidekick.openExternalHandoff', async () => {
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspacePath || !sessionMonitor) {
+          vscode.window.showWarningMessage('No monitored workspace session is available.');
+          return;
+        }
+        const template = vscode.workspace
+          .getConfiguration('sidekick')
+          .get<string>('handoffUrlTemplate', '');
+        if (!template) {
+          const action = await vscode.window.showWarningMessage(
+            'Configure sidekick.handoffUrlTemplate before opening an external handoff.',
+            'Open Settings',
+          );
+          if (action === 'Open Settings') {
+            await vscode.commands.executeCommand(
+              'workbench.action.openSettings',
+              'sidekick.handoffUrlTemplate',
+            );
+          }
+          return;
+        }
+        try {
+          const url = renderHandoffUrlTemplate(template, {
+            sessionId: sessionMonitor.getSessionId() ?? 'unknown',
+            provider: sessionMonitor.getProvider().id,
+            projectPath: workspacePath,
+          });
+          await vscode.env.openExternal(vscode.Uri.parse(url));
+        } catch (error) {
+          vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+        }
       }),
     );
 
@@ -706,7 +765,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let planPersistenceService: PlanPersistenceService | undefined;
     const taskWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (taskWorkspaceFolder) {
-      const projectSlug = encodeWorkspacePath(taskWorkspaceFolder.uri.fsPath);
+      const projectSlug = getProjectSlug(taskWorkspaceFolder.uri.fsPath);
       taskPersistenceService = new TaskPersistenceService(projectSlug);
       taskPersistenceService.initialize().catch((error) => {
         logError('Failed to initialize TaskPersistenceService', error);
@@ -865,6 +924,8 @@ export async function activate(context: vscode.ExtensionContext) {
           lineRange,
           codeSnippet,
         });
+
+        vscode.commands.executeCommand('sidekick.walkthrough.noteCaptured');
 
         vscode.window.showInformationMessage(`Knowledge note added to ${relativePath}`);
       }),
@@ -1691,6 +1752,40 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register session diagnostics command (helps debug path resolution issues)
   context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.doctor', async () => {
+      const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspacePath) {
+        vscode.window.showErrorMessage('No workspace folder open');
+        return;
+      }
+      const sidekickConfig = vscode.workspace.getConfiguration('sidekick');
+      const configured = (key: string) => {
+        const inspected = sidekickConfig.inspect(key);
+        return (
+          inspected?.globalValue !== undefined ||
+          inspected?.workspaceValue !== undefined ||
+          inspected?.workspaceFolderValue !== undefined
+        );
+      };
+      const deprecatedSettings = [
+        configured('inlineTimeout')
+          ? {
+              key: 'sidekick.inlineTimeout',
+              replacement: 'sidekick.timeouts.inlineCompletion',
+            }
+          : null,
+        configured('authMode')
+          ? { key: 'sidekick.authMode', replacement: 'sidekick.inferenceProvider' }
+          : null,
+        configured('zai.tier') ? { key: 'sidekick.zai.tier' } : null,
+      ].filter((setting): setting is { key: string; replacement?: string } => setting !== null);
+      const report = await runDoctor({ cwd: workspacePath, deprecatedSettings });
+      log(formatHealthReport(report));
+      showLog();
+      const message = `Sidekick Doctor: ${report.status} (${report.checks.filter((check) => check.status === 'warning' || check.status === 'error').length} items need attention)`;
+      if (report.status === 'healthy') vscode.window.showInformationMessage(message);
+      else vscode.window.showWarningMessage(message);
+    }),
     vscode.commands.registerCommand('sidekick.sessionDiagnostics', async () => {
       const { getSessionDiagnostics } = await import('./services/SessionPathResolver');
 
@@ -1903,131 +1998,38 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // Register status bar menu command
+  const statuslineInstaller = new ClaudeStatuslineInstaller();
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.installStatusline', () => {
+      const result = statuslineInstaller.install();
+      vscode.window.showInformationMessage(
+        result.changed
+          ? 'Sidekick statusline installed for Claude Code.'
+          : 'Sidekick statusline is already installed.',
+      );
+    }),
+    vscode.commands.registerCommand('sidekick.uninstallStatusline', () => {
+      const result = statuslineInstaller.uninstall();
+      vscode.window.showInformationMessage(
+        result.restored
+          ? 'Sidekick statusline removed and the previous statusline restored.'
+          : 'Sidekick statusline removed.',
+      );
+    }),
+  );
+
+  // Register status bar menu command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.showMenu', async () => {
-      const providerName = authService
-        ? PROVIDER_DISPLAY_NAMES[authService.getProviderId()]
-        : 'Claude';
-      const items: Array<{ label: string; description: string; action: string }> = [
-        {
-          label: enabled ? '$(circle-slash) Disable' : '$(sparkle) Enable',
-          description: enabled ? 'Turn off inline completions' : 'Turn on inline completions',
-          action: 'toggle',
-        },
-        {
-          label: '$(cloud) Switch Inference Provider',
-          description: `Current: ${providerName}`,
-          action: 'switchProvider',
-        },
-        {
-          label: '$(gear) Configure Extension',
-          description: 'Open Sidekick settings',
-          action: 'configure',
-        },
-        {
-          label: '$(output) View Logs',
-          description: 'Open the Sidekick output channel',
-          action: 'logs',
-        },
-        {
-          label: '$(plug) Test Connection',
-          description: 'Verify provider connection',
-          action: 'test',
-        },
-        {
-          label: '$(terminal) Open CLI Dashboard',
-          description: 'Launch Sidekick TUI in terminal',
-          action: 'cliDashboard',
-        },
-        {
-          label: '$(list-tree) Extract Session Assets',
-          description: 'Find URLs, files, commands, and plans from recent sessions',
-          action: 'extractAssets',
-        },
-        {
-          label: '$(output) Dump Session Report',
-          description: 'Export session as text, markdown, or JSON',
-          action: 'dumpSession',
-        },
-      ];
-
-      // Only show Set API Key when using claude-api provider
-      if (authService?.getProviderId() === 'claude-api') {
-        items.push({
-          label: '$(key) Set API Key',
-          description: 'Configure Anthropic API key',
-          action: 'apiKey',
-        });
-      }
-
-      const managedProvider = getManagedAccountProvider();
-      if (managedProvider) {
-        const accounts = accountService.listAccounts(managedProvider);
-        const active = accountService.getActiveAccount(managedProvider);
-        const displayName =
-          active && isSavedAccountProfile(active)
-            ? (active.label ?? active.email ?? active.id ?? 'unknown')
-            : (active?.label ?? active?.email ?? 'unknown');
-
-        if (accounts.length >= 2) {
-          items.splice(2, 0, {
-            label: '$(account) Switch Account',
-            description: `Active: ${displayName}`,
-            action: 'switchAccount',
-          });
-        } else {
-          items.splice(2, 0, {
-            label: '$(account) Save Current Account',
-            description:
-              managedProvider === 'codex'
-                ? 'Save or create a managed Codex profile for account switching'
-                : 'Save Claude Code credentials for multi-account switching',
-            action: 'saveAccount',
-          });
-        }
-      }
-
+      const items = buildCommandCatalog(
+        context.extension.packageJSON,
+        new Set(['sidekick.showMenu']),
+      );
       const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Sidekick Options',
+        placeHolder: `Sidekick commands (${items.length})`,
+        matchOnDescription: true,
       });
-
-      if (selected) {
-        switch (selected.action) {
-          case 'toggle':
-            vscode.commands.executeCommand('sidekick.toggle');
-            break;
-          case 'switchProvider':
-            vscode.commands.executeCommand('sidekick.setInferenceProvider');
-            break;
-          case 'configure':
-            vscode.commands.executeCommand('workbench.action.openSettings', 'sidekick');
-            break;
-          case 'logs':
-            showLog();
-            break;
-          case 'test':
-            vscode.commands.executeCommand('sidekick.testConnection');
-            break;
-          case 'apiKey':
-            vscode.commands.executeCommand('sidekick.setApiKey');
-            break;
-          case 'switchAccount':
-            vscode.commands.executeCommand('sidekick.switchAccount');
-            break;
-          case 'saveAccount':
-            vscode.commands.executeCommand('sidekick.addAccount');
-            break;
-          case 'cliDashboard':
-            vscode.commands.executeCommand('sidekick.openCliDashboard');
-            break;
-          case 'extractAssets':
-            vscode.commands.executeCommand('sidekick.extractAssets');
-            break;
-          case 'dumpSession':
-            vscode.commands.executeCommand('sidekick.dumpSession');
-            break;
-        }
-      }
+      if (selected) await vscode.commands.executeCommand(selected.command);
     }),
   );
 

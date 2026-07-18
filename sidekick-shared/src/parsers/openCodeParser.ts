@@ -360,6 +360,16 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
   };
 
   const timestamp = toISOString(message.time.completed || message.time.created);
+  const retryAttempts = parts
+    .filter((part): part is Extract<OpenCodePart, { type: 'retry' }> => part.type === 'retry')
+    .map((part) => part.attempt)
+    .filter((attempt): attempt is number => typeof attempt === 'number');
+  const finishReasons = parts
+    .filter(
+      (part): part is Extract<OpenCodePart, { type: 'step-finish' }> => part.type === 'step-finish',
+    )
+    .map((part) => part.reason)
+    .filter((reason): reason is string => typeof reason === 'string' && reason.length > 0);
 
   // Emit assistant event (even if content is empty, usage data is valuable)
   if (content.length > 0 || message.tokens.input > 0 || message.tokens.output > 0) {
@@ -373,6 +383,11 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
         content,
       },
       timestamp,
+      providerMetadata: {
+        ...(retryAttempts.length > 0 ? { retryAttempts } : {}),
+        ...(finishReasons.length > 0 ? { finishReasons } : {}),
+        ...(message.error ? { providerError: message.error } : {}),
+      },
     });
   }
 

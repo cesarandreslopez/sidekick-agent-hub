@@ -69,6 +69,8 @@ export interface SessionSummaryData {
   costByModel: { model: string; cost: number; percentage: number }[];
   /** Cost breakdown by tool */
   costByTool: { tool: string; estimatedCost: number; calls: number }[];
+  /** Churn×cost impact, including the per-model cost-per-line table. */
+  codeImpact: import('sidekick-shared').CodeImpact;
   /** Error summary */
   errors: { category: string; count: number; recovered: boolean }[];
   /** Recovery rate (0-1) */

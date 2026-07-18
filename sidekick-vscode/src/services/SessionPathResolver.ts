@@ -10,10 +10,6 @@
  * @module services/SessionPathResolver
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-
 import {
   encodeWorkspacePath,
   getSessionDirectory,
@@ -25,6 +21,7 @@ import {
   getMostRecentlyActiveSessionDir,
   decodeEncodedPath,
   getAllProjectFolders,
+  getSessionDiagnostics,
 } from 'sidekick-shared';
 
 export {
@@ -38,6 +35,7 @@ export {
   getMostRecentlyActiveSessionDir,
   decodeEncodedPath,
   getAllProjectFolders,
+  getSessionDiagnostics,
 };
 
 // Re-export ProjectFolderInfo from the shared type (used by session providers)
@@ -47,71 +45,4 @@ export type { ProjectFolderInfo } from 'sidekick-shared';
  * Diagnostic information about session path resolution.
  * VS Code extension-only (used by debug commands).
  */
-export interface SessionDiagnostics {
-  workspacePath: string;
-  encodedPath: string;
-  expectedSessionDir: string;
-  expectedDirExists: boolean;
-  discoveredSessionDir: string | null;
-  existingProjectDirs: string[];
-  similarDirs: string[];
-  platform: string;
-  subdirectoryMatches: string[];
-  selectedSubdirectoryMatch: string | null;
-}
-
-/**
- * Gets diagnostic information about session path resolution.
- * VS Code extension-only (used by debug commands).
- */
-export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics {
-  const encodedPath = encodeWorkspacePath(workspacePath);
-  const expectedSessionDir = getSessionDirectory(workspacePath);
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
-
-  let existingProjectDirs: string[] = [];
-  let expectedDirExists = false;
-
-  try {
-    if (fs.existsSync(projectsDir)) {
-      existingProjectDirs = fs
-        .readdirSync(projectsDir)
-        .filter((name) => {
-          const fullPath = path.join(projectsDir, name);
-          return fs.statSync(fullPath).isDirectory();
-        })
-        .sort();
-    }
-    expectedDirExists = fs.existsSync(expectedSessionDir);
-  } catch {
-    // Ignore errors - just return empty arrays
-  }
-
-  const discoveredSessionDir = discoverSessionDirectory(workspacePath);
-
-  const workspaceBasename = path.basename(workspacePath).toLowerCase();
-  const similarDirs = existingProjectDirs.filter((dir: string) => {
-    const dirLower = dir.toLowerCase();
-    return (
-      dirLower.includes(workspaceBasename) ||
-      workspaceBasename.includes(dirLower.split('-').pop() || '')
-    );
-  });
-
-  const subdirectoryMatches = findSubdirectorySessionDirs(workspacePath);
-  const selectedSubdirectoryMatch =
-    subdirectoryMatches.length > 0 ? getMostRecentlyActiveSessionDir(subdirectoryMatches) : null;
-
-  return {
-    workspacePath,
-    encodedPath,
-    expectedSessionDir,
-    expectedDirExists,
-    discoveredSessionDir,
-    existingProjectDirs,
-    similarDirs,
-    platform: process.platform,
-    subdirectoryMatches,
-    selectedSubdirectoryMatch,
-  };
-}
+export type { SessionDiagnostics } from 'sidekick-shared';

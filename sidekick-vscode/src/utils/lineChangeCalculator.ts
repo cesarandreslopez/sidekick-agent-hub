@@ -63,6 +63,19 @@ export function calculateLineChanges(
   toolName: string,
   input: Record<string, unknown>,
 ): LineChanges {
+  const reportedAdditions = input.additions;
+  const reportedDeletions = input.deletions;
+  if (
+    typeof reportedAdditions === 'number' &&
+    Number.isFinite(reportedAdditions) &&
+    reportedAdditions >= 0 &&
+    typeof reportedDeletions === 'number' &&
+    Number.isFinite(reportedDeletions) &&
+    reportedDeletions >= 0
+  ) {
+    return { additions: reportedAdditions, deletions: reportedDeletions };
+  }
+
   if (toolName === 'Write') {
     const content = input.content as string;
     return { additions: countLines(content), deletions: 0 };

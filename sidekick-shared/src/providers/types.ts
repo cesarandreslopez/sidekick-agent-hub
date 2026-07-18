@@ -204,6 +204,7 @@ export interface SessionProviderBase {
 /**
  * Original simplified session provider interface.
  * Maintained for backward compatibility with existing CLI and shared code.
+ * @deprecated Use SessionProviderBase for new integrations.
  */
 export interface SessionProvider {
   readonly id: ProviderId;

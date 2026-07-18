@@ -6,12 +6,13 @@ import type { PersistedTask } from '../types/taskPersistence';
 import type { DecisionEntry } from '../types/decisionLog';
 import type { KnowledgeNote } from '../types/knowledgeNote';
 import type { TokenTotals } from '../types/historicalData';
-import type { SessionProvider, SessionFileStats, ProviderId } from '../providers/types';
+import type { SessionProviderBase, SessionFileStats, ProviderId } from '../providers/types';
 import { readTasks } from '../readers/tasks';
 import { readDecisions } from '../readers/decisions';
 import { readNotes } from '../readers/notes';
 import { readHistory } from '../readers/history';
 import { readLatestHandoff } from '../readers/handoff';
+import type { ProjectIdentity } from '../paths';
 
 export type Fidelity = 'full' | 'compact' | 'brief';
 
@@ -26,18 +27,18 @@ export interface ContextResult {
 }
 
 export async function composeContext(
-  slug: string,
+  project: string | ProjectIdentity,
   fidelity: Fidelity,
-  provider: SessionProvider,
+  provider: SessionProviderBase,
   workspacePath?: string,
 ): Promise<ContextResult> {
   // Fetch all data in parallel
   const [allTasks, allDecisions, allNotes, history, handoff] = await Promise.all([
-    readTasks(slug),
-    readDecisions(slug),
-    readNotes(slug),
+    readTasks(project),
+    readDecisions(project),
+    readNotes(project),
     readHistory(),
-    readLatestHandoff(slug),
+    readLatestHandoff(project),
   ]);
 
   // Get session summaries

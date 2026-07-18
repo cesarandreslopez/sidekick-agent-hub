@@ -31,6 +31,8 @@ export interface FollowEvent {
     primary?: { usedPercent: number; windowMinutes: number; resetsAt: number };
     secondary?: { usedPercent: number; windowMinutes: number; resetsAt: number };
   };
+  /** Exact compaction counts when supplied by the provider. */
+  compaction?: { tokensBefore: number; tokensAfter: number };
   /** Original raw event for JSON output. */
   raw?: unknown;
 }

@@ -72,7 +72,9 @@ nav:
       - Quick Start: getting-started/quick-start.md
       - Context Management: getting-started/context-management.md
       - Provider Setup: getting-started/provider-setup.md
-  - CLI Dashboard: features/cli.md
+  - CLI:
+      - Dashboard & Commands: features/cli.md
+      - MCP Facts Server: features/mcp.md
   - VS Code Features:
       - Inline Completions: features/inline-completions.md
       - Code Transforms: features/code-transforms.md

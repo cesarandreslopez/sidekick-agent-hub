@@ -18,8 +18,11 @@
  *     back to $0 because pricing was unknown.
  *   Legacy v1 records are read as-is; missing fields mean "fully priced".
  *   No retroactive migration — fix forward only.
+ * v3 (2026-07-18): capped per-session provider/project records with beta
+ *   quality factors, churn, and cost-per-changed-line impact.
  */
-export const HISTORICAL_DATA_SCHEMA_VERSION = 2;
+export const HISTORICAL_DATA_SCHEMA_VERSION = 3;
+export const HISTORICAL_SESSION_RETENTION_LIMIT = 500;
 
 /**
  * Token usage totals by category.
@@ -211,11 +214,36 @@ export interface HistoricalDataStore {
   /** ISO timestamp of last save */
   lastSaved: string;
 
+  /** Capped durable per-session records, newest last (schema v3). */
+  sessions?: SessionHistoryRecord[];
+
   /** JSONL file paths already imported (prevents duplicates during retroactive import) */
   importedFiles?: string[];
 
   /** ISO timestamp of when the last retroactive import completed */
   lastImportTimestamp?: string;
+}
+
+export interface SessionHistoryRecord {
+  sessionId: string;
+  provider: string;
+  project: string;
+  startTime: string;
+  endTime: string;
+  tokens: TokenTotals;
+  totalCost: number;
+  messageCount: number;
+  qualityScore: number;
+  qualityFactors: Array<{
+    id: string;
+    label: string;
+    contribution: number;
+    maximum: number;
+    detail: string;
+  }>;
+  additions: number;
+  deletions: number;
+  costPerChangedLine: number | null;
 }
 
 /**
@@ -254,6 +282,13 @@ export interface SessionSummary {
    * indicator. Omitted when every model in the session was priced.
    */
   unpricedModelIds?: string[];
+  provider?: string;
+  project?: string;
+  qualityScore?: number;
+  qualityFactors?: SessionHistoryRecord['qualityFactors'];
+  additions?: number;
+  deletions?: number;
+  costPerChangedLine?: number | null;
 }
 
 /**
@@ -277,6 +312,7 @@ export function createEmptyDataStore(): HistoricalDataStore {
     schemaVersion: HISTORICAL_DATA_SCHEMA_VERSION,
     daily: {},
     monthly: {},
+    sessions: [],
     allTime: {
       tokens: createEmptyTokenTotals(),
       totalCost: 0,

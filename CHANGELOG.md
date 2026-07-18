@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-07-18
+
+### Added (sidekick-shared)
+
+- **Versioned observed-session V1 contracts**: provider-neutral discover/read/watch adapters, observable session and capability records, pending-human requests, stable evidence references, provenance/confidence wrappers, and Zod boundary schemas
+- **Reusable facts and analytics substrate**: shared status-line formatting and burn estimates, typed doctor reports, atomic task/decision/note writers, categorized error history, beta session-quality scores and trends, code-impact metrics, and an honest compaction ledger
+- **Public API release contracts** covering quota, accounts, monitoring, assets, costs, turn/reasoning projections, and observed-session shapes
+
+### Added (sidekick-cli)
+
+- **Fast operator commands**: cache-only `statusline` and `today`, cross-provider `doctor`, atomic task/note/decision capture, generic external-handoff URLs, and the read-only `sidekick mcp` facts server
+- **Failure and efficiency views**: top failing tools, session quality/churn/cost history, cost per changed line, per-model impact, and reported-vs-heuristic compaction accounting
+
+### Added (sidekick-vscode)
+
+- **First-run walkthrough and generated command hub**, Claude Code status-line install/uninstall with settings restoration, shared doctor diagnostics, live refresh after CLI task capture, and generic external handoff
+- **Dashboard analytics** for error forensics, beta quality trends and factor breakdowns, code impact, and compaction re-establishment cost
+
+### Changed
+
+- **Plans pipeline restored end to end** across shared aggregation, CLI persistence/panels, and VS Code history/board controls, including per-step timing, tokens, tools, and cost
+- **More truthful provider normalization**: exact Codex compaction deltas and diff churn are preserved, shared ingest assigns one error taxonomy, OpenCode retry/finish/provider errors enter rollups, project identity resolves symlinks canonically, SQL substitution is index-safe, and database row types have one owner
+- **Historical schema v3** adds capped per-session provider/project quality and impact records; aggregator snapshots advance to v3
+
+### Removed (sidekick-shared)
+
+- **Deprecated z.ai observed-traffic estimator exports** are no longer part of the package root. Product quota continues through the authoritative z.ai quota API and cached-snapshot fallback
+
 ## [0.22.0] - 2026-07-02
 
 ### Added (sidekick-cli)

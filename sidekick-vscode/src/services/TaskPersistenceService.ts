@@ -14,6 +14,9 @@ import type { PersistedTask, TaskPersistenceStore } from '../types/taskPersisten
 import { TASK_PERSISTENCE_SCHEMA_VERSION } from '../types/taskPersistence';
 import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
 import { log } from './Logger';
+import * as fs from 'fs';
+import * as path from 'path';
+import type * as vscode from 'vscode';
 
 /**
  * Creates an empty persistence store.
@@ -44,6 +47,10 @@ function createEmptyStore(): TaskPersistenceStore {
  * ```
  */
 export class TaskPersistenceService extends PersistenceService<TaskPersistenceStore> {
+  private fileWatcher?: fs.FSWatcher;
+  private refreshTimer?: NodeJS.Timeout;
+  private readonly changeListeners = new Set<() => void>();
+
   constructor(projectSlug: string) {
     super(
       resolveSidekickDataPath('tasks', `${projectSlug}.json`),
@@ -53,10 +60,52 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
     );
   }
 
+  override async initialize(): Promise<void> {
+    await super.initialize();
+    if (this.changeListeners.size > 0) this.startFileWatcher();
+  }
+
+  /** Fires when another process atomically updates this project's task store. */
+  onDidChange(listener: () => void): vscode.Disposable {
+    this.changeListeners.add(listener);
+    this.startFileWatcher();
+    return { dispose: () => this.changeListeners.delete(listener) };
+  }
+
+  private startFileWatcher(): void {
+    this.fileWatcher?.close();
+    try {
+      const directory = path.dirname(this.dataFilePath);
+      this.fileWatcher = fs.watch(directory, () => {
+        if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        this.refreshTimer = setTimeout(async () => {
+          this.refreshTimer = undefined;
+          if (!(await this.refreshFromDisk())) return;
+          for (const listener of this.changeListeners) listener();
+        }, 100);
+      });
+      this.fileWatcher.unref();
+    } catch {
+      // Watching is a convenience; persistence remains functional without it.
+    }
+  }
+
   protected override onStoreLoaded(): void {
     log(
       `Loaded persisted tasks: ${Object.keys(this.store.tasks).length} tasks from ${this.store.sessionCount} sessions`,
     );
+  }
+
+  protected override mergeStoreForSave(
+    latest: TaskPersistenceStore,
+    pending: TaskPersistenceStore,
+  ): TaskPersistenceStore {
+    return {
+      ...latest,
+      ...pending,
+      tasks: { ...latest.tasks, ...pending.tasks },
+      schemaVersion: TASK_PERSISTENCE_SCHEMA_VERSION,
+    };
   }
 
   /**
@@ -176,5 +225,12 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
       this.markDirty();
       log(`Archived all ${count} tasks`);
     }
+  }
+
+  override dispose(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.fileWatcher?.close();
+    this.changeListeners.clear();
+    super.dispose();
   }
 }

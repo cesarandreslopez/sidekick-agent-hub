@@ -229,7 +229,7 @@ export class PlanExtractor {
     // Capture Write/Edit tool calls to plan files during plan mode
     if (this._planModeActive && event.type === 'tool_use') {
       const raw = event.raw as Record<string, unknown> | undefined;
-      const input = raw?.input as Record<string, unknown> | undefined;
+      const input = extractToolInput(raw);
       const filePath = input?.file_path as string | undefined;
 
       if (event.toolName === 'Write') {
@@ -293,8 +293,8 @@ export class PlanExtractor {
 
   private extractCodexPlan(event: FollowEvent): boolean {
     const raw = event.raw as Record<string, unknown> | undefined;
-    if (!raw?.input) return false;
-    const input = raw.input as Record<string, unknown>;
+    const input = extractToolInput(raw);
+    if (!input) return false;
 
     // Codex UpdatePlan can use either approach[] or plan[] format
     const approach = (input.approach ?? input.plan) as unknown[] | undefined;
@@ -342,11 +342,12 @@ export class PlanExtractor {
   private finalizePlanMode(): boolean {
     this._planModeActive = false;
 
-    // Prefer plan file content (from Write tool) → accumulated assistant text → disk read fallback
+    // Prefer captured Write content, then the final file after Edit, then prose fallback.
+    // Edit only contains a diff, so reading the file must happen before accumulated text.
     const markdown =
       this._planFileContent ||
-      (this._planTexts.length > 0 ? this._planTexts.join('\n') : null) ||
-      (this._planFilePath && this._readFile ? this._readFile(this._planFilePath) : null);
+      (this._planFilePath && this._readFile ? this._readFile(this._planFilePath) : null) ||
+      (this._planTexts.length > 0 ? this._planTexts.join('\n') : null);
     this._planFileContent = null;
     this._planFilePath = null;
     this._planTexts = [];
@@ -369,4 +370,14 @@ export class PlanExtractor {
     };
     return true;
   }
+}
+
+function extractToolInput(
+  raw: Record<string, unknown> | undefined,
+): Record<string, unknown> | null {
+  if (!raw) return null;
+  if (raw.input && typeof raw.input === 'object') return raw.input as Record<string, unknown>;
+  const tool = raw.tool as Record<string, unknown> | undefined;
+  if (tool?.input && typeof tool.input === 'object') return tool.input as Record<string, unknown>;
+  return null;
 }

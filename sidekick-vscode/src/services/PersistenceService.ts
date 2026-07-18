@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { log, logError } from './Logger';
+import { atomicWriteJsonSync, updateJsonStoreAtomic } from 'sidekick-shared';
 
 /** Minimum shape every persisted store must satisfy. */
 export interface BaseStore {
@@ -113,6 +114,28 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
     // Default: no-op
   }
 
+  /** Merge fresh on-disk state before an atomic write. */
+  protected mergeStoreForSave(_latest: T, pending: T): T {
+    return pending;
+  }
+
+  /**
+   * Reloads fresh on-disk state without discarding locally queued mutations.
+   * File-watching subclasses use this to reconcile writes from the CLI.
+   */
+  protected async refreshFromDisk(): Promise<boolean> {
+    try {
+      const content = await fs.promises.readFile(this.dataFilePath, 'utf-8');
+      const loaded = JSON.parse(content) as T;
+      this.store = this.isDirty ? this.mergeStoreForSave(loaded, this.store) : loaded;
+      this.onStoreLoaded();
+      return true;
+    } catch (error) {
+      logError(`Failed to refresh persisted ${this.logLabel}`, error);
+      return false;
+    }
+  }
+
   /** Marks the store as dirty and schedules a debounced save. */
   protected markDirty(): void {
     this.isDirty = true;
@@ -143,8 +166,12 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
 
     try {
       this.store.lastSaved = new Date().toISOString();
-      const content = JSON.stringify(this.store, null, 2);
-      await fs.promises.writeFile(this.dataFilePath, content, 'utf-8');
+      const pending = this.store;
+      this.store = await updateJsonStoreAtomic(
+        this.dataFilePath,
+        this._createEmptyStore,
+        (latest) => this.mergeStoreForSave(latest, pending),
+      );
       this.isDirty = false;
       log(`${this.logLabel} data saved to disk`);
     } catch (error) {
@@ -162,8 +189,7 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
     if (this.isDirty) {
       try {
         this.store.lastSaved = new Date().toISOString();
-        const content = JSON.stringify(this.store, null, 2);
-        fs.writeFileSync(this.dataFilePath, content, 'utf-8');
+        atomicWriteJsonSync(this.dataFilePath, this.store);
         log(`${this.logLabel} data saved on dispose`);
       } catch (error) {
         logError(`Failed to save ${this.logLabel} data on dispose`, error);
