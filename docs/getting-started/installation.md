@@ -15,6 +15,8 @@ Install directly from the [VS Code Marketplace](https://marketplace.visualstudio
 3. Search for "Sidekick Agent Hub"
 4. Click Install
 
+On first install, a four-step **Get started** walkthrough opens — detect a live session, open the dashboard, pin the status bar, and capture your first knowledge note.
+
 ## Download from GitHub Releases
 
 1. Download the latest `.vsix` file from [Releases](https://github.com/cesarandreslopez/sidekick-agent-hub/releases)

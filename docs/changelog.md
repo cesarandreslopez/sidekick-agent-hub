@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Plans are persisted end to end again with per-step timing, tokens, tools, and cost
-- Codex exact compaction/churn facts and OpenCode error/retry/finish facts are retained throughout normalization and analytics
+- Codex exact compaction/churn facts and OpenCode error/retry/finish facts are retained throughout normalization and analytics; heuristic compactions are counted once with observed sizes
+- Project identity resolves symlinks canonically, with automatic one-time migration of legacy raw-slug stores
 - Deprecated observed-traffic z.ai estimator exports were removed; authoritative z.ai quota remains available
 
 ## [0.22.0] - 2026-07-02

@@ -203,7 +203,7 @@ sidekick handoff open \
   --session <session-id>
 ```
 
-Templates accept identifiers only: `{sessionId}`, `{provider}`, and `{projectPath}`. Use `--no-open` to print the rendered URL. VS Code exposes the same behavior through `sidekick.handoffUrlTemplate` and **Sidekick: Open External Handoff**.
+Templates accept identifiers only: `{sessionId}`, `{provider}`, and `{projectPath}`. Use `--no-open` to print the rendered URL. VS Code exposes the same behavior through `sidekick.handoffUrlTemplate` and **Sidekick: Open External Session Handoff**.
 
 ### MCP facts server
 
@@ -506,7 +506,7 @@ sidekick handoff [options]
 
 Show the latest session handoff document for the current project. Handoff documents are continuity notes left by an agent at the end of a session.
 
-No command-specific flags. Use `--json` for machine-readable output.
+The base command has no flags of its own — use `--json` for machine-readable output. The `handoff open` subcommand accepts `--url-template <template>`, `--session <id>`, and `--no-open`; see [External handoff](#external-handoff).
 
 #### Examples
 
@@ -758,6 +758,7 @@ The CLI reads from the same `~/.config/sidekick/` directory as the VS Code exten
 | `accounts/configs/*.config.json`          | Backed-up account identity per Claude account                                         |
 | `accounts/codex/profiles/*/codex-home/`   | Backed-up credentials per Codex profile (swapped into `~/.codex/auth.json` on switch) |
 | `quota-snapshots.json`                    | Cached rate-limit snapshots per provider/account                                      |
+| `error-history.json`                      | Categorized per-session error rollups for post-mortem forensics                       |
 
 Any data written by the VS Code extension is immediately visible in the CLI, and vice versa.
 

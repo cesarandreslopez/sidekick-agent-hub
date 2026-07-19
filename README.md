@@ -25,6 +25,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 ## What's New
 
 - **Fast daily workflow** — `sidekick statusline`, `today`, `doctor`, atomic terminal capture, and generic external handoff keep common checks and updates one command away.
+- **Guided VS Code onboarding** — a four-step first-run walkthrough plus a `Sidekick: Show Menu` command hub generated from the extension manifest.
 - **Read-only MCP facts** — register `sidekick mcp` with Claude Code or Codex so the running agent can inspect quota, burn rate, context pressure, and project stores.
 - **Shared analytics and observed-session V1** — categorized failure history, beta quality trends, code-impact and compaction ledgers, plus versioned provider-neutral contracts for downstream tools.
 - **Codex reset credits** — when Codex quota is refreshed from the API, `sidekick quota` and the VS Code dashboard "Rate Limits" tile now surface available rate-limit reset credits and their expirations.

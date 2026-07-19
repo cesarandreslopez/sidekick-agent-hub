@@ -234,6 +234,79 @@ describe('KnowledgeNoteService', () => {
       expect(service.deleteNote('non-existent')).toBe(false);
       service.dispose();
     });
+
+    it('does not resurrect deleted notes when the save merges on-disk state', async () => {
+      const service = createService();
+      await service.initialize();
+
+      const id = service.addNote({
+        noteType: 'tip',
+        content: 'Delete me durably',
+        filePath: 'src/bar.ts',
+      });
+      await service.forceSave();
+
+      service.deleteNote(id);
+      await service.forceSave();
+      service.dispose();
+
+      const persisted = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8'),
+      ) as KnowledgeNoteStore;
+      expect(Object.values(persisted.notesByFile).flat()).toHaveLength(0);
+      expect(persisted.totalNotes).toBe(0);
+    });
+  });
+
+  describe('concurrent CLI writes', () => {
+    it('preserves notes added by the CLI while the extension holds a stale copy', async () => {
+      const service = createService();
+      await service.initialize();
+
+      service.addNote({
+        noteType: 'tip',
+        content: 'From extension',
+        filePath: 'src/a.ts',
+      });
+
+      // Simulate `sidekick note add` writing the store after the extension loaded.
+      const now = new Date().toISOString();
+      const cliStore: KnowledgeNoteStore = {
+        schemaVersion: KNOWLEDGE_NOTE_SCHEMA_VERSION,
+        notesByFile: {
+          '.': [
+            {
+              id: 'cli-note-1',
+              noteType: 'tip',
+              content: 'From CLI',
+              filePath: '.',
+              source: 'manual',
+              status: 'active',
+              importance: 'medium',
+              createdAt: now,
+              updatedAt: now,
+              lastReviewedAt: now,
+            },
+          ],
+        },
+        lastSaved: now,
+        totalNotes: 1,
+      };
+      fs.writeFileSync(path.join(tmpDir, 'test-project.json'), JSON.stringify(cliStore));
+
+      await service.forceSave();
+
+      const persisted = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8'),
+      ) as KnowledgeNoteStore;
+      const contents = Object.values(persisted.notesByFile)
+        .flat()
+        .map((note) => note.content)
+        .sort();
+      expect(contents).toEqual(['From CLI', 'From extension']);
+      expect(persisted.totalNotes).toBe(2);
+      service.dispose();
+    });
   });
 
   describe('confirmNote', () => {

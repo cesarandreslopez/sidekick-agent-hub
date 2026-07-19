@@ -67,6 +67,7 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
   protected store: T;
   private isDirty = false;
   private saveTimer: NodeJS.Timeout | null = null;
+  private pendingDeletions = new Set<string>();
 
   constructor(
     protected readonly dataFilePath: string,
@@ -142,6 +143,20 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
     this.scheduleSave();
   }
 
+  /**
+   * Records store keys deleted locally since the last successful save.
+   * mergeStoreForSave implementations subtract these so the union with
+   * on-disk state cannot resurrect entries the user removed.
+   */
+  protected recordDeletions(keys: Iterable<string>): void {
+    for (const key of keys) this.pendingDeletions.add(key);
+  }
+
+  /** Keys deleted locally that have not yet been flushed to disk. */
+  protected get deletedKeys(): ReadonlySet<string> {
+    return this.pendingDeletions;
+  }
+
   /** Forces an immediate async save (useful during extension deactivation). */
   async forceSave(): Promise<void> {
     if (this.saveTimer) {
@@ -173,6 +188,7 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
         (latest) => this.mergeStoreForSave(latest, pending),
       );
       this.isDirty = false;
+      this.pendingDeletions.clear();
       log(`${this.logLabel} data saved to disk`);
     } catch (error) {
       logError(`Failed to save ${this.logLabel} data`, error);
@@ -188,6 +204,14 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
 
     if (this.isDirty) {
       try {
+        // Reconcile with disk so a flush at shutdown cannot clobber entries
+        // written concurrently by the CLI since the last load.
+        try {
+          const latest = JSON.parse(fs.readFileSync(this.dataFilePath, 'utf-8')) as T;
+          this.store = this.mergeStoreForSave(latest, this.store);
+        } catch {
+          // Missing or unreadable disk state: flush the in-memory store as-is.
+        }
         this.store.lastSaved = new Date().toISOString();
         atomicWriteJsonSync(this.dataFilePath, this.store);
         log(`${this.logLabel} data saved on dispose`);

@@ -143,23 +143,33 @@ describe('TaskPersistenceService', () => {
         lastSaved: '2026-07-18T00:00:00.000Z',
       };
       const changed = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('task watcher timed out')), 2_000);
+        const timeout = setTimeout(() => reject(new Error('task watcher timed out')), 8_000);
         service.onDidChange(() => {
           clearTimeout(timeout);
           resolve();
         });
       });
 
+      // fs.watch can drop events emitted before the underlying watcher is fully
+      // active, so keep re-applying the replacement until one is observed.
       const temporaryPath = `${filePath}.external`;
-      fs.writeFileSync(temporaryPath, JSON.stringify(store));
-      fs.renameSync(temporaryPath, filePath);
-      await changed;
+      const replaceStore = () => {
+        fs.writeFileSync(temporaryPath, JSON.stringify(store));
+        fs.renameSync(temporaryPath, filePath);
+      };
+      replaceStore();
+      const retrigger = setInterval(replaceStore, 500);
+      try {
+        await changed;
+      } finally {
+        clearInterval(retrigger);
+      }
 
       expect(service.loadPersistedTasks().map((task) => task.subject)).toContain(
         'Captured from CLI',
       );
       service.dispose();
-    });
+    }, 10_000);
 
     it('falls back to empty store on corrupt JSON', async () => {
       const filePath = path.join(tmpDir, 'test-project.json');
@@ -434,6 +444,28 @@ describe('TaskPersistenceService', () => {
       expect(tasks[0].taskId).toBe('2');
       service2.dispose();
     });
+
+    it('persists the clear even when the save merges on-disk state', async () => {
+      const service = createService();
+      await service.initialize();
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([
+          makeTask({ taskId: '1', status: 'completed' }),
+          makeTask({ taskId: '2', status: 'pending' }),
+        ]),
+      );
+      await service.forceSave();
+
+      service.clearCompleted();
+      await service.forceSave();
+      service.dispose();
+
+      const store = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8'),
+      ) as TaskPersistenceStore;
+      expect(Object.keys(store.tasks)).toEqual(['2']);
+    });
   });
 
   describe('archiveAll', () => {
@@ -458,6 +490,25 @@ describe('TaskPersistenceService', () => {
 
       expect(tasks).toHaveLength(0);
       service2.dispose();
+    });
+
+    it('persists the archive even when the save merges on-disk state', async () => {
+      const service = createService();
+      await service.initialize();
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([makeTask({ taskId: '1', status: 'pending' })]),
+      );
+      await service.forceSave();
+
+      service.archiveAll();
+      await service.forceSave();
+      service.dispose();
+
+      const store = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8'),
+      ) as TaskPersistenceStore;
+      expect(store.tasks).toEqual({});
     });
   });
 
@@ -491,6 +542,45 @@ describe('TaskPersistenceService', () => {
       // No file should be created (empty store, never dirtied)
       const filePath = path.join(tmpDir, 'test-project.json');
       expect(fs.existsSync(filePath)).toBe(false);
+    });
+
+    it('merges tasks written concurrently by the CLI into the dispose flush', async () => {
+      const service = createService();
+      await service.initialize();
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([makeTask({ taskId: 'ext', status: 'pending' })]),
+      );
+
+      // Simulate a CLI capture landing on disk after the extension loaded.
+      const filePath = path.join(tmpDir, 'test-project.json');
+      const cliStore: TaskPersistenceStore = {
+        schemaVersion: TASK_PERSISTENCE_SCHEMA_VERSION,
+        tasks: {
+          cli: {
+            taskId: 'cli',
+            subject: 'Captured from CLI',
+            status: 'pending',
+            createdAt: '2026-07-18T00:00:00.000Z',
+            updatedAt: '2026-07-18T00:00:00.000Z',
+            toolCallCount: 0,
+            blockedBy: [],
+            blocks: [],
+            sessionOrigin: 'cli',
+            carriedOver: false,
+            sessionAge: 0,
+          },
+        },
+        lastSessionId: 'cli',
+        sessionCount: 1,
+        lastSaved: '2026-07-18T00:00:00.000Z',
+      };
+      fs.writeFileSync(filePath, JSON.stringify(cliStore));
+
+      service.dispose();
+
+      const store = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TaskPersistenceStore;
+      expect(Object.keys(store.tasks).sort()).toEqual(['cli', 'ext']);
     });
   });
 

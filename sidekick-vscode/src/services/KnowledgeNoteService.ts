@@ -78,6 +78,32 @@ export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore>
     log(`Loaded persisted knowledge notes: ${this.store.totalNotes} entries`);
   }
 
+  protected override mergeStoreForSave(
+    latest: KnowledgeNoteStore,
+    pending: KnowledgeNoteStore,
+  ): KnowledgeNoteStore {
+    const notesByFile: Record<string, KnowledgeNote[]> = {};
+    for (const [filePath, notes] of Object.entries(latest.notesByFile)) {
+      const kept = notes.filter((note) => !this.deletedKeys.has(note.id));
+      if (kept.length > 0) notesByFile[filePath] = kept;
+    }
+    for (const [filePath, notes] of Object.entries(pending.notesByFile)) {
+      const pendingIds = new Set(notes.map((note) => note.id));
+      notesByFile[filePath] = [
+        ...(notesByFile[filePath] ?? []).filter((note) => !pendingIds.has(note.id)),
+        ...notes,
+      ];
+    }
+    const totalNotes = Object.values(notesByFile).reduce((sum, notes) => sum + notes.length, 0);
+    return {
+      ...latest,
+      ...pending,
+      notesByFile,
+      totalNotes,
+      schemaVersion: KNOWLEDGE_NOTE_SCHEMA_VERSION,
+    };
+  }
+
   /**
    * Adds a new knowledge note and returns its ID.
    */
@@ -144,6 +170,7 @@ export class KnowledgeNoteService extends PersistenceService<KnowledgeNoteStore>
           delete this.store.notesByFile[filePath];
         }
         this.store.totalNotes--;
+        this.recordDeletions([id]);
         this.markDirtyAndNotify();
         log(`Deleted knowledge note ${id}`);
         return true;

@@ -22,7 +22,7 @@ export async function readPlans(slug: string, opts?: ReadPlansOptions): Promise<
   const store = await readJsonStore<PlanHistoryStore>(filePath);
   if (!store) return [];
 
-  let plans = [...store.plans];
+  let plans = Array.isArray(store.plans) ? [...store.plans] : [];
 
   const status = opts?.status ?? 'all';
   if (status !== 'all') {

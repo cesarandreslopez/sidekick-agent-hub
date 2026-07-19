@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { getProjectDataPath, resolveProjectIdentity } from '../paths';
+import { migrateLegacyProjectStores } from '../projectMigration';
 import {
   DECISION_LOG_SCHEMA_VERSION,
   type DecisionEntry,
@@ -35,6 +36,7 @@ export async function addDecision(
   } = {},
 ): Promise<{ decision: DecisionEntry; added: boolean }> {
   const project = resolveProjectIdentity(cwd);
+  migrateLegacyProjectStores(project);
   const filePath = getProjectDataPath(project.canonicalSlug, 'decisions');
   const decision: DecisionEntry = {
     id: crypto.randomUUID(),

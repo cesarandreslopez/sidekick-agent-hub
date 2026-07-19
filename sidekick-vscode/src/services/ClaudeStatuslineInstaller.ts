@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { resolveSidekickDataPath } from './PersistenceService';
 
 interface StatuslineBackup {
   version: 1;
@@ -14,12 +15,7 @@ const SIDEKICK_STATUSLINE = { type: 'command', command: 'sidekick statusline' } 
 export class ClaudeStatuslineInstaller {
   constructor(
     private readonly settingsPath = path.join(os.homedir(), '.claude', 'settings.json'),
-    private readonly backupPath = path.join(
-      os.homedir(),
-      '.config',
-      'sidekick',
-      'claude-statusline-backup.json',
-    ),
+    private readonly backupPath = resolveSidekickDataPath('', 'claude-statusline-backup.json'),
   ) {}
 
   install(): { changed: boolean } {
@@ -65,15 +61,31 @@ export class ClaudeStatuslineInstaller {
     }
   }
 
+  /**
+   * A missing or empty settings file reads as an empty object, but a file
+   * that exists and cannot be parsed must throw: install()/uninstall()
+   * rewrite the whole file, so treating corrupt settings as empty would
+   * destroy the user's Claude Code configuration.
+   */
   private readJson(filePath: string): Record<string, unknown> {
+    let content: string;
     try {
-      const value = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
-      return value && typeof value === 'object' && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : {};
-    } catch {
-      return {};
+      content = fs.readFileSync(filePath, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+      throw error;
     }
+    if (content.trim() === '') return {};
+    let value: unknown;
+    try {
+      value = JSON.parse(content) as unknown;
+    } catch {
+      throw new Error(`${filePath} contains invalid JSON; fix or remove it and retry`);
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`${filePath} does not contain a JSON settings object`);
+    }
+    return value as Record<string, unknown>;
   }
 
   private atomicWrite(filePath: string, value: unknown): void {

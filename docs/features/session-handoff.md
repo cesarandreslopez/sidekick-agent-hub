@@ -24,9 +24,10 @@ Handoffs work by writing session context into files that your agent reads at the
 
 ## Configuration
 
-| Setting                | Default | Description  |
-| ---------------------- | ------- | ------------ |
-| `sidekick.autoHandoff` | `off`   | Handoff mode |
+| Setting                       | Default | Description                                                                                      |
+| ----------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `sidekick.autoHandoff`        | `off`   | Handoff mode                                                                                     |
+| `sidekick.handoffUrlTemplate` | `""`    | External handoff URL template with `{sessionId}`, `{provider}`, and `{projectPath}` placeholders |
 
 ### Handoff Modes
 
@@ -39,6 +40,10 @@ Handoffs work by writing session context into files that your agent reads at the
 ## Setup
 
 Run **"Sidekick: Setup Handoff"** to add a reference to your agent instruction file (CLAUDE.md, AGENTS.md, etc.) that tells the agent where to find previous session context.
+
+## External Handoff URLs
+
+Set `sidekick.handoffUrlTemplate` to a URL template and run **"Sidekick: Open External Session Handoff"** to open the rendered URL in an external tool. Templates accept identifier placeholders only (`{sessionId}`, `{provider}`, `{projectPath}`) — no transcript content is included. The same behavior is available in the terminal as `sidekick handoff open`; see the [CLI reference](cli.md#external-handoff).
 
 ## Storage
 

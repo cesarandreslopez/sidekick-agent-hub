@@ -244,6 +244,12 @@ export class EventAggregator {
   // Context size tracking
   private currentContextSize = 0;
   private previousContextSize = 0;
+  /**
+   * Index of a heuristic compaction event still awaiting its real
+   * post-compaction size from the next usage event. Prevents the usage-drop
+   * detector from double-counting an explicit compaction marker.
+   */
+  private pendingHeuristicCompactionIndex: number | null = null;
 
   // Compaction
   private compactionEvents: CompactionEvent[] = [];
@@ -461,7 +467,9 @@ export class EventAggregator {
       }
 
       // Compaction detection
-      if (
+      if (this.resolvePendingHeuristicCompaction(contextSize)) {
+        // The drop belongs to the explicit compaction marker just recorded.
+      } else if (
         this.previousContextSize > 0 &&
         contextSize < this.previousContextSize * COMPACTION_DROP_THRESHOLD
       ) {
@@ -967,7 +975,9 @@ export class EventAggregator {
     }
 
     // Compaction detection
-    if (
+    if (this.resolvePendingHeuristicCompaction(contextSize)) {
+      // The drop belongs to the explicit compaction marker just recorded.
+    } else if (
       this.previousContextSize > 0 &&
       contextSize < this.previousContextSize * COMPACTION_DROP_THRESHOLD
     ) {
@@ -1337,10 +1347,10 @@ export class EventAggregator {
       Number.isFinite(reported.tokensAfter) &&
       reported.tokensBefore >= reported.tokensAfter &&
       reported.tokensAfter >= 0;
+    // Without reported counts, assume the full context was reclaimed until
+    // the next usage event supplies the real post-compaction size.
     const contextBefore = hasReported ? reported.tokensBefore : this.previousContextSize;
-    const contextAfter = hasReported
-      ? reported.tokensAfter
-      : Math.max(0, Math.round(contextBefore * COMPACTION_DROP_THRESHOLD));
+    const contextAfter = hasReported ? reported.tokensAfter : 0;
 
     this.compactionEvents.push({
       timestamp: new Date(timestamp),
@@ -1353,7 +1363,26 @@ export class EventAggregator {
     if (hasReported) {
       this.previousContextSize = contextAfter;
       this.currentContextSize = contextAfter;
+    } else {
+      this.pendingHeuristicCompactionIndex = this.compactionEvents.length - 1;
     }
+  }
+
+  /**
+   * Fills a pending heuristic compaction with the first observed
+   * post-compaction context size. Returns true when the observed drop was
+   * consumed by that pending event, so the caller must not record it again.
+   */
+  private resolvePendingHeuristicCompaction(contextSize: number): boolean {
+    if (this.pendingHeuristicCompactionIndex === null) return false;
+    const compaction = this.compactionEvents[this.pendingHeuristicCompactionIndex];
+    this.pendingHeuristicCompactionIndex = null;
+    if (!compaction) return false;
+    if (contextSize < compaction.contextBefore) {
+      compaction.contextAfter = contextSize;
+      compaction.tokensReclaimed = compaction.contextBefore - contextSize;
+    }
+    return true;
   }
 
   // ═══════════════════════════════════════════════════════════════════════

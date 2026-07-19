@@ -73,6 +73,7 @@ import {
   appendErrorHistory,
   formatHealthReport,
   getProjectSlug,
+  migrateLegacyProjectStores,
   renderHandoffUrlTemplate,
   runDoctor,
 } from 'sidekick-shared';
@@ -497,6 +498,20 @@ export async function activate(context: vscode.ExtensionContext) {
     const guidanceAdvisor = new GuidanceAdvisor(authService, sessionAnalyzer, sessionMonitor);
     // Knowledge note injection happens after knowledgeNoteService is created (below)
     log('SessionAnalyzer and GuidanceAdvisor initialized');
+
+    // One-time migration of pre-0.23 raw-slug stores to the canonical slug,
+    // so symlinked workspaces keep their tasks/decisions/notes/handoffs.
+    const migrationWorkspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (migrationWorkspaceFolder) {
+      try {
+        const migrated = migrateLegacyProjectStores(migrationWorkspaceFolder.uri.fsPath);
+        if (migrated.length > 0) {
+          log(`Migrated ${migrated.length} legacy project store(s) to the canonical slug`);
+        }
+      } catch (error) {
+        logError('Legacy project store migration failed', error);
+      }
+    }
 
     // Decision Log Service
     let decisionLogService: DecisionLogService | undefined;
@@ -2001,20 +2016,32 @@ export async function activate(context: vscode.ExtensionContext) {
   const statuslineInstaller = new ClaudeStatuslineInstaller();
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.installStatusline', () => {
-      const result = statuslineInstaller.install();
-      vscode.window.showInformationMessage(
-        result.changed
-          ? 'Sidekick statusline installed for Claude Code.'
-          : 'Sidekick statusline is already installed.',
-      );
+      try {
+        const result = statuslineInstaller.install();
+        vscode.window.showInformationMessage(
+          result.changed
+            ? 'Sidekick statusline installed for Claude Code.'
+            : 'Sidekick statusline is already installed.',
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Sidekick statusline was not installed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }),
     vscode.commands.registerCommand('sidekick.uninstallStatusline', () => {
-      const result = statuslineInstaller.uninstall();
-      vscode.window.showInformationMessage(
-        result.restored
-          ? 'Sidekick statusline removed and the previous statusline restored.'
-          : 'Sidekick statusline removed.',
-      );
+      try {
+        const result = statuslineInstaller.uninstall();
+        vscode.window.showInformationMessage(
+          result.restored
+            ? 'Sidekick statusline removed and the previous statusline restored.'
+            : 'Sidekick statusline removed.',
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Sidekick statusline was not removed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }),
   );
 

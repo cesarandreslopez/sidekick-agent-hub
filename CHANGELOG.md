@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Plans pipeline restored end to end** across shared aggregation, CLI persistence/panels, and VS Code history/board controls, including per-step timing, tokens, tools, and cost
-- **More truthful provider normalization**: exact Codex compaction deltas and diff churn are preserved, shared ingest assigns one error taxonomy, OpenCode retry/finish/provider errors enter rollups, project identity resolves symlinks canonically, SQL substitution is index-safe, and database row types have one owner
+- **More truthful provider normalization**: exact Codex compaction deltas and diff churn are preserved, heuristic compactions are counted once with observed sizes, shared ingest assigns one error taxonomy, OpenCode retry/finish/provider errors enter rollups, project identity resolves symlinks canonically (with automatic migration of legacy raw-slug stores), SQL substitution is index-safe, and database row types have one owner
 - **Historical schema v3** adds capped per-session provider/project quality and impact records; aggregator snapshots advance to v3
 
 ### Removed (sidekick-shared)

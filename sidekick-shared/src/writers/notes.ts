@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { getProjectDataPath, resolveProjectIdentity } from '../paths';
+import { migrateLegacyProjectStores } from '../projectMigration';
 import {
   KNOWLEDGE_NOTE_SCHEMA_VERSION,
   type KnowledgeNote,
@@ -30,6 +31,7 @@ export async function addNote(
   } = {},
 ): Promise<KnowledgeNote> {
   const project = resolveProjectIdentity(cwd);
+  migrateLegacyProjectStores(project);
   const filePath = getProjectDataPath(project.canonicalSlug, 'knowledge-notes');
   const now = new Date().toISOString();
   const notePath = options.filePath?.trim() || '.';

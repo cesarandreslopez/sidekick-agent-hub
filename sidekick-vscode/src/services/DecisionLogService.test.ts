@@ -243,6 +243,26 @@ describe('DecisionLogService', () => {
       expect(service2.getEntries()).toHaveLength(0);
       service2.dispose();
     });
+
+    it('persists the clear even when the save merges on-disk state', async () => {
+      const service = createService();
+      await service.initialize();
+
+      service.addEntries([
+        makeEntry({ id: 'd1' }),
+        makeEntry({ id: 'd2', description: 'Another' }),
+      ]);
+      await service.forceSave();
+
+      service.clearAll();
+      await service.forceSave();
+      service.dispose();
+
+      const store = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'test-project.json'), 'utf-8'),
+      ) as DecisionLogStore;
+      expect(store.decisions).toEqual({});
+    });
   });
 
   describe('dispose', () => {

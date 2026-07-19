@@ -13,6 +13,7 @@ Tasks and subagent spawns grouped by status in a dedicated Kanban view.
 - **Subagent Cards** — spawned Task agents shown with cyan accent and type chips (Explore, Plan, Bash, etc.)
 - **Collapsible Columns** — collapse columns with hidden-task summaries
 - **Cross-Session Persistence** — tasks persist across sessions in `~/.config/sidekick/tasks/`
+- **Terminal Capture** — tasks added via `sidekick tasks add` / `sidekick tasks done` appear on the board live, without restarting the extension
 - **Header Summary** — shows separate counts (e.g., "3 tasks, 2 agents")
 
 ## Goal Gates

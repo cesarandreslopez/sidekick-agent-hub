@@ -8,13 +8,13 @@ Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Co
 
 ## What's New
 
+- **`sidekick statusline`, `today` & `doctor`** — a cache-only one-line account/quota/burn footer, a cache-only daily brief, and cross-provider health diagnostics.
+- **Quick capture** — `sidekick tasks add`, `tasks done`, `note add`, and `decision add` write straight to the shared project stores with atomic merges.
+- **`sidekick mcp`** — a read-only stdio MCP facts server so Claude Code or Codex can inspect quota, burn rate, context pressure, and project stores mid-session.
+- **External handoff** — `sidekick handoff open --url-template` opens a configured deep link with `{sessionId}`, `{provider}`, and `{projectPath}` placeholders.
 - **Codex reset credits** — when Codex quota is refreshed from the API, `sidekick quota` now lists available rate-limit reset credits (`Reset Credits: N available`) and their expirations.
 - **`sidekick quota --provider zai`** — authoritative z.ai Coding Plan quota (5-Hour / Weekly) from z.ai's quota API, using OpenCode's stored z.ai token when available.
 - **`sidekick extract`** — pull URLs, file paths, commands, and plans out of recent Claude Code and Codex chats, with `--json` and an interactive picker.
-- **`sidekick quota history`** — a 13-week, per-workspace, GitHub-style heatmap of session-limit utilization.
-- **`sidekick status` & `sidekick peak`** — one-shot Claude/OpenAI API health checks and a Claude peak-hours indicator.
-- **`sidekick account`** — manage multiple Claude Code and Codex accounts, with first-run auto-registration of your active credentials.
-- **Recent models & richer reports** — Claude Opus 4.8 and Fable 5 pricing/context, plus `report`/`dump` transcripts that interleave reasoning, tool calls, and narration.
 
 See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/CHANGELOG.md) for everything.
 
@@ -50,6 +50,8 @@ If `sqlite3` is missing or not executable in the current shell environment, Side
 ```bash
 sidekick dashboard [options]
 sidekick tasks|decisions|notes|stats|quota|status|account|handoff|search|context|extract [options]
+sidekick today|doctor|statusline|mcp [options]
+sidekick tasks add|tasks done|note add|decision add [args]
 ```
 
 The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
@@ -60,6 +62,58 @@ The standalone commands open the dashboard directly to a specific panel or run a
 | `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
 | `--session <id>`   | Follow a specific session by ID                                           |
 | `--replay`         | Replay existing events from the beginning before streaming live           |
+
+## Daily Brief & Statusline
+
+```bash
+sidekick today
+sidekick statusline
+```
+
+`sidekick today` prints a cache-only daily brief: yesterday's sessions/tokens/cost, open tasks, the newest decision, the latest handoff, a quota summary, and the scheduled peak-hours window. `sidekick statusline` renders the same account/quota/burn summary as a single line, entirely from cached snapshots — no account bootstrap, pricing hydration, or quota network access — so it is fast enough to run on every agent prompt (the VS Code extension can wire it into Claude Code's `statusLine` setting). Global flags `--project`, `--provider`, and `--json` apply to `today`; `statusline` takes no flags.
+
+## Doctor
+
+```bash
+sidekick doctor
+```
+
+Diagnose project identity, sessions, accounts, providers, and dependencies in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. Global flags `--project` and `--json` also apply.
+
+## Quick Capture
+
+```bash
+sidekick tasks add "Wire retry backoff into the sync job" --tags backend
+sidekick tasks done a1b2
+sidekick note add "SQL substitution is index-based" --type gotcha --file src/db.ts
+sidekick decision add "Store history as JSONL" --rationale "Append-only, crash-safe"
+```
+
+Capture tasks, knowledge notes, and decisions from the terminal without opening the dashboard. Writes use the shared atomic merge writers, so concurrent captures from VS Code or other terminals are never lost (the extension's Kanban board picks them up live).
+
+| Command                      | Flags                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `tasks add <subject>`        | `--description <text>`, `--tags <csv>`                                                                                             |
+| `tasks done <id>`            | Accepts a task ID or unique prefix                                                                                                 |
+| `note add <content>`         | `--file <path>`, `--title <title>`, `--type <type>` (`gotcha`/`pattern`/`guideline`/`tip`), `--importance <level>`, `--tags <csv>` |
+| `decision add <description>` | `--rationale <text>`, `--chosen <text>`, `--alternatives <csv>`, `--tags <csv>`                                                    |
+
+The global flag `--project` also applies.
+
+## MCP Facts Server
+
+```bash
+sidekick mcp
+```
+
+Serve read-only Sidekick facts over stdio [MCP](https://modelcontextprotocol.io/) so your coding agent can inspect them mid-session. Register once from the project where you want it:
+
+```bash
+claude mcp add sidekick -- sidekick mcp     # Claude Code
+codex mcp add sidekick -- sidekick mcp      # Codex
+```
+
+Seven tools: `get_quota_status`, `get_burn_rate`, `get_context_pressure`, `get_tasks`, `get_decisions`, `get_notes`, and `get_project_context`. Every tool is annotated read-only, non-destructive, and idempotent — the server exposes no capture or store-mutation tools. Pass the global `--project` and `--provider` flags before `mcp` to target a specific project or provider.
 
 ## Session Dump
 

@@ -38,8 +38,8 @@ The dashboard organizes information into three collapsible groups:
 
 ![Session Activity — Context Attribution, Compactions, and Activity Timeline](../images/session-activity-timeline.png)
 
-- **Session Activity** — Activity Timeline, File Changes, Errors
-- **Performance & Cost** — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness, Advanced Burn Rate
+- **Session Activity** — Activity Timeline, File Changes, Errors with categorized per-tool error forensics, and a compaction ledger summarizing tokens evicted and the estimated cost of re-establishing context (reported vs. heuristic source)
+- **Performance & Cost** — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness, Advanced Burn Rate, code impact (cost per changed line, overall and per model), and a Session Quality score (beta) with trend and factor breakdown
 
 ![Performance & Cost — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness](../images/performance-and-cost.png)
 

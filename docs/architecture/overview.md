@@ -39,7 +39,7 @@ Only `vscode` is externalized from the extension-host bundle. Other extension de
 
 [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) extracts the data access layer from the extension so it can be consumed by the CLI, third-party tools, and custom integrations. It is published as a standalone npm package (`npm install sidekick-shared`) with no VS Code dependencies. Key modules include Zod schemas for runtime JSONL validation, pure extractors (`extractTokenUsage`, `extractToolCall`, `extractToolCalls`), Node-only actionable asset extraction (`gatherAssetsForCwd`, `readClaudeAssets`, `readCodexAssets`), model info and pricing (`getModelInfo`, `calculateCost`, `calculateCostWithProvenance`, `shortModelName`, `formatCost`), a typed `JsonlParser` with optional schema validation, the single-poller `QuotaPoller` class with exponential backoff, and the higher-level `MultiProviderQuotaService` + `CodexQuotaWatcher` that coordinate Claude polling, peak-hours enrichment, and Codex rate-limit watching behind one typed `{ claude?, codex? }` event stream.
 
-Starting in 0.17.4, `sidekick-shared` ships typed subpath entries via a `package.json` `exports` map. Use `sidekick-shared/browser` for pure, filesystem-free helpers safe in webviews and browser bundles (context-window lookup, model parsing, cost math, assistant turn projection), and `sidekick-shared/node` for the Node-only pricing-catalog hydration API. As of 0.19.1, `sidekick-shared/schemas` exposes the pure Zod boundary schemas (session events, assistant turns, quota, account status, quota history) fs-free, for validating data at process/IPC edges without pulling in the rest of the library. The package root still exposes the full Node API, including filesystem-backed session asset extraction for CLI and extension-host consumers. Legacy `sidekick-shared/dist/*` deep imports keep resolving via a compat entry — see the [`sidekick-shared` README](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/sidekick-shared/README.md#supported-import-paths) for the full import-path table.
+Starting in 0.17.4, `sidekick-shared` ships typed subpath entries via a `package.json` `exports` map. Use `sidekick-shared/browser` for pure, filesystem-free helpers safe in webviews and browser bundles (context-window lookup, model parsing, cost math, assistant turn projection), and `sidekick-shared/node` for the Node-only pricing-catalog hydration API. As of 0.19.1, `sidekick-shared/schemas` exposes the pure Zod boundary schemas (session events, assistant turns, quota, account status, quota history) fs-free, for validating data at process/IPC edges without pulling in the rest of the library. As of 0.23.0, `sidekick-shared/statusline` exposes the status-line formatter, account selection, quota-snapshot reading, and burn-rate estimation behind the `sidekick statusline` command. The package root still exposes the full Node API, including filesystem-backed session asset extraction for CLI and extension-host consumers. Legacy `sidekick-shared/dist/*` deep imports keep resolving via a compat entry — see the [`sidekick-shared` README](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/sidekick-shared/README.md#supported-import-paths) for the full import-path table.
 
 ## Key Source Locations
 
@@ -74,14 +74,15 @@ flowchart LR
 
 Cross-session data stored in `~/.config/sidekick/`:
 
-| File                                 | Purpose                                                                            |
-| ------------------------------------ | ---------------------------------------------------------------------------------- |
-| `historical-data.json`               | Token/cost/tool usage stats (schema v2: adds `priced` flag and `unpricedModelIds`) |
-| `tasks/{projectSlug}.json`           | Kanban board carry-over                                                            |
-| `decisions/{projectSlug}.json`       | Decision log                                                                       |
-| `handoffs/`                          | Session handoff documents                                                          |
-| `knowledge-notes/{projectSlug}.json` | Knowledge notes per project                                                        |
-| `event-logs/`                        | Optional JSONL audit trail                                                         |
-| `pricing-catalog.json`               | Cached LiteLLM pricing table (24h TTL, auto-refreshed on activation)               |
+| File                                 | Purpose                                                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `historical-data.json`               | Token/cost/tool usage stats (schema v3: adds capped per-session records with provider/project dimensions) |
+| `tasks/{projectSlug}.json`           | Kanban board carry-over                                                                                   |
+| `decisions/{projectSlug}.json`       | Decision log                                                                                              |
+| `handoffs/`                          | Session handoff documents                                                                                 |
+| `knowledge-notes/{projectSlug}.json` | Knowledge notes per project                                                                               |
+| `event-logs/`                        | Optional JSONL audit trail                                                                                |
+| `error-history.json`                 | Categorized per-session error rollups for post-mortem forensics                                           |
+| `pricing-catalog.json`               | Cached LiteLLM pricing table (24h TTL, auto-refreshed on activation)                                      |
 
-The Sidekick CLI reads from these same files, providing terminal access to persisted data without VS Code.
+The Sidekick CLI reads from these same files, providing terminal access to persisted data without VS Code. Since 0.23.0 the CLI also writes to them: quick-capture commands (`sidekick tasks add`, `sidekick note add`, `sidekick decision add`) merge into the same per-project stores via atomic writes.

@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { getProjectDataPath, resolveProjectIdentity } from '../paths';
+import { migrateLegacyProjectStores } from '../projectMigration';
 import {
   TASK_PERSISTENCE_SCHEMA_VERSION,
   type PersistedTask,
@@ -23,6 +24,7 @@ export async function addTask(
   options: { description?: string; tags?: string[] } = {},
 ): Promise<PersistedTask> {
   const project = resolveProjectIdentity(cwd);
+  migrateLegacyProjectStores(project);
   const filePath = getProjectDataPath(project.canonicalSlug, 'tasks');
   const now = new Date().toISOString();
   const task: PersistedTask = {
@@ -52,6 +54,7 @@ export async function addTask(
 
 export async function completeTask(cwd: string, taskIdOrPrefix: string): Promise<PersistedTask> {
   const project = resolveProjectIdentity(cwd);
+  migrateLegacyProjectStores(project);
   const filePath = getProjectDataPath(project.canonicalSlug, 'tasks');
   let completed: PersistedTask | undefined;
   await updateJsonStoreAtomic(filePath, emptyTaskStore, (store) => {

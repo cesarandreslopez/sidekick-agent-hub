@@ -44,10 +44,12 @@ export class DecisionLogService extends PersistenceService<DecisionLogStore> {
     latest: DecisionLogStore,
     pending: DecisionLogStore,
   ): DecisionLogStore {
+    const decisions = { ...latest.decisions, ...pending.decisions };
+    for (const key of this.deletedKeys) delete decisions[key];
     return {
       ...latest,
       ...pending,
-      decisions: { ...latest.decisions, ...pending.decisions },
+      decisions,
       schemaVersion: DECISION_LOG_SCHEMA_VERSION,
     };
   }
@@ -119,11 +121,12 @@ export class DecisionLogService extends PersistenceService<DecisionLogStore> {
   }
 
   clearAll(): void {
-    const count = Object.keys(this.store.decisions).length;
+    const keys = Object.keys(this.store.decisions);
     this.store.decisions = {};
-    if (count > 0) {
+    if (keys.length > 0) {
+      this.recordDeletions(keys);
       this.markDirty();
-      log(`Cleared all ${count} decisions`);
+      log(`Cleared all ${keys.length} decisions`);
     }
   }
 }

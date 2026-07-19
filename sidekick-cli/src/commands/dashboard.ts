@@ -290,7 +290,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       /* ignore */
     }
 
-    void persistPlan(state, workspacePath);
+    persistPlan(state, workspacePath).catch(() => {});
 
     // Reset state
     state.reset();
@@ -310,7 +310,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
             state.processEvent(event);
 
             if (event.type === 'system' && event.summary === 'Session ended') {
-              void persistPlan(state, workspacePath);
+              persistPlan(state, workspacePath).catch(() => {});
             }
 
             // Periodically save snapshot
@@ -524,7 +524,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   function cleanup() {
     if (stopped) return;
     stopped = true;
-    void persistPlan(state, workspacePath);
+    persistPlan(state, workspacePath).catch(() => {});
     try {
       clearInterval(sessionPollInterval);
     } catch {
@@ -585,7 +585,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           state.processEvent(event);
 
           if (event.type === 'system' && event.summary === 'Session ended') {
-            void persistPlan(state, workspacePath);
+            persistPlan(state, workspacePath).catch(() => {});
           }
 
           // Periodically save snapshot

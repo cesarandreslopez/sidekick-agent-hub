@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The Plans board/history pipeline is enabled end to end again, with per-step timing, token, tool-call, and cost data
-- Codex line-change totals prefer provider-reported additions/deletions; exact compaction deltas and provenance flow into dashboard events
+- Codex line-change totals prefer provider-reported additions/deletions; exact compaction deltas and provenance flow into dashboard events, and heuristic compactions are counted once with observed sizes
+- Project stores saved under a pre-0.23 raw slug migrate automatically to the canonical slug on activation, and clear/archive actions persist durably alongside concurrent CLI captures
 - Persistence saves atomically reconcile the latest task/decision store instead of overwriting concurrent CLI changes
 - Historical data advances to schema v3 with capped session records and provider/project quality/impact dimensions
 

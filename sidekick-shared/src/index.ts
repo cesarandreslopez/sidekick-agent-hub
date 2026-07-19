@@ -156,6 +156,7 @@ export {
   resolveProjectIdentity,
 } from './paths';
 export type { ProjectIdentity } from './paths';
+export { migrateLegacyProjectStores } from './projectMigration';
 
 // Readers
 export { readTasks } from './readers/tasks';

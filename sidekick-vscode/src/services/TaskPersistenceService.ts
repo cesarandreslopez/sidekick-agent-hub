@@ -100,10 +100,12 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
     latest: TaskPersistenceStore,
     pending: TaskPersistenceStore,
   ): TaskPersistenceStore {
+    const tasks = { ...latest.tasks, ...pending.tasks };
+    for (const key of this.deletedKeys) delete tasks[key];
     return {
       ...latest,
       ...pending,
-      tasks: { ...latest.tasks, ...pending.tasks },
+      tasks,
       schemaVersion: TASK_PERSISTENCE_SCHEMA_VERSION,
     };
   }
@@ -202,16 +204,17 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
    * Removes completed tasks from the store.
    */
   clearCompleted(): void {
-    const before = Object.keys(this.store.tasks).length;
+    const removedKeys: string[] = [];
     for (const [key, task] of Object.entries(this.store.tasks)) {
       if (task.status === 'completed') {
         delete this.store.tasks[key];
+        removedKeys.push(key);
       }
     }
-    const removed = before - Object.keys(this.store.tasks).length;
-    if (removed > 0) {
+    if (removedKeys.length > 0) {
+      this.recordDeletions(removedKeys);
       this.markDirty();
-      log(`Cleared ${removed} completed tasks`);
+      log(`Cleared ${removedKeys.length} completed tasks`);
     }
   }
 
@@ -219,11 +222,12 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
    * Removes all tasks from the store.
    */
   archiveAll(): void {
-    const count = Object.keys(this.store.tasks).length;
+    const keys = Object.keys(this.store.tasks);
     this.store.tasks = {};
-    if (count > 0) {
+    if (keys.length > 0) {
+      this.recordDeletions(keys);
       this.markDirty();
-      log(`Archived all ${count} tasks`);
+      log(`Archived all ${keys.length} tasks`);
     }
   }
 

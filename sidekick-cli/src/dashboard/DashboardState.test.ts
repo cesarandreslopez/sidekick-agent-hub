@@ -203,7 +203,7 @@ describe('DashboardState', () => {
       expect(m.compactionEvents[0].tokensReclaimed).toBe(90_000);
     });
 
-    it('records both summary event and context drop as separate compactions', () => {
+    it('records one compaction for a summary event followed by the context drop', () => {
       const state = new DashboardState();
       // Establish context size
       state.processEvent(
@@ -214,7 +214,7 @@ describe('DashboardState', () => {
           timestamp: '2025-01-01T00:00:01Z',
         }),
       );
-      // Summary event fires (no tokens) — aggregator records compaction #1
+      // Summary event fires (no tokens) — aggregator records a pending heuristic compaction
       state.processEvent(
         makeEvent({
           type: 'summary',
@@ -222,7 +222,8 @@ describe('DashboardState', () => {
           timestamp: '2025-01-01T00:00:02Z',
         }),
       );
-      // Next assistant event has lower context — aggregator records compaction #2 via drop detection
+      // Next assistant event supplies the real post-compaction size, completing
+      // the pending event instead of double-counting via drop detection.
       state.processEvent(
         makeEvent({
           type: 'assistant',
@@ -232,18 +233,12 @@ describe('DashboardState', () => {
         }),
       );
       const m = state.getMetrics();
-      // The shared EventAggregator records both the explicit summary event and the
-      // subsequent context size drop as separate compaction events.
-      expect(m.compactionCount).toBe(2);
-      expect(m.compactionEvents).toHaveLength(2);
-      // First compaction: explicit summary event uses the documented 20% heuristic.
+      expect(m.compactionCount).toBe(1);
+      expect(m.compactionEvents).toHaveLength(1);
       expect(m.compactionEvents[0].contextBefore).toBe(150_000);
-      expect(m.compactionEvents[0].contextAfter).toBe(120_000);
+      expect(m.compactionEvents[0].contextAfter).toBe(60_000);
+      expect(m.compactionEvents[0].tokensReclaimed).toBe(90_000);
       expect(m.compactionEvents[0].source).toBe('heuristic');
-      // Second compaction: from drop detection (150K -> 60K)
-      expect(m.compactionEvents[1].contextBefore).toBe(150_000);
-      expect(m.compactionEvents[1].contextAfter).toBe(60_000);
-      expect(m.compactionEvents[1].source).toBe('heuristic');
     });
 
     it('injects compaction into timeline', () => {

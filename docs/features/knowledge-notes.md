@@ -28,6 +28,8 @@ Knowledge notes let you capture these insights once and surface them automatical
 
 The note is immediately visible as a gutter icon next to the annotated lines, and appears in the Knowledge Notes tree view.
 
+Notes can also be captured from the terminal with `sidekick note add` — see [CLI quick capture](cli.md#quick-capture).
+
 ## Managing Notes
 
 Right-click any note in the **Knowledge Notes** tree view to:

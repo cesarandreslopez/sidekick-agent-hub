@@ -17,9 +17,24 @@ import { hydratePricingCatalog } from 'sidekick-shared/node';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 
-const isCacheOnlyCommand = process.argv
-  .slice(2)
-  .some((arg) => arg === 'statusline' || arg === 'today');
+// Mirrors entry.ts's isStatuslineInvocation: only the first non-flag token is
+// the command name, so option values like `tasks add today` never match.
+function firstCommandToken(args: string[]): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index];
+    if (argument === '--json') continue;
+    if (argument === '--project' || argument === '--provider') {
+      index++;
+      continue;
+    }
+    if (argument.startsWith('--project=') || argument.startsWith('--provider=')) continue;
+    return argument;
+  }
+  return undefined;
+}
+
+const commandToken = firstCommandToken(process.argv.slice(2));
+const isCacheOnlyCommand = commandToken === 'statusline' || commandToken === 'today';
 
 // Fire-and-forget: warm the pricing catalog so `stats` / `dashboard` show
 // correct dollar figures for Codex/GPT/o-series sessions. Non-blocking and

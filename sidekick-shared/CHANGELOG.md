@@ -16,9 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Codex compaction events retain exact before/after counts with reported/heuristic provenance; aggregator snapshots advance to v3
+- Codex compaction events retain exact before/after counts with reported/heuristic provenance; aggregator snapshots advance to v3; heuristic compactions are recorded once and completed with the next observed context size instead of double-counting
 - Shared ingest owns tool-error taxonomy across Claude Code, OpenCode, and Codex; OpenCode provider errors, retries, and finish reasons are normalized for analytics
 - Canonical symlink-aware project identity replaces duplicated slug probing; OpenCode SQL substitution is index-safe; Codex/OpenCode database row shapes have one source
+- Legacy raw-slug project stores migrate automatically to the canonical slug on first write (`migrateLegacyProjectStores`), so symlinked workspaces keep their existing tasks, decisions, notes, and handoffs
 - Plan aggregation now records per-step start/completion time, duration, tokens, tool calls, and cost
 
 ### Removed

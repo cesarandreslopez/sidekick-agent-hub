@@ -29,11 +29,10 @@ export function compactBriefText(value: string | null | undefined, limit = 160):
   return compact.length > limit ? `${compact.slice(0, limit - 1)}…` : compact;
 }
 
-function localDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+// Daily buckets in historical-data.json are keyed by UTC date (the writer
+// derives keys from ISO timestamps), so lookups must use UTC dates too.
+function utcDateKey(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
 export function scheduledPeakHoursLine(now = new Date()): string {
@@ -56,9 +55,7 @@ export async function todayAction(_opts: Record<string, unknown>, cmd: Command):
       readHistory(),
       composeContext(project, 'compact', provider),
     ]);
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayKey = localDateKey(yesterdayDate);
+    const yesterdayKey = utcDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
     const accounts = getActiveAccountStatus();
     const claudeQuota = accounts.claude.accountId
       ? readQuotaSnapshot('claude-code', accounts.claude.accountId)
@@ -71,7 +68,7 @@ export async function todayAction(_opts: Record<string, unknown>, cmd: Command):
       (task) => task.status === 'pending' || task.status === 'in_progress',
     );
     const brief: TodayBrief = {
-      date: localDateKey(new Date()),
+      date: utcDateKey(new Date()),
       yesterday: history?.daily?.[yesterdayKey] ?? null,
       openTasks: openTasks.slice(0, 8).map((task) => ({
         id: task.taskId,
