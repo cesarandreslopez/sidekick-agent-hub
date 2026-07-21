@@ -84,7 +84,7 @@ function evidence(
       sessionId,
       sourcePath,
       eventIndex,
-      eventId: event?.message.id,
+      eventId: event?.message?.id,
       timestamp: event?.timestamp,
     },
   ];
@@ -114,7 +114,7 @@ export function derivePendingUserRequestV1(
       const refs = evidence(provider, sessionId, sourcePath, event, index);
       return {
         schemaVersion: 1,
-        id: `${provider}:${sessionId}:${request.id ?? event.message.id ?? index}`,
+        id: `${provider}:${sessionId}:${request.id ?? event.message?.id ?? index}`,
         provider,
         sessionId,
         kind: observed(request.kind, 'inferred', request.kind === 'question' ? 0.95 : 0.9, refs),
@@ -139,11 +139,12 @@ function waitingToolRequest(event: SessionEvent): {
   prompt: string | null;
 } | null {
   const calls: Array<{ id?: string; name?: string; input?: unknown }> = [];
+  const message = event.message;
   if (event.type === 'tool_use') {
-    calls.push({ id: event.message.id, name: event.tool?.name, input: event.tool?.input });
+    calls.push({ id: message?.id, name: event.tool?.name, input: event.tool?.input });
   }
-  if (Array.isArray(event.message.content)) {
-    for (const block of event.message.content) {
+  if (Array.isArray(message?.content)) {
+    for (const block of message.content) {
       if (!block || typeof block !== 'object') continue;
       const value = block as { type?: unknown; id?: unknown; name?: unknown; input?: unknown };
       if (value.type !== 'tool_use') continue;
