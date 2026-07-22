@@ -5,6 +5,11 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.1] - 2026-07-22
+
+- Canonical transcripts retain provider provenance — entrypoint, meta/sidechain flags, original message roles, cwd, and git branch — so consumers can identify human prompts without reparsing JSONL
+- Provider-backed observed-session collection sources expose their adapter's `ProviderCapabilitiesV1` record
+
 ## [0.24.0] - 2026-07-22
 
 - Added shared provider usage normalization and pricing provenance without cache/reasoning double counting
