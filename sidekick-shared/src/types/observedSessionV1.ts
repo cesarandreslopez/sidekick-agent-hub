@@ -262,7 +262,7 @@ export function createProviderSessionAdapterV1(
               : transcript.usage.totalCostUsd === null
                 ? 'inferred'
                 : 'estimated',
-            transcript.usage.totalCostUsd === null ? 1 : 0.9,
+            allCostsReported ? 1 : transcript.usage.totalCostUsd === null ? 0.5 : 0.9,
             refs,
           ),
         },
