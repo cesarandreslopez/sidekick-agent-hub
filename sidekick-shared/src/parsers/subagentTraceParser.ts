@@ -364,13 +364,19 @@ function rawToSessionEvent(raw: Record<string, unknown>): SessionEvent | null {
     }
   }
 
-  return {
-    type: mappedType,
-    message: message || { role: 'unknown' },
+  const common = {
     timestamp,
     isSidechain: raw.isSidechain as boolean | undefined,
     permissionMode: raw.permissionMode as SessionEvent['permissionMode'],
-    tool,
-    result,
   };
+  if (mappedType === 'user' || mappedType === 'assistant') {
+    return { ...common, type: mappedType, message: message || { role: 'unknown' }, tool };
+  }
+  if (mappedType === 'summary') {
+    return { ...common, type: 'summary', message: message || { role: 'summary' } };
+  }
+  if (mappedType === 'tool_use') {
+    return tool ? { ...common, type: 'tool_use', message, tool } : null;
+  }
+  return result ? { ...common, type: 'tool_result', message, result } : null;
 }

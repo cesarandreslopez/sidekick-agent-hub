@@ -40,6 +40,8 @@ import {
 } from '../parsers/sessionPathResolver';
 import { scanSubagentDir } from '../parsers/subagentScanner';
 import { getModelContextWindowSize } from '../modelContext';
+import { extractSessionEvents } from '../schemas/sessionEvent';
+import { normalizeProviderUsage } from '../usageNormalization';
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -83,15 +85,19 @@ function extractSearchableText(event: Record<string, unknown>): string {
  * streaming line-buffered parsing of new content.
  */
 class ClaudeCodeReader implements SessionReader {
-  private parser: JsonlParser<SessionEvent>;
+  private parser: JsonlParser<unknown>;
   private filePosition = 0;
   private events: SessionEvent[] = [];
   private _wasTruncated = false;
   private decoder = new StringDecoder('utf8');
 
   constructor(private readonly sessionPath: string) {
-    this.parser = new JsonlParser<SessionEvent>({
-      onEvent: (e) => this.events.push(e),
+    this.parser = new JsonlParser<unknown>({
+      onEvent: (raw) => {
+        for (const event of extractSessionEvents(raw)) {
+          this.events.push(normalizeClaudeUsage(event));
+        }
+      },
       onError: (_err, _line) => {
         // Silently skip parse errors — no logging framework dependency
       },
@@ -180,6 +186,45 @@ class ClaudeCodeReader implements SessionReader {
   wasTruncated(): boolean {
     return this._wasTruncated;
   }
+}
+
+function normalizeClaudeUsage(event: SessionEvent): SessionEvent {
+  const message = event.message;
+  const usage = message?.usage;
+  if (!message || !usage) {
+    return {
+      ...event,
+      providerMetadata: {
+        ...event.providerMetadata,
+        providerId: 'claude-code',
+        source: 'claude-code-jsonl',
+      },
+    };
+  }
+  return {
+    ...event,
+    message: {
+      ...message,
+      normalizedUsage: normalizeProviderUsage({
+        semantics: 'anthropic',
+        provider: 'anthropic',
+        source: 'claude-code-jsonl',
+        model: message.model,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        cacheReadTokens: usage.cache_read_input_tokens,
+        cacheWriteTokens: usage.cache_creation_input_tokens,
+        reasoningTokens: usage.reasoning_tokens,
+        reasoningIncludedInOutput: false,
+        reportedCostUsd: usage.reported_cost,
+      }),
+    },
+    providerMetadata: {
+      ...event.providerMetadata,
+      providerId: 'claude-code',
+      source: 'claude-code-jsonl',
+    },
+  };
 }
 
 /**

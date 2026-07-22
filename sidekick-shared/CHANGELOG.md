@@ -5,6 +5,23 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `normalizeProviderUsage()`, `extractNormalizedUsage()`, and `calculateNormalizedUsageCost()` with explicit cache/reasoning semantics and pricing provenance
+- `estimateTextTokens()` / `estimateSerializedTokens()`, canonical transcript/history APIs, transcript schemas, and `ObservedSessionCollector`
+
+### Changed
+
+- `SessionEvent` and its Zod schema are discriminated; valid message-less summaries and nested progress envelopes parse directly
+- Claude Code, Codex, OpenCode, report transcripts, observed sessions, and EventAggregator share normalized usage and canonical projection paths
+- Aggregator snapshots advance to schema v4 so older ambiguous-cost snapshots are replayed from source events
+
+### Deprecated
+
+- `calculateCost()`, `calculateCostWithPricing()`, `calculateCostWithProvenance()`, `CostTokenUsage`, and `CostProvenanceInput` retain their legacy reasoning-additive behavior for compatibility
+
 ## [0.23.1] - 2026-07-21
 
 ### Security

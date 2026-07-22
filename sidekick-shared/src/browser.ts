@@ -9,6 +9,44 @@
  */
 
 export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+export {
+  normalizeProviderUsage,
+  extractNormalizedUsage,
+  calculateNormalizedUsageCost,
+} from './usageNormalization';
+export type {
+  UsageProvider,
+  UsageSemantics,
+  UsageNormalizationProvenance,
+  ProviderUsageInput,
+  AnthropicUsageInput,
+  OpenAIUsageInput,
+  SidekickUsageInput,
+  NormalizedUsage,
+  PricingProvenance,
+  NormalizedUsageCostInput,
+  NormalizedUsageCost,
+} from './usageNormalization';
+export { estimateTextTokens, estimateSerializedTokens } from './tokenEstimation';
+export type {
+  ExactTokenCounterContext,
+  ExactTokenCounter,
+  TokenEstimationMethod,
+  TokenEstimationConfidence,
+  TokenEstimationOptions,
+  TokenEstimate,
+} from './tokenEstimation';
+export { projectSessionTranscript } from './transcript';
+export type {
+  TranscriptFidelity,
+  TranscriptSourceProvenance,
+  CanonicalTranscriptBlock,
+  CanonicalTranscriptMessage,
+  CanonicalToolCall,
+  CanonicalTranscriptUsageTotals,
+  CanonicalSessionTranscript,
+  ProjectSessionTranscriptOptions,
+} from './transcript';
 export { formatDurationMs, formatTokenCount } from './formatting';
 export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
 export {

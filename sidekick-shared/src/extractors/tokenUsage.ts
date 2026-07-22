@@ -35,7 +35,7 @@ export function extractTokenUsage(event: SessionEvent): TokenUsage | null {
     outputTokens: usage.output_tokens ?? 0,
     cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
     cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-    model: event.message.model ?? 'unknown',
+    model: event.message?.model ?? 'unknown',
     timestamp: new Date(event.timestamp),
     reportedCost: usage.reported_cost,
     reasoningTokens: usage.reasoning_tokens,

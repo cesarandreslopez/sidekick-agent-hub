@@ -32,6 +32,7 @@ import type {
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type { CodexRolloutLine, CodexRateLimits, CodexSessionMeta } from '../types/codex';
 import { getModelContextWindowSize } from '../modelContext';
+import { normalizeProviderUsage } from '../usageNormalization';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -522,13 +523,22 @@ class CodexReader implements SessionReader {
       // Propagate last token usage snapshot to the provider
       const lastUsage = this.parser.getLastTokenUsage();
       if (lastUsage && this.onTokenUsage) {
-        const cacheReadTokens = lastUsage.cached_input_tokens || 0;
+        const normalized = normalizeProviderUsage({
+          semantics: 'openai',
+          provider: 'openai',
+          source: 'codex-reader-snapshot',
+          model: this.parser.getCurrentModel() || undefined,
+          inputTokens: lastUsage.input_tokens,
+          outputTokens: lastUsage.output_tokens,
+          cacheReadTokens: lastUsage.cached_input_tokens,
+          reasoningTokens: lastUsage.reasoning_output_tokens,
+        });
         this.onTokenUsage({
-          inputTokens: Math.max(0, (lastUsage.input_tokens || 0) - cacheReadTokens),
-          outputTokens: lastUsage.output_tokens || 0,
-          cacheWriteTokens: 0,
-          cacheReadTokens,
-          reasoningTokens: lastUsage.reasoning_output_tokens || 0,
+          inputTokens: normalized.uncachedInputTokens,
+          outputTokens: normalized.outputTokens,
+          cacheWriteTokens: normalized.cacheWriteTokens,
+          cacheReadTokens: normalized.cacheReadTokens,
+          reasoningTokens: normalized.reasoningTokens,
           model: this.parser.getCurrentModel() || 'unknown',
           timestamp: new Date(),
         });
@@ -917,7 +927,7 @@ export class CodexProvider implements SessionProviderBase {
               }
             }
             // Accumulate tokens from usage events
-            if (event.message.usage) {
+            if (event.message?.usage) {
               stats.inputTokens += event.message.usage.input_tokens || 0;
               stats.outputTokens += event.message.usage.output_tokens || 0;
             }

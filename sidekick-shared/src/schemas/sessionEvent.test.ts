@@ -145,6 +145,31 @@ describe('sessionEventSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts a message-less summary with valid compaction counts', () => {
+    expect(
+      sessionEventSchema.safeParse({
+        type: 'summary',
+        timestamp: '2026-03-23T10:00:00Z',
+        compaction: { tokensBefore: 10_000, tokensAfter: 4_000 },
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    { tokensBefore: -1, tokensAfter: 0 },
+    { tokensBefore: 1, tokensAfter: 2 },
+    { tokensBefore: 1.5, tokensAfter: 1 },
+    { tokensBefore: Number.POSITIVE_INFINITY, tokensAfter: 1 },
+  ])('rejects malformed summary compaction %#', (compaction) => {
+    expect(
+      sessionEventSchema.safeParse({
+        type: 'summary',
+        timestamp: '2026-03-23T10:00:00Z',
+        compaction,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('extractSessionEvents', () => {
@@ -167,6 +192,17 @@ describe('extractSessionEvents', () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual(userEvent);
+  });
+
+  it('unwraps a progress-wrapped message-less summary', () => {
+    const summary = {
+      type: 'summary',
+      timestamp: '2026-03-23T10:00:00Z',
+      compaction: { tokensBefore: 1000, tokensAfter: 400 },
+    };
+    expect(extractSessionEvents({ type: 'progress', data: { message: summary } })).toEqual([
+      summary,
+    ]);
   });
 
   it('unwraps doubly-nested progress envelopes', () => {

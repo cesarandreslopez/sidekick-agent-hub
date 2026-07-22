@@ -26,6 +26,12 @@ describe('packaging contract', () => {
       'calculateCost',
       'calculateCostWithPricing',
       'calculateCostWithProvenance',
+      'normalizeProviderUsage',
+      'extractNormalizedUsage',
+      'calculateNormalizedUsageCost',
+      'estimateTextTokens',
+      'estimateSerializedTokens',
+      'projectSessionTranscript',
       'mergeCostSources',
       'shortModelName',
       'getModelDisplayInfo',
@@ -58,6 +64,12 @@ describe('packaging contract', () => {
       'messageUsageSchema',
       'sessionMessageSchema',
       'sessionEventSchema',
+      'userSessionEventSchema',
+      'assistantSessionEventSchema',
+      'summarySessionEventSchema',
+      'systemSessionEventSchema',
+      'toolUseSessionEventSchema',
+      'toolResultSessionEventSchema',
       'permissionModeSchema',
       'sessionEvidenceRefV1Schema',
       'pendingUserRequestV1Schema',
@@ -88,6 +100,13 @@ describe('packaging contract', () => {
       'assistantTurnReasoningTimelineItemSchema',
       'assistantTurnSubagentSchema',
       'assistantTurnTimelineItemSchema',
+      'normalizedUsageSchema',
+      'normalizedUsageCostSchema',
+      'tokenEstimateSchema',
+      'canonicalTranscriptBlockSchema',
+      'canonicalToolCallSchema',
+      'canonicalTranscriptMessageSchema',
+      'canonicalSessionTranscriptSchema',
     ]) {
       expect(typeof m[k]?.safeParse).toBe('function');
     }
@@ -114,6 +133,11 @@ describe('packaging contract', () => {
     expect(typeof m.hydratePricingCatalog).toBe('function');
     expect(typeof m.normalizeLiteLlmCatalog).toBe('function');
     expect(typeof m.LITELLM_CATALOG_URL).toBe('string');
+    expect(typeof m.listRecentSessions).toBe('function');
+    expect(typeof m.readSessionTranscript).toBe('function');
+    expect(typeof m.ObservedSessionCollector).toBe('function');
+    expect(typeof m.observedSessionSourceFromProvider).toBe('function');
+    expect(typeof m.fileFingerprint).toBe('function');
   });
 
   it('dist/index.js exposes account bootstrap', () => {
@@ -163,6 +187,13 @@ describe('packaging contract', () => {
     expect(typeof m.buildSessionContextSnapshot).toBe('function');
     expect(typeof m.extractSessionEvents).toBe('function');
     expect(typeof m.segmentAssistantTurn).toBe('function');
+    expect(typeof m.normalizeProviderUsage).toBe('function');
+    expect(typeof m.calculateNormalizedUsageCost).toBe('function');
+    expect(typeof m.estimateTextTokens).toBe('function');
+    expect(typeof m.projectSessionTranscript).toBe('function');
+    expect(typeof m.listRecentSessions).toBe('function');
+    expect(typeof m.readSessionTranscript).toBe('function');
+    expect(typeof m.ObservedSessionCollector).toBe('function');
     expect(typeof m.assistantTurnProjectionSchema?.safeParse).toBe('function');
     expect(typeof m.quotaStateSchema?.safeParse).toBe('function');
     expect(typeof m.activeAccountStatusSchema?.safeParse).toBe('function');

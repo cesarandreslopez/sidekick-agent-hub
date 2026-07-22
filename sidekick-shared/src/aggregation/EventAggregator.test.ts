@@ -260,13 +260,12 @@ describe('EventAggregator', () => {
       expect(agg.getMetrics().currentModel).toBe('claude-opus-4-20250514');
     });
 
-    it('skips events with no message field gracefully', () => {
-      // Cast to bypass TypeScript -- simulates a 'summary' event without message
+    it('processes message-less summary events without compatibility casts', () => {
       agg.processEvent({
         type: 'summary',
         timestamp: '2025-01-01T00:00:00Z',
-        message: undefined,
-      } as unknown as SessionEvent);
+        compaction: { tokensBefore: 100, tokensAfter: 50 },
+      });
       // Should have incremented eventCount but not crashed
       expect(agg.getMetrics().eventCount).toBe(1);
       expect(agg.getMetrics().messageCount).toBe(0);
@@ -401,7 +400,7 @@ describe('EventAggregator', () => {
         type: 'summary',
         timestamp: '2026-06-01T12:00:00.000Z',
         compaction: { tokensBefore: 500, tokensAfter: 100 },
-      } as SessionEvent);
+      });
 
       expect(agg.getCompactionEvents()).toEqual([
         expect.objectContaining({ tokensReclaimed: 400, source: 'reported' }),
@@ -790,8 +789,8 @@ describe('EventAggregator', () => {
       );
       const attr = agg.getContextAttribution();
       expect(attr.userMessages).toBeGreaterThan(0);
-      // "Hello world" = 11 chars, estimate = ceil(11/4) = 3
-      expect(attr.userMessages).toBe(3);
+      // Canonical sidekick-fallback-v1 uses 3.5 Latin/code chars per token.
+      expect(attr.userMessages).toBe(4);
     });
 
     it('attributes system prompt content to systemPrompt', () => {

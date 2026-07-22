@@ -1,5 +1,7 @@
 import type { SessionEvent } from './sessionEvent';
 import type { ProviderId, SessionProviderBase } from '../providers/types';
+import { projectSessionTranscript } from '../transcript';
+import type { CanonicalTranscriptUsageTotals } from '../transcript';
 
 export type ObservationProvenanceV1 = 'reported' | 'estimated' | 'inferred';
 
@@ -41,7 +43,8 @@ export interface ObservedAgentSessionV1 {
     outputTokens: ObservedValueV1<number>;
     cacheReadTokens: ObservedValueV1<number>;
     cacheWriteTokens: ObservedValueV1<number>;
-    costUsd: ObservedValueV1<number>;
+    normalized?: ObservedValueV1<CanonicalTranscriptUsageTotals>;
+    costUsd: ObservedValueV1<number | null>;
   };
   pendingUserRequest: PendingUserRequestV1 | null;
   observedAt: string;
@@ -220,6 +223,11 @@ export function createProviderSessionAdapterV1(
     async read(sessionPath, cwd = '') {
       const stats = sessionProvider.readSessionStats(sessionPath);
       const events = sessionProvider.createReader(sessionPath).readAll();
+      const transcript = projectSessionTranscript(events, {
+        provider: sessionProvider.id,
+        sessionId: stats.sessionId,
+        sourcePath: sessionPath,
+      });
       const refs = evidence(sessionProvider.id, stats.sessionId, sessionPath);
       const model =
         Object.entries(stats.modelUsage).sort(
@@ -228,6 +236,9 @@ export function createProviderSessionAdapterV1(
       const metadata = sessionProvider.getSessionMetadata?.(sessionPath);
       const modifiedAt = metadata?.mtime.getTime() ?? Date.parse(stats.endTime);
       const recent = Number.isFinite(modifiedAt) && Date.now() - modifiedAt < 2 * 60_000;
+      const allCostsReported =
+        transcript.usage.costs.length > 0 &&
+        transcript.usage.costs.every((cost) => cost.source === 'provider-reported');
       return {
         schemaVersion: 1,
         identity: {
@@ -243,10 +254,15 @@ export function createProviderSessionAdapterV1(
           outputTokens: observed(stats.tokens.output, 'reported', 1, refs),
           cacheReadTokens: observed(stats.tokens.cacheRead, 'reported', 1, refs),
           cacheWriteTokens: observed(stats.tokens.cacheWrite, 'reported', 1, refs),
+          normalized: observed(transcript.usage.totals, 'reported', 1, refs),
           costUsd: observed(
-            stats.reportedCost,
-            stats.reportedCost > 0 ? 'reported' : 'estimated',
-            stats.reportedCost > 0 ? 1 : 0.5,
+            transcript.usage.totalCostUsd,
+            allCostsReported
+              ? 'reported'
+              : transcript.usage.totalCostUsd === null
+                ? 'inferred'
+                : 'estimated',
+            transcript.usage.totalCostUsd === null ? 1 : 0.9,
             refs,
           ),
         },

@@ -5,13 +5,15 @@
  * to ensure diffs stay within Claude's optimal input range without
  * breaking mid-hunk.
  *
- * Note: Uses character-based estimation (4 chars ≈ 1 token) for speed.
+ * Note: Uses sidekick-shared's conservative tokenizer-free fallback for speed.
  * The Claude SDK provides a countTokens API for precise counting, but
  * that would add ~200ms latency per estimation. For truncation decisions,
  * character-based estimation is sufficient and instant.
  *
  * @module tokenEstimator
  */
+
+import { estimateTextTokens } from 'sidekick-shared';
 
 /**
  * Default maximum token count for diffs.
@@ -25,9 +27,7 @@ export const DEFAULT_MAX_TOKENS = 8000;
 /**
  * Estimates the token count for a text string.
  *
- * Uses a conservative character-to-token ratio (4 chars ≈ 1 token)
- * which is appropriate for code and diffs. This provides instant
- * estimation without API calls.
+ * Uses sidekick-shared's stable, browser-safe fallback definition.
  *
  * @param text - Text to estimate tokens for
  * @returns Estimated token count
@@ -42,8 +42,7 @@ export const DEFAULT_MAX_TOKENS = 8000;
  * ```
  */
 export function estimateTokens(text: string): number {
-  // 4 characters ≈ 1 token (conservative estimate for code)
-  return Math.ceil(text.length / 4);
+  return estimateTextTokens(text).count;
 }
 
 /**
@@ -79,11 +78,8 @@ export function truncateDiffIntelligently(
   diff: string,
   maxTokens: number = DEFAULT_MAX_TOKENS,
 ): string {
-  // Convert token limit to character limit using conservative estimate
-  const maxChars = maxTokens * 4;
-
   // If diff already fits, return as-is
-  if (diff.length <= maxChars) {
+  if (estimateTokens(diff) <= maxTokens) {
     return diff;
   }
 
@@ -94,7 +90,7 @@ export function truncateDiffIntelligently(
 
   for (const section of sections) {
     const testResult = result + section;
-    if (testResult.length <= maxChars) {
+    if (estimateTokens(testResult) <= maxTokens) {
       // Adding this section keeps us under limit
       result = testResult;
     } else {

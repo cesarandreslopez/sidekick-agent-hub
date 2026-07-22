@@ -9,6 +9,9 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 ## Recent additions
 
+- **Canonical usage and pricing** — provider-specific counters normalize into disjoint input/cache/output/reasoning categories with `normalizeProviderUsage()`; `calculateNormalizedUsageCost()` prevents cache/reasoning double counting and reports pricing provenance.
+- **Transcripts and resilient collection** — `projectSessionTranscript()` is browser-safe; Node consumers can use `listRecentSessions()`, `readSessionTranscript()`, and `ObservedSessionCollector` across Claude Code, Codex, and OpenCode readers.
+- **Shared token estimation** — `estimateTextTokens()` / `estimateSerializedTokens()` provide an injectable exact-counter path and the stable tokenizer-free `sidekick-fallback-v1` heuristic.
 - **Observed-session V1 contracts** — versioned provider-neutral `ObservedAgentSessionV1` / `ProviderCapabilitiesV1` / `PendingUserRequestV1` shapes with `createProviderSessionAdapterV1()` adapters and matching Zod schemas in [`sidekick-shared/schemas`](#supported-import-paths).
 - **Atomic writers** — `addTask()`, `completeTask()`, `addDecision()`, and `addNote()` merge into the shared task/decision/note stores atomically, so concurrent CLI and extension captures are never lost.
 - **Doctor report** — `runDoctor()` builds a typed cross-provider health report (project identity, sessions, accounts, providers, dependencies); `formatHealthReport()` renders it for terminals.
@@ -69,8 +72,8 @@ npm install sidekick-shared
 | Path                           | Runtime                    | What it exposes                                                                                                                                     |
 | ------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sidekick-shared`              | Node (CLI, extension host) | Full public API (readers, providers, parsers, pricing, …).                                                                                          |
-| `sidekick-shared/browser`      | **Browser / webview**      | Pure helpers: context-window lookup, model parsing, cost math, assistant turn projection.                                                           |
-| `sidekick-shared/node`         | Node only                  | LiteLLM pricing catalog hydration (`fs` + `path`).                                                                                                  |
+| `sidekick-shared/browser`      | **Browser / webview**      | Pure helpers: usage normalization/pricing, token estimation, transcript and assistant-turn projection, model/context math.                          |
+| `sidekick-shared/node`         | Node only                  | LiteLLM pricing hydration, recent-session/transcript reads, and resilient observed-session collection (`fs` + providers).                           |
 | `sidekick-shared/phrases`      | Any runtime                | Phrase arrays + `getRandomPhrase()`.                                                                                                                |
 | `sidekick-shared/modelContext` | Any runtime                | Direct access to the context-window module.                                                                                                         |
 | `sidekick-shared/modelInfo`    | Any runtime                | Direct access to model parsing and cost math.                                                                                                       |
@@ -87,7 +90,10 @@ import {
   getModelContextWindowSize,
   DEFAULT_CONTEXT_WINDOW,
   parseModelId,
-  calculateCost,
+  normalizeProviderUsage,
+  calculateNormalizedUsageCost,
+  estimateTextTokens,
+  projectSessionTranscript,
   formatCost,
   formatTokenCount,
   formatDurationMs,
@@ -104,6 +110,76 @@ import { hydratePricingCatalog } from 'sidekick-shared/node';
 
 await hydratePricingCatalog({ cacheDir: '~/.config/sidekick' });
 ```
+
+### Normalize and price provider usage
+
+```typescript
+import { normalizeProviderUsage, calculateNormalizedUsageCost } from 'sidekick-shared/browser';
+
+const usage = normalizeProviderUsage({
+  semantics: 'openai',
+  provider: 'openai',
+  model: 'gpt-4o',
+  inputTokens: 1_000,
+  cacheReadTokens: 300,
+  outputTokens: 200,
+  reasoningTokens: 40,
+});
+
+// uncached=700, cacheRead=300, billableOutput=200, total=1200.
+// Reasoning remains visible but is not counted twice because OpenAI includes it in output.
+const priced = calculateNormalizedUsageCost({ usage });
+// { costUsd: number | null, source: 'provider-reported' | 'model-catalog' | ... }
+```
+
+Anthropic cache-read and cache-write counters are additive to `inputTokens`. OpenAI/Codex cached input is a subset of `inputTokens`. Provider-reported costs, including zero, are authoritative; an unknown model returns `costUsd: null` with `source: 'unpriced'`.
+
+`calculateCost()`, `calculateCostWithPricing()`, `calculateCostWithProvenance()`, `CostTokenUsage`, and `CostProvenanceInput` remain available for compatibility but are deprecated. Their legacy contract always adds `reasoningTokens` to output and cannot express inclusion semantics.
+
+### Estimate tokens without a base tokenizer dependency
+
+```typescript
+import { estimateTextTokens } from 'sidekick-shared/browser';
+
+const estimate = estimateTextTokens(sourceCode, {
+  model: 'claude-sonnet-4-6',
+  exactCounter: optionalModelCounter,
+});
+```
+
+`sidekick-fallback-v1` counts Latin/source-code text at 3.5 characters per token, CJK code points at one token, emoji at two, and other non-ASCII code points at one. Empty input is zero. An injected finite, nonnegative exact result takes precedence.
+
+### Read canonical session history
+
+```typescript
+import { CodexProvider, listRecentSessions, readSessionTranscript } from 'sidekick-shared';
+
+const provider = new CodexProvider();
+const [recent] = listRecentSessions(provider, workspacePath, { limit: 10 });
+const transcript = readSessionTranscript(provider, recent.sessionPath, {
+  fidelity: 'full', // default is bounded 2,000-character snippets
+});
+```
+
+The same API works with `ClaudeCodeProvider` and `OpenCodeProvider`. It covers provider sessions discoverable by those readers. Remote Claude SDK-only history and Codex history entries whose rollout file has disappeared are not synthesized.
+
+For an already-open incremental Codex rollout, keep one `CodexRolloutParser` per stream and pass each parsed `SessionEvent[]` batch to `projectSessionTranscript()` (or append the events to an existing projection). This preserves parser state for paired tool calls, model context, and cumulative token deltas; consumers should not convert raw `response_item` rows themselves.
+
+### Collect observed sessions with isolation and retry
+
+```typescript
+import { ObservedSessionCollector, observedSessionSourceFromProvider } from 'sidekick-shared/node';
+
+const collector = new ObservedSessionCollector({
+  sources: providers.map((provider) => observedSessionSourceFromProvider(provider, workspacePath)),
+  onObservation: ({ value }) => consume(value),
+  onDiagnostic: (diagnostic) => log(diagnostic),
+});
+
+await collector.collect(); // scheduling remains the host's responsibility
+```
+
+Discovery and reads are isolated, retries use bounded 30-second-to-5-minute exponential backoff, file changes bypass delay, duplicate identical failures are suppressed, and recovery emits a content-free diagnostic. Clock and fingerprint callbacks are injectable for deterministic hosts/tests.
 
 ## Usage Examples
 

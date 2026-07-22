@@ -75,6 +75,12 @@ The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) library p
 
 Codex sessions flow through the same canonical path as the other providers: a `ProviderReaderSessionWatcher` (or a one-shot reader) yields canonical `SessionEvent`s, and `parseTranscriptFromEvents()` turns those into the transcript used by the dashboard, reports, and project timeline. This keeps the CLI and the VS Code extension rendering identical evidence for a given session.
 
+### Canonical usage and transcript projection
+
+Provider readers normalize usage before aggregation. Claude/Anthropic cache categories are additive; Codex/OpenAI cached input is removed from the uncached-input category, and reasoning that is already included in output remains visible without being counted or priced twice. Unknown pricing remains unpriced rather than appearing as zero. The browser-safe `projectSessionTranscript()` consumes those same canonical events; Node consumers use `listRecentSessions()` and `readSessionTranscript()` so history does not need another JSONL parser hierarchy.
+
+`ObservedSessionCollector` adds host-scheduled collection around the provider adapters. Provider discovery and each session read fail independently, with bounded retry backoff, fingerprint-change bypass, duplicate-failure suppression, and observable recovery. The collector deliberately does not own timers, logging sinks, UI events, or product-specific control/session projection.
+
 ### Session context evidence snapshots
 
 On top of the reader path, `buildSessionContextSnapshot()` / `readSessionContextSnapshot()` project a provider-neutral view of what an assistant has "seen" in a session — layered evidence sources (system, user prompts, tool inputs/outputs, thinking), a low/medium/high **context pressure** band, and observed **capabilities** (tools, MCP servers, permission mode, rate limits). `createSessionContextProjector()` builds the snapshot incrementally as new events stream in. Every session provider exposes `readSessionContextSnapshot()`.

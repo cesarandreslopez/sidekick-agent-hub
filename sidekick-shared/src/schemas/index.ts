@@ -17,6 +17,12 @@ export {
   sessionEventSchema,
   permissionModeSchema,
   extractSessionEvents,
+  userSessionEventSchema,
+  assistantSessionEventSchema,
+  summarySessionEventSchema,
+  systemSessionEventSchema,
+  toolUseSessionEventSchema,
+  toolResultSessionEventSchema,
 } from './sessionEvent';
 export type {
   MessageUsage,
@@ -24,6 +30,21 @@ export type {
   SessionEvent,
   PermissionMode,
 } from '../types/sessionEvent';
+export { normalizedUsageSchema, normalizedUsageCostSchema } from './usageNormalization';
+export type { NormalizedUsage, NormalizedUsageCost } from '../usageNormalization';
+export { tokenEstimateSchema } from './tokenEstimation';
+export type { TokenEstimate } from '../tokenEstimation';
+export {
+  canonicalTranscriptBlockSchema,
+  canonicalToolCallSchema,
+  canonicalTranscriptMessageSchema,
+  canonicalSessionTranscriptSchema,
+} from './transcript';
+export type {
+  CanonicalSessionTranscript,
+  CanonicalTranscriptMessage,
+  CanonicalToolCall,
+} from '../transcript';
 export {
   observationProvenanceV1Schema,
   observedAgentSessionV1Schema,

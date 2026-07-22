@@ -2,12 +2,74 @@
  * Public API for sidekick-shared.
  */
 
+export {
+  normalizeProviderUsage,
+  extractNormalizedUsage,
+  calculateNormalizedUsageCost,
+} from './usageNormalization';
+export type {
+  UsageProvider,
+  UsageSemantics,
+  UsageNormalizationProvenance,
+  ProviderUsageInput,
+  AnthropicUsageInput,
+  OpenAIUsageInput,
+  SidekickUsageInput,
+  NormalizedUsage,
+  PricingProvenance,
+  NormalizedUsageCostInput,
+  NormalizedUsageCost,
+} from './usageNormalization';
+export { estimateTextTokens, estimateSerializedTokens } from './tokenEstimation';
+export type {
+  ExactTokenCounterContext,
+  ExactTokenCounter,
+  TokenEstimationMethod,
+  TokenEstimationConfidence,
+  TokenEstimationOptions,
+  TokenEstimate,
+} from './tokenEstimation';
+export { projectSessionTranscript } from './transcript';
+export type {
+  TranscriptFidelity,
+  TranscriptSourceProvenance,
+  CanonicalTranscriptBlock,
+  CanonicalTranscriptMessage,
+  CanonicalToolCall,
+  CanonicalTranscriptUsageTotals,
+  CanonicalSessionTranscript,
+  ProjectSessionTranscriptOptions,
+} from './transcript';
+export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
+export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
+export {
+  ObservedSessionCollector,
+  observedSessionSourceFromProvider,
+  fileFingerprint,
+} from './observedSessionCollector';
+export type {
+  ObservedSessionReference,
+  ObservedSessionCollectionSource,
+  ObservedSessionDiagnosticKind,
+  ObservedSessionDiagnostic,
+  ObservedSessionCollection,
+  ObservedSessionCollectorOptions,
+} from './observedSessionCollector';
+
 // Session Event Types (canonical, shared across VS Code extension and CLI)
 export type {
   SessionEvent,
   ClaudeSessionEvent,
   MessageUsage,
   SessionMessage,
+  SessionEventBase,
+  MessageSessionEvent,
+  UserSessionEvent,
+  AssistantSessionEvent,
+  SummarySessionEvent,
+  SystemSessionEvent,
+  ToolUseSessionEvent,
+  ToolResultSessionEvent,
   TokenUsage,
   ToolCall,
   ToolAnalytics,

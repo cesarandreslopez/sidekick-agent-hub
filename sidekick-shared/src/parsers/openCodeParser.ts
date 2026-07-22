@@ -13,6 +13,7 @@
 
 import type { SessionEvent } from '../types/sessionEvent';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../types/opencode';
+import { normalizeProviderUsage } from '../usageNormalization';
 
 /**
  * OpenCode → Claude Code tool name mapping.
@@ -344,7 +345,7 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
 
   // Build usage data from message tokens
   const reportedCost =
-    message.cost && message.cost > 0
+    typeof message.cost === 'number' && Number.isFinite(message.cost) && message.cost >= 0
       ? message.cost
       : stepFinishCost > 0
         ? stepFinishCost
@@ -358,6 +359,24 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
     reported_cost: reportedCost,
     reasoning_tokens: message.tokens.reasoning || 0,
   };
+  const normalizedUsage = normalizeProviderUsage({
+    semantics:
+      message.providerID === 'openai'
+        ? 'openai'
+        : message.providerID === 'anthropic'
+          ? 'anthropic'
+          : 'sidekick',
+    provider: message.providerID ?? 'opencode',
+    source: 'opencode-message',
+    model: message.modelID,
+    inputTokens: message.tokens.input,
+    outputTokens: message.tokens.output,
+    cacheReadTokens: message.tokens.cacheRead,
+    cacheWriteTokens: message.tokens.cacheWrite,
+    reasoningTokens: message.tokens.reasoning,
+    reasoningIncludedInOutput: message.providerID === 'openai',
+    reportedCostUsd: reportedCost,
+  });
 
   const timestamp = toISOString(message.time.completed || message.time.created);
   const retryAttempts = parts
@@ -380,10 +399,13 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
         id: message.id,
         model: message.modelID,
         usage,
+        normalizedUsage,
         content,
       },
       timestamp,
       providerMetadata: {
+        providerId: message.providerID ?? 'opencode',
+        source: 'opencode-message',
         ...(retryAttempts.length > 0 ? { retryAttempts } : {}),
         ...(finishReasons.length > 0 ? { finishReasons } : {}),
         ...(message.error ? { providerError: message.error } : {}),

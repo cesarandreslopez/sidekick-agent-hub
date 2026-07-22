@@ -12,8 +12,10 @@ import type {
   MessageUsage,
   SessionMessage,
   SessionEvent,
+  SummarySessionEvent,
   PermissionMode,
 } from '../types/sessionEvent';
+import { normalizedUsageSchema } from './usageNormalization';
 
 // ── MessageUsage ──
 
@@ -34,6 +36,7 @@ export const sessionMessageSchema = z.object({
   sourceLabel: z.string().optional(),
   model: z.string().optional(),
   usage: messageUsageSchema.optional(),
+  normalizedUsage: normalizedUsageSchema.optional(),
   content: z.unknown().optional(),
 }) satisfies z.ZodType<SessionMessage>;
 
@@ -48,9 +51,7 @@ export const permissionModeSchema = z.enum([
 
 // ── SessionEvent ──
 
-export const sessionEventSchema = z.object({
-  type: z.enum(['user', 'assistant', 'tool_use', 'tool_result', 'summary', 'system']),
-  message: sessionMessageSchema,
+const eventBaseShape = {
   timestamp: z.string(),
   isSidechain: z.boolean().optional(),
   permissionMode: permissionModeSchema.optional(),
@@ -80,6 +81,8 @@ export const sessionEventSchema = z.object({
     .optional(),
   providerMetadata: z
     .object({
+      providerId: z.string().optional(),
+      source: z.string().optional(),
       retryAttempts: z.array(z.number()).optional(),
       finishReasons: z.array(z.string()).optional(),
       providerError: z
@@ -91,20 +94,91 @@ export const sessionEventSchema = z.object({
         .optional(),
     })
     .optional(),
-  tool: z
-    .object({
-      name: z.string(),
-      input: z.record(z.string(), z.unknown()),
-    })
-    .optional(),
-  result: z
-    .object({
-      tool_use_id: z.string(),
-      output: z.unknown().optional(),
-      is_error: z.boolean().optional(),
-    })
-    .optional(),
-}) satisfies z.ZodType<SessionEvent>;
+} as const;
+
+const compactionSchema = z
+  .object({
+    tokensBefore: z.number().finite().int().nonnegative(),
+    tokensAfter: z.number().finite().int().nonnegative(),
+  })
+  .refine((value) => value.tokensAfter <= value.tokensBefore, {
+    message: 'tokensAfter must not exceed tokensBefore',
+  });
+
+export const userSessionEventSchema = z.object({
+  type: z.literal('user'),
+  message: sessionMessageSchema,
+  ...eventBaseShape,
+});
+
+export const assistantSessionEventSchema = z.object({
+  type: z.literal('assistant'),
+  message: sessionMessageSchema,
+  ...eventBaseShape,
+});
+
+const summaryWithMessageSchema = z.object({
+  type: z.literal('summary'),
+  message: sessionMessageSchema,
+  summary: z.string().min(1).optional(),
+  ...eventBaseShape,
+  compaction: compactionSchema.optional(),
+});
+
+const summaryWithTextSchema = z.object({
+  type: z.literal('summary'),
+  message: sessionMessageSchema.optional(),
+  summary: z.string().min(1),
+  ...eventBaseShape,
+  compaction: compactionSchema.optional(),
+});
+
+const summaryWithCompactionSchema = z.object({
+  type: z.literal('summary'),
+  message: sessionMessageSchema.optional(),
+  summary: z.string().min(1).optional(),
+  ...eventBaseShape,
+  compaction: compactionSchema,
+});
+
+export const summarySessionEventSchema: z.ZodType<SummarySessionEvent> = z.union([
+  summaryWithMessageSchema,
+  summaryWithTextSchema,
+  summaryWithCompactionSchema,
+]);
+
+export const systemSessionEventSchema = z.object({
+  type: z.literal('system'),
+  message: sessionMessageSchema.optional(),
+  ...eventBaseShape,
+});
+
+export const toolUseSessionEventSchema = z.object({
+  type: z.literal('tool_use'),
+  message: sessionMessageSchema.optional(),
+  ...eventBaseShape,
+  tool: z.object({ name: z.string(), input: z.record(z.string(), z.unknown()) }),
+});
+
+export const toolResultSessionEventSchema = z.object({
+  type: z.literal('tool_result'),
+  message: sessionMessageSchema.optional(),
+  ...eventBaseShape,
+  result: z.object({
+    tool_use_id: z.string(),
+    output: z.unknown().optional(),
+    is_error: z.boolean().optional(),
+  }),
+});
+
+export const sessionEventSchema: z.ZodType<SessionEvent> = z.union([
+  userSessionEventSchema,
+  assistantSessionEventSchema,
+  summarySessionEventSchema,
+  systemSessionEventSchema,
+  toolUseSessionEventSchema,
+  toolResultSessionEventSchema,
+]);
 
 // ── Progress unwrapping ──
 

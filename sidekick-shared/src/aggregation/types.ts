@@ -98,6 +98,9 @@ export interface AggregatedTokens {
   outputTokens: number;
   cacheWriteTokens: number;
   cacheReadTokens: number;
+  reasoningTokens: number;
+  /** Overall total after applying provider reasoning-in-output semantics. */
+  totalTokens: number;
   reportedCost: number;
 }
 

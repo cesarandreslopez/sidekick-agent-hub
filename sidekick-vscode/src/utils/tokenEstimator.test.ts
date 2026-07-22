@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { estimateTextTokens } from 'sidekick-shared';
 import { estimateTokens, truncateDiffIntelligently, DEFAULT_MAX_TOKENS } from './tokenEstimator';
 
 describe('estimateTokens', () => {
@@ -12,11 +13,11 @@ describe('estimateTokens', () => {
     expect(estimateTokens('')).toBe(0);
   });
 
-  it('estimates 1 token for 1-4 characters', () => {
+  it('uses the canonical 3.5-character Latin/code fallback', () => {
     expect(estimateTokens('a')).toBe(1);
     expect(estimateTokens('ab')).toBe(1);
     expect(estimateTokens('abc')).toBe(1);
-    expect(estimateTokens('abcd')).toBe(1);
+    expect(estimateTokens('abcd')).toBe(2);
   });
 
   it('uses Math.ceil so 5 chars becomes 2 tokens', () => {
@@ -24,29 +25,27 @@ describe('estimateTokens', () => {
   });
 
   it('estimates correctly for longer strings', () => {
-    // 100 chars / 4 = 25 tokens exactly
-    expect(estimateTokens('x'.repeat(100))).toBe(25);
+    expect(estimateTokens('x'.repeat(100))).toBe(Math.ceil(100 / 3.5));
   });
 
   it('rounds up for non-divisible lengths', () => {
-    // 101 chars / 4 = 25.25 -> ceil -> 26
-    expect(estimateTokens('x'.repeat(101))).toBe(26);
+    expect(estimateTokens('x'.repeat(101))).toBe(Math.ceil(101 / 3.5));
   });
 
   it('handles strings with special characters', () => {
     const special = '!@#$%^&*()_+-={}[]|\\:";\'<>?,./~`';
-    expect(estimateTokens(special)).toBe(Math.ceil(special.length / 4));
+    expect(estimateTokens(special)).toBe(estimateTextTokens(special).count);
   });
 
   it('handles multi-byte unicode characters', () => {
     // JS string length counts UTF-16 code units
     const emoji = '\u{1F600}'; // grinning face — 2 code units in JS
-    expect(estimateTokens(emoji)).toBe(Math.ceil(emoji.length / 4));
+    expect(estimateTokens(emoji)).toBe(estimateTextTokens(emoji).count);
   });
 
   it('handles strings with newlines and whitespace', () => {
     const text = 'line1\nline2\n  indented\n';
-    expect(estimateTokens(text)).toBe(Math.ceil(text.length / 4));
+    expect(estimateTokens(text)).toBe(estimateTextTokens(text).count);
   });
 });
 
@@ -67,9 +66,8 @@ describe('truncateDiffIntelligently', () => {
     expect(truncateDiffIntelligently(smallDiff)).toBe(smallDiff);
   });
 
-  it('returns the original diff when exactly at the character limit', () => {
-    // DEFAULT_MAX_TOKENS * 4 chars
-    const maxChars = DEFAULT_MAX_TOKENS * 4;
+  it('returns the original diff when exactly at the estimated token limit', () => {
+    const maxChars = DEFAULT_MAX_TOKENS * 3.5;
     const diff = 'x'.repeat(maxChars);
     expect(truncateDiffIntelligently(diff)).toBe(diff);
   });
@@ -80,7 +78,7 @@ describe('truncateDiffIntelligently', () => {
     const section2 = makeDiffSection('file2.ts', 2);
 
     // Use a very small token limit so we can only fit the first section
-    const maxTokens = Math.ceil(section1.length / 4); // just enough for section 1
+    const maxTokens = estimateTokens(section1); // just enough for section 1
     const largeDiff = section1 + section2;
 
     const result = truncateDiffIntelligently(largeDiff, maxTokens);
@@ -104,7 +102,7 @@ describe('truncateDiffIntelligently', () => {
     const fullDiff = section1 + section2 + section3;
     const twoSectionsChars = (section1 + section2).length;
     // Allow just enough for 2 sections but not 3
-    const maxTokens = Math.ceil(twoSectionsChars / 4);
+    const maxTokens = estimateTokens(fullDiff.slice(0, twoSectionsChars));
 
     const result = truncateDiffIntelligently(fullDiff, maxTokens);
 
@@ -123,19 +121,19 @@ describe('truncateDiffIntelligently', () => {
 
   it('uses DEFAULT_MAX_TOKENS when no maxTokens parameter given', () => {
     // Create a diff that is just under the default limit
-    const maxChars = DEFAULT_MAX_TOKENS * 4;
+    const maxChars = DEFAULT_MAX_TOKENS * 3.5;
     const diff = 'x'.repeat(maxChars - 1);
     expect(truncateDiffIntelligently(diff)).toBe(diff);
 
     // Create a diff that exceeds the default limit (no sections, so empty after split)
     const bigDiff = `diff --git a/big.ts b/big.ts\n${'x'.repeat(maxChars + 100)}`;
     const result = truncateDiffIntelligently(bigDiff);
-    expect(result.length).toBeLessThanOrEqual(maxChars);
+    expect(estimateTokens(result)).toBeLessThanOrEqual(DEFAULT_MAX_TOKENS);
   });
 
   it('handles a single section that exactly fits', () => {
     const section = makeDiffSection('exact.ts', 3);
-    const maxTokens = Math.ceil(section.length / 4);
+    const maxTokens = estimateTokens(section);
     expect(truncateDiffIntelligently(section, maxTokens)).toBe(section);
   });
 });

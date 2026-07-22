@@ -8,6 +8,7 @@
 import { EventAggregator } from '../aggregation/EventAggregator';
 import type { AggregatedMetrics } from '../aggregation/types';
 import { getModelContextWindowSize } from '../modelContext';
+import { estimateTextTokens } from '../tokenEstimation';
 import type { ProviderId, SessionProviderBase } from '../providers/types';
 import type {
   CompactionEvent,
@@ -401,9 +402,10 @@ function extractSourcesFromEvent(event: SessionEvent, state: SourceExtractionSta
 }
 
 function extractSystemSource(event: SessionEvent, state: SourceExtractionState): void {
-  const text = extractText(event.message.content);
-  const label = event.message.sourceLabel ?? event.message.role ?? 'system';
-  const usage = event.message.usage;
+  const message = event.message;
+  const text = extractText(message?.content);
+  const label = message?.sourceLabel ?? message?.role ?? 'system';
+  const usage = message?.usage;
 
   if (text) {
     addSource(state, {
@@ -411,7 +413,7 @@ function extractSystemSource(event: SessionEvent, state: SourceExtractionState):
       layer: 'system',
       sourceType: 'system',
       title: label,
-      sourceRef: event.message.id,
+      sourceRef: message?.id,
       text,
     });
   }
@@ -422,7 +424,7 @@ function extractSystemSource(event: SessionEvent, state: SourceExtractionState):
       layer: 'runtime',
       sourceType: event.rateLimits ? 'rate_limit' : 'runtime',
       title: event.rateLimits ? 'Runtime usage and rate limits' : 'Runtime usage',
-      sourceRef: event.message.id,
+      sourceRef: message?.id,
       text: describeUsage(usage, event.rateLimits),
       metadata: {
         usage,
@@ -432,7 +434,10 @@ function extractSystemSource(event: SessionEvent, state: SourceExtractionState):
   }
 }
 
-function extractUserSources(event: SessionEvent, state: SourceExtractionState): void {
+function extractUserSources(
+  event: Extract<SessionEvent, { type: 'user' }>,
+  state: SourceExtractionState,
+): void {
   const content = event.message.content;
   if (Array.isArray(content)) {
     for (const block of content as Array<Record<string, unknown>>) {
@@ -481,7 +486,10 @@ function extractUserSources(event: SessionEvent, state: SourceExtractionState): 
   }
 }
 
-function extractAssistantSources(event: SessionEvent, state: SourceExtractionState): void {
+function extractAssistantSources(
+  event: Extract<SessionEvent, { type: 'assistant' }>,
+  state: SourceExtractionState,
+): void {
   const content = event.message.content;
   if (!Array.isArray(content)) {
     const text = extractText(content);
@@ -774,7 +782,7 @@ function truncateWithInfo(text: string, maxChars: number): { text: string; trunc
 }
 
 function estimateTokens(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 4));
+  return estimateTextTokens(text).count;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

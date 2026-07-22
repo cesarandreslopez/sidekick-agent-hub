@@ -30,16 +30,20 @@ export interface ModelPricing {
   cacheReadCostPerMillion: number;
 }
 
-/** Token usage for cost calculation. */
+/**
+ * Token usage for the legacy cost calculation contract.
+ * @deprecated Use NormalizedUsage and calculateNormalizedUsageCost. This shape
+ * cannot state whether reasoning is already included in output.
+ */
 export interface CostTokenUsage {
   inputTokens: number;
   outputTokens: number;
   cacheWriteTokens: number;
   cacheReadTokens: number;
   /**
-   * OpenAI o-series / Codex "reasoning" tokens. Billed at the output rate by
-   * OpenAI, so we multiply by `outputCostPerMillion` inside calculateCost.
-   * Optional for backward compatibility with existing callers.
+   * Legacy disjoint reasoning category. The compatibility calculator always
+   * adds it at the output rate, even when a provider already included it in
+   * output. Use NormalizedUsage to state inclusion semantics.
    */
   reasoningTokens?: number;
 }
@@ -66,7 +70,10 @@ export interface ModelInfo {
 /** Provenance for a displayed cost value. */
 export type CostSource = 'reported' | 'estimated' | 'unpriced';
 
-/** Input for cost calculation that preserves reported-vs-estimated provenance. */
+/**
+ * Input for the legacy cost calculation contract.
+ * @deprecated Use NormalizedUsageCostInput.
+ */
 export interface CostProvenanceInput {
   usage: CostTokenUsage;
   modelId: string;
@@ -462,8 +469,9 @@ export function getModelInfo(modelId: string): ModelInfo {
 /**
  * Calculates cost from token usage and an explicit pricing object.
  *
- * Reasoning tokens (OpenAI o-series / Codex) are billed at the output rate,
- * matching OpenAI's billing behavior.
+ * Legacy behavior treats reasoning as disjoint and adds it at the output rate.
+ * @deprecated Use calculateNormalizedUsageCost. This legacy function always
+ * adds reasoning to output and cannot represent provider inclusion semantics.
  */
 export function calculateCostWithPricing(usage: CostTokenUsage, pricing: ModelPricing): number {
   const reasoning = usage.reasoningTokens ?? 0;
@@ -481,6 +489,7 @@ export function calculateCostWithPricing(usage: CostTokenUsage, pricing: ModelPr
  *
  * Returns `null` for unknown models. Callers should render `—` in that case,
  * not $0 — so users don't confuse "missing pricing" with "free".
+ * @deprecated Use calculateNormalizedUsageCost.
  */
 export function calculateCost(usage: CostTokenUsage, modelId: string): number | null {
   const pricing = getModelPricing(modelId);
@@ -491,6 +500,7 @@ export function calculateCost(usage: CostTokenUsage, modelId: string): number | 
 /**
  * Calculates cost while preserving whether the value was provider-reported,
  * locally estimated from pricing, or unavailable because the model is unpriced.
+ * @deprecated Use calculateNormalizedUsageCost.
  */
 export function calculateCostWithProvenance(input: CostProvenanceInput): CostWithProvenance {
   if (typeof input.reportedCostUsd === 'number' && Number.isFinite(input.reportedCostUsd)) {

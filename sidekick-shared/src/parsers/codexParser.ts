@@ -41,6 +41,7 @@ import type {
 } from '../types/codex';
 import { isAggregateCodexLimit } from '../types/codex';
 import { normalizeToolName } from './openCodeParser';
+import { normalizeProviderUsage } from '../usageNormalization';
 
 /** Pending exec command awaiting its end event. */
 interface PendingExecCommand {
@@ -883,16 +884,28 @@ export class CodexRolloutParser {
     const normalizedRateLimits = normalizeRateLimits(rateLimits);
     if (!usage && !normalizedRateLimits) return [];
 
-    const mappedUsage: MessageUsage | undefined = usage
+    const normalizedUsage = usage
+      ? normalizeProviderUsage({
+          semantics: 'openai',
+          provider: 'openai',
+          source: 'codex-token-count',
+          model: this.currentModel || undefined,
+          inputTokens: usage.input_tokens,
+          outputTokens: usage.output_tokens,
+          cacheReadTokens: usage.cached_input_tokens,
+          reasoningTokens: usage.reasoning_output_tokens,
+        })
+      : undefined;
+    const mappedUsage: MessageUsage | undefined = normalizedUsage
       ? {
           // Codex reports cached_input_tokens as a subset of input_tokens,
           // while MessageUsage categories are disjoint. Normalize once here
           // so aggregation and pricing do not count cached input twice.
-          input_tokens: Math.max(0, (usage.input_tokens || 0) - (usage.cached_input_tokens || 0)),
-          output_tokens: usage.output_tokens || 0,
-          cache_read_input_tokens: usage.cached_input_tokens || 0,
-          cache_creation_input_tokens: 0,
-          reasoning_tokens: usage.reasoning_output_tokens || 0,
+          input_tokens: normalizedUsage.uncachedInputTokens,
+          output_tokens: normalizedUsage.outputTokens,
+          cache_read_input_tokens: normalizedUsage.cacheReadTokens,
+          cache_creation_input_tokens: normalizedUsage.cacheWriteTokens,
+          reasoning_tokens: normalizedUsage.reasoningTokens,
         }
       : undefined;
 
@@ -909,9 +922,11 @@ export class CodexRolloutParser {
           sourceLabel: 'token count',
           model: this.currentModel || undefined,
           usage: mappedUsage,
+          normalizedUsage,
           content: [],
         },
         timestamp,
+        providerMetadata: { providerId: 'codex', source: 'codex-rollout' },
         rateLimits: normalizedRateLimits,
       },
     ];

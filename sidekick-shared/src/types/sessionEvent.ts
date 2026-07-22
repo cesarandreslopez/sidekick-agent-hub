@@ -55,6 +55,9 @@ export interface SessionMessage {
   /** Token usage statistics (only present in assistant messages) */
   usage?: MessageUsage;
 
+  /** Authoritative disjoint usage projection, when normalized by a provider parser. */
+  normalizedUsage?: import('../usageNormalization').NormalizedUsage;
+
   /** Message content (may be string or structured content) */
   content?: unknown;
 }
@@ -65,13 +68,7 @@ export interface SessionMessage {
  * Events are normalized from provider-specific formats into this common shape.
  * Each event represents a single interaction in a CLI agent session.
  */
-export interface SessionEvent {
-  /** Event type discriminator */
-  type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'summary' | 'system';
-
-  /** Message data containing role, model, usage */
-  message: SessionMessage;
-
+export interface SessionEventBase {
   /** ISO 8601 timestamp of event */
   timestamp: string;
 
@@ -95,24 +92,76 @@ export interface SessionEvent {
 
   /** Provider-specific signals normalized for shared analytics. */
   providerMetadata?: {
+    providerId?: string;
+    source?: string;
     retryAttempts?: number[];
     finishReasons?: string[];
     providerError?: { type?: string; message?: string; code?: string | number };
   };
 
-  /** Tool use details (when type is 'tool_use') */
-  tool?: {
-    name: string;
-    input: Record<string, unknown>;
-  };
-
-  /** Tool result details (when type is 'tool_result') */
-  result?: {
-    tool_use_id: string;
-    output?: unknown;
-    is_error?: boolean;
-  };
+  /** Optional on the base so consumers can inspect legacy enriched events. */
+  tool?: { name: string; input: Record<string, unknown> };
+  /** Optional on the base so consumers can inspect legacy enriched events. */
+  result?: { tool_use_id: string; output?: unknown; is_error?: boolean };
 }
+
+export interface UserSessionEvent extends SessionEventBase {
+  type: 'user';
+  message: SessionMessage;
+}
+
+export interface AssistantSessionEvent extends SessionEventBase {
+  type: 'assistant';
+  message: SessionMessage;
+}
+
+export type MessageSessionEvent = UserSessionEvent | AssistantSessionEvent;
+
+/** Providers must emit textual summary data, exact compaction counts, or both. */
+export type SummarySessionEvent = SessionEventBase & { type: 'summary' } & (
+    | {
+        message: SessionMessage;
+        summary?: string;
+        compaction?: { tokensBefore: number; tokensAfter: number };
+      }
+    | {
+        message?: SessionMessage;
+        summary: string;
+        compaction?: { tokensBefore: number; tokensAfter: number };
+      }
+    | {
+        message?: SessionMessage;
+        summary?: string;
+        compaction: { tokensBefore: number; tokensAfter: number };
+      }
+  );
+
+export interface SystemSessionEvent extends SessionEventBase {
+  type: 'system';
+  /** Bookkeeping-only system rows legitimately have no message. */
+  message?: SessionMessage;
+}
+
+export interface ToolUseSessionEvent extends SessionEventBase {
+  type: 'tool_use';
+  message?: SessionMessage;
+  tool: { name: string; input: Record<string, unknown> };
+}
+
+export interface ToolResultSessionEvent extends SessionEventBase {
+  type: 'tool_result';
+  message?: SessionMessage;
+  result: { tool_use_id: string; output?: unknown; is_error?: boolean };
+}
+
+/** Canonical provider-neutral event contract. */
+export type SessionEvent =
+  | UserSessionEvent
+  | AssistantSessionEvent
+  | SummarySessionEvent
+  | SystemSessionEvent
+  | ToolUseSessionEvent
+  | ToolResultSessionEvent;
 
 /**
  * Permission mode values from Claude Code JSONL.

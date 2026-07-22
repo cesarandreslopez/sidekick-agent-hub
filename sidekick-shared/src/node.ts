@@ -13,3 +13,18 @@ export {
 } from './pricingCatalog';
 
 export type { HydrateOptions, HydrateResult } from './pricingCatalog';
+export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
+export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
+export {
+  ObservedSessionCollector,
+  observedSessionSourceFromProvider,
+  fileFingerprint,
+} from './observedSessionCollector';
+export type {
+  ObservedSessionReference,
+  ObservedSessionCollectionSource,
+  ObservedSessionDiagnosticKind,
+  ObservedSessionDiagnostic,
+  ObservedSessionCollection,
+  ObservedSessionCollectorOptions,
+} from './observedSessionCollector';

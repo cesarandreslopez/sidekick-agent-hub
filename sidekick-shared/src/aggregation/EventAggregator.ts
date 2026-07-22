@@ -10,7 +10,6 @@
 
 import type {
   SessionEvent,
-  MessageUsage,
   ToolAnalytics,
   TimelineEvent,
   PendingToolCall,
@@ -56,8 +55,14 @@ import { HeatmapTracker } from './HeatmapTracker';
 import type { SerializedHeatmapState } from './HeatmapTracker';
 import { PatternExtractor } from './PatternExtractor';
 import type { SerializedPatternState } from './PatternExtractor';
-import { getModelPricing, calculateCostWithPricing } from '../modelInfo';
 import { categorizeError, type ErrorCategory } from '../extractors/errorTaxonomy';
+import { estimateTextTokens } from '../tokenEstimation';
+import {
+  calculateNormalizedUsageCost,
+  extractNormalizedUsage,
+  normalizeProviderUsage,
+  type NormalizedUsage,
+} from '../usageNormalization';
 
 // ── Defaults ──
 
@@ -69,7 +74,7 @@ const DEFAULT_BURN_SAMPLE_MS = 10_000;
 const COMPACTION_DROP_THRESHOLD = 0.8; // >20% drop
 
 /** Schema version for serialized snapshots. */
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+export const SNAPSHOT_SCHEMA_VERSION = 4;
 
 /**
  * JSON-serializable snapshot of EventAggregator state.
@@ -82,6 +87,8 @@ export interface SerializedAggregatorState {
     output: number;
     cacheWrite: number;
     cacheRead: number;
+    reasoning: number;
+    total: number;
     reportedCost: number;
   };
   modelUsage: Array<
@@ -237,6 +244,8 @@ export class EventAggregator {
   private outputTokens = 0;
   private cacheWriteTokens = 0;
   private cacheReadTokens = 0;
+  private reasoningTokens = 0;
+  private totalTokens = 0;
   private reportedCost = 0;
 
   // Per-model usage
@@ -349,13 +358,20 @@ export class EventAggregator {
       this.sessionStartTime = event.timestamp;
     }
     this.lastEventTime = event.timestamp;
+    this.recordProviderMetadata(event);
 
-    // Guard: some event types (e.g. 'summary') have no message field in the raw JSONL
+    // Bookkeeping rows can be useful without a message payload.
     if (!event.message) {
       if (event.type === 'summary') {
         this.recordExplicitCompaction(event.timestamp, event.compaction);
-        this.addTimelineFromSessionEvent(event);
       }
+      this.trackPermissionMode(event);
+      this.addTimelineFromSessionEvent(event);
+      this.feedAnalytics(
+        event.timestamp,
+        event.type === 'summary' ? (event.summary ?? '') : '',
+        this.extractToolNameFromEvent(event),
+      );
       return;
     }
 
@@ -363,11 +379,13 @@ export class EventAggregator {
     if (event.message.model) {
       this.currentModel = event.message.model;
     }
-    this.recordProviderMetadata(event);
 
     // 3. Skip system/audit events and synthetic token-count events for messageCount
     const msgId = event.message.id ?? '';
-    if (event.type !== 'system' && !msgId.startsWith('token-count-')) {
+    if (
+      (event.type === 'user' || event.type === 'assistant') &&
+      !msgId.startsWith('token-count-')
+    ) {
       this.messageCount++;
     }
 
@@ -377,16 +395,10 @@ export class EventAggregator {
     }
 
     // 5. Token accumulation
-    if (event.message.usage) {
-      const usageCost = this.accumulateUsage(
-        event.message.usage,
-        event.timestamp,
-        event.message.model,
-      );
-      this.attributePlanUsage(
-        event.message.usage.input_tokens + event.message.usage.output_tokens,
-        usageCost,
-      );
+    const normalizedUsage = extractNormalizedUsage(event);
+    if (normalizedUsage) {
+      const usageCost = this.accumulateUsage(normalizedUsage, event.timestamp, event.message.model);
+      this.attributePlanUsage(normalizedUsage.totalTokens, usageCost);
     }
 
     if (event.type !== 'system') {
@@ -446,101 +458,24 @@ export class EventAggregator {
 
     // 3. Token accumulation from FollowEvent fields
     if (event.tokens) {
-      const inputTok = event.tokens.input;
-      const outputTok = event.tokens.output;
-      const cacheRead = event.cacheTokens?.read ?? 0;
-      const cacheWrite = event.cacheTokens?.write ?? 0;
-
-      this.inputTokens += inputTok;
-      this.outputTokens += outputTok;
-      this.cacheReadTokens += cacheRead;
-      this.cacheWriteTokens += cacheWrite;
-      this.attributePlanUsage(inputTok + outputTok, event.cost ?? 0);
-
-      // Tokens since last burn sample
-      this.tokensSinceLastSample += inputTok + outputTok;
-
-      // Context size
-      let contextSize: number;
-      if (this.computeContextSize) {
-        contextSize = this.computeContextSize({
-          inputTokens: inputTok,
-          outputTokens: outputTok,
-          cacheWriteTokens: cacheWrite,
-          cacheReadTokens: cacheRead,
-        });
-      } else {
-        contextSize = inputTok + cacheWrite + cacheRead;
-      }
-
-      // Compaction detection
-      if (this.resolvePendingHeuristicCompaction(contextSize)) {
-        // The drop belongs to the explicit compaction marker just recorded.
-      } else if (
-        this.previousContextSize > 0 &&
-        contextSize < this.previousContextSize * COMPACTION_DROP_THRESHOLD
-      ) {
-        this.compactionEvents.push({
-          timestamp: new Date(event.timestamp),
-          contextBefore: this.previousContextSize,
-          contextAfter: contextSize,
-          tokensReclaimed: this.previousContextSize - contextSize,
-          source: 'heuristic',
-        });
-      }
-      this.previousContextSize = contextSize;
-      this.currentContextSize = contextSize;
-
-      // Per-model usage. If the provider reported a cost, use it; otherwise
-      // resolve pricing from the catalog (null = unpriced → priced: false,
-      // UI renders "—").
-      if (event.model) {
-        const model = event.model;
-        const pricing = event.cost ? null : getModelPricing(model);
-        const computed = event.cost
-          ? event.cost
-          : pricing
-            ? calculateCostWithPricing(
-                {
-                  inputTokens: inputTok,
-                  outputTokens: outputTok,
-                  cacheWriteTokens: cacheWrite,
-                  cacheReadTokens: cacheRead,
-                },
-                pricing,
-              )
-            : 0;
-        const evPriced = event.cost != null || pricing != null;
-
-        const acc = this.modelUsage.get(model) ?? {
-          calls: 0,
-          tokens: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 0,
-          cost: 0,
-          priced: true,
-        };
-        acc.calls++;
-        acc.tokens += inputTok + outputTok + cacheWrite + cacheRead;
-        acc.inputTokens += inputTok;
-        acc.outputTokens += outputTok;
-        acc.cacheWriteTokens += cacheWrite;
-        acc.cacheReadTokens += cacheRead;
-        acc.cost += computed;
-        if (!evPriced) acc.priced = false;
-        this.modelUsage.set(model, acc);
-      }
-    }
-
-    // Cost accumulation
-    if (event.cost) {
+      const normalized = normalizeProviderUsage({
+        semantics: 'sidekick',
+        provider: event.providerId,
+        source: 'follow-event',
+        model: event.model,
+        inputTokens: event.tokens.input,
+        outputTokens: event.tokens.output,
+        cacheReadTokens: event.cacheTokens?.read,
+        cacheWriteTokens: event.cacheTokens?.write,
+        reasoningIncludedInOutput: false,
+        reportedCostUsd: event.cost,
+      });
+      const cost = this.accumulateUsage(normalized, event.timestamp, event.model);
+      this.attributePlanUsage(normalized.totalTokens, cost);
+    } else if (typeof event.cost === 'number' && Number.isFinite(event.cost) && event.cost >= 0) {
+      // Compatibility for cost-only follow events.
       this.reportedCost += event.cost;
     }
-
-    // Burn rate sampling
-    this.updateBurnRate(event.timestamp);
 
     // 4. Tool tracking from FollowEvent
     if (event.type === 'tool_use' && event.toolName) {
@@ -594,6 +529,8 @@ export class EventAggregator {
       outputTokens: this.outputTokens,
       cacheWriteTokens: this.cacheWriteTokens,
       cacheReadTokens: this.cacheReadTokens,
+      reasoningTokens: this.reasoningTokens,
+      totalTokens: this.totalTokens,
       reportedCost: this.reportedCost,
     };
   }
@@ -746,6 +683,8 @@ export class EventAggregator {
     this.outputTokens = 0;
     this.cacheWriteTokens = 0;
     this.cacheReadTokens = 0;
+    this.reasoningTokens = 0;
+    this.totalTokens = 0;
     this.reportedCost = 0;
     this.modelUsage.clear();
     this.currentContextSize = 0;
@@ -825,6 +764,8 @@ export class EventAggregator {
         output: this.outputTokens,
         cacheWrite: this.cacheWriteTokens,
         cacheRead: this.cacheReadTokens,
+        reasoning: this.reasoningTokens,
+        total: this.totalTokens,
         reportedCost: this.reportedCost,
       },
       modelUsage: Array.from(this.modelUsage.entries()),
@@ -872,6 +813,8 @@ export class EventAggregator {
     this.outputTokens = state.tokens.output;
     this.cacheWriteTokens = state.tokens.cacheWrite;
     this.cacheReadTokens = state.tokens.cacheRead;
+    this.reasoningTokens = state.tokens.reasoning;
+    this.totalTokens = state.tokens.total;
     this.reportedCost = state.tokens.reportedCost;
 
     this.modelUsage = new Map(state.modelUsage);
@@ -929,46 +872,27 @@ export class EventAggregator {
   // Private: Token & Context
   // ═══════════════════════════════════════════════════════════════════════
 
-  private accumulateUsage(usage: MessageUsage, timestamp: string, model?: string): number {
-    const inputTok = usage.input_tokens;
-    const outputTok = usage.output_tokens;
-    const cacheWrite = usage.cache_creation_input_tokens ?? 0;
-    const cacheRead = usage.cache_read_input_tokens ?? 0;
-    const reasoningTok = usage.reasoning_tokens ?? 0;
-    const reported = usage.reported_cost ?? 0;
-
-    // Resolve provider pricing when we have a model ID. Lets sessions with no
-    // reported_cost (Claude Code, Codex) still show real dollar figures.
+  private accumulateUsage(usage: NormalizedUsage, timestamp: string, model?: string): number {
+    const inputTok = usage.uncachedInputTokens;
+    const outputTok = usage.outputTokens;
+    const cacheWrite = usage.cacheWriteTokens;
+    const cacheRead = usage.cacheReadTokens;
+    const reasoningTok = usage.reasoningTokens;
     const modelKey = model ?? this.currentModel;
-    const pricing = modelKey ? getModelPricing(modelKey) : null;
-    let priced = reported > 0 || pricing !== null;
-    let cost: number;
-    if (reported > 0) {
-      cost = reported;
-    } else if (pricing) {
-      cost = calculateCostWithPricing(
-        {
-          inputTokens: inputTok,
-          outputTokens: outputTok,
-          cacheWriteTokens: cacheWrite,
-          cacheReadTokens: cacheRead,
-          reasoningTokens: reasoningTok,
-        },
-        pricing,
-      );
-    } else {
-      cost = 0;
-      priced = false;
-    }
+    const pricedUsage = calculateNormalizedUsageCost({ usage, modelId: modelKey ?? undefined });
+    const priced = pricedUsage.source !== 'unpriced';
+    const cost = pricedUsage.costUsd ?? 0;
 
     this.inputTokens += inputTok;
     this.outputTokens += outputTok;
     this.cacheWriteTokens += cacheWrite;
     this.cacheReadTokens += cacheRead;
+    this.reasoningTokens += reasoningTok;
+    this.totalTokens += usage.totalTokens;
     this.reportedCost += cost;
 
     // Burn rate sample accumulation
-    this.tokensSinceLastSample += inputTok + outputTok;
+    this.tokensSinceLastSample += usage.totalTokens;
 
     // Context size computation
     let contextSize: number;
@@ -978,7 +902,7 @@ export class EventAggregator {
         outputTokens: outputTok,
         cacheWriteTokens: cacheWrite,
         cacheReadTokens: cacheRead,
-        reasoningTokens: usage.reasoning_tokens,
+        reasoningTokens: reasoningTok,
       });
     } else {
       contextSize = inputTok + cacheWrite + cacheRead;
@@ -1027,7 +951,7 @@ export class EventAggregator {
       priced: true,
     };
     acc.calls++;
-    acc.tokens += inputTok + outputTok + cacheWrite + cacheRead;
+    acc.tokens += usage.totalTokens;
     acc.inputTokens += inputTok;
     acc.outputTokens += outputTok;
     acc.cacheWriteTokens += cacheWrite;
@@ -1118,7 +1042,7 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private extractToolsFromContent(event: SessionEvent): void {
-    const content = event.message.content;
+    const content = event.message?.content;
     if (!Array.isArray(content)) return;
 
     for (const block of content as Array<Record<string, unknown>>) {
@@ -1290,7 +1214,7 @@ export class EventAggregator {
         'ProviderAPI',
         categorizeError(metadata.providerError, metadata.providerError.type),
         event.timestamp,
-        event.message.model ?? this.currentModel ?? 'unknown',
+        event.message?.model ?? this.currentModel ?? 'unknown',
       );
     }
   }
@@ -1403,7 +1327,7 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private extractTaskStateFromEvent(event: SessionEvent): void {
-    const content = event.message.content;
+    const content = event.message?.content;
     if (!Array.isArray(content)) return;
 
     for (const block of content as Array<Record<string, unknown>>) {
@@ -1828,7 +1752,7 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private extractSubagentFromEvent(event: SessionEvent): void {
-    const content = event.message.content;
+    const content = event.message?.content;
     if (!Array.isArray(content)) return;
 
     for (const block of content as Array<Record<string, unknown>>) {
@@ -2022,7 +1946,7 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private attributeContextFromEvent(event: SessionEvent): void {
-    const content = event.message.content;
+    const content = event.message?.content;
 
     if (event.type === 'user') {
       if (Array.isArray(content)) {
@@ -2226,7 +2150,8 @@ export class EventAggregator {
         break;
       case 'system':
         tlType = 'session_start';
-        description = this.extractTextContent(event) ?? event.message.sourceLabel ?? 'System event';
+        description =
+          this.extractTextContent(event) ?? event.message?.sourceLabel ?? 'System event';
         noiseLevel = 'system';
         break;
       default:
@@ -2327,11 +2252,11 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
+    return estimateTextTokens(text).count;
   }
 
   private hasTextContent(event: SessionEvent): boolean {
-    const content = event.message.content;
+    const content = event.message?.content;
     if (typeof content === 'string') return content.length > 0;
     if (Array.isArray(content)) {
       return (content as Array<Record<string, unknown>>).some(
@@ -2342,7 +2267,7 @@ export class EventAggregator {
   }
 
   private extractTextContent(event: SessionEvent): string | null {
-    const content = event.message.content;
+    const content = event.message?.content;
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
       for (const block of content as Array<Record<string, unknown>>) {
@@ -2372,7 +2297,7 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private extractToolNameFromEvent(event: SessionEvent): string | undefined {
-    const content = event.message.content;
+    const content = event.message?.content;
     if (!Array.isArray(content)) return undefined;
     for (const block of content as Array<Record<string, unknown>>) {
       if (block.type === 'tool_use' && typeof block.name === 'string') {

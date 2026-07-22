@@ -24,9 +24,18 @@ const contractGroups = {
   accounts: ['ensureDefaultAccounts', 'getActiveAccountStatus'],
   sessions: ['SessionMonitor', 'EventAggregator', 'extractSessionEvents', 'JsonlParser'],
   assets: ['gatherAssetsForCwd'],
-  cost: ['calculateCost', 'getModelContextWindowSize'],
+  cost: [
+    'calculateCost',
+    'normalizeProviderUsage',
+    'extractNormalizedUsage',
+    'calculateNormalizedUsageCost',
+    'getModelContextWindowSize',
+  ],
+  estimation: ['estimateTextTokens', 'estimateSerializedTokens'],
+  transcripts: ['projectSessionTranscript', 'listRecentSessions', 'readSessionTranscript'],
   turns: ['reasoningSummary', 'segmentAssistantTurn', 'extractTurnSubagents'],
   observedSessions: ['createProviderSessionAdapterV1', 'derivePendingUserRequestV1'],
+  collection: ['ObservedSessionCollector', 'observedSessionSourceFromProvider', 'fileFingerprint'],
 } as const;
 
 describe('public API consumer contracts', () => {
