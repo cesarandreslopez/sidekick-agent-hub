@@ -1857,6 +1857,29 @@ describe('EventAggregator', () => {
       expect(restoredMetrics.truncationCount).toEqual(original.truncationCount);
     });
 
+    it('clears transient pending state when restoring into a warm aggregator', () => {
+      const snapshot = new EventAggregator().serialize();
+
+      const warm = new EventAggregator();
+      const internals = warm as unknown as {
+        pendingToolCalls: Map<string, unknown>;
+        pendingTaskCreates: Map<string, unknown>;
+        pendingSubagents: Map<string, number>;
+        pendingUserRequest: unknown;
+      };
+      internals.pendingToolCalls.set('tool-1', {});
+      internals.pendingTaskCreates.set('tool-1', {});
+      internals.pendingSubagents.set('tool-1', 0);
+      internals.pendingUserRequest = { timestamp: new Date() };
+
+      expect(warm.restore(snapshot)).toBe(true);
+
+      expect(internals.pendingToolCalls.size).toBe(0);
+      expect(internals.pendingTaskCreates.size).toBe(0);
+      expect(internals.pendingSubagents.size).toBe(0);
+      expect(internals.pendingUserRequest).toBeNull();
+    });
+
     it('skips restore for incompatible snapshot version', () => {
       agg.processEvent(makeUserEvent('data'));
       const snapshot = agg.serialize();

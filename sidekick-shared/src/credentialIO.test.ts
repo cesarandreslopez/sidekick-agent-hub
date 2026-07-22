@@ -152,4 +152,19 @@ describe('credentialIO', () => {
     expect(writeCall[1]).not.toContain(JSON.stringify(credentials));
     expect(writeCall[2].input).toContain(JSON.stringify(credentials));
   });
+
+  it('escapes single quotes and backslashes for the security -i tokenizer', () => {
+    setPlatform('darwin');
+    mockExecFileSync.mockReturnValue('');
+    const credentials = { claudeAiOauth: { accessToken: String.raw`pa'ss\word` } };
+
+    writeActiveCredentials(credentials);
+
+    const input = mockExecFileSync.mock.calls[0][2].input as string;
+    // security -i does not concatenate adjacent quoted segments, so the
+    // shell-style '\'' splice must never appear; quotes and backslashes are
+    // backslash-escaped inside the single-quoted token instead.
+    expect(input).not.toContain(`'\\''`);
+    expect(input).toContain(String.raw`pa\'ss\\\\word`);
+  });
 });

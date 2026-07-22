@@ -918,11 +918,11 @@ export class EventAggregator {
 
     // Clear transient state — pending calls won't survive a snapshot boundary
     this.pendingToolCalls.clear();
-    return true;
     this.pendingTaskCreates.clear();
     this.pendingSubagents.clear();
     this.pendingUserRequest = null;
     this.planExtractor.reset();
+    return true;
   }
 
   // ═══════════════════════════════════════════════════════════════════════

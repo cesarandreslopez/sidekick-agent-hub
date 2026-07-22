@@ -18,7 +18,10 @@ import { claudeKeychainService } from './claudeProfiles';
 export const KEYCHAIN_SERVICE = 'Claude Code-credentials';
 
 function quoteSecurityInteractiveArg(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
+  // `security -i` is not a POSIX shell: adjacent quoted segments do NOT
+  // concatenate (so the shell-style '\'' splice splits the token), and
+  // backslash escapes the next character even inside single quotes.
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, `\\'`)}'`;
 }
 
 function getCredentialsFilePath(configDir?: string): string {
