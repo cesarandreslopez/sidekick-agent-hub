@@ -5,11 +5,12 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.24.0] - 2026-07-22
 
 - Added shared provider usage normalization and pricing provenance without cache/reasoning double counting
 - Added a stable tokenizer-free estimator, provider-neutral transcript/history projection, and resilient observed-session collection
 - Corrected the session-event contract for message-less summary/system bookkeeping rows
+- Provider-reported costs (including zero) are authoritative; sessions that report $0 display $0 instead of a catalog estimate
 
 ## [0.23.1] - 2026-07-21
 

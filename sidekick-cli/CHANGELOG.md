@@ -5,11 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.24.0] - 2026-07-22
 
 ### Changed
 
 - Session reads inherit the shared discriminated event contract, normalized usage pricing, canonical transcripts, and isolated observed-session collection surface
+- A provider-reported $0 session cost now displays as $0 rather than a catalog estimate
 
 ## [0.23.1] - 2026-07-21
 
