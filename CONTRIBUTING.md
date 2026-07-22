@@ -134,12 +134,17 @@ sidekick-vscode/src/
 │   ├── diffFilter.ts            # Filters lockfiles/binaries from diffs
 │   └── tokenEstimator.ts        # Token usage estimation
 └── webview/                     # Browser-context UI code (IIFE bundles)
-    └── dashboard.ts             # Dashboard UI with Chart.js
+    ├── explain.ts               # Explain/analysis webview UI
+    ├── error.ts                 # Error-explanation webview UI
+    ├── chartjs-vendor.ts        # Local Chart.js vendor bundle
+    └── d3-vendor.ts             # Local D3.js vendor bundle
 ```
+
+The dashboard webview no longer has its own bundle — its script is generated inline by `DashboardViewProvider`.
 
 ### Key Architecture Concepts
 
-- **Build system:** esbuild produces the extension-host bundle (`out/extension.js`), three app webview bundles, and two local webview vendor bundles (`chartjs-vendor.js`, `d3-vendor.js`).
+- **Build system:** esbuild produces the extension-host bundle (`out/extension.js`), two app webview bundles (`explain.js`, `error.js`), and two local webview vendor bundles (`chartjs-vendor.js`, `d3-vendor.js`).
 - **Four inference providers:** Claude Max (subscription), Claude API (per-token), OpenCode, and Codex CLI. All implement `ClaudeClient` from `src/types.ts`.
 - **Model tiers:** Fast, balanced, and powerful tiers mapped to provider-specific models. Legacy names (`haiku`/`sonnet`/`opus`) map through `LEGACY_TIER_MAP`. Each feature has its own configurable model setting.
 - **Request management:** Debouncing (configurable delay), LRU caching, AbortController for cancellation.

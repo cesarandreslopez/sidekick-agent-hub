@@ -5,11 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.23.1] - 2026-07-21
+
+### Security
+
+- **Command injection and XSS hardening**: git operations spawn without a shell so branch names and paths are never shell-interpreted, browser-open and clipboard helpers use argument arrays instead of interpolated shell strings, dashboard timeline expansion preserves HTML escaping, and markdown report links refuse `javascript:`/`data:` URLs
 
 ### Fixed
 
+- **2026-07 full-repository review backlog resolved**: 143 verified findings across all three packages — security and data integrity, crashes and hangs, CLI dashboard and terminal UX, session pipeline and webviews, cross-package consolidation, and release hygiene. The itemized worklist lives in `spec/`
+- **Truthful numbers**: historical session totals no longer double-count into all-time buckets on VS Code restart, Codex cache tokens are counted once, and hyphenated `claude-opus-4-5` usage is priced at Opus 4.5 rates instead of falling back to legacy Opus pricing
 - **Observed-session message-less events**: pending-request derivation tolerates summary and bookkeeping rows without a `message`, continues scanning unresolved requests, and retains top-level tool requests with stable fallback IDs
+- **CLI dashboard**: quota-failure text wraps instead of rendering one character per line, the `today` date filter includes today in UTC-negative timezones, mouse clicks land on the clicked row, and configured model IDs reach the inference clients instead of being squashed to `haiku`
+
+### Changed
+
+- The legacy VS Code dashboard webview bundle (dead code never loaded by a `<script>` tag) was removed; the dashboard script is generated inline by `DashboardViewProvider`
+- Token metric definitions are more truthful: Codex `input_tokens` excludes cached input, per-model totals include cache read/write tokens, and follow-event message counts include only user/assistant messages — dashboard numbers may shift after upgrade
+- `sidekick quota` exits non-zero when a requested provider's quota is unavailable, and the deprecated `quota --tier` flag was removed
+- Release CI pins `vsce`/`ovsx` versions and preflights Open VSX before publishing; CLI CI adds lint and typecheck gates
 
 ## [0.23.0] - 2026-07-18
 

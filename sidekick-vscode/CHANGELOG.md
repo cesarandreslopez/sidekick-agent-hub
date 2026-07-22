@@ -5,11 +5,21 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.23.1] - 2026-07-21
+
+### Security
+
+- Git operations spawn `git` without a shell, so branch names and paths are never shell-interpreted, and dashboard timeline expansion preserves HTML escaping
 
 ### Fixed
 
+- **2026-07 review backlog (extension portion)**: historical session totals no longer double-count into all-time buckets on restart, session monitor and watcher lifecycles are hardened, and provider status, quota, and persistence services received crash and correctness fixes
 - Session monitoring now accepts message-less summary/bookkeeping events from the shared observed-session pipeline without dropping unresolved user requests
+
+### Changed
+
+- The legacy dashboard webview bundle (dead code never loaded by a `<script>` tag) was deleted; the dashboard script is generated inline by `DashboardViewProvider`
+- Historical data types and provider detection now delegate to `sidekick-shared` instead of maintaining duplicate copies
 
 ## [0.23.0] - 2026-07-18
 

@@ -110,13 +110,23 @@ await hydratePricingCatalog({ cacheDir: '~/.config/sidekick' });
 ### Detect the active session provider
 
 ```typescript
-import { detectProvider } from 'sidekick-shared';
+import {
+  detectProvider,
+  ClaudeCodeProvider,
+  OpenCodeProvider,
+  CodexProvider,
+} from 'sidekick-shared';
 
-const provider = await detectProvider('/path/to/project');
-if (provider) {
-  console.log(`Active provider: ${provider.id}`);
-  const sessions = await provider.listSessions();
-}
+const providerId = detectProvider(); // 'claude-code' | 'opencode' | 'codex'
+const provider =
+  providerId === 'opencode'
+    ? new OpenCodeProvider()
+    : providerId === 'codex'
+      ? new CodexProvider()
+      : new ClaudeCodeProvider();
+
+console.log(`Active provider: ${provider.displayName}`);
+const sessions = provider.findAllSessions('/path/to/project');
 ```
 
 ### Read persisted tasks
@@ -237,17 +247,15 @@ The extractor is safe for CLI and VS Code extension-host code, but not for brows
 Build a provider-neutral snapshot of what an assistant has "seen" in a session — layered evidence sources, context pressure, and observed capabilities. Read it through any session provider, or build it directly from a canonical `SessionEvent[]`.
 
 ```typescript
-import { detectProvider, readSessionContextSnapshot } from 'sidekick-shared';
+import { ClaudeCodeProvider, readSessionContextSnapshot } from 'sidekick-shared';
 
-const provider = await detectProvider('/path/to/project');
-if (provider) {
-  const snapshot = readSessionContextSnapshot(provider, '/path/to/session.jsonl');
+const provider = new ClaudeCodeProvider();
+const snapshot = readSessionContextSnapshot(provider, '/path/to/session.jsonl');
 
-  console.log(snapshot.pressure); // 'low' | 'medium' | 'high'
-  console.log(snapshot.contextTokens, '/', snapshot.contextWindow);
-  console.log(snapshot.capabilities.tools, snapshot.capabilities.mcpServers);
-  console.log(snapshot.sources.length, 'evidence sources');
-}
+console.log(snapshot.pressure); // 'low' | 'medium' | 'high'
+console.log(snapshot.contextTokens, '/', snapshot.contextWindow);
+console.log(snapshot.capabilities.tools, snapshot.capabilities.mcpServers);
+console.log(snapshot.sources.length, 'evidence sources');
 ```
 
 Use `createSessionContextProjector()` for incremental updates as new events stream in, or `calculateSessionContextPressure(contextTokens, contextWindow)` for the pressure band alone.
@@ -402,10 +410,6 @@ const total = (a.costUsd ?? 0) + (b.costUsd ?? 0);
 const totalSource = mergeCostSources(a.source, b.source); // 'unpriced' wins (least certain)
 console.log(formatCost(total), totalSource);
 ```
-
-### Deferred Contextful adoption note
-
-`sidekick-shared@0.18.x` already exposes the quota primitives Contextful needs: `MultiProviderQuotaService`, `ProviderQuotaMap`, `ProviderQuotaState`, and `CodexQuotaWatcher`. Contextful should keep its local integration unchanged until a newer `sidekick-shared` release is published to npm, then migrate thin wrappers to these public APIs plus `formatTokenCount()`, `formatDurationMs()`, and `createJsonlTail()`.
 
 ## Building
 

@@ -5,11 +5,21 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.23.1] - 2026-07-21
+
+### Security
+
+- Clipboard and URL-opening helpers spawn platform tools with argument arrays instead of interpolated shell strings
 
 ### Fixed
 
+- **2026-07 review backlog (CLI portion)**: quota-failure text wraps instead of rendering one character per line, the `today` date filter includes today in UTC-negative timezones, mouse clicks land on the clicked row, and configured model IDs reach the inference clients instead of being squashed to `haiku`
 - Shared observed-session reads tolerate message-less summary/bookkeeping rows and retain unresolved top-level tool requests with stable fallback IDs
+
+### Changed
+
+- `sidekick quota` now exits non-zero when a requested provider's quota is unavailable (including `--all` and `--json` failure payloads), so scripts can detect failures
+- The deprecated `quota --tier` flag (part of the removed z.ai observed-traffic estimator) is no longer accepted
 
 ## [0.23.0] - 2026-07-18
 

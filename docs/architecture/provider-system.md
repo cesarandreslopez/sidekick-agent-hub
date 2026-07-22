@@ -90,6 +90,6 @@ The bootstrap is idempotent (repeated calls do not create duplicates), never ove
 
 ## Shared Provider Library
 
-The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) package ports the session provider implementations for use outside VS Code. It uses the same auto-detection algorithm — checking filesystem presence and most-recent modification time — minus the VS Code setting fallback. Any npm project can consume these providers directly via `npm install sidekick-shared`.
+The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) package is the canonical home of the session provider implementations and the auto-detection algorithm — checking filesystem presence and most-recent modification time. The VS Code extension's `ProviderDetector` is a thin adapter that delegates to shared detection and layers the VS Code setting fallback on top. Any npm project can consume these providers directly via `npm install sidekick-shared`.
 
 The CLI's `--provider` flag serves as an explicit override when auto-detection isn't appropriate. Providers read session data in the same formats (JSONL, SQLite, JSON) as the extension, so the CLI produces identical results from the same data files.
