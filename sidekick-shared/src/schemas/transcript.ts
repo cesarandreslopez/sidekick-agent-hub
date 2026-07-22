@@ -3,14 +3,19 @@ import type {
   CanonicalSessionTranscript,
   CanonicalTranscriptMessage,
   CanonicalToolCall,
+  TranscriptSourceProvenance,
 } from '../transcript';
 import { normalizedUsageCostSchema, normalizedUsageSchema } from './usageNormalization';
 
-const transcriptSourceSchema = z.object({
+export const transcriptSourceProvenanceSchema: z.ZodType<TranscriptSourceProvenance> = z.object({
   provider: z.string().optional(),
   sessionId: z.string().optional(),
   sourcePath: z.string().optional(),
   source: z.string().optional(),
+  entrypoint: z.string().optional(),
+  isMeta: z.boolean().optional(),
+  isSidechain: z.boolean().optional(),
+  originalRole: z.string().optional(),
   eventIndex: z.number().int().nonnegative(),
   eventType: z.enum(['user', 'assistant', 'tool_use', 'tool_result', 'summary', 'system']),
   eventId: z.string().optional(),
@@ -37,7 +42,7 @@ export const canonicalToolCallSchema: z.ZodType<CanonicalToolCall> = z.object({
   output: z.unknown().optional(),
   isError: z.boolean().optional(),
   command: z.string().optional(),
-  source: transcriptSourceSchema,
+  source: transcriptSourceProvenanceSchema,
 });
 
 export const canonicalTranscriptMessageSchema: z.ZodType<CanonicalTranscriptMessage> = z.object({
@@ -52,13 +57,15 @@ export const canonicalTranscriptMessageSchema: z.ZodType<CanonicalTranscriptMess
   cost: normalizedUsageCostSchema.optional(),
   tools: z.array(canonicalToolCallSchema),
   commands: z.array(z.string()),
-  source: transcriptSourceSchema,
+  source: transcriptSourceProvenanceSchema,
 });
 
 export const canonicalSessionTranscriptSchema: z.ZodType<CanonicalSessionTranscript> = z.object({
   provider: z.string().optional(),
   sessionId: z.string().optional(),
   sourcePath: z.string().optional(),
+  cwd: z.string().optional(),
+  gitBranch: z.string().optional(),
   startedAt: z.string().optional(),
   endedAt: z.string().optional(),
   models: z.array(z.string()),

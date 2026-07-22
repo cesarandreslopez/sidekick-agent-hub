@@ -81,6 +81,17 @@ describe('projectSessionTranscript', () => {
     const aggregator = new EventAggregator();
     events.forEach((event) => aggregator.processEvent(event));
     const transcript = projectSessionTranscript(events, { provider: 'codex' });
+    const transcriptWithProvenance = projectSessionTranscript(
+      events.map((event) => ({
+        ...event,
+        entrypoint: 'cli',
+        isMeta: false,
+        isSidechain: false,
+        cwd: '/workspace/app',
+        gitBranch: 'main',
+      })),
+      { provider: 'codex' },
+    );
 
     expect(aggregator.getAggregatedTokens()).toMatchObject({
       inputTokens: 700,
@@ -98,5 +109,83 @@ describe('projectSessionTranscript', () => {
       totalTokens: 1200,
     });
     expect(transcript.usage.totalCostUsd).toBeCloseTo(publicCost.costUsd!);
+    expect(transcriptWithProvenance.usage).toEqual(transcript.usage);
+  });
+
+  it('retains message-less summaries in the canonical transcript', () => {
+    const transcript = projectSessionTranscript([
+      {
+        type: 'summary',
+        timestamp: '2026-07-22T00:00:00Z',
+        compaction: { tokensBefore: 10_000, tokensAfter: 4_000 },
+      },
+    ]);
+
+    expect(transcript.messages).toEqual([
+      expect.objectContaining({
+        role: 'summary',
+        text: '',
+        content: [],
+        source: expect.objectContaining({ eventType: 'summary', originalRole: undefined }),
+      }),
+    ]);
+  });
+
+  it('uses the most recent non-empty cwd and git branch', () => {
+    const transcript = projectSessionTranscript([
+      {
+        type: 'user',
+        timestamp: '2026-07-22T00:00:00Z',
+        cwd: '/workspace/app',
+        gitBranch: 'main',
+        message: { role: 'user', content: 'hello' },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-07-22T00:00:01Z',
+        cwd: '',
+        gitBranch: '   ',
+        message: { role: 'assistant', content: 'hi' },
+      },
+    ]);
+
+    expect(transcript).toMatchObject({ cwd: '/workspace/app', gitBranch: 'main' });
+  });
+
+  it('projects Codex cwd and preserves developer and system original roles', () => {
+    const parser = new CodexRolloutParser();
+    const events: SessionEvent[] = [];
+    events.push(
+      ...parser.convertLine({
+        timestamp: '2026-07-22T00:00:00Z',
+        type: 'session_meta',
+        payload: { id: 'session-1', cwd: '/workspace/app' },
+      }),
+      ...parser.convertLine({
+        timestamp: '2026-07-22T00:00:01Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'developer',
+          content: [{ type: 'input_text', text: 'Developer instructions' }],
+        },
+      }),
+      ...parser.convertLine({
+        timestamp: '2026-07-22T00:00:02Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'system',
+          content: [{ type: 'input_text', text: 'System instructions' }],
+        },
+      }),
+    );
+
+    const transcript = projectSessionTranscript(events, { provider: 'codex' });
+    expect(transcript.cwd).toBe('/workspace/app');
+    expect(transcript.messages.map((message) => message.source.originalRole)).toEqual([
+      'developer',
+      'system',
+    ]);
   });
 });

@@ -10,8 +10,11 @@ import type {
   ObservedAgentSessionV1,
   ProviderCapabilitiesV1,
   ProviderSessionAdapterV1,
+  ProviderObservedSessionCollectionSource,
   PendingUserRequestV1,
   SessionEvidenceRefV1,
+  CanonicalSessionTranscript,
+  TranscriptSourceProvenance,
 } from './index';
 
 const contractGroups = {
@@ -76,8 +79,11 @@ describe('public API consumer contracts', () => {
       ObservedAgentSessionV1?,
       ProviderCapabilitiesV1?,
       ProviderSessionAdapterV1?,
+      ProviderObservedSessionCollectionSource?,
       PendingUserRequestV1?,
       SessionEvidenceRefV1?,
+      CanonicalSessionTranscript?,
+      TranscriptSourceProvenance?,
     ] = [session, context];
     expect(compileOnly).toHaveLength(2);
   });

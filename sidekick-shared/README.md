@@ -165,6 +165,18 @@ const transcript = readSessionTranscript(provider, recent.sessionPath, {
 
 The same API works with `ClaudeCodeProvider` and `OpenCodeProvider`. It covers provider sessions discoverable by those readers. Remote Claude SDK-only history and Codex history entries whose rollout file has disappeared are not synthesized.
 
+Canonical transcript messages retain provider-origin facts on `message.source`, including the original role, entrypoint, meta/sidechain flags, and source identifiers. Transcript-level `cwd` and `gitBranch` use the latest non-empty value reported by the provider. Consumers can therefore distinguish a human Claude Code CLI prompt without reparsing JSONL:
+
+```typescript
+const humanCliPrompts = transcript.messages.filter(
+  (message) =>
+    message.source.originalRole === 'user' &&
+    message.source.entrypoint === 'cli' &&
+    message.source.isMeta !== true &&
+    message.source.isSidechain !== true,
+);
+```
+
 For an already-open incremental Codex rollout, keep one `CodexRolloutParser` per stream and pass each parsed `SessionEvent[]` batch to `projectSessionTranscript()` (or append the events to an existing projection). This preserves parser state for paired tool calls, model context, and cumulative token deltas; consumers should not convert raw `response_item` rows themselves.
 
 ### Collect observed sessions with isolation and retry
@@ -179,6 +191,13 @@ const collector = new ObservedSessionCollector({
 });
 
 await collector.collect(); // scheduling remains the host's responsibility
+```
+
+Each provider-backed source also exposes the same adapter's `ProviderCapabilitiesV1` record used for its reads and lifecycle:
+
+```typescript
+const source = observedSessionSourceFromProvider(provider, workspacePath);
+applyReadOnlyProjection(source.capabilities);
 ```
 
 Discovery and reads are isolated, retries use bounded 30-second-to-5-minute exponential backoff, file changes bypass delay, duplicate identical failures are suppressed, and recovery emits a content-free diagnostic. Clock and fingerprint callbacks are injectable for deterministic hosts/tests.

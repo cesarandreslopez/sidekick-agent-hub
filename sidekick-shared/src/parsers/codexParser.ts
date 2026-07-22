@@ -262,17 +262,21 @@ export class CodexRolloutParser {
   private handleSessionMeta(timestamp: string, payload: CodexSessionMeta): SessionEvent[] {
     this.sessionMeta = payload;
     const text = payload.base_instructions?.text?.trim();
-    if (!text) return [];
     return [
       {
         type: 'system',
-        message: {
-          role: 'system',
-          id: `${payload.id}:base-instructions`,
-          sourceLabel: 'base instructions',
-          content: [{ type: 'text', text }],
-        },
+        ...(text
+          ? {
+              message: {
+                role: 'system',
+                id: `${payload.id}:base-instructions`,
+                sourceLabel: 'base instructions',
+                content: [{ type: 'text', text }],
+              },
+            }
+          : {}),
         timestamp,
+        cwd: payload.cwd || undefined,
       },
     ];
   }

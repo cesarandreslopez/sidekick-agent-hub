@@ -35,6 +35,7 @@ export type { NormalizedUsage, NormalizedUsageCost } from '../usageNormalization
 export { tokenEstimateSchema } from './tokenEstimation';
 export type { TokenEstimate } from '../tokenEstimation';
 export {
+  transcriptSourceProvenanceSchema,
   canonicalTranscriptBlockSchema,
   canonicalToolCallSchema,
   canonicalTranscriptMessageSchema,
@@ -44,6 +45,7 @@ export type {
   CanonicalSessionTranscript,
   CanonicalTranscriptMessage,
   CanonicalToolCall,
+  TranscriptSourceProvenance,
 } from '../transcript';
 export {
   observationProvenanceV1Schema,

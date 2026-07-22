@@ -12,6 +12,7 @@ import type {
   MessageUsage,
   SessionMessage,
   SessionEvent,
+  SessionEventBase,
   SummarySessionEvent,
   PermissionMode,
 } from '../types/sessionEvent';
@@ -53,7 +54,11 @@ export const permissionModeSchema = z.enum([
 
 const eventBaseShape = {
   timestamp: z.string(),
+  entrypoint: z.string().optional(),
+  isMeta: z.boolean().optional(),
   isSidechain: z.boolean().optional(),
+  cwd: z.string().optional(),
+  gitBranch: z.string().optional(),
   permissionMode: permissionModeSchema.optional(),
   rateLimits: z
     .object({
@@ -195,18 +200,43 @@ const MAX_PROGRESS_DEPTH = 8;
  * Returns zero events for unrecognized input — never throws.
  */
 export function extractSessionEvents(raw: unknown, depth = 0): SessionEvent[] {
+  return extractSessionEventsWithProvenance(raw, depth, {});
+}
+
+type ProgressProvenance = Pick<
+  SessionEventBase,
+  'entrypoint' | 'isMeta' | 'isSidechain' | 'cwd' | 'gitBranch'
+>;
+
+function extractSessionEventsWithProvenance(
+  raw: unknown,
+  depth: number,
+  inherited: ProgressProvenance,
+): SessionEvent[] {
   const direct = sessionEventSchema.safeParse(raw);
-  if (direct.success) return [direct.data];
+  if (direct.success) return [{ ...inherited, ...direct.data }];
 
   if (depth >= MAX_PROGRESS_DEPTH) return [];
   if (typeof raw === 'object' && raw !== null && (raw as { type?: unknown }).type === 'progress') {
+    const provenance = { ...inherited, ...progressProvenance(raw) };
     const data = (raw as { data?: unknown }).data;
     if (typeof data === 'object' && data !== null) {
       const message = (data as { message?: unknown }).message;
       if (typeof message === 'object' && message !== null) {
-        return extractSessionEvents(message, depth + 1);
+        return extractSessionEventsWithProvenance(message, depth + 1, provenance);
       }
     }
   }
   return [];
+}
+
+function progressProvenance(raw: object): ProgressProvenance {
+  const value = raw as Record<string, unknown>;
+  const provenance: ProgressProvenance = {};
+  if (typeof value.entrypoint === 'string') provenance.entrypoint = value.entrypoint;
+  if (typeof value.isMeta === 'boolean') provenance.isMeta = value.isMeta;
+  if (typeof value.isSidechain === 'boolean') provenance.isSidechain = value.isSidechain;
+  if (typeof value.cwd === 'string') provenance.cwd = value.cwd;
+  if (typeof value.gitBranch === 'string') provenance.gitBranch = value.gitBranch;
+  return provenance;
 }

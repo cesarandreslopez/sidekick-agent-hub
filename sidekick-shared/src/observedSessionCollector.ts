@@ -1,5 +1,5 @@
 import { statSync } from 'node:fs';
-import type { ObservedAgentSessionV1 } from './types/observedSessionV1';
+import type { ObservedAgentSessionV1, ProviderCapabilitiesV1 } from './types/observedSessionV1';
 import { createProviderSessionAdapterV1 } from './types/observedSessionV1';
 import type { SessionProviderBase } from './providers/types';
 
@@ -15,6 +15,10 @@ export interface ObservedSessionCollectionSource<T = unknown> {
   discover(): Promise<ObservedSessionReference[]> | ObservedSessionReference[];
   read(reference: ObservedSessionReference): Promise<T> | T;
   dispose?(): void;
+}
+
+export interface ProviderObservedSessionCollectionSource extends ObservedSessionCollectionSource<ObservedAgentSessionV1> {
+  capabilities: ProviderCapabilitiesV1;
 }
 
 export type ObservedSessionDiagnosticKind =
@@ -239,10 +243,11 @@ export class ObservedSessionCollector<T = unknown> {
 export function observedSessionSourceFromProvider(
   provider: SessionProviderBase,
   cwd: string,
-): ObservedSessionCollectionSource<ObservedAgentSessionV1> {
+): ProviderObservedSessionCollectionSource {
   const adapter = createProviderSessionAdapterV1(provider);
   return {
     providerId: provider.id,
+    capabilities: adapter.capabilities,
     discover() {
       return provider.findAllSessions(cwd).map((sessionPath) => ({
         sessionId: provider.getSessionId(sessionPath),

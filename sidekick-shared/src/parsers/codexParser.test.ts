@@ -50,6 +50,7 @@ describe('CodexRolloutParser', () => {
     expect(metaEvents).toHaveLength(1);
     expect(metaEvents[0]).toMatchObject({
       type: 'system',
+      cwd: '/workspace/app',
       message: {
         role: 'system',
         sourceLabel: 'base instructions',
@@ -63,6 +64,24 @@ describe('CodexRolloutParser', () => {
         sourceLabel: 'developer',
       },
     });
+  });
+
+  it('emits message-less session metadata so reported cwd remains observable', () => {
+    const parser = new CodexRolloutParser();
+    const events = parser.convertLine(
+      line('session_meta', {
+        id: 'session-1',
+        cwd: '/workspace/app',
+      }),
+    );
+
+    expect(events).toEqual([
+      {
+        type: 'system',
+        timestamp: '2026-06-01T12:00:00.000Z',
+        cwd: '/workspace/app',
+      },
+    ]);
   });
 
   it('attaches normalized rate limits to token_count system events', () => {

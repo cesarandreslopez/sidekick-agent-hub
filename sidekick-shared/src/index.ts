@@ -50,6 +50,7 @@ export {
 export type {
   ObservedSessionReference,
   ObservedSessionCollectionSource,
+  ProviderObservedSessionCollectionSource,
   ObservedSessionDiagnosticKind,
   ObservedSessionDiagnostic,
   ObservedSessionCollection,

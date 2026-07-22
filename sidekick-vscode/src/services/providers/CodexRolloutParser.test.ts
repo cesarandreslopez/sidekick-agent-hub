@@ -17,7 +17,7 @@ describe('CodexRolloutParser', () => {
   // --- session_meta ---
 
   describe('session_meta', () => {
-    it('should store metadata and emit no events', () => {
+    it('should store metadata and emit a message-less provenance event', () => {
       const line: CodexRolloutLine = {
         timestamp: '2025-01-15T10:00:00Z',
         type: 'session_meta',
@@ -30,7 +30,13 @@ describe('CodexRolloutParser', () => {
       };
 
       const events = parser.convertLine(line);
-      expect(events).toHaveLength(0);
+      expect(events).toEqual([
+        {
+          type: 'system',
+          timestamp: '2025-01-15T10:00:00Z',
+          cwd: '/home/user/project',
+        },
+      ]);
       expect(parser.getSessionMeta()).toEqual(
         expect.objectContaining({
           id: 'sess-123',

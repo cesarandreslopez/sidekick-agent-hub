@@ -14,6 +14,10 @@ export interface TranscriptSourceProvenance {
   sessionId?: string;
   sourcePath?: string;
   source?: string;
+  entrypoint?: string;
+  isMeta?: boolean;
+  isSidechain?: boolean;
+  originalRole?: string;
   eventIndex: number;
   eventType: SessionEvent['type'];
   eventId?: string;
@@ -73,6 +77,8 @@ export interface CanonicalSessionTranscript {
   provider?: ProviderId | string;
   sessionId?: string;
   sourcePath?: string;
+  cwd?: string;
+  gitBranch?: string;
   startedAt?: string;
   endedAt?: string;
   models: string[];
@@ -125,14 +131,22 @@ export function projectSessionTranscript(
   const usageCosts: NormalizedUsageCost[] = [];
   const totals = { ...EMPTY_TOTALS };
   const toolsById = new Map<string, CanonicalToolCall>();
+  let cwd: string | undefined;
+  let gitBranch: string | undefined;
 
   events.forEach((event, eventIndex) => {
+    if (nonEmpty(event.cwd)) cwd = event.cwd;
+    if (nonEmpty(event.gitBranch)) gitBranch = event.gitBranch;
     const message = event.message;
     const source: TranscriptSourceProvenance = {
       provider: options.provider ?? event.providerMetadata?.providerId,
       sessionId: options.sessionId,
       sourcePath: options.sourcePath,
       source: event.providerMetadata?.source,
+      entrypoint: event.entrypoint,
+      isMeta: event.isMeta,
+      isSidechain: event.isSidechain,
+      originalRole: message?.role,
       eventIndex,
       eventType: event.type,
       eventId: message?.id,
@@ -223,6 +237,8 @@ export function projectSessionTranscript(
     provider: options.provider,
     sessionId: options.sessionId,
     sourcePath: options.sourcePath,
+    cwd,
+    gitBranch,
     startedAt: events[0]?.timestamp,
     endedAt: events.at(-1)?.timestamp,
     models: [...models],
@@ -240,6 +256,10 @@ export function projectSessionTranscript(
     },
     provenance: { source: 'session-events', fidelity, eventCount: events.length },
   };
+}
+
+function nonEmpty(value: string | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function roleForEvent(event: SessionEvent): CanonicalTranscriptMessage['role'] {

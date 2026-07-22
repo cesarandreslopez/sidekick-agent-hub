@@ -111,14 +111,25 @@ describe('sessionEventSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('validates a user event with isSidechain', () => {
+  it('validates a user event with provider-origin fields', () => {
     const result = sessionEventSchema.safeParse({
       type: 'user',
       message: { role: 'user', content: 'Fix this bug' },
       timestamp: '2026-03-23T10:00:00Z',
+      entrypoint: 'cli',
+      isMeta: false,
       isSidechain: true,
+      cwd: '/workspace/app',
+      gitBranch: 'feature/provenance',
     });
     expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      entrypoint: 'cli',
+      isMeta: false,
+      isSidechain: true,
+      cwd: '/workspace/app',
+      gitBranch: 'feature/provenance',
+    });
   });
 
   it('rejects invalid event type', () => {
@@ -192,6 +203,35 @@ describe('extractSessionEvents', () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual(userEvent);
+  });
+
+  it('inherits provider provenance from progress wrappers with inner values taking precedence', () => {
+    const events = extractSessionEvents({
+      type: 'progress',
+      entrypoint: 'sdk',
+      isMeta: true,
+      isSidechain: true,
+      cwd: '/workspace/outer',
+      gitBranch: 'outer-branch',
+      data: {
+        message: {
+          ...userEvent,
+          entrypoint: 'cli',
+          cwd: '/workspace/inner',
+        },
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        ...userEvent,
+        entrypoint: 'cli',
+        isMeta: true,
+        isSidechain: true,
+        cwd: '/workspace/inner',
+        gitBranch: 'outer-branch',
+      },
+    ]);
   });
 
   it('unwraps a progress-wrapped message-less summary', () => {

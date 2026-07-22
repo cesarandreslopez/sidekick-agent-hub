@@ -72,8 +72,20 @@ export interface SessionEventBase {
   /** ISO 8601 timestamp of event */
   timestamp: string;
 
+  /** Provider-reported entrypoint that produced this event. */
+  entrypoint?: string;
+
+  /** Whether the provider identifies this as orchestration or metadata. */
+  isMeta?: boolean;
+
   /** Whether this is a subagent/sidechain event */
   isSidechain?: boolean;
+
+  /** Provider-reported working directory for this event/session. */
+  cwd?: string;
+
+  /** Provider-reported git branch for this event/session. */
+  gitBranch?: string;
 
   /** Permission mode active when this event occurred */
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';

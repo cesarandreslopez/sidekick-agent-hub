@@ -8,6 +8,10 @@ const distDir = path.join(pkgRoot, 'dist');
 const browserJs = path.join(distDir, 'browser.js');
 const nodeJs = path.join(distDir, 'node.js');
 const schemasJs = path.join(distDir, 'schemas', 'index.js');
+const rootDts = path.join(distDir, 'index.d.ts');
+const browserDts = path.join(distDir, 'browser.d.ts');
+const nodeDts = path.join(distDir, 'node.d.ts');
+const schemasDts = path.join(distDir, 'schemas', 'index.d.ts');
 const statuslineJs = path.join(distDir, 'statusline', 'index.js');
 
 // Rooted at the package itself so require.resolve exercises the real
@@ -104,6 +108,7 @@ describe('packaging contract', () => {
       'normalizedUsageCostSchema',
       'tokenEstimateSchema',
       'canonicalTranscriptBlockSchema',
+      'transcriptSourceProvenanceSchema',
       'canonicalToolCallSchema',
       'canonicalTranscriptMessageSchema',
       'canonicalSessionTranscriptSchema',
@@ -231,6 +236,19 @@ describe('packaging contract', () => {
       expect(src).not.toMatch(/require\(["']fs["']\)/);
       expect(src).not.toMatch(/require\(["']path["']\)/);
     }
+  });
+
+  it('publishes the new types from their supported declaration surfaces', async () => {
+    const [root, browser, node, schemas] = await Promise.all(
+      [rootDts, browserDts, nodeDts, schemasDts].map((file) => fs.readFile(file, 'utf8')),
+    );
+
+    expect(root).toContain('ProviderObservedSessionCollectionSource');
+    expect(node).toContain('ProviderObservedSessionCollectionSource');
+    expect(browser).toContain('TranscriptSourceProvenance');
+    expect(browser).toContain('CanonicalSessionTranscript');
+    expect(schemas).toContain('TranscriptSourceProvenance');
+    expect(schemas).toContain('transcriptSourceProvenanceSchema');
   });
 
   // Consumer-perspective resolution: exercises the real package.json exports
