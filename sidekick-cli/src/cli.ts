@@ -10,12 +10,12 @@ import {
   reportThemeOption,
   rootProviderOption,
   tasksStatusOption,
-  zaiTierOption,
 } from './options';
 import { detectProvider, ensureDefaultAccounts } from 'sidekick-shared';
 import { hydratePricingCatalog } from 'sidekick-shared/node';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
+import { formatCliError } from './cliError';
 
 // Mirrors entry.ts's isStatuslineInvocation: only the first non-flag token is
 // the command name, so option values like `tasks add today` never match.
@@ -282,7 +282,6 @@ const quotaCmd = new Command('quota')
     '--refresh',
     'For Codex, explicitly refresh from the Codex usage API before falling back to local data',
   )
-  .addOption(zaiTierOption())
   .addHelpText('after', QUOTA_EXAMPLES)
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaAction } = await import('./commands/quota');
@@ -381,4 +380,7 @@ handoffCmd
   });
 program.addCommand(handoffCmd);
 
-program.parse();
+program.parseAsync().catch((error: unknown) => {
+  process.stderr.write(formatCliError(error));
+  process.exitCode = 1;
+});

@@ -47,9 +47,3 @@ export function tasksStatusOption(): Option {
     'all',
   ]);
 }
-
-export function zaiTierOption(): Option {
-  return new Option('--tier <id>', 'z.ai plan tier')
-    .default('auto')
-    .choices(['lite', 'pro', 'max', 'auto']);
-}

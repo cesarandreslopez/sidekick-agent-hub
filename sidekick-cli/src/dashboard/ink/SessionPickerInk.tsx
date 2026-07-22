@@ -23,7 +23,7 @@ const PROVIDER_NAMES: Record<string, string> = {
   codex: 'Codex',
 };
 
-interface GroupedView {
+export interface GroupedView {
   /** Flat list of rows: either a header or a selectable item. */
   rows: Array<{ type: 'header'; providerId: string } | { type: 'item'; index: number }>;
   /** Total number of selectable items (items.length + 1 for "wait"). */
@@ -31,7 +31,7 @@ interface GroupedView {
 }
 
 /** Build grouped rows when multiple providers have sessions. */
-function buildGroupedRows(items: SessionPickerItem[]): GroupedView | null {
+export function buildGroupedRows(items: SessionPickerItem[]): GroupedView | null {
   const providerIds = new Set(items.map((it) => it.providerId).filter(Boolean));
   if (providerIds.size <= 1) return null;
 
@@ -55,6 +55,18 @@ function buildGroupedRows(items: SessionPickerItem[]): GroupedView | null {
   rows.push({ type: 'item', index: items.length }); // sentinel for "wait"
 
   return { rows, selectableCount: items.length + 1 };
+}
+
+export function resolvePickerSelection(
+  items: SessionPickerItem[],
+  grouped: GroupedView | null,
+  selectedIndex: number,
+): string | null {
+  const sourceIndex = grouped
+    ? grouped.rows.filter((row) => row.type === 'item')[selectedIndex]?.index
+    : selectedIndex;
+  if (sourceIndex === undefined || sourceIndex === items.length) return null;
+  return items[sourceIndex]?.sessionPath ?? null;
 }
 
 interface SessionPickerInkProps {
@@ -86,11 +98,7 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
     }
 
     if (key.return) {
-      if (selectedIndex === items.length) {
-        onSelect(null);
-      } else {
-        onSelect(items[selectedIndex].sessionPath);
-      }
+      onSelect(resolvePickerSelection(items, grouped, selectedIndex));
       return;
     }
   });

@@ -38,10 +38,9 @@ export function encodeWorkspacePath(workspacePath: string): string {
   // Normalize path separators to forward slash
   const normalized = workspacePath.replace(/\\/g, '/');
 
-  // Replace colons, slashes, and underscores with hyphens
-  // Windows: C:\Users\foo_bar -> C:/Users/foo_bar -> C--Users-foo-bar
-  // Unix: /home/user/foo_bar -> -home-user-foo-bar
-  return normalized.replace(/[:/_]/g, '-');
+  // Claude Code replaces every non-alphanumeric path character, including
+  // dots and spaces, with a hyphen.
+  return normalized.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 /**
@@ -218,12 +217,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
 
       // Try to match by workspace path components
       // Normalize workspace path for comparison
-      const normalizedWorkspace = workspacePath
-        .replace(/\\/g, '/')
-        .replace(/:/g, '-')
-        .replace(/_/g, '-')
-        .replace(/\//g, '-')
-        .toLowerCase();
+      const normalizedWorkspace = encodeWorkspacePath(workspacePath).toLowerCase();
 
       for (const dir of existingDirs) {
         // Check if the directory name matches (case-insensitive)
@@ -233,7 +227,10 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
       }
 
       // Fallback: match by final path component (project name)
-      const workspaceBasename = path.basename(workspacePath).replace(/_/g, '-').toLowerCase();
+      const workspaceBasename = path
+        .basename(workspacePath)
+        .replace(/[^a-zA-Z0-9]/g, '-')
+        .toLowerCase();
 
       for (const dir of existingDirs) {
         const dirLower = dir.toLowerCase();
@@ -386,12 +383,17 @@ export function findAllSessions(workspacePath: string): string[] {
       .filter((file) => file.endsWith('.jsonl'))
       .map((file) => {
         const fullPath = path.join(sessionDir, file);
-        const stats = fs.statSync(fullPath);
-        return {
-          path: fullPath,
-          mtime: stats.mtime.getTime(),
-        };
+        try {
+          const stats = fs.statSync(fullPath);
+          return {
+            path: fullPath,
+            mtime: stats.mtime.getTime(),
+          };
+        } catch {
+          return null;
+        }
       })
+      .filter((file): file is { path: string; mtime: number } => file !== null)
       .sort((a, b) => b.mtime - a.mtime)
       .map((file) => file.path);
 

@@ -94,7 +94,7 @@ export class ToolCallTracker {
 
     const topLevel = extractToolCall(event);
     if (topLevel) {
-      const id = event.message.id;
+      const id = event.message?.id;
       if (id) {
         topLevel.toolUseId = id;
         this.pending.set(id, topLevel);
@@ -103,7 +103,7 @@ export class ToolCallTracker {
       }
     }
 
-    const content = event.message.content;
+    const content = event.message?.content;
     if (!Array.isArray(content)) return completed;
     for (const block of content) {
       if (

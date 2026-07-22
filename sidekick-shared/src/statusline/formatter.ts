@@ -55,12 +55,17 @@ export function formatStatusline(input: StatuslineInput): string {
 function estimateWindowEta(quota: QuotaState, now: Date): number | null {
   const resetAt = Date.parse(quota.fiveHour.resetsAt);
   if (!Number.isFinite(resetAt)) return null;
+  const nowMs = now.getTime();
+  if (resetAt <= nowMs) return null;
   const capturedAt = quota.capturedAt ? Date.parse(quota.capturedAt) : now.getTime();
   const sampleAt = Number.isFinite(capturedAt) ? capturedAt : now.getTime();
+  if (sampleAt >= resetAt) return null;
   const elapsedMinutes = (sampleAt - (resetAt - FIVE_HOUR_WINDOW_MS)) / 60_000;
   if (elapsedMinutes <= 0 || quota.fiveHour.utilization <= 0) return null;
   const burnRate = quota.fiveHour.utilization / elapsedMinutes;
-  return estimateTimeToQuota(quota.fiveHour.utilization, 100, burnRate);
+  const eta = estimateTimeToQuota(quota.fiveHour.utilization, 100, burnRate);
+  const minutesUntilReset = (resetAt - nowMs) / 60_000;
+  return eta !== null && eta < minutesUntilReset ? eta : null;
 }
 
 function compactLabel(value: string): string {

@@ -123,4 +123,30 @@ describe('OpenCodeDatabase', () => {
       );
     }
   });
+
+  it('retries after a transient query failure', () => {
+    let queryAttempts = 0;
+    mockExecFileSync.mockImplementation((_bin: string, args: string[]) => {
+      if (args[0] === '--version') return '3.51.0';
+      queryAttempts++;
+      if (queryAttempts === 1) throw new Error('database temporarily locked');
+      return JSON.stringify([
+        {
+          id: 'proj_retry',
+          worktree: '/retry',
+          name: 'Retry',
+          sandboxes: '[]',
+          time_created: 1,
+          time_updated: 2,
+        },
+      ]);
+    });
+    const db = new OpenCodeDatabase('/tmp/opencode');
+
+    expect(db.getAllProjects()).toEqual([]);
+    expect(db.getRuntimeStatus()).toMatchObject({ kind: 'query_failed', available: true });
+    expect(db.getAllProjects()).toEqual([
+      expect.objectContaining({ id: 'proj_retry', worktree: '/retry' }),
+    ]);
+  });
 });

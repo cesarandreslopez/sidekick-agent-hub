@@ -91,4 +91,9 @@ describe('readTasks', () => {
     const tasks = await readTasks('nonexistent');
     expect(tasks).toEqual([]);
   });
+
+  it('tolerates a schema-drifted tasks container', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify({ tasks: null }));
+    await expect(readTasks('drifted')).resolves.toEqual([]);
+  });
 });

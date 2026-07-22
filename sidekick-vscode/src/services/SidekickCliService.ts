@@ -32,12 +32,19 @@ function getNvmSidekickPaths(): string[] {
   try {
     return fs
       .readdirSync(nvmDir)
-      .sort()
-      .reverse()
+      .sort(compareNvmNodeVersionsDescending)
       .map((v) => path.join(nvmDir, v, 'bin', 'sidekick'));
   } catch {
     return [];
   }
+}
+
+export function compareNvmNodeVersionsDescending(a: string, b: string): number {
+  const versionA = a.replace(/^v/, '');
+  const versionB = b.replace(/^v/, '');
+  if (isNewer(versionA, versionB)) return -1;
+  if (isNewer(versionB, versionA)) return 1;
+  return 0;
 }
 
 /**

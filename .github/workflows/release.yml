@@ -80,7 +80,7 @@ jobs:
         run: npm test
 
       - name: Package .vsix
-        run: npx @vscode/vsce package -o sidekick-for-max-${{ needs.validate.outputs.version }}.vsix
+        run: npx --yes @vscode/vsce@3.9.2 package -o sidekick-for-max-${{ needs.validate.outputs.version }}.vsix
 
       - name: Upload .vsix artifact
         uses: actions/upload-artifact@v4
@@ -88,8 +88,21 @@ jobs:
           name: vsix
           path: sidekick-vscode/sidekick-for-max-${{ needs.validate.outputs.version }}.vsix
 
+      - name: Check whether Open VSX version exists
+        id: openvsx-check
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+            "https://open-vsx.org/api/CesarAndresLopez/sidekick-for-max/$VERSION")
+          case "$STATUS" in
+            200) echo "exists=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "exists=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Open VSX preflight returned HTTP $STATUS"; exit 1 ;;
+          esac
+
       - name: Publish to Open VSX
-        run: npx ovsx publish sidekick-for-max-${{ needs.validate.outputs.version }}.vsix || echo "Already published — continuing"
+        if: steps.openvsx-check.outputs.exists != 'true'
+        run: npx --yes ovsx@1.0.2 publish sidekick-for-max-${{ needs.validate.outputs.version }}.vsix
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
@@ -162,6 +175,14 @@ jobs:
       - name: Check CLI formatting
         working-directory: sidekick-cli
         run: npm run format:check
+
+      - name: Lint CLI
+        working-directory: sidekick-cli
+        run: npm run lint
+
+      - name: Typecheck CLI
+        working-directory: sidekick-cli
+        run: npx tsc --noEmit
 
       - name: Run CLI tests
         working-directory: sidekick-cli

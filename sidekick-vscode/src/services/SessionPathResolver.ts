@@ -11,16 +11,16 @@
  */
 
 import {
-  encodeWorkspacePath,
-  getSessionDirectory,
+  encodeClaudeWorkspacePath as encodeWorkspacePath,
+  getClaudeSessionDirectory as getSessionDirectory,
   discoverSessionDirectory,
-  findActiveSession,
-  findAllSessions,
+  findActiveClaudeSession as findActiveSession,
+  findAllClaudeSessions as findAllSessions,
   findSessionsInDirectory,
   findSubdirectorySessionDirs,
   getMostRecentlyActiveSessionDir,
   decodeEncodedPath,
-  getAllProjectFolders,
+  getAllClaudeProjectFolders as getAllProjectFolders,
   getSessionDiagnostics,
 } from 'sidekick-shared';
 

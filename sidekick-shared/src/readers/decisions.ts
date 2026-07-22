@@ -19,7 +19,10 @@ export async function readDecisions(
   const store = await readProjectJsonStore<DecisionLogStore>(project, 'decisions');
   if (!store) return [];
 
-  let decisions = Object.values(store.decisions);
+  let decisions =
+    store.decisions && typeof store.decisions === 'object' && !Array.isArray(store.decisions)
+      ? Object.values(store.decisions)
+      : [];
 
   // Sort by timestamp descending
   decisions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());

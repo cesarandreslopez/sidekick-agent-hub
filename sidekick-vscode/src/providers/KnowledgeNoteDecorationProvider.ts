@@ -115,7 +115,6 @@ export class KnowledgeNoteDecorationProvider implements vscode.Disposable {
 
   private buildHoverMarkdown(note: KnowledgeNote): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
-    md.isTrusted = true;
 
     const statusBadge = note.status !== 'active' ? ` *(${note.status.replace('_', ' ')})*` : '';
     md.appendMarkdown(`**${NOTE_TYPE_LABELS[note.noteType]}**${statusBadge}\n\n`);

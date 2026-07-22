@@ -16,7 +16,6 @@ import type {
   ToolEfficiencyData,
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
-import type { KnowledgeNoteDisplay, KnowledgeCandidateDisplay } from './knowledgeNote';
 import type { CodexResetCreditsSnapshot, PeakHoursState } from 'sidekick-shared';
 import type { ProviderStatusDisplay } from '../utils/providerStatusDisplay';
 
@@ -166,7 +165,6 @@ export type DashboardMessage =
       isUsingCustomPath?: boolean;
       customPathDisplay?: string | null;
     }
-  | { type: 'discoveryModeChange'; inDiscoveryMode: boolean }
   | { type: 'updateQuota'; quota: QuotaState; quotaFailure?: QuotaFailureDisplay }
   | { type: 'updateQuotaHistory'; payload: QuotaHistoryPayload }
   | { type: 'updateHistoricalData'; data: HistoricalSummary }
@@ -191,8 +189,6 @@ export type DashboardMessage =
   | { type: 'toolCallDetails'; toolName: string; calls: ToolCallDetailDisplay[] }
   | { type: 'syncEventLogState'; enabled: boolean }
   | { type: 'updateDecisions'; decisions: DecisionEntryDisplay[]; totalCount: number }
-  | { type: 'updateKnowledgeNotes'; notes: KnowledgeNoteDisplay[]; totalCount: number }
-  | { type: 'updateKnowledgeCandidates'; candidates: KnowledgeCandidateDisplay[] }
   | { type: 'updateContextHealth'; score: number; compactionCount: number }
   | { type: 'updateTruncations'; count: number; byTool: Array<{ tool: string; count: number }> }
   | { type: 'updateTurnAttributions'; turns: TurnAttributionDisplay[] }
@@ -264,7 +260,6 @@ export interface PlanDisplay {
  */
 export type DashboardWebviewMessage =
   | { type: 'webviewReady' }
-  | { type: 'requestStats' }
   | { type: 'selectSession'; sessionPath: string }
   | { type: 'setSessionProvider'; providerId: 'claude-code' | 'opencode' | 'codex' }
   | { type: 'refreshSessions' }
@@ -277,27 +272,19 @@ export type DashboardWebviewMessage =
   | { type: 'importHistoricalData' }
   | { type: 'analyzeSession' }
   | { type: 'copySuggestion'; text: string }
-  | { type: 'openClaudeMd' }
   | { type: 'openInstructionFile' }
   | { type: 'generateNarrative' }
   | { type: 'requestSessionSummary' }
   | { type: 'searchTimeline'; query: string }
-  | { type: 'setTimelineFilter'; filters: TimelineFilterState }
   | { type: 'requestToolCallDetails'; toolName: string }
   | { type: 'toggleEventLog'; enabled: boolean }
-  | { type: 'requestDecisions' }
   | { type: 'searchDecisions'; query: string }
-  | { type: 'clearDecisions' }
   | { type: 'generateHandoff' }
-  | { type: 'requestKnowledgeNotes' }
-  | { type: 'acceptKnowledgeCandidate'; candidate: KnowledgeCandidateDisplay }
-  | { type: 'rejectKnowledgeCandidate'; candidate: KnowledgeCandidateDisplay }
   | { type: 'requestNotificationHistory' }
   | { type: 'markNotificationRead'; id: string }
   | { type: 'markAllNotificationsRead' }
   | { type: 'clearNotificationHistory' }
   | { type: 'openCliDashboard' }
-  | { type: 'requestPlanHistory' }
   | { type: 'openExternal'; url: string };
 
 /**

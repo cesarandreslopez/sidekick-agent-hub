@@ -588,7 +588,7 @@ describe('navigation', () => {
     expect(dispatched).toEqual([
       { type: 'SET_FOCUS', target: 'side' },
       { type: 'SCROLL_DETAIL', offset: 0 },
-      { type: 'SCROLL_DETAIL', offset: 30 },
+      { type: 'SCROLL_DETAIL', offset: 32 },
     ]);
   });
 

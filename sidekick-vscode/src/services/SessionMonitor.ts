@@ -20,6 +20,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as os from 'os';
+import { createHash } from 'crypto';
 import path from 'path';
 import type { SessionGroup, SessionInfo, QuotaState } from '../types/dashboard';
 import type { SessionProvider, SessionReader } from '../types/sessionProvider';
@@ -146,6 +147,12 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Pending tool calls awaiting results */
   private pendingToolCalls: Map<string, PendingToolCall> = new Map();
+
+  /** O(1) index into the retained tool-call window. */
+  private toolCallsById: Map<string, ToolCall> = new Map();
+
+  /** Maximum detailed tool calls retained and persisted per session. */
+  private readonly MAX_TOOL_CALLS = 500;
 
   /** Per-tool analytics */
   private toolAnalyticsMap: Map<string, ToolAnalytics> = new Map();
@@ -559,6 +566,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.reader = null;
     this._isPinned = false;
     this.pendingToolCalls.clear();
+    this.toolCallsById.clear();
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
@@ -764,8 +772,21 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     this._lastEventTime = Date.now();
+    this._lastOpenCodeStorageMtime = this.getOpenCodeStorageMtime();
     this.opencodePollTimer = setInterval(() => {
       if (!this.sessionPath || !this.reader) return;
+      const storageMtime = this.getOpenCodeStorageMtime();
+      if (
+        storageMtime !== null &&
+        this._lastOpenCodeStorageMtime !== null &&
+        storageMtime === this._lastOpenCodeStorageMtime
+      ) {
+        if (Date.now() - this._lastEventTime > this.OPENCODE_INACTIVITY_MS) {
+          this._checkForNewerSession();
+        }
+        return;
+      }
+      this._lastOpenCodeStorageMtime = storageMtime;
       const prevCount = this.stats.messageCount;
       this.processFileChange();
       // Track when we last saw new events
@@ -786,6 +807,27 @@ export class SessionMonitor implements vscode.Disposable {
       clearInterval(this.opencodePollTimer);
       this.opencodePollTimer = null;
     }
+    this._lastOpenCodeStorageMtime = null;
+  }
+
+  /** Returns the latest OpenCode DB/WAL mtime without launching sqlite3. */
+  private getOpenCodeStorageMtime(): number | null {
+    if (!this.sessionPath) return null;
+    const sessionDir = path.dirname(this.sessionPath);
+    const marker = path.sep + 'db-sessions' + path.sep;
+    const markerIndex = sessionDir.indexOf(marker);
+    if (markerIndex < 0) return null;
+
+    const dbPath = path.join(sessionDir.substring(0, markerIndex), 'opencode.db');
+    let latest = 0;
+    for (const candidate of [dbPath, `${dbPath}-wal`]) {
+      try {
+        latest = Math.max(latest, fs.statSync(candidate).mtimeMs);
+      } catch {
+        // WAL is transient and may disappear between polls.
+      }
+    }
+    return latest || null;
   }
 
   /**
@@ -796,6 +838,10 @@ export class SessionMonitor implements vscode.Disposable {
    */
   private _checkForNewerSession(): void {
     if (!this.sessionPath || !this.workspacePath) return;
+    if (this._isPinned) {
+      log('Inactivity check skipped because the current session is pinned');
+      return;
+    }
     try {
       const latestPath = this.provider.findActiveSession(this.workspacePath);
       if (latestPath && latestPath !== this.sessionPath) {
@@ -926,6 +972,7 @@ export class SessionMonitor implements vscode.Disposable {
     // Reset state for new session
     this.reader = this.provider.createReader(sessionPath);
     this.pendingToolCalls.clear();
+    this.toolCallsById.clear();
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
@@ -1725,7 +1772,10 @@ export class SessionMonitor implements vscode.Disposable {
     this._onDiscoveryModeChange.dispose();
     this._onLatencyUpdate.dispose();
     this._onCompaction.dispose();
+    this._onTruncation.dispose();
+    this._onCycleDetected.dispose();
     this._onQuotaUpdate.dispose();
+    this._onReplayStateChange.dispose();
 
     // Reset state
     this.sessionPath = null;
@@ -1733,6 +1783,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.workspacePath = null;
     this.reader = null;
     this.pendingToolCalls.clear();
+    this.toolCallsById.clear();
     this.toolAnalyticsMap.clear();
     this.timeline = [];
     this.errorDetails.clear();
@@ -1820,7 +1871,10 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     // Restore aggregator state
-    this.aggregator.restore(snapshot.aggregator);
+    if (!this.aggregator.restore(snapshot.aggregator)) {
+      deleteSnapshot(this.sessionId);
+      return false;
+    }
 
     // Restore consumer-specific state
     const c = snapshot.consumer;
@@ -1856,10 +1910,16 @@ export class SessionMonitor implements vscode.Disposable {
         );
       }
       if (Array.isArray(s.toolCalls)) {
-        this.stats.toolCalls = (s.toolCalls as ToolCall[]).map((tc) => ({
-          ...tc,
-          timestamp: new Date(tc.timestamp),
-        }));
+        this.stats.toolCalls = (s.toolCalls as ToolCall[])
+          .slice(-this.MAX_TOOL_CALLS)
+          .map((tc) => ({
+            ...tc,
+            timestamp: new Date(tc.timestamp),
+          }));
+        this.toolCallsById.clear();
+        for (const call of this.stats.toolCalls) {
+          if (call.toolUseId) this.toolCallsById.set(call.toolUseId, call);
+        }
       }
     }
 
@@ -2020,14 +2080,7 @@ export class SessionMonitor implements vscode.Disposable {
       // Handle file truncation detected by reader
       if (this.reader.wasTruncated()) {
         log('Session file truncated, resetting stats');
-        // Reset stats for fresh read
-        this.stats.totalInputTokens = 0;
-        this.stats.totalOutputTokens = 0;
-        this.stats.totalCacheWriteTokens = 0;
-        this.stats.totalCacheReadTokens = 0;
-        this.stats.messageCount = 0;
-        this.aggregator.reset();
-        this.sessionStartTime = null;
+        this.resetSessionProcessingState();
       }
 
       for (const event of newEvents) {
@@ -2087,6 +2140,9 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Timestamp of last event received during OpenCode polling */
   private _lastEventTime = 0;
+
+  /** Last DB/WAL modification observed by the lightweight poll gate. */
+  private _lastOpenCodeStorageMtime: number | null = null;
 
   /** Inactivity threshold before triggering session end (ms) */
   private readonly OPENCODE_INACTIVITY_MS = 60_000;
@@ -2237,7 +2293,20 @@ export class SessionMonitor implements vscode.Disposable {
   private generateEventHash(event: SessionEvent): string {
     const messageId = (event.message as unknown as { id?: string })?.id || '';
     const requestId = (event as unknown as { requestId?: string })?.requestId || '';
-    return `${event.type}:${event.timestamp}:${messageId}:${requestId}`;
+    const eventIds = event as unknown as { uuid?: string; parentUuid?: string };
+    const contentDigest = createHash('sha1')
+      .update(
+        JSON.stringify({
+          uuid: eventIds.uuid,
+          parentUuid: eventIds.parentUuid,
+          message: event.message,
+          tool: event.tool,
+          result: event.result,
+        }),
+      )
+      .digest('hex')
+      .slice(0, 16);
+    return `${event.type}:${event.timestamp}:${messageId}:${requestId}:${contentDigest}`;
   }
 
   /**
@@ -2686,7 +2755,7 @@ export class SessionMonitor implements vscode.Disposable {
    * @param output - Error output from tool result
    * @returns Error category string
    */
-  private categorizeError(output: unknown): string {
+  private categorizeError(output: unknown): NonNullable<ToolCall['errorCategory']> {
     return categorizeError(output);
   }
 
@@ -3028,7 +3097,7 @@ export class SessionMonitor implements vscode.Disposable {
           type: 'tool_call',
           timestamp,
           description: toolContext,
-          metadata: { toolName: toolUse.name },
+          metadata: { toolName: toolUse.name, toolUseId: toolUse.id },
         });
         if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
           this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
@@ -3047,7 +3116,7 @@ export class SessionMonitor implements vscode.Disposable {
           name: toolUse.name,
           rawName: rawToolName,
           providerId: this.provider.id,
-          input: toolUse.input,
+          input: this.boundToolInput(toolUse.input),
           timestamp: new Date(timestamp),
           toolUseId: toolUse.id,
         };
@@ -3077,6 +3146,18 @@ export class SessionMonitor implements vscode.Disposable {
           this._onToolCall.fire(toolCall);
         }
         this.stats.toolCalls.push(toolCall);
+        this.toolCallsById.set(toolUse.id, toolCall);
+        if (this.stats.toolCalls.length > this.MAX_TOOL_CALLS) {
+          const removed = this.stats.toolCalls.splice(
+            0,
+            this.stats.toolCalls.length - this.MAX_TOOL_CALLS,
+          );
+          for (const call of removed) {
+            if (call.toolUseId && this.toolCallsById.get(call.toolUseId) === call) {
+              this.toolCallsById.delete(call.toolUseId);
+            }
+          }
+        }
 
         // Check for repeating cycles after each new tool call (skip during replay)
         if (!this._isReplaying) {
@@ -3396,7 +3477,7 @@ export class SessionMonitor implements vscode.Disposable {
           // Update the corresponding ToolCall with result data
           // Prefer toolUseId match (reliable), fall back to timestamp+name (legacy)
           const toolCall =
-            this.stats.toolCalls.find((tc) => tc.toolUseId === toolResult.tool_use_id) ??
+            this.toolCallsById.get(toolResult.tool_use_id) ??
             this.stats.toolCalls.find(
               (tc) =>
                 tc.timestamp.getTime() === pending.startTime.getTime() && tc.name === pending.name,
@@ -3453,7 +3534,11 @@ export class SessionMonitor implements vscode.Disposable {
             description: toolResult.is_error
               ? `${pending.name} failed`
               : `${pending.name} completed`,
-            metadata: { isError: toolResult.is_error, toolName: pending.name },
+            metadata: {
+              isError: toolResult.is_error,
+              toolName: pending.name,
+              toolUseId: toolResult.tool_use_id,
+            },
           });
           if (this.timeline.length > this.MAX_TIMELINE_EVENTS) {
             this.timeline = this.timeline.slice(0, this.MAX_TIMELINE_EVENTS);
@@ -3559,5 +3644,45 @@ export class SessionMonitor implements vscode.Disposable {
     this.planStepToolCalls = 0;
     this.planRevisionCount = 0;
     this.lastUserPromptForPlan = undefined;
+  }
+
+  /** Clears every derived structure before replaying a truncated session file. */
+  private resetSessionProcessingState(): void {
+    this.stats = this.createEmptyStats();
+    this.pendingToolCalls.clear();
+    this.toolCallsById.clear();
+    this.toolAnalyticsMap.clear();
+    this.timeline = [];
+    this.errorDetails.clear();
+    this.lastModelId = null;
+    this.sessionStartTime = null;
+    this._subagentStats = [];
+    this.seenHashes.clear();
+    this.assistantTexts = [];
+    this.turnAttributions = [];
+    this.currentTurnIndex = 0;
+    this.contextTimeline = [];
+    this.resetTaskState();
+    this.aggregator.reset();
+  }
+
+  /** Retains useful structured metadata while bounding large tool payloads. */
+  private boundToolInput(input: Record<string, unknown>): Record<string, unknown> {
+    const visit = (value: unknown, depth: number): unknown => {
+      if (typeof value === 'string') {
+        return value.length > 8_000 ? `${value.slice(0, 8_000)}… [truncated]` : value;
+      }
+      if (value == null || typeof value !== 'object') return value;
+      if (depth >= 4) return '[nested value omitted]';
+      if (Array.isArray(value)) return value.slice(0, 25).map((item) => visit(item, depth + 1));
+
+      const bounded: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(value).slice(0, 60)) {
+        bounded[key] = visit(child, depth + 1);
+      }
+      return bounded;
+    };
+
+    return visit(input, 0) as Record<string, unknown>;
   }
 }

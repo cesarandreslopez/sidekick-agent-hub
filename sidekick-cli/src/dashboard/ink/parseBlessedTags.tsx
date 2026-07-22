@@ -15,9 +15,11 @@ function mapColor(c: string): string {
 }
 
 interface StyleFrame {
+  tag?: string;
   bold?: boolean;
   underline?: boolean;
   color?: string;
+  backgroundColor?: string;
 }
 
 const TAG_RE = /\{(\/?)([^}]+)\}/g;
@@ -56,21 +58,33 @@ export function parseBlessedTags(input: string): React.ReactNode {
     const tagName = match[2];
 
     if (isClose) {
-      // Pop the most recent matching frame
-      if (styleStack.length > 1) {
-        styleStack.pop();
+      let matchingIndex = -1;
+      for (let index = styleStack.length - 1; index > 0; index--) {
+        if (styleStack[index].tag === tagName) {
+          matchingIndex = index;
+          break;
+        }
       }
-    } else if (tagName === 'center') {
-      // Ignore — handled by layout
+      if (matchingIndex > 0) styleStack.splice(matchingIndex);
     } else if (tagName === 'bold') {
-      styleStack.push({ ...currentStyle(styleStack), bold: true });
+      styleStack.push({ ...currentStyle(styleStack), tag: tagName, bold: true });
     } else if (tagName === 'underline') {
-      styleStack.push({ ...currentStyle(styleStack), underline: true });
+      styleStack.push({ ...currentStyle(styleStack), tag: tagName, underline: true });
     } else if (tagName.endsWith('-fg')) {
       const color = tagName.slice(0, -3);
-      styleStack.push({ ...currentStyle(styleStack), color: mapColor(color) });
+      styleStack.push({ ...currentStyle(styleStack), tag: tagName, color: mapColor(color) });
+    } else if (tagName.endsWith('-bg')) {
+      const color = tagName.slice(0, -3);
+      styleStack.push({
+        ...currentStyle(styleStack),
+        tag: tagName,
+        backgroundColor: mapColor(color),
+      });
+    } else {
+      // No-op frames keep unsupported/structural tags balanced so their close
+      // tags cannot pop an unrelated foreground or emphasis style.
+      styleStack.push({ ...currentStyle(styleStack), tag: tagName });
     }
-    // Other tags (e.g. {white-bg}) are silently ignored
   }
 
   // Trailing text after last tag
@@ -89,12 +103,18 @@ function currentStyle(stack: StyleFrame[]): StyleFrame {
 }
 
 function renderSpan(text: string, style: StyleFrame, key: number): React.ReactNode {
-  const hasStyle = style.bold || style.underline || style.color;
+  const hasStyle = style.bold || style.underline || style.color || style.backgroundColor;
   if (!hasStyle) {
     return <Text key={key}>{text}</Text>;
   }
   return (
-    <Text key={key} bold={style.bold} underline={style.underline} color={style.color}>
+    <Text
+      key={key}
+      bold={style.bold}
+      underline={style.underline}
+      color={style.color}
+      backgroundColor={style.backgroundColor}
+    >
       {text}
     </Text>
   );

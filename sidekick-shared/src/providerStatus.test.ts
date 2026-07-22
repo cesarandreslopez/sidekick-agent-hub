@@ -10,6 +10,7 @@ describe('fetchProviderStatus', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -25,7 +26,10 @@ describe('fetchProviderStatus', () => {
     const result = await fetchProviderStatus();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith('https://status.claude.com/api/v2/status.json');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://status.claude.com/api/v2/status.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(result).toEqual({
       indicator: 'none',
       description: 'All Systems Operational',
@@ -76,8 +80,16 @@ describe('fetchProviderStatus', () => {
     const result = await fetchProviderStatus();
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockFetch).toHaveBeenNthCalledWith(1, 'https://status.claude.com/api/v2/status.json');
-    expect(mockFetch).toHaveBeenNthCalledWith(2, 'https://status.claude.com/api/v2/summary.json');
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://status.claude.com/api/v2/status.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://status.claude.com/api/v2/summary.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(result).toEqual({
       indicator: 'major',
       description: 'Major System Outage',
@@ -105,6 +117,20 @@ describe('fetchProviderStatus', () => {
     expect(result.affectedComponents).toEqual([]);
     expect(result.activeIncident).toBeNull();
     expect(result.updatedAt).toBeTruthy();
+  });
+
+  it('returns the fallback when a status request hangs', async () => {
+    vi.useFakeTimers();
+    mockFetch.mockImplementation((_url: string, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    });
+
+    const pending = fetchProviderStatus();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(pending).resolves.toMatchObject({ description: 'Status unavailable' });
   });
 
   it('returns graceful fallback when status.json returns non-ok', async () => {
@@ -144,6 +170,7 @@ describe('fetchOpenAIStatus', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -159,7 +186,10 @@ describe('fetchOpenAIStatus', () => {
     const result = await fetchOpenAIStatus();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith('https://status.openai.com/api/v2/status.json');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://status.openai.com/api/v2/status.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(result.indicator).toBe('none');
   });
 
@@ -193,8 +223,16 @@ describe('fetchOpenAIStatus', () => {
     const result = await fetchOpenAIStatus();
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockFetch).toHaveBeenNthCalledWith(1, 'https://status.openai.com/api/v2/status.json');
-    expect(mockFetch).toHaveBeenNthCalledWith(2, 'https://status.openai.com/api/v2/summary.json');
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://status.openai.com/api/v2/status.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://status.openai.com/api/v2/summary.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(result).toEqual({
       indicator: 'major',
       description: 'Elevated Error Rates',

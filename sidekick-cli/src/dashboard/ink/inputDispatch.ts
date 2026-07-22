@@ -21,6 +21,7 @@
 import type { Key } from 'ink';
 import type { Action, DashboardUIState, LayoutMode } from './dashboardReducer';
 import type { PanelAction, PanelItem, SidePanel } from '../panels/types';
+import { maxDetailScroll } from './detailScroll';
 
 /**
  * Keys panels are not allowed to bind: core navigation, quit, help, filter,
@@ -439,7 +440,7 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     if (input === 'G') {
       dispatch({
         type: 'SCROLL_DETAIL',
-        offset: Math.max(0, detailLineCount - detailViewportHeight),
+        offset: maxDetailScroll(detailLineCount, detailViewportHeight),
       });
       return;
     }

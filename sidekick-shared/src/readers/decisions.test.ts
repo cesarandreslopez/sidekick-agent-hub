@@ -70,4 +70,9 @@ describe('readDecisions', () => {
     vi.mocked(fs.promises.readFile).mockRejectedValue(new Error('ENOENT'));
     expect(await readDecisions('x')).toEqual([]);
   });
+
+  it('tolerates a schema-drifted decisions container', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify({ decisions: [] }));
+    await expect(readDecisions('drifted')).resolves.toEqual([]);
+  });
 });

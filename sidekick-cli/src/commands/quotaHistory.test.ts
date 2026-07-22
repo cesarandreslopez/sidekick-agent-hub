@@ -65,6 +65,19 @@ describe('renderProviderHeatmap', () => {
     expect(out).toMatch(/Peak.*0%/);
     expect(out).toMatch(/Samples 0/);
   });
+
+  it('keeps a full range aligned to its weekday rows', () => {
+    const cells = Array.from({ length: 14 }, (_, i) => ({
+      date: new Date(Date.UTC(2026, 6, 6 + i)).toISOString().slice(0, 10),
+      utilization: i === 7 ? 90 : 0,
+      unavailable: false,
+      samples: 1,
+    }));
+
+    const rows = renderProviderHeatmap('Claude', cells, 2).split('\n');
+    expect(rows.find((line) => line.startsWith('Mon'))).toContain('█');
+    expect(rows.find((line) => line.startsWith('Sun'))).not.toContain('█');
+  });
 });
 
 describe('quotaHistoryAction end-to-end', () => {

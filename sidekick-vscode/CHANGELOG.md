@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Session monitoring now accepts message-less summary/bookkeeping events from the shared observed-session pipeline without dropping unresolved user requests
+
 ## [0.23.0] - 2026-07-18
 
 ### Added

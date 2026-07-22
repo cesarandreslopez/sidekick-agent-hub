@@ -132,6 +132,8 @@ export class SqliteSessionWatcher implements SessionWatcher {
   private _isActive = false;
   private lastMessageTime = 0;
   private lastPartTime = 0;
+  private seenMessageVersions = new Map<string, string>();
+  private seenPartVersions = new Map<string, string>();
   private fsWatcher: fs.FSWatcher | null = null;
   private walWatcher: fs.FSWatcher | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -156,6 +158,8 @@ export class SqliteSessionWatcher implements SessionWatcher {
   seekTo(position: number): void {
     this.lastMessageTime = position;
     this.lastPartTime = position;
+    this.seenMessageVersions.clear();
+    this.seenPartVersions.clear();
   }
 
   /** Get the current cursor position (max timestamp seen). */
@@ -241,36 +245,56 @@ export class SqliteSessionWatcher implements SessionWatcher {
   }
 
   private skipToEnd(): void {
-    const messages = this.db.getMessagesForSession(this.sessionId);
-    const parts = this.db.getPartsForSession(this.sessionId);
-    if (messages.length > 0) {
-      this.lastMessageTime = Math.max(...messages.map((m) => m.time_created));
+    this.lastMessageTime = this.db.getLatestMessageTimeUpdated(this.sessionId);
+    this.lastPartTime = this.db.getLatestPartTimeUpdated(this.sessionId);
+    if (this.lastMessageTime > 0) {
+      for (const message of this.db.getMessagesNewerThan(
+        this.sessionId,
+        this.lastMessageTime - 1,
+      )) {
+        this.seenMessageVersions.set(message.id, `${message.time_updated}:${message.data}`);
+      }
     }
-    if (parts.length > 0) {
-      this.lastPartTime = Math.max(...parts.map((p) => p.time_created));
+    if (this.lastPartTime > 0) {
+      for (const part of this.db.getPartsNewerThan(this.sessionId, this.lastPartTime - 1)) {
+        this.seenPartVersions.set(part.id, `${part.time_updated}:${part.data}`);
+      }
     }
   }
 
   private pollNewData(): void {
     if (!this._isActive) return;
     try {
-      const messages = this.db.getMessagesForSession(this.sessionId);
-      const parts = this.db.getPartsForSession(this.sessionId);
+      // Query incrementally by update time. Subtracting one millisecond lets us
+      // see distinct rows committed at the cursor timestamp; version maps
+      // suppress rows whose id/data have already been emitted.
+      const messages = this.db.getMessagesNewerThan(
+        this.sessionId,
+        Math.max(-1, this.lastMessageTime - 1),
+      );
+      const parts = this.db.getPartsNewerThan(this.sessionId, Math.max(-1, this.lastPartTime - 1));
 
       // Emit new messages
-      const newMessages = messages.filter((m) => m.time_created > this.lastMessageTime);
+      const newMessages = messages.filter(
+        (message) =>
+          this.seenMessageVersions.get(message.id) !== `${message.time_updated}:${message.data}`,
+      );
       for (const msg of newMessages) {
         const events = normalizeMessage(msg);
         for (const e of events) this.callbacks.onEvent(e);
-        if (msg.time_created > this.lastMessageTime) this.lastMessageTime = msg.time_created;
+        this.seenMessageVersions.set(msg.id, `${msg.time_updated}:${msg.data}`);
+        if (msg.time_updated > this.lastMessageTime) this.lastMessageTime = msg.time_updated;
       }
 
       // Emit new parts
-      const newParts = parts.filter((p) => p.time_created > this.lastPartTime);
+      const newParts = parts.filter(
+        (part) => this.seenPartVersions.get(part.id) !== `${part.time_updated}:${part.data}`,
+      );
       for (const part of newParts) {
         const events = normalizePart(part);
         for (const e of events) this.callbacks.onEvent(e);
-        if (part.time_created > this.lastPartTime) this.lastPartTime = part.time_created;
+        this.seenPartVersions.set(part.id, `${part.time_updated}:${part.data}`);
+        if (part.time_updated > this.lastPartTime) this.lastPartTime = part.time_updated;
       }
     } catch (err) {
       this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));

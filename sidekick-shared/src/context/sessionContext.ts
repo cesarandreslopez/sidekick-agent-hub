@@ -184,6 +184,23 @@ export function buildSessionContextSnapshot(
     if (event.rateLimits) lastRateLimits = event.rateLimits;
   }
 
+  return assembleSessionContextSnapshot(
+    aggregator,
+    sourceState,
+    lastPermissionMode,
+    lastRateLimits,
+    options,
+  );
+}
+
+function assembleSessionContextSnapshot(
+  aggregator: EventAggregator,
+  sourceState: SourceExtractionState,
+  lastPermissionMode: PermissionMode | undefined,
+  lastRateLimits: SessionEvent['rateLimits'] | undefined,
+  options: BuildSessionContextSnapshotOptions,
+): SessionContextSnapshot {
+  const providerId = options.providerId;
   const metrics = aggregator.getMetrics();
   const model = options.model ?? metrics.currentModel ?? metrics.modelStats[0]?.model;
   const contextWindow =
@@ -237,27 +254,56 @@ export function buildSessionContextSnapshot(
 export function createSessionContextProjector(
   options: BuildSessionContextSnapshotOptions = {},
 ): SessionContextProjector {
-  let events: SessionEvent[] = [];
+  let aggregator = createProjectorAggregator(options);
+  let sourceState = createSourceExtractionState(options);
+  let lastPermissionMode: PermissionMode | undefined;
+  let lastRateLimits: SessionEvent['rateLimits'] | undefined;
+
+  const process = (event: SessionEvent): void => {
+    aggregator.processEvent(event);
+    extractSourcesFromEvent(event, sourceState);
+    if (event.permissionMode) lastPermissionMode = event.permissionMode;
+    if (event.rateLimits) lastRateLimits = event.rateLimits;
+  };
+
+  const snapshot = (): SessionContextSnapshot =>
+    assembleSessionContextSnapshot(
+      aggregator,
+      sourceState,
+      lastPermissionMode,
+      lastRateLimits,
+      options,
+    );
 
   return {
     processEvent(event: SessionEvent): SessionContextSnapshot {
-      events.push(event);
-      return buildSessionContextSnapshot(events, options);
+      process(event);
+      return snapshot();
     },
 
     processEvents(newEvents: readonly SessionEvent[]): SessionContextSnapshot {
-      events.push(...newEvents);
-      return buildSessionContextSnapshot(events, options);
+      for (const event of newEvents) process(event);
+      return snapshot();
     },
 
     getSnapshot(): SessionContextSnapshot {
-      return buildSessionContextSnapshot(events, options);
+      return snapshot();
     },
 
     reset(): void {
-      events = [];
+      aggregator = createProjectorAggregator(options);
+      sourceState = createSourceExtractionState(options);
+      lastPermissionMode = undefined;
+      lastRateLimits = undefined;
     },
   };
+}
+
+function createProjectorAggregator(options: BuildSessionContextSnapshotOptions): EventAggregator {
+  return new EventAggregator({
+    providerId: options.providerId,
+    computeContextSize: options.computeContextSize,
+  });
 }
 
 export function readSessionContextSnapshot(
@@ -348,7 +394,7 @@ function extractSourcesFromEvent(event: SessionEvent, state: SourceExtractionSta
         layer: 'summary',
         sourceType: 'summary',
         title: 'Context summary',
-        text: extractText(event.message.content) || 'Context compacted',
+        text: extractText(event.message?.content) || 'Context compacted',
       });
       break;
   }
@@ -601,7 +647,7 @@ function limitSources(
 
 function latestModel(events: readonly SessionEvent[]): string | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
-    const model = events[i].message.model;
+    const model = events[i].message?.model;
     if (model) return model;
   }
   return undefined;

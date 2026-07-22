@@ -16,8 +16,14 @@ import type { QuotaState } from '../../types/dashboard';
 import { getWorkspaceId } from '../../utils/workspaceId';
 
 export class CodexSessionProvider extends CodexProvider implements SessionProvider {
+  private lastQuotaFingerprint: string | null = null;
+  private lastQuota: QuotaState | null = null;
+
   getQuotaFromSession(): QuotaState | null {
-    const quota = quotaFromCodexRateLimits(this.getLastRateLimits());
+    const rateLimits = this.getLastRateLimits();
+    const fingerprint = JSON.stringify(rateLimits);
+    if (fingerprint === this.lastQuotaFingerprint && this.lastQuota) return this.lastQuota;
+    const quota = quotaFromCodexRateLimits(rateLimits);
     if (!quota) return null;
 
     // Self-heal the saved active pointer to the live login, so the snapshot/history
@@ -56,10 +62,12 @@ export class CodexSessionProvider extends CodexProvider implements SessionProvid
       }
     }
 
-    return {
+    this.lastQuotaFingerprint = fingerprint;
+    this.lastQuota = {
       ...quotaWithResetCredits,
       accountLabel: active?.label,
       accountDetail: active?.email,
     };
+    return this.lastQuota;
   }
 }

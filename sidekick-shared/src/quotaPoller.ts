@@ -136,10 +136,12 @@ export class QuotaPoller {
         this.consecutiveFailures = 0;
         this.notify(state);
       } else if (state.failureKind === 'auth') {
-        // Auth errors: stop polling, notify with error state
+        // Keep polling at the idle cadence so signing in again recovers
+        // without an extension/CLI restart.
         this.latest = state;
         this.notify(state);
-        this.stop();
+        this.consecutiveFailures = 0;
+        this.scheduleNext(this.idleIntervalMs);
         return;
       } else {
         // Transient error: increment backoff, use cached state
@@ -156,22 +158,31 @@ export class QuotaPoller {
           this.notify(state);
         }
       }
-    } catch {
+    } catch (error) {
       this.consecutiveFailures++;
+      const state: QuotaState = {
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 0, resetsAt: '' },
+        available: false,
+        error: error instanceof Error ? error.message : String(error),
+        failureKind: 'auth',
+      };
+      this.latest = state;
+      this.notify(state);
     }
 
     this.scheduleNext();
   }
 
-  private scheduleNext(): void {
+  private scheduleNext(overrideMs?: number): void {
     if (this.stopped) return;
 
     const baseInterval = this.isActive ? this.activeIntervalMs : this.idleIntervalMs;
     const backoff = Math.min(
       baseInterval * Math.pow(2, this.consecutiveFailures),
-      this.maxBackoffMs,
+      Math.max(this.maxBackoffMs, baseInterval),
     );
-    const delay = this.consecutiveFailures > 0 ? backoff : baseInterval;
+    const delay = overrideMs ?? (this.consecutiveFailures > 0 ? backoff : baseInterval);
 
     this.timer = setTimeout(() => void this.poll(), delay);
   }

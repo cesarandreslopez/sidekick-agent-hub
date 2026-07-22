@@ -13,6 +13,7 @@ import {
   fetchQuota,
   appendQuotaHistorySample,
   getActiveSavedAccount,
+  QuotaPoller,
 } from 'sidekick-shared';
 import type { QuotaState, QuotaWindow } from 'sidekick-shared';
 import { log } from './Logger';
@@ -41,15 +42,25 @@ export class QuotaService implements vscode.Disposable {
   private readonly _onQuotaUpdate = new vscode.EventEmitter<QuotaState>();
   private readonly _onQuotaError = new vscode.EventEmitter<string>();
   private _cachedQuota: QuotaState | null = null;
-  private _refreshInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly _poller: QuotaPoller;
+  private _refreshing = false;
   private readonly _disposables: vscode.Disposable[] = [];
-  private readonly REFRESH_INTERVAL_MS = 300_000;
 
   readonly onQuotaUpdate = this._onQuotaUpdate.event;
   readonly onQuotaError = this._onQuotaError.event;
 
   constructor() {
     this._disposables.push(this._onQuotaUpdate, this._onQuotaError);
+    this._poller = new QuotaPoller({
+      activeIntervalMs: 300_000,
+      idleIntervalMs: 300_000,
+      getAccessToken: async () => {
+        const creds = await readClaudeMaxCredentials();
+        if (!creds) throw new Error(NO_CREDENTIALS_ERROR);
+        return creds.accessToken;
+      },
+    });
+    this._disposables.push(this._poller.onUpdate((state) => this._handleQuotaState(state)));
     log('QuotaService initialized');
   }
 
@@ -67,8 +78,7 @@ export class QuotaService implements vscode.Disposable {
     const creds = await readClaudeMaxCredentials();
     if (!creds) {
       const state = this._unavailableState(NO_CREDENTIALS_ERROR);
-      this._cachedQuota = state;
-      this._onQuotaUpdate.fire(state);
+      this._handleQuotaState(state);
       return state;
     }
 
@@ -77,22 +87,40 @@ export class QuotaService implements vscode.Disposable {
     // Keep stale quota only for retryable failures.
     if (shouldKeepCachedQuota(state) && this._cachedQuota?.available) {
       log('Fetch failed, using cached quota');
-      return this._cachedQuota;
+      const cachedState: QuotaState = {
+        ...this._cachedQuota,
+        error: state.error,
+        failureKind: state.failureKind,
+        httpStatus: state.httpStatus,
+        retryAfterMs: state.retryAfterMs,
+        source: 'cache',
+        stale: true,
+      };
+      this._handleQuotaState(cachedState);
+      return cachedState;
     }
 
-    this._cachedQuota = state;
-    this._onQuotaUpdate.fire(state);
-    this._recordHistorySample(state);
-
-    if (!state.available && state.error) {
-      this._onQuotaError.fire(state.error);
-    } else if (state.available) {
-      log(
-        `Quota fetched: 5h=${state.fiveHour.utilization.toFixed(1)}%${state.projectedFiveHour !== undefined ? ` (proj: ${state.projectedFiveHour.toFixed(0)}%)` : ''}, 7d=${state.sevenDay.utilization.toFixed(1)}%${state.projectedSevenDay !== undefined ? ` (proj: ${state.projectedSevenDay.toFixed(0)}%)` : ''}`,
-      );
-    }
+    this._handleQuotaState(state);
 
     return state;
+  }
+
+  private _handleQuotaState(state: QuotaState): void {
+    const normalizedState: QuotaState =
+      state.available && state.error
+        ? { ...state, source: state.source ?? 'cache', stale: true }
+        : state;
+    this._cachedQuota = normalizedState;
+    this._onQuotaUpdate.fire(normalizedState);
+    this._recordHistorySample(normalizedState);
+
+    if (normalizedState.error) {
+      this._onQuotaError.fire(normalizedState.error);
+    } else if (normalizedState.available) {
+      log(
+        `Quota fetched: 5h=${normalizedState.fiveHour.utilization.toFixed(1)}%${normalizedState.projectedFiveHour !== undefined ? ` (proj: ${normalizedState.projectedFiveHour.toFixed(0)}%)` : ''}, 7d=${normalizedState.sevenDay.utilization.toFixed(1)}%${normalizedState.projectedSevenDay !== undefined ? ` (proj: ${normalizedState.projectedSevenDay.toFixed(0)}%)` : ''}`,
+      );
+    }
   }
 
   getCachedQuota(): QuotaState | null {
@@ -100,16 +128,16 @@ export class QuotaService implements vscode.Disposable {
   }
 
   startRefresh(): void {
-    if (this._refreshInterval) return;
-    this.fetchQuota();
-    this._refreshInterval = setInterval(() => this.fetchQuota(), this.REFRESH_INTERVAL_MS);
+    if (this._refreshing) return;
+    this._refreshing = true;
+    this._poller.start();
     log('Quota refresh started');
   }
 
   stopRefresh(): void {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = null;
+    if (this._refreshing) {
+      this._poller.stop();
+      this._refreshing = false;
       log('Quota refresh stopped');
     }
   }
@@ -142,6 +170,7 @@ export class QuotaService implements vscode.Disposable {
 
   dispose(): void {
     this.stopRefresh();
+    this._poller.stop();
     this._disposables.forEach((d) => d.dispose());
     log('QuotaService disposed');
   }

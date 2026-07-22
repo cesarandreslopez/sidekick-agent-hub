@@ -54,7 +54,7 @@ function fallbackState(): ProviderStatusState {
  */
 async function fetchStatusPage(baseUrl: string): Promise<ProviderStatusState> {
   try {
-    const statusRes = await fetch(`${baseUrl}/api/v2/status.json`);
+    const statusRes = await fetchWithTimeout(`${baseUrl}/api/v2/status.json`);
     if (!statusRes.ok) return fallbackState();
 
     const statusData: StatusResponse = await statusRes.json();
@@ -68,7 +68,7 @@ async function fetchStatusPage(baseUrl: string): Promise<ProviderStatusState> {
     }
 
     // Degraded — fetch summary for components + incidents
-    const summaryRes = await fetch(`${baseUrl}/api/v2/summary.json`);
+    const summaryRes = await fetchWithTimeout(`${baseUrl}/api/v2/summary.json`);
     if (!summaryRes.ok) {
       return { indicator, description, affectedComponents: [], activeIncident: null, updatedAt };
     }
@@ -97,6 +97,17 @@ async function fetchStatusPage(baseUrl: string): Promise<ProviderStatusState> {
     return { indicator, description, affectedComponents, activeIncident, updatedAt };
   } catch {
     return fallbackState();
+  }
+}
+
+async function fetchWithTimeout(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  timeout.unref();
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
-import { readPlans, getLatestPlan } from './plans';
+import { readPlans, getLatestPlan, writePlans } from './plans';
+
+const mockAtomicWriteJson = vi.hoisted(() => vi.fn());
+
+vi.mock('../writers/atomic', () => ({
+  atomicWriteJson: (...args: unknown[]) => mockAtomicWriteJson(...args),
+}));
 
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
@@ -59,6 +65,8 @@ const mockStore = {
 };
 
 beforeEach(() => {
+  mockAtomicWriteJson.mockReset();
+  mockAtomicWriteJson.mockResolvedValue(undefined);
   vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify(mockStore));
 });
 
@@ -109,5 +117,15 @@ describe('getLatestPlan', () => {
     vi.mocked(fs.promises.readFile).mockRejectedValue(new Error('ENOENT'));
     const plan = await getLatestPlan('nonexistent');
     expect(plan).toBeNull();
+  });
+});
+
+describe('writePlans', () => {
+  it('persists through the shared atomic writer', async () => {
+    await writePlans('test-slug', mockStore.plans as never);
+
+    expect(mockAtomicWriteJson).toHaveBeenCalledOnce();
+    expect(mockAtomicWriteJson.mock.calls[0][1]).toMatchObject({ schemaVersion: 1 });
+    expect(fs.promises.writeFile).not.toHaveBeenCalled();
   });
 });

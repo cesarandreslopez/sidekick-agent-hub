@@ -25,23 +25,27 @@ export async function readNotes(
   if (!store) return [];
 
   let notes: KnowledgeNote[] = [];
+  const notesByFile =
+    store.notesByFile && typeof store.notesByFile === 'object' && !Array.isArray(store.notesByFile)
+      ? store.notesByFile
+      : {};
 
   if (opts?.file) {
     // Normalize file path for comparison
     const normalizedFile = opts.file.replace(/\\/g, '/');
-    for (const [filePath, fileNotes] of Object.entries(store.notesByFile)) {
+    for (const [filePath, fileNotes] of Object.entries(notesByFile)) {
       const normalizedKey = filePath.replace(/\\/g, '/');
       if (
         normalizedKey === normalizedFile ||
         normalizedKey.endsWith('/' + normalizedFile) ||
         normalizedFile.endsWith('/' + normalizedKey)
       ) {
-        notes.push(...fileNotes);
+        if (Array.isArray(fileNotes)) notes.push(...fileNotes);
       }
     }
   } else {
-    for (const fileNotes of Object.values(store.notesByFile)) {
-      notes.push(...fileNotes);
+    for (const fileNotes of Object.values(notesByFile)) {
+      if (Array.isArray(fileNotes)) notes.push(...fileNotes);
     }
   }
 

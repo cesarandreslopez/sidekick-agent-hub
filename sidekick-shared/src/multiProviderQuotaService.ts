@@ -219,7 +219,7 @@ export class MultiProviderQuotaService implements Disposable {
         providerId: 'claude-code',
       });
       this.lastEmittedClaudeState = nextState;
-      if (nextState.available) {
+      if (nextState.available && nextState.stale !== true) {
         this.lastSuccessfulClaudeState = nextState;
       }
       this.quotaByProvider = {
@@ -387,7 +387,17 @@ export class MultiProviderQuotaService implements Disposable {
     }
 
     this.cachedFallbackActive = hasVisibleCachedSuccess;
-    if (!hasVisibleCachedSuccess) {
+    if (hasVisibleCachedSuccess) {
+      this.emitClaudeState({
+        ...this.lastSuccessfulClaudeState!,
+        error: state.error,
+        failureKind: state.failureKind,
+        httpStatus: state.httpStatus,
+        retryAfterMs: state.retryAfterMs,
+        source: 'cache',
+        stale: true,
+      });
+    } else {
       this.emitClaudeState(state);
     }
   }

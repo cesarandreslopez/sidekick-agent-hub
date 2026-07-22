@@ -82,6 +82,84 @@ function makeSessionMonitor() {
 }
 
 describe('DashboardViewProvider quota UI', () => {
+  it('handles quota history, context health, and truncations in the loaded inline script', () => {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    const webview = {
+      cspSource: 'vscode-webview:',
+      asWebviewUri: (uri: { fsPath: string }) => `vscode-resource:${uri.fsPath}`,
+    };
+    const html = (
+      provider as unknown as { _getHtmlForWebview(input: typeof webview): string }
+    )._getHtmlForWebview(webview);
+
+    expect(html).toContain("case 'updateQuotaHistory'");
+    expect(html).toContain("case 'updateContextHealth'");
+    expect(html).toContain("case 'updateTruncations'");
+    expect(html).toContain('function renderQuotaHistory');
+    expect(html).toContain('function updateContextHealthDisplay');
+    expect(html).toContain('function updateTruncationDisplay');
+    expect(html).toContain('(t.totalCalls || 0)');
+    provider.dispose();
+  });
+
+  it('sends only the stats payload from the token hot-path state sender', () => {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    const postMessage = vi.fn();
+    (
+      provider as unknown as {
+        _view: { webview: { postMessage: typeof postMessage } };
+        _sendStateToWebview(): void;
+      }
+    )._view = { webview: { postMessage } };
+
+    (
+      provider as unknown as {
+        _sendStateToWebview(): void;
+      }
+    )._sendStateToWebview();
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'updateStats' }));
+    provider.dispose();
+  });
+
+  it('drops the resolved view and its bindings when VS Code disposes it', () => {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    let fireDispose: (() => void) | undefined;
+    const view = {
+      visible: true,
+      webview: {
+        cspSource: 'vscode-webview:',
+        options: {},
+        html: '',
+        asWebviewUri: (uri: { fsPath: string }) => `vscode-resource:${uri.fsPath}`,
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(() => disposable()),
+      },
+      onDidChangeVisibility: vi.fn(() => disposable()),
+      onDidDispose: vi.fn((listener: () => void) => {
+        fireDispose = listener;
+        return disposable();
+      }),
+    };
+
+    provider.resolveWebviewView(view as never, {} as never, {} as never);
+    expect((provider as unknown as { _view?: unknown })._view).toBe(view);
+
+    fireDispose?.();
+    expect((provider as unknown as { _view?: unknown })._view).toBeUndefined();
+    provider.dispose();
+  });
+
   it('includes Codex reset-credit rendering in the quota panel', () => {
     const provider = new DashboardViewProvider(
       { fsPath: '/tmp/sidekick-extension' } as never,
@@ -102,6 +180,49 @@ describe('DashboardViewProvider quota UI', () => {
     expect(html).toContain('function renderResetCredits');
     expect(html).toContain('quota.resetCredits');
 
+    provider.dispose();
+  });
+
+  it('keeps session and remote strings out of executable HTML sinks', () => {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    const webview = {
+      cspSource: 'vscode-webview:',
+      asWebviewUri: (uri: { fsPath: string }) => `vscode-resource:${uri.fsPath}`,
+    };
+    const html = (
+      provider as unknown as {
+        _getHtmlForWebview(webview: typeof webview): string;
+      }
+    )._getHtmlForWebview(webview);
+
+    expect(html).toContain('function setTimelineDescription');
+    expect(html).toContain("descEl.textContent = text || ''");
+    expect(html).not.toContain('descEl.innerHTML = truncated');
+    expect(html).not.toContain('descEl.innerHTML = full');
+    expect(html).toContain("escapeHtml(status.label || 'Peak Hours')");
+    expect(html).toContain('escapeHtml(status.peakHoursDescription)');
+    expect(html).toContain('escapeHtml(step.description)');
+    expect(html).toContain('escapeHtml(step.errorMessage.substring(0, 100))');
+    expect(html).toContain('escapeHtml(rp.title)');
+
+    provider.dispose();
+  });
+
+  it('escapes script-closing sequences in embedded JSON', () => {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+
+    const encoded = (
+      provider as unknown as { _safeJsonForScript(data: unknown): string }
+    )._safeJsonForScript({ title: '</script><script>alert(1)</script>' });
+
+    expect(encoded).not.toContain('</script>');
+    expect(encoded).toContain('\\u003c/script\\u003e');
     provider.dispose();
   });
 });

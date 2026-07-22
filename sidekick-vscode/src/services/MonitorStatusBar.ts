@@ -56,6 +56,7 @@ export class MonitorStatusBar implements vscode.Disposable {
   /** Update throttling */
   private lastUpdateTime: number = 0;
   private readonly UPDATE_THROTTLE_MS = 500;
+  private pendingRender: ReturnType<typeof setTimeout> | undefined;
 
   /** Cached peak-hours state (null = not peak, not applicable, or unavailable) */
   private peakHours: PeakHoursState | null = null;
@@ -116,6 +117,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   private handleReplayState(replaying: boolean): void {
     if (replaying) {
+      this.clearPendingRender();
       this.updateLoading();
     } else {
       this.syncFromMonitor();
@@ -129,6 +131,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    * Resets state.
    */
   private handleSessionStart(): void {
+    this.clearPendingRender();
     this.syncFromMonitor();
     this.updateDisplay();
   }
@@ -139,6 +142,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    * Updates display to show no active session.
    */
   private handleSessionEnd(): void {
+    this.clearPendingRender();
     this.updateNoSession();
   }
 
@@ -155,9 +159,18 @@ export class MonitorStatusBar implements vscode.Disposable {
 
     // Throttle updates
     const now = Date.now();
-    if (now - this.lastUpdateTime < this.UPDATE_THROTTLE_MS) {
+    const elapsed = now - this.lastUpdateTime;
+    if (elapsed < this.UPDATE_THROTTLE_MS) {
+      if (!this.pendingRender) {
+        this.pendingRender = setTimeout(() => {
+          this.pendingRender = undefined;
+          this.lastUpdateTime = Date.now();
+          this.updateDisplay();
+        }, this.UPDATE_THROTTLE_MS - elapsed);
+      }
       return;
     }
+    this.clearPendingRender();
     this.lastUpdateTime = now;
 
     this.updateDisplay();
@@ -310,10 +323,18 @@ export class MonitorStatusBar implements vscode.Disposable {
     this.statusBarItem.backgroundColor = undefined;
   }
 
+  private clearPendingRender(): void {
+    if (this.pendingRender) {
+      clearTimeout(this.pendingRender);
+      this.pendingRender = undefined;
+    }
+  }
+
   /**
    * Disposes the status bar and cleans up resources.
    */
   dispose(): void {
+    this.clearPendingRender();
     this.statusBarItem.dispose();
     this.disposables.forEach((d) => d.dispose());
   }

@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockReadClaudeMaxCredentials, mockFetchQuota, mockLog } = vi.hoisted(() => ({
-  mockReadClaudeMaxCredentials: vi.fn(),
-  mockFetchQuota: vi.fn(),
-  mockLog: vi.fn(),
-}));
+const { mockReadClaudeMaxCredentials, mockFetchQuota, mockLog, mockPollerStart, mockPollerStop } =
+  vi.hoisted(() => ({
+    mockReadClaudeMaxCredentials: vi.fn(),
+    mockFetchQuota: vi.fn(),
+    mockLog: vi.fn(),
+    mockPollerStart: vi.fn(),
+    mockPollerStop: vi.fn(),
+  }));
 
 vi.mock('vscode', () => ({
   default: {},
@@ -29,6 +32,13 @@ vi.mock('vscode', () => ({
 vi.mock('sidekick-shared', () => ({
   readClaudeMaxCredentials: (...args: unknown[]) => mockReadClaudeMaxCredentials(...args),
   fetchQuota: (...args: unknown[]) => mockFetchQuota(...args),
+  QuotaPoller: class {
+    start = mockPollerStart;
+    stop = mockPollerStop;
+    onUpdate() {
+      return { dispose: vi.fn() };
+    }
+  },
 }));
 
 vi.mock('./Logger', () => ({
@@ -86,8 +96,11 @@ describe('QuotaService', () => {
     expect(result).toMatchObject({
       available: true,
       fiveHour: { utilization: 10, resetsAt: '2026-03-12T14:00:00Z' },
+      source: 'cache',
+      stale: true,
+      error: 'API error: 503',
     });
-    expect(updates).toHaveLength(1);
+    expect(updates).toHaveLength(2);
   });
 
   it('replaces cached quota on auth failures and emits the error', async () => {
@@ -152,5 +165,16 @@ describe('QuotaService', () => {
       failureKind: 'unknown',
       httpStatus: 403,
     });
+  });
+
+  it('delegates refresh lifecycle to the shared poller', () => {
+    const service = new QuotaService();
+
+    service.startRefresh();
+    service.startRefresh();
+    service.stopRefresh();
+
+    expect(mockPollerStart).toHaveBeenCalledTimes(1);
+    expect(mockPollerStop).toHaveBeenCalledTimes(1);
   });
 });

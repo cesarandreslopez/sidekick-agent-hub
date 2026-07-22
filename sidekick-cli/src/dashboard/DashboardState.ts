@@ -156,6 +156,8 @@ export interface DashboardMetrics {
   toolStats: ToolStats[];
   modelStats: ModelStats[];
   timeline: FollowEvent[];
+  /** Monotonic count of real and synthetic timeline appends. */
+  timelineAppendCount: number;
   tasks: TaskItem[];
   fileTouches: FileTouch[];
   subagents: SubagentInfo[];
@@ -251,6 +253,7 @@ export class DashboardState {
 
   // Track previous compaction count to detect new compactions for timeline injection
   private _lastKnownCompactionCount = 0;
+  private _timelineAppendCount = 0;
 
   // CLI-specific: per-task tool call counts (aggregator doesn't track this)
   private _taskToolCallCounts = new Map<string, number>();
@@ -262,6 +265,7 @@ export class DashboardState {
   reset(): void {
     this._aggregator.reset();
     this._timeline = [];
+    this._timelineAppendCount = 0;
     this._fileMap.clear();
     this._urlMap.clear();
     this._dirMap.clear();
@@ -300,12 +304,16 @@ export class DashboardState {
     }
 
     // Restore aggregator state
-    this._aggregator.restore(snapshot.aggregator);
+    if (!this._aggregator.restore(snapshot.aggregator)) {
+      deleteSnapshot(sessionId);
+      return null;
+    }
 
     // Restore CLI-specific state
     const c = snapshot.consumer;
     if (Array.isArray(c.timeline)) {
       this._timeline = c.timeline as FollowEvent[];
+      this._timelineAppendCount = this._timeline.length;
       // Re-enrich events restored from older snapshots.
       // Old snapshots may contain TimelineEvent objects (with `description` and
       // `metadata.toolName`) mixed with proper FollowEvents (`summary`, `toolName`).
@@ -456,6 +464,7 @@ export class DashboardState {
               ? `Context compacted: ${fmtTokens(ce.contextBefore)} \u2192 ${fmtTokens(ce.contextAfter)} (${fmtTokens(ce.tokensReclaimed)} reclaimed)`
               : 'Context compacted',
         });
+        this._timelineAppendCount++;
         if (this._timeline.length > TIMELINE_RING_SIZE) {
           this._timeline.shift();
         }
@@ -465,6 +474,7 @@ export class DashboardState {
 
     // Timeline ring buffer (FollowEvent for display)
     this._timeline.push(event);
+    this._timelineAppendCount++;
     if (this._timeline.length > TIMELINE_RING_SIZE) {
       this._timeline.shift();
     }
@@ -610,6 +620,7 @@ export class DashboardState {
       toolStats,
       modelStats,
       timeline: [...this._timeline],
+      timelineAppendCount: this._timelineAppendCount,
       tasks,
       fileTouches: Array.from(this._fileMap.values()).sort(
         (a, b) => b.reads + b.writes + b.edits - (a.reads + a.writes + a.edits),

@@ -40,7 +40,7 @@ describe('Date filter getItemTimestamp on wrapped panel items', () => {
     ).toBe(MS);
     expect(
       panel.getItemTimestamp(item({ type: 'historical', session: { date: '2026-06-15' } })),
-    ).toBe(Date.parse('2026-06-15'));
+    ).toBe(new Date(2026, 5, 15).getTime());
     expect(panel.getItemTimestamp(item({ type: 'active', metrics: {} }))).toBeNull();
     panel.dispose?.();
   });

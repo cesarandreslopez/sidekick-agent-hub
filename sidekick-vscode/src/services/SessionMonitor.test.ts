@@ -91,6 +91,73 @@ describe('SessionMonitor', () => {
     mockExistsSync.mockReturnValue(false);
   });
 
+  it('deduplicates ID-less events by content instead of timestamp alone', () => {
+    const monitor = new SessionMonitor(createProvider() as never);
+    const hash = (
+      monitor as unknown as { generateEventHash(event: unknown): string }
+    ).generateEventHash.bind(monitor);
+
+    const first = hash({
+      type: 'user',
+      timestamp: '2026-07-21T12:00:00.000Z',
+      message: { role: 'user', content: 'first' },
+    });
+    const second = hash({
+      type: 'user',
+      timestamp: '2026-07-21T12:00:00.000Z',
+      message: { role: 'user', content: 'second' },
+    });
+
+    expect(first).not.toBe(second);
+    monitor.dispose();
+  });
+
+  it('retains a bounded tool-call window with bounded payload strings', () => {
+    const monitor = new SessionMonitor(createProvider() as never);
+    const target = monitor as unknown as {
+      extractToolUsesFromContent(content: unknown, timestamp: string): void;
+    };
+
+    for (let index = 0; index < 501; index++) {
+      target.extractToolUsesFromContent(
+        [
+          {
+            type: 'tool_use',
+            id: `tool-${index}`,
+            name: 'Read',
+            input: { file_path: `/tmp/${index}`, payload: 'x'.repeat(20_000) },
+          },
+        ],
+        '2026-07-21T12:00:00.000Z',
+      );
+    }
+
+    const calls = monitor.getStats().toolCalls;
+    expect(calls).toHaveLength(500);
+    expect(calls[0].toolUseId).toBe('tool-1');
+    expect(String(calls.at(-1)?.input.payload).length).toBeLessThan(8_100);
+    monitor.dispose();
+  });
+
+  it('does not auto-switch an inactive OpenCode session while pinned', () => {
+    const provider = createProvider({ findActiveSession: vi.fn(() => '/tmp/new-session.json') });
+    const monitor = new SessionMonitor(provider as never);
+    const target = monitor as unknown as {
+      sessionPath: string;
+      workspacePath: string;
+      _isPinned: boolean;
+      _checkForNewerSession(): void;
+    };
+    target.sessionPath = '/tmp/current-session.json';
+    target.workspacePath = '/workspace';
+    target._isPinned = true;
+
+    target._checkForNewerSession();
+
+    expect(provider.findActiveSession).not.toHaveBeenCalled();
+    monitor.dispose();
+  });
+
   it('accepts valid synthetic directories and enters discovery mode when empty', async () => {
     const provider = createProvider({
       canMonitorDirectory: vi.fn(() => true),

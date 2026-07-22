@@ -4,7 +4,7 @@
  * Falls back to an empty map in non-git dirs or on errors.
  */
 
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
 import * as path from 'path';
 
 export interface DiffStat {
@@ -16,10 +16,10 @@ const CACHE_TTL_MS = 5_000;
 
 export class GitDiffCache {
   private workspacePath: string;
-  private cache: Map<string, DiffStat> | null = null;
+  private cache = new Map<string, DiffStat>();
   private cacheTime = 0;
   private repoRoot: string | null = null;
-  private repoRootResolved = false;
+  private refreshInFlight = false;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -27,58 +27,60 @@ export class GitDiffCache {
 
   getStats(): Map<string, DiffStat> {
     const now = Date.now();
-    if (this.cache && now - this.cacheTime < CACHE_TTL_MS) {
-      return this.cache;
-    }
-
-    this.cache = this.fetchStats();
-    this.cacheTime = now;
+    if (now - this.cacheTime >= CACHE_TTL_MS) this.refreshAsync();
     return this.cache;
   }
 
-  /** Resolve the git repo root (cached). Returns null if not a git repo. */
+  /** Return the asynchronously resolved git repo root, if available. */
   getRepoRoot(): string | null {
-    if (this.repoRootResolved) return this.repoRoot;
-    this.repoRootResolved = true;
-    try {
-      this.repoRoot = execSync('git rev-parse --show-toplevel', {
-        cwd: this.workspacePath,
-        timeout: 3_000,
-        encoding: 'utf-8',
-      }).trim();
-    } catch {
-      this.repoRoot = null;
-    }
     return this.repoRoot;
   }
 
-  private fetchStats(): Map<string, DiffStat> {
-    const stats = new Map<string, DiffStat>();
-    const root = this.getRepoRoot();
-    if (!root) return stats;
-
-    try {
-      // Include both staged and unstaged changes
-      const output = execSync('git diff HEAD --numstat', {
+  private refreshAsync(): void {
+    if (this.refreshInFlight) return;
+    this.refreshInFlight = true;
+    execFile(
+      'git',
+      ['rev-parse', '--show-toplevel'],
+      {
         cwd: this.workspacePath,
         timeout: 3_000,
         encoding: 'utf-8',
-      });
+      },
+      (rootError, stdout) => {
+        if (rootError) {
+          this.finishRefresh(new Map());
+          return;
+        }
+        this.repoRoot = String(stdout).trim();
+        execFile(
+          'git',
+          ['diff', 'HEAD', '--numstat'],
+          { cwd: this.workspacePath, timeout: 3_000, encoding: 'utf-8' },
+          (diffError, output) => {
+            const stats = new Map<string, DiffStat>();
+            if (!diffError) {
+              for (const line of String(output).split('\n')) {
+                if (!line.trim()) continue;
+                const [add, del, file] = line.split('\t');
+                if (!file) continue;
+                stats.set(file, {
+                  additions: add === '-' ? 0 : parseInt(add, 10) || 0,
+                  deletions: del === '-' ? 0 : parseInt(del, 10) || 0,
+                });
+              }
+            }
+            this.finishRefresh(stats);
+          },
+        );
+      },
+    );
+  }
 
-      for (const line of output.split('\n')) {
-        if (!line.trim()) continue;
-        const [add, del, file] = line.split('\t');
-        if (!file) continue;
-        // Binary files show '-' for add/del
-        const additions = add === '-' ? 0 : parseInt(add, 10) || 0;
-        const deletions = del === '-' ? 0 : parseInt(del, 10) || 0;
-        stats.set(file, { additions, deletions });
-      }
-    } catch {
-      // git command failed — return empty stats
-    }
-
-    return stats;
+  private finishRefresh(stats: Map<string, DiffStat>): void {
+    this.cache = stats;
+    this.cacheTime = Date.now();
+    this.refreshInFlight = false;
   }
 
   /**

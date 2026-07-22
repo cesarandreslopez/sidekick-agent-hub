@@ -69,6 +69,17 @@ describe('CompletionCache', () => {
       expect(cache.get(b)).toBe('powerful');
     });
 
+    it('distinguishes single-line and multiline completion modes', () => {
+      const singleLine = makeContext({ multiline: false });
+      const multiline = makeContext({ multiline: true });
+
+      cache.set(singleLine, 'single');
+      cache.set(multiline, 'multi');
+
+      expect(cache.get(singleLine)).toBe('single');
+      expect(cache.get(multiline)).toBe('multi');
+    });
+
     it('distinguishes contexts by prefix content', () => {
       const a = makeContext({ prefix: 'function foo() {' });
       const b = makeContext({ prefix: 'function bar() {' });

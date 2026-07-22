@@ -223,6 +223,12 @@ export class NotificationTriggerService implements vscode.Disposable {
     return config.get<number>('tokenThreshold', 500000);
   }
 
+  private isNotificationsEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration('sidekick.notifications')
+      .get<boolean>('enabled', true);
+  }
+
   /**
    * Checks if a trigger is currently snoozed via the "Snooze 1h" button.
    */
@@ -254,6 +260,7 @@ export class NotificationTriggerService implements vscode.Disposable {
    */
   private handleCycleDetected(cycle: { description: string; affectedFiles: string[] }): void {
     if (this.sessionMonitor.isReplaying) return;
+    if (!this.isNotificationsEnabled()) return;
     const config = vscode.workspace.getConfiguration('sidekick.notifications');
     if (!config.get<boolean>('triggers.cycle-detected', true)) return;
     const files =
@@ -508,6 +515,7 @@ export class NotificationTriggerService implements vscode.Disposable {
    */
   private handleTokenUsage(_usage: { inputTokens: number; outputTokens: number }): void {
     if (this.sessionMonitor.isReplaying) return;
+    if (!this.isNotificationsEnabled()) return;
     if (this.tokenThreshold <= 0) return;
 
     const stats = this.sessionMonitor.getStats();

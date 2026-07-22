@@ -275,6 +275,7 @@ export interface TimelineEvent {
   metadata?: {
     model?: string;
     toolName?: string;
+    toolUseId?: string;
     isError?: boolean;
     tokenCount?: number;
     fullText?: string;

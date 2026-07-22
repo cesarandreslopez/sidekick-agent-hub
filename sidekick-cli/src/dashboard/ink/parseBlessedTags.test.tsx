@@ -98,6 +98,20 @@ describe('parseBlessedTags', () => {
     const s = serialize(result);
     expect(s).toContain('underline=true');
   });
+
+  it('renders background highlights without dropping the surrounding color', () => {
+    const result = parseBlessedTags(
+      '{cyan-fg}foo {blue-bg}{white-fg}bar{/white-fg}{/blue-bg} baz{/cyan-fg}',
+    );
+    const s = serialize(result);
+    expect(s).toContain('backgroundColor="blue"');
+    expect(s).toMatch(/color="cyan"[^>]*> baz/);
+  });
+
+  it('ignores unmatched close tags instead of popping a live style', () => {
+    const s = serialize(parseBlessedTags('{cyan-fg}before{/missing} after{/cyan-fg}'));
+    expect(s).toMatch(/color="cyan"[^>]*> after/);
+  });
 });
 
 describe('parseBlessedLines', () => {

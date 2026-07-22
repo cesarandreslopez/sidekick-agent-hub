@@ -372,6 +372,7 @@ export async function spawnAccountLogin(
 
   let childExited = false;
   let childExitCode: number | null = null;
+  const childState: { spawnError?: Error } = {};
   const timeoutMs = opts.timeoutMs ?? 180_000;
   const deadline = Date.now() + timeoutMs;
 
@@ -389,6 +390,10 @@ export async function spawnAccountLogin(
     childExited = true;
     childExitCode = code;
   });
+  child.on('error', (error) => {
+    childExited = true;
+    childState.spawnError = error;
+  });
 
   while (true) {
     if (opts.signal?.aborted) {
@@ -403,6 +408,11 @@ export async function spawnAccountLogin(
     }
 
     if (childExited) {
+      if (childState.spawnError) {
+        const error = `Could not spawn account login: ${childState.spawnError.message}`;
+        emitStatus(opts, { state: 'failed', error });
+        return { success: false, error };
+      }
       const finalStatus = emitStatus(opts, getAccountLoginStatus(provider, begin.loginId));
       if (finalStatus.state === 'authenticated') {
         return finalizeAccountLogin(provider, begin.loginId, { activate: opts.activate ?? true });

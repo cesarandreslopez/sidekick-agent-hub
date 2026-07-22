@@ -3,11 +3,11 @@
  * parsed mouse events via a callback prop. No context — just stdin parsing.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useInput } from 'ink';
 import { enableMouse, disableMouse } from './mouseProtocol';
-import { parseMouseEvent } from './parseMouseEvent';
 import type { TerminalMouseEvent } from './parseMouseEvent';
+import { createMouseDataHandler } from './mouseDataHandler';
 
 interface MouseProviderProps {
   onMouse: (event: TerminalMouseEvent) => void;
@@ -30,16 +30,14 @@ export function MouseProvider({
   enabled = true,
   children,
 }: MouseProviderProps): React.ReactElement {
+  const onMouseRef = useRef(onMouse);
+  onMouseRef.current = onMouse;
+
   useEffect(() => {
     if (!enabled) return;
     enableMouse();
 
-    const handler = (data: Buffer) => {
-      const event = parseMouseEvent(data);
-      if (event) {
-        onMouse(event);
-      }
-    };
+    const handler = createMouseDataHandler(onMouseRef);
 
     process.stdin.on('data', handler);
 
@@ -52,7 +50,7 @@ export function MouseProvider({
       process.removeListener('exit', exitHandler);
       disableMouse();
     };
-  }, [enabled, onMouse]);
+  }, [enabled]);
 
   return (
     <>

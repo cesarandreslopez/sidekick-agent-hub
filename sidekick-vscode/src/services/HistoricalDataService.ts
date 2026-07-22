@@ -18,6 +18,7 @@ import {
   HourlyData,
   MonthlyData,
   SessionSummary,
+  SessionHistoryRecord,
   ModelUsageRecord,
   ToolUsageRecord,
   TokenTotals,
@@ -29,6 +30,13 @@ import {
 import { PersistenceService, resolveSidekickDataPath } from './PersistenceService';
 import { log } from './Logger';
 import { calculateQualityTrend } from 'sidekick-shared';
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 /**
  * Service for persisting and aggregating historical session data.
@@ -75,8 +83,13 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
    * @param summary - Session summary from SessionMonitor.getSessionSummary()
    */
   saveSessionSummary(summary: SessionSummary): void {
-    const date = summary.startTime.split('T')[0]; // YYYY-MM-DD
+    const date = formatLocalDate(new Date(summary.startTime));
     const month = date.substring(0, 7); // YYYY-MM
+
+    const previous = (this.store.sessions ?? []).find(
+      (session) => session.sessionId === summary.sessionId,
+    );
+    if (previous) this.removeSessionSummary(previous);
 
     // Update daily data
     this.updateDailyData(date, summary);
@@ -99,6 +112,9 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
       tokens: { ...summary.tokens },
       totalCost: summary.totalCost,
       messageCount: summary.messageCount,
+      modelUsage: summary.modelUsage.map((usage) => ({ ...usage })),
+      toolUsage: summary.toolUsage.map((usage) => ({ ...usage })),
+      unpricedModelIds: summary.unpricedModelIds ? [...summary.unpricedModelIds] : undefined,
       qualityScore: summary.qualityScore ?? 0,
       qualityFactors: summary.qualityFactors ?? [],
       additions: summary.additions ?? 0,
@@ -110,9 +126,122 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
       record,
     ].slice(-HISTORICAL_SESSION_RETENTION_LIMIT);
 
+    this.refreshAllTimeDateRange();
+
     this.markDirty();
 
     log(`Saved session ${summary.sessionId.slice(0, 8)} to historical data (${date})`);
+  }
+
+  /** Removes the last contribution for a session before replacing it. */
+  private removeSessionSummary(record: SessionHistoryRecord): void {
+    const summary: SessionSummary = {
+      sessionId: record.sessionId,
+      startTime: record.startTime,
+      endTime: record.endTime,
+      tokens: { ...record.tokens },
+      totalCost: record.totalCost,
+      messageCount: record.messageCount,
+      modelUsage: record.modelUsage?.map((usage) => ({ ...usage })) ?? [],
+      toolUsage: record.toolUsage?.map((usage) => ({ ...usage })) ?? [],
+      unpricedModelIds: record.unpricedModelIds ? [...record.unpricedModelIds] : undefined,
+    };
+    const date = formatLocalDate(new Date(record.startTime));
+    const month = date.substring(0, 7);
+
+    const daily = this.store.daily[date];
+    if (daily) {
+      this.subtractSummary(daily, summary);
+      if (daily.sessionCount === 0) delete this.store.daily[date];
+    }
+
+    const hourly = this.store.hourly?.[date];
+    if (hourly) {
+      const hour = new Date(record.startTime).getHours();
+      const bucket = hourly.find((entry) => entry.hour === hour);
+      if (bucket) {
+        this.subtractTokenTotals(bucket.tokens, summary.tokens);
+        bucket.totalCost = Math.max(0, bucket.totalCost - summary.totalCost);
+        bucket.messageCount = Math.max(0, bucket.messageCount - summary.messageCount);
+        bucket.sessionCount = Math.max(0, bucket.sessionCount - 1);
+      }
+      this.store.hourly![date] = hourly.filter((entry) => entry.sessionCount > 0);
+      if (this.store.hourly![date].length === 0) delete this.store.hourly![date];
+    }
+
+    const monthly = this.store.monthly[month];
+    if (monthly) {
+      this.subtractSummary(monthly, summary);
+      if (monthly.sessionCount === 0) delete this.store.monthly[month];
+    }
+
+    this.subtractSummary(this.store.allTime, summary);
+  }
+
+  private subtractSummary(
+    bucket: {
+      tokens: TokenTotals;
+      totalCost: number;
+      messageCount: number;
+      sessionCount: number;
+      modelUsage: ModelUsageRecord[];
+      toolUsage: ToolUsageRecord[];
+      updatedAt: string;
+    },
+    summary: SessionSummary,
+  ): void {
+    this.subtractTokenTotals(bucket.tokens, summary.tokens);
+    bucket.totalCost = Math.max(0, bucket.totalCost - summary.totalCost);
+    bucket.messageCount = Math.max(0, bucket.messageCount - summary.messageCount);
+    bucket.sessionCount = Math.max(0, bucket.sessionCount - 1);
+    bucket.modelUsage = this.subtractModelUsage(bucket.modelUsage, summary.modelUsage);
+    bucket.toolUsage = this.subtractToolUsage(bucket.toolUsage, summary.toolUsage);
+    bucket.updatedAt = new Date().toISOString();
+  }
+
+  private subtractTokenTotals(target: TokenTotals, contribution: TokenTotals): void {
+    target.inputTokens = Math.max(0, target.inputTokens - contribution.inputTokens);
+    target.outputTokens = Math.max(0, target.outputTokens - contribution.outputTokens);
+    target.cacheWriteTokens = Math.max(0, target.cacheWriteTokens - contribution.cacheWriteTokens);
+    target.cacheReadTokens = Math.max(0, target.cacheReadTokens - contribution.cacheReadTokens);
+  }
+
+  private subtractModelUsage(
+    existing: ModelUsageRecord[],
+    outgoing: ModelUsageRecord[],
+  ): ModelUsageRecord[] {
+    const map = new Map(existing.map((record) => [record.model, { ...record }]));
+    for (const record of outgoing) {
+      const current = map.get(record.model);
+      if (!current) continue;
+      current.calls = Math.max(0, current.calls - record.calls);
+      current.tokens = Math.max(0, current.tokens - record.tokens);
+      current.cost = Math.max(0, current.cost - record.cost);
+      if (current.calls === 0 && current.tokens === 0) map.delete(record.model);
+    }
+    return [...map.values()];
+  }
+
+  private subtractToolUsage(
+    existing: ToolUsageRecord[],
+    outgoing: ToolUsageRecord[],
+  ): ToolUsageRecord[] {
+    const map = new Map(existing.map((record) => [record.tool, { ...record }]));
+    for (const record of outgoing) {
+      const current = map.get(record.tool);
+      if (!current) continue;
+      current.calls = Math.max(0, current.calls - record.calls);
+      current.successCount = Math.max(0, current.successCount - record.successCount);
+      current.failureCount = Math.max(0, current.failureCount - record.failureCount);
+      if (current.calls === 0) map.delete(record.tool);
+    }
+    return [...map.values()];
+  }
+
+  private refreshAllTimeDateRange(): void {
+    const dates = Object.keys(this.store.daily).sort();
+    this.store.allTime.firstDate = dates[0] ?? '';
+    this.store.allTime.lastDate = dates[dates.length - 1] ?? '';
   }
 
   /**
@@ -400,7 +529,7 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
    * Gets aggregated data for today.
    */
   getTodayData(): DailyData | null {
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatLocalDate(new Date());
     return this.store.daily[today] || null;
   }
 
@@ -412,8 +541,8 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
     const weekAgo = new Date(today);
     weekAgo.setDate(weekAgo.getDate() - 6);
 
-    const startDate = weekAgo.toISOString().split('T')[0];
-    const endDate = today.toISOString().split('T')[0];
+    const startDate = formatLocalDate(weekAgo);
+    const endDate = formatLocalDate(today);
 
     return this.getDailyData(startDate, endDate);
   }
@@ -422,7 +551,7 @@ export class HistoricalDataService extends PersistenceService<HistoricalDataStor
    * Gets aggregated data for this month.
    */
   getThisMonthData(): MonthlyData | null {
-    const month = new Date().toISOString().substring(0, 7);
+    const month = formatLocalDate(new Date()).substring(0, 7);
     return this.store.monthly[month] || null;
   }
 

@@ -69,14 +69,21 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
   onDidChange(listener: () => void): vscode.Disposable {
     this.changeListeners.add(listener);
     this.startFileWatcher();
-    return { dispose: () => this.changeListeners.delete(listener) };
+    return {
+      dispose: () => {
+        this.changeListeners.delete(listener);
+        if (this.changeListeners.size === 0) this.stopFileWatcher();
+      },
+    };
   }
 
   private startFileWatcher(): void {
-    this.fileWatcher?.close();
+    if (this.fileWatcher || this.changeListeners.size === 0) return;
     try {
       const directory = path.dirname(this.dataFilePath);
-      this.fileWatcher = fs.watch(directory, () => {
+      const targetName = path.basename(this.dataFilePath);
+      this.fileWatcher = fs.watch(directory, (_eventType, filename) => {
+        if (filename !== null && String(filename) !== targetName) return;
         if (this.refreshTimer) clearTimeout(this.refreshTimer);
         this.refreshTimer = setTimeout(async () => {
           this.refreshTimer = undefined;
@@ -88,6 +95,15 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
     } catch {
       // Watching is a convenience; persistence remains functional without it.
     }
+  }
+
+  private stopFileWatcher(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+    this.fileWatcher?.close();
+    this.fileWatcher = undefined;
   }
 
   protected override onStoreLoaded(): void {
@@ -156,8 +172,10 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
       this.store.tasks[taskId] = persisted;
     }
 
-    this.store.lastSessionId = sessionId;
-    this.store.sessionCount++;
+    if (this.store.lastSessionId !== sessionId) {
+      this.store.lastSessionId = sessionId;
+      this.store.sessionCount++;
+    }
     this.markDirty();
 
     log(`Persisted ${taskState.tasks.size} tasks for session ${sessionId.slice(0, 8)}`);
@@ -232,8 +250,7 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
   }
 
   override dispose(): void {
-    if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    this.fileWatcher?.close();
+    this.stopFileWatcher();
     this.changeListeners.clear();
     super.dispose();
   }

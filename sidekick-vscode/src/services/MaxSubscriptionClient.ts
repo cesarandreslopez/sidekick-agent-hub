@@ -293,8 +293,7 @@ export class MaxSubscriptionClient implements ClaudeClient {
    * @returns Model name for agent SDK
    */
   private mapModel(model?: string): string {
-    const validModels = ['haiku', 'sonnet', 'opus'];
-    return model && validModels.includes(model) ? model : 'haiku';
+    return model ?? 'haiku';
   }
 
   /**

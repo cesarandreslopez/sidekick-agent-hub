@@ -78,8 +78,9 @@ export class InlineChatService {
         }),
       config: timeoutConfig,
       contextSize,
-      showProgress: true,
+      showProgress: false,
       cancellable: true,
+      externalSignal: abortSignal,
       onTimeout: (timeoutMs: number, contextKb: number) =>
         this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
     });

@@ -10,7 +10,6 @@ import {
   reportThemeOption,
   rootProviderOption,
   tasksStatusOption,
-  zaiTierOption,
 } from './options';
 
 function parse(option: Option, args: string[]): Record<string, unknown> {
@@ -53,11 +52,5 @@ describe('option factories', () => {
   it('tasks status accepts pending/completed/all only', () => {
     expect(parse(tasksStatusOption(), ['--status', 'pending']).status).toBe('pending');
     expect(() => parse(tasksStatusOption(), ['--status', 'done'])).toThrow(CommanderError);
-  });
-
-  it('zai tier defaults to auto and validates tiers', () => {
-    expect(parse(zaiTierOption(), []).tier).toBe('auto');
-    expect(parse(zaiTierOption(), ['--tier', 'max']).tier).toBe('max');
-    expect(() => parse(zaiTierOption(), ['--tier', 'ultra'])).toThrow(CommanderError);
   });
 });

@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import { readSessionContextSnapshot } from '../context/sessionContext';
 import type {
   ReadSessionContextSnapshotOptions,
@@ -86,6 +87,7 @@ class ClaudeCodeReader implements SessionReader {
   private filePosition = 0;
   private events: SessionEvent[] = [];
   private _wasTruncated = false;
+  private decoder = new StringDecoder('utf8');
 
   constructor(private readonly sessionPath: string) {
     this.parser = new JsonlParser<SessionEvent>({
@@ -113,6 +115,7 @@ class ClaudeCodeReader implements SessionReader {
         this._wasTruncated = true;
         this.filePosition = 0;
         this.parser.reset();
+        this.decoder = new StringDecoder('utf8');
       }
 
       // No new content
@@ -124,12 +127,16 @@ class ClaudeCodeReader implements SessionReader {
       const fd = fs.openSync(this.sessionPath, 'r');
       const bufferSize = currentSize - this.filePosition;
       const buffer = Buffer.alloc(bufferSize);
-      fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
-      fs.closeSync(fd);
+      let bytesRead = 0;
+      try {
+        bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
+      } finally {
+        fs.closeSync(fd);
+      }
 
-      const chunk = buffer.toString('utf-8');
+      const chunk = this.decoder.write(buffer.subarray(0, bytesRead));
       this.parser.processChunk(chunk);
-      this.filePosition = currentSize;
+      this.filePosition += bytesRead;
     } catch (error) {
       console.error(`ClaudeCodeReader: error reading ${this.sessionPath}: ${error}`);
     }
@@ -145,6 +152,7 @@ class ClaudeCodeReader implements SessionReader {
   reset(): void {
     this.filePosition = 0;
     this.parser.reset();
+    this.decoder = new StringDecoder('utf8');
     this._wasTruncated = false;
   }
 
@@ -153,7 +161,10 @@ class ClaudeCodeReader implements SessionReader {
   }
 
   flush(): void {
+    const finalChunk = this.decoder.end();
+    if (finalChunk) this.parser.processChunk(finalChunk);
     this.parser.flush();
+    this.decoder = new StringDecoder('utf8');
   }
 
   getPosition(): number {
@@ -163,6 +174,7 @@ class ClaudeCodeReader implements SessionReader {
   seekTo(position: number): void {
     this.filePosition = position;
     this.parser.reset();
+    this.decoder = new StringDecoder('utf8');
   }
 
   wasTruncated(): boolean {

@@ -241,10 +241,27 @@ describe('CodexProvider', () => {
     const stats = provider.readSessionStats(sessionPath);
 
     expect(stats.messageCount).toBe(6);
-    expect(stats.tokens).toMatchObject({ input: 1200, output: 300, cacheRead: 400 });
+    expect(stats.tokens).toMatchObject({ input: 800, output: 300, cacheRead: 400 });
     expect(stats.modelUsage['gpt-5-codex']).toMatchObject({ calls: 1, tokens: 1500 });
     expect(stats.toolUsage.Read).toBe(1);
     expect(stats.toolUsage.Edit).toBe(1);
+  });
+
+  it('reconstructs context size from normalized uncached and cached input', async () => {
+    const { CodexProvider } = await import('./codex');
+    const provider = new CodexProvider();
+
+    expect(
+      provider.computeContextSize({
+        inputTokens: 800,
+        outputTokens: 300,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 400,
+        reasoningTokens: 100,
+        model: 'gpt-5-codex',
+        timestamp: new Date(),
+      }),
+    ).toBe(1200);
   });
 
   it('replays Codex sessions through the provider-reader watcher', async () => {

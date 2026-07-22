@@ -111,4 +111,37 @@ describe('CodexQuotaWatcher', () => {
       accountLabel: 'Work',
     });
   });
+
+  it('throttles rollout-tail fallback scans while retaining cached fallback', () => {
+    const cached: QuotaState = {
+      fiveHour: { utilization: 11, resetsAt: '2026-05-08T12:00:00Z' },
+      sevenDay: { utilization: 22, resetsAt: '2026-05-09T12:00:00Z' },
+      available: true,
+    };
+    const providerFactory = vi.fn(
+      () =>
+        ({
+          findActiveSession: vi.fn(() => null),
+          findAllSessions: vi.fn(() => []),
+          dispose: vi.fn(),
+        }) as unknown as CodexProvider,
+    );
+    const watcher = new CodexQuotaWatcher('/workspace', {
+      providerFactory,
+      getActiveAccount: () => makeAccount(),
+      readSnapshot: () => cached,
+      writeSnapshot: vi.fn(),
+      maxSessionFiles: 0,
+      localScanCacheMs: 300_000,
+      now: () => 1_000,
+    });
+
+    watcher.start();
+    watcher.refresh();
+    watcher.dispose();
+
+    // Each refresh needs discovery, but only the first performs a second,
+    // potentially expensive local-source scan.
+    expect(providerFactory).toHaveBeenCalledTimes(3);
+  });
 });

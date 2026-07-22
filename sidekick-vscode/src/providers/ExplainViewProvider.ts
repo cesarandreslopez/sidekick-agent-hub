@@ -95,17 +95,9 @@ export class ExplainViewProvider implements vscode.Disposable {
             );
             break;
           case 'changeComplexity':
-            // Re-request explanation with new complexity
-            if (this._pendingCode && this._pendingFileContext) {
-              this._pendingComplexity = message.complexity;
-              const requestId = this.generateRequestId();
-              await this.handleExplanationRequest(
-                requestId,
-                this._pendingCode,
-                message.complexity,
-                this._pendingFileContext,
-              );
-            }
+            // The webview sends the replacement request itself. Keep only the
+            // persisted preference here so one click produces one completion.
+            this._pendingComplexity = message.complexity;
             break;
           case 'close':
             this._panel?.dispose();

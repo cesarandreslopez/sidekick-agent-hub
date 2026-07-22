@@ -54,8 +54,10 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
       this.fsWatcher = fs.watch(this.sessionPath, { persistent: false }, () => {
         this.debouncedRead();
       });
-      this.fsWatcher.on('error', () => {
-        this.stop();
+      this.fsWatcher.on('error', (error) => {
+        this.fsWatcher?.close();
+        this.fsWatcher = null;
+        this.callbacks.onError?.(error);
       });
     } catch {
       // fs.watch may be unavailable; polling still catches up.

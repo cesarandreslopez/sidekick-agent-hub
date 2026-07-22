@@ -63,12 +63,13 @@ import { categorizeError, type ErrorCategory } from '../extractors/errorTaxonomy
 
 const DEFAULT_TIMELINE_CAP = 200;
 const DEFAULT_LATENCY_CAP = 100;
+const DEFAULT_CONTEXT_TIMELINE_CAP = 2_000;
 const DEFAULT_BURN_WINDOW_MS = 5 * 60_000;
 const DEFAULT_BURN_SAMPLE_MS = 10_000;
 const COMPACTION_DROP_THRESHOLD = 0.8; // >20% drop
 
 /** Schema version for serialized snapshots. */
-const SNAPSHOT_SCHEMA_VERSION = 3;
+export const SNAPSHOT_SCHEMA_VERSION = 3;
 
 /**
  * JSON-serializable snapshot of EventAggregator state.
@@ -301,6 +302,7 @@ export class EventAggregator {
 
   // Context timeline
   private contextTimeline: ContextSizePoint[] = [];
+  private readonly contextTimelineCap: number;
   private contextTurnIndex = 0;
 
   // Timeline
@@ -329,6 +331,7 @@ export class EventAggregator {
     this.latencyCap = options?.latencyCap ?? DEFAULT_LATENCY_CAP;
     this.burnWindowMs = options?.burnWindowMs ?? DEFAULT_BURN_WINDOW_MS;
     this.burnSampleMs = options?.burnSampleMs ?? DEFAULT_BURN_SAMPLE_MS;
+    this.contextTimelineCap = options?.contextTimelineCap ?? DEFAULT_CONTEXT_TIMELINE_CAP;
     this.computeContextSize = options?.computeContextSize ?? null;
     this.providerId = options?.providerId ?? null;
     this._providerId = this.providerId;
@@ -349,6 +352,10 @@ export class EventAggregator {
 
     // Guard: some event types (e.g. 'summary') have no message field in the raw JSONL
     if (!event.message) {
+      if (event.type === 'summary') {
+        this.recordExplicitCompaction(event.timestamp, event.compaction);
+        this.addTimelineFromSessionEvent(event);
+      }
       return;
     }
 
@@ -516,7 +523,7 @@ export class EventAggregator {
           priced: true,
         };
         acc.calls++;
-        acc.tokens += inputTok + outputTok;
+        acc.tokens += inputTok + outputTok + cacheWrite + cacheRead;
         acc.inputTokens += inputTok;
         acc.outputTokens += outputTok;
         acc.cacheWriteTokens += cacheWrite;
@@ -572,7 +579,7 @@ export class EventAggregator {
     this.feedAnalytics(event.timestamp, event.summary, event.toolName);
 
     // Message count (skip system events)
-    if (event.type !== 'system') {
+    if (event.type === 'user' || event.type === 'assistant') {
       this.messageCount++;
     }
   }
@@ -856,9 +863,9 @@ export class EventAggregator {
   }
 
   /** Restores mutable state from a serialized snapshot. Clears transient state (pending calls). */
-  restore(state: SerializedAggregatorState): void {
+  restore(state: SerializedAggregatorState): boolean {
     if (state.version !== SNAPSHOT_SCHEMA_VERSION) {
-      return; // Incompatible snapshot — caller should fall back to full replay
+      return false;
     }
 
     this.inputTokens = state.tokens.input;
@@ -891,7 +898,9 @@ export class EventAggregator {
     this.permissionModeHistory = state.permissionModeHistory
       ? [...state.permissionModeHistory]
       : [];
-    this.contextTimeline = state.contextTimeline ? [...state.contextTimeline] : [];
+    this.contextTimeline = state.contextTimeline
+      ? state.contextTimeline.slice(-this.contextTimelineCap)
+      : [];
     this.contextTurnIndex = state.contextTurnIndex ?? 0;
     this.timeline = [...state.timeline];
 
@@ -909,6 +918,7 @@ export class EventAggregator {
 
     // Clear transient state — pending calls won't survive a snapshot boundary
     this.pendingToolCalls.clear();
+    return true;
     this.pendingTaskCreates.clear();
     this.pendingSubagents.clear();
     this.pendingUserRequest = null;
@@ -998,6 +1008,9 @@ export class EventAggregator {
       inputTokens: contextSize,
       turnIndex: this.contextTurnIndex++,
     });
+    if (this.contextTimeline.length > this.contextTimelineCap) {
+      this.contextTimeline.splice(0, this.contextTimeline.length - this.contextTimelineCap);
+    }
 
     // Per-model usage. Accumulate reasoning tokens and an inverted-sticky
     // `priced` flag so one unpriced event taints the aggregate (UI renders "—").
@@ -1014,7 +1027,7 @@ export class EventAggregator {
       priced: true,
     };
     acc.calls++;
-    acc.tokens += inputTok + outputTok;
+    acc.tokens += inputTok + outputTok + cacheWrite + cacheRead;
     acc.inputTokens += inputTok;
     acc.outputTokens += outputTok;
     acc.cacheWriteTokens += cacheWrite;

@@ -78,6 +78,7 @@ interface UsageApiResponse {
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const BETA_HEADER = 'oauth-2025-04-20';
+const FETCH_TIMEOUT_MS = 10_000;
 export const FIVE_HOUR_WINDOW_MS = 5 * 3_600_000;
 export const SEVEN_DAY_WINDOW_MS = 7 * 86_400_000;
 
@@ -182,9 +183,13 @@ function parseRetryAfterMs(retryAfter: string | null): number | undefined {
  * @returns QuotaState with utilization data and elapsed-time projections
  */
 export async function fetchQuota(accessToken: string): Promise<QuotaState> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  timeout.unref();
   try {
     const res = await fetch(USAGE_URL, {
       method: 'GET',
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'anthropic-beta': BETA_HEADER,
@@ -244,5 +249,7 @@ export async function fetchQuota(accessToken: string): Promise<QuotaState> {
     };
   } catch {
     return unavailableState('Network error', { failureKind: 'network' });
+  } finally {
+    clearTimeout(timeout);
   }
 }

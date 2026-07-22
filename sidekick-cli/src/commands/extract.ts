@@ -16,6 +16,9 @@ import type {
   ExtractedAssetType,
   GatherAssetsResult,
 } from 'sidekick-shared';
+import { parseLimit } from '../utils/parseLimit';
+
+export { parseLimit } from '../utils/parseLimit';
 
 const ALL_TYPES: ExtractedAssetType[] = ['url', 'path', 'command', 'plan'];
 
@@ -62,14 +65,6 @@ export function parseTypes(raw: string | undefined): ExtractedAssetType[] {
   }
 
   return types.length > 0 ? types : ALL_TYPES;
-}
-
-export function parseLimit(raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined;
-  if (!/^[1-9]\d*$/.test(raw)) {
-    throw new Error('Limit must be a positive integer.');
-  }
-  return Number.parseInt(raw, 10);
 }
 
 export function filterByTypes(

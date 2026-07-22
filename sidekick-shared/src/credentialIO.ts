@@ -17,6 +17,10 @@ import { claudeKeychainService } from './claudeProfiles';
 
 export const KEYCHAIN_SERVICE = 'Claude Code-credentials';
 
+function quoteSecurityInteractiveArg(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function getCredentialsFilePath(configDir?: string): string {
   return path.join(configDir ?? path.join(os.homedir(), '.claude'), '.credentials.json');
 }
@@ -63,20 +67,24 @@ export function writeActiveCredentials(credentials: unknown, configDir?: string)
   JSON.parse(json); // validate round-trip
 
   if (process.platform === 'darwin') {
-    execFileSync(
-      'security',
-      [
-        'add-generic-password',
-        '-U',
-        '-s',
-        claudeKeychainService(configDir),
-        '-a',
-        process.env.USER || 'user',
-        '-w',
-        json,
-      ],
-      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
-    );
+    const service = claudeKeychainService(configDir);
+    const account = process.env.USER || 'user';
+    const command = [
+      'add-generic-password',
+      '-U',
+      '-s',
+      quoteSecurityInteractiveArg(service),
+      '-a',
+      quoteSecurityInteractiveArg(account),
+      '-w',
+      quoteSecurityInteractiveArg(json),
+    ].join(' ');
+    execFileSync('security', ['-i'], {
+      input: command + '\n',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 4000,
+      killSignal: 'SIGKILL',
+    });
     return;
   }
   // Linux / WSL / Windows — file-based

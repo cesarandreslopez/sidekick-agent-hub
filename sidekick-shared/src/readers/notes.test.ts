@@ -99,4 +99,11 @@ describe('readNotes', () => {
     vi.mocked(fs.promises.readFile).mockRejectedValue(new Error('ENOENT'));
     expect(await readNotes('x')).toEqual([]);
   });
+
+  it('tolerates a schema-drifted notes container and non-array entries', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(
+      JSON.stringify({ notesByFile: { 'src/broken.ts': null } }),
+    );
+    await expect(readNotes('drifted')).resolves.toEqual([]);
+  });
 });

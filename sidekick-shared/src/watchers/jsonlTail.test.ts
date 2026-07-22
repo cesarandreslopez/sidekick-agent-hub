@@ -60,6 +60,33 @@ describe('createJsonlTail', () => {
     expect(batches.map((b) => b.eventsRead)).toEqual([0, 1]);
   });
 
+  it('reports a resume-safe offset before a partial line', () => {
+    const file = makeJsonlFile();
+    const firstBatches: JsonlTailBatch[] = [];
+    const first = createJsonlTail<{ type: string }>({
+      path: file,
+      onEvent: () => {},
+      onBatchComplete: (batch) => firstBatches.push(batch),
+    });
+    appendFileSync(file, '{"type":"one"');
+    first.readNow();
+
+    expect(first.getOffset()).toBe(0);
+    expect(firstBatches[0].offset).toBe(0);
+
+    appendFileSync(file, '}\n');
+    const resumedEvents: Array<{ type: string }> = [];
+    const resumed = createJsonlTail<{ type: string }>({
+      path: file,
+      startOffset: first.getOffset(),
+      onEvent: (event) => resumedEvents.push(event),
+    });
+    resumed.readNow();
+
+    expect(resumedEvents).toEqual([{ type: 'one' }]);
+    expect(resumed.getOffset()).toBe(Buffer.byteLength('{"type":"one"}\n'));
+  });
+
   it('reports invalid JSON and keeps parsing later lines', () => {
     const file = makeJsonlFile();
     const events: Array<{ type: string }> = [];

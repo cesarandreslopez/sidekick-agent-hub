@@ -23,7 +23,9 @@ const resolvedPaths = new Map<string, string>();
  */
 export function clearCliCache(binaryName?: string): void {
   if (binaryName) {
-    resolvedPaths.delete(binaryName);
+    for (const key of resolvedPaths.keys()) {
+      if (key.startsWith(`${binaryName}\0`)) resolvedPaths.delete(key);
+    }
   } else {
     resolvedPaths.clear();
   }
@@ -119,17 +121,19 @@ export interface FindCliOptions {
  */
 export function findCli(options: FindCliOptions): string | null {
   const { binaryName, configuredPath, extraPaths } = options;
+  const cacheKey = `${binaryName}\0${configuredPath?.trim() ?? ''}`;
 
   // Return cached result if available
-  const cached = resolvedPaths.get(binaryName);
-  if (cached) return cached;
+  const cached = resolvedPaths.get(cacheKey);
+  if (cached && fs.existsSync(cached)) return cached;
+  if (cached) resolvedPaths.delete(cacheKey);
 
   // 1. Check user-configured path
   if (configuredPath && configuredPath.trim() !== '') {
     const expandedPath = configuredPath.replace(/^~/, os.homedir());
     if (fs.existsSync(expandedPath)) {
       log(`Using configured ${binaryName} path: ${expandedPath}`);
-      resolvedPaths.set(binaryName, expandedPath);
+      resolvedPaths.set(cacheKey, expandedPath);
       return expandedPath;
     }
     log(`Configured ${binaryName} path not found: ${expandedPath}`);
@@ -142,7 +146,7 @@ export function findCli(options: FindCliOptions): string | null {
 
     if (fs.existsSync(candidatePath)) {
       log(`Found ${binaryName} at: ${candidatePath}`);
-      resolvedPaths.set(binaryName, candidatePath);
+      resolvedPaths.set(cacheKey, candidatePath);
       return candidatePath;
     }
   }
@@ -151,7 +155,7 @@ export function findCli(options: FindCliOptions): string | null {
   log(`${binaryName} not found in common paths, resolving from PATH...`);
   const resolved = resolveCommandPath(binaryName);
   if (resolved) {
-    resolvedPaths.set(binaryName, resolved);
+    resolvedPaths.set(cacheKey, resolved);
     return resolved;
   }
 

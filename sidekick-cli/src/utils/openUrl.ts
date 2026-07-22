@@ -19,13 +19,19 @@ function isWSL(): boolean {
 
 function opener(): string {
   if (platform() === 'darwin') return 'open';
+  if (platform() === 'win32') return 'rundll32.exe';
   if (isWSL()) return 'explorer.exe';
   return 'xdg-open';
 }
 
 export function openUrl(url: string): boolean {
   try {
-    const child = spawn(opener(), [url], { detached: true, stdio: 'ignore' });
+    const executable = opener();
+    const args = platform() === 'win32' ? ['url.dll,FileProtocolHandler', url] : [url];
+    const child = spawn(executable, args, { detached: true, stdio: 'ignore' });
+    // spawn failures are asynchronous and otherwise become uncaught 'error'
+    // events after this function returns.
+    child.on('error', () => undefined);
     child.unref();
     return true;
   } catch {

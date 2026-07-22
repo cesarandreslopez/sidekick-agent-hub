@@ -89,7 +89,9 @@ export function renderProviderHeatmap(
   for (let i = 0; i < firstDayOfWeek; i += 1) padded.push(null);
   for (const cell of cells) padded.push(cell);
   while (padded.length < totalCells) padded.push(null);
-  while (padded.length > totalCells) padded.shift();
+  // Remove complete columns so the weekday row of the first retained cell
+  // stays aligned. Removing individual leading cells destroys row parity.
+  while (padded.length > totalCells) padded.splice(0, rows);
 
   // Column-major: padded[i] sits at column = floor(i/7), row = i % 7.
   const lines: string[] = [];

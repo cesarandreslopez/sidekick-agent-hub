@@ -95,7 +95,7 @@ describe('CodexRolloutParser', () => {
         sourceLabel: 'token count',
         model: 'gpt-5-codex',
         usage: {
-          input_tokens: 1000,
+          input_tokens: 700,
           output_tokens: 200,
           cache_read_input_tokens: 300,
           reasoning_tokens: 40,
@@ -105,6 +105,30 @@ describe('CodexRolloutParser', () => {
         primary: { usedPercent: 72, windowMinutes: 300, resetsAt: 1790000000 },
         secondary: { usedPercent: 12, windowMinutes: 10080, resetsAt: 1790600000 },
       },
+    });
+  });
+
+  it('clamps malformed cached input above total input without rebilling reasoning tokens', () => {
+    const parser = new CodexRolloutParser();
+    const [event] = parser.convertLine(
+      line('event_msg', {
+        type: 'token_count',
+        info: {
+          last_token_usage: {
+            input_tokens: 50,
+            output_tokens: 20,
+            cached_input_tokens: 75,
+            reasoning_output_tokens: 10,
+          },
+        },
+      }),
+    );
+
+    expect(event.message?.usage).toMatchObject({
+      input_tokens: 0,
+      output_tokens: 20,
+      cache_read_input_tokens: 75,
+      reasoning_tokens: 10,
     });
   });
 

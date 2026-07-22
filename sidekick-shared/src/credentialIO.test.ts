@@ -140,17 +140,16 @@ describe('credentialIO', () => {
     expect(mockExecFileSync).toHaveBeenNthCalledWith(
       2,
       'security',
-      [
-        'add-generic-password',
-        '-U',
-        '-s',
-        service,
-        '-a',
-        'sidekick-test-user',
-        '-w',
-        JSON.stringify(credentials),
-      ],
-      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
+      ['-i'],
+      expect.objectContaining({
+        input: expect.stringContaining('add-generic-password -U'),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 4000,
+        killSignal: 'SIGKILL',
+      }),
     );
+    const writeCall = mockExecFileSync.mock.calls[1];
+    expect(writeCall[1]).not.toContain(JSON.stringify(credentials));
+    expect(writeCall[2].input).toContain(JSON.stringify(credentials));
   });
 });

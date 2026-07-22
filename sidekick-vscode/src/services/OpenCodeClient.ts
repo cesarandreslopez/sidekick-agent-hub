@@ -21,6 +21,8 @@ let sdkModule: any = null;
 let clientInstance: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let serverHandle: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let clientPromise: Promise<any> | null = null;
 
 /**
  * Inference client that routes completions through OpenCode.
@@ -37,7 +39,18 @@ export class OpenCodeClient implements ClaudeClient {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async getClient(): Promise<any> {
     if (clientInstance) return clientInstance;
+    if (clientPromise) return clientPromise;
 
+    clientPromise = this.initializeClient();
+    try {
+      return await clientPromise;
+    } finally {
+      clientPromise = null;
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async initializeClient(): Promise<any> {
     if (!sdkModule) {
       try {
         // Use require() so esbuild can statically bundle the SDK
@@ -84,11 +97,11 @@ export class OpenCodeClient implements ClaudeClient {
   }
 
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
-    return requestWithTimeout(options, async () => {
+    return requestWithTimeout(options, async (signal) => {
       const client = await this.getClient();
 
       // Create a session
-      const session = await client.session.create({ body: {} });
+      const session = await client.session.create({ body: {}, signal });
       const sessionId = session.data?.id ?? session.id;
       log(`OpenCodeClient: created session ${sessionId}`);
 
@@ -114,22 +127,31 @@ export class OpenCodeClient implements ClaudeClient {
         }
       }
 
-      // Send prompt and wait for response
-      // SDK prompt() returns { data: { info, parts }, request, response }
-      const response = await client.session.prompt({
-        path: { id: sessionId },
-        body,
-      });
+      try {
+        // Send prompt and wait for response
+        // SDK prompt() returns { data: { info, parts }, request, response }
+        const response = await client.session.prompt({
+          path: { id: sessionId },
+          body,
+          signal,
+        });
 
-      const data = response?.data ?? response;
-      if (typeof data === 'string') return data;
+        const data = response?.data ?? response;
+        if (typeof data === 'string') return data;
 
-      // Extract text parts from the assistant response
-      // Response shape: { info: { role, ... }, parts: [{ type, text }, ...] }
-      const text = this.extractText(data);
-      if (text) return text;
+        // Extract text parts from the assistant response
+        // Response shape: { info: { role, ... }, parts: [{ type, text }, ...] }
+        const text = this.extractText(data);
+        if (text) return text;
 
-      return JSON.stringify(data);
+        return JSON.stringify(data);
+      } finally {
+        try {
+          await client.session.delete({ path: { id: sessionId } });
+        } catch (error) {
+          logError(`OpenCodeClient: failed to delete temporary session ${sessionId}`, error);
+        }
+      }
     });
   }
 
@@ -175,6 +197,7 @@ export class OpenCodeClient implements ClaudeClient {
       }
     }
     clientInstance = null;
+    clientPromise = null;
     serverHandle = null;
     sdkModule = null;
   }

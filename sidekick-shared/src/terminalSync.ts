@@ -75,9 +75,17 @@ function buildShellHookBlock(): string {
 function getShellRcPaths(): string[] {
   const zshrc = path.join(os.homedir(), '.zshrc');
   const bashrc = path.join(os.homedir(), '.bashrc');
-  const paths = [zshrc];
-  if (fs.existsSync(bashrc)) paths.push(bashrc);
-  return paths;
+  const existing = [zshrc, bashrc].filter((filePath) => fs.existsSync(filePath));
+  if (existing.length > 0) return existing;
+
+  const shell = path.basename(process.env.SHELL ?? 'zsh');
+  return shell === 'bash' ? [bashrc] : [zshrc];
+}
+
+function resolveShellRcTarget(filePath: string): { filePath: string; mode: number } {
+  if (!fs.existsSync(filePath)) return { filePath, mode: 0o600 };
+  const realPath = fs.realpathSync(filePath);
+  return { filePath: realPath, mode: fs.statSync(realPath).mode & 0o777 };
 }
 
 function stripShellHook(content: string): string {
@@ -86,10 +94,11 @@ function stripShellHook(content: string): string {
 }
 
 function installHookInFile(filePath: string): void {
-  const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
+  const target = resolveShellRcTarget(filePath);
+  const existing = fs.existsSync(target.filePath) ? fs.readFileSync(target.filePath, 'utf8') : '';
   const cleaned = stripShellHook(existing).replace(/\s*$/, '');
   const next = cleaned ? `${cleaned}\n\n${buildShellHookBlock()}` : buildShellHookBlock();
-  atomicWriteFile(filePath, next, 0o600);
+  atomicWriteFile(target.filePath, next, target.mode);
 }
 
 export function installShellHook(): void {
@@ -100,7 +109,12 @@ export function installShellHook(): void {
 
 function uninstallHookInFile(filePath: string): void {
   if (!fs.existsSync(filePath)) return;
-  atomicWriteFile(filePath, stripShellHook(fs.readFileSync(filePath, 'utf8')), 0o600);
+  const target = resolveShellRcTarget(filePath);
+  atomicWriteFile(
+    target.filePath,
+    stripShellHook(fs.readFileSync(target.filePath, 'utf8')),
+    target.mode,
+  );
 }
 
 export function uninstallShellHook(): void {

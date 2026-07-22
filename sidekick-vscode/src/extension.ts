@@ -428,7 +428,11 @@ export async function activate(context: vscode.ExtensionContext) {
     sessionMonitor.onSessionEnd(() => {
       const summary = sessionMonitor?.getSessionSummary();
       if (summary && historicalDataService) {
+        const completedSessionPath = sessionMonitor?.getSessionPath();
         historicalDataService.saveSessionSummary(summary);
+        if (completedSessionPath?.endsWith('.jsonl')) {
+          historicalDataService.markFileImported(completedSessionPath);
+        }
         log(`Session summary saved for ${summary.sessionId.slice(0, 8)}`);
         const metrics = sessionMonitor?.getAggregatedMetrics();
         const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -707,9 +711,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     if (handoffService) {
       dashboardProvider.setHandoffService(handoffService);
-    }
-    if (knowledgeNoteService) {
-      dashboardProvider.setKnowledgeNoteService(knowledgeNoteService);
     }
     context.subscriptions.push(dashboardProvider);
     context.subscriptions.push(
@@ -2661,16 +2662,10 @@ export async function activate(context: vscode.ExtensionContext) {
     const fileName = editor.document.fileName.split(/[/\\]/).pop() || '';
     const languageId = editor.document.languageId;
 
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Generating explanation...',
-        cancellable: true,
-      },
-      async (_progress, _token) => {
-        explainProvider!.showExplanation(selectedText, complexity, { fileName, languageId });
-      },
-    );
+    // The explanation webview owns the async request and renders its own
+    // loading state. A cancellable VS Code progress wrapper here would close
+    // immediately and advertise a Cancel action that cannot reach that request.
+    explainProvider.showExplanation(selectedText, complexity, { fileName, languageId });
   };
 
   // Register explain code commands (base + complexity levels)

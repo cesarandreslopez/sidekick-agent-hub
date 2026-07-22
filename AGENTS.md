@@ -81,14 +81,13 @@ Do **not** use `mkdocs build` or `mkdocs serve` — use `zensical` instead.
 
 ### Build System (esbuild.js)
 
-`sidekick-vscode/esbuild.js` produces six bundles:
+`sidekick-vscode/esbuild.js` produces five bundles:
 
 | Output                                       | Format   | Platform |
 | -------------------------------------------- | -------- | -------- |
 | `out/extension.js` (from `src/extension.ts`) | CommonJS | Node.js  |
 | `out/webview/explain.js`                     | IIFE     | Browser  |
 | `out/webview/error.js`                       | IIFE     | Browser  |
-| `out/webview/dashboard.js`                   | IIFE     | Browser  |
 | `out/webview/chartjs-vendor.js`              | IIFE     | Browser  |
 | `out/webview/d3-vendor.js`                   | IIFE     | Browser  |
 

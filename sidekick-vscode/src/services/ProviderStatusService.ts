@@ -27,6 +27,7 @@ export class ProviderStatusService implements vscode.Disposable {
   private _cachedStatus: ProviderStatusState | null = null;
   private _cachedOpenAIStatus: ProviderStatusState | null = null;
   private _refreshInterval: ReturnType<typeof setInterval> | null = null;
+  private _fetching = false;
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly REFRESH_INTERVAL_MS = 60_000;
 
@@ -54,9 +55,14 @@ export class ProviderStatusService implements vscode.Disposable {
     return state;
   }
 
-  private fetchAll(): void {
-    this.fetchStatus();
-    this.fetchOpenAIStatus();
+  private async fetchAll(): Promise<void> {
+    if (this._fetching) return;
+    this._fetching = true;
+    try {
+      await Promise.all([this.fetchStatus(), this.fetchOpenAIStatus()]);
+    } finally {
+      this._fetching = false;
+    }
   }
 
   getCachedStatus(): ProviderStatusState | null {
@@ -69,8 +75,8 @@ export class ProviderStatusService implements vscode.Disposable {
 
   startRefresh(): void {
     if (this._refreshInterval) return;
-    this.fetchAll();
-    this._refreshInterval = setInterval(() => this.fetchAll(), this.REFRESH_INTERVAL_MS);
+    void this.fetchAll();
+    this._refreshInterval = setInterval(() => void this.fetchAll(), this.REFRESH_INTERVAL_MS);
     log('Provider status refresh started');
   }
 

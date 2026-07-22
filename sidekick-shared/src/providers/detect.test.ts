@@ -83,4 +83,32 @@ describe('detectProvider', () => {
 
     expect(detectProvider()).toBe('codex');
   });
+
+  it('compares Claude JSONL activity instead of stale project-directory mtimes', () => {
+    vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) => {
+      const value = String(p);
+      return value.includes('.claude/projects') || value.endsWith('opencode.db');
+    });
+    vi.mocked(fs.readdirSync).mockImplementation((p: fs.PathLike) => {
+      const value = String(p);
+      if (value.endsWith('.claude/projects')) return ['project-old'] as never;
+      if (value.endsWith('project-old')) return ['active.jsonl'] as never;
+      return [] as never;
+    });
+    vi.mocked(fs.statSync).mockImplementation((p: fs.PathLike) => {
+      const value = String(p);
+      if (value.endsWith('project-old')) {
+        return { mtime: new Date(1000), isDirectory: () => true } as fs.Stats;
+      }
+      if (value.endsWith('active.jsonl')) {
+        return { mtime: new Date(5000), isDirectory: () => false } as fs.Stats;
+      }
+      if (value.endsWith('opencode.db')) {
+        return { mtime: new Date(4000), isDirectory: () => false } as fs.Stats;
+      }
+      return { mtime: new Date(0), isDirectory: () => false } as fs.Stats;
+    });
+
+    expect(detectProvider()).toBe('claude-code');
+  });
 });

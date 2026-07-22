@@ -41,4 +41,42 @@ describe('SessionsPanel Summary tab', () => {
     expect(out).not.toContain('/{m.tasks.length}');
     panel.dispose?.();
   });
+
+  it('uses the real session id in the active-session label', () => {
+    const panel = new SessionsPanel();
+    const items = panel.getItems(metricsWithTasks(), { sessions: [] } as unknown as Parameters<
+      typeof panel.getItems
+    >[1]);
+    const withId = panel.getItems({ ...metricsWithTasks(), sessionId: 'abcdef12-rest' }, {
+      sessions: [],
+    } as unknown as Parameters<typeof panel.getItems>[1]);
+    expect(items[0].label).toContain('session-active');
+    expect(withId[0].label).toContain('session-abcdef12');
+    panel.dispose?.();
+  });
+
+  it('renders quota failures by wrapped line rather than by character', () => {
+    const panel = new SessionsPanel();
+    const metrics = {
+      ...metricsWithTasks(),
+      providerId: 'claude-code',
+      quota: {
+        available: false,
+        failureKind: 'auth',
+        error: 'Authentication is required for quota refresh',
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 0, resetsAt: '' },
+      },
+    } as DashboardMetrics;
+    const item: PanelItem = {
+      id: 'active',
+      label: 'session',
+      sortKey: 0,
+      data: { type: 'active', metrics },
+    };
+    const out = panel.detailTabs[0].render(item, metrics, {} as never, { width: 50 });
+    expect(out).toContain('Sign in');
+    expect(out.split('\n').filter((line) => line.includes('{grey-fg}')).length).toBeLessThan(20);
+    panel.dispose?.();
+  });
 });

@@ -13,6 +13,7 @@ import type { SessionReader } from './providers/types';
 import type { ProviderQuotaState } from './providerQuota';
 
 const DEFAULT_DISCOVERY_POLL_INTERVAL_MS = 30_000;
+const DEFAULT_LOCAL_SCAN_CACHE_MS = 5 * 60_000;
 
 type CodexAccountReader = () => SavedAccountProfile | null;
 type SnapshotReader = (providerId: 'codex', accountId: string) => QuotaState | null;
@@ -24,6 +25,9 @@ export interface CodexQuotaWatcherOptions {
   discoveryPollIntervalMs?: number;
   maxTailBytes?: number;
   maxSessionFiles?: number;
+  /** Minimum interval between expensive rollout-tail fallback scans. */
+  localScanCacheMs?: number;
+  now?: () => number;
   providerFactory?: () => CodexProvider;
   getActiveAccount?: CodexAccountReader;
   readSnapshot?: SnapshotReader;
@@ -84,6 +88,8 @@ export class CodexQuotaWatcher implements Disposable {
   private readonly watchFile: WatchFile;
   private readonly maxTailBytes: number | undefined;
   private readonly maxSessionFiles: number | undefined;
+  private readonly localScanCacheMs: number;
+  private readonly now: () => number;
   private readonly workspaceId: string | undefined;
   private readonly appendHistorySample: HistoryAppender;
   private readonly listeners: Array<(state: ProviderQuotaState<'codex'>) => void> = [];
@@ -94,6 +100,8 @@ export class CodexQuotaWatcher implements Disposable {
   private fileWatcher: FSWatcher | null = null;
   private sessionPath: string | null = null;
   private lastEmissionKey: string | null = null;
+  private lastLocalScanAt = Number.NEGATIVE_INFINITY;
+  private lastLocalScanState: ProviderQuotaState<'codex'> | null = null;
   private running = false;
 
   constructor(workspacePath: string, options: CodexQuotaWatcherOptions = {}) {
@@ -115,6 +123,8 @@ export class CodexQuotaWatcher implements Disposable {
     this.watchFile = options.watchFile ?? fs.watch;
     this.maxTailBytes = options.maxTailBytes;
     this.maxSessionFiles = options.maxSessionFiles;
+    this.localScanCacheMs = options.localScanCacheMs ?? DEFAULT_LOCAL_SCAN_CACHE_MS;
+    this.now = options.now ?? Date.now;
     this.workspaceId = options.workspaceId;
     this.appendHistorySample = options.appendHistorySample ?? appendQuotaHistorySample;
   }
@@ -278,26 +288,36 @@ export class CodexQuotaWatcher implements Disposable {
 
   private emitCachedOrUnavailable(): void {
     const account = this.getActiveAccount();
-    let localProvider: CodexProvider | null = null;
-    try {
-      localProvider = this.providerFactory();
-      const local = resolveCodexQuotaFromLocalSources({
-        workspacePath: this.workspacePath,
-        activeAccount: account,
-        readSnapshot: this.readSnapshot,
-        writeSnapshot: this.writeSnapshot,
-        provider: localProvider,
-        maxTailBytes: this.maxTailBytes,
-        maxSessionFiles: this.maxSessionFiles,
-      });
-      if (local) {
-        this.emitState(local);
+    const scanNow = this.now();
+    if (scanNow - this.lastLocalScanAt < this.localScanCacheMs) {
+      if (this.lastLocalScanState) {
+        this.emitState(this.lastLocalScanState);
         return;
       }
-    } catch {
-      // Fall through to account-scoped cache or unavailable state.
-    } finally {
-      localProvider?.dispose();
+    } else {
+      let localProvider: CodexProvider | null = null;
+      this.lastLocalScanAt = scanNow;
+      this.lastLocalScanState = null;
+      try {
+        localProvider = this.providerFactory();
+        this.lastLocalScanState = resolveCodexQuotaFromLocalSources({
+          workspacePath: this.workspacePath,
+          activeAccount: account,
+          readSnapshot: this.readSnapshot,
+          writeSnapshot: this.writeSnapshot,
+          provider: localProvider,
+          maxTailBytes: this.maxTailBytes,
+          maxSessionFiles: this.maxSessionFiles,
+        });
+        if (this.lastLocalScanState) {
+          this.emitState(this.lastLocalScanState);
+          return;
+        }
+      } catch {
+        // Fall through to account-scoped cache or unavailable state.
+      } finally {
+        localProvider?.dispose();
+      }
     }
 
     const cached = account ? this.readSnapshot('codex', account.id) : null;

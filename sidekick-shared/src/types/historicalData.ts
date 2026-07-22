@@ -57,6 +57,14 @@ export interface DailyData {
   updatedAt: string;
 }
 
+export interface HourlyData {
+  hour: number;
+  tokens: TokenTotals;
+  totalCost: number;
+  messageCount: number;
+  sessionCount: number;
+}
+
 export interface MonthlyData {
   month: string;
   tokens: TokenTotals;
@@ -83,6 +91,8 @@ export interface AllTimeStats {
 export interface HistoricalDataStore {
   schemaVersion: number;
   daily: Record<string, DailyData>;
+  /** Hourly buckets keyed by local YYYY-MM-DD. */
+  hourly?: Record<string, HourlyData[]>;
   monthly: Record<string, MonthlyData>;
   allTime: AllTimeStats;
   lastSaved: string;
@@ -101,6 +111,10 @@ export interface SessionHistoryRecord {
   tokens: TokenTotals;
   totalCost: number;
   messageCount: number;
+  /** Schema v3 additive fields used to make aggregate replacement idempotent. */
+  modelUsage?: ModelUsageRecord[];
+  toolUsage?: ToolUsageRecord[];
+  unpricedModelIds?: string[];
   qualityScore: number;
   qualityFactors: Array<{
     id: string;
@@ -148,5 +162,27 @@ export function createEmptyTokenTotals(): TokenTotals {
     outputTokens: 0,
     cacheWriteTokens: 0,
     cacheReadTokens: 0,
+  };
+}
+
+export function createEmptyDataStore(): HistoricalDataStore {
+  const now = new Date().toISOString();
+  return {
+    schemaVersion: HISTORICAL_DATA_SCHEMA_VERSION,
+    daily: {},
+    monthly: {},
+    sessions: [],
+    allTime: {
+      tokens: createEmptyTokenTotals(),
+      totalCost: 0,
+      messageCount: 0,
+      sessionCount: 0,
+      firstDate: '',
+      lastDate: '',
+      modelUsage: [],
+      toolUsage: [],
+      updatedAt: now,
+    },
+    lastSaved: now,
   };
 }

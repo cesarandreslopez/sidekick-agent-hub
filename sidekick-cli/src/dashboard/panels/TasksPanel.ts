@@ -33,12 +33,16 @@ export class TasksPanel implements SidePanel {
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
     const tasks = mergeTasks(metrics.tasks, staticData.tasks);
-    return tasks.map((t) => ({
-      id: t.taskId,
-      label: `${STATUS_ICON[t.status] || ' '} ${t.subject}`,
-      sortKey: (STATUS_SORT[t.status] ?? 3) * 1000 + parseInt(t.taskId, 10),
-      data: t,
-    }));
+    return tasks.map((t, index) => {
+      const numericId = parseInt(t.taskId, 10);
+      return {
+        id: t.taskId,
+        label: `${STATUS_ICON[t.status] || ' '} ${t.subject}`,
+        sortKey:
+          (STATUS_SORT[t.status] ?? 3) * 1000 + (Number.isNaN(numericId) ? index : numericId),
+        data: t,
+      };
+    });
   }
 
   getActions(): PanelAction[] {

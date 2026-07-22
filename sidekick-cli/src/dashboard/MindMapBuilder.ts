@@ -83,15 +83,16 @@ export function buildMindMapTree(
   staticData: StaticData,
   diffStats?: Map<string, DiffStat>,
   filter?: string,
+  resolveDiffPath?: (filePath: string) => string,
 ): TreeData {
-  const sessionId = (metrics.sessionStartTime || 'unknown').substring(0, 8);
+  const sessionId = (metrics.sessionId || metrics.sessionStartTime || 'unknown').substring(0, 8);
   const rootLabel = tag('session', `SESSION [${sessionId}] \u2014 claude-code`);
 
   const children: Record<string, TreeData> = {};
   const latestPath = findLatestFilePath(metrics);
 
   // ── Tools section (with files, URLs, dirs, commands nested under their tool) ──
-  addToolsSection(children, metrics, diffStats, latestPath);
+  addToolsSection(children, metrics, diffStats, latestPath, resolveDiffPath);
 
   // ── Tasks section ──
   addTasksSection(children, metrics);
@@ -192,6 +193,7 @@ function addToolsSection(
   metrics: DashboardMetrics,
   diffStats?: Map<string, DiffStat>,
   latestPath?: string | null,
+  resolveDiffPath?: (filePath: string) => string,
 ): void {
   if (metrics.toolStats.length === 0) return;
 
@@ -227,7 +229,8 @@ function addToolsSection(
         if (f.edits > 0) parts.push(`${f.edits}E`);
         // Append diff stats if available
         const shortPath = shortenPath(f.path);
-        const ds = diffStats?.get(f.path) ?? diffStats?.get(shortPath);
+        const diffPath = resolveDiffPath?.(f.path) ?? f.path;
+        const ds = diffStats?.get(diffPath) ?? diffStats?.get(f.path) ?? diffStats?.get(shortPath);
         const diffSuffix = ds
           ? ` {green-fg}+${ds.additions}{/green-fg} {red-fg}-${ds.deletions}{/red-fg}`
           : '';
@@ -662,8 +665,19 @@ function truncateTagged(text: string, maxVisible: number): string {
   let visible = 0;
   let result = '';
   let inTag = false;
+  let inAnsi = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
+    if (ch === '\x1b' && text[i + 1] === '[') {
+      inAnsi = true;
+      result += ch;
+      continue;
+    }
+    if (inAnsi) {
+      result += ch;
+      if (ch === 'm') inAnsi = false;
+      continue;
+    }
     if (ch === '{') {
       inTag = true;
       result += ch;
@@ -681,6 +695,7 @@ function truncateTagged(text: string, maxVisible: number): string {
     result += ch;
     visible++;
   }
+  if (result.includes('\x1b[') && !result.endsWith('\x1b[0m')) result += '\x1b[0m';
   return result;
 }
 
@@ -727,11 +742,11 @@ function visibleLength(text: string): number {
 }
 
 /** Pad or truncate `text` to exactly `width` visible chars. */
-function fitText(text: string, width: number): string {
+export function fitText(text: string, width: number): string {
   const vLen = visibleLength(text);
   if (vLen <= width) return text + ' '.repeat(width - vLen);
-  // Truncate plain text (no tags) by visible length
-  return text.substring(0, width - 3) + '...';
+  const truncated = truncateTagged(text, width);
+  return truncated + ' '.repeat(Math.max(0, width - visibleLength(truncated)));
 }
 
 /** Format a two-column line: left-aligned `left`, right-aligned `right`, total = `width`. */
@@ -1052,7 +1067,7 @@ export function renderMindMapBoxed(
   const out: string[] = [];
 
   // ── Session header (double-line box) ──
-  const sessionId = (metrics.sessionStartTime || 'unknown').substring(0, 8);
+  const sessionId = (metrics.sessionId || metrics.sessionStartTime || 'unknown').substring(0, 8);
   const totalTools = metrics.toolStats.reduce((s, t) => s + t.calls, 0);
   const headerLines = [
     `\u25B8 SESSION [${sessionId}] \u2014 claude-code`,

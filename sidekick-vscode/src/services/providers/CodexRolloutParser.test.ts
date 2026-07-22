@@ -427,7 +427,7 @@ describe('CodexRolloutParser', () => {
       expect(events[0].type).toBe('system');
       expect(events[0].message.sourceLabel).toBe('token count');
       expect(events[0].message.usage).toEqual({
-        input_tokens: 1000,
+        input_tokens: 500,
         output_tokens: 200,
         cache_read_input_tokens: 500,
         cache_creation_input_tokens: 0,

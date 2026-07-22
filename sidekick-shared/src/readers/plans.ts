@@ -10,6 +10,7 @@ import { PLAN_SCHEMA_VERSION, MAX_PLANS_PER_PROJECT } from '../types/plan';
 import { getProjectDataPath, encodeWorkspacePath } from '../paths';
 import { readJsonStore } from './helpers';
 import { parsePlanMarkdown } from '../parsers/planExtractor';
+import { atomicWriteJson } from '../writers/atomic';
 
 export interface ReadPlansOptions {
   status?: 'in_progress' | 'completed' | 'failed' | 'abandoned' | 'all';
@@ -180,11 +181,7 @@ export async function writePlans(slug: string, plans: PersistedPlan[]): Promise<
     lastSaved: new Date().toISOString(),
   };
 
-  // Ensure directory exists
-  const dir = filePath.replace(/[/\\][^/\\]+$/, '');
-  await fs.promises.mkdir(dir, { recursive: true });
-
-  await fs.promises.writeFile(filePath, JSON.stringify(store, null, 2), 'utf-8');
+  await atomicWriteJson(filePath, store);
 }
 
 /**

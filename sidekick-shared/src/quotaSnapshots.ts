@@ -24,6 +24,11 @@ interface QuotaSnapshotStore {
   snapshots: QuotaSnapshotRecord[];
 }
 
+const LOCK_WAIT_MS = 15;
+const LOCK_STALE_MS = 10_000;
+const LOCK_TIMEOUT_MS = 15_000;
+const lockSleepView = new Int32Array(new SharedArrayBuffer(4));
+
 function getQuotaSnapshotPath(): string {
   return path.join(getConfigDir(), 'quota-snapshots.json');
 }
@@ -73,6 +78,55 @@ function writeStore(store: QuotaSnapshotStore): void {
   atomicWriteJson(getQuotaSnapshotPath(), store);
 }
 
+function withSnapshotStoreLock<T>(operation: () => T): T {
+  ensureConfigDir();
+  const lockPath = `${getQuotaSnapshotPath()}.lock`;
+  const token = `${process.pid}:${crypto.randomBytes(16).toString('hex')}`;
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      const descriptor = fs.openSync(lockPath, 'wx', 0o600);
+      fs.writeFileSync(descriptor, token, 'utf8');
+      fs.fsyncSync(descriptor);
+      fs.closeSync(descriptor);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      try {
+        const stat = fs.statSync(lockPath);
+        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+          const owner = fs.readFileSync(lockPath, 'utf8');
+          const ownerPid = Number.parseInt(owner.split(':', 1)[0], 10);
+          let ownerAlive = Number.isInteger(ownerPid) && ownerPid > 0;
+          if (ownerAlive) {
+            try {
+              process.kill(ownerPid, 0);
+            } catch (ownerError) {
+              ownerAlive = (ownerError as NodeJS.ErrnoException).code === 'EPERM';
+            }
+          }
+          if (!ownerAlive) fs.rmSync(lockPath, { force: true });
+        }
+      } catch {
+        // The owner may have released the lock between checks.
+      }
+      if (Date.now() >= deadline) throw new Error(`Timed out waiting for quota lock: ${lockPath}`);
+      Atomics.wait(lockSleepView, 0, 0, LOCK_WAIT_MS);
+    }
+  }
+
+  try {
+    return operation();
+  } finally {
+    try {
+      if (fs.readFileSync(lockPath, 'utf8') === token) fs.rmSync(lockPath, { force: true });
+    } catch {
+      // Never remove a lock that has already been released or replaced.
+    }
+  }
+}
+
 function snapshotTimeMs(quota: QuotaState): number {
   const capturedAt = quota.capturedAt ? Date.parse(quota.capturedAt) : NaN;
   return Number.isFinite(capturedAt) ? capturedAt : 0;
@@ -116,38 +170,30 @@ export function writeQuotaSnapshot(
   accountId: string,
   quota: QuotaState,
 ): void {
-  const store = readStore();
-  const index = store.snapshots.findIndex(
-    (item) => item.providerId === providerId && item.accountId === accountId,
-  );
-  const existingQuota = index >= 0 ? store.snapshots[index].quota : undefined;
-  const snapshot: QuotaState = {
-    ...quota,
-    providerId,
-    capturedAt: quota.capturedAt ?? new Date().toISOString(),
-    source: quota.source ?? 'session',
-    stale: false,
-    resetCredits:
-      quota.resetCredits ?? (providerId === 'codex' ? existingQuota?.resetCredits : undefined),
-  };
+  withSnapshotStoreLock(() => {
+    const store = readStore();
+    const index = store.snapshots.findIndex(
+      (item) => item.providerId === providerId && item.accountId === accountId,
+    );
+    const existingQuota = index >= 0 ? store.snapshots[index].quota : undefined;
+    const snapshot: QuotaState = {
+      ...quota,
+      providerId,
+      capturedAt: quota.capturedAt ?? new Date().toISOString(),
+      source: quota.source ?? 'session',
+      stale: false,
+      resetCredits:
+        quota.resetCredits ?? (providerId === 'codex' ? existingQuota?.resetCredits : undefined),
+    };
 
-  if (index >= 0 && shouldKeepExistingSnapshot(store.snapshots[index].quota, snapshot)) {
-    return;
-  }
+    if (index >= 0 && shouldKeepExistingSnapshot(store.snapshots[index].quota, snapshot)) return;
 
-  const record: QuotaSnapshotRecord = {
-    providerId,
-    accountId,
-    quota: snapshot,
-  };
+    const record: QuotaSnapshotRecord = { providerId, accountId, quota: snapshot };
+    if (index >= 0) store.snapshots[index] = record;
+    else store.snapshots.push(record);
 
-  if (index >= 0) {
-    store.snapshots[index] = record;
-  } else {
-    store.snapshots.push(record);
-  }
-
-  writeStore(store);
+    writeStore(store);
+  });
 }
 
 export function readQuotaSnapshot(

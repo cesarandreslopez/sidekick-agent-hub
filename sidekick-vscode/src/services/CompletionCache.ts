@@ -70,7 +70,7 @@ export class CompletionCache {
     // Use last 500 chars of prefix and first 200 of suffix
     const prefixTail = context.prefix.slice(-500);
     const suffixHead = context.suffix.slice(0, 200);
-    return `${context.language}:${context.model}:${prefixTail}:${suffixHead}`;
+    return `${context.language}:${context.model}:${context.multiline ? 'm' : 's'}:${prefixTail}:${suffixHead}`;
   }
 
   /**

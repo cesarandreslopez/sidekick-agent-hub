@@ -46,6 +46,7 @@ export class CompletionService implements vscode.Disposable {
 
   /** Timer for debouncing requests */
   private debounceTimer: NodeJS.Timeout | undefined;
+  private debounceResolve: (() => void) | undefined;
 
   /** Counter for tracking request freshness */
   private lastRequestId = 0;
@@ -126,8 +127,14 @@ export class CompletionService implements vscode.Disposable {
     await new Promise<void>((resolve) => {
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
+        this.debounceResolve?.();
       }
-      this.debounceTimer = setTimeout(resolve, debounceMs);
+      this.debounceResolve = () => {
+        this.debounceTimer = undefined;
+        this.debounceResolve = undefined;
+        resolve();
+      };
+      this.debounceTimer = setTimeout(this.debounceResolve, debounceMs);
     });
 
     // Check if this request is still valid after debounce
@@ -289,6 +296,7 @@ export class CompletionService implements vscode.Disposable {
     this.pendingController?.abort();
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
+      this.debounceResolve?.();
     }
     this.cache.clear();
   }

@@ -74,12 +74,13 @@ export class PlanPersistenceService extends PersistenceService<PlanHistoryStore>
     const totalTokensUsed = persistedSteps.reduce((sum, s) => sum + (s.tokensUsed ?? 0), 0);
     const totalToolCalls = persistedSteps.reduce((sum, s) => sum + (s.toolCalls ?? 0), 0);
     const totalCostUsd = persistedSteps.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
+    const normalizedTitle = planState.title || 'Untitled Plan';
 
     const persisted: PersistedPlan = {
       id: planId,
       projectSlug: this.projectSlug,
       sessionId,
-      title: planState.title || 'Untitled Plan',
+      title: normalizedTitle,
       source: planState.source,
       prompt: planState.prompt,
       createdAt: planState.enteredAt?.toISOString() ?? new Date().toISOString(),
@@ -96,7 +97,7 @@ export class PlanPersistenceService extends PersistenceService<PlanHistoryStore>
 
     // Check if plan already exists (update) or new (insert)
     const existingIdx = this.store.plans.findIndex(
-      (p) => p.sessionId === sessionId && p.title === planState.title,
+      (p) => p.sessionId === sessionId && p.title === normalizedTitle,
     );
     if (existingIdx >= 0) {
       this.store.plans[existingIdx] = persisted;

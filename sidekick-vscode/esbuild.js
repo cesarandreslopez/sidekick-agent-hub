@@ -52,20 +52,6 @@ async function main() {
     logLevel: 'warning',
   });
 
-  // Webview context - Dashboard (Browser)
-  const webviewDashboardCtx = await esbuild.context({
-    entryPoints: ['src/webview/dashboard.ts'],
-    bundle: true,
-    format: 'iife',
-    minify: production,
-    sourcemap: !production,
-    sourcesContent: false,
-    platform: 'browser',
-    outfile: 'out/webview/dashboard.js',
-    target: ['es2020'],
-    logLevel: 'warning',
-  });
-
   // Webview vendor bundle - Chart.js (Browser)
   const webviewChartjsCtx = await esbuild.context({
     entryPoints: ['src/webview/chartjs-vendor.ts'],
@@ -98,7 +84,6 @@ async function main() {
     extensionCtx,
     webviewExplainCtx,
     webviewErrorCtx,
-    webviewDashboardCtx,
     webviewChartjsCtx,
     webviewD3Ctx,
   ];

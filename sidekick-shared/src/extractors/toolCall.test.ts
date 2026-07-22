@@ -69,6 +69,15 @@ describe('extractToolCalls', () => {
   });
 });
 
+describe('ToolCallTracker message-less events', () => {
+  it('ignores a message-less summary without throwing', () => {
+    const tracker = new ToolCallTracker();
+    const summary = { type: 'summary', timestamp: '2026-03-23T10:00:00Z' } as SessionEvent;
+
+    expect(tracker.process(summary)).toEqual([]);
+  });
+});
+
 describe('extractToolCall', () => {
   it('extracts a top-level tool_use event', () => {
     const event: SessionEvent = {

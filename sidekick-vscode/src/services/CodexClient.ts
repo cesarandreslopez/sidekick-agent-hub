@@ -72,12 +72,19 @@ export class CodexClient implements ClaudeClient {
         signal.addEventListener(
           'abort',
           () => {
-            if (!child.killed) child.kill('SIGTERM');
+            if (!child.killed) {
+              child.kill('SIGTERM');
+              const forceKillTimer = setTimeout(() => {
+                if (child.exitCode === null) child.kill('SIGKILL');
+              }, 5_000);
+              forceKillTimer.unref();
+            }
           },
           { once: true },
         );
 
         // Write prompt to stdin and close
+        child.stdin.on('error', (error) => reject(error));
         child.stdin.write(prompt);
         child.stdin.end();
 
@@ -114,7 +121,11 @@ export class CodexClient implements ClaudeClient {
         child.on('error', (err) => reject(err));
 
         child.on('close', (code) => {
-          if (errorMessage) {
+          if (signal.aborted) {
+            const error = new Error('Request was cancelled');
+            error.name = 'AbortError';
+            reject(error);
+          } else if (errorMessage) {
             reject(new Error(`Codex error: ${errorMessage}`));
           } else if (code !== 0 && code !== null) {
             reject(

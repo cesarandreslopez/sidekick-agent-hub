@@ -89,6 +89,25 @@ describe('decideAutoSwitch', () => {
       }),
     ).toEqual({ switchTo: 'better' });
   });
+
+  it('excludes stale snapshots older than one quota window', () => {
+    const now = Date.parse('2026-01-01T12:00:00Z');
+    const staleCandidate: QuotaState = {
+      ...quota(20),
+      stale: true,
+      capturedAt: '2026-01-01T06:59:59Z',
+    };
+
+    expect(
+      decideAutoSwitch(
+        'claude-code',
+        { accountId: 'active', quota: quota(95) },
+        [{ accountId: 'stale', quota: staleCandidate }],
+        { enabled: true, thresholdPct: 90 },
+        now,
+      ),
+    ).toBeNull();
+  });
 });
 
 describe('AutoSwitchController', () => {

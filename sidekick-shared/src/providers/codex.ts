@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import { EventAggregator } from '../aggregation/EventAggregator';
 import { readSessionContextSnapshot } from '../context/sessionContext';
 import type {
@@ -117,6 +118,20 @@ function findRolloutFiles(dir: string): Array<{ path: string; mtime: Date }> {
   return results;
 }
 
+function hasRolloutFile(dir: string): boolean {
+  try {
+    if (!fs.existsSync(dir)) return false;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory() && hasRolloutFile(fullPath)) return true;
+      if (entry.isFile() && isRolloutFile(entry.name)) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 function findRolloutFilesInConfiguredHomes(): Array<{ path: string; mtime: Date }> {
   const results: Array<{ path: string; mtime: Date }> = [];
   const seen = new Set<string>();
@@ -136,7 +151,7 @@ function findRolloutFilesInConfiguredHomes(): Array<{ path: string; mtime: Date 
 function getSessionsDir(): string {
   const dirs = getSessionsDirs();
   for (const dir of dirs) {
-    if (findRolloutFiles(dir).length > 0) {
+    if (hasRolloutFile(dir)) {
       return dir;
     }
   }
@@ -421,6 +436,7 @@ class CodexReader implements SessionReader {
   private filePosition = 0;
   private lineBuffer = '';
   private _wasTruncated = false;
+  private decoder = new StringDecoder('utf8');
 
   constructor(
     private readonly rolloutPath: string,
@@ -452,6 +468,7 @@ class CodexReader implements SessionReader {
         this.filePosition = 0;
         this.lineBuffer = '';
         this.parser.reset();
+        this.decoder = new StringDecoder('utf8');
       }
 
       // No new content
@@ -461,11 +478,15 @@ class CodexReader implements SessionReader {
       const fd = fs.openSync(this.rolloutPath, 'r');
       const bufferSize = currentSize - this.filePosition;
       const buffer = Buffer.alloc(bufferSize);
-      fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
-      fs.closeSync(fd);
+      let bytesRead = 0;
+      try {
+        bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
+      } finally {
+        fs.closeSync(fd);
+      }
 
-      const chunk = buffer.toString('utf-8');
-      this.filePosition = currentSize;
+      const chunk = this.decoder.write(buffer.subarray(0, bytesRead));
+      this.filePosition += bytesRead;
 
       // Process lines
       const text = this.lineBuffer + chunk;
@@ -501,11 +522,12 @@ class CodexReader implements SessionReader {
       // Propagate last token usage snapshot to the provider
       const lastUsage = this.parser.getLastTokenUsage();
       if (lastUsage && this.onTokenUsage) {
+        const cacheReadTokens = lastUsage.cached_input_tokens || 0;
         this.onTokenUsage({
-          inputTokens: lastUsage.input_tokens || 0,
+          inputTokens: Math.max(0, (lastUsage.input_tokens || 0) - cacheReadTokens),
           outputTokens: lastUsage.output_tokens || 0,
           cacheWriteTokens: 0,
-          cacheReadTokens: lastUsage.cached_input_tokens || 0,
+          cacheReadTokens,
           reasoningTokens: lastUsage.reasoning_output_tokens || 0,
           model: this.parser.getCurrentModel() || 'unknown',
           timestamp: new Date(),
@@ -527,6 +549,7 @@ class CodexReader implements SessionReader {
     this.filePosition = 0;
     this.lineBuffer = '';
     this.parser.reset();
+    this.decoder = new StringDecoder('utf8');
     this._wasTruncated = false;
   }
 
@@ -535,6 +558,7 @@ class CodexReader implements SessionReader {
   }
 
   flush(): void {
+    this.lineBuffer += this.decoder.end();
     // Process any remaining data in the line buffer
     if (this.lineBuffer.trim()) {
       try {
@@ -544,6 +568,7 @@ class CodexReader implements SessionReader {
         // Not a complete line yet
       }
     }
+    this.decoder = new StringDecoder('utf8');
   }
 
   getPosition(): number {
@@ -553,6 +578,7 @@ class CodexReader implements SessionReader {
   seekTo(position: number): void {
     this.filePosition = position;
     this.lineBuffer = '';
+    this.decoder = new StringDecoder('utf8');
   }
 
   wasTruncated(): boolean {
@@ -707,9 +733,10 @@ export class CodexProvider implements SessionProviderBase {
     const db = this.ensureDb();
     if (db) {
       const cwdStats = db.getAllDistinctCwds();
+      const sessionsDir = getSessionsDir();
       for (const stat of cwdStats) {
         seenCwds.set(stat.cwd, {
-          dir: getSessionsDir(),
+          dir: sessionsDir,
           name: stat.cwd,
           encodedName: stat.cwd,
           sessionCount: stat.count,
@@ -1040,11 +1067,9 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   computeContextSize(usage: TokenUsage): number {
-    // OpenAI's input_tokens already includes cached_input_tokens (it's a subset,
-    // not additive like Anthropic's model). So inputTokens alone represents the
-    // full context window usage. This differs from OpenCode's formula which adds
-    // cacheWrite + cacheRead because Anthropic reports them separately.
-    return usage.inputTokens;
+    // Codex usage is normalized to the disjoint TokenUsage shape at the reader
+    // boundary, so reconstruct the full prompt/context from uncached + cached.
+    return usage.inputTokens + usage.cacheReadTokens;
   }
 
   // --- Rate limits (for vscode wrapper to build QuotaState) ---

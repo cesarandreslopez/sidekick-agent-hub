@@ -5,6 +5,7 @@
  */
 
 import { parseDateExpression } from '../dateFilterExpression';
+import { maxDetailScroll } from './detailScroll';
 
 export type LayoutMode = 'normal' | 'expanded' | 'wide-side';
 export type OverlayKind = null | 'help' | 'context-menu' | 'filter' | 'changelog';
@@ -176,7 +177,7 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
       return { ...state, detailScrollOffset: action.offset };
 
     case 'SCROLL_DETAIL_DELTA': {
-      const maxOffset = Math.max(0, action.totalLines - action.viewportHeight);
+      const maxOffset = maxDetailScroll(action.totalLines, action.viewportHeight);
       const next = Math.max(0, Math.min(state.detailScrollOffset + action.delta, maxOffset));
       return { ...state, detailScrollOffset: next };
     }

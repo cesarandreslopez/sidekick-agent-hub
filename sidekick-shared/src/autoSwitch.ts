@@ -63,6 +63,7 @@ export interface AutoSwitchControllerOptions {
 }
 
 const MATERIAL_REMAINING_IMPROVEMENT_PCT = 5;
+const MAX_STALE_SNAPSHOT_AGE_MS = 5 * 60 * 60 * 1000;
 
 function mergedConfig(config?: AutoSwitchConfig): AutoSwitchConfig {
   return {
@@ -81,11 +82,21 @@ function quotaRemaining(quota: QuotaState | null): number {
   return Math.max(0, 100 - quotaUtilization(quota));
 }
 
+function isUsableCandidateQuota(quota: QuotaState | null, nowMs: number): boolean {
+  if (!quota?.available) return false;
+  if (quota.stale !== true) return true;
+
+  const capturedAt = Date.parse(quota.capturedAt ?? '');
+  if (!Number.isFinite(capturedAt) || capturedAt > nowMs) return false;
+  return nowMs - capturedAt <= MAX_STALE_SNAPSHOT_AGE_MS;
+}
+
 export function decideAutoSwitch(
   _provider: AccountProviderId,
   active: AutoSwitchActiveAccount,
   candidates: AutoSwitchCandidate[],
   config?: AutoSwitchConfig,
+  nowMs = Date.now(),
 ): AutoSwitchDecision | null {
   const cfg = mergedConfig(config);
   if (!cfg.enabled) return null;
@@ -100,7 +111,7 @@ export function decideAutoSwitch(
       (candidate) =>
         candidate.accountId !== active.accountId &&
         candidate.switchable !== false &&
-        candidate.quota?.available,
+        isUsableCandidateQuota(candidate.quota, nowMs),
     )
     .sort((a, b) => quotaRemaining(b.quota) - quotaRemaining(a.quota))[0];
 
@@ -219,6 +230,7 @@ export class AutoSwitchController implements Disposable {
       { accountId: activeAccountId, quota: activeQuota },
       candidates,
       this.config,
+      this.now(),
     );
     if (!decision) return;
     if (this.switchedDuringCrossing.has(providerId)) return;

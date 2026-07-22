@@ -72,6 +72,8 @@ export interface EventAggregatorOptions {
   timelineCap?: number;
   /** Maximum latency records to retain (default 100). */
   latencyCap?: number;
+  /** Maximum context-size points to retain (default 2000). */
+  contextTimelineCap?: number;
   /** Burn rate sliding window in ms (default 5 * 60_000). */
   burnWindowMs?: number;
   /** Burn rate sample interval in ms (default 10_000). */

@@ -215,6 +215,7 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
     } else {
       process.stderr.write(chalk.yellow(msg) + '\n');
     }
+    process.exitCode = 1;
     return;
   }
 
@@ -234,12 +235,13 @@ async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
   const { quota, peak } = await fetchClaudeQuotaPayload();
 
   if (!quota.available) {
+    process.exitCode = 1;
     if (jsonOutput) {
       process.stdout.write(JSON.stringify({ ...quota, peak }, null, 2) + '\n');
       return;
     }
     printClaudeQuotaError(quota);
-    process.exit(1);
+    return;
   }
 
   if (jsonOutput) {
@@ -333,6 +335,7 @@ async function codexQuotaAction(
   const quota = await fetchCodexQuotaPayload(provider, globalOpts, localOpts);
 
   if (!quota.available) {
+    process.exitCode = 1;
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
     } else {
@@ -461,6 +464,7 @@ async function zaiQuotaAction(
   const { quota } = await fetchZaiQuotaPayload(localOpts);
 
   if (!quota.available) {
+    process.exitCode = 1;
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(quota, null, 2) + '\n');
     } else {
@@ -525,6 +529,9 @@ async function allQuotaAction(
     fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts, true),
     fetchZaiQuotaPayload(localOpts),
   ]);
+  if (!claude.available || !codex.available || (zai.detected && !zai.quota.available)) {
+    process.exitCode = 1;
+  }
 
   if (jsonOutput) {
     process.stdout.write(

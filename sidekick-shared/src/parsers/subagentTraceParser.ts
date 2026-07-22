@@ -154,7 +154,7 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
 
         // Format tool summary
         let toolSummary: string | undefined;
-        if (sessionEvent.type === 'tool_use' && sessionEvent.tool) {
+        if (sessionEvent.tool) {
           toolSummary = formatToolSummary(sessionEvent.tool.name, sessionEvent.tool.input);
         }
 
@@ -170,10 +170,7 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
         // Extract token usage
         if (raw.type === 'assistant' && raw.message?.usage) {
           const usage = raw.message.usage;
-          inputTokens +=
-            (usage.input_tokens || 0) +
-            (usage.cache_creation_input_tokens || 0) +
-            (usage.cache_read_input_tokens || 0);
+          inputTokens += usage.input_tokens || 0;
           outputTokens += usage.output_tokens || 0;
         }
 
@@ -275,7 +272,7 @@ function linkTraces(traces: SubagentTrace[]): void {
         for (const match of matches) {
           const childId = match[1];
           const child = traceById.get(childId);
-          if (child && child !== trace) {
+          if (child && child !== trace && !child.parentToolUseId) {
             child.parentToolUseId = trace.agentId;
             trace.children.push(child);
           }
@@ -298,7 +295,7 @@ function linkTraces(traces: SubagentTrace[]): void {
 
       for (const traceEvent of potential.events) {
         const evt = traceEvent.event;
-        if (evt.type === 'tool_use' && evt.tool?.name === 'Task') {
+        if (evt.type === 'assistant' && evt.tool?.name === 'Task') {
           const taskTime = new Date(evt.timestamp).getTime();
           // Within 2 seconds before child start
           if (taskTime <= childStart && childStart - taskTime < 2000) {

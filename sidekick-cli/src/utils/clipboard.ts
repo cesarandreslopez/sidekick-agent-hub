@@ -28,12 +28,23 @@ function isWSL(): boolean {
   }
 }
 
-function nativeCopy(text: string): boolean {
+export function clipboardAttempts(
+  runtimePlatform: NodeJS.Platform,
+  wsl: boolean,
+  wayland: boolean,
+): Array<[string, string[]]> {
   const attempts: Array<[string, string[]]> = [];
-  if (platform() === 'darwin') attempts.push(['pbcopy', []]);
-  else if (isWSL()) attempts.push(['clip.exe', []]);
-  if (process.env.WAYLAND_DISPLAY) attempts.push(['wl-copy', []]);
-  attempts.push(['xclip', ['-selection', 'clipboard']], ['xsel', ['-ib']]);
+  if (runtimePlatform === 'darwin') attempts.push(['pbcopy', []]);
+  else if (runtimePlatform === 'win32' || wsl) attempts.push(['clip.exe', []]);
+  if (wayland) attempts.push(['wl-copy', []]);
+  if (runtimePlatform !== 'win32') {
+    attempts.push(['xclip', ['-selection', 'clipboard']], ['xsel', ['-ib']]);
+  }
+  return attempts;
+}
+
+function nativeCopy(text: string): boolean {
+  const attempts = clipboardAttempts(platform(), isWSL(), !!process.env.WAYLAND_DISPLAY);
 
   for (const [bin, args] of attempts) {
     if (!which(bin)) continue;
@@ -64,6 +75,9 @@ function osc52Copy(text: string): boolean {
 }
 
 export function copyToClipboard(text: string): boolean {
-  if (process.env.SIDEKICK_CLIP === 'osc52') return osc52Copy(text) || nativeCopy(text);
-  return nativeCopy(text) || osc52Copy(text);
+  const osc52Available = platform() !== 'win32';
+  if (process.env.SIDEKICK_CLIP === 'osc52') {
+    return (osc52Available && osc52Copy(text)) || nativeCopy(text);
+  }
+  return nativeCopy(text) || (osc52Available && osc52Copy(text));
 }

@@ -3,7 +3,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseDateExpression, itemTimestampMs, type DateBounds } from './dateFilterExpression';
+import {
+  parseDateExpression,
+  itemTimestampMs,
+  localDateOnlyTimestamp,
+  type DateBounds,
+} from './dateFilterExpression';
 
 // Wednesday 2026-07-01 15:30 local time
 const NOW = new Date(2026, 6, 1, 15, 30, 0);
@@ -93,9 +98,10 @@ describe('itemTimestampMs', () => {
 
   it('falls back to the leading date of session identifiers', () => {
     expect(itemTimestampMs({ sessionOrigin: '2026-06-15T10-30-45-abc' })).toBe(
-      Date.parse('2026-06-15'),
+      new Date(2026, 5, 15).getTime(),
     );
-    expect(itemTimestampMs({ sessionId: '2026-06-15-xyz' })).toBe(Date.parse('2026-06-15'));
+    expect(itemTimestampMs({ sessionId: '2026-06-15-xyz' })).toBe(new Date(2026, 5, 15).getTime());
+    expect(localDateOnlyTimestamp('2026-06-15')).toBe(new Date(2026, 5, 15).getTime());
   });
 
   it('returns null for undated or malformed payloads', () => {

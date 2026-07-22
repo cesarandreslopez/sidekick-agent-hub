@@ -11,10 +11,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from '../paths';
-import type { SerializedAggregatorState } from './EventAggregator';
+import { SNAPSHOT_SCHEMA_VERSION, type SerializedAggregatorState } from './EventAggregator';
 
 /** Current schema version — bump when format changes. */
-const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = SNAPSHOT_SCHEMA_VERSION;
 
 /** Snapshot sidecar file content. */
 export interface SessionSnapshot {

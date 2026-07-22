@@ -100,6 +100,17 @@ describe('calculateSessionContextPressure', () => {
 });
 
 describe('buildSessionContextSnapshot', () => {
+  it('accepts message-less summary events and still selects the latest model', () => {
+    const events = [
+      event({ type: 'assistant', message: { role: 'assistant', model: 'gpt-5-codex' } }),
+      { type: 'summary', timestamp: ts, compaction: { tokensBefore: 100, tokensAfter: 20 } },
+    ] as SessionEvent[];
+
+    const snapshot = buildSessionContextSnapshot(events);
+
+    expect(snapshot.model).toBe('gpt-5-codex');
+    expect(snapshot.sources.some((source) => source.sourceType === 'summary')).toBe(true);
+  });
   it('extracts provider-neutral context evidence from canonical events', () => {
     const snapshot = buildSessionContextSnapshot(richEvents(), {
       providerId: 'codex',
@@ -168,6 +179,28 @@ describe('buildSessionContextSnapshot', () => {
       bodyTruncated: true,
       originalChars: 100,
     });
+  });
+
+  it('projects incrementally without re-reading prior event content', () => {
+    const projector = createSessionContextProjector();
+    let reads = 0;
+    const first = event({
+      type: 'user',
+      message: {
+        role: 'user',
+        get content() {
+          reads++;
+          return 'first prompt';
+        },
+      },
+    });
+    projector.processEvent(first);
+    const readsAfterFirst = reads;
+    projector.processEvent(
+      event({ type: 'assistant', message: { role: 'assistant', content: 'ok' } }),
+    );
+    expect(reads).toBe(readsAfterFirst);
+    expect(projector.getSnapshot().sources).toHaveLength(2);
   });
 
   it('keeps system/runtime evidence while limiting latest sources', () => {

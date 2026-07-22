@@ -194,4 +194,24 @@ describe('fetchQuota', () => {
     });
     expect(result.httpStatus).toBeUndefined();
   });
+
+  it('aborts a hung usage request after ten seconds', async () => {
+    mockFetch.mockImplementation((_url: string, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    });
+
+    const pending = fetchQuota('token');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(pending).resolves.toMatchObject({
+      available: false,
+      failureKind: 'network',
+    });
+  });
 });

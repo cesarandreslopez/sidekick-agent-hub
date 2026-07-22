@@ -197,6 +197,12 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 6.25,
     cacheReadCostPerMillion: 0.5,
   },
+  'claude-opus-4-5': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
   'claude-opus-4.5': {
     inputCostPerMillion: 5.0,
     outputCostPerMillion: 25.0,

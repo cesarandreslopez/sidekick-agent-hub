@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import { searchSessions } from 'sidekick-shared';
 import type { SearchResult } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { parseLimit } from '../utils/parseLimit';
 
 /**
  * Highlight all occurrences of `query` in `text` using chalk yellow+bold.
@@ -53,7 +54,7 @@ export async function searchAction(_opts: Record<string, unknown>, cmd: Command)
   const opts = cmd.opts();
   const query: string = opts.query as string;
   const jsonOutput: boolean = !!globalOpts.json || !!opts.json;
-  const limit: number = opts.limit ? parseInt(opts.limit as string, 10) : 50;
+  const limit = parseLimit(opts.limit as string | undefined) ?? 50;
 
   if (!query || query.trim().length === 0) {
     process.stderr.write('Error: search query is required\n');

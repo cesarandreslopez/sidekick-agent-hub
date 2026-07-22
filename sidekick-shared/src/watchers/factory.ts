@@ -36,8 +36,14 @@ export function createWatcher(options: CreateWatcherOptions): {
 
   let sessionPath: string;
   if (sessionId) {
-    const match = sessions.find((s) => s.includes(sessionId));
-    if (!match) {
+    const matches = sessions.map((sessionPath) => ({
+      sessionPath,
+      id: provider.getSessionId(sessionPath),
+    }));
+    const exact = matches.filter((candidate) => candidate.id === sessionId);
+    const candidates =
+      exact.length > 0 ? exact : matches.filter((candidate) => candidate.id.startsWith(sessionId));
+    if (candidates.length === 0) {
       throw new Error(
         `Session ${sessionId} not found. Available: ${sessions
           .slice(0, 5)
@@ -45,7 +51,15 @@ export function createWatcher(options: CreateWatcherOptions): {
           .join(', ')}`,
       );
     }
-    sessionPath = match;
+    if (candidates.length > 1) {
+      throw new Error(
+        `Session ${sessionId} is ambiguous. Matches: ${candidates
+          .slice(0, 5)
+          .map((candidate) => candidate.id)
+          .join(', ')}`,
+      );
+    }
+    sessionPath = candidates[0].sessionPath;
   } else {
     sessionPath = sessions[0]; // most recent
   }

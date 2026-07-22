@@ -190,9 +190,11 @@ export class PrDescriptionService implements vscode.Disposable {
       // execGit accepts repoPath string directly (no type casting needed)
       const result = await this.gitService.execGit(repoPath, ['rev-parse', '--abbrev-ref', '@{u}']);
 
-      // Parse "origin/main" -> "main"
+      // Keep the complete upstream ref. Besides preserving slashed branch names
+      // (origin/feature/foo), the remote-tracking ref is the authoritative base
+      // when the corresponding local branch is stale or absent.
       const upstream = result.trim();
-      const branchName = upstream.split('/').pop() || 'main';
+      const branchName = upstream || 'main';
       log(`PrDescriptionService: Detected upstream branch '${branchName}'`);
       return branchName;
     } catch {

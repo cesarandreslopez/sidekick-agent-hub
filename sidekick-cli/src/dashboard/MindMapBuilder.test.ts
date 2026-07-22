@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMindMapTree, renderMindMapAnsi, renderMindMapBoxed } from './MindMapBuilder';
+import { buildMindMapTree, fitText, renderMindMapAnsi, renderMindMapBoxed } from './MindMapBuilder';
 import { shortenPath } from './formatters';
 import type { DashboardMetrics } from './DashboardState';
 import type { StaticData } from './StaticDataLoader';
@@ -107,6 +107,21 @@ describe('buildMindMapTree', () => {
     const fileKeys = Object.keys(readNode.children || {});
     expect(fileKeys.length).toBe(2);
     expect(fileKeys[0]).toContain('foo.ts');
+  });
+
+  it('uses a repo-relative resolver for git diff annotations', () => {
+    const m = emptyMetrics();
+    m.toolStats = [{ name: 'Read', calls: 1, pending: 0 }];
+    m.fileTouches = [{ path: '/repo/src/foo.ts', reads: 1, writes: 0, edits: 0 }];
+    const tree = buildMindMapTree(
+      m,
+      emptyStaticData(),
+      new Map([['src/foo.ts', { additions: 3, deletions: 1 }]]),
+      undefined,
+      (filePath) => filePath.replace('/repo/', ''),
+    );
+    expect(JSON.stringify(tree)).toContain('+3');
+    expect(JSON.stringify(tree)).toContain('-1');
   });
 
   it('includes Tasks section with status icons and cross-links', () => {
@@ -605,5 +620,19 @@ describe('renderMindMapBoxed', () => {
     // Box width = min(30 - 8, 50) = 22, so lines should be 22 chars wide
     const headerLine = lines[0]; // ╔═══...═══╗
     expect(headerLine.length).toBe(22);
+  });
+
+  it('truncates tagged and ANSI text by visible width without cutting markup', () => {
+    const tagged = fitText('{green-fg}TOOLS{/green-fg} and a long suffix', 12);
+    expect(tagged.replace(/\{[^}]+\}/g, '')).toHaveLength(12);
+    expect(tagged).not.toContain('{green-f...');
+    const ansi = fitText('\x1b[32mTOOLS\x1b[0m and a long suffix', 12);
+    expect(ansi.replace(/\x1b\[[0-9;]*m/g, '')).toHaveLength(12);
+  });
+
+  it('prefers the real session id in tree and boxed headers', () => {
+    const m = { ...emptyMetrics(), sessionId: 'abcdef12-rest' };
+    expect(JSON.stringify(buildMindMapTree(m, emptyStaticData()))).toContain('abcdef12');
+    expect(renderMindMapBoxed(m, emptyStaticData()).join('\n')).toContain('abcdef12');
   });
 });

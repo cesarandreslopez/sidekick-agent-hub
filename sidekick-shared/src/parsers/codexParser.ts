@@ -885,7 +885,10 @@ export class CodexRolloutParser {
 
     const mappedUsage: MessageUsage | undefined = usage
       ? {
-          input_tokens: usage.input_tokens || 0,
+          // Codex reports cached_input_tokens as a subset of input_tokens,
+          // while MessageUsage categories are disjoint. Normalize once here
+          // so aggregation and pricing do not count cached input twice.
+          input_tokens: Math.max(0, (usage.input_tokens || 0) - (usage.cached_input_tokens || 0)),
           output_tokens: usage.output_tokens || 0,
           cache_read_input_tokens: usage.cached_input_tokens || 0,
           cache_creation_input_tokens: 0,

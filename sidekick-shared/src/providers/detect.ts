@@ -62,6 +62,37 @@ function getMostRecentMtime(dir: string): number {
   }
 }
 
+function getMostRecentFileMtime(
+  dir: string,
+  isCandidate: (filePath: string) => boolean,
+  depth: number,
+): number {
+  if (depth < 0) return 0;
+  let latest = 0;
+  try {
+    for (const entry of fs.readdirSync(dir)) {
+      const filePath = path.join(dir, entry);
+      try {
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory?.()) {
+          latest = Math.max(latest, getMostRecentFileMtime(filePath, isCandidate, depth - 1));
+        } else if (isCandidate(filePath)) {
+          latest = Math.max(latest, stats.mtime.getTime());
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  } catch {
+    return 0;
+  }
+  return latest;
+}
+
+function getClaudeActivityMtime(claudeBase: string): number {
+  return getMostRecentFileMtime(claudeBase, (filePath) => filePath.endsWith('.jsonl'), 2);
+}
+
 function getOpenCodeActivityMtime(): number {
   const dataDir = getOpenCodeDataDir();
   const dbPath = path.join(dataDir, 'opencode.db');
@@ -85,7 +116,11 @@ function getCodexActivityMtime(): number {
     const dbMtime = getCodexStateDbMtime(codexHome);
     if (dbMtime > latest) latest = dbMtime;
 
-    const sessionsMtime = getMostRecentMtime(path.join(codexHome, 'sessions'));
+    const sessionsMtime = getMostRecentFileMtime(
+      path.join(codexHome, 'sessions'),
+      (filePath) => path.basename(filePath).startsWith('rollout-') && filePath.endsWith('.jsonl'),
+      4,
+    );
     if (sessionsMtime > latest) latest = sessionsMtime;
   }
 
@@ -118,7 +153,7 @@ export function getAllDetectedProviders(): ProviderId[] {
   );
 
   const available: Array<{ id: ProviderId; mtime: number }> = [];
-  if (hasClaude) available.push({ id: 'claude-code', mtime: getMostRecentMtime(claudeBase) });
+  if (hasClaude) available.push({ id: 'claude-code', mtime: getClaudeActivityMtime(claudeBase) });
   if (hasOpenCode) available.push({ id: 'opencode', mtime: getOpenCodeActivityMtime() });
   if (hasCodex) available.push({ id: 'codex', mtime: getCodexActivityMtime() });
 
@@ -144,7 +179,7 @@ export function detectProvider(override?: ProviderId | 'auto'): ProviderId {
   const available: Array<{ id: ProviderId; mtime: number }> = [];
 
   if (hasClaude) {
-    available.push({ id: 'claude-code', mtime: getMostRecentMtime(claudeBase) });
+    available.push({ id: 'claude-code', mtime: getClaudeActivityMtime(claudeBase) });
   }
   if (hasOpenCode) {
     available.push({ id: 'opencode', mtime: getOpenCodeActivityMtime() });

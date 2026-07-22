@@ -98,6 +98,17 @@ describe('detectSessionActivity', () => {
     expect(result.reason).toBe('ending-event');
   });
 
+  it('keeps a trailing user-carried tool result ongoing after the grace period', () => {
+    const content = makeJsonlLine({
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok' }] },
+    });
+    mockFileContent(content, Date.now() - 10_000);
+    const result = detectSessionActivity('/session.jsonl');
+    expect(result.state).toBe('ongoing');
+    expect(result.reason).toBe('ai-activity-after-ending');
+  });
+
   it('returns ended for empty file', () => {
     mockFileContent('', Date.now() - 1000);
     const result = detectSessionActivity('/session.jsonl');

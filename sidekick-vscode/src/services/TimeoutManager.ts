@@ -254,6 +254,7 @@ export class TimeoutManager {
     externalSignal?: AbortSignal,
   ): Promise<TimeoutResult<T>> {
     const abortController = new AbortController();
+    let deadlineExpired = false;
 
     // Link external signal (e.g., from outer CancellationToken) to internal controller
     let externalAbortHandler: (() => void) | undefined;
@@ -268,6 +269,7 @@ export class TimeoutManager {
 
     // Set up timeout
     const timeoutId = setTimeout(() => {
+      deadlineExpired = true;
       abortController.abort();
     }, timeoutMs);
 
@@ -312,13 +314,16 @@ export class TimeoutManager {
       }
     } catch (error) {
       // Check if it was a timeout
-      if (error instanceof TimeoutError) {
+      if (error instanceof TimeoutError || deadlineExpired) {
         return {
           success: false,
           timedOut: true,
           timeoutMs,
           contextSizeKb,
-          error,
+          error:
+            error instanceof TimeoutError
+              ? error
+              : new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs),
         };
       }
 

@@ -64,7 +64,7 @@ export function DetailPane({
       {/* Scroll indicator bottom */}
       {hasMoreBelow && (
         <Box justifyContent="center">
-          <Text color="gray">▼ ({totalLines - scrollOffset - viewportHeight} more)</Text>
+          <Text color="gray">▼ ({totalLines - scrollOffset - effectiveHeight} more)</Text>
         </Box>
       )}
     </Box>

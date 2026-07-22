@@ -17,7 +17,10 @@ export async function readTasks(
   const store = await readProjectJsonStore<TaskPersistenceStore>(project, 'tasks');
   if (!store) return [];
 
-  let tasks = Object.values(store.tasks);
+  let tasks =
+    store.tasks && typeof store.tasks === 'object' && !Array.isArray(store.tasks)
+      ? Object.values(store.tasks)
+      : [];
 
   const status = opts?.status ?? 'all';
   if (status !== 'all') {

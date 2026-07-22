@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { clampScrollOffset } from './useWindowedScroll';
 
 // Replicate the core logic from useWindowedScroll for testing
 interface ScrollState {
@@ -132,5 +133,11 @@ describe('windowed scroll logic', () => {
     // Start scrolled down, then select something above
     const offset = ensureVisible(2, 5, 10, 3);
     expect(offset).toBe(2);
+  });
+
+  it('re-clamps a stale offset when the list shrinks or viewport grows', () => {
+    expect(clampScrollOffset(50, 30, 10)).toBe(20);
+    expect(clampScrollOffset(20, 30, 25)).toBe(5);
+    expect(clampScrollOffset(5, 0, 10)).toBe(0);
   });
 });

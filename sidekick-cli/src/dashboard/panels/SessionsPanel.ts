@@ -41,6 +41,7 @@ import { CliInferenceClient } from '../../inference/CliInferenceClient';
 import { buildNarrativePrompt } from '../../inference/narrativePrompt';
 import type { ProviderId } from 'sidekick-shared';
 import { describeQuotaFailure, highlightEvent } from 'sidekick-shared';
+import { localDateOnlyTimestamp } from '../dateFilterExpression';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
 type MindMapFilter =
@@ -110,7 +111,7 @@ export class SessionsPanel implements SidePanel {
 
     // Active session (always first)
     if (metrics.eventCount > 0) {
-      const sessionId = (metrics.sessionStartTime || 'active').substring(0, 8);
+      const sessionId = (metrics.sessionId || metrics.sessionStartTime || 'active').substring(0, 8);
       const providerSuffix = metrics.providerName ? ` (${metrics.providerName})` : '';
       const runningAgents = metrics.subagents.filter((a) => a.status === 'running').length;
       const agentBadge =
@@ -142,7 +143,10 @@ export class SessionsPanel implements SidePanel {
       | { type: 'active'; metrics?: { sessionStartTime?: string } }
       | { type: 'historical'; session?: { date?: string } };
     const raw = data.type === 'active' ? data.metrics?.sessionStartTime : data.session?.date;
-    const ms = raw ? Date.parse(raw) : NaN;
+    if (!raw) return null;
+    const dateOnly = localDateOnlyTimestamp(raw);
+    if (dateOnly !== null) return dateOnly;
+    const ms = Date.parse(raw);
     return Number.isNaN(ms) ? null : ms;
   }
 
@@ -491,7 +495,7 @@ export class SessionsPanel implements SidePanel {
           lines.push(`  {${severityColor}-fg}${descriptor.title}{/${severityColor}-fg}`);
           const failureText = [descriptor.message, descriptor.detail].filter(Boolean).join(' ');
           const quotaTextWidth = Math.max(20, w - 4);
-          for (const line of wordWrap(failureText, quotaTextWidth)) {
+          for (const line of wordWrap(failureText, quotaTextWidth).split('\n')) {
             lines.push(`  {grey-fg}${line}{/grey-fg}`);
           }
         }
@@ -631,6 +635,7 @@ export class SessionsPanel implements SidePanel {
       staticData,
       diffStats,
       this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined,
+      (filePath) => this.diffCache?.toRelative(filePath) ?? filePath,
     );
     return viewLabel + '\n' + renderTreeToText(tree, 0).join('\n');
   }

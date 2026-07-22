@@ -455,7 +455,12 @@ export class TempFilesTreeProvider
     }
 
     // Use the shared SubagentFileScanner
-    const subagentStats = scanSubagentDir(this.sessionDir, this.sessionId);
+    const subagentStats = scanSubagentDir(
+      this.sessionDir,
+      this.sessionId,
+      undefined,
+      this.scannedAgentFiles,
+    );
 
     // Track which agents we've already processed
     let hasNewData = false;

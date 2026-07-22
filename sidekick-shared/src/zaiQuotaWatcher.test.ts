@@ -124,6 +124,35 @@ describe('ZaiQuotaWatcher', () => {
     watcher.dispose();
   });
 
+  it('clears a trapped error after its authoritative reset passes', () => {
+    let now = NOW;
+    const states: ProviderQuotaState<'zai'>[] = [];
+    const watcher = new ZaiQuotaWatcher({
+      tier: 'max',
+      now: () => now,
+      recomputeDebounceMs: 0,
+      readSnapshot: vi.fn(() => null),
+      writeSnapshot: vi.fn(),
+      appendHistorySample: vi.fn(),
+    });
+    watcher.onUpdate((state) => states.push(state));
+    watcher.start();
+    watcher.ingestAssistantTurn(makeTurn(10));
+    watcher.ingestError({
+      code: '1308',
+      message: 'Usage limit reached, next_flush_time: 2025-06-01T12:01:00Z',
+    });
+    watcher.refresh();
+    expect(states.at(-1)?.error).toContain('Usage limit reached');
+
+    now += 2 * 60_000;
+    watcher.refresh();
+
+    expect(states.at(-1)?.error).toBeUndefined();
+    expect(states.at(-1)?.failureKind).toBeUndefined();
+    watcher.dispose();
+  });
+
   it('appends a history sample when a workspaceId is configured', () => {
     const samples: QuotaHistorySample[] = [];
     const appendHistorySample = vi.fn((sample: QuotaHistorySample) => {

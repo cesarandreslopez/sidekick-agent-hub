@@ -255,9 +255,11 @@ export class JsonlSessionWatcher implements SessionWatcher {
       this.fsWatcher = fs.watch(this.sessionPath, { persistent: false }, () => {
         this.debouncedRead();
       });
-      this.fsWatcher.on('error', () => {
-        // File may have been deleted; stop gracefully
-        this.stop();
+      this.fsWatcher.on('error', (error) => {
+        // Degrade to catch-up polling without killing the live session.
+        this.fsWatcher?.close();
+        this.fsWatcher = null;
+        this.callbacks.onError?.(error);
       });
     } catch {
       // fs.watch not available, rely on polling only

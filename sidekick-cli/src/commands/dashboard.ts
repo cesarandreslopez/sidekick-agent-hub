@@ -50,6 +50,7 @@ import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
 import { readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
 import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
+import { createDashboardSignalHandler, selectSessionProvider } from './dashboardLifecycle';
 
 function createProviderById(id: ProviderId) {
   switch (id) {
@@ -187,7 +188,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           replay = true;
           // Switch to the provider that owns the selected session
           if (result.providerId && result.providerId !== provider.id) {
-            activeProvider = createProviderById(result.providerId);
+            activeProvider = selectSessionProvider(
+              provider,
+              additionalProviders,
+              result.providerId,
+              createProviderById,
+            );
           }
         }
       } catch {
@@ -557,8 +563,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Safety net: ensure mouse tracking is disabled even on unclean exit
   process.on('exit', disableMouse);
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
+  const onSignal = createDashboardSignalHandler(cleanup, () => instance.unmount());
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
 
   // Create watcher
   let watcher: ReturnType<typeof createWatcher>['watcher'] | null = null;
@@ -678,6 +685,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Wait for exit
   await instance.waitUntilExit();
+  process.removeListener('SIGINT', onSignal);
+  process.removeListener('SIGTERM', onSignal);
   cleanup();
   process.exit(0);
 }

@@ -272,10 +272,7 @@ export class GitService implements vscode.Disposable {
 
         log(`Getting ${useStaged ? 'staged' : 'unstaged'} diff from ${cwd}`);
 
-        const gitProcess = spawn('git', args, {
-          cwd,
-          shell: true,
-        });
+        const gitProcess = spawn('git', args, { cwd });
 
         const chunks: Buffer[] = [];
         const errorChunks: Buffer[] = [];
@@ -437,7 +434,7 @@ export class GitService implements vscode.Disposable {
     return new Promise((resolve, reject) => {
       log(`Executing: git ${args.join(' ')} in ${repoPath}`);
 
-      const gitProcess = spawn('git', args, { cwd: repoPath, shell: true });
+      const gitProcess = spawn('git', args, { cwd: repoPath });
 
       const chunks: Buffer[] = [];
       const errorChunks: Buffer[] = [];

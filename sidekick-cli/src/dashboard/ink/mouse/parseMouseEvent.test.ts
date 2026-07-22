@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMouseEvent } from './parseMouseEvent';
+import { parseMouseEvent, parseMouseEvents } from './parseMouseEvent';
 
 describe('parseMouseEvent', () => {
   it('parses left click at (5, 10)', () => {
@@ -180,5 +180,11 @@ describe('parseMouseEvent', () => {
     expect(event).not.toBeNull();
     expect(event!.x).toBe(199);
     expect(event!.y).toBe(49);
+  });
+
+  it('parses every mouse sequence coalesced into one stdin chunk', () => {
+    const events = parseMouseEvents('\x1b[<64;10;5M\x1b[<65;10;5M\x1b[<0;2;3M');
+    expect(events.map((event) => event.type)).toEqual(['scroll', 'scroll', 'click']);
+    expect(events.map((event) => event.scrollDirection)).toEqual(['up', 'down', undefined]);
   });
 });

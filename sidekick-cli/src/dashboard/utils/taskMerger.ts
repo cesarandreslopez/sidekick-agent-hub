@@ -33,7 +33,12 @@ export function mergeTasks(live: TaskItem[], persisted: PersistedTask[]): TaskIt
   }
 
   for (const t of live) {
-    map.set(t.taskId, t);
+    const previous = map.get(t.taskId);
+    map.set(t.taskId, {
+      ...t,
+      createdAt: t.createdAt ?? previous?.createdAt,
+      sessionOrigin: t.sessionOrigin ?? previous?.sessionOrigin,
+    });
   }
 
   return Array.from(map.values());

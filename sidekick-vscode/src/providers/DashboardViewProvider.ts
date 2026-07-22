@@ -62,8 +62,6 @@ import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { BurnRateCalculator } from '../services/BurnRateCalculator';
 import { SessionSummaryService } from '../services/SessionSummaryService';
 import { extractDecisions } from '../services/DecisionExtractor';
-import { extractKnowledgeCandidates } from '../services/KnowledgeCandidateExtractor';
-import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
@@ -111,6 +109,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Disposables for cleanup */
   private _disposables: vscode.Disposable[] = [];
+
+  /** Bindings tied to the currently resolved webview instance. */
+  private _viewDisposables: vscode.Disposable[] = [];
 
   /** Current dashboard state */
   private _state: DashboardState;
@@ -172,9 +173,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Handoff service for session context handoff */
   private _handoffService?: HandoffService;
 
-  /** Knowledge note service for knowledge note persistence and extraction */
-  private _knowledgeNoteService?: KnowledgeNoteService;
-
   /** Manages rotating phrase timers */
   private readonly _phrases: PhraseRotationManager;
 
@@ -202,13 +200,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   setHandoffService(service: HandoffService): void {
     this._handoffService = service;
-  }
-
-  /**
-   * Sets the knowledge note service instance for knowledge note persistence.
-   */
-  setKnowledgeNoteService(service: KnowledgeNoteService): void {
-    this._knowledgeNoteService = service;
   }
 
   /**
@@ -371,6 +362,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void {
+    this._disposeViewBindings();
     this._view = webviewView;
 
     // Configure webview options
@@ -389,7 +381,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     webviewView.webview.onDidReceiveMessage(
       (message: DashboardWebviewMessage) => this._handleDashboardWebviewMessage(message),
       undefined,
-      this._disposables,
+      this._viewDisposables,
     );
 
     // Resend state when view becomes visible, manage quota + status refresh
@@ -411,7 +403,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       },
       undefined,
-      this._disposables,
+      this._viewDisposables,
+    );
+
+    webviewView.onDidDispose(
+      () => {
+        if (this._view === webviewView) {
+          this._view = undefined;
+          this._quotaService?.stopRefresh();
+          this._providerStatusService?.stopRefresh();
+          this._peakHoursService?.stopRefresh();
+          this._phrases.stop();
+        }
+        this._disposeViewBindings();
+      },
+      undefined,
+      this._viewDisposables,
     );
 
     // Start quota + status refresh if view is initially visible
@@ -425,6 +432,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._phrases.start(() => this._state.sessionActive);
 
     log('Dashboard webview resolved');
+  }
+
+  private _disposeViewBindings(): void {
+    const bindings = this._viewDisposables;
+    this._viewDisposables = [];
+    for (const binding of bindings) binding.dispose();
   }
 
   /**
@@ -442,6 +455,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           this._syncFromSessionMonitor();
         }
         this._sendStateToWebview();
+        this._sendPlanState();
         this._sendBurnRateUpdate();
         this._sendSessionList();
         this._sendProviderInfo();
@@ -451,11 +465,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Send plan history if available
         this._sendPlanHistory();
         void this._sendQuotaHistory();
-        break;
-
-      case 'requestStats':
-        this._syncFromSessionMonitor();
-        this._sendStateToWebview();
         break;
 
       case 'selectSession':
@@ -529,7 +538,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._handleCopySuggestion(message.text);
         break;
 
-      case 'openClaudeMd':
       case 'openInstructionFile':
         this._handleOpenInstructionFile();
         break;
@@ -548,11 +556,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._handleSearchTimeline(message.query);
         break;
 
-      case 'setTimelineFilter':
-        // Filters are applied client-side in the webview, but we track state
-        log(`Dashboard: timeline filter updated: ${JSON.stringify(message.filters)}`);
-        break;
-
       case 'requestToolCallDetails':
         this._handleToolCallDetails(message.toolName);
         break;
@@ -569,10 +572,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
       }
 
-      case 'requestDecisions':
-        this._sendDecisionsToWebview();
-        break;
-
       case 'searchDecisions':
         this._sendDecisionsToWebview(message.query);
         break;
@@ -581,33 +580,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._handleGenerateHandoff().catch((err) => {
           logError('Dashboard: Unhandled error in _handleGenerateHandoff', err);
         });
-        break;
-
-      case 'clearDecisions':
-        if (this._decisionLogService) {
-          this._decisionLogService.clearAll();
-          this._sendDecisionsToWebview();
-        }
-        break;
-
-      case 'requestKnowledgeNotes':
-        this._sendKnowledgeNotesToWebview();
-        break;
-
-      case 'acceptKnowledgeCandidate':
-        if (this._knowledgeNoteService) {
-          this._knowledgeNoteService.addNote({
-            noteType: message.candidate.noteType,
-            content: message.candidate.content,
-            filePath: message.candidate.filePath,
-            source: message.candidate.source,
-          });
-          this._sendKnowledgeNotesToWebview();
-        }
-        break;
-
-      case 'rejectKnowledgeCandidate':
-        // Just dismiss — candidates are not persisted unless accepted
         break;
 
       case 'requestNotificationHistory':
@@ -635,10 +607,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'openCliDashboard':
         vscode.commands.executeCommand('sidekick.openCliDashboard');
-        break;
-
-      case 'requestPlanHistory':
-        this._sendPlanHistory();
         break;
 
       case 'openExternal':
@@ -1111,9 +1079,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       }
 
-      // Decision + knowledge note extraction
+      // Decision extraction
       this._extractAndPersistDecisions();
-      this._extractAndSurfaceKnowledgeCandidates();
     }, 2000);
   }
 
@@ -1151,47 +1118,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const entries = this._decisionLogService.getEntries(query);
     const totalCount = this._decisionLogService.getEntryCount();
     this._postMessage({ type: 'updateDecisions', decisions: entries, totalCount });
-  }
-
-  /**
-   * Extracts knowledge note candidates from session data and sends them to webview.
-   */
-  private _extractAndSurfaceKnowledgeCandidates(): void {
-    if (!this._knowledgeNoteService) return;
-
-    try {
-      const analysisData = this._sessionAnalyzer?.getCachedData() ?? null;
-      const stats = this._sessionMonitor.getStats();
-      const projectPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-
-      const candidates = extractKnowledgeCandidates(
-        analysisData?.errors ?? [],
-        analysisData?.recoveryPatterns ?? [],
-        stats.toolCalls,
-        [], // suggestions - populated during guidance analysis
-        projectPath,
-        stats.truncationEvents,
-      );
-
-      if (candidates.length > 0) {
-        this._postMessage({ type: 'updateKnowledgeCandidates', candidates });
-      }
-
-      this._sendKnowledgeNotesToWebview();
-    } catch (error) {
-      logError('Failed to extract knowledge candidates', error);
-    }
-  }
-
-  /**
-   * Sends knowledge notes to the webview.
-   */
-  private _sendKnowledgeNotesToWebview(): void {
-    if (!this._knowledgeNoteService) return;
-
-    const notes = this._knowledgeNoteService.getAllNotes({ status: ['active', 'needs_review'] });
-    const totalCount = this._knowledgeNoteService.getNoteCount();
-    this._postMessage({ type: 'updateKnowledgeNotes', notes, totalCount });
   }
 
   /**
@@ -1550,6 +1476,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._toolAnalytics.set(analytics.name, analytics);
     this._updateToolAnalyticsState();
     this._sendToolAnalyticsToWebview();
+    this._sendPlanState();
   }
 
   /**
@@ -1641,12 +1568,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.toolAnalytics = [];
     this._state.timeline = [];
     this._state.errorDetails = [];
+    this._state.compactions = [];
+    this._state.contextAttribution = [];
+    this._state.contextTimeline = [];
+    this._state.permissionMode = undefined;
     this._currentContextSize = 0;
     this._syncFromSessionMonitor();
 
     // Notify webview
     this._postMessage({ type: 'sessionStart', sessionPath });
     this._sendStateToWebview();
+    this._sendPlanState();
     this._sendBurnRateUpdate();
     this._sendSessionList();
   }
@@ -1661,9 +1593,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sendStateToWebview();
     this._sendSessionList();
 
-    // Final decision + knowledge extraction pass before session closes
+    // Final decision extraction pass before session closes
     this._extractAndPersistDecisions();
-    this._extractAndSurfaceKnowledgeCandidates();
 
     // Build and cache full session summary on session end
     this._buildAndSendSummary();
@@ -1675,10 +1606,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _handleDiscoveryModeChange(inDiscoveryMode: boolean): void {
     log(`Dashboard: discovery mode changed to ${inDiscoveryMode}`);
-    this._postMessage({
-      type: 'discoveryModeChange',
-      inDiscoveryMode,
-    });
     this._sendSessionList();
   }
 
@@ -1986,6 +1913,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _syncFromSessionMonitor(): void {
     const stats: SessionStats = this._sessionMonitor.getStats();
 
+    this._state.compactions = [];
+    this._state.contextAttribution = [];
+    this._state.contextTimeline = [];
+    this._state.permissionMode = undefined;
+
     log(
       `Sync from SessionMonitor - input: ${stats.totalInputTokens}, output: ${stats.totalOutputTokens}, cacheWrite: ${stats.totalCacheWriteTokens}, cacheRead: ${stats.totalCacheReadTokens}, contextSize: ${stats.currentContextSize}, recentEvents: ${stats.recentUsageEvents.length}`,
     );
@@ -2207,6 +2139,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       });
 
       this._postMessage({ type: 'updateTurnAttributions', turns: turnDisplays });
+    } else {
+      this._postMessage({ type: 'updateTurnAttributions', turns: [] });
     }
 
     // Sync permission mode and context timeline into state
@@ -2224,9 +2158,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     // Sync context waterfall
-    if (stats.contextTimeline && stats.contextTimeline.length > 0) {
+    {
       const waterfallDisplay = {
-        points: stats.contextTimeline.map((p) => ({
+        points: (stats.contextTimeline ?? []).map((p) => ({
           time: new Date(p.timestamp).toLocaleTimeString([], {
             hour: 'numeric',
             minute: '2-digit',
@@ -2330,7 +2264,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _sendStateToWebview(): void {
     this._postMessage({ type: 'updateStats', state: this._state });
-    this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
+  }
+
+  /** Sends plan state only on initialization and plan-relevant events. */
+  private _sendPlanState(): void {
     const plan = this._sessionMonitor.getStats().planState;
     this._postMessage({
       type: 'updatePlan',
@@ -2355,7 +2292,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
         : null,
     });
-    this._sendPlanHistory();
   }
 
   /**
@@ -2451,6 +2387,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     this._syncFromSessionMonitor();
     this._sendStateToWebview();
+    this._sendPlanState();
     this._sendBurnRateUpdate();
     this._sendTimelineToWebview();
     this._sendToolAnalyticsToWebview();
@@ -6357,7 +6294,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // ==== Changelog Modal ====
 
-      const changelogData = ${JSON.stringify(changelogEntries)};
+      const changelogData = ${this._safeJsonForScript(changelogEntries)};
 
       function renderChangelog(entries) {
         const body = document.getElementById('changelog-body');
@@ -7295,7 +7232,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         indicatorEl.innerHTML =
           '<span style="color: var(--vscode-charts-orange, var(--vscode-charts-yellow))">' +
           dot + '</span> ' +
-          (status.label || 'Peak Hours');
+          escapeHtml(status.label || 'Peak Hours');
 
         let html = '';
         if (typeof status.minutesUntilChange === 'number' && status.minutesUntilChange > 0) {
@@ -7305,7 +7242,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           html += 'Off-peak in ' + countdown + '<br>';
         }
         if (status.peakHoursDescription) {
-          html += status.peakHoursDescription;
+          html += escapeHtml(status.peakHoursDescription);
         }
         detailsEl.innerHTML = html;
       }
@@ -7526,30 +7463,40 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }).join('');
 
         // Add click handlers for expand/collapse
+        function setTimelineDescription(descEl, text, idx, expanded) {
+          descEl.textContent = text || '';
+          descEl.appendChild(document.createTextNode(' '));
+          const nextLink = document.createElement('span');
+          nextLink.className = 'expand-link';
+          nextLink.setAttribute('data-idx', idx);
+          nextLink.setAttribute('data-expanded', String(expanded));
+          nextLink.textContent = expanded ? '[less]' : '[more]';
+          descEl.appendChild(nextLink);
+          return nextLink;
+        }
+
         timelineEl.querySelectorAll('.expand-link').forEach(function(link) {
           link.addEventListener('click', function handleExpand(e) {
             e.stopPropagation();
-            const idx = link.getAttribute('data-idx');
+            const clickedLink = e.currentTarget;
+            const idx = clickedLink.getAttribute('data-idx');
             const item = timelineEl.querySelector('.timeline-item[data-idx="' + idx + '"]');
             if (!item) return;
 
             const descEl = item.querySelector('.description');
             if (!descEl) return;
 
-            const isExpanded = link.getAttribute('data-expanded') === 'true';
+            const isExpanded = clickedLink.getAttribute('data-expanded') === 'true';
             const truncated = descEl.getAttribute('data-truncated');
             const full = descEl.getAttribute('data-full');
 
-            if (isExpanded) {
-              descEl.innerHTML = truncated + ' <span class="expand-link" data-idx="' + idx + '" data-expanded="false">[more]</span>';
-            } else {
-              descEl.innerHTML = full + ' <span class="expand-link" data-idx="' + idx + '" data-expanded="true">[less]</span>';
-            }
-
-            const newLink = descEl.querySelector('.expand-link');
-            if (newLink) {
-              newLink.addEventListener('click', handleExpand);
-            }
+            const newLink = setTimelineDescription(
+              descEl,
+              isExpanded ? truncated : full,
+              idx,
+              !isExpanded
+            );
+            newLink.addEventListener('click', handleExpand);
           });
         });
       }
@@ -8214,7 +8161,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         var actSummary = document.getElementById('session-activity-summary');
         if (actSummary) {
           var parts = [];
-          var totalToolCalls = (state.toolAnalytics || []).reduce(function(s, t) { return s + (t.count || 0); }, 0);
+          var totalToolCalls = (state.toolAnalytics || []).reduce(function(s, t) { return s + (t.totalCalls || 0); }, 0);
           if (totalToolCalls > 0) parts.push(totalToolCalls + ' tool calls');
           var errorCount = (state.errorDetails || []).reduce(function(s, e) { return s + (e.count || 0); }, 0);
           if (errorCount > 0) parts.push(errorCount + ' error' + (errorCount !== 1 ? 's' : ''));
@@ -8645,6 +8592,104 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       }
 
+      function updateContextHealthDisplay(score, compactionCount) {
+        const el = document.getElementById('context-health');
+        if (!el) return;
+        const color = score >= 70
+          ? 'var(--vscode-charts-green, #4ec9b0)'
+          : score >= 40
+            ? 'var(--vscode-charts-yellow, #cca700)'
+            : 'var(--vscode-charts-red, #f14c4c)';
+        el.innerHTML = '<span class="sk-context-health-score" style="color:' + color + '">' +
+          Math.round(score) + '%</span><span class="sk-context-health-note"> · ' +
+          compactionCount + ' compaction' + (compactionCount === 1 ? '' : 's') + '</span>';
+        el.style.display = 'flex';
+      }
+
+      function updateTruncationDisplay(count, byTool) {
+        const el = document.getElementById('truncation-info');
+        if (!el) return;
+        if (!count) {
+          el.style.display = 'none';
+          el.innerHTML = '';
+          return;
+        }
+        const breakdown = (byTool || []).map(function(item) {
+          return escapeHtml(item.tool) + ': ' + item.count;
+        }).join(', ');
+        el.innerHTML = '<span class="sk-truncation-warning">⚠ ' + count + ' truncated</span>' +
+          (breakdown ? '<span class="sk-context-health-note"> (' + breakdown + ')</span>' : '');
+        el.style.display = 'flex';
+      }
+
+      function quotaHistoryBucket(utilization) {
+        if (utilization <= 0) return 0;
+        if (utilization < 25) return 1;
+        if (utilization < 50) return 2;
+        if (utilization < 75) return 3;
+        return 4;
+      }
+
+      function renderQuotaHistoryGrid(cells, weeks) {
+        const ns = 'http://www.w3.org/2000/svg';
+        const size = 11;
+        const gap = 2;
+        const rows = 7;
+        const cols = weeks;
+        const total = rows * cols;
+        const padded = new Array(Math.max(0, total - cells.length)).fill(null).concat(cells.slice(-total));
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('class', 'quota-history-grid');
+        svg.setAttribute('viewBox', '0 0 ' + (cols * (size + gap) - gap) + ' ' + (rows * (size + gap) - gap));
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        svg.setAttribute('role', 'img');
+        padded.forEach(function(cell, index) {
+          const rect = document.createElementNS(ns, 'rect');
+          rect.setAttribute('x', String(Math.floor(index / rows) * (size + gap)));
+          rect.setAttribute('y', String((index % rows) * (size + gap)));
+          rect.setAttribute('width', String(size));
+          rect.setAttribute('height', String(size));
+          rect.setAttribute('rx', '2');
+          rect.setAttribute('class', !cell
+            ? 'quota-history-cell bucket-0'
+            : cell.unavailable && cell.samples > 0
+              ? 'quota-history-cell unavailable'
+              : 'quota-history-cell bucket-' + quotaHistoryBucket(cell.utilization));
+          if (cell) {
+            const title = document.createElementNS(ns, 'title');
+            title.textContent = cell.date + (cell.unavailable
+              ? ' · unavailable'
+              : cell.samples === 0
+                ? ' · no samples'
+                : ' · peak ' + Math.round(cell.utilization) + '% · ' + cell.samples + ' sample' + (cell.samples === 1 ? '' : 's'));
+            rect.appendChild(title);
+          }
+          svg.appendChild(rect);
+        });
+        return svg;
+      }
+
+      function renderQuotaHistory(payload) {
+        const section = document.getElementById('quota-history-section');
+        const body = document.getElementById('quota-history-body');
+        if (!section || !body) return;
+        const entries = [];
+        if (payload && payload.providers && payload.providers.claude) entries.push(['Claude', payload.providers.claude.cells]);
+        if (payload && payload.providers && payload.providers.codex) entries.push(['Codex', payload.providers.codex.cells]);
+        body.innerHTML = '';
+        entries.forEach(function(entry) {
+          const row = document.createElement('div');
+          row.className = 'quota-history-provider';
+          const label = document.createElement('div');
+          label.className = 'quota-history-provider-label';
+          label.textContent = entry[0];
+          row.appendChild(label);
+          row.appendChild(renderQuotaHistoryGrid(entry[1], payload.weeks));
+          body.appendChild(row);
+        });
+        section.style.display = entries.length > 0 ? 'block' : 'none';
+      }
+
       // Handle messages from extension
       window.addEventListener('message', function(event) {
         const message = event.data;
@@ -8713,6 +8758,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
           case 'updateQuota':
             updateQuota(message.quota, message.quotaFailure);
+            break;
+
+          case 'updateQuotaHistory':
+            renderQuotaHistory(message.payload);
+            break;
+
+          case 'updateContextHealth':
+            updateContextHealthDisplay(message.score, message.compactionCount);
+            break;
+
+          case 'updateTruncations':
+            updateTruncationDisplay(message.count, message.byTool);
             break;
 
           case 'notification':
@@ -8914,11 +8971,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                 if (step.complexity) metaParts.push(step.complexity);
 
                 const metaHtml = metaParts.length > 0 ? '<span class="plan-step-meta">' + metaParts.join(' · ') + '</span>' : '';
-                const errorHtml = step.errorMessage ? '<div style="color: var(--vscode-charts-red, #f14c4c); font-size: 10px; margin-left: 20px;">' + step.errorMessage.substring(0, 100) + '</div>' : '';
+                const errorHtml = step.errorMessage ? '<div style="color: var(--vscode-charts-red, #f14c4c); font-size: 10px; margin-left: 20px;">' + escapeHtml(step.errorMessage.substring(0, 100)) + '</div>' : '';
 
                 stepsHtml += '<div class="plan-step-item ' + statusClass + '">'
                   + '<span class="plan-step-icon">' + icon + '</span>'
-                  + '<span class="plan-step-desc">' + step.description + '</span>'
+                  + '<span class="plan-step-desc">' + escapeHtml(step.description) + '</span>'
                   + metaHtml
                   + '</div>'
                   + errorHtml;
@@ -8981,7 +9038,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                 const rpDate = new Date(rp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                 phHtml += '<div class="plan-step-item ' + rp.status + '">'
                   + '<span class="plan-step-icon">' + rpIcon + '</span>'
-                  + '<span class="plan-step-desc">' + rp.title + '</span>'
+                  + '<span class="plan-step-desc">' + escapeHtml(rp.title) + '</span>'
                   + '<span class="plan-step-meta">' + rpPct + '% · ' + rp.stepCount + ' steps · ' + rpDate + '</span>'
                   + '</div>';
               }
@@ -9518,7 +9575,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Final extraction as safety net before teardown
     try {
       this._extractAndPersistDecisions();
-      this._extractAndSurfaceKnowledgeCandidates();
     } catch {
       // Best-effort — don't block dispose
     }
@@ -9526,6 +9582,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       clearTimeout(this._richerPanelTimer);
     }
     this._phrases.stop();
+    this._disposeViewBindings();
+    this._view = undefined;
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     log('DashboardViewProvider disposed');

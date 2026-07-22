@@ -53,18 +53,31 @@ export class CrossSessionSearch implements vscode.Disposable {
     quickPick.matchOnDetail = true;
 
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
+    let searchGeneration = 0;
 
     quickPick.onDidChangeValue((query) => {
-      if (searchTimer) clearTimeout(searchTimer);
+      searchGeneration++;
+      const generation = searchGeneration;
+      if (searchTimer) {
+        clearTimeout(searchTimer);
+        searchTimer = undefined;
+      }
       if (query.length < 3) {
         quickPick.items = [];
+        quickPick.busy = false;
         return;
       }
       quickPick.busy = true;
       searchTimer = setTimeout(async () => {
-        const results = await this.performSearch(query);
-        quickPick.items = results.map((r) => new SearchResultItem(r));
-        quickPick.busy = false;
+        searchTimer = undefined;
+        try {
+          const results = await this.performSearch(query);
+          if (generation === searchGeneration) {
+            quickPick.items = results.map((r) => new SearchResultItem(r));
+          }
+        } finally {
+          if (generation === searchGeneration) quickPick.busy = false;
+        }
       }, 300);
     });
 
@@ -77,7 +90,13 @@ export class CrossSessionSearch implements vscode.Disposable {
       quickPick.hide();
     });
 
-    quickPick.onDidHide(() => quickPick.dispose());
+    quickPick.onDidHide(() => {
+      searchGeneration++;
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = undefined;
+      quickPick.busy = false;
+      quickPick.dispose();
+    });
     quickPick.show();
   }
 

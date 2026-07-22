@@ -41,7 +41,13 @@ export class OpenCodeDatabase {
   }
 
   open(): boolean {
-    if (this.runtimeStatus) return this.runtimeStatus.available;
+    if (this.runtimeStatus?.kind === 'available') return true;
+    if (
+      this.runtimeStatus &&
+      ['db_missing', 'sqlite_missing', 'sqlite_blocked'].includes(this.runtimeStatus.kind)
+    ) {
+      return false;
+    }
     if (!this.isAvailable()) {
       this.runtimeStatus = { available: false, kind: 'db_missing' };
       return false;
@@ -86,7 +92,12 @@ export class OpenCodeDatabase {
       if (!trimmed) return [];
       return JSON.parse(trimmed) as T[];
     } catch (error) {
-      this.runtimeStatus = toRuntimeStatus(error, 'query_failed');
+      this.runtimeStatus = {
+        ...toRuntimeStatus(error, 'query_failed'),
+        // The database and sqlite binary were successfully opened. A failed
+        // query is transient and must not gate the next attempt.
+        available: true,
+      };
       return [];
     }
   }

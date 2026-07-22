@@ -48,6 +48,20 @@ function addDays(d: Date, days: number): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
 }
 
+/** Parse a YYYY-MM-DD value as local midnight rather than UTC midnight. */
+export function localDateOnlyTimestamp(value: string): number | null {
+  const match = ISO_DAY_RE.exec(value);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date.getTime();
+}
+
 /** Resolve a base (unprefixed) expression to a local time range. */
 function resolveBase(expr: string, now: Date): BaseRange | null {
   if (expr === 'today') {
@@ -133,8 +147,8 @@ export function itemTimestampMs(data: unknown): number | null {
     if (typeof value === 'string') {
       const match = /^\d{4}-\d{2}-\d{2}/.exec(value);
       if (match) {
-        const ms = Date.parse(match[0]);
-        if (!Number.isNaN(ms)) return ms;
+        const ms = localDateOnlyTimestamp(match[0]);
+        if (ms !== null) return ms;
       }
     }
   }

@@ -65,6 +65,16 @@ function createService(slug = 'test-project'): TaskPersistenceService {
   return service;
 }
 
+function createStoreForWatcher(): TaskPersistenceStore {
+  return {
+    schemaVersion: TASK_PERSISTENCE_SCHEMA_VERSION,
+    tasks: {},
+    lastSessionId: '',
+    sessionCount: 0,
+    lastSaved: new Date().toISOString(),
+  };
+}
+
 describe('TaskPersistenceService', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-task-test-'));
@@ -170,6 +180,23 @@ describe('TaskPersistenceService', () => {
       );
       service.dispose();
     }, 10_000);
+
+    it('stops observing the directory after the final listener is disposed', async () => {
+      const service = createService();
+      await service.initialize();
+      const listener = vi.fn();
+      const subscription = service.onDidChange(listener);
+      subscription.dispose();
+
+      fs.writeFileSync(
+        path.join(tmpDir, 'test-project.json'),
+        JSON.stringify({ ...createStoreForWatcher(), lastSaved: new Date().toISOString() }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(listener).not.toHaveBeenCalled();
+      service.dispose();
+    });
 
     it('falls back to empty store on corrupt JSON', async () => {
       const filePath = path.join(tmpDir, 'test-project.json');
@@ -585,10 +612,11 @@ describe('TaskPersistenceService', () => {
   });
 
   describe('sessionCount tracking', () => {
-    it('increments sessionCount on each saveSessionTasks call', async () => {
+    it('increments sessionCount only when the session identity changes', async () => {
       const service = createService();
       await service.initialize();
 
+      service.saveSessionTasks('session-1', makeTaskState([makeTask({ taskId: '1' })]));
       service.saveSessionTasks('session-1', makeTaskState([makeTask({ taskId: '1' })]));
       service.saveSessionTasks('session-2', makeTaskState([makeTask({ taskId: '2' })]));
 

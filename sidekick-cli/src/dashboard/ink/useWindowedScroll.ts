@@ -24,6 +24,14 @@ interface UseWindowedScrollResult {
   setSelected: (index: number) => void;
 }
 
+export function clampScrollOffset(
+  offset: number,
+  totalItems: number,
+  viewportHeight: number,
+): number {
+  return Math.max(0, Math.min(offset, Math.max(0, totalItems - viewportHeight)));
+}
+
 export function useWindowedScroll({
   totalItems,
   viewportHeight,
@@ -39,7 +47,8 @@ export function useWindowedScroll({
       return;
     }
     setSelectedIndex((prev) => Math.min(prev, totalItems - 1));
-  }, [totalItems]);
+    setScrollOffset((prev) => clampScrollOffset(prev, totalItems, viewportHeight));
+  }, [totalItems, viewportHeight]);
 
   const ensureVisible = useCallback(
     (index: number, currentOffset: number): number => {

@@ -20,6 +20,16 @@ import {
 import type { FollowEvent, HtmlReportOptions } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 
+export function resolveReportFlags(opts: Record<string, unknown>): {
+  noOpen: boolean;
+  noThinking: boolean;
+} {
+  return {
+    noOpen: opts.open === false,
+    noThinking: opts.thinking === false,
+  };
+}
+
 export async function reportAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
   const opts = cmd.opts();
@@ -27,9 +37,8 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
   const workspacePath = globalOpts.project || process.cwd();
   const sessionId: string | undefined = opts.session;
   const outputPath: string | undefined = opts.output;
-  const noOpen: boolean = !!opts.noOpen;
+  const { noOpen, noThinking } = resolveReportFlags(opts);
   const theme: 'dark' | 'light' = opts.theme === 'light' ? 'light' : 'dark';
-  const noThinking: boolean = !!opts.noThinking;
 
   // Collect all events by replaying through the watcher
   const events: FollowEvent[] = [];

@@ -39,6 +39,12 @@ describe('SessionPathResolver', () => {
       expect(result).toBe('-home-user-my-project-name');
     });
 
+    it('encodes dots and spaces the same way Claude Code does', () => {
+      expect(encodeWorkspacePath('/home/user/my project/app.v2')).toBe(
+        '-home-user-my-project-app-v2',
+      );
+    });
+
     it('handles root path', () => {
       const result = encodeWorkspacePath('/');
       expect(result).toBe('-');

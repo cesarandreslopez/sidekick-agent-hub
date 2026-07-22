@@ -240,4 +240,22 @@ describe('accountManager', () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/complete|timed out/i);
   });
+
+  it('returns an immediate failure when spawning emits an error', async () => {
+    mockSpawn.mockImplementation(() => {
+      const child = makeChildProcess();
+      queueMicrotask(() => child.emit('error', new Error('spawn claude ENOENT')));
+      return child;
+    });
+
+    const result = await spawnAccountLogin('claude-code', 'Work', {
+      stdio: 'pipe',
+      timeoutMs: 100,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Could not spawn account login: spawn claude ENOENT',
+    });
+  });
 });

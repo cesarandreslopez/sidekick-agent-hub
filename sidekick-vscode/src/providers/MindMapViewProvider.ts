@@ -56,6 +56,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   /** Manages rotating phrase timers */
   private readonly _phrases: PhraseRotationManager;
 
+  /** Coalesces bursty token/tool activity into one graph rebuild. */
+  private _graphUpdateTimer?: ReturnType<typeof setTimeout>;
+
   /**
    * Creates a new MindMapViewProvider.
    *
@@ -139,7 +142,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     webviewView.onDidChangeVisibility(
       () => {
         if (webviewView.visible) {
-          this._sendStateToWebview();
+          this._flushGraphUpdate();
         }
       },
       undefined,
@@ -210,6 +213,18 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    * Updates graph from current session data.
    */
   private _updateGraph(): void {
+    if (!this._view?.visible) return;
+
+    if (this._graphUpdateTimer) clearTimeout(this._graphUpdateTimer);
+    this._graphUpdateTimer = setTimeout(() => {
+      this._graphUpdateTimer = undefined;
+      this._flushGraphUpdate();
+    }, 350);
+  }
+
+  /** Rebuilds and sends the latest graph when the webview can consume it. */
+  private _flushGraphUpdate(): void {
+    if (!this._view?.visible) return;
     this._syncFromSessionMonitor();
     this._sendStateToWebview();
     this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
@@ -479,7 +494,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       stroke-width: 2;
     }
 
-    .node.task-in-progress {
+    .node.task-in_progress {
       stroke: var(--vscode-charts-green, #4caf50);
       stroke-width: 3;
       animation: task-pulse 1.5s ease-in-out infinite;
@@ -1421,7 +1436,11 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
         // Update links
         const link = linkGroup.selectAll('line')
-          .data(links, function(d) { return d.source + '-' + d.target; });
+          .data(links, function(d) {
+            const sourceId = d.source.id || d.source;
+            const targetId = d.target.id || d.target;
+            return sourceId + '-' + targetId;
+          });
 
         link.exit().remove();
 
@@ -1927,6 +1946,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    * Disposes of all resources.
    */
   dispose(): void {
+    if (this._graphUpdateTimer) clearTimeout(this._graphUpdateTimer);
     this._phrases.stop();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];

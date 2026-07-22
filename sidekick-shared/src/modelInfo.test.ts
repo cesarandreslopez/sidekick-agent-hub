@@ -157,6 +157,20 @@ describe('getModelPricing', () => {
     }
   });
 
+  it('keeps dashed and dotted Claude version spellings on identical pricing', () => {
+    for (const [dashed, dotted] of [
+      ['claude-haiku-4-5', 'claude-haiku-4.5'],
+      ['claude-sonnet-4-5', 'claude-sonnet-4.5'],
+      ['claude-sonnet-4-6', 'claude-sonnet-4.6'],
+      ['claude-opus-4-5', 'claude-opus-4.5'],
+      ['claude-opus-4-6', 'claude-opus-4.6'],
+      ['claude-opus-4-7', 'claude-opus-4.7'],
+      ['claude-opus-4-8', 'claude-opus-4.8'],
+    ]) {
+      expect(getModelPricing(`${dashed}-20260101`)).toEqual(getModelPricing(dotted));
+    }
+  });
+
   it('prices dashed Haiku 4.5 IDs', () => {
     // Regression: 'claude-haiku-4-5-20251001' matched no static key and showed "—".
     const pricing = getModelPricing('claude-haiku-4-5-20251001');

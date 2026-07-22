@@ -36,6 +36,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   private _state: PlanBoardState;
   private _claudeCodePlans: PersistedPlan[] = [];
   private _claudeCodePlansLoaded = false;
+  private _planLoadGeneration = 0;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -124,8 +125,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'refresh':
-        this._syncFromSessionMonitor();
-        this._sendStateToWebview();
+        void this._loadClaudeCodePlans();
         break;
 
       case 'copyPlanMarkdown': {
@@ -147,13 +147,17 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private async _loadClaudeCodePlans(): Promise<void> {
+    const generation = ++this._planLoadGeneration;
     try {
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      this._claudeCodePlans = await readClaudeCodePlanFiles(workspacePath);
+      const plans = await readClaudeCodePlanFiles(workspacePath);
+      if (generation !== this._planLoadGeneration) return;
+      this._claudeCodePlans = plans;
       this._claudeCodePlansLoaded = true;
       this._syncFromSessionMonitor();
       this._sendStateToWebview();
     } catch {
+      if (generation !== this._planLoadGeneration) return;
       this._claudeCodePlansLoaded = true;
     }
   }

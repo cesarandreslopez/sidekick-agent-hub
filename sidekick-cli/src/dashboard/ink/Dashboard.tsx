@@ -12,6 +12,13 @@ import type { SidePanel, PanelItem, PanelAction } from '../panels/types';
 import { getRandomPhraseBlessedTag } from '../../phraseFormatters';
 import { useTerminalSize } from './useTerminalSize';
 import { useWindowedScroll } from './useWindowedScroll';
+import { maxDetailScroll, shouldAutoScrollDetail } from './detailScroll';
+import {
+  detailTabIndexAt,
+  sideListItemIndexAt,
+  sideListItemViewportHeight,
+  topTabIndexAt,
+} from './mouseHitTesting';
 import { TabBar } from './TabBar';
 import { SideList } from './SideList';
 import { DetailTabBar } from './DetailTabBar';
@@ -31,6 +38,8 @@ import { describeQuotaFailure, parseChangelog } from 'sidekick-shared';
 import { initialState, reducer, type SessionFilter } from './dashboardReducer';
 import { handleDashboardInput } from './inputDispatch';
 import { itemTimestampMs, parseDateExpression } from '../dateFilterExpression';
+import { newTimelineEntries } from './timelineAlerts';
+import { getPanelItemsOnce } from './panelItems';
 
 const changelogEntries = parseChangelog(changelogMd, 5);
 
@@ -80,10 +89,11 @@ export function Dashboard({
   const { exit } = useApp();
   const { columns, rows } = useTerminalSize();
   const toastIdRef = useRef(0);
-  const lastAlertCountRef = useRef(0);
+  const lastTimelineAppendCountRef = useRef(0);
   const lastQuotaAlertKeyRef = useRef<string | null>(null);
   const alertsInitRef = useRef(false);
   const prevDetailLineCountRef = useRef(0);
+  const prevDetailContentKeyRef = useRef<string | null>(null);
 
   // ── First event detection ──
   useEffect(() => {
@@ -96,23 +106,24 @@ export function Dashboard({
   // ── Alert detection ──
   useEffect(() => {
     if (!alertsInitRef.current) {
-      lastAlertCountRef.current = metrics.eventCount;
+      lastTimelineAppendCountRef.current = metrics.timelineAppendCount;
       alertsInitRef.current = true;
       return;
     }
-    if (metrics.eventCount === lastAlertCountRef.current) return;
-    const newCount = metrics.eventCount - lastAlertCountRef.current;
-    const startIdx = Math.max(0, metrics.timeline.length - newCount);
-    for (let i = startIdx; i < metrics.timeline.length; i++) {
-      const e = metrics.timeline[i];
+    if (metrics.timelineAppendCount === lastTimelineAppendCountRef.current) return;
+    for (const e of newTimelineEntries(
+      metrics.timeline,
+      metrics.timelineAppendCount,
+      lastTimelineAppendCountRef.current,
+    )) {
       if (e.type === 'summary') {
         addToast(e.summary || 'Context compacted', 'warning');
       } else if (e.type === 'system' && e.summary?.includes('ended')) {
         addToast(e.summary, 'info');
       }
     }
-    lastAlertCountRef.current = metrics.eventCount;
-  }, [metrics.eventCount, metrics.timeline]);
+    lastTimelineAppendCountRef.current = metrics.timelineAppendCount;
+  }, [metrics.timelineAppendCount, metrics.timeline]);
 
   // ── Toast management ──
   const addToast = useCallback((message: string, severity: 'error' | 'warning' | 'info') => {
@@ -164,73 +175,79 @@ export function Dashboard({
   const sideWidth = getSideWidth();
 
   // Get items with filters applied
-  const getFilteredItems = useCallback((): PanelItem[] => {
-    let items = panel.getItems(metrics, staticData);
+  const filterItems = useCallback(
+    (sourceItems: PanelItem[]): PanelItem[] => {
+      let items = sourceItems;
 
-    // Session filter
-    if (
-      state.sessionFilter &&
-      ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)
-    ) {
-      if (panel.id === 'kanban') {
-        items = items.map((it) => filterKanbanColumn(it, state.sessionFilter!));
-      } else {
-        items = items.filter((it) => matchesSessionFilter(it, state.sessionFilter!));
+      // Session filter
+      if (
+        state.sessionFilter &&
+        ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)
+      ) {
+        if (panel.id === 'kanban') {
+          items = items.map((it) => filterKanbanColumn(it, state.sessionFilter!));
+        } else {
+          items = items.filter((it) => matchesSessionFilter(it, state.sessionFilter!));
+        }
       }
-    }
 
-    // Text filter (supports substring, fuzzy, regex, and date modes)
-    if (state.filterString) {
-      const f = state.filterString;
-      const mode = state.filterMode;
-      if (mode === 'date') {
-        const parsed = parseDateExpression(f);
-        // An invalid expression leaves the list unfiltered — the overlay
-        // shows the parse error; transiently-invalid typing ("2026-")
-        // must not blank the list.
-        if (!('error' in parsed)) {
-          const since = parsed.since ? Date.parse(parsed.since) : -Infinity;
-          const until = parsed.until ? Date.parse(parsed.until) : Infinity;
+      // Text filter (supports substring, fuzzy, regex, and date modes)
+      if (state.filterString) {
+        const f = state.filterString;
+        const mode = state.filterMode;
+        if (mode === 'date') {
+          const parsed = parseDateExpression(f);
+          // An invalid expression leaves the list unfiltered — the overlay
+          // shows the parse error; transiently-invalid typing ("2026-")
+          // must not blank the list.
+          if (!('error' in parsed)) {
+            const since = parsed.since ? Date.parse(parsed.since) : -Infinity;
+            const until = parsed.until ? Date.parse(parsed.until) : Infinity;
+            items = items.filter((it) => {
+              const ts = panel.getItemTimestamp
+                ? panel.getItemTimestamp(it)
+                : itemTimestampMs(it.data);
+              return ts !== null && ts >= since && ts < until;
+            });
+          }
+        } else {
           items = items.filter((it) => {
-            const ts = panel.getItemTimestamp
-              ? panel.getItemTimestamp(it)
-              : itemTimestampMs(it.data);
-            return ts !== null && ts >= since && ts < until;
+            const searchText = panel.getSearchableText?.(it) ?? it.label.replace(/\{[^}]*\}/g, '');
+            switch (mode) {
+              case 'fuzzy': {
+                const lower = searchText.toLowerCase();
+                return f
+                  .toLowerCase()
+                  .split(/\s+/)
+                  .filter((w) => w)
+                  .every((w) => lower.includes(w));
+              }
+              case 'regex': {
+                try {
+                  return new RegExp(f).test(searchText);
+                } catch {
+                  return false;
+                }
+              }
+              case 'substring':
+              default:
+                return searchText.toLowerCase().includes(f.toLowerCase());
+            }
           });
         }
-      } else {
-        items = items.filter((it) => {
-          const searchText = panel.getSearchableText?.(it) ?? it.label.replace(/\{[^}]*\}/g, '');
-          switch (mode) {
-            case 'fuzzy': {
-              const lower = searchText.toLowerCase();
-              return f
-                .toLowerCase()
-                .split(/\s+/)
-                .filter((w) => w)
-                .every((w) => lower.includes(w));
-            }
-            case 'regex': {
-              try {
-                return new RegExp(f).test(searchText);
-              } catch {
-                return false;
-              }
-            }
-            case 'substring':
-            default:
-              return searchText.toLowerCase().includes(f.toLowerCase());
-          }
-        });
       }
-    }
 
-    // Sort
-    items.sort((a, b) => a.sortKey - b.sortKey);
-    return items;
-  }, [panel, metrics, staticData, state.sessionFilter, state.filterString, state.filterMode]);
+      // Sort
+      items.sort((a, b) => a.sortKey - b.sortKey);
+      return items;
+    },
+    [panel, state.sessionFilter, state.filterString, state.filterMode],
+  );
 
-  const currentItems = getFilteredItems();
+  const { allItems, currentItems } = getPanelItemsOnce(
+    () => panel.getItems(metrics, staticData),
+    filterItems,
+  );
 
   // Clamp selection
   const clampedSelection = Math.min(state.selectedItemIndex, Math.max(0, currentItems.length - 1));
@@ -239,7 +256,8 @@ export function Dashboard({
   }
 
   // Side list scrolling
-  const sideViewportHeight = Math.max(1, rows - 5); // tab bar + borders + status bar
+  const sideContentHeight = Math.max(1, rows - 5); // tab bar + borders + title + status bar
+  const sideViewportHeight = sideListItemViewportHeight(sideContentHeight, currentItems.length);
   const sideScroll = useWindowedScroll({
     totalItems: currentItems.length,
     viewportHeight: sideViewportHeight,
@@ -286,14 +304,29 @@ export function Dashboard({
   const activeTab = detailTabs[tabIdx];
   useEffect(() => {
     if (!activeTab?.autoScrollBottom) return;
+    const contentKey = `${panel.id}:${selectedItem?.id ?? 'none'}:${tabIdx}`;
     if (detailLines.length <= detailViewportHeight) return;
-    // Only auto-scroll when new content arrives (line count increased)
-    if (detailLines.length > prevDetailLineCountRef.current) {
-      const bottomOffset = detailLines.length - detailViewportHeight;
+    if (
+      shouldAutoScrollDetail(
+        contentKey,
+        prevDetailContentKeyRef.current,
+        detailLines.length,
+        prevDetailLineCountRef.current,
+      )
+    ) {
+      const bottomOffset = maxDetailScroll(detailLines.length, detailViewportHeight);
       dispatch({ type: 'SCROLL_DETAIL', offset: bottomOffset });
     }
+    prevDetailContentKeyRef.current = contentKey;
     prevDetailLineCountRef.current = detailLines.length;
-  }, [detailLines.length, activeTab?.autoScrollBottom, detailViewportHeight]);
+  }, [
+    detailLines.length,
+    activeTab?.autoScrollBottom,
+    detailViewportHeight,
+    panel.id,
+    selectedItem?.id,
+    tabIdx,
+  ]);
 
   // Sync activeDetailTabIndex for panels that read it
   if ('activeDetailTabIndex' in panel) {
@@ -422,17 +455,11 @@ export function Dashboard({
 
       // Row 0: TabBar
       if (y === 0) {
-        let col = 0;
-        for (let i = 0; i < panels.length; i++) {
-          // Each tab renders as "[N] Title" + marginRight=1 → key.length + title.length + 4
-          const tabWidth = String(panels[i].shortcutKey).length + panels[i].title.length + 4;
-          if (x >= col && x < col + tabWidth) {
-            panels[state.activePanelIndex]?.onDeactivate?.();
-            dispatch({ type: 'SWITCH_PANEL', index: i });
-            panels[i]?.onActivate?.();
-            return;
-          }
-          col += tabWidth;
+        const index = topTabIndexAt(x, panels);
+        if (index !== null) {
+          panels[state.activePanelIndex]?.onDeactivate?.();
+          dispatch({ type: 'SWITCH_PANEL', index });
+          panels[index]?.onActivate?.();
         }
         return;
       }
@@ -444,12 +471,8 @@ export function Dashboard({
       if (x < sideWidth && sideWidth > 0) {
         // Click in side list
         dispatch({ type: 'SET_FOCUS', target: 'side' });
-        // Row 0 = tab bar, row 1 = border/panel title row
-        // When scrolled down, a "▲" indicator takes an extra row
-        const hasScrollUp = sideScroll.scrollOffset > 0;
-        const itemRow = y - 2 - (hasScrollUp ? 1 : 0);
-        const itemIndex = sideScroll.scrollOffset + itemRow;
-        if (itemIndex >= 0 && itemIndex < currentItems.length) {
+        const itemIndex = sideListItemIndexAt(y, sideScroll.scrollOffset, currentItems.length);
+        if (itemIndex !== null) {
           dispatch({ type: 'SELECT_ITEM', index: itemIndex });
           sideScroll.setSelected(itemIndex);
         }
@@ -459,15 +482,15 @@ export function Dashboard({
 
         // Row 1 = DetailTabBar — check for tab click
         if (y === 1 && detailTabs.length > 1) {
-          let col = sideWidth + 2; // leading space + border
-          for (let i = 0; i < detailTabs.length; i++) {
-            // "▸ Label" or "  Label" + marginRight=1
-            const tabWidth = detailTabs[i].label.length + 3;
-            if (x >= col && x < col + tabWidth) {
-              dispatch({ type: 'SET_DETAIL_TAB', index: i });
-              return;
-            }
-            col += tabWidth;
+          const index = detailTabIndexAt(
+            x,
+            sideWidth,
+            detailTabs.map((tab) => tab.label),
+            tabIdx,
+          );
+          if (index !== null) {
+            dispatch({ type: 'SET_DETAIL_TAB', index });
+            return;
           }
         }
       }
@@ -616,7 +639,7 @@ export function Dashboard({
           sessionFilter={state.sessionFilter?.label ?? null}
           filterString={state.filterString}
           matchCount={currentItems.length}
-          totalCount={panel.getItems(metrics, staticData).length}
+          totalCount={allItems.length}
           updateInfo={metrics.updateInfo}
           providerStatus={metrics.providerStatus}
           openaiStatus={metrics.openaiStatus}

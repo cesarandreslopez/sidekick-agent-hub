@@ -121,6 +121,7 @@ export {
 export type {
   HistoricalDataStore,
   DailyData,
+  HourlyData,
   MonthlyData,
   AllTimeStats,
   TokenTotals,
@@ -133,6 +134,7 @@ export {
   HISTORICAL_DATA_SCHEMA_VERSION,
   HISTORICAL_SESSION_RETENTION_LIMIT,
   createEmptyTokenTotals,
+  createEmptyDataStore,
 } from './types/historicalData';
 export type {
   PersistedPlan,
@@ -419,6 +421,7 @@ export type {
 } from './aggregation/types';
 export {
   ERROR_HISTORY_SCHEMA_VERSION,
+  MAX_ERROR_HISTORY_SESSIONS,
   appendErrorHistory,
   getTopFailingTools,
   readErrorHistory,

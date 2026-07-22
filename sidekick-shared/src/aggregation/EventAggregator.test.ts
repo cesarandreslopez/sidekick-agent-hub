@@ -396,6 +396,21 @@ describe('EventAggregator', () => {
       ]);
     });
 
+    it('records a message-less summary in compaction metrics and timeline', () => {
+      agg.processEvent({
+        type: 'summary',
+        timestamp: '2026-06-01T12:00:00.000Z',
+        compaction: { tokensBefore: 500, tokensAfter: 100 },
+      } as SessionEvent);
+
+      expect(agg.getCompactionEvents()).toEqual([
+        expect.objectContaining({ tokensReclaimed: 400, source: 'reported' }),
+      ]);
+      expect(agg.getTimeline()).toEqual([
+        expect.objectContaining({ type: 'compaction', description: 'Context compacted' }),
+      ]);
+    });
+
     it('detects compaction when context drops by more than 20%', () => {
       // First event: set a high context
       agg.processEvent(makeAssistantWithUsage({ input_tokens: 10000, output_tokens: 500 }));
@@ -1848,10 +1863,14 @@ describe('EventAggregator', () => {
       snapshot.version = 999;
 
       const fresh = new EventAggregator();
-      fresh.restore(snapshot);
+      expect(fresh.restore(snapshot)).toBe(false);
 
       // Should remain in fresh state
       expect(fresh.getMetrics().eventCount).toBe(0);
+    });
+
+    it('returns true after restoring a compatible snapshot', () => {
+      expect(new EventAggregator().restore(agg.serialize())).toBe(true);
     });
 
     it('clears transient state (pending calls) on restore', () => {
@@ -1903,6 +1922,43 @@ describe('EventAggregator', () => {
       expect(restored.getMetrics().permissionMode).toBeNull();
       expect(restored.getMetrics().permissionModeHistory).toEqual([]);
       expect(restored.getMetrics().contextTimeline).toEqual([]);
+    });
+  });
+
+  describe('bounded context and canonical message counts', () => {
+    it('caps context timeline points and serialized state', () => {
+      const bounded = new EventAggregator({ contextTimelineCap: 2 });
+      for (let index = 0; index < 4; index++) {
+        bounded.processEvent(
+          makeAssistantWithUsage({ input_tokens: 100 + index, output_tokens: 1 }, 'model-a'),
+        );
+      }
+      expect(bounded.getMetrics().contextTimeline).toHaveLength(2);
+      expect(bounded.serialize().contextTimeline).toHaveLength(2);
+    });
+
+    it('does not count tool block FollowEvents as separate messages', () => {
+      const follow = new EventAggregator();
+      follow.processFollowEvent({
+        providerId: 'claude-code',
+        type: 'assistant',
+        timestamp: '2026-01-01T00:00:00Z',
+        summary: 'text',
+      });
+      follow.processFollowEvent({
+        providerId: 'claude-code',
+        type: 'tool_use',
+        timestamp: '2026-01-01T00:00:00Z',
+        summary: 'Read',
+        toolName: 'Read',
+      });
+      follow.processFollowEvent({
+        providerId: 'claude-code',
+        type: 'tool_result',
+        timestamp: '2026-01-01T00:00:01Z',
+        summary: 'done',
+      });
+      expect(follow.getMetrics().messageCount).toBe(1);
     });
   });
 

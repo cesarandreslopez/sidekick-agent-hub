@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   fetchCodexQuotaFromApi,
+  fetchCodexResetCreditsFromApi,
   quotaFromCodexRateLimits,
   readLatestCodexQuotaFromRollouts,
   resolveCodexQuota,
@@ -44,6 +45,7 @@ describe('codexQuota', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     fs.rmSync(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
@@ -464,6 +466,28 @@ describe('codexQuota', () => {
     });
   });
 
+  it('aborts hung usage API requests at the configured deadline', async () => {
+    vi.useFakeTimers();
+    const codexHome = writeAuth('fresh-token');
+    const fetchImpl = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    });
+
+    const pending = fetchCodexQuotaFromApi({ codexHome, fetchImpl, timeoutMs: 25 });
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(pending).resolves.toMatchObject({
+      available: false,
+      failureKind: 'network',
+    });
+  });
+
   it('fetches available reset credits alongside Codex quota from the ChatGPT API', async () => {
     const codexHome = writeAuth('fresh-token', 'account-456');
     const fetchImpl = vi.fn((url: string | URL | Request, init?: RequestInit) => {
@@ -568,6 +592,28 @@ describe('codexQuota', () => {
         ],
       },
     });
+  });
+
+  it('aborts hung reset-credit API requests at the configured deadline', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    });
+
+    const pending = fetchCodexResetCreditsFromApi({
+      accessToken: 'fresh-token',
+      fetchImpl,
+      timeoutMs: 25,
+    });
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(pending).resolves.toBeUndefined();
   });
 
   it('keeps Codex quota available when reset-credit refresh fails', async () => {

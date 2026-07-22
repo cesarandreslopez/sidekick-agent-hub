@@ -77,8 +77,8 @@ export class PlansPanel implements SidePanel {
       }
 
       // Track session to avoid duplicating in history
-      if (metrics.sessionStartTime) {
-        activeSessionPlanAdded.add(metrics.sessionStartTime.substring(0, 8));
+      if (metrics.sessionId) {
+        activeSessionPlanAdded.add(metrics.sessionId);
       }
     }
 
@@ -88,7 +88,7 @@ export class PlansPanel implements SidePanel {
       const p = plans[i];
 
       // Skip if this is the active session's plan
-      if (activeSessionPlanAdded.has(p.sessionId.substring(0, 8))) continue;
+      if (activeSessionPlanAdded.has(p.sessionId)) continue;
 
       // Apply source filter
       if (this.sourceFilter !== 'all' && p.source !== this.sourceFilter) continue;

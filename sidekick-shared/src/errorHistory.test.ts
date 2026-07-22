@@ -2,7 +2,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { appendErrorHistory, getTopFailingTools, readErrorHistory } from './errorHistory';
+import {
+  appendErrorHistory,
+  getTopFailingTools,
+  MAX_ERROR_HISTORY_SESSIONS,
+  readErrorHistory,
+  type ErrorHistoryStore,
+} from './errorHistory';
 
 const temporaryDirectories: string[] = [];
 
@@ -51,5 +57,45 @@ describe('error history', () => {
     expect(await getTopFailingTools(7, new Date('2026-07-18T18:00:00Z'), filePath)).toEqual([
       { tool: 'Bash', failures: 4, categories: { exit_code: 4 } },
     ]);
+  });
+
+  it('keeps only the newest bounded session history', async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sidekick-errors-cap-'));
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, 'error-history.json');
+    const baseRecord = {
+      providerId: 'codex',
+      project: 'project',
+      endedAt: '2026-07-18T12:00:00Z',
+      failures: [],
+      retryAttempts: 0,
+      finishReasons: [],
+    };
+    const initial: ErrorHistoryStore = {
+      schemaVersion: 1,
+      sessions: Array.from({ length: MAX_ERROR_HISTORY_SESSIONS }, (_, index) => ({
+        ...baseRecord,
+        sessionId: `session-${index}`,
+      })),
+      lastSaved: baseRecord.endedAt,
+    };
+    await fs.promises.writeFile(filePath, JSON.stringify(initial));
+
+    await appendErrorHistory(
+      { sessionId: 'newest', providerId: 'codex', project: 'project' },
+      {
+        totalFailures: 0,
+        byToolCategory: [],
+        byHourModel: [],
+        retryAttempts: 0,
+        finishReasons: [],
+      },
+      filePath,
+    );
+
+    const sessions = (await readErrorHistory(filePath)).sessions;
+    expect(sessions).toHaveLength(MAX_ERROR_HISTORY_SESSIONS);
+    expect(sessions[0].sessionId).toBe('session-1');
+    expect(sessions.at(-1)?.sessionId).toBe('newest');
   });
 });

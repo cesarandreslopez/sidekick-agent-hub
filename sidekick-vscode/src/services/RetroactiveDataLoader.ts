@@ -29,6 +29,8 @@ import type {
 import { createEmptyTokenTotals } from '../types/historicalData';
 import { log, logError } from './Logger';
 
+const ACTIVE_SESSION_MTIME_THRESHOLD_MS = 60_000;
+
 /**
  * Result of a retroactive import operation.
  */
@@ -425,14 +427,28 @@ export class RetroactiveDataLoader {
 
     // Get list of already-imported files
     const importedFiles = new Set(this.historicalDataService.getImportedFiles());
+    const savedSessionIds = new Set(
+      this.historicalDataService.getSessionRecords().map((session) => session.sessionId),
+    );
 
     // Track seen record hashes for deduplication within this import
     const seenHashes = new Set<string>();
 
     let processed = 0;
     for (const filePath of allFiles) {
-      // Check if already imported
-      if (importedFiles.has(filePath)) {
+      const sessionId = path.basename(filePath, '.jsonl');
+      let recentlyModified = false;
+      try {
+        recentlyModified =
+          Date.now() - (await fs.promises.stat(filePath)).mtimeMs <
+          ACTIVE_SESSION_MTIME_THRESHOLD_MS;
+      } catch {
+        // A file that disappears during the scan will parse as empty below.
+      }
+
+      // Do not freeze an active file or re-credit a session already persisted
+      // by the live monitor under the same JSONL/session identifier.
+      if (importedFiles.has(filePath) || savedSessionIds.has(sessionId) || recentlyModified) {
         result.filesSkipped++;
         processed++;
         onProgress?.(processed, total);
@@ -461,6 +477,7 @@ export class RetroactiveDataLoader {
       if (group && group.records.length > 0) {
         const summary = this.createSessionSummary(group);
         this.historicalDataService.saveSessionSummary(summary);
+        savedSessionIds.add(summary.sessionId);
         result.sessionsCreated++;
       }
 

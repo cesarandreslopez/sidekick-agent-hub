@@ -194,7 +194,7 @@ export class CliInferenceClient {
 }
 
 /** Spawn a CLI process and pipe the prompt via stdin. */
-function spawnWithStdin(
+export function spawnWithStdin(
   cmd: string,
   args: string[],
   prompt: string,
@@ -208,11 +208,25 @@ function spawnWithStdin(
 
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    let forceKillTimer: NodeJS.Timeout | undefined;
+
+    const finish = (result: InferenceResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
 
     const timer = setTimeout(() => {
-      proc.kill();
-      resolve({ text: '', error: `${cmd} CLI timed out after 60s` });
+      proc.kill('SIGTERM');
+      forceKillTimer = setTimeout(() => {
+        if (proc.exitCode === null) proc.kill('SIGKILL');
+      }, 5_000);
+      forceKillTimer.unref();
+      finish({ text: '', error: `${cmd} CLI timed out after 60s` });
     }, 60_000);
+    timer.unref();
 
     proc.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -222,20 +236,23 @@ function spawnWithStdin(
     });
 
     proc.on('close', (code) => {
-      clearTimeout(timer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
       if (code !== 0) {
-        resolve({
+        finish({
           text: '',
           error: `${cmd} CLI failed (exit ${code}): ${stderr.substring(0, 200)}`,
         });
       } else {
-        resolve({ text: stdout.trim() });
+        finish({ text: stdout.trim() });
       }
     });
 
     proc.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({ text: '', error: `${cmd} CLI failed: ${err.message}` });
+      finish({ text: '', error: `${cmd} CLI failed: ${err.message}` });
+    });
+
+    proc.stdin.on('error', (err) => {
+      finish({ text: '', error: `${cmd} CLI stdin failed: ${err.message}` });
     });
 
     proc.stdin.write(prompt);

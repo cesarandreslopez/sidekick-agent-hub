@@ -55,6 +55,7 @@ import {
   disposeDashboardTerminal,
   checkCliVersion,
   isNewer,
+  compareNvmNodeVersionsDescending,
 } from './SidekickCliService';
 import { clearCliCache } from '../utils/cliPathResolver';
 import { execSync, execFileSync, spawnSync } from 'child_process';
@@ -330,6 +331,14 @@ describe('SidekickCliService', () => {
     it('returns false when a < b', () => {
       expect(isNewer('1.0.0', '1.0.1')).toBe(false);
     });
+  });
+
+  it('sorts nvm directories by numeric semver rather than lexicographically', () => {
+    expect(['v22.9.0', 'v22.10.0', 'v20.18.0'].sort(compareNvmNodeVersionsDescending)).toEqual([
+      'v22.10.0',
+      'v22.9.0',
+      'v20.18.0',
+    ]);
   });
 
   describe('checkCliVersion', () => {

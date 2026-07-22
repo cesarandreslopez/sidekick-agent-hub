@@ -76,6 +76,7 @@ export function scanSubagentDir(
   sessionDir: string,
   sessionId: string,
   logger?: (msg: string) => void,
+  skipFiles: ReadonlySet<string> = new Set(),
 ): SubagentStats[] {
   const log = logger || (() => {});
   const subagentsDir = path.join(sessionDir, sessionId, 'subagents');
@@ -96,6 +97,7 @@ export function scanSubagentDir(
     log(`[SubagentScanner] Found ${files.length} files: ${files.join(', ')}`);
 
     for (const file of files) {
+      if (skipFiles.has(file)) continue;
       const match = file.match(AGENT_FILE_PATTERN);
       if (!match) {
         continue;
@@ -173,10 +175,7 @@ function parseAgentFile(
         // Extract token usage from assistant messages
         if (event.type === 'assistant' && event.message?.usage) {
           const usage = event.message.usage;
-          inputTokens +=
-            (usage.input_tokens || 0) +
-            (usage.cache_creation_input_tokens || 0) +
-            (usage.cache_read_input_tokens || 0);
+          inputTokens += usage.input_tokens || 0;
           outputTokens += usage.output_tokens || 0;
         }
 

@@ -15,17 +15,25 @@ export interface TerminalMouseEvent {
 
 // SGR mouse sequence: ESC [ < Cb ; Cx ; Cy M/m
 // eslint-disable-next-line no-control-regex
-const SGR_MOUSE_RE = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/;
+const SGR_MOUSE_RE = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
 
 /**
  * Try to parse an SGR mouse event from raw stdin data.
  * Returns null if the data is not a mouse sequence.
  */
 export function parseMouseEvent(data: Buffer | string): TerminalMouseEvent | null {
-  const str = typeof data === 'string' ? data : data.toString('utf-8');
-  const match = SGR_MOUSE_RE.exec(str);
-  if (!match) return null;
+  return parseMouseEvents(data)[0] ?? null;
+}
 
+/** Parse every SGR mouse sequence from a possibly coalesced stdin chunk. */
+export function parseMouseEvents(data: Buffer | string): TerminalMouseEvent[] {
+  const str = typeof data === 'string' ? data : data.toString('utf-8');
+  return Array.from(str.matchAll(SGR_MOUSE_RE), decodeMouseMatch).filter(
+    (event): event is TerminalMouseEvent => event !== null,
+  );
+}
+
+function decodeMouseMatch(match: RegExpMatchArray): TerminalMouseEvent | null {
   const code = parseInt(match[1], 10);
   const cx = parseInt(match[2], 10);
   const cy = parseInt(match[3], 10);

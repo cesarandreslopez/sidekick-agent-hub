@@ -43,7 +43,13 @@ export async function requestWithTimeout<T>(
 
   const timeoutMs = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT;
   const abortController = new AbortController();
-  const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+  // A caller-provided signal (notably TimeoutManager) owns the deadline unless
+  // an explicit inner timeout was requested. This prevents the 30s default
+  // from silently capping longer context-aware operations.
+  const useInternalTimeout = options?.timeout !== undefined || !options?.signal;
+  const timeoutId = useInternalTimeout
+    ? setTimeout(() => abortController.abort(), timeoutMs)
+    : undefined;
 
   // Link external signal to our internal abort controller
   let externalAbortHandler: (() => void) | undefined;
@@ -65,7 +71,7 @@ export async function requestWithTimeout<T>(
     }
     throw error;
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
     if (externalAbortHandler && options?.signal) {
       options.signal.removeEventListener('abort', externalAbortHandler);
     }

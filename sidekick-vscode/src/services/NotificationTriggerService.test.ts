@@ -18,10 +18,14 @@ import {
 
 const mocks = vi.hoisted(() => {
   const configUpdate = vi.fn((): Promise<void> => Promise.resolve());
+  const settings = { notificationsEnabled: true };
   return {
+    settings,
     configUpdate,
     getConfiguration: vi.fn(() => ({
-      get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
+      get: vi.fn((key: string, defaultValue?: unknown) =>
+        key === 'enabled' ? settings.notificationsEnabled : defaultValue,
+      ),
       update: configUpdate,
     })),
     showInformationMessage: vi.fn((): Promise<string | undefined> => Promise.resolve(undefined)),
@@ -379,7 +383,10 @@ interface CapturedHandlers {
   cycleDetected?: (cycle: { description: string; affectedFiles: string[] }) => void;
 }
 
-function createFakeSessionMonitor(): { monitor: SessionMonitor; handlers: CapturedHandlers } {
+function createFakeSessionMonitor(totalTokens = 0): {
+  monitor: SessionMonitor;
+  handlers: CapturedHandlers;
+} {
   const handlers: CapturedHandlers = {};
   const disposable = { dispose: () => {} };
   const monitor = {
@@ -400,7 +407,7 @@ function createFakeSessionMonitor(): { monitor: SessionMonitor; handlers: Captur
       handlers.cycleDetected = h;
       return disposable;
     },
-    getStats: () => ({ totalInputTokens: 0, totalOutputTokens: 0 }),
+    getStats: () => ({ totalInputTokens: totalTokens, totalOutputTokens: 0 }),
   };
   return { monitor: monitor as unknown as SessionMonitor, handlers };
 }
@@ -426,6 +433,7 @@ function flush(): Promise<void> {
 describe('notification action handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.settings.notificationsEnabled = true;
   });
 
   it('shows the per-trigger buttons on the notification', () => {
@@ -539,5 +547,17 @@ describe('notification action handling', () => {
     await flush();
 
     expect(mocks.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('honors the master notification toggle for cycle and token events', () => {
+    mocks.settings.notificationsEnabled = false;
+    const { monitor, handlers } = createFakeSessionMonitor(600_000);
+    const service = new NotificationTriggerService(monitor);
+
+    handlers.cycleDetected!({ description: 'repeating edits', affectedFiles: ['/a/b.ts'] });
+    handlers.tokenUsage!({ inputTokens: 600_000, outputTokens: 0 });
+
+    expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+    service.dispose();
   });
 });

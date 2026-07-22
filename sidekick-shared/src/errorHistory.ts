@@ -4,6 +4,7 @@ import type { ErrorRollup, ErrorRollupEntry } from './aggregation/types';
 import { updateJsonStoreAtomic } from './writers/atomic';
 
 export const ERROR_HISTORY_SCHEMA_VERSION = 1 as const;
+export const MAX_ERROR_HISTORY_SESSIONS = 500;
 
 export interface ErrorHistorySessionRecord {
   sessionId: string;
@@ -50,7 +51,9 @@ export async function appendErrorHistory(
   await updateJsonStoreAtomic(filePath, emptyStore, (store) => ({
     ...store,
     schemaVersion: ERROR_HISTORY_SCHEMA_VERSION,
-    sessions: [...store.sessions, record],
+    sessions: [...(Array.isArray(store.sessions) ? store.sessions : []), record].slice(
+      -MAX_ERROR_HISTORY_SESSIONS,
+    ),
     lastSaved: record.endedAt,
   }));
   return record;

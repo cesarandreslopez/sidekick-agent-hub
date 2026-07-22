@@ -121,6 +121,7 @@ export function detectSessionActivity(sessionPath: string): SessionActivityResul
 
     if (!hasTerminal) {
       for (const pattern of ENDING_PATTERNS) {
+        if (pattern === '"type":"user"' && line.includes('"type":"tool_result"')) continue;
         if (line.includes(pattern)) {
           lastEndingIndex = i;
           break;

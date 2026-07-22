@@ -255,7 +255,7 @@ vi.mock('../dashboard/QuotaService', () => ({
 describe('quotaAction', () => {
   let stdoutData: string;
   let stderrData: string;
-  const originalExit = process.exit;
+  const originalExitCode = process.exitCode;
 
   const makeCmd = (json = false, localOpts: Record<string, unknown> = {}) =>
     ({
@@ -274,7 +274,7 @@ describe('quotaAction', () => {
       stderrData += String(chunk);
       return true;
     });
-    process.exit = vi.fn() as never;
+    process.exitCode = undefined;
     mockFetchOnce.mockReset();
     mockResolveCodexQuota.mockReset();
     mockResolveZaiQuota.mockReset();
@@ -318,7 +318,7 @@ describe('quotaAction', () => {
   });
 
   afterEach(() => {
-    process.exit = originalExit;
+    process.exitCode = originalExitCode;
     vi.restoreAllMocks();
   });
 
@@ -374,7 +374,7 @@ describe('quotaAction', () => {
 
     expect(stderrData).toContain('Sign in required');
     expect(stderrData).toContain('No Claude Code credentials are available');
-    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 
   it('outputs JSON even on error when --json is set', async () => {
@@ -394,7 +394,7 @@ describe('quotaAction', () => {
     expect(parsed.available).toBe(false);
     expect(parsed.error).toBe('No OAuth token available');
     expect(parsed.failureKind).toBe('auth');
-    expect(process.exit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 
   it('prints an auth failure message when the API rejects the token', async () => {
@@ -411,7 +411,7 @@ describe('quotaAction', () => {
     await quotaAction({}, makeCmd());
 
     expect(stderrData).toContain('Claude Code sign-in expired');
-    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 
   it('prints retry timing for rate-limited responses', async () => {
@@ -431,7 +431,7 @@ describe('quotaAction', () => {
     expect(stderrData).toContain('Quota API rate limited');
     expect(stderrData).toContain('45s');
     expect(stderrData).toContain('Anthropic returned HTTP 429');
-    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 
   it('falls back to legacy error matching when failure metadata is absent', async () => {
@@ -446,7 +446,7 @@ describe('quotaAction', () => {
     await quotaAction({}, makeCmd());
 
     expect(stderrData).toContain('Could not reach the Anthropic API');
-    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 
   it('uses local-only Codex quota resolution by default', async () => {
@@ -646,6 +646,42 @@ describe('quotaAction', () => {
     expect(stdoutData).toContain('31%');
   });
 
+  it('sets a failure exit code for unavailable Codex JSON quota', async () => {
+    const provider = { id: 'codex', dispose: vi.fn() };
+    mockResolveProvider.mockReturnValue(provider);
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'Codex unavailable',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(true));
+
+    expect(JSON.parse(stdoutData).available).toBe(false);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('sets a failure exit code for unavailable z.ai text quota', async () => {
+    mockResolveZaiQuota.mockResolvedValue({
+      runtimeProvider: 'zai',
+      providerId: 'zai',
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'z.ai unavailable',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(false, { provider: 'zai' }));
+
+    expect(stderrData).toContain('z.ai unavailable');
+    expect(process.exitCode).toBe(1);
+  });
+
   it('auto-routes OpenCode quota to authoritative z.ai quota when z.ai traffic is detected', async () => {
     const provider = { id: 'opencode', dispose: vi.fn() };
     mockResolveProvider.mockReturnValue(provider);
@@ -725,7 +761,7 @@ describe('quotaAction', () => {
 
     // Claude error surfaces, but must NOT abort the command…
     expect(stderrData).toContain('Sign in required');
-    expect(process.exit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
     // …so Codex quota still renders.
     expect(stdoutData).toContain('Codex');
     expect(stdoutData).toContain('Rate Limits');
@@ -753,6 +789,6 @@ describe('quotaAction', () => {
     expect(stdoutData).toContain('Subscription Quota');
     expect(stdoutData).toContain('40%');
     expect(stderrData).toContain('Codex rate-limit data is unavailable.');
-    expect(process.exit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 });

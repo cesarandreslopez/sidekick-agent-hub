@@ -66,6 +66,8 @@ export function resolveSidekickDataPath(subdirectory: string, filename: string):
 export abstract class PersistenceService<T extends BaseStore> implements vscode.Disposable {
   protected store: T;
   private isDirty = false;
+  private mutationGeneration = 0;
+  private saveInFlight: Promise<void> | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
   private pendingDeletions = new Set<string>();
 
@@ -140,6 +142,7 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
   /** Marks the store as dirty and schedules a debounced save. */
   protected markDirty(): void {
     this.isDirty = true;
+    this.mutationGeneration++;
     this.scheduleSave();
   }
 
@@ -177,18 +180,43 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
   }
 
   private async save(): Promise<void> {
+    if (this.saveInFlight) {
+      await this.saveInFlight;
+      if (this.isDirty) await this.save();
+      return;
+    }
     if (!this.isDirty) return;
 
+    this.saveInFlight = this.performSave();
     try {
+      await this.saveInFlight;
+    } finally {
+      this.saveInFlight = null;
+    }
+  }
+
+  private async performSave(): Promise<void> {
+    try {
+      const generation = this.mutationGeneration;
       this.store.lastSaved = new Date().toISOString();
       const pending = this.store;
-      this.store = await updateJsonStoreAtomic(
+      const saved = await updateJsonStoreAtomic(
         this.dataFilePath,
         this._createEmptyStore,
         (latest) => this.mergeStoreForSave(latest, pending),
       );
-      this.isDirty = false;
-      this.pendingDeletions.clear();
+      if (generation === this.mutationGeneration) {
+        this.store = saved;
+        this.isDirty = false;
+        this.pendingDeletions.clear();
+      } else {
+        // A mutation landed while the atomic write was awaiting its lock/I/O.
+        // Reconcile the completed snapshot into the newer in-memory state and
+        // leave it dirty for the next flush rather than overwriting it.
+        this.store = this.mergeStoreForSave(saved, this.store);
+        this.isDirty = true;
+        this.scheduleSave();
+      }
       log(`${this.logLabel} data saved to disk`);
     } catch (error) {
       logError(`Failed to save ${this.logLabel} data`, error);

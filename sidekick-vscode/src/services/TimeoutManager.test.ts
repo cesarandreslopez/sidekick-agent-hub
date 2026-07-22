@@ -196,6 +196,35 @@ describe('TimeoutManager', () => {
       expect(result.timeoutMs).toBe(30000);
     });
 
+    it('classifies its own deadline abort as a timeout', async () => {
+      vi.useFakeTimers();
+      const pending = manager.executeWithTimeout({
+        operation: 'Deadline operation',
+        task: (signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => {
+              const error = new Error('aborted');
+              error.name = 'AbortError';
+              reject(error);
+            });
+          }),
+        config: {
+          baseTimeout: 50,
+          maxTimeout: 50,
+          perKbTimeout: 0,
+          retryMultiplier: 1.5,
+        },
+        showProgress: false,
+      });
+
+      await vi.advanceTimersByTimeAsync(50);
+      const result = await pending;
+
+      expect(result).toMatchObject({ success: false, timedOut: true, timeoutMs: 50 });
+      expect(result.error).toBeInstanceOf(TimeoutError);
+      vi.useRealTimers();
+    });
+
     it('should pass abort signal to task', async () => {
       const config: TimeoutConfig = {
         baseTimeout: 30000,

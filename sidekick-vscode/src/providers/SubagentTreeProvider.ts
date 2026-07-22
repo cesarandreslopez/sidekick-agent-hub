@@ -112,6 +112,12 @@ export class SubagentTreeProvider
   /** Subscriptions to dispose */
   private disposables: vscode.Disposable[] = [];
 
+  /** Monotonic live-worker sequence; independent of map size and trace merges. */
+  private nextWorkerId = 1;
+
+  /** Correlates Task results with the exact live worker they complete. */
+  private taskWorkers = new Map<string, string>();
+
   /**
    * Creates a new SubagentTreeProvider.
    *
@@ -127,6 +133,7 @@ export class SubagentTreeProvider
         this.sessionDir = path.dirname(sessionPath);
         this.subagents.clear();
         this.topLevelAgents = [];
+        this.taskWorkers.clear();
         this.scanForAgentFiles();
         this.refresh();
       }),
@@ -158,7 +165,7 @@ export class SubagentTreeProvider
   private handleTimelineEvent(event: TimelineEvent): void {
     // Handle Task tool_result events to mark subagents as completed
     if (event.type === 'tool_result' && event.metadata?.toolName === 'Task') {
-      this.markOldestRunningAsCompleted();
+      this.markRunningAsCompleted(event.metadata.toolUseId);
       // Re-scan with trace parser to pick up hierarchy
       this.scanForAgentFiles();
       return;
@@ -182,7 +189,7 @@ export class SubagentTreeProvider
     }
 
     // Generate sequential worker ID
-    const agentId = `worker-${this.subagents.size + 1}`;
+    const agentId = `live-worker-${this.nextWorkerId++}`;
 
     // Extract agent type — prefer from rich formatted description (e.g., "Task: [Explore] search auth")
     let agentType = this.detectAgentType(event.description);
@@ -210,6 +217,7 @@ export class SubagentTreeProvider
 
     this.subagents.set(agentId, item);
     this.topLevelAgents.push(item);
+    if (event.metadata?.toolUseId) this.taskWorkers.set(event.metadata.toolUseId, agentId);
     this.refresh();
   }
 
@@ -217,7 +225,18 @@ export class SubagentTreeProvider
    * Marks the oldest running subagent as completed.
    * Called when a Task tool_result event is received.
    */
-  private markOldestRunningAsCompleted(): void {
+  private markRunningAsCompleted(toolUseId?: string): void {
+    const correlatedId = toolUseId ? this.taskWorkers.get(toolUseId) : undefined;
+    const correlated = correlatedId ? this.subagents.get(correlatedId) : undefined;
+    if (correlated?.type === 'running') {
+      correlated.type = 'completed';
+      correlated.transcriptPath = this.findTranscriptPath(correlated.id);
+      if (toolUseId) this.taskWorkers.delete(toolUseId);
+      this.refresh();
+      return;
+    }
+
+    // Legacy timeline events did not carry tool-use IDs.
     // Find oldest running subagent (by timestamp)
     let oldestRunning: SubagentItem | undefined;
     for (const item of this.subagents.values()) {

@@ -227,6 +227,12 @@ export class ZaiQuotaWatcher implements Disposable {
 
   private recomputeAndEmit(): void {
     const nowMs = this.now();
+    if (this.lastError?.resetsAt) {
+      const resetsAt = Date.parse(this.lastError.resetsAt);
+      if (Number.isFinite(resetsAt) && resetsAt <= nowMs) {
+        this.lastError = null;
+      }
+    }
     const accumulated = accumulateZaiUsage(this.turns, nowMs);
     const tier = this.resolveTier(this.tier, accumulated);
 

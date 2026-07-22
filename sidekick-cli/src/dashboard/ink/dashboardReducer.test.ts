@@ -89,7 +89,7 @@ describe('scrolling', () => {
       totalLines: 40,
       viewportHeight: 10,
     });
-    expect(down.detailScrollOffset).toBe(30);
+    expect(down.detailScrollOffset).toBe(32);
     const up = reducer(state({ detailScrollOffset: 1 }), {
       type: 'SCROLL_DETAIL_DELTA',
       delta: -5,

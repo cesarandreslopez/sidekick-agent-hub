@@ -54,10 +54,11 @@ export function simpleMarkdownToHtml(text: string): string {
   result = result.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
 
   // Links [text](url)
-  result = result.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener">$1</a>',
-  );
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label: string, url: string) => {
+    const trimmedUrl = url.trim();
+    if (!/^(?:https?:|mailto:|#|\/)/i.test(trimmedUrl)) return match;
+    return `<a href="${trimmedUrl}" target="_blank" rel="noopener">${label}</a>`;
+  });
 
   // Unordered lists
   result = result.replace(/^(\s*)[-*] (.+)$/gm, '$1<li>$2</li>');

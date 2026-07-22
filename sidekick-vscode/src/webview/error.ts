@@ -487,6 +487,8 @@ function handleExtensionMessage(event: MessageEvent) {
       // Store error context and code
       currentErrorContext = message.errorContext;
       currentCode = message.code;
+      currentExplanation = undefined;
+      currentFixSuggestion = undefined;
       isLoading = true;
       errorMessage = undefined;
       updateUI();

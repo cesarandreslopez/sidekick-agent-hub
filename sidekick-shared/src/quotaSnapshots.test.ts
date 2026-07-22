@@ -212,9 +212,9 @@ describe('quotaSnapshots', () => {
       // require() resolves to dist/index.js via package.json main; the
       // package's "pretest": "npm run build" rebuilds dist before vitest runs.
       const { writeQuotaSnapshot } = require(${JSON.stringify(process.cwd())});
-      // Under \`node -e\`, argv[1] is '[eval]' and the positional worker index lands at argv[2].
+      // Under \`node -e\`, the first positional argument lands at argv[1].
       for (let i = 0; i < 10; i++) {
-        writeQuotaSnapshot('codex', 'codex-worker-' + process.argv[2], {
+        writeQuotaSnapshot('codex', 'codex-worker-' + process.argv[1], {
           fiveHour: { utilization: i % 100, resetsAt: '2026-04-13T20:00:00Z' },
           sevenDay: { utilization: i % 100, resetsAt: '2026-04-18T20:00:00Z' },
           available: true,
@@ -243,7 +243,11 @@ describe('quotaSnapshots', () => {
     const failures = results.filter((result) => result.status !== 0);
 
     expect(failures.map((result) => result.stderr)).toEqual([]);
-  }, 10_000);
+    const workerStore = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.config', 'sidekick', 'quota-snapshots.json'), 'utf8'),
+    ) as { snapshots: Array<{ accountId: string }> };
+    expect(new Set(workerStore.snapshots.map((snapshot) => snapshot.accountId)).size).toBe(12);
+  }, 20_000);
 });
 
 function runWorker(

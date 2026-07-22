@@ -52,6 +52,8 @@ export interface CodexQuotaApiOptions {
   usageUrl?: string;
   resetCreditsUrl?: string;
   capturedAt?: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 interface CodexAuthJson {
@@ -582,10 +584,17 @@ export async function fetchCodexQuotaFromApi(
     };
   }
 
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener('abort', onAbort, { once: true });
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
+  timeout.unref();
   try {
     const fetchImpl = options.fetchImpl ?? fetch;
     const response = await fetchImpl(options.usageUrl ?? CHATGPT_USAGE_URL, {
       method: 'GET',
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: 'application/json',
@@ -640,6 +649,7 @@ export async function fetchCodexQuotaFromApi(
       accessToken,
       accountId: auth?.accountId,
       capturedAt,
+      signal: controller.signal,
     });
     if (resetCredits) {
       quota.resetCredits = resetCredits;
@@ -658,6 +668,9 @@ export async function fetchCodexQuotaFromApi(
       fiveHourLabel: 'Primary',
       sevenDayLabel: 'Secondary',
     };
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -672,6 +685,12 @@ export async function fetchCodexResetCreditsFromApi(
   const accessToken = auth?.accessToken;
   if (!accessToken) return undefined;
 
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener('abort', onAbort, { once: true });
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
+  timeout.unref();
   try {
     const fetchImpl = options.fetchImpl ?? fetch;
     const headers: Record<string, string> = {
@@ -686,6 +705,7 @@ export async function fetchCodexResetCreditsFromApi(
     const response = await fetchImpl(options.resetCreditsUrl ?? CHATGPT_RESET_CREDITS_URL, {
       method: 'GET',
       headers,
+      signal: controller.signal,
     });
     if (!response.ok) return undefined;
 
@@ -695,6 +715,9 @@ export async function fetchCodexResetCreditsFromApi(
     );
   } catch {
     return undefined;
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', onAbort);
   }
 }
 

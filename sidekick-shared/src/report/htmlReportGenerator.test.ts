@@ -278,6 +278,17 @@ describe('simpleMarkdownToHtml', () => {
     expect(result).toContain('href="https://example.com"');
     expect(result).toContain('click here');
   });
+
+  it('renders unsafe javascript and data links as inert text', () => {
+    const result = simpleMarkdownToHtml(
+      '[script](javascript:alert(1)) [payload](data:text/html;base64,PHNjcmlwdD4=)',
+    );
+
+    expect(result).not.toContain('<a href="javascript:');
+    expect(result).not.toContain('<a href="data:');
+    expect(result).toContain('[script](javascript:alert(1))');
+    expect(result).toContain('[payload](data:text/html;base64,PHNjcmlwdD4=)');
+  });
 });
 
 describe('highlightCodeBlock', () => {

@@ -14,6 +14,7 @@ import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import type { ErrorContext, ErrorExplanation, FixSuggestion } from '../types/errorExplanation';
 import type { ComplexityLevel } from '../types/explain';
 import { getErrorExplanationPrompt, getErrorFixPrompt } from '../utils/prompts';
+import { isFixRefusal } from '../utils/fixResponse';
 
 /**
  * ErrorExplanationService - AI-powered error explanations and fixes.
@@ -160,13 +161,9 @@ export class ErrorExplanationService {
       return null;
     }
 
-    // Check if Claude refused to fix (common meta-response patterns)
-    const lowerResponse = fixedCode.toLowerCase();
-    if (
-      lowerResponse.includes('cannot') ||
-      lowerResponse.includes('unable to') ||
-      lowerResponse.includes('need more context')
-    ) {
+    // Reject a leading natural-language refusal, without discarding valid code
+    // that contains words such as "cannot" in comments or error messages.
+    if (isFixRefusal(fixedCode)) {
       return null;
     }
 

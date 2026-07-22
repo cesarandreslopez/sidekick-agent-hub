@@ -44,7 +44,11 @@ export function createJsonlTail<T>(options: JsonlTailOptions<T>): JsonlTail {
 
 class JsonlTailReader<T> implements JsonlTail {
   private active = false;
-  private offset: number;
+  /** Physical byte position already read from the file. */
+  private readOffset: number;
+  /** Resume-safe byte position ending immediately after a newline. */
+  private committedOffset: number;
+  private pendingBytes = Buffer.alloc(0);
   private fsWatcher: fs.FSWatcher | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private catchupTimer: ReturnType<typeof setInterval> | null = null;
@@ -52,7 +56,8 @@ class JsonlTailReader<T> implements JsonlTail {
   private readonly parser: JsonlParser<T>;
 
   constructor(private readonly options: JsonlTailOptions<T>) {
-    this.offset = options.startOffset ?? 0;
+    this.readOffset = options.startOffset ?? 0;
+    this.committedOffset = this.readOffset;
     this.parser = new JsonlParser<T>(
       {
         onEvent: (event) => {
@@ -75,10 +80,11 @@ class JsonlTailReader<T> implements JsonlTail {
 
     if (this.options.startAtEnd && this.options.startOffset === undefined) {
       try {
-        this.offset = fs.statSync(this.options.path).size;
+        this.readOffset = fs.statSync(this.options.path).size;
       } catch {
-        this.offset = 0;
+        this.readOffset = 0;
       }
+      this.committedOffset = this.readOffset;
     }
 
     this.readNow();
@@ -119,29 +125,40 @@ class JsonlTailReader<T> implements JsonlTail {
     try {
       const stat = fs.statSync(this.options.path);
 
-      if (stat.size < this.offset) {
-        this.offset = 0;
+      if (stat.size < this.readOffset) {
+        this.readOffset = 0;
+        this.committedOffset = 0;
+        this.pendingBytes = Buffer.alloc(0);
         this.parser.reset();
       }
 
-      if (stat.size <= this.offset) return;
+      if (stat.size <= this.readOffset) return;
 
-      const bytesToRead = stat.size - this.offset;
+      const bytesToRead = stat.size - this.readOffset;
       const buffer = Buffer.alloc(bytesToRead);
       fd = fs.openSync(this.options.path, 'r');
-      const bytesRead = fs.readSync(fd, buffer, 0, bytesToRead, this.offset);
+      const bytesRead = fs.readSync(fd, buffer, 0, bytesToRead, this.readOffset);
       fs.closeSync(fd);
       fd = null;
 
       if (bytesRead <= 0) return;
 
-      this.offset += bytesRead;
+      this.readOffset += bytesRead;
       this.eventsInCurrentBatch = 0;
-      this.parser.processChunk(buffer.toString('utf-8', 0, bytesRead));
+      const combined = Buffer.concat([this.pendingBytes, buffer.subarray(0, bytesRead)]);
+      const lastNewline = combined.lastIndexOf(0x0a);
+      if (lastNewline >= 0) {
+        const completeLines = combined.subarray(0, lastNewline + 1);
+        this.pendingBytes = Buffer.from(combined.subarray(lastNewline + 1));
+        this.parser.processChunk(completeLines.toString('utf8'));
+      } else {
+        this.pendingBytes = combined;
+      }
+      this.committedOffset = this.readOffset - this.pendingBytes.length;
       this.options.onBatchComplete?.({
         bytesRead,
         eventsRead: this.eventsInCurrentBatch,
-        offset: this.offset,
+        offset: this.committedOffset,
       });
     } catch (error) {
       if (fd !== null) {
@@ -156,11 +173,13 @@ class JsonlTailReader<T> implements JsonlTail {
   }
 
   getOffset(): number {
-    return this.offset;
+    return this.committedOffset;
   }
 
   seekTo(offset: number): void {
-    this.offset = Math.max(0, offset);
+    this.readOffset = Math.max(0, offset);
+    this.committedOffset = this.readOffset;
+    this.pendingBytes = Buffer.alloc(0);
     this.parser.reset();
   }
 

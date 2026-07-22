@@ -5,6 +5,7 @@ import * as path from 'path';
 
 let tmpDir: string;
 const originalPath = process.env.PATH;
+const originalShell = process.env.SHELL;
 
 vi.mock('./paths', () => ({
   getConfigDir: () => path.join(tmpDir, '.config', 'sidekick'),
@@ -43,10 +44,12 @@ describe('terminalSync', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-terminal-sync-test-'));
     process.env.PATH = '';
+    process.env.SHELL = '/bin/zsh';
   });
 
   afterEach(() => {
     process.env.PATH = originalPath;
+    process.env.SHELL = originalShell;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -85,6 +88,29 @@ describe('terminalSync', () => {
     expect(cleaned).toContain('export KEEP_ZSH=1');
     expect(cleaned).not.toContain('# >>> sidekick >>>');
     expect(isShellHookInstalled()).toBe(false);
+  });
+
+  it('preserves an rc symlink and the target file mode', () => {
+    const target = path.join(tmpDir, 'dotfiles', 'zshrc');
+    const link = path.join(tmpDir, '.zshrc');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, 'export KEEP=1\n', { mode: 0o640 });
+    fs.symlinkSync(target, link);
+
+    installShellHook();
+
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(target, 'utf8')).toContain('# >>> sidekick >>>');
+    expect(fs.statSync(target).mode & 0o777).toBe(0o640);
+  });
+
+  it('creates only the rc file for the current shell when neither exists', () => {
+    process.env.SHELL = '/bin/bash';
+
+    installShellHook();
+
+    expect(fs.existsSync(path.join(tmpDir, '.bashrc'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.zshrc'))).toBe(false);
   });
 
   it('writes and removes sidekick-owned launchers', () => {
