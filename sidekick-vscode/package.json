@@ -451,7 +451,7 @@
           "sidekick.pricing.hydrateFromLiteLLM": {
             "type": "boolean",
             "default": true,
-            "description": "On startup, fetch the LiteLLM model pricing catalog and cache it to ~/.config/sidekick/pricing-catalog.json. Keeps Codex/GPT/o-series costs accurate without manual updates. Disable to stay fully offline."
+            "description": "On startup, fetch the LiteLLM model catalog and cache it to ~/.config/sidekick/pricing-catalog.json. Keeps costs and context window sizes accurate for new models without manual updates. Disable to stay fully offline."
           },
           "sidekick.pricing.cacheTtlHours": {
             "type": "number",

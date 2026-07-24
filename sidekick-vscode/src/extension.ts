@@ -107,7 +107,7 @@ import {
   getAccountLoginStatus,
 } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
-import { hydratePricingCatalog } from 'sidekick-shared/node';
+import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 
 /** Whether completions are currently enabled */
 let enabled = vscode.workspace.getConfiguration('sidekick').get('enabled', true);
@@ -196,12 +196,27 @@ export async function activate(context: vscode.ExtensionContext) {
       logger: (msg) => log(msg),
     })
       .then((result) => {
-        log(`Pricing catalog ready (${result.source}, ${result.entries} entries).`);
+        log(
+          `Pricing catalog ready (${result.source}, ${result.entries} price entries, ` +
+            `${result.contextWindowEntries} context windows).`,
+        );
       })
       .catch((err) => {
         logError('pricing catalog hydration failed', err);
       });
   }
+
+  // Apply context windows previously reported by providers (Codex reports its
+  // tier-specific window per session). Outranks the LiteLLM catalog, which only
+  // knows each model's published maximum. Cheap local read; offline-safe.
+  loadObservedContextWindows({ logger: (msg) => log(msg) })
+    .then((observed) => {
+      const count = Object.keys(observed).length;
+      if (count > 0) log(`Observed context windows applied (${count} models).`);
+    })
+    .catch((err) => {
+      logError('observed context window load failed', err);
+    });
 
   // Create status bar manager
   statusBarManager = new StatusBarManager();

@@ -12,7 +12,7 @@ import {
   tasksStatusOption,
 } from './options';
 import { detectProvider, ensureDefaultAccounts } from 'sidekick-shared';
-import { hydratePricingCatalog } from 'sidekick-shared/node';
+import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { formatCliError } from './cliError';
@@ -46,6 +46,13 @@ if (!isCacheOnlyCommand) {
     /* non-fatal; static table still works */
   });
 }
+
+// Apply context windows previously reported by providers (Codex reports its
+// tier-specific window per session). Outranks the LiteLLM catalog, which only
+// knows each model's published maximum. Cheap local read; offline-safe.
+loadObservedContextWindows().catch(() => {
+  /* non-fatal; catalog and static tables still work */
+});
 
 const defaultAccountsReady = isCacheOnlyCommand
   ? Promise.resolve()
