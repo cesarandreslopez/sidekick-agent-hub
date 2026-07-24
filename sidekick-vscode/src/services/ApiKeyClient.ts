@@ -89,9 +89,9 @@ export class ApiKeyClient implements ClaudeClient {
       case 'haiku':
         return 'claude-haiku-4-5';
       case 'sonnet':
-        return 'claude-sonnet-4-6';
+        return 'claude-sonnet-5';
       case 'opus':
-        return 'claude-opus-4-8';
+        return 'claude-opus-5';
       default:
         return model ?? 'claude-haiku-4-5';
     }

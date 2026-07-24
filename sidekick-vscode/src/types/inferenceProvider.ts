@@ -30,18 +30,18 @@ export const DEFAULT_MODEL_MAPPINGS: Record<InferenceProviderId, ModelMapping> =
   'claude-max': { fast: 'haiku', balanced: 'sonnet', powerful: 'opus' },
   'claude-api': {
     fast: 'claude-haiku-4-5',
-    balanced: 'claude-sonnet-4-6',
-    powerful: 'claude-opus-4-8',
+    balanced: 'claude-sonnet-5',
+    powerful: 'claude-opus-5',
   },
   opencode: {
     fast: 'anthropic/claude-haiku-4-5',
-    balanced: 'anthropic/claude-sonnet-4-6',
-    powerful: 'anthropic/claude-opus-4-8',
+    balanced: 'anthropic/claude-sonnet-5',
+    powerful: 'anthropic/claude-opus-5',
   },
   codex: {
-    fast: 'gpt-5-codex-mini',
-    balanced: 'gpt-5.3-codex',
-    powerful: 'gpt-5.3-codex',
+    fast: 'gpt-5.4-mini',
+    balanced: 'gpt-5.6-sol',
+    powerful: 'gpt-5.6-sol',
   },
 };
 
