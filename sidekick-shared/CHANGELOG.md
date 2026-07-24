@@ -5,6 +5,25 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] - 2026-07-24
+
+### Added
+
+- `hydratePricingCatalog()` also builds a context-window override map from the LiteLLM catalog's `max_input_tokens`, so new models resolve without a code change. `HydrateResult` gains `contextWindowEntries`
+- `normalizeLiteLlmContextWindows()` — catalog payload to model → context-window map, exported alongside `normalizeLiteLlmCatalog()`
+- `loadObservedContextWindows()`, `recordObservedContextWindow()`, and `getObservedContextWindowPath()` on `sidekick-shared/node` — a persisted record of the context window a provider actually reported, which outranks the catalog's published maximum. The Codex provider records it from `model_context_window` on `token_count` events
+- Static pricing for `claude-opus-5`, `claude-sonnet-5`, `gpt-5.6`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`, and `gpt-5.4-mini`. Sonnet 5 carries the standard $3/$15 rather than the introductory rate, which arrives via hydration
+
+### Changed
+
+- `getModelContextWindowSize()` resolution is `[1m]` marker → observed → catalog → static, and tries every layer for an exact match before any layer's prefix match. `GPT-5.4` pricing is corrected to its published $2.50/$15
+- Cache files written before this release have no `contextWindows` key and still load; they contribute no context overrides until the next refresh
+
+### Fixed
+
+- An exact entry in the static table is no longer shadowed by a catalog key that happens to be a prefix of the model ID. The catalog has no `claude-sonnet-4-7`, so Sonnet 4.7 was resolving through `claude-sonnet-4` to 128K instead of its real 1,000,000
+- `normalizeLiteLlmContextWindows()` drops a bare-model alias when the `provider/model` entries behind it disagree, rather than taking whichever appeared first in the JSON. A `provider/model` entry describes that provider's deployment window — often a truncation — and the live catalog carries five conflicting windows for `claude-sonnet-4`, from GitHub Copilot's 128K to Vertex's 1M. A top-level catalog entry always wins over a derived alias
+
 ## [0.24.1] - 2026-07-22
 
 ### Added

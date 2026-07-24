@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] - 2026-07-24
+
+### Added
+
+- Context windows previously reported by a provider are loaded at startup and applied to historical views, so a Codex session shows the window its account tier actually gets rather than the model's published maximum. Local read, offline-safe, non-blocking
+- Context windows also hydrate from the LiteLLM catalog, so newly released models size correctly without a CLI update
+
+### Fixed
+
+- The context gauge read roughly eight times fuller than reality on Claude Sonnet 4.7, which resolved to a 128K window against its real 1M. Sonnet 4 was affected by the same cause
+
 ## [0.24.1] - 2026-07-22
 
 ### Changed

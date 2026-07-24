@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] - 2026-07-24
+
+### Added
+
+- Model context windows resolve from the LiteLLM catalog's `max_input_tokens`, so a newly released model no longer reads as 200K until the static table is hand-edited. The catalog is the same feed already fetched for pricing
+- Provider-reported context windows persist per model in `~/.config/sidekick/observed-context-windows.json` and apply at startup in both the extension and the CLI. Codex reports the window for the account's tier, which can sit well below a model's published maximum (258,400 observed for `gpt-5.6-sol` against a 1,050,000 catalog maximum)
+- Static pricing for Claude Opus 5 and Sonnet 5, GPT-5.6 (including `sol` and `terra`), GPT-5.5, and GPT-5.4-mini, with GPT-5.4 corrected from a gpt-4o-anchored guess to its published rate
+
+### Changed
+
+- Inference tier defaults point at current models: Sonnet 5 (balanced) and Opus 5 (powerful) for Claude, `gpt-5.6-sol` for Codex
+
+### Fixed
+
+- Claude Sonnet 4.7 reported a 128K context window against its real 1M, making the context gauge read roughly eight times fuller than it was. Context lookup now tries every source for an exact match before any source's prefix match, so a curated entry is no longer shadowed by a catalog key that merely happens to be a prefix of it
+- Catalog aliases derived from `provider/model` entries are dropped when providers disagree, instead of taking whichever value appeared first in the file. Sonnet 4 and Sonnet 4.7 were both inheriting a GitHub Copilot deployment's truncated 128K limit this way
+- The dashboard peak-hours banner spans the full width below the gauges instead of collapsing into a one-word-per-line column
+
 ## [0.24.1] - 2026-07-22
 
 ### Added

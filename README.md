@@ -35,7 +35,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 - **Session asset extraction** — pull URLs, file paths, commands, and plans out of recent chats with `sidekick extract` or the `Sidekick: Extract Session Assets` command.
 - **Quota-history heatmap** — `sidekick quota history` renders a 13-week, per-workspace, GitHub-style view of session-limit utilization.
 - **Multi-account management** — save, switch, and remove Claude Code and Codex accounts without manual login/logout cycles.
-- **Always-current pricing** — model prices hydrate from the LiteLLM catalog on startup, and `sidekick-shared` is published to npm for building your own tools.
+- **Always-current pricing and context sizes** — model prices and context window sizes hydrate from the LiteLLM catalog on startup, so new models are costed and gauged correctly without an update. `sidekick-shared` is published to npm for building your own tools.
 
 See the [full changelog](CHANGELOG.md) for everything.
 

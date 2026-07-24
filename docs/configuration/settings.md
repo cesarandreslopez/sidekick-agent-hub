@@ -130,12 +130,20 @@ Only applies when the inference provider is Claude Max and the session provider 
 
 ## Pricing & Cost Tracking
 
-| Setting                               | Default | Description                                      |
-| ------------------------------------- | ------- | ------------------------------------------------ |
-| `sidekick.pricing.hydrateFromLiteLLM` | `true`  | Fetch pricing catalog from LiteLLM on activation |
-| `sidekick.pricing.cacheTtlHours`      | `24`    | How long to cache the LiteLLM catalog (hours)    |
+| Setting                               | Default | Description                                                                 |
+| ------------------------------------- | ------- | --------------------------------------------------------------------------- |
+| `sidekick.pricing.hydrateFromLiteLLM` | `true`  | Fetch the LiteLLM catalog — prices and context window sizes — on activation |
+| `sidekick.pricing.cacheTtlHours`      | `24`    | How long to cache the LiteLLM catalog (hours)                               |
 
 The catalog is cached at `~/.config/sidekick/pricing-catalog.json` with a 3s fetch timeout and stale-cache fallback — if the network is down, the last good cache is used; if there is no cache, the static table ships as a fallback. Unknown models return `null` cost and render as `—` (yellow in the CLI; in the VS Code dashboard as `—` per row with a footer warning, and a `*` appended to the total when priced and unpriced rows are mixed).
+
+### Context window sizes
+
+The same catalog supplies context window sizes — it is literally named `model_prices_and_context_window.json` — so a newly released model sizes its context gauge correctly without waiting for an update.
+
+Lookup is layered, most-trusted first: Claude Code's `[1m]` marker, then a window a provider actually reported, then the catalog, then the built-in table. Within that order an exact match in any layer beats a prefix match in every layer, so a known model is never sized from a catalog key that merely happens to be a prefix of its ID.
+
+Windows that a provider reports for itself are remembered across runs in `~/.config/sidekick/observed-context-windows.json`. Codex reports one on every token count, and it reflects the window your account tier actually gets — often well below the model's published maximum — which is why it outranks the catalog. That file is written locally, never fetched, and needs no setting of its own.
 
 ## Session Handoff
 

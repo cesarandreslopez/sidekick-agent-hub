@@ -69,17 +69,17 @@ npm install sidekick-shared
 
 `sidekick-shared` ships three public entry points plus a few convenience subpaths. Pick the one that matches your runtime.
 
-| Path                           | Runtime                    | What it exposes                                                                                                                                     |
-| ------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sidekick-shared`              | Node (CLI, extension host) | Full public API (readers, providers, parsers, pricing, …).                                                                                          |
-| `sidekick-shared/browser`      | **Browser / webview**      | Pure helpers: usage normalization/pricing, token estimation, transcript and assistant-turn projection, model/context math.                          |
-| `sidekick-shared/node`         | Node only                  | LiteLLM pricing hydration, recent-session/transcript reads, and resilient observed-session collection (`fs` + providers).                           |
-| `sidekick-shared/phrases`      | Any runtime                | Phrase arrays + `getRandomPhrase()`.                                                                                                                |
-| `sidekick-shared/modelContext` | Any runtime                | Direct access to the context-window module.                                                                                                         |
-| `sidekick-shared/modelInfo`    | Any runtime                | Direct access to model parsing and cost math.                                                                                                       |
-| `sidekick-shared/formatting`   | Any runtime                | Direct access to pure token and duration display helpers.                                                                                           |
-| `sidekick-shared/schemas`      | Any runtime                | Pure Zod boundary schemas (session events, assistant turns, observed-session V1, quota, account status, quota history) — fs-free, no Node builtins. |
-| `sidekick-shared/statusline`   | Node only                  | Cache-only statusline surface: account status + quota snapshot readers, `formatStatusline()`, and burn-rate estimates.                              |
+| Path                           | Runtime                    | What it exposes                                                                                                                                                                   |
+| ------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidekick-shared`              | Node (CLI, extension host) | Full public API (readers, providers, parsers, pricing, …).                                                                                                                        |
+| `sidekick-shared/browser`      | **Browser / webview**      | Pure helpers: usage normalization/pricing, token estimation, transcript and assistant-turn projection, model/context math.                                                        |
+| `sidekick-shared/node`         | Node only                  | LiteLLM pricing and context-window hydration, observed context-window persistence, recent-session/transcript reads, and resilient observed-session collection (`fs` + providers). |
+| `sidekick-shared/phrases`      | Any runtime                | Phrase arrays + `getRandomPhrase()`.                                                                                                                                              |
+| `sidekick-shared/modelContext` | Any runtime                | Direct access to the context-window module.                                                                                                                                       |
+| `sidekick-shared/modelInfo`    | Any runtime                | Direct access to model parsing and cost math.                                                                                                                                     |
+| `sidekick-shared/formatting`   | Any runtime                | Direct access to pure token and duration display helpers.                                                                                                                         |
+| `sidekick-shared/schemas`      | Any runtime                | Pure Zod boundary schemas (session events, assistant turns, observed-session V1, quota, account status, quota history) — fs-free, no Node builtins.                               |
+| `sidekick-shared/statusline`   | Node only                  | Cache-only statusline surface: account status + quota snapshot readers, `formatStatusline()`, and burn-rate estimates.                                                            |
 
 ### Browser / webview runtimes
 
@@ -103,13 +103,22 @@ import {
 
 ### Node / CLI / extension host
 
-Hydrate the pricing catalog from the `node` subpath:
+Hydrate the model catalog from the `node` subpath. One fetch covers both prices and context window sizes:
 
 ```typescript
-import { hydratePricingCatalog } from 'sidekick-shared/node';
+import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 
-await hydratePricingCatalog({ cacheDir: '~/.config/sidekick' });
+const { entries, contextWindowEntries } = await hydratePricingCatalog({
+  cacheDir: '~/.config/sidekick',
+});
+
+// Context windows a provider reported on an earlier run. These outrank the
+// catalog, which only knows each model's published maximum — Codex reports the
+// window your account tier actually gets. Local read, offline-safe.
+await loadObservedContextWindows();
 ```
+
+Both calls always resolve; a network failure, missing cache, or malformed store leaves lookups on the static tables. To record a window a provider reports at runtime, call `recordObservedContextWindow(modelId, window)` — it persists only when the value changes.
 
 ### Normalize and price provider usage
 

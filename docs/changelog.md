@@ -5,6 +5,15 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] - 2026-07-24
+
+- Fixed a context gauge that read roughly eight times fuller than reality on Claude Sonnet 4.7: it resolved to a 128K window against its real 1M. Sonnet 4 shared the cause — both were inheriting a GitHub Copilot deployment's truncated limit from the model catalog
+- Context windows now resolve from the LiteLLM catalog, so newly released models size correctly without an update. Lookup tries every source for an exact match before any source's prefix match, and catalog aliases are dropped when providers disagree about the window
+- Context windows a provider actually reported are remembered per model in `~/.config/sidekick/observed-context-windows.json` and reapplied at startup. Codex reports the window for your account tier, which can sit well below the model's published maximum
+- Added static pricing for Claude Opus 5 and Sonnet 5, GPT-5.6 (`sol`/`terra`), GPT-5.5, and GPT-5.4-mini; corrected GPT-5.4 to its published rate
+- Inference tier defaults point at current models: Sonnet 5 (balanced), Opus 5 (powerful), `gpt-5.6-sol` for Codex
+- The dashboard peak-hours banner spans the full width below the gauges instead of collapsing into a one-word-per-line column
+
 ## [0.24.1] - 2026-07-22
 
 - Canonical transcripts retain provider provenance — entrypoint, meta/sidechain flags, original message roles, cwd, and git branch — so consumers can identify human prompts without reparsing JSONL

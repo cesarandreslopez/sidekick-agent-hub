@@ -155,6 +155,8 @@ Cross-session data stored in `~/.config/sidekick/`:
 - `historical-data.json` — token/cost/tool usage stats
 - `tasks/{projectSlug}.json` — kanban board carry-over
 - `decisions/{projectSlug}.json` — decision log
+- `pricing-catalog.json` — cached LiteLLM catalog (prices + context windows), 24h TTL
+- `observed-context-windows.json` — context windows a provider actually reported, per model
 
 ## Sidekick CLI and Shared Library
 

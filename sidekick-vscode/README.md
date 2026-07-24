@@ -157,7 +157,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 | `sidekick.enableSessionMonitoring`      | `true`         | Enable agent session monitoring                                                                                              |
 | `sidekick.autoHandoff`                  | `off`          | Session handoff: `off`, `generate-only`, `generate-and-notify`                                                               |
 | `sidekick.handoffUrlTemplate`           | `""`           | External handoff URL template; placeholders `{sessionId}`, `{provider}`, `{projectPath}` — no transcript content is included |
-| `sidekick.pricing.hydrateFromLiteLLM`   | `true`         | Fetch model prices from LiteLLM on activation                                                                                |
+| `sidekick.pricing.hydrateFromLiteLLM`   | `true`         | Fetch model prices and context window sizes from LiteLLM on activation                                                       |
 | `sidekick.pricing.cacheTtlHours`        | `24`           | LiteLLM catalog cache lifetime (hours)                                                                                       |
 | `sidekick.peakHours.enabled`            | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only)                                           |
 | `sidekick.peakHours.notifyOnTransition` | `false`        | One-time toast when peak hours start or end (opt-in)                                                                         |

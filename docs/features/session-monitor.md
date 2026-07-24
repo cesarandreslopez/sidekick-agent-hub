@@ -18,7 +18,7 @@ The main dashboard panel provides:
 - **Cost Tracking** — per-model cost breakdown with accurate pricing; unknown models render as `—` with a dashboard footer warning (hydrated on startup from LiteLLM, cached to `~/.config/sidekick/pricing-catalog.json`)
 - **Context Token Attribution** — stacked bar chart showing where your context budget goes (system prompt, CLAUDE.md, user messages, assistant responses, tool I/O, thinking)
 - **Token Usage Tooltips** — hover for quota projections and estimated time to exhaustion
-- **Context Window Gauge** — input/output token usage vs. limits, with theme-aware colors that adapt to light, dark, and high-contrast themes
+- **Context Window Gauge** — input/output token usage vs. limits, with theme-aware colors that adapt to light, dark, and high-contrast themes. The window size comes from the LiteLLM catalog, or from the window your provider reports for itself when it offers one (Codex does), so it reflects your account tier rather than a published maximum
 - **Compaction Detection** — timeline markers showing when context was compressed and how much was lost
 - **Context Health** — real-time fidelity score showing how much context degradation has occurred from compactions, with a color-coded gauge (green/yellow/red)
 - **Truncation Tracking** — detects when tool outputs are truncated by the agent, with per-tool breakdown and total count

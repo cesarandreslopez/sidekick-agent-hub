@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] - 2026-07-24
+
+### Added
+
+- Context windows previously reported by a provider are loaded at activation and applied to historical and static views, so a Codex session shows the window its account tier actually gets instead of the model's published maximum
+- `sidekick.pricing.hydrateFromLiteLLM` now keeps context windows current too, not just prices. The activation log reports both counts
+
+### Changed
+
+- Inference tier defaults point at current models — `claude-sonnet-5` (balanced) and `claude-opus-5` (powerful) for the Claude API and OpenCode, `gpt-5.6-sol` for Codex, `gpt-5.4-mini` for the Codex fast tier. The Claude Max `sonnet`/`opus` aliases resolve to Sonnet 5 and Opus 5
+
+### Fixed
+
+- The context gauge read roughly eight times fuller than reality on Claude Sonnet 4.7, which resolved to a 128K window against its real 1M. Sonnet 4 was affected by the same cause
+- The dashboard peak-hours banner spans the full width below the gauge row instead of collapsing into a narrow column that wrapped one word per line. It inherited `flex: 1` — a zero flex-basis — as a gauge-row item, so it only received whatever space the context and quota gauges left over
+
 ## [0.24.1] - 2026-07-22
 
 ### Changed
