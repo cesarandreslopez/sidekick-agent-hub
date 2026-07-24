@@ -223,6 +223,36 @@ describe('getModelPricing', () => {
     expect(mini!.inputCostPerMillion).toBe(0.75);
   });
 
+  it('prices GPT-5 tier variants from their own rate, not a shorter prefix key', () => {
+    // Regression guard: each of these shipped with no static entry and
+    // prefix-matched to a plausible-looking but wrong number.
+    const luna = getModelPricing('gpt-5.6-luna');
+    expect(luna).not.toBeNull();
+    expect(luna!.inputCostPerMillion).toBe(1.0);
+    expect(luna!.outputCostPerMillion).toBe(6.0);
+    expect(luna!.cacheWriteCostPerMillion).toBe(1.25);
+    expect(luna!.cacheReadCostPerMillion).toBe(0.1);
+
+    // The bug being fixed: luna inherited `gpt-5.6`, billing at sol's $5/$30.
+    const sol = getModelPricing('gpt-5.6-sol');
+    expect(luna!.inputCostPerMillion).not.toBe(sol!.inputCostPerMillion);
+    expect(luna!.outputCostPerMillion).not.toBe(sol!.outputCostPerMillion);
+
+    // Pro tiers cost far more than the base model they prefix-matched.
+    const pro55 = getModelPricing('gpt-5.5-pro');
+    expect(pro55!.inputCostPerMillion).toBe(30.0);
+    expect(pro55!.outputCostPerMillion).toBe(180.0);
+
+    const pro54 = getModelPricing('gpt-5.4-pro');
+    expect(pro54!.inputCostPerMillion).toBe(30.0);
+    expect(pro54!.outputCostPerMillion).toBe(180.0);
+
+    // And a nano variant costs far less, where `gpt-5.4` charged it $2.50/$15.
+    const nano = getModelPricing('gpt-5.4-nano');
+    expect(nano!.inputCostPerMillion).toBe(0.2);
+    expect(nano!.outputCostPerMillion).toBe(1.25);
+  });
+
   it('returns null for unknown models (no silent fallback)', () => {
     expect(getModelPricing('deepseek-coder')).toBeNull();
     expect(getModelPricing('made-up-model')).toBeNull();

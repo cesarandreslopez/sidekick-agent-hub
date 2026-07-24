@@ -280,11 +280,23 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 3.13,
     cacheReadCostPerMillion: 0.25,
   },
+  'gpt-5.6-luna': {
+    inputCostPerMillion: 1.0,
+    outputCostPerMillion: 6.0,
+    cacheWriteCostPerMillion: 1.25,
+    cacheReadCostPerMillion: 0.1,
+  },
   'gpt-5.6': {
     inputCostPerMillion: 5.0,
     outputCostPerMillion: 30.0,
     cacheWriteCostPerMillion: 6.25,
     cacheReadCostPerMillion: 0.5,
+  },
+  'gpt-5.5-pro': {
+    inputCostPerMillion: 30.0,
+    outputCostPerMillion: 180.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 3.0,
   },
   'gpt-5.5': {
     inputCostPerMillion: 5.0,
@@ -297,6 +309,18 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 4.5,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.07,
+  },
+  'gpt-5.4-nano': {
+    inputCostPerMillion: 0.2,
+    outputCostPerMillion: 1.25,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.02,
+  },
+  'gpt-5.4-pro': {
+    inputCostPerMillion: 30.0,
+    outputCostPerMillion: 180.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 3.0,
   },
   'gpt-5.4': {
     inputCostPerMillion: 2.5,

@@ -129,6 +129,7 @@ describe('getModelContextWindowSize', () => {
       expect(getModelContextWindowSize('gpt-5.5')).toBe(1_050_000);
       expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(1_050_000);
       expect(getModelContextWindowSize('gpt-5.6-terra')).toBe(1_050_000);
+      expect(getModelContextWindowSize('gpt-5.6-luna')).toBe(1_050_000);
     });
   });
 

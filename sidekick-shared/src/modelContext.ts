@@ -54,6 +54,7 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   // observed-override layer.
   'gpt-5.6-sol': 1_050_000,
   'gpt-5.6-terra': 1_050_000,
+  'gpt-5.6-luna': 1_050_000,
   'gpt-5.6': 1_050_000,
   'gpt-5.5': 1_050_000,
   'gpt-5.4': 1_050_000,
