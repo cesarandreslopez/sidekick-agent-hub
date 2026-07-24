@@ -194,7 +194,33 @@ describe('getModelPricing', () => {
     // A hypothetical fine-tune or date suffix should still resolve to the base.
     const pricing = getModelPricing('gpt-5.4-20260301');
     expect(pricing).not.toBeNull();
-    expect(pricing!.outputCostPerMillion).toBe(10.0);
+    expect(pricing!.outputCostPerMillion).toBe(15.0);
+  });
+
+  it('prices current Claude and GPT-5 models from the static baseline', () => {
+    // Regression guard: these shipped with no static entry and resolved to
+    // either null (Claude) or an older model's rate via prefix match (GPT).
+    const opus5 = getModelPricing('claude-opus-5');
+    expect(opus5).not.toBeNull();
+    expect(opus5!.inputCostPerMillion).toBe(5.0);
+    expect(opus5!.outputCostPerMillion).toBe(25.0);
+
+    const sonnet5 = getModelPricing('claude-sonnet-5');
+    expect(sonnet5).not.toBeNull();
+    expect(sonnet5!.outputCostPerMillion).toBe(15.0);
+
+    // gpt-5.6-sol must NOT inherit the cheaper `gpt-5` prefix entry.
+    const sol = getModelPricing('gpt-5.6-sol');
+    expect(sol).not.toBeNull();
+    expect(sol!.inputCostPerMillion).toBe(5.0);
+    expect(sol!.outputCostPerMillion).toBe(30.0);
+
+    const terra = getModelPricing('gpt-5.6-terra');
+    expect(terra!.inputCostPerMillion).toBe(2.5);
+
+    // A mini variant must not inherit its full-size sibling's rate.
+    const mini = getModelPricing('gpt-5.4-mini');
+    expect(mini!.inputCostPerMillion).toBe(0.75);
   });
 
   it('returns null for unknown models (no silent fallback)', () => {

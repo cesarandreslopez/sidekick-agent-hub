@@ -138,6 +138,14 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 1.0,
     cacheReadCostPerMillion: 0.08,
   },
+  // Sonnet 5 carries the standard rate here. The introductory $2/$10 (through
+  // 2026-08-31) arrives via catalog hydration, which supersedes this baseline.
+  'claude-sonnet-5': {
+    inputCostPerMillion: 3.0,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 3.75,
+    cacheReadCostPerMillion: 0.3,
+  },
   'claude-sonnet-4-6': {
     inputCostPerMillion: 3.0,
     outputCostPerMillion: 15.0,
@@ -167,6 +175,12 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 15.0,
     cacheWriteCostPerMillion: 3.75,
     cacheReadCostPerMillion: 0.3,
+  },
+  'claude-opus-5': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 25.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
   },
   'claude-opus-4-8': {
     inputCostPerMillion: 5.0,
@@ -250,14 +264,45 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheReadCostPerMillion: 0,
   },
 
-  // ── OpenAI: GPT-5 family (baseline estimate; LiteLLM catalog overrides) ──
-  // Codex emits `gpt-5.4`, `gpt-5.3-codex`, `gpt-5`. Anchoring the static
-  // estimate to gpt-4o-tier rates so offline users see a reasonable ballpark.
-  'gpt-5.4': {
-    inputCostPerMillion: 1.25,
-    outputCostPerMillion: 10.0,
+  // ── OpenAI: GPT-5 family ──
+  // Published rates, verified against the LiteLLM catalog. Runtime hydration
+  // still supersedes these; they are the offline baseline. Entries below
+  // `gpt-5.4` predate the published-rate pass and remain rough estimates.
+  'gpt-5.6-sol': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 30.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'gpt-5.6-terra': {
+    inputCostPerMillion: 2.5,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 3.13,
+    cacheReadCostPerMillion: 0.25,
+  },
+  'gpt-5.6': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 30.0,
+    cacheWriteCostPerMillion: 6.25,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'gpt-5.5': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 30.0,
     cacheWriteCostPerMillion: 0,
-    cacheReadCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.5,
+  },
+  'gpt-5.4-mini': {
+    inputCostPerMillion: 0.75,
+    outputCostPerMillion: 4.5,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.07,
+  },
+  'gpt-5.4': {
+    inputCostPerMillion: 2.5,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.25,
   },
   'gpt-5.3-codex': {
     inputCostPerMillion: 1.25,
