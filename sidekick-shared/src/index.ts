@@ -742,9 +742,21 @@ export type {
 export {
   hydratePricingCatalog,
   normalizeLiteLlmCatalog,
+  normalizeLiteLlmContextWindows,
   LITELLM_CATALOG_URL,
 } from './pricingCatalog';
 export type { HydrateOptions, HydrateResult } from './pricingCatalog';
+
+// Observed context windows (provider-reported, persisted) — Node-only.
+export {
+  loadObservedContextWindows,
+  recordObservedContextWindow,
+  getObservedContextWindowPath,
+} from './observedContextWindows';
+export type {
+  ObservedContextWindowOptions,
+  ObservedContextWindowStore,
+} from './observedContextWindows';
 
 // Extractors — per-event token usage and tool call extraction
 export { extractTokenUsage } from './extractors/tokenUsage';

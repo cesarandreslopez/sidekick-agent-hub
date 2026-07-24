@@ -1,5 +1,14 @@
-import { describe, it, expect } from 'vitest';
-import { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+import { describe, it, expect, afterEach } from 'vitest';
+import {
+  getModelContextWindowSize,
+  DEFAULT_CONTEXT_WINDOW,
+  _setObservedContextWindows,
+  _getObservedContextWindows,
+  _clearObservedContextWindows,
+  _setCatalogContextWindows,
+  _getCatalogContextWindows,
+  _clearCatalogContextWindows,
+} from './modelContext';
 
 describe('getModelContextWindowSize', () => {
   it('returns default for undefined model', () => {
@@ -105,6 +114,77 @@ describe('getModelContextWindowSize', () => {
 
     it('returns default for whitespace-only input', () => {
       expect(getModelContextWindowSize('  ')).toBe(200_000);
+    });
+  });
+
+  describe('current models resolve from the static baseline', () => {
+    it('returns 1M for Opus 5 and Sonnet 5', () => {
+      // Both previously fell through to the 200K default, making context
+      // gauges read ~5x too full.
+      expect(getModelContextWindowSize('claude-opus-5')).toBe(1_000_000);
+      expect(getModelContextWindowSize('claude-sonnet-5')).toBe(1_000_000);
+    });
+
+    it('returns published maxima for the GPT-5.5/5.6 line', () => {
+      expect(getModelContextWindowSize('gpt-5.5')).toBe(1_050_000);
+      expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(1_050_000);
+      expect(getModelContextWindowSize('gpt-5.6-terra')).toBe(1_050_000);
+    });
+  });
+
+  describe('override precedence', () => {
+    afterEach(() => {
+      _clearObservedContextWindows();
+      _clearCatalogContextWindows();
+    });
+
+    it('prefers catalog overrides over the static table', () => {
+      expect(getModelContextWindowSize('claude-opus-5')).toBe(1_000_000);
+      _setCatalogContextWindows({ 'claude-opus-5': 777_000 });
+      expect(getModelContextWindowSize('claude-opus-5')).toBe(777_000);
+    });
+
+    it('prefers observed values over the catalog', () => {
+      // The real case: Codex reports a tier-specific 258,400 while the catalog
+      // only knows the 1,050,000 published maximum.
+      _setCatalogContextWindows({ 'gpt-5.6-sol': 1_050_000 });
+      _setObservedContextWindows({ 'gpt-5.6-sol': 258_400 });
+      expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);
+    });
+
+    it('resolves brand-new models from the catalog alone', () => {
+      expect(getModelContextWindowSize('gpt-9-hypothetical')).toBe(DEFAULT_CONTEXT_WINDOW);
+      _setCatalogContextWindows({ 'gpt-9-hypothetical': 2_000_000 });
+      expect(getModelContextWindowSize('gpt-9-hypothetical')).toBe(2_000_000);
+    });
+
+    it('applies longest-prefix matching within override maps', () => {
+      _setCatalogContextWindows({ 'gpt-5.6': 1_050_000, 'gpt-5.6-tiny': 32_000 });
+      expect(getModelContextWindowSize('gpt-5.6-tiny-20260301')).toBe(32_000);
+      expect(getModelContextWindowSize('gpt-5.6-20260301')).toBe(1_050_000);
+    });
+
+    it('lowercases override keys so catalog casing cannot break lookups', () => {
+      _setCatalogContextWindows({ 'Anthropic-Custom-Model': 500_000 });
+      expect(getModelContextWindowSize('anthropic-custom-model')).toBe(500_000);
+      expect(_getCatalogContextWindows()['anthropic-custom-model']).toBe(500_000);
+    });
+
+    it('ignores non-positive or non-finite override values', () => {
+      _setObservedContextWindows({ a: 0, b: -1, c: Number.NaN, d: 123_456 });
+      expect(_getObservedContextWindows()).toEqual({ d: 123_456 });
+    });
+
+    it('still honors the [1m] marker ahead of every override', () => {
+      _setObservedContextWindows({ 'claude-opus-5': 258_400 });
+      expect(getModelContextWindowSize('claude-opus-5[1m]')).toBe(1_000_000);
+    });
+
+    it('falls back to static once overrides are cleared', () => {
+      _setObservedContextWindows({ 'claude-opus-5': 258_400 });
+      expect(getModelContextWindowSize('claude-opus-5')).toBe(258_400);
+      _clearObservedContextWindows();
+      expect(getModelContextWindowSize('claude-opus-5')).toBe(1_000_000);
     });
   });
 });

@@ -9,10 +9,20 @@
 export {
   hydratePricingCatalog,
   normalizeLiteLlmCatalog,
+  normalizeLiteLlmContextWindows,
   LITELLM_CATALOG_URL,
 } from './pricingCatalog';
 
 export type { HydrateOptions, HydrateResult } from './pricingCatalog';
+export {
+  loadObservedContextWindows,
+  recordObservedContextWindow,
+  getObservedContextWindowPath,
+} from './observedContextWindows';
+export type {
+  ObservedContextWindowOptions,
+  ObservedContextWindowStore,
+} from './observedContextWindows';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
 export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
 export {

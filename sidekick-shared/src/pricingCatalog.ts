@@ -20,6 +20,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
+import { _setCatalogContextWindows } from './modelContext';
 import { _setPricingOverrides, type ModelPricing } from './modelInfo';
 
 // ── Types ──
@@ -44,6 +45,8 @@ export interface HydrateResult {
   source: 'cache' | 'network' | 'offline';
   /** Number of pricing entries applied to the override map. */
   entries: number;
+  /** Number of context-window entries applied to the override map. */
+  contextWindowEntries: number;
   /** ISO timestamp of the fetch that produced the cache. */
   fetchedAt: string;
 }
@@ -52,6 +55,12 @@ interface CacheFile {
   fetchedAt: string;
   url: string;
   overrides: Record<string, ModelPricing>;
+  /**
+   * Optional so caches written before context-window hydration stay valid.
+   * A cache without this field simply contributes no context overrides; the
+   * next refresh after the TTL fills it in.
+   */
+  contextWindows?: Record<string, number>;
 }
 
 /** Shape of a single LiteLLM catalog entry we care about. */
@@ -61,6 +70,11 @@ interface LiteLlmEntry {
   cache_read_input_token_cost?: number;
   cache_creation_input_token_cost?: number;
   input_cost_per_token_cached?: number;
+  /**
+   * The context window. Note this is NOT `max_tokens`, which is the output
+   * cap. Present on ~86% of catalog entries; absent ones contribute nothing.
+   */
+  max_input_tokens?: number;
   [k: string]: unknown;
 }
 
@@ -101,46 +115,55 @@ export async function hydratePricingCatalog(options: HydrateOptions): Promise<Hy
   // 1. Fresh cache?
   const cached = await readCache(cachePath);
   if (cached && now - Date.parse(cached.fetchedAt) < ttlMs) {
-    _setPricingOverrides(cached.overrides);
-    return {
-      source: 'cache',
-      entries: Object.keys(cached.overrides).length,
-      fetchedAt: cached.fetchedAt,
-    };
+    return applyCacheFile(cached, 'cache');
   }
 
   // 2. Try network.
   if (fetchImpl) {
     const fetched = await fetchCatalog(url, fetchImpl, timeoutMs, logger);
     if (fetched) {
-      const overrides = normalizeLiteLlmCatalog(fetched);
       const payload: CacheFile = {
         fetchedAt: new Date(now).toISOString(),
         url,
-        overrides,
+        overrides: normalizeLiteLlmCatalog(fetched),
+        contextWindows: normalizeLiteLlmContextWindows(fetched),
       };
       await writeCache(cachePath, payload, logger);
-      _setPricingOverrides(overrides);
-      return {
-        source: 'network',
-        entries: Object.keys(overrides).length,
-        fetchedAt: payload.fetchedAt,
-      };
+      return applyCacheFile(payload, 'network');
     }
   }
 
   // 3. Fall back to stale cache if present.
   if (cached) {
-    _setPricingOverrides(cached.overrides);
-    return {
-      source: 'cache',
-      entries: Object.keys(cached.overrides).length,
-      fetchedAt: cached.fetchedAt,
-    };
+    return applyCacheFile(cached, 'cache');
   }
 
-  // 4. Nothing we can do — stay on static table.
-  return { source: 'offline', entries: 0, fetchedAt: new Date(now).toISOString() };
+  // 4. Nothing we can do — stay on static tables.
+  return {
+    source: 'offline',
+    entries: 0,
+    contextWindowEntries: 0,
+    fetchedAt: new Date(now).toISOString(),
+  };
+}
+
+/**
+ * Push a cache payload into both override maps and describe what was applied.
+ * `contextWindows` is absent on caches written before context hydration; those
+ * contribute no overrides rather than clearing whatever is already loaded.
+ */
+function applyCacheFile(cache: CacheFile, source: 'cache' | 'network'): HydrateResult {
+  const contextWindows = cache.contextWindows ?? {};
+  _setPricingOverrides(cache.overrides);
+  if (Object.keys(contextWindows).length > 0) {
+    _setCatalogContextWindows(contextWindows);
+  }
+  return {
+    source,
+    entries: Object.keys(cache.overrides).length,
+    contextWindowEntries: Object.keys(contextWindows).length,
+    fetchedAt: cache.fetchedAt,
+  };
 }
 
 /**
@@ -165,6 +188,39 @@ export function normalizeLiteLlmCatalog(raw: unknown): Record<string, ModelPrici
     const bare = stripProviderPrefix(key);
     if (bare && bare !== key && !out[bare]) {
       out[bare] = pricing;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Convert a LiteLLM catalog payload to a model → context-window override map.
+ *
+ * Kept separate from `normalizeLiteLlmCatalog` rather than folded into its
+ * return type: that function is public API on a published package, and pricing
+ * and context coverage differ (an entry can have one without the other).
+ *
+ * Exported for tests; rarely called directly.
+ */
+export function normalizeLiteLlmContextWindows(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== 'object') return out;
+
+  for (const [key, entry] of Object.entries(raw as Record<string, unknown>)) {
+    // LiteLLM ships a `sample_spec` header entry. Skip it.
+    if (key === 'sample_spec') continue;
+    if (!entry || typeof entry !== 'object') continue;
+
+    const window = (entry as LiteLlmEntry).max_input_tokens;
+    if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) continue;
+
+    // Catalog keys use both `provider/model` and bare `model` forms. Record both
+    // the raw key and the bare-model form so lookups work regardless of caller.
+    out[key] = window;
+    const bare = stripProviderPrefix(key);
+    if (bare && bare !== key && !out[bare]) {
+      out[bare] = window;
     }
   }
 
