@@ -30,7 +30,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 - **Shared analytics and observed-session V1** — categorized failure history, beta quality trends, code-impact and compaction ledgers, plus versioned provider-neutral contracts for downstream tools.
 - **Codex reset credits** — when Codex quota is refreshed from the API, `sidekick quota` and the VS Code dashboard "Rate Limits" tile now surface available rate-limit reset credits and their expirations.
 - **z.ai Coding Plan quota** — when OpenCode routes to a z.ai Coding Plan (GLM), Sidekick shows authoritative 5-Hour / Weekly quota read from z.ai's quota API (with cached-snapshot fallback). z.ai is monitored-only and not yet a selectable inference provider — see [limitations](docs/providers/opencode.md#limitations).
-- **Claude Opus 4.8 & Fable 5** — recognized everywhere models are interpreted, with 1M-token context windows, accurate pricing, and "Fable" display labels.
+- **Claude Opus 5, Sonnet 5 & Fable 5** — recognized everywhere models are interpreted, with 1M-token context windows, accurate pricing, and "Fable" display labels. Opus 5 and Sonnet 5 are the `powerful` and `balanced` tier defaults.
 - **Richer conversation view** — assistant reasoning, tool calls, and narration now interleave in arrival order (a compact Process + Answer shape) across Claude, Codex, and OpenCode sessions.
 - **Session asset extraction** — pull URLs, file paths, commands, and plans out of recent chats with `sidekick extract` or the `Sidekick: Extract Session Assets` command.
 - **Quota-history heatmap** — `sidekick quota history` renders a 13-week, per-workspace, GitHub-style view of session-limit utilization.

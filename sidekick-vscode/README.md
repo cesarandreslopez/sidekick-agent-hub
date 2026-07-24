@@ -162,7 +162,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 | `sidekick.peakHours.enabled`            | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only)                                           |
 | `sidekick.peakHours.notifyOnTransition` | `false`        | One-time toast when peak hours start or end (opt-in)                                                                         |
 
-Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — including **Claude Opus 4.8** and **Fable 5** with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
+Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — **Claude Opus 5** (`powerful`) and **Sonnet 5** (`balanced`), with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
 ## Commands
 

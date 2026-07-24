@@ -15,7 +15,7 @@ Each session appears as a card with:
 - **Token badge** — total tokens consumed (e.g., "25.5K tokens")
 - **Task badge** — number of tasks created during the session
 - **Error badge** — number of tool errors encountered
-- **Model badge** — which model was used (e.g., "claude-opus-4-6")
+- **Model badge** — which model was used (e.g., "claude-opus-5")
 - **Active indicator** — green "Active" badge on the currently running session
 
 ## Time Range Filtering

@@ -22,11 +22,16 @@ flowchart TD
 
 ## Tiers
 
-| Tier       | Use Case                                               | Claude Model |
-| ---------- | ------------------------------------------------------ | ------------ |
-| `fast`     | Low latency, frequent calls (inline completions, docs) | Haiku        |
-| `balanced` | Quality/speed tradeoff (explanations, commits, review) | Sonnet       |
-| `powerful` | Highest quality (code transforms)                      | Opus         |
+| Tier       | Use Case                                               | Claude Model | Codex Model    |
+| ---------- | ------------------------------------------------------ | ------------ | -------------- |
+| `fast`     | Low latency, frequent calls (inline completions, docs) | Haiku        | `gpt-5.4-mini` |
+| `balanced` | Quality/speed tradeoff (explanations, commits, review) | Sonnet       | `gpt-5.6-sol`  |
+| `powerful` | Highest quality (code transforms)                      | Opus         | `gpt-5.6-sol`  |
+
+The Claude column resolves per inference provider: `claude-max` passes the short
+names (`haiku` / `sonnet` / `opus`) to the CLI, while `claude-api` and `opencode`
+resolve to pinned IDs such as `claude-sonnet-5` and `claude-opus-5`. Codex maps
+its `balanced` and `powerful` tiers to the same model.
 
 ## Per-Feature Defaults
 
@@ -56,4 +61,4 @@ For backward compatibility, legacy Claude model names are mapped to tiers:
 
 ## Literal Model IDs
 
-You can bypass the tier system entirely by setting a full model ID (e.g., `claude-sonnet-4-5-20250514`). This is passed directly to the provider without any mapping.
+You can bypass the tier system entirely by setting a full model ID (e.g., `claude-sonnet-5` or `gpt-5.6-sol`). This is passed directly to the provider without any mapping.
