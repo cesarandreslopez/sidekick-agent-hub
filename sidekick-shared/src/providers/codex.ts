@@ -32,6 +32,7 @@ import type {
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type { CodexRolloutLine, CodexRateLimits, CodexSessionMeta } from '../types/codex';
 import { getModelContextWindowSize } from '../modelContext';
+import { recordObservedContextWindow } from '../observedContextWindows';
 import { normalizeProviderUsage } from '../usageNormalization';
 
 // ---------------------------------------------------------------------------
@@ -441,7 +442,7 @@ class CodexReader implements SessionReader {
 
   constructor(
     private readonly rolloutPath: string,
-    private readonly onContextWindowLimit?: (limit: number) => void,
+    private readonly onContextWindowLimit?: (limit: number, modelId?: string) => void,
     private readonly onRateLimits?: (limits: CodexRateLimits) => void,
     private readonly onTokenUsage?: (usage: TokenUsage) => void,
   ) {
@@ -508,10 +509,12 @@ class CodexReader implements SessionReader {
         }
       }
 
-      // Propagate model_context_window from token_count events to the provider
+      // Propagate model_context_window from token_count events to the provider.
+      // The model comes along so the value can be persisted per model — the
+      // window Codex reports is tier-specific, not the published maximum.
       const mcw = this.parser.getModelContextWindow();
       if (mcw && this.onContextWindowLimit) {
-        this.onContextWindowLimit(mcw);
+        this.onContextWindowLimit(mcw, this.parser.getCurrentModel() ?? undefined);
       }
 
       // Propagate rate_limits from token_count events to the provider
@@ -828,8 +831,15 @@ export class CodexProvider implements SessionProviderBase {
   createReader(sessionPath: string): SessionReader {
     return new CodexReader(
       sessionPath,
-      (limit) => {
+      (limit, modelId) => {
         this.dynamicContextWindowLimit = limit;
+        if (modelId) {
+          // Fire-and-forget: persist so historical/static views keep this
+          // tier-specific window instead of falling back to the catalog maximum.
+          void recordObservedContextWindow(modelId, limit).catch(() => {
+            /* non-fatal; the in-memory limit above still applies */
+          });
+        }
       },
       (limits) => {
         this.lastRateLimitsData = limits;

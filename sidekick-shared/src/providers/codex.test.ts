@@ -163,6 +163,51 @@ describe('CodexProvider', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('records the reported context window against the session model', async () => {
+    // Codex reports a tier-specific model_context_window on every token_count
+    // event. It must be persisted per model so historical views don't fall back
+    // to the catalog's much larger published maximum.
+    const sessionPath = path.join(tmpDir, '.codex', 'sessions', 'rollout-observed.jsonl');
+    fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+    fs.writeFileSync(
+      sessionPath,
+      [
+        {
+          timestamp: '2026-07-01T12:00:00.000Z',
+          type: 'turn_context',
+          payload: { model: 'gpt-5.6-sol', cwd: tmpDir },
+        },
+        {
+          timestamp: '2026-07-01T12:00:01.000Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: {
+              model_context_window: 258_400,
+              last_token_usage: { input_tokens: 10, output_tokens: 5, cached_input_tokens: 0 },
+            },
+          },
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join('\n') + '\n',
+    );
+
+    const { CodexProvider } = await import('./codex');
+    const provider = new CodexProvider();
+    const reader = provider.createReader(sessionPath);
+    reader.readNew();
+
+    // Live sessions keep using the runtime value directly.
+    expect(provider.getContextWindowLimit('gpt-5.6-sol')).toBe(258_400);
+
+    // ...and it is persisted for later, keyed by the model from turn_context.
+    const storePath = path.join(tmpDir, 'observed-context-windows.json');
+    await vi.waitFor(() => expect(fs.existsSync(storePath)).toBe(true));
+    const store = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    expect(store.models['gpt-5.6-sol'].contextWindow).toBe(258_400);
+  });
+
   it('falls back to the system ~/.codex sessions when the active managed profile home is empty', async () => {
     const workspacePath = path.join(tmpDir, 'workspace', 'project');
     fs.mkdirSync(workspacePath, { recursive: true });
