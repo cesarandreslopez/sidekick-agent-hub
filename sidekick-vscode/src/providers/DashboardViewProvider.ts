@@ -4177,12 +4177,20 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       white-space: nowrap;
     }
 
+    /*
+     * Full-width band under the gauge row rather than a third column inside it.
+     * As a .gauge-row-item it inherited "flex: 1" — shorthand for "flex: 1 1 0%"
+     * — so it started from a zero basis and lived on whatever the 180px context
+     * gauge and 250px quota gauges left over, collapsing narrower than its own
+     * longest word.
+     */
     .peak-hours-section {
       display: none;
     }
 
     .peak-hours-section.visible {
       display: block;
+      margin-bottom: 16px;
     }
 
     .peak-hours-content {
@@ -5641,12 +5649,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           </div>
           <div class="quota-error" id="quota-error" style="display: none;"></div>
         </div>
+      </div>
 
-        <div class="gauge-row-item peak-hours-section" id="peak-hours-section" title="Claude peak-hours tracker — data from promoclock.co (third-party, unaffiliated)">
-          <div class="peak-hours-content">
-            <div class="peak-hours-indicator" id="peak-hours-indicator"></div>
-            <div class="peak-hours-details" id="peak-hours-details"></div>
-          </div>
+      <div class="peak-hours-section" id="peak-hours-section" title="Claude peak-hours tracker — data from promoclock.co (third-party, unaffiliated)">
+        <div class="peak-hours-content">
+          <div class="peak-hours-indicator" id="peak-hours-indicator"></div>
+          <div class="peak-hours-details" id="peak-hours-details"></div>
         </div>
       </div>
 
@@ -7234,17 +7242,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           dot + '</span> ' +
           escapeHtml(status.label || 'Peak Hours');
 
-        let html = '';
+        // Joined inline rather than stacked: the pill spans the full dashboard
+        // width now, so countdown and schedule fit on one line together.
+        const parts = [];
         if (typeof status.minutesUntilChange === 'number' && status.minutesUntilChange > 0) {
           const hours = Math.floor(status.minutesUntilChange / 60);
           const mins = status.minutesUntilChange % 60;
           const countdown = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
-          html += 'Off-peak in ' + countdown + '<br>';
+          parts.push('Off-peak in ' + countdown);
         }
         if (status.peakHoursDescription) {
-          html += escapeHtml(status.peakHoursDescription);
+          parts.push(escapeHtml(status.peakHoursDescription));
         }
-        detailsEl.innerHTML = html;
+        detailsEl.innerHTML = parts.join(' · ');
       }
 
       /**
