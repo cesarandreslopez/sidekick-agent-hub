@@ -205,9 +205,11 @@ describe('getModelPricing', () => {
     expect(opus5!.inputCostPerMillion).toBe(5.0);
     expect(opus5!.outputCostPerMillion).toBe(25.0);
 
+    // Sonnet 5 broke the $3/$15 every earlier Sonnet charged.
     const sonnet5 = getModelPricing('claude-sonnet-5');
     expect(sonnet5).not.toBeNull();
-    expect(sonnet5!.outputCostPerMillion).toBe(15.0);
+    expect(sonnet5!.inputCostPerMillion).toBe(2.0);
+    expect(sonnet5!.outputCostPerMillion).toBe(10.0);
 
     // gpt-5.6-sol must NOT inherit the cheaper `gpt-5` prefix entry.
     const sol = getModelPricing('gpt-5.6-sol');
@@ -251,6 +253,60 @@ describe('getModelPricing', () => {
     const nano = getModelPricing('gpt-5.4-nano');
     expect(nano!.inputCostPerMillion).toBe(0.2);
     expect(nano!.outputCostPerMillion).toBe(1.25);
+  });
+
+  it('prices every mini/nano/pro tier from its own rate across GPT and o-series', () => {
+    // Second sweep of the same defect: a tier variant with no entry of its own
+    // inherits its base model's rate. Rates verified against the LiteLLM
+    // catalog's bare top-level keys.
+    const cases: Array<[string, number, number]> = [
+      // Cheaper than the base key they used to inherit.
+      ['gpt-5-mini', 0.25, 2.0],
+      ['gpt-5-nano', 0.05, 0.4],
+      ['gpt-5.1-codex-mini', 0.25, 2.0],
+      ['gpt-4.1-mini', 0.4, 1.6],
+      ['gpt-4.1-nano', 0.1, 0.4],
+      // Far more expensive than the base key they used to inherit.
+      ['gpt-5-pro', 15.0, 120.0],
+      ['gpt-5.2-pro', 21.0, 168.0],
+      ['o1-pro', 150.0, 600.0],
+      ['o3-pro', 20.0, 80.0],
+      ['o3-deep-research', 10.0, 40.0],
+      // Own entry, but the value itself was stale.
+      ['gpt-5.3-codex', 1.75, 14.0],
+      ['gpt-5.3-chat-latest', 1.75, 14.0],
+      ['o1-mini', 1.1, 4.4],
+      ['gpt-5.2', 1.75, 14.0],
+    ];
+    for (const [id, input, output] of cases) {
+      const p = getModelPricing(id);
+      expect(p, `${id} should be priced`).not.toBeNull();
+      expect(p!.inputCostPerMillion, `${id} input`).toBe(input);
+      expect(p!.outputCostPerMillion, `${id} output`).toBe(output);
+    }
+  });
+
+  it('gives dated and suffixed snapshots their base model rate, not a shorter key', () => {
+    // One base entry covers a model's dated snapshots for free, because the
+    // longest matching key wins. These all used to fall through to `gpt-5`.
+    expect(getModelPricing('gpt-5-nano-2025-08-07')!.inputCostPerMillion).toBe(0.05);
+    expect(getModelPricing('gpt-5-pro-2025-10-06')!.inputCostPerMillion).toBe(15.0);
+    expect(getModelPricing('gpt-4.1-mini-2025-04-14')!.inputCostPerMillion).toBe(0.4);
+
+    // `gpt-5.2-codex` and the chat variants bill at the plain gpt-5.2 rate...
+    expect(getModelPricing('gpt-5.2-codex')!.inputCostPerMillion).toBe(1.75);
+    expect(getModelPricing('gpt-5.2-chat-latest')!.inputCostPerMillion).toBe(1.75);
+    // ...while `-pro` must still win over the shorter `gpt-5.2` key.
+    expect(getModelPricing('gpt-5.2-pro-2025-12-11')!.inputCostPerMillion).toBe(21.0);
+  });
+
+  it('keeps base models off their own tier variants rates', () => {
+    // The inverse guard: adding a longer key must not capture the base model.
+    expect(getModelPricing('gpt-5')!.inputCostPerMillion).toBe(1.25);
+    expect(getModelPricing('gpt-4.1')!.inputCostPerMillion).toBe(2.0);
+    expect(getModelPricing('o1')!.inputCostPerMillion).toBe(15.0);
+    expect(getModelPricing('o3')!.inputCostPerMillion).toBe(2.0);
+    expect(getModelPricing('o3-mini')!.inputCostPerMillion).toBe(1.1);
   });
 
   it('returns null for unknown models (no silent fallback)', () => {

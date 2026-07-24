@@ -140,11 +140,14 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
   },
   // Sonnet 5 carries the standard rate here. The introductory $2/$10 (through
   // 2026-08-31) arrives via catalog hydration, which supersedes this baseline.
+  // Sonnet 5 is $2/$10, not the $3/$15 every earlier Sonnet charged, and it
+  // carries no >200K surcharge the way Sonnet 4.5 does. The catalog agrees
+  // across all eleven of its Sonnet 5 entries.
   'claude-sonnet-5': {
-    inputCostPerMillion: 3.0,
-    outputCostPerMillion: 15.0,
-    cacheWriteCostPerMillion: 3.75,
-    cacheReadCostPerMillion: 0.3,
+    inputCostPerMillion: 2.0,
+    outputCostPerMillion: 10.0,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.2,
   },
   'claude-sonnet-4-6': {
     inputCostPerMillion: 3.0,
@@ -239,6 +242,21 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
   },
 
   // ── OpenAI: GPT-4.x family ──
+  // The `-tts`, `-transcribe`, and `-realtime-preview` variants also bill above
+  // the key they inherit, but no coding agent routes to them, so they are left
+  // out rather than carried here. Catalog hydration still prices them correctly.
+  'gpt-4.1-mini': {
+    inputCostPerMillion: 0.4,
+    outputCostPerMillion: 1.6,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'gpt-4.1-nano': {
+    inputCostPerMillion: 0.1,
+    outputCostPerMillion: 0.4,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.025,
+  },
   'gpt-4.1': {
     inputCostPerMillion: 2.0,
     outputCostPerMillion: 8.0,
@@ -250,6 +268,14 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 0.6,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.075,
+  },
+  // The launch snapshot kept its original $5/$15 when gpt-4o was cut to
+  // $2.50/$10, so a pinned id must not read the current rate.
+  'gpt-4o-2024-05-13': {
+    inputCostPerMillion: 5.0,
+    outputCostPerMillion: 15.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0,
   },
   'gpt-4o': {
     inputCostPerMillion: 2.5,
@@ -266,8 +292,12 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
 
   // ── OpenAI: GPT-5 family ──
   // Published rates, verified against the LiteLLM catalog. Runtime hydration
-  // still supersedes these; they are the offline baseline. Entries below
-  // `gpt-5.4` predate the published-rate pass and remain rough estimates.
+  // still supersedes these; they are the offline baseline.
+  //
+  // Every tier that ships at a rate of its own needs an entry of its own. Keys
+  // are matched longest-first, so a `-mini`/`-nano`/`-pro` variant with no entry
+  // silently inherits its base model's rate and reports a wrong number rather
+  // than none — `gpt-5-nano` read 25x its true cost this way.
   'gpt-5.6-sol': {
     inputCostPerMillion: 5.0,
     outputCostPerMillion: 30.0,
@@ -329,16 +359,62 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheReadCostPerMillion: 0.25,
   },
   'gpt-5.3-codex': {
-    inputCostPerMillion: 1.25,
-    outputCostPerMillion: 10.0,
+    inputCostPerMillion: 1.75,
+    outputCostPerMillion: 14.0,
     cacheWriteCostPerMillion: 0,
-    cacheReadCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.175,
   },
+  'gpt-5.3-chat-latest': {
+    inputCostPerMillion: 1.75,
+    outputCostPerMillion: 14.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.175,
+  },
+  // No bare `gpt-5.3` ships in the catalog; both real variants above are
+  // $1.75/$14. This entry stays an estimate and only answers ids that match
+  // neither variant.
   'gpt-5.3': {
     inputCostPerMillion: 1.25,
     outputCostPerMillion: 10.0,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.125,
+  },
+  'gpt-5.2-pro': {
+    inputCostPerMillion: 21.0,
+    outputCostPerMillion: 168.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0,
+  },
+  // Also answers `gpt-5.2-codex` and `gpt-5.2-chat*`, which bill at this rate.
+  'gpt-5.2': {
+    inputCostPerMillion: 1.75,
+    outputCostPerMillion: 14.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.175,
+  },
+  'gpt-5.1-codex-mini': {
+    inputCostPerMillion: 0.25,
+    outputCostPerMillion: 2.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.025,
+  },
+  'gpt-5-pro': {
+    inputCostPerMillion: 15.0,
+    outputCostPerMillion: 120.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0,
+  },
+  'gpt-5-mini': {
+    inputCostPerMillion: 0.25,
+    outputCostPerMillion: 2.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.025,
+  },
+  'gpt-5-nano': {
+    inputCostPerMillion: 0.05,
+    outputCostPerMillion: 0.4,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.005,
   },
   'gpt-5': {
     inputCostPerMillion: 1.25,
@@ -348,11 +424,25 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
   },
 
   // ── OpenAI: o-series (reasoning models) ──
+  // The `-pro` and deep-research tiers cost an order of magnitude more than the
+  // base model whose key they would otherwise match.
+  'o3-deep-research': {
+    inputCostPerMillion: 10.0,
+    outputCostPerMillion: 40.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 2.5,
+  },
   'o3-mini': {
     inputCostPerMillion: 1.1,
     outputCostPerMillion: 4.4,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.55,
+  },
+  'o3-pro': {
+    inputCostPerMillion: 20.0,
+    outputCostPerMillion: 80.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0,
   },
   o3: {
     inputCostPerMillion: 2.0,
@@ -360,11 +450,20 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.5,
   },
+  // OpenAI cut o1-mini to $1.10/$4.40 after launch; $3/$12 was the launch rate.
+  // No bare catalog key settles it — Azure's $1.21/$4.84 is its usual 1.1x
+  // uplift on exactly this number, and Replicate's OpenAI passthrough agrees.
   'o1-mini': {
-    inputCostPerMillion: 3.0,
-    outputCostPerMillion: 12.0,
+    inputCostPerMillion: 1.1,
+    outputCostPerMillion: 4.4,
     cacheWriteCostPerMillion: 0,
-    cacheReadCostPerMillion: 1.5,
+    cacheReadCostPerMillion: 0.55,
+  },
+  'o1-pro': {
+    inputCostPerMillion: 150.0,
+    outputCostPerMillion: 600.0,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0,
   },
   o1: {
     inputCostPerMillion: 15.0,
