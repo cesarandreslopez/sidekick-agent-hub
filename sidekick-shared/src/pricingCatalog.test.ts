@@ -136,6 +136,47 @@ describe('normalizeLiteLlmContextWindows', () => {
     expect(out['o3-mini']).toBe(200_000);
   });
 
+  it('drops an alias when providers disagree about the window', () => {
+    // Regression: a `provider/model` entry states that provider's deployment
+    // window, not the model's. The live catalog lists `claude-sonnet-4` at 128K
+    // under GitHub Copilot and 1M under Vertex; first-wins picked Copilot's
+    // truncated number purely on JSON key order. With no defensible answer we
+    // record none and let the static table respond.
+    const out = normalizeLiteLlmContextWindows({
+      'github_copilot/claude-sonnet-4': { max_input_tokens: 128_000 },
+      'vertex_ai/claude-sonnet-4': { max_input_tokens: 1_000_000 },
+    });
+    expect(out['github_copilot/claude-sonnet-4']).toBe(128_000);
+    expect(out['vertex_ai/claude-sonnet-4']).toBe(1_000_000);
+    expect(out['claude-sonnet-4']).toBeUndefined();
+  });
+
+  it('records an alias when every provider agrees', () => {
+    const out = normalizeLiteLlmContextWindows({
+      'vertex_ai/claude-opus-4-7': { max_input_tokens: 1_000_000 },
+      'bedrock/claude-opus-4-7': { max_input_tokens: 1_000_000 },
+    });
+    expect(out['claude-opus-4-7']).toBe(1_000_000);
+  });
+
+  it('never lets a derived alias shadow a top-level entry', () => {
+    // The top-level key is authoritative no matter where it lands in iteration
+    // order — previously this depended on the alias being written second.
+    const out = normalizeLiteLlmContextWindows({
+      'github_copilot/gpt-5.4': { max_input_tokens: 128_000 },
+      'gpt-5.4': { max_input_tokens: 1_050_000 },
+    });
+    expect(out['gpt-5.4']).toBe(1_050_000);
+  });
+
+  it('strips only the first path segment, matching the pricing map', () => {
+    const out = normalizeLiteLlmContextWindows({
+      'openrouter/anthropic/claude-sonnet-4': { max_input_tokens: 1_000_000 },
+    });
+    expect(out['anthropic/claude-sonnet-4']).toBe(1_000_000);
+    expect(out['claude-sonnet-4']).toBeUndefined();
+  });
+
   it('skips entries without a context window', () => {
     const out = normalizeLiteLlmContextWindows(SAMPLE_CATALOG);
     expect(out['broken-entry']).toBeUndefined();

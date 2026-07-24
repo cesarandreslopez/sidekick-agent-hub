@@ -207,6 +207,14 @@ export function normalizeLiteLlmContextWindows(raw: unknown): Record<string, num
   const out: Record<string, number> = {};
   if (!raw || typeof raw !== 'object') return out;
 
+  // Bare-model aliases are gathered separately rather than written as we go. A
+  // `provider/model` entry describes that *provider's deployment* window, which
+  // is often a truncation of the model's own — the live catalog carries five
+  // different windows for `claude-sonnet-4`, from GitHub Copilot's 128K to
+  // Vertex's 1M. Taking whichever appeared first in the JSON is a coin flip, so
+  // an alias is only promoted when every provider mentioning it agrees.
+  const aliasWindows = new Map<string, Set<number>>();
+
   for (const [key, entry] of Object.entries(raw as Record<string, unknown>)) {
     // LiteLLM ships a `sample_spec` header entry. Skip it.
     if (key === 'sample_spec') continue;
@@ -215,13 +223,24 @@ export function normalizeLiteLlmContextWindows(raw: unknown): Record<string, num
     const window = (entry as LiteLlmEntry).max_input_tokens;
     if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) continue;
 
-    // Catalog keys use both `provider/model` and bare `model` forms. Record both
-    // the raw key and the bare-model form so lookups work regardless of caller.
     out[key] = window;
+
     const bare = stripProviderPrefix(key);
-    if (bare && bare !== key && !out[bare]) {
-      out[bare] = window;
+    if (bare && bare !== key) {
+      const seen = aliasWindows.get(bare) ?? new Set<number>();
+      seen.add(window);
+      aliasWindows.set(bare, seen);
     }
+  }
+
+  for (const [bare, windows] of aliasWindows) {
+    // A top-level entry for the same ID is authoritative — never shadow it.
+    if (out[bare] !== undefined) continue;
+    // Providers disagree, so none of their numbers can be attributed to the
+    // bare model. Record nothing and let a more trusted layer answer.
+    if (windows.size !== 1) continue;
+    const [only] = windows;
+    if (typeof only === 'number') out[bare] = only;
   }
 
   return out;

@@ -187,4 +187,35 @@ describe('getModelContextWindowSize', () => {
       expect(getModelContextWindowSize('claude-opus-5')).toBe(1_000_000);
     });
   });
+
+  describe('match quality outranks layer trust', () => {
+    afterEach(() => {
+      _clearObservedContextWindows();
+      _clearCatalogContextWindows();
+    });
+
+    it('prefers an exact static entry over a catalog prefix match', () => {
+      // Regression: the live catalog has no `claude-sonnet-4-7` key, but it does
+      // carry `claude-sonnet-4` at 128K (a GitHub Copilot deployment). Resolving
+      // the catalog layer completely before falling through handed Sonnet 4.7
+      // that 128K instead of the static table's exact 1M — a 7.8x understatement
+      // that made the context gauge read roughly eight times too full.
+      _setCatalogContextWindows({ 'claude-sonnet-4': 128_000 });
+      expect(getModelContextWindowSize('claude-sonnet-4-7')).toBe(1_000_000);
+    });
+
+    it('prefers an exact catalog entry over an observed prefix match', () => {
+      _setObservedContextWindows({ 'gpt-5.6': 258_400 });
+      _setCatalogContextWindows({ 'gpt-5.6-sol': 1_050_000 });
+      expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(1_050_000);
+      // The observed prefix still wins where no layer spells the model out.
+      expect(getModelContextWindowSize('gpt-5.6-unlisted')).toBe(258_400);
+    });
+
+    it('keeps layer order intact when both layers match exactly', () => {
+      _setObservedContextWindows({ 'gpt-5.6-sol': 258_400 });
+      _setCatalogContextWindows({ 'gpt-5.6-sol': 1_050_000 });
+      expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);
+    });
+  });
 });

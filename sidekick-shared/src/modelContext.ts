@@ -13,6 +13,10 @@
  *      by `pricingCatalog.ts`. Keeps new models correct without a code change.
  *   4. The static table below — offline baseline of last resort.
  *
+ * Within that order, match quality comes first: every layer is tried for an
+ * exact hit before any layer is tried for a prefix hit. See
+ * `getModelContextWindowSize`.
+ *
  * Layers 2 and 3 are pushed in by Node-only modules through the `_set*` hooks,
  * so this file stays browser-safe (no node:fs, no fetch) and can be bundled for
  * webviews. Same pattern as `_setPricingOverrides` in `modelInfo.ts`.
@@ -145,14 +149,18 @@ export function _clearCatalogContextWindows(): void {
 
 // ── Lookup ──
 
-/** Exact match, then longest-prefix match, against one table. */
-function lookupWindow(
+/** Exact match against one table. */
+function exactWindow(table: Record<string, number>, modelId: string): number | null {
+  const hit = table[modelId];
+  return hit === undefined ? null : hit;
+}
+
+/** Longest-prefix match against one table. */
+function prefixWindow(
   table: Record<string, number>,
   sortedKeys: string[],
   modelId: string,
 ): number | null {
-  const exact = table[modelId];
-  if (exact !== undefined) return exact;
   for (const key of sortedKeys) {
     if (modelId.startsWith(key)) return table[key];
   }
@@ -167,11 +175,17 @@ function lookupWindow(
  *
  * Lookup order:
  * 1. Explicit "[1m]" suffix (Claude Code's 1M-variant marker) → 1_000_000
- * 2. Observed overrides (what a provider actually reported for this model)
- * 3. Catalog overrides (LiteLLM `max_input_tokens`)
- * 4. Static table — exact, then longest-prefix
+ * 2. Exact match, most-trusted layer first: observed → catalog → static
+ * 3. Longest-prefix match, same layer order
  *    (e.g. "claude-opus-4-6-20250414" → "claude-opus-4-6")
- * 5. DEFAULT_CONTEXT_WINDOW
+ * 4. DEFAULT_CONTEXT_WINDOW
+ *
+ * Match quality outranks layer trust: an exact hit in *any* layer beats a
+ * prefix guess in *every* layer. Resolving each layer fully before moving on
+ * would let a catalog key that merely happens to be a prefix shadow a curated
+ * static entry — e.g. the catalog has no "claude-sonnet-4-7", and prefix-first
+ * would hand it "claude-sonnet-4" (128K, a GitHub Copilot deployment) instead
+ * of the static table's exact 1M.
  */
 export function getModelContextWindowSize(modelId?: string): number {
   if (!modelId) return DEFAULT_CONTEXT_WINDOW;
@@ -188,14 +202,20 @@ export function getModelContextWindowSize(modelId?: string): number {
     .trim()
     .toLowerCase();
 
-  const observed = lookupWindow(observedTable, observedSortedKeys, normalized);
-  if (observed !== null) return observed;
+  // Pass 1 — exact matches, most-trusted layer first.
+  const exact =
+    exactWindow(observedTable, normalized) ??
+    exactWindow(catalogTable, normalized) ??
+    exactWindow(MODEL_CONTEXT_SIZES, normalized);
+  if (exact !== null) return exact;
 
-  const catalog = lookupWindow(catalogTable, catalogSortedKeys, normalized);
-  if (catalog !== null) return catalog;
-
-  const staticWindow = lookupWindow(MODEL_CONTEXT_SIZES, SORTED_KEYS, normalized);
-  if (staticWindow !== null) return staticWindow;
+  // Pass 2 — longest-prefix matches, same layer order. Resolves versioned IDs
+  // that no layer spells out, e.g. "claude-opus-4-6-20250414".
+  const prefix =
+    prefixWindow(observedTable, observedSortedKeys, normalized) ??
+    prefixWindow(catalogTable, catalogSortedKeys, normalized) ??
+    prefixWindow(MODEL_CONTEXT_SIZES, SORTED_KEYS, normalized);
+  if (prefix !== null) return prefix;
 
   return DEFAULT_CONTEXT_WINDOW;
 }
