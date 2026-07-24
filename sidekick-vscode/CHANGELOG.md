@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.3] - 2026-07-24
+
+### Fixed
+
+- Claude Sonnet 5 cost estimates ran 50% high — it was billed at $3/$15 rather than its actual $2/$10. Sonnet 5 is what the `balanced` tier resolves to on both the Claude API and OpenCode providers, so this affected most estimates shown before the pricing catalog was fetched
+- Cost estimates for GPT-5.6 Luna ran about 5× high before the pricing catalog was fetched: with no rate of its own, it borrowed GPT-5.6 Sol's $5/$30 instead of its published $1/$6. GPT-5.5 Pro, GPT-5.4 Pro, and GPT-5.4 Nano were wrong for the same reason and now carry their published rates
+- Twelve more models were priced from a similar model's rate instead of their own. The mini and nano tiers looked far too expensive — GPT-5 Nano was 25× high and GPT-4.1 Nano 20× — while the pro and deep-research tiers looked far too cheap, with GPT-5 Pro, GPT-5.2 Pro, o1-pro, o3-pro, and o3-deep-research all reporting their base model's rate
+- GPT-5.3 Codex and o1-mini used outdated rates ($1.75/$14 and $1.10/$4.40 are current)
+- GPT-5.6 Luna reports its 1,050,000-token context window explicitly; the window Codex reports for your account tier still takes precedence
+
 ## [0.24.2] - 2026-07-24
 
 ### Added

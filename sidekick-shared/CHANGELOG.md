@@ -5,6 +5,25 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.3] - 2026-07-24
+
+### Fixed
+
+- Static pricing for `gpt-5.6-luna` ($1/$6 in/out, $1.25/$0.10 cache write/read). Without an entry of its own, `getModelPricing('gpt-5.6-luna')` longest-prefix-matched `gpt-5.6` and returned `gpt-5.6-sol`'s $5/$30 — roughly 5× too high, and indistinguishable from a correct result at the call site
+- Static pricing for `gpt-5.5-pro` and `gpt-5.4-pro` ($30/$180 each) and `gpt-5.4-nano` ($0.20/$1.25), which inherited `gpt-5.5` and `gpt-5.4` the same way. Rates verified against the LiteLLM catalog's bare top-level keys
+- `getModelPricing('claude-sonnet-5')` returned $3/$15 against its actual $2/$10 (cache write $2.50, cache read $0.20). The entry assumed the $3/$15 shared by every earlier Sonnet; all eleven Sonnet 5 rows in the catalog agree on $2/$10
+- A sweep of every bare catalog key against the static table found twelve more chat models resolving through a shorter prefix. New entries: `gpt-5-mini`, `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex-mini`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.3-chat-latest`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o-2024-05-13`, `o1-pro`, `o3-pro`, and `o3-deep-research`. Overstatements reached 25× (`gpt-5-nano`) and understatements 17× (`gpt-5.2-pro`)
+- Corrected values on two keys that already existed: `gpt-5.3-codex` to $1.75/$14 and `o1-mini` to $1.10/$4.40. No bare catalog key settles `o1-mini` — Azure's $1.21/$4.84 is its standard 1.1× uplift on that rate, and Replicate's OpenAI passthrough reports it directly
+- Because keys are matched longest-first, each new entry also captures its own dated and fine-tuned variants — `gpt-5.6-luna-20260501` now resolves to Luna rather than to `gpt-5.6`, and one `gpt-5.2` entry covers `gpt-5.2-codex` and the `gpt-5.2-chat*` ids, which bill at the same rate
+
+### Added
+
+- `MODEL_CONTEXT_SIZES` entry for `gpt-5.6-luna` at its published 1,050,000 maximum. The value equals what the `gpt-5.6` prefix already returned; it is pinned so a later edit to that entry cannot silently move Luna. Observed per-tier windows still outrank it
+
+### Notes
+
+- The `-tts`, `-transcribe`, and `-realtime-preview` variants of `gpt-4o`/`gpt-4o-mini` also bill above the key they inherit and are deliberately not carried in the static table: no coding agent routes to them, and catalog hydration prices them correctly. `gpt-5.3` keeps an estimated rate because the catalog ships no bare key for it
+
 ## [0.24.2] - 2026-07-24
 
 ### Added

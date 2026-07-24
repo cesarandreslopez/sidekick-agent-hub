@@ -5,6 +5,15 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.3] - 2026-07-24
+
+- Fixed Claude Sonnet 5 cost estimates, which ran 50% high at $3/$15 against its actual $2/$10. Sonnet 5 is what the `balanced` tier resolves to for the Claude API and OpenCode providers, so this moved most totals shown before the pricing catalog was fetched
+- Fixed cost estimates for GPT-5.6 Luna, which ran about 5× high before the pricing catalog was fetched: with no rate of its own it fell back to GPT-5.6 Sol's $5/$30 instead of its published $1/$6
+- GPT-5.5 Pro, GPT-5.4 Pro, and GPT-5.4 Nano were mispriced the same way — each borrowing the base model's rate — and now use their published rates, verified against the LiteLLM catalog
+- A sweep of the full catalog corrected twelve more models. Mini and nano tiers had read far too expensive (GPT-5 Nano 25× high, GPT-4.1 Nano 20×), while pro and deep-research tiers read far too cheap — GPT-5 Pro, GPT-5.2 Pro, o1-pro, o3-pro, and o3-deep-research all reported their base model's rate. GPT-5.3 Codex and o1-mini were on outdated rates
+- GPT-5.6 Luna carries an explicit 1,050,000-token context window; the window Codex reports for your account tier still takes precedence
+- The [model resolution reference](configuration/model-resolution.md) now documents the Codex tier mappings alongside the Claude ones
+
 ## [0.24.2] - 2026-07-24
 
 - Fixed a context gauge that read roughly eight times fuller than reality on Claude Sonnet 4.7: it resolved to a 128K window against its real 1M. Sonnet 4 shared the cause — both were inheriting a GitHub Copilot deployment's truncated limit from the model catalog

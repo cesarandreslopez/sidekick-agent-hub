@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.3] - 2026-07-24
+
+### Fixed
+
+- Claude Sonnet 5 was priced at $3/$15 instead of its actual $2/$10, overstating cost by 50% on the model both the Claude API and OpenCode providers resolve `balanced` to. Sonnet 5 broke the $3/$15 that every earlier Sonnet charged, and it carries no above-200K surcharge the way Sonnet 4.5 does
+- GPT-5.6 Luna was priced at GPT-5.6 Sol's $5/$30 instead of its own $1/$6 — roughly a 5× overstatement. With no static entry of its own it longest-prefix-matched the shorter `gpt-5.6` key, which returns a well-formed but wrong number rather than nothing at all
+- Three more GPT-5 tier variants had the same defect: `gpt-5.5-pro` and `gpt-5.4-pro` (both $30/$180, reading as $5/$30 and $2.50/$15 respectively) and `gpt-5.4-nano` ($0.20/$1.25, reading as $2.50/$15)
+- A full sweep of the catalog found twelve more chat models inheriting a shorter key's rate. The largest overstatements were `gpt-5-nano` (25× — $1.25/$10 against its real $0.05/$0.40) and `gpt-4.1-nano` (20×); `gpt-5-mini`, `gpt-4.1-mini`, and `gpt-5.1-codex-mini` each read 5× high. The reasoning tiers erred the other way and billed far too little: `gpt-5.2-pro` ($21/$168) and `gpt-5-pro` ($15/$120) both reported $1.25/$10, and `o1-pro` ($150/$600), `o3-pro` ($20/$80), and `o3-deep-research` ($10/$40) reported their base model's rate
+- Two entries that had their own key held a stale value: `gpt-5.3-codex` and `gpt-5.3-chat-latest` are $1.75/$14, not $1.25/$10, and `o1-mini` is $1.10/$4.40 rather than the $3/$12 it charged at launch
+- Pinned legacy IDs keep their own rate — `gpt-4o-2024-05-13` stayed at $5/$15 when GPT-4o was cut to $2.50/$10
+- The static table is the offline baseline behind catalog hydration, so these rates are what users saw before the first successful fetch — and permanently, with hydration disabled or unreachable
+
+### Added
+
+- An explicit 1,050,000-token context window for `gpt-5.6-luna`, matching its published maximum. A Codex-reported per-tier window still supersedes it
+- The Codex tier mappings are documented in the model resolution reference, which previously listed only the Claude column
+
 ## [0.24.2] - 2026-07-24
 
 ### Added
