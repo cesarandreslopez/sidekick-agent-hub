@@ -22,12 +22,17 @@ import * as path from 'node:path';
 
 import { _setCatalogContextWindows } from './modelContext';
 import { _setPricingOverrides, type ModelPricing } from './modelInfo';
+import { getConfigDir } from './paths';
 
 // ── Types ──
 
 export interface HydrateOptions {
-  /** Directory for the on-disk cache (e.g. ~/.config/sidekick). */
-  cacheDir: string;
+  /**
+   * Directory for the on-disk cache. Defaults to the Sidekick config dir,
+   * which honors `SIDEKICK_CONFIG_DIR` and `setConfigDir()` — pass this only
+   * to place the cache somewhere outside the config root.
+   */
+  cacheDir?: string;
   /** Inject a fetch implementation (tests, custom agents). Defaults to `globalThis.fetch`. */
   fetchImpl?: typeof fetch;
   /** Cache TTL in ms. Default 24h. */
@@ -99,9 +104,9 @@ const DEFAULT_TIMEOUT_MS = 3_000;
  *
  * Always resolves — never throws. Offline-safe.
  */
-export async function hydratePricingCatalog(options: HydrateOptions): Promise<HydrateResult> {
+export async function hydratePricingCatalog(options: HydrateOptions = {}): Promise<HydrateResult> {
   const {
-    cacheDir,
+    cacheDir = getConfigDir(),
     fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch,
     ttlMs = DEFAULT_TTL_MS,
     timeoutMs = DEFAULT_TIMEOUT_MS,

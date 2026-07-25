@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { encodeWorkspacePath, getConfigDir } from './paths';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { CONFIG_DIR_ENV_VAR, encodeWorkspacePath, getConfigDir, setConfigDir } from './paths';
 
 describe('encodeWorkspacePath', () => {
   it('replaces forward slashes with hyphens', () => {
@@ -26,6 +26,18 @@ describe('encodeWorkspacePath', () => {
 });
 
 describe('getConfigDir', () => {
+  // These assert the *default* resolution, so a developer or CI runner with
+  // SIDEKICK_CONFIG_DIR exported must not change the answer.
+  beforeEach(() => {
+    setConfigDir(null);
+    vi.stubEnv(CONFIG_DIR_ENV_VAR, '');
+  });
+
+  afterEach(() => {
+    setConfigDir(null);
+    vi.unstubAllEnvs();
+  });
+
   it('returns a string path', () => {
     const dir = getConfigDir();
     expect(typeof dir).toBe('string');

@@ -212,7 +212,11 @@ export { PLAN_SCHEMA_VERSION, MAX_PLANS_PER_PROJECT } from './types/plan';
 
 // Paths
 export {
+  CONFIG_DIR_ENV_VAR,
   getConfigDir,
+  getConfigDirOverride,
+  getDefaultConfigDir,
+  setConfigDir,
   getProjectDataPath,
   getGlobalDataPath,
   encodeWorkspacePath,

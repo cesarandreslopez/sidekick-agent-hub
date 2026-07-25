@@ -8,15 +8,65 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+/** Environment variable that redirects the Sidekick config root. */
+export const CONFIG_DIR_ENV_VAR = 'SIDEKICK_CONFIG_DIR';
+
+let configDirOverride: string | null = null;
+
 /**
- * Gets the Sidekick config directory.
- * ~/.config/sidekick on Unix, %APPDATA%/sidekick on Windows.
+ * The platform default config directory, ignoring both {@link setConfigDir}
+ * and `SIDEKICK_CONFIG_DIR`.
+ *
+ * `~/.config/sidekick` on Unix, `%APPDATA%/sidekick` on Windows.
  */
-export function getConfigDir(): string {
+export function getDefaultConfigDir(): string {
   if (process.platform === 'win32') {
     return path.join(process.env.APPDATA || os.homedir(), 'sidekick');
   }
   return path.join(os.homedir(), '.config', 'sidekick');
+}
+
+/**
+ * Redirect the Sidekick config root for this process.
+ *
+ * Takes precedence over `SIDEKICK_CONFIG_DIR`. Pass `null` (or an empty
+ * string) to clear it. Every reader and writer in the package resolves the
+ * root lazily through {@link getConfigDir}, so this takes effect immediately
+ * for all of them — including transitive callers of `getProjectDataPath`,
+ * `getGlobalDataPath`, and the account registry.
+ *
+ * Prefer `SIDEKICK_CONFIG_DIR` when the value is known before the process
+ * starts: it is read fresh on every call, so it stays correct even if a
+ * bundler ends up with more than one copy of this module.
+ *
+ * @example
+ * setConfigDir(path.join(os.tmpdir(), 'sidekick-fixture'));
+ * try {
+ *   await addTask(project, { subject: 'isolated' });
+ * } finally {
+ *   setConfigDir(null);
+ * }
+ */
+export function setConfigDir(dir: string | null | undefined): void {
+  configDirOverride = dir && dir.trim() ? path.resolve(dir) : null;
+}
+
+/** The active {@link setConfigDir} override, or `null` when unset. */
+export function getConfigDirOverride(): string | null {
+  return configDirOverride;
+}
+
+/**
+ * Gets the Sidekick config directory.
+ *
+ * Resolution order: {@link setConfigDir} override → `SIDEKICK_CONFIG_DIR`
+ * → {@link getDefaultConfigDir}.
+ */
+export function getConfigDir(): string {
+  if (configDirOverride) return configDirOverride;
+  const fromEnv = process.env[CONFIG_DIR_ENV_VAR]?.trim();
+  if (fromEnv) return path.resolve(fromEnv);
+  return getDefaultConfigDir();
 }
 
 /**
