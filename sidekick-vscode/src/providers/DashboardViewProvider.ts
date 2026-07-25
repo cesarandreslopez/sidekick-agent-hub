@@ -120,6 +120,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Bindings tied to the currently resolved webview instance. */
   private _viewDisposables: vscode.Disposable[] = [];
+  private _changelogEntries: ChangelogEntry[] | undefined;
 
   /** Current dashboard state */
   private _state: DashboardState;
@@ -465,6 +466,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _handleDashboardWebviewMessage(message: DashboardWebviewMessage): void {
     log(`Dashboard: received message from webview: ${message.type}`);
     switch (message.type) {
+      case 'webviewError':
+        logError(
+          `Dashboard webview error${message.line ? ` (line ${message.line})` : ''}`,
+          message.message,
+        );
+        return;
+
       case 'webviewReady':
         log('Dashboard webview ready, sending initial state');
         // Always sync from session monitor to get current data
@@ -2536,6 +2544,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param webview - The webview to generate HTML for
    * @returns HTML string for the webview
    */
+  /** Parsed changelog, read once. */
+  private _getChangelogEntries(): ChangelogEntry[] {
+    if (this._changelogEntries) return this._changelogEntries;
+    try {
+      const raw = fs.readFileSync(path.join(this._extensionUri.fsPath, 'CHANGELOG.md'), 'utf-8');
+      this._changelogEntries = parseChangelog(raw, 5);
+    } catch {
+      /* graceful fallback — no modal available */
+      this._changelogEntries = [];
+    }
+    return this._changelogEntries;
+  }
+
   private _getHtmlForWebview(webview: vscode.Webview): string {
     const nonce = getNonce();
 
@@ -2549,15 +2570,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       vscode.Uri.joinPath(this._extensionUri, 'images', 'icon.png'),
     );
 
-    // Read and parse changelog for version badge + modal
-    const changelogPath = path.join(this._extensionUri.fsPath, 'CHANGELOG.md');
-    let changelogEntries: ChangelogEntry[] = [];
-    try {
-      const raw = fs.readFileSync(changelogPath, 'utf-8');
-      changelogEntries = parseChangelog(raw, 5);
-    } catch {
-      /* graceful fallback — no modal available */
-    }
+    // Version badge + modal. Cached on the instance: this is a shipped
+    // extension asset, immutable for the process lifetime, and the read was
+    // happening on every resolve — including every collapse/expand cycle.
+    const changelogEntries = this._getChangelogEntries();
 
     const extVersion =
       vscode.extensions.getExtension('CesarAndresLopez.sidekick-for-max')?.packageJSON?.version ||
@@ -6195,7 +6211,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       // Catch uncaught errors
       window.onerror = function(msg, url, line) {
         const el = document.getElementById('session-list');
-        if (el) el.innerHTML = '<div class="session-list-empty">JS Error: ' + escapeHtml(String(msg)) + ' (line ' + line + ')</div>';
+        // Diagnostics belong in the log, not narrated into the session list.
+        vscode.postMessage({ type: 'webviewError', message: String(msg), line: line });
       };
 
       // DOM elements
@@ -9641,7 +9658,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           }
         } catch (e) {
           const errEl = document.getElementById('session-list');
-          if (errEl) errEl.innerHTML = '<div class="session-list-empty">Init error: ' + escapeHtml(e.message) + '</div>';
+          vscode.postMessage({ type: 'webviewError', message: 'Init error: ' + e.message });
         }
       }
 
