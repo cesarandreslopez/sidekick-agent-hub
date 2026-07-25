@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import {
+  _clearObservedContextWindowWriteCache,
   loadObservedContextWindows,
   recordObservedContextWindow,
   getObservedContextWindowPath,
@@ -32,11 +33,13 @@ describe('observedContextWindows', () => {
     cacheDir = await makeTempDir();
     _clearObservedContextWindows();
     _clearCatalogContextWindows();
+    _clearObservedContextWindowWriteCache();
   });
 
   afterEach(async () => {
     _clearObservedContextWindows();
     _clearCatalogContextWindows();
+    _clearObservedContextWindowWriteCache();
     await fs.rm(cacheDir, { recursive: true, force: true });
   });
 
@@ -129,6 +132,46 @@ describe('observedContextWindows', () => {
   it('tolerates a malformed store', async () => {
     await fs.writeFile(getObservedContextWindowPath(cacheDir), '{ not json', 'utf8');
     expect(await loadObservedContextWindows({ cacheDir })).toEqual({});
+  });
+
+  it('writes every store when two cache dirs are used in one process', async () => {
+    // The in-memory override table is process-global, so it cannot double as
+    // the write dedupe: keyed on it, the second store would never be written.
+    const otherDir = await makeTempDir();
+    try {
+      await recordObservedContextWindow('gpt-5.6-sol', 258_400, { cacheDir });
+      await recordObservedContextWindow('gpt-5.6-sol', 258_400, { cacheDir: otherDir });
+
+      const first = (await readStore(cacheDir)) as {
+        models: Record<string, { contextWindow: number }>;
+      };
+      const second = (await readStore(otherDir)) as {
+        models: Record<string, { contextWindow: number }>;
+      };
+      expect(first.models['gpt-5.6-sol'].contextWindow).toBe(258_400);
+      expect(second.models['gpt-5.6-sol'].contextWindow).toBe(258_400);
+    } finally {
+      await fs.rm(otherDir, { recursive: true, force: true });
+    }
+  });
+
+  it('retries the write after a persistence failure', async () => {
+    // The dedupe records only on success, so a transient EACCES must not
+    // convince later calls that the value is already on disk.
+    await fs.chmod(cacheDir, 0o500);
+    try {
+      await recordObservedContextWindow('gpt-5.6-sol', 258_400, { cacheDir });
+      await expect(fs.stat(getObservedContextWindowPath(cacheDir))).rejects.toThrow();
+    } finally {
+      await fs.chmod(cacheDir, 0o700);
+    }
+
+    await recordObservedContextWindow('gpt-5.6-sol', 258_400, { cacheDir });
+
+    const store = (await readStore(cacheDir)) as {
+      models: Record<string, { contextWindow: number }>;
+    };
+    expect(store.models['gpt-5.6-sol'].contextWindow).toBe(258_400);
   });
 
   it('drops malformed entries but keeps valid ones', async () => {

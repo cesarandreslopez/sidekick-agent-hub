@@ -58,6 +58,23 @@ function emptyStore(): ObservedContextWindowStore {
   return { version: STORE_VERSION, models: {} };
 }
 
+/**
+ * Last value successfully persisted, per resolved store path.
+ *
+ * The in-memory override table in `modelContext` is process-global by design —
+ * a lookup should answer the same way everywhere. That makes it unusable as the
+ * write dedupe: with two `cacheDir`s in one process (two temp dirs in a test
+ * suite, a multi-tenant host, a CLI and extension host sharing a process), the
+ * global would already hold the value from the first store and the second store
+ * would never be written at all.
+ */
+const lastPersistedByStore = new Map<string, Map<string, number>>();
+
+/** Reset the per-store write dedupe. Test-only; not part of the public API. */
+export function _clearObservedContextWindowWriteCache(): void {
+  lastPersistedByStore.clear();
+}
+
 /** Keep only well-formed entries; a hand-edited or partly-corrupt file shouldn't poison lookups. */
 function toOverrideMap(store: ObservedContextWindowStore): Record<string, number> {
   const out: Record<string, number> = {};
@@ -102,12 +119,13 @@ export async function loadObservedContextWindows(
  * Record a provider-reported context window for a model.
  *
  * Applies in memory immediately, then persists — but only when the value
- * actually changed. Codex reports a window on every `token_count` event, so an
- * unconditional write would mean disk I/O many times per session for a value
- * that almost never moves.
+ * actually changed *for that store*. Codex reports a window on every
+ * `token_count` event, so an unconditional write would mean disk I/O many times
+ * per session for a value that almost never moves.
  *
  * Always resolves — never throws. Persistence failures are logged and dropped;
- * the in-memory override still stands for this process.
+ * the in-memory override still stands for this process, and the next call
+ * retries the write.
  */
 export async function recordObservedContextWindow(
   modelId: string,
@@ -119,11 +137,14 @@ export async function recordObservedContextWindow(
   if (!Number.isFinite(contextWindow) || contextWindow <= 0) return;
 
   const current = _getObservedContextWindows();
-  if (current[normalizedId] === contextWindow) return;
-
-  _setObservedContextWindows({ ...current, [normalizedId]: contextWindow });
+  if (current[normalizedId] !== contextWindow) {
+    _setObservedContextWindows({ ...current, [normalizedId]: contextWindow });
+  }
 
   const storePath = getObservedContextWindowPath(options.cacheDir);
+  const persisted = lastPersistedByStore.get(storePath);
+  if (persisted?.get(normalizedId) === contextWindow) return;
+
   try {
     // Lock-guarded read-modify-write: the CLI and the extension host can both
     // be observing sessions at once, and each should merge rather than clobber.
@@ -138,6 +159,13 @@ export async function recordObservedContextWindow(
         },
       };
     });
+    // Recorded only on success, so a transient EACCES retries next time.
+    let store = lastPersistedByStore.get(storePath);
+    if (!store) {
+      store = new Map();
+      lastPersistedByStore.set(storePath, store);
+    }
+    store.set(normalizedId, contextWindow);
   } catch (err) {
     options.logger?.(`observedContextWindows: failed to persist ${storePath}: ${String(err)}`);
   }
