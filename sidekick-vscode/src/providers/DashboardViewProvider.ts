@@ -66,6 +66,14 @@ import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import {
+  ATTRIBUTION_LABELS,
+  ATTRIBUTION_VARS,
+  attributionVarRef,
+  attributionVarsByLabel,
+  getAttributionPaletteCSS,
+  type AttributionCategory,
+} from '../utils/themePalette';
+import {
   describeQuotaFailure,
   formatDurationMs,
   getActiveCodexAccount,
@@ -376,6 +384,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Set HTML content
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+
+    // Chart.js colors are baked into the canvas, so a theme switch needs an
+    // explicit nudge. Registered on _viewDisposables, which the existing
+    // teardown already clears.
+    this._viewDisposables.push(
+      vscode.window.onDidChangeActiveColorTheme(() => {
+        this._postMessage({ type: 'themeChanged' });
+      }),
+    );
 
     // Handle messages from webview
     webviewView.webview.onDidReceiveMessage(
@@ -2054,32 +2071,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         attr.other;
 
       if (total > 0) {
-        const COLORS = {
-          systemPrompt: '#e06c75',
-          userMessages: '#61afef',
-          assistantResponses: '#98c379',
-          toolInputs: '#c678dd',
-          toolOutputs: '#d19a66',
-          thinking: '#56b6c2',
-          other: '#abb2bf',
-        };
-        const LABELS: Record<string, string> = {
-          systemPrompt: 'System Prompt',
-          userMessages: 'User Messages',
-          assistantResponses: 'Assistant',
-          toolInputs: 'Tool Inputs',
-          toolOutputs: 'Tool Outputs',
-          thinking: 'Thinking',
-          other: 'Other',
-        };
-
         this._state.contextAttribution = Object.entries(attr)
           .filter(([, tokens]) => tokens > 0)
           .map(([category, tokens]) => ({
-            category: LABELS[category] || category,
+            category: ATTRIBUTION_LABELS[category as AttributionCategory] || category,
             tokens,
             percent: Math.round((tokens / total) * 100),
-            color: COLORS[category as keyof typeof COLORS] || '#abb2bf',
+            // Consumed only as CSS, so a var() reference re-themes for free.
+            color: ATTRIBUTION_VARS[category as AttributionCategory]
+              ? attributionVarRef(category as AttributionCategory)
+              : attributionVarRef('other'),
           }))
           .sort((a, b) => b.tokens - a.tokens);
       }
@@ -2087,25 +2088,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Sync turn attributions
     if (stats.turnAttributions && stats.turnAttributions.length > 0) {
-      const COLORS: Record<string, string> = {
-        systemPrompt: '#e06c75',
-        userMessages: '#61afef',
-        assistantResponses: '#98c379',
-        toolInputs: '#c678dd',
-        toolOutputs: '#d19a66',
-        thinking: '#56b6c2',
-        other: '#abb2bf',
-      };
-      const LABELS: Record<string, string> = {
-        systemPrompt: 'System Prompt',
-        userMessages: 'User Messages',
-        assistantResponses: 'Assistant',
-        toolInputs: 'Tool Inputs',
-        toolOutputs: 'Tool Outputs',
-        thinking: 'Thinking',
-        other: 'Other',
-      };
-
       const turnDisplays = stats.turnAttributions.map((turn) => {
         const bd = turn.breakdown;
         const turnTotal =
@@ -2119,10 +2101,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         const categories = Object.entries(bd)
           .filter(([, tokens]) => tokens > 0)
           .map(([cat, tokens]) => ({
-            category: LABELS[cat] || cat,
+            category: ATTRIBUTION_LABELS[cat as AttributionCategory] || cat,
             tokens,
             percent: turnTotal > 0 ? Math.round((tokens / turnTotal) * 100) : 0,
-            color: COLORS[cat as keyof typeof COLORS] || '#abb2bf',
+            // The webview re-derives this from the label for its canvas, so
+            // this value only has to be a valid CSS color.
+            color: ATTRIBUTION_VARS[cat as AttributionCategory]
+              ? attributionVarRef(cat as AttributionCategory)
+              : attributionVarRef('other'),
           }));
 
         return {
@@ -2598,6 +2584,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                  script-src 'nonce-${nonce}' ${webview.cspSource};">
   <title>Session Analytics</title>
   ${getDesignTokenCSS()}
+    ${getAttributionPaletteCSS()}
   ${getSharedStyles()}
   <style>
     * {
@@ -6718,12 +6705,66 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       // Context gauge chart
       let contextChart = null;
-      const GAUGE_COLORS = {
+      var GAUGE_COLORS = {
         green: 'rgb(75, 192, 192)',
         orange: 'rgb(255, 159, 64)',
         red: 'rgb(255, 99, 132)',
         background: 'rgba(100, 100, 100, 0.2)'
       };
+
+      // Re-resolved on theme change; covers the context gauge and both quota
+      // gauges without touching their chart configs.
+      function refreshGaugeColors() {
+        GAUGE_COLORS.green = cssVar('--vscode-charts-green', 'rgb(75, 192, 192)');
+        GAUGE_COLORS.orange = cssVar('--vscode-charts-orange', 'rgb(255, 159, 64)');
+        GAUGE_COLORS.red = cssVar('--vscode-charts-red', 'rgb(255, 99, 132)');
+        GAUGE_COLORS.background = cssVar('--sk-chart-grid', 'rgba(100, 100, 100, 0.2)');
+      }
+      refreshGaugeColors();
+
+      // Chart.js defaults are dark-on-light out of the box, so charts that
+      // specify no tick color at all (the history chart) were the light-theme
+      // mirror of the hardcoded-grey problem.
+      if (typeof Chart !== 'undefined' && Chart.defaults) {
+        Chart.defaults.color = chartTheme().label;
+        Chart.defaults.borderColor = chartTheme().grid;
+      }
+
+      /**
+       * Re-resolve every canvas-baked color after a theme change.
+       * CSS-styled elements re-theme on their own; only Chart.js needs this.
+       */
+      function applyChartTheme() {
+        refreshGaugeColors();
+        var t = chartTheme();
+        if (typeof Chart !== 'undefined' && Chart.defaults) {
+          Chart.defaults.color = t.label;
+          Chart.defaults.borderColor = t.grid;
+        }
+        [historyChart, contextChart, turnAttributionChart, waterfallChart, toolFreqChart, eventDistChart]
+          .forEach(function (chart) {
+            if (!chart || !chart.options) return;
+            var scales = chart.options.scales || {};
+            Object.keys(scales).forEach(function (axis) {
+              if (scales[axis] && scales[axis].ticks) scales[axis].ticks.color = t.tick;
+              if (scales[axis] && scales[axis].grid) scales[axis].grid.color = t.grid;
+            });
+            var legend = chart.options.plugins && chart.options.plugins.legend;
+            if (legend && legend.labels) legend.labels.color = t.label;
+            if (chart.data && chart.data.datasets) {
+              chart.data.datasets.forEach(function (ds) {
+                if (!ds.label || !ATTR_VARS_BY_LABEL[ds.label]) return;
+                ds.borderColor = attrColor(ds.label);
+                ds.backgroundColor = withAlpha(attrColor(ds.label), 0.6);
+              });
+            }
+            try {
+              chart.update('none');
+            } catch (e) {
+              /* a chart mid-teardown must not break the others */
+            }
+          });
+      }
 
       /**
        * Formats a number with commas for readability.
@@ -7605,15 +7646,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         // Build datasets per category
         const categoryMap = {};
-        const COLORS = {
-          'System Prompt': '#e06c75',
-          'User Messages': '#61afef',
-          'Assistant': '#98c379',
-          'Tool Inputs': '#c678dd',
-          'Tool Outputs': '#d19a66',
-          'Thinking': '#56b6c2',
-          'Other': '#abb2bf'
-        };
 
         turns.forEach(function(turn) {
           turn.categories.forEach(function(cat) {
@@ -7635,8 +7667,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           return {
             label: cat,
             data: categoryMap[cat],
-            backgroundColor: (COLORS[cat] || '#abb2bf') + '99',
-            borderColor: COLORS[cat] || '#abb2bf',
+            backgroundColor: withAlpha(attrColor(cat), 0.6),
+            borderColor: attrColor(cat),
             borderWidth: 1,
             fill: true,
             pointRadius: 0
@@ -7657,18 +7689,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               responsive: true,
               maintainAspectRatio: false,
               scales: {
-                x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: 'rgba(100,100,100,0.15)' } },
+                x: { ticks: { color: chartTheme().tick, maxTicksLimit: 10 }, grid: { color: chartTheme().grid } },
                 y: {
                   stacked: true,
                   ticks: {
-                    color: '#888',
+                    color: chartTheme().tick,
                     callback: function(v) { return formatTokensShort(v); }
                   },
-                  grid: { color: 'rgba(100,100,100,0.15)' }
+                  grid: { color: chartTheme().grid }
                 }
               },
               plugins: {
-                legend: { display: true, position: 'bottom', labels: { color: '#ccc', boxWidth: 10, padding: 6, font: { size: 10 } } },
+                legend: { display: true, position: 'bottom', labels: { color: chartTheme().label, boxWidth: 10, padding: 6, font: { size: 10 } } },
                 tooltip: {
                   callbacks: {
                     label: function(ctx) { return ctx.dataset.label + ': ' + formatTokensShort(ctx.parsed.y); }
@@ -7752,13 +7784,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               responsive: true,
               maintainAspectRatio: false,
               scales: {
-                x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: 'rgba(100,100,100,0.15)' } },
+                x: { ticks: { color: chartTheme().tick, maxTicksLimit: 10 }, grid: { color: chartTheme().grid } },
                 y: {
                   ticks: {
-                    color: '#888',
+                    color: chartTheme().tick,
                     callback: function(v) { return formatTokensShort(v); }
                   },
-                  grid: { color: 'rgba(100,100,100,0.15)' }
+                  grid: { color: chartTheme().grid }
                 }
               },
               plugins: {
@@ -8348,8 +8380,46 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       var pendingToolFreq = null;
       var pendingEventDist = null;
 
-      function cssVar(name) {
-        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+      function cssVar(name, fallback) {
+        return (
+          getComputedStyle(document.documentElement).getPropertyValue(name).trim() ||
+          fallback ||
+          '#888'
+        );
+      }
+
+      // Chart.js bakes colors into the canvas, so unlike CSS-styled elements
+      // these have to be re-read when the theme changes.
+      function chartTheme() {
+        return {
+          tick: cssVar('--sk-chart-tick', '#888'),
+          label: cssVar('--sk-chart-label', '#ccc'),
+          grid: cssVar('--sk-chart-grid', 'rgba(128,128,128,0.15)')
+        };
+      }
+
+      var ATTR_VARS_BY_LABEL = ${JSON.stringify(attributionVarsByLabel())};
+
+      function attrColor(label) {
+        var name = ATTR_VARS_BY_LABEL[label];
+        return name ? cssVar(name, '#abb2bf') : cssVar('--sk-attr-other', '#abb2bf');
+      }
+
+      // Replaces string-concatenating an alpha suffix, which silently broke
+      // whenever the resolved value was not 6-digit hex.
+      function withAlpha(color, alpha) {
+        var c = String(color).trim();
+        var m = c.match(/^#([0-9a-f]{6})$/i);
+        if (m) {
+          var n = parseInt(m[1], 16);
+          return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
+        }
+        m = c.match(/^rgba?\\(([^)]+)\\)$/i);
+        if (m) {
+          var parts = m[1].split(',').map(function (p) { return p.trim(); });
+          return 'rgba(' + parts[0] + ',' + parts[1] + ',' + parts[2] + ',' + alpha + ')';
+        }
+        return c;
       }
 
       function updateAnalyticsCharts(analytics) {
@@ -8707,6 +8777,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         switch (message.type) {
           case 'updateStats':
             updateDashboard(message.state);
+            break;
+
+          case 'themeChanged':
+            applyChartTheme();
             break;
 
           case 'updateToolAnalytics':

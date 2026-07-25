@@ -22,6 +22,12 @@ import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
+import {
+  complexityVarRefs,
+  getGraphLegendHtml,
+  getGraphPaletteCSS,
+  nodeTypeVarRefs,
+} from '../utils/themePalette';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 
@@ -311,6 +317,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
                  script-src 'nonce-${nonce}' ${webview.cspSource};">
   <title>Session Mind Map</title>
   ${getDesignTokenCSS()}
+    ${getGraphPaletteCSS()}
   ${getSharedStyles()}
   <style>
     * {
@@ -545,13 +552,13 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
 
     .node.plan-active {
-      stroke: #00BCD4;
+      stroke: var(--sk-node-plan);
       stroke-width: 3;
       animation: task-pulse 2s ease-in-out infinite;
     }
 
     .link.plan-sequence {
-      stroke: #00BCD4;
+      stroke: var(--sk-node-plan);
       stroke-opacity: 0.5;
       stroke-dasharray: 3, 2;
     }
@@ -685,7 +692,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
 
     .link-path.plan-sequence {
-      stroke: #00BCD4;
+      stroke: var(--sk-node-plan);
       stroke-opacity: 0.5;
       stroke-dasharray: 3, 2;
     }
@@ -730,46 +737,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   <div class="tooltip" id="tooltip"></div>
 
   <div class="legend" id="legend" style="display: none;">
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #9B9B9B;"></span>
-      <span>Session</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #4A90E2;"></span>
-      <span>File</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #7ED321;"></span>
-      <span>Tool</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #F5A623;"></span>
-      <span>TODO</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #BD10E0;"></span>
-      <span>Subagent</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #8B572A;"></span>
-      <span>Directory</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #D0021B;"></span>
-      <span>Command</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #FF6B6B;"></span>
-      <span>Task</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #00BCD4;"></span>
-      <span>Plan</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot" style="background: #FFB74D;"></span>
-      <span>Note</span>
-    </div>
+${getGraphLegendHtml()}
   </div>
 
   <script nonce="${nonce}" src="${d3Uri}"></script>
@@ -782,21 +750,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       }
 
-      // Node colors by type
-      const NODE_COLORS = {
-        session: '#9B9B9B',
-        file: '#4A90E2',
-        tool: '#7ED321',
-        todo: '#F5A623',
-        subagent: '#BD10E0',
-        url: '#50E3C2',
-        directory: '#8B572A',  // Brown - represents folders
-        command: '#D0021B',    // Red - represents terminal commands
-        task: '#FF6B6B',       // Coral red - represents tasks
-        plan: '#00BCD4',       // Teal - plan root
-        'plan-step': '#26C6DA', // Lighter teal - plan steps
-        'knowledge-note': '#FFB74D' // Amber - knowledge notes
-      };
+      // Node colors by type, resolved from the active theme.
+      const NODE_COLORS = ${JSON.stringify(nodeTypeVarRefs())};
+      const COMPLEXITY_COLORS = ${JSON.stringify(complexityVarRefs())};
 
       // Force tuning for sparse vs dense graph layouts
       const FORCE_CONFIG = {
@@ -843,9 +799,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       function getNodeFillColor(d) {
         // For plan-step nodes, color by complexity
         if (d.type === 'plan-step' && d.planStepComplexity) {
-          if (d.planStepComplexity === 'high') return '#f14c4c';
-          if (d.planStepComplexity === 'medium') return '#FFD700';
-          if (d.planStepComplexity === 'low') return '#73c991';
+          const cx = COMPLEXITY_COLORS[d.planStepComplexity];
+          if (cx) return cx;
         }
         return NODE_COLORS[d.type];
       }
@@ -1515,7 +1470,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
           .append('circle')
           .attr('class', function(d) { return getNodeClass(d); })
           .attr('r', function(d) { return calculateNodeSize(d); })
-          .attr('fill', function(d) { return getNodeFillColor(d); })
+          .style('fill', function(d) { return getNodeFillColor(d); })
           .call(drag(simulation))
           .on('click', function(event, d) {
             vscode.postMessage({ type: 'nodeClicked', nodeId: d.id });
@@ -1565,8 +1520,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
               let planTooltipHtml = '<strong>' + safeLabel + '</strong><br>' +
                 '<span style="color: ' + planStatusColor + '">● ' + escapeHtml(planStatus.replace('_', ' ')) + '</span>';
               if (d.planStepComplexity) {
-                const COMPLEXITY_COLORS = { high: '#f14c4c', medium: '#FFD700', low: '#73c991' };
-                const cxColor = COMPLEXITY_COLORS[d.planStepComplexity] || '#73c991';
+                const cxColor = COMPLEXITY_COLORS[d.planStepComplexity] || COMPLEXITY_COLORS.low;
                 planTooltipHtml += '<br>Complexity: <span style="color:' + cxColor + '">' + escapeHtml(d.planStepComplexity) + '</span>';
               }
               if (d.planStepDurationMs) {
@@ -1633,7 +1587,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
         nodeGroup.selectAll('circle')
           .attr('class', function(d) { return getNodeClass(d); })
           .attr('r', function(d) { return calculateNodeSize(d); })
-          .attr('fill', function(d) { return getNodeFillColor(d); });
+          .style('fill', function(d) { return getNodeFillColor(d); });
 
         labelGroup.selectAll('text')
           .text(function(d) { return d.label; });

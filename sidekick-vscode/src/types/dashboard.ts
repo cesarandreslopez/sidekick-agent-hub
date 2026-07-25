@@ -148,6 +148,12 @@ export interface QuotaHistoryPayload {
  */
 export type DashboardMessage =
   | { type: 'updateStats'; state: DashboardState }
+  /**
+   * The VS Code color theme changed. CSS-styled elements re-theme on their
+   * own — VS Code rewrites the `--vscode-*` variables live — but Chart.js
+   * bakes colors into the canvas and has to re-resolve them.
+   */
+  | { type: 'themeChanged' }
   | { type: 'updateBurnRate'; burnRate: number; sessionStartTime: string | null }
   | { type: 'updateToolAnalytics'; analytics: ToolAnalyticsDisplay[] }
   | { type: 'updateTimeline'; events: TimelineEventDisplay[] }

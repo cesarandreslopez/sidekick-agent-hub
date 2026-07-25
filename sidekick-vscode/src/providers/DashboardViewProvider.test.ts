@@ -32,6 +32,9 @@ vi.mock('vscode', () => ({
   },
   window: {
     createWebviewPanel: vi.fn(),
+    // Charts bake colors into the canvas, so the provider subscribes to theme
+    // changes to re-resolve them.
+    onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
   },
 }));
 
@@ -223,6 +226,45 @@ describe('DashboardViewProvider quota UI', () => {
 
     expect(encoded).not.toContain('</script>');
     expect(encoded).toContain('\\u003c/script\\u003e');
+    provider.dispose();
+  });
+
+  it('resolves chart colors from the active theme rather than hardcoded greys', () => {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    const webview = {
+      cspSource: 'vscode-webview:',
+      asWebviewUri: (uri: { fsPath: string }) => `vscode-resource:${uri.fsPath}`,
+    };
+    const html = (
+      provider as unknown as { _getHtmlForWebview(input: typeof webview): string }
+    )._getHtmlForWebview(webview);
+
+    // The dark-theme literals that made every chart low-contrast on a light
+    // theme. This fails the moment someone pastes another hex into a config.
+    expect(html).not.toContain("color: '#888'");
+    expect(html).not.toContain("color: '#ccc'");
+    expect(html).not.toContain('rgba(100,100,100,0.15)');
+
+    // ...and the One Dark attribution palette, previously declared three times.
+    expect(html).not.toContain("'System Prompt': '#e06c75'");
+    expect(html).not.toContain("systemPrompt: '#e06c75'");
+
+    expect(html).toContain('function chartTheme(');
+    expect(html).toContain('function attrColor(');
+    expect(html).toContain('function withAlpha(');
+    expect(html).toContain('function applyChartTheme(');
+    expect(html).toContain("case 'themeChanged'");
+    expect(html).toContain('--sk-attr-system');
+    expect(html).toContain('--sk-chart-grid');
+
+    // withAlpha lives inside a template literal, so a single backslash would
+    // collapse at emit time and turn the literal-paren match into a capture
+    // group. Assert the escape survives into the generated document.
+    expect(html).toContain(String.raw`/^rgba?\(([^)]+)\)$/i`);
+
     provider.dispose();
   });
 });
