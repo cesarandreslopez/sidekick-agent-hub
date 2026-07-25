@@ -505,7 +505,12 @@ export function _clearPricingOverrides(): void {
 
 // ── Model ID Parsing ──
 
-const CLAUDE_RE = /^claude-(haiku|sonnet|opus|fable)-([0-9.]+)/i;
+// Anthropic writes the minor version with a hyphen in modern IDs
+// (`claude-sonnet-4-6-20260321`) and a dot in older ones
+// (`claude-sonnet-4.5-20241022`). Accept both, then normalize to a dot.
+// The `{1,2}` bound plus the trailing `(?![0-9])` keep the 8-digit release
+// date from being mistaken for a minor version in `claude-opus-4-20250514`.
+const CLAUDE_RE = /^claude-(haiku|sonnet|opus|fable)-([0-9]+(?:[-.][0-9]{1,2})?)(?![0-9])/i;
 const LEGACY_CLAUDE_RE = /^claude-([0-9]+(?:[-.][0-9]+)?)-(haiku|sonnet|opus)(?:-|$)/i;
 const GPT_RE = /^gpt-([0-9][0-9.A-Za-z-]*)/i;
 const O_SERIES_RE = /^o([0-9]+)(-mini|-pro)?/i;
@@ -529,7 +534,11 @@ export function parseModelId(modelId: string): ParsedModelId | null {
 
   const claude = normalized.match(CLAUDE_RE);
   if (claude) {
-    return { provider: 'anthropic', family: claude[1].toLowerCase(), version: claude[2] };
+    return {
+      provider: 'anthropic',
+      family: claude[1].toLowerCase(),
+      version: claude[2].replace('-', '.'),
+    };
   }
 
   const legacyClaude = normalized.match(LEGACY_CLAUDE_RE);

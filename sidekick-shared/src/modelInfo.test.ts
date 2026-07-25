@@ -37,6 +37,55 @@ describe('parseModelId', () => {
     });
   });
 
+  it('parses hyphenated minor versions the way Anthropic writes modern IDs', () => {
+    // Every shipping Anthropic ID uses hyphens, not dots. Reading the minor
+    // version out of them is the whole point of the parse.
+    expect(parseModelId('claude-sonnet-4-6-20260321')).toEqual({
+      provider: 'anthropic',
+      family: 'sonnet',
+      version: '4.6',
+    });
+    expect(parseModelId('claude-sonnet-4-5-20250929')).toEqual({
+      provider: 'anthropic',
+      family: 'sonnet',
+      version: '4.5',
+    });
+    expect(parseModelId('claude-opus-4-1-20250805')).toEqual({
+      provider: 'anthropic',
+      family: 'opus',
+      version: '4.1',
+    });
+    expect(parseModelId('claude-haiku-4-5-20251001')).toEqual({
+      provider: 'anthropic',
+      family: 'haiku',
+      version: '4.5',
+    });
+    expect(parseModelId('claude-fable-5-1')).toEqual({
+      provider: 'anthropic',
+      family: 'fable',
+      version: '5.1',
+    });
+  });
+
+  it('does not mistake the release date for a minor version', () => {
+    // `claude-opus-4-20250514` has no minor version; the 8-digit suffix is a
+    // date. Naively allowing `-<digits>` would read it as `4.20250514`.
+    expect(parseModelId('claude-opus-4-20250514')?.version).toBe('4');
+    expect(parseModelId('claude-sonnet-4-20250514')?.version).toBe('4');
+    expect(parseModelId('claude-sonnet-4')?.version).toBe('4');
+  });
+
+  it('ranks hyphenated minor versions above their base version', () => {
+    // versionRank feeds shortModelName/tier ordering; before the parse fix
+    // 4.5 and 4.6 both read as "4" and tied.
+    const four = getModelInfo('claude-sonnet-4-20250514');
+    const fourFive = getModelInfo('claude-sonnet-4-5-20250929');
+    const fourSix = getModelInfo('claude-sonnet-4-6-20260321');
+    expect(four.version).toBe('4');
+    expect(fourFive.version).toBe('4.5');
+    expect(fourSix.version).toBe('4.6');
+  });
+
   it('parses Fable model IDs', () => {
     expect(parseModelId('claude-fable-5')).toEqual({
       provider: 'anthropic',
@@ -98,7 +147,7 @@ describe('parseModelId', () => {
     expect(parseModelId('claude-opus-4-6[1m]')).toEqual({
       provider: 'anthropic',
       family: 'opus',
-      version: '4',
+      version: '4.6',
     });
   });
 
