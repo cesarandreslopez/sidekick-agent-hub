@@ -28,6 +28,46 @@ See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/
 npm install sidekick-shared
 ```
 
+Requires Node 20 or newer. The only npm dependency is `zod` (v4) — if your app
+also uses zod, keep it on `^4` so schemas from this package validate against
+your instance.
+
+### External runtime requirement: `sqlite3`
+
+`OpenCodeProvider`, `CodexProvider`, and the database helpers behind them read
+their session stores by shelling out to an executable **`sqlite3` on `PATH`**.
+There is no bundled driver.
+
+Without it those providers return **empty results rather than an error**, which
+is indistinguishable from an empty workspace. Call `getRuntimeStatus()` to tell
+the two apart:
+
+```typescript
+const status = provider.getRuntimeStatus?.();
+// status.kind: 'available' | 'db_missing' | 'sqlite_missing'
+//            | 'sqlite_blocked' | 'query_failed'
+if (status && status.kind !== 'available') {
+  console.warn(`Session data unavailable: ${status.kind}`);
+}
+```
+
+`ClaudeCodeProvider` reads JSONL transcripts directly and needs nothing extra.
+
+### Overriding the config directory
+
+Every reader and writer resolves `~/.config/sidekick` (`%APPDATA%/sidekick` on
+Windows) lazily through `getConfigDir()`. Redirect it with either:
+
+```typescript
+import { setConfigDir } from 'sidekick-shared';
+
+setConfigDir('/tmp/sidekick-fixture'); // in-process; pass null to clear
+```
+
+or the `SIDEKICK_CONFIG_DIR` environment variable, which takes effect for the
+whole process and is read fresh on every call. `setConfigDir()` wins when both
+are set.
+
 ## API Overview
 
 | Module                          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -108,9 +148,10 @@ Hydrate the model catalog from the `node` subpath. One fetch covers both prices 
 ```typescript
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 
-const { entries, contextWindowEntries } = await hydratePricingCatalog({
-  cacheDir: '~/.config/sidekick',
-});
+// cacheDir defaults to the Sidekick config dir, which honors
+// SIDEKICK_CONFIG_DIR and setConfigDir(). Pass it only to place the cache
+// somewhere else — and pass a real path, since `~` is not expanded.
+const { entries, contextWindowEntries } = await hydratePricingCatalog();
 
 // Context windows a provider reported on an earlier run. These outrank the
 // catalog, which only knows each model's published maximum — Codex reports the
@@ -238,10 +279,13 @@ const sessions = provider.findAllSessions('/path/to/project');
 ### Read persisted tasks
 
 ```typescript
-import { readTasks, getProjectSlug } from 'sidekick-shared';
+import { readTasks, resolveProjectIdentity } from 'sidekick-shared';
 
-const slug = getProjectSlug('/path/to/project');
-const tasks = readTasks({ projectSlug: slug });
+// A bare string is treated as an already-encoded slug. Pass a project
+// identity to resolve a working directory — that also gets you the
+// legacy-slug fallback for stores written before symlink resolution.
+const project = resolveProjectIdentity('/path/to/project');
+const tasks = await readTasks(project, { status: 'pending' });
 console.log(`Found ${tasks.length} tasks`);
 ```
 
@@ -277,7 +321,10 @@ if (!peak.unavailable && peak.isPeak) {
 ```typescript
 import { fetchQuota, readClaudeMaxCredentials } from 'sidekick-shared';
 
-const creds = readClaudeMaxCredentials();
+// Returns a Promise — without `await`, the object is always truthy and
+// `accessToken` is undefined, which surfaces later as an auth failure.
+// Use `readClaudeMaxAccessTokenSync()` from a synchronous call site.
+const creds = await readClaudeMaxCredentials();
 if (creds) {
   const quota = await fetchQuota(creds.accessToken);
   if (quota.available) {
@@ -299,17 +346,35 @@ For first-party style messaging, `describeQuotaFailure()` maps unavailable quota
 ### Model info and cost calculation
 
 ```typescript
-import { getModelInfo, calculateCost, formatCost } from 'sidekick-shared';
+import {
+  getModelInfo,
+  normalizeProviderUsage,
+  calculateNormalizedUsageCost,
+  formatCost,
+} from 'sidekick-shared';
 
 const info = getModelInfo('claude-sonnet-4-6-20260321');
-console.log(info.family, info.version, info.contextWindow); // "sonnet" "4.6" 200000
+console.log(info.family, info.version, info.contextWindow); // "sonnet" "4.6" 1000000
 
-const cost = calculateCost(
-  { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, cacheWriteTokens: 0 },
-  'claude-sonnet-4-6-20260321',
-);
-console.log(formatCost(cost)); // "$0.0045"
+// Normalize first: providers disagree about whether cached and reasoning
+// tokens are already counted in the input/output totals.
+const usage = normalizeProviderUsage({
+  inputTokens: 1000,
+  outputTokens: 500,
+  cacheReadTokens: 200,
+  cacheWriteTokens: 0,
+  semantics: 'anthropic',
+});
+const { costUsd } = calculateNormalizedUsageCost({
+  usage,
+  modelId: 'claude-sonnet-4-6-20260321',
+});
+console.log(formatCost(costUsd)); // "$0.01"
 ```
+
+`calculateCost()` still works but is deprecated — it predates the
+cache/reasoning normalization above and misprices OpenAI-style usage, where
+cached tokens are already included in the input count.
 
 ### Extract token usage and tool calls from events
 

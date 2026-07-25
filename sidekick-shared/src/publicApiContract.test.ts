@@ -87,4 +87,40 @@ describe('public API consumer contracts', () => {
     ] = [session, context];
     expect(compileOnly).toHaveLength(2);
   });
+
+  // The README's examples had drifted from these signatures — `readTasks` was
+  // documented with the wrong first argument and no `await`, and
+  // `readClaudeMaxCredentials` without one. Pinning the shapes here means a
+  // signature change breaks a test instead of silently re-rotting the docs.
+  it('matches the shapes the README documents', () => {
+    const readmeShapes:
+      | [
+          // readTasks(project, opts?) => Promise<PersistedTask[]>
+          Parameters<typeof api.readTasks>[0],
+          Awaited<ReturnType<typeof api.readTasks>>,
+          // readClaudeMaxCredentials() => Promise<... | null>
+          Awaited<ReturnType<typeof api.readClaudeMaxCredentials>>,
+          // getModelInfo(id).{family,version,contextWindow}
+          ReturnType<typeof api.getModelInfo>,
+          // hydratePricingCatalog() takes no required argument
+          Parameters<typeof api.hydratePricingCatalog>[0],
+          // normalizeProviderUsage -> calculateNormalizedUsageCost -> formatCost
+          ReturnType<typeof api.normalizeProviderUsage>,
+          ReturnType<typeof api.calculateNormalizedUsageCost>,
+          ReturnType<typeof api.setConfigDir>,
+        ]
+      | undefined = undefined;
+    expect(readmeShapes).toBeUndefined();
+
+    // resolveProjectIdentity output must be accepted by readTasks — this is
+    // the specific correction the README needed.
+    const project = api.resolveProjectIdentity(process.cwd());
+    const accepted: Parameters<typeof api.readTasks>[0] = project;
+    expect(accepted).toBe(project);
+
+    // hydratePricingCatalog's cacheDir is optional, so it defaults to the
+    // config dir rather than forcing a literal path into consumer code.
+    expect(api.hydratePricingCatalog).toBeTypeOf('function');
+    expect(api.readClaudeMaxAccessTokenSync).toBeTypeOf('function');
+  });
 });
