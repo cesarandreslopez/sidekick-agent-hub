@@ -576,8 +576,6 @@ export class SubagentTreeProvider
       treeItem.tooltip = element.description || 'Transcript not yet available';
     }
 
-    treeItem.contextValue = element.type === 'running' ? 'runningSubagent' : 'completedSubagent';
-
     return treeItem;
   }
 

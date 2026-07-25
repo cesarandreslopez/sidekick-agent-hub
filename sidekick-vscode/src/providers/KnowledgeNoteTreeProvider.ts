@@ -103,8 +103,12 @@ export class KnowledgeNoteTreeProvider
       };
     }
 
-    // Context value enables right-click menu actions
-    item.contextValue = 'knowledgeNote';
+    // Split by status so the Confirm action can be hidden on notes that are
+    // already active. The previous single value forced the menu's `when` to
+    // compare viewItem against a contextValue nothing ever set, which made the
+    // clause tautological and showed Confirm on every note.
+    item.contextValue =
+      note.status === 'active' ? 'knowledgeNote.confirmed' : 'knowledgeNote.unconfirmed';
     return item;
   }
 

@@ -265,6 +265,11 @@ export interface PlanDisplay {
  * These messages are sent by the webview to request data or signal state.
  */
 export type DashboardWebviewMessage =
+  /**
+   * An uncaught error inside the webview. Routed to the extension log rather
+   * than rendered into the session list, where it read as product copy.
+   */
+  | { type: 'webviewError'; message: string; line?: number }
   | { type: 'webviewReady' }
   | { type: 'selectSession'; sessionPath: string }
   | { type: 'setSessionProvider'; providerId: 'claude-code' | 'opencode' | 'codex' }

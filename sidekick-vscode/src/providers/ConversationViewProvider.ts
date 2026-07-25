@@ -14,6 +14,7 @@ import type { SessionMonitor } from '../services/SessionMonitor';
 import type { SessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log, logError } from '../services/Logger';
+import { toErrorMessage } from '../utils/errors';
 import { assistantTurnEventsFromSessionEvents, segmentAssistantTurn } from 'sidekick-shared';
 import type { AssistantTurnToolRef } from 'sidekick-shared';
 
@@ -359,7 +360,7 @@ export class ConversationViewProvider implements vscode.Disposable {
       this.panel.webview.html = this.getHtml(this.panel.webview, chunks);
     } catch (err) {
       logError('ConversationViewProvider: Failed to parse session', err);
-      vscode.window.showErrorMessage(`Failed to open conversation: ${err}`);
+      vscode.window.showErrorMessage(`Failed to open conversation: ${toErrorMessage(err)}`);
     }
   }
 
