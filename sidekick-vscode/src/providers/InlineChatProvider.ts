@@ -20,6 +20,8 @@ import { log, logError } from '../services/Logger';
  */
 export class InlineChatProvider implements vscode.Disposable {
   private abortController: AbortController | null = null;
+  private quickAskChannel: vscode.OutputChannel | undefined;
+  private suggestedCodeChannel: vscode.OutputChannel | undefined;
 
   constructor(private inlineChatService: InlineChatService) {}
 
@@ -155,12 +157,35 @@ export class InlineChatProvider implements vscode.Disposable {
   }
 
   /**
+   * Output channel for long answers.
+   *
+   * Created lazily and reused. Creating one per invocation left a duplicate
+   * entry in the Output dropdown for every Quick Ask, and they were never
+   * disposed.
+   */
+  private getQuickAskChannel(): vscode.OutputChannel {
+    return (this.quickAskChannel ??= vscode.window.createOutputChannel('Sidekick: Quick Ask', {
+      log: true,
+    }));
+  }
+
+  /** Output channel for suggested-code previews. Created lazily and reused. */
+  private getSuggestedCodeChannel(): vscode.OutputChannel {
+    return (this.suggestedCodeChannel ??= vscode.window.createOutputChannel(
+      'Sidekick: Suggested Code',
+      { log: true },
+    ));
+  }
+
+  /**
    * Handle question response - show in information message with option to copy.
    */
   private async handleQuestionResponse(answer: string): Promise<void> {
     // For long answers, show in output channel
     if (answer.length > 500) {
-      const outputChannel = vscode.window.createOutputChannel('Sidekick: Quick Ask', { log: true });
+      const outputChannel = this.getQuickAskChannel();
+      // Reused channel, so clear first — otherwise every prior answer stacks up.
+      outputChannel.clear();
       outputChannel.appendLine(answer);
       outputChannel.show(true);
       vscode.window
@@ -239,9 +264,8 @@ export class InlineChatProvider implements vscode.Disposable {
         }
       } else if (confirm === 'Preview') {
         // Show the code in output channel
-        const outputChannel = vscode.window.createOutputChannel('Sidekick: Suggested Code', {
-          log: true,
-        });
+        const outputChannel = this.getSuggestedCodeChannel();
+        outputChannel.clear();
         outputChannel.appendLine('Suggested replacement:');
         outputChannel.appendLine('---');
         outputChannel.appendLine(newCode);
@@ -257,5 +281,9 @@ export class InlineChatProvider implements vscode.Disposable {
   dispose(): void {
     this.abortController?.abort();
     this.abortController = null;
+    this.quickAskChannel?.dispose();
+    this.suggestedCodeChannel?.dispose();
+    this.quickAskChannel = undefined;
+    this.suggestedCodeChannel = undefined;
   }
 }
