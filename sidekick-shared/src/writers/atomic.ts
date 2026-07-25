@@ -10,6 +10,16 @@ interface OwnedLock {
 
 const LOCK_STALE_MS = 10_000;
 
+/**
+ * How long to wait for a lock that is making no progress.
+ *
+ * This budget detects a wedged holder, not a long queue. It is measured from the
+ * last time the lock changed hands rather than from the first attempt, because a
+ * writer queued behind other healthy writers is waiting, not failing — see
+ * {@link acquireLock}.
+ */
+const LOCK_NO_PROGRESS_MS = 3_000;
+
 async function syncDirectory(directory: string): Promise<void> {
   let handle: fs.promises.FileHandle | undefined;
   try {
@@ -107,8 +117,22 @@ export async function updateJsonStoreAtomic<T>(
   }
 }
 
+/**
+ * Waits for exclusive ownership of `lockPath`.
+ *
+ * The wait budget is reset every time the lock changes hands. A flat budget from
+ * the first attempt conflated two unrelated conditions — a wedged holder and a
+ * queue of healthy writers — so under real contention the writers at the back of
+ * the queue failed even though every lock was being acquired and released
+ * correctly. Each cycle costs three fsyncs (lock file, temp file, directory), so
+ * on slow storage a burst of concurrent captures drained slower than the budget.
+ *
+ * A stuck holder keeps the same token, so it makes no progress and still trips
+ * the timeout; the stale-reclaim path below still handles an owner that died.
+ */
 async function acquireLock(lockPath: string): Promise<OwnedLock> {
-  const deadline = Date.now() + 3000;
+  let deadline = Date.now() + LOCK_NO_PROGRESS_MS;
+  let observedOwner: string | null = null;
   while (true) {
     try {
       const handle = await fs.promises.open(lockPath, 'wx', 0o600);
@@ -125,10 +149,18 @@ async function acquireLock(lockPath: string): Promise<OwnedLock> {
       return { handle, token, heartbeat };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      // The token identifies the current holder. mtime cannot stand in for it:
+      // the heartbeat keeps touching the file, so even a wedged holder looks
+      // fresh. A different token means the queue advanced.
+      const currentOwner = await fs.promises.readFile(lockPath, 'utf8').catch(() => null);
+      if (currentOwner !== null && currentOwner !== observedOwner) {
+        observedOwner = currentOwner;
+        deadline = Date.now() + LOCK_NO_PROGRESS_MS;
+      }
       try {
         const stat = await fs.promises.stat(lockPath);
         if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          const owner = await fs.promises.readFile(lockPath, 'utf8').catch(() => '');
+          const owner = currentOwner ?? '';
           const ownerPid = Number.parseInt(owner.split(':', 1)[0], 10);
           let ownerAlive = Number.isInteger(ownerPid) && ownerPid > 0;
           if (ownerAlive) {
@@ -143,7 +175,11 @@ async function acquireLock(lockPath: string): Promise<OwnedLock> {
       } catch {
         // The other writer released between checks.
       }
-      if (Date.now() >= deadline) throw new Error(`Timed out waiting for store lock: ${lockPath}`);
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Timed out waiting for store lock: ${lockPath} (no progress for ${LOCK_NO_PROGRESS_MS}ms)`,
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, 15));
     }
   }

@@ -52,6 +52,32 @@ describe('updateJsonStoreAtomic', () => {
     await expect(fs.promises.access(`${filePath}.lock`)).rejects.toThrow();
   });
 
+  it('still times out when the holder makes no progress', async () => {
+    // The wait budget resets whenever the lock changes hands, so that a queue of
+    // healthy writers cannot manufacture a timeout. It must still fire for a
+    // holder that is alive but wedged, or a stuck process would hang every
+    // writer behind it forever.
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sidekick-writer-'));
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, 'tasks.json');
+
+    // A live owner (this process) with a fresh mtime: not reclaimable as stale,
+    // and the token never changes, so no progress is ever observed.
+    await fs.promises.writeFile(`${filePath}.lock`, `${process.pid}:wedged`, { mode: 0o600 });
+
+    const started = Date.now();
+    await expect(
+      updateJsonStoreAtomic(
+        filePath,
+        () => ({ entries: {} as Record<string, number> }),
+        (store) => store,
+      ),
+    ).rejects.toThrow(/no progress/);
+    // Fired on the no-progress budget, not instantly and not after the 10s
+    // stale-reclaim window.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(2_000);
+  }, 15_000);
+
   it('rethrows transient read failures instead of overwriting from an empty store', async () => {
     const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sidekick-writer-'));
     temporaryDirectories.push(directory);
