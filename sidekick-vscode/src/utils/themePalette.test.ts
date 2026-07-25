@@ -102,6 +102,15 @@ describe('mind-map palette', () => {
     }
   });
 
+  it('tags every legend row with its node type, in the order the graph reads', () => {
+    const legend = getGraphLegendHtml();
+    const tagged = [...legend.matchAll(/data-node-type="([a-z-]+)"/g)].map((match) => match[1]);
+    // The mind-map webview reads `dataset.nodeType` off each row rather than
+    // mapping DOM position through a second list, so every row must carry a key
+    // the graph's fill lookup knows.
+    expect(tagged).toEqual(Object.keys(nodeTypeVarRefs()));
+  });
+
   it('declares every node and complexity variable in the :root block', () => {
     const css = getGraphPaletteCSS();
     for (const name of Object.values(NODE_TYPE_VARS)) {
@@ -112,12 +121,19 @@ describe('mind-map palette', () => {
     }
   });
 
-  it('gives each node type a distinct color expression', () => {
+  it('gives each node type and complexity level a distinct rendered color', () => {
     const css = getGraphPaletteCSS();
-    const values = (css.match(/--sk-node-[a-z-]+: ([^;]+);/g) ?? []).map(
-      (line) => line.split(': ')[1],
+    // Drop the `var()` fallbacks before comparing. Every built-in theme defines
+    // the --vscode-charts-* colors, so the fallback hex never renders — two
+    // declarations differing only there resolve to the identical color.
+    const values = (css.match(/--sk-(?:node|complexity)-[a-z-]+: ([^;]+);/g) ?? []).map((line) =>
+      line.split(': ')[1].replace(/var\((--[a-z-]+), *#[0-9a-fA-F]{3,8}\)/g, 'var($1)'),
     );
-    expect(new Set(values).size).toBe(values.length);
+    expect(values.length).toBe(
+      Object.keys(NODE_TYPE_VARS).length + Object.keys(COMPLEXITY_VARS).length,
+    );
+    const duplicates = values.filter((v, i) => values.indexOf(v) !== i);
+    expect(duplicates, `colliding color expressions: ${duplicates.join(', ')}`).toEqual([]);
   });
 
   it('maps complexity levels to palette variables', () => {

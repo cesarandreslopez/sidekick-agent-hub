@@ -10,9 +10,27 @@
  * nothing moved, so a quiet project costs a few JSON reads and no render at
  * all. Collection sizes catch adds and removes; the newest timestamp in each
  * collection catches edits.
+ *
+ * Plans need more than a timestamp: a writer replaces an existing record in
+ * place, and while one is in progress `createdAt` does not move and `completedAt`
+ * is still unset, so step-by-step progress is invisible to a timestamp-only
+ * signature. Their mutable fields go in directly.
  */
 
 import type { StaticData } from './StaticDataLoader';
+
+/**
+ * Progress of every plan, as `status:completionRate:<step statuses>`.
+ *
+ * Capped at 50 plans per project, so this stays cheap.
+ */
+function planProgress(plans: StaticData['plans']): string {
+  return plans
+    .map(
+      (plan) => `${plan.status}:${plan.completionRate}:${plan.steps.map((s) => s.status).join('')}`,
+    )
+    .join(',');
+}
 
 /** Newest value across the given fields, or '' when the list is empty. */
 function newest(items: readonly Record<string, unknown>[], ...fields: string[]): string {
@@ -41,6 +59,7 @@ export function staticDataFingerprint(data: StaticData): string {
     newest(data.decisions as unknown as Record<string, unknown>[], 'timestamp'),
     data.plans.length,
     newest(data.plans as unknown as Record<string, unknown>[], 'completedAt', 'createdAt'),
+    planProgress(data.plans),
     data.sessions.length,
     data.totalTokens,
     data.totalCost,

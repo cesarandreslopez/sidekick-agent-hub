@@ -30,7 +30,7 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 
 1. Click the **Agent Hub** icon in the activity bar (left sidebar)
 2. The Session Analytics dashboard shows token usage, costs, and activity
-3. Below it, the Mind Map and Kanban Board provide additional views
+3. Below it, the Mind Map, Kanban Board, and six more views start collapsed — click a section header to expand the one you need
 
 ![Session Analytics Dashboard](../images/session-analytics-dashboard.png)
 

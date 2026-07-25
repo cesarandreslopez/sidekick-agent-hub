@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { describeDataStatus, initialDataStatus, STALE_AFTER_MS } from './dataStatus';
+import {
+  describeDataStatus,
+  initialDataStatus,
+  STALE_AFTER_MS,
+  WATCHER_ERROR_TTL_MS,
+} from './dataStatus';
 
 const NOW = 1_800_000_000_000;
 
@@ -18,13 +23,36 @@ describe('describeDataStatus', () => {
   });
 
   it('reports a watcher failure in yellow', () => {
-    const badge = describeDataStatus({ ...initialDataStatus(), watcherError: 'bad line' }, NOW);
+    const badge = describeDataStatus(
+      { ...initialDataStatus(), watcherError: 'bad line', watcherErrorAt: NOW },
+      NOW,
+    );
     expect(badge).toEqual({ text: '⚠ session', color: 'yellow' });
+  });
+
+  it('expires a watcher failure the watcher already recovered from', () => {
+    const status = {
+      ...initialDataStatus(),
+      loadedAt: NOW,
+      watcherError: 'bad line',
+      watcherErrorAt: NOW - WATCHER_ERROR_TTL_MS - 1,
+    };
+    expect(describeDataStatus(status, NOW)).toBeNull();
+  });
+
+  it('lets staleness through once a stale watcher failure has expired', () => {
+    const status = {
+      ...initialDataStatus(),
+      loadedAt: NOW - STALE_AFTER_MS - 60_000,
+      watcherError: 'bad line',
+      watcherErrorAt: NOW - WATCHER_ERROR_TTL_MS - 1,
+    };
+    expect(describeDataStatus(status, NOW)).toEqual({ text: 'stale 3m', color: 'yellow' });
   });
 
   it('ranks a load failure above a watcher failure', () => {
     const badge = describeDataStatus(
-      { ...initialDataStatus(), error: 'EACCES', watcherError: 'bad line' },
+      { ...initialDataStatus(), error: 'EACCES', watcherError: 'bad line', watcherErrorAt: NOW },
       NOW,
     );
     expect(badge!.text).toBe('⚠ data');

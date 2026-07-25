@@ -35,7 +35,7 @@ Notes can also be captured from the terminal with `sidekick note add` — see [C
 Right-click any note in the **Knowledge Notes** tree view to:
 
 - **Edit** — change the content, note type, or importance level
-- **Confirm** — reset a stale or needs-review note back to active status
+- **Confirm** — reset a needs-review, stale, or obsolete note back to active status (the action is hidden on notes that are already active)
 - **Delete** — remove the note permanently (with confirmation)
 
 ## Where Notes Appear

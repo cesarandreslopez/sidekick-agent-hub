@@ -60,6 +60,7 @@ The standalone commands open the dashboard directly to a specific panel or run a
 | ------------------ | ------------------------------------------------------------------------- |
 | `--project <path>` | Override project path (default: current working directory)                |
 | `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
+| `--no-color`       | Disable colored output (also honors `NO_COLOR`)                           |
 | `--session <id>`   | Follow a specific session by ID                                           |
 | `--replay`         | Replay existing events from the beginning before streaming live           |
 
@@ -340,13 +341,20 @@ Press `z` to cycle through layout modes:
 | Key | Action                                                                                   |
 | --- | ---------------------------------------------------------------------------------------- |
 | `v` | Cycle mind map view: tree → boxed → flow                                                 |
-| `f` | Cycle node filter: all → file → tool → task → subagent → command → plan → knowledge-note |
+| `F` | Cycle node filter: all → file → tool → task → subagent → command → plan → knowledge-note |
 
 ### Session Panel — AI Summary Tab
 
 | Key | Action                        |
 | --- | ----------------------------- |
 | `n` | Generate / retry AI narrative |
+
+### Plans Panel
+
+| Key | Action                                                         |
+| --- | -------------------------------------------------------------- |
+| `S` | Cycle plan source filter: all → claude-code → opencode → codex |
+| `c` | Copy the selected plan's markdown to the clipboard             |
 
 ### General
 
@@ -357,6 +365,7 @@ Press `z` to cycle through layout modes:
 | `x`            | Open context menu for selected item                                                       |
 | `M`            | Toggle mouse capture (turn off to restore terminal text selection/copy)                   |
 | `?`            | Show help                                                                                 |
+| `R`            | Refresh persisted project data (tasks, notes, decisions, plans) from disk                 |
 | `r`            | Generate HTML report for the current session                                              |
 | `V`            | Show version / changelog                                                                  |
 | `q` / `Ctrl+C` | Quit                                                                                      |

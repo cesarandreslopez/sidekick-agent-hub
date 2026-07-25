@@ -4,10 +4,11 @@ All settings use the `sidekick.*` prefix. Open VS Code Settings (`Ctrl+,`) and s
 
 ## Provider
 
-| Setting                      | Default | Description                                                          |
-| ---------------------------- | ------- | -------------------------------------------------------------------- |
-| `sidekick.inferenceProvider` | `auto`  | AI provider: `auto`, `claude-max`, `claude-api`, `opencode`, `codex` |
-| `sidekick.claudePath`        | (empty) | Custom path to Claude CLI (for pnpm/yarn/non-standard installs)      |
+| Setting                      | Default | Description                                                               |
+| ---------------------------- | ------- | ------------------------------------------------------------------------- |
+| `sidekick.inferenceProvider` | `auto`  | AI provider: `auto`, `claude-max`, `claude-api`, `opencode`, `codex`      |
+| `sidekick.claudePath`        | (empty) | Custom path to Claude CLI (for pnpm/yarn/non-standard installs)           |
+| `sidekick.sidekickCliPath`   | (empty) | Custom path to the `sidekick` CLI executable (leave empty to auto-detect) |
 
 ## Accounts
 
@@ -61,8 +62,10 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 
 | Setting                            | Default | Description                                                        |
 | ---------------------------------- | ------- | ------------------------------------------------------------------ |
-| `sidekick.enableSessionMonitoring` | `true`  | Enable CLI agent session monitoring                                |
+| `sidekick.enableSessionMonitoring` | `true`  | Enable CLI agent session monitoring (requires a window reload)     |
 | `sidekick.sessionProvider`         | `auto`  | Which agent to monitor: `auto`, `claude-code`, `opencode`, `codex` |
+
+`sidekick.enableSessionMonitoring` is read once at activation, so changing it prompts you to reload the window. While it is `false`, the Agent Hub container keeps only the Session Analytics view — which shows a placeholder with an **Enable session monitoring** button — and hides Mind Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream.
 
 ## Commit Messages
 

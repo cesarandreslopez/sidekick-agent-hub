@@ -82,8 +82,11 @@ const NODE_TYPES = {
   subagent: { label: 'Subagent', value: 'var(--vscode-charts-purple, #BD10E0)' },
   url: {
     label: 'URL',
+    // Blue-violet, not the blue/green midpoint: that mix is `plan`, and since
+    // the fallback hex never applies in a theme that defines the chart colors,
+    // sharing it would render the two node types in the identical color.
     value:
-      'color-mix(in srgb, var(--vscode-charts-blue, #50E3C2) 50%, var(--vscode-charts-green, #50E3C2))',
+      'color-mix(in srgb, var(--vscode-charts-purple, #50E3C2) 40%, var(--vscode-charts-blue, #50E3C2))',
   },
   directory: {
     label: 'Directory',
@@ -123,10 +126,15 @@ export const COMPLEXITY_VARS = {
   low: '--sk-complexity-low',
 } as const;
 
+// Shifted toward the chart foreground rather than left as the plain chart
+// colors: `command`, `todo`, and `tool` already own red, yellow, and green
+// unmixed, so a complexity-tinted plan step would otherwise be indistinguishable
+// from a command, TODO, or tool node.
 const COMPLEXITY_VALUES: Record<keyof typeof COMPLEXITY_VARS, string> = {
-  high: 'var(--vscode-charts-red, #f14c4c)',
-  medium: 'var(--vscode-charts-yellow, #FFD700)',
-  low: 'var(--vscode-charts-green, #73c991)',
+  high: 'color-mix(in srgb, var(--vscode-charts-red, #f14c4c) 80%, var(--vscode-charts-foreground, #f14c4c))',
+  medium:
+    'color-mix(in srgb, var(--vscode-charts-yellow, #FFD700) 80%, var(--vscode-charts-foreground, #FFD700))',
+  low: 'color-mix(in srgb, var(--vscode-charts-green, #73c991) 80%, var(--vscode-charts-foreground, #73c991))',
 };
 
 /** Node type -> `var()` reference, for the graph's fill lookup. */
@@ -170,12 +178,16 @@ ${complexity}
  * The hand-written legend listed ten of the twelve node types — `url` and
  * `plan-step` were undocumented — which is the kind of drift generating both
  * from one source makes impossible.
+ *
+ * Each row carries its node type in `data-node-type` so the hover-to-highlight
+ * handler can read the type off the element instead of mapping DOM position
+ * through a second, separately maintained list.
  */
 export function getGraphLegendHtml(): string {
   return (Object.keys(NODE_TYPES) as NodeType[])
     .map(
       (key) =>
-        `    <div class="legend-item">
+        `    <div class="legend-item" data-node-type="${key}">
       <span class="legend-dot" style="background: var(${NODE_TYPE_VARS[key]});"></span>
       <span>${NODE_TYPES[key].label}</span>
     </div>`,

@@ -49,12 +49,18 @@ export class MonitoringDisabledViewProvider implements vscode.WebviewViewProvide
         .getConfiguration('sidekick')
         .update('enableSessionMonitoring', true, vscode.ConfigurationTarget.Global);
       log('Session monitoring re-enabled from the dashboard placeholder');
-      const action = await vscode.window.showInformationMessage(
-        'Session monitoring enabled. Reload to start monitoring.',
-        'Reload Window',
-      );
-      if (action === 'Reload Window') {
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+      // No reload prompt here: the onDidChangeConfiguration handler in
+      // extension.ts owns it, and prompting from both stacked two near-identical
+      // notifications. It only fires when the effective value actually changes,
+      // so a workspace-level `false` — which this Global write cannot outrank —
+      // needs its own explanation instead.
+      const effective = vscode.workspace
+        .getConfiguration('sidekick')
+        .get<boolean>('enableSessionMonitoring', true);
+      if (!effective) {
+        vscode.window.showWarningMessage(
+          'A workspace setting is overriding sidekick.enableSessionMonitoring. Enable it in the workspace settings to start monitoring.',
+        );
       }
     } catch (error) {
       logError('Failed to enable session monitoring', error);

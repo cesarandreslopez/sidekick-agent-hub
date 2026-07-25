@@ -6,6 +6,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { parseBlessedTags } from './parseBlessedTags';
+import { clampDetailScroll } from './detailScroll';
 
 interface DetailPaneProps {
   content: string;
@@ -25,13 +26,14 @@ export function DetailPane({
 
   const lines = content ? content.split('\n') : [];
   const totalLines = lines.length;
-  const hasMoreAbove = scrollOffset > 0;
+  const offset = clampDetailScroll(scrollOffset, totalLines);
+  const hasMoreAbove = offset > 0;
   // Pre-compute whether we need indicator space to avoid content overflow
   const indicatorAbove = hasMoreAbove ? 1 : 0;
-  const worstCaseBelow = totalLines > scrollOffset + viewportHeight - 1 ? 1 : 0;
+  const worstCaseBelow = totalLines > offset + viewportHeight - 1 ? 1 : 0;
   const effectiveHeight = Math.max(1, viewportHeight - indicatorAbove - worstCaseBelow);
-  const visibleLines = lines.slice(scrollOffset, scrollOffset + effectiveHeight);
-  const hasMoreBelow = scrollOffset + effectiveHeight < totalLines;
+  const visibleLines = lines.slice(offset, offset + effectiveHeight);
+  const hasMoreBelow = offset + effectiveHeight < totalLines;
 
   return (
     <Box
@@ -44,13 +46,13 @@ export function DetailPane({
       {/* Scroll indicator top */}
       {hasMoreAbove && (
         <Box justifyContent="center">
-          <Text color="gray">▲ ({scrollOffset} more)</Text>
+          <Text color="gray">▲ ({offset} more)</Text>
         </Box>
       )}
 
       {/* Content lines */}
       {visibleLines.map((line, i) => (
-        <Text key={scrollOffset + i} wrap="wrap">
+        <Text key={offset + i} wrap="wrap">
           {parseBlessedTags(line)}
         </Text>
       ))}
@@ -64,7 +66,7 @@ export function DetailPane({
       {/* Scroll indicator bottom */}
       {hasMoreBelow && (
         <Box justifyContent="center">
-          <Text color="gray">▼ ({totalLines - scrollOffset - effectiveHeight} more)</Text>
+          <Text color="gray">▼ ({totalLines - offset - effectiveHeight} more)</Text>
         </Box>
       )}
     </Box>

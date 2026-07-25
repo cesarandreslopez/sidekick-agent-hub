@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard charts read their colors from the active VS Code theme. Axis labels, gridlines, and legends were hardcoded to dark-theme greys, so on any light theme they ranged from low-contrast to unreadable. Charts also re-theme now when you switch themes, without a reload
 - Mind-map node colors, the legend, and the context-attribution palette are theme-aware too. The legend was also missing two of the twelve node types
 - Fixed a leak where every Quick Ask added a permanent duplicate entry to the Output panel dropdown
+- The pricing-catalog cache now lives in the same directory as every other Sidekick store. On Windows the extension had been caching under `%USERPROFILE%\.config\sidekick` while the CLI used `%APPDATA%\sidekick`, so each refetched model prices on its own schedule
 - Turning off `sidekick.enableSessionMonitoring` no longer leaves nine dead views in the sidebar. The monitoring views are hidden, and the dashboard offers a button to turn monitoring back on. Changing the setting now prompts for the reload it has always needed
 - The secondary Agent Hub views start collapsed on a fresh install, so the sidebar is usable at a normal height. Existing users keep their current layout until they reset it
 - The dashboard and mind map keep their state when collapsed, so re-expanding no longer rebuilds every chart or re-scrambles the graph
 - The Confirm action on a knowledge note no longer appears on notes that are already confirmed
+- With session monitoring turned off, the nine Sidekick commands that need it now explain that instead of failing with "command not found", and the Knowledge Notes view renders empty rather than spinning in a window with no folder open
 - CLI: press `R` in the dashboard to reload tasks, notes, decisions, and plans. They also refresh automatically every 15 seconds — previously the dashboard read them once at startup, so anything written from VS Code or another terminal never showed up
 - CLI: failures loading project data or reading a session file are now visible as a toast and a status-bar badge instead of silently producing an empty-looking dashboard
 - CLI: `sidekick dashboard` fails with a clear message instead of a garbled frame when it is not attached to a terminal, and a bare `sidekick` prints help to stdout with exit code 0
@@ -21,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `sidekick --no-color` is accepted
 - CLI: you can now switch to a pending session from the Plans panel and open the session filter from the Sessions panel's Mind Map tab — both keys were silently shadowed. The Plans source filter moved to `S` and the mind-map node filter to `F`
 - CLI: the detail tab and scroll position no longer jump to the top when the item list shrinks, and up to three toasts stack instead of only the newest showing
-- Shared library: the config directory is overridable via `setConfigDir()` or `SIDEKICK_CONFIG_DIR`; the published package ships its license and changelog; `parseModelId()` reads hyphenated Anthropic model versions correctly (`4.6` rather than `4`); and the peak-hours request is bounded by a timeout
+- CLI: `sidekick extract -i --json` now fails with a message instead of silently ignoring `--json`, and `extract -i` prints plain output instead of the picker when it is not attached to a terminal
+- Shared library: the config directory is overridable via `setConfigDir()` or `SIDEKICK_CONFIG_DIR`; the published package ships its license and changelog and now declares Node 20 or newer, which npm warns about when installing on Node 18; `parseModelId()` reads hyphenated Anthropic model versions correctly (`4.6` rather than `4`); and the peak-hours request is bounded by a timeout
 
 ## [0.24.3] - 2026-07-24
 

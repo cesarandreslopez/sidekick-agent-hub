@@ -39,7 +39,7 @@ Handoffs work by writing session context into files that your agent reads at the
 
 ## Setup
 
-Run **"Sidekick: Setup Handoff"** to add a reference to your agent instruction file (CLAUDE.md, AGENTS.md, etc.) that tells the agent where to find previous session context.
+Run **"Sidekick: Set Up Session Handoff"** to add a reference to your agent instruction file (CLAUDE.md, AGENTS.md, etc.) that tells the agent where to find previous session context.
 
 ## External Handoff URLs
 

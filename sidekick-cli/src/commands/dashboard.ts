@@ -314,8 +314,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   const WATCHER_ERROR_TOAST_MS = 60_000;
   function reportWatcherError(err: unknown): void {
     const message = err instanceof Error ? err.message : String(err);
-    dataStatus.watcherError = message;
     const now = Date.now();
+    dataStatus.watcherError = message;
+    dataStatus.watcherErrorAt = now;
     if (now - lastWatcherErrorAt > WATCHER_ERROR_TOAST_MS) {
       lastWatcherErrorAt = now;
       pushNotice(`Session read error: ${message}`, 'error');

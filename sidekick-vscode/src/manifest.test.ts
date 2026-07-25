@@ -93,3 +93,35 @@ describe('command contributions', () => {
     }
   });
 });
+
+describe('monitoring-disabled command fallbacks', () => {
+  // Nine commands are registered only inside the monitoring branch, but stay in
+  // the Command Palette either way — plus addKnowledgeNote in the editor context
+  // menu and a walkthrough link. Invoking one with monitoring off used to raise a
+  // raw "command not found", so the disabled branch registers a fallback for each.
+  const source = fs.readFileSync(path.join(__dirname, 'extension.ts'), 'utf-8');
+  const loop = source.match(/for \(const id of \[([\s\S]*?)\]\) \{/);
+  const fallbackIds = loop ? [...loop[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : [];
+
+  it('registers a fallback for each command the monitoring branch owns', () => {
+    expect(fallbackIds.length).toBe(9);
+  });
+
+  it('names only commands the manifest actually contributes', () => {
+    const declared = new Set(manifest.contributes.commands.map((c) => c.command));
+    for (const id of fallbackIds) {
+      expect(declared.has(id), `${id} has a fallback but is not contributed`).toBe(true);
+    }
+  });
+
+  it('keeps a real handler for every fallback command', () => {
+    // A fallback whose real registration was deleted would silently become the
+    // only handler, so the feature would look broken rather than gated.
+    for (const id of fallbackIds) {
+      const registrations = [
+        ...source.matchAll(new RegExp(`registerCommand\\(\\s*'${id.replace('.', '\\.')}'`, 'g')),
+      ];
+      expect(registrations.length, `${id} has no real registration`).toBe(1);
+    }
+  });
+});

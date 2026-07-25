@@ -20,14 +20,14 @@ Run **"Sidekick: Open Tool Inspector"** from the Command Palette.
 
 ## Tool Result Pairing
 
-Each tool call is paired with its output via `toolUseId` correlation. The inspector shows truncated tool results (up to 5,000 characters) directly below the call:
+Each tool call is paired with its output via `toolUseId` correlation. The inspector shows truncated tool results (up to 3,000 characters) directly below the call:
 
 - **Read** — file content with line numbers
 - **Bash** — stdout below the `$ command` line
 - **Grep/Glob** — matched results
 - **Edit/Write** — success or error message
 
-Results that exceed 5,000 characters are truncated with a `...(truncated)` indicator. Error outputs are styled differently from successful results.
+Results that exceed 3,000 characters are truncated with a `... (truncated)` indicator. Error outputs are styled differently from successful results.
 
 ## Features
 

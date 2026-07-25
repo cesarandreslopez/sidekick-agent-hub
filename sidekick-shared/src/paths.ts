@@ -48,7 +48,12 @@ export function getDefaultConfigDir(): string {
  * }
  */
 export function setConfigDir(dir: string | null | undefined): void {
-  configDirOverride = dir && dir.trim() ? path.resolve(dir) : null;
+  // Resolve the trimmed value, not the original: `path.resolve('  /tmp/x  ')`
+  // treats the leading spaces as a relative segment and lands under cwd. The
+  // `SIDEKICK_CONFIG_DIR` branch in getConfigDir() already trims, and the two
+  // routes are documented as interchangeable.
+  const trimmed = dir?.trim();
+  configDirOverride = trimmed ? path.resolve(trimmed) : null;
 }
 
 /** The active {@link setConfigDir} override, or `null` when unset. */

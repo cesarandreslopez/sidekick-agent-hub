@@ -34,13 +34,14 @@ your instance.
 
 ### External runtime requirement: `sqlite3`
 
-`OpenCodeProvider`, `CodexProvider`, and the database helpers behind them read
-their session stores by shelling out to an executable **`sqlite3` on `PATH`**.
-There is no bundled driver.
+`OpenCodeProvider` and the database helpers behind it read their session store by
+shelling out to an executable **`sqlite3` on `PATH`**. There is no bundled
+driver. `CodexProvider` shells out to the same binary, but only for an optional
+index.
 
-Without it those providers return **empty results rather than an error**, which
-is indistinguishable from an empty workspace. Call `getRuntimeStatus()` to tell
-the two apart:
+Without it `OpenCodeProvider` returns **empty results rather than an error**,
+which is indistinguishable from an empty workspace. Call `getRuntimeStatus()`,
+implemented by `OpenCodeProvider` only, to tell the two apart:
 
 ```typescript
 const status = provider.getRuntimeStatus?.();
@@ -51,7 +52,10 @@ if (status && status.kind !== 'available') {
 }
 ```
 
-`ClaudeCodeProvider` reads JSONL transcripts directly and needs nothing extra.
+`CodexProvider` uses the Codex `state.sqlite` database only as an index and
+falls back to scanning rollout JSONL files, so it keeps working without
+`sqlite3`. `ClaudeCodeProvider` reads JSONL transcripts directly and needs
+nothing extra.
 
 ### Overriding the config directory
 
@@ -66,7 +70,9 @@ setConfigDir('/tmp/sidekick-fixture'); // in-process; pass null to clear
 
 or the `SIDEKICK_CONFIG_DIR` environment variable, which takes effect for the
 whole process and is read fresh on every call. `setConfigDir()` wins when both
-are set.
+are set. `getConfigDir()` returns the resolved root, `getConfigDirOverride()`
+returns the active in-process override or `null`, and `getDefaultConfigDir()`
+returns the platform default that both overrides bypass.
 
 ## API Overview
 
@@ -89,7 +95,7 @@ are set.
 | **Assistant Turns**             | Browser-safe timeline/process/answer projection for provider-normalized assistant turns (`segmentAssistantTurn()`, `assistantTurnEventsFromSessionEvents()`), including interleaved reasoning, compact tool groups, and Claude `Task` subagent refs without prompt leakage                                                                                                                                                                                                                                                                                                                                                                                           |
 | **Report**                      | Self-contained HTML session report generation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **Credentials**                 | Claude Max OAuth credential reading from `~/.claude/.credentials.json`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| **Quota**                       | Claude Max subscription quota fetching (5-hour and 7-day windows), Codex rate-limit extraction from event streams (plus Codex reset credits via `fetchCodexResetCreditsFromApi()`, attached to quota state by `fetchCodexQuotaFromApi()`), and authoritative z.ai Coding Plan quota fetching via `resolveZaiQuota()` / `fetchZaiQuotaFromApi()` (reads z.ai's `api/monitor/usage/quota/limit` endpoint with cached-snapshot fallback). The deprecated observed-traffic z.ai estimator exports were removed in 0.23.0 — `resolveZaiQuota()` is the single z.ai quota API                                                                                              |
+| **Quota**                       | Claude Max subscription quota fetching (5-hour and 7-day windows), Codex rate-limit extraction from event streams (plus Codex reset credits via `fetchCodexResetCreditsFromApi()`, attached to quota state by `fetchCodexQuotaFromApi()`), and authoritative z.ai Coding Plan quota fetching via `resolveZaiQuota()` / `fetchZaiQuotaFromApi()` (reads z.ai's `api/monitor/usage/quota/limit` endpoint with cached-snapshot fallback). The observed-traffic z.ai estimator was removed from the package root exports in 0.23.0 and every remaining export of it is `@deprecated` — `resolveZaiQuota()` is the single supported z.ai quota API                        |
 | **Provider Status**             | API health checking via status.claude.com and status.openai.com (indicator, components, incidents)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **Doctor**                      | Typed cross-provider health diagnostics — `runDoctor()` checks project identity, sessions, accounts, providers, and dependencies into a `HealthReport`; `formatHealthReport()` renders it and `getSessionDiagnostics()` exposes the per-provider session probe                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **Schemas**                     | Zod schemas for runtime validation of data crossing process/IPC boundaries — JSONL session events (`sessionEventSchema`, `messageUsageSchema`, `sessionMessageSchema`), assistant turns, observed-session V1 records, quota, account status, and quota history — plus `extractSessionEvents()` to unwrap `progress`-wrapped events. Also published fs-free via the [`sidekick-shared/schemas`](#supported-import-paths) subpath                                                                                                                                                                                                                                      |
@@ -425,7 +431,7 @@ const snapshot = readSessionContextSnapshot(provider, '/path/to/session.jsonl');
 
 console.log(snapshot.pressure); // 'low' | 'medium' | 'high'
 console.log(snapshot.contextTokens, '/', snapshot.contextWindow);
-console.log(snapshot.capabilities.tools, snapshot.capabilities.mcpServers);
+console.log(snapshot.capabilities.observedTools, snapshot.capabilities.mcpServers);
 console.log(snapshot.sources.length, 'evidence sources');
 ```
 

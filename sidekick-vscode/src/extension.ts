@@ -18,7 +18,6 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { AuthService } from './services/AuthService';
 import { CompletionService } from './services/CompletionService';
@@ -190,9 +189,11 @@ export async function activate(context: vscode.ExtensionContext) {
   const pricingConfig = vscode.workspace.getConfiguration('sidekick.pricing');
   if (pricingConfig.get<boolean>('hydrateFromLiteLLM', true)) {
     const ttlHours = pricingConfig.get<number>('cacheTtlHours', 24);
-    const cacheDir = path.join(os.homedir(), '.config', 'sidekick');
+    // No cacheDir: it defaults to the shared config directory, which honors
+    // SIDEKICK_CONFIG_DIR and uses %APPDATA% on Windows. Hardcoding
+    // ~/.config/sidekick here gave the extension and the CLI two separate
+    // caches on Windows, each refetching on its own TTL.
     hydratePricingCatalog({
-      cacheDir,
       ttlMs: Math.max(1, ttlHours) * 60 * 60 * 1000,
       logger: (msg) => log(msg),
     })
@@ -908,6 +909,18 @@ export async function activate(context: vscode.ExtensionContext) {
       context.subscriptions.push(knowledgeNoteDecorationProvider);
 
       log('Knowledge notes tree + decoration providers registered');
+    } else {
+      // The view is revealed by `sidekick.monitoringActive`, which is set from
+      // this branch regardless of whether a folder is open — but the service
+      // needs a workspace folder, so without this the view would be contributed
+      // with no data provider and sit on a spinner forever.
+      context.subscriptions.push(
+        vscode.window.registerTreeDataProvider('sidekick.knowledgeNotes', {
+          getTreeItem: (element: vscode.TreeItem) => element,
+          getChildren: () => [],
+        }),
+      );
+      log('Knowledge notes view registered empty (no workspace folder)');
     }
 
     // Register addKnowledgeNote command
@@ -1175,6 +1188,30 @@ export async function activate(context: vscode.ExtensionContext) {
       ),
       { dispose: () => disabledProvider.dispose() },
     );
+
+    // These commands only exist inside the monitoring branch, but they stay in
+    // the Command Palette (and `sidekick.addKnowledgeNote` in the editor
+    // context menu and a walkthrough link) either way, where invoking one
+    // raised a raw "command 'x' not found" error. Explain the state instead.
+    for (const id of [
+      'sidekick.importHistoricalData',
+      'sidekick.openConversation',
+      'sidekick.searchSessions',
+      'sidekick.openToolInspector',
+      'sidekick.generateSessionSummary',
+      'sidekick.addKnowledgeNote',
+      'sidekick.injectKnowledgeNotes',
+      'sidekick.setupHandoff',
+      'sidekick.openExternalHandoff',
+    ]) {
+      context.subscriptions.push(
+        vscode.commands.registerCommand(id, () => {
+          vscode.window.showInformationMessage(
+            'This command needs session monitoring. Enable sidekick.enableSessionMonitoring and reload the window.',
+          );
+        }),
+      );
+    }
   }
 
   // The setting is read once at activation, so a change needs a reload to take

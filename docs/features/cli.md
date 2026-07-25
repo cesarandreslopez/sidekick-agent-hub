@@ -45,6 +45,7 @@ sidekick dashboard [options]
 | `--session <id>`   | Follow a specific session by ID (default: most recent or session picker)             |
 | `--replay`         | Replay existing events from the beginning before streaming live                      |
 | `--no-mouse`       | Start with mouse capture disabled so terminal text selection works (toggle with `M`) |
+| `--no-color`       | Disable colored output for any command (also honors `NO_COLOR`)                      |
 
 ### Examples
 
@@ -150,7 +151,7 @@ This feature was contributed by [@B33pBeeps](https://github.com/B33pBeeps) (Juan
 | `--type <types>`      | Comma list: `url`, `path`, `command`, `plan` (default: all). Aliases include `urls`, `files`, `cmds`, and `plans` |
 | `--limit <n>`         | Positive integer maximum items per type                                                                           |
 | `-i`, `--interactive` | Interactive picker; Enter opens URLs and copies paths, commands, or plans                                         |
-| `--json`              | Emit grouped JSON for scripting                                                                                   |
+| `--json`              | Emit grouped JSON for scripting; cannot be combined with `-i`                                                     |
 
 Global flags `--project` and `--provider` also apply. `--provider claude-code` reads Claude Code only, `--provider codex` reads Codex only, and `auto` reads both. Invalid `--type` or `--limit` values fail fast with a clear error. OpenCode extraction is not supported yet.
 
@@ -596,7 +597,7 @@ Browse and select from recent agent sessions. The detail pane has seven tabs:
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Summary**    | Token usage, cost, duration, model, and session metadata                                                                                                    |
 | **Timeline**   | Chronological activity feed with tool calls, messages, and events                                                                                           |
-| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `f` to filter node types |
+| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `F` to filter node types |
 | **Tools**      | Breakdown of tool usage with counts and categories                                                                                                          |
 | **Files**      | Files touched during the session                                                                                                                            |
 | **Agents**     | Subagent activity and delegation chain                                                                                                                      |
@@ -691,6 +692,13 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 | --- | ---------------------------------------------- |
 | `n` | Generate or retry AI narrative for the session |
 
+### Plans Panel
+
+| Key | Action                                                         |
+| --- | -------------------------------------------------------------- |
+| `S` | Cycle plan source filter: all → claude-code → opencode → codex |
+| `c` | Copy the selected plan's markdown to the clipboard             |
+
 ### Actions
 
 | Key | Action                                                                                    |
@@ -747,7 +755,7 @@ Press `f` to toggle session filtering, which limits the side list to items from 
 
 ## Shared Data Layer
 
-The CLI reads from the same `~/.config/sidekick/` directory as the VS Code extension:
+The CLI reads from the same `~/.config/sidekick/` directory as the VS Code extension. `SIDEKICK_CONFIG_DIR` overrides that root for the CLI, so the paths below are defaults rather than fixed locations:
 
 | File                                      | Contents                                                                              |
 | ----------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -761,7 +769,7 @@ The CLI reads from the same `~/.config/sidekick/` directory as the VS Code exten
 | `quota-snapshots.json`                    | Cached rate-limit snapshots per provider/account                                      |
 | `error-history.json`                      | Categorized per-session error rollups for post-mortem forensics                       |
 
-Any data written by the VS Code extension is immediately visible in the CLI, and vice versa.
+Any data written by the VS Code extension is visible in the CLI, and vice versa. One-shot commands read the files fresh on every run; the dashboard re-reads persisted project data every 15 seconds, or immediately when you press `R`.
 
 ## VS Code Integration
 

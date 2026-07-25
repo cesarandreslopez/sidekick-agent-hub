@@ -16,18 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A bare `sidekick` printed full help to stderr with exit 1, breaking `sidekick | less` and any script checking the exit code. It now writes to stdout and exits 0
 - `sidekick --help` and `sidekick --version` made a network request and created `~/.config/sidekick/accounts/` before printing anything, because the startup side effects ran at module scope
 - `sidekick --no-color` was rejected as an unknown option, even though chalk already honored it, `NO_COLOR`, and a non-TTY stdout
+- Printing help for a bare invocation ran before Commander parsed the argv, which skipped its validation too: `sidekick --provider bogus` and `sidekick --project` (missing its value) exited 0 with help instead of reporting the error. Help for a bare or flag-only invocation is now a root action handler, so `sidekick | less` still works without disarming the option checks, and `sidekick bogus` still reports an unknown command
 - Switching to a pending session was impossible from the Plans panel: it bound `s` with no condition, so the panel's handler fired whenever an item was selected, which on Plans is always. The Sessions panel shadowed the global session filter on its Mind Map tab the same way
 - When the item list shrank under the cursor — live event churn, or typing into the filter — the detail tab and scroll position jumped back to the top of the first tab
 - The detail tab bar could highlight a tab whose content was not being rendered
+- The detail pane could render empty beneath a "▲ (N more)" indicator. The scroll offset survives a list shrinking under the cursor, so it can outlive the content it was measured against; it is now clamped to whatever content it lands on
 - On the splash screen, panel digits 1 and 2 did nothing while 3 through 8 entered the dashboard
 - Only the newest toast was rendered, so a quota alert landing next to a context compaction showed one message and silently dropped the other
 - `parseBlessedTags.test.tsx` had never run: the vitest include glob was `*.test.ts`, which does not match `.test.tsx`. That is 15 tests covering the tag parser every rendered string flows through
+- `vitest.config.ts` declared `define` nested under `test`, where Vitest ignores it, so the `__CLI_VERSION__` injection its comment describes was inert and the next test importing `cli.ts` or `StatusBar.tsx` would have failed on a `ReferenceError`
 - `sidekick extract -i --json` silently ignored `--json`; it is now rejected, and `extract -i` degrades to plain output when not attached to a terminal
 
 ### Added
 
-- `R` refreshes persisted project data on demand, and data auto-refreshes every 15 seconds. The refresh is gated by a content fingerprint, so an unchanged project schedules no re-render at all
-- A status-bar badge for data health, covering load failures, watcher errors, in-flight refreshes, and staleness
+- `R` refreshes persisted project data on demand, and data auto-refreshes every 15 seconds. The refresh is gated by a content fingerprint, so an unchanged project schedules no re-render at all. Plan progress is part of that fingerprint: a plan record is replaced in place and keeps its `createdAt` with no `completedAt` while it runs, so a timestamp-only signature could not see steps advancing and `R` would report "Project data is up to date" against a stale Plans panel
+- A status-bar badge for data health, covering load failures, watcher errors, in-flight refreshes, and staleness. A watcher error expires from the badge 60 seconds after the last failure, matching the watcher's own treatment of these errors as recoverable — it closes the handle and degrades to catch-up polling — so one transient hiccup cannot latch the badge for the life of the process and hide the staleness signal behind it
 - Toasts stack up to three
 - `R`, `p`, and `s` are listed in the help overlay; `p` and `s` were previously documented only in the README
 

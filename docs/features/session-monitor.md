@@ -6,7 +6,7 @@ Monitor your coding agent sessions in real-time with a comprehensive analytics d
 
 ## Accessing the Dashboard
 
-Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views.
+Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views. Session Analytics is expanded on first run; Mind Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream start collapsed — click a section header to expand one, and VS Code remembers your layout from then on. With `sidekick.enableSessionMonitoring` set to `false`, those eight views are hidden entirely and Session Analytics shows a placeholder that can turn monitoring back on.
 
 ## Session Analytics Dashboard
 
@@ -140,7 +140,7 @@ The monitor automatically discovers sessions based on your configured provider. 
 
 | Setting                            | Default | Description                                                        |
 | ---------------------------------- | ------- | ------------------------------------------------------------------ |
-| `sidekick.enableSessionMonitoring` | `true`  | Enable/disable session monitoring                                  |
+| `sidekick.enableSessionMonitoring` | `true`  | Enable/disable session monitoring (requires a window reload)       |
 | `sidekick.sessionProvider`         | `auto`  | Which agent to monitor: `auto`, `claude-code`, `opencode`, `codex` |
 
 ## Accessibility

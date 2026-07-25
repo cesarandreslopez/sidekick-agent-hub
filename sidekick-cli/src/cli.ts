@@ -353,9 +353,17 @@ program.addCommand(handoffCmd);
 // 1, which breaks `sidekick | less` and makes every script think the tool
 // failed. outputHelp() (not helpInformation()) is what composes the
 // addHelpText('after', ...) example block.
+//
+// This is a root action handler rather than a pre-parse short-circuit so that
+// Commander still validates the global options: printing help before parsing
+// turned `sidekick --provider bogus` and `sidekick --project` (missing its
+// value) into silent exit 0. Registering it only when there is no subcommand
+// token keeps `sidekick bogus` reporting "unknown command" instead of
+// Commander's "too many arguments", which is what a root action would cause.
 if (commandToken === undefined) {
-  program.outputHelp();
-  process.exit(0);
+  program.action(() => {
+    program.outputHelp();
+  });
 }
 
 program.parseAsync().catch((error: unknown) => {

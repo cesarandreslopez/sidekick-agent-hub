@@ -63,6 +63,18 @@ describe('config directory resolution', () => {
     expect(getConfigDir()).toBe(path.resolve('./relative-config'));
   });
 
+  it('agrees with the environment variable on a padded path', () => {
+    // A value forwarded from a config file or shell variable can carry
+    // whitespace. Resolving it untrimmed makes the padding a relative segment,
+    // so the root silently lands under cwd instead of where it was pointed.
+    setConfigDir('  /tmp/sidekick-padded-root  ');
+    expect(getConfigDir()).toBe(path.resolve('/tmp/sidekick-padded-root'));
+
+    setConfigDir(null);
+    vi.stubEnv(CONFIG_DIR_ENV_VAR, '  /tmp/sidekick-padded-root  ');
+    expect(getConfigDir()).toBe(path.resolve('/tmp/sidekick-padded-root'));
+  });
+
   it('ignores a blank environment variable', () => {
     vi.stubEnv(CONFIG_DIR_ENV_VAR, '   ');
     expect(getConfigDir()).toBe(getDefaultConfigDir());

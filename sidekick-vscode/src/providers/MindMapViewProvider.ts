@@ -1805,15 +1805,15 @@ ${getGraphLegendHtml()}
         });
       }
 
-      // Legend hover-to-highlight and click-to-lock
-      const legendTypeMap = ['session','file','tool','todo','subagent','directory','command','task','plan','knowledge-note'];
+      // Legend hover-to-highlight and click-to-lock. Each row carries its own
+      // node type in data-node-type, so nothing here depends on legend order.
       let lockedLegendType = null;
       const legendItems = document.querySelectorAll('.legend-item');
 
       function applyLegendHighlight(nodeType) {
         // Dim non-active legend items
-        legendItems.forEach(function(li, i) {
-          if (legendTypeMap[i] !== nodeType) {
+        legendItems.forEach(function(li) {
+          if (li.dataset.nodeType !== nodeType) {
             li.classList.add('dimmed');
           } else {
             li.classList.remove('dimmed');
@@ -1856,8 +1856,9 @@ ${getGraphLegendHtml()}
         labelGroup.selectAll('text').style('opacity', null);
       }
 
-      legendItems.forEach(function(item, idx) {
-        const nodeType = legendTypeMap[idx];
+      legendItems.forEach(function(item) {
+        const nodeType = item.dataset.nodeType;
+        if (!nodeType) return;
 
         item.addEventListener('mouseenter', function() {
           if (lockedLegendType && lockedLegendType !== nodeType) return;
