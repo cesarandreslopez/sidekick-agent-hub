@@ -273,4 +273,70 @@ describe('packaging contract', () => {
       expect(pkgRequire.resolve(specifier)).toBe(resolvedPath);
     }
   });
+
+  // `files: ["dist"]` excluded both of these, and npm only auto-includes a
+  // LICENSE from the package directory — so the published tarball carried no
+  // license text and no changelog at all.
+  it('ships license and changelog text in the published tarball', () => {
+    const pkg = require(path.join(pkgRoot, 'package.json'));
+    expect(existsSync(path.join(pkgRoot, 'LICENSE'))).toBe(true);
+    expect(existsSync(path.join(pkgRoot, 'CHANGELOG.md'))).toBe(true);
+    expect(pkg.files).toContain('CHANGELOG.md');
+    expect(pkg.files).toContain('LICENSE');
+  });
+
+  it('declares the metadata npm and consumers rely on', () => {
+    const pkg = require(path.join(pkgRoot, 'package.json'));
+    // `directory` is what points npm's source link at this package rather
+    // than the monorepo root.
+    expect(pkg.repository?.directory).toBe('sidekick-shared');
+    expect(pkg.repository?.url).toContain('sidekick-agent-hub');
+    expect(pkg.bugs?.url).toContain('/issues');
+    expect(pkg.homepage).toBeTruthy();
+    expect(pkg.author?.name).toBeTruthy();
+    expect(pkg.license).toBe('MIT');
+    expect(Array.isArray(pkg.keywords)).toBe(true);
+    expect(pkg.keywords.length).toBeGreaterThan(0);
+    // zod 4 is the binding constraint, matching the sibling CLI.
+    expect(pkg.engines?.node).toBe('>=20.0.0');
+  });
+
+  // typesVersions is the Node10-resolution fallback for consumers whose
+  // tsconfig still uses `moduleResolution: "node"`, which cannot read
+  // `exports` at all. Modern resolvers ignore it when `exports` is present.
+  it('typesVersions covers every non-wildcard exports subpath', () => {
+    const pkg = require(path.join(pkgRoot, 'package.json'));
+    const subpaths = Object.keys(pkg.exports)
+      .filter((k) => k !== '.' && k !== './package.json' && !k.includes('*'))
+      .map((k) => k.slice(2));
+
+    expect(subpaths.length).toBeGreaterThan(0);
+    for (const sub of subpaths) {
+      const entry = pkg.typesVersions['*'][sub];
+      expect(entry, `typesVersions is missing "${sub}"`).toBeDefined();
+      expect(existsSync(path.join(pkgRoot, entry[0]))).toBe(true);
+      // Must agree with what the exports map itself declares as `types`.
+      expect(entry[0]).toBe(pkg.exports[`./${sub}`].types.replace(/^\.\//, ''));
+    }
+  });
+
+  it('has no typesVersions catch-all that would shadow root resolution', () => {
+    // A `"*": ["dist/*"]` entry makes TS consult typesVersions for the bare
+    // specifier and stop honoring the top-level `types` field.
+    const pkg = require(path.join(pkgRoot, 'package.json'));
+    expect(Object.keys(pkg.typesVersions['*'])).not.toContain('*');
+  });
+
+  // The legacy z.ai estimator stays reachable through the ./dist/* wildcard,
+  // so the only signal a consumer gets is the JSDoc tag in the .d.ts.
+  it('marks every legacy z.ai export as deprecated in the published types', async () => {
+    for (const file of ['zaiQuota.d.ts', 'zaiQuotaWatcher.d.ts']) {
+      const src = await fs.readFile(path.join(distDir, file), 'utf8');
+      const exportCount = (src.match(/^export (declare|interface|type|const|class)/gm) ?? [])
+        .length;
+      const tagCount = (src.match(/@deprecated/g) ?? []).length;
+      expect(exportCount, `${file} has no exports to check`).toBeGreaterThan(0);
+      expect(tagCount, `${file} has untagged exports`).toBeGreaterThanOrEqual(exportCount);
+    }
+  });
 });

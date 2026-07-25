@@ -2,6 +2,34 @@
   "name": "sidekick-shared",
   "version": "0.24.3",
   "description": "Shared data access layer for Sidekick — readers, types, providers, credentials, quota",
+  "keywords": [
+    "claude-code",
+    "codex-cli",
+    "opencode",
+    "session-monitor",
+    "token-usage",
+    "quota",
+    "jsonl",
+    "ai-coding-assistant",
+    "agent-hub",
+    "zod-schemas"
+  ],
+  "homepage": "https://cesarandreslopez.github.io/sidekick-agent-hub/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cesarandreslopez/sidekick-agent-hub",
+    "directory": "sidekick-shared"
+  },
+  "bugs": {
+    "url": "https://github.com/cesarandreslopez/sidekick-agent-hub/issues"
+  },
+  "author": {
+    "name": "Cesar Andres Lopez",
+    "email": "cesarandreslopez@gmail.com"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -47,8 +75,38 @@
     },
     "./package.json": "./package.json"
   },
+  "typesVersions": {
+    "*": {
+      "browser": [
+        "dist/browser.d.ts"
+      ],
+      "node": [
+        "dist/node.d.ts"
+      ],
+      "schemas": [
+        "dist/schemas/index.d.ts"
+      ],
+      "phrases": [
+        "dist/phrases.d.ts"
+      ],
+      "modelContext": [
+        "dist/modelContext.d.ts"
+      ],
+      "modelInfo": [
+        "dist/modelInfo.d.ts"
+      ],
+      "formatting": [
+        "dist/formatting.d.ts"
+      ],
+      "statusline": [
+        "dist/statusline/index.d.ts"
+      ]
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {

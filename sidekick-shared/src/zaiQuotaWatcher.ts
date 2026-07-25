@@ -49,6 +49,10 @@ type SnapshotWriter = (
 ) => void;
 type HistoryAppender = (sample: QuotaHistorySample) => void | Promise<void>;
 
+/**
+ * @deprecated Unreachable from every package entrypoint and no longer used by
+ * product code. Use `resolveZaiQuota()` from `zaiQuotaApi` instead.
+ */
 export interface ZaiQuotaWatcherOptions {
   /** Configured tier. Default: `'auto'` (heuristic from observed usage). */
   tier?: ZaiTier | 'auto';
@@ -87,6 +91,9 @@ function enrichZaiState(state: QuotaState): ProviderQuotaState<'zai'> {
  * for every observed z.ai assistant turn, and `ingestError` whenever a
  * z.ai business error is observed. The watcher debounces recompute and
  * emits via `onUpdate` / `onQuotaUpdate`.
+ *
+ * @deprecated Unreachable from every package entrypoint and no longer used by
+ * product code. Use `resolveZaiQuota()` from `zaiQuotaApi` instead.
  */
 export class ZaiQuotaWatcher implements Disposable {
   private readonly tier: ZaiTier | 'auto';

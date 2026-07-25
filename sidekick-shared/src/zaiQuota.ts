@@ -30,6 +30,10 @@ import type { QuotaState, QuotaWindow } from './quota';
  * "One prompt ≈ one query; each prompt is estimated to invoke the model
  * 15–20 times." We use the midpoint (17.5) when converting observed
  * assistant turns into prompt equivalents.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export const ZAI_TIER_BUDGETS = {
   lite: { fiveHour: 80, weekly: 400 },
@@ -37,6 +41,11 @@ export const ZAI_TIER_BUDGETS = {
   max: { fiveHour: 1600, weekly: 8000 },
 } as const satisfies Record<ZaiTier, { fiveHour: number; weekly: number }>;
 
+/**
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
+ */
 export type ZaiTier = 'lite' | 'pro' | 'max';
 
 /**
@@ -44,6 +53,10 @@ export type ZaiTier = 'lite' | 'pro' | 'max';
  * Used to convert accumulated assistant turns into prompt equivalents.
  * Calibration note: this constant may need per-tier adjustment after
  * real-world validation against the z.ai web UI.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export const ZAI_PROMPT_INVOCATIONS = 17.5;
 
@@ -53,10 +66,24 @@ const SEVEN_DAY_MS = 7 * 86_400_000;
 /**
  * Provider IDs that OpenCode tags on z.ai-routed messages.
  * `zai-coding-plan` is the Coding Plan key; `zai` is the bare API key.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export const ZAI_PROVIDER_IDS = ['zai', 'zai-coding-plan'] as const;
+/**
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
+ */
 export type ZaiProviderId = (typeof ZAI_PROVIDER_IDS)[number];
 
+/**
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
+ */
 export function isZaiProviderId(value: unknown): value is ZaiProviderId {
   return value === 'zai' || value === 'zai-coding-plan';
 }
@@ -70,6 +97,10 @@ export function isZaiProviderId(value: unknown): value is ZaiProviderId {
  * provider comparability; cost is omitted (always 0 for z.ai).
  *
  * `timestampMs` is when the assistant turn completed (epoch milliseconds).
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export interface ZaiAssistantTurn {
   timestampMs: number;
@@ -83,6 +114,11 @@ export interface ZaiAssistantTurn {
 
 // ── Accumulated usage ──
 
+/**
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
+ */
 export interface ZaiAccumulatedUsage {
   /** Number of z.ai assistant turns inside the 5-hour window. */
   fiveHourTurns: number;
@@ -106,6 +142,10 @@ export interface ZaiAccumulatedUsage {
  * Sums the token fields of a single turn into a scalar.
  * Cache reads are weighted at 0.1× (Anthropic convention) to avoid
  * over-counting repeated context. Output and reasoning tokens are weighted 1×.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function turnTokenWeight(
   turn: Pick<
@@ -128,6 +168,10 @@ export function turnTokenWeight(
  * Pure & stateless: the caller is responsible for passing the relevant turns.
  * Turns outside the 7-day window are ignored; turns inside the 7-day window
  * but outside the 5-hour window still count toward weekly usage.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function accumulateZaiUsage(
   turns: readonly ZaiAssistantTurn[],
@@ -181,6 +225,10 @@ export function accumulateZaiUsage(
  * the user must be on a higher tier. This under-detects at the start of a
  * weekly cycle (a Max user looks identical to a Lite user until they cross
  * 400 prompts/week), so callers should still expose an explicit override.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function resolveZaiTier(
   configured: ZaiTier | 'auto',
@@ -195,6 +243,11 @@ export function resolveZaiTier(
 
 // ── Quota-state inference ──
 
+/**
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
+ */
 export interface InferZaiQuotaStateOptions {
   /** ISO timestamp to stamp on the sample. Default: now. */
   capturedAt?: string;
@@ -219,6 +272,10 @@ export interface InferZaiQuotaStateOptions {
  *   - `sevenDay.resetsAt` ← first turn in window + 7d (documented as
  *     "7 days from order time" — order time is unknown, so this is a
  *     lower bound at best).
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function inferZaiQuotaState(
   accumulated: ZaiAccumulatedUsage,
@@ -273,8 +330,18 @@ export function inferZaiQuotaState(
 
 // ── Error-code trapping ──
 
+/**
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
+ */
 export type ZaiQuotaErrorKind = 'exhausted' | 'fup' | 'expired' | 'invalid';
 
+/**
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
+ */
 export interface ZaiQuotaError {
   kind: ZaiQuotaErrorKind;
   /** ISO timestamp parsed from `${next_flush_time}` in the error message, if present. */
@@ -305,6 +372,10 @@ const ZAI_ERROR_CODES: Record<string, ZaiQuotaErrorKind> = {
  * `YYYY-MM-DD HH:mm:ss` form defensively.
  *
  * Returns `null` when the code is not a quota-related business error.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function parseZaiQuotaError(error: {
   code?: string | number;
@@ -328,6 +399,10 @@ export function parseZaiQuotaError(error: {
  * Handles ISO 8601 (`2025-01-31T14:00:00Z`), space-separated
  * (`2025-01-31 14:00:00`), and epoch-seconds (1234567890) forms.
  * Returns undefined when no parseable timestamp is found.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function extractNextFlushTime(message: string): string | undefined {
   if (!message) return undefined;
@@ -366,6 +441,10 @@ export function extractNextFlushTime(message: string): string | undefined {
 /**
  * Builds an unavailable z.ai `QuotaState` for the cold-start case where
  * no z.ai traffic has been observed yet.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function makeUnavailableZaiQuotaState(
   error: string = 'No z.ai usage observed yet',
@@ -393,6 +472,10 @@ export function makeUnavailableZaiQuotaState(
  * Shape of a row returned by `OpenCodeDatabase.getAssistantMessagesByProviderId`.
  * Defined here to keep the sidekick-shared helper self-contained without
  * leaking the OpenCode db module into the public quota surface.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export interface ZaiOpenCodeRow {
   timeCreated: number;
@@ -414,6 +497,10 @@ export interface ZaiOpenCodeRow {
  *
  * Returns `{ turns, errors }` so callers can replay them through
  * `ZaiQuotaWatcher.ingestAssistantTurns` and `ingestError`.
+ *
+ * @deprecated Use `resolveZaiQuota()` from `zaiQuotaApi`, which reads z.ai's
+ * authoritative quota endpoint. This observed-traffic estimator is retained
+ * for backward compatibility only and drifts from actual billing.
  */
 export function rowsToZaiTurnsAndErrors(rows: readonly ZaiOpenCodeRow[]): {
   turns: ZaiAssistantTurn[];
