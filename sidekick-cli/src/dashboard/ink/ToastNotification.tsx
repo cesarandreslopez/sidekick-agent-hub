@@ -27,9 +27,11 @@ interface ToastEntry {
 
 interface ToastNotificationProps {
   toast: ToastEntry;
+  /** Stack position from the top; each toast occupies three rows. */
+  row?: number;
 }
 
-export function ToastNotification({ toast }: ToastNotificationProps): React.ReactElement {
+export function ToastNotification({ toast, row = 0 }: ToastNotificationProps): React.ReactElement {
   const { columns } = useTerminalSize();
   const color = SEVERITY_COLOR[toast.severity] || 'cyan';
   const icon = SEVERITY_ICON[toast.severity] || '\u25CF';
@@ -41,7 +43,7 @@ export function ToastNotification({ toast }: ToastNotificationProps): React.Reac
     <Box
       position="absolute"
       marginLeft={Math.max(0, columns - truncMsg.length - 8)}
-      marginTop={0}
+      marginTop={row * 3}
       borderStyle="single"
       borderColor={color}
       paddingX={1}

@@ -11,6 +11,7 @@ import type { UpdateInfo } from '../UpdateCheckService';
 import type { ProviderStatusState } from '../ProviderStatusService';
 import { BRAND_INLINE } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';
+import type { StatusBadge } from './dataStatus';
 
 interface StatusBarProps {
   eventCount: number;
@@ -26,6 +27,8 @@ interface StatusBarProps {
   providerStatus?: ProviderStatusState | null;
   openaiStatus?: ProviderStatusState | null;
   mouseEnabled?: boolean;
+  /** Data-source health badge, or null when everything is healthy and fresh. */
+  dataBadge?: StatusBadge | null;
 }
 
 export function StatusBar({
@@ -42,6 +45,7 @@ export function StatusBar({
   providerStatus,
   openaiStatus,
   mouseEnabled,
+  dataBadge,
 }: StatusBarProps): React.ReactElement {
   const evtLabel = eventCount > 0 ? `${eventCount} events` : 'waiting...';
 
@@ -113,6 +117,12 @@ export function StatusBar({
           <>
             <Text dimColor> {'\u2502'} </Text>
             <Text color="yellow">MOUSE OFF</Text>
+          </>
+        )}
+        {dataBadge && (
+          <>
+            <Text dimColor> {'\u2502'} </Text>
+            <Text color={dataBadge.color}>{dataBadge.text}</Text>
           </>
         )}
         {filterString && (

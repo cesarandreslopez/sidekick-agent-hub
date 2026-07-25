@@ -597,4 +597,44 @@ describe('navigation', () => {
     handleDashboardInput('', makeKey({ tab: true }), ctx);
     expect(dispatched).toEqual([{ type: 'TOGGLE_FOCUS' }]);
   });
+
+  // ── Refresh (tier 2) ──
+
+  it('R calls onRefresh and confirms with a toast', () => {
+    const onRefresh = vi.fn();
+    const { ctx, addToast } = makeCtx({}, { onRefresh });
+    handleDashboardInput('R', makeKey(), ctx);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(addToast).toHaveBeenCalledWith(expect.stringContaining('Refreshing'), 'info');
+  });
+
+  it('R works on the splash screen', () => {
+    // Staring at an empty dashboard is exactly when you reach for refresh.
+    const onRefresh = vi.fn();
+    const { ctx } = makeCtx({ hasReceivedEvents: false }, { onRefresh });
+    handleDashboardInput('R', makeKey(), ctx);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('R is not shadowable by a panel binding', () => {
+    const panelHandler = vi.fn();
+    const onRefresh = vi.fn();
+    const { ctx } = makeCtx(
+      {},
+      {
+        panel: makePanel({ bindings: [{ key: 'R', handler: panelHandler }] }),
+        onRefresh,
+      },
+    );
+    handleDashboardInput('R', makeKey(), ctx);
+    expect(panelHandler).not.toHaveBeenCalled();
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('R is inert when the host provides no refresh handler', () => {
+    const { ctx, dispatched, addToast } = makeCtx();
+    handleDashboardInput('R', makeKey(), ctx);
+    expect(dispatched).toEqual([]);
+    expect(addToast).not.toHaveBeenCalled();
+  });
 });

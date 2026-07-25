@@ -50,6 +50,9 @@ import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
 import { checkInteractivePreflight, currentTerminalCapabilities } from './interactivePreflight';
 import { readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
+import { staticDataFingerprint } from '../dashboard/staticDataFingerprint';
+import { initialDataStatus, type DataStatus } from '../dashboard/ink/dataStatus';
+import type { DashboardNotice } from '../dashboard/ink/notice';
 import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
 import { createDashboardSignalHandler, selectSessionProvider } from './dashboardLifecycle';
 
@@ -147,6 +150,20 @@ export async function persistPlan(state: DashboardState, workspacePath: string):
   await writePlans(project.canonicalSlug, [record, ...withoutCurrent]);
 }
 
+/** All-zero project data, used before the first load and after a failed one. */
+function emptyStaticData(): StaticData {
+  return {
+    sessions: [],
+    tasks: [],
+    decisions: [],
+    notes: [],
+    plans: [],
+    totalTokens: 0,
+    totalCost: 0,
+    totalSessions: 0,
+  };
+}
+
 export async function dashboardAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   // Checked before anything is constructed, so a piped invocation allocates
   // nothing and has nothing to tear down. Without this, Ink renders its
@@ -237,21 +254,80 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     return;
   }
 
-  // Load static data
-  let staticData: StaticData;
-  try {
-    staticData = await loadStaticData(workspacePath);
-  } catch {
-    staticData = {
-      sessions: [],
-      tasks: [],
-      decisions: [],
-      notes: [],
-      plans: [],
-      totalTokens: 0,
-      totalCost: 0,
-      totalSessions: 0,
-    };
+  // Set once the Ink instance exists; scheduleRender is a no-op before that,
+  // since the initial load runs ahead of the first render.
+  let renderReady = false;
+  let stopped = false;
+
+  // ── Persisted project data ──
+  // Loaded once at startup used to be the whole story, so tasks, notes,
+  // decisions, and plans written by the VS Code extension or another terminal
+  // never appeared until the dashboard was restarted.
+  let staticData: StaticData = emptyStaticData();
+  let staticFingerprint = '';
+  let refreshInFlight = false;
+  const dataStatus: DataStatus = initialDataStatus();
+
+  let noticeSeq = 0;
+  let notice: DashboardNotice | null = null;
+  function pushNotice(message: string, severity: 'error' | 'warning' | 'info'): void {
+    notice = { id: ++noticeSeq, message, severity };
+    scheduleRender();
+  }
+
+  async function refreshStaticData(trigger: 'initial' | 'manual' | 'auto'): Promise<void> {
+    if (refreshInFlight || stopped) return;
+    refreshInFlight = true;
+    dataStatus.refreshing = true;
+    if (trigger !== 'auto') scheduleRender();
+    try {
+      const next = await loadStaticData(workspacePath);
+      const nextFingerprint = staticDataFingerprint(next);
+      dataStatus.error = null;
+      dataStatus.loadedAt = Date.now();
+      if (nextFingerprint !== staticFingerprint) {
+        staticFingerprint = nextFingerprint;
+        // New object identity only when the content actually moved, so a quiet
+        // project costs a few JSON reads and no re-render at all.
+        staticData = next;
+        if (trigger === 'manual') pushNotice('Project data refreshed', 'info');
+      } else if (trigger === 'manual') {
+        pushNotice('Project data is up to date', 'info');
+      }
+    } catch (err) {
+      dataStatus.error = err instanceof Error ? err.message : String(err);
+      // Background polls stay silent; they would otherwise nag about a
+      // condition the user has already been told about.
+      if (trigger !== 'auto') {
+        pushNotice(`Could not load project data: ${dataStatus.error}`, 'error');
+      }
+    } finally {
+      refreshInFlight = false;
+      dataStatus.refreshing = false;
+      scheduleRender();
+    }
+  }
+
+  // A malformed session file fires onError per line, so an unthrottled toast
+  // would be a storm. The status badge still reflects the latest error.
+  let lastWatcherErrorAt = 0;
+  const WATCHER_ERROR_TOAST_MS = 60_000;
+  function reportWatcherError(err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    dataStatus.watcherError = message;
+    const now = Date.now();
+    if (now - lastWatcherErrorAt > WATCHER_ERROR_TOAST_MS) {
+      lastWatcherErrorAt = now;
+      pushNotice(`Session read error: ${message}`, 'error');
+    }
+    scheduleRender();
+  }
+
+  await refreshStaticData('initial');
+  if (dataStatus.error) {
+    // Non-fatal: open with the zeroed fallback, but say so rather than looking
+    // like an empty project.
+    pushNotice(`Project data unavailable: ${dataStatus.error}`, 'error');
   }
 
   // Create dashboard state and panels
@@ -350,9 +426,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
             scheduleRender();
           },
-          onError: (_err: Error) => {
-            /* non-fatal */
-          },
+          onError: (err: Error) => reportWatcherError(err),
         },
       });
       watcher = result.watcher;
@@ -394,6 +468,14 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     lastNotifiedSessionPath = newSessionPath;
     scheduleRender();
   }
+
+  // Auto-refresh persisted project data. The fingerprint gate means an
+  // unchanged project keeps the previous object identity and schedules no
+  // render at all, so this costs a handful of JSON reads per tick.
+  const STATIC_REFRESH_MS = 15_000;
+  const staticRefreshInterval = setInterval(() => {
+    void refreshStaticData('auto');
+  }, STATIC_REFRESH_MS);
 
   const sessionPollInterval = setInterval(() => {
     try {
@@ -486,15 +568,22 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         scheduleRender();
       },
       onGenerateReport: generateReport,
+      onRefresh: () => {
+        void refreshStaticData('manual');
+      },
+      // Snapshot: the mutable status object must not leak into React props.
+      dataStatus: { ...dataStatus },
+      notice,
       mouseInitiallyEnabled,
       onMouseSettingChange: persistMouseSetting,
     }),
   );
+  renderReady = true;
 
   // Re-render bridge: throttled rerender with new props
   let renderTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleRender() {
-    if (renderTimer) return;
+    if (!renderReady || renderTimer) return;
     renderTimer = setTimeout(() => {
       renderTimer = null;
       const metrics = state.getMetrics();
@@ -518,6 +607,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
             scheduleRender();
           },
           onGenerateReport: generateReport,
+          onRefresh: () => {
+            void refreshStaticData('manual');
+          },
+          dataStatus: { ...dataStatus },
+          notice,
           mouseInitiallyEnabled,
           onMouseSettingChange: persistMouseSetting,
         }),
@@ -542,13 +636,17 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   });
 
   // Cleanup handler
-  let stopped = false;
   function cleanup() {
     if (stopped) return;
     stopped = true;
     persistPlan(state, workspacePath).catch(() => {});
     try {
       clearInterval(sessionPollInterval);
+    } catch {
+      /* ignore */
+    }
+    try {
+      clearInterval(staticRefreshInterval);
     } catch {
       /* ignore */
     }
@@ -628,9 +726,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
           scheduleRender();
         },
-        onError: (_err: Error) => {
-          // Errors are non-fatal for the dashboard
-        },
+        onError: (err: Error) => reportWatcherError(err),
       },
     });
     watcher = result.watcher;

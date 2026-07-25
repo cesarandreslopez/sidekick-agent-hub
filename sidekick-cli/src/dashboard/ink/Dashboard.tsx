@@ -40,6 +40,9 @@ import { handleDashboardInput } from './inputDispatch';
 import { itemTimestampMs, parseDateExpression } from '../dateFilterExpression';
 import { newTimelineEntries } from './timelineAlerts';
 import { getPanelItemsOnce } from './panelItems';
+import { visibleToasts } from './toastStack';
+import { describeDataStatus, type DataStatus } from './dataStatus';
+import type { DashboardNotice } from './notice';
 
 const changelogEntries = parseChangelog(changelogMd, 5);
 
@@ -66,6 +69,12 @@ interface DashboardProps {
   mouseInitiallyEnabled?: boolean;
   /** Called when the user toggles mouse capture with 'M' (for persistence). */
   onMouseSettingChange?: (enabled: boolean) => void;
+  /** Reload persisted project data from disk. Bound to 'R'. */
+  onRefresh?: () => void;
+  /** Health of the data sources, surfaced as a status-bar badge. */
+  dataStatus?: DataStatus;
+  /** One-shot host message to raise as a toast. */
+  notice?: DashboardNotice | null;
 }
 
 // ── Component ──
@@ -81,6 +90,9 @@ export function Dashboard({
   onGenerateReport,
   mouseInitiallyEnabled,
   onMouseSettingChange,
+  onRefresh,
+  dataStatus,
+  notice,
 }: DashboardProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, initialState, (base) => ({
     ...base,
@@ -138,6 +150,17 @@ export function Dashboard({
       dispatch({ type: 'REMOVE_TOAST', id });
     }, durations[severity]);
   }, []);
+
+  // ── Host notices ──
+  // Keyed on the monotonic id, not the message: the host rebuilds props on
+  // every render tick, so a message-keyed effect would re-toast continuously.
+  const lastNoticeIdRef = useRef(0);
+  useEffect(() => {
+    if (notice && notice.id !== lastNoticeIdRef.current) {
+      lastNoticeIdRef.current = notice.id;
+      addToast(notice.message, notice.severity);
+    }
+  }, [notice, addToast]);
 
   // ── Quota alert detection ──
   useEffect(() => {
@@ -534,6 +557,7 @@ export function Dashboard({
         addToast,
         toggleSessionFilter,
         onMouseSettingChange,
+        onRefresh,
         onGenerateReport,
         onTogglePin,
         isPinned,
@@ -563,6 +587,7 @@ export function Dashboard({
             sessionFilter={null}
             filterString=""
             mouseEnabled={state.mouseEnabled}
+            dataBadge={dataStatus ? describeDataStatus(dataStatus, Date.now()) : null}
           />
         </Box>
       </MouseProvider>
@@ -648,6 +673,7 @@ export function Dashboard({
           updateInfo={metrics.updateInfo}
           providerStatus={metrics.providerStatus}
           openaiStatus={metrics.openaiStatus}
+          dataBadge={dataStatus ? describeDataStatus(dataStatus, Date.now()) : null}
           mouseEnabled={state.mouseEnabled}
         />
 
@@ -665,9 +691,10 @@ export function Dashboard({
         )}
 
         {/* Toasts */}
-        {state.toasts.length > 0 && (
-          <ToastNotification toast={state.toasts[state.toasts.length - 1]} />
-        )}
+        {state.toasts.length > 0 &&
+          visibleToasts(state.toasts).map((toast, row) => (
+            <ToastNotification key={toast.id} toast={toast} row={row} />
+          ))}
       </Box>
     </MouseProvider>
   );

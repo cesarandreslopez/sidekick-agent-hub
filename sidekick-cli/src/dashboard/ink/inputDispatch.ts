@@ -8,8 +8,8 @@
  *   0. Ctrl+C — hard exit, unconditional.
  *   1. Active overlay — owns the whole key namespace (the filter overlay
  *      consumes every printable character, including 'q').
- *   2. Structural globals panels may never shadow: q / Esc / ? / digits.
- *      These also work on the splash screen.
+ *   2. Structural globals panels may never shadow: q / Esc / ? / M / R /
+ *      digits. These also work on the splash screen.
  *   3. Focus toggle (Tab) and filter open (/) — require session data.
  *   4. Panel layer — panel-declared keybindings, then action shortcuts,
  *      both honoring their conditions. Reserved keys are ignored here so a
@@ -27,7 +27,7 @@ import { maxDetailScroll } from './detailScroll';
  * Keys panels are not allowed to bind: core navigation, quit, help, filter,
  * and panel-switch digits. Panel bindings/actions on these are ignored.
  */
-const RESERVED_KEYS = new Set([
+export const RESERVED_KEYS = new Set([
   'j',
   'k',
   'g',
@@ -37,6 +37,7 @@ const RESERVED_KEYS = new Set([
   '?',
   '/',
   'M',
+  'R',
   '1',
   '2',
   '3',
@@ -77,6 +78,8 @@ export interface InputDispatchContext {
   toggleSessionFilter: () => void;
   /** Called after the mouse-capture toggle flips, with the new value. */
   onMouseSettingChange?: (enabled: boolean) => void;
+  /** Reload persisted project data from disk. Bound to 'R'. */
+  onRefresh?: () => void;
   onGenerateReport?: () => void;
   onTogglePin?: () => void;
   isPinned?: boolean;
@@ -102,6 +105,7 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     addToast,
     toggleSessionFilter,
     onMouseSettingChange,
+    onRefresh,
     onGenerateReport,
     onTogglePin,
     isPinned,
@@ -249,6 +253,17 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
       'info',
     );
     onMouseSettingChange?.(next);
+    return;
+  }
+
+  // Reload persisted project data (tasks/notes/decisions/plans written by the
+  // VS Code extension or another terminal). Tier 2 so it works on the splash
+  // screen — exactly when an empty dashboard makes you want it — and can never
+  // be shadowed by a panel binding.
+  if (input === 'R') {
+    if (!onRefresh) return;
+    onRefresh();
+    addToast('Refreshing project data…', 'info');
     return;
   }
 
