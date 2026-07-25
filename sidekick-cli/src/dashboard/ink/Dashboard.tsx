@@ -276,7 +276,7 @@ export function Dashboard({
   // Clamp selection
   const clampedSelection = Math.min(state.selectedItemIndex, Math.max(0, currentItems.length - 1));
   if (clampedSelection !== state.selectedItemIndex && currentItems.length > 0) {
-    dispatch({ type: 'SELECT_ITEM', index: clampedSelection });
+    dispatch({ type: 'CLAMP_SELECTION', index: clampedSelection });
   }
 
   // Side list scrolling
@@ -630,7 +630,7 @@ export function Dashboard({
 
             {/* Detail area */}
             <Box flexDirection="column" flexGrow={1}>
-              <DetailTabBar tabs={detailTabs} activeIndex={state.detailTabIndex} />
+              <DetailTabBar tabs={detailTabs} activeIndex={tabIdx} />
               <DetailPane
                 content={detailContent}
                 scrollOffset={state.detailScrollOffset}

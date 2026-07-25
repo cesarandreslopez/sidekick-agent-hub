@@ -368,13 +368,21 @@ describe('splash screen (hasReceivedEvents=false)', () => {
     expect(onGenerateReport).not.toHaveBeenCalled();
   });
 
-  it('digits 1-2 are blocked; higher panels force FIRST_EVENT', () => {
+  it('any panel digit leaves the splash screen', () => {
+    // 1 and 2 used to be inert while 3-8 worked, an undocumented asymmetry.
+    // Sessions falls back to historical records and Tasks reads staticData, so
+    // both render fine with zero metrics.
     const panels = [makePanel(), makePanel({ id: 'p2' }), makePanel({ id: 'p3' })];
-    const { ctx, dispatched } = makeCtx({ hasReceivedEvents: false }, { panels, panel: panels[0] });
-    handleDashboardInput('1', makeKey(), ctx);
-    expect(dispatched).toEqual([]);
-    handleDashboardInput('3', makeKey(), ctx);
-    expect(dispatched).toEqual([
+    const first = makeCtx({ hasReceivedEvents: false }, { panels, panel: panels[0] });
+    handleDashboardInput('1', makeKey(), first.ctx);
+    expect(first.dispatched).toEqual([
+      { type: 'FIRST_EVENT', sessionPrefix: '' },
+      { type: 'SWITCH_PANEL', index: 0 },
+    ]);
+
+    const third = makeCtx({ hasReceivedEvents: false }, { panels, panel: panels[0] });
+    handleDashboardInput('3', makeKey(), third.ctx);
+    expect(third.dispatched).toEqual([
       { type: 'FIRST_EVENT', sessionPrefix: '' },
       { type: 'SWITCH_PANEL', index: 2 },
     ]);
@@ -455,7 +463,9 @@ describe('panel keybindings and action shortcuts', () => {
     expect(toggleSessionFilter).toHaveBeenCalledOnce();
   });
 
-  it("a panel-declared 's' binding wins over the global pending-session switch", () => {
+  it("the global pending-session switch outranks a panel-declared 's' binding", () => {
+    // 's' is reserved: PlansPanel bound it unconditionally, which made
+    // switching sessions from that panel impossible.
     const handler = vi.fn();
     const onSessionSwitch = vi.fn();
     const panels = [makePanel({ bindings: [{ keys: ['s'], label: 'Sort', handler }] })];
@@ -464,8 +474,8 @@ describe('panel keybindings and action shortcuts', () => {
       { panels, panel: panels[0], pendingSessionPath: '/tmp/s.jsonl', onSessionSwitch },
     );
     handleDashboardInput('s', makeKey(), ctx);
-    expect(handler).toHaveBeenCalled();
-    expect(onSessionSwitch).not.toHaveBeenCalled();
+    expect(onSessionSwitch).toHaveBeenCalledWith('/tmp/s.jsonl');
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it("a panel binding can shadow the global 'z' layout toggle", () => {

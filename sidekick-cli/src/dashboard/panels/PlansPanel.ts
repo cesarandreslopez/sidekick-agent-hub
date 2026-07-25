@@ -125,7 +125,8 @@ export class PlansPanel implements SidePanel {
         handler: (item) => this.copyMarkdown(item),
       },
       {
-        key: 's',
+        // 'S', not 's': lowercase s is the reserved global session switch.
+        key: 'S',
         label: `Source: ${this.sourceFilter}`,
         handler: () => this.cycleSource(),
       },

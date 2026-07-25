@@ -683,7 +683,7 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 | Key | Action                                                                                   |
 | --- | ---------------------------------------------------------------------------------------- |
 | `v` | Cycle mind map view: tree → boxed → flow                                                 |
-| `f` | Cycle node filter: all → file → tool → task → subagent → command → plan → knowledge-note |
+| `F` | Cycle node filter: all → file → tool → task → subagent → command → plan → knowledge-note |
 
 ### Session Panel — AI Summary Tab
 
@@ -695,6 +695,7 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 
 | Key | Action                                                                                    |
 | --- | ----------------------------------------------------------------------------------------- |
+| `R` | Refresh persisted project data (tasks, notes, decisions, plans) from disk                 |
 | `r` | Generate HTML report for the current session and open in browser                          |
 | `/` | Open filter overlay — supports substring, fuzzy, regex, and date modes (Tab cycles modes) |
 | `x` | Open context menu for the selected item                                                   |

@@ -188,7 +188,10 @@ export class SessionsPanel implements SidePanel {
         condition: () => this.activeDetailTabIndex === 2,
       },
       {
-        keys: ['f'],
+        // 'F', not 'f': lowercase f opens the global session filter, which is
+        // the primary way to filter from a historical session and has no
+        // alternative on this panel.
+        keys: ['F'],
         label: 'filter nodes',
         handler: () => {
           const idx = MINDMAP_FILTERS.indexOf(this.mindMapFilter);

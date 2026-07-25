@@ -8,7 +8,7 @@
  *   0. Ctrl+C — hard exit, unconditional.
  *   1. Active overlay — owns the whole key namespace (the filter overlay
  *      consumes every printable character, including 'q').
- *   2. Structural globals panels may never shadow: q / Esc / ? / M / R /
+ *   2. Structural globals panels may never shadow: q / Esc / ? / M / R / s /
  *      digits. These also work on the splash screen.
  *   3. Focus toggle (Tab) and filter open (/) — require session data.
  *   4. Panel layer — panel-declared keybindings, then action shortcuts,
@@ -38,6 +38,7 @@ export const RESERVED_KEYS = new Set([
   '/',
   'M',
   'R',
+  's',
   '1',
   '2',
   '3',
@@ -267,10 +268,17 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     return;
   }
 
+  // Switch to a newly-detected session. Tier 2 because session lifecycle is
+  // time-sensitive: when PlansPanel bound 's' as a shadowable global, there
+  // was no way to switch sessions from that panel at all.
+  if (input === 's' && pendingSessionPath && onSessionSwitch) {
+    onSessionSwitch(pendingSessionPath);
+    return;
+  }
+
   // Panel switching (1-9)
   const num = parseInt(input, 10);
   if (num >= 1 && num <= panels.length) {
-    if (!state.hasReceivedEvents && num <= 2) return;
     if (!state.hasReceivedEvents) {
       dispatch({ type: 'FIRST_EVENT', sessionPrefix: '' });
     }
@@ -359,12 +367,6 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   if (input === 'p' && onTogglePin) {
     onTogglePin();
     addToast(isPinned ? 'Session unpinned' : 'Session pinned', 'info');
-    return;
-  }
-
-  // Switch to pending session
-  if (input === 's' && pendingSessionPath && onSessionSwitch) {
-    onSessionSwitch(pendingSessionPath);
     return;
   }
 

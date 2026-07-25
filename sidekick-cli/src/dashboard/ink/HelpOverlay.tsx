@@ -77,7 +77,10 @@ export function HelpOverlay({
 
   rows.push(<Text> </Text>);
   rows.push(<Text bold> General</Text>);
+  rows.push(helpRow('R', 'Refresh project data'));
   rows.push(helpRow('r', 'Generate HTML report'));
+  rows.push(helpRow('p', 'Pin session (stop auto-switch)'));
+  rows.push(helpRow('s', 'Switch to pending session'));
   rows.push(helpRow('M', 'Toggle mouse capture (copy/select)'));
   rows.push(helpRow('V', 'Version & changelog'));
   rows.push(helpRow('?', 'Toggle this help'));

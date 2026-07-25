@@ -47,6 +47,13 @@ export interface DashboardUIState {
 export type Action =
   | { type: 'SWITCH_PANEL'; index: number }
   | { type: 'SELECT_ITEM'; index: number }
+  /**
+   * Move the selection without touching the detail tab or scroll offset.
+   * Used when the list shrinks under the cursor — live event churn, or typing
+   * into the filter — where SELECT_ITEM would yank the user back to the top of
+   * the first tab.
+   */
+  | { type: 'CLAMP_SELECTION'; index: number }
   | { type: 'SET_DETAIL_TAB'; index: number }
   | { type: 'CYCLE_DETAIL_TAB'; direction: 1 | -1; tabCount: number }
   | { type: 'CYCLE_LAYOUT' }
@@ -111,6 +118,9 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
         detailTabIndex: 0,
         detailScrollOffset: 0,
       };
+
+    case 'CLAMP_SELECTION':
+      return { ...state, selectedItemIndex: action.index };
 
     case 'SET_DETAIL_TAB':
       return { ...state, detailTabIndex: action.index, detailScrollOffset: 0 };
