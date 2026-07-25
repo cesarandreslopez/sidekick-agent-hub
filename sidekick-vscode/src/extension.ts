@@ -60,6 +60,7 @@ import { ExplainViewProvider } from './providers/ExplainViewProvider';
 import { ErrorExplanationProvider } from './providers/ErrorExplanationProvider';
 import { ErrorViewProvider } from './providers/ErrorViewProvider';
 import { DashboardViewProvider } from './providers/DashboardViewProvider';
+import { MonitoringDisabledViewProvider } from './providers/MonitoringDisabledViewProvider';
 import { MindMapViewProvider } from './providers/MindMapViewProvider';
 import { TaskBoardViewProvider } from './providers/TaskBoardViewProvider';
 import { PlanBoardViewProvider } from './providers/PlanBoardViewProvider';
@@ -381,7 +382,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const allTimeStats = historicalDataService!.getAllTimeStats();
         if (allTimeStats.sessionCount === 0) {
           log('No historical data found, triggering auto-import');
-          vscode.commands.executeCommand('sidekick.importHistoricalData');
+          vscode.commands.executeCommand('sidekick.importHistoricalData', { silent: true });
         }
       })
       .catch((error) => {
@@ -391,52 +392,63 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register import historical data command
     context.subscriptions.push(
-      vscode.commands.registerCommand('sidekick.importHistoricalData', async () => {
-        if (!historicalDataService) {
-          vscode.window.showErrorMessage('Historical data service not initialized');
-          return;
-        }
+      vscode.commands.registerCommand(
+        'sidekick.importHistoricalData',
+        async (options?: { silent?: boolean }) => {
+          // Silent mode is for the unprompted first-activation import: it uses
+          // the status-bar spinner and skips the completion toasts, so a fresh
+          // install is not greeted with "No historical session data found".
+          const silent = options?.silent === true;
+          if (!historicalDataService) {
+            if (!silent) vscode.window.showErrorMessage('Historical data service not initialized');
+            return;
+          }
 
-        const loader = new RetroactiveDataLoader(historicalDataService);
+          const loader = new RetroactiveDataLoader(historicalDataService);
 
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: 'Importing historical Claude Code data...',
-            cancellable: false,
-          },
-          async (progress) => {
-            let lastPercent = 0;
-            const result = await loader.loadHistoricalData((loaded, total) => {
-              const percent = Math.round((loaded / total) * 100);
-              const increment = percent - lastPercent;
-              lastPercent = percent;
-              if (increment > 0) {
-                progress.report({
-                  increment,
-                  message: `${loaded}/${total} session files`,
-                });
+          await vscode.window.withProgress(
+            {
+              location: silent
+                ? vscode.ProgressLocation.Window
+                : vscode.ProgressLocation.Notification,
+              title: 'Importing historical Claude Code data...',
+              cancellable: false,
+            },
+            async (progress) => {
+              let lastPercent = 0;
+              const result = await loader.loadHistoricalData((loaded, total) => {
+                const percent = Math.round((loaded / total) * 100);
+                const increment = percent - lastPercent;
+                lastPercent = percent;
+                if (increment > 0) {
+                  progress.report({
+                    increment,
+                    message: `${loaded}/${total} session files`,
+                  });
+                }
+              });
+
+              if (result.sessionsCreated > 0) {
+                if (!silent) {
+                  vscode.window.showInformationMessage(
+                    `Imported ${result.recordsImported.toLocaleString()} records from ${result.sessionsCreated} sessions`,
+                  );
+                }
+                // Notify dashboard to refresh
+                dashboardProvider?.refresh();
+              } else if (!silent && result.filesSkipped > 0 && result.filesProcessed === 0) {
+                vscode.window.showInformationMessage('All historical data already imported');
+              } else if (!silent) {
+                vscode.window.showInformationMessage('No historical session data found');
               }
-            });
 
-            if (result.sessionsCreated > 0) {
-              vscode.window.showInformationMessage(
-                `Imported ${result.recordsImported.toLocaleString()} records from ${result.sessionsCreated} sessions`,
+              log(
+                `Import complete: ${result.filesProcessed} files, ${result.recordsImported} records, ${result.sessionsCreated} sessions, ${result.filesSkipped} skipped`,
               );
-              // Notify dashboard to refresh
-              dashboardProvider?.refresh();
-            } else if (result.filesSkipped > 0 && result.filesProcessed === 0) {
-              vscode.window.showInformationMessage('All historical data already imported');
-            } else {
-              vscode.window.showInformationMessage('No historical session data found');
-            }
-
-            log(
-              `Import complete: ${result.filesProcessed} files, ${result.recordsImported} records, ${result.sessionsCreated} sessions, ${result.filesSkipped} skipped`,
-            );
-          },
-        );
-      }),
+            },
+          );
+        },
+      ),
     );
 
     // Save session summary to historical data when session ends
@@ -729,7 +741,12 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     context.subscriptions.push(dashboardProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, dashboardProvider),
+      // Retained: rebuilding this view re-renders a ~7,000-line document and
+      // re-creates seven Chart.js instances, and it is the view users collapse
+      // and re-expand most.
+      vscode.window.registerWebviewViewProvider(DashboardViewProvider.viewType, dashboardProvider, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
     );
     log('Dashboard view provider registered');
 
@@ -787,7 +804,12 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     context.subscriptions.push(mindMapProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(MindMapViewProvider.viewType, mindMapProvider),
+      // Retained: the d3 force simulation's converged node positions are
+      // user-meaningful spatial state, and destroying them re-scrambles the
+      // graph on every collapse.
+      vscode.window.registerWebviewViewProvider(MindMapViewProvider.viewType, mindMapProvider, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
     );
     log('Mind map view provider registered');
 
@@ -1133,9 +1155,47 @@ export async function activate(context: vscode.ExtensionContext) {
     // Create monitor status bar (depends on sessionMonitor)
     const monitorStatusBar = new MonitorStatusBar(sessionMonitor, peakHoursService);
     context.subscriptions.push(monitorStatusBar);
+
+    // Gates the eight secondary views. Set from the branch that actually
+    // registered the providers, not from the setting — a config-driven `when`
+    // would reveal views whose providers were never registered, which is the
+    // hang this replaces.
+    void vscode.commands.executeCommand('setContext', 'sidekick.monitoringActive', true);
   } else {
     log('Session monitoring disabled by configuration');
+    void vscode.commands.executeCommand('setContext', 'sidekick.monitoringActive', false);
+
+    // The dashboard view stays contributed so the container does not vanish;
+    // it hosts a placeholder that can turn monitoring back on.
+    const disabledProvider = new MonitoringDisabledViewProvider(context.extensionUri);
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(
+        MonitoringDisabledViewProvider.viewType,
+        disabledProvider,
+      ),
+      { dispose: () => disabledProvider.dispose() },
+    );
   }
+
+  // The setting is read once at activation, so a change needs a reload to take
+  // effect. Previously it appeared to do nothing until the user happened to
+  // reload for another reason.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (!event.affectsConfiguration('sidekick.enableSessionMonitoring')) return;
+      const next =
+        vscode.workspace.getConfiguration('sidekick').get<boolean>('enableSessionMonitoring') ??
+        true;
+      if (next === enableMonitoring) return;
+      const action = await vscode.window.showInformationMessage(
+        `Session monitoring ${next ? 'enabled' : 'disabled'}. Reload to apply.`,
+        'Reload Window',
+      );
+      if (action === 'Reload Window') {
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
+    }),
+  );
 
   // ── Multi-account management ───────────────────────────────────────────
   const accountService = new AccountService();

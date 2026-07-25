@@ -1283,17 +1283,17 @@
       "view/item/context": [
         {
           "command": "sidekick.editKnowledgeNote",
-          "when": "viewItem == knowledgeNote",
+          "when": "viewItem =~ /^knowledgeNote\\./",
           "group": "1_manage@1"
         },
         {
           "command": "sidekick.confirmKnowledgeNote",
-          "when": "viewItem == knowledgeNote && viewItem != knowledgeNoteActive",
+          "when": "viewItem == knowledgeNote.unconfirmed",
           "group": "1_manage@2"
         },
         {
           "command": "sidekick.deleteKnowledgeNote",
-          "when": "viewItem == knowledgeNote",
+          "when": "viewItem =~ /^knowledgeNote\\./",
           "group": "2_destructive@1"
         }
       ]
@@ -1312,43 +1312,68 @@
         {
           "type": "webview",
           "id": "sidekick.dashboard",
-          "name": "Session Analytics"
+          "name": "Session Analytics",
+          "contextualTitle": "Agent Hub"
         },
         {
           "type": "webview",
           "id": "sidekick.mindMap",
-          "name": "Mind Map"
+          "name": "Mind Map",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         },
         {
           "type": "webview",
           "id": "sidekick.taskBoard",
-          "name": "Kanban Board"
+          "name": "Kanban Board",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         },
         {
           "type": "webview",
           "id": "sidekick.planBoard",
-          "name": "Plans"
+          "name": "Plans",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         },
         {
           "type": "webview",
           "id": "sidekick.projectTimeline",
-          "name": "Project Timeline"
+          "name": "Project Timeline",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         },
         {
           "id": "sidekick.tempFiles",
-          "name": "Latest Files Touched"
+          "name": "Latest Files Touched",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         },
         {
           "id": "sidekick.knowledgeNotes",
-          "name": "Knowledge Notes"
+          "name": "Knowledge Notes",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         },
         {
           "id": "sidekick.subagents",
-          "name": "Subagents"
+          "name": "Subagents",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         },
         {
           "id": "sidekick.eventStream",
-          "name": "Event Stream"
+          "name": "Event Stream",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
         }
       ]
     },
