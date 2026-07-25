@@ -4,7 +4,7 @@
  */
 
 import React, { useReducer, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Box, useInput, useApp } from 'ink';
+import { Box, useApp, useInput, useStdin } from 'ink';
 import type { DashboardMetrics } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { SidePanel, PanelItem, PanelAction } from '../panels/types';
@@ -87,6 +87,7 @@ export function Dashboard({
     mouseEnabled: mouseInitiallyEnabled !== false,
   }));
   const { exit } = useApp();
+  const { isRawModeSupported } = useStdin();
   const { columns, rows } = useTerminalSize();
   const toastIdRef = useRef(0);
   const lastTimelineAppendCountRef = useRef(0);
@@ -512,30 +513,34 @@ export function Dashboard({
   );
 
   // ── Keyboard input ──
-  useInput((input, key) =>
-    handleDashboardInput(input, key, {
-      state,
-      dispatch,
-      exit,
-      panels,
-      panel,
-      selectedItem,
-      contextActions,
-      currentItemCount: currentItems.length,
-      clampedSelection,
-      sideScroll,
-      detailTabCount: detailTabs.length,
-      detailLineCount: detailLines.length,
-      detailViewportHeight,
-      addToast,
-      toggleSessionFilter,
-      onMouseSettingChange,
-      onGenerateReport,
-      onTogglePin,
-      isPinned,
-      pendingSessionPath,
-      onSessionSwitch,
-    }),
+  // isActive guards the hook, not the render: it sits above the too-small
+  // early return, so it runs even on paths that render nothing.
+  useInput(
+    (input, key) =>
+      handleDashboardInput(input, key, {
+        state,
+        dispatch,
+        exit,
+        panels,
+        panel,
+        selectedItem,
+        contextActions,
+        currentItemCount: currentItems.length,
+        clampedSelection,
+        sideScroll,
+        detailTabCount: detailTabs.length,
+        detailLineCount: detailLines.length,
+        detailViewportHeight,
+        addToast,
+        toggleSessionFilter,
+        onMouseSettingChange,
+        onGenerateReport,
+        onTogglePin,
+        isPinned,
+        pendingSessionPath,
+        onSessionSwitch,
+      }),
+    { isActive: isRawModeSupported },
   );
 
   // ── Render ──

@@ -48,6 +48,7 @@ import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
+import { checkInteractivePreflight, currentTerminalCapabilities } from './interactivePreflight';
 import { readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
 import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
 import { createDashboardSignalHandler, selectSessionProvider } from './dashboardLifecycle';
@@ -147,6 +148,21 @@ export async function persistPlan(state: DashboardState, workspacePath: string):
 }
 
 export async function dashboardAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
+  // Checked before anything is constructed, so a piped invocation allocates
+  // nothing and has nothing to tear down. Without this, Ink renders its
+  // "Raw mode is not supported" panel into the middle of a partial frame and
+  // still exits 0, so callers read the failure as success.
+  const preflight = checkInteractivePreflight(
+    currentTerminalCapabilities(),
+    'dashboard',
+    'sidekick dump --format text   or   sidekick today',
+  );
+  if (preflight) {
+    process.stderr.write(preflight.message);
+    process.exitCode = preflight.exitCode;
+    return;
+  }
+
   const globalOpts = cmd.parent!.opts();
   const opts = cmd.opts();
   const provider = resolveProvider(globalOpts);
@@ -561,8 +577,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     }
   }
 
-  // Safety net: ensure mouse tracking is disabled even on unclean exit
-  process.on('exit', disableMouse);
+  // Safety net: ensure mouse tracking is disabled even on unclean exit.
+  // Wrapped because 'exit' passes the exit code as the first argument, which
+  // disableMouse would otherwise take as its stream.
+  process.on('exit', () => disableMouse());
   const onSignal = createDashboardSignalHandler(cleanup, () => instance.unmount());
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);

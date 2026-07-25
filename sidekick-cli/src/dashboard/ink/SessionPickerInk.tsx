@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { Box, Text, useInput, useApp } from 'ink';
+import { Box, Text, useInput, useApp, useStdin } from 'ink';
 import type { SessionProviderBase, ProviderId } from 'sidekick-shared';
 import {
   collectSessionItems,
@@ -78,30 +78,34 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
   const [selectedIndex, setSelectedIndex] = useState(0);
   const { exit } = useApp();
 
+  const { isRawModeSupported } = useStdin();
   const grouped = buildGroupedRows(items);
   const totalItems = items.length + 1;
 
-  useInput((input, key) => {
-    if (input === 'q' || key.escape || (key.ctrl && input === 'c')) {
-      exit();
-      return;
-    }
+  useInput(
+    (input, key) => {
+      if (input === 'q' || key.escape || (key.ctrl && input === 'c')) {
+        exit();
+        return;
+      }
 
-    if (input === 'j' || key.downArrow) {
-      setSelectedIndex((prev) => Math.min(prev + 1, totalItems - 1));
-      return;
-    }
+      if (input === 'j' || key.downArrow) {
+        setSelectedIndex((prev) => Math.min(prev + 1, totalItems - 1));
+        return;
+      }
 
-    if (input === 'k' || key.upArrow) {
-      setSelectedIndex((prev) => Math.max(prev - 1, 0));
-      return;
-    }
+      if (input === 'k' || key.upArrow) {
+        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        return;
+      }
 
-    if (key.return) {
-      onSelect(resolvePickerSelection(items, grouped, selectedIndex));
-      return;
-    }
-  });
+      if (key.return) {
+        onSelect(resolvePickerSelection(items, grouped, selectedIndex));
+        return;
+      }
+    },
+    { isActive: isRawModeSupported },
+  );
 
   const rows = process.stdout.rows || 24;
   const viewportHeight = Math.max(5, rows - 15);

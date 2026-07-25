@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Box, Text, useApp, useInput } from 'ink';
+import { Box, Text, useApp, useInput, useStdin } from 'ink';
 import type { ExtractedAsset, ExtractedAssetType } from 'sidekick-shared';
 import { copyToClipboard } from '../utils/clipboard';
 import { openUrl } from '../utils/openUrl';
@@ -41,53 +41,57 @@ function AssetPickerInk({ items, onDone }: AssetPickerInkProps): React.ReactElem
     });
   }, [items, query, typeFilter]);
 
+  const { isRawModeSupported } = useStdin();
   const selectedClamped = Math.min(selected, Math.max(0, visible.length - 1));
 
-  useInput((input, key) => {
-    if (key.escape || (key.ctrl && input === 'c')) {
-      onDone({ kind: 'quit' });
-      exit();
-      return;
-    }
-    if (key.downArrow || (key.ctrl && input === 'n')) {
-      setSelected((prev) => Math.min(prev + 1, Math.max(0, visible.length - 1)));
-      return;
-    }
-    if (key.upArrow || (key.ctrl && input === 'p')) {
-      setSelected((prev) => Math.max(prev - 1, 0));
-      return;
-    }
-    if (key.tab) {
-      setFilterIdx((prev) => (prev + 1) % FILTER_CYCLE.length);
-      setSelected(0);
-      return;
-    }
-    if (key.ctrl && input === 'y') {
-      const asset = visible[selectedClamped];
-      if (asset) {
-        onDone({ kind: 'copy', asset });
+  useInput(
+    (input, key) => {
+      if (key.escape || (key.ctrl && input === 'c')) {
+        onDone({ kind: 'quit' });
         exit();
+        return;
       }
-      return;
-    }
-    if (key.return) {
-      const asset = visible[selectedClamped];
-      if (asset) {
-        onDone({ kind: asset.type === 'url' ? 'open' : 'copy', asset });
-        exit();
+      if (key.downArrow || (key.ctrl && input === 'n')) {
+        setSelected((prev) => Math.min(prev + 1, Math.max(0, visible.length - 1)));
+        return;
       }
-      return;
-    }
-    if (key.backspace || key.delete) {
-      setQuery((prev) => prev.slice(0, -1));
-      setSelected(0);
-      return;
-    }
-    if (input && !key.ctrl && !key.meta) {
-      setQuery((prev) => prev + input);
-      setSelected(0);
-    }
-  });
+      if (key.upArrow || (key.ctrl && input === 'p')) {
+        setSelected((prev) => Math.max(prev - 1, 0));
+        return;
+      }
+      if (key.tab) {
+        setFilterIdx((prev) => (prev + 1) % FILTER_CYCLE.length);
+        setSelected(0);
+        return;
+      }
+      if (key.ctrl && input === 'y') {
+        const asset = visible[selectedClamped];
+        if (asset) {
+          onDone({ kind: 'copy', asset });
+          exit();
+        }
+        return;
+      }
+      if (key.return) {
+        const asset = visible[selectedClamped];
+        if (asset) {
+          onDone({ kind: asset.type === 'url' ? 'open' : 'copy', asset });
+          exit();
+        }
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setQuery((prev) => prev.slice(0, -1));
+        setSelected(0);
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setQuery((prev) => prev + input);
+        setSelected(0);
+      }
+    },
+    { isActive: isRawModeSupported },
+  );
 
   const rows = process.stdout.rows || 24;
   const viewportHeight = Math.max(5, rows - 8);

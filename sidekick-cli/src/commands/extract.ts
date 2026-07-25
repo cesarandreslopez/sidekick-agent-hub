@@ -17,6 +17,7 @@ import type {
   GatherAssetsResult,
 } from 'sidekick-shared';
 import { parseLimit } from '../utils/parseLimit';
+import { checkInteractivePreflight, currentTerminalCapabilities } from './interactivePreflight';
 
 export { parseLimit } from '../utils/parseLimit';
 
@@ -163,15 +164,34 @@ export async function extractAction(_opts: Record<string, unknown>, cmd: Command
     const assets: GatherAssetsResult = gatherAssetsForCwd({ cwd: workspacePath, agents, caps });
     const filtered = filterByTypes(assets, types);
 
+    if (opts.interactive && jsonOutput) {
+      // The picker writes a UI to stdout and returns nothing structured, so
+      // the two flags cannot both be honored.
+      process.stderr.write('Error: --interactive cannot be combined with --json.\n');
+      process.exitCode = 1;
+      return;
+    }
+
     if (opts.interactive) {
       const items = flattenAssets(filtered);
       if (items.length === 0) {
         process.stderr.write('No extractable assets found in recent sessions.\n');
         return;
       }
-      const { showAssetPicker } = await import('./AssetPickerInk');
-      await showAssetPicker(items);
-      return;
+      // Degrade rather than fail: the plain renderer below answers the same
+      // question and pipes cleanly.
+      const preflight = checkInteractivePreflight(
+        currentTerminalCapabilities(),
+        'extract -i',
+        'sidekick extract',
+      );
+      if (preflight) {
+        process.stderr.write('Not an interactive terminal — falling back to plain output.\n');
+      } else {
+        const { showAssetPicker } = await import('./AssetPickerInk');
+        await showAssetPicker(items);
+        return;
+      }
     }
 
     if (jsonOutput) {

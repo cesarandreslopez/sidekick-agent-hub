@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { useInput } from 'ink';
+import { useInput, useStdin } from 'ink';
 import { enableMouse, disableMouse } from './mouseProtocol';
 import type { TerminalMouseEvent } from './parseMouseEvent';
 import { createMouseDataHandler } from './mouseDataHandler';
@@ -19,9 +19,12 @@ interface MouseProviderProps {
 /**
  * Dummy component that calls useInput to consume raw stdin data,
  * preventing mouse escape sequences from echoing as garbage text.
+ *
+ * `isActive` is required: useInput short-circuits before touching setRawMode
+ * when it is false, and setRawMode throws on a non-TTY stdin.
  */
-function InputSink(): null {
-  useInput(() => {});
+function InputSink({ active }: { active: boolean }): null {
+  useInput(() => {}, { isActive: active });
   return null;
 }
 
@@ -32,9 +35,10 @@ export function MouseProvider({
 }: MouseProviderProps): React.ReactElement {
   const onMouseRef = useRef(onMouse);
   onMouseRef.current = onMouse;
+  const { isRawModeSupported } = useStdin();
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !isRawModeSupported) return;
     enableMouse();
 
     const handler = createMouseDataHandler(onMouseRef);
@@ -50,11 +54,11 @@ export function MouseProvider({
       process.removeListener('exit', exitHandler);
       disableMouse();
     };
-  }, [enabled]);
+  }, [enabled, isRawModeSupported]);
 
   return (
     <>
-      <InputSink />
+      <InputSink active={isRawModeSupported} />
       {children}
     </>
   );

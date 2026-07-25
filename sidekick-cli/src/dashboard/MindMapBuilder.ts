@@ -149,17 +149,6 @@ export function buildMindMapTree(
   };
 }
 
-/**
- * Render the mind map as colored ANSI text for stdout.
- * Returns an array of lines (no trailing newline).
- */
-export function renderMindMapAnsi(metrics: DashboardMetrics, staticData: StaticData): string[] {
-  const tree = buildMindMapTree(metrics, staticData);
-  const lines: string[] = [];
-  renderTreeAnsi(tree, lines, '', true);
-  return lines;
-}
-
 // ── Latest-node detection ──
 
 /** File-operation tool names (mirrors VS Code MindMapDataService). */
@@ -567,51 +556,6 @@ function getUrlLabel(urlOrQuery: string): string {
   } catch {
     return truncate(urlOrQuery, 25);
   }
-}
-
-// ── ANSI tree renderer (for standalone `sidekick mindmap` command) ──
-
-/**
- * Recursively render a TreeData structure as colored ANSI lines.
- * Strips blessed `{color-fg}...{/color-fg}` tags and replaces them with ANSI codes.
- */
-function renderTreeAnsi(node: TreeData, lines: string[], prefix: string, isRoot: boolean): void {
-  const childEntries = Object.entries(node.children || {});
-
-  if (isRoot && childEntries.length > 0) {
-    // Root level — render each top-level key
-    for (let i = 0; i < childEntries.length; i++) {
-      const [label, child] = childEntries[i];
-      lines.push(blessedToAnsi(label));
-      const childKeys = Object.entries(child.children || {});
-      for (let j = 0; j < childKeys.length; j++) {
-        const [childLabel, grandChild] = childKeys[j];
-        const isLast = j === childKeys.length - 1;
-        const connector = isLast ? '\u2514\u2500\u2500 ' : '\u251C\u2500\u2500 ';
-        const nextPrefix = isLast ? '    ' : '\u2502   ';
-        lines.push(prefix + connector + blessedToAnsi(childLabel));
-        renderTreeAnsi(grandChild, lines, prefix + nextPrefix, false);
-      }
-    }
-  } else {
-    const entries = Object.entries(node.children || {});
-    for (let i = 0; i < entries.length; i++) {
-      const [label, child] = entries[i];
-      const isLast = i === entries.length - 1;
-      const connector = isLast ? '\u2514\u2500\u2500 ' : '\u251C\u2500\u2500 ';
-      const nextPrefix = isLast ? '    ' : '\u2502   ';
-      lines.push(prefix + connector + blessedToAnsi(label));
-      renderTreeAnsi(child, lines, prefix + nextPrefix, false);
-    }
-  }
-}
-
-/** Convert blessed `{color-fg}text{/color-fg}` tags to ANSI escape codes. */
-function blessedToAnsi(text: string): string {
-  return text.replace(/\{(\w+)-fg\}(.*?)\{\/\1-fg\}/g, (_match, color: string, content: string) => {
-    const ansi = ANSI[color] || '';
-    return ansi + content + ANSI.reset;
-  });
 }
 
 // ── Tree-to-text renderer (for blessed TUI) ──

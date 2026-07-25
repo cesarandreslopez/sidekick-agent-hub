@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMindMapTree, fitText, renderMindMapAnsi, renderMindMapBoxed } from './MindMapBuilder';
+import { buildMindMapTree, fitText, renderMindMapBoxed } from './MindMapBuilder';
 import { shortenPath } from './formatters';
 import type { DashboardMetrics } from './DashboardState';
 import type { StaticData } from './StaticDataLoader';
@@ -341,44 +341,6 @@ describe('buildMindMapTree', () => {
     expect(dirKeys.length).toBe(1);
     expect(dirKeys[0]).toContain('services');
     expect(dirKeys[0]).toContain('buildGraph');
-  });
-});
-
-describe('renderMindMapAnsi', () => {
-  it('produces non-empty output for populated metrics', () => {
-    const m = emptyMetrics();
-    m.toolStats = [{ name: 'Read', calls: 2, pending: 0 }];
-    m.tasks = [
-      {
-        taskId: '1',
-        subject: 'Test task',
-        status: 'completed',
-        blockedBy: [],
-        blocks: [],
-        toolCallCount: 1,
-      },
-    ];
-    const lines = renderMindMapAnsi(m, emptyStaticData());
-    expect(lines.length).toBeGreaterThan(0);
-    // Should contain SESSION root
-    expect(lines[0]).toContain('SESSION');
-  });
-
-  it('converts blessed color tags to ANSI codes', () => {
-    const m = emptyMetrics();
-    m.toolStats = [{ name: 'Read', calls: 1, pending: 0 }];
-    const lines = renderMindMapAnsi(m, emptyStaticData());
-    const joined = lines.join('\n');
-    // Should contain ANSI escape codes, not blessed tags
-    expect(joined).not.toContain('{green-fg}');
-    expect(joined).toContain('\x1b[');
-  });
-
-  it('produces empty output for empty metrics', () => {
-    const lines = renderMindMapAnsi(emptyMetrics(), emptyStaticData());
-    // Just the session root, no sections
-    expect(lines.length).toBeGreaterThan(0);
-    expect(lines[0]).toContain('SESSION');
   });
 });
 
