@@ -861,8 +861,9 @@ export type {
 // Peak Hours (PromoClock — third-party)
 export {
   createPeakHoursNotApplicableState,
+  DEFAULT_PEAK_HOURS_TIMEOUT_MS,
   fetchPeakHoursStatus,
   isClaudeCodeSessionProvider,
   scopePeakHoursToSessionProvider,
 } from './peakHours';
-export type { PeakHoursState } from './peakHours';
+export type { FetchPeakHoursOptions, PeakHoursState } from './peakHours';

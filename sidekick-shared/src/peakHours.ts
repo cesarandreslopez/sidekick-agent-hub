@@ -40,6 +40,18 @@ interface PromoClockResponse {
 
 const PROMOCLOCK_ENDPOINT = 'https://promoclock.co/api/status';
 
+/** Default budget for the promoclock.co request, in milliseconds. */
+export const DEFAULT_PEAK_HOURS_TIMEOUT_MS = 10_000;
+
+/** Options for {@link fetchPeakHoursStatus}. */
+export interface FetchPeakHoursOptions {
+  /**
+   * Abort the request after this many milliseconds.
+   * Defaults to {@link DEFAULT_PEAK_HOURS_TIMEOUT_MS}.
+   */
+  timeoutMs?: number;
+}
+
 function unavailableState(): PeakHoursState {
   return {
     status: 'unknown',
@@ -104,11 +116,21 @@ function normalizeSpeed(raw: string | undefined): PeakHoursState['sessionLimitSp
  * Fetch current Claude peak-hours state from promoclock.co.
  *
  * Single-shot — caller wraps in polling loop, EventEmitter, or interval.
- * Returns `unavailable: true` on any network or parse error.
+ * Returns `unavailable: true` on any network, timeout, or parse error.
+ *
+ * promoclock.co is a third-party host, so the request is always bounded by
+ * an abort timeout. Without one a hung host would stall the caller — and
+ * this is polled, so the stall would repeat.
  */
-export async function fetchPeakHoursStatus(): Promise<PeakHoursState> {
+export async function fetchPeakHoursStatus(
+  options: FetchPeakHoursOptions = {},
+): Promise<PeakHoursState> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_PEAK_HOURS_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  timeout.unref();
   try {
-    const res = await fetch(PROMOCLOCK_ENDPOINT);
+    const res = await fetch(PROMOCLOCK_ENDPOINT, { signal: controller.signal });
     if (!res.ok) return unavailableState();
 
     const data: PromoClockResponse = await res.json();
@@ -131,6 +153,9 @@ export async function fetchPeakHoursStatus(): Promise<PeakHoursState> {
       unavailable: false,
     };
   } catch {
+    // Covers AbortError from the timeout above alongside network/parse failures.
     return unavailableState();
+  } finally {
+    clearTimeout(timeout);
   }
 }

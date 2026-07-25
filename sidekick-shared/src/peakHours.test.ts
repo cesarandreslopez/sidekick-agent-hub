@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createPeakHoursNotApplicableState,
+  DEFAULT_PEAK_HOURS_TIMEOUT_MS,
   fetchPeakHoursStatus,
   isClaudeCodeSessionProvider,
   scopePeakHoursToSessionProvider,
@@ -42,7 +43,9 @@ describe('fetchPeakHoursStatus', () => {
     const result = await fetchPeakHoursStatus();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith('https://promoclock.co/api/status');
+    expect(mockFetch).toHaveBeenCalledWith('https://promoclock.co/api/status', {
+      signal: expect.any(AbortSignal),
+    });
     expect(result).toEqual({
       status: 'peak',
       isPeak: true,
@@ -124,6 +127,56 @@ describe('fetchPeakHoursStatus', () => {
     expect(result.sessionLimitSpeed).toBe('unknown');
     expect(result.isPeak).toBe(true);
     expect(result.unavailable).toBe(false);
+  });
+
+  it('aborts and reports unavailable when the host does not answer in time', async () => {
+    vi.useFakeTimers();
+    try {
+      // Resolve only when the caller's signal fires, so the abort is what ends
+      // the request — a hung third-party host, reproduced.
+      mockFetch.mockImplementationOnce(
+        (_url: string, init: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () =>
+              reject(new DOMException('Aborted', 'AbortError')),
+            );
+          }),
+      );
+
+      const pending = fetchPeakHoursStatus({ timeoutMs: 50 });
+      await vi.advanceTimersByTimeAsync(51);
+      const result = await pending;
+
+      expect(result.unavailable).toBe(true);
+      expect(result.label).toBe('Peak-hours status unavailable');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the abort timer once the request settles', async () => {
+    vi.useFakeTimers();
+    try {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+
+      await fetchPeakHoursStatus();
+
+      // A leaked timer would keep an unref'd handle alive per poll.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults to the documented timeout budget', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+
+    await fetchPeakHoursStatus();
+
+    expect(DEFAULT_PEAK_HOURS_TIMEOUT_MS).toBe(10_000);
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.signal.aborted).toBe(false);
   });
 });
 
