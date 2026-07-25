@@ -1,9 +1,9 @@
 declare const __CLI_VERSION__: string;
 
 import { Command } from 'commander';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { DUMP_EXAMPLES, EXTRACT_EXAMPLES, QUOTA_EXAMPLES, ROOT_EXAMPLES } from './help';
+import { firstCommandToken } from './argvScan';
+import { runStartupSideEffects } from './startup';
 import {
   quotaHistoryProviderOption,
   quotaProviderOption,
@@ -11,54 +11,12 @@ import {
   rootProviderOption,
   tasksStatusOption,
 } from './options';
-import { detectProvider, ensureDefaultAccounts } from 'sidekick-shared';
-import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
+import { detectProvider } from 'sidekick-shared';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { formatCliError } from './cliError';
 
-// Mirrors entry.ts's isStatuslineInvocation: only the first non-flag token is
-// the command name, so option values like `tasks add today` never match.
-function firstCommandToken(args: string[]): string | undefined {
-  for (let index = 0; index < args.length; index++) {
-    const argument = args[index];
-    if (argument === '--json') continue;
-    if (argument === '--project' || argument === '--provider') {
-      index++;
-      continue;
-    }
-    if (argument.startsWith('--project=') || argument.startsWith('--provider=')) continue;
-    return argument;
-  }
-  return undefined;
-}
-
 const commandToken = firstCommandToken(process.argv.slice(2));
-const isCacheOnlyCommand = commandToken === 'statusline' || commandToken === 'today';
-
-// Fire-and-forget: warm the pricing catalog so `stats` / `dashboard` show
-// correct dollar figures for Codex/GPT/o-series sessions. Non-blocking and
-// offline-safe — failures fall through to the static baseline.
-if (!isCacheOnlyCommand) {
-  hydratePricingCatalog({
-    cacheDir: path.join(os.homedir(), '.config', 'sidekick'),
-  }).catch(() => {
-    /* non-fatal; static table still works */
-  });
-}
-
-// Apply context windows previously reported by providers (Codex reports its
-// tier-specific window per session). Outranks the LiteLLM catalog, which only
-// knows each model's published maximum. Cheap local read; offline-safe.
-loadObservedContextWindows().catch(() => {
-  /* non-fatal; catalog and static tables still work */
-});
-
-const defaultAccountsReady = isCacheOnlyCommand
-  ? Promise.resolve()
-  : ensureDefaultAccounts().catch(() => {
-      /* non-fatal; account bootstrap must not block startup */
-    });
 
 const program = new Command();
 
@@ -68,12 +26,16 @@ program
   .version(__CLI_VERSION__)
   .option('--json', 'Output as JSON')
   .option('--project <path>', 'Override project path (default: cwd)')
+  // Chalk already honors --no-color, NO_COLOR, and a non-TTY stdout on its own;
+  // declaring it here only stops Commander rejecting the flag as unknown.
+  .option('--no-color', 'Disable colored output (also honors NO_COLOR)')
   .addOption(rootProviderOption())
   .addHelpText('after', ROOT_EXAMPLES);
 
-program.hook('preAction', async () => {
-  await defaultAccountsReady;
-});
+// preAction fires for real action handlers and not for --help, --version, or a
+// bare invocation, so the network fetch and account bootstrap stay off those
+// paths entirely.
+program.hook('preAction', () => runStartupSideEffects(commandToken));
 
 export function resolveProviderId(
   opts: { provider?: string },
@@ -386,6 +348,15 @@ handoffCmd
     return externalHandoffAction(_opts, cmd);
   });
 program.addCommand(handoffCmd);
+
+// Commander's default for an unresolved subcommand is help on stderr with exit
+// 1, which breaks `sidekick | less` and makes every script think the tool
+// failed. outputHelp() (not helpInformation()) is what composes the
+// addHelpText('after', ...) example block.
+if (commandToken === undefined) {
+  program.outputHelp();
+  process.exit(0);
+}
 
 program.parseAsync().catch((error: unknown) => {
   process.stderr.write(formatCliError(error));
