@@ -5,6 +5,28 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.4] - 2026-07-25
+
+### Fixed
+
+- Every Chart.js axis, gridline, and legend in the dashboard was hardcoded to dark-theme greys (`#888`, `#ccc`, `rgba(100,100,100,0.15)`), leaving charts low-contrast to illegible on every light theme. The history chart had the mirror problem: it set no tick color at all and inherited Chart.js's light-biased default. All chart chrome now resolves from `--vscode-charts-*`, with the previous values kept as fallbacks, and charts re-resolve and redraw when the color theme changes
+- The context-attribution palette was a One Dark set declared in three places, one of which was already dead. Mind-map node colors were hardcoded too, and set with an SVG presentation attribute that cannot resolve theme variables — they now use a CSS `fill` property, which can
+- The mind-map legend listed ten of the twelve node types. It is generated from the same map the graph reads, so it cannot drift again
+- Quick Ask created a new output channel on every invocation and never disposed it, so every long answer and every suggested-code preview left a permanent duplicate entry in the Output dropdown
+- With `sidekick.enableSessionMonitoring` disabled, the Agent Hub container still showed nine views whose providers were never registered: trees spun forever and webviews stayed blank. The eight secondary views are now hidden in that state, and the dashboard hosts a placeholder that can turn monitoring back on
+- Changing `sidekick.enableSessionMonitoring` appeared to do nothing, because the setting is read once at activation. It now offers a reload
+- The Confirm action on a knowledge note appeared on every note, including already-confirmed ones: its `when` clause compared `viewItem` against a context value the extension never set, making the condition tautological
+- The Subagents tree set context values that no menu entry matched, promising a right-click menu that did not exist
+- Uncaught webview errors were written into the session list as "JS Error: ..." and "Init error: ...", rendering developer diagnostics as product copy. They now go to the extension log
+- Failing to open a conversation produced "Failed to open conversation: Error: ENOENT..." by interpolating a raw error into the toast
+- The first-activation historical import opened a notification-level progress bar and always ended with a toast, so a fresh install could be greeted with "No historical session data found". It now runs quietly and reports only what it imported
+
+### Changed
+
+- The eight secondary Agent Hub views default to collapsed and carry a contextual title. `visibility` is a first-run default — VS Code persists per-user view layout, so existing users keep their current arrangement until they reset it; new installs and new machines get the collapsed default
+- The dashboard and mind map retain their webview context when hidden. Collapsing the dashboard previously destroyed seven Chart.js instances and all client state, and re-expanding rebuilt a ~7,000-line document and re-read `CHANGELOG.md` from disk; the mind map lost its converged force-directed layout. The other three sidebar webviews are cheap to rebuild and are not retained
+- The changelog read behind the version badge is cached for the process lifetime
+
 ## [0.24.3] - 2026-07-24
 
 ### Fixed

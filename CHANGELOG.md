@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.4] - 2026-07-25
+
+### Fixed
+
+- **VS Code:** every Chart.js axis, gridline, and legend in the dashboard was hardcoded to dark-theme greys, leaving charts low-contrast to illegible on every light theme. The history chart had the mirror problem — it set no tick color at all and inherited Chart.js's light-biased default. All chart chrome, the context-attribution palette, and the mind-map node palette now resolve from `--vscode-charts-*`, with the previous values kept as fallbacks so themes that do not define chart colors render exactly as before. Charts re-theme live when the color theme changes
+- **VS Code:** mind-map node colors are set with a CSS `fill` property rather than an SVG presentation attribute, which is what lets them resolve theme variables at all. The legend is generated from the same map the graph reads, fixing an existing drift where it listed ten of the twelve node types
+- **VS Code:** Quick Ask created a new output channel on every invocation and never disposed it, permanently accumulating duplicate entries in the Output dropdown
+- **VS Code:** with `sidekick.enableSessionMonitoring` disabled, the Agent Hub container still showed nine views whose providers were never registered — trees spun forever and webviews stayed blank. The eight secondary views are now hidden in that state, and the dashboard hosts a placeholder that can turn monitoring back on
+- **VS Code:** changing `sidekick.enableSessionMonitoring` appeared to do nothing, because the setting is read once at activation. It now offers a reload
+- **VS Code:** the Confirm action on a knowledge note showed on every note, including already-confirmed ones — its `when` clause compared against a context value the extension never set
+- **VS Code:** uncaught webview errors were rendered into the session list as product copy; they now go to the extension log
+- **VS Code:** the first-activation historical import no longer interrupts a fresh install with a notification about having found nothing
+- **CLI:** the dashboard loaded persisted project data once at startup and never again, so tasks, notes, decisions, and plans written by the VS Code extension or another terminal never appeared until restart. `R` refreshes on demand and data also auto-refreshes every 15 seconds
+- **CLI:** load and watcher failures were swallowed into empty catch blocks, leaving a dashboard indistinguishable from a genuinely quiet project. They now raise a toast and set a status-bar badge
+- **CLI:** `sidekick dashboard` without a TTY rendered Ink's "Raw mode is not supported" panel into a partial frame and exited 0. It now fails cleanly with exit 1 and a message naming the problem
+- **CLI:** a bare `sidekick` printed help to stderr with exit 1, breaking `sidekick | less` and any script checking the exit code
+- **CLI:** `sidekick --help` and `sidekick --version` made a network request and created account files before printing anything
+- **CLI:** `sidekick --no-color` was rejected as an unknown option, even though chalk already honored it
+- **CLI:** switching to a pending session was impossible from the Plans panel, and the session filter was unreachable from the Sessions panel's Mind Map tab — both panels silently shadowed the global key
+- **CLI:** when the item list shrank under the cursor, the detail tab and scroll position jumped back to the top of the first tab
+- **CLI:** the detail tab bar could highlight a tab whose content was not being rendered
+- **CLI:** on the splash screen, panel digits 1 and 2 did nothing while 3 through 8 worked
+- **CLI:** only the newest toast was rendered, so concurrent notifications were silently dropped. Up to three now stack
+- **Shared:** `fetchPeakHoursStatus()` had no request timeout — the only network call in the package without one, against a third-party host, on a polling path
+- **Shared:** `recordObservedContextWindow()` deduplicated its write against a process-global table rather than the target store, so a second `cacheDir` in the same process was never written and a failed write was never retried
+- **Shared:** `parseModelId()` reported version `"4"` for every hyphenated Anthropic model ID, because the version pattern accepted dots but not hyphens. This also affects `getModelInfo().version` and model ordering, where 4.5 and 4.6 previously tied
+
+### Added
+
+- **Shared:** the config directory can be redirected with `setConfigDir()` or the `SIDEKICK_CONFIG_DIR` environment variable. Every reader and writer resolves it lazily, so this covers the whole package — previously consumers had no way to point the library anywhere but `~/.config/sidekick`
+- **Shared:** the published package now ships its LICENSE and CHANGELOG, and declares `repository`, `homepage`, `bugs`, `keywords`, `author`, and `engines`. `typesVersions` covers every subpath for consumers whose tsconfig still uses Node10 module resolution
+- **Shared:** the legacy z.ai estimator's exports are marked `@deprecated`, so editors surface it
+- **CLI:** `R` refreshes project data; the help overlay now lists it alongside `p` and `s`, which were previously documented only in the README
+
+### Changed
+
+- **Shared:** `engines` declares Node >= 20, which will surface an `EBADENGINE` warning for anyone installing on Node 18
+- **Shared:** `HydrateOptions.cacheDir` is optional and defaults to the config directory
+- **CLI:** the Plans panel's source filter moved from `s` to `S`, and the Sessions panel's mind-map node filter from `f` to `F`, so the global session-switch and session-filter keys work everywhere
+- **VS Code:** the eight secondary Agent Hub views default to collapsed. This is a first-run default — VS Code persists per-user view layout, so existing users keep their current arrangement until they reset it
+- **VS Code:** the dashboard and mind map retain their webview context when hidden, so collapsing and re-expanding no longer rebuilds a 7,000-line document, seven charts, or a converged force-directed graph
+
+### Removed
+
+- **CLI:** the unused ANSI mind-map renderer and a dead colored-phrase helper
+
 ## [0.24.3] - 2026-07-24
 
 ### Fixed

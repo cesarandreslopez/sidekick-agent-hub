@@ -1,6 +1,6 @@
 {
   "name": "sidekick-shared",
-  "version": "0.24.3",
+  "version": "0.24.4",
   "description": "Shared data access layer for Sidekick — readers, types, providers, credentials, quota",
   "keywords": [
     "claude-code",

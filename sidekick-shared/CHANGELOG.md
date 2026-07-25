@@ -5,6 +5,33 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.4] - 2026-07-25
+
+### Fixed
+
+- `fetchPeakHoursStatus()` had no request timeout. It was the only network call in the package without one, it targets a third-party host (promoclock.co), and `MultiProviderQuotaService` calls it on every poll, so a hung host stalled the caller indefinitely and repeatedly. It now uses the same abort-timeout shape as every other fetch here, configurable via `FetchPeakHoursOptions.timeoutMs` (default 10s)
+- `recordObservedContextWindow()` deduplicated its write against the process-global override table from `modelContext`, which is not keyed by `cacheDir`. Two cache directories in one process — two temp dirs in a test suite, a multi-tenant host, a CLI and extension host sharing a process — meant the second store was silently never written. The same early return also swallowed retries: because the global was updated before the write was attempted, a transient `EACCES` left the value marked as recorded and no later call tried again. The persistence dedupe is now keyed by resolved store path and recorded only after a successful write
+- `parseModelId()` reported version `"4"` for every hyphenated Anthropic model ID (`claude-sonnet-4-6-20260321`, `claude-sonnet-4-5-20250929`, `claude-opus-4-1-20250805`). The version pattern accepted dots but not hyphens, while the adjacent legacy pattern already normalized both. Pricing and context windows are unaffected — both resolve from the full ID by longest-prefix match — but `parseModelId().version`, `getModelInfo().version`, and the version ordering behind model comparison all change, where 4.5 and 4.6 previously tied at `"4"`
+
+### Added
+
+- The config directory is now overridable. `setConfigDir()` redirects it for the process and `SIDEKICK_CONFIG_DIR` does the same from the environment, with `getDefaultConfigDir()` exposing the unmodified platform default. Every reader, writer, account-registry path, quota snapshot, and migration resolves the root lazily through `getConfigDir()`, so a single seam covers the whole package. Consumers previously had no way to point the library anywhere but `~/.config/sidekick`, which blocked test isolation, sandboxing, and multi-tenant use
+- The published tarball ships `LICENSE` and `CHANGELOG.md`. `files: ["dist"]` excluded both, and npm only auto-includes a LICENSE from the package directory — so the MIT declaration in `package.json` shipped with nothing behind it
+- `repository` (with `directory`, so npm's source link lands on this package), `homepage`, `bugs`, `keywords`, `author`, and `engines` are declared
+- `typesVersions` maps every non-wildcard `exports` subpath for consumers whose tsconfig still uses `moduleResolution: "node"`, which cannot read `exports` maps at all. Modern resolvers ignore it entirely
+- Every export of the legacy z.ai estimator (`zaiQuota`, `zaiQuotaWatcher`) is marked `@deprecated`. The deprecation was previously recorded in module prose only, so consumers reaching it through the `./dist/*` wildcard got no editor signal
+
+### Changed
+
+- `engines` declares Node >= 20, driven by zod 4 and matching the sibling CLI. It is advisory unless a consumer sets `engine-strict`, but it will surface an `EBADENGINE` warning on Node 18
+- `HydrateOptions.cacheDir` is optional and defaults to the config directory, so pricing hydration follows the same override seam
+
+### Documentation
+
+- Four README examples were wrong and are corrected: `readTasks` was shown with the wrong first argument and no `await`; `readClaudeMaxCredentials` was shown without `await`, so the always-truthy Promise made `accessToken` undefined and surfaced later as an auth failure; the documented context window was 200000 rather than 1000000; and the documented cost output was never reachable from the stated inputs
+- The headline cost example uses `normalizeProviderUsage` and `calculateNormalizedUsageCost` instead of the deprecated `calculateCost`
+- The external `sqlite3` requirement is documented. `OpenCodeProvider` and `CodexProvider` shell out to it and return empty results rather than an error when it is missing, which is indistinguishable from an empty workspace unless the consumer knows to call `getRuntimeStatus()`
+
 ## [0.24.3] - 2026-07-24
 
 ### Fixed

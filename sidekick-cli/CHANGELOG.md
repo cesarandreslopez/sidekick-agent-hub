@@ -5,6 +5,41 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.4] - 2026-07-25
+
+### Fixed
+
+- The dashboard loaded persisted project data exactly once at startup and never again, so tasks, notes, decisions, and plans written by the VS Code extension or a second terminal never appeared until the dashboard was restarted
+- Load and watcher failures were swallowed into empty catch blocks. A failed load was replaced with an all-zero object and both watcher error handlers were empty, producing a dashboard indistinguishable from a genuinely quiet project
+- `sidekick dashboard` without a TTY rendered Ink's "Raw mode is not supported" panel into the middle of a partial frame and exited 0, so callers read the failure as success. It now fails with a message naming which stream is not a TTY, suggests a command that works when piped, and exits 1
+- Mouse tracking escape sequences were written to stdout with no TTY check, polluting redirected output
+- A bare `sidekick` printed full help to stderr with exit 1, breaking `sidekick | less` and any script checking the exit code. It now writes to stdout and exits 0
+- `sidekick --help` and `sidekick --version` made a network request and created `~/.config/sidekick/accounts/` before printing anything, because the startup side effects ran at module scope
+- `sidekick --no-color` was rejected as an unknown option, even though chalk already honored it, `NO_COLOR`, and a non-TTY stdout
+- Switching to a pending session was impossible from the Plans panel: it bound `s` with no condition, so the panel's handler fired whenever an item was selected, which on Plans is always. The Sessions panel shadowed the global session filter on its Mind Map tab the same way
+- When the item list shrank under the cursor — live event churn, or typing into the filter — the detail tab and scroll position jumped back to the top of the first tab
+- The detail tab bar could highlight a tab whose content was not being rendered
+- On the splash screen, panel digits 1 and 2 did nothing while 3 through 8 entered the dashboard
+- Only the newest toast was rendered, so a quota alert landing next to a context compaction showed one message and silently dropped the other
+- `parseBlessedTags.test.tsx` had never run: the vitest include glob was `*.test.ts`, which does not match `.test.tsx`. That is 15 tests covering the tag parser every rendered string flows through
+- `sidekick extract -i --json` silently ignored `--json`; it is now rejected, and `extract -i` degrades to plain output when not attached to a terminal
+
+### Added
+
+- `R` refreshes persisted project data on demand, and data auto-refreshes every 15 seconds. The refresh is gated by a content fingerprint, so an unchanged project schedules no re-render at all
+- A status-bar badge for data health, covering load failures, watcher errors, in-flight refreshes, and staleness
+- Toasts stack up to three
+- `R`, `p`, and `s` are listed in the help overlay; `p` and `s` were previously documented only in the README
+
+### Changed
+
+- The Plans panel's source filter moved from `s` to `S`, and the Sessions panel's mind-map node filter from `f` to `F`, so the reserved global session-switch and session-filter keys work from every panel
+- The pricing cache follows `SIDEKICK_CONFIG_DIR` rather than a hardcoded `~/.config/sidekick`
+
+### Removed
+
+- The dead ANSI mind-map renderer and its helpers, and the unused `getRandomPhraseColored()`
+
 ## [0.24.3] - 2026-07-24
 
 ### Fixed
