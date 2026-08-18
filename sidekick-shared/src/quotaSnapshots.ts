@@ -1,7 +1,7 @@
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from './paths';
+import { atomicWriteJsonSync, withFileLockSync } from './writers/atomic';
 import type { QuotaState } from './quota';
 import type { AccountProviderId } from './accountRegistry';
 import { isAggregateCodexLimit } from './types/codex';
@@ -24,35 +24,12 @@ interface QuotaSnapshotStore {
   snapshots: QuotaSnapshotRecord[];
 }
 
-const LOCK_WAIT_MS = 15;
-const LOCK_STALE_MS = 10_000;
-const LOCK_TIMEOUT_MS = 15_000;
-const lockSleepView = new Int32Array(new SharedArrayBuffer(4));
-
 function getQuotaSnapshotPath(): string {
   return path.join(getConfigDir(), 'quota-snapshots.json');
 }
 
 function ensureConfigDir(): void {
   fs.mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
-}
-
-function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomBytes(8).toString('hex')}.tmp`;
-  const json = JSON.stringify(data, null, 2);
-  // Throws if `data` was undefined or a top-level non-serializable value — prevents writing the literal string "undefined" to disk.
-  JSON.parse(json);
-  try {
-    fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
-    fs.renameSync(tmp, filePath);
-  } catch (error) {
-    try {
-      fs.rmSync(tmp, { force: true });
-    } catch {
-      // Best effort cleanup only.
-    }
-    throw error;
-  }
 }
 
 function readStore(): QuotaSnapshotStore {
@@ -75,56 +52,17 @@ function readStore(): QuotaSnapshotStore {
 
 function writeStore(store: QuotaSnapshotStore): void {
   ensureConfigDir();
-  atomicWriteJson(getQuotaSnapshotPath(), store);
+  atomicWriteJsonSync(getQuotaSnapshotPath(), store);
 }
 
+/**
+ * Serializes snapshot read-modify-write cycles across processes on the shared
+ * store lock. The lock file path is unchanged from the previous local
+ * implementation, so processes running older versions still exclude correctly.
+ */
 function withSnapshotStoreLock<T>(operation: () => T): T {
   ensureConfigDir();
-  const lockPath = `${getQuotaSnapshotPath()}.lock`;
-  const token = `${process.pid}:${crypto.randomBytes(16).toString('hex')}`;
-  const deadline = Date.now() + LOCK_TIMEOUT_MS;
-
-  while (true) {
-    try {
-      const descriptor = fs.openSync(lockPath, 'wx', 0o600);
-      fs.writeFileSync(descriptor, token, 'utf8');
-      fs.fsyncSync(descriptor);
-      fs.closeSync(descriptor);
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      try {
-        const stat = fs.statSync(lockPath);
-        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          const owner = fs.readFileSync(lockPath, 'utf8');
-          const ownerPid = Number.parseInt(owner.split(':', 1)[0], 10);
-          let ownerAlive = Number.isInteger(ownerPid) && ownerPid > 0;
-          if (ownerAlive) {
-            try {
-              process.kill(ownerPid, 0);
-            } catch (ownerError) {
-              ownerAlive = (ownerError as NodeJS.ErrnoException).code === 'EPERM';
-            }
-          }
-          if (!ownerAlive) fs.rmSync(lockPath, { force: true });
-        }
-      } catch {
-        // The owner may have released the lock between checks.
-      }
-      if (Date.now() >= deadline) throw new Error(`Timed out waiting for quota lock: ${lockPath}`);
-      Atomics.wait(lockSleepView, 0, 0, LOCK_WAIT_MS);
-    }
-  }
-
-  try {
-    return operation();
-  } finally {
-    try {
-      if (fs.readFileSync(lockPath, 'utf8') === token) fs.rmSync(lockPath, { force: true });
-    } catch {
-      // Never remove a lock that has already been released or replaced.
-    }
-  }
+  return withFileLockSync(`${getQuotaSnapshotPath()}.lock`, operation);
 }
 
 function snapshotTimeMs(quota: QuotaState): number {

@@ -248,6 +248,34 @@ describe('quotaSnapshots', () => {
     ) as { snapshots: Array<{ accountId: string }> };
     expect(new Set(workerStore.snapshots.map((snapshot) => snapshot.accountId)).size).toBe(12);
   }, 20_000);
+
+  it('times out on a wedged lock holder in the no-progress budget, not the old flat 15s', () => {
+    // A live owner (this process) with a fresh mtime: not reclaimable as stale,
+    // and the token never changes, so no progress is ever observed. The old
+    // flat budget made every waiter block the full 15s in this state.
+    const lockPath = path.join(tmpDir, 'quota-snapshots.json.lock');
+    fs.writeFileSync(lockPath, `${process.pid}:wedged`, { mode: 0o600 });
+
+    const started = Date.now();
+    expect(() => writeQuotaSnapshot('codex', 'codex-1', makeQuotaState(41))).toThrow(/no progress/);
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeGreaterThanOrEqual(2_000);
+    expect(elapsed).toBeLessThan(10_000);
+  }, 15_000);
+
+  it('reclaims a lock left behind by a dead owner', () => {
+    const lockPath = path.join(tmpDir, 'quota-snapshots.json.lock');
+    fs.writeFileSync(lockPath, '999999:departed-owner', { mode: 0o600 });
+    const past = new Date(Date.now() - 180_000);
+    fs.utimesSync(lockPath, past, past);
+
+    writeQuotaSnapshot('codex', 'codex-1', makeQuotaState(41));
+
+    expect(readQuotaSnapshot('codex', 'codex-1')).toMatchObject({
+      fiveHour: { utilization: 41 },
+    });
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
 });
 
 function runWorker(
