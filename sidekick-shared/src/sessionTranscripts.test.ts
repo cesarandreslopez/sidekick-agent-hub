@@ -67,6 +67,25 @@ describe('session transcript read APIs', () => {
     ]);
   });
 
+  it('extracts labels only for the sessions inside the limit', () => {
+    const labelCalls: string[] = [];
+    const provider = providerFixture([]);
+    const counting: SessionProviderBase = {
+      ...provider,
+      extractSessionLabel: (sessionPath) => {
+        labelCalls.push(sessionPath);
+        return provider.extractSessionLabel(sessionPath);
+      },
+    };
+
+    const sessions = listRecentSessions(counting, '/workspace', { limit: 1 });
+
+    expect(sessions).toHaveLength(1);
+    // The label is the only per-file content read, so sessions sorted out by
+    // the limit must never pay for it.
+    expect(labelCalls).toEqual(['/sessions/new.jsonl']);
+  });
+
   it('reads through the provider reader and attaches source provenance', () => {
     const events: SessionEvent[] = [
       {

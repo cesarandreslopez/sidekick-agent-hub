@@ -27,6 +27,14 @@ export { listRecentSessions, readSessionTranscript } from './sessionTranscripts'
 export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
 export { findCodexRolloutFile } from './providers/codex';
 export type { FindCodexRolloutFileOptions } from './providers/codex';
+export { readCodexHistory } from './parsers/codexHistory';
+export type { CodexHistoryEntry, ReadCodexHistoryOptions } from './parsers/codexHistory';
+export { listSessionPreviews, readSessionPreview } from './sessionPreviews';
+export type {
+  ListSessionPreviewsOptions,
+  ReadSessionPreviewOptions,
+  SessionPreview,
+} from './sessionPreviews';
 export {
   ObservedSessionCollector,
   observedSessionSourceFromProvider,

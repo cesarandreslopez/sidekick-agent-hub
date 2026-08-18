@@ -348,6 +348,18 @@ export type { SubagentTrace, SubagentTraceEvent } from './parsers/subagentTraceP
 export { parseMcpToolName } from './parsers/mcpToolName';
 export type { McpToolNameParts } from './parsers/mcpToolName';
 
+// Parsers — Codex native history
+export { readCodexHistory } from './parsers/codexHistory';
+export type { CodexHistoryEntry, ReadCodexHistoryOptions } from './parsers/codexHistory';
+
+// Session previews (bounded, stat-first)
+export { listSessionPreviews, readSessionPreview } from './sessionPreviews';
+export type {
+  ListSessionPreviewsOptions,
+  ReadSessionPreviewOptions,
+  SessionPreview,
+} from './sessionPreviews';
+
 // Parsers — Debug log parsing
 export {
   parseDebugLog,

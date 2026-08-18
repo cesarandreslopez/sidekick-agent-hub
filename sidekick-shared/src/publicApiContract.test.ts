@@ -39,6 +39,15 @@ const contractGroups = {
   turns: ['reasoningSummary', 'segmentAssistantTurn', 'extractTurnSubagents'],
   observedSessions: ['createProviderSessionAdapterV1', 'derivePendingUserRequestV1'],
   collection: ['ObservedSessionCollector', 'observedSessionSourceFromProvider', 'fileFingerprint'],
+  nativeSessionFiles: [
+    'encodeClaudeWorkspacePath',
+    'getClaudeSessionDirectory',
+    'findCodexRolloutFile',
+    'readCodexHistory',
+    'listSessionPreviews',
+    'readSessionPreview',
+    'parseMcpToolName',
+  ],
 } as const;
 
 describe('public API consumer contracts', () => {

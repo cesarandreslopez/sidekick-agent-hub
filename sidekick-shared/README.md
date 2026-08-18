@@ -9,6 +9,7 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 ## Recent additions
 
+- **Native session-file helpers** — `encodeClaudeWorkspacePath()` / `getClaudeSessionDirectory()` locate Claude Code's `~/.claude/projects/` directories with the real on-disk encoding, `findCodexRolloutFile()` resolves a Codex session id to its rollout path, `readCodexHistory()` tail-reads `~/.codex/history.jsonl`, `listSessionPreviews()` builds a cheap stat-first recent-sessions index across providers, and `parseMcpToolName()` splits `mcp__<server>__<tool>` identifiers (browser-safe).
 - **Canonical usage and pricing** — provider-specific counters normalize into disjoint input/cache/output/reasoning categories with `normalizeProviderUsage()`; `calculateNormalizedUsageCost()` prevents cache/reasoning double counting and reports pricing provenance.
 - **Transcripts and resilient collection** — `projectSessionTranscript()` is browser-safe; Node consumers can use `listRecentSessions()`, `readSessionTranscript()`, and `ObservedSessionCollector` across Claude Code, Codex, and OpenCode readers.
 - **Shared token estimation** — `estimateTextTokens()` / `estimateSerializedTokens()` provide an injectable exact-counter path and the stable tokenizer-free `sidekick-fallback-v1` heuristic.
@@ -234,6 +235,43 @@ const humanCliPrompts = transcript.messages.filter(
 ```
 
 For an already-open incremental Codex rollout, keep one `CodexRolloutParser` per stream and pass each parsed `SessionEvent[]` batch to `projectSessionTranscript()` (or append the events to an existing projection). This preserves parser state for paired tool calls, model context, and cumulative token deltas; consumers should not convert raw `response_item` rows themselves.
+
+### Locate provider-native session files
+
+The library exports the same primitives its providers use to find session files on disk, so consumers never need to hand-roll path encoding or directory walks:
+
+```typescript
+import {
+  getClaudeSessionDirectory, // ~/.claude/projects/<encoded workspace>
+  encodeClaudeWorkspacePath, // the encoding itself, if you need the raw string
+  discoverSessionDirectory, // mismatch-tolerant lookup — prefer this for reads
+  findAllClaudeSessions,
+  findCodexRolloutFile, // Codex session id -> rollout file path
+  readCodexHistory, // bounded tail of ~/.codex/history.jsonl, newest first
+} from 'sidekick-shared';
+
+const sessions = findAllClaudeSessions('/home/user/code/my-project');
+
+const [latest] = readCodexHistory({ limit: 1 });
+const rolloutPath = latest ? findCodexRolloutFile(latest.sessionId) : null;
+```
+
+> **Naming trap:** the top-level `encodeWorkspacePath` export is Sidekick's own config-store slug (it keeps dots) and does **not** match Claude Code's directory scheme. For `~/.claude/projects/` paths always use `encodeClaudeWorkspacePath` — or better, `getClaudeSessionDirectory` / `discoverSessionDirectory`, which tolerate encoding drift.
+
+For a cross-provider "recent sessions" surface, `listSessionPreviews()` enumerates stat-only, sorts by mtime, applies `since`/`limit`, and only then does bounded content reads for the survivors — so cost tracks the size of the answer, not the size of the history:
+
+```typescript
+import { ClaudeCodeProvider, CodexProvider, listSessionPreviews } from 'sidekick-shared';
+
+const previews = listSessionPreviews([new ClaudeCodeProvider(), new CodexProvider()], {
+  limit: 10,
+  since: lastRefreshTime, // optional incremental refresh
+});
+// -> [{ provider, sessionId, filePath, modifiedAt, sizeBytes,
+//       firstUserPrompt, firstTimestamp, workspacePath }, ...]
+```
+
+MCP tool identifiers (`mcp__<server>__<tool>`) split with `parseMcpToolName(name)` — first-double-underscore rule, `null` for malformed names, safe in browser bundles.
 
 ### Collect observed sessions with isolation and retry
 

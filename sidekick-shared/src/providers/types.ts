@@ -192,6 +192,12 @@ export interface SessionProviderBase {
   /** Reports provider runtime readiness for DB-backed providers. */
   getRuntimeStatus?(): ProviderRuntimeStatus;
 
+  /**
+   * Lists every session file this provider knows about, across all workspaces.
+   * Stat-only — implementations must not read file contents.
+   */
+  listAllSessionFiles?(): SessionFileInfo[];
+
   /** Tests whether a provider can monitor a directory path, including synthetic DB-backed paths. */
   canMonitorDirectory?(dir: string): boolean;
 

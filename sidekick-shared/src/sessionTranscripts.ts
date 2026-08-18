@@ -25,17 +25,23 @@ export function listRecentSessions(
   options: ListRecentSessionsOptions = {},
 ): ProviderSessionIndex[] {
   const limit = Math.max(0, options.limit ?? 20);
+  // Sort on mtime alone first so labels — the only per-file content read —
+  // are extracted just for the returned slice, not every discovered session.
   return provider
     .findAllSessions(workspacePath)
     .map((sessionPath) => ({
+      sessionPath,
+      modifiedAt: sessionModifiedAt(provider, sessionPath).toISOString(),
+    }))
+    .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt))
+    .slice(0, limit)
+    .map(({ sessionPath, modifiedAt }) => ({
       provider: provider.id,
       sessionId: provider.getSessionId(sessionPath),
       sessionPath,
       label: provider.extractSessionLabel(sessionPath),
-      modifiedAt: sessionModifiedAt(provider, sessionPath).toISOString(),
-    }))
-    .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt))
-    .slice(0, limit);
+      modifiedAt,
+    }));
 }
 
 function sessionModifiedAt(provider: SessionProviderBase, sessionPath: string): Date {

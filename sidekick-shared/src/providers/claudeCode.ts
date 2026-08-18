@@ -23,6 +23,7 @@ import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEv
 import type {
   SessionProviderBase,
   SessionReader,
+  SessionFileInfo,
   SessionFileStats,
   SearchHit,
   ProjectFolderInfo,
@@ -272,6 +273,23 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
     return getAllProjectFoldersRaw(workspacePath);
+  }
+
+  listAllSessionFiles(): SessionFileInfo[] {
+    const results: SessionFileInfo[] = [];
+    const seen = new Set<string>();
+    for (const folder of this.getAllProjectFolders()) {
+      for (const sessionPath of this.findSessionsInDirectory(folder.dir)) {
+        if (seen.has(sessionPath)) continue;
+        seen.add(sessionPath);
+        try {
+          results.push({ path: sessionPath, mtime: fs.statSync(sessionPath).mtime });
+        } catch {
+          // Skip files that vanish between listing and stat.
+        }
+      }
+    }
+    return results;
   }
 
   // --- File identification ---

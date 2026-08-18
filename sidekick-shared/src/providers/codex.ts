@@ -26,6 +26,7 @@ import type {
   SessionReader,
   ProjectFolderInfo,
   SearchHit,
+  SessionFileInfo,
   SessionFileStats,
   ProviderId,
 } from './types';
@@ -805,6 +806,10 @@ export class CodexProvider implements SessionProviderBase {
     const files = findRolloutFiles(dir);
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
     return files.map((f) => f.path);
+  }
+
+  listAllSessionFiles(): SessionFileInfo[] {
+    return findRolloutFilesInConfiguredHomes();
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
