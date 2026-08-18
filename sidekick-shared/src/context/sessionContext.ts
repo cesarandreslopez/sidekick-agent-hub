@@ -8,6 +8,7 @@
 import { EventAggregator } from '../aggregation/EventAggregator';
 import type { AggregatedMetrics } from '../aggregation/types';
 import { getModelContextWindowSize } from '../modelContext';
+import { parseMcpToolName } from '../parsers/mcpToolName';
 import { estimateTextTokens } from '../tokenEstimation';
 import type { ProviderId, SessionProviderBase } from '../providers/types';
 import type {
@@ -727,9 +728,7 @@ function inferMcpServer(toolName: string, input: Record<string, unknown>): strin
   const explicit = input._sidekickMcpServerName ?? input.server_name ?? input.serverName;
   if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
 
-  const match = /^mcp__([^_]+(?:_[^_]+)*)__/.exec(toolName);
-  if (match) return match[1];
-  return undefined;
+  return parseMcpToolName(toolName)?.serverName;
 }
 
 function extractText(content: unknown): string {

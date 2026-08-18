@@ -35,6 +35,7 @@ describe('packaging contract', () => {
       'calculateNormalizedUsageCost',
       'estimateTextTokens',
       'estimateSerializedTokens',
+      'parseMcpToolName',
       'projectSessionTranscript',
       'mergeCostSources',
       'shortModelName',

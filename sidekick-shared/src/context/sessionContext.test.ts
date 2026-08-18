@@ -111,6 +111,30 @@ describe('buildSessionContextSnapshot', () => {
     expect(snapshot.model).toBe('gpt-5-codex');
     expect(snapshot.sources.some((source) => source.sourceType === 'summary')).toBe(true);
   });
+
+  it('attributes MCP servers from composite tool names', () => {
+    const events = [
+      event({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          id: 'a-mcp',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-mcp',
+              name: 'mcp__plugin_context7_context7__query-docs',
+              input: { query: 'react hooks' },
+            },
+          ],
+        },
+      }),
+    ];
+
+    const snapshot = buildSessionContextSnapshot(events);
+
+    expect(snapshot.capabilities.mcpServers).toEqual(['plugin_context7_context7']);
+  });
   it('extracts provider-neutral context evidence from canonical events', () => {
     const snapshot = buildSessionContextSnapshot(richEvents(), {
       providerId: 'codex',

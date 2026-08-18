@@ -49,6 +49,8 @@ export type {
 } from './transcript';
 export { formatDurationMs, formatTokenCount } from './formatting';
 export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
+export { parseMcpToolName } from './parsers/mcpToolName';
+export type { McpToolNameParts } from './parsers/mcpToolName';
 export {
   buildSessionContextSnapshot,
   calculateSessionContextPressure,

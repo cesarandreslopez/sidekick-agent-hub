@@ -343,6 +343,10 @@ export {
 export { scanSubagentTraces } from './parsers/subagentTraceParser';
 export type { SubagentTrace, SubagentTraceEvent } from './parsers/subagentTraceParser';
 
+// Parsers — MCP tool names
+export { parseMcpToolName } from './parsers/mcpToolName';
+export type { McpToolNameParts } from './parsers/mcpToolName';
+
 // Parsers — Debug log parsing
 export {
   parseDebugLog,
