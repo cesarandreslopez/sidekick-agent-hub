@@ -25,6 +25,8 @@ export type {
 } from './observedContextWindows';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
 export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
+export { findCodexRolloutFile } from './providers/codex';
+export type { FindCodexRolloutFileOptions } from './providers/codex';
 export {
   ObservedSessionCollector,
   observedSessionSourceFromProvider,

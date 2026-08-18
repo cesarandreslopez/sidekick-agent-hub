@@ -149,6 +149,75 @@ function findRolloutFilesInConfiguredHomes(): Array<{ path: string; mtime: Date 
   return results;
 }
 
+export interface FindCodexRolloutFileOptions {
+  /**
+   * Codex home whose `sessions/` subtree to search. Defaults to every
+   * monitored home: `$CODEX_HOME` if set, else `~/.codex`, plus managed
+   * profile homes that recorded sessions.
+   */
+  codexHome?: string;
+}
+
+/**
+ * Locates the rollout file for a Codex session id by walking
+ * `<home>/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl`.
+ *
+ * Filename-only match, case-insensitive on the id — no file contents are read
+ * and files are only stat'ed once their name matches, so the walk stays cheap
+ * even over a large history. When the same id exists in more than one home,
+ * the most recently modified copy wins. Returns `null` for an unknown, empty,
+ * or whitespace id. Consumers who want the database's answer instead can query
+ * the already-public `CodexDatabase` (requires the external `sqlite3` binary).
+ */
+export function findCodexRolloutFile(
+  sessionId: string,
+  options: FindCodexRolloutFileOptions = {},
+): string | null {
+  const normalizedId = sessionId.trim().toLowerCase();
+  if (!normalizedId) return null;
+
+  const sessionsDirs = options.codexHome
+    ? [path.join(options.codexHome, 'sessions')]
+    : getSessionsDirs();
+
+  let best: { path: string; mtimeMs: number } | null = null;
+  for (const dir of sessionsDirs) {
+    for (const candidate of findRolloutFilesById(dir, normalizedId)) {
+      if (!best || candidate.mtimeMs > best.mtimeMs) best = candidate;
+    }
+  }
+  return best?.path ?? null;
+}
+
+function findRolloutFilesById(
+  dir: string,
+  normalizedId: string,
+): Array<{ path: string; mtimeMs: number }> {
+  const results: Array<{ path: string; mtimeMs: number }> = [];
+  try {
+    if (!fs.existsSync(dir)) return results;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...findRolloutFilesById(fullPath, normalizedId));
+      } else if (
+        entry.isFile() &&
+        isRolloutFile(entry.name) &&
+        extractSessionId(entry.name).toLowerCase() === normalizedId
+      ) {
+        try {
+          results.push({ path: fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs });
+        } catch {
+          // Skip files that vanish between readdir and stat.
+        }
+      }
+    }
+  } catch {
+    // Skip inaccessible directories.
+  }
+  return results;
+}
+
 /** Pick the best sessions directory for UI/search entrypoints. */
 function getSessionsDir(): string {
   const dirs = getSessionsDirs();

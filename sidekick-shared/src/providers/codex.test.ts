@@ -349,3 +349,111 @@ describe('CodexProvider', () => {
     expect(events.some((e) => e.type === 'system' && e.rateLimits)).toBe(true);
   });
 });
+
+describe('findCodexRolloutFile', () => {
+  const uuid = '019d86b0-b20c-7b02-a3b2-efe5c1ed7122';
+  let previousCodexHome: string | undefined;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-codex-rollout-find-'));
+    previousCodexHome = process.env.CODEX_HOME;
+    delete process.env.CODEX_HOME;
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeRollout(home: string, daySegments: string[], name: string): string {
+    const rolloutPath = path.join(home, 'sessions', ...daySegments, name);
+    fs.mkdirSync(path.dirname(rolloutPath), { recursive: true });
+    fs.writeFileSync(rolloutPath, '{}\n');
+    return rolloutPath;
+  }
+
+  it('finds a rollout by session id in the dated tree', async () => {
+    const { findCodexRolloutFile } = await import('./codex');
+    const expected = writeRollout(
+      path.join(tmpDir, '.codex'),
+      ['2026', '08', '18'],
+      `rollout-2026-08-18T13-31-03-${uuid}.jsonl`,
+    );
+
+    expect(findCodexRolloutFile(uuid)).toBe(expected);
+  });
+
+  it('matches the id case-insensitively', async () => {
+    const { findCodexRolloutFile } = await import('./codex');
+    const expected = writeRollout(
+      path.join(tmpDir, '.codex'),
+      ['2026', '08', '18'],
+      `rollout-2026-08-18T13-31-03-${uuid}.jsonl`,
+    );
+
+    expect(findCodexRolloutFile(uuid.toUpperCase())).toBe(expected);
+  });
+
+  it('returns null for unknown, empty, and whitespace ids', async () => {
+    const { findCodexRolloutFile } = await import('./codex');
+    writeRollout(
+      path.join(tmpDir, '.codex'),
+      ['2026', '08', '18'],
+      `rollout-2026-08-18T13-31-03-${uuid}.jsonl`,
+    );
+
+    expect(findCodexRolloutFile('019d86b0-0000-0000-0000-000000000000')).toBeNull();
+    // The empty-id guard is critical: a suffix predicate without it would
+    // match every rollout file.
+    expect(findCodexRolloutFile('')).toBeNull();
+    expect(findCodexRolloutFile('   ')).toBeNull();
+  });
+
+  it('returns null when the sessions tree does not exist', async () => {
+    const { findCodexRolloutFile } = await import('./codex');
+
+    expect(findCodexRolloutFile(uuid)).toBeNull();
+    expect(findCodexRolloutFile(uuid, { codexHome: path.join(tmpDir, 'missing') })).toBeNull();
+  });
+
+  it('restricts the search to an explicit codexHome', async () => {
+    const { findCodexRolloutFile } = await import('./codex');
+    writeRollout(
+      path.join(tmpDir, '.codex'),
+      ['2026', '08', '18'],
+      `rollout-2026-08-18T13-31-03-${uuid}.jsonl`,
+    );
+    const otherHome = path.join(tmpDir, 'other-home');
+    const inOther = writeRollout(
+      otherHome,
+      ['2026', '08', '17'],
+      `rollout-2026-08-17T09-00-00-${uuid}.jsonl`,
+    );
+
+    expect(findCodexRolloutFile(uuid, { codexHome: otherHome })).toBe(inOther);
+    expect(findCodexRolloutFile(uuid, { codexHome: path.join(tmpDir, 'empty-home') })).toBeNull();
+  });
+
+  it('prefers the most recently modified copy when the id appears twice', async () => {
+    const { findCodexRolloutFile } = await import('./codex');
+    const home = path.join(tmpDir, '.codex');
+    const older = writeRollout(home, ['2026', '08', '17'], `rollout-a-${uuid}.jsonl`);
+    const newer = writeRollout(home, ['2026', '08', '18'], `rollout-b-${uuid}.jsonl`);
+    const past = new Date(Date.now() - 60_000);
+    fs.utimesSync(older, past, past);
+
+    expect(findCodexRolloutFile(uuid)).toBe(newer);
+  });
+
+  it('ignores malformed neighbors and accepts timestampless rollout names', async () => {
+    const { findCodexRolloutFile } = await import('./codex');
+    const home = path.join(tmpDir, '.codex');
+    writeRollout(home, ['2026', '08', '18'], 'notes.jsonl');
+    writeRollout(home, ['2026', '08', '18'], 'rollout-garbage.jsonl');
+    const bare = writeRollout(home, ['2026', '08', '18'], `rollout-${uuid}.jsonl`);
+
+    expect(findCodexRolloutFile(uuid)).toBe(bare);
+  });
+});

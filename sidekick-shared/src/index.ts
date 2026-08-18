@@ -288,7 +288,8 @@ export type {
 export { detectProvider, getAllDetectedProviders } from './providers/detect';
 export { ClaudeCodeProvider } from './providers/claudeCode';
 export { OpenCodeProvider, getOpenCodeDataDir } from './providers/openCode';
-export { CodexProvider } from './providers/codex';
+export { CodexProvider, findCodexRolloutFile } from './providers/codex';
+export type { FindCodexRolloutFileOptions } from './providers/codex';
 
 // Parsers — JSONL
 export { JsonlParser, TRUNCATION_PATTERNS } from './parsers/jsonl';
