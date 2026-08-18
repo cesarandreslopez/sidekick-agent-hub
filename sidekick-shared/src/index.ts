@@ -246,7 +246,14 @@ export {
 export type { ReadPlansOptions, PlanAnalytics } from './readers/plans';
 
 // Atomic persistence writers
-export { atomicWriteJson, atomicWriteJsonSync, updateJsonStoreAtomic } from './writers/atomic';
+export {
+  atomicWriteJson,
+  atomicWriteJsonSync,
+  atomicWriteFileSync,
+  updateJsonStoreAtomic,
+  updateJsonStoreAtomicSync,
+  withFileLockSync,
+} from './writers/atomic';
 export { addTask, completeTask } from './writers/tasks';
 export { addDecision, decisionFingerprint } from './writers/decisions';
 export { addNote } from './writers/notes';

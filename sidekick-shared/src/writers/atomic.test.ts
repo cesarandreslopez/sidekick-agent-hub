@@ -1,9 +1,14 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { updateJsonStoreAtomic } from './atomic';
+import {
+  atomicWriteFileSync,
+  updateJsonStoreAtomic,
+  updateJsonStoreAtomicSync,
+  withFileLockSync,
+} from './atomic';
 
 const temporaryDirectories: string[] = [];
 
@@ -137,6 +142,203 @@ describe('updateJsonStoreAtomic', () => {
     expect(await fs.promises.readFile(lockPath, 'utf8')).toBe('999999:replacement-owner');
   });
 });
+
+describe('updateJsonStoreAtomicSync', () => {
+  it('preserves interleaved updates from concurrent sync and async processes', async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sidekick-writer-'));
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, 'store.json');
+    const workerScript = `
+      // require() resolves to dist/index.js via package.json main; the
+      // package's "pretest": "npm run build" rebuilds dist before vitest runs.
+      const pkg = require(${JSON.stringify(process.cwd())});
+      // Under \`node -e\`, positional arguments start at argv[1].
+      const filePath = process.argv[1];
+      const id = process.argv[2];
+      const createEmpty = () => ({ entries: {} });
+      const update = (store) => ({ entries: { ...store.entries, [id]: Number(id) } });
+      if (process.argv[3] === 'sync') {
+        pkg.updateJsonStoreAtomicSync(filePath, createEmpty, update);
+      } else {
+        pkg.updateJsonStoreAtomic(filePath, createEmpty, update).catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+      }
+    `;
+
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        runWorker(process.execPath, [
+          '-e',
+          workerScript,
+          filePath,
+          String(index),
+          index % 2 === 0 ? 'sync' : 'async',
+        ]),
+      ),
+    );
+
+    expect(results.filter((result) => result.status !== 0).map((result) => result.stderr)).toEqual(
+      [],
+    );
+    const persisted = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
+      entries: Record<string, number>;
+    };
+    expect(Object.keys(persisted.entries)).toHaveLength(12);
+    expect(fs.existsSync(`${filePath}.lock`)).toBe(false);
+  }, 20_000);
+
+  it('still times out when the holder makes no progress', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, 'store.json');
+    // A live owner (this process) with a fresh mtime: not reclaimable as stale,
+    // and the token never changes, so no progress is ever observed.
+    fs.writeFileSync(`${filePath}.lock`, `${process.pid}:wedged`, { mode: 0o600 });
+
+    const started = Date.now();
+    expect(() =>
+      updateJsonStoreAtomicSync(
+        filePath,
+        () => ({ entries: {} as Record<string, number> }),
+        (store) => store,
+      ),
+    ).toThrow(/no progress/);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(2_000);
+  }, 15_000);
+
+  it('caps a synchronous wait even while the queue keeps making progress', () => {
+    // Progress resets must not extend a sync waiter's block indefinitely — the
+    // waiter is holding its process's event loop hostage while it queues. The
+    // fs sync methods are not spyable from ESM, so the scenario runs in a CJS
+    // child where the module object is mutable: the lock always "exists", its
+    // token changes on every read, its mtime is always fresh, and Date.now()
+    // advances on every call so the 15s ceiling is reached in milliseconds of
+    // real time.
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
+    temporaryDirectories.push(directory);
+    const lockPath = path.join(directory, 'store.json.lock');
+    const script = `
+      const fs = require('fs');
+      const lockPath = process.argv[1];
+      let tokenReads = 0;
+      const realOpenSync = fs.openSync;
+      fs.openSync = (target, flags, mode) => {
+        if (String(target) === lockPath)
+          throw Object.assign(new Error('locked'), { code: 'EEXIST' });
+        return realOpenSync(target, flags, mode);
+      };
+      const realReadFileSync = fs.readFileSync;
+      fs.readFileSync = (target, options) => {
+        if (String(target) === lockPath) return 'other:token-' + (++tokenReads);
+        return realReadFileSync(target, options);
+      };
+      const realStatSync = fs.statSync;
+      fs.statSync = (target, options) => {
+        if (String(target) === lockPath) return { mtimeMs: Date.now() };
+        return realStatSync(target, options);
+      };
+      const base = Date.now();
+      let clock = 0;
+      Date.now = () => base + (clock += 200);
+      const { withFileLockSync } = require(process.cwd());
+      try {
+        withFileLockSync(lockPath, () => 'unreachable');
+        console.error('lock unexpectedly acquired');
+        process.exit(1);
+      } catch (error) {
+        if (!/blocked synchronously/.test(String(error))) {
+          console.error('wrong error: ' + error);
+          process.exit(1);
+        }
+        process.stdout.write('ceiling:' + tokenReads);
+      }
+    `;
+
+    const output = execFileSync(process.execPath, ['-e', script, lockPath], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    // The queue was advancing the whole time — the ceiling fired, not the
+    // no-progress budget.
+    const tokenReads = Number(output.replace('ceiling:', ''));
+    expect(output).toMatch(/^ceiling:/);
+    expect(tokenReads).toBeGreaterThan(5);
+  });
+
+  it('reclaims a lock abandoned past the heartbeat ceiling even when its PID is live', async () => {
+    // PID reuse makes process.kill(pid, 0) an unreliable liveness signal: a
+    // crashed owner's recycled PID looks alive forever and the store wedges
+    // until a human deletes the lock. An mtime frozen far past the heartbeat
+    // interval is the stronger signal that the owner is gone.
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, 'store.json');
+    const lockPath = `${filePath}.lock`;
+    const past = new Date(Date.now() - 180_000);
+
+    fs.writeFileSync(lockPath, `${process.pid}:abandoned`, { mode: 0o600 });
+    fs.utimesSync(lockPath, past, past);
+    await updateJsonStoreAtomic(
+      filePath,
+      () => ({ entries: {} as Record<string, number> }),
+      (store) => ({ entries: { ...store.entries, async: 1 } }),
+    );
+
+    fs.writeFileSync(lockPath, `${process.pid}:abandoned`, { mode: 0o600 });
+    fs.utimesSync(lockPath, past, past);
+    updateJsonStoreAtomicSync(
+      filePath,
+      () => ({ entries: {} as Record<string, number> }),
+      (store) => ({ entries: { ...store.entries, sync: 1 } }),
+    );
+
+    const persisted = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
+      entries: Record<string, number>;
+    };
+    expect(persisted.entries).toEqual({ async: 1, sync: 1 });
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+});
+
+describe('atomicWriteFileSync', () => {
+  it('writes raw content atomically without leaving temp files', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, 'auth.json');
+
+    atomicWriteFileSync(filePath, '{"raw": true}\n');
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('{"raw": true}\n');
+    expect(fs.readdirSync(directory)).toEqual(['auth.json']);
+  });
+
+  it.skipIf(process.platform === 'win32')('applies the requested file mode', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, 'auth.json');
+
+    atomicWriteFileSync(filePath, 'secret', 0o600);
+
+    expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
+  });
+});
+
+function runWorker(
+  command: string,
+  args: string[],
+): Promise<{ status: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { cwd: process.cwd(), env: process.env });
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('close', (status) => resolve({ status, stderr }));
+  });
+}
 
 describe('atomicWriteJsonSync', () => {
   it('fsyncs the file before rename and the containing directory after rename', () => {
