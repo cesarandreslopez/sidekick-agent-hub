@@ -17,10 +17,17 @@ import * as os from 'os';
 import type { ProjectFolderInfo } from '../providers/types';
 
 /**
- * Encodes a workspace path to Claude Code's directory naming scheme.
+ * Encodes a workspace path to Claude Code's on-disk directory naming scheme
+ * under `~/.claude/projects/` — every non-ASCII-alphanumeric character
+ * (separators, colons, underscores, dots, spaces) becomes a hyphen, and case
+ * is preserved. Exported from the package root as `encodeClaudeWorkspacePath`.
  *
- * Claude Code replaces path separators, colons, and underscores with hyphens
- * to create a flat directory structure.
+ * Not to be confused with the top-level `encodeWorkspacePath` export from
+ * `paths.ts`: that one is Sidekick's own config-store slug (it keeps dots) and
+ * does NOT match Claude Code's scheme — using it to build a
+ * `~/.claude/projects/` path silently misses for any workspace containing a
+ * dot or space. For lookups, prefer `getClaudeSessionDirectory` or the
+ * mismatch-tolerant `discoverSessionDirectory` over raw string encoding.
  *
  * @param workspacePath - Absolute path to workspace directory
  * @returns Encoded path string (e.g., "-home-user-code-project")

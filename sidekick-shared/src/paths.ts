@@ -91,10 +91,14 @@ export function getGlobalDataPath(filename: string): string {
 }
 
 /**
- * Encodes a workspace path to Claude Code's directory naming scheme.
- * Replaces path separators, colons, and underscores with hyphens.
+ * Encodes a workspace path into Sidekick's own config-store slug — path
+ * separators, colons, and underscores become hyphens, dots are kept.
  *
- * From: sidekick-vscode/src/services/SessionPathResolver.ts:35-43
+ * This is NOT Claude Code's `~/.claude/projects/` naming scheme, despite the
+ * shared name: Claude Code also replaces dots, spaces, and every other
+ * non-alphanumeric character. To locate Claude Code session directories use
+ * `encodeClaudeWorkspacePath` / `getClaudeSessionDirectory` from
+ * `parsers/sessionPathResolver` instead.
  */
 export function encodeWorkspacePath(workspacePath: string): string {
   const normalized = workspacePath.replace(/\\/g, '/');

@@ -24,7 +24,12 @@ vi.mock('fs', async (importOriginal) => {
   };
 });
 
-import { findAllSessions, getSessionDirectory } from './sessionPathResolver';
+import {
+  decodeEncodedPath,
+  encodeWorkspacePath,
+  findAllSessions,
+  getSessionDirectory,
+} from './sessionPathResolver';
 
 afterEach(() => {
   if (mocks.home) fs.rmSync(mocks.home, { recursive: true, force: true });
@@ -43,5 +48,55 @@ describe('findAllSessions', () => {
     mocks.vanishingBasename = 'vanished.jsonl';
 
     expect(findAllSessions(workspace)).toEqual([path.join(sessionDir, 'readable.jsonl')]);
+  });
+});
+
+describe('encodeWorkspacePath', () => {
+  // Pins Claude Code's real on-disk naming under ~/.claude/projects/, verified
+  // against live installs: every non-ASCII-alphanumeric character becomes a
+  // hyphen (dots and underscores included), case is preserved.
+
+  it('encodes a Unix path with a leading hyphen', () => {
+    expect(encodeWorkspacePath('/home/user/code/project')).toBe('-home-user-code-project');
+  });
+
+  it('preserves case in macOS-style paths', () => {
+    expect(encodeWorkspacePath('/Users/user/code/project')).toBe('-Users-user-code-project');
+  });
+
+  it('encodes a Windows drive letter with a double hyphen', () => {
+    expect(encodeWorkspacePath('C:\\Users\\user\\code\\project')).toBe(
+      'C--Users-user-code-project',
+    );
+    expect(encodeWorkspacePath('C:/Users/user/code/project')).toBe('C--Users-user-code-project');
+  });
+
+  it('replaces underscores', () => {
+    expect(encodeWorkspacePath('/home/user/my_project_name')).toBe('-home-user-my-project-name');
+    expect(
+      encodeWorkspacePath('C:\\Users\\andre\\OneDrive\\Documents\\humans_are_awesome_epub'),
+    ).toBe('C--Users-andre-OneDrive-Documents-humans-are-awesome-epub');
+  });
+
+  it('replaces dots and spaces the same way Claude Code does', () => {
+    expect(encodeWorkspacePath('/home/user/my project/app.v2')).toBe(
+      '-home-user-my-project-app-v2',
+    );
+  });
+
+  it('produces double hyphens for dot-prefixed segments (worktree layout)', () => {
+    expect(encodeWorkspacePath('/a/.claude-worktrees/x')).toBe('-a--claude-worktrees-x');
+  });
+
+  it('handles the root path', () => {
+    expect(encodeWorkspacePath('/')).toBe('-');
+  });
+
+  it('round-trips through the lossy decoder', () => {
+    // decodeEncodedPath is documented as lossy (every hyphen becomes a slash);
+    // it only inverts paths whose segments contained no replaced characters.
+    expect(decodeEncodedPath(encodeWorkspacePath('/home/user/code/project'))).toBe(
+      '/home/user/code/project',
+    );
   });
 });
