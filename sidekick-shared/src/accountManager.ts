@@ -25,12 +25,16 @@ import {
 import { readActiveCredentials, writeActiveCredentials } from './credentialIO';
 import {
   finalizeCodexAccount,
+  finalizeCodexAccountAsync,
   getCodexProfileHome,
   isCodexProfileAuthenticated,
+  isCodexProfileAuthenticatedAsync,
   listCodexAccounts,
   prepareCodexAccount,
   readCodexAccountMetadata,
+  readCodexAccountMetadataAsync,
   switchToCodexAccount,
+  switchToCodexAccountAsync,
 } from './codexProfiles';
 
 export interface BeginAccountLoginSuccess {
@@ -226,6 +230,14 @@ export function beginAccountLogin(
   };
 }
 
+function getClaudeAccountLoginStatus(loginId: string): AccountLoginStatus {
+  const home = getClaudeProfileHome(loginId);
+  const identity = readClaudeProfileIdentity(home);
+  return isClaudeProfileAuthenticated(home)
+    ? { state: 'authenticated', email: identity?.email }
+    : { state: 'pending' };
+}
+
 export function getAccountLoginStatus(
   provider: AccountProviderId,
   loginId: string,
@@ -243,11 +255,32 @@ export function getAccountLoginStatus(
     };
   }
 
-  const home = getClaudeProfileHome(loginId);
-  const identity = readClaudeProfileIdentity(home);
-  return isClaudeProfileAuthenticated(home)
-    ? { state: 'authenticated', email: identity?.email }
-    : { state: 'pending' };
+  return getClaudeAccountLoginStatus(loginId);
+}
+
+/**
+ * {@link getAccountLoginStatus} without blocking the event loop on the codex
+ * CLI probe. The sync variant blocks up to 4s per call while a codex login is
+ * pending — ruinous for callers that poll it on an interval.
+ */
+export async function getAccountLoginStatusAsync(
+  provider: AccountProviderId,
+  loginId: string,
+): Promise<AccountLoginStatus> {
+  if (provider === 'codex') {
+    const codexHome = getCodexProfileHome(loginId);
+    if (!(await isCodexProfileAuthenticatedAsync(codexHome))) {
+      return { state: 'pending' };
+    }
+
+    const metadata = await readCodexAccountMetadataAsync(codexHome);
+    return {
+      state: 'authenticated',
+      email: metadata.email,
+    };
+  }
+
+  return getClaudeAccountLoginStatus(loginId);
 }
 
 export function finalizeAccountLogin(
@@ -259,6 +292,26 @@ export function finalizeAccountLogin(
     return finalizeCodexAccount(loginId, opts);
   }
 
+  return finalizeClaudeAccountLogin(loginId, opts);
+}
+
+/** {@link finalizeAccountLogin} without blocking the event loop on CLI probes. */
+export async function finalizeAccountLoginAsync(
+  provider: AccountProviderId,
+  loginId: string,
+  opts: FinalizeAccountLoginOptions = {},
+): Promise<AccountManagerResult> {
+  if (provider === 'codex') {
+    return finalizeCodexAccountAsync(loginId, opts);
+  }
+
+  return finalizeClaudeAccountLogin(loginId, opts);
+}
+
+function finalizeClaudeAccountLogin(
+  loginId: string,
+  opts: FinalizeAccountLoginOptions = {},
+): AccountManagerResult {
   const home = getClaudeProfileHome(loginId);
   const identity = readClaudeProfileIdentity(home);
   if (!identity) {
@@ -346,7 +399,7 @@ export async function spawnAccountLogin(
   if (!begin.success) return { success: false, error: begin.error };
 
   if (begin.alreadyComplete) {
-    return finalizeAccountLogin(provider, begin.loginId, { activate: opts.activate ?? true });
+    return finalizeAccountLoginAsync(provider, begin.loginId, { activate: opts.activate ?? true });
   }
 
   if (!begin.command) {
@@ -385,9 +438,11 @@ export async function spawnAccountLogin(
       return { success: false, error: 'Account login aborted.' };
     }
 
-    const status = emitStatus(opts, getAccountLoginStatus(provider, begin.loginId));
+    const status = emitStatus(opts, await getAccountLoginStatusAsync(provider, begin.loginId));
     if (status.state === 'authenticated') {
-      return finalizeAccountLogin(provider, begin.loginId, { activate: opts.activate ?? true });
+      return finalizeAccountLoginAsync(provider, begin.loginId, {
+        activate: opts.activate ?? true,
+      });
     }
 
     if (childExited) {
@@ -396,9 +451,14 @@ export async function spawnAccountLogin(
         emitStatus(opts, { state: 'failed', error });
         return { success: false, error };
       }
-      const finalStatus = emitStatus(opts, getAccountLoginStatus(provider, begin.loginId));
+      const finalStatus = emitStatus(
+        opts,
+        await getAccountLoginStatusAsync(provider, begin.loginId),
+      );
       if (finalStatus.state === 'authenticated') {
-        return finalizeAccountLogin(provider, begin.loginId, { activate: opts.activate ?? true });
+        return finalizeAccountLoginAsync(provider, begin.loginId, {
+          activate: opts.activate ?? true,
+        });
       }
       emitStatus(opts, {
         state: 'failed',
@@ -424,6 +484,17 @@ export async function spawnAccountLogin(
 
 export function switchAccount(provider: AccountProviderId, id: string): AccountManagerResult {
   return provider === 'codex' ? switchToCodexAccount(id) : switchToAccount(id);
+}
+
+/**
+ * {@link switchAccount} without blocking the event loop on codex CLI probes.
+ * The Claude path still performs bounded synchronous keychain reads on macOS.
+ */
+export async function switchAccountAsync(
+  provider: AccountProviderId,
+  id: string,
+): Promise<AccountManagerResult> {
+  return provider === 'codex' ? switchToCodexAccountAsync(id) : switchToAccount(id);
 }
 
 export function listAllAccounts(): ListAllAccountsResult {

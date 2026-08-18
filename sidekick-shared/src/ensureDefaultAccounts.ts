@@ -6,8 +6,8 @@ import {
   getActiveCodexAccount,
   getCodexProfilesDir,
   getSystemCodexHome,
-  prepareCodexAccount,
-  reconcileCodexAuthState,
+  prepareCodexAccountAsync,
+  reconcileCodexAuthStateAsync,
 } from './codexProfiles';
 import { readClaudeMaxCredentials } from './credentials';
 
@@ -65,16 +65,16 @@ function cleanupPendingCodexProfile(profileId: string): void {
   fs.rmSync(path.join(getCodexProfilesDir(), profileId), { recursive: true, force: true });
 }
 
-function ensureDefaultCodexAccount(
+async function ensureDefaultCodexAccount(
   options: EnsureDefaultAccountsOptions | undefined,
-): EnsureDefaultAccountStatus {
+): Promise<EnsureDefaultAccountStatus> {
   try {
     if (getActiveCodexAccount()) return 'skipped';
 
     const systemAuthPath = path.join(getSystemCodexHome(), 'auth.json');
     if (!fs.existsSync(systemAuthPath)) return 'skipped';
 
-    const result = prepareCodexAccount('Default');
+    const result = await prepareCodexAccountAsync('Default');
     if (result.success && !result.needsLogin) return 'registered';
 
     if (result.profileId) {
@@ -96,7 +96,7 @@ export async function ensureDefaultAccounts(
   options?: EnsureDefaultAccountsOptions,
 ): Promise<EnsureDefaultAccountsResult> {
   const claude = await ensureDefaultClaudeAccount(options);
-  const codex = ensureDefaultCodexAccount(options);
+  const codex = await ensureDefaultCodexAccount(options);
 
   try {
     reconcileClaudeAuthState();
@@ -105,7 +105,7 @@ export async function ensureDefaultAccounts(
   }
 
   try {
-    reconcileCodexAuthState();
+    await reconcileCodexAuthStateAsync();
   } catch (error) {
     logFailure(options, 'Codex auth reconciliation failed.', error);
   }

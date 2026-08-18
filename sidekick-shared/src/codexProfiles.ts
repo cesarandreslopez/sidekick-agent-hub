@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
+import { execFile, spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import {
   getAccountsDir,
@@ -264,41 +264,77 @@ function readMetadataFromLegacyCredentials(codexHome: string): AccountIdentityMe
   return {};
 }
 
-function getCodexLoginStatus(codexHome: string): {
+interface CodexLoginStatus {
   loggedIn: boolean;
   authMode?: 'chatgpt' | 'api-key';
-} {
+}
+
+const PROBE_TIMEOUT_MS = 4000;
+
+function parseCodexLoginStatusOutput(status: number | null, stdout: string): CodexLoginStatus {
+  const trimmed = stdout.trim();
+  if (status === 0 && /^Logged in/i.test(trimmed)) {
+    if (/API key/i.test(trimmed)) {
+      return { loggedIn: true, authMode: 'api-key' };
+    }
+    if (/ChatGPT/i.test(trimmed)) {
+      return { loggedIn: true, authMode: 'chatgpt' };
+    }
+    return { loggedIn: true };
+  }
+  return { loggedIn: false };
+}
+
+/**
+ * Blocks the caller's event loop for up to {@link PROBE_TIMEOUT_MS}. Async code
+ * paths must use {@link getCodexLoginStatusAsync} instead — external consumers
+ * embed this package in processes where a blocked event loop freezes all IPC.
+ */
+function getCodexLoginStatus(codexHome: string): CodexLoginStatus {
   try {
     const env = { ...process.env, CODEX_HOME: codexHome };
     const result = spawnSync('codex', ['login', 'status'], {
       encoding: 'utf8',
       env,
-      timeout: 4000,
+      timeout: PROBE_TIMEOUT_MS,
       killSignal: 'SIGKILL',
     });
-    const stdout = String(result.stdout ?? '').trim();
-    if (result.status === 0 && /^Logged in/i.test(stdout)) {
-      if (/API key/i.test(stdout)) {
-        return { loggedIn: true, authMode: 'api-key' };
-      }
-      if (/ChatGPT/i.test(stdout)) {
-        return { loggedIn: true, authMode: 'chatgpt' };
-      }
-      return { loggedIn: true };
-    }
+    return parseCodexLoginStatusOutput(result.status, String(result.stdout ?? ''));
   } catch {
     // Ignore missing CLI or spawn errors.
   }
   return { loggedIn: false };
 }
 
+function getCodexLoginStatusAsync(codexHome: string): Promise<CodexLoginStatus> {
+  return new Promise((resolve) => {
+    try {
+      const env = { ...process.env, CODEX_HOME: codexHome };
+      execFile(
+        'codex',
+        ['login', 'status'],
+        { encoding: 'utf8', env, timeout: PROBE_TIMEOUT_MS, killSignal: 'SIGKILL' },
+        (error, stdout) => {
+          // A missing CLI, non-zero exit, or timeout all mean "not logged in".
+          resolve(
+            error ? { loggedIn: false } : parseCodexLoginStatusOutput(0, String(stdout ?? '')),
+          );
+        },
+      );
+    } catch {
+      resolve({ loggedIn: false });
+    }
+  });
+}
+
+/** Sync sibling of {@link detectRunningCodexProcessAsync}; see the event-loop caveat above. */
 function detectRunningCodexProcess(): boolean {
   if (process.platform === 'win32') return false;
   try {
     return (
       spawnSync('pgrep', ['-x', 'codex'], {
         encoding: 'utf8',
-        timeout: 4000,
+        timeout: PROBE_TIMEOUT_MS,
         killSignal: 'SIGKILL',
       }).status === 0
     );
@@ -307,7 +343,24 @@ function detectRunningCodexProcess(): boolean {
   }
 }
 
-export function readCodexAccountMetadata(codexHome: string): AccountIdentityMetadata {
+function detectRunningCodexProcessAsync(): Promise<boolean> {
+  if (process.platform === 'win32') return Promise.resolve(false);
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        'pgrep',
+        ['-x', 'codex'],
+        { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, killSignal: 'SIGKILL' },
+        (error) => resolve(!error),
+      );
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/** File-based metadata only — never spawns the codex CLI. */
+function readCodexAccountMetadataFromFiles(codexHome: string): AccountIdentityMetadata | null {
   const fromAuth = readMetadataFromAuthJson(codexHome);
   if (fromAuth.email || fromAuth.workspaceId || fromAuth.planType || fromAuth.authMode) {
     return fromAuth;
@@ -318,25 +371,44 @@ export function readCodexAccountMetadata(codexHome: string): AccountIdentityMeta
     return fromLegacy;
   }
 
-  const status = getCodexLoginStatus(codexHome);
-  if (status.loggedIn) {
-    return {
-      authMode: status.authMode ?? 'unknown',
-    };
-  }
+  return null;
+}
 
-  return {};
+function metadataFromLoginStatus(status: CodexLoginStatus): AccountIdentityMetadata {
+  return status.loggedIn ? { authMode: status.authMode ?? 'unknown' } : {};
+}
+
+export function readCodexAccountMetadata(codexHome: string): AccountIdentityMetadata {
+  return (
+    readCodexAccountMetadataFromFiles(codexHome) ??
+    metadataFromLoginStatus(getCodexLoginStatus(codexHome))
+  );
+}
+
+/** {@link readCodexAccountMetadata} without blocking the event loop on the CLI probe. */
+export async function readCodexAccountMetadataAsync(
+  codexHome: string,
+): Promise<AccountIdentityMetadata> {
+  return (
+    readCodexAccountMetadataFromFiles(codexHome) ??
+    metadataFromLoginStatus(await getCodexLoginStatusAsync(codexHome))
+  );
+}
+
+function hasCodexCredentialFiles(codexHome: string): boolean {
+  return (
+    fs.existsSync(path.join(codexHome, 'auth.json')) ||
+    fs.existsSync(path.join(codexHome, '.credentials.json'))
+  );
 }
 
 export function isCodexProfileAuthenticated(codexHome: string): boolean {
-  if (
-    fs.existsSync(path.join(codexHome, 'auth.json')) ||
-    fs.existsSync(path.join(codexHome, '.credentials.json'))
-  ) {
-    return true;
-  }
+  return hasCodexCredentialFiles(codexHome) || getCodexLoginStatus(codexHome).loggedIn;
+}
 
-  return getCodexLoginStatus(codexHome).loggedIn;
+/** {@link isCodexProfileAuthenticated} without blocking the event loop on the CLI probe. */
+export async function isCodexProfileAuthenticatedAsync(codexHome: string): Promise<boolean> {
+  return hasCodexCredentialFiles(codexHome) || (await getCodexLoginStatusAsync(codexHome)).loggedIn;
 }
 
 function ensureUniqueCodexLabel(label: string, excludeId?: string): string | null {
@@ -425,15 +497,21 @@ export function getCodexExecutionEnv(baseEnv: NodeJS.ProcessEnv = process.env): 
   };
 }
 
-export function prepareCodexAccount(label: string): CodexAccountManagerResult {
+type CodexPrepareStep =
+  | { result: CodexAccountManagerResult }
+  | { finalize: { profileId: string; codexHome: string } };
+
+type CodexFinalizeStep = { result: CodexAccountManagerResult } | { swap: SavedAccountProfile };
+
+function prepareCodexAccountCore(label: string): CodexPrepareStep {
   const trimmedLabel = label.trim();
   if (!trimmedLabel) {
-    return { success: false, error: 'Codex accounts require a non-empty label.' };
+    return { result: { success: false, error: 'Codex accounts require a non-empty label.' } };
   }
 
   const labelError = ensureUniqueCodexLabel(trimmedLabel);
   if (labelError) {
-    return { success: false, error: labelError };
+    return { result: { success: false, error: labelError } };
   }
 
   const profileId = randomUUID();
@@ -449,67 +527,107 @@ export function prepareCodexAccount(label: string): CodexAccountManagerResult {
   const imported = importCurrentCodexAuth(sourceHome, codexHome);
 
   if (imported) {
-    const finalized = finalizeCodexAccount(profileId);
+    return { finalize: { profileId, codexHome } };
+  }
+
+  return { result: { success: true, profileId, codexHome, needsLogin: true } };
+}
+
+export function prepareCodexAccount(label: string): CodexAccountManagerResult {
+  const step = prepareCodexAccountCore(label);
+  if ('finalize' in step) {
+    const finalized = finalizeCodexAccount(step.finalize.profileId);
+    return { ...finalized, ...step.finalize, needsLogin: false };
+  }
+  return step.result;
+}
+
+/** {@link prepareCodexAccount} without blocking the event loop on CLI probes. */
+export async function prepareCodexAccountAsync(label: string): Promise<CodexAccountManagerResult> {
+  const step = prepareCodexAccountCore(label);
+  if ('finalize' in step) {
+    const finalized = await finalizeCodexAccountAsync(step.finalize.profileId);
+    return { ...finalized, ...step.finalize, needsLogin: false };
+  }
+  return step.result;
+}
+
+function finalizeCodexAccountCore(
+  profileId: string,
+  opts: { activate?: boolean },
+  probes: { authenticated: boolean; metadata: AccountIdentityMetadata },
+): CodexFinalizeStep {
+  const pending = readPendingProfile(profileId);
+  if (!pending) {
+    return { result: { success: false, error: `Codex profile ${profileId} was not prepared.` } };
+  }
+
+  const codexHome = getCodexProfileHome(profileId);
+  if (!probes.authenticated) {
+    return { result: { success: false, error: 'Codex profile is not authenticated yet.' } };
+  }
+
+  const profile: SavedAccountProfile = {
+    id: profileId,
+    providerId: 'codex',
+    label: pending.label,
+    email: probes.metadata.email,
+    addedAt: pending.addedAt,
+    metadata: probes.metadata,
+  };
+  upsertSavedAccountProfile(profile);
+
+  if (opts.activate === false) {
+    return { result: { success: true } };
+  }
+
+  if (!hasCodexCredentialFiles(codexHome)) {
+    // Authenticated via the OS keyring — there are no credential files to
+    // swap, so the registry pointer is all we can update.
+    setActiveSavedAccount('codex', profileId);
     return {
-      ...finalized,
-      profileId,
-      codexHome,
-      needsLogin: false,
+      result: {
+        success: true,
+        warning:
+          'Codex stores credentials in the OS keyring; sidekick cannot swap them per account, so `codex` keeps using the keyring credentials.',
+      },
     };
   }
 
-  return {
-    success: true,
-    profileId,
-    codexHome,
-    needsLogin: true,
-  };
+  return { swap: profile };
 }
 
 export function finalizeCodexAccount(
   profileId: string,
   opts: { activate?: boolean } = {},
 ): CodexAccountManagerResult {
-  const pending = readPendingProfile(profileId);
-  if (!pending) {
+  if (!readPendingProfile(profileId)) {
     return { success: false, error: `Codex profile ${profileId} was not prepared.` };
   }
-
   const codexHome = getCodexProfileHome(profileId);
-  if (!isCodexProfileAuthenticated(codexHome)) {
-    return { success: false, error: 'Codex profile is not authenticated yet.' };
+  const authenticated = isCodexProfileAuthenticated(codexHome);
+  const step = finalizeCodexAccountCore(profileId, opts, {
+    authenticated,
+    metadata: authenticated ? readCodexAccountMetadata(codexHome) : {},
+  });
+  return 'swap' in step ? performCodexAuthSwap(step.swap) : step.result;
+}
+
+/** {@link finalizeCodexAccount} without blocking the event loop on CLI probes. */
+export async function finalizeCodexAccountAsync(
+  profileId: string,
+  opts: { activate?: boolean } = {},
+): Promise<CodexAccountManagerResult> {
+  if (!readPendingProfile(profileId)) {
+    return { success: false, error: `Codex profile ${profileId} was not prepared.` };
   }
-
-  const metadata = readCodexAccountMetadata(codexHome);
-  const profile: SavedAccountProfile = {
-    id: profileId,
-    providerId: 'codex',
-    label: pending.label,
-    email: metadata.email,
-    addedAt: pending.addedAt,
-    metadata,
-  };
-  upsertSavedAccountProfile(profile);
-
-  if (opts.activate === false) {
-    return { success: true };
-  }
-
-  const hasCredentialFiles =
-    fs.existsSync(path.join(codexHome, 'auth.json')) ||
-    fs.existsSync(path.join(codexHome, '.credentials.json'));
-  if (!hasCredentialFiles) {
-    // Authenticated via the OS keyring — there are no credential files to
-    // swap, so the registry pointer is all we can update.
-    setActiveSavedAccount('codex', profileId);
-    return {
-      success: true,
-      warning:
-        'Codex stores credentials in the OS keyring; sidekick cannot swap them per account, so `codex` keeps using the keyring credentials.',
-    };
-  }
-
-  return performCodexAuthSwap(profile);
+  const codexHome = getCodexProfileHome(profileId);
+  const authenticated = await isCodexProfileAuthenticatedAsync(codexHome);
+  const step = finalizeCodexAccountCore(profileId, opts, {
+    authenticated,
+    metadata: authenticated ? await readCodexAccountMetadataAsync(codexHome) : {},
+  });
+  return 'swap' in step ? performCodexAuthSwapAsync(step.swap) : step.result;
 }
 
 function getCodexStashDir(): string {
@@ -595,7 +713,9 @@ function syncBackLiveCodexAuth(
     if (liveLegacyRaw) atomicWriteFile(path.join(profileHome, '.credentials.json'), liveLegacyRaw);
 
     try {
-      const metadata = readCodexAccountMetadata(profileHome);
+      // File-based metadata only: this runs with auth files just written, and
+      // the CLI-probe fallback must never spawn while the swap lock is held.
+      const metadata = readCodexAccountMetadataFromFiles(profileHome) ?? {};
       upsertSavedAccountProfile({
         ...profile,
         email: metadata.email ?? profile.email,
@@ -624,23 +744,72 @@ function withCodexAuthSwapLock<T>(operation: () => T): T {
   return withFileLockSync(path.join(lockDir, 'auth-swap.lock'), operation);
 }
 
+interface CodexAuthSwapProbes {
+  codexRunning: boolean;
+  /** Resolved only when the system home has no credential files; false otherwise. */
+  systemKeyringLoggedIn: boolean;
+}
+
+/**
+ * CLI probes are resolved before the auth-swap lock is taken — never spawn a
+ * child process while holding it. The keyring probe is skipped (false) when
+ * live credential files exist, because the swap only consults it in their
+ * absence.
+ */
+function resolveCodexSwapProbesSync(): CodexAuthSwapProbes {
+  const systemHome = getSystemCodexHome();
+  return {
+    codexRunning: detectRunningCodexProcess(),
+    systemKeyringLoggedIn: hasCodexCredentialFiles(systemHome)
+      ? false
+      : getCodexLoginStatus(systemHome).loggedIn,
+  };
+}
+
+async function resolveCodexSwapProbesAsync(): Promise<CodexAuthSwapProbes> {
+  const systemHome = getSystemCodexHome();
+  return {
+    codexRunning: await detectRunningCodexProcessAsync(),
+    systemKeyringLoggedIn: hasCodexCredentialFiles(systemHome)
+      ? false
+      : (await getCodexLoginStatusAsync(systemHome)).loggedIn,
+  };
+}
+
 function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerResult {
+  const probes = resolveCodexSwapProbesSync();
   try {
-    return withCodexAuthSwapLock(() => performCodexAuthSwapUnlocked(target));
+    return withCodexAuthSwapLock(() => performCodexAuthSwapCore(target, probes));
   } catch (err) {
     // Keep the non-throwing result contract when the lock cannot be acquired.
     return { success: false, error: `Could not acquire the account-switch lock: ${err}` };
   }
 }
 
-function performCodexAuthSwapUnlocked(target: SavedAccountProfile): CodexAccountManagerResult {
+async function performCodexAuthSwapAsync(
+  target: SavedAccountProfile,
+): Promise<CodexAccountManagerResult> {
+  const probes = await resolveCodexSwapProbesAsync();
+  try {
+    // The sync lock is fine here: probes are pre-resolved, so the critical
+    // section is only fast local-filesystem work.
+    return withCodexAuthSwapLock(() => performCodexAuthSwapCore(target, probes));
+  } catch (err) {
+    return { success: false, error: `Could not acquire the account-switch lock: ${err}` };
+  }
+}
+
+function performCodexAuthSwapCore(
+  target: SavedAccountProfile,
+  probes: CodexAuthSwapProbes,
+): CodexAccountManagerResult {
   const systemHome = getSystemCodexHome();
   const liveAuthPath = path.join(systemHome, 'auth.json');
   const liveLegacyPath = path.join(systemHome, '.credentials.json');
   const liveAuthRaw = readFileOrNull(liveAuthPath);
   const liveLegacyRaw = readFileOrNull(liveLegacyPath);
 
-  if (!liveAuthRaw && !liveLegacyRaw && getCodexLoginStatus(systemHome).loggedIn) {
+  if (!liveAuthRaw && !liveLegacyRaw && probes.systemKeyringLoggedIn) {
     return {
       success: false,
       error:
@@ -668,7 +837,7 @@ function performCodexAuthSwapUnlocked(target: SavedAccountProfile): CodexAccount
   }
 
   const warnings: string[] = [];
-  if (detectRunningCodexProcess()) {
+  if (probes.codexRunning) {
     warnings.push(
       'A codex process appears to be running; restart codex sessions so they pick up the switched account.',
     );
@@ -696,7 +865,8 @@ function performCodexAuthSwapUnlocked(target: SavedAccountProfile): CodexAccount
       if (liveAuthRaw) atomicWriteFile(targetAuthPath, liveAuthRaw);
       if (liveLegacyRaw)
         atomicWriteFile(path.join(profileHome, '.credentials.json'), liveLegacyRaw);
-      const metadata = readCodexAccountMetadata(profileHome);
+      // File-based metadata only — see the swap-lock note above.
+      const metadata = readCodexAccountMetadataFromFiles(profileHome) ?? {};
       upsertSavedAccountProfile({
         ...target,
         email: metadata.email ?? target.email,
@@ -763,18 +933,55 @@ export function switchToCodexAccount(profileId: string): CodexAccountManagerResu
   return performCodexAuthSwap(target);
 }
 
+/** {@link switchToCodexAccount} without blocking the event loop on CLI probes. */
+export async function switchToCodexAccountAsync(
+  profileId: string,
+): Promise<CodexAccountManagerResult> {
+  const target = listCodexAccounts().find((account) => account.id === profileId);
+  if (!target) {
+    return { success: false, error: `Codex account ${profileId} not found.` };
+  }
+
+  return performCodexAuthSwapAsync(target);
+}
+
+/**
+ * The reconcile flow consults the keyring probe only when the migration has
+ * not run yet and the system home has no auth.json; skip the spawn otherwise.
+ */
+function needsReconcileKeyringProbe(): boolean {
+  const markerPath = path.join(getAccountsDir(), 'codex', '.live-auth-migrated-v1');
+  if (fs.existsSync(markerPath)) return false;
+  return !fs.existsSync(path.join(getSystemCodexHome(), 'auth.json'));
+}
+
 // One-time migration for installs created when profile homes doubled as live
 // CODEX_HOMEs: the active profile's auth.json may hold a fresher rotated
 // refresh token than the system home. Best-effort: never throws.
 export function reconcileCodexAuthState(): void {
   try {
-    withCodexAuthSwapLock(reconcileCodexAuthStateUnlocked);
+    const systemKeyringLoggedIn = needsReconcileKeyringProbe()
+      ? getCodexLoginStatus(getSystemCodexHome()).loggedIn
+      : false;
+    withCodexAuthSwapLock(() => reconcileCodexAuthStateCore({ systemKeyringLoggedIn }));
   } catch {
     // Reconciliation must never break startup — including a lock timeout.
   }
 }
 
-function reconcileCodexAuthStateUnlocked(): void {
+/** {@link reconcileCodexAuthState} without blocking the event loop on CLI probes. */
+export async function reconcileCodexAuthStateAsync(): Promise<void> {
+  try {
+    const systemKeyringLoggedIn = needsReconcileKeyringProbe()
+      ? (await getCodexLoginStatusAsync(getSystemCodexHome())).loggedIn
+      : false;
+    withCodexAuthSwapLock(() => reconcileCodexAuthStateCore({ systemKeyringLoggedIn }));
+  } catch {
+    // Reconciliation must never break startup — including a lock timeout.
+  }
+}
+
+function reconcileCodexAuthStateCore(probes: { systemKeyringLoggedIn: boolean }): void {
   try {
     const markerPath = path.join(getAccountsDir(), 'codex', '.live-auth-migrated-v1');
     if (fs.existsSync(markerPath)) return;
@@ -801,8 +1008,9 @@ function reconcileCodexAuthStateUnlocked(): void {
     if (!liveAuthRaw) {
       // No live credentials (account was added via isolated login and never
       // promoted). Promote the active profile's copy unless codex is logged
-      // in through the OS keyring.
-      if (!getCodexLoginStatus(systemHome).loggedIn) {
+      // in through the OS keyring. The probe was resolved before the swap
+      // lock was taken — never spawn while holding it.
+      if (!probes.systemKeyringLoggedIn) {
         atomicWriteFile(liveAuthPath, profileAuthRaw);
       }
       writeMarker();

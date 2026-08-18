@@ -568,9 +568,12 @@ export type {
 export {
   beginAccountLogin,
   getAccountLoginStatus,
+  getAccountLoginStatusAsync,
   finalizeAccountLogin,
+  finalizeAccountLoginAsync,
   spawnAccountLogin,
   switchAccount,
+  switchAccountAsync,
   listAllAccounts,
   resolveClaudeLoginCommand,
 } from './accountManager';
@@ -623,8 +626,11 @@ export {
   resolveSidekickCodexHome,
   getCodexExecutionEnv,
   prepareCodexAccount,
+  prepareCodexAccountAsync,
   finalizeCodexAccount,
+  finalizeCodexAccountAsync,
   switchToCodexAccount,
+  switchToCodexAccountAsync,
   removeCodexAccount,
 } from './codexProfiles';
 export type { CodexAccountManagerResult } from './codexProfiles';

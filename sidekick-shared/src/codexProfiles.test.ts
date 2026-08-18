@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 const mockSpawnSync = vi.hoisted(() => vi.fn());
+const mockExecFile = vi.hoisted(() => vi.fn());
 
 let tmpDir: string;
 
@@ -24,12 +25,15 @@ vi.mock('child_process', async () => {
   return {
     ...actual,
     spawnSync: (...args: unknown[]) => mockSpawnSync(...args),
+    execFile: (...args: unknown[]) => mockExecFile(...args),
   };
 });
 
 import {
   prepareCodexAccount,
   finalizeCodexAccount,
+  finalizeCodexAccountAsync,
+  switchToCodexAccountAsync,
   listCodexAccounts,
   getActiveCodexAccount,
   switchToCodexAccount,
@@ -94,6 +98,8 @@ function writeSourceCodexAuth(email = 'codex@example.com'): void {
   writeSystemAuth(makeAuthJson(email, 'ws-123'));
 }
 
+type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
+
 function mockCodexCli({
   loggedIn,
   pgrepHit = false,
@@ -112,6 +118,17 @@ function mockCodexCli({
       error: undefined,
     };
   });
+  mockExecFile.mockImplementation(
+    (command: unknown, _args: unknown, _options: unknown, callback: ExecFileCallback) => {
+      if (command === 'pgrep') {
+        if (pgrepHit) callback(null, '', '');
+        else callback(Object.assign(new Error('no match'), { code: 1 }), '', '');
+        return;
+      }
+      if (loggedIn) callback(null, 'Logged in using ChatGPT\n', '');
+      else callback(Object.assign(new Error('exit 1'), { code: 1 }), 'Not logged in\n', '');
+    },
+  );
 }
 
 function timeoutSpawnResult(): {
@@ -144,6 +161,7 @@ describe('codexProfiles', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-codex-profiles-test-'));
     mockSpawnSync.mockReset();
+    mockExecFile.mockReset();
     mockCodexCli({ loggedIn: false });
   });
 
@@ -202,6 +220,67 @@ describe('codexProfiles', () => {
         }),
       }),
     );
+  });
+
+  describe('async variants (event-loop safety)', () => {
+    it('finalizes a keyring login via the async CLI probe without spawnSync', async () => {
+      const prepared = prepareCodexAccount('Personal');
+      expect(prepared.needsLogin).toBe(true);
+
+      mockCodexCli({ loggedIn: true });
+      mockSpawnSync.mockClear();
+
+      const finalized = await finalizeCodexAccountAsync(prepared.profileId!);
+
+      expect(finalized.success).toBe(true);
+      expect(finalized.warning).toMatch(/keyring/i);
+      expect(getActiveCodexAccount()?.id).toBe(prepared.profileId);
+      expect(mockSpawnSync).not.toHaveBeenCalled();
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'codex',
+        ['login', 'status'],
+        expect.objectContaining({ timeout: 4000, killSignal: 'SIGKILL' }),
+        expect.any(Function),
+      );
+    });
+
+    it('treats a timed-out async probe as not authenticated', async () => {
+      const prepared = prepareCodexAccount('Personal');
+      expect(prepared.needsLogin).toBe(true);
+
+      mockExecFile.mockImplementation(
+        (_command: unknown, _args: unknown, _options: unknown, callback: ExecFileCallback) => {
+          callback(Object.assign(new Error('killed'), { code: 'ETIMEDOUT' }), '', '');
+        },
+      );
+
+      const finalized = await finalizeCodexAccountAsync(prepared.profileId!);
+
+      expect(finalized).toEqual({
+        success: false,
+        error: 'Codex profile is not authenticated yet.',
+      });
+    });
+
+    it('swaps accounts via switchToCodexAccountAsync without spawnSync', async () => {
+      const { work } = setupTwoAccounts();
+      mockSpawnSync.mockClear();
+
+      const result = await switchToCodexAccountAsync(work);
+
+      expect(result.success).toBe(true);
+      expect(getActiveCodexAccount()?.id).toBe(work);
+      expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
+        fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+      );
+      expect(mockSpawnSync).not.toHaveBeenCalled();
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'pgrep',
+        ['-x', 'codex'],
+        expect.objectContaining({ timeout: 4000 }),
+        expect.any(Function),
+      );
+    });
   });
 
   it('bounds codex login status probes and treats killed probes as logged out', () => {

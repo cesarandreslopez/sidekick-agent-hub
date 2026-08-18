@@ -33,6 +33,19 @@ vi.mock('os', async () => {
   };
 });
 
+const spawnSyncSpy = vi.hoisted(() => vi.fn());
+
+vi.mock('child_process', async () => {
+  const actual = await vi.importActual<typeof import('child_process')>('child_process');
+  return {
+    ...actual,
+    spawnSync: (...args: unknown[]) => {
+      spawnSyncSpy(...args);
+      return (actual.spawnSync as (...spawnArgs: unknown[]) => unknown)(...args);
+    },
+  };
+});
+
 import { getActiveSavedAccount, writeSavedAccountRegistry } from './accountRegistry';
 import { ensureDefaultAccounts } from './ensureDefaultAccounts';
 import { listAccounts } from './accounts';
@@ -87,6 +100,7 @@ function countCodexProfileDirs(): number {
 describe('ensureDefaultAccounts', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-ensure-default-accounts-test-'));
+    spawnSyncSpy.mockClear();
   });
 
   afterEach(() => {
@@ -214,5 +228,18 @@ describe('ensureDefaultAccounts', () => {
 
     expect(result).toEqual({ claude: 'skipped', codex: 'error' });
     expect(logger).toHaveBeenCalledWith(expect.stringContaining('Codex'), expect.anything());
+  });
+
+  it('never runs a synchronous child process on the async bootstrap path', async () => {
+    // External consumers call ensureDefaultAccounts from processes where a
+    // blocked event loop freezes all IPC. The full registration flow —
+    // prepare, finalize, auth swap, reconcile — must probe the codex CLI
+    // asynchronously or not at all.
+    writeClaudeSystemAccount('claude@example.com', 'claude-1');
+    writeCodexSystemAuth('codex@example.com');
+
+    await ensureDefaultAccounts();
+
+    expect(spawnSyncSpy).not.toHaveBeenCalled();
   });
 });
