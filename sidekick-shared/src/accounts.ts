@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { readActiveCredentials, writeActiveCredentials } from './credentialIO';
+import { atomicWriteJsonSync as atomicWriteJson, withFileLockSync } from './writers/atomic';
 import {
   getAccountsDir,
   getActiveSavedAccount,
@@ -87,18 +88,6 @@ function ensureDirs(): void {
   for (const dir of [getAccountsDir(), getCredentialsDir(), getConfigsDir()]) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-}
-
-// ── Atomic file write ────────────────────────────────────────────────────
-
-function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  const tmp = filePath + '.tmp';
-  const json = JSON.stringify(data, null, 2);
-  // Validate we can re-parse before writing
-  JSON.parse(json);
-  fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
-  fs.renameSync(tmp, filePath);
 }
 
 function readJsonOrNull(filePath: string): unknown | null {
@@ -336,7 +325,24 @@ export function addCurrentAccount(label?: string): AccountManagerResult {
 
 // ── Switch to account ────────────────────────────────────────────────────
 
+/**
+ * Serializes live Claude credential swaps across processes so two concurrent
+ * switchers cannot interleave their backup/write/rollback sequences. It cannot
+ * exclude Claude Code's own writes to the live home — only our switchers. Lock
+ * ordering: this lock first, the registry lock (inside setActiveSavedAccount)
+ * inside it — never the reverse.
+ */
+function withClaudeAuthSwapLock<T>(operation: () => T): T {
+  const lockDir = path.join(getAccountsDir(), 'claude');
+  fs.mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+  return withFileLockSync(path.join(lockDir, 'auth-swap.lock'), operation);
+}
+
 export function switchToAccount(uuid: string): AccountManagerResult {
+  return withClaudeAuthSwapLock(() => switchToAccountUnlocked(uuid));
+}
+
+function switchToAccountUnlocked(uuid: string): AccountManagerResult {
   const registry = readAccountRegistry();
   if (!registry) {
     return { success: false, error: 'No account registry found. Save an account first.' };
@@ -371,7 +377,7 @@ export function switchToAccount(uuid: string): AccountManagerResult {
     return { success: false, error: `Failed to update account registry: ${err}` };
   }
 
-  const applied = applyActiveClaudeToLiveHome();
+  const applied = applyActiveClaudeToLiveHomeUnlocked();
   if (!applied.success) {
     try {
       setActiveSavedAccount('claude-code', registry.activeAccountUuid);
@@ -405,6 +411,10 @@ export function resolveActiveClaudeHome(): string {
 }
 
 export function applyActiveClaudeToLiveHome(): AccountManagerResult {
+  return withClaudeAuthSwapLock(applyActiveClaudeToLiveHomeUnlocked);
+}
+
+function applyActiveClaudeToLiveHomeUnlocked(): AccountManagerResult {
   const active = getActiveSavedAccount('claude-code');
   if (!active) {
     return { success: false, error: 'No active Claude account found.' };

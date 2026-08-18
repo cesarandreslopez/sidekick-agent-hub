@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { spawn } from 'child_process';
 import {
   readSavedAccountRegistry,
   writeSavedAccountRegistry,
@@ -158,4 +159,54 @@ describe('accountRegistry', () => {
     expect(updated?.activeByProvider.codex).toBe('codex-1');
     expect(updated?.activeByProvider['claude-code']).toBe('claude-2');
   });
+
+  it('preserves every profile across concurrent multi-process upserts', async () => {
+    // Without the registry lock each process reads the same base registry and
+    // the last write silently drops every other process's profile.
+    const workerScript = `
+      // require() resolves to dist/index.js via package.json main; the
+      // package's "pretest": "npm run build" rebuilds dist before vitest runs.
+      const pkg = require(${JSON.stringify(process.cwd())});
+      // Under \`node -e\`, positional arguments start at argv[1].
+      pkg.upsertSavedAccountProfile({
+        id: 'acct-' + process.argv[1],
+        providerId: 'codex',
+        addedAt: new Date().toISOString(),
+        label: 'Account ' + process.argv[1],
+      });
+    `;
+
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        runWorker(process.execPath, ['-e', workerScript, String(index)], {
+          ...process.env,
+          SIDEKICK_CONFIG_DIR: tmpDir,
+        }),
+      ),
+    );
+
+    expect(results.filter((result) => result.status !== 0).map((result) => result.stderr)).toEqual(
+      [],
+    );
+    const registry = readSavedAccountRegistry();
+    expect(registry?.accounts.map((account) => account.id).sort()).toEqual(
+      Array.from({ length: 10 }, (_, index) => `acct-${index}`).sort(),
+    );
+    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'accounts.json.lock'))).toBe(false);
+  }, 20_000);
 });
+
+function runWorker(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ status: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { cwd: process.cwd(), env });
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('close', (status) => resolve({ status, stderr }));
+  });
+}

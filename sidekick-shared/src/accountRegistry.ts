@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from './paths';
+import { atomicWriteJsonSync, withFileLockSync } from './writers/atomic';
 
 export type AccountProviderId = 'claude-code' | 'codex';
 
@@ -68,16 +69,34 @@ function getRegistryPath(): string {
   return path.join(getAccountsDir(), 'accounts.json');
 }
 
+function getRegistryLockPath(): string {
+  return getRegistryPath() + '.lock';
+}
+
 function ensureAccountsDir(): void {
   fs.mkdirSync(getAccountsDir(), { recursive: true, mode: 0o700 });
 }
 
-function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
-  const tmp = filePath + '.tmp';
-  const json = JSON.stringify(data, null, 2);
-  JSON.parse(json);
-  fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
-  fs.renameSync(tmp, filePath);
+function writeRegistryUnlocked(registry: SavedAccountRegistry): void {
+  atomicWriteJsonSync(getRegistryPath(), normalizeRegistry(registry));
+}
+
+/**
+ * Serializes registry read-modify-write cycles across processes. Without the
+ * lock, two concurrent mutators (CLI, editor extension, external consumers)
+ * read the same base state and the second write silently drops the first
+ * mutation. Lock ordering: callers that also hold a provider auth-swap lock
+ * take that lock first and this one inside it, never the reverse.
+ */
+function mutateSavedAccountRegistry(
+  mutator: (registry: SavedAccountRegistry) => SavedAccountRegistry,
+): SavedAccountRegistry {
+  ensureAccountsDir();
+  return withFileLockSync(getRegistryLockPath(), () => {
+    const next = mutator(readSavedAccountRegistry() ?? createEmptyRegistry());
+    writeRegistryUnlocked(next);
+    return next;
+  });
 }
 
 function createEmptyRegistry(): SavedAccountRegistry {
@@ -164,7 +183,7 @@ export function readSavedAccountRegistry(): SavedAccountRegistry | null {
 
 export function writeSavedAccountRegistry(registry: SavedAccountRegistry): void {
   ensureAccountsDir();
-  atomicWriteJson(getRegistryPath(), normalizeRegistry(registry));
+  withFileLockSync(getRegistryLockPath(), () => writeRegistryUnlocked(registry));
 }
 
 export function listSavedAccountProfiles(providerId?: AccountProviderId): SavedAccountProfile[] {
@@ -188,27 +207,27 @@ export function getActiveSavedAccount(providerId: AccountProviderId): SavedAccou
 }
 
 export function upsertSavedAccountProfile(profile: SavedAccountProfile): SavedAccountRegistry {
-  const registry = readSavedAccountRegistry() ?? createEmptyRegistry();
-  const index = registry.accounts.findIndex(
-    (account) => account.providerId === profile.providerId && account.id === profile.id,
-  );
-  if (index >= 0) {
-    registry.accounts[index] = profile;
-  } else {
-    registry.accounts.push(profile);
-  }
-  writeSavedAccountRegistry(registry);
-  return registry;
+  return mutateSavedAccountRegistry((registry) => {
+    const index = registry.accounts.findIndex(
+      (account) => account.providerId === profile.providerId && account.id === profile.id,
+    );
+    if (index >= 0) {
+      registry.accounts[index] = profile;
+    } else {
+      registry.accounts.push(profile);
+    }
+    return registry;
+  });
 }
 
 export function setActiveSavedAccount(
   providerId: AccountProviderId,
   accountId: string | null,
 ): SavedAccountRegistry {
-  const registry = readSavedAccountRegistry() ?? createEmptyRegistry();
-  registry.activeByProvider[providerId] = accountId;
-  writeSavedAccountRegistry(registry);
-  return registry;
+  return mutateSavedAccountRegistry((registry) => {
+    registry.activeByProvider[providerId] = accountId;
+    return registry;
+  });
 }
 
 export function replaceSavedAccountProfiles(
@@ -216,32 +235,35 @@ export function replaceSavedAccountProfiles(
   accounts: SavedAccountProfile[],
   activeId: string | null,
 ): SavedAccountRegistry {
-  const registry = readSavedAccountRegistry() ?? createEmptyRegistry();
-  registry.accounts = registry.accounts
-    .filter((account) => account.providerId !== providerId)
-    .concat(accounts);
-  registry.activeByProvider[providerId] = activeId;
-  writeSavedAccountRegistry(registry);
-  return registry;
+  return mutateSavedAccountRegistry((registry) => {
+    registry.accounts = registry.accounts
+      .filter((account) => account.providerId !== providerId)
+      .concat(accounts);
+    registry.activeByProvider[providerId] = activeId;
+    return registry;
+  });
 }
 
 export function removeSavedAccountProfile(
   providerId: AccountProviderId,
   accountId: string,
 ): SavedAccountProfile | null {
-  const registry = readSavedAccountRegistry();
-  if (!registry) return null;
+  ensureAccountsDir();
+  return withFileLockSync(getRegistryLockPath(), () => {
+    const registry = readSavedAccountRegistry();
+    if (!registry) return null;
 
-  const index = registry.accounts.findIndex(
-    (account) => account.providerId === providerId && account.id === accountId,
-  );
-  if (index === -1) return null;
+    const index = registry.accounts.findIndex(
+      (account) => account.providerId === providerId && account.id === accountId,
+    );
+    if (index === -1) return null;
 
-  const [removed] = registry.accounts.splice(index, 1);
-  if (registry.activeByProvider[providerId] === accountId) {
-    registry.activeByProvider[providerId] =
-      registry.accounts.find((account) => account.providerId === providerId)?.id ?? null;
-  }
-  writeSavedAccountRegistry(registry);
-  return removed;
+    const [removed] = registry.accounts.splice(index, 1);
+    if (registry.activeByProvider[providerId] === accountId) {
+      registry.activeByProvider[providerId] =
+        registry.accounts.find((account) => account.providerId === providerId)?.id ?? null;
+    }
+    writeRegistryUnlocked(registry);
+    return removed;
+  });
 }

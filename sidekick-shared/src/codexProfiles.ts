@@ -11,6 +11,14 @@ import {
   setActiveSavedAccount,
   upsertSavedAccountProfile,
 } from './accountRegistry';
+// auth.json must be copied byte-for-byte (atomicWriteFile, not atomicWriteJson):
+// re-serializing would drop fields added by newer codex versions, and the
+// rotated refresh token inside is only valid in its freshest form.
+import {
+  atomicWriteFileSync as atomicWriteFile,
+  atomicWriteJsonSync as atomicWriteJson,
+  withFileLockSync,
+} from './writers/atomic';
 import type {
   AccountIdentityMetadata,
   ResolvedActiveAccount,
@@ -114,42 +122,6 @@ function getCodexProfileStatePath(profileId: string): string {
 
 function ensureCodexProfileDirs(profileId: string): void {
   fs.mkdirSync(getCodexProfileHome(profileId), { recursive: true, mode: 0o700 });
-}
-
-function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
-  const tmp = filePath + '.tmp';
-  const json = JSON.stringify(data, null, 2);
-  JSON.parse(json);
-  try {
-    fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
-    fs.renameSync(tmp, filePath);
-  } catch (err) {
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* nothing to clean up */
-    }
-    throw err;
-  }
-}
-
-// auth.json must be copied byte-for-byte: re-serializing would drop fields
-// added by newer codex versions, and the rotated refresh token inside is
-// only valid in its freshest form.
-function atomicWriteFile(filePath: string, content: string, mode = 0o600): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  const tmp = filePath + '.tmp';
-  try {
-    fs.writeFileSync(tmp, content, { encoding: 'utf8', mode });
-    fs.renameSync(tmp, filePath);
-  } catch (err) {
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* nothing to clean up */
-    }
-    throw err;
-  }
 }
 
 function readFileOrNull(filePath: string): string | null {
@@ -639,7 +611,29 @@ function syncBackLiveCodexAuth(
   }
 }
 
+/**
+ * Serializes live-auth mutations across processes. Codex rotates refresh
+ * tokens, so two interleaved swaps stashing and restoring auth.json can
+ * resurrect a stale token and permanently invalidate the login. Lock ordering:
+ * this lock is taken first and the registry lock (inside setActiveSavedAccount
+ * / upsertSavedAccountProfile) inside it — never the reverse.
+ */
+function withCodexAuthSwapLock<T>(operation: () => T): T {
+  const lockDir = path.join(getAccountsDir(), 'codex');
+  fs.mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+  return withFileLockSync(path.join(lockDir, 'auth-swap.lock'), operation);
+}
+
 function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerResult {
+  try {
+    return withCodexAuthSwapLock(() => performCodexAuthSwapUnlocked(target));
+  } catch (err) {
+    // Keep the non-throwing result contract when the lock cannot be acquired.
+    return { success: false, error: `Could not acquire the account-switch lock: ${err}` };
+  }
+}
+
+function performCodexAuthSwapUnlocked(target: SavedAccountProfile): CodexAccountManagerResult {
   const systemHome = getSystemCodexHome();
   const liveAuthPath = path.join(systemHome, 'auth.json');
   const liveLegacyPath = path.join(systemHome, '.credentials.json');
@@ -773,6 +767,14 @@ export function switchToCodexAccount(profileId: string): CodexAccountManagerResu
 // CODEX_HOMEs: the active profile's auth.json may hold a fresher rotated
 // refresh token than the system home. Best-effort: never throws.
 export function reconcileCodexAuthState(): void {
+  try {
+    withCodexAuthSwapLock(reconcileCodexAuthStateUnlocked);
+  } catch {
+    // Reconciliation must never break startup — including a lock timeout.
+  }
+}
+
+function reconcileCodexAuthStateUnlocked(): void {
   try {
     const markerPath = path.join(getAccountsDir(), 'codex', '.live-auth-migrated-v1');
     if (fs.existsSync(markerPath)) return;

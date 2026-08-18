@@ -241,6 +241,29 @@ describe('codexProfiles', () => {
   });
 
   describe('account switching (auth.json swap)', () => {
+    it('refuses to interleave with another process holding the auth-swap lock', () => {
+      // Codex rotates refresh tokens; two interleaved swaps can resurrect a
+      // stale token and permanently invalidate the login. A held lock must
+      // fail the switch cleanly, and a successful switch must leave no lock
+      // residue behind.
+      const { work } = setupTwoAccounts();
+      const lockPath = path.join(tmpDir, 'accounts', 'codex', 'auth-swap.lock');
+      fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+      fs.writeFileSync(lockPath, `${process.pid}:wedged`, { mode: 0o600 });
+
+      const started = Date.now();
+      const blocked = switchToCodexAccount(work);
+      expect(blocked.success).toBe(false);
+      expect(blocked.error).toMatch(/no progress/);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(2_000);
+
+      fs.rmSync(lockPath, { force: true });
+      const retried = switchToCodexAccount(work);
+      expect(retried.success).toBe(true);
+      expect(fs.existsSync(lockPath)).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'accounts', 'accounts.json.lock'))).toBe(false);
+    }, 15_000);
+
     it('swaps the system auth.json and backs up the rotated live credentials', () => {
       const { work, personal } = setupTwoAccounts();
 

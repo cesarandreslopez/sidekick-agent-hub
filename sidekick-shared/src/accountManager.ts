@@ -9,6 +9,7 @@ import {
   type AccountProviderId,
   type SavedAccountProfile,
 } from './accountRegistry';
+import { atomicWriteJsonSync as atomicWriteJson } from './writers/atomic';
 import {
   type AccountEntry,
   type AccountManagerResult,
@@ -91,24 +92,6 @@ function getClaudeProfileDir(loginId: string): string {
 
 function getPendingClaudeProfilePath(loginId: string): string {
   return path.join(getClaudeProfileDir(loginId), 'profile.json');
-}
-
-function atomicWriteJson(filePath: string, data: unknown, mode = 0o600): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  const tmp = `${filePath}.tmp`;
-  const json = JSON.stringify(data, null, 2);
-  JSON.parse(json);
-  try {
-    fs.writeFileSync(tmp, json, { encoding: 'utf8', mode });
-    fs.renameSync(tmp, filePath);
-  } catch (err) {
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* nothing to clean up */
-    }
-    throw err;
-  }
 }
 
 function readPendingClaudeProfile(loginId: string): PendingClaudeProfile | null {
