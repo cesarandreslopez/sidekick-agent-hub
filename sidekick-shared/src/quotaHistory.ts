@@ -3,7 +3,7 @@
  *
  * Sibling to `quotaSnapshots.ts`. Where snapshots persist a single most-recent sample per
  * (provider, account), this module accumulates time-series samples so consumers (the VS Code
- * dashboard, the `sidekick quota history` CLI, contextful_desktop) can render heatmaps and
+ * dashboard, the `sidekick quota history` CLI, external consumers) can render heatmaps and
  * trend visualisations over a 13-week window.
  */
 
@@ -270,7 +270,7 @@ async function runAppend(
   }
 
   // Backwards-compat: keep the latest-snapshot store hot so existing callers (DashboardViewProvider,
-  // codex session provider, contextful_desktop) don't have to query history for "latest".
+  // codex session provider, external consumers) don't have to query history for "latest".
   try {
     const providerId = runtimeProviderToSnapshotProvider(sample.runtimeProvider);
     writeQuotaSnapshot(providerId, sample.providerId, sampleToQuotaState(sample));

@@ -14,6 +14,19 @@
  * Precedence, most-trusted first: runtime → observed (here) → LiteLLM catalog →
  * static table. See `modelContext.ts`.
  *
+ * ## Where the store lives — two seams, one story
+ *
+ * Reader ({@link loadObservedContextWindows}) and writer
+ * ({@link recordObservedContextWindow}) resolve the store path identically:
+ * explicit `cacheDir` option → `setConfigDir()` / `SIDEKICK_CONFIG_DIR` (via
+ * `getConfigDir()`) → platform default. The global config-dir override is the
+ * deployment-level seam external consumers use to relocate every Sidekick
+ * store at once; the per-call `cacheDir` is the isolation seam for tests and
+ * multi-tenant hosts. Providers deliberately do NOT thread `cacheDir` —
+ * `CodexProvider` records observations with default options, which follow the
+ * global override, so a default-options load always sees what a
+ * default-options record wrote.
+ *
  * @module observedContextWindows
  */
 

@@ -16,6 +16,7 @@ import {
   _setCatalogContextWindows,
   getModelContextWindowSize,
 } from './modelContext';
+import { setConfigDir } from './paths';
 
 async function makeTempDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-observed-'));
@@ -190,5 +191,62 @@ describe('observedContextWindows', () => {
     );
 
     expect(await loadObservedContextWindows({ cacheDir })).toEqual({ 'gpt-5.6-sol': 258_400 });
+  });
+
+  describe('config-dir seams', () => {
+    // Pins the reader/writer symmetry contract from the module doc: a
+    // default-options record must always be visible to a default-options load,
+    // under both global-override mechanisms, and an explicit cacheDir must
+    // beat the global override on both sides.
+
+    it('round-trips default-options writes under setConfigDir', async () => {
+      const globalDir = await makeTempDir();
+      setConfigDir(globalDir);
+      try {
+        await recordObservedContextWindow('codex-observed', 258_400);
+        _clearObservedContextWindows();
+
+        expect(await loadObservedContextWindows()).toEqual({ 'codex-observed': 258_400 });
+        expect((await readStore(globalDir)).models).toHaveProperty('codex-observed');
+      } finally {
+        setConfigDir(null);
+        await fs.rm(globalDir, { recursive: true, force: true });
+      }
+    });
+
+    it('round-trips default-options writes under SIDEKICK_CONFIG_DIR', async () => {
+      const envDir = await makeTempDir();
+      const previous = process.env.SIDEKICK_CONFIG_DIR;
+      process.env.SIDEKICK_CONFIG_DIR = envDir;
+      try {
+        await recordObservedContextWindow('env-observed', 131_072);
+        _clearObservedContextWindows();
+
+        expect(await loadObservedContextWindows()).toEqual({ 'env-observed': 131_072 });
+      } finally {
+        if (previous === undefined) delete process.env.SIDEKICK_CONFIG_DIR;
+        else process.env.SIDEKICK_CONFIG_DIR = previous;
+        await fs.rm(envDir, { recursive: true, force: true });
+      }
+    });
+
+    it('lets an explicit cacheDir beat the global override on both seams', async () => {
+      const globalDir = await makeTempDir();
+      setConfigDir(globalDir);
+      try {
+        await recordObservedContextWindow('explicit-observed', 200_000, { cacheDir });
+
+        await expect(
+          fs.readFile(getObservedContextWindowPath(globalDir), 'utf8'),
+        ).rejects.toThrow();
+        _clearObservedContextWindows();
+        expect(await loadObservedContextWindows({ cacheDir })).toEqual({
+          'explicit-observed': 200_000,
+        });
+      } finally {
+        setConfigDir(null);
+        await fs.rm(globalDir, { recursive: true, force: true });
+      }
+    });
   });
 });
