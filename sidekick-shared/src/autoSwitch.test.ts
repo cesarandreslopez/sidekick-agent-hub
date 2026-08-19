@@ -111,23 +111,30 @@ describe('decideAutoSwitch', () => {
 });
 
 describe('AutoSwitchController', () => {
-  it('switches once per threshold crossing and emits one transition', () => {
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  const twoAccountOptions = {
+    config: { enabled: true, thresholdPct: 90 },
+    getClaudeAccounts: () => [
+      { uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' },
+      { uuid: 'better', email: 'better@example.com', addedAt: '2026-01-01T00:00:00Z' },
+    ],
+    getActiveClaudeAccount: () => ({
+      uuid: 'active',
+      email: 'active@example.com',
+      addedAt: '2026-01-01T00:00:00Z',
+    }),
+    readSnapshot: (_provider: unknown, accountId: string) =>
+      accountId === 'better' ? quota(20) : quota(95),
+  };
+
+  it('switches once per threshold crossing and emits one transition', async () => {
     const quotaService = new FakeQuotaService();
     const switchAccount = vi.fn(() => ({ success: true }));
     const onTransition = vi.fn();
     const controller = new AutoSwitchController({
       quotaService,
-      config: { enabled: true, thresholdPct: 90 },
-      getClaudeAccounts: () => [
-        { uuid: 'active', email: 'active@example.com', addedAt: '2026-01-01T00:00:00Z' },
-        { uuid: 'better', email: 'better@example.com', addedAt: '2026-01-01T00:00:00Z' },
-      ],
-      getActiveClaudeAccount: () => ({
-        uuid: 'active',
-        email: 'active@example.com',
-        addedAt: '2026-01-01T00:00:00Z',
-      }),
-      readSnapshot: (_provider, accountId) => (accountId === 'better' ? quota(20) : quota(95)),
+      ...twoAccountOptions,
       switchAccount,
       onTransition,
     });
@@ -135,6 +142,7 @@ describe('AutoSwitchController', () => {
     controller.start();
     quotaService.emit(claudeQuota(95));
     quotaService.emit(claudeQuota(96));
+    await flush();
 
     expect(switchAccount).toHaveBeenCalledTimes(1);
     expect(switchAccount).toHaveBeenCalledWith('claude-code', 'better');
@@ -142,12 +150,97 @@ describe('AutoSwitchController', () => {
 
     quotaService.emit(claudeQuota(20));
     quotaService.emit(claudeQuota(95));
+    await flush();
 
     expect(switchAccount).toHaveBeenCalledTimes(2);
     controller.dispose();
   });
 
-  it('does not switch when disabled or when only one saved account exists', () => {
+  it('skips updates while an async switch is in flight', async () => {
+    const quotaService = new FakeQuotaService();
+    let resolveSwitch!: (result: { success: boolean }) => void;
+    const switchAccount = vi.fn(
+      () => new Promise<{ success: boolean }>((resolve) => (resolveSwitch = resolve)),
+    );
+    const onTransition = vi.fn();
+    const controller = new AutoSwitchController({
+      quotaService,
+      ...twoAccountOptions,
+      switchAccount,
+      onTransition,
+    });
+
+    controller.start();
+    quotaService.emit(claudeQuota(95));
+    quotaService.emit(claudeQuota(96));
+    await flush();
+    expect(switchAccount).toHaveBeenCalledTimes(1);
+    expect(onTransition).not.toHaveBeenCalled();
+
+    resolveSwitch({ success: true });
+    await flush();
+    expect(onTransition).toHaveBeenCalledTimes(1);
+
+    quotaService.emit(claudeQuota(97));
+    await flush();
+    expect(switchAccount).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  it('releases the in-flight guard when the switch callback rejects', async () => {
+    const quotaService = new FakeQuotaService();
+    const switchAccount = vi
+      .fn<(providerId: string, accountId: string) => Promise<{ success: boolean }>>()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ success: true });
+    const onTransition = vi.fn();
+    const log = vi.fn();
+    const controller = new AutoSwitchController({
+      quotaService,
+      ...twoAccountOptions,
+      switchAccount,
+      onTransition,
+      log,
+    });
+
+    controller.start();
+    quotaService.emit(claudeQuota(95));
+    await flush();
+    expect(switchAccount).toHaveBeenCalledTimes(1);
+    expect(onTransition).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledTimes(1);
+
+    quotaService.emit(claudeQuota(96));
+    await flush();
+    expect(switchAccount).toHaveBeenCalledTimes(2);
+    expect(onTransition).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  it('suppresses the transition event when disposed mid-switch', async () => {
+    const quotaService = new FakeQuotaService();
+    let resolveSwitch!: (result: { success: boolean }) => void;
+    const switchAccount = vi.fn(
+      () => new Promise<{ success: boolean }>((resolve) => (resolveSwitch = resolve)),
+    );
+    const onTransition = vi.fn();
+    const controller = new AutoSwitchController({
+      quotaService,
+      ...twoAccountOptions,
+      switchAccount,
+      onTransition,
+    });
+
+    controller.start();
+    quotaService.emit(claudeQuota(95));
+    controller.dispose();
+    resolveSwitch({ success: true });
+    await flush();
+
+    expect(onTransition).not.toHaveBeenCalled();
+  });
+
+  it('does not switch when disabled or when only one saved account exists', async () => {
     const quotaService = new FakeQuotaService();
     const switchAccount = vi.fn(() => ({ success: true }));
     const disabled = new AutoSwitchController({
@@ -183,6 +276,7 @@ describe('AutoSwitchController', () => {
     disabled.start();
     singleAccount.start();
     quotaService.emit(claudeQuota(95));
+    await flush();
 
     expect(switchAccount).not.toHaveBeenCalled();
     disabled.dispose();

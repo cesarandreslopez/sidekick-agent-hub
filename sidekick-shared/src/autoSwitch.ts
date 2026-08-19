@@ -4,7 +4,7 @@ import {
   type AccountEntry,
   type AccountManagerResult,
 } from './accounts';
-import { switchAccount as defaultSwitchAccount } from './accountManager';
+import { switchAccountAsync as defaultSwitchAccount } from './accountManager';
 import { getActiveCodexAccount, listCodexAccounts } from './codexProfiles';
 import { readQuotaSnapshot } from './quotaSnapshots';
 import type { AccountProviderId, SavedAccountProfile } from './accountRegistry';
@@ -55,7 +55,10 @@ export interface AutoSwitchControllerOptions {
   getCodexAccounts?: () => SavedAccountProfile[];
   getActiveCodexAccount?: () => SavedAccountProfile | null;
   readSnapshot?: (providerId: AccountProviderId, accountId: string) => QuotaState | null;
-  switchAccount?: (providerId: AccountProviderId, accountId: string) => AccountManagerResult;
+  switchAccount?: (
+    providerId: AccountProviderId,
+    accountId: string,
+  ) => AccountManagerResult | Promise<AccountManagerResult>;
   onTransition?: (event: AutoSwitchTransitionEvent) => void;
   log?: (message: string, error?: unknown) => void;
   cooldownMs?: number;
@@ -147,7 +150,7 @@ export class AutoSwitchController implements Disposable {
   private readonly switchAccount: (
     providerId: AccountProviderId,
     accountId: string,
-  ) => AccountManagerResult;
+  ) => AccountManagerResult | Promise<AccountManagerResult>;
   private readonly onTransition?: (event: AutoSwitchTransitionEvent) => void;
   private readonly log?: (message: string, error?: unknown) => void;
   private readonly cooldownMs: number;
@@ -156,6 +159,7 @@ export class AutoSwitchController implements Disposable {
   private subscription: Disposable | null = null;
   private readonly switchedDuringCrossing = new Set<AccountProviderId>();
   private readonly lastSwitchAt: Partial<Record<AccountProviderId, number>> = {};
+  private readonly switchInFlight = new Set<AccountProviderId>();
 
   constructor(options: AutoSwitchControllerOptions) {
     this.quotaService = options.quotaService;
@@ -194,15 +198,19 @@ export class AutoSwitchController implements Disposable {
   }
 
   private handleUpdate(state: ProviderQuotaMap): void {
-    if (state.claude) this.handleProviderUpdate('claude', state.claude);
-    if (state.codex) this.handleProviderUpdate('codex', state.codex);
+    // Fire-and-forget: handleProviderUpdate never rejects.
+    if (state.claude) void this.handleProviderUpdate('claude', state.claude);
+    if (state.codex) void this.handleProviderUpdate('codex', state.codex);
   }
 
-  private handleProviderUpdate(
+  private async handleProviderUpdate(
     runtimeProvider: 'claude' | 'codex',
     activeQuota: ProviderQuotaState,
-  ): void {
+  ): Promise<void> {
     const providerId = runtimeStateToProvider(runtimeProvider);
+    // While a switch is mid-flight the registry's active account is
+    // indeterminate, so skip the whole update until it settles.
+    if (this.switchInFlight.has(providerId)) return;
     const activeAccount =
       providerId === 'claude-code' ? this.getActiveClaudeAccount() : this.getActiveCodexAccount();
     if (!activeAccount) return;
@@ -238,7 +246,16 @@ export class AutoSwitchController implements Disposable {
     const previousSwitchAt = this.lastSwitchAt[providerId] ?? 0;
     if (this.cooldownMs > 0 && this.now() - previousSwitchAt < this.cooldownMs) return;
 
-    const result = this.switchAccount(providerId, decision.switchTo);
+    this.switchInFlight.add(providerId);
+    let result: AccountManagerResult;
+    try {
+      result = await this.switchAccount(providerId, decision.switchTo);
+    } catch (error) {
+      this.log?.(`[AutoSwitch] Switch threw for ${providerId} to ${decision.switchTo}.`, error);
+      return;
+    } finally {
+      this.switchInFlight.delete(providerId);
+    }
     if (!result.success) {
       this.log?.(
         `[AutoSwitch] Could not switch ${providerId} to ${decision.switchTo}.`,
@@ -249,6 +266,9 @@ export class AutoSwitchController implements Disposable {
 
     this.lastSwitchAt[providerId] = this.now();
     this.switchedDuringCrossing.add(providerId);
+    // A switch that completes after stop()/dispose() still records its
+    // state, but must not fire a transition into a stopped consumer.
+    if (!this.subscription) return;
     this.onTransition?.({
       provider: providerId,
       from: activeAccountId,
