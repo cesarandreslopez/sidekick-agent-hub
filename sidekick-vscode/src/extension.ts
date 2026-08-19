@@ -103,8 +103,8 @@ import {
   MultiProviderQuotaService,
   beginAccountLogin,
   ensureDefaultAccounts,
-  finalizeAccountLogin,
-  getAccountLoginStatus,
+  finalizeAccountLoginAsync,
+  getAccountLoginStatusAsync,
 } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
@@ -1276,6 +1276,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 
+  // Live login polls, stopped together on deactivate. One activate-scoped
+  // disposable instead of one per login attempt, so repeated logins don't
+  // accumulate dead closures in context.subscriptions.
+  const activeLoginPolls = new Set<() => void>();
+  context.subscriptions.push({
+    dispose: () => {
+      for (const stop of [...activeLoginPolls]) stop();
+    },
+  });
+
   const runTerminalAccountLogin = async (
     providerId: AccountProviderId,
     label: string,
@@ -1286,8 +1296,8 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    const finalize = (): boolean => {
-      const result = finalizeAccountLogin(providerId, begin.loginId);
+    const finalize = async (): Promise<boolean> => {
+      const result = await finalizeAccountLoginAsync(providerId, begin.loginId);
       if (!result.success) {
         vscode.window.showErrorMessage(`Account login finalization failed: ${result.error}`);
         return false;
@@ -1302,7 +1312,7 @@ export async function activate(context: vscode.ExtensionContext) {
     };
 
     if (begin.alreadyComplete) {
-      finalize();
+      await finalize();
       return;
     }
 
@@ -1325,36 +1335,55 @@ export async function activate(context: vscode.ExtensionContext) {
     const timeoutMs = 180_000;
     let interval: ReturnType<typeof setInterval> | undefined;
     let closeDisposable: vscode.Disposable | undefined;
+    let stopped = false;
+    let tickInFlight = false;
     const stopPolling = (): void => {
+      stopped = true;
       if (interval !== undefined) {
         clearInterval(interval);
         interval = undefined;
       }
       closeDisposable?.dispose();
       closeDisposable = undefined;
+      activeLoginPolls.delete(stopPolling);
+    };
+
+    const checkTimeout = (): void => {
+      if (Date.now() - startedAt > timeoutMs) {
+        stopPolling();
+        vscode.window.showErrorMessage('Account login timed out before authentication completed.');
+      }
     };
 
     // Stop polling if the user closes the login terminal before authenticating.
     closeDisposable = vscode.window.onDidCloseTerminal((closed) => {
       if (closed === terminal) stopPolling();
     });
-    context.subscriptions.push({ dispose: stopPolling });
+    activeLoginPolls.add(stopPolling);
 
     interval = setInterval(() => {
-      try {
-        const status = getAccountLoginStatus(providerId, begin.loginId);
-        if (status.state === 'authenticated') {
-          stopPolling();
-          finalize();
-          return;
+      if (tickInFlight) {
+        // A slow probe is still awaiting; keep the wall clock honest.
+        checkTimeout();
+        return;
+      }
+      void (async () => {
+        tickInFlight = true;
+        try {
+          const status = await getAccountLoginStatusAsync(providerId, begin.loginId);
+          if (stopped) return; // Terminal closed or timed out during the await.
+          if (status.state === 'authenticated') {
+            stopPolling();
+            await finalize();
+            return;
+          }
+        } catch (err) {
+          logError('Failed to poll account login status', err);
+        } finally {
+          tickInFlight = false;
         }
-      } catch (err) {
-        logError('Failed to poll account login status', err);
-      }
-      if (Date.now() - startedAt > timeoutMs) {
-        stopPolling();
-        vscode.window.showErrorMessage('Account login timed out before authentication completed.');
-      }
+        if (!stopped) checkTimeout();
+      })();
     }, 2_000);
   };
 
@@ -1435,7 +1464,7 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         if (!picked) return;
 
-        const result = accountService.switchToAccount('codex', picked.accountId);
+        const result = await accountService.switchToAccount('codex', picked.accountId);
         if (result.success) {
           const entry = accounts.find((account) => account.id === picked.accountId);
           vscode.window.showInformationMessage(
@@ -1471,7 +1500,7 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         if (!picked) return;
 
-        const result = accountService.switchToAccount('claude-code', picked.accountId);
+        const result = await accountService.switchToAccount('claude-code', picked.accountId);
         if (result.success) {
           const entry = accounts.find((account) => account.uuid === picked.accountId);
           vscode.window.showInformationMessage(
@@ -1518,7 +1547,7 @@ export async function activate(context: vscode.ExtensionContext) {
       });
       if (!picked) return;
 
-      const result = accountService.switchManagedAccount(picked.providerId, picked.accountId);
+      const result = await accountService.switchManagedAccount(picked.providerId, picked.accountId);
       if (!result.success) {
         vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
         return;

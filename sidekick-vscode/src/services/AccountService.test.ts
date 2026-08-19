@@ -3,14 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockSpawnAccountLogin,
   mockListAllAccounts,
-  mockSwitchAccount,
+  mockSwitchAccountAsync,
+  mockSwitchToCodexAccountAsync,
   mockGetActiveClaudeAccount,
   mockGetActiveCodexAccount,
   mockGetAccountsDir,
 } = vi.hoisted(() => ({
   mockSpawnAccountLogin: vi.fn(),
   mockListAllAccounts: vi.fn(),
-  mockSwitchAccount: vi.fn(),
+  mockSwitchAccountAsync: vi.fn(),
+  mockSwitchToCodexAccountAsync: vi.fn(),
   mockGetActiveClaudeAccount: vi.fn(),
   mockGetActiveCodexAccount: vi.fn(),
   mockGetAccountsDir: vi.fn(),
@@ -44,14 +46,14 @@ vi.mock('sidekick-shared', () => ({
   getAccountsDir: (...args: unknown[]) => mockGetAccountsDir(...args),
   prepareCodexAccount: vi.fn(),
   finalizeCodexAccount: vi.fn(),
-  switchToCodexAccount: vi.fn(),
+  switchToCodexAccountAsync: (...args: unknown[]) => mockSwitchToCodexAccountAsync(...args),
   removeCodexAccount: vi.fn(),
   listCodexAccounts: vi.fn(() => []),
   getActiveCodexAccount: (...args: unknown[]) => mockGetActiveCodexAccount(...args),
   resolveActiveCodexAccount: vi.fn(() => ({ source: 'none' })),
   spawnAccountLogin: (...args: unknown[]) => mockSpawnAccountLogin(...args),
   listAllAccounts: (...args: unknown[]) => mockListAllAccounts(...args),
-  switchAccount: (...args: unknown[]) => mockSwitchAccount(...args),
+  switchAccountAsync: (...args: unknown[]) => mockSwitchAccountAsync(...args),
 }));
 
 vi.mock('./Logger', () => ({
@@ -103,15 +105,28 @@ describe('AccountService account management 2.0 facade', () => {
     service.dispose();
   });
 
-  it('switches through the provider-neutral shared wrapper', () => {
-    mockSwitchAccount.mockReturnValue({ success: true, warning: 'restart sessions' });
+  it('switches through the provider-neutral shared wrapper', async () => {
+    mockSwitchAccountAsync.mockResolvedValue({ success: true, warning: 'restart sessions' });
     const service = new AccountService();
 
-    expect(service.switchManagedAccount('codex', 'codex-1')).toEqual({
+    await expect(service.switchManagedAccount('codex', 'codex-1')).resolves.toEqual({
       success: true,
       warning: 'restart sessions',
     });
-    expect(mockSwitchAccount).toHaveBeenCalledWith('codex', 'codex-1');
+    expect(mockSwitchAccountAsync).toHaveBeenCalledWith('codex', 'codex-1');
+    service.dispose();
+  });
+
+  it('routes codex switches through the non-blocking shared variant', async () => {
+    mockSwitchToCodexAccountAsync.mockResolvedValue({ success: true });
+    const service = new AccountService();
+    const changes: string[] = [];
+    service.onAccountChange((provider) => changes.push(provider));
+    mockGetActiveCodexAccount.mockReturnValue({ id: 'codex-1', addedAt: '2026-01-01T00:00:00Z' });
+
+    await expect(service.switchToAccount('codex', 'codex-1')).resolves.toEqual({ success: true });
+    expect(mockSwitchToCodexAccountAsync).toHaveBeenCalledWith('codex-1');
+    expect(changes).toEqual(['codex']);
     service.dispose();
   });
 });

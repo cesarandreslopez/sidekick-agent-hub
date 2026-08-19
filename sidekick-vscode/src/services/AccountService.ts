@@ -20,14 +20,14 @@ import {
   getAccountsDir,
   prepareCodexAccount,
   finalizeCodexAccount as finalizeSavedCodexAccount,
-  switchToCodexAccount,
+  switchToCodexAccountAsync,
   removeCodexAccount,
   listCodexAccounts,
   getActiveCodexAccount,
   resolveActiveCodexAccount,
   spawnAccountLogin,
   listAllAccounts as listAllManagedAccounts,
-  switchAccount,
+  switchAccountAsync,
 } from 'sidekick-shared';
 import type {
   AccountEntry,
@@ -97,19 +97,25 @@ export class AccountService implements vscode.Disposable {
     return listAllManagedAccounts();
   }
 
-  switchManagedAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
-    const result = switchAccount(providerId, accountId);
+  async switchManagedAccount(
+    providerId: AccountProviderId,
+    accountId: string,
+  ): Promise<AccountManagerResult> {
+    const result = await switchAccountAsync(providerId, accountId);
     if (result.success) {
       this.refresh();
     }
     return result;
   }
 
-  switchToAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
+  async switchToAccount(
+    providerId: AccountProviderId,
+    accountId: string,
+  ): Promise<AccountManagerResult> {
     const result =
       providerId === 'claude-code'
         ? switchToClaudeAccount(accountId)
-        : switchToCodexAccount(accountId);
+        : await switchToCodexAccountAsync(accountId);
 
     if (result.success) {
       this.refresh();
