@@ -161,7 +161,17 @@ export class QuotaPoller {
       }
       const token = await this.getAccessToken();
       if (!token) {
-        this.dormant = true;
+        if (this.hasAccount) {
+          // The account exists but its token was unreadable (locked keychain,
+          // transient credential I/O). That never changes the account
+          // fingerprint, so no wake would arrive — retry at the idle cadence
+          // instead of parking forever.
+          nextDelayOverride = this.idleIntervalMs;
+        } else {
+          // Without a hasAccount probe, a missing token is the no-account
+          // signal; the account-change subscription wakes the poller on login.
+          this.dormant = true;
+        }
         return;
       }
       const state = await fetchQuota(token);

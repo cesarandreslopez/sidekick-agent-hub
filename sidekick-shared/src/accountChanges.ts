@@ -100,7 +100,10 @@ function scheduleCheck(reason: AccountChangeReason): void {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = undefined;
-    emitIfChanged(reason, reason !== 'poll');
+    // Never force: watch targets include ~/.claude and the Codex home, whose
+    // history files churn on every prompt. Only a real status change may wake
+    // subscribers, or dormant quota pollers would poll on unrelated writes.
+    emitIfChanged(reason);
   }, 25);
   debounceTimer.unref?.();
 }

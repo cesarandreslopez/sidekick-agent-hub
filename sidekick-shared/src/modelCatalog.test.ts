@@ -84,4 +84,59 @@ describe('resolved model catalog', () => {
       diagnostics: ['unsupported resolved model catalog snapshot'],
     });
   });
+
+  it('keeps overrides recorded under an alias id after the alias is registered', () => {
+    _setObservedContextWindows({ 'gpt-5.6-sol': 258_400 });
+    _setPricingOverrides({
+      'gpt-5.6-sol': {
+        inputCostPerMillion: 4,
+        outputCostPerMillion: 24,
+        cacheWriteCostPerMillion: 5,
+        cacheReadCostPerMillion: 0.4,
+      },
+    });
+
+    expect(registerModelAlias('gpt-5.6-sol', 'gpt-5.6')).toBe(true);
+
+    expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);
+    expect(getModelPricing('gpt-5.6-sol')).toMatchObject({ inputCostPerMillion: 4 });
+    // The alias still resolves ids without their own data to the canonical id.
+    expect(getModelContextWindowSize('gpt-5.6')).toBe(1_050_000);
+  });
+
+  it('keeps overrides recorded while an alias already exists', () => {
+    expect(registerModelAlias('gpt-5.6-sol', 'gpt-5.6')).toBe(true);
+    _setObservedContextWindows({ 'gpt-5.6-sol': 258_400 });
+
+    expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);
+  });
+
+  it('does not pin unresolved snapshot entries over local data', () => {
+    const snapshot = JSON.parse(JSON.stringify(exportResolvedModelCatalog(['mystery-model-x'])));
+    expect(snapshot.models['mystery-model-x'].contextWindow.provenance.source).toBe('default');
+
+    const result = importResolvedModelCatalog(snapshot);
+
+    expect(result.imported).toBe(0);
+    expect(result.diagnostics).toEqual(['skipped unresolved model catalog entry: mystery-model-x']);
+    _setCatalogContextWindows({ 'mystery-model-x': 999_999 });
+    expect(getModelContextWindowSize('mystery-model-x')).toBe(999_999);
+  });
+
+  it('merges successive partial imports and yields to local observations', () => {
+    _setObservedContextWindows({ 'gpt-5.6-sol': 258_400, 'gpt-5.6-luna': 111_111 });
+    const first = JSON.parse(JSON.stringify(exportResolvedModelCatalog(['gpt-5.6-sol'])));
+    const second = JSON.parse(JSON.stringify(exportResolvedModelCatalog(['gpt-5.6-luna'])));
+    _clearObservedContextWindows();
+
+    importResolvedModelCatalog(first);
+    importResolvedModelCatalog(second);
+
+    expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);
+    expect(getModelContextWindowSize('gpt-5.6-luna')).toBe(111_111);
+
+    // A window this realm observes first-hand outranks the imported snapshot.
+    _setObservedContextWindows({ 'gpt-5.6-sol': 131_072 });
+    expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(131_072);
+  });
 });

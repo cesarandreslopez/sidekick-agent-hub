@@ -9,6 +9,12 @@ import { execFile, execFileSync } from 'child_process';
 import type { CodexDbThread } from '../types/codex';
 import type { ProviderRuntimeStatus } from './types';
 
+/**
+ * Ids per inlined `IN (…)` query. Values are passed inside a single argv
+ * element to sqlite3, so an unbounded list would hit E2BIG on large stores.
+ */
+const SQL_ID_CHUNK_SIZE = 400;
+
 export class CodexDatabase {
   private readonly dbPath: string;
   private sqlite3Available: boolean | null = null;
@@ -108,8 +114,11 @@ export class CodexDatabase {
       const trimmed = result.trim();
       return trimmed ? (JSON.parse(trimmed) as T[]) : [];
     } catch (error) {
-      this.sqlite3Available = false;
-      this.runtimeStatus = classifySqliteError(error, 'query_failed');
+      const status = classifySqliteError(error, 'query_failed');
+      // Only a missing sqlite3 binary gates future attempts. A failed query
+      // is transient and must not latch the database off (mirrors query()).
+      if (status.kind === 'sqlite_missing') this.sqlite3Available = false;
+      this.runtimeStatus = status;
       return [];
     }
   }
@@ -150,13 +159,23 @@ export class CodexDatabase {
     return this.queryOne<CodexDbThread>('SELECT * FROM threads WHERE id = ?', [id]);
   }
 
-  /** Resolve many thread ids with one non-blocking sqlite3 subprocess. */
-  getThreadsByIdsAsync(ids: readonly string[]): Promise<CodexDbThread[]> {
-    if (ids.length === 0) return Promise.resolve([]);
-    const placeholders = ids.map(() => '?').join(', ');
-    return this.queryAsync<CodexDbThread>(`SELECT * FROM threads WHERE id IN (${placeholders})`, [
-      ...ids,
-    ]);
+  /**
+   * Resolve many thread ids with non-blocking sqlite3 subprocesses — one per
+   * chunk of ids, so the inlined query stays clear of argv length limits.
+   */
+  async getThreadsByIdsAsync(ids: readonly string[]): Promise<CodexDbThread[]> {
+    const results: CodexDbThread[] = [];
+    for (let i = 0; i < ids.length; i += SQL_ID_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + SQL_ID_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(', ');
+      results.push(
+        ...(await this.queryAsync<CodexDbThread>(
+          `SELECT * FROM threads WHERE id IN (${placeholders})`,
+          [...chunk],
+        )),
+      );
+    }
+    return results;
   }
 
   /** Get all threads forked from a given session ID. */

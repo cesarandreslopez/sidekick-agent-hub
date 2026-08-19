@@ -114,6 +114,29 @@ describe('OpenCodeProvider', () => {
     expect(provider.findSessionById(workspace, '../escape')).toBeNull();
   });
 
+  it('keeps the legacy file-storage fallback after async listings when no database exists', async () => {
+    const workspace = workspaceDir();
+    mockExecSync.mockReturnValue('abcdef123\n');
+    const sessionPath = path.join(
+      process.env.XDG_DATA_HOME!,
+      'opencode',
+      'storage',
+      'session',
+      'abcdef123',
+      'session-one.json',
+    );
+    fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+    fs.writeFileSync(sessionPath, JSON.stringify({ id: 'session-one', title: 'One' }));
+    const provider = new OpenCodeProvider();
+
+    // The async path must not cache an unopened database: sync callers treat
+    // a cached instance as proof that open() succeeded.
+    await expect(provider.listSessionFilesAsync()).resolves.toEqual([
+      expect.objectContaining({ path: sessionPath, sessionId: 'session-one' }),
+    ]);
+    expect(provider.findAllSessions(workspace)).toEqual([sessionPath]);
+  });
+
   it('distinguishes a missing sqlite binary from an empty workspace', () => {
     const workspace = workspaceDir();
     const dbPath = path.join(process.env.XDG_DATA_HOME!, 'opencode', 'opencode.db');

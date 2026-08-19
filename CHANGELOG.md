@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Shared:** `listSessionPreviewsAsync()` and `readSessionPreviewAsync()` add bounded-concurrency, cooperative preview reads while keeping the synchronous APIs unchanged
-- **Shared:** Codex and OpenCode preview labels are batch-resolved with at most one `sqlite3` subprocess per provider per listing, with a bounded file-scan fallback when the binary is absent
+- **Shared:** Codex and OpenCode preview labels are batch-resolved with at most one `sqlite3` subprocess per provider per few hundred sessions listed, with a bounded file-scan fallback when the binary is absent
 - **Shared:** OpenCode now implements native all-session enumeration, completing async preview support across all three session providers
 - **Shared:** `ObservedSessionCollector.subscribe()` and `SessionMonitor.subscribe()` emit debounced, coalesced changes with previous/current fingerprints and combine filesystem watching with catch-up polling
 - **Shared:** `createSessionProviders({ onDiagnostic })` returns every usable provider and structured diagnostics for any provider that cannot operate in the current environment

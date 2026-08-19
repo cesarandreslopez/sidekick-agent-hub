@@ -528,9 +528,13 @@ export function _clearPricingOverrides(): void {
   overrideSortedKeys = [];
 }
 
-/** Internal: hydrate exact pricing resolutions exported by another realm. */
+/**
+ * Internal: hydrate exact pricing resolutions exported by another realm.
+ * Merges so successive partial imports accumulate (aliases already merge);
+ * use `_clearImportedResolvedPricing` to reset.
+ */
 export function _setImportedResolvedPricing(values: Record<string, ResolvedModelPricing>): void {
-  importedTable = { ...values };
+  importedTable = { ...importedTable, ...values };
 }
 
 /** Internal test hook. */
@@ -625,68 +629,82 @@ function findLongestPrefix(keys: string[], modelId: string): string | null {
 /** Resolve pricing and disclose whether the result was inherited by prefix. */
 export function resolveModelPricing(modelId: string): ResolvedModelPricing {
   const stripped = modelId.replace(/\[1m\]/gi, '');
+  const rawId = stripped.trim().toLowerCase();
   const canonicalModelId = resolveModelAlias(stripped);
-  const imported = importedTable[canonicalModelId];
+  // The raw id is tried before its alias target at every step: pricing
+  // recorded for the alias id itself is more specific than the canonical
+  // fallback, so registering an alias never orphans it.
+  const candidateIds = rawId === canonicalModelId ? [canonicalModelId] : [rawId, canonicalModelId];
+
+  const imported = importedTable[rawId] ?? importedTable[canonicalModelId];
   if (imported) return { ...imported, modelId, canonicalModelId };
 
-  const exactOverride = overrideTable[canonicalModelId];
-  if (exactOverride) {
-    return {
-      modelId,
-      canonicalModelId,
-      pricing: exactOverride,
-      provenance: {
-        source: 'catalog',
-        match: 'exact',
-        matchedModelId: canonicalModelId,
-        inheritedByPrefix: false,
-      },
-    };
+  for (const id of candidateIds) {
+    const exactOverride = overrideTable[id];
+    if (exactOverride) {
+      return {
+        modelId,
+        canonicalModelId,
+        pricing: exactOverride,
+        provenance: {
+          source: 'catalog',
+          match: 'exact',
+          matchedModelId: id,
+          inheritedByPrefix: false,
+        },
+      };
+    }
   }
 
-  const exactStatic = PRICING_TABLE[canonicalModelId];
-  if (exactStatic) {
-    return {
-      modelId,
-      canonicalModelId,
-      pricing: exactStatic,
-      provenance: {
-        source: 'static',
-        match: 'exact',
-        matchedModelId: canonicalModelId,
-        inheritedByPrefix: false,
-      },
-    };
+  for (const id of candidateIds) {
+    const exactStatic = PRICING_TABLE[id];
+    if (exactStatic) {
+      return {
+        modelId,
+        canonicalModelId,
+        pricing: exactStatic,
+        provenance: {
+          source: 'static',
+          match: 'exact',
+          matchedModelId: id,
+          inheritedByPrefix: false,
+        },
+      };
+    }
   }
 
-  const overridePrefix = findLongestPrefix(overrideSortedKeys, canonicalModelId);
-  if (overridePrefix) {
-    return {
-      modelId,
-      canonicalModelId,
-      pricing: overrideTable[overridePrefix],
-      provenance: {
-        source: 'catalog',
-        match: 'prefix',
-        matchedModelId: overridePrefix,
-        inheritedByPrefix: true,
-      },
-    };
+  for (const id of candidateIds) {
+    const overridePrefix = findLongestPrefix(overrideSortedKeys, id);
+    if (overridePrefix) {
+      return {
+        modelId,
+        canonicalModelId,
+        pricing: overrideTable[overridePrefix],
+        provenance: {
+          source: 'catalog',
+          match: 'prefix',
+          matchedModelId: overridePrefix,
+          inheritedByPrefix: true,
+        },
+      };
+    }
   }
 
-  const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, canonicalModelId);
-  if (staticPrefix) {
-    return {
-      modelId,
-      canonicalModelId,
-      pricing: PRICING_TABLE[staticPrefix],
-      provenance: {
-        source: 'static',
-        match: 'prefix',
-        matchedModelId: staticPrefix,
-        inheritedByPrefix: true,
-      },
-    };
+  for (const id of candidateIds) {
+    const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, id);
+    if (staticPrefix) {
+      return {
+        modelId,
+        canonicalModelId,
+        pricing: PRICING_TABLE[staticPrefix],
+        provenance: {
+          source: 'static',
+          match: 'prefix',
+          matchedModelId: staticPrefix,
+          inheritedByPrefix: true,
+        },
+      };
+    }
   }
 
   return {

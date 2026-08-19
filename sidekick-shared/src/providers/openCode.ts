@@ -784,10 +784,18 @@ export class OpenCodeProvider implements SessionProviderBase {
 
   private async ensureDbAsync(): Promise<OpenCodeDatabase> {
     if (this.db) return this.db;
-    const db = new OpenCodeDatabase(getOpenCodeDataDir());
-    this.dbInitialized = true;
+    return new OpenCodeDatabase(getOpenCodeDataDir());
+  }
+
+  /**
+   * Cache an async-created database only after an operation proved it usable.
+   * Sync paths treat a cached `db` as "open() succeeded", so adopting an
+   * unproven instance would cut them off from the file-storage fallback.
+   */
+  private adoptDbIfAvailable(db: OpenCodeDatabase): void {
+    if (this.db || !db.getRuntimeStatus().available) return;
     this.db = db;
-    return db;
+    this.dbInitialized = true;
   }
 
   getRuntimeStatus(): ProviderRuntimeStatus {
@@ -1160,6 +1168,7 @@ export class OpenCodeProvider implements SessionProviderBase {
     const db = await this.ensureDbAsync();
     const sessions = await db.getAllSessionsAsync();
     this.dbStatus = db.getRuntimeStatus();
+    this.adoptDbIfAvailable(db);
     if (this.dbStatus.available) {
       const dataDir = getOpenCodeDataDir();
       const files: SessionFileInfo[] = [];
@@ -1440,6 +1449,7 @@ export class OpenCodeProvider implements SessionProviderBase {
       const byId = new Map(unresolved.map((item) => [this.getSessionId(item), item]));
       const sessions = await db.getSessionsByIdsAsync([...byId.keys()]);
       this.dbStatus = db.getRuntimeStatus();
+      this.adoptDbIfAvailable(db);
       for (const session of sessions) {
         const sessionPath = byId.get(session.id);
         if (!sessionPath) continue;
@@ -1968,6 +1978,7 @@ export class OpenCodeProvider implements SessionProviderBase {
       const sessionId = this.getSessionId(sessionPath);
       const session = (await db.getSessionsByIdsAsync([sessionId]))[0];
       this.dbStatus = db.getRuntimeStatus();
+      this.adoptDbIfAvailable(db);
       if (session) {
         this.sessionMetaCache.set(sessionPath, {
           title: session.title,

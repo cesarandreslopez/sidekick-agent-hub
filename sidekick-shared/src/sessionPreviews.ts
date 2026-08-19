@@ -105,7 +105,12 @@ export function readSessionPreview(
     // and this function's contract is to degrade, not throw.
     modifiedAt = stats.mtime.toISOString();
   } catch {
-    const metadata = provider.getSessionMetadata?.(sessionPath);
+    let metadata: { mtime: Date } | null | undefined;
+    try {
+      metadata = provider.getSessionMetadata?.(sessionPath);
+    } catch {
+      return null;
+    }
     if (!metadata) return null;
     sizeBytes = 0;
     try {
@@ -359,9 +364,12 @@ async function statSessionFileAsync(
   } catch {
     let metadata: { mtime: Date } | null = null;
     try {
-      metadata = provider.getSessionMetadata?.(sessionPath) ?? null;
-      if (!metadata && provider.getSessionMetadataAsync) {
+      // Async first: for DB-backed synthetic paths the sync variant can spawn
+      // a blocking sqlite3 subprocess, defeating this API's event-loop safety.
+      if (provider.getSessionMetadataAsync) {
         metadata = await provider.getSessionMetadataAsync(sessionPath);
+      } else {
+        metadata = provider.getSessionMetadata?.(sessionPath) ?? null;
       }
     } catch {
       metadata = null;

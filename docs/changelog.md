@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.25.0] - 2026-08-18
 
-- Shared library: async session previews use bounded concurrency, yield between reads, batch Codex/OpenCode labels into at most one database subprocess per provider, and include OpenCode's native all-session enumeration
+- Shared library: async session previews use bounded concurrency, yield between reads, batch Codex/OpenCode labels into a handful of database subprocesses per provider, and include OpenCode's native all-session enumeration
 - Shared library: collectors and monitors can replace polling loops with debounced subscriptions carrying old/new fingerprints; filesystem watches retain catch-up polling for filesystems that drop events
 - Shared library: observed-session parsing is fingerprint-cached, unchanged collections perform no content reads, and structured size/mtime fingerprint fields replace downstream string parsing
 - Shared library: cooperative collector scheduling bounds read bursts, while cached observations refresh activity and observation time without presenting cached usage/model data as newly read

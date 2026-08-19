@@ -342,12 +342,27 @@ function readSessionMeta(rolloutPath: string): CodexSessionMeta | null {
 }
 
 async function readSessionMetaAsync(rolloutPath: string): Promise<CodexSessionMeta | null> {
+  // Mirrors readSessionMeta()/readFirstLines(): chunk-read until the first
+  // line is complete under the same 256 KiB cap — session_meta carries
+  // `instructions` and can far exceed a single chunk.
+  const maxBytes = 256 * 1024;
+  const chunkSize = 64 * 1024;
   let handle: fs.promises.FileHandle | null = null;
   try {
     handle = await fs.promises.open(rolloutPath, 'r');
-    const buffer = Buffer.alloc(64 * 1024);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    const firstLine = buffer.toString('utf8', 0, bytesRead).split('\n', 1)[0]?.trim();
+    const chunks: Buffer[] = [];
+    let totalRead = 0;
+    let newlineFound = false;
+    while (totalRead < maxBytes && !newlineFound) {
+      const buffer = Buffer.alloc(Math.min(chunkSize, maxBytes - totalRead));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, totalRead);
+      if (bytesRead === 0) break;
+      const chunk = buffer.subarray(0, bytesRead);
+      chunks.push(chunk);
+      totalRead += bytesRead;
+      newlineFound = chunk.includes(0x0a);
+    }
+    const firstLine = Buffer.concat(chunks).toString('utf8').split('\n', 1)[0]?.trim();
     if (!firstLine) return null;
     const parsed = JSON.parse(firstLine) as CodexRolloutLine;
     return parsed.type === 'session_meta' ? (parsed.payload as CodexSessionMeta) : null;
@@ -365,6 +380,17 @@ function readSessionCwd(rolloutPath: string): string | null {
   if (cached !== undefined) return cached;
 
   const meta = readSessionMeta(rolloutPath);
+  const cwd = meta?.cwd || null;
+  cwdCache.set(rolloutPath, cwd);
+  return cwd;
+}
+
+/** Async twin of readSessionCwd, sharing its cache so repeat listings do no content reads. */
+async function readSessionCwdAsync(rolloutPath: string): Promise<string | null> {
+  const cached = cwdCache.get(rolloutPath);
+  if (cached !== undefined) return cached;
+
+  const meta = await readSessionMetaAsync(rolloutPath);
   const cwd = meta?.cwd || null;
   cwdCache.set(rolloutPath, cwd);
   return cwd;
@@ -785,10 +811,18 @@ export class CodexProvider implements SessionProviderBase {
 
   private async ensureDbAsync(): Promise<CodexDatabase> {
     if (this.db) return this.db;
-    const db = new CodexDatabase(getCodexHome());
-    this.dbInitialized = true;
+    return new CodexDatabase(getCodexHome());
+  }
+
+  /**
+   * Cache an async-created database only after an operation proved it usable.
+   * Sync paths treat a cached `db` as "open() succeeded", so adopting an
+   * unproven instance would silently disable their file fallbacks.
+   */
+  private adoptDbIfAvailable(db: CodexDatabase): void {
+    if (this.db || !db.getRuntimeStatus().available) return;
     this.db = db;
-    return db;
+    this.dbInitialized = true;
   }
 
   getRuntimeStatus(): ProviderRuntimeStatus {
@@ -947,9 +981,9 @@ export class CodexProvider implements SessionProviderBase {
         if (seen.has(file.path)) continue;
         seen.add(file.path);
         if (workspacePath) {
-          const meta = await readSessionMetaAsync(file.path);
-          if (!meta?.cwd || !cwdMatches(meta.cwd, workspacePath)) continue;
-          file.workspacePath = meta.cwd;
+          const cwd = await readSessionCwdAsync(file.path);
+          if (!cwd || !cwdMatches(cwd, workspacePath)) continue;
+          file.workspacePath = cwd;
         }
         results.push(file);
       }
@@ -1070,6 +1104,7 @@ export class CodexProvider implements SessionProviderBase {
       if (label) results.set(sessionPath, truncate(label, 60));
     }
     this.dbStatus = db.getRuntimeStatus();
+    this.adoptDbIfAvailable(db);
 
     for (const sessionPath of sessionPaths) {
       if (!results.has(sessionPath)) {

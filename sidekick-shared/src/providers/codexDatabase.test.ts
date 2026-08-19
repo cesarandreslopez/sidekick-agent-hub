@@ -106,4 +106,56 @@ describe('CodexDatabase', () => {
     expect(mockExecFile).toHaveBeenCalledOnce();
     expect(mockExecFile.mock.calls[0][1][3]).toContain("id IN ('one', 'two')");
   });
+
+  it('chunks large id lists so the inlined query stays clear of argv limits', async () => {
+    writeStateDatabase();
+    mockExecFile.mockImplementation(
+      (_bin: string, args: string[], _options: unknown, callback: Function) => {
+        const matches = args[3].match(/'[^']+'/g) ?? [];
+        callback(null, JSON.stringify(matches.map((id) => ({ id: id.slice(1, -1) }))));
+      },
+    );
+    const db = new CodexDatabase(tmpDir);
+    const ids = Array.from({ length: 1000 }, (_item, index) => `thread-${index}`);
+
+    const threads = await db.getThreadsByIdsAsync(ids);
+
+    expect(threads).toHaveLength(1000);
+    expect(threads[0]).toEqual(expect.objectContaining({ id: 'thread-0' }));
+    expect(threads[999]).toEqual(expect.objectContaining({ id: 'thread-999' }));
+    expect(mockExecFile).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not latch the database off after a transient async query failure', async () => {
+    writeStateDatabase();
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback: Function) => {
+        callback(Object.assign(new Error('query timed out'), { code: 'ETIMEDOUT' }), '');
+      },
+    );
+    mockExecFileSync.mockImplementation((_bin: string, args: string[]) => {
+      if (args[0] === '--version') return '3.51.0';
+      return JSON.stringify([{ id: 'one', cwd: '/repo' }]);
+    });
+    const db = new CodexDatabase(tmpDir);
+
+    await expect(db.getThreadsByIdsAsync(['one'])).resolves.toEqual([]);
+    // A failed query is transient: the sync probe must still run and succeed.
+    expect(db.open()).toBe(true);
+    expect(db.getThread('one')).toEqual(expect.objectContaining({ id: 'one' }));
+  });
+
+  it('latches the database off when the sqlite3 binary is missing', async () => {
+    writeStateDatabase();
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback: Function) => {
+        callback(Object.assign(new Error('spawn sqlite3 ENOENT'), { code: 'ENOENT' }), '');
+      },
+    );
+    const db = new CodexDatabase(tmpDir);
+
+    await expect(db.getThreadsByIdsAsync(['one'])).resolves.toEqual([]);
+    expect(db.open()).toBe(false);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+  });
 });

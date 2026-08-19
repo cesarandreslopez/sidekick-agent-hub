@@ -228,6 +228,9 @@ export class ObservedSessionCollector<T = unknown> {
           for (const source of this.options.sources) {
             if (disposed) break;
             const batch = await this.reconcileSource(source, known);
+            // Re-check after the await: disposal during the reconcile must
+            // not deliver the pre-disposal batch to the listener.
+            if (disposed) break;
             if (batch && batch.changes.length > 0) {
               try {
                 listener(batch);

@@ -9,13 +9,19 @@
  *      model, persisted across runs by `observedContextWindows.ts`. Reflects the
  *      effective window for this account/tier, which can be well below the
  *      model's published maximum.
- *   3. Catalog overrides — `max_input_tokens` from the LiteLLM catalog, hydrated
+ *   3. Imported resolutions — exact entries hydrated from another realm via
+ *      `importResolvedModelCatalog()`. Below local observed data (a window this
+ *      realm saw first-hand is fresher than a transferred snapshot), above the
+ *      catalog.
+ *   4. Catalog overrides — `max_input_tokens` from the LiteLLM catalog, hydrated
  *      by `pricingCatalog.ts`. Keeps new models correct without a code change.
- *   4. The static table below — offline baseline of last resort.
+ *   5. The static table below — offline baseline of last resort.
  *
  * Within that order, match quality comes first: every layer is tried for an
  * exact hit before any layer is tried for a prefix hit. See
- * `getModelContextWindowSize`.
+ * `getModelContextWindowSize`. The raw (alias) id is tried before its
+ * canonical target at every step, so registering an alias never orphans data
+ * recorded under the alias itself.
  *
  * Layers 2 and 3 are pushed in by Node-only modules through the `_set*` hooks,
  * so this file stays browser-safe (no node:fs, no fetch) and can be bundled for
@@ -175,11 +181,15 @@ export function _clearCatalogContextWindows(): void {
   catalogSortedKeys = [];
 }
 
-/** Internal: hydrate exact, already-resolved context data from another realm. */
+/**
+ * Internal: hydrate exact, already-resolved context data from another realm.
+ * Merges so successive partial imports accumulate (aliases already merge);
+ * use `_clearImportedResolvedContextWindows` to reset.
+ */
 export function _setImportedResolvedContextWindows(
   values: Record<string, ResolvedModelContextWindow>,
 ): void {
-  importedTable = { ...values };
+  importedTable = { ...importedTable, ...values };
 }
 
 /** Internal test hook. */
@@ -251,17 +261,36 @@ export function resolveModelContextWindow(modelId?: string): ResolvedModelContex
     };
   }
 
-  const imported = importedTable[canonicalModelId] ?? importedTable[stripped];
-  if (imported) {
-    return { ...imported, modelId: rawModelId, canonicalModelId };
+  // The raw id is tried before its alias target at every step: data recorded
+  // for the alias id itself is more specific than the canonical fallback.
+  const candidateIds =
+    stripped === canonicalModelId ? [canonicalModelId] : [stripped, canonicalModelId];
+  const firstMatch = (lookup: (id: string) => WindowMatch | null): WindowMatch | null => {
+    for (const id of candidateIds) {
+      const hit = lookup(id);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
+  const observedExact = firstMatch((id) => exactWindowMatch(observedTable, id));
+
+  // Imported resolutions rank below local observed data: a window this realm
+  // saw first-hand is fresher than a snapshot transferred from another realm.
+  if (!observedExact) {
+    const imported = importedTable[stripped] ?? importedTable[canonicalModelId];
+    if (imported) {
+      return { ...imported, modelId: rawModelId, canonicalModelId };
+    }
   }
 
-  const observedExact = exactWindowMatch(observedTable, canonicalModelId);
-  const catalogExact = exactWindowMatch(catalogTable, canonicalModelId);
-  const staticExact = exactWindowMatch(MODEL_CONTEXT_SIZES, canonicalModelId);
-  const observedPrefix = prefixWindowMatch(observedTable, observedSortedKeys, canonicalModelId);
-  const catalogPrefix = prefixWindowMatch(catalogTable, catalogSortedKeys, canonicalModelId);
-  const staticPrefix = prefixWindowMatch(MODEL_CONTEXT_SIZES, SORTED_KEYS, canonicalModelId);
+  const catalogExact = firstMatch((id) => exactWindowMatch(catalogTable, id));
+  const staticExact = firstMatch((id) => exactWindowMatch(MODEL_CONTEXT_SIZES, id));
+  const observedPrefix = firstMatch((id) =>
+    prefixWindowMatch(observedTable, observedSortedKeys, id),
+  );
+  const catalogPrefix = firstMatch((id) => prefixWindowMatch(catalogTable, catalogSortedKeys, id));
+  const staticPrefix = firstMatch((id) => prefixWindowMatch(MODEL_CONTEXT_SIZES, SORTED_KEYS, id));
   const published = catalogExact ?? staticExact ?? catalogPrefix ?? staticPrefix;
   const effective =
     observedExact ?? catalogExact ?? staticExact ?? observedPrefix ?? catalogPrefix ?? staticPrefix;

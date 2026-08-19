@@ -111,10 +111,19 @@ export function importResolvedModelCatalog(snapshot: unknown): ImportResolvedMod
     const canonicalId = entry.canonicalId.trim().toLowerCase();
     const context = cloneContext(entry.contextWindow, entry.id, canonicalId);
     const pricing = clonePricing(entry.pricing, entry.id, canonicalId);
+    // Unresolved facets are not importable facts: pinning a 'default' window
+    // or 'none' pricing would outrank data the importing realm can resolve
+    // (or later learn) on its own.
+    const contextResolved = context.provenance.source !== 'default';
+    const pricingResolved = pricing.provenance.source !== 'none';
+    if (!contextResolved && !pricingResolved) {
+      diagnostics.push(`skipped unresolved model catalog entry: ${key}`);
+      continue;
+    }
     for (const id of new Set([normalizedKey, entry.id.trim().toLowerCase(), canonicalId])) {
       if (!id) continue;
-      contexts[id] = context;
-      prices[id] = pricing;
+      if (contextResolved) contexts[id] = context;
+      if (pricingResolved) prices[id] = pricing;
     }
     imported++;
   }

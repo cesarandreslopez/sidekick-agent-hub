@@ -119,6 +119,35 @@ describe('QuotaPoller', () => {
     poller.stop();
   });
 
+  it('retries instead of parking when the account exists but its token is unreadable', async () => {
+    let token: string | null = null;
+    mockFetchQuota.mockResolvedValue({
+      fiveHour: { utilization: 1, resetsAt: '' },
+      sevenDay: { utilization: 2, resetsAt: '' },
+      available: true,
+    });
+    const poller = new QuotaPoller({
+      hasAccount: () => true,
+      getAccessToken: async () => token,
+      activeIntervalMs: 1_000,
+      idleIntervalMs: 5_000,
+      subscribeAccountsChanged: () => ({ dispose: vi.fn() }),
+    });
+
+    poller.start();
+    await flushPoll();
+    // A transient credential failure never changes the account fingerprint,
+    // so no wake would arrive — the poller must keep a retry timer alive.
+    expect(mockFetchQuota).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+
+    token = 'token';
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flushPoll();
+    expect(mockFetchQuota).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
   it('does not lose an account change while an account check is in flight', async () => {
     let accountListener: (() => void) | undefined;
     let resolveFirstCheck: ((present: boolean) => void) | undefined;

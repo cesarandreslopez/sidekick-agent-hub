@@ -152,6 +152,35 @@ describe('MultiProviderQuotaService', () => {
     }
   });
 
+  it('keeps a signed-out claude entry visible while dormant', async () => {
+    const updates: ProviderQuotaMap[] = [];
+    const fetchClaudeQuota = vi.fn();
+    const service = new MultiProviderQuotaService({
+      readClaudeAccount: () => ({ source: 'none' as const }),
+      readClaudeCredentials: async () => null,
+      fetchClaudeQuota,
+      fetchPeakHours: async () => peakHours(),
+      subscribeAccountsChanged: () => ({ dispose: vi.fn() }),
+    });
+    service.onUpdate((update) => updates.push(update));
+
+    service.startPolling();
+    await flushPromises();
+    service.dispose();
+
+    // Consumers render their sign-in prompt from an unavailable auth entry;
+    // deleting the key would make a signed-out account look unmonitored.
+    expect(fetchClaudeQuota).not.toHaveBeenCalled();
+    expect(updates.at(-1)?.claude).toMatchObject({
+      runtimeProvider: 'claude',
+      providerId: 'claude-code',
+      available: false,
+      failureKind: 'auth',
+      error: 'Sign in to a Claude account to view quota',
+    });
+    expect(providerQuotaMapSchema.parse(updates.at(-1))).toEqual(updates.at(-1));
+  });
+
   it('does no Claude quota or peak-hours work until an account appears', async () => {
     let present = false;
     let accountListener: (() => void) | undefined;

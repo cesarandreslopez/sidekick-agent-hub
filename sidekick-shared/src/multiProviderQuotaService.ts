@@ -47,6 +47,8 @@ export interface MultiProviderQuotaServiceOptions {
   log?: Logger;
 }
 
+const SIGNED_OUT_ERROR = 'Sign in to a Claude account to view quota';
+
 function makeUnavailableClaudeState(
   error: string,
   failureKind?: ProviderQuotaState<'claude'>['failureKind'],
@@ -334,13 +336,12 @@ export class MultiProviderQuotaService implements Disposable {
         this.claudeDormant = true;
         this.resetTransientFailureState();
         this.authUnavailableActive = false;
-        this.lastEmittedClaudeState = null;
         this.lastSuccessfulClaudeState = null;
-        if (this.quotaByProvider.claude) {
-          const remaining = { ...this.quotaByProvider };
-          delete remaining.claude;
-          this.quotaByProvider = remaining;
-          this.emit();
+        // Stay visible while dormant: consumers render their sign-in prompt
+        // from an unavailable auth entry, not from a missing map key.
+        if (this.quotaByProvider.claude?.error !== SIGNED_OUT_ERROR) {
+          this.lastEmittedClaudeState = null;
+          this.emitClaudeState(makeUnavailableClaudeState(SIGNED_OUT_ERROR, 'auth'));
         }
         return;
       }

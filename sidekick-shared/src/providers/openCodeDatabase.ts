@@ -9,6 +9,12 @@ import { execFile, execFileSync } from 'child_process';
 import type { DbMessage, DbPart, DbProject, DbSession } from '../types/opencode';
 type DbProjectRow = Omit<DbProject, 'sandboxes'> & { sandboxes?: string | null };
 
+/**
+ * Ids per inlined `IN (…)` query. Values are passed inside a single argv
+ * element to sqlite3, so an unbounded list would hit E2BIG on large stores.
+ */
+const SQL_ID_CHUNK_SIZE = 400;
+
 export interface OpenCodeDbRuntimeStatus {
   available: boolean;
   kind: 'available' | 'db_missing' | 'sqlite_missing' | 'sqlite_blocked' | 'query_failed';
@@ -206,14 +212,23 @@ export class OpenCodeDatabase {
     );
   }
 
-  /** Resolve many sessions with one non-blocking sqlite3 subprocess. */
-  getSessionsByIdsAsync(sessionIds: readonly string[]): Promise<DbSession[]> {
-    if (sessionIds.length === 0) return Promise.resolve([]);
-    const placeholders = sessionIds.map(() => '?').join(', ');
-    return this.queryAsync<DbSession>(
-      `SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE id IN (${placeholders})`,
-      [...sessionIds],
-    );
+  /**
+   * Resolve many sessions with non-blocking sqlite3 subprocesses — one per
+   * chunk of ids, so the inlined query stays clear of argv length limits.
+   */
+  async getSessionsByIdsAsync(sessionIds: readonly string[]): Promise<DbSession[]> {
+    const results: DbSession[] = [];
+    for (let i = 0; i < sessionIds.length; i += SQL_ID_CHUNK_SIZE) {
+      const chunk = sessionIds.slice(i, i + SQL_ID_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(', ');
+      results.push(
+        ...(await this.queryAsync<DbSession>(
+          `SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE id IN (${placeholders})`,
+          [...chunk],
+        )),
+      );
+    }
+    return results;
   }
 
   /** Get the most recently updated session for a project (excludes subagent child sessions). */

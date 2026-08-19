@@ -184,8 +184,12 @@ export interface SessionProviderBase {
   /** Finds all session files for a workspace, sorted by mtime (most recent first). */
   findAllSessions(workspacePath: string): string[];
 
-  /** Finds one session without reading every transcript. Wrong ids return null. */
-  findSessionById(workspacePath: string, sessionId: string): string | null;
+  /**
+   * Finds one session without reading every transcript. Wrong ids return null.
+   * Optional so pre-0.25 external implementations keep compiling; when absent,
+   * callers fall back to scanning findAllSessions().
+   */
+  findSessionById?(workspacePath: string, sessionId: string): string | null;
 
   /** Finds all session files in a specific directory. */
   findSessionsInDirectory(dir: string): string[];
