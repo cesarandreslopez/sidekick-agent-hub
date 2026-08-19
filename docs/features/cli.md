@@ -74,6 +74,7 @@ Dump session data as a text timeline, JSON metrics, or markdown report for shari
 | Flag             | Description                                            |
 | ---------------- | ------------------------------------------------------ |
 | `--list`         | List available session IDs for the current project     |
+| `--limit <n>`    | Maximum sessions listed with `--list` (default: 50)    |
 | `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
 | `--width <cols>` | Terminal width for text output (default: auto-detect)  |
 | `--expand`       | Show all events including noise                        |
@@ -92,6 +93,36 @@ sidekick dump --format markdown > session-report.md
 
 # Full JSON export for tooling
 sidekick dump --format json > session.json
+```
+
+## Prompt History
+
+```bash
+sidekick history [options]
+```
+
+Show recent user prompts across Codex sessions, newest first — a quick answer to "what was I working on?" that spans every workspace. Not to be confused with `sidekick quota history`, the quota utilization heatmap.
+
+| Flag                 | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `--limit <n>`        | Maximum prompts to show (default: 20)                        |
+| `--path <sessionId>` | Print the rollout transcript path for a session ID or prefix |
+
+The global `--json` flag emits machine-readable entries with full session IDs and ISO timestamps.
+
+Codex-only for now: Codex records every prompt in a global `~/.codex/history.jsonl`, which is what this command reads. Claude Code and OpenCode keep prompts inside per-session files and are not yet supported.
+
+### Examples
+
+```bash
+# The twenty most recent prompts
+sidekick history
+
+# Jump to a session's transcript file
+less "$(sidekick history --path 0198a3c2)"
+
+# Machine-readable entries
+sidekick history --json | jq '.[0]'
 ```
 
 ## HTML Report

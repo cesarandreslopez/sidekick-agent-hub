@@ -131,8 +131,24 @@ Export session data as text, markdown, or JSON.
 | `--expand`       | Show all events including noise                        |
 | `--session <id>` | Target a specific session (default: most recent)       |
 | `--list`         | List available sessions and exit                       |
+| `--limit <n>`    | Maximum sessions listed with `--list` (default: 50)    |
 
 Global flags `--project` and `--provider` also apply.
+
+## Prompt History
+
+```bash
+sidekick history [options]
+```
+
+Show recent user prompts across Codex sessions, newest first — across every workspace. Use `--path <sessionId>` to resolve a session ID (or unique prefix) to its rollout transcript file, e.g. `less "$(sidekick history --path 0198a3c2)"`. The global `--json` flag emits full session IDs and ISO timestamps.
+
+| Flag                 | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `--limit <n>`        | Maximum prompts to show (default: 20)                        |
+| `--path <sessionId>` | Print the rollout transcript path for a session ID or prefix |
+
+Codex-only for now (reads the global `~/.codex/history.jsonl`); Claude Code and OpenCode are not yet supported. Not to be confused with `sidekick quota history`, the quota utilization heatmap.
 
 ## HTML Report
 
