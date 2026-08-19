@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared library: observation-only projections report transcripts as non-resumable without post-processing
 - Shared library: missing `sqlite3` is attached to affected Codex/OpenCode results as a diagnostic instead of looking like an empty workspace
 - Shared library: quota services skip work while no matching account exists, and `onAccountsChanged()` lets hosts react immediately to login/logout changes
+- CLI and VS Code extension: advance in lockstep with `sidekick-shared` 0.25.0; commands, settings, and behavior are unchanged
 
 ## [0.24.5] - 2026-08-18
 

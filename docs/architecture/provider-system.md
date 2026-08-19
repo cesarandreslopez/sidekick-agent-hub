@@ -61,6 +61,16 @@ Defined as `SessionProvider` in `src/types/sessionProvider.ts`:
 
 Each session provider normalizes raw data into the common `ClaudeSessionEvent` format.
 
+### Provider construction and diagnostics
+
+As of `sidekick-shared` 0.25.0, session provider constructors perform no filesystem, configuration, database,
+or binary probing — construction cannot fail because of the environment, so a long-lived host can build all
+three providers at boot without risk. Environmental failures (a missing `sqlite3` binary, an absent data
+directory) are deferred to first use and surface as structured diagnostics rather than exceptions or
+silently empty results. Hosts construct through `createSessionProviders({ onDiagnostic })`, which returns
+every usable provider plus the coalesced diagnostics, and can resolve a single session with
+`findSessionById()` through each provider's native filename or database index.
+
 ## Auto-Detection
 
 Both provider types support auto-detection via `ProviderDetector`, which checks:

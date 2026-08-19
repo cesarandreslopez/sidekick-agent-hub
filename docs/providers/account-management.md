@@ -4,7 +4,7 @@ Sidekick account management lets Node hosts acquire, list, and switch Claude Max
 `sidekick-shared`. The API is designed for desktop apps, VS Code extension hosts, and CLIs that need isolated
 login flows without reimplementing Claude/Codex credential detection.
 
-Requires `sidekick-shared@^0.24.5`. Every login and switch entry point comes in a sync and an async form
+Requires `sidekick-shared@^0.25.0`. Every login and switch entry point comes in a sync and an async form
 (`switchAccount`/`switchAccountAsync`, `getAccountLoginStatus`/`getAccountLoginStatusAsync`,
 `finalizeAccountLogin`/`finalizeAccountLoginAsync`, `prepareCodexAccount`/`prepareCodexAccountAsync`,
 `finalizeCodexAccount`/`finalizeCodexAccountAsync`, `switchToCodexAccount`/`switchToCodexAccountAsync`).
@@ -62,6 +62,28 @@ id_token JWT) over the saved pointer, falls back to the registry, and — on an 
 profile — self-heals the `activeByProvider` pointer so registry-keyed data (quota history, auto-switch) tracks
 the real account. Self-heal is best-effort and never creates or deletes profiles; an unknown live account is
 shown as-is with no label.
+
+### React to account changes
+
+Instead of polling `getActiveAccountStatus()`, subscribe to `onAccountsChanged()` (0.25.0). It combines
+process-local mutation signals, filesystem watches on the account stores, and a low-frequency catch-up poll,
+and emits only when the status actually changed:
+
+```ts
+import { onAccountsChanged } from 'sidekick-shared';
+
+const subscription = onAccountsChanged(
+  ({ reason, status }) => {
+    // reason: 'local' | 'filesystem' | 'poll'
+    refreshAccountSwitcher(status.claude, status.codex);
+  },
+  { emitCurrent: true },
+);
+// later: subscription.dispose();
+```
+
+The library's own quota services (`QuotaPoller`, `MultiProviderQuotaService`, `CodexQuotaWatcher`) subscribe
+to the same signal: they stay dormant while no matching account exists and wake when one appears.
 
 ## TTY-Less Login
 
@@ -125,6 +147,10 @@ Use these at IPC or sidecar boundaries so runtime validation and TypeScript type
 ```ts
 const payload = listAllAccountsResultSchema.parse(await sidecar.invoke('listAccounts'));
 ```
+
+As of 0.25.0, account and quota entry points guarantee results that validate against the schemas exported in
+the same release — re-parsing a value returned directly by the library is unnecessary; reserve `.parse()` for
+data that crossed a process or IPC boundary.
 
 Available account-management schemas:
 

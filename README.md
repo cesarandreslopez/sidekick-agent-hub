@@ -24,6 +24,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **Host-safe shared APIs** — `sidekick-shared` 0.25.0 adds async session previews, push-based collector/monitor/account subscriptions, an I/O-free provider factory with structured diagnostics (missing `sqlite3` is now a diagnostic, not an empty result), `findSessionById()`, and cross-realm model-catalog transfer with registerable aliases — built for long-lived embedders like desktop apps and extension hosts.
 - **Prompt history** — `sidekick history` lists your most recent Codex prompts across every workspace, and `--path` jumps straight to a session's transcript file. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound, so huge session directories stay fast.
 - **Non-blocking account operations** — Codex login probes, account switches, and login polling run off the event loop, so the VS Code extension host and other embedders no longer freeze during account operations. Store writes from the extension and CLI are serialized through locked atomic writers.
 - **Fast daily workflow** — `sidekick statusline`, `today`, `doctor`, atomic terminal capture, and generic external handoff keep common checks and updates one command away.

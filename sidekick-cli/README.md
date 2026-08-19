@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Co
 
 ## What's New
 
+- **`sidekick history`** — list your most recent Codex prompts across every workspace, newest first; `--path <id-or-prefix>` resolves a session to its transcript file for `less`/`jq`, and `--json` emits full ids and timestamps. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound (default 50), so huge session histories list quickly.
 - **`sidekick statusline`, `today` & `doctor`** — a cache-only one-line account/quota/burn footer, a cache-only daily brief, and cross-provider health diagnostics.
 - **Quick capture** — `sidekick tasks add`, `tasks done`, `note add`, and `decision add` write straight to the shared project stores with atomic merges.
 - **`sidekick mcp`** — a read-only stdio MCP facts server so Claude Code or Codex can inspect quota, burn rate, context pressure, and project stores mid-session.
