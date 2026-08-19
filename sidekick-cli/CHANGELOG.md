@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.5] - 2026-08-18
+
+### Added
+
+- `sidekick history` lists recent Codex user prompts across every workspace from `~/.codex/history.jsonl`, newest first, as an AGE / SESSION / PROMPT table sized to the terminal. `--limit <n>` bounds the count (default 20) and the underlying tail read scales with the limit, so large limits are not silently truncated. `--path <id-or-prefix>` resolves a full session id or unique prefix to its rollout transcript path — `less "$(sidekick history --path 0198a3c2)"` — and the global `--json` emits full ids and ISO timestamps. Codex-only for now; not to be confused with `sidekick quota history`
+- `sidekick dump --list` gains `--limit <n>` (default 50). The listing and the interactive session picker both read the shared session-preview index, which stats first and content-reads only the sessions actually shown — listing a project with a large session history no longer reads every file
+
+### Changed
+
+- `dump --list` prints provider-canonical session ids — for Codex, the bare session UUID rather than the `rollout-…` file basename. The listed id now round-trips into `dump --session <id>` (the old basename never matched exact or prefix); scripts parsing `--list --json` should expect the new `id` form
+
 ## [0.24.4] - 2026-07-25
 
 ### Fixed

@@ -5,6 +5,16 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.5] - 2026-08-18
+
+- CLI: `sidekick history` shows your most recent Codex prompts across every workspace, newest first — a quick answer to "what was I working on?". `--limit` bounds the count, `--path <id-or-prefix>` prints the session's transcript file path for piping into `less` or `jq`, and `--json` emits full ids and timestamps. Codex-only for now
+- CLI: `sidekick dump --list` takes a `--limit` (default 50) and, along with the session picker, reads a cheap preview index instead of opening every session file, so projects with long histories list quickly
+- CLI: `dump --list` now prints session ids that actually work with `dump --session` — Codex sessions previously listed a file basename the session flag never accepted. Scripts reading the JSON listing should expect the bare session UUID
+- Saving, switching, and logging into accounts no longer freezes VS Code — the codex CLI probes behind those operations ran on the extension host thread and could stall the editor for seconds at a time
+- Sidekick data writes from VS Code and the terminal no longer race each other: account changes, quota snapshots, and the shutdown flush all go through the same cross-process store lock, and a lock abandoned by a crashed process is reclaimed automatically instead of wedging writes until someone deletes it by hand
+- Setting `SIDEKICK_CONFIG_DIR` now relocates the VS Code extension's data alongside the CLI's — previously only the CLI honored it. If you already export it, the extension will use that directory after upgrading
+- Shared library: new public APIs for building session tooling — a bounded session-preview index (`listSessionPreviews`/`readSessionPreview`), `readCodexHistory` and `findCodexRolloutFile` for Codex's native files, `parseMcpToolName` for MCP tool identifiers, async variants of every account login/switch entry point, and synchronous locked store writers
+
 ## [0.24.4] - 2026-07-25
 
 - Dashboard charts read their colors from the active VS Code theme. Axis labels, gridlines, and legends were hardcoded to dark-theme greys, so on any light theme they ranged from low-contrast to unreadable. Charts also re-theme now when you switch themes, without a reload

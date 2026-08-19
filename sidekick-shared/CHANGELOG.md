@@ -5,6 +5,30 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.5] - 2026-08-18
+
+### Added
+
+- Session-preview index: `listSessionPreviews()` enumerates session files stat-first across providers, sorts by mtime, applies `since`/`limit`, and content-reads only the post-limit survivors — so cost tracks the size of the answer, not the size of the history. `readSessionPreview()` reads one file's bounded preview (label, first prompt, first timestamp, workspace path) and degrades to `null` fields instead of throwing. Both are exported from the root and `sidekick-shared/node`
+- `readCodexHistory()` returns the newest entries of `~/.codex/history.jsonl` from a bounded tail read, dropping the leading partial line and tolerating multibyte characters straddling the boundary. `findCodexRolloutFile()` resolves a Codex session id to its `sessions/YYYY/MM/DD/rollout-*.jsonl` transcript by filename only, newest mtime winning across monitored Codex homes
+- `parseMcpToolName()` is the canonical splitter for `mcp__<server>__<tool>` identifiers, exported browser-safe; the session-context projector's MCP-server inference delegates to it. The degenerate `mcp__server__` shape (empty tool part) now parses as `null` rather than yielding a server name
+- Async account entry points: `getAccountLoginStatusAsync`, `finalizeAccountLoginAsync`, `switchAccountAsync`, `prepareCodexAccountAsync`, `finalizeCodexAccountAsync`, `switchToCodexAccountAsync`. Each runs the codex CLI probes through `execFile` so the caller's event loop stays free, and probes are resolved before any lock is taken — never while holding one. Sync entry points keep their exact signatures for CLI callers
+- Synchronous locked writers: `withFileLockSync()`, `updateJsonStoreAtomicSync()`, and `atomicWriteFileSync()` share the async path's cross-process lock-file protocol (sync and async waiters exclude each other), with an absolute 15s wait ceiling because a sync waiter blocks its event loop
+- `AutoSwitchController.switchAccount` accepts a Promise-returning callback and defaults to `switchAccountAsync`, so a threshold crossing no longer runs blocking codex probes on the caller's loop. Overlapping quota updates are skipped while a switch is in flight, and a switch that lands after `dispose()` records its cooldown state without emitting a stale transition
+- `SessionProviderBase` gains an optional `listAllSessionFiles()` so providers can expose native session-file enumeration to the preview index
+
+### Fixed
+
+- The store lock's timeout is measured from the last time the lock changed hands rather than from a waiter's first attempt, so a burst of concurrent writers no longer manufactures "Timed out waiting for store lock" once the queue outlives the flat budget — a wedged holder still trips it in 3s
+- A lock whose heartbeat mtime has been frozen past two minutes is reclaimed even when its recorded PID probes alive: PID recycling made `process.kill(pid, 0)` an unreliable liveness signal, and a crashed owner with a recycled PID used to wedge the store until a human deleted the lock
+- The quota-snapshot store drops its private copy of the lock — which still had the flat 15s-from-first-attempt bug — and delegates to the shared one, keeping the same lock path so mixed-version processes still exclude each other. Snapshot writes pick up the shared writer's fsync and directory sync
+- Four account modules each carried their own lock-free atomic writer with a fixed `.tmp` suffix, so cross-process account writes were last-writer-wins and two processes could interleave the same temp file. All account writes go through the shared fsynced writers, registry read-modify-write cycles hold the registry lock, and live credential swaps hold a per-provider auth-swap lock so two switchers cannot interleave a stash/restore of a rotated Codex refresh token
+- `switchToAccount()` and `applyActiveClaudeToLiveHome()` threw on a held auth-swap lock where the Codex twins return a failed `AccountManagerResult`; they now keep the non-throwing contract their callers rely on
+- Codex login-status and `pgrep` probes no longer freeze the caller's event loop for up to 4s; `ensureDefaultAccounts` and `spawnAccountLogin` run on the async path
+- `AutoSwitchController`'s fire-and-forget update handler could surface a throwing registry read, snapshot read, or consumer `onTransition` as an unhandled promise rejection — process-fatal on modern Node. Those errors are now caught and logged
+- `readCodexHistory()` rejects entries whose `ts` is not a finite number — `JSON.parse` yields `Infinity` for out-of-range literals, which later RangeErrored out of `Date` serialization in consumers. `readSessionPreview()` likewise returns `null` for a file whose mtime cannot be serialized, per its degrade-don't-throw contract
+- `listRecentSessions()` sorts before labeling, so per-file content reads no longer scale with total session count, and a corrupt session beyond the limit no longer poisons the whole call
+
 ## [0.24.4] - 2026-07-25
 
 ### Fixed

@@ -5,6 +5,19 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.5] - 2026-08-18
+
+### Changed
+
+- The extension's stores — tasks, decisions, knowledge notes, plans, notifications, historical data, handoffs, event logs — resolve their root through the same `getConfigDir()` seam as the CLI, so `SIDEKICK_CONFIG_DIR` now relocates the extension and the CLI together. Users who already export it for the CLI will see the extension read and write that root after upgrading; without the variable nothing moves
+
+### Fixed
+
+- The account login poll probed the codex CLI with synchronous child processes on the extension host thread, freezing the editor for up to 4s per tick, and account saves, switches, and finalizes blocked the same way. Polling is now single-flight and async, all account operations await the shared async variants, and a login finalize that resolves during deactivation no longer touches the disposed account service or status bar
+- Repeated account logins accumulated dead close-terminal disposables in the extension's subscription list; live polls now deregister themselves
+- The deactivation store flush went straight to disk with no lock, so it could clobber a concurrent CLI capture; it now goes through the locked sync writer and skips the flush rather than overwrite. When an async save is already in flight at dispose time the sync flush is skipped entirely — waiting synchronously would park the event loop on the very lock that save holds, freezing shutdown and then losing the data anyway
+- `SessionMonitor` dropped two unused session-listing methods that read entire session directories unbounded
+
 ## [0.24.4] - 2026-07-25
 
 ### Fixed

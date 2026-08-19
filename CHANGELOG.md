@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.5] - 2026-08-18
+
+### Added
+
+- **CLI:** `sidekick history` lists recent Codex prompts across every workspace from `~/.codex/history.jsonl`, newest first. `--limit <n>` bounds the count (default 20; the tail read scales with the limit), `--path <id-or-prefix>` resolves a session id or unique prefix to its rollout transcript path for composing with `less`/`jq`, and the global `--json` emits full ids and ISO timestamps. Codex-only for now — Claude Code and OpenCode keep prompts inside per-session files
+- **CLI:** `sidekick dump --list` gains `--limit <n>` (default 50) and, together with the interactive session picker, reads a bounded session-preview index instead of labeling every session file — listing cost now tracks the size of the answer, not the size of the history
+- **Shared:** session-preview index — `listSessionPreviews()` enumerates stat-first across providers, sorts by mtime, applies `since`/`limit`, and content-reads only the survivors; `readSessionPreview()` reads one file's bounded preview and degrades to `null` fields instead of throwing
+- **Shared:** `readCodexHistory()` tail-reads `~/.codex/history.jsonl` with partial-line and multibyte-boundary handling, and `findCodexRolloutFile()` resolves a Codex session id to its `sessions/YYYY/MM/DD/rollout-*.jsonl` transcript, newest mtime winning across monitored Codex homes
+- **Shared:** `parseMcpToolName()` splits `mcp__<server>__<tool>` identifiers and ships browser-safe; the session-context projector's MCP-server inference now delegates to it
+- **Shared:** async account entry points — `getAccountLoginStatusAsync`, `finalizeAccountLoginAsync`, `switchAccountAsync`, `prepareCodexAccountAsync`, `finalizeCodexAccountAsync`, `switchToCodexAccountAsync` — run the codex CLI probes through `execFile` so a host's event loop stays free; probes resolve before any lock is taken, and the sync entry points keep their exact signatures for CLI callers
+- **Shared:** synchronous locked writers — `withFileLockSync()`, `updateJsonStoreAtomicSync()`, `atomicWriteFileSync()` — share the async path's cross-process lock protocol, with an absolute 15s wait ceiling because a sync waiter blocks its event loop
+- **Shared:** `AutoSwitchController.switchAccount` accepts a Promise-returning callback and defaults to `switchAccountAsync`; overlapping quota updates are skipped while a switch is in flight, a switch landing after `dispose()` records its cooldown without emitting a stale transition, and a throwing registry read or transition callback is logged instead of becoming an unhandled rejection
+
+### Changed
+
+- **CLI:** `dump --list` prints provider-canonical session ids — for Codex, the bare session UUID rather than the `rollout-…` file basename. The listed id now round-trips into `--session` (the old basename never matched); scripts parsing `--list --json` should expect the new `id` form
+- **VS Code:** the extension's stores (tasks, decisions, knowledge notes, plans, notifications, historical data, handoffs, event logs) resolve their root through the same `getConfigDir()` seam as the CLI, so `SIDEKICK_CONFIG_DIR` relocates both together. Users who already export it for the CLI will see the extension read and write that root after upgrading
+
+### Fixed
+
+- **Shared:** the store lock's timeout is measured from the last lock handoff instead of a waiter's first attempt, so a burst of concurrent writers no longer manufactures "Timed out waiting for store lock" once the queue outlives the flat budget — a wedged holder still trips it. A lock whose heartbeat mtime froze more than two minutes ago is reclaimed even when its recorded PID probes alive, healing the permanent wedge a crashed owner with a recycled PID used to leave. The quota-snapshot store drops its private lock copy (which still had the flat-timeout bug) and delegates to the shared writer, keeping the same lock path so mixed-version processes still exclude each other
+- **Shared:** four account modules each carried their own lock-free atomic writer with a fixed `.tmp` suffix, making cross-process account writes last-writer-wins. All account writes now go through the shared fsynced writers, registry read-modify-write cycles hold the registry lock, and live credential swaps hold a per-provider auth-swap lock so two switchers cannot interleave a stash/restore of a rotated Codex refresh token. The Claude swap entry points return a failed result on a held lock instead of throwing, matching the Codex twins
+- **Shared:** codex login-status and `pgrep` probes no longer freeze the caller's event loop for up to 4s; `ensureDefaultAccounts` and `spawnAccountLogin` run on the async path
+- **VS Code:** the account login poll probed the codex CLI on the extension host thread and account switches blocked it outright; polling is now single-flight and async, saves/switches/finalizes await the async account variants, and repeated logins no longer accumulate dead disposables
+- **VS Code:** the deactivation store flush goes through the locked sync writer so it cannot clobber a concurrent CLI write, and is skipped while an async save is already in flight — a sync wait there would park the event loop on the very lock that save holds. The unused, unbounded session-listing methods were removed from `SessionMonitor`
+
 ## [0.24.4] - 2026-07-25
 
 ### Fixed
