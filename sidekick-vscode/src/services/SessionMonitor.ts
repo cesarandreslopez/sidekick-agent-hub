@@ -1350,66 +1350,6 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Gets all available sessions for the current workspace.
-   *
-   * Returns sessions sorted by modification time (most recent first).
-   * Each session includes its path, filename, modification time, and
-   * whether it's the currently monitored session.
-   *
-   * @returns Array of session info objects, or empty array if no workspace
-   */
-  getAvailableSessions(): Array<{
-    path: string;
-    filename: string;
-    modifiedTime: Date;
-    isCurrent: boolean;
-    label: string | null;
-    isActive: boolean;
-  }> {
-    // Use custom directory if set, otherwise workspace path
-    if (!this.customSessionDir && !this.workspacePath) {
-      return [];
-    }
-
-    try {
-      // Get sessions from appropriate directory
-      let sessions: string[];
-      if (this.customSessionDir) {
-        sessions = this.provider.findSessionsInDirectory(this.customSessionDir);
-      } else {
-        sessions = this.provider.findAllSessions(this.workspacePath!);
-      }
-
-      const now = Date.now();
-      const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
-
-      return sessions
-        .map((sessionPath) => {
-          let mtime: Date;
-          try {
-            mtime = fs.statSync(sessionPath).mtime;
-          } catch {
-            const meta = this.provider.getSessionMetadata?.(sessionPath);
-            if (!meta) return null;
-            mtime = meta.mtime;
-          }
-          return {
-            path: sessionPath,
-            filename: this.provider.getSessionId(sessionPath),
-            modifiedTime: mtime,
-            isCurrent: sessionPath === this.sessionPath,
-            label: this.provider.extractSessionLabel(sessionPath),
-            isActive: now - mtime.getTime() < ACTIVE_THRESHOLD_MS,
-          };
-        })
-        .filter((s): s is NonNullable<typeof s> => s !== null);
-    } catch (error) {
-      logError('Error getting available sessions', error);
-      return [];
-    }
-  }
-
-  /**
    * Switches to monitoring a specific session file.
    *
    * Stops monitoring the current session (if any) and starts monitoring
@@ -1481,54 +1421,6 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Gets all sessions from a specific directory.
-   *
-   * Unlike getAvailableSessions which uses workspace-based discovery,
-   * this method accepts a direct path to a session directory.
-   *
-   * @param sessionDir - Path to the session directory
-   * @returns Array of session info objects
-   */
-  getSessionsFromDirectory(sessionDir: string): Array<{
-    path: string;
-    filename: string;
-    modifiedTime: Date;
-    isCurrent: boolean;
-    label: string | null;
-    isActive: boolean;
-  }> {
-    try {
-      const sessions = this.provider.findSessionsInDirectory(sessionDir);
-      const now = Date.now();
-      const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
-
-      return sessions
-        .map((sessionPath) => {
-          let mtime: Date;
-          try {
-            mtime = fs.statSync(sessionPath).mtime;
-          } catch {
-            const meta = this.provider.getSessionMetadata?.(sessionPath);
-            if (!meta) return null;
-            mtime = meta.mtime;
-          }
-          return {
-            path: sessionPath,
-            filename: this.provider.getSessionId(sessionPath),
-            modifiedTime: mtime,
-            isCurrent: sessionPath === this.sessionPath,
-            label: this.provider.extractSessionLabel(sessionPath),
-            isActive: now - mtime.getTime() < ACTIVE_THRESHOLD_MS,
-          };
-        })
-        .filter((s): s is NonNullable<typeof s> => s !== null);
-    } catch (error) {
-      logError('Error getting sessions from directory', error);
-      return [];
-    }
-  }
-
-  /**
    * Gets all sessions grouped by project, with proximity tiers.
    *
    * Uses getAllProjectFolders() from SessionPathResolver which already sorts
@@ -1547,7 +1439,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     try {
       // Custom directory overrides workspace-based discovery (same pattern as
-      // performNewSessionCheck, performSessionDiscovery, getAvailableSessions)
+      // performNewSessionCheck and performSessionDiscovery)
       if (this.customSessionDir) {
         const sessions = this.provider.findSessionsInDirectory(this.customSessionDir);
         const limited = sessions.slice(0, MAX_SESSIONS_PER_PROJECT);
