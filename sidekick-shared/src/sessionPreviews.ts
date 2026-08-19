@@ -67,8 +67,12 @@ export function readSessionPreview(
   options: ReadSessionPreviewOptions = {},
 ): SessionPreview | null {
   let stats: fs.Stats;
+  let modifiedAt: string;
   try {
     stats = fs.statSync(sessionPath);
+    // Inside the try: an out-of-range mtime RangeErrors on serialization,
+    // and this function's contract is to degrade, not throw.
+    modifiedAt = stats.mtime.toISOString();
   } catch {
     return null;
   }
@@ -93,7 +97,7 @@ export function readSessionPreview(
     provider: provider.id,
     sessionId,
     filePath: sessionPath,
-    modifiedAt: stats.mtime.toISOString(),
+    modifiedAt,
     sizeBytes: stats.size,
     firstUserPrompt,
     firstTimestamp: prefix.firstTimestamp,

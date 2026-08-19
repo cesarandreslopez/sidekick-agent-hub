@@ -27,6 +27,16 @@ export interface HistoryRow {
 /** Session-id column width in the table (full ids appear in `--json`). */
 const SESSION_DISPLAY_CHARS = 8;
 
+/**
+ * Size the history tail read to the requested entry count. Real history
+ * entries average well under 1 KiB, so 4 KiB each is generous headroom —
+ * without this, a `--limit` beyond what fits in the reader's default 512 KiB
+ * tail would be silently truncated.
+ */
+export function tailBytesFor(limit: number): number {
+  return Math.max(512 * 1024, limit * 4096);
+}
+
 /** Map one raw history entry onto a display row. */
 export function toHistoryRow(entry: CodexHistoryEntry, now: Date = new Date()): HistoryRow {
   // Codex writes epoch seconds; tolerate a future switch to milliseconds.
@@ -99,7 +109,11 @@ export function resolveHistorySession(
 
   const prefix = trimmed.toLowerCase();
   const matches = [
-    ...new Set(deps.readCodexHistory({ limit: 1000 }).map((entry) => entry.sessionId)),
+    ...new Set(
+      deps
+        .readCodexHistory({ limit: 1000, maxTailBytes: tailBytesFor(1000) })
+        .map((entry) => entry.sessionId),
+    ),
   ].filter((id) => id.toLowerCase().startsWith(prefix));
 
   if (matches.length > 1) {
@@ -140,7 +154,7 @@ export async function historyAction(_opts: Record<string, unknown>, cmd: Command
   }
 
   const limit = parseLimit(opts.limit as string | undefined) ?? 20;
-  const entries = readCodexHistory({ limit });
+  const entries = readCodexHistory({ limit, maxTailBytes: tailBytesFor(limit) });
 
   if (entries.length === 0) {
     if (asJson) {

@@ -4,19 +4,25 @@ Sidekick account management lets Node hosts acquire, list, and switch Claude Max
 `sidekick-shared`. The API is designed for desktop apps, VS Code extension hosts, and CLIs that need isolated
 login flows without reimplementing Claude/Codex credential detection.
 
-Requires `sidekick-shared@^0.21.0`.
+Requires `sidekick-shared@^0.24.5`. Every login and switch entry point comes in a sync and an async form
+(`switchAccount`/`switchAccountAsync`, `getAccountLoginStatus`/`getAccountLoginStatusAsync`,
+`finalizeAccountLogin`/`finalizeAccountLoginAsync`, `prepareCodexAccount`/`prepareCodexAccountAsync`,
+`finalizeCodexAccount`/`finalizeCodexAccountAsync`, `switchToCodexAccount`/`switchToCodexAccountAsync`).
+The sync forms probe the `codex` CLI with blocking child processes (up to a few seconds) and are meant for
+one-shot CLI callers; hosts with a UI event loop — extension hosts, desktop apps — should use the async forms,
+which run the same probes off the loop. On `sidekick-shared` 0.21.0–0.24.4 only the sync forms exist.
 
 ## Account State
 
 Use the provider-neutral helpers when building account switchers:
 
 ```ts
-import { getActiveAccountStatus, listAllAccounts, switchAccount } from 'sidekick-shared';
+import { getActiveAccountStatus, listAllAccounts, switchAccountAsync } from 'sidekick-shared';
 
 const status = getActiveAccountStatus();
 const all = listAllAccounts();
 
-const result = switchAccount('claude-code', 'account-uuid');
+const result = await switchAccountAsync('claude-code', 'account-uuid');
 if (!result.success) throw new Error(result.error);
 if (result.warning) showWarning(result.warning);
 ```
@@ -63,23 +69,27 @@ shown as-is with no label.
 process and does not change the active account.
 
 ```ts
-import { beginAccountLogin, getAccountLoginStatus, finalizeAccountLogin } from 'sidekick-shared';
+import {
+  beginAccountLogin,
+  getAccountLoginStatusAsync,
+  finalizeAccountLoginAsync,
+} from 'sidekick-shared';
 
 const begin = beginAccountLogin('claude-code', 'Work');
 if (!begin.success) throw new Error(begin.error);
 
 if (begin.alreadyComplete) {
-  const res = finalizeAccountLogin('codex', begin.loginId, { activate: true });
+  const res = await finalizeAccountLoginAsync('claude-code', begin.loginId, { activate: true });
   if (!res.success) throw new Error(res.error);
 } else {
   // Spawn begin.command with begin.args in your terminal or PTY.
   // Merge begin.env into the child environment.
 
-  while (getAccountLoginStatus('claude-code', begin.loginId).state === 'pending') {
+  while ((await getAccountLoginStatusAsync('claude-code', begin.loginId)).state === 'pending') {
     await sleep(2000);
   }
 
-  const res = finalizeAccountLogin('claude-code', begin.loginId, { activate: true });
+  const res = await finalizeAccountLoginAsync('claude-code', begin.loginId, { activate: true });
   if (!res.success) throw new Error(res.error);
   if (res.warning) showWarning(res.warning);
 }

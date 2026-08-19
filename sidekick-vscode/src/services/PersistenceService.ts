@@ -219,6 +219,15 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
       this.saveTimer = null;
     }
 
+    if (this.saveInFlight) {
+      // The async save already holds (or is acquiring) this store's
+      // cross-process lock. A sync flush here would park the event loop on
+      // that same lock — which the parked loop can never release — freeze
+      // the host until the lock timeout, and then skip the flush anyway.
+      // Let the in-flight save land instead.
+      return;
+    }
+
     if (this.isDirty) {
       try {
         this.store.lastSaved = new Date().toISOString();

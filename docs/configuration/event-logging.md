@@ -8,7 +8,7 @@ Set `sidekick.enableEventLog` to `true` in your VS Code settings.
 
 ## Storage
 
-Event logs are stored in `~/.config/sidekick/event-logs/` as JSONL files (one JSON object per line).
+Event logs are stored in `~/.config/sidekick/event-logs/` as JSONL files (one JSON object per line). The `~/.config/sidekick` root is the default; `SIDEKICK_CONFIG_DIR` relocates it — see [Architecture Overview](../architecture/overview.md#persistence).
 
 ## Configuration
 

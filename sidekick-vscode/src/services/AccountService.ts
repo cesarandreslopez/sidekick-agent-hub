@@ -18,8 +18,8 @@ import {
   resolveActiveClaudeAccount,
   readActiveClaudeAccount,
   getAccountsDir,
-  prepareCodexAccount,
-  finalizeCodexAccount as finalizeSavedCodexAccount,
+  prepareCodexAccountAsync,
+  finalizeCodexAccountAsync,
   switchToCodexAccountAsync,
   removeCodexAccount,
   listCodexAccounts,
@@ -65,11 +65,16 @@ export class AccountService implements vscode.Disposable {
     this.startWatching();
   }
 
-  addCurrentAccount(providerId: AccountProviderId, label?: string): AccountManagerResult {
+  async addCurrentAccount(
+    providerId: AccountProviderId,
+    label?: string,
+  ): Promise<AccountManagerResult> {
+    // The codex path probes the CLI; the async variant keeps those probes
+    // off the extension host's event loop.
     const result =
       providerId === 'claude-code'
         ? addCurrentClaudeAccount(label)
-        : prepareCodexAccount(label ?? '');
+        : await prepareCodexAccountAsync(label ?? '');
 
     if (result.success) {
       this.refresh();
@@ -77,8 +82,8 @@ export class AccountService implements vscode.Disposable {
     return result;
   }
 
-  finalizeCodexAccount(profileId: string): AccountManagerResult {
-    const result = finalizeSavedCodexAccount(profileId);
+  async finalizeCodexAccount(profileId: string): Promise<AccountManagerResult> {
+    const result = await finalizeCodexAccountAsync(profileId);
     if (result.success) {
       this.refresh();
     }

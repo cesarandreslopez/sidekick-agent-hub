@@ -198,9 +198,19 @@ export class AutoSwitchController implements Disposable {
   }
 
   private handleUpdate(state: ProviderQuotaMap): void {
-    // Fire-and-forget: handleProviderUpdate never rejects.
-    if (state.claude) void this.handleProviderUpdate('claude', state.claude);
-    if (state.codex) void this.handleProviderUpdate('codex', state.codex);
+    // Fire-and-forget, but the registry/snapshot reads and the consumer's
+    // onTransition can all throw — a rejection here would escape the quota
+    // service's per-listener guard as an unhandled promise rejection.
+    if (state.claude) {
+      this.handleProviderUpdate('claude', state.claude).catch((error) =>
+        this.log?.('[AutoSwitch] Update failed for claude.', error),
+      );
+    }
+    if (state.codex) {
+      this.handleProviderUpdate('codex', state.codex).catch((error) =>
+        this.log?.('[AutoSwitch] Update failed for codex.', error),
+      );
+    }
   }
 
   private async handleProviderUpdate(

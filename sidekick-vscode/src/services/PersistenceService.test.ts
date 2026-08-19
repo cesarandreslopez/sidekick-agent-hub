@@ -104,4 +104,34 @@ describe('PersistenceService', () => {
     service.dispose();
     expect(mocks.updateJsonStoreAtomicSync).toHaveBeenCalledTimes(1);
   });
+
+  it('skips the sync dispose flush while an async save is in flight', async () => {
+    // The sync flush would wait on the same cross-process lock the in-flight
+    // async save holds — a wait the parked event loop could never end.
+    mocks.updateJsonStoreAtomicSync.mockClear();
+    let releaseSave: (() => void) | undefined;
+    mocks.updateJsonStoreAtomic.mockImplementationOnce(
+      async (
+        _filePath: string,
+        createEmpty: () => TestStore,
+        mutate: (store: TestStore) => TestStore,
+      ) => {
+        const saved = mutate(createEmpty());
+        await new Promise<void>((resolve) => {
+          releaseSave = resolve;
+        });
+        return saved;
+      },
+    );
+    const service = new TestPersistence();
+    service.add('mid-save');
+
+    const save = service.forceSave();
+    await vi.waitFor(() => expect(releaseSave).toBeTypeOf('function'));
+    service.dispose();
+    expect(mocks.updateJsonStoreAtomicSync).not.toHaveBeenCalled();
+
+    releaseSave!();
+    await save;
+  });
 });

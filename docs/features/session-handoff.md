@@ -47,4 +47,4 @@ Set `sidekick.handoffUrlTemplate` to a URL template and run **"Sidekick: Open Ex
 
 ## Storage
 
-Handoff documents are stored in `~/.config/sidekick/handoffs/` with project-specific naming.
+Handoff documents are stored in `~/.config/sidekick/handoffs/` with project-specific naming. The `~/.config/sidekick` root is the default; `SIDEKICK_CONFIG_DIR` relocates it.

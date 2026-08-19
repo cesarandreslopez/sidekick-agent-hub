@@ -108,7 +108,7 @@ Show recent user prompts across Codex sessions, newest first — a quick answer 
 | `--limit <n>`        | Maximum prompts to show (default: 20)                        |
 | `--path <sessionId>` | Print the rollout transcript path for a session ID or prefix |
 
-The global `--json` flag emits machine-readable entries with full session IDs and ISO timestamps.
+The global `--json` flag emits machine-readable entries with full session IDs and ISO timestamps. The global `--project` and `--provider` filters do not apply: history is cross-workspace and Codex-only.
 
 Codex-only for now: Codex records every prompt in a global `~/.codex/history.jsonl`, which is what this command reads. Claude Code and OpenCode keep prompts inside per-session files and are not yet supported.
 
@@ -786,7 +786,7 @@ Press `f` to toggle session filtering, which limits the side list to items from 
 
 ## Shared Data Layer
 
-The CLI reads from the same `~/.config/sidekick/` directory as the VS Code extension. `SIDEKICK_CONFIG_DIR` overrides that root for the CLI, so the paths below are defaults rather than fixed locations:
+The CLI reads from the same `~/.config/sidekick/` directory as the VS Code extension. `SIDEKICK_CONFIG_DIR` overrides that root for both the CLI and the extension (extension support since 0.24.5), so the paths below are defaults rather than fixed locations:
 
 | File                                      | Contents                                                                              |
 | ----------------------------------------- | ------------------------------------------------------------------------------------- |

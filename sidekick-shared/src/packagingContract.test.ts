@@ -141,9 +141,27 @@ describe('packaging contract', () => {
     expect(typeof m.LITELLM_CATALOG_URL).toBe('string');
     expect(typeof m.listRecentSessions).toBe('function');
     expect(typeof m.readSessionTranscript).toBe('function');
+    expect(typeof m.listSessionPreviews).toBe('function');
+    expect(typeof m.readSessionPreview).toBe('function');
+    expect(typeof m.readCodexHistory).toBe('function');
+    expect(typeof m.findCodexRolloutFile).toBe('function');
     expect(typeof m.ObservedSessionCollector).toBe('function');
     expect(typeof m.observedSessionSourceFromProvider).toBe('function');
     expect(typeof m.fileFingerprint).toBe('function');
+  });
+
+  it('dist/index.js exposes the locked store writers', () => {
+    const m = require(path.join(distDir, 'index.js'));
+    for (const k of [
+      'atomicWriteJson',
+      'atomicWriteJsonSync',
+      'atomicWriteFileSync',
+      'updateJsonStoreAtomic',
+      'updateJsonStoreAtomicSync',
+      'withFileLockSync',
+    ]) {
+      expect(typeof m[k]).toBe('function');
+    }
   });
 
   it('dist/index.js exposes account bootstrap', () => {
@@ -162,6 +180,12 @@ describe('packaging contract', () => {
       'finalizeAccountLogin',
       'spawnAccountLogin',
       'switchAccount',
+      'switchAccountAsync',
+      'getAccountLoginStatusAsync',
+      'finalizeAccountLoginAsync',
+      'prepareCodexAccountAsync',
+      'finalizeCodexAccountAsync',
+      'switchToCodexAccountAsync',
       'listAllAccounts',
       'resolveActiveClaudeHome',
       'applyActiveClaudeToLiveHome',

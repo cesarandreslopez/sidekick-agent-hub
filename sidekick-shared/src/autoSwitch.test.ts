@@ -217,6 +217,48 @@ describe('AutoSwitchController', () => {
     controller.dispose();
   });
 
+  it('logs instead of rejecting when a registry read throws', async () => {
+    const quotaService = new FakeQuotaService();
+    const log = vi.fn();
+    const controller = new AutoSwitchController({
+      quotaService,
+      ...twoAccountOptions,
+      getActiveClaudeAccount: () => {
+        throw new Error('registry unreadable');
+      },
+      switchAccount: vi.fn(() => ({ success: true })),
+      log,
+    });
+
+    controller.start();
+    quotaService.emit(claudeQuota(95));
+    await flush();
+
+    expect(log).toHaveBeenCalledWith('[AutoSwitch] Update failed for claude.', expect.any(Error));
+    controller.dispose();
+  });
+
+  it('logs instead of rejecting when the onTransition callback throws', async () => {
+    const quotaService = new FakeQuotaService();
+    const log = vi.fn();
+    const controller = new AutoSwitchController({
+      quotaService,
+      ...twoAccountOptions,
+      switchAccount: vi.fn(() => ({ success: true })),
+      onTransition: () => {
+        throw new Error('consumer exploded');
+      },
+      log,
+    });
+
+    controller.start();
+    quotaService.emit(claudeQuota(95));
+    await flush();
+
+    expect(log).toHaveBeenCalledWith('[AutoSwitch] Update failed for claude.', expect.any(Error));
+    controller.dispose();
+  });
+
   it('suppresses the transition event when disposed mid-switch', async () => {
     const quotaService = new FakeQuotaService();
     let resolveSwitch!: (result: { success: boolean }) => void;

@@ -34,6 +34,7 @@ vi.mock('os', async () => {
 });
 
 const spawnSyncSpy = vi.hoisted(() => vi.fn());
+const execFileSyncSpy = vi.hoisted(() => vi.fn());
 
 vi.mock('child_process', async () => {
   const actual = await vi.importActual<typeof import('child_process')>('child_process');
@@ -42,6 +43,19 @@ vi.mock('child_process', async () => {
     spawnSync: (...args: unknown[]) => {
       spawnSyncSpy(...args);
       return (actual.spawnSync as (...spawnArgs: unknown[]) => unknown)(...args);
+    },
+    execFileSync: (...args: unknown[]) => {
+      execFileSyncSpy(...args);
+      return (actual.execFileSync as (...spawnArgs: unknown[]) => unknown)(...args);
+    },
+    // Deterministic async probes: report the binary as absent instead of
+    // running a real pgrep/codex on the test machine.
+    execFile: (...args: unknown[]) => {
+      const callback = args[args.length - 1];
+      if (typeof callback === 'function') {
+        setImmediate(() => (callback as (error: Error) => void)(new Error('spawn ENOENT')));
+      }
+      return {} as ReturnType<typeof actual.execFile>;
     },
   };
 });
@@ -101,6 +115,7 @@ describe('ensureDefaultAccounts', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-ensure-default-accounts-test-'));
     spawnSyncSpy.mockClear();
+    execFileSyncSpy.mockClear();
   });
 
   afterEach(() => {
@@ -241,5 +256,6 @@ describe('ensureDefaultAccounts', () => {
     await ensureDefaultAccounts();
 
     expect(spawnSyncSpy).not.toHaveBeenCalled();
+    expect(execFileSyncSpy).not.toHaveBeenCalled();
   });
 });

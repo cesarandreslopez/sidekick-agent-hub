@@ -77,6 +77,9 @@ export function readCodexHistory(options: ReadCodexHistoryOptions = {}): CodexHi
       if (
         typeof parsed.session_id !== 'string' ||
         typeof parsed.ts !== 'number' ||
+        // JSON.parse('1e400') yields Infinity, which would later RangeError
+        // out of Date serialization in consumers.
+        !Number.isFinite(parsed.ts) ||
         typeof parsed.text !== 'string'
       ) {
         continue;

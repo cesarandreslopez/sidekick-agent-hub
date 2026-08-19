@@ -5,6 +5,8 @@ const {
   mockListAllAccounts,
   mockSwitchAccountAsync,
   mockSwitchToCodexAccountAsync,
+  mockPrepareCodexAccountAsync,
+  mockFinalizeCodexAccountAsync,
   mockGetActiveClaudeAccount,
   mockGetActiveCodexAccount,
   mockGetAccountsDir,
@@ -13,6 +15,8 @@ const {
   mockListAllAccounts: vi.fn(),
   mockSwitchAccountAsync: vi.fn(),
   mockSwitchToCodexAccountAsync: vi.fn(),
+  mockPrepareCodexAccountAsync: vi.fn(),
+  mockFinalizeCodexAccountAsync: vi.fn(),
   mockGetActiveClaudeAccount: vi.fn(),
   mockGetActiveCodexAccount: vi.fn(),
   mockGetAccountsDir: vi.fn(),
@@ -44,8 +48,8 @@ vi.mock('sidekick-shared', () => ({
   resolveActiveClaudeAccount: vi.fn(() => ({ source: 'none' })),
   readActiveClaudeAccount: vi.fn(() => null),
   getAccountsDir: (...args: unknown[]) => mockGetAccountsDir(...args),
-  prepareCodexAccount: vi.fn(),
-  finalizeCodexAccount: vi.fn(),
+  prepareCodexAccountAsync: (...args: unknown[]) => mockPrepareCodexAccountAsync(...args),
+  finalizeCodexAccountAsync: (...args: unknown[]) => mockFinalizeCodexAccountAsync(...args),
   switchToCodexAccountAsync: (...args: unknown[]) => mockSwitchToCodexAccountAsync(...args),
   removeCodexAccount: vi.fn(),
   listCodexAccounts: vi.fn(() => []),
@@ -114,6 +118,18 @@ describe('AccountService account management 2.0 facade', () => {
       warning: 'restart sessions',
     });
     expect(mockSwitchAccountAsync).toHaveBeenCalledWith('codex', 'codex-1');
+    service.dispose();
+  });
+
+  it('routes codex save and finalize through the non-blocking shared variants', async () => {
+    mockPrepareCodexAccountAsync.mockResolvedValue({ success: true });
+    mockFinalizeCodexAccountAsync.mockResolvedValue({ success: true });
+    const service = new AccountService();
+
+    await expect(service.addCurrentAccount('codex', 'Work')).resolves.toEqual({ success: true });
+    expect(mockPrepareCodexAccountAsync).toHaveBeenCalledWith('Work');
+    await expect(service.finalizeCodexAccount('profile-1')).resolves.toEqual({ success: true });
+    expect(mockFinalizeCodexAccountAsync).toHaveBeenCalledWith('profile-1');
     service.dispose();
   });
 

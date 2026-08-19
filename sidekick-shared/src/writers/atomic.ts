@@ -25,8 +25,9 @@ const LOCK_NO_PROGRESS_MS = 3_000;
  * long means the heartbeat timer is gone — the owner is dead (possibly with its
  * PID recycled by the OS) or wedged beyond recovery. Reclaim regardless of the
  * PID probe, which cannot tell a recycled PID from a live owner. Sync holders
- * have no heartbeat, but they hold locks for milliseconds, so they never
- * approach this ceiling.
+ * have no heartbeat; they usually hold locks for milliseconds, and even the
+ * slowest (a keychain read through `security` behind the auth-swap lock, up to
+ * a few seconds) stays far under this ceiling.
  */
 const LOCK_ABANDONED_MS = 120_000;
 
@@ -238,8 +239,12 @@ function lockOwnerAlive(owner: string | null, frozenMs: number): boolean {
  * async path (a token that never changes trips it in LOCK_NO_PROGRESS_MS), plus
  * an absolute {@link SYNC_LOCK_MAX_WAIT_MS} ceiling, because a sync waiter
  * blocks its event loop while queued. Sync holders take no heartbeat — their
- * critical sections must stay well under LOCK_STALE_MS (all in-repo users are
- * sub-10ms local-filesystem read-modify-writes).
+ * critical sections must stay well under LOCK_STALE_MS (in-repo users are
+ * local-filesystem read-modify-writes, plus keychain reads behind the
+ * auth-swap locks that can take a few seconds).
+ *
+ * The caller must ensure `dirname(lockPath)` exists — a missing parent
+ * surfaces as a raw ENOENT, not a timeout.
  */
 export function withFileLockSync<T>(lockPath: string, operation: () => T): T {
   const token = acquireLockSync(lockPath);

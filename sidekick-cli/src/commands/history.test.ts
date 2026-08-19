@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { formatHistoryTable, resolveHistorySession, toHistoryRow } from './history';
+import { formatHistoryTable, resolveHistorySession, tailBytesFor, toHistoryRow } from './history';
 import type { HistoryRow } from './history';
 
 const now = new Date('2026-02-20T12:00:00Z');
@@ -65,6 +65,15 @@ describe('formatHistoryTable', () => {
   });
 });
 
+describe('tailBytesFor', () => {
+  it('keeps the reader default for small limits and scales past it for large ones', () => {
+    // A --limit past what fits in the reader's default 512 KiB tail must
+    // widen the read instead of silently returning fewer rows.
+    expect(tailBytesFor(20)).toBe(512 * 1024);
+    expect(tailBytesFor(2000)).toBe(2000 * 4096);
+  });
+});
+
 describe('resolveHistorySession', () => {
   function deps(overrides: {
     rollouts?: Record<string, string>;
@@ -102,6 +111,10 @@ describe('resolveHistorySession', () => {
     expect(resolveHistorySession('0198a3c2', d)).toEqual({
       sessionId: '0198A3C2-full',
       rolloutPath: '/codex/sessions/rollout.jsonl',
+    });
+    expect(d.readCodexHistory).toHaveBeenCalledWith({
+      limit: 1000,
+      maxTailBytes: tailBytesFor(1000),
     });
   });
 

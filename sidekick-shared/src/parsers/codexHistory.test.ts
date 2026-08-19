@@ -94,6 +94,7 @@ describe('readCodexHistory', () => {
       'not json at all',
       '{"session_id": 42, "ts": 1, "text": "wrong id type"}',
       '{"session_id": "no-ts", "text": "missing ts"}',
+      '{"session_id": "inf-ts", "ts": 1e400, "text": "non-finite ts"}',
       entryLine('session-ok', 5, 'valid'),
       '{"truncated": ',
     ]);

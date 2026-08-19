@@ -339,7 +339,12 @@ function withClaudeAuthSwapLock<T>(operation: () => T): T {
 }
 
 export function switchToAccount(uuid: string): AccountManagerResult {
-  return withClaudeAuthSwapLock(() => switchToAccountUnlocked(uuid));
+  try {
+    // Keep the non-throwing result contract when the lock cannot be acquired.
+    return withClaudeAuthSwapLock(() => switchToAccountUnlocked(uuid));
+  } catch (err) {
+    return { success: false, error: `Could not acquire the account-switch lock: ${err}` };
+  }
 }
 
 function switchToAccountUnlocked(uuid: string): AccountManagerResult {
@@ -411,7 +416,12 @@ export function resolveActiveClaudeHome(): string {
 }
 
 export function applyActiveClaudeToLiveHome(): AccountManagerResult {
-  return withClaudeAuthSwapLock(applyActiveClaudeToLiveHomeUnlocked);
+  try {
+    // Keep the non-throwing result contract when the lock cannot be acquired.
+    return withClaudeAuthSwapLock(applyActiveClaudeToLiveHomeUnlocked);
+  } catch (err) {
+    return { success: false, error: `Could not acquire the account-switch lock: ${err}` };
+  }
 }
 
 function applyActiveClaudeToLiveHomeUnlocked(): AccountManagerResult {

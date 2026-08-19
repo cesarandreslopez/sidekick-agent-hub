@@ -24,6 +24,8 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **Prompt history** — `sidekick history` lists your most recent Codex prompts across every workspace, and `--path` jumps straight to a session's transcript file. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound, so huge session directories stay fast.
+- **Non-blocking account operations** — Codex login probes, account switches, and login polling run off the event loop, so the VS Code extension host and other embedders no longer freeze during account operations. Store writes from the extension and CLI are serialized through locked atomic writers.
 - **Fast daily workflow** — `sidekick statusline`, `today`, `doctor`, atomic terminal capture, and generic external handoff keep common checks and updates one command away.
 - **Guided VS Code onboarding** — a four-step first-run walkthrough plus a `Sidekick: Show Menu` command hub generated from the extension manifest.
 - **Read-only MCP facts** — register `sidekick mcp` with Claude Code or Codex so the running agent can inspect quota, burn rate, context pressure, and project stores.
@@ -81,6 +83,7 @@ sidekick doctor                                     # installation/session diagn
 sidekick statusline                                 # one-line agent footer
 sidekick extract                                    # URLs, files, commands, plans from recent chats
 sidekick extract --type url,path --limit 10 --json  # script-friendly filtered extraction
+sidekick history                                    # recent Codex prompts across workspaces
 sidekick quota                                      # quota / rate-limit check
 sidekick quota history                              # 13-week quota-utilization heatmap (per workspace)
 sidekick status                                     # API status check (Claude + OpenAI)

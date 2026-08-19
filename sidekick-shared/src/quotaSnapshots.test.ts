@@ -263,9 +263,11 @@ describe('quotaSnapshots', () => {
     expect(elapsed).toBeLessThan(10_000);
   }, 15_000);
 
-  it('reclaims a lock left behind by a dead owner', () => {
+  it('reclaims an abandoned lock even when its recorded PID is live', () => {
+    // process.pid keeps the liveness probe passing, so only the frozen
+    // heartbeat mtime can justify the reclaim — the path a recycled PID hits.
     const lockPath = path.join(tmpDir, 'quota-snapshots.json.lock');
-    fs.writeFileSync(lockPath, '999999:departed-owner', { mode: 0o600 });
+    fs.writeFileSync(lockPath, `${process.pid}:departed-owner`, { mode: 0o600 });
     const past = new Date(Date.now() - 180_000);
     fs.utimesSync(lockPath, past, past);
 

@@ -302,6 +302,25 @@ describe('switchToAccount', () => {
       true,
     );
   });
+
+  it('refuses to interleave with another process holding the auth-swap lock', () => {
+    // A held lock must fail the switch cleanly — callers only test
+    // result.success — and a successful switch must leave no lock residue.
+    const lockPath = path.join(tmpDir, 'accounts', 'claude', 'auth-swap.lock');
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, `${process.pid}:wedged`, { mode: 0o600 });
+
+    const started = Date.now();
+    const blocked = switchToAccount('uuid-personal');
+    expect(blocked.success).toBe(false);
+    expect(blocked.error).toMatch(/no progress/);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(2_000);
+
+    fs.rmSync(lockPath, { force: true });
+    const retried = switchToAccount('uuid-personal');
+    expect(retried.success).toBe(true);
+    expect(fs.existsSync(lockPath)).toBe(false);
+  }, 15_000);
 });
 
 describe('Claude profile-home apply and migration', () => {

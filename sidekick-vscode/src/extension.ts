@@ -1280,8 +1280,10 @@ export async function activate(context: vscode.ExtensionContext) {
   // disposable instead of one per login attempt, so repeated logins don't
   // accumulate dead closures in context.subscriptions.
   const activeLoginPolls = new Set<() => void>();
+  let loginSurfacesDisposed = false;
   context.subscriptions.push({
     dispose: () => {
+      loginSurfacesDisposed = true;
       for (const stop of [...activeLoginPolls]) stop();
     },
   });
@@ -1298,6 +1300,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const finalize = async (): Promise<boolean> => {
       const result = await finalizeAccountLoginAsync(providerId, begin.loginId);
+      if (loginSurfacesDisposed) {
+        // Deactivation raced the finalize: the account save already landed,
+        // but the account service and status bar are disposed — don't touch them.
+        return result.success;
+      }
       if (!result.success) {
         vscode.window.showErrorMessage(`Account login finalization failed: ${result.error}`);
         return false;
@@ -1598,7 +1605,7 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         if (label === undefined) return;
 
-        const result = accountService.addCurrentAccount('codex', label.trim());
+        const result = await accountService.addCurrentAccount('codex', label.trim());
         if (!result.success) {
           vscode.window.showErrorMessage(`Failed to save Codex account: ${result.error}`);
           return;
@@ -1614,7 +1621,7 @@ export async function activate(context: vscode.ExtensionContext) {
             if (closed !== terminal) return;
             closeDisposable.dispose();
 
-            const finalized = accountService.finalizeCodexAccount(result.profileId!);
+            const finalized = await accountService.finalizeCodexAccount(result.profileId!);
             if (!finalized.success) {
               vscode.window.showErrorMessage(
                 `Failed to finalize Codex account: ${finalized.error}`,
@@ -1650,7 +1657,7 @@ export async function activate(context: vscode.ExtensionContext) {
       });
       if (label === undefined) return;
 
-      const result = accountService.addCurrentAccount('claude-code', label || undefined);
+      const result = await accountService.addCurrentAccount('claude-code', label || undefined);
       if (result.success) {
         vscode.window.showInformationMessage('Current Claude account saved.');
       } else {
