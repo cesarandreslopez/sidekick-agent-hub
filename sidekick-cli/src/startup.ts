@@ -10,7 +10,7 @@ import { ensureDefaultAccounts } from 'sidekick-shared';
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 
 /** Commands that answer purely from cached local state. */
-const CACHE_ONLY_COMMANDS = new Set(['statusline', 'today']);
+const CACHE_ONLY_COMMANDS = new Set(['statusline', 'today', 'history']);
 
 /**
  * Whether this invocation needs the pricing catalog and account bootstrap.

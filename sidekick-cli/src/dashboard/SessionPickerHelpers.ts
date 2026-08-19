@@ -5,7 +5,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SessionProviderBase, ProviderId } from 'sidekick-shared';
+import { listSessionPreviews } from 'sidekick-shared';
+import type { SessionPreview, SessionProviderBase, ProviderId } from 'sidekick-shared';
 
 export interface SessionPickerItem {
   sessionPath: string;
@@ -72,46 +73,38 @@ export function collectSessionItems(
   return items;
 }
 
+/** Map one shared SessionPreview onto the picker item shape. */
+export function previewToPickerItem(
+  preview: SessionPreview,
+  now: Date = new Date(),
+): SessionPickerItem {
+  // The preview carries the full provider-canonical id; the picker renders
+  // sessionId raw, so keep the historical 8-character display cap.
+  const fullId =
+    preview.sessionId || path.basename(preview.filePath, path.extname(preview.filePath));
+  const sessionId = fullId.length > 8 ? fullId.substring(0, 8) : fullId;
+  const modified = new Date(preview.modifiedAt);
+  return {
+    sessionPath: preview.filePath,
+    label: preview.firstUserPrompt || 'Untitled session',
+    sessionId,
+    age: formatRelativeTime(modified, now),
+    isActive: now.getTime() - modified.getTime() < ACTIVE_THRESHOLD_MS,
+    providerId: preview.provider,
+  };
+}
+
 /**
  * Collect session items from multiple providers, sorted by recency.
- * Each item is tagged with its providerId.
+ * Each item is tagged with its providerId. Labels are read only for the
+ * returned slice (via the shared preview index), not every discovered file.
  */
 export function collectMultiProviderItems(
-  providers: Array<{ provider: SessionProviderBase; workspacePath: string }>,
+  providers: SessionProviderBase[],
+  workspacePath: string,
   now: Date = new Date(),
 ): SessionPickerItem[] {
-  const allItems: Array<SessionPickerItem & { mtime: number }> = [];
-
-  for (const { provider, workspacePath } of providers) {
-    const paths = provider.findAllSessions(workspacePath).slice(0, MAX_ITEMS);
-    for (const sp of paths) {
-      let mtime: Date;
-      try {
-        mtime = fs.statSync(sp).mtime;
-      } catch {
-        continue;
-      }
-
-      const rawLabel = provider.extractSessionLabel(sp);
-      const label = rawLabel || 'Untitled session';
-      const basename = path.basename(sp, path.extname(sp));
-      const sessionId = basename.length > 8 ? basename.substring(0, 8) : basename;
-      const age = formatRelativeTime(mtime, now);
-      const isActive = now.getTime() - mtime.getTime() < ACTIVE_THRESHOLD_MS;
-
-      allItems.push({
-        sessionPath: sp,
-        label,
-        sessionId,
-        age,
-        isActive,
-        providerId: provider.id,
-        mtime: mtime.getTime(),
-      });
-    }
-  }
-
-  // Sort by recency (most recent first)
-  allItems.sort((a, b) => b.mtime - a.mtime);
-  return allItems.slice(0, MAX_ITEMS);
+  return listSessionPreviews(providers, { workspacePath, limit: MAX_ITEMS }).map((preview) =>
+    previewToPickerItem(preview, now),
+  );
 }

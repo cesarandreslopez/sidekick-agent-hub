@@ -1,7 +1,13 @@
 declare const __CLI_VERSION__: string;
 
 import { Command } from 'commander';
-import { DUMP_EXAMPLES, EXTRACT_EXAMPLES, QUOTA_EXAMPLES, ROOT_EXAMPLES } from './help';
+import {
+  DUMP_EXAMPLES,
+  EXTRACT_EXAMPLES,
+  HISTORY_EXAMPLES,
+  QUOTA_EXAMPLES,
+  ROOT_EXAMPLES,
+} from './help';
 import { firstCommandToken } from './argvScan';
 import { runStartupSideEffects } from './startup';
 import {
@@ -79,6 +85,7 @@ program.addCommand(dashCmd);
 const dumpCmd = new Command('dump')
   .description('Dump session data as text timeline, JSON metrics, or markdown report')
   .option('--list', 'List available session IDs for the current project')
+  .option('--limit <n>', 'Maximum sessions listed with --list (default: 50)')
   .option('--session <id>', 'Target a specific session (default: most recent)')
   .option('--width <cols>', 'Terminal width for text output (default: auto-detect)')
   .option('--expand', 'Show all events including noise')
@@ -89,6 +96,20 @@ const dumpCmd = new Command('dump')
     return dumpAction(_opts, cmd);
   });
 program.addCommand(dumpCmd);
+
+// History command — recent user prompts across Codex sessions
+const historyCmd = new Command('history')
+  .description(
+    'Show recent prompts across Codex sessions (prompt history — for the quota heatmap use `sidekick quota history`)',
+  )
+  .option('--limit <n>', 'Maximum prompts to show (default: 20)')
+  .option('--path <sessionId>', 'Print the rollout transcript path for a session ID or prefix')
+  .addHelpText('after', HISTORY_EXAMPLES)
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { historyAction } = await import('./commands/history');
+    return historyAction(_opts, cmd);
+  });
+program.addCommand(historyCmd);
 
 // Context command — composite project context (tasks + decisions + notes + handoff)
 const ctxCmd = new Command('context')

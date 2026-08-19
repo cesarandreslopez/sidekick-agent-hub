@@ -11,6 +11,7 @@ Examples:
   $ sidekick search "database migration"    Full-text search across sessions
   $ sidekick extract -i                     Interactive picker for URLs, paths, commands
   $ sidekick handoff                        Latest session handoff document
+  $ sidekick history                        Recent prompts across Codex sessions
   $ sidekick dump --list                    List session IDs available for dumping
   $ sidekick tasks --status pending --json  Pending tasks as JSON (global --json works everywhere)
 `;
@@ -33,6 +34,15 @@ Examples:
 export const DUMP_EXAMPLES = `
 Examples:
   $ sidekick dump --list                    List session IDs for this project
+  $ sidekick dump --list --limit 10         Only the ten most recent sessions
   $ sidekick dump --session <id>            Text timeline for a specific session
   $ sidekick dump --format markdown         Markdown report of the latest session
+`;
+
+export const HISTORY_EXAMPLES = `
+Examples:
+  $ sidekick history                        Recent prompts across Codex sessions
+  $ sidekick history --limit 5              Only the five most recent prompts
+  $ sidekick history --path 0198a3c2        Rollout transcript path for a session
+  $ sidekick history --json                 Machine-readable prompt entries
 `;

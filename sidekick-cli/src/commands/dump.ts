@@ -7,7 +7,6 @@
  * With `--list`, enumerates available session IDs for the current project.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import type { Command } from 'commander';
 import {
@@ -16,9 +15,11 @@ import {
   formatSessionText,
   formatSessionMarkdown,
   formatSessionJson,
+  listSessionPreviews,
 } from 'sidekick-shared';
-import type { FollowEvent } from 'sidekick-shared';
+import type { FollowEvent, SessionPreview } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { parseLimit } from '../utils/parseLimit';
 
 type OutputFormat = 'text' | 'json' | 'markdown';
 
@@ -51,16 +52,43 @@ function formatAge(mtime: Date): string {
 }
 
 /**
+ * Map bounded session previews onto the `--list` row shape.
+ *
+ * The `id` is the provider-canonical session id (what `--session` accepts),
+ * falling back to the file basename when a preview carries no id.
+ */
+export function buildSessionListRows(previews: SessionPreview[]): Array<{
+  id: string;
+  timestamp: string;
+  age: string;
+  label: string;
+  size: number;
+}> {
+  return previews.map((preview) => {
+    const modified = new Date(preview.modifiedAt);
+    return {
+      id: preview.sessionId || path.basename(preview.filePath, path.extname(preview.filePath)),
+      timestamp: formatTimestamp(modified),
+      age: formatAge(modified),
+      label: preview.firstUserPrompt || '',
+      size: preview.sizeBytes,
+    };
+  });
+}
+
+/**
  * List available sessions for the current project and output as table or JSON.
+ * Bounded: labels are read only for the `limit` most recent sessions.
  */
 function listSessions(
   provider: ReturnType<typeof resolveProvider>,
   workspacePath: string,
   asJson: boolean,
+  limit: number,
 ): void {
-  const sessionPaths = provider.findAllSessions(workspacePath);
+  const previews = listSessionPreviews([provider], { workspacePath, limit });
 
-  if (sessionPaths.length === 0) {
+  if (previews.length === 0) {
     if (asJson) {
       process.stdout.write('[]\n');
     } else {
@@ -69,38 +97,7 @@ function listSessions(
     return;
   }
 
-  // Gather metadata for each session
-  const sessions: Array<{
-    id: string;
-    timestamp: string;
-    age: string;
-    label: string;
-    size: number;
-  }> = [];
-
-  for (const sp of sessionPaths) {
-    let mtime: Date;
-    let size: number;
-    try {
-      const stat = fs.statSync(sp);
-      mtime = stat.mtime;
-      size = stat.size;
-    } catch {
-      continue;
-    }
-
-    const ext = path.extname(sp);
-    const id = path.basename(sp, ext);
-    const label = provider.extractSessionLabel(sp) || '';
-
-    sessions.push({
-      id,
-      timestamp: formatTimestamp(mtime),
-      age: formatAge(mtime),
-      label,
-      size,
-    });
-  }
+  const sessions = buildSessionListRows(previews);
 
   if (asJson) {
     process.stdout.write(JSON.stringify(sessions, null, 2) + '\n');
@@ -136,7 +133,13 @@ function listSessions(
     process.stdout.write(row + '\n');
   }
 
-  process.stdout.write(`\n${sessions.length} session(s) found.\n`);
+  if (sessions.length === limit) {
+    process.stdout.write(
+      `\n${sessions.length} most recent session(s) shown (raise --limit for more).\n`,
+    );
+  } else {
+    process.stdout.write(`\n${sessions.length} session(s) found.\n`);
+  }
 }
 
 export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
@@ -148,7 +151,8 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
   // Handle --list: enumerate sessions and exit
   if (opts.list) {
     try {
-      listSessions(provider, workspacePath, !!globalOpts.json);
+      const limit = parseLimit(opts.limit as string | undefined) ?? 50;
+      listSessions(provider, workspacePath, !!globalOpts.json, limit);
     } finally {
       try {
         provider.dispose();

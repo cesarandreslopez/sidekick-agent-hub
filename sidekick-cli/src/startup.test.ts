@@ -11,8 +11,9 @@ describe('needsFullStartup', () => {
     expect(needsFullStartup(flag)).toBe(false);
   });
 
-  it.each(['statusline', 'today'])('skips cache-only command %s', (command) => {
+  it.each(['statusline', 'today', 'history'])('skips cache-only command %s', (command) => {
     // statusline runs on every shell prompt; it must stay local and fast.
+    // history reads only local files, so it needs no pricing or accounts.
     expect(needsFullStartup(command)).toBe(false);
   });
 

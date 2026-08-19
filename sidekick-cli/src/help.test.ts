@@ -3,9 +3,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { DUMP_EXAMPLES, EXTRACT_EXAMPLES, QUOTA_EXAMPLES, ROOT_EXAMPLES } from './help';
+import {
+  DUMP_EXAMPLES,
+  EXTRACT_EXAMPLES,
+  HISTORY_EXAMPLES,
+  QUOTA_EXAMPLES,
+  ROOT_EXAMPLES,
+} from './help';
 
-const BLOCKS = { ROOT_EXAMPLES, QUOTA_EXAMPLES, EXTRACT_EXAMPLES, DUMP_EXAMPLES };
+const BLOCKS = { ROOT_EXAMPLES, QUOTA_EXAMPLES, EXTRACT_EXAMPLES, DUMP_EXAMPLES, HISTORY_EXAMPLES };
 
 describe('help examples', () => {
   it('every example line is an indented real invocation', () => {
@@ -26,6 +32,8 @@ describe('help examples', () => {
       'search',
       'extract -i',
       'handoff',
+      // Distinguish the prompt-history command from `quota history` above.
+      '$ sidekick history',
       'dump --list',
       '--json',
     ]) {

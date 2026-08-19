@@ -1,6 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
-import { formatRelativeTime, collectSessionItems } from './SessionPickerHelpers';
-import type { SessionProvider } from 'sidekick-shared';
+import {
+  formatRelativeTime,
+  collectSessionItems,
+  collectMultiProviderItems,
+  previewToPickerItem,
+} from './SessionPickerHelpers';
+import type { SessionPreview, SessionProvider, SessionProviderBase } from 'sidekick-shared';
+
+const { mockListSessionPreviews } = vi.hoisted(() => ({
+  mockListSessionPreviews: vi.fn(),
+}));
 
 // Mock fs.statSync. Vitest hoists vi.mock calls, so keep this top-level.
 vi.mock('fs', async () => {
@@ -8,6 +17,14 @@ vi.mock('fs', async () => {
   return {
     ...actual,
     statSync: vi.fn(),
+  };
+});
+
+vi.mock('sidekick-shared', async () => {
+  const actual = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
+  return {
+    ...actual,
+    listSessionPreviews: mockListSessionPreviews,
   };
 });
 
@@ -156,5 +173,101 @@ describe('collectSessionItems', () => {
 
     expect(items).toHaveLength(1);
     expect(items[0].label).toBe('Second');
+  });
+});
+
+// ── previewToPickerItem ──
+
+describe('previewToPickerItem', () => {
+  const now = new Date('2026-02-20T12:00:00Z');
+
+  function preview(overrides: Partial<SessionPreview>): SessionPreview {
+    return {
+      provider: 'codex',
+      sessionId: '0198a3c2-9d1e-4f00-b111-222233334444',
+      filePath: '/codex/sessions/rollout-2026-02-20-0198a3c2.jsonl',
+      modifiedAt: '2026-02-20T11:55:00Z',
+      sizeBytes: 1024,
+      firstUserPrompt: 'Fix the flaky watcher test',
+      firstTimestamp: null,
+      workspacePath: null,
+      ...overrides,
+    };
+  }
+
+  it('maps preview fields and truncates the session id to 8 characters', () => {
+    const item = previewToPickerItem(preview({}), now);
+
+    expect(item).toEqual({
+      sessionPath: '/codex/sessions/rollout-2026-02-20-0198a3c2.jsonl',
+      label: 'Fix the flaky watcher test',
+      sessionId: '0198a3c2',
+      age: '5m ago',
+      isActive: false,
+      providerId: 'codex',
+    });
+  });
+
+  it('keeps short session ids untouched', () => {
+    const item = previewToPickerItem(preview({ sessionId: 'abc123' }), now);
+    expect(item.sessionId).toBe('abc123');
+  });
+
+  it('falls back to the file basename when the preview has no session id', () => {
+    const item = previewToPickerItem(
+      preview({ sessionId: '', filePath: '/sessions/fallback-id.jsonl' }),
+      now,
+    );
+    expect(item.sessionId).toBe('fallback'); // basename, still capped at 8
+  });
+
+  it('labels promptless previews as untitled and flags recent ones active', () => {
+    const item = previewToPickerItem(
+      preview({ firstUserPrompt: null, modifiedAt: '2026-02-20T11:59:30Z' }),
+      now,
+    );
+    expect(item.label).toBe('Untitled session');
+    expect(item.isActive).toBe(true);
+  });
+});
+
+// ── collectMultiProviderItems ──
+
+describe('collectMultiProviderItems', () => {
+  const now = new Date('2026-02-20T12:00:00Z');
+
+  it('delegates to the bounded shared preview index and maps in order', () => {
+    const providers = [{ id: 'claude-code' }, { id: 'codex' }] as unknown as SessionProviderBase[];
+    mockListSessionPreviews.mockReturnValue([
+      {
+        provider: 'codex',
+        sessionId: 'newer-session',
+        filePath: '/codex/newer.jsonl',
+        modifiedAt: '2026-02-20T11:59:00Z',
+        sizeBytes: 10,
+        firstUserPrompt: 'Newer',
+        firstTimestamp: null,
+        workspacePath: null,
+      },
+      {
+        provider: 'claude-code',
+        sessionId: 'older',
+        filePath: '/claude/older.jsonl',
+        modifiedAt: '2026-02-20T11:00:00Z',
+        sizeBytes: 10,
+        firstUserPrompt: 'Older',
+        firstTimestamp: null,
+        workspacePath: null,
+      },
+    ]);
+
+    const items = collectMultiProviderItems(providers, '/work/project', now);
+
+    expect(mockListSessionPreviews).toHaveBeenCalledWith(providers, {
+      workspacePath: '/work/project',
+      limit: 50,
+    });
+    expect(items.map((item) => item.sessionId)).toEqual(['newer-se', 'older']);
+    expect(items.map((item) => item.providerId)).toEqual(['codex', 'claude-code']);
   });
 });

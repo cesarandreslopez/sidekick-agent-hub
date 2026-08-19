@@ -267,11 +267,7 @@ export async function showSessionPicker(
 
   let items: SessionPickerItem[];
   if (additionalProviders && additionalProviders.length > 0) {
-    const allProviders = [provider, ...additionalProviders].map((p) => ({
-      provider: p,
-      workspacePath,
-    }));
-    items = collectMultiProviderItems(allProviders);
+    items = collectMultiProviderItems([provider, ...additionalProviders], workspacePath);
   } else {
     const sessions = provider.findAllSessions(workspacePath);
     if (sessions.length === 0) return { sessionPath: null };
