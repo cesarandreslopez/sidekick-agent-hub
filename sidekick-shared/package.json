@@ -1,6 +1,6 @@
 {
   "name": "sidekick-shared",
-  "version": "0.24.5",
+  "version": "0.25.0",
   "description": "Shared data access layer for Sidekick — readers, types, providers, credentials, quota",
   "keywords": [
     "claude-code",
@@ -35,42 +35,62 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./browser": {
       "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "require": "./dist/browser.js",
       "default": "./dist/browser.js"
     },
     "./node": {
       "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "require": "./dist/node.js",
       "default": "./dist/node.js"
     },
     "./schemas": {
       "types": "./dist/schemas/index.d.ts",
+      "import": "./dist/schemas/index.js",
+      "require": "./dist/schemas/index.js",
       "default": "./dist/schemas/index.js"
     },
     "./phrases": {
       "types": "./dist/phrases.d.ts",
+      "import": "./dist/phrases.js",
+      "require": "./dist/phrases.js",
       "default": "./dist/phrases.js"
     },
     "./modelContext": {
       "types": "./dist/modelContext.d.ts",
+      "import": "./dist/modelContext.js",
+      "require": "./dist/modelContext.js",
       "default": "./dist/modelContext.js"
     },
     "./modelInfo": {
       "types": "./dist/modelInfo.d.ts",
+      "import": "./dist/modelInfo.js",
+      "require": "./dist/modelInfo.js",
       "default": "./dist/modelInfo.js"
     },
     "./formatting": {
       "types": "./dist/formatting.d.ts",
+      "import": "./dist/formatting.js",
+      "require": "./dist/formatting.js",
       "default": "./dist/formatting.js"
     },
     "./statusline": {
       "types": "./dist/statusline/index.d.ts",
+      "import": "./dist/statusline/index.js",
+      "require": "./dist/statusline/index.js",
       "default": "./dist/statusline/index.js"
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "require": "./dist/*.js",
       "default": "./dist/*.js"
     },
     "./package.json": "./package.json"

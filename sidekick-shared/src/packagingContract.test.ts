@@ -24,6 +24,12 @@ describe('packaging contract', () => {
     const m = require(browserJs);
     for (const k of [
       'getModelContextWindowSize',
+      'resolveModelContextWindow',
+      'resolveModelPricing',
+      'exportResolvedModelCatalog',
+      'importResolvedModelCatalog',
+      'registerModelAlias',
+      'resolveModelAlias',
       'parseModelId',
       'getModelPricing',
       'getModelInfo',
@@ -56,6 +62,16 @@ describe('packaging contract', () => {
       expect(typeof m[k]).toBe('function');
     }
     expect(typeof m.DEFAULT_CONTEXT_WINDOW).toBe('number');
+    expect(typeof m.RESOLVED_MODEL_CATALOG_SCHEMA_VERSION).toBe('number');
+    for (const name of [
+      'SESSION_PROVIDER_IDS',
+      'ACCOUNT_PROVIDER_IDS',
+      'QUOTA_PROVIDER_IDS',
+      'RUNTIME_QUOTA_PROVIDER_IDS',
+      'MODEL_PROVIDER_IDS',
+    ]) {
+      expect(Array.isArray(m[name])).toBe(true);
+    }
     // Schemas live on the dedicated `/schemas` subpath, not here — keeping
     // zod out of bundles that only need the pure math/formatting helpers.
     expect(m.quotaStateSchema).toBeUndefined();
@@ -118,6 +134,14 @@ describe('packaging contract', () => {
     }
     expect(typeof m.observedValueV1Schema).toBe('function');
     expect(typeof m.extractSessionEvents).toBe('function');
+    for (const name of [
+      'SESSION_PROVIDER_IDS',
+      'ACCOUNT_PROVIDER_IDS',
+      'QUOTA_PROVIDER_IDS',
+      'RUNTIME_QUOTA_PROVIDER_IDS',
+    ]) {
+      expect(Array.isArray(m[name])).toBe(true);
+    }
   });
 
   it('dist/statusline/index.js exposes the lightweight prompt-render surface', () => {
@@ -148,6 +172,9 @@ describe('packaging contract', () => {
     expect(typeof m.ObservedSessionCollector).toBe('function');
     expect(typeof m.observedSessionSourceFromProvider).toBe('function');
     expect(typeof m.fileFingerprint).toBe('function');
+    expect(typeof m.fileFingerprintParts).toBe('function');
+    expect(typeof m.listSessionPreviewsAsync).toBe('function');
+    expect(typeof m.readSessionPreviewAsync).toBe('function');
   });
 
   it('dist/index.js exposes the locked store writers', () => {
@@ -224,6 +251,23 @@ describe('packaging contract', () => {
     expect(typeof m.listRecentSessions).toBe('function');
     expect(typeof m.readSessionTranscript).toBe('function');
     expect(typeof m.ObservedSessionCollector).toBe('function');
+    expect(typeof m.createSessionProviders).toBe('function');
+    expect(typeof m.refreshSessionActivityState).toBe('function');
+    expect(typeof m.onAccountsChanged).toBe('function');
+    expect(typeof m.exportResolvedModelCatalog).toBe('function');
+    expect(typeof m.importResolvedModelCatalog).toBe('function');
+    expect(typeof m.fileFingerprintParts).toBe('function');
+    expect(typeof m.listSessionPreviewsAsync).toBe('function');
+    expect(typeof m.readSessionPreviewAsync).toBe('function');
+    for (const name of [
+      'SESSION_PROVIDER_IDS',
+      'ACCOUNT_PROVIDER_IDS',
+      'QUOTA_PROVIDER_IDS',
+      'RUNTIME_QUOTA_PROVIDER_IDS',
+      'MODEL_PROVIDER_IDS',
+    ]) {
+      expect(Array.isArray(m[name])).toBe(true);
+    }
     expect(typeof m.assistantTurnProjectionSchema?.safeParse).toBe('function');
     expect(typeof m.quotaStateSchema?.safeParse).toBe('function');
     expect(typeof m.activeAccountStatusSchema?.safeParse).toBe('function');
@@ -274,6 +318,12 @@ describe('packaging contract', () => {
     expect(browser).toContain('CanonicalSessionTranscript');
     expect(schemas).toContain('TranscriptSourceProvenance');
     expect(schemas).toContain('transcriptSourceProvenanceSchema');
+    expect(root).toContain('ResolvedModelCatalogSnapshot');
+    expect(root).toContain('CreateSessionProvidersOptions');
+    expect(root).toContain('SessionMonitorSubscribeOptions');
+    expect(root).toContain('AccountsChangedEvent');
+    expect(root).toContain('ObservedSessionChangeBatch');
+    expect(node).toContain('SessionPreviewListResult');
   });
 
   // Consumer-perspective resolution: exercises the real package.json exports
@@ -342,6 +392,99 @@ describe('packaging contract', () => {
       expect(existsSync(path.join(pkgRoot, entry[0]))).toBe(true);
       // Must agree with what the exports map itself declares as `types`.
       expect(entry[0]).toBe(pkg.exports[`./${sub}`].types.replace(/^\.\//, ''));
+    }
+  });
+
+  it('puts per-subpath types, import, and require conditions on every documented export', () => {
+    const pkg = require(path.join(pkgRoot, 'package.json'));
+    for (const [subpath, value] of Object.entries(pkg.exports)) {
+      if (subpath === './package.json' || typeof value === 'string') continue;
+      const conditions = value as Record<string, string>;
+      expect(Object.keys(conditions)[0], `${subpath} must resolve types first`).toBe('types');
+      for (const condition of ['types', 'import', 'require', 'default']) {
+        expect(conditions[condition], `${subpath} is missing ${condition}`).toBeTruthy();
+      }
+    }
+  });
+
+  it('resolves every documented subpath in a moduleResolution: node scratch project', async () => {
+    const ts = await import('typescript');
+    const scratch = await fs.mkdtemp(path.join(pkgRoot, '.tmp-node-resolution-'));
+    const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
+    const specifiers = [
+      'sidekick-shared',
+      'sidekick-shared/browser',
+      'sidekick-shared/node',
+      'sidekick-shared/schemas',
+      'sidekick-shared/phrases',
+      'sidekick-shared/modelContext',
+      'sidekick-shared/modelInfo',
+      'sidekick-shared/formatting',
+      'sidekick-shared/statusline',
+    ];
+    try {
+      await fs.mkdir(path.dirname(packageLink), { recursive: true });
+      await fs.symlink(pkgRoot, packageLink, process.platform === 'win32' ? 'junction' : 'dir');
+      const entry = path.join(scratch, 'entry.ts');
+      await fs.writeFile(
+        entry,
+        specifiers
+          .map((specifier, index) => `import * as m${index} from '${specifier}';`)
+          .join('\n'),
+      );
+      const program = ts.createProgram([entry], {
+        module: ts.ModuleKind.CommonJS,
+        moduleResolution: ts.ModuleResolutionKind.Node10,
+        noEmit: true,
+        strict: true,
+        skipLibCheck: true,
+        target: ts.ScriptTarget.ES2022,
+      });
+      const errors = ts
+        .getPreEmitDiagnostics(program)
+        .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+      expect(
+        errors.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')),
+      ).toEqual([]);
+    } finally {
+      await fs.rm(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves every documented subpath from a scratch Vite app without aliases', async () => {
+    const { createServer } = await import('vite');
+    const scratch = await fs.mkdtemp(path.join(pkgRoot, '.tmp-vite-resolution-'));
+    const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
+    const entry = path.join(scratch, 'entry.ts');
+    const specifiers = [
+      'sidekick-shared',
+      'sidekick-shared/browser',
+      'sidekick-shared/node',
+      'sidekick-shared/schemas',
+      'sidekick-shared/phrases',
+      'sidekick-shared/modelContext',
+      'sidekick-shared/modelInfo',
+      'sidekick-shared/formatting',
+      'sidekick-shared/statusline',
+    ];
+    let server: Awaited<ReturnType<typeof createServer>> | undefined;
+    try {
+      await fs.mkdir(path.dirname(packageLink), { recursive: true });
+      await fs.symlink(pkgRoot, packageLink, process.platform === 'win32' ? 'junction' : 'dir');
+      await fs.writeFile(entry, 'export {};\n');
+      server = await createServer({
+        root: scratch,
+        appType: 'custom',
+        logLevel: 'silent',
+        server: { middlewareMode: true },
+      });
+      for (const specifier of specifiers) {
+        const resolved = await server.pluginContainer.resolveId(specifier, entry);
+        expect(resolved?.id, `Vite could not resolve ${specifier}`).toBeTruthy();
+      }
+    } finally {
+      await server?.close();
+      await fs.rm(scratch, { recursive: true, force: true });
     }
   });
 

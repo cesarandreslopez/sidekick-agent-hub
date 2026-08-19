@@ -29,7 +29,11 @@ import type {
   SessionFileInfo,
   SessionFileStats,
   ProviderId,
+  ProviderOperationStatus,
+  ProviderRuntimeStatus,
+  SessionProviderOptions,
 } from './types';
+import { ProviderDiagnosticTracker, diagnosticFromRuntimeStatus } from './diagnostics';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type { CodexRolloutLine, CodexRateLimits, CodexSessionMeta } from '../types/codex';
 import { getModelContextWindowSize } from '../modelContext';
@@ -147,6 +151,38 @@ function findRolloutFilesInConfiguredHomes(): Array<{ path: string; mtime: Date 
     }
   }
 
+  return results;
+}
+
+async function findRolloutFilesAsync(dir: string): Promise<SessionFileInfo[]> {
+  const results: SessionFileInfo[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...(await findRolloutFilesAsync(fullPath)));
+    } else if (entry.isFile() && isRolloutFile(entry.name)) {
+      try {
+        const stats = await fs.promises.stat(fullPath);
+        if (stats.size > 0) {
+          results.push({
+            path: fullPath,
+            mtime: stats.mtime,
+            sizeBytes: stats.size,
+            sessionId: extractSessionId(entry.name),
+          });
+        }
+      } catch {
+        // Skip inaccessible files.
+      }
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
   return results;
 }
 
@@ -305,6 +341,23 @@ function readSessionMeta(rolloutPath: string): CodexSessionMeta | null {
   return null;
 }
 
+async function readSessionMetaAsync(rolloutPath: string): Promise<CodexSessionMeta | null> {
+  let handle: fs.promises.FileHandle | null = null;
+  try {
+    handle = await fs.promises.open(rolloutPath, 'r');
+    const buffer = Buffer.alloc(64 * 1024);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const firstLine = buffer.toString('utf8', 0, bytesRead).split('\n', 1)[0]?.trim();
+    if (!firstLine) return null;
+    const parsed = JSON.parse(firstLine) as CodexRolloutLine;
+    return parsed.type === 'session_meta' ? (parsed.payload as CodexSessionMeta) : null;
+  } catch {
+    return null;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
+
 /** Read the CWD from a rollout file's session_meta. Cached. */
 const cwdCache = new Map<string, string | null>();
 function readSessionCwd(rolloutPath: string): string | null {
@@ -345,49 +398,66 @@ function normalizePath(input: string): string {
  */
 function extractFirstUserMessage(rolloutPath: string): string | null {
   try {
-    const lines = readFirstLines(rolloutPath, 20);
+    return extractFirstUserMessageFromLines(readFirstLines(rolloutPath, 20));
+  } catch {
+    return null;
+  }
+}
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+function extractFirstUserMessageFromLines(lines: readonly string[]): string | null {
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
 
-      try {
-        const parsed = JSON.parse(trimmed) as CodexRolloutLine;
+    try {
+      const parsed = JSON.parse(trimmed) as CodexRolloutLine;
 
-        // Check response_item with user message
-        if (parsed.type === 'response_item') {
-          const payload = parsed.payload as { type?: string; role?: string; content?: unknown };
-          if (payload.role === 'user') {
-            const content = payload.content;
-            if (typeof content === 'string' && content.trim() && !isSystemInjection(content)) {
-              return truncate(content, 60);
-            }
-            if (Array.isArray(content)) {
-              for (const part of content) {
-                const p = part as { text?: string };
-                if (p.text?.trim() && !isSystemInjection(p.text)) {
-                  return truncate(p.text, 60);
-                }
+      // Check response_item with user message
+      if (parsed.type === 'response_item') {
+        const payload = parsed.payload as { type?: string; role?: string; content?: unknown };
+        if (payload.role === 'user') {
+          const content = payload.content;
+          if (typeof content === 'string' && content.trim() && !isSystemInjection(content)) {
+            return truncate(content, 60);
+          }
+          if (Array.isArray(content)) {
+            for (const part of content) {
+              const p = part as { text?: string };
+              if (p.text?.trim() && !isSystemInjection(p.text)) {
+                return truncate(p.text, 60);
               }
             }
           }
         }
-
-        // Check event_msg with user_message
-        if (parsed.type === 'event_msg') {
-          const payload = parsed.payload as { type?: string; message?: string };
-          if (payload.type === 'user_message' && payload.message?.trim()) {
-            return truncate(payload.message, 60);
-          }
-        }
-      } catch {
-        // Skip malformed lines
       }
-    }
 
-    return null;
+      // Check event_msg with user_message
+      if (parsed.type === 'event_msg') {
+        const payload = parsed.payload as { type?: string; message?: string };
+        if (payload.type === 'user_message' && payload.message?.trim()) {
+          return truncate(payload.message, 60);
+        }
+      }
+    } catch {
+      // Skip malformed lines
+    }
+  }
+  return null;
+}
+
+async function extractFirstUserMessageAsync(rolloutPath: string): Promise<string | null> {
+  let handle: fs.promises.FileHandle | null = null;
+  try {
+    handle = await fs.promises.open(rolloutPath, 'r');
+    const buffer = Buffer.alloc(256 * 1024);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return extractFirstUserMessageFromLines(
+      buffer.toString('utf8', 0, bytesRead).split('\n').slice(0, 20),
+    );
   } catch {
     return null;
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 
@@ -685,9 +755,15 @@ export class CodexProvider implements SessionProviderBase {
 
   private db: CodexDatabase | null = null;
   private dbInitialized = false;
+  private dbStatus: ProviderRuntimeStatus = { available: false, kind: 'db_missing' };
+  private readonly diagnostics: ProviderDiagnosticTracker;
   private dynamicContextWindowLimit: number | null = null;
   private lastRateLimitsData: CodexRateLimits | null = null;
   private lastTokenUsageData: TokenUsage | null = null;
+
+  constructor(options: SessionProviderOptions = {}) {
+    this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
+  }
 
   // --- Database ---
 
@@ -701,7 +777,27 @@ export class CodexProvider implements SessionProviderBase {
     if (db.isAvailable() && db.open()) {
       this.db = db;
     }
+    if (typeof db.getRuntimeStatus === 'function') {
+      this.dbStatus = db.getRuntimeStatus();
+    }
     return this.db;
+  }
+
+  private async ensureDbAsync(): Promise<CodexDatabase> {
+    if (this.db) return this.db;
+    const db = new CodexDatabase(getCodexHome());
+    this.dbInitialized = true;
+    this.db = db;
+    return db;
+  }
+
+  getRuntimeStatus(): ProviderRuntimeStatus {
+    const db = this.ensureDb();
+    return db && typeof db.getRuntimeStatus === 'function' ? db.getRuntimeStatus() : this.dbStatus;
+  }
+
+  getLastOperationStatus(): ProviderOperationStatus {
+    return this.diagnostics.getLastOperationStatus();
   }
 
   // --- Path resolution ---
@@ -714,10 +810,13 @@ export class CodexProvider implements SessionProviderBase {
     if (db) {
       const thread = db.getMostRecentThread(workspacePath);
       if (thread?.rollout_path) {
+        this.recordDatabaseFallback('getSessionDirectory', true);
         return path.dirname(thread.rollout_path);
       }
     }
-    return getSessionsDir();
+    const directory = getSessionsDir();
+    this.recordDatabaseFallback('getSessionDirectory', true);
+    return directory;
   }
 
   discoverSessionDirectory(workspacePath: string): string | null {
@@ -726,13 +825,17 @@ export class CodexProvider implements SessionProviderBase {
     if (db) {
       const thread = db.getMostRecentThread(workspacePath);
       if (thread?.rollout_path && fs.existsSync(thread.rollout_path)) {
+        this.recordDatabaseFallback('discoverSessionDirectory', true);
         return path.dirname(thread.rollout_path);
       }
     }
 
     // File scan: look for any rollout file whose session_meta.cwd matches
     const files = findRolloutFilesInConfiguredHomes();
-    if (files.length === 0) return null;
+    if (files.length === 0) {
+      this.recordDatabaseFallback('discoverSessionDirectory', true);
+      return null;
+    }
 
     // Sort by mtime descending
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
@@ -740,12 +843,15 @@ export class CodexProvider implements SessionProviderBase {
     for (const file of files) {
       const meta = readSessionMeta(file.path);
       if (meta && cwdMatches(meta.cwd, workspacePath)) {
+        this.recordDatabaseFallback('discoverSessionDirectory', true);
         return path.dirname(file.path);
       }
     }
 
     // Fallback: return the most relevant base sessions dir if one exists
-    return getSessionsDir();
+    const directory = getSessionsDir();
+    this.recordDatabaseFallback('discoverSessionDirectory', true);
+    return directory;
   }
 
   // --- Session discovery ---
@@ -756,6 +862,7 @@ export class CodexProvider implements SessionProviderBase {
     if (db) {
       const thread = db.getMostRecentThread(workspacePath);
       if (thread?.rollout_path && fs.existsSync(thread.rollout_path)) {
+        this.recordDatabaseFallback('findActiveSession', true);
         return thread.rollout_path;
       }
     }
@@ -767,10 +874,12 @@ export class CodexProvider implements SessionProviderBase {
     for (const file of files) {
       const meta = readSessionMeta(file.path);
       if (meta && cwdMatches(meta.cwd, workspacePath)) {
+        this.recordDatabaseFallback('findActiveSession', true);
         return file.path;
       }
     }
 
+    this.recordDatabaseFallback('findActiveSession', true);
     return null;
   }
 
@@ -782,19 +891,35 @@ export class CodexProvider implements SessionProviderBase {
       const dbPaths = threads
         .filter((t) => t.rollout_path && fs.existsSync(t.rollout_path))
         .map((t) => t.rollout_path);
-      if (dbPaths.length > 0) return dbPaths;
+      if (dbPaths.length > 0) {
+        this.recordDatabaseFallback('findAllSessions', true);
+        return dbPaths;
+      }
     }
 
     // File scan
     const files = findRolloutFilesInConfiguredHomes();
     files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
-    return files
+    const sessions = files
       .filter((f) => {
         const meta = readSessionMeta(f.path);
         return meta && cwdMatches(meta.cwd, workspacePath);
       })
       .map((f) => f.path);
+    this.recordDatabaseFallback('findAllSessions', true);
+    return sessions;
+  }
+
+  findSessionById(_workspacePath: string, sessionId: string): string | null {
+    try {
+      const found = findCodexRolloutFile(sessionId);
+      this.recordDatabaseFallback('findSessionById', true);
+      return found;
+    } catch {
+      this.recordDatabaseFallback('findSessionById', false);
+      return null;
+    }
   }
 
   /** Backward-compatible alias for findAllSessions. */
@@ -809,7 +934,27 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   listAllSessionFiles(): SessionFileInfo[] {
-    return findRolloutFilesInConfiguredHomes();
+    const files = findRolloutFilesInConfiguredHomes();
+    this.recordDatabaseFallback('listAllSessionFiles', true);
+    return files;
+  }
+
+  async listSessionFilesAsync(workspacePath?: string): Promise<SessionFileInfo[]> {
+    const seen = new Set<string>();
+    const results: SessionFileInfo[] = [];
+    for (const sessionsDir of getSessionsDirs()) {
+      for (const file of await findRolloutFilesAsync(sessionsDir)) {
+        if (seen.has(file.path)) continue;
+        seen.add(file.path);
+        if (workspacePath) {
+          const meta = await readSessionMetaAsync(file.path);
+          if (!meta?.cwd || !cwdMatches(meta.cwd, workspacePath)) continue;
+          file.workspacePath = meta.cwd;
+        }
+        results.push(file);
+      }
+    }
+    return results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
@@ -868,6 +1013,7 @@ export class CodexProvider implements SessionProviderBase {
       return b.lastModified.getTime() - a.lastModified.getTime();
     });
 
+    this.recordDatabaseFallback('getAllProjectFolders', true);
     return folders;
   }
 
@@ -892,12 +1038,47 @@ export class CodexProvider implements SessionProviderBase {
     if (db) {
       const sessionId = this.getSessionId(sessionPath);
       const thread = db.getThread(sessionId);
-      if (thread?.title) return truncate(thread.title, 60);
-      if (thread?.first_user_message) return truncate(thread.first_user_message, 60);
+      if (thread?.title) {
+        this.recordDatabaseFallback('extractSessionLabel', true);
+        return truncate(thread.title, 60);
+      }
+      if (thread?.first_user_message) {
+        this.recordDatabaseFallback('extractSessionLabel', true);
+        return truncate(thread.first_user_message, 60);
+      }
     }
 
     // File fallback: parse first user message
-    return extractFirstUserMessage(sessionPath);
+    const label = extractFirstUserMessage(sessionPath);
+    this.recordDatabaseFallback('extractSessionLabel', true);
+    return label;
+  }
+
+  async extractSessionLabelsAsync(
+    sessionPaths: readonly string[],
+  ): Promise<Map<string, string | null>> {
+    const results = new Map<string, string | null>();
+    const byId = new Map(
+      sessionPaths.map((sessionPath) => [this.getSessionId(sessionPath), sessionPath]),
+    );
+    const db = await this.ensureDbAsync();
+    const threads = await db.getThreadsByIdsAsync([...byId.keys()]);
+    for (const thread of threads) {
+      const sessionPath = byId.get(thread.id);
+      if (!sessionPath) continue;
+      const label = thread.title ?? thread.first_user_message;
+      if (label) results.set(sessionPath, truncate(label, 60));
+    }
+    this.dbStatus = db.getRuntimeStatus();
+
+    for (const sessionPath of sessionPaths) {
+      if (!results.has(sessionPath)) {
+        results.set(sessionPath, await extractFirstUserMessageAsync(sessionPath));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+    this.recordDatabaseFallback('extractSessionLabelsAsync', true);
+    return results;
   }
 
   // --- Data reading ---
@@ -1086,6 +1267,10 @@ export class CodexProvider implements SessionProviderBase {
     return getSessionsDir();
   }
 
+  getWatchRoots(): string[] {
+    return getSessionsDirs();
+  }
+
   // --- Stats ---
 
   readSessionStats(sessionPath: string): SessionFileStats {
@@ -1179,8 +1364,33 @@ export class CodexProvider implements SessionProviderBase {
     this.db?.close();
     this.db = null;
     this.dbInitialized = false;
+    this.dbStatus = { available: false, kind: 'db_missing' };
     this.dynamicContextWindowLimit = null;
     this.lastRateLimitsData = null;
     this.lastTokenUsageData = null;
+  }
+
+  private recordDatabaseFallback(operation: string, usable: boolean): void {
+    if (!this.dbInitialized) {
+      this.diagnostics.available(operation);
+      return;
+    }
+    const status = this.getRuntimeStatus();
+    const diagnostic = diagnosticFromRuntimeStatus(this.id, 'query', status);
+    if (!diagnostic) {
+      this.diagnostics.available(operation);
+      return;
+    }
+    this.diagnostics.degraded(
+      operation,
+      status,
+      {
+        kind: diagnostic.kind,
+        severity: diagnostic.severity,
+        phase: diagnostic.phase,
+        message: diagnostic.message,
+      },
+      usable,
+    );
   }
 }

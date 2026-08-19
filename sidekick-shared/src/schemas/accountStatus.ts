@@ -16,6 +16,7 @@ import type { ActiveProviderAccountStatus, ActiveAccountStatus } from '../accoun
 
 export const activeProviderAccountStatusSchema = z.object({
   present: z.boolean(),
+  accountId: z.string().optional(),
   email: z.string().optional(),
   label: z.string().optional(),
 }) satisfies z.ZodType<ActiveProviderAccountStatus>;

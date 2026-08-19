@@ -19,6 +19,10 @@
  */
 
 import { getModelContextWindowSize } from './modelContext';
+import { resolveModelAlias } from './modelAliases';
+import type { ModelProviderId } from './providerIds';
+
+export { MODEL_PROVIDER_IDS } from './providerIds';
 
 // ── Types ──
 
@@ -28,6 +32,24 @@ export interface ModelPricing {
   outputCostPerMillion: number;
   cacheWriteCostPerMillion: number;
   cacheReadCostPerMillion: number;
+}
+
+export type ModelPricingSource = 'imported' | 'catalog' | 'static' | 'none';
+export type ModelPricingMatch = 'exact' | 'prefix' | 'none';
+
+export interface ModelPricingProvenance {
+  source: ModelPricingSource;
+  match: ModelPricingMatch;
+  matchedModelId?: string;
+  /** True when the price was inherited from a shorter model-ID prefix. */
+  inheritedByPrefix: boolean;
+}
+
+export interface ResolvedModelPricing {
+  modelId: string;
+  canonicalModelId: string;
+  pricing: ModelPricing | null;
+  provenance: ModelPricingProvenance;
 }
 
 /**
@@ -49,7 +71,7 @@ export interface CostTokenUsage {
 }
 
 /** Provider that hosts a model. "unknown" means we couldn't classify it. */
-export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'unknown';
+export type ModelProvider = ModelProviderId;
 
 /** Structured result of parsing a raw model ID. */
 export interface ParsedModelId {
@@ -480,6 +502,7 @@ const STATIC_SORTED_KEYS = Object.keys(PRICING_TABLE).sort((a, b) => b.length - 
 
 let overrideTable: Record<string, ModelPricing> = {};
 let overrideSortedKeys: string[] = [];
+let importedTable: Record<string, ResolvedModelPricing> = {};
 
 /**
  * Internal: replace the runtime override map. Called by `pricingCatalog.ts`
@@ -488,7 +511,9 @@ let overrideSortedKeys: string[] = [];
  * creating a circular import.
  */
 export function _setPricingOverrides(overrides: Record<string, ModelPricing>): void {
-  overrideTable = { ...overrides };
+  overrideTable = Object.fromEntries(
+    Object.entries(overrides).map(([key, value]) => [key.trim().toLowerCase(), { ...value }]),
+  );
   overrideSortedKeys = Object.keys(overrideTable).sort((a, b) => b.length - a.length);
 }
 
@@ -501,6 +526,27 @@ export function _getPricingOverrides(): Record<string, ModelPricing> {
 export function _clearPricingOverrides(): void {
   overrideTable = {};
   overrideSortedKeys = [];
+}
+
+/** Internal: hydrate exact pricing resolutions exported by another realm. */
+export function _setImportedResolvedPricing(values: Record<string, ResolvedModelPricing>): void {
+  importedTable = { ...values };
+}
+
+/** Internal test hook. */
+export function _clearImportedResolvedPricing(): void {
+  importedTable = {};
+}
+
+/** Internal: list every ID known to the pricing resolver. */
+export function _getModelPricingIds(): string[] {
+  return Array.from(
+    new Set([
+      ...Object.keys(PRICING_TABLE),
+      ...Object.keys(overrideTable),
+      ...Object.keys(importedTable),
+    ]),
+  );
 }
 
 // ── Model ID Parsing ──
@@ -527,10 +573,7 @@ const GEMINI_RE = /^gemini-([0-9][0-9.A-Za-z-]*)/i;
  */
 export function parseModelId(modelId: string): ParsedModelId | null {
   if (!modelId) return null;
-  const normalized = modelId
-    .replace(/\[1m\]/gi, '')
-    .trim()
-    .toLowerCase();
+  const normalized = resolveModelAlias(modelId.replace(/\[1m\]/gi, ''));
 
   const claude = normalized.match(CLAUDE_RE);
   if (claude) {
@@ -571,25 +614,87 @@ export function parseModelId(modelId: string): ParsedModelId | null {
 
 // ── Pricing Lookup ──
 
-/** Find the longest key in `keys` that is a prefix of `modelId`, or null. */
+/** Find the longest shorter key in `keys` that is a prefix of `modelId`, or null. */
 function findLongestPrefix(keys: string[], modelId: string): string | null {
   for (const key of keys) {
-    if (modelId === key || modelId.startsWith(key)) return key;
+    if (modelId !== key && modelId.startsWith(key)) return key;
   }
   return null;
 }
 
-/** Override-then-static lookup, exact then longest-prefix at each stage. */
-function lookupPricing(modelId: string): ModelPricing | null {
-  if (overrideTable[modelId]) return overrideTable[modelId];
-  const overridePrefix = findLongestPrefix(overrideSortedKeys, modelId);
-  if (overridePrefix) return overrideTable[overridePrefix];
+/** Resolve pricing and disclose whether the result was inherited by prefix. */
+export function resolveModelPricing(modelId: string): ResolvedModelPricing {
+  const stripped = modelId.replace(/\[1m\]/gi, '');
+  const canonicalModelId = resolveModelAlias(stripped);
+  const imported = importedTable[canonicalModelId];
+  if (imported) return { ...imported, modelId, canonicalModelId };
 
-  if (PRICING_TABLE[modelId]) return PRICING_TABLE[modelId];
-  const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, modelId);
-  if (staticPrefix) return PRICING_TABLE[staticPrefix];
+  const exactOverride = overrideTable[canonicalModelId];
+  if (exactOverride) {
+    return {
+      modelId,
+      canonicalModelId,
+      pricing: exactOverride,
+      provenance: {
+        source: 'catalog',
+        match: 'exact',
+        matchedModelId: canonicalModelId,
+        inheritedByPrefix: false,
+      },
+    };
+  }
 
-  return null;
+  const exactStatic = PRICING_TABLE[canonicalModelId];
+  if (exactStatic) {
+    return {
+      modelId,
+      canonicalModelId,
+      pricing: exactStatic,
+      provenance: {
+        source: 'static',
+        match: 'exact',
+        matchedModelId: canonicalModelId,
+        inheritedByPrefix: false,
+      },
+    };
+  }
+
+  const overridePrefix = findLongestPrefix(overrideSortedKeys, canonicalModelId);
+  if (overridePrefix) {
+    return {
+      modelId,
+      canonicalModelId,
+      pricing: overrideTable[overridePrefix],
+      provenance: {
+        source: 'catalog',
+        match: 'prefix',
+        matchedModelId: overridePrefix,
+        inheritedByPrefix: true,
+      },
+    };
+  }
+
+  const staticPrefix = findLongestPrefix(STATIC_SORTED_KEYS, canonicalModelId);
+  if (staticPrefix) {
+    return {
+      modelId,
+      canonicalModelId,
+      pricing: PRICING_TABLE[staticPrefix],
+      provenance: {
+        source: 'static',
+        match: 'prefix',
+        matchedModelId: staticPrefix,
+        inheritedByPrefix: true,
+      },
+    };
+  }
+
+  return {
+    modelId,
+    canonicalModelId,
+    pricing: null,
+    provenance: { source: 'none', match: 'none', inheritedByPrefix: false },
+  };
 }
 
 /**
@@ -609,13 +714,7 @@ function lookupPricing(modelId: string): ModelPricing | null {
  */
 export function getModelPricing(modelId: string): ModelPricing | null {
   if (!modelId) return null;
-  const stripped = modelId.replace(/\[1m\]/gi, '');
-
-  const direct = lookupPricing(stripped);
-  if (direct) return direct;
-
-  const normalized = stripped.trim().toLowerCase();
-  return normalized === stripped ? null : lookupPricing(normalized);
+  return resolveModelPricing(modelId).pricing;
 }
 
 /**

@@ -5,6 +5,23 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-08-18
+
+- Shared library: async session previews use bounded concurrency, yield between reads, batch Codex/OpenCode labels into at most one database subprocess per provider, and include OpenCode's native all-session enumeration
+- Shared library: collectors and monitors can replace polling loops with debounced subscriptions carrying old/new fingerprints; filesystem watches retain catch-up polling for filesystems that drop events
+- Shared library: observed-session parsing is fingerprint-cached, unchanged collections perform no content reads, and structured size/mtime fingerprint fields replace downstream string parsing
+- Shared library: cooperative collector scheduling bounds read bursts, while cached observations refresh activity and observation time without presenting cached usage/model data as newly read
+- Shared library: provider construction is I/O-free and fail-soft; `createSessionProviders()` returns usable providers plus structured diagnostics instead of letting an environmental failure stop the host
+- Shared library: repeated provider degradations are coalesced so diagnostic state stays bounded in a long-lived sidecar
+- Shared library: `findSessionById()` resolves sessions through each provider's native filename/database layout and returns `null` for misses
+- Shared library: resolved context windows and pricing can be exported/imported across Node and browser realms, aliases are registerable, and prefix inheritance is explicit in provenance
+- Shared library: diagnostics carry severity and phase, provider-id sets are exported as values, and account/quota results are guaranteed to validate against their same-release schemas
+- Shared library: every documented subpath resolves in Vite and legacy TypeScript Node resolution without consumer aliases or custom paths
+- Shared library: Codex history retains epoch-second `ts`, adds `tsMs`, and automatically scales its tail read to the requested limit
+- Shared library: observation-only projections report transcripts as non-resumable without post-processing
+- Shared library: missing `sqlite3` is attached to affected Codex/OpenCode results as a diagnostic instead of looking like an empty workspace
+- Shared library: quota services skip work while no matching account exists, and `onAccountsChanged()` lets hosts react immediately to login/logout changes
+
 ## [0.24.5] - 2026-08-18
 
 - CLI: `sidekick history` shows your most recent Codex prompts across every workspace, newest first — a quick answer to "what was I working on?". `--limit` bounds the count, `--path <id-or-prefix>` prints the session's transcript file path for piping into `less` or `jq`, and `--json` emits full ids and timestamps. Codex-only for now

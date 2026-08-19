@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { SessionProviderBase } from './providers/types';
-import { listSessionPreviews, readSessionPreview } from './sessionPreviews';
+import {
+  listSessionPreviews,
+  listSessionPreviewsAsync,
+  readSessionPreview,
+} from './sessionPreviews';
 
 const temporaryDirectories: string[] = [];
 
@@ -233,5 +237,127 @@ describe('listSessionPreviews', () => {
     const previews = listSessionPreviews([provider]);
 
     expect(previews.map((preview) => preview.filePath)).toEqual([stays]);
+  });
+});
+
+describe('listSessionPreviewsAsync', () => {
+  it('bounds 50 previews and batches label work once per provider', async () => {
+    const dir = makeTempDir();
+    const providerIds = ['claude-code', 'opencode', 'codex'] as const;
+    const batchCalls: Record<string, number> = {};
+    const providers = providerIds.map((id, providerIndex) => {
+      const files = Array.from({ length: 20 }, (_, index) =>
+        writeSession(
+          dir,
+          `${id}-${index}.jsonl`,
+          [
+            JSON.stringify({
+              timestamp: `2026-08-18T10:${String(index).padStart(2, '0')}:00.000Z`,
+              cwd: `/workspace/${id}`,
+            }),
+          ],
+          new Date(Date.now() - (providerIndex * 20 + index) * 1000),
+        ),
+      );
+      return {
+        id,
+        displayName: id,
+        listSessionFilesAsync: async () =>
+          Promise.all(
+            files.map(async (filePath) => {
+              const stat = await fs.promises.stat(filePath);
+              return {
+                path: filePath,
+                mtime: stat.mtime,
+                sizeBytes: stat.size,
+                sessionId: path.basename(filePath, '.jsonl'),
+              };
+            }),
+          ),
+        extractSessionLabelsAsync: async (sessionPaths: readonly string[]) => {
+          batchCalls[id] = (batchCalls[id] ?? 0) + 1;
+          return new Map(sessionPaths.map((sessionPath) => [sessionPath, `label-${id}`]));
+        },
+        getSessionId: (sessionPath: string) => path.basename(sessionPath, '.jsonl'),
+      } as unknown as SessionProviderBase;
+    });
+    const yields = vi.fn();
+
+    const result = await listSessionPreviewsAsync(providers, {
+      limit: 50,
+      concurrency: 3,
+      yieldBetweenReads: yields,
+    });
+
+    expect(result.previews).toHaveLength(50);
+    expect(result.diagnostics).toEqual([]);
+    expect(batchCalls).toEqual({ 'claude-code': 1, opencode: 1, codex: 1 });
+    expect(yields).toHaveBeenCalledTimes(50);
+  });
+
+  it('returns provider degradation in the async result envelope', async () => {
+    const provider = {
+      id: 'codex',
+      displayName: 'Codex',
+      listSessionFilesAsync: async () => [],
+      getLastOperationStatus: () => ({
+        operation: 'listSessionFilesAsync',
+        usable: true,
+        degraded: true,
+        runtimeStatus: { available: false, kind: 'sqlite_missing' },
+        diagnostics: [
+          {
+            providerId: 'codex',
+            kind: 'sqlite_missing',
+            severity: 'warning',
+            phase: 'query',
+            message: 'sqlite3 is unavailable; file fallback is active.',
+          },
+        ],
+      }),
+    } as unknown as SessionProviderBase;
+
+    const result = await listSessionPreviewsAsync([provider]);
+
+    expect(result.previews).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ providerId: 'codex', kind: 'sqlite_missing' }),
+    ]);
+  });
+
+  it('keeps a failed batch label read fail-soft without synchronous retries', async () => {
+    const dir = makeTempDir();
+    const filePath = writeSession(dir, 'session.jsonl', ['{}']);
+    const syncLabel = vi.fn(() => 'must not run');
+    const provider = {
+      id: 'codex',
+      displayName: 'Codex',
+      listSessionFilesAsync: async () => {
+        const stat = await fs.promises.stat(filePath);
+        return [
+          {
+            path: filePath,
+            mtime: stat.mtime,
+            sizeBytes: stat.size,
+            sessionId: 'session',
+          },
+        ];
+      },
+      extractSessionLabelsAsync: async () => {
+        throw new Error('sqlite unavailable');
+      },
+      extractSessionLabel: syncLabel,
+      getSessionId: () => 'session',
+    } as unknown as SessionProviderBase;
+
+    const result = await listSessionPreviewsAsync([provider]);
+
+    expect(result.previews).toEqual([
+      expect.objectContaining({ sessionId: 'session', firstUserPrompt: null }),
+    ]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ providerId: 'codex', kind: 'read_failed', phase: 'read' }),
+    ]);
+    expect(syncLabel).not.toHaveBeenCalled();
   });
 });

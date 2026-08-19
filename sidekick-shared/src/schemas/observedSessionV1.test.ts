@@ -164,6 +164,20 @@ describe('observed-session v1 public contracts', () => {
     }
   });
 
+  it('projects observation-only capabilities without resumability', () => {
+    const adapter = createProviderSessionAdapterV1(new ClaudeCodeProvider(), {
+      observationOnly: true,
+    });
+    try {
+      expect(adapter.capabilities.resume).toMatchObject({
+        value: false,
+        provenance: 'inferred',
+      });
+    } finally {
+      adapter.dispose();
+    }
+  });
+
   it('validates the checked-in JSON fixtures for every serializable V1 shape', () => {
     const fixture = JSON.parse(
       readFileSync(path.join(__dirname, '..', 'fixtures', 'observed-session-v1.json'), 'utf8'),

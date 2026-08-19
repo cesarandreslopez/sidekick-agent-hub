@@ -11,6 +11,7 @@ import type { Disposable } from './quotaPoller';
 import type { QuotaState } from './quota';
 import type { SessionReader } from './providers/types';
 import type { ProviderQuotaState } from './providerQuota';
+import { onAccountsChanged, type AccountsChangedEvent } from './accountChanges';
 
 const DEFAULT_DISCOVERY_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_LOCAL_SCAN_CACHE_MS = 5 * 60_000;
@@ -37,6 +38,7 @@ export interface CodexQuotaWatcherOptions {
   workspaceId?: string;
   /** Override the history append function (used by tests). Default: `appendQuotaHistorySample`. */
   appendHistorySample?: HistoryAppender;
+  subscribeAccountsChanged?: (listener: (event: AccountsChangedEvent) => void) => Disposable;
 }
 
 function accountEmail(account: SavedAccountProfile | null): string | undefined {
@@ -92,6 +94,9 @@ export class CodexQuotaWatcher implements Disposable {
   private readonly now: () => number;
   private readonly workspaceId: string | undefined;
   private readonly appendHistorySample: HistoryAppender;
+  private readonly subscribeAccountsChanged: NonNullable<
+    CodexQuotaWatcherOptions['subscribeAccountsChanged']
+  >;
   private readonly listeners: Array<(state: ProviderQuotaState<'codex'>) => void> = [];
 
   private discoveryTimer: ReturnType<typeof setInterval> | undefined;
@@ -103,6 +108,7 @@ export class CodexQuotaWatcher implements Disposable {
   private lastLocalScanAt = Number.NEGATIVE_INFINITY;
   private lastLocalScanState: ProviderQuotaState<'codex'> | null = null;
   private running = false;
+  private accountSubscription: Disposable | null = null;
 
   constructor(workspacePath: string, options: CodexQuotaWatcherOptions = {}) {
     this.workspacePath = workspacePath;
@@ -127,15 +133,14 @@ export class CodexQuotaWatcher implements Disposable {
     this.now = options.now ?? Date.now;
     this.workspaceId = options.workspaceId;
     this.appendHistorySample = options.appendHistorySample ?? appendQuotaHistorySample;
+    this.subscribeAccountsChanged = options.subscribeAccountsChanged ?? onAccountsChanged;
   }
 
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.refreshActiveSession();
-    this.discoveryTimer = setInterval(() => {
-      this.refreshActiveSession();
-    }, this.discoveryPollIntervalMs);
+    this.accountSubscription ??= this.subscribeAccountsChanged(() => this.handleAccountsChanged());
+    this.handleAccountsChanged();
   }
 
   stop(): void {
@@ -145,6 +150,8 @@ export class CodexQuotaWatcher implements Disposable {
       clearInterval(this.discoveryTimer);
       this.discoveryTimer = undefined;
     }
+    this.accountSubscription?.dispose();
+    this.accountSubscription = null;
     this.teardownActiveSession();
   }
 
@@ -168,16 +175,41 @@ export class CodexQuotaWatcher implements Disposable {
   }
 
   refresh(): void {
-    this.refreshActiveSession();
+    this.handleAccountsChanged();
   }
 
-  private refreshActiveSession(): void {
+  private handleAccountsChanged(): void {
+    if (!this.running) return;
+    const account = this.safeGetActiveAccount();
+    if (!account) {
+      if (this.discoveryTimer) {
+        clearInterval(this.discoveryTimer);
+        this.discoveryTimer = undefined;
+      }
+      this.teardownActiveSession();
+      this.emitState(makeUnavailableState(null, 'No Codex account configured'));
+      return;
+    }
+    if (!this.discoveryTimer) {
+      this.discoveryTimer = setInterval(() => {
+        this.refreshActiveSession();
+      }, this.discoveryPollIntervalMs);
+      this.discoveryTimer.unref?.();
+    }
+    this.refreshActiveSession(account);
+  }
+
+  private refreshActiveSession(account = this.safeGetActiveAccount()): void {
+    if (!account) {
+      this.handleAccountsChanged();
+      return;
+    }
     const provider = this.getProvider();
     const nextSessionPath = provider.findActiveSession(this.workspacePath);
 
     if (!nextSessionPath) {
       this.teardownActiveSession();
-      this.emitCachedOrUnavailable();
+      this.emitCachedOrUnavailable(account);
       return;
     }
 
@@ -186,7 +218,7 @@ export class CodexQuotaWatcher implements Disposable {
       return;
     }
 
-    this.ingestSessionUpdate('readNew');
+    this.ingestSessionUpdate('readNew', account);
   }
 
   private attachToSession(nextSessionPath: string): void {
@@ -206,14 +238,32 @@ export class CodexQuotaWatcher implements Disposable {
         }
         this.refreshActiveSession();
       });
+      if (typeof this.fileWatcher.on === 'function') {
+        this.fileWatcher.on('error', () => {
+          try {
+            this.fileWatcher?.close();
+          } catch {
+            // Discovery polling remains active.
+          }
+          this.fileWatcher = null;
+        });
+      }
     } catch {
       this.emitCachedOrUnavailable();
     }
   }
 
-  private ingestSessionUpdate(mode: 'readAll' | 'readNew'): void {
+  private ingestSessionUpdate(
+    mode: 'readAll' | 'readNew',
+    knownAccount?: SavedAccountProfile,
+  ): void {
+    const account = knownAccount ?? this.safeGetActiveAccount();
+    if (!account) {
+      this.handleAccountsChanged();
+      return;
+    }
     if (!this.provider || !this.reader) {
-      this.emitCachedOrUnavailable();
+      this.emitCachedOrUnavailable(account);
       return;
     }
 
@@ -230,47 +280,44 @@ export class CodexQuotaWatcher implements Disposable {
 
     const liveQuota = quotaFromCodexRateLimits(this.provider.getLastRateLimits(), 'session');
     if (!liveQuota) {
-      this.emitCachedOrUnavailable();
+      this.emitCachedOrUnavailable(account);
       return;
     }
 
-    const account = this.getActiveAccount();
-    const cached = account ? this.readSnapshot('codex', account.id) : null;
+    const cached = this.readSnapshot('codex', account.id);
     const liveQuotaWithResetCredits: QuotaState = {
       ...liveQuota,
       resetCredits: liveQuota.resetCredits ?? cached?.resetCredits,
     };
-    if (account) {
-      this.writeSnapshot('codex', account.id, liveQuotaWithResetCredits);
-      if (this.workspaceId) {
-        const sample: QuotaHistorySample = {
-          timestamp: liveQuotaWithResetCredits.capturedAt ?? new Date().toISOString(),
-          runtimeProvider: 'codex',
-          providerId: account.id,
-          workspaceId: this.workspaceId,
-          fiveHour: {
-            utilization: liveQuotaWithResetCredits.fiveHour.utilization,
-            resetsAt: liveQuotaWithResetCredits.fiveHour.resetsAt,
-          },
-          sevenDay: {
-            utilization: liveQuotaWithResetCredits.sevenDay.utilization,
-            resetsAt: liveQuotaWithResetCredits.sevenDay.resetsAt,
-          },
-          available: liveQuotaWithResetCredits.available,
-          error: liveQuotaWithResetCredits.error,
-          source: liveQuotaWithResetCredits.source,
-          stale: liveQuotaWithResetCredits.stale,
-        };
-        try {
-          const result = this.appendHistorySample(sample);
-          if (result && typeof (result as Promise<void>).catch === 'function') {
-            (result as Promise<void>).catch(() => {
-              // History append must never break the live emission path.
-            });
-          }
-        } catch {
-          // Synchronous errors swallowed for the same reason.
+    this.writeSnapshot('codex', account.id, liveQuotaWithResetCredits);
+    if (this.workspaceId) {
+      const sample: QuotaHistorySample = {
+        timestamp: liveQuotaWithResetCredits.capturedAt ?? new Date().toISOString(),
+        runtimeProvider: 'codex',
+        providerId: account.id,
+        workspaceId: this.workspaceId,
+        fiveHour: {
+          utilization: liveQuotaWithResetCredits.fiveHour.utilization,
+          resetsAt: liveQuotaWithResetCredits.fiveHour.resetsAt,
+        },
+        sevenDay: {
+          utilization: liveQuotaWithResetCredits.sevenDay.utilization,
+          resetsAt: liveQuotaWithResetCredits.sevenDay.resetsAt,
+        },
+        available: liveQuotaWithResetCredits.available,
+        error: liveQuotaWithResetCredits.error,
+        source: liveQuotaWithResetCredits.source,
+        stale: liveQuotaWithResetCredits.stale,
+      };
+      try {
+        const result = this.appendHistorySample(sample);
+        if (result && typeof (result as Promise<void>).catch === 'function') {
+          (result as Promise<void>).catch(() => {
+            // History append must never break the live emission path.
+          });
         }
+      } catch {
+        // Synchronous errors swallowed for the same reason.
       }
     }
 
@@ -286,8 +333,12 @@ export class CodexQuotaWatcher implements Disposable {
     );
   }
 
-  private emitCachedOrUnavailable(): void {
-    const account = this.getActiveAccount();
+  private emitCachedOrUnavailable(knownAccount?: SavedAccountProfile): void {
+    const account = knownAccount ?? this.safeGetActiveAccount();
+    if (!account) {
+      this.emitState(makeUnavailableState(null, 'No Codex account configured'));
+      return;
+    }
     const scanNow = this.now();
     if (scanNow - this.lastLocalScanAt < this.localScanCacheMs) {
       if (this.lastLocalScanState) {
@@ -320,7 +371,7 @@ export class CodexQuotaWatcher implements Disposable {
       }
     }
 
-    const cached = account ? this.readSnapshot('codex', account.id) : null;
+    const cached = this.readSnapshot('codex', account.id);
     if (cached) {
       this.emitState(
         enrichQuotaState(
@@ -361,6 +412,14 @@ export class CodexQuotaWatcher implements Disposable {
       this.provider = this.providerFactory();
     }
     return this.provider;
+  }
+
+  private safeGetActiveAccount(): SavedAccountProfile | null {
+    try {
+      return this.getActiveAccount();
+    } catch {
+      return null;
+    }
   }
 
   private teardownActiveSession(): void {

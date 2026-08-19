@@ -518,7 +518,7 @@ const parser = new JsonlParser(
 parser.processChunk(rawData);
 ```
 
-The boundary schemas — `sessionEventSchema` plus the quota, account-status, and quota-history schemas — are also importable fs-free from `sidekick-shared/schemas`, which keeps Zod out of bundles that only need the pure math/formatting helpers. `extractSessionEvents()` from the same subpath unwraps Claude Code `progress`-wrapped events into canonical `SessionEvent[]`.
+The boundary schemas — `sessionEventSchema` plus the quota, account-status, account-management, and quota-history schemas — are also importable fs-free from `sidekick-shared/schemas`, which keeps Zod out of bundles that only need the pure math/formatting helpers. Account and quota APIs are guaranteed to return values valid against the schemas exported in the same release, so consumers do not need to parse those library results again. Additive account or quota fields are added to the matching exported schema in the same release. `extractSessionEvents()` from the same subpath unwraps Claude Code `progress`-wrapped events into canonical `SessionEvent[]`.
 
 ### Tail raw JSONL events incrementally
 

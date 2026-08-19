@@ -55,9 +55,9 @@ describe('readCodexHistory', () => {
     ]);
 
     expect(readCodexHistory()).toEqual([
-      { sessionId: 'session-c', ts: 1_700_000_003, text: 'third prompt' },
-      { sessionId: 'session-b', ts: 1_700_000_002, text: 'second prompt' },
-      { sessionId: 'session-a', ts: 1_700_000_001, text: 'first prompt' },
+      { sessionId: 'session-c', ts: 1_700_000_003, tsMs: 1_700_000_003_000, text: 'third prompt' },
+      { sessionId: 'session-b', ts: 1_700_000_002, tsMs: 1_700_000_002_000, text: 'second prompt' },
+      { sessionId: 'session-a', ts: 1_700_000_001, tsMs: 1_700_000_001_000, text: 'first prompt' },
     ]);
   });
 
@@ -69,7 +69,7 @@ describe('readCodexHistory', () => {
     ]);
 
     expect(readCodexHistory({ limit: 1 })).toEqual([
-      { sessionId: 'session-c', ts: 3, text: 'three' },
+      { sessionId: 'session-c', ts: 3, tsMs: 3000, text: 'three' },
     ]);
     expect(readCodexHistory({ limit: 0 })).toEqual([]);
   });
@@ -85,7 +85,7 @@ describe('readCodexHistory', () => {
     fs.writeFileSync(path.join(otherHome, 'history.jsonl'), entryLine('other', 9, 'hi') + '\n');
 
     expect(readCodexHistory({ codexHome: otherHome })).toEqual([
-      { sessionId: 'other', ts: 9, text: 'hi' },
+      { sessionId: 'other', ts: 9, tsMs: 9000, text: 'hi' },
     ]);
   });
 
@@ -99,7 +99,9 @@ describe('readCodexHistory', () => {
       '{"truncated": ',
     ]);
 
-    expect(readCodexHistory()).toEqual([{ sessionId: 'session-ok', ts: 5, text: 'valid' }]);
+    expect(readCodexHistory()).toEqual([
+      { sessionId: 'session-ok', ts: 5, tsMs: 5000, text: 'valid' },
+    ]);
   });
 
   it('drops the partial first line of a bounded tail', () => {
@@ -115,8 +117,8 @@ describe('readCodexHistory', () => {
     const tailBytes = totalBytes - Math.floor(lines[0].length / 2);
 
     expect(readCodexHistory({ maxTailBytes: tailBytes })).toEqual([
-      { sessionId: 'session-c', ts: 3, text: 'kept too' },
-      { sessionId: 'session-b', ts: 2, text: 'kept' },
+      { sessionId: 'session-c', ts: 3, tsMs: 3000, text: 'kept too' },
+      { sessionId: 'session-b', ts: 2, tsMs: 2000, text: 'kept' },
     ]);
   });
 
@@ -134,6 +136,15 @@ describe('readCodexHistory', () => {
 
     const entries = readCodexHistory({ maxTailBytes: tailBytes });
 
-    expect(entries).toEqual([{ sessionId: 'session-b', ts: 2, text: 'ascii entry' }]);
+    expect(entries).toEqual([{ sessionId: 'session-b', ts: 2, tsMs: 2000, text: 'ascii entry' }]);
+  });
+
+  it('sizes the default tail from a large limit', () => {
+    const longText = 'x'.repeat(3000);
+    writeHistory(
+      Array.from({ length: 220 }, (_, index) => entryLine(`session-${index}`, index, longText)),
+    );
+
+    expect(readCodexHistory({ limit: 200 })).toHaveLength(200);
   });
 });

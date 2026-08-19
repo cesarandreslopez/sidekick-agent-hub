@@ -2,6 +2,7 @@ import type { SessionEvent } from './sessionEvent';
 import type { ProviderId, SessionProviderBase } from '../providers/types';
 import { projectSessionTranscript } from '../transcript';
 import type { CanonicalTranscriptUsageTotals } from '../transcript';
+import { detectSessionActivity } from '../parsers/sessionActivityDetector';
 
 export type ObservationProvenanceV1 = 'reported' | 'estimated' | 'inferred';
 
@@ -47,6 +48,8 @@ export interface ObservedAgentSessionV1 {
     costUsd: ObservedValueV1<number | null>;
   };
   pendingUserRequest: PendingUserRequestV1 | null;
+  /** When model/usage content was last read; unchanged on collector cache hits. */
+  contentObservedAt?: string;
   observedAt: string;
 }
 
@@ -191,13 +194,16 @@ function waitingToolPrompt(input: unknown, toolName?: string): string | null {
   return null;
 }
 
-function providerCapabilities(provider: ProviderId): ProviderCapabilitiesV1 {
+function providerCapabilities(
+  provider: ProviderId,
+  observationOnly: boolean,
+): ProviderCapabilitiesV1 {
   const refs: SessionEvidenceRefV1[] = [];
   const known = <T>(value: T) => observed(value, 'inferred', 1, refs);
   return {
     schemaVersion: 1,
     provider,
-    resume: known(true),
+    resume: known(!observationOnly),
     forkLineage: known(provider !== 'opencode'),
     quotaSource: known(
       provider === 'claude-code' ? 'api' : provider === 'codex' ? 'mixed' : 'none',
@@ -206,15 +212,20 @@ function providerCapabilities(provider: ProviderId): ProviderCapabilitiesV1 {
   };
 }
 
+export interface ProviderSessionAdapterV1Options {
+  pollIntervalMs?: number;
+  observationOnly?: boolean;
+}
+
 export function createProviderSessionAdapterV1(
   sessionProvider: SessionProviderBase,
-  options: { pollIntervalMs?: number } = {},
+  options: ProviderSessionAdapterV1Options = {},
 ): ProviderSessionAdapterV1 {
   const pollIntervalMs = options.pollIntervalMs ?? 2_000;
   const adapter: ProviderSessionAdapterV1 = {
     schemaVersion: 1,
     provider: sessionProvider.id,
-    capabilities: providerCapabilities(sessionProvider.id),
+    capabilities: providerCapabilities(sessionProvider.id, options.observationOnly === true),
     async discover(cwd) {
       return Promise.all(
         sessionProvider.findAllSessions(cwd).map((sessionPath) => adapter.read(sessionPath, cwd)),
@@ -233,12 +244,17 @@ export function createProviderSessionAdapterV1(
         Object.entries(stats.modelUsage).sort(
           (left, right) => right[1].calls - left[1].calls,
         )[0]?.[0] ?? null;
-      const metadata = sessionProvider.getSessionMetadata?.(sessionPath);
-      const modifiedAt = metadata?.mtime.getTime() ?? Date.parse(stats.endTime);
-      const recent = Number.isFinite(modifiedAt) && Date.now() - modifiedAt < 2 * 60_000;
+      const activityResult = detectSessionActivity(sessionPath);
+      const activity =
+        activityResult.state === 'ongoing'
+          ? 'active'
+          : activityResult.state === 'stale'
+            ? 'idle'
+            : 'ended';
       const allCostsReported =
         transcript.usage.costs.length > 0 &&
         transcript.usage.costs.every((cost) => cost.source === 'provider-reported');
+      const observedAt = new Date().toISOString();
       return {
         schemaVersion: 1,
         identity: {
@@ -248,7 +264,7 @@ export function createProviderSessionAdapterV1(
         },
         cwd: observed(cwd, 'inferred', cwd ? 0.95 : 0.4, refs),
         model: observed(model, model ? 'reported' : 'inferred', model ? 1 : 0.2, refs),
-        activity: observed(recent ? 'active' : 'idle', 'inferred', 0.8, refs),
+        activity: observed(activity, 'inferred', 0.85, refs),
         usage: {
           inputTokens: observed(stats.tokens.input, 'reported', 1, refs),
           outputTokens: observed(stats.tokens.output, 'reported', 1, refs),
@@ -272,7 +288,8 @@ export function createProviderSessionAdapterV1(
           sessionPath,
           events,
         ),
-        observedAt: new Date().toISOString(),
+        contentObservedAt: observedAt,
+        observedAt,
       } satisfies ObservedAgentSessionV1;
     },
     watch(sessionPath, listener, cwd) {

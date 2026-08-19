@@ -5,6 +5,41 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-08-18
+
+### Added
+
+- `listSessionPreviewsAsync()` and `readSessionPreviewAsync()` provide bounded-concurrency, cooperative session preview reads while preserving the synchronous APIs and their signatures
+- Async preview labeling batches Codex and OpenCode database work into at most one `sqlite3` subprocess per provider per listing; when `sqlite3` is absent, the same bounded file-scan fallback remains available
+- `OpenCodeProvider.listAllSessionFiles()` completes native preview enumeration across Claude Code, Codex, and OpenCode
+- `ObservedSessionCollector.subscribe()` and `SessionMonitor.subscribe()` emit debounced, coalesced session changes with the previous and current fingerprints, backed by filesystem watching plus a documented catch-up poll for unreliable filesystems
+- `createSessionProviders({ onDiagnostic })` constructs every usable provider independently and reports unavailable providers without aborting the host
+- `SessionProviderBase.findSessionById()` has provider-native implementations: filename lookup for Claude Code and Codex, and a database lookup with a bounded file-scan fallback for OpenCode
+- `exportResolvedModelCatalog()` and `importResolvedModelCatalog()` transfer serializable context-window and pricing resolutions between Node and browser realms without private hooks
+- `registerModelAlias()` lets hosts resolve short model names to canonical ids, and catalog provenance marks prefix-inherited context and pricing matches so callers can reject them
+- Stable provider-id arrays are exported as runtime values alongside their derived TypeScript unions
+- `onAccountsChanged()` reports process-local and filesystem-observed login, logout, and account-switch changes without account-state polling in each host
+
+### Changed
+
+- Provider constructors are environment-independent and perform no filesystem, configuration, database, or binary probing; environmental failures are deferred to first use and returned as structured diagnostics
+- Repeated identical provider degradations are coalesced in the factory diagnostic result, keeping first-use reporting bounded in long-lived hosts
+- `ObservedSessionCollector.collect()` caches parsed sessions by fingerprint, so a second collection over unchanged files performs no content reads
+- Observed sessions expose `fingerprintParts: { sizeBytes, mtimeMs }` alongside the compatible opaque fingerprint string
+- Collector reads accept bounded-concurrency and cooperative-yield hooks; cached observations refresh `observedAt` and activity state while retaining `contentObservedAt` to make the age of cached usage/model data explicit
+- `ObservedSessionDiagnostic` now includes `severity` and `phase` while retaining every existing `kind` value
+- Account and quota entry points guarantee results that validate against the same-release exported schemas, including additive schema fields, and their contract tests enforce the boundary
+- Every documented package subpath now declares explicit `types`, `import`, `require`, and `default` export conditions and resolves in both Vite and TypeScript's legacy `moduleResolution: node` mode without aliases
+- `readCodexHistory()` retains raw epoch-second `ts`, adds normalized `tsMs`, and sizes its tail read from `limit` unless an explicit byte bound is supplied
+- Observed-session projection accepts `observationOnly: true`, which reports transcripts as read-only observations with `capabilities.resume` disabled
+- `QuotaPoller`, `MultiProviderQuotaService`, and `CodexQuotaWatcher` stay dormant when their account is absent and wake on account changes instead of issuing empty polls
+
+### Fixed
+
+- Codex and OpenCode database-backed operations attach an availability diagnostic when the external `sqlite3` binary is missing, so an unavailable runtime is distinguishable from an empty workspace
+- A wrong session id resolves to `null` through every provider instead of surfacing discovery or environment errors
+- Exact model pricing/context entries are considered before prefix inheritance across all sources, and prefix-only matches are explicit in provenance rather than silently trusted as exact
+
 ## [0.24.5] - 2026-08-18
 
 ### Added

@@ -21,13 +21,13 @@ import type {
   BeginAccountLoginResult,
   ListAllAccountsResult,
 } from '../accountManager';
+import { ACCOUNT_PROVIDER_IDS } from '../providerIds';
 
 // ── AccountProviderId ──
 
-export const accountProviderIdSchema = z.enum([
-  'claude-code',
-  'codex',
-]) satisfies z.ZodType<AccountProviderId>;
+export const accountProviderIdSchema = z.enum(
+  ACCOUNT_PROVIDER_IDS,
+) satisfies z.ZodType<AccountProviderId>;
 
 // ── AccountManagerResult ──
 

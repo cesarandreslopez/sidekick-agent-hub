@@ -29,22 +29,42 @@ export { findCodexRolloutFile } from './providers/codex';
 export type { FindCodexRolloutFileOptions } from './providers/codex';
 export { readCodexHistory } from './parsers/codexHistory';
 export type { CodexHistoryEntry, ReadCodexHistoryOptions } from './parsers/codexHistory';
-export { listSessionPreviews, readSessionPreview } from './sessionPreviews';
+export {
+  listSessionPreviews,
+  listSessionPreviewsAsync,
+  readSessionPreview,
+  readSessionPreviewAsync,
+} from './sessionPreviews';
 export type {
+  AsyncSessionPreviewOptions,
+  ListSessionPreviewsAsyncOptions,
   ListSessionPreviewsOptions,
+  ReadSessionPreviewAsyncOptions,
   ReadSessionPreviewOptions,
   SessionPreview,
+  SessionPreviewListResult,
+  SessionPreviewReadResult,
 } from './sessionPreviews';
 export {
   ObservedSessionCollector,
   observedSessionSourceFromProvider,
   fileFingerprint,
+  fileFingerprintParts,
 } from './observedSessionCollector';
 export type {
+  KnownObservedSessionFingerprint,
+  ObservedSessionChange,
+  ObservedSessionChangeBatch,
+  ObservedSessionChangeType,
   ObservedSessionReference,
+  ObservedSessionFingerprintParts,
+  ObservedSessionSourceSubscribeOptions,
+  ObservedSessionSubscribeOptions,
   ObservedSessionCollectionSource,
   ProviderObservedSessionCollectionSource,
   ObservedSessionDiagnosticKind,
+  ObservedSessionDiagnosticPhase,
+  ObservedSessionDiagnosticSeverity,
   ObservedSessionDiagnostic,
   ObservedSessionCollection,
   ObservedSessionCollectorOptions,

@@ -19,7 +19,12 @@
  */
 
 import * as fs from 'fs';
-import type { ProviderId, SessionFileInfo, SessionProviderBase } from './providers/types';
+import type {
+  ProviderId,
+  SessionFileInfo,
+  SessionProviderBase,
+  SessionProviderDiagnostic,
+} from './providers/types';
 
 export interface SessionPreview {
   provider: ProviderId;
@@ -53,8 +58,33 @@ export interface ListSessionPreviewsOptions extends ReadSessionPreviewOptions {
   since?: Date | string;
 }
 
+export interface AsyncSessionPreviewOptions {
+  /** Maximum concurrent stat/read units (default 4, hard-capped at 16). */
+  concurrency?: number;
+  /** Cooperative scheduler hook; defaults to setImmediate. */
+  yieldBetweenReads?: () => Promise<void> | void;
+}
+
+export interface ReadSessionPreviewAsyncOptions
+  extends ReadSessionPreviewOptions, AsyncSessionPreviewOptions {}
+
+export interface ListSessionPreviewsAsyncOptions
+  extends ListSessionPreviewsOptions, AsyncSessionPreviewOptions {}
+
+export interface SessionPreviewReadResult {
+  preview: SessionPreview | null;
+  diagnostics: SessionProviderDiagnostic[];
+}
+
+export interface SessionPreviewListResult {
+  previews: SessionPreview[];
+  diagnostics: SessionProviderDiagnostic[];
+}
+
 const DEFAULT_PREFIX_BYTES = 16 * 1024;
 const DEFAULT_LIMIT = 50;
+const DEFAULT_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 16;
 
 /**
  * Reads a bounded preview of one session file. Returns `null` when the file is
@@ -66,15 +96,23 @@ export function readSessionPreview(
   sessionPath: string,
   options: ReadSessionPreviewOptions = {},
 ): SessionPreview | null {
-  let stats: fs.Stats;
+  let sizeBytes: number;
   let modifiedAt: string;
   try {
-    stats = fs.statSync(sessionPath);
+    const stats = fs.statSync(sessionPath);
+    sizeBytes = stats.size;
     // Inside the try: an out-of-range mtime RangeErrors on serialization,
     // and this function's contract is to degrade, not throw.
     modifiedAt = stats.mtime.toISOString();
   } catch {
-    return null;
+    const metadata = provider.getSessionMetadata?.(sessionPath);
+    if (!metadata) return null;
+    sizeBytes = 0;
+    try {
+      modifiedAt = metadata.mtime.toISOString();
+    } catch {
+      return null;
+    }
   }
 
   let firstUserPrompt: string | null = null;
@@ -98,10 +136,49 @@ export function readSessionPreview(
     sessionId,
     filePath: sessionPath,
     modifiedAt,
-    sizeBytes: stats.size,
+    sizeBytes,
     firstUserPrompt,
     firstTimestamp: prefix.firstTimestamp,
     workspacePath: prefix.workspacePath,
+  };
+}
+
+/** Event-loop-safe counterpart to readSessionPreview with per-call degradation status. */
+export async function readSessionPreviewAsync(
+  provider: SessionProviderBase,
+  sessionPath: string,
+  options: ReadSessionPreviewAsyncOptions = {},
+): Promise<SessionPreviewReadResult> {
+  let labels: Map<string, string | null>;
+  const diagnostics: SessionProviderDiagnostic[] = [];
+  try {
+    labels = await extractLabelsAsync(provider, [sessionPath], options);
+  } catch {
+    labels = new Map([[sessionPath, null]]);
+    diagnostics.push({
+      providerId: provider.id,
+      kind: 'read_failed',
+      severity: 'warning',
+      phase: 'read',
+      message: `${provider.id} session label was unavailable.`,
+    });
+  }
+  const info = await statSessionFileAsync(provider, sessionPath);
+  if (!info) {
+    return {
+      preview: null,
+      diagnostics: dedupeDiagnostics([...diagnostics, ...providerDiagnostics(provider)]),
+    };
+  }
+  const preview = await readSessionPreviewFromInfoAsync(
+    provider,
+    info,
+    labels.get(sessionPath) ?? null,
+    options,
+  );
+  return {
+    preview,
+    diagnostics: dedupeDiagnostics([...diagnostics, ...providerDiagnostics(provider)]),
   };
 }
 
@@ -133,6 +210,92 @@ export function listSessionPreviews(
     if (preview) previews.push(preview);
   }
   return previews;
+}
+
+/**
+ * Lists previews without blocking the caller loop on corpus-wide synchronous
+ * work. SQLite-backed providers perform at most one subprocess per call.
+ */
+export async function listSessionPreviewsAsync(
+  providers: SessionProviderBase[],
+  options: ListSessionPreviewsAsyncOptions = {},
+): Promise<SessionPreviewListResult> {
+  const limit = Math.max(0, options.limit ?? DEFAULT_LIMIT);
+  const sinceMs = resolveSinceMs(options.since);
+  const candidates: Array<{ provider: SessionProviderBase; info: SessionFileInfo }> = [];
+  const operationDiagnostics: SessionProviderDiagnostic[] = [];
+
+  await Promise.all(
+    providers.map(async (provider) => {
+      let files: SessionFileInfo[] = [];
+      try {
+        files = provider.listSessionFilesAsync
+          ? await provider.listSessionFilesAsync(options.workspacePath)
+          : await enumerateSessionFilesAsyncFallback(provider, options.workspacePath, options);
+      } catch {
+        files = [];
+        operationDiagnostics.push({
+          providerId: provider.id,
+          kind: 'read_failed',
+          severity: 'error',
+          phase: 'enumerate',
+          message: `${provider.id} session enumeration failed.`,
+        });
+      }
+      for (const info of files) {
+        const mtimeMs = info.mtime.getTime();
+        if (sinceMs !== null && mtimeMs <= sinceMs) continue;
+        candidates.push({ provider, info });
+      }
+    }),
+  );
+
+  candidates.sort((left, right) => right.info.mtime.getTime() - left.info.mtime.getTime());
+  const selected = candidates.slice(0, limit);
+  const labels = new Map<SessionProviderBase, Map<string, string | null>>();
+  await Promise.all(
+    providers.map(async (provider) => {
+      const paths = selected
+        .filter((item) => item.provider === provider)
+        .map((item) => item.info.path);
+      if (paths.length === 0) return;
+      try {
+        labels.set(provider, await extractLabelsAsync(provider, paths, options));
+      } catch {
+        labels.set(provider, new Map(paths.map((sessionPath) => [sessionPath, null])));
+        operationDiagnostics.push({
+          providerId: provider.id,
+          kind: 'read_failed',
+          severity: 'warning',
+          phase: 'read',
+          message: `${provider.id} session labels were unavailable.`,
+        });
+      }
+    }),
+  );
+
+  const previews = await mapWithConcurrency(
+    selected,
+    async ({ provider, info }) => {
+      const preview = await readSessionPreviewFromInfoAsync(
+        provider,
+        info,
+        labels.get(provider)?.get(info.path) ?? info.label ?? null,
+        options,
+      );
+      await yieldControl(options);
+      return preview;
+    },
+    concurrency(options),
+  );
+
+  return {
+    previews: previews.filter((preview): preview is SessionPreview => preview !== null),
+    diagnostics: dedupeDiagnostics([
+      ...operationDiagnostics,
+      ...providers.flatMap(providerDiagnostics),
+    ]),
+  };
 }
 
 function resolveSinceMs(since: Date | string | undefined): number | null {
@@ -179,6 +342,181 @@ function statSessionFile(sessionPath: string): SessionFileInfo | null {
   } catch {
     return null;
   }
+}
+
+async function statSessionFileAsync(
+  provider: SessionProviderBase,
+  sessionPath: string,
+): Promise<SessionFileInfo | null> {
+  try {
+    const stat = await fs.promises.stat(sessionPath);
+    return {
+      path: sessionPath,
+      mtime: stat.mtime,
+      sizeBytes: stat.size,
+      sessionId: safeSessionId(provider, sessionPath),
+    };
+  } catch {
+    let metadata: { mtime: Date } | null = null;
+    try {
+      metadata = provider.getSessionMetadata?.(sessionPath) ?? null;
+      if (!metadata && provider.getSessionMetadataAsync) {
+        metadata = await provider.getSessionMetadataAsync(sessionPath);
+      }
+    } catch {
+      metadata = null;
+    }
+    if (!metadata) return null;
+    return {
+      path: sessionPath,
+      mtime: metadata.mtime,
+      sizeBytes: 0,
+      sessionId: safeSessionId(provider, sessionPath),
+    };
+  }
+}
+
+async function extractLabelsAsync(
+  provider: SessionProviderBase,
+  sessionPaths: readonly string[],
+  options: AsyncSessionPreviewOptions,
+): Promise<Map<string, string | null>> {
+  if (provider.extractSessionLabelsAsync) {
+    // Callers deliberately do not retry through the synchronous provider path
+    // if this batch fails: DB-backed providers could otherwise spawn once per
+    // session after their single async batch failed.
+    return provider.extractSessionLabelsAsync(sessionPaths);
+  }
+  const values = new Map<string, string | null>();
+  for (const sessionPath of sessionPaths) {
+    values.set(sessionPath, await extractLabelWithYield(provider, sessionPath, options));
+  }
+  return values;
+}
+
+async function enumerateSessionFilesAsyncFallback(
+  provider: SessionProviderBase,
+  workspacePath: string | undefined,
+  options: AsyncSessionPreviewOptions,
+): Promise<SessionFileInfo[]> {
+  await yieldControl(options);
+  const paths = workspacePath
+    ? provider.findAllSessions(workspacePath)
+    : provider.listAllSessionFiles
+      ? provider.listAllSessionFiles().map((item) => item.path)
+      : provider
+          .getAllProjectFolders()
+          .flatMap((folder) => provider.findSessionsInDirectory(folder.dir));
+  return (
+    await mapWithConcurrency(
+      [...new Set(paths)],
+      async (sessionPath) => {
+        const info = await statSessionFileAsync(provider, sessionPath);
+        await yieldControl(options);
+        return info;
+      },
+      concurrency(options),
+    )
+  ).filter((item): item is SessionFileInfo => item !== null);
+}
+
+async function readSessionPreviewFromInfoAsync(
+  provider: SessionProviderBase,
+  info: SessionFileInfo,
+  firstUserPrompt: string | null,
+  options: ReadSessionPreviewAsyncOptions,
+): Promise<SessionPreview | null> {
+  let modifiedAt: string;
+  try {
+    modifiedAt = info.mtime.toISOString();
+  } catch {
+    return null;
+  }
+  const prefix = await scanPrefixAsync(info.path, options.maxPrefixBytes ?? DEFAULT_PREFIX_BYTES);
+  return {
+    provider: provider.id,
+    sessionId: info.sessionId ?? safeSessionId(provider, info.path),
+    filePath: info.path,
+    modifiedAt,
+    sizeBytes: info.sizeBytes ?? 0,
+    firstUserPrompt,
+    firstTimestamp: prefix.firstTimestamp ?? info.createdAt?.toISOString() ?? null,
+    workspacePath: prefix.workspacePath ?? info.workspacePath ?? null,
+  };
+}
+
+async function extractLabelWithYield(
+  provider: SessionProviderBase,
+  sessionPath: string,
+  options: AsyncSessionPreviewOptions,
+): Promise<string | null> {
+  await yieldControl(options);
+  try {
+    return provider.extractSessionLabel(sessionPath);
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionId(provider: SessionProviderBase, sessionPath: string): string {
+  try {
+    return provider.getSessionId(sessionPath);
+  } catch {
+    return '';
+  }
+}
+
+function concurrency(options: AsyncSessionPreviewOptions): number {
+  const requested = options.concurrency ?? DEFAULT_CONCURRENCY;
+  if (!Number.isFinite(requested)) return DEFAULT_CONCURRENCY;
+  return Math.min(MAX_CONCURRENCY, Math.max(1, Math.floor(requested)));
+}
+
+async function yieldControl(options: AsyncSessionPreviewOptions): Promise<void> {
+  if (options.yieldBetweenReads) {
+    await options.yieldBetweenReads();
+    return;
+  }
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+async function mapWithConcurrency<A, B>(
+  values: readonly A[],
+  mapper: (value: A) => Promise<B>,
+  maxConcurrency: number,
+): Promise<B[]> {
+  const results = new Array<B>(values.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(maxConcurrency, values.length) }, async () => {
+      while (true) {
+        const index = cursor++;
+        if (index >= values.length) return;
+        results[index] = await mapper(values[index]);
+      }
+    }),
+  );
+  return results;
+}
+
+function providerDiagnostics(provider: SessionProviderBase): SessionProviderDiagnostic[] {
+  try {
+    return [...(provider.getLastOperationStatus?.().diagnostics ?? [])];
+  } catch {
+    return [];
+  }
+}
+
+function dedupeDiagnostics(
+  diagnostics: readonly SessionProviderDiagnostic[],
+): SessionProviderDiagnostic[] {
+  const seen = new Set<string>();
+  return diagnostics.filter((diagnostic) => {
+    const key = `${diagnostic.providerId}\0${diagnostic.kind}\0${diagnostic.phase}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 interface PrefixScan {
@@ -246,4 +584,51 @@ function scanPrefix(sessionPath: string, maxPrefixBytes: number): PrefixScan {
   }
 
   return result;
+}
+
+async function scanPrefixAsync(sessionPath: string, maxPrefixBytes: number): Promise<PrefixScan> {
+  const result: PrefixScan = { firstTimestamp: null, workspacePath: null };
+  let handle: fs.promises.FileHandle | null = null;
+  try {
+    handle = await fs.promises.open(sessionPath, 'r');
+    const stats = await handle.stat();
+    const readBytes = Math.min(stats.size, Math.max(1, maxPrefixBytes));
+    const buffer = Buffer.alloc(readBytes);
+    const { bytesRead } = await handle.read(buffer, 0, readBytes, 0);
+    parsePrefixInto(result, buffer.toString('utf8', 0, bytesRead), bytesRead >= stats.size);
+  } catch {
+    return result;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+  return result;
+}
+
+function parsePrefixInto(result: PrefixScan, content: string, sawWholeFile: boolean): void {
+  const lines = content.split('\n');
+  const completeLines = sawWholeFile ? lines : lines.slice(0, -1);
+  for (const line of completeLines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== 'object') continue;
+    if (result.firstTimestamp === null && typeof parsed.timestamp === 'string') {
+      result.firstTimestamp = parsed.timestamp;
+    }
+    if (result.workspacePath === null) {
+      if (typeof parsed.cwd === 'string' && parsed.cwd) result.workspacePath = parsed.cwd;
+      else if (parsed.type === 'session_meta') {
+        const payload = parsed.payload as Record<string, unknown> | undefined;
+        if (payload && typeof payload.cwd === 'string' && payload.cwd) {
+          result.workspacePath = payload.cwd;
+        }
+      }
+    }
+    if (result.firstTimestamp !== null && result.workspacePath !== null) break;
+  }
 }

@@ -16,8 +16,10 @@ import { getSystemCodexHome } from '../codexProfiles';
 
 export interface CodexHistoryEntry {
   sessionId: string;
-  /** Timestamp exactly as Codex recorded it (numeric epoch value). */
+  /** Timestamp exactly as Codex recorded it (epoch seconds). */
   ts: number;
+  /** Normalized epoch milliseconds, ready for Date construction. */
+  tsMs: number;
   text: string;
 }
 
@@ -26,7 +28,7 @@ export interface ReadCodexHistoryOptions {
   codexHome?: string;
   /** Maximum entries returned, newest first (default 100). */
   limit?: number;
-  /** Bytes read from the end of the file (default 512 KiB). */
+  /** Bytes read from the end. Defaults to max(512 KiB, limit × 4096). */
   maxTailBytes?: number;
 }
 
@@ -39,7 +41,11 @@ const DEFAULT_TAIL_BYTES = 512 * 1024;
  */
 export function readCodexHistory(options: ReadCodexHistoryOptions = {}): CodexHistoryEntry[] {
   const limit = Math.max(0, options.limit ?? DEFAULT_LIMIT);
-  const maxTailBytes = Math.max(1, options.maxTailBytes ?? DEFAULT_TAIL_BYTES);
+  if (limit === 0) return [];
+  const maxTailBytes = Math.max(
+    1,
+    options.maxTailBytes ?? Math.max(DEFAULT_TAIL_BYTES, limit * 4096),
+  );
   const historyPath = path.join(options.codexHome ?? getSystemCodexHome(), 'history.jsonl');
 
   let descriptor: number;
@@ -84,7 +90,12 @@ export function readCodexHistory(options: ReadCodexHistoryOptions = {}): CodexHi
       ) {
         continue;
       }
-      entries.push({ sessionId: parsed.session_id, ts: parsed.ts, text: parsed.text });
+      entries.push({
+        sessionId: parsed.session_id,
+        ts: parsed.ts,
+        tsMs: parsed.ts * 1000,
+        text: parsed.text,
+      });
     }
 
     // The file is append-only, so on-disk order is oldest first.

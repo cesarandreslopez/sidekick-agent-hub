@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import type { DbMessage, DbPart, DbProject, DbSession } from '../types/opencode';
 type DbProjectRow = Omit<DbProject, 'sandboxes'> & { sandboxes?: string | null };
 
@@ -102,6 +102,23 @@ export class OpenCodeDatabase {
     }
   }
 
+  private async queryAsync<T>(sql: string, params: (string | number)[] = []): Promise<T[]> {
+    if (!this.isAvailable()) {
+      this.runtimeStatus = { available: false, kind: 'db_missing' };
+      return [];
+    }
+    const query = bindSqlParams(sql, params);
+    try {
+      const result = await execSqlite(this.dbPath, query);
+      this.runtimeStatus = { available: true, kind: 'available' };
+      const trimmed = result.trim();
+      return trimmed ? (JSON.parse(trimmed) as T[]) : [];
+    } catch (error) {
+      this.runtimeStatus = toRuntimeStatus(error, 'query_failed');
+      return [];
+    }
+  }
+
   private queryOne<T>(sql: string, params: (string | number)[] = []): T | null {
     const results = this.query<T>(sql, params);
     return results[0] ?? null;
@@ -172,6 +189,30 @@ export class OpenCodeDatabase {
     return this.query<DbSession>(
       'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE project_id = ? AND parent_id IS NULL ORDER BY time_updated DESC',
       [projectId],
+    );
+  }
+
+  /** Get every root session in one query for global preview enumeration. */
+  getAllSessions(): DbSession[] {
+    return this.query<DbSession>(
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id IS NULL ORDER BY time_updated DESC',
+    );
+  }
+
+  /** Enumerate root sessions with one non-blocking sqlite3 subprocess. */
+  getAllSessionsAsync(): Promise<DbSession[]> {
+    return this.queryAsync<DbSession>(
+      'SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE parent_id IS NULL ORDER BY time_updated DESC',
+    );
+  }
+
+  /** Resolve many sessions with one non-blocking sqlite3 subprocess. */
+  getSessionsByIdsAsync(sessionIds: readonly string[]): Promise<DbSession[]> {
+    if (sessionIds.length === 0) return Promise.resolve([]);
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    return this.queryAsync<DbSession>(
+      `SELECT id, project_id, title, directory, time_created, time_updated FROM session WHERE id IN (${placeholders})`,
+      [...sessionIds],
     );
   }
 
@@ -410,6 +451,35 @@ export class OpenCodeDatabase {
       return 0;
     }
   }
+}
+
+function bindSqlParams(sql: string, params: readonly (string | number)[]): string {
+  let paramIndex = 0;
+  return sql.replace(/\?/g, () => {
+    if (paramIndex >= params.length) return '?';
+    const param = params[paramIndex++];
+    if (typeof param === 'number') return Number.isFinite(param) ? String(param) : '0';
+    return `'${String(param).replace(/'/g, "''")}'`;
+  });
+}
+
+function execSqlite(dbPath: string, query: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'sqlite3',
+      ['-json', '-readonly', dbPath, query],
+      {
+        encoding: 'utf8',
+        timeout: 4_000,
+        killSignal: 'SIGKILL',
+        maxBuffer: 50 * 1024 * 1024,
+      },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      },
+    );
+  });
 }
 
 function normalizePath(input: string): string {

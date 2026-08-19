@@ -15,6 +15,7 @@ vi.mock('./codexProfiles', () => ({
 }));
 
 import { getActiveAccountStatus } from './accountStatus';
+import { activeAccountStatusSchema } from './schemas/accountStatus';
 
 beforeEach(() => {
   mocks.resolveActiveClaudeAccount.mockReset();
@@ -90,6 +91,19 @@ describe('getActiveAccountStatus', () => {
       claude: { present: false },
       codex: { present: false },
       error: 'read failed',
+    });
+  });
+
+  it('guarantees exported status is valid against the same-release schema', () => {
+    mocks.resolveActiveClaudeAccount.mockReturnValue({
+      registryAccountId: 'claude-registry-id',
+      email: 'claude@example.com',
+      source: 'live',
+    });
+    mocks.resolveActiveCodexAccount.mockReturnValue({ source: 'none' });
+
+    expect(activeAccountStatusSchema.parse(getActiveAccountStatus())).toMatchObject({
+      claude: { present: true, accountId: 'claude-registry-id' },
     });
   });
 });

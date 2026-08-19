@@ -31,11 +31,20 @@ describe('ObservedSessionCollector', () => {
     });
 
     await expect(collector.collect()).resolves.toEqual([
-      { providerId: 'healthy-provider', sessionId: 'good', value: 'healthy observation' },
+      expect.objectContaining({
+        providerId: 'healthy-provider',
+        sessionId: 'good',
+        value: 'healthy observation',
+        cacheHit: false,
+      }),
     ]);
     expect(diagnostics.map((diagnostic) => diagnostic.kind)).toEqual([
       'provider-discovery-failed',
       'session-read-failed',
+    ]);
+    expect(diagnostics.map(({ severity, phase }) => ({ severity, phase }))).toEqual([
+      { severity: 'error', phase: 'discover' },
+      { severity: 'error', phase: 'read' },
     ]);
     expect(JSON.stringify(diagnostics)).not.toContain('secret discovery details');
     expect(JSON.stringify(diagnostics)).not.toContain('private transcript text');
@@ -84,9 +93,18 @@ describe('ObservedSessionCollector', () => {
     shouldFail = false;
     fingerprint = '3:3';
     await expect(collector.collect()).resolves.toEqual([
-      { providerId: 'codex', sessionId: 'session-1', value: 'recovered' },
+      expect.objectContaining({
+        providerId: 'codex',
+        sessionId: 'session-1',
+        value: 'recovered',
+      }),
     ]);
-    expect(diagnostics.at(-1)).toMatchObject({ kind: 'session-recovered', attempt: 1 });
+    expect(diagnostics.at(-1)).toMatchObject({
+      kind: 'session-recovered',
+      severity: 'info',
+      phase: 'recover',
+      attempt: 1,
+    });
   });
 
   it('caps exponential retry delays', async () => {
@@ -118,5 +136,88 @@ describe('ObservedSessionCollector', () => {
     expect(
       diagnostics.map((diagnostic, index) => diagnostic.retryAt! - attemptTimes[index]),
     ).toEqual([10, 20, 25, 25]);
+  });
+
+  it('does zero content reads for an unchanged fingerprint and exposes its parts', async () => {
+    let now = 1_000;
+    let reads = 0;
+    const collector = new ObservedSessionCollector<{ usage: number }>({
+      clock: { now: () => now },
+      sources: [
+        {
+          providerId: 'codex',
+          discover: () => [
+            {
+              sessionId: 'session-1',
+              fingerprintHint: '42:900',
+              fingerprintParts: { sizeBytes: 42, mtimeMs: 900 },
+            },
+          ],
+          read: () => {
+            reads++;
+            return { usage: 7 };
+          },
+        },
+      ],
+    });
+
+    const first = await collector.collect();
+    now = 2_000;
+    const second = await collector.collect();
+
+    expect(reads).toBe(1);
+    expect(first[0]).toMatchObject({
+      cacheHit: false,
+      fingerprint: '42:900',
+      fingerprintParts: { sizeBytes: 42, mtimeMs: 900 },
+      contentObservedAt: '1970-01-01T00:00:01.000Z',
+    });
+    expect(second[0]).toMatchObject({
+      cacheHit: true,
+      observedAt: '1970-01-01T00:00:02.000Z',
+      contentObservedAt: '1970-01-01T00:00:01.000Z',
+    });
+  });
+
+  it('coalesces watcher signals into changed-since batches without losing the latest state', async () => {
+    let fingerprint = '1:1';
+    let invalidate: (() => void) | undefined;
+    const batches: Array<{ previous: string | null; next: string | null }> = [];
+    const collector = new ObservedSessionCollector({
+      sources: [
+        {
+          providerId: 'opencode',
+          discover: () => [{ sessionId: 'session-1', fingerprintHint: fingerprint }],
+          read: () => null,
+          subscribe: (listener) => {
+            invalidate = listener;
+            return { dispose: () => undefined };
+          },
+        },
+      ],
+    });
+    const subscription = collector.subscribe(
+      (batch) => {
+        for (const change of batch.changes) {
+          batches.push({ previous: change.previousFingerprint, next: change.fingerprint });
+        }
+      },
+      {
+        debounceMs: 0,
+        pollIntervalMs: 0,
+        knownFingerprints: [{ providerId: 'opencode', sessionId: 'session-1', fingerprint: '1:1' }],
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    fingerprint = '2:2';
+    invalidate?.();
+    fingerprint = '3:3';
+    invalidate?.();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(batches).toEqual([{ previous: '1:1', next: '3:3' }]);
+    subscription.dispose();
+    collector.dispose();
   });
 });

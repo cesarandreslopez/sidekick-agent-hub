@@ -2,8 +2,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from './paths';
 import { atomicWriteJsonSync, withFileLockSync } from './writers/atomic';
+import type { AccountProviderId } from './providerIds';
+import { _emitAccountsChanged } from './accountChangeSignal';
 
-export type AccountProviderId = 'claude-code' | 'codex';
+export { ACCOUNT_PROVIDER_IDS } from './providerIds';
+export type { AccountProviderId } from './providerIds';
 
 export interface AccountIdentityMetadata {
   email?: string;
@@ -79,6 +82,7 @@ function ensureAccountsDir(): void {
 
 function writeRegistryUnlocked(registry: SavedAccountRegistry): void {
   atomicWriteJsonSync(getRegistryPath(), normalizeRegistry(registry));
+  _emitAccountsChanged('local');
 }
 
 /**

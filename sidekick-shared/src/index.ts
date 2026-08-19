@@ -46,12 +46,22 @@ export {
   ObservedSessionCollector,
   observedSessionSourceFromProvider,
   fileFingerprint,
+  fileFingerprintParts,
 } from './observedSessionCollector';
 export type {
+  KnownObservedSessionFingerprint,
+  ObservedSessionChange,
+  ObservedSessionChangeBatch,
+  ObservedSessionChangeType,
   ObservedSessionReference,
+  ObservedSessionFingerprintParts,
+  ObservedSessionSourceSubscribeOptions,
+  ObservedSessionSubscribeOptions,
   ObservedSessionCollectionSource,
   ProviderObservedSessionCollectionSource,
   ObservedSessionDiagnosticKind,
+  ObservedSessionDiagnosticPhase,
+  ObservedSessionDiagnosticSeverity,
   ObservedSessionDiagnostic,
   ObservedSessionCollection,
   ObservedSessionCollectorOptions,
@@ -270,8 +280,20 @@ export type {
   SearchHit,
   ProjectFolderInfo,
   SessionReader,
+  SessionProviderOptions,
+  ProviderOperationStatus,
+  SessionProviderDiagnostic,
+  SessionProviderDiagnosticKind,
+  SessionProviderDiagnosticPhase,
+  SessionProviderDiagnosticSeverity,
   ProviderRuntimeStatus,
 } from './providers/types';
+export { SESSION_PROVIDER_IDS } from './providers/types';
+export { createSessionProviders } from './providers/factory';
+export type {
+  CreateSessionProvidersOptions,
+  CreateSessionProvidersResult,
+} from './providers/factory';
 export {
   createProviderSessionAdapterV1,
   derivePendingUserRequestV1,
@@ -283,6 +305,7 @@ export type {
   PendingUserRequestV1,
   ProviderCapabilitiesV1,
   ProviderSessionAdapterV1,
+  ProviderSessionAdapterV1Options,
   SessionEvidenceRefV1,
 } from './types/observedSessionV1';
 export { detectProvider, getAllDetectedProviders } from './providers/detect';
@@ -317,7 +340,10 @@ export {
 export { scanSubagentDir, extractTaskInfo } from './parsers/subagentScanner';
 
 // Parsers — Session activity detection
-export { detectSessionActivity } from './parsers/sessionActivityDetector';
+export {
+  detectSessionActivity,
+  refreshSessionActivityState,
+} from './parsers/sessionActivityDetector';
 export type {
   SessionActivityState,
   SessionActivityResult,
@@ -353,11 +379,21 @@ export { readCodexHistory } from './parsers/codexHistory';
 export type { CodexHistoryEntry, ReadCodexHistoryOptions } from './parsers/codexHistory';
 
 // Session previews (bounded, stat-first)
-export { listSessionPreviews, readSessionPreview } from './sessionPreviews';
+export {
+  listSessionPreviews,
+  listSessionPreviewsAsync,
+  readSessionPreview,
+  readSessionPreviewAsync,
+} from './sessionPreviews';
 export type {
+  AsyncSessionPreviewOptions,
+  ListSessionPreviewsAsyncOptions,
   ListSessionPreviewsOptions,
+  ReadSessionPreviewAsyncOptions,
   ReadSessionPreviewOptions,
   SessionPreview,
+  SessionPreviewListResult,
+  SessionPreviewReadResult,
 } from './sessionPreviews';
 
 // Parsers — Debug log parsing
@@ -486,7 +522,7 @@ export type { PhraseCategory } from './phrases';
 // Aggregation
 export { EventAggregator, parseTodoDependencies } from './aggregation/EventAggregator';
 export { SessionMonitor } from './sessionMonitor';
-export type { SessionMonitorOptions } from './sessionMonitor';
+export type { SessionMonitorOptions, SessionMonitorSubscribeOptions } from './sessionMonitor';
 export type { SerializedAggregatorState } from './aggregation/EventAggregator';
 export {
   saveSnapshot,
@@ -621,8 +657,11 @@ export type {
   SavedAccountProfile,
   SavedAccountRegistry,
 } from './accountRegistry';
+export { ACCOUNT_PROVIDER_IDS } from './accountRegistry';
 export { getActiveAccountStatus } from './accountStatus';
 export type { ActiveAccountStatus, ActiveProviderAccountStatus } from './accountStatus';
+export { onAccountsChanged } from './accountChanges';
+export type { AccountsChangedEvent, OnAccountsChangedOptions } from './accountChanges';
 export {
   getClaudeProfilesDir,
   getClaudeProfileHome,
@@ -672,6 +711,7 @@ export type {
 // Quota
 export {
   FIVE_HOUR_WINDOW_MS,
+  QUOTA_PROVIDER_IDS,
   SEVEN_DAY_WINDOW_MS,
   fetchQuota,
   projectQuotaWindow,
@@ -681,6 +721,7 @@ export type {
   CodexResetCredit,
   CodexResetCreditsSnapshot,
   QuotaProjectionInput,
+  QuotaProviderId,
   QuotaWindow,
   QuotaState,
 } from './quota';
@@ -735,6 +776,7 @@ export type {
 } from './zaiQuotaApi';
 export { MultiProviderQuotaService } from './multiProviderQuotaService';
 export type { MultiProviderQuotaServiceOptions } from './multiProviderQuotaService';
+export { RUNTIME_QUOTA_PROVIDER_IDS } from './providerQuota';
 export type { ProviderQuotaMap, ProviderQuotaState, RuntimeQuotaProvider } from './providerQuota';
 export type { QuotaSnapshotProviderId } from './quotaSnapshots';
 export { BurnRateCalculator, estimateTimeToQuota } from './statusline/BurnRateCalculator';
@@ -742,12 +784,23 @@ export { formatStatusline, selectStatuslineAccount } from './statusline/formatte
 export type { StatuslineInput, StatuslineSelection } from './statusline/formatter';
 
 // Model Context
-export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+export {
+  getModelContextWindowSize,
+  resolveModelContextWindow,
+  DEFAULT_CONTEXT_WINDOW,
+} from './modelContext';
+export type {
+  ModelCatalogMatch,
+  ModelContextWindowProvenance,
+  ModelContextWindowSource,
+  ResolvedModelContextWindow,
+} from './modelContext';
 
 // Model Info & Pricing
 export {
   parseModelId,
   getModelPricing,
+  resolveModelPricing,
   getModelInfo,
   calculateCost,
   calculateCostWithPricing,
@@ -758,6 +811,7 @@ export {
   compareModelIds,
   sortModelIds,
   formatCost,
+  MODEL_PROVIDER_IDS,
 } from './modelInfo';
 export type {
   ModelPricing,
@@ -769,7 +823,24 @@ export type {
   ModelProvider,
   ParsedModelId,
   ModelDisplayInfo,
+  ModelPricingMatch,
+  ModelPricingProvenance,
+  ModelPricingSource,
+  ResolvedModelPricing,
 } from './modelInfo';
+
+export {
+  exportResolvedModelCatalog,
+  importResolvedModelCatalog,
+  registerModelAlias,
+  resolveModelAlias,
+  RESOLVED_MODEL_CATALOG_SCHEMA_VERSION,
+} from './modelCatalog';
+export type {
+  ImportResolvedModelCatalogResult,
+  ResolvedModelCatalogEntry,
+  ResolvedModelCatalogSnapshot,
+} from './modelCatalog';
 
 // Pricing Catalog (LiteLLM hydration) — Node-only. Safe for extension host
 // and CLI; do NOT import from browser bundles (webviews).

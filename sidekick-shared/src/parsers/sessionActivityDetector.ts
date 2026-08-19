@@ -161,6 +161,23 @@ export function detectSessionActivity(sessionPath: string): SessionActivityResul
   return { state: 'ended', lastActivityTime: new Date(stat.mtimeMs), reason: 'no-activity-signal' };
 }
 
+/**
+ * Refresh a cached classification from its unchanged fingerprint without
+ * re-reading the transcript. An active file remains active until it crosses
+ * the same five-minute staleness boundary used by detectSessionActivity.
+ */
+export function refreshSessionActivityState(
+  previous: 'active' | 'idle' | 'ended' | 'unknown',
+  mtimeMs: number,
+  nowMs = Date.now(),
+): 'active' | 'idle' | 'ended' | 'unknown' {
+  if (!Number.isFinite(mtimeMs)) return previous;
+  if (nowMs - mtimeMs > STALENESS_THRESHOLD_MS) return 'idle';
+  if (previous === 'ended') return 'ended';
+  if (previous === 'idle') return 'idle';
+  return previous === 'unknown' ? 'unknown' : 'active';
+}
+
 // ── Helpers ──
 
 function readTail(filePath: string, fileSize: number): string | null {

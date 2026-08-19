@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-08-18
+
+### Changed
+
+- The extension advances in lockstep with `sidekick-shared` 0.25.0 and retains its existing extension commands and settings
+
 ## [0.24.5] - 2026-08-18
 
 ### Changed

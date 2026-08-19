@@ -9,6 +9,7 @@ import type { PeakHoursState } from './peakHours';
 import type { QuotaState } from './quota';
 import type { Disposable } from './quotaPoller';
 import type { ProviderQuotaMap, ProviderQuotaState, RuntimeQuotaProvider } from './providerQuota';
+import { onAccountsChanged, type AccountsChangedEvent } from './accountChanges';
 
 const ACTIVE_POLL_INTERVAL_MS = 60_000;
 const IDLE_POLL_INTERVAL_MS = 300_000;
@@ -42,6 +43,7 @@ export interface MultiProviderQuotaServiceOptions {
   readClaudeAccount?: typeof resolveActiveClaudeAccount;
   fetchClaudeQuota?: (accessToken: string) => Promise<QuotaState>;
   fetchPeakHours?: () => Promise<PeakHoursState>;
+  subscribeAccountsChanged?: (listener: (event: AccountsChangedEvent) => void) => Disposable;
   log?: Logger;
 }
 
@@ -93,6 +95,9 @@ export class MultiProviderQuotaService implements Disposable {
   private readonly fetchClaudeQuota: (accessToken: string) => Promise<QuotaState>;
   private readonly fetchPeakHours: () => Promise<PeakHoursState>;
   private readonly log?: Logger;
+  private readonly subscribeAccountsChanged: NonNullable<
+    MultiProviderQuotaServiceOptions['subscribeAccountsChanged']
+  >;
   private readonly listeners: Array<(state: ProviderQuotaMap) => void> = [];
   private readonly codexWatcher: CodexWatcherLike | null;
   private readonly ownsCodexWatcher: boolean;
@@ -113,6 +118,10 @@ export class MultiProviderQuotaService implements Disposable {
   private currentPeakHours: PeakHoursState | undefined;
   private lastFreshPeakHoursAt = 0;
   private peakHoursErrorLogged = false;
+  private claudeDormant = false;
+  private accountSubscription: Disposable | null = null;
+  private pollInFlight = false;
+  private pendingWake = false;
 
   constructor(options: MultiProviderQuotaServiceOptions = {}) {
     this.activeIntervalMs = options.activeIntervalMs ?? ACTIVE_POLL_INTERVAL_MS;
@@ -125,6 +134,7 @@ export class MultiProviderQuotaService implements Disposable {
     this.readClaudeAccount = options.readClaudeAccount ?? resolveActiveClaudeAccount;
     this.fetchClaudeQuota = options.fetchClaudeQuota ?? fetchQuota;
     this.fetchPeakHours = options.fetchPeakHours ?? fetchPeakHoursStatus;
+    this.subscribeAccountsChanged = options.subscribeAccountsChanged ?? onAccountsChanged;
     this.log = options.log;
 
     if (options.codexWatcher !== undefined) {
@@ -160,21 +170,25 @@ export class MultiProviderQuotaService implements Disposable {
   startPolling(): void {
     if (this.polling) return;
     this.polling = true;
+    this.accountSubscription ??= this.subscribeAccountsChanged(() => this.wakeForAccountChange());
     this.codexWatcher?.start();
     this.zaiWatcher?.start();
-    void this.poll();
+    this.wakeForAccountChange();
     this.log?.('[Quota] Polling started');
   }
 
   stopPolling(): void {
     if (!this.polling) return;
     this.polling = false;
+    this.claudeDormant = false;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
     this.codexWatcher?.stop();
     this.zaiWatcher?.stop();
+    this.accountSubscription?.dispose();
+    this.accountSubscription = null;
     this.log?.('[Quota] Polling stopped');
   }
 
@@ -302,9 +316,36 @@ export class MultiProviderQuotaService implements Disposable {
   }
 
   private async poll(): Promise<void> {
-    await this.refreshPeakHours();
+    if (!this.polling || this.pollInFlight) {
+      this.pendingWake = this.polling;
+      return;
+    }
+    this.pollInFlight = true;
+    this.pendingWake = false;
 
     try {
+      let accountPresent = false;
+      try {
+        accountPresent = this.readClaudeAccount().source !== 'none';
+      } catch {
+        accountPresent = false;
+      }
+      if (!accountPresent) {
+        this.claudeDormant = true;
+        this.resetTransientFailureState();
+        this.authUnavailableActive = false;
+        this.lastEmittedClaudeState = null;
+        this.lastSuccessfulClaudeState = null;
+        if (this.quotaByProvider.claude) {
+          const remaining = { ...this.quotaByProvider };
+          delete remaining.claude;
+          this.quotaByProvider = remaining;
+          this.emit();
+        }
+        return;
+      }
+      this.claudeDormant = false;
+      await this.refreshPeakHours();
       const creds = await this.readClaudeCredentials();
       if (!creds) {
         this.handleUnavailableState(
@@ -344,8 +385,29 @@ export class MultiProviderQuotaService implements Disposable {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.handleTransientFailure(makeUnavailableClaudeState(message));
     } finally {
-      this.scheduleNextPoll();
+      this.pollInFlight = false;
+      if (this.pendingWake) {
+        this.pendingWake = false;
+        void this.poll();
+      } else if (!this.claudeDormant) {
+        this.scheduleNextPoll();
+      }
     }
+  }
+
+  private wakeForAccountChange(): void {
+    if (!this.polling) return;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+    this.codexWatcher?.start();
+    this.zaiWatcher?.start();
+    if (this.pollInFlight) {
+      this.pendingWake = true;
+      return;
+    }
+    void this.poll();
   }
 
   private emitClaudeState(state: ProviderQuotaState<'claude'>): void {

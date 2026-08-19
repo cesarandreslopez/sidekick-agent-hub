@@ -22,6 +22,8 @@
  * webviews. Same pattern as `_setPricingOverrides` in `modelInfo.ts`.
  */
 
+import { resolveModelAlias } from './modelAliases';
+
 /** Known model context window sizes (in tokens). */
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
   // Claude — native 1M context (Fable 5, Opus 4.6+, Sonnet 4.6+)
@@ -81,12 +83,37 @@ const SORTED_KEYS = sortKeysLongestFirst(MODEL_CONTEXT_SIZES);
 /** Default context window size when model is unknown. */
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
 
+export type ModelContextWindowSource =
+  | 'explicit-1m'
+  | 'imported'
+  | 'observed'
+  | 'catalog'
+  | 'static'
+  | 'default';
+export type ModelCatalogMatch = 'exact' | 'prefix' | 'default';
+
+export interface ModelContextWindowProvenance {
+  source: ModelContextWindowSource;
+  match: ModelCatalogMatch;
+  matchedModelId?: string;
+}
+
+export interface ResolvedModelContextWindow {
+  modelId: string;
+  canonicalModelId: string;
+  published: number | null;
+  observed: number | null;
+  tierEffective: number;
+  provenance: ModelContextWindowProvenance;
+}
+
 // ── Override Tables (populated at runtime by Node-only modules) ──
 
 let observedTable: Record<string, number> = {};
 let observedSortedKeys: string[] = [];
 let catalogTable: Record<string, number> = {};
 let catalogSortedKeys: string[] = [];
+let importedTable: Record<string, ResolvedModelContextWindow> = {};
 
 function sortKeysLongestFirst(table: Record<string, number>): string[] {
   return Object.keys(table).sort((a, b) => b.length - a.length);
@@ -148,6 +175,30 @@ export function _clearCatalogContextWindows(): void {
   catalogSortedKeys = [];
 }
 
+/** Internal: hydrate exact, already-resolved context data from another realm. */
+export function _setImportedResolvedContextWindows(
+  values: Record<string, ResolvedModelContextWindow>,
+): void {
+  importedTable = { ...values };
+}
+
+/** Internal test hook. */
+export function _clearImportedResolvedContextWindows(): void {
+  importedTable = {};
+}
+
+/** Internal: list every ID known to the context resolver. */
+export function _getModelContextIds(): string[] {
+  return Array.from(
+    new Set([
+      ...Object.keys(MODEL_CONTEXT_SIZES),
+      ...Object.keys(catalogTable),
+      ...Object.keys(observedTable),
+      ...Object.keys(importedTable),
+    ]),
+  );
+}
+
 // ── Lookup ──
 
 /** Exact match against one table. */
@@ -156,16 +207,84 @@ function exactWindow(table: Record<string, number>, modelId: string): number | n
   return hit === undefined ? null : hit;
 }
 
-/** Longest-prefix match against one table. */
-function prefixWindow(
+interface WindowMatch {
+  value: number;
+  match: Exclude<ModelCatalogMatch, 'default'>;
+  matchedModelId: string;
+}
+
+function exactWindowMatch(table: Record<string, number>, modelId: string): WindowMatch | null {
+  const exact = exactWindow(table, modelId);
+  return exact === null ? null : { value: exact, match: 'exact', matchedModelId: modelId };
+}
+
+function prefixWindowMatch(
   table: Record<string, number>,
   sortedKeys: string[],
   modelId: string,
-): number | null {
+): WindowMatch | null {
   for (const key of sortedKeys) {
-    if (modelId.startsWith(key)) return table[key];
+    if (modelId !== key && modelId.startsWith(key)) {
+      return { value: table[key], match: 'prefix', matchedModelId: key };
+    }
   }
   return null;
+}
+
+/** Resolve published, observed, and tier-effective context windows with provenance. */
+export function resolveModelContextWindow(modelId?: string): ResolvedModelContextWindow {
+  const rawModelId = modelId ?? '';
+  const stripped = rawModelId
+    .replace(/\[1m\]/gi, '')
+    .trim()
+    .toLowerCase();
+  const canonicalModelId = resolveModelAlias(stripped);
+
+  if (/\[1m\]/i.test(rawModelId) || /\[1m\]/i.test(canonicalModelId)) {
+    return {
+      modelId: rawModelId,
+      canonicalModelId: canonicalModelId.replace(/\[1m\]/gi, ''),
+      published: 1_000_000,
+      observed: null,
+      tierEffective: 1_000_000,
+      provenance: { source: 'explicit-1m', match: 'exact', matchedModelId: canonicalModelId },
+    };
+  }
+
+  const imported = importedTable[canonicalModelId] ?? importedTable[stripped];
+  if (imported) {
+    return { ...imported, modelId: rawModelId, canonicalModelId };
+  }
+
+  const observedExact = exactWindowMatch(observedTable, canonicalModelId);
+  const catalogExact = exactWindowMatch(catalogTable, canonicalModelId);
+  const staticExact = exactWindowMatch(MODEL_CONTEXT_SIZES, canonicalModelId);
+  const observedPrefix = prefixWindowMatch(observedTable, observedSortedKeys, canonicalModelId);
+  const catalogPrefix = prefixWindowMatch(catalogTable, catalogSortedKeys, canonicalModelId);
+  const staticPrefix = prefixWindowMatch(MODEL_CONTEXT_SIZES, SORTED_KEYS, canonicalModelId);
+  const published = catalogExact ?? staticExact ?? catalogPrefix ?? staticPrefix;
+  const effective =
+    observedExact ?? catalogExact ?? staticExact ?? observedPrefix ?? catalogPrefix ?? staticPrefix;
+
+  return {
+    modelId: rawModelId,
+    canonicalModelId,
+    published: published?.value ?? null,
+    observed: (observedExact ?? observedPrefix)?.value ?? null,
+    tierEffective: effective?.value ?? DEFAULT_CONTEXT_WINDOW,
+    provenance: effective
+      ? {
+          source:
+            effective === observedExact || effective === observedPrefix
+              ? 'observed'
+              : effective === catalogExact || effective === catalogPrefix
+                ? 'catalog'
+                : 'static',
+          match: effective.match,
+          matchedModelId: effective.matchedModelId,
+        }
+      : { source: 'default', match: 'default' },
+  };
 }
 
 /**
@@ -189,34 +308,5 @@ function prefixWindow(
  * of the static table's exact 1M.
  */
 export function getModelContextWindowSize(modelId?: string): number {
-  if (!modelId) return DEFAULT_CONTEXT_WINDOW;
-
-  // Claude Code tags the 1M-context variant with a "[1m]" suffix on the
-  // model ID. If we see it, honor it regardless of the base family.
-  if (/\[1m\]/i.test(modelId)) return 1_000_000;
-
-  // Strip the suffix if present, so the normal lookup still succeeds when
-  // a caller passes e.g. "claude-opus-5[1m]" and we've already handled it.
-  // Trim/lowercase so padded or mixed-case IDs match the lowercase table keys.
-  const normalized = modelId
-    .replace(/\[1m\]/gi, '')
-    .trim()
-    .toLowerCase();
-
-  // Pass 1 — exact matches, most-trusted layer first.
-  const exact =
-    exactWindow(observedTable, normalized) ??
-    exactWindow(catalogTable, normalized) ??
-    exactWindow(MODEL_CONTEXT_SIZES, normalized);
-  if (exact !== null) return exact;
-
-  // Pass 2 — longest-prefix matches, same layer order. Resolves versioned IDs
-  // that no layer spells out, e.g. "claude-opus-4-6-20250414".
-  const prefix =
-    prefixWindow(observedTable, observedSortedKeys, normalized) ??
-    prefixWindow(catalogTable, catalogSortedKeys, normalized) ??
-    prefixWindow(MODEL_CONTEXT_SIZES, SORTED_KEYS, normalized);
-  if (prefix !== null) return prefix;
-
-  return DEFAULT_CONTEXT_WINDOW;
+  return resolveModelContextWindow(modelId).tierEffective;
 }

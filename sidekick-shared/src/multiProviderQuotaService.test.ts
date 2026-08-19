@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MultiProviderQuotaService } from './multiProviderQuotaService';
 import type { PeakHoursState } from './peakHours';
 import type { ProviderQuotaMap, ProviderQuotaState } from './providerQuota';
+import { providerQuotaMapSchema } from './schemas/quota';
 
 function peakHours(): PeakHoursState {
   return {
@@ -49,6 +50,7 @@ describe('MultiProviderQuotaService', () => {
       accountDetail: 'claude@example.com',
       peakHours: { label: 'Off-Peak' },
     });
+    expect(providerQuotaMapSchema.parse(updates[0])).toEqual(updates[0]);
   });
 
   it('surfaces the saved profile label, keeping the email as the detail', async () => {
@@ -124,7 +126,7 @@ describe('MultiProviderQuotaService', () => {
         idleIntervalMs: 1,
         transientFailureBackoffMs: [1],
         readClaudeCredentials: async () => ({ accessToken: 'token' }),
-        readClaudeAccount: () => ({ source: 'none' as const }),
+        readClaudeAccount: () => ({ email: 'active@example.com', source: 'live' as const }),
         fetchClaudeQuota,
       });
       service.onUpdate((update) => updates.push(update));
@@ -148,5 +150,43 @@ describe('MultiProviderQuotaService', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('does no Claude quota or peak-hours work until an account appears', async () => {
+    let present = false;
+    let accountListener: (() => void) | undefined;
+    const readClaudeCredentials = vi.fn(async () => ({ accessToken: 'token' }));
+    const fetchClaudeQuota = vi.fn(async () => ({
+      fiveHour: { utilization: 1, resetsAt: '' },
+      sevenDay: { utilization: 2, resetsAt: '' },
+      available: true,
+    }));
+    const fetchPeakHours = vi.fn(async () => peakHours());
+    const service = new MultiProviderQuotaService({
+      readClaudeAccount: () =>
+        present
+          ? { email: 'active@example.com', source: 'live' as const }
+          : { source: 'none' as const },
+      readClaudeCredentials,
+      fetchClaudeQuota,
+      fetchPeakHours,
+      subscribeAccountsChanged: (listener) => {
+        accountListener = () => listener({} as never);
+        return { dispose: vi.fn() };
+      },
+    });
+
+    service.startPolling();
+    await flushPromises();
+    expect(readClaudeCredentials).not.toHaveBeenCalled();
+    expect(fetchClaudeQuota).not.toHaveBeenCalled();
+    expect(fetchPeakHours).not.toHaveBeenCalled();
+
+    present = true;
+    accountListener?.();
+    await flushPromises();
+    expect(fetchClaudeQuota).toHaveBeenCalledOnce();
+    expect(fetchPeakHours).toHaveBeenCalledOnce();
+    service.dispose();
   });
 });

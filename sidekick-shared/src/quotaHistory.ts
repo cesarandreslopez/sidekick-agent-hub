@@ -13,8 +13,9 @@ import * as path from 'path';
 import { getConfigDir } from './paths';
 import type { QuotaState } from './quota';
 import { writeQuotaSnapshot } from './quotaSnapshots';
+import type { RuntimeQuotaProviderId } from './providerIds';
 
-export type QuotaHistoryRuntimeProvider = 'claude' | 'codex' | 'zai';
+export type QuotaHistoryRuntimeProvider = RuntimeQuotaProviderId;
 
 export interface QuotaHistorySample {
   timestamp: string;

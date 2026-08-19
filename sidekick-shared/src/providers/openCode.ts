@@ -50,7 +50,11 @@ import type {
   SessionFileStats,
   ProviderId,
   ProviderRuntimeStatus,
+  ProviderOperationStatus,
+  SessionFileInfo,
+  SessionProviderOptions,
 } from './types';
+import { ProviderDiagnosticTracker, diagnosticFromRuntimeStatus } from './diagnostics';
 import type {
   SessionEvent,
   TokenUsage,
@@ -190,6 +194,18 @@ function makeDbSessionPath(dataDir: string, projectId: string, sessionId: string
 /** Check if a path is a synthetic DB session path. */
 function isDbSessionPath(sessionPath: string): boolean {
   return sessionPath.includes(path.sep + DB_SESSION_PREFIX + path.sep);
+}
+
+function workspaceMatches(left: string, right: string): boolean {
+  const a = path
+    .resolve(left)
+    .replace(/[\\/]+$/, '')
+    .toLowerCase();
+  const b = path
+    .resolve(right)
+    .replace(/[\\/]+$/, '')
+    .toLowerCase();
+  return a === b || a.startsWith(b + path.sep) || b.startsWith(a + path.sep);
 }
 
 /** Extract project ID from a synthetic DB session path. */
@@ -742,10 +758,15 @@ export class OpenCodeProvider implements SessionProviderBase {
   private db: OpenCodeDatabase | null = null;
   private dbInitialized = false;
   private dbStatus: ProviderRuntimeStatus = { available: false, kind: 'db_missing' };
+  private readonly diagnostics: ProviderDiagnosticTracker;
   /** Cache of session metadata populated during listing */
   private sessionMetaCache = new Map<string, { title: string | null; timeUpdated: number }>();
   /** Runtime-reported context window limit (overrides static map when set). */
   private dynamicContextWindowLimit: number | null = null;
+
+  constructor(options: SessionProviderOptions = {}) {
+    this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
+  }
 
   /** Lazy-initialize the database connection. */
   private ensureDb(): OpenCodeDatabase | null {
@@ -761,10 +782,22 @@ export class OpenCodeProvider implements SessionProviderBase {
     return this.db;
   }
 
+  private async ensureDbAsync(): Promise<OpenCodeDatabase> {
+    if (this.db) return this.db;
+    const db = new OpenCodeDatabase(getOpenCodeDataDir());
+    this.dbInitialized = true;
+    this.db = db;
+    return db;
+  }
+
   getRuntimeStatus(): ProviderRuntimeStatus {
     const db = this.ensureDb();
     if (db) return db.getRuntimeStatus();
     return this.dbStatus;
+  }
+
+  getLastOperationStatus(): ProviderOperationStatus {
+    return this.diagnostics.getLastOperationStatus();
   }
 
   canMonitorDirectory(dir: string): boolean {
@@ -841,7 +874,10 @@ export class OpenCodeProvider implements SessionProviderBase {
     const db = this.ensureDb();
     const dbStatus = this.getRuntimeStatus();
     const projectId = resolveProjectId(workspacePath, db, dbStatus);
-    if (!projectId) return null;
+    if (!projectId) {
+      this.recordDatabaseStatus('findActiveSession', dbStatus.kind === 'db_missing');
+      return null;
+    }
 
     // DB primary
     if (db) {
@@ -852,16 +888,20 @@ export class OpenCodeProvider implements SessionProviderBase {
           title: session.title,
           timeUpdated: session.time_updated,
         });
+        this.recordDatabaseStatus('findActiveSession', true);
         return syntheticPath;
       }
     }
 
     if (dbStatus.kind !== 'db_missing') {
+      this.recordDatabaseStatus('findActiveSession', dbStatus.available);
       return null;
     }
 
     // File fallback
-    return this.findActiveSessionFromFiles(projectId);
+    const result = this.findActiveSessionFromFiles(projectId);
+    this.recordDatabaseStatus('findActiveSession', true);
+    return result;
   }
 
   private findActiveSessionFromFiles(projectId: string): string | null {
@@ -925,20 +965,70 @@ export class OpenCodeProvider implements SessionProviderBase {
     const db = this.ensureDb();
     const dbStatus = this.getRuntimeStatus();
     const projectId = resolveProjectId(workspacePath, db, dbStatus);
-    if (!projectId) return [];
+    if (!projectId) {
+      this.recordDatabaseStatus('findAllSessions', dbStatus.kind === 'db_missing');
+      return [];
+    }
 
     // DB primary
     if (db) {
-      return this.mapDbSessions(projectId);
+      const sessions = this.mapDbSessions(projectId);
+      this.recordDatabaseStatus('findAllSessions', true);
+      return sessions;
     }
 
     if (dbStatus.kind !== 'db_missing') {
+      this.recordDatabaseStatus('findAllSessions', dbStatus.available);
       return [];
     }
 
     // File fallback
     const sessionDir = path.join(getStorageDir(), 'session', projectId);
-    return this.findSessionsInDirectoryFromFiles(sessionDir);
+    const sessions = this.findSessionsInDirectoryFromFiles(sessionDir);
+    this.recordDatabaseStatus('findAllSessions', true);
+    return sessions;
+  }
+
+  findSessionById(workspacePath: string, sessionId: string): string | null {
+    const normalizedId = sessionId.trim();
+    if (!normalizedId || path.basename(normalizedId) !== normalizedId) return null;
+    try {
+      const db = this.ensureDb();
+      if (db) {
+        const session = db.getSession(normalizedId);
+        if (session && workspaceMatches(session.directory, workspacePath)) {
+          const syntheticPath = makeDbSessionPath(
+            getOpenCodeDataDir(),
+            session.project_id,
+            session.id,
+          );
+          this.sessionMetaCache.set(syntheticPath, {
+            title: session.title,
+            timeUpdated: session.time_updated,
+          });
+          this.recordDatabaseStatus('findSessionById', true);
+          return syntheticPath;
+        }
+      }
+
+      const projectId = resolveProjectId(workspacePath, db, this.getRuntimeStatus());
+      if (projectId) {
+        const candidate = path.join(getStorageDir(), 'session', projectId, `${normalizedId}.json`);
+        try {
+          if (fs.statSync(candidate).isFile()) {
+            this.recordDatabaseStatus('findSessionById', true);
+            return candidate;
+          }
+        } catch {
+          // Missing legacy session is a normal miss.
+        }
+      }
+      this.recordDatabaseStatus('findSessionById', true);
+      return null;
+    } catch {
+      this.recordDatabaseStatus('findSessionById', false);
+      return null;
+    }
   }
 
   findSessionsInDirectory(dir: string): string[] {
@@ -949,7 +1039,9 @@ export class OpenCodeProvider implements SessionProviderBase {
     if (db && dir.includes(path.sep + DB_SESSION_PREFIX + path.sep)) {
       const projectId = extractProjectIdFromDbPath(dir + path.sep + 'dummy.json');
       if (projectId) {
-        return this.mapDbSessions(projectId);
+        const sessions = this.mapDbSessions(projectId);
+        this.recordDatabaseStatus('findSessionsInDirectory', true);
+        return sessions;
       }
     }
 
@@ -958,16 +1050,21 @@ export class OpenCodeProvider implements SessionProviderBase {
     if (db) {
       const dirName = path.basename(dir);
       if (db.hasProject(dirName)) {
-        return this.mapDbSessions(dirName);
+        const sessions = this.mapDbSessions(dirName);
+        this.recordDatabaseStatus('findSessionsInDirectory', true);
+        return sessions;
       }
     }
 
     if (dbStatus.kind !== 'db_missing') {
+      this.recordDatabaseStatus('findSessionsInDirectory', dbStatus.available);
       return [];
     }
 
     // File fallback
-    return this.findSessionsInDirectoryFromFiles(dir);
+    const sessions = this.findSessionsInDirectoryFromFiles(dir);
+    this.recordDatabaseStatus('findSessionsInDirectory', true);
+    return sessions;
   }
 
   private findSessionsInDirectoryFromFiles(dir: string): string[] {
@@ -992,6 +1089,153 @@ export class OpenCodeProvider implements SessionProviderBase {
     } catch {
       return [];
     }
+  }
+
+  listAllSessionFiles(): SessionFileInfo[] {
+    try {
+      const db = this.ensureDb();
+      if (db) {
+        const dataDir = getOpenCodeDataDir();
+        const files = db.getAllSessions().map((session) => {
+          const syntheticPath = makeDbSessionPath(dataDir, session.project_id, session.id);
+          this.sessionMetaCache.set(syntheticPath, {
+            title: session.title,
+            timeUpdated: session.time_updated,
+          });
+          return {
+            path: syntheticPath,
+            mtime: new Date(session.time_updated),
+            label: session.title ?? undefined,
+            sizeBytes: 0,
+            sessionId: session.id,
+            workspacePath: session.directory,
+            createdAt: new Date(session.time_created),
+          };
+        });
+        this.recordDatabaseStatus('listAllSessionFiles', true);
+        return files;
+      }
+
+      if (this.getRuntimeStatus().kind !== 'db_missing') {
+        this.recordDatabaseStatus('listAllSessionFiles', true);
+        return [];
+      }
+
+      const root = path.join(getStorageDir(), 'session');
+      const results: SessionFileInfo[] = [];
+      let projectDirs: fs.Dirent[] = [];
+      try {
+        projectDirs = fs.readdirSync(root, { withFileTypes: true });
+      } catch {
+        this.recordDatabaseStatus('listAllSessionFiles', true);
+        return [];
+      }
+      for (const entry of projectDirs) {
+        if (!entry.isDirectory()) continue;
+        for (const sessionPath of this.findSessionsInDirectoryFromFiles(
+          path.join(root, entry.name),
+        )) {
+          try {
+            const stats = fs.statSync(sessionPath);
+            results.push({
+              path: sessionPath,
+              mtime: stats.mtime,
+              sizeBytes: stats.size,
+              sessionId: path.basename(sessionPath, '.json'),
+            });
+          } catch {
+            // Session vanished between listing and stat.
+          }
+        }
+      }
+      this.recordDatabaseStatus('listAllSessionFiles', true);
+      return results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    } catch {
+      this.recordDatabaseStatus('listAllSessionFiles', false);
+      return [];
+    }
+  }
+
+  async listSessionFilesAsync(workspacePath?: string): Promise<SessionFileInfo[]> {
+    const db = await this.ensureDbAsync();
+    const sessions = await db.getAllSessionsAsync();
+    this.dbStatus = db.getRuntimeStatus();
+    if (this.dbStatus.available) {
+      const dataDir = getOpenCodeDataDir();
+      const files: SessionFileInfo[] = [];
+      for (const session of sessions) {
+        if (workspacePath && !workspaceMatches(session.directory, workspacePath)) continue;
+        const syntheticPath = makeDbSessionPath(dataDir, session.project_id, session.id);
+        this.sessionMetaCache.set(syntheticPath, {
+          title: session.title,
+          timeUpdated: session.time_updated,
+        });
+        files.push({
+          path: syntheticPath,
+          mtime: new Date(session.time_updated),
+          label: session.title ?? undefined,
+          sizeBytes: 0,
+          sessionId: session.id,
+          workspacePath: session.directory,
+          createdAt: new Date(session.time_created),
+        });
+      }
+      this.recordDatabaseStatus('listSessionFilesAsync', true);
+      return files;
+    }
+
+    const root = path.join(getStorageDir(), 'session');
+    const results: SessionFileInfo[] = [];
+    let projectDirs: fs.Dirent[] = [];
+    try {
+      projectDirs = await fs.promises.readdir(root, { withFileTypes: true });
+    } catch {
+      this.recordDatabaseStatus('listSessionFilesAsync', true);
+      return [];
+    }
+    for (const project of projectDirs) {
+      if (!project.isDirectory()) continue;
+      let entries: fs.Dirent[] = [];
+      try {
+        entries = await fs.promises.readdir(path.join(root, project.name), {
+          withFileTypes: true,
+        });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+        const sessionPath = path.join(root, project.name, entry.name);
+        try {
+          const [stat, raw] = await Promise.all([
+            fs.promises.stat(sessionPath),
+            workspacePath ? fs.promises.readFile(sessionPath, 'utf8') : Promise.resolve(null),
+          ]);
+          let session: OpenCodeSession | null = null;
+          if (raw !== null) {
+            try {
+              session = JSON.parse(raw) as OpenCodeSession;
+            } catch {
+              continue;
+            }
+            const directory = (session as unknown as { directory?: string }).directory;
+            if (directory && !workspaceMatches(directory, workspacePath!)) continue;
+          }
+          results.push({
+            path: sessionPath,
+            mtime: stat.mtime,
+            sizeBytes: stat.size,
+            sessionId: path.basename(entry.name, '.json'),
+            workspacePath: (session as unknown as { directory?: string } | null)?.directory,
+          });
+        } catch {
+          // Skip inaccessible sessions.
+        }
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+    this.recordDatabaseStatus('listSessionFilesAsync', true);
+    return results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
@@ -1036,15 +1280,21 @@ export class OpenCodeProvider implements SessionProviderBase {
         return b.lastModified.getTime() - a.lastModified.getTime();
       });
 
-      if (folders.length > 0) return folders;
+      if (folders.length > 0) {
+        this.recordDatabaseStatus('getAllProjectFolders', true);
+        return folders;
+      }
     }
 
     if (dbStatus.kind !== 'db_missing') {
+      this.recordDatabaseStatus('getAllProjectFolders', dbStatus.available);
       return [];
     }
 
     // File fallback
-    return this.getAllProjectFoldersFromFiles(workspacePath);
+    const fallback = this.getAllProjectFoldersFromFiles(workspacePath);
+    this.recordDatabaseStatus('getAllProjectFolders', true);
+    return fallback;
   }
 
   private getAllProjectFoldersFromFiles(workspacePath?: string): ProjectFolderInfo[] {
@@ -1160,12 +1410,65 @@ export class OpenCodeProvider implements SessionProviderBase {
     if (db) {
       const session = db.getSession(sessionId);
       if (session?.title) {
+        this.recordDatabaseStatus('extractSessionLabel', true);
         return truncateTitle(session.title);
       }
     }
 
     // File fallback
-    return this.extractSessionLabelFromFiles(sessionPath, sessionId);
+    const label = this.extractSessionLabelFromFiles(sessionPath, sessionId);
+    this.recordDatabaseStatus(
+      'extractSessionLabel',
+      label !== null || !isDbSessionPath(sessionPath),
+    );
+    return label;
+  }
+
+  async extractSessionLabelsAsync(
+    sessionPaths: readonly string[],
+  ): Promise<Map<string, string | null>> {
+    const results = new Map<string, string | null>();
+    const unresolved: string[] = [];
+    for (const sessionPath of sessionPaths) {
+      const cached = this.sessionMetaCache.get(sessionPath);
+      if (cached) results.set(sessionPath, cached.title ? truncateTitle(cached.title) : null);
+      else unresolved.push(sessionPath);
+    }
+
+    if (unresolved.length > 0 && (!this.dbInitialized || this.dbStatus.available)) {
+      const db = await this.ensureDbAsync();
+      const byId = new Map(unresolved.map((item) => [this.getSessionId(item), item]));
+      const sessions = await db.getSessionsByIdsAsync([...byId.keys()]);
+      this.dbStatus = db.getRuntimeStatus();
+      for (const session of sessions) {
+        const sessionPath = byId.get(session.id);
+        if (!sessionPath) continue;
+        this.sessionMetaCache.set(sessionPath, {
+          title: session.title,
+          timeUpdated: session.time_updated,
+        });
+        results.set(sessionPath, session.title ? truncateTitle(session.title) : null);
+      }
+    }
+
+    for (const sessionPath of unresolved) {
+      if (results.has(sessionPath)) continue;
+      if (isDbSessionPath(sessionPath)) {
+        results.set(sessionPath, null);
+        continue;
+      }
+      try {
+        const session = JSON.parse(
+          await fs.promises.readFile(sessionPath, 'utf8'),
+        ) as OpenCodeSession;
+        results.set(sessionPath, session.title ? truncateTitle(session.title) : null);
+      } catch {
+        results.set(sessionPath, null);
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    this.recordDatabaseStatus('extractSessionLabelsAsync', true);
+    return results;
   }
 
   private extractSessionLabelFromFiles(sessionPath: string, sessionId: string): string | null {
@@ -1530,6 +1833,10 @@ export class OpenCodeProvider implements SessionProviderBase {
     return path.join(getStorageDir(), 'session');
   }
 
+  getWatchRoots(): string[] {
+    return [getOpenCodeDataDir(), this.getProjectsBaseDir()];
+  }
+
   // --- Stats ---
 
   readSessionStats(sessionPath: string): SessionFileStats {
@@ -1644,6 +1951,36 @@ export class OpenCodeProvider implements SessionProviderBase {
     }
 
     return null;
+  }
+
+  async getSessionMetadataAsync(sessionPath: string): Promise<{ mtime: Date } | null> {
+    if (!isDbSessionPath(sessionPath)) {
+      try {
+        return { mtime: (await fs.promises.stat(sessionPath)).mtime };
+      } catch {
+        return null;
+      }
+    }
+
+    const cached = this.sessionMetaCache.get(sessionPath);
+    try {
+      const db = await this.ensureDbAsync();
+      const sessionId = this.getSessionId(sessionPath);
+      const session = (await db.getSessionsByIdsAsync([sessionId]))[0];
+      this.dbStatus = db.getRuntimeStatus();
+      if (session) {
+        this.sessionMetaCache.set(sessionPath, {
+          title: session.title,
+          timeUpdated: session.time_updated,
+        });
+        this.recordDatabaseStatus('getSessionMetadataAsync', true);
+        return { mtime: new Date(session.time_updated) };
+      }
+      this.recordDatabaseStatus('getSessionMetadataAsync', cached !== undefined);
+    } catch {
+      this.recordDatabaseStatus('getSessionMetadataAsync', cached !== undefined);
+    }
+    return cached ? { mtime: new Date(cached.timeUpdated) } : null;
   }
 
   /**
@@ -1800,6 +2137,27 @@ export class OpenCodeProvider implements SessionProviderBase {
     this.dbInitialized = false;
     this.sessionMetaCache.clear();
     this.dynamicContextWindowLimit = null;
+  }
+
+  private recordDatabaseStatus(operation: string, usable: boolean): void {
+    const status = this.db?.getRuntimeStatus() ?? this.dbStatus;
+    const diagnostic = diagnosticFromRuntimeStatus(this.id, 'query', status);
+    if (!diagnostic || status.kind === 'db_missing') {
+      // A genuinely absent OpenCode DB is expected for legacy file storage.
+      this.diagnostics.available(operation);
+      return;
+    }
+    this.diagnostics.degraded(
+      operation,
+      status,
+      {
+        kind: diagnostic.kind,
+        severity: diagnostic.severity,
+        phase: diagnostic.phase,
+        message: diagnostic.message,
+      },
+      usable,
+    );
   }
 
   // --- z.ai (GLM Coding Plan) compatibility quota derivation ---

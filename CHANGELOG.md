@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-08-18
+
+### Added
+
+- **Shared:** `listSessionPreviewsAsync()` and `readSessionPreviewAsync()` add bounded-concurrency, cooperative preview reads while keeping the synchronous APIs unchanged
+- **Shared:** Codex and OpenCode preview labels are batch-resolved with at most one `sqlite3` subprocess per provider per listing, with a bounded file-scan fallback when the binary is absent
+- **Shared:** OpenCode now implements native all-session enumeration, completing async preview support across all three session providers
+- **Shared:** `ObservedSessionCollector.subscribe()` and `SessionMonitor.subscribe()` emit debounced, coalesced changes with previous/current fingerprints and combine filesystem watching with catch-up polling
+- **Shared:** `createSessionProviders({ onDiagnostic })` returns every usable provider and structured diagnostics for any provider that cannot operate in the current environment
+- **Shared:** provider-neutral `findSessionById()` uses native directory/database indexes and returns `null` for misses instead of reading every transcript
+- **Shared:** resolved model catalogs can be exported from one realm and imported into another, including published, observed, and tier-effective context windows plus pricing provenance
+- **Shared:** model aliases are registerable, and prefix-inherited context/pricing resolutions identify that match in provenance
+- **Shared:** provider-id unions now have stable exported const-array counterparts
+- **Shared:** `onAccountsChanged()` notifies hosts of login, logout, and account switches without their own account-state polling loop
+
+### Changed
+
+- **Shared:** provider constructors perform no environment I/O or probing, deferring failures to first use as diagnostics so one unavailable provider cannot terminate a long-lived host at boot
+- **Shared:** repeated identical provider degradations are coalesced so factory diagnostics remain bounded across long-lived polling and subscription cycles
+- **Shared:** observed-session parses are cached by fingerprint; unchanged collections do zero content reads, refresh activity and observation time, and retain a separate content observation timestamp
+- **Shared:** observed sessions expose structured `{ sizeBytes, mtimeMs }` fingerprint parts, and collector reads support bounded concurrency plus cooperative yielding
+- **Shared:** observed-session diagnostics add `severity` and `phase` without changing existing diagnostic `kind` strings
+- **Shared:** account and quota APIs guarantee same-release schema-valid results, and provider-id runtime values are used by the exported schemas
+- **Shared:** all documented package subpaths declare per-condition types and resolve without consumer aliases under Vite and legacy TypeScript Node resolution
+- **Shared:** Codex history entries add millisecond `tsMs` while retaining raw epoch-second `ts`, and the internal tail size now scales with `limit`
+- **Shared:** `observationOnly: true` projects read-only transcript capabilities instead of requiring consumers to override `resume`
+- **Shared:** quota pollers and watchers stay dormant without an account and wake through the account-change signal
+
+### Fixed
+
+- **Shared:** Codex and OpenCode surface missing-`sqlite3` diagnostics on affected results instead of making runtime unavailability look like an empty workspace
+- **Shared:** exact model resolutions win before prefix inheritance across sources, and prefix-only pricing is never presented with exact provenance
+
 ## [0.24.5] - 2026-08-18
 
 ### Added

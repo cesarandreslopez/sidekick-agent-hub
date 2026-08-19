@@ -19,8 +19,54 @@ import type {
   TokenUsage,
   ContextAttribution,
 } from '../types/sessionEvent';
+import { SESSION_PROVIDER_IDS } from '../providerIds';
 
-export type ProviderId = 'claude-code' | 'opencode' | 'codex';
+/** Stable runtime list for consumers that must enumerate session providers. */
+export { SESSION_PROVIDER_IDS } from '../providerIds';
+
+export type ProviderId = (typeof SESSION_PROVIDER_IDS)[number];
+
+export type SessionProviderDiagnosticSeverity = 'info' | 'warning' | 'error';
+
+export type SessionProviderDiagnosticPhase =
+  | 'construct'
+  | 'initialize'
+  | 'enumerate'
+  | 'query'
+  | 'read'
+  | 'watch';
+
+export type SessionProviderDiagnosticKind =
+  | 'construction_failed'
+  | 'home_unavailable'
+  | 'config_unreadable'
+  | 'db_missing'
+  | 'sqlite_missing'
+  | 'sqlite_blocked'
+  | 'query_failed'
+  | 'read_failed'
+  | 'watch_failed';
+
+/** Content-safe provider degradation emitted at construction or first use. */
+export interface SessionProviderDiagnostic {
+  providerId: ProviderId;
+  kind: SessionProviderDiagnosticKind;
+  severity: SessionProviderDiagnosticSeverity;
+  phase: SessionProviderDiagnosticPhase;
+  message: string;
+}
+
+export interface ProviderOperationStatus {
+  operation: string;
+  usable: boolean;
+  degraded: boolean;
+  runtimeStatus: ProviderRuntimeStatus;
+  diagnostics: readonly SessionProviderDiagnostic[];
+}
+
+export interface SessionProviderOptions {
+  onDiagnostic?: (diagnostic: SessionProviderDiagnostic) => void;
+}
 
 export interface SearchHit {
   sessionPath: string;
@@ -37,6 +83,14 @@ export interface SessionFileInfo {
   mtime: Date;
   /** Optional human-readable label (e.g., first user prompt) */
   label?: string;
+  /** Optional size supplied by synthetic/DB-backed enumerators. */
+  sizeBytes?: number;
+  /** Optional provider-native session id. */
+  sessionId?: string;
+  /** Optional provider-recorded workspace path. */
+  workspacePath?: string;
+  /** Optional provider-recorded creation timestamp. */
+  createdAt?: Date;
 }
 
 export interface SessionFileStats {
@@ -65,7 +119,14 @@ export interface ProjectFolderInfo {
 
 export interface ProviderRuntimeStatus {
   available: boolean;
-  kind: 'available' | 'db_missing' | 'sqlite_missing' | 'sqlite_blocked' | 'query_failed';
+  kind:
+    | 'available'
+    | 'home_unavailable'
+    | 'config_unreadable'
+    | 'db_missing'
+    | 'sqlite_missing'
+    | 'sqlite_blocked'
+    | 'query_failed';
   message?: string;
 }
 
@@ -123,6 +184,9 @@ export interface SessionProviderBase {
   /** Finds all session files for a workspace, sorted by mtime (most recent first). */
   findAllSessions(workspacePath: string): string[];
 
+  /** Finds one session without reading every transcript. Wrong ids return null. */
+  findSessionById(workspacePath: string, sessionId: string): string | null;
+
   /** Finds all session files in a specific directory. */
   findSessionsInDirectory(dir: string): string[];
 
@@ -171,6 +235,12 @@ export interface SessionProviderBase {
   /** Get session metadata without filesystem access (for DB-backed providers). */
   getSessionMetadata?(sessionPath: string): { mtime: Date } | null;
 
+  /** Event-loop-safe metadata refresh for synthetic/DB-backed session paths. */
+  getSessionMetadataAsync?(sessionPath: string): Promise<{ mtime: Date } | null>;
+
+  /** Roots whose changes can invalidate this provider's session fingerprints. */
+  getWatchRoots?(): string[];
+
   /** Gets the context window token limit for a model. Returns 200K by default. */
   getContextWindowLimit?(modelId?: string): number;
 
@@ -192,11 +262,20 @@ export interface SessionProviderBase {
   /** Reports provider runtime readiness for DB-backed providers. */
   getRuntimeStatus?(): ProviderRuntimeStatus;
 
+  /** Status for the most recent provider operation, including fallback diagnostics. */
+  getLastOperationStatus?(): ProviderOperationStatus;
+
   /**
    * Lists every session file this provider knows about, across all workspaces.
    * Stat-only — implementations must not read file contents.
    */
   listAllSessionFiles?(): SessionFileInfo[];
+
+  /** Event-loop-safe enumeration used by async preview and subscription APIs. */
+  listSessionFilesAsync?(workspacePath?: string): Promise<SessionFileInfo[]>;
+
+  /** Batch label extraction. DB-backed implementations use at most one query. */
+  extractSessionLabelsAsync?(sessionPaths: readonly string[]): Promise<Map<string, string | null>>;
 
   /** Tests whether a provider can monitor a directory path, including synthetic DB-backed paths. */
   canMonitorDirectory?(dir: string): boolean;

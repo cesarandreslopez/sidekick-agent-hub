@@ -19,6 +19,7 @@ import type {
 import type { PeakHoursState } from '../peakHours';
 import type { QuotaFailureDescriptor } from '../quotaPresentation';
 import type { ProviderQuotaState, ProviderQuotaMap, RuntimeQuotaProvider } from '../providerQuota';
+import { QUOTA_PROVIDER_IDS, RUNTIME_QUOTA_PROVIDER_IDS } from '../providerIds';
 
 // ── QuotaWindow ──
 
@@ -37,7 +38,7 @@ export const quotaFailureKindSchema = z.enum([
   'unknown',
 ]) satisfies z.ZodType<NonNullable<QuotaState['failureKind']>>;
 
-export const quotaProviderIdSchema = z.enum(['claude-code', 'codex', 'zai']) satisfies z.ZodType<
+export const quotaProviderIdSchema = z.enum(QUOTA_PROVIDER_IDS) satisfies z.ZodType<
   NonNullable<QuotaState['providerId']>
 >;
 
@@ -114,11 +115,9 @@ export const quotaFailureDescriptorSchema = z.object({
 
 // ── ProviderQuotaState / ProviderQuotaMap ──
 
-export const runtimeQuotaProviderSchema = z.enum([
-  'claude',
-  'codex',
-  'zai',
-]) satisfies z.ZodType<RuntimeQuotaProvider>;
+export const runtimeQuotaProviderSchema = z.enum(
+  RUNTIME_QUOTA_PROVIDER_IDS,
+) satisfies z.ZodType<RuntimeQuotaProvider>;
 
 /** Fields ProviderQuotaState adds on top of QuotaState, minus the provider tag. */
 const providerQuotaExtensionShape = {

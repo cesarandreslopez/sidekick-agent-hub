@@ -1,3 +1,8 @@
+import type { QuotaProviderId } from './providerIds';
+
+export { QUOTA_PROVIDER_IDS } from './providerIds';
+export type { QuotaProviderId } from './providerIds';
+
 /**
  * Stateless quota fetcher for Claude Max subscription usage.
  *
@@ -46,7 +51,7 @@ export interface QuotaState {
   /** Projected 7-day utilization at reset (percentage, capped at 200) */
   projectedSevenDay?: number;
   /** Provider that produced this quota sample */
-  providerId?: 'claude-code' | 'codex' | 'zai';
+  providerId?: QuotaProviderId;
   /** Source of the sample */
   source?: 'api' | 'session' | 'cache';
   /** ISO timestamp when the sample was captured */

@@ -90,4 +90,68 @@ describe('QuotaPoller', () => {
     );
     poller.stop();
   });
+
+  it('stays dormant without an account and wakes on account changes', async () => {
+    let token: string | null = null;
+    let accountListener: (() => void) | undefined;
+    mockFetchQuota.mockResolvedValue({
+      fiveHour: { utilization: 1, resetsAt: '' },
+      sevenDay: { utilization: 2, resetsAt: '' },
+      available: true,
+    });
+    const poller = new QuotaPoller({
+      getAccessToken: async () => token,
+      subscribeAccountsChanged: (listener) => {
+        accountListener = () => listener({} as never);
+        return { dispose: vi.fn() };
+      },
+    });
+
+    poller.start();
+    await flushPoll();
+    expect(mockFetchQuota).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+
+    token = 'token';
+    accountListener?.();
+    await flushPoll();
+    expect(mockFetchQuota).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
+  it('does not lose an account change while an account check is in flight', async () => {
+    let accountListener: (() => void) | undefined;
+    let resolveFirstCheck: ((present: boolean) => void) | undefined;
+    let accountChecks = 0;
+    mockFetchQuota.mockResolvedValue({
+      fiveHour: { utilization: 1, resetsAt: '' },
+      sevenDay: { utilization: 2, resetsAt: '' },
+      available: true,
+    });
+    const poller = new QuotaPoller({
+      hasAccount: () => {
+        accountChecks++;
+        if (accountChecks > 1) return true;
+        return new Promise<boolean>((resolve) => {
+          resolveFirstCheck = resolve;
+        });
+      },
+      getAccessToken: async () => 'token',
+      subscribeAccountsChanged: (listener) => {
+        accountListener = () => listener({} as never);
+        return { dispose: vi.fn() };
+      },
+    });
+
+    poller.start();
+    await flushPoll();
+    accountListener?.();
+    resolveFirstCheck?.(false);
+    await flushPoll();
+    await flushPoll();
+
+    expect(accountChecks).toBe(2);
+    expect(mockFetchQuota).toHaveBeenCalledOnce();
+    poller.stop();
+  });
 });

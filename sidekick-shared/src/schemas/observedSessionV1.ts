@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { SESSION_PROVIDER_IDS } from '../providerIds';
 
 export const observationProvenanceV1Schema = z.enum(['reported', 'estimated', 'inferred']);
 export const sessionEvidenceRefV1Schema = z.object({
   schemaVersion: z.literal(1),
-  provider: z.enum(['claude-code', 'opencode', 'codex']),
+  provider: z.enum(SESSION_PROVIDER_IDS),
   sessionId: z.string().min(1),
   sourcePath: z.string().optional(),
   eventIndex: z.number().int().nonnegative().optional(),
@@ -20,7 +21,7 @@ export const observedValueV1Schema = <T extends z.ZodType>(value: T) =>
 export const pendingUserRequestV1Schema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
-  provider: z.enum(['claude-code', 'opencode', 'codex']),
+  provider: z.enum(SESSION_PROVIDER_IDS),
   sessionId: z.string().min(1),
   kind: observedValueV1Schema(z.enum(['prompt_response', 'tool_approval', 'question'])),
   requestedAt: observedValueV1Schema(z.string()),
@@ -29,7 +30,7 @@ export const pendingUserRequestV1Schema = z.object({
 export const observedAgentSessionV1Schema = z.object({
   schemaVersion: z.literal(1),
   identity: z.object({
-    provider: z.enum(['claude-code', 'opencode', 'codex']),
+    provider: z.enum(SESSION_PROVIDER_IDS),
     sessionId: z.string().min(1),
     sourcePath: z.string(),
   }),
@@ -56,11 +57,12 @@ export const observedAgentSessionV1Schema = z.object({
     costUsd: observedValueV1Schema(z.number().nonnegative().nullable()),
   }),
   pendingUserRequest: pendingUserRequestV1Schema.nullable(),
+  contentObservedAt: z.string().optional(),
   observedAt: z.string(),
 });
 export const providerCapabilitiesV1Schema = z.object({
   schemaVersion: z.literal(1),
-  provider: z.enum(['claude-code', 'opencode', 'codex']),
+  provider: z.enum(SESSION_PROVIDER_IDS),
   resume: observedValueV1Schema(z.boolean()),
   forkLineage: observedValueV1Schema(z.boolean()),
   quotaSource: observedValueV1Schema(z.enum(['api', 'session', 'mixed', 'none'])),

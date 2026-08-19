@@ -8,7 +8,17 @@
  * For pricing hydration (LiteLLM catalog refresh), use `sidekick-shared/node`.
  */
 
-export { getModelContextWindowSize, DEFAULT_CONTEXT_WINDOW } from './modelContext';
+export {
+  getModelContextWindowSize,
+  resolveModelContextWindow,
+  DEFAULT_CONTEXT_WINDOW,
+} from './modelContext';
+export type {
+  ModelCatalogMatch,
+  ModelContextWindowProvenance,
+  ModelContextWindowSource,
+  ResolvedModelContextWindow,
+} from './modelContext';
 export {
   normalizeProviderUsage,
   extractNormalizedUsage,
@@ -56,6 +66,21 @@ export {
   calculateSessionContextPressure,
   createSessionContextProjector,
 } from './context/sessionContext';
+
+export {
+  ACCOUNT_PROVIDER_IDS,
+  MODEL_PROVIDER_IDS,
+  QUOTA_PROVIDER_IDS,
+  RUNTIME_QUOTA_PROVIDER_IDS,
+  SESSION_PROVIDER_IDS,
+} from './providerIds';
+export type {
+  AccountProviderId,
+  ModelProviderId,
+  QuotaProviderId,
+  RuntimeQuotaProviderId,
+  SessionProviderId,
+} from './providerIds';
 export type {
   BuildSessionContextSnapshotOptions,
   SessionContextCapabilities,
@@ -92,6 +117,7 @@ export type {
 export {
   parseModelId,
   getModelPricing,
+  resolveModelPricing,
   getModelInfo,
   calculateCost,
   calculateCostWithPricing,
@@ -114,4 +140,21 @@ export type {
   ParsedModelId,
   ModelInfo,
   ModelDisplayInfo,
+  ModelPricingMatch,
+  ModelPricingProvenance,
+  ModelPricingSource,
+  ResolvedModelPricing,
 } from './modelInfo';
+
+export {
+  exportResolvedModelCatalog,
+  importResolvedModelCatalog,
+  registerModelAlias,
+  resolveModelAlias,
+  RESOLVED_MODEL_CATALOG_SCHEMA_VERSION,
+} from './modelCatalog';
+export type {
+  ImportResolvedModelCatalogResult,
+  ResolvedModelCatalogEntry,
+  ResolvedModelCatalogSnapshot,
+} from './modelCatalog';

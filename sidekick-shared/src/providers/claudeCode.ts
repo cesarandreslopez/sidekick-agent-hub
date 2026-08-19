@@ -28,7 +28,11 @@ import type {
   SearchHit,
   ProjectFolderInfo,
   ProviderId,
+  ProviderOperationStatus,
+  ProviderRuntimeStatus,
+  SessionProviderOptions,
 } from './types';
+import { ProviderDiagnosticTracker } from './diagnostics';
 import {
   encodeWorkspacePath as encodeWsPath,
   getSessionDirectory as getSessionDir,
@@ -77,6 +81,41 @@ function extractSearchableText(event: Record<string, unknown>): string {
   }
 
   return '';
+}
+
+function extractClaudeLabelFromPrefix(chunk: string): string | null {
+  for (const line of chunk.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const event = JSON.parse(trimmed);
+      if (event.type !== 'user') continue;
+      const content = event.message?.content;
+      if (!content) continue;
+      let text: string | null = null;
+      if (typeof content === 'string') {
+        text = content.trim();
+      } else if (Array.isArray(content)) {
+        const textBlock = content.find(
+          (block: unknown) =>
+            isTypedBlock(block) &&
+            block.type === 'text' &&
+            typeof block.text === 'string' &&
+            block.text.trim().length > 0,
+        );
+        if (textBlock && isTypedBlock(textBlock) && typeof textBlock.text === 'string') {
+          text = textBlock.text.trim();
+        }
+      }
+      if (text) {
+        const compact = text.replace(/\s+/g, ' ');
+        return compact.length > 60 ? compact.substring(0, 57) + '...' : compact;
+      }
+    } catch {
+      // Skip malformed lines.
+    }
+  }
+  return null;
 }
 
 /**
@@ -239,8 +278,14 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   readonly id: ProviderId = 'claude-code';
   readonly displayName = 'Claude Code';
 
+  private readonly diagnostics: ProviderDiagnosticTracker;
+
   /** Runtime-reported context window limit (overrides static map when set). */
   private dynamicContextWindowLimit: number | null = null;
+
+  constructor(options: SessionProviderOptions = {}) {
+    this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
+  }
 
   // --- Path resolution ---
 
@@ -260,6 +305,42 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   findAllSessions(workspacePath: string): string[] {
     return findAllSessionPaths(workspacePath);
+  }
+
+  findSessionById(workspacePath: string, sessionId: string): string | null {
+    const normalizedId = sessionId.trim();
+    if (!normalizedId || path.basename(normalizedId) !== normalizedId) return null;
+    try {
+      const directories = new Set<string>();
+      directories.add(this.getSessionDirectory(workspacePath));
+      const discovered = this.discoverSessionDirectory(workspacePath);
+      if (discovered) directories.add(discovered);
+      for (const folder of this.getAllProjectFolders(workspacePath)) directories.add(folder.dir);
+
+      for (const directory of directories) {
+        const direct = path.join(directory, `${normalizedId}.jsonl`);
+        try {
+          if (fs.statSync(direct).isFile()) {
+            this.diagnostics.available('findSessionById');
+            return direct;
+          }
+        } catch {
+          // Continue with directory-shaped lookup for worktree layouts.
+        }
+        const match = this.findSessionsInDirectory(directory).find(
+          (candidate) => this.getSessionId(candidate) === normalizedId,
+        );
+        if (match) {
+          this.diagnostics.available('findSessionById');
+          return match;
+        }
+      }
+      this.recordHomeStatus('findSessionById');
+      return null;
+    } catch {
+      this.recordHomeStatus('findSessionById');
+      return null;
+    }
   }
 
   /** Backward-compatible alias for findAllSessions. */
@@ -289,7 +370,79 @@ export class ClaudeCodeProvider implements SessionProviderBase {
         }
       }
     }
+    this.recordHomeStatus('listAllSessionFiles');
     return results;
+  }
+
+  async listSessionFilesAsync(workspacePath?: string): Promise<SessionFileInfo[]> {
+    const projectsRoot = this.getProjectsBaseDir();
+    let projectEntries: fs.Dirent[] = [];
+    try {
+      projectEntries = await fs.promises.readdir(projectsRoot, { withFileTypes: true });
+    } catch {
+      this.recordHomeStatus('listSessionFilesAsync');
+      return [];
+    }
+
+    const encodedWorkspace = workspacePath ? encodeWsPath(workspacePath).toLowerCase() : null;
+    const workspaceBasename = workspacePath
+      ? path
+          .basename(workspacePath)
+          .replace(/[^a-zA-Z0-9]/g, '-')
+          .toLowerCase()
+      : null;
+    const directories: string[] = [];
+    for (const entry of projectEntries) {
+      const directory = path.join(projectsRoot, entry.name);
+      try {
+        const stat = entry.isDirectory() ? null : await fs.promises.stat(directory);
+        if (!entry.isDirectory() && !stat?.isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      const name = entry.name.toLowerCase();
+      if (
+        encodedWorkspace &&
+        name !== encodedWorkspace &&
+        !name.startsWith(`${encodedWorkspace}-`) &&
+        name !== workspaceBasename &&
+        !name.endsWith(`-${workspaceBasename}`)
+      ) {
+        continue;
+      }
+      directories.push(directory);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    const results: SessionFileInfo[] = [];
+    for (const directory of directories) {
+      let entries: fs.Dirent[] = [];
+      try {
+        entries = await fs.promises.readdir(directory, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isFile() || !this.isSessionFile(entry.name)) continue;
+        const sessionPath = path.join(directory, entry.name);
+        try {
+          const stat = await fs.promises.stat(sessionPath);
+          if (stat.size > 0) {
+            results.push({
+              path: sessionPath,
+              mtime: stat.mtime,
+              sizeBytes: stat.size,
+              sessionId: this.getSessionId(sessionPath),
+            });
+          }
+        } catch {
+          // Skip files that vanish between discovery and stat.
+        }
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+    this.recordHomeStatus('listSessionFilesAsync');
+    return results.sort((left, right) => right.mtime.getTime() - left.mtime.getTime());
   }
 
   // --- File identification ---
@@ -315,53 +468,34 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
       if (bytesRead === 0) return null;
 
-      const chunk = buffer.toString('utf-8', 0, bytesRead);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        try {
-          const event = JSON.parse(trimmed);
-          if (event.type !== 'user') continue;
-
-          const content = event.message?.content;
-          if (!content) continue;
-
-          let text: string | null = null;
-
-          if (typeof content === 'string') {
-            text = content.trim();
-          } else if (Array.isArray(content)) {
-            const textBlock = content.find(
-              (block: unknown) =>
-                isTypedBlock(block) &&
-                block.type === 'text' &&
-                typeof block.text === 'string' &&
-                (block.text as string).trim().length > 0,
-            );
-            if (textBlock && isTypedBlock(textBlock) && typeof textBlock.text === 'string') {
-              text = (textBlock.text as string).trim();
-            }
-          }
-
-          if (text && text.length > 0) {
-            text = text.replace(/\s+/g, ' ');
-            if (text.length > 60) {
-              text = text.substring(0, 57) + '...';
-            }
-            return text;
-          }
-        } catch {
-          // Skip malformed lines
-        }
-      }
-
-      return null;
+      return extractClaudeLabelFromPrefix(buffer.toString('utf-8', 0, bytesRead));
     } catch {
       return null;
     }
+  }
+
+  async extractSessionLabelsAsync(
+    sessionPaths: readonly string[],
+  ): Promise<Map<string, string | null>> {
+    const results = new Map<string, string | null>();
+    for (const sessionPath of sessionPaths) {
+      let handle: fs.promises.FileHandle | null = null;
+      try {
+        handle = await fs.promises.open(sessionPath, 'r');
+        const buffer = Buffer.alloc(8192);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+        results.set(
+          sessionPath,
+          extractClaudeLabelFromPrefix(buffer.toString('utf8', 0, bytesRead)),
+        );
+      } catch {
+        results.set(sessionPath, null);
+      } finally {
+        await handle?.close().catch(() => undefined);
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    return results;
   }
 
   // --- Data reading ---
@@ -428,6 +562,10 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   getProjectsBaseDir(): string {
     return path.join(os.homedir(), '.claude', 'projects');
+  }
+
+  getWatchRoots(): string[] {
+    return [this.getProjectsBaseDir()];
   }
 
   // --- Stats ---
@@ -530,6 +668,23 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   // --- Optional methods ---
 
+  getRuntimeStatus(): ProviderRuntimeStatus {
+    try {
+      fs.accessSync(this.getProjectsBaseDir(), fs.constants.R_OK);
+      return { available: true, kind: 'available' };
+    } catch {
+      return {
+        available: false,
+        kind: 'home_unavailable',
+        message: 'Claude Code session home is unavailable.',
+      };
+    }
+  }
+
+  getLastOperationStatus(): ProviderOperationStatus {
+    return this.diagnostics.getLastOperationStatus();
+  }
+
   getContextWindowLimit(modelId?: string): number {
     if (this.dynamicContextWindowLimit) return this.dynamicContextWindowLimit;
     return getModelContextWindowSize(modelId);
@@ -594,5 +749,19 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   dispose(): void {
     this.dynamicContextWindowLimit = null;
+  }
+
+  private recordHomeStatus(operation: string): void {
+    const status = this.getRuntimeStatus();
+    if (status.available) {
+      this.diagnostics.available(operation);
+      return;
+    }
+    this.diagnostics.degraded(operation, status, {
+      kind: 'home_unavailable',
+      severity: 'info',
+      phase: 'enumerate',
+      message: status.message ?? 'Claude Code session home is unavailable.',
+    });
   }
 }

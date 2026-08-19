@@ -9,6 +9,7 @@
 
 import { fetchQuota } from './quota';
 import type { QuotaState } from './quota';
+import { onAccountsChanged, type AccountsChangedEvent } from './accountChanges';
 
 /** Disposable subscription handle. */
 export interface Disposable {
@@ -24,7 +25,11 @@ export interface QuotaPollerOptions {
   /** Maximum backoff delay for retries (ms). Default: 120_000 (2 minutes). */
   maxBackoffMs?: number;
   /** Returns the current access token. Called before each fetch. */
-  getAccessToken: () => Promise<string>;
+  getAccessToken: () => Promise<string | null | undefined>;
+  /** Optional cheap account-presence check performed before credential access. */
+  hasAccount?: () => boolean | Promise<boolean>;
+  /** Override the process-wide login/logout signal (primarily for embedded hosts/tests). */
+  subscribeAccountsChanged?: (listener: (event: AccountsChangedEvent) => void) => Disposable;
 }
 
 /**
@@ -51,7 +56,11 @@ export class QuotaPoller {
   private readonly activeIntervalMs: number;
   private readonly idleIntervalMs: number;
   private readonly maxBackoffMs: number;
-  private readonly getAccessToken: () => Promise<string>;
+  private readonly getAccessToken: () => Promise<string | null | undefined>;
+  private readonly hasAccount?: () => boolean | Promise<boolean>;
+  private readonly subscribeAccountsChanged: NonNullable<
+    QuotaPollerOptions['subscribeAccountsChanged']
+  >;
 
   private timer: ReturnType<typeof setTimeout> | null = null;
   private listeners: Array<(state: QuotaState) => void> = [];
@@ -59,12 +68,18 @@ export class QuotaPoller {
   private isActive = false;
   private consecutiveFailures = 0;
   private stopped = false;
+  private polling = false;
+  private pendingWake = false;
+  private dormant = false;
+  private accountSubscription: Disposable | null = null;
 
   constructor(options: QuotaPollerOptions) {
     this.activeIntervalMs = options.activeIntervalMs ?? 60_000;
     this.idleIntervalMs = options.idleIntervalMs ?? 300_000;
     this.maxBackoffMs = options.maxBackoffMs ?? 120_000;
     this.getAccessToken = options.getAccessToken;
+    this.hasAccount = options.hasAccount;
+    this.subscribeAccountsChanged = options.subscribeAccountsChanged ?? onAccountsChanged;
   }
 
   /**
@@ -73,7 +88,8 @@ export class QuotaPoller {
   start(): void {
     this.stopped = false;
     this.isActive = true;
-    void this.poll();
+    this.accountSubscription ??= this.subscribeAccountsChanged(() => this.wake());
+    this.wake();
   }
 
   /**
@@ -81,10 +97,13 @@ export class QuotaPoller {
    */
   stop(): void {
     this.stopped = true;
+    this.dormant = false;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.accountSubscription?.dispose();
+    this.accountSubscription = null;
   }
 
   /**
@@ -126,9 +145,25 @@ export class QuotaPoller {
 
   private async poll(): Promise<void> {
     if (this.stopped) return;
+    if (this.polling) {
+      this.pendingWake = true;
+      return;
+    }
+    this.polling = true;
+    this.pendingWake = false;
+    this.dormant = false;
+    let nextDelayOverride: number | undefined;
 
     try {
+      if (this.hasAccount && !(await this.hasAccount())) {
+        this.dormant = true;
+        return;
+      }
       const token = await this.getAccessToken();
+      if (!token) {
+        this.dormant = true;
+        return;
+      }
       const state = await fetchQuota(token);
 
       if (state.available) {
@@ -141,7 +176,7 @@ export class QuotaPoller {
         this.latest = state;
         this.notify(state);
         this.consecutiveFailures = 0;
-        this.scheduleNext(this.idleIntervalMs);
+        nextDelayOverride = this.idleIntervalMs;
         return;
       } else {
         // Transient error: increment backoff, use cached state
@@ -169,9 +204,28 @@ export class QuotaPoller {
       };
       this.latest = state;
       this.notify(state);
+    } finally {
+      this.polling = false;
+      if (this.pendingWake) {
+        this.pendingWake = false;
+        void this.poll();
+      } else if (!this.dormant) {
+        this.scheduleNext(nextDelayOverride);
+      }
     }
+  }
 
-    this.scheduleNext();
+  private wake(): void {
+    if (this.stopped) return;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.polling) {
+      this.pendingWake = true;
+      return;
+    }
+    void this.poll();
   }
 
   private scheduleNext(overrideMs?: number): void {

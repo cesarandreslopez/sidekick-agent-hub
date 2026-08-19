@@ -144,4 +144,32 @@ describe('CodexQuotaWatcher', () => {
     // potentially expensive local-source scan.
     expect(providerFactory).toHaveBeenCalledTimes(3);
   });
+
+  it('does not construct or scan a provider until a Codex account appears', () => {
+    let account: SavedAccountProfile | null = null;
+    let accountListener: (() => void) | undefined;
+    const provider = {
+      findActiveSession: vi.fn(() => null),
+      findAllSessions: vi.fn(() => []),
+      dispose: vi.fn(),
+    } as unknown as CodexProvider;
+    const providerFactory = vi.fn(() => provider);
+    const watcher = new CodexQuotaWatcher('/workspace', {
+      providerFactory,
+      getActiveAccount: () => account,
+      maxSessionFiles: 0,
+      subscribeAccountsChanged: (listener) => {
+        accountListener = () => listener({} as never);
+        return { dispose: vi.fn() };
+      },
+    });
+
+    watcher.start();
+    expect(providerFactory).not.toHaveBeenCalled();
+
+    account = makeAccount();
+    accountListener?.();
+    expect(providerFactory).toHaveBeenCalled();
+    watcher.dispose();
+  });
 });

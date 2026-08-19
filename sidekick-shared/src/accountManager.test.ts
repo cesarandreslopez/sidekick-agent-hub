@@ -42,6 +42,12 @@ import {
 import { getClaudeProfileHome } from './claudeProfiles';
 import { getCodexProfileHome } from './codexProfiles';
 import { readSavedAccountRegistry } from './accountRegistry';
+import {
+  accountLoginStatusSchema,
+  accountManagerResultSchema,
+  beginAccountLoginResultSchema,
+  listAllAccountsResultSchema,
+} from './schemas/accountManager';
 
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, 'platform', {
@@ -98,6 +104,7 @@ describe('accountManager', () => {
   it('begins an isolated Claude login without spawning a process', () => {
     const result = beginAccountLogin('claude-code', 'Work');
 
+    expect(beginAccountLoginResultSchema.parse(result)).toEqual(result);
     expect(result.success).toBe(true);
     expect(result.loginId).toBeTruthy();
     expect(result.command).toBe('claude');
@@ -138,6 +145,7 @@ describe('accountManager', () => {
 
     const result = finalizeAccountLogin('claude-code', begin.loginId);
 
+    expect(accountManagerResultSchema.parse(result)).toEqual(result);
     expect(result).toEqual({ success: true });
     expect(getActiveAccount()?.uuid).toBe('uuid-work');
     expect(
@@ -177,8 +185,16 @@ describe('accountManager', () => {
 
     const registry = readSavedAccountRegistry();
     expect(registry?.activeByProvider).toEqual({ 'claude-code': null, codex: null });
-    expect(listAllAccounts().claude).toHaveLength(1);
-    expect(listAllAccounts().codex).toHaveLength(1);
+    const accounts = listAllAccounts();
+    expect(listAllAccountsResultSchema.parse(accounts)).toEqual(accounts);
+    expect(accounts.claude).toHaveLength(1);
+    expect(accounts.codex).toHaveLength(1);
+  });
+
+  it('returns schema-valid login polling results', () => {
+    const begin = beginAccountLogin('claude-code', 'Work');
+    const status = getAccountLoginStatus('claude-code', begin.loginId);
+    expect(accountLoginStatusSchema.parse(status)).toEqual(status);
   });
 
   it('switches accounts through the provider-neutral wrapper', () => {

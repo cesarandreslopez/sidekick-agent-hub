@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockExistsSync = vi.fn<(path: unknown) => boolean>().mockReturnValue(true);
 const mockExecFileSync = vi.fn();
+const mockExecFile = vi.fn();
 
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
@@ -13,6 +14,7 @@ vi.mock('fs', async (importOriginal) => {
 
 vi.mock('child_process', () => ({
   execFileSync: (...args: unknown[]) => mockExecFileSync(...args),
+  execFile: (...args: unknown[]) => mockExecFile(...args),
 }));
 
 import { OpenCodeDatabase } from './openCodeDatabase';
@@ -21,6 +23,7 @@ describe('OpenCodeDatabase', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(true);
+    mockExecFile.mockReset();
   });
 
   it('reports sqlite_missing when sqlite3 is not executable', () => {
@@ -148,5 +151,31 @@ describe('OpenCodeDatabase', () => {
     expect(db.getAllProjects()).toEqual([
       expect.objectContaining({ id: 'proj_retry', worktree: '/retry' }),
     ]);
+  });
+
+  it('enumerates every root session in one asynchronous sqlite subprocess', async () => {
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback: Function) => {
+        callback(
+          null,
+          JSON.stringify([
+            {
+              id: 'ses_1',
+              project_id: 'proj_1',
+              title: 'One',
+              directory: '/repo',
+              time_created: 1,
+              time_updated: 2,
+            },
+          ]),
+        );
+      },
+    );
+    const db = new OpenCodeDatabase('/tmp/opencode');
+
+    await expect(db.getAllSessionsAsync()).resolves.toEqual([
+      expect.objectContaining({ id: 'ses_1' }),
+    ]);
+    expect(mockExecFile).toHaveBeenCalledOnce();
   });
 });

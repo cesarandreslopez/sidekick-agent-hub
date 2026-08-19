@@ -5,12 +5,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import type { CodexDbThread } from '../types/codex';
+import type { ProviderRuntimeStatus } from './types';
 
 export class CodexDatabase {
   private readonly dbPath: string;
   private sqlite3Available: boolean | null = null;
+  private runtimeStatus: ProviderRuntimeStatus | null = null;
 
   constructor(codexHome: string) {
     this.dbPath = findLatestStateDatabase(codexHome) ?? path.join(codexHome, 'state.sqlite');
@@ -26,6 +28,11 @@ export class CodexDatabase {
 
   open(): boolean {
     if (this.sqlite3Available !== null) return this.sqlite3Available;
+    if (!this.isAvailable()) {
+      this.sqlite3Available = false;
+      this.runtimeStatus = { available: false, kind: 'db_missing' };
+      return false;
+    }
     try {
       execFileSync('sqlite3', ['--version'], {
         encoding: 'utf-8',
@@ -34,11 +41,23 @@ export class CodexDatabase {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       this.sqlite3Available = true;
+      this.runtimeStatus = { available: true, kind: 'available' };
       return true;
-    } catch {
+    } catch (error) {
       this.sqlite3Available = false;
+      this.runtimeStatus = classifySqliteError(error);
       return false;
     }
+  }
+
+  getRuntimeStatus(): ProviderRuntimeStatus {
+    if (this.runtimeStatus) return this.runtimeStatus;
+    if (!this.isAvailable()) return { available: false, kind: 'db_missing' };
+    return {
+      available: false,
+      kind: 'query_failed',
+      message: 'Codex database has not been initialized yet.',
+    };
   }
 
   close(): void {}
@@ -67,7 +86,30 @@ export class CodexDatabase {
       const trimmed = result.trim();
       if (!trimmed) return [];
       return JSON.parse(trimmed) as T[];
-    } catch {
+    } catch (error) {
+      this.runtimeStatus = {
+        ...classifySqliteError(error, 'query_failed'),
+        available: this.sqlite3Available === true,
+      };
+      return [];
+    }
+  }
+
+  private async queryAsync<T>(sql: string, params: (string | number)[] = []): Promise<T[]> {
+    if (!this.isAvailable()) {
+      this.runtimeStatus = { available: false, kind: 'db_missing' };
+      return [];
+    }
+    const query = bindSqlParams(sql, params);
+    try {
+      const result = await execSqlite(this.dbPath, query, 10 * 1024 * 1024);
+      this.sqlite3Available = true;
+      this.runtimeStatus = { available: true, kind: 'available' };
+      const trimmed = result.trim();
+      return trimmed ? (JSON.parse(trimmed) as T[]) : [];
+    } catch (error) {
+      this.sqlite3Available = false;
+      this.runtimeStatus = classifySqliteError(error, 'query_failed');
       return [];
     }
   }
@@ -108,6 +150,15 @@ export class CodexDatabase {
     return this.queryOne<CodexDbThread>('SELECT * FROM threads WHERE id = ?', [id]);
   }
 
+  /** Resolve many thread ids with one non-blocking sqlite3 subprocess. */
+  getThreadsByIdsAsync(ids: readonly string[]): Promise<CodexDbThread[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    const placeholders = ids.map(() => '?').join(', ');
+    return this.queryAsync<CodexDbThread>(`SELECT * FROM threads WHERE id IN (${placeholders})`, [
+      ...ids,
+    ]);
+  }
+
   /** Get all threads forked from a given session ID. */
   getThreadsByForkedFromId(parentId: string): CodexDbThread[] {
     return this.query<CodexDbThread>(
@@ -124,6 +175,54 @@ export class CodexDatabase {
       return 0;
     }
   }
+}
+
+function classifySqliteError(
+  error: unknown,
+  fallback: ProviderRuntimeStatus['kind'] = 'sqlite_blocked',
+): ProviderRuntimeStatus {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === 'ENOENT') {
+    return {
+      available: false,
+      kind: 'sqlite_missing',
+      message: 'The sqlite3 executable was not found.',
+    };
+  }
+  return {
+    available: false,
+    kind: fallback,
+    message: error instanceof Error ? error.message : 'sqlite3 could not be executed.',
+  };
+}
+
+function bindSqlParams(sql: string, params: readonly (string | number)[]): string {
+  let paramIndex = 0;
+  return sql.replace(/\?/g, () => {
+    if (paramIndex >= params.length) return '?';
+    const param = params[paramIndex++];
+    if (typeof param === 'number') return Number.isFinite(param) ? String(param) : '0';
+    return `'${String(param).replace(/'/g, "''")}'`;
+  });
+}
+
+function execSqlite(dbPath: string, query: string, maxBuffer: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'sqlite3',
+      ['-json', '-readonly', dbPath, query],
+      {
+        encoding: 'utf8',
+        timeout: 4_000,
+        killSignal: 'SIGKILL',
+        maxBuffer,
+      },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      },
+    );
+  });
 }
 
 function findLatestStateDatabase(codexHome: string): string | null {
