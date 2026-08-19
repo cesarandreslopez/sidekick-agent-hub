@@ -36,9 +36,13 @@ function summary(inputTokens: number): SessionSummary {
 describe('HistoricalDataService', () => {
   beforeAll(() => {
     temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-history-test-'));
+    // The homedir mock above cannot reach the externalized sidekick-shared
+    // bundle, so redirect its getConfigDir() through the env override too.
+    process.env.SIDEKICK_CONFIG_DIR = path.join(temporaryHome, '.config', 'sidekick');
   });
 
   afterAll(() => {
+    delete process.env.SIDEKICK_CONFIG_DIR;
     fs.rmSync(temporaryHome, { recursive: true, force: true });
   });
 

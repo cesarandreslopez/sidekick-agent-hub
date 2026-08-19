@@ -17,9 +17,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { log, logError } from './Logger';
-import { atomicWriteJsonSync, updateJsonStoreAtomic } from 'sidekick-shared';
+import { getConfigDir, updateJsonStoreAtomic, updateJsonStoreAtomicSync } from 'sidekick-shared';
 
 /** Minimum shape every persisted store must satisfy. */
 export interface BaseStore {
@@ -30,25 +29,15 @@ export interface BaseStore {
 /** Save debounce delay shared by all persistence services (5 seconds). */
 const SAVE_DEBOUNCE_MS = 5000;
 
-let _sidekickBase: string | undefined;
-function getSidekickBase(): string {
-  if (!_sidekickBase) {
-    _sidekickBase =
-      process.platform === 'win32'
-        ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
-        : path.join(os.homedir(), '.config', 'sidekick');
-  }
-  return _sidekickBase;
-}
-
 /**
  * Resolves a path under the Sidekick config directory.
  *
- * - Linux/Mac: `~/.config/sidekick/{subdirectory}/{filename}`
- * - Windows:   `%APPDATA%/sidekick/{subdirectory}/{filename}`
+ * The base honors a `setConfigDir()` override and `SIDEKICK_CONFIG_DIR`,
+ * falling back to `~/.config/sidekick` (`%APPDATA%/sidekick` on Windows) —
+ * the same resolution the shared library's own stores use.
  */
 export function resolveSidekickDataPath(subdirectory: string, filename: string): string {
-  const base = getSidekickBase();
+  const base = getConfigDir();
   return subdirectory ? path.join(base, subdirectory, filename) : path.join(base, filename);
 }
 
@@ -232,18 +221,19 @@ export abstract class PersistenceService<T extends BaseStore> implements vscode.
 
     if (this.isDirty) {
       try {
-        // Reconcile with disk so a flush at shutdown cannot clobber entries
-        // written concurrently by the CLI since the last load.
-        try {
-          const latest = JSON.parse(fs.readFileSync(this.dataFilePath, 'utf-8')) as T;
-          this.store = this.mergeStoreForSave(latest, this.store);
-        } catch {
-          // Missing or unreadable disk state: flush the in-memory store as-is.
-        }
         this.store.lastSaved = new Date().toISOString();
-        atomicWriteJsonSync(this.dataFilePath, this.store);
+        const pending = this.store;
+        this.store = updateJsonStoreAtomicSync(
+          this.dataFilePath,
+          this._createEmptyStore,
+          (latest) => this.mergeStoreForSave(latest, pending),
+        );
+        this.isDirty = false;
+        this.pendingDeletions.clear();
         log(`${this.logLabel} data saved on dispose`);
       } catch (error) {
+        // Includes a store-lock timeout: skipping the flush is preferable to
+        // clobbering a concurrent CLI write.
         logError(`Failed to save ${this.logLabel} data on dispose`, error);
       }
     }

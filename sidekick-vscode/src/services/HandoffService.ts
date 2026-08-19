@@ -3,9 +3,10 @@
  *
  * Generates slim, actionable handoff documents at session end so that
  * subsequent agent sessions can resume with context. Follows the
- * DecisionLogService pattern (storage in ~/.config/sidekick/).
+ * DecisionLogService pattern (storage in the Sidekick config directory).
  *
- * Storage location: ~/.config/sidekick/handoffs/
+ * Storage location: `handoffs/` under the Sidekick config directory
+ * (default `~/.config/sidekick`, overridable via `SIDEKICK_CONFIG_DIR`).
  *
  * @module services/HandoffService
  */
@@ -13,7 +14,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { getConfigDir } from 'sidekick-shared';
 import type { SessionSummaryData } from '../types/sessionSummary';
 import type { SessionAnalysisData } from '../types/analysis';
 import type { SessionStats } from '../types/claudeSession';
@@ -32,10 +33,7 @@ export class HandoffService implements vscode.Disposable {
   }
 
   private getHandoffsDir(): string {
-    if (process.platform === 'win32') {
-      return path.join(process.env.APPDATA || os.homedir(), 'sidekick', 'handoffs');
-    }
-    return path.join(os.homedir(), '.config', 'sidekick', 'handoffs');
+    return path.join(getConfigDir(), 'handoffs');
   }
 
   /**

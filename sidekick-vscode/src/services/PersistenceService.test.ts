@@ -2,13 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   updateJsonStoreAtomic: vi.fn(),
+  updateJsonStoreAtomicSync: vi.fn(),
 }));
 
 vi.mock('vscode', () => ({}));
 vi.mock('./Logger', () => ({ log: vi.fn(), logError: vi.fn() }));
 vi.mock('sidekick-shared', () => ({
   updateJsonStoreAtomic: mocks.updateJsonStoreAtomic,
-  atomicWriteJsonSync: vi.fn(),
+  updateJsonStoreAtomicSync: mocks.updateJsonStoreAtomicSync,
+  getConfigDir: vi.fn(() => '/tmp/sidekick-test-config'),
 }));
 
 import { PersistenceService } from './PersistenceService';
@@ -35,6 +37,10 @@ class TestPersistence extends PersistenceService<TestStore> {
 
   values(): string[] {
     return [...this.store.values];
+  }
+
+  protected override mergeStoreForSave(latest: TestStore, pending: TestStore): TestStore {
+    return { ...pending, values: [...new Set([...latest.values, ...pending.values])] };
   }
 }
 
@@ -74,5 +80,28 @@ describe('PersistenceService', () => {
     expect(service.values()).toEqual(['before', 'during']);
     await service.forceSave();
     expect(mocks.updateJsonStoreAtomic).toHaveBeenCalledTimes(2);
+  });
+
+  it('flushes on dispose through the locked sync updater, merging disk state', () => {
+    mocks.updateJsonStoreAtomicSync.mockImplementation(
+      (_filePath: string, createEmpty: () => TestStore, mutate: (store: TestStore) => TestStore) =>
+        mutate({ ...createEmpty(), values: ['from-cli'] }),
+    );
+    const service = new TestPersistence();
+    service.add('local');
+
+    service.dispose();
+
+    expect(mocks.updateJsonStoreAtomicSync).toHaveBeenCalledTimes(1);
+    expect(mocks.updateJsonStoreAtomicSync).toHaveBeenCalledWith(
+      '/tmp/sidekick-persistence-race.json',
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(service.values()).toEqual(['from-cli', 'local']);
+
+    // A second dispose is a no-op: the flush cleared the dirty flag.
+    service.dispose();
+    expect(mocks.updateJsonStoreAtomicSync).toHaveBeenCalledTimes(1);
   });
 });

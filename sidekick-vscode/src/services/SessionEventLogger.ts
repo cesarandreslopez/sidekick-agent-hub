@@ -2,8 +2,9 @@
  * @fileoverview Session event logger for persisting normalized events to disk.
  *
  * Appends every SessionEvent to a JSONL file as SessionMonitor processes it,
- * creating an audit trail for debugging and replay. Each session gets its own file
- * under `~/.config/sidekick/event-logs/{provider}/{sessionId}.jsonl`.
+ * creating an audit trail for debugging and replay. Each session gets its own
+ * file under `event-logs/{provider}/{sessionId}.jsonl` in the Sidekick config
+ * directory (default `~/.config/sidekick`, overridable via `SIDEKICK_CONFIG_DIR`).
  *
  * Off by default; toggled via the dashboard's "Event Log" checkbox.
  *
@@ -13,7 +14,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { getConfigDir } from 'sidekick-shared';
 import type { SessionEvent } from '../types/claudeSession';
 import type {
   SessionEventLogEntry,
@@ -237,15 +238,9 @@ export class SessionEventLogger implements vscode.Disposable {
 
   // ── Internals ─────────────────────────────────────────────────────
 
-  /**
-   * Resolves the event-logs directory path based on platform.
-   */
+  /** Resolves the event-logs directory under the shared Sidekick config dir. */
   private getEventLogsDir(): string {
-    const configDir =
-      process.platform === 'win32'
-        ? path.join(process.env.APPDATA || os.homedir(), 'sidekick')
-        : path.join(os.homedir(), '.config', 'sidekick');
-    return path.join(configDir, 'event-logs');
+    return path.join(getConfigDir(), 'event-logs');
   }
 
   /** Closes the write stream and resets active session state. */

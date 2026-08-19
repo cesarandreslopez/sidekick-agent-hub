@@ -9,7 +9,8 @@ vi.mock('sidekick-shared', () => ({
     createEmpty: () => T,
     mutate: (store: T) => T,
   ) => mutate(createEmpty()),
-  atomicWriteJsonSync: vi.fn(),
+  updateJsonStoreAtomicSync: vi.fn(),
+  getConfigDir: () => '/tmp/sidekick-test-config',
 }));
 
 import { PlanPersistenceService } from './PlanPersistenceService';
