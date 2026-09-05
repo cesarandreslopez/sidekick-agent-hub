@@ -391,6 +391,47 @@ sidekick --provider codex blocks --since 7d --csv
 sidekick blocks --active --json
 ```
 
+### Usage reports
+
+```bash
+sidekick daily   [--since <time>] [--until <time>] [--breakdown] [--by-project] [--utc] [--csv]
+sidekick weekly  [...]
+sidekick monthly [...]
+sidekick sessions [...]
+```
+
+Usage computed straight from session logs, so they work for CLI-only users who never ran the VS Code extension (the store-backed `sidekick stats` still needs the extension's history). By default every provider with session data is read and shown side by side — Claude Code, Codex, and OpenCode in one table — and the global `--provider` restricts the report to one.
+
+Rows are bucketed by the **time of each usage event**, on the local calendar unless `--utc`, so a session that crosses midnight is split across the days it actually ran in (the history store behind `stats` buckets by session start instead). Weeks start on Monday. `sessions` prints one row per session with its first event, project, calls, cache-inclusive total, cost, and models. Sessions are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time.
+
+| Flag             | Description                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--since <time>` | Window start: ISO date, `YYYY-MM-DD`, or a relative window such as `30d`, `12w`, `24h` (defaults: 30 days, 12 weeks, 12 calendar months, 30 days) |
+| `--until <time>` | Window end (default: now)                                                                                                                         |
+| `--breakdown`    | Per-model sub-rows under every row                                                                                                                |
+| `--by-project`   | Group rows by project as well as provider                                                                                                         |
+| `--utc`          | Bucket by UTC calendar days instead of local days                                                                                                 |
+| `--csv`          | One row per bucket (and per breakdown sub-row): period, provider, project, model, token buckets, total, cost, provenance                          |
+| `--no-cache`     | Re-read every session instead of using the usage cache                                                                                            |
+
+Column labels follow the shared vocabulary ("Total (incl. cache)"); costs carry their provenance in the footer and unpriced rows show `—`. Use the global `--json` for the full report (`rows`, `breakdown`, `totals`, providers, and cache counts).
+
+#### Examples
+
+```bash
+# Last 30 days, every provider, one row per day
+sidekick daily
+
+# Per-model sub-rows, Codex only, keyed by UTC day
+sidekick --provider codex daily --breakdown --utc
+
+# A quarter of weeks as CSV
+sidekick weekly --since 13w --csv --output-file weeks.csv
+
+# Every session from the last day, for scripts
+sidekick sessions --since 24h --json
+```
+
 ### Status
 
 ```bash

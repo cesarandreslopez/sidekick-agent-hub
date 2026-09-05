@@ -183,3 +183,11 @@ export type {
   BillingBlockTokens,
   ComputeBillingBlocksOptions,
 } from './usage/billingBlocks';
+export { bucketUsage, summarizeUsageRows, usageBucketKey, weekKey } from './usage/usageReports';
+export type {
+  BucketUsageOptions,
+  UsageBucketRow,
+  UsageGranularity,
+  UsageGroupDimension,
+  UsageTotals,
+} from './usage/usageReports';

@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dashboard raises a toast when the five-hour window crosses 80% or 95%, or the seven-day window crosses 90%, once per reset window
 - `sidekick blocks [--active | --recent | --since <time>] [--csv] [--no-cache]` shows five-hour billing blocks computed from session logs (a block opens at the first usage event aligned to the UTC hour, lasts five hours, and a longer gap opens a new one) with cache-inclusive totals, cost provenance, burn rate, and — for the open block — projected end-of-block tokens and cost. Sessions are read once and cached by size and mtime; the table is labelled a local estimate and the official status-line sample is shown beneath it when present. `--since` accepts an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`
 - The dashboard's Sessions summary shows the active five-hour billing block (local estimate from session logs), refreshed every minute
+- `sidekick daily`, `weekly`, `monthly`, and `sessions` report usage computed straight from session logs, so CLI-only users no longer see "No historical data found". Every provider with session data is read by default (the global `--provider` narrows to one); rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session crossing midnight is split across both days; weeks start on Monday. Options: `--since` / `--until` (ISO date, `YYYY-MM-DD`, or relative windows such as `30d`), `--breakdown` (per-model sub-rows), `--by-project`, `--csv`, `--no-cache`; the global `--json` prints the full report. Defaults: 30 days, 12 weeks, 12 calendar months, 30 days
+- `sidekick stats` points at `sidekick daily` when the history store is empty
 
 ### Changed
 

@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** `collectUsageEvents()` collects priced usage events from session logs with a per-session cache, and `computeBillingBlocks()` / `findActiveBillingBlock()` group them into five-hour billing blocks with burn rate and end-of-block projections
 - **CLI:** `sidekick blocks [--active | --recent | --since <time>] [--csv]` shows five-hour billing blocks computed from session logs, labelled as a local estimate, with the official status-line sample beneath the active block when one has been persisted; `--since` accepts relative windows such as `7d`
 - **VS Code:** a Billing block card beneath the quota gauges shows the open five-hour block computed from session logs with burn rate and projections, next to the official status-line sample when present; the CLI dashboard's Sessions summary shows the same block
+- **Shared:** `bucketUsage()` and `summarizeUsageRows()` bucket usage events by event time into day, week, month, or session rows
+- **CLI:** `sidekick daily`, `weekly`, `monthly`, and `sessions` report usage computed straight from session logs for every detected provider (no extension history store needed), bucketed by usage-event time on the local calendar (`--utc` for UTC), with `--since`/`--until`, `--breakdown` (per-model sub-rows), `--by-project`, `--csv`, and `--json`; `stats` points at `daily` when its store is empty
 
 ### Changed
 

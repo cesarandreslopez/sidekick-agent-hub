@@ -75,6 +75,14 @@ export type {
   UsageEventRecord,
   UsageSessionRecord,
 } from './usage/usageEvents';
+export { bucketUsage, summarizeUsageRows, usageBucketKey, weekKey } from './usage/usageReports';
+export type {
+  BucketUsageOptions,
+  UsageBucketRow,
+  UsageGranularity,
+  UsageGroupDimension,
+  UsageTotals,
+} from './usage/usageReports';
 export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
 export {
   ObservedSessionCollector,

@@ -5,6 +5,7 @@ import {
   BLOCKS_EXAMPLES,
   DUMP_EXAMPLES,
   EXTRACT_EXAMPLES,
+  USAGE_REPORT_EXAMPLES,
   HISTORY_EXAMPLES,
   QUOTA_EXAMPLES,
   ROOT_EXAMPLES,
@@ -304,6 +305,56 @@ const blocksCmd = new Command('blocks')
     return blocksAction(_opts, cmd);
   });
 program.addCommand(blocksCmd);
+
+// Usage reports — daily / weekly / monthly / sessions computed from session logs
+function usageReportCommand(name: string, description: string): Command {
+  return new Command(name)
+    .description(description)
+    .option(
+      '--since <time>',
+      'Start of the window: ISO date, YYYY-MM-DD, or a relative window such as 30d',
+    )
+    .option('--until <time>', 'End of the window (default: now)')
+    .option('--breakdown', 'Add per-model sub-rows under every row')
+    .option('--by-project', 'Group rows by project as well as provider')
+    .option('--utc', 'Bucket by UTC calendar days instead of local days')
+    .option('--csv', 'Print rows as CSV')
+    .option('--no-cache', 'Re-read every session instead of using the usage cache')
+    .addHelpText('after', USAGE_REPORT_EXAMPLES);
+}
+program.addCommand(
+  usageReportCommand('daily', 'Daily usage from session logs (default: last 30 days)').action(
+    async (_opts: Record<string, unknown>, cmd: Command) => {
+      const { dailyAction } = await import('./commands/usageReports');
+      return dailyAction(_opts, cmd);
+    },
+  ),
+);
+program.addCommand(
+  usageReportCommand('weekly', 'Weekly usage from session logs (default: last 12 weeks)').action(
+    async (_opts: Record<string, unknown>, cmd: Command) => {
+      const { weeklyAction } = await import('./commands/usageReports');
+      return weeklyAction(_opts, cmd);
+    },
+  ),
+);
+program.addCommand(
+  usageReportCommand('monthly', 'Monthly usage from session logs (default: last 12 months)').action(
+    async (_opts: Record<string, unknown>, cmd: Command) => {
+      const { monthlyAction } = await import('./commands/usageReports');
+      return monthlyAction(_opts, cmd);
+    },
+  ),
+);
+program.addCommand(
+  usageReportCommand(
+    'sessions',
+    'One row per session from session logs (default: last 30 days)',
+  ).action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { sessionsAction } = await import('./commands/usageReports');
+    return sessionsAction(_opts, cmd);
+  }),
+);
 
 // Quota command — one-shot quota / rate-limit check
 const quotaCmd = new Command('quota')

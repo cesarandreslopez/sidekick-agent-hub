@@ -202,6 +202,9 @@ export async function statsAction(_opts: Record<string, unknown>, cmd: Command):
       } else {
         process.stdout.write(chalk.dim('No historical data found.\n'));
         process.stdout.write(chalk.dim('Run some sessions with Sidekick to accumulate stats.\n'));
+        process.stdout.write(
+          chalk.dim('Run "sidekick daily" for usage computed straight from session logs.\n'),
+        );
       }
       return;
     }

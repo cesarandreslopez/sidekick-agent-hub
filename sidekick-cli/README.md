@@ -50,7 +50,7 @@ If `sqlite3` is missing or not executable in the current shell environment, Side
 
 ```bash
 sidekick dashboard [options]
-sidekick tasks|decisions|notes|stats|blocks|quota|status|account|handoff|search|context|extract [options]
+sidekick tasks|decisions|notes|stats|blocks|daily|weekly|monthly|sessions|quota|status|account|handoff|search|context|extract [options]
 sidekick today|doctor|statusline|mcp [options]
 sidekick tasks add|tasks done|note add|decision add [args]
 ```
@@ -91,6 +91,14 @@ sidekick blocks [--active | --recent | --since <time>] [--csv]
 ```
 
 Five-hour billing blocks computed from session logs (ccusage-style: a block opens at the first usage event, aligned to the UTC hour, lasts five hours, and a longer gap opens a new one). Each block shows its cache-inclusive token total, cost with provenance, burn rate, and — for the open block — projected end-of-block tokens and cost plus the time remaining. Sessions are read once and cached by size and mtime under the Sidekick config directory. When the status line has persisted an official Claude Code rate-limit sample, it is shown beneath the local estimate for comparison. `--since` accepts an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`; `--json` prints the full report and `--csv` one row per block.
+
+## Usage Reports
+
+```bash
+sidekick daily|weekly|monthly|sessions [--since <time>] [--until <time>] [--breakdown] [--by-project] [--utc] [--csv]
+```
+
+Usage computed straight from session logs — no VS Code extension or history store required — for every provider with session data side by side (`--provider` narrows to one). Rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session that crosses midnight is split across both days; weeks start on Monday. `--breakdown` adds per-model sub-rows, `--by-project` groups by project, `sessions` prints one row per session, and `--json` / `--csv` feed scripts. Defaults: 30 days, 12 weeks, 12 calendar months, 30 days.
 
 ## Quick Capture
 

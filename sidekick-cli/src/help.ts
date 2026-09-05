@@ -32,6 +32,16 @@ Examples:
   $ sidekick blocks --active --json         Burn rate and projection for scripts
 `;
 
+export const USAGE_REPORT_EXAMPLES = `
+Examples:
+  $ sidekick daily                          Last 30 days, one row per day and provider
+  $ sidekick daily --breakdown              Per-model sub-rows under each day
+  $ sidekick weekly --since 2026-06-01      Weeks (Monday start) since a date
+  $ sidekick monthly --csv                  Twelve months as CSV
+  $ sidekick sessions --since 7d --json     One row per session, for scripts
+  $ sidekick --provider codex daily --utc   Codex only, keyed by UTC day
+`;
+
 export const EXTRACT_EXAMPLES = `
 Examples:
   $ sidekick extract                        URLs, file paths, commands, and plans
