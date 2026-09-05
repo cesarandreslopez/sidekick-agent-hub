@@ -331,6 +331,30 @@ export function listHistoricalProjects(records: SessionHistoryRecord[]): string[
   return [...new Set(records.map((r) => r.project).filter((p): p is string => Boolean(p)))].sort();
 }
 
+/** Where a History tab drill-down lands. */
+export interface DrillDownTarget {
+  /** The range to build: a month's days or a day's hours. */
+  range: Extract<HistoricalRange, 'month' | 'today'>;
+  /** The date that anchors the builder's window on the drilled month or day. */
+  now: Date;
+}
+
+/**
+ * Resolve a drill-down from `currentRange` at `timestamp`: a month key
+ * (`YYYY-MM`) from the all-time view drills to that month's days, a day key
+ * (`YYYY-MM-DD`) from a daily view drills to its hours. `null` when the
+ * timestamp is not a key the builder can anchor on.
+ */
+export function drillDownTarget(timestamp: string, currentRange: string): DrillDownTarget | null {
+  if (currentRange === 'all') {
+    if (!/^\d{4}-\d{2}$/.test(timestamp)) return null;
+    const now = parseLocalDateKey(lastDayOfMonth(timestamp));
+    return now ? { range: 'month', now } : null;
+  }
+  const now = parseLocalDateKey(timestamp);
+  return now ? { range: 'today', now } : null;
+}
+
 export function buildHistoricalSummary(
   source: HistoricalSummarySource,
   range: HistoricalRange,

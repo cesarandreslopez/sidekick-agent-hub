@@ -5,7 +5,7 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.0] - 2026-09-05
 
 ### Added
 
@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider status polling is scoped to the active provider: status.claude.com for Claude Code, status.openai.com for Codex, nothing for OpenCode
 - `sidekick dump --list` and the multi-provider session picker read the bounded async preview index; `--list` prints enumeration diagnostics to stderr and shows the "raise --limit" footer only when more sessions exist beyond the limit
 - `sidekick stats` text mode: the Top Failing Tools block shows the last 7 and 30 days side by side with a trend arrow; `--json` output is unchanged
+
+### Fixed
+
+- `--offline` and `--output-file` given before the command are recognised by the command-token scan: `sidekick --offline stats` used to skip catalog hydration entirely and price from the static table, and `sidekick --offline statusline` fell off the fast path
+- `--output-file` writes plain text: chalk's colour level is reset when the redirect is installed, unless `FORCE_COLOR` is set
+- The dashboard's `state.json` keys quota by the sample's `providerId` when one is stamped
 
 ## [0.25.0] - 2026-08-18
 

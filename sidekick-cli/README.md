@@ -8,6 +8,11 @@ Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Co
 
 ## What's New
 
+- **Usage reports from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` compute tokens and cost for every provider straight from session logs (local calendar days, `--breakdown`, `--by-project`, `--csv`, `--json`), so CLI-only users no longer need the extension's history store; `sidekick import` backfills that store when you want `stats` and `today` to see older sessions.
+- **`sidekick blocks`** — five-hour billing blocks with cache-inclusive totals, cost provenance, burn rate, and end-of-block projections, with the official status-line sample beside the local estimate.
+- **Official quota through the status line** — `sidekick statusline` reads the JSON Claude Code pipes on stdin, appends context %, session cost, and cache hit rate, and persists the official limits; `quota`, `quota --all`, and `mcp get_quota_status` share one resolution order and print a `Source` row naming where the numbers came from.
+- **`state.json`** — a public, versioned snapshot (account, quota with freshness, context, session cost, active billing block) written by `statusline` and the dashboard for tmux status bars and scripts.
+- **Scripting flags** — global `--offline` and `--output-file`, `--csv` on `stats`, `dump --list`, and `quota history`, `quota history --window 5h|7d|max`, and `--json` on the quick-capture commands and `report`; every token total is cache-inclusive and every cost carries its provenance.
 - **`sidekick history`** — list your most recent Codex prompts across every workspace, newest first; `--path <id-or-prefix>` resolves a session to its transcript file for `less`/`jq`, and `--json` emits full ids and timestamps. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound (default 50), so huge session histories list quickly.
 - **`sidekick statusline`, `today` & `doctor`** — a cache-only one-line account/quota/burn footer, a cache-only daily brief, and cross-provider health diagnostics.
 - **Quick capture** — `sidekick tasks add`, `tasks done`, `note add`, and `decision add` write straight to the shared project stores with atomic merges.
@@ -63,7 +68,7 @@ The standalone commands open the dashboard directly to a specific panel or run a
 | `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
 | `--no-color`           | Disable colored output (also honors `NO_COLOR`)                           |
 | `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)            |
-| `--output-file <path>` | Write a command's stdout to a file                                        |
+| `--output-file <path>` | Write a command's stdout to a file, without colour codes                  |
 | `--session <id>`       | Follow a specific session by ID                                           |
 | `--replay`             | Replay existing events from the beginning before streaming live           |
 

@@ -44,6 +44,8 @@ const sharedMocks = vi.hoisted(() => ({
   runDoctor: vi.fn(),
   getTopFailingTools: vi.fn(),
   createSessionProviders: vi.fn(),
+  writeStateFile: vi.fn(),
+  getActiveAccountStatus: vi.fn(() => ({ claude: { present: false }, codex: { present: false } })),
 }));
 
 vi.mock('sidekick-shared', async (importOriginal) => {
@@ -53,6 +55,8 @@ vi.mock('sidekick-shared', async (importOriginal) => {
     runDoctor: sharedMocks.runDoctor,
     getTopFailingTools: sharedMocks.getTopFailingTools,
     createSessionProviders: sharedMocks.createSessionProviders,
+    writeStateFile: sharedMocks.writeStateFile,
+    getActiveAccountStatus: sharedMocks.getActiveAccountStatus,
   };
 });
 
@@ -414,6 +418,133 @@ describe('DashboardViewProvider quota UI', () => {
     });
     expect(update![0].data.dataPoints[0].breakdown['gpt-5.4']).toMatchObject({ calls: 1 });
     expect(update![0].data.previousPeriod).toEqual([]);
+    provider.dispose();
+  });
+
+  it('keeps the project and series filter when drilling into a day', () => {
+    const today = formatLocalDateKey(new Date());
+    const startedAt = new Date();
+    startedAt.setHours(9, 0, 0, 0);
+    const record = (project: string, sessionId: string) => ({
+      sessionId,
+      provider: 'claude-code',
+      project,
+      startTime: startedAt.toISOString(),
+      endTime: startedAt.toISOString(),
+      tokens: { inputTokens: 100, outputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 0 },
+      totalCost: 0.1,
+      messageCount: 3,
+      modelUsage: [{ model: 'claude-sonnet-5', calls: 1, tokens: 110, cost: 0.1 }],
+      toolUsage: [],
+      qualityScore: 0,
+      qualityFactors: [],
+      additions: 0,
+      deletions: 0,
+      costPerChangedLine: null,
+    });
+    const historical = {
+      getDailyData: () => [],
+      // The store's cross-workspace hourly aggregate, which a filtered
+      // drill-down must not fall back to.
+      getHourlyData: () => [
+        {
+          date: today,
+          hour: 9,
+          tokens: { inputTokens: 999, outputTokens: 99, cacheWriteTokens: 0, cacheReadTokens: 0 },
+          totalCost: 9,
+          messageCount: 99,
+          sessionCount: 9,
+        },
+      ],
+      getMonthlyData: () => [],
+      getAllTimeStats: () => ({ firstDate: today, lastDate: today }),
+      getSessionRecords: () => [record('/work/alpha', 'a'), record('/work/beta', 'b')],
+      getQualityTrend: () => ({ delta: null }),
+      getLatestSessionRecord: () => null,
+    };
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+      undefined,
+      historical as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const handle = (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage.bind(provider);
+
+    handle({
+      type: 'requestHistoricalData',
+      range: 'week',
+      metric: 'tokens',
+      series: 'model',
+      project: '/work/alpha',
+    });
+    handle({ type: 'drillDown', timestamp: today, currentRange: 'week' });
+
+    const updates = postMessage.mock.calls.filter(
+      (call) => call[0].type === 'updateHistoricalData',
+    );
+    expect(updates).toHaveLength(2);
+    const drilled = updates[1][0].data;
+    expect(drilled).toMatchObject({
+      range: 'today',
+      granularity: 'hourly',
+      series: 'model',
+      seriesKeys: ['claude-sonnet-5'],
+      project: '/work/alpha',
+      projects: ['/work/alpha', '/work/beta'],
+    });
+    // One session from the filtered workspace, not the store's aggregate.
+    expect(drilled.totals).toMatchObject({ inputTokens: 100, sessionCount: 1 });
+    expect(drilled.dataPoints).toHaveLength(1);
+    expect(drilled.dataPoints[0].breakdown['claude-sonnet-5']).toMatchObject({ tokens: 110 });
+    provider.dispose();
+  });
+
+  it('files state.json quota under the provider that produced each sample', () => {
+    // The session provider is Codex (makeSessionMonitor), while the Claude
+    // poller keeps running: its samples must not land under `codex`.
+    const monitor = { ...makeSessionMonitor(), getSessionId: vi.fn(() => 'session-1') };
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+    );
+    (provider as unknown as { _view: unknown })._view = {
+      visible: true,
+      webview: { postMessage: vi.fn() },
+    };
+    (provider as unknown as { _sendQuotaHistory: () => Promise<void> })._sendQuotaHistory = vi.fn(
+      async () => {},
+    );
+    const handleQuotaUpdate = (
+      provider as unknown as { _handleQuotaUpdate(quota: unknown): void }
+    )._handleQuotaUpdate.bind(provider);
+    const sample = (providerId: 'claude-code' | 'codex', utilization: number) => ({
+      providerId,
+      available: true,
+      source: 'api',
+      capturedAt: new Date().toISOString(),
+      fiveHour: { utilization, resetsAt: '2026-09-05T12:00:00.000Z' },
+      sevenDay: { utilization, resetsAt: '2026-09-10T12:00:00.000Z' },
+    });
+    const lastWrite = () =>
+      sharedMocks.writeStateFile.mock.calls.at(-1)![0] as {
+        quota: {
+          claude: { fiveHour: { utilization: number } } | null;
+          codex: { fiveHour: { utilization: number } } | null;
+        };
+      };
+
+    handleQuotaUpdate(sample('claude-code', 40));
+    expect(lastWrite().quota.claude?.fiveHour.utilization).toBe(40);
+    expect(lastWrite().quota.codex).toBeNull();
+
+    handleQuotaUpdate(sample('codex', 70));
+    expect(lastWrite().quota.codex?.fiveHour.utilization).toBe(70);
+    // The Claude sample survives a Codex update instead of being overwritten.
+    expect(lastWrite().quota.claude?.fiveHour.utilization).toBe(40);
     provider.dispose();
   });
 

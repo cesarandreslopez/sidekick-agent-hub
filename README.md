@@ -24,6 +24,12 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **Usage straight from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` report tokens and cost for every provider without the extension's history store; `sidekick blocks` shows five-hour billing blocks with burn rate and end-of-block projections; `sidekick import` backfills the history store behind `stats`, `today`, and the History tab.
+- **One token vocabulary with cost provenance** — every total across the CLI, the extension, and reports counts input, output, and both cache buckets, and every cost says whether it was provider-reported or estimated from catalog pricing.
+- **Official quota from the status line** — `sidekick statusline` reads the JSON Claude Code pipes to it and persists the official five-hour and seven-day limits; `resolveQuota()` gives `sidekick quota`, the MCP server, and both dashboards one precedence (fresh sample → session logs → provider API), and every quota table names its source and age.
+- **`state.json` for external tools** — a public, versioned snapshot of the active account, quota windows with freshness, context usage, session cost, and the active billing block, written by the status line and both dashboards for tmux bars, menu-bar apps, and scripts.
+- **Deeper dashboard** — the VS Code History tab gains hourly today, by-model and by-tool series, a project filter, and a previous-period overlay; a new Health tab shows doctor checks, provider diagnostics, and failing-tool trends; quota threshold alerts fire once per reset window; a Billing block card sits beneath the quota gauges.
+- **Faster hosts** — observed sessions are parsed once and re-read only when they change, Codex discovery uses one capped walker, extension activation defers account seeding and git initialisation, and dashboard messages are coalesced.
 - **Host-safe shared APIs** — `sidekick-shared` 0.25.0 adds async session previews, push-based collector/monitor/account subscriptions, an I/O-free provider factory with structured diagnostics (missing `sqlite3` is now a diagnostic, not an empty result), `findSessionById()`, and cross-realm model-catalog transfer with registerable aliases — built for long-lived embedders like desktop apps and extension hosts.
 - **Prompt history** — `sidekick history` lists your most recent Codex prompts across every workspace, and `--path` jumps straight to a session's transcript file. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound, so huge session directories stay fast.
 - **Non-blocking account operations** — Codex login probes, account switches, and login polling run off the event loop, so the VS Code extension host and other embedders no longer freeze during account operations. Store writes from the extension and CLI are serialized through locked atomic writers.
@@ -80,6 +86,9 @@ sidekick tasks                                      # open tasks panel
 sidekick search "migration"                         # cross-session search
 sidekick stats                                      # session statistics
 sidekick today                                      # cache-only daily brief
+sidekick daily                                      # usage from session logs (also weekly, monthly, sessions)
+sidekick blocks                                     # five-hour billing blocks with burn rate and projections
+sidekick import                                     # backfill the history store from session logs
 sidekick doctor                                     # installation/session diagnostics
 sidekick statusline                                 # one-line agent footer
 sidekick extract                                    # URLs, files, commands, plans from recent chats

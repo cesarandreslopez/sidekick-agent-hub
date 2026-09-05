@@ -126,8 +126,23 @@ const DEFAULT_STYLE: HistoryChartStyle = {
   previousColor: 'rgb(150, 150, 150)',
 };
 
-function withAlpha(rgb: string, alpha: number): string {
-  return rgb.startsWith('rgb(') ? rgb.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`) : rgb;
+/** `color` at `alpha`: 6-digit hex and `rgb()`/`rgba()` become `rgba()`; anything else is returned as is. */
+function withAlpha(color: string, alpha: number): string {
+  const value = color.trim();
+  const hex = /^#([0-9a-f]{6})$/i.exec(value);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  }
+  const rgb = /^rgba?\(([^)]+)\)$/i.exec(value);
+  if (rgb) {
+    const channels = rgb[1]
+      .split(',')
+      .slice(0, 3)
+      .map((part) => part.trim());
+    return `rgba(${channels.join(', ')}, ${alpha})`;
+  }
+  return value;
 }
 
 const METRIC_LABELS: Record<HistoryValueMetric, string> = {

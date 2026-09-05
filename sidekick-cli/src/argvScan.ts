@@ -12,10 +12,10 @@
  */
 
 /** Global flags that consume the following argv entry as their value. */
-const VALUE_FLAGS = ['--project', '--provider'] as const;
+const VALUE_FLAGS = ['--project', '--provider', '--output-file'] as const;
 
 /** Global boolean flags, which never consume a value. */
-const BOOLEAN_FLAGS = ['--json', '--no-color'] as const;
+const BOOLEAN_FLAGS = ['--json', '--no-color', '--offline'] as const;
 
 /**
  * The first argv entry that names a command, skipping global flags.

@@ -93,6 +93,8 @@ Available in the VS Code extension and the [CLI Dashboard](features/cli.md). The
 - **Knowledge Notes** — capture gotchas, patterns, guidelines, and tips attached to files, with lifecycle tracking
 - **HTML Session Report** — self-contained HTML report with full transcript, token/cost stats, and tool-use breakdown
 - **Session Asset Extraction** — VS Code command and CLI command for extracting actionable URLs, paths, commands, and plans from recent Claude Code and Codex chats
+- **Usage Reports & Billing Blocks** — daily, weekly, monthly, and per-session usage computed straight from session logs, plus five-hour billing blocks with burn rate and end-of-block projections
+- **Quota & Status Line** — official Claude Code rate limits captured from the status line, one quota resolution order across every surface, threshold alerts once per reset window, and a public `state.json` for external tools
 
 ## Quick Install
 

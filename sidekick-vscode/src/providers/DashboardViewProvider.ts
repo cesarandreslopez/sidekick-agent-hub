@@ -25,7 +25,6 @@ import type {
   QuotaState as DashboardQuotaState,
   QuotaFailureDisplay,
   HistoricalSummary,
-  HistoricalDataPoint,
   LatencyDisplay,
   ClaudeMdSuggestionDisplay,
   DashboardStatsPayload,
@@ -40,7 +39,7 @@ import {
   runDoctor,
   summarizeTokens,
 } from 'sidekick-shared';
-import type { SessionProviderDiagnostic } from 'sidekick-shared';
+import type { QuotaProviderId, SessionProviderDiagnostic } from 'sidekick-shared';
 import { collectDeprecatedSettings } from '../services/deprecatedSettings';
 import { resolveModel } from '../services/ModelResolver';
 import { TimeoutError } from '../types';
@@ -108,7 +107,7 @@ import type {
   HistoricalRange,
   HistoricalSeries,
 } from '../types/dashboard';
-import { buildHistoricalSummary, buildHourlyPoints } from '../services/HistoricalSummaryBuilder';
+import { buildHistoricalSummary, drillDownTarget } from '../services/HistoricalSummaryBuilder';
 import { renderDashboardHtml } from './dashboardTemplate';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
@@ -223,8 +222,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _billingBlockInFlight = false;
   /** Shared providers used only to read usage for the billing block, keyed by id. */
   private readonly _usageProviders = new Map<string, SessionProviderBase>();
-  /** Last quota shown, for the public state file. */
-  private _lastQuota: DashboardQuotaState | null = null;
+  /** Latest quota sample per provider, keyed by the sample's origin (for `state.json`). */
+  private _lastQuotaByProvider = new Map<QuotaProviderId, DashboardQuotaState>();
   /** Last billing block computed, for the public state file. */
   private _lastBillingBlock: BillingBlock | null = null;
 
@@ -1315,7 +1314,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
-   * Sends drill-down data for a specific timestamp.
+   * Sends drill-down data for a specific timestamp: a month from the all-time
+   * view drills to its days, a day drills to its hours. The summary is built
+   * the same way the top-level view is, so the History tab's series and
+   * project filter carry through and the Project select keeps its options.
    */
   private _sendDrillDownData(timestamp: string, currentRange: string): void {
     if (!this._historicalDataService) {
@@ -1325,65 +1327,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({ type: 'historicalDataLoading', loading: true });
 
     try {
-      let summary: HistoricalSummary;
-
-      if (currentRange === 'all') {
-        // Drilling down from all-time (monthly) to daily for that month
-        const monthStart = timestamp + '-01';
-        const [year, month] = timestamp.split('-');
-        const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-        const monthEnd = `${timestamp}-${lastDay.toString().padStart(2, '0')}`;
-
-        const days = this._historicalDataService.getDailyData(monthStart, monthEnd);
-        const dataPoints: HistoricalDataPoint[] = days.map((day) => {
-          const date = new Date(day.date);
-          return {
-            timestamp: day.date,
-            label: date.getDate().toString(),
-            inputTokens: day.tokens.inputTokens,
-            outputTokens: day.tokens.outputTokens,
-            cacheWriteTokens: day.tokens.cacheWriteTokens,
-            cacheReadTokens: day.tokens.cacheReadTokens,
-            totalCost: day.totalCost,
-            messageCount: day.messageCount,
-            sessionCount: day.sessionCount,
-          };
-        });
-
-        const totals = {
-          inputTokens: dataPoints.reduce((sum, d) => sum + d.inputTokens, 0),
-          outputTokens: dataPoints.reduce((sum, d) => sum + d.outputTokens, 0),
-          totalCost: dataPoints.reduce((sum, d) => sum + d.totalCost, 0),
-          messageCount: dataPoints.reduce((sum, d) => sum + d.messageCount, 0),
-          sessionCount: dataPoints.reduce((sum, d) => sum + d.sessionCount, 0),
-        };
-
-        summary = {
-          range: 'month',
-          granularity: 'daily',
-          dataPoints,
-          totals,
-        };
-      } else {
-        // Drilling down from daily to hourly — show hourly breakdown for the day
-        const dataPoints = buildHourlyPoints(this._historicalDataService, timestamp);
-
-        const totals = {
-          inputTokens: dataPoints.reduce((sum, d) => sum + d.inputTokens, 0),
-          outputTokens: dataPoints.reduce((sum, d) => sum + d.outputTokens, 0),
-          totalCost: dataPoints.reduce((sum, d) => sum + d.totalCost, 0),
-          messageCount: dataPoints.reduce((sum, d) => sum + d.messageCount, 0),
-          sessionCount: dataPoints.reduce((sum, d) => sum + d.sessionCount, 0),
-        };
-
-        summary = {
-          range: 'today',
-          granularity: 'hourly',
-          dataPoints,
-          totals,
-        };
-      }
-
+      const target = drillDownTarget(timestamp, currentRange);
+      const summary = target
+        ? buildHistoricalSummary(this._historicalDataService, target.range, {
+            series: this._currentHistoricalSeries,
+            project: this._currentHistoricalProject,
+            now: target.now,
+          })
+        : this._buildHistoricalSummary(this._currentHistoricalRange);
       this._postMessage({ type: 'updateHistoricalData', data: summary });
     } finally {
       this._postMessage({ type: 'historicalDataLoading', loading: false });
@@ -1662,7 +1613,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _handleQuotaUpdate(quota: DashboardQuotaState): void {
     const quotaFailure = describeQuotaFailure(quota) ?? undefined;
-    this._lastQuota = quota;
+    this._lastQuotaByProvider.set(this._quotaOrigin(quota), quota);
     this._postMessage({ type: 'updateQuota', quota, quotaFailure });
     this._maybeEmitQuotaAlert(quota, quotaFailure);
     void this._sendQuotaHistory();
@@ -1670,8 +1621,20 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
+   * The provider a quota sample describes. Samples from the resolver, the
+   * Codex rate limits, z.ai, and `QuotaService` are stamped; an unstamped one
+   * is attributed to the session provider's quota provider.
+   */
+  private _quotaOrigin(quota: DashboardQuotaState): QuotaProviderId {
+    if (quota.providerId) return quota.providerId;
+    return this._sessionMonitor.getProvider().id === 'codex' ? 'codex' : 'claude-code';
+  }
+
+  /**
    * Public `state.json` for external tools (tmux, menu bars): written on quota
-   * updates and on the billing-block tick, only when something changed.
+   * updates and on the billing-block tick, only when something changed. Quota
+   * is filed by the provider that produced each sample, and the latest Claude
+   * and Codex samples are kept side by side.
    */
   private _writeStateFile(): void {
     try {
@@ -1691,13 +1654,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
                 label: accounts.claude.label ?? null,
               }
             : null;
-      const quota = quotaToStateFile(this._lastQuota);
       writeStateFile({
         writer: 'vscode-dashboard',
         account,
         quota: {
-          claude: providerId === 'claude-code' ? quota : null,
-          codex: providerId === 'codex' ? quota : null,
+          claude: quotaToStateFile(this._lastQuotaByProvider.get('claude-code') ?? null),
+          codex: quotaToStateFile(this._lastQuotaByProvider.get('codex') ?? null),
         },
         context: {
           usedPercentage: this._state.contextUsagePercent,

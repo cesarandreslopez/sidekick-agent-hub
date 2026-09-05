@@ -106,10 +106,13 @@ export class QuotaService implements vscode.Disposable {
   }
 
   private _handleQuotaState(state: QuotaState): void {
+    // Every sample this service emits describes the Claude subscription. Stamp
+    // it so consumers keyed by origin (`state.json`) never file it elsewhere.
+    const stamped: QuotaState = state.providerId ? state : { ...state, providerId: 'claude-code' };
     const normalizedState: QuotaState =
-      state.available && state.error
-        ? { ...state, source: state.source ?? 'cache', stale: true }
-        : state;
+      stamped.available && stamped.error
+        ? { ...stamped, source: stamped.source ?? 'cache', stale: true }
+        : stamped;
     this._cachedQuota = normalizedState;
     this._onQuotaUpdate.fire(normalizedState);
     this._recordHistorySample(normalizedState);

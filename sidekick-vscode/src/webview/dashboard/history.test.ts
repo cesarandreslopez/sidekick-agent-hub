@@ -71,6 +71,16 @@ describe('buildHistoryChartData', () => {
     expect(mixed.datasets).toHaveLength(1);
   });
 
+  it('applies the bar alpha to hex theme colours as well as rgb()', () => {
+    const hex = buildHistoryChartData(base, 'tokens', { totalColor: '#3794ff' });
+    expect(hex.datasets[0]).toMatchObject({
+      backgroundColor: 'rgba(55, 148, 255, 0.7)',
+      borderColor: '#3794ff',
+    });
+    const rgb = buildHistoryChartData(base, 'tokens', { totalColor: 'rgb(75, 192, 192)' });
+    expect(rgb.datasets[0].backgroundColor).toBe('rgba(75, 192, 192, 0.7)');
+  });
+
   it('adds a dashed previous-period line aligned by index', () => {
     const data = buildHistoryChartData({ ...base, previousPeriod: [point('Mon-1', 50)] }, 'tokens');
     const line = data.datasets.find((d) => d.type === 'line');

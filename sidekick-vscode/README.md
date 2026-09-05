@@ -15,6 +15,10 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **History and Health tabs** — the History tab charts hourly today, by-model and by-tool series, a project filter, and a previous-period overlay with deltas; the new Health tab shows doctor checks, provider diagnostics, and failing-tool trends over 7 and 30 days.
+- **Billing block and quota alerts** — a Billing block card beneath the quota gauges shows the open five-hour block computed from session logs with burn rate and projections, next to the official status-line sample; `sidekick.notifications.triggers.quota-threshold` warns once per reset window when the five-hour or seven-day window crosses a configurable threshold.
+- **Consistent totals and costs** — the status bar, the dashboard, the timeline, imported history, and the `tokenThreshold` notification all count input, output, and both cache buckets through one shared vocabulary, and costs carry their provenance.
+- **Faster activation and dashboard** — account seeding and git initialisation run in the background, the mind map, plan board, and timeline views are built on first show, dashboard messages are coalesced, and the dashboard webview is an esbuild bundle instead of an inline script.
 - **Responsive account operations** — Codex login probes, account switches, login polling, and the shutdown data flush no longer block the extension host, so the editor stays responsive during account setup and exit.
 - **First-run walkthrough & command hub** — a four-step Get Started walkthrough (detect a live session, open the dashboard, read the status bar, capture a note), plus a `Sidekick: Show Menu` command hub generated from the extension manifest so it never drifts.
 - **Claude Code statusline** — `Sidekick: Install Statusline` wires `sidekick statusline` into Claude Code's `statusLine` setting with safe merges; `Uninstall Statusline` restores the prior block.
@@ -111,7 +115,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 - **Plans Board** — agent plans discovered for the project, surfaced as a dedicated sidebar view
 - **Latest Files Touched** — sidebar tree of files the current session has read or modified
 - **Cross-Session Search** — search across all sessions
-- **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds
+- **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds, and quota thresholds (once per reset window)
 - **Provider Status** — live API health indicator scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, hidden for OpenCode unless you run the standalone status command
 
 ### Session Intelligence
@@ -142,7 +146,7 @@ sidekick dashboard
 
 ![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
-Browse sessions, tasks, decisions, knowledge notes, live event streams, and charts in a full-screen TUI. Eight panels including an Events panel for real-time session activity and a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick history`, `sidekick context`, `sidekick extract`, `sidekick status`, `sidekick today`, `sidekick doctor`, `sidekick statusline`, `sidekick mcp`) jump directly to a specific panel or run one-shot queries. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
+Browse sessions, tasks, decisions, knowledge notes, live event streams, and charts in a full-screen TUI. Eight panels including an Events panel for real-time session activity and a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick history`, `sidekick context`, `sidekick extract`, `sidekick status`, `sidekick today`, `sidekick doctor`, `sidekick statusline`, `sidekick blocks`, `sidekick daily`, `sidekick import`, `sidekick mcp`) jump directly to a specific panel or run one-shot queries. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 
@@ -189,7 +193,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Generate HTML Report           | —                  | Full transcript report in a webview panel                  |
 | Install Statusline             | —                  | Wire `sidekick statusline` into Claude Code's status line  |
 | Uninstall Statusline           | —                  | Restore the previous Claude Code `statusLine` block        |
-| Run Doctor                     | —                  | Cross-provider health diagnostics                          |
+| Run Doctor                     | —                  | Cross-provider health diagnostics; focuses the Health tab  |
 | Open External Session Handoff  | —                  | Open the configured handoff URL for the active session     |
 | Set Session Provider           | —                  | Switch session monitoring provider                         |
 | Browse Session Folders         | —                  | Select session folder to monitor                           |

@@ -2,9 +2,10 @@
 
 ## Build System (esbuild)
 
-The VS Code extension build produces five esbuild bundles. The dashboard's
-script is generated inline by `DashboardViewProvider` so its markup and
-message protocol stay in one implementation.
+The VS Code extension build produces six esbuild bundles. The dashboard's
+script is bundled from `src/webview/dashboard/` and receives its initial data
+through an embedded JSON block, so the document `DashboardViewProvider`
+renders contains no inline executable script.
 
 ```mermaid
 flowchart LR

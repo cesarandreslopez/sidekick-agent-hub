@@ -5,7 +5,7 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.0] - 2026-09-05
 
 ### Added
 
@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `updateStats` payload no longer carries the timeline (the webview never read it there; it travels only through `updateTimeline`), and resolving the dashboard view no longer walks the session corpus synchronously: the session list arrives through `updateSessionList` after `webviewReady`
 - `SessionMonitor.getStatsView()` returns a read-only view of the live statistics without copying the collections; the dashboard's per-event senders, the status bar, notification checks, the mind map, and the task board use it, while `getStats()` remains the snapshot for callers that retain data
 - The dashboard webview script is now an esbuild bundle (`out/webview/dashboard.js`, from `src/webview/dashboard/`) instead of a 3,500-line inline template literal: the document is rendered by `renderDashboardHtml()` (markup) and `dashboardStyles.ts` (CSS), the extension hands over its initial data through a `<script type="application/json">` block, and the document contains no inline executable script. The moved script stays untyped in `legacy.ts` for now; new webview features go in typed modules beside it
+
+### Fixed
+
+- `state.json` files each quota sample under the provider that produced it and keeps the latest Claude and Codex samples side by side; `QuotaService` stamps its samples `claude-code`. A Codex session with Claude credentials used to alternate Claude and Codex figures under the `codex` key
+- History tab drill-downs keep the project and series filter and carry the project list, so a filtered day or month no longer shows cross-workspace totals and the Project select no longer resets (and silently drops the filter on the next range click) while drilled down
+- The History chart applies its alpha to hex theme colours as well as `rgb()` values
 
 ## [0.25.0] - 2026-08-18
 

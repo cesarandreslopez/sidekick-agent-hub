@@ -38,16 +38,16 @@ If you have sessions from multiple providers, the most recently active one is se
 sidekick dashboard [options]
 ```
 
-| Flag                   | Description                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------- |
-| `--project <path>`     | Override project path (default: current working directory)                                        |
-| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                         |
-| `--session <id>`       | Follow a specific session by ID (default: most recent or session picker)                          |
-| `--replay`             | Replay existing events from the beginning before streaming live                                   |
-| `--no-mouse`           | Start with mouse capture disabled so terminal text selection works (toggle with `M`)              |
-| `--no-color`           | Disable colored output for any command (also honors `NO_COLOR`)                                   |
-| `--offline`            | Price from the cached catalog only; never refresh it over the network (also `SIDEKICK_OFFLINE=1`) |
-| `--output-file <path>` | Write everything a command prints to stdout into a file (not for `dashboard` or `mcp`)            |
+| Flag                   | Description                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--project <path>`     | Override project path (default: current working directory)                                                   |
+| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                                    |
+| `--session <id>`       | Follow a specific session by ID (default: most recent or session picker)                                     |
+| `--replay`             | Replay existing events from the beginning before streaming live                                              |
+| `--no-mouse`           | Start with mouse capture disabled so terminal text selection works (toggle with `M`)                         |
+| `--no-color`           | Disable colored output for any command (also honors `NO_COLOR`)                                              |
+| `--offline`            | Price from the cached catalog only; never refresh it over the network (also `SIDEKICK_OFFLINE=1`)            |
+| `--output-file <path>` | Write everything a command prints to stdout into a file, without colour codes (not for `dashboard` or `mcp`) |
 
 ### Examples
 

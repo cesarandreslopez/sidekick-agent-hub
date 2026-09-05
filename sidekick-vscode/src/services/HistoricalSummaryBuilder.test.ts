@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { formatLocalDateKey, addLocalDays } from 'sidekick-shared';
-import { buildHistoricalSummary, buildHourlyPoints } from './HistoricalSummaryBuilder';
+import {
+  buildHistoricalSummary,
+  buildHourlyPoints,
+  drillDownTarget,
+} from './HistoricalSummaryBuilder';
 import type { HistoricalSummarySource } from './HistoricalSummaryBuilder';
 import type { DailyData, HourlyData, SessionHistoryRecord } from '../types/historicalData';
 
@@ -142,5 +146,24 @@ describe('buildHistoricalSummary', () => {
     // The August session falls in the previous month, not this one.
     expect(beta.dataPoints).toHaveLength(1);
     expect(beta.previousPeriod).toHaveLength(1);
+  });
+});
+
+describe('drillDownTarget', () => {
+  it('drills an all-time month to its days, anchored on the last day of that month', () => {
+    const target = drillDownTarget('2026-02', 'all');
+    expect(target?.range).toBe('month');
+    expect(formatLocalDateKey(target!.now)).toBe('2026-02-28');
+  });
+
+  it('drills a day to its hours', () => {
+    const target = drillDownTarget('2026-09-03', 'week');
+    expect(target?.range).toBe('today');
+    expect(formatLocalDateKey(target!.now)).toBe('2026-09-03');
+  });
+
+  it('returns null for a timestamp that is not a day or month key', () => {
+    expect(drillDownTarget('nope', 'week')).toBeNull();
+    expect(drillDownTarget('2026-09-03', 'all')).toBeNull();
   });
 });

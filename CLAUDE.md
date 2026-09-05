@@ -185,13 +185,15 @@ Important stores include:
 - `snapshots/` — cached session aggregation snapshots
 - `pricing-catalog.json` — cached LiteLLM prices and context windows (24h TTL)
 - `observed-context-windows.json` — context windows actually reported by providers, per model
+- `usage-cache/` — per-session usage events extracted from session logs, keyed by size and mtime (feeds billing blocks and usage reports)
+- `state.json` — public, versioned (`schemaVersion: 1`) snapshot for external tools, written by the status line and both dashboards only when changed
 - `cli-config.json` and `update-check.json` — CLI preferences and update-check cache
 
 Use the shared path helpers and atomic writers for cross-process stores. `resolveProjectIdentity()` resolves symlinks and exposes canonical plus legacy slugs for migration. Do not confuse Sidekick's config-store `encodeWorkspacePath()` with Claude Code's directory encoder; use `encodeClaudeWorkspacePath()` / `getClaudeSessionDirectory()` for `~/.claude/projects/` paths.
 
 ## Sidekick CLI and Shared Library
 
-The CLI and extension use the same config root and shared provider/session formats. The CLI reads the persisted project data and also writes through commands such as `tasks add` / `tasks done`, `note add`, and `decision add`; use `sidekick-shared` readers, writers, and path helpers instead of duplicating file I/O. Build everything with `bash scripts/build-all.sh`. The CLI build emits `dist/sidekick-cli.mjs` as the executable launcher and `dist/sidekick-main.mjs` as the dynamically loaded main bundle.
+The CLI and extension use the same config root and shared provider/session formats. The CLI reads the persisted project data and also writes through commands such as `tasks add` / `tasks done`, `note add`, `decision add`, and `import`; use `sidekick-shared` readers, writers, and path helpers instead of duplicating file I/O. Build everything with `bash scripts/build-all.sh`. The CLI build emits `dist/sidekick-cli.mjs` as the executable launcher and `dist/sidekick-main.mjs` as the dynamically loaded main bundle.
 
 - **npm package**: `sidekick-agent-hub` — the **binary name** is `sidekick` (defined in `sidekick-cli/package.json` `bin` field), not `sidekick-agent-hub`
 - **shared npm package**: `sidekick-shared` — published independently for readers/writers, providers, schemas, transcripts, context projection, usage normalization, pricing, quota, and session asset extraction

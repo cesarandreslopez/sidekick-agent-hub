@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.0] - 2026-09-05
 
 ### Added
 
@@ -73,6 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** the status-line hot path no longer writes to the account registry (self-heal is deferred to ordinary commands)
 - **Shared:** a session active only by grace period no longer stays active on collector cache hits for up to five minutes
 - **Shared:** the legacy account facade's add/remove run under the registry lock, the self-heal write is silent, `maxPrefixBytes: 0` skips the preview prefix scan, the live `diagnostics` array is documented, and the packaging tests use the OS temp directory
+- **VS Code:** `state.json` files each quota sample under the provider that produced it and keeps the latest Claude and Codex samples side by side (`QuotaService` samples are stamped `claude-code`), so a Codex session with Claude credentials no longer alternates Claude and Codex figures under the `codex` key
+- **VS Code:** History tab drill-downs keep the project and series filter and carry the project list, so a filtered day or month no longer shows cross-workspace totals and the Project select no longer resets while drilled down; the chart applies its alpha to hex theme colours as well as `rgb()` values
+- **CLI:** `--offline` and `--output-file` given before the command are recognised by the command-token scan, so `sidekick --offline stats` still prices from the cached catalog and `sidekick --offline statusline` takes the fast path; `--output-file` writes plain text (colour stays off unless `FORCE_COLOR` is set)
 
 ## [0.25.0] - 2026-08-18
 

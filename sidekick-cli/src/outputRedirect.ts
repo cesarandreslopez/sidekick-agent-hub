@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import chalk from 'chalk';
 
 /**
  * Route everything the command writes to stdout into a file.
@@ -6,9 +7,17 @@ import * as fs from 'fs';
  * Writes are synchronous so nothing is lost if a command sets an exit code
  * and returns before the event loop drains. stderr is untouched, so progress
  * notes and errors still reach the terminal.
+ *
+ * The file gets plain text: chalk chose its colour level at import time from
+ * the terminal stdout was attached to, so it is reset here unless the caller
+ * set `FORCE_COLOR` to keep the escapes (for `less -R` and the like).
  */
-export function installOutputRedirect(filePath: string): void {
+export function installOutputRedirect(
+  filePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
   const fd = fs.openSync(filePath, 'w');
+  if (!env.FORCE_COLOR) chalk.level = 0;
   const stdout = process.stdout as NodeJS.WriteStream & {
     write: (chunk: unknown, encoding?: unknown, callback?: unknown) => boolean;
   };

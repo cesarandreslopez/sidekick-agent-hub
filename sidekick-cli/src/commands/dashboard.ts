@@ -682,13 +682,17 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
               }
             : null;
       const quota = quotaToStateFile(metrics.quota);
+      // File the sample under the provider that produced it; the dashboard's
+      // quota only ever comes from the active provider, so an unstamped sample
+      // is the active provider's.
+      const quotaProviderId = metrics.quota?.providerId ?? providerId;
       const startedMs = metrics.sessionStartTime ? Date.parse(metrics.sessionStartTime) : NaN;
       writeStateFile({
         writer: 'cli-dashboard',
         account,
         quota: {
-          claude: providerId === 'claude-code' ? quota : null,
-          codex: providerId === 'codex' ? quota : null,
+          claude: quotaProviderId === 'claude-code' ? quota : null,
+          codex: quotaProviderId === 'codex' ? quota : null,
         },
         context: {
           usedPercentage: metrics.context.percent,

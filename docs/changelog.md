@@ -5,7 +5,7 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.0] - 2026-09-05
 
 - Shared library: `summarizeTokens()` defines one token vocabulary (`total` counts input, output, and both cache buckets; `context` counts input and cache) and every surface uses it, so totals agree across the CLI, the extension, and reports
 - Shared library: aggregated cost carries provenance (`reported`, `estimated`, `mixed`, `unpriced`); reports label it and show `—` for unpriced sessions instead of `$0`
@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VS Code History tab: hourly today, model/tool series, project filter, previous-period overlay and deltas
 - Health: a dashboard Health tab with doctor checks, provider diagnostics, and failing-tool trends; `sidekick stats` gains the 30-day column and trend
 - Deferred review follow-ups closed: registry lock across the legacy account facade's read-modify-write, silent self-heal, `maxPrefixBytes: 0` opt-out, live-diagnostics doc, temp-dir packaging tests
+- Fixed before release: `state.json` files each quota sample under the provider that produced it and keeps Claude and Codex side by side; History tab drill-downs keep the project and series filter and the Project select; the History chart applies its alpha to hex theme colours; `--offline` and `--output-file` before the command are recognised by the CLI's command-token scan; `--output-file` writes plain text unless `FORCE_COLOR` is set
 
 ## [0.25.0] - 2026-08-18
 

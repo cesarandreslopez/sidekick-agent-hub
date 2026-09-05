@@ -15,6 +15,9 @@ describe('firstCommandToken', () => {
     ['inline value flag', ['--project=/x', 'dashboard'], 'dashboard'],
     ['provider value flag', ['--provider', 'codex', 'stats'], 'stats'],
     ['several globals', ['--json', '--project', '/x', '--no-color', 'quota'], 'quota'],
+    ['offline before command', ['--offline', 'stats'], 'stats'],
+    ['output file before command', ['--output-file', 'out.txt', 'stats'], 'stats'],
+    ['inline output file', ['--output-file=out.txt', 'stats'], 'stats'],
   ])('resolves %s', (_label, args, expected) => {
     expect(firstCommandToken(args)).toBe(expected);
   });
@@ -35,6 +38,7 @@ describe('isStatuslineInvocation', () => {
     expect(isStatuslineInvocation(['statusline'])).toBe(true);
     expect(isStatuslineInvocation(['--json', 'statusline'])).toBe(true);
     expect(isStatuslineInvocation(['--project=/x', 'statusline'])).toBe(true);
+    expect(isStatuslineInvocation(['--offline', 'statusline'])).toBe(true);
   });
 
   it('does not match anything else', () => {
