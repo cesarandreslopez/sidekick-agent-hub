@@ -68,6 +68,7 @@ describe('PlanBoardViewProvider', () => {
           postMessage,
         },
         onDidChangeVisibility: () => disposable,
+        onDidDispose: () => disposable,
       } as never,
       {} as never,
       {} as never,
@@ -84,6 +85,57 @@ describe('PlanBoardViewProvider', () => {
         }),
       }),
     );
+    provider.dispose();
+  });
+
+  it('posts plan state only to a visible view and stops after dispose', async () => {
+    mocks.readPlans.mockResolvedValue([]);
+    let toolCall: (() => void) | undefined;
+    const sessionMonitor = {
+      ...monitor(),
+      onToolCall: (handler: () => void) => {
+        toolCall = handler;
+        return disposable;
+      },
+    };
+    const provider = new PlanBoardViewProvider({} as never, sessionMonitor as never, undefined);
+    await vi.waitFor(() => expect(mocks.readPlans).toHaveBeenCalled());
+
+    let onDispose: (() => void) | undefined;
+    let onVisibility: (() => void) | undefined;
+    const postMessage = vi.fn();
+    const view = {
+      visible: false,
+      webview: {
+        options: {},
+        html: '',
+        cspSource: 'test',
+        asWebviewUri: (uri: unknown) => uri,
+        onDidReceiveMessage: () => disposable,
+        postMessage,
+      },
+      onDidChangeVisibility: (handler: () => void) => {
+        onVisibility = handler;
+        return disposable;
+      },
+      onDidDispose: (handler: () => void) => {
+        onDispose = handler;
+        return disposable;
+      },
+    };
+    provider.resolveWebviewView(view as never, {} as never, {} as never);
+
+    toolCall!();
+    expect(postMessage).not.toHaveBeenCalled();
+
+    view.visible = true;
+    onVisibility!();
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'updatePlanBoard' }));
+
+    const posted = postMessage.mock.calls.length;
+    onDispose!();
+    toolCall!();
+    expect(postMessage).toHaveBeenCalledTimes(posted);
     provider.dispose();
   });
 });

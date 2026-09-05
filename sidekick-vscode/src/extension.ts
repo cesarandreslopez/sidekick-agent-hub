@@ -60,6 +60,7 @@ import { ErrorExplanationProvider } from './providers/ErrorExplanationProvider';
 import { ErrorViewProvider } from './providers/ErrorViewProvider';
 import { DashboardViewProvider } from './providers/DashboardViewProvider';
 import { MonitoringDisabledViewProvider } from './providers/MonitoringDisabledViewProvider';
+import { registerLazyWebviewView } from './providers/lazyWebviewViewProvider';
 import { MindMapViewProvider } from './providers/MindMapViewProvider';
 import { TaskBoardViewProvider } from './providers/TaskBoardViewProvider';
 import { PlanBoardViewProvider } from './providers/PlanBoardViewProvider';
@@ -179,9 +180,15 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(outputChannel);
   log('Sidekick Agent Hub extension activated');
 
-  await ensureDefaultAccounts({
+  // Seed the account registry from live credentials in the background: it
+  // can read the keychain, and nothing on the activation path needs the
+  // result. Surfaces that show accounts refresh when it settles.
+  const accountsReady: Promise<void> = ensureDefaultAccounts({
     logger: (message, error) => logError(message, error),
-  });
+  }).then(
+    () => undefined,
+    (error) => logError('Default account seeding failed', error),
+  );
 
   // Fire-and-forget hydrate the pricing catalog from LiteLLM so Codex/GPT
   // sessions display correct USD costs. Falls back to the static baseline if
@@ -294,28 +301,34 @@ export async function activate(context: vscode.ExtensionContext) {
   documentationService = new DocumentationService(authService);
   context.subscriptions.push(documentationService);
 
-  // Initialize Git service
+  // Initialize Git service. Its initialisation waits for the built-in git
+  // extension to activate, so it runs off the awaited path; the git-backed
+  // commands await `gitReady` before deciding whether git is available.
   gitService = new GitService();
-  const gitInitialized = await gitService.initialize();
-  if (!gitInitialized) {
-    log('Git extension not available. Commit message features will be disabled.');
-  }
   context.subscriptions.push(gitService);
-
-  // Initialize commit message service (depends on gitService and authService)
-  if (gitInitialized) {
-    commitMessageService = new CommitMessageService(gitService, authService);
-    context.subscriptions.push(commitMessageService);
-  }
-
-  // Initialize pre-commit review and PR description services (depend on gitService and authService)
-  if (gitInitialized) {
-    preCommitReviewService = new PreCommitReviewService(gitService, authService);
-    context.subscriptions.push(preCommitReviewService);
-
-    prDescriptionService = new PrDescriptionService(gitService, authService);
-    context.subscriptions.push(prDescriptionService);
-  }
+  const git = gitService;
+  const auth = authService;
+  const gitReady: Promise<boolean> = git.initialize().then(
+    (gitInitialized) => {
+      if (!gitInitialized) {
+        log('Git extension not available. Commit message features will be disabled.');
+        return false;
+      }
+      // Commit message, pre-commit review, and PR description services
+      // depend on gitService and authService.
+      commitMessageService = new CommitMessageService(git, auth);
+      context.subscriptions.push(commitMessageService);
+      preCommitReviewService = new PreCommitReviewService(git, auth);
+      context.subscriptions.push(preCommitReviewService);
+      prDescriptionService = new PrDescriptionService(git, auth);
+      context.subscriptions.push(prDescriptionService);
+      return true;
+    },
+    (error) => {
+      logError('Git service initialization failed', error);
+      return false;
+    },
+  );
 
   // Initialize session monitor for Claude Code monitoring
   const monitoringConfig = vscode.workspace.getConfiguration('sidekick');
@@ -799,19 +812,26 @@ export async function activate(context: vscode.ExtensionContext) {
       }),
     );
 
-    // Register mind map view provider (depends on sessionMonitor)
-    const mindMapProvider = new MindMapViewProvider(context.extensionUri, sessionMonitor);
-    if (knowledgeNoteService) {
-      mindMapProvider.setKnowledgeNoteService(knowledgeNoteService);
-    }
-    context.subscriptions.push(mindMapProvider);
+    // Register mind map view provider (depends on sessionMonitor). Constructed
+    // on first show: its behaviour is entirely view-driven. The monitor can be
+    // replaced on provider re-detection, so factories read it at construction.
+    const monitorAtActivation = sessionMonitor;
+    const currentMonitor = (): SessionMonitor => sessionMonitor ?? monitorAtActivation;
     context.subscriptions.push(
       // Retained: the d3 force simulation's converged node positions are
       // user-meaningful spatial state, and destroying them re-scrambles the
       // graph on every collapse.
-      vscode.window.registerWebviewViewProvider(MindMapViewProvider.viewType, mindMapProvider, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
+      registerLazyWebviewView(
+        MindMapViewProvider.viewType,
+        () => {
+          const mindMapProvider = new MindMapViewProvider(context.extensionUri, currentMonitor());
+          if (knowledgeNoteService) {
+            mindMapProvider.setKnowledgeNoteService(knowledgeNoteService);
+          }
+          return mindMapProvider;
+        },
+        { webviewOptions: { retainContextWhenHidden: true } },
+      ),
     );
     log('Mind map view provider registered');
 
@@ -847,24 +867,21 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     log('Task board view provider registered');
 
-    const planBoardProvider = new PlanBoardViewProvider(
-      context.extensionUri,
-      sessionMonitor,
-      planPersistenceService,
-    );
-    context.subscriptions.push(planBoardProvider);
+    // Plan board and project timeline are constructed on first show; plan
+    // persistence happens in the session-end handler above, not in the view.
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(PlanBoardViewProvider.viewType, planBoardProvider),
+      registerLazyWebviewView(
+        PlanBoardViewProvider.viewType,
+        () =>
+          new PlanBoardViewProvider(context.extensionUri, currentMonitor(), planPersistenceService),
+      ),
     );
     log('Plan board view provider registered');
 
-    // Register project timeline view provider (depends on sessionMonitor)
-    const timelineProvider = new ProjectTimelineViewProvider(context.extensionUri, sessionMonitor);
-    context.subscriptions.push(timelineProvider);
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(
+      registerLazyWebviewView(
         ProjectTimelineViewProvider.viewType,
-        timelineProvider,
+        () => new ProjectTimelineViewProvider(context.extensionUri, currentMonitor()),
       ),
     );
     log('Project timeline view provider registered');
@@ -1287,6 +1304,14 @@ export async function activate(context: vscode.ExtensionContext) {
       loginSurfacesDisposed = true;
       for (const stop of [...activeLoginPolls]) stop();
     },
+  });
+
+  // The registry may have been seeded after these surfaces first rendered.
+  void accountsReady.then(() => {
+    if (loginSurfacesDisposed) return;
+    accountService.refresh();
+    accountStatusBar.refresh();
+    quotaService?.fetchQuota();
   });
 
   const runTerminalAccountLogin = async (
@@ -2346,6 +2371,7 @@ export async function activate(context: vscode.ExtensionContext) {
    * @param guidance - Optional user guidance for regeneration (e.g., "focus on the API changes")
    */
   async function generateCommitMessageWithProgress(guidance?: string): Promise<void> {
+    await gitReady;
     if (!commitMessageService || !gitService) {
       return;
     }
@@ -2433,6 +2459,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register generate commit message command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.generateCommitMessage', async () => {
+      await gitReady;
       if (!commitMessageService || !gitService) {
         vscode.window.showErrorMessage(
           'Git integration not available. Cannot generate commit message.',
@@ -2447,6 +2474,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register review changes command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.reviewChanges', async () => {
+      await gitReady;
       if (!preCommitReviewService) {
         vscode.window.showErrorMessage('Git integration not available. Cannot review changes.');
         return;
@@ -2519,6 +2547,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register generate PR description command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.generatePrDescription', async () => {
+      await gitReady;
       if (!prDescriptionService) {
         vscode.window.showErrorMessage(
           'Git integration not available. Cannot generate PR description.',

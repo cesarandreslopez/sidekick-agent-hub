@@ -149,6 +149,16 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       this._disposables,
     );
 
+    webviewView.onDidDispose(
+      () => {
+        if (this._view !== webviewView) return;
+        this._view = undefined;
+        this._phrases.stop();
+      },
+      undefined,
+      this._disposables,
+    );
+
     this._phrases.start(() => this._state.sessionActive);
     log('Task board webview resolved');
   }
@@ -406,6 +416,9 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
    * Sends current state to the webview.
    */
   private _sendStateToWebview(): void {
+    // The board state keeps updating for persistence; only a visible view
+    // needs the message (it re-requests the state when it shows).
+    if (!this._view?.visible) return;
     this._postMessage({ type: 'updateBoard', state: this._state });
   }
 

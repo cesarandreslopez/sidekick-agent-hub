@@ -109,6 +109,14 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       this._disposables,
     );
 
+    webviewView.onDidDispose(
+      () => {
+        if (this._view === webviewView) this._view = undefined;
+      },
+      undefined,
+      this._disposables,
+    );
+
     log('Plan board webview resolved');
   }
 
@@ -261,6 +269,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private _sendStateToWebview(): void {
+    if (!this._view?.visible) return;
     this._postMessage({ type: 'updatePlanBoard', state: this._state });
   }
 

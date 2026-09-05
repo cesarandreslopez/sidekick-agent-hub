@@ -87,6 +87,22 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       this._disposables,
     );
 
+    // The view is destroyed when its container closes; drop the reference
+    // and the timers so session events stop scheduling work for nobody.
+    webviewView.onDidDispose(
+      () => {
+        if (this._view !== webviewView) return;
+        this._view = undefined;
+        if (this._refreshTimer) {
+          clearTimeout(this._refreshTimer);
+          this._refreshTimer = undefined;
+        }
+        this._phrases.stop();
+      },
+      undefined,
+      this._disposables,
+    );
+
     this._phrases.start();
     log('Project timeline webview resolved');
   }
@@ -114,15 +130,18 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   }
 
   private _debouncedRefresh(): void {
+    // A hidden or unresolved view re-requests the timeline when it shows.
+    if (!this._view?.visible) return;
     if (this._refreshTimer) clearTimeout(this._refreshTimer);
     this._refreshTimer = setTimeout(() => {
+      this._refreshTimer = undefined;
       this._sendTimeline();
     }, 10000); // 10s debounce for token usage updates
   }
 
   private _sendTimeline(): void {
-    if (!this._view) {
-      log('[Timeline] No webview view available, skipping update');
+    if (!this._view?.visible) {
+      log('[Timeline] No visible webview view, skipping update');
       return;
     }
 
