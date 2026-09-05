@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
-import { detectSessionActivity } from './sessionActivityDetector';
+import {
+  classifySessionActivity,
+  detectSessionActivity,
+  refreshSessionActivityState,
+} from './sessionActivityDetector';
 
 vi.mock('fs');
 const mockFs = vi.mocked(fs);
@@ -114,5 +118,99 @@ describe('detectSessionActivity', () => {
     const result = detectSessionActivity('/session.jsonl');
     expect(result.state).toBe('ended');
     expect(result.reason).toBe('empty-file');
+  });
+});
+
+describe('classifySessionActivity', () => {
+  const NOW = Date.parse('2026-09-04T12:00:00Z');
+  const event = (type: string, extra: Record<string, unknown> = {}, offsetMs = 0) =>
+    ({
+      type,
+      timestamp: new Date(NOW - 60_000 + offsetMs).toISOString(),
+      message: { role: type === 'user' ? 'user' : 'assistant', ...extra },
+    }) as never;
+
+  it('is stale when the source mtime is older than five minutes', () => {
+    const result = classifySessionActivity({
+      events: [event('assistant')],
+      mtimeMs: NOW - 10 * 60_000,
+      now: NOW,
+    });
+    expect(result).toMatchObject({ state: 'stale', reason: 'mtime-stale' });
+  });
+
+  it('is ongoing when AI activity follows the last ending event', () => {
+    const result = classifySessionActivity({
+      events: [
+        event('user', { content: 'hello' }),
+        event('assistant', { content: 'thinking' }),
+        event('tool_use'),
+      ],
+      mtimeMs: NOW - 1000,
+      now: NOW,
+    });
+    expect(result).toMatchObject({ state: 'ongoing', reason: 'ai-activity-after-ending' });
+  });
+
+  it('treats an end_turn assistant message as an ending event with a grace period', () => {
+    const events = [
+      event('user', { content: 'hi' }),
+      event('assistant', { stop_reason: 'end_turn' }),
+    ];
+    expect(classifySessionActivity({ events, mtimeMs: NOW - 2000, now: NOW })).toMatchObject({
+      state: 'ongoing',
+      reason: 'grace-period',
+    });
+    expect(classifySessionActivity({ events, mtimeMs: NOW - 10_000, now: NOW })).toMatchObject({
+      state: 'ended',
+      reason: 'ending-event',
+    });
+  });
+
+  it('counts a user event carrying tool results as AI activity, not an ending', () => {
+    const result = classifySessionActivity({
+      events: [
+        event('assistant', { stop_reason: 'tool_use' }),
+        event('user', { content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }] }),
+      ],
+      mtimeMs: NOW - 10_000,
+      now: NOW,
+    });
+    expect(result).toMatchObject({ state: 'ongoing', reason: 'ai-activity-after-ending' });
+  });
+
+  it('falls back to the last event timestamp when the mtime is unknown', () => {
+    const result = classifySessionActivity({
+      events: [event('user', { content: 'hi' }), event('assistant', {}, 30_000)],
+      mtimeMs: null,
+      now: NOW,
+    });
+    expect(result.state).toBe('ongoing');
+    expect(result.lastActivityTime?.toISOString()).toBe(new Date(NOW - 30_000).toISOString());
+    expect(classifySessionActivity({ events: [], mtimeMs: null, now: NOW })).toMatchObject({
+      state: 'ended',
+      reason: 'no-events',
+    });
+  });
+});
+
+describe('refreshSessionActivityState', () => {
+  const NOW = Date.parse('2026-09-04T12:00:00Z');
+
+  it('keeps a genuinely active session active until the staleness boundary', () => {
+    expect(
+      refreshSessionActivityState('active', NOW - 60_000, NOW, 'ai-activity-after-ending'),
+    ).toBe('active');
+    expect(
+      refreshSessionActivityState('active', NOW - 6 * 60_000, NOW, 'ai-activity-after-ending'),
+    ).toBe('idle');
+  });
+
+  it('ends a session that was active only by grace period once the grace period lapses', () => {
+    expect(refreshSessionActivityState('active', NOW - 2000, NOW, 'grace-period')).toBe('active');
+    expect(refreshSessionActivityState('active', NOW - 6000, NOW, 'grace-period')).toBe('ended');
+    expect(refreshSessionActivityState('active', NOW - 6000, NOW, 'recent-mtime')).toBe('ended');
+    // Without a reason the previous behaviour stands.
+    expect(refreshSessionActivityState('active', NOW - 6000, NOW)).toBe('active');
   });
 });

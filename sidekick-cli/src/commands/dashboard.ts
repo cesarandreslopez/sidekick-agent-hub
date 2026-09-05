@@ -11,10 +11,8 @@ import * as fs from 'fs';
 import {
   createWatcher,
   getAllDetectedProviders,
-  EventAggregator,
   generateHtmlReport,
-  parseTranscript,
-  parseTranscriptFromEvents,
+  readSessionReportInputs,
   openInBrowser,
   readPlans,
   writePlans,
@@ -526,26 +524,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   const generateReport = () => {
     if (!sessionPath) return;
-    const events: FollowEvent[] = [];
-    const replayResult = createWatcher({
-      provider: activeProvider,
-      workspacePath,
-      sessionId: path.basename(sessionPath, path.extname(sessionPath)),
-      callbacks: { onEvent: (e: FollowEvent) => events.push(e), onError: () => {} },
-    });
-    replayResult.watcher.start(true);
-    replayResult.watcher.stop();
-
-    const aggregator = new EventAggregator({
-      providerId: activeProvider.id as 'claude-code' | 'opencode' | 'codex',
-    });
-    for (const e of events) aggregator.processFollowEvent(e);
-
-    const metrics = aggregator.getMetrics();
-    const transcript =
-      activeProvider.id === 'codex'
-        ? parseTranscriptFromEvents(activeProvider.createReader(sessionPath).readAll())
-        : parseTranscript(sessionPath);
+    // One read of the session feeds both the metrics and the transcript.
+    const { metrics, transcript } = readSessionReportInputs(activeProvider, sessionPath);
     const html = generateHtmlReport(metrics, transcript, {
       sessionFileName: path.basename(sessionPath),
       includeThinking: true,

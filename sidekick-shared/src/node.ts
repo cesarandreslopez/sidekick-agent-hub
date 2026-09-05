@@ -24,7 +24,15 @@ export type {
   ObservedContextWindowStore,
 } from './observedContextWindows';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
-export { computeSessionFileStats, firstUserPrompt, readSessionFileStats } from './sessionStats';
+export {
+  computeSessionFileStats,
+  firstUserPrompt,
+  providerContextSizeFn,
+  readSessionFileStats,
+} from './sessionStats';
+export { readSessionReportInputs } from './report/sessionReportInputs';
+export type { SessionReportInputs } from './report/sessionReportInputs';
+export { fingerprintString, sessionFingerprintParts } from './sessionFingerprint';
 export type { ComputeSessionFileStatsOptions, ReadSessionFileStatsOptions } from './sessionStats';
 export {
   BILLING_BLOCK_DURATION_MS,

@@ -2131,15 +2131,16 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const { generateHtmlReport, parseTranscript, parseTranscriptFromEvents } =
-        await import('sidekick-shared');
+      const { generateHtmlReport, parseTranscriptFromEvents } = await import('sidekick-shared');
 
+      // Metrics come from the live monitor; the transcript is one read through
+      // the provider's canonical reader (flushed so a trailing line counts).
       const metrics = sessionMonitor.getAggregatedMetrics();
       const provider = sessionMonitor.getProvider();
-      const transcript =
-        provider.id === 'codex'
-          ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
-          : parseTranscript(sessionPath);
+      const reader = provider.createReader(sessionPath);
+      const events = reader.readAll();
+      reader.flush();
+      const transcript = parseTranscriptFromEvents(events);
       const sessionFileName = path.basename(sessionPath);
       const html = generateHtmlReport(metrics, transcript, { sessionFileName });
 

@@ -60,6 +60,9 @@ export interface SessionMessage {
 
   /** Message content (may be string or structured content) */
   content?: unknown;
+
+  /** Provider stop reason (`end_turn`, `tool_use`, …) when the transcript carries one. */
+  stop_reason?: string;
 }
 
 /**

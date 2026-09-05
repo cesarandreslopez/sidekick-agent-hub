@@ -2,7 +2,12 @@ import type { SessionEvent } from './sessionEvent';
 import type { ProviderId, SessionProviderBase } from '../providers/types';
 import { projectSessionTranscript } from '../transcript';
 import type { CanonicalTranscriptUsageTotals } from '../transcript';
-import { detectSessionActivity } from '../parsers/sessionActivityDetector';
+import {
+  classifySessionActivity,
+  refreshSessionActivityState,
+} from '../parsers/sessionActivityDetector';
+import { computeSessionFileStats, providerContextSizeFn } from '../sessionStats';
+import { fingerprintString, sessionFingerprintParts } from '../sessionFingerprint';
 
 export type ObservationProvenanceV1 = 'reported' | 'estimated' | 'inferred';
 
@@ -212,6 +217,18 @@ function providerCapabilities(
   };
 }
 
+/**
+ * Detector reason behind each observed session's activity, kept off the
+ * versioned V1 shape so cache refreshes can tell a grace-period "active" from
+ * a genuinely ongoing one.
+ */
+const activityReasons = new WeakMap<ObservedAgentSessionV1, string>();
+
+/** The activity detector's reason for a session produced by this adapter, if known. */
+export function getObservedActivityReason(session: ObservedAgentSessionV1): string | undefined {
+  return activityReasons.get(session);
+}
+
 export interface ProviderSessionAdapterV1Options {
   pollIntervalMs?: number;
   observationOnly?: boolean;
@@ -232,19 +249,31 @@ export function createProviderSessionAdapterV1(
       );
     },
     async read(sessionPath, cwd = '') {
-      const stats = sessionProvider.readSessionStats(sessionPath);
-      const events = sessionProvider.createReader(sessionPath).readAll();
+      // One reader pass feeds stats, transcript, activity, and the pending
+      // request; the reader is flushed so a trailing partial line is included.
+      const sessionId = sessionProvider.getSessionId(sessionPath);
+      const reader = sessionProvider.createReader(sessionPath);
+      const events = reader.readAll();
+      reader.flush();
+      const stats = computeSessionFileStats(events, {
+        providerId: sessionProvider.id,
+        sessionId,
+        filePath: sessionPath,
+        label: '',
+        computeContextSize: providerContextSizeFn(sessionProvider),
+      });
       const transcript = projectSessionTranscript(events, {
         provider: sessionProvider.id,
-        sessionId: stats.sessionId,
+        sessionId,
         sourcePath: sessionPath,
       });
-      const refs = evidence(sessionProvider.id, stats.sessionId, sessionPath);
+      const refs = evidence(sessionProvider.id, sessionId, sessionPath);
       const model =
         Object.entries(stats.modelUsage).sort(
           (left, right) => right[1].calls - left[1].calls,
         )[0]?.[0] ?? null;
-      const activityResult = detectSessionActivity(sessionPath);
+      const parts = sessionFingerprintParts(sessionProvider, sessionPath);
+      const activityResult = classifySessionActivity({ events, mtimeMs: parts?.mtimeMs ?? null });
       const activity =
         activityResult.state === 'ongoing'
           ? 'active'
@@ -255,11 +284,11 @@ export function createProviderSessionAdapterV1(
         transcript.usage.costs.length > 0 &&
         transcript.usage.costs.every((cost) => cost.source === 'provider-reported');
       const observedAt = new Date().toISOString();
-      return {
+      const session: ObservedAgentSessionV1 = {
         schemaVersion: 1,
         identity: {
           provider: sessionProvider.id,
-          sessionId: stats.sessionId,
+          sessionId,
           sourcePath: sessionPath,
         },
         cwd: observed(cwd, 'inferred', cwd ? 0.95 : 0.4, refs),
@@ -284,31 +313,71 @@ export function createProviderSessionAdapterV1(
         },
         pendingUserRequest: derivePendingUserRequestV1(
           sessionProvider.id,
-          stats.sessionId,
+          sessionId,
           sessionPath,
           events,
         ),
         contentObservedAt: observedAt,
         observedAt,
-      } satisfies ObservedAgentSessionV1;
+      };
+      activityReasons.set(session, activityResult.reason);
+      return session;
     },
     watch(sessionPath, listener, cwd) {
       let disposed = false;
       let lastSignature = '';
+      let lastFingerprint: string | null = null;
+      let lastSession: ObservedAgentSessionV1 | null = null;
+      const emitIfChanged = (session: ObservedAgentSessionV1): void => {
+        const signature = JSON.stringify({
+          activity: session.activity,
+          model: session.model,
+          usage: session.usage,
+          pendingUserRequest: session.pendingUserRequest,
+        });
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          listener(session);
+        }
+      };
       const update = async () => {
         if (disposed) return;
         try {
-          const session = await adapter.read(sessionPath, cwd);
-          const signature = JSON.stringify({
-            activity: session.activity,
-            model: session.model,
-            usage: session.usage,
-            pendingUserRequest: session.pendingUserRequest,
-          });
-          if (signature !== lastSignature) {
-            lastSignature = signature;
-            listener(session);
+          const parts = sessionFingerprintParts(sessionProvider, sessionPath);
+          const fingerprint = parts ? fingerprintString(parts) : null;
+          if (lastSession && parts && fingerprint === lastFingerprint) {
+            // Unchanged content: only the activity can drift with time, so
+            // refresh it from the cached classification instead of re-reading.
+            const previousReason = activityReasons.get(lastSession);
+            const refreshed = refreshSessionActivityState(
+              lastSession.activity.value,
+              parts.mtimeMs,
+              Date.now(),
+              previousReason,
+            );
+            if (refreshed !== lastSession.activity.value) {
+              const session: ObservedAgentSessionV1 = {
+                ...lastSession,
+                activity: { ...lastSession.activity, value: refreshed },
+                observedAt: new Date().toISOString(),
+              };
+              activityReasons.set(
+                session,
+                refreshed === 'idle'
+                  ? 'mtime-stale'
+                  : previousReason === 'grace-period'
+                    ? 'ending-event'
+                    : 'no-activity-signal',
+              );
+              lastSession = session;
+              emitIfChanged(session);
+            }
+            return;
           }
+          const session = await adapter.read(sessionPath, cwd);
+          lastFingerprint = fingerprint;
+          lastSession = session;
+          emitIfChanged(session);
         } catch {
           // Observed sources can disappear between polling iterations.
         }

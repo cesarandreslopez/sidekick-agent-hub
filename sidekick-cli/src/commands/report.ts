@@ -1,8 +1,9 @@
 /**
  * `sidekick report` — Generate a self-contained HTML session report and open in browser.
  *
- * Reads a full session JSONL file, processes events for stats via EventAggregator,
- * parses the raw transcript for full content, and generates a branded HTML report.
+ * Reads the session once through its provider reader, derives the aggregator
+ * metrics and the transcript from those events, and generates a branded HTML
+ * report.
  */
 
 import * as os from 'os';
@@ -10,14 +11,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { Command } from 'commander';
 import {
-  EventAggregator,
-  createWatcher,
   generateHtmlReport,
-  parseTranscript,
-  parseTranscriptFromEvents,
   openInBrowser,
+  readSessionReportInputs,
+  resolveSessionPath,
 } from 'sidekick-shared';
-import type { FollowEvent, HtmlReportOptions } from 'sidekick-shared';
+import type { HtmlReportOptions } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 
 export function resolveReportFlags(opts: Record<string, unknown>): {
@@ -40,30 +39,11 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
   const { noOpen, noThinking } = resolveReportFlags(opts);
   const theme: 'dark' | 'light' = opts.theme === 'light' ? 'light' : 'dark';
 
-  // Collect all events by replaying through the watcher
-  const events: FollowEvent[] = [];
   let sessionPath: string;
 
   try {
     try {
-      const result = createWatcher({
-        provider,
-        workspacePath,
-        sessionId,
-        callbacks: {
-          onEvent: (event: FollowEvent) => {
-            events.push(event);
-          },
-          onError: (_err: Error) => {
-            /* ignore */
-          },
-        },
-      });
-      sessionPath = result.sessionPath;
-
-      // Synchronous replay of all existing events
-      result.watcher.start(true);
-      result.watcher.stop();
+      sessionPath = resolveSessionPath(provider, workspacePath, sessionId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`Error: ${msg}\n`);
@@ -71,20 +51,8 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
       return;
     }
 
-    // Process events through the aggregator for stats
-    const aggregator = new EventAggregator({
-      providerId: provider.id as 'claude-code' | 'opencode' | 'codex',
-    });
-    for (const event of events) {
-      aggregator.processFollowEvent(event);
-    }
-    const metrics = aggregator.getMetrics();
-
-    // Parse transcript for full content
-    const transcript =
-      provider.id === 'codex'
-        ? parseTranscriptFromEvents(provider.createReader(sessionPath).readAll())
-        : parseTranscript(sessionPath);
+    // One read of the session feeds both the metrics and the transcript.
+    const { metrics, transcript } = readSessionReportInputs(provider, sessionPath);
 
     // Generate HTML report
     const sessionFileName = path.basename(sessionPath);

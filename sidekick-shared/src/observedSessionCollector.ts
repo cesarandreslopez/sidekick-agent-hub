@@ -1,18 +1,20 @@
 import * as fs from 'node:fs';
-import { statSync } from 'node:fs';
 import type {
   ObservedAgentSessionV1,
   ProviderCapabilitiesV1,
   ProviderSessionAdapterV1Options,
 } from './types/observedSessionV1';
-import { createProviderSessionAdapterV1 } from './types/observedSessionV1';
+import {
+  createProviderSessionAdapterV1,
+  getObservedActivityReason,
+} from './types/observedSessionV1';
 import type { SessionProviderBase } from './providers/types';
 import { refreshSessionActivityState } from './parsers/sessionActivityDetector';
+import { fileFingerprintParts, fingerprintString } from './sessionFingerprint';
+import type { ObservedSessionFingerprintParts } from './sessionFingerprint';
 
-export interface ObservedSessionFingerprintParts {
-  sizeBytes: number;
-  mtimeMs: number;
-}
+export { fileFingerprint, fileFingerprintParts } from './sessionFingerprint';
+export type { ObservedSessionFingerprintParts } from './sessionFingerprint';
 
 export interface ObservedSessionReference {
   sessionId: string;
@@ -687,7 +689,12 @@ export function observedSessionSourceFromProvider(
     },
     refreshCached(reference, cached, observedAt) {
       const mtimeMs = reference.fingerprintParts?.mtimeMs ?? Date.parse(cached.observedAt);
-      const activity = refreshSessionActivityState(cached.activity.value, mtimeMs);
+      const activity = refreshSessionActivityState(
+        cached.activity.value,
+        mtimeMs,
+        Date.now(),
+        getObservedActivityReason(cached),
+      );
       return {
         ...cached,
         activity: { ...cached.activity, value: activity },
@@ -699,26 +706,6 @@ export function observedSessionSourceFromProvider(
     },
     dispose: () => adapter.dispose(),
   };
-}
-
-/** Structured size/mtime fingerprint; returns null for inaccessible or synthetic paths. */
-export function fileFingerprintParts(sourcePath: string): ObservedSessionFingerprintParts | null {
-  try {
-    const stat = statSync(sourcePath);
-    return { sizeBytes: stat.size, mtimeMs: stat.mtimeMs };
-  } catch {
-    return null;
-  }
-}
-
-/** Size/mtime fingerprint suitable for retry bypass; returns null for synthetic DB locators. */
-export function fileFingerprint(sourcePath: string): string | null {
-  const parts = fileFingerprintParts(sourcePath);
-  return parts ? fingerprintString(parts) : null;
-}
-
-function fingerprintString(parts: ObservedSessionFingerprintParts): string {
-  return `${parts.sizeBytes}:${parts.mtimeMs}`;
 }
 
 function parseFingerprintParts(value: string | null): ObservedSessionFingerprintParts | null {

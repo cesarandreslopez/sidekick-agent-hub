@@ -39,6 +39,7 @@ export const sessionMessageSchema = z.object({
   usage: messageUsageSchema.optional(),
   normalizedUsage: normalizedUsageSchema.optional(),
   content: z.unknown().optional(),
+  stop_reason: z.string().optional(),
 }) satisfies z.ZodType<SessionMessage>;
 
 // ── PermissionMode ──

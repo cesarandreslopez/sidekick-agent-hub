@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** `sidekick daily`, `weekly`, `monthly`, and `sessions` report usage computed straight from session logs for every detected provider (no extension history store needed), bucketed by usage-event time on the local calendar (`--utc` for UTC), with `--since`/`--until`, `--breakdown` (per-model sub-rows), `--by-project`, `--csv`, and `--json`; `stats` points at `daily` when its store is empty
 - **Shared:** pure `historical-data.json` mutations (`applySessionSummary()` and friends) and `importSessionHistory()` shared by the CLI and the extension
 - **CLI:** `sidekick import [--since <time>]` folds finished sessions from every provider into the history store behind `stats`, `today`, and the History tab, idempotently and under one short locked write
+- **Shared:** `classifySessionActivity()` (event-based, works for every provider), `readSessionReportInputs()` (one read for metrics and transcript), `resolveSessionPath()`, and `getObservedActivityReason()`; `SessionMessage.stop_reason` survives normalization
 
 ### Changed
 
@@ -49,12 +50,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** Claude, Codex, and OpenCode session stats agree with the aggregator and the transcript projection (guarded by a cross-provider parity test): cache-inclusive per-model totals, cost with provenance for Claude sessions instead of `$0`, real OpenCode compaction and truncation counts, an explicit unavailable state instead of zeros, and no second file open for the label; OpenCode's file reader gains a real `seekTo()` and its database reader a real `exists()`
 - **VS Code:** the project timeline's per-session token total is cache-inclusive and its cost uses `costUsd`
 - **VS Code:** the first-activation history import covers Codex and OpenCode sessions as well as Claude Code, records provider, project, per-model cost, and tool usage on each session, and uses the same importer as `sidekick import`
+- **Shared:** observed sessions are read once per discovery and only re-read when their fingerprint changes, with activity refreshed in place; Codex and OpenCode observed sessions get real activity classification
+- **CLI:** `sidekick report` and the dashboard's report action read the session once instead of replaying it through a watcher and parsing the transcript again; the report's metrics now come from the canonical event path
+- **VS Code:** the HTML report transcript is read through the provider's canonical reader for every provider
 
 ### Fixed
 
 - **Shared:** `onAccountsChanged({ pollIntervalMs })` from a later subscriber is applied (fastest interval wins) instead of being ignored, and the interval resets after the last unsubscribe
 - **Shared:** `OpenCodeProvider.dispose()` resets its database status; Codex `listSessionFilesAsync()` records its filesystem fallback so `getLastOperationStatus()` describes the right operation
 - **Shared:** the status-line hot path no longer writes to the account registry (self-heal is deferred to ordinary commands)
+- **Shared:** a session active only by grace period no longer stays active on collector cache hits for up to five minutes
 
 ## [0.25.0] - 2026-08-18
 

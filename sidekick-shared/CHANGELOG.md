@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `bucketUsage(events, { granularity, utc, weekStartsOn, groupBy })`, `summarizeUsageRows()`, `usageBucketKey()`, and `weekKey()` (root and browser entry points) bucket usage events by event time into day, week, month, or session rows with provider, project, and model dimensions, cache-inclusive totals, and cost provenance
 - `applySessionSummary(store, summary)`, `removeSessionSummary()`, `markFileImported()`, `isFileImported()`, and `sessionSummaryFromStats()` (root and browser entry points) are the pure `historical-data.json` mutations ported from the VS Code extension, so the CLI and the extension credit sessions identically; `importSessionHistory({ providers, since, isImported, applySummary, markImported })` reads every finished session once through `readSessionFileStats()` and hands summaries to the caller's store, skipping files modified within `ACTIVE_SESSION_MTIME_THRESHOLD_MS`
 - `SessionFileStats.modelUsage` entries gain `costUsd` and `priced`
+- `classifySessionActivity({ events, mtimeMs })` classifies a session from events already in memory with the same states, reasons, grace period, and staleness rule as `detectSessionActivity()`; `refreshSessionActivityState()` accepts the previous reason so a session that was active only by grace period ends once the grace period lapses; `getObservedActivityReason()` exposes the reason behind an observed session's activity; `SESSION_ACTIVITY_GRACE_PERIOD_MS` and `SESSION_ACTIVITY_STALENESS_MS` are exported
+- `readSessionReportInputs(provider, sessionPath)` reads a session once and returns its events, aggregator metrics, and report transcript; `resolveSessionPath(provider, workspacePath, sessionId?)` is the session lookup `createWatcher()` uses (exact id, unique prefix, or most recent); `sessionFingerprintParts()` and `fingerprintString()` are exported alongside `fileFingerprintParts()`; `SessionMessage.stop_reason` is preserved by the event schema
 
 ### Changed
 
@@ -41,11 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AggregatedTokens.reportedCost` is deprecated (same value as `costUsd`); `SNAPSHOT_SCHEMA_VERSION` is 5
 - Claude Code, Codex, and OpenCode `readSessionStats()` share one implementation: per-model `tokens` are cache-inclusive (`summarizeTokens().total`) for every provider, Claude sessions report catalog-estimated cost and a tool success/failure split instead of `reportedCost: 0`, OpenCode compaction and truncation counts come from the aggregator instead of hardcoded zeros, a missing or unreadable source reports `availability: 'unavailable'` with a reason instead of silent zeros, and the label is taken from the events already read (Codex and OpenCode still prefer their database title) so the file is never opened twice
 - OpenCode's file-backed reader implements `seekTo()` by message count (its `getPosition()` unit), so a reader restored from a snapshot emits only newer messages instead of replaying the whole session; the database-backed reader's `exists()` checks the session row (memoised for 30 s, treating a transient query failure as present) instead of always returning true
+- `createProviderSessionAdapterV1().read()` reads a session once: stats, transcript, activity, and the pending request all come from one flushed reader pass instead of three separate file reads, and activity is classified from the events, which also fixes Codex sessions (whose raw lines never matched the Claude-only tail patterns) and database-backed OpenCode sessions (which always read as ended). `watch()` checks the size/mtime fingerprint before re-reading and refreshes only the activity in place while the content is unchanged, so a 2 s poll on an idle session costs a `stat`
+- `ObservedSessionCollector` cache refreshes demote a session that was active only by grace period to ended after five seconds, matching a fresh classification
 
 ### Fixed
 
 - `onAccountsChanged()` applies a later subscriber's faster `pollIntervalMs` and resets the interval after the last unsubscribe
 - `OpenCodeProvider.dispose()` resets `dbStatus`; `CodexProvider.listSessionFilesAsync()` records its filesystem fallback for `getLastOperationStatus()`
+- Observed-session cache hits could report a session as active for up to five minutes when a fresh parse would have said ended (the 0.25.0 grace-period drift note)
 
 ## [0.25.0] - 2026-08-18
 

@@ -138,6 +138,15 @@ export function computeSessionFileStats(
   };
 }
 
+/** The aggregator's context-size hook for a provider, or undefined for the default formula. */
+export function providerContextSizeFn(
+  provider: SessionProviderBase,
+): EventAggregatorOptions['computeContextSize'] {
+  if (!provider.computeContextSize) return undefined;
+  return (usage) =>
+    provider.computeContextSize!({ ...usage, model: '', timestamp: new Date() } as TokenUsage);
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -194,15 +203,10 @@ export function readSessionFileStats(
     });
   }
 
-  const computeContextSize = provider.computeContextSize
-    ? (usage: Parameters<NonNullable<EventAggregatorOptions['computeContextSize']>>[0]) =>
-        provider.computeContextSize!({ ...usage, model: '', timestamp: new Date() } as TokenUsage)
-    : undefined;
-
   return computeSessionFileStats(events, {
     ...base,
     label: options.resolveLabel?.() ?? undefined,
-    computeContextSize,
+    computeContextSize: providerContextSizeFn(provider),
     availability: reader.wasTruncated() ? 'partial' : 'full',
   });
 }

@@ -48,7 +48,15 @@ export type {
   ProjectSessionTranscriptOptions,
 } from './transcript';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
-export { computeSessionFileStats, firstUserPrompt, readSessionFileStats } from './sessionStats';
+export {
+  computeSessionFileStats,
+  firstUserPrompt,
+  providerContextSizeFn,
+  readSessionFileStats,
+} from './sessionStats';
+export { readSessionReportInputs } from './report/sessionReportInputs';
+export type { SessionReportInputs } from './report/sessionReportInputs';
+export { fingerprintString, sessionFingerprintParts } from './sessionFingerprint';
 export type { ComputeSessionFileStatsOptions, ReadSessionFileStatsOptions } from './sessionStats';
 export {
   BILLING_BLOCK_DURATION_MS,
@@ -356,6 +364,7 @@ export type {
 export {
   createProviderSessionAdapterV1,
   derivePendingUserRequestV1,
+  getObservedActivityReason,
 } from './types/observedSessionV1';
 export type {
   ObservationProvenanceV1,
@@ -404,10 +413,14 @@ export { scanSubagentDir, extractTaskInfo } from './parsers/subagentScanner';
 
 // Parsers — Session activity detection
 export {
+  classifySessionActivity,
   detectSessionActivity,
   refreshSessionActivityState,
+  SESSION_ACTIVITY_GRACE_PERIOD_MS,
+  SESSION_ACTIVITY_STALENESS_MS,
 } from './parsers/sessionActivityDetector';
 export type {
+  ClassifySessionActivityOptions,
   SessionActivityState,
   SessionActivityResult,
 } from './parsers/sessionActivityDetector';
@@ -545,7 +558,7 @@ export type {
   SessionWatcher,
   SessionWatcherCallbacks,
 } from './watchers/types';
-export { createWatcher } from './watchers/factory';
+export { createWatcher, resolveSessionPath } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
 export { toFollowEvents } from './watchers/eventBridge';
 export { createJsonlTail } from './watchers/jsonlTail';
