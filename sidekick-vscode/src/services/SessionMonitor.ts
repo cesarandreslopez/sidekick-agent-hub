@@ -1118,19 +1118,36 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns Copy of current session statistics
    */
   getStats(): SessionStats {
+    return this.buildStats(true);
+  }
+
+  /**
+   * Read-only view of the live statistics for hot paths (the status bar,
+   * notification checks, per-event dashboard senders). Unlike getStats() it
+   * does not copy the seven collections on every call: the maps and arrays
+   * are the monitor's own objects, so callers must neither mutate nor retain
+   * them. Use getStats() for a snapshot that outlives the call.
+   */
+  getStatsView(): Readonly<SessionStats> {
+    return this.buildStats(false);
+  }
+
+  private buildStats(copy: boolean): SessionStats {
     const aggTokens = this.aggregator.getAggregatedTokens();
     const aggCompactions = this.aggregator.getCompactionEvents();
     const aggTruncations = this.aggregator.getTruncationEvents();
     const aggLatency = this.aggregator.getLatencyStats();
     const aggMetrics = this.aggregator.getMetrics();
+    const turnAttributions = this.turnAttributions.length > 0 ? this.turnAttributions : undefined;
+    const contextTimeline = this.contextTimeline.length > 0 ? this.contextTimeline : undefined;
 
     return {
       ...this.stats,
-      modelUsage: new Map(this.stats.modelUsage),
-      toolCalls: [...this.stats.toolCalls],
-      toolAnalytics: new Map(this.toolAnalyticsMap),
-      timeline: [...this.timeline],
-      errorDetails: new Map(this.errorDetails),
+      modelUsage: copy ? new Map(this.stats.modelUsage) : this.stats.modelUsage,
+      toolCalls: copy ? [...this.stats.toolCalls] : this.stats.toolCalls,
+      toolAnalytics: copy ? new Map(this.toolAnalyticsMap) : this.toolAnalyticsMap,
+      timeline: copy ? [...this.timeline] : this.timeline,
+      errorDetails: copy ? new Map(this.errorDetails) : this.errorDetails,
       currentContextSize: aggMetrics.currentContextSize,
       lastModelId: this.lastModelId ?? undefined,
       recentUsageEvents: [],
@@ -1142,11 +1159,13 @@ export class SessionMonitor implements vscode.Disposable {
       latencyStats: aggLatency ?? undefined,
       compactionEvents: aggCompactions.length > 0 ? aggCompactions : undefined,
       contextAttribution: this.aggregator.getContextAttribution(),
-      turnAttributions: this.turnAttributions.length > 0 ? [...this.turnAttributions] : undefined,
-      contextTimeline: this.contextTimeline.length > 0 ? [...this.contextTimeline] : undefined,
+      turnAttributions: copy && turnAttributions ? [...turnAttributions] : turnAttributions,
+      contextTimeline: copy && contextTimeline ? [...contextTimeline] : contextTimeline,
       totalReportedCost: aggTokens.reportedCost > 0 ? aggTokens.reportedCost : undefined,
       planState: this.planState
-        ? { ...this.planState, steps: [...this.planState.steps] }
+        ? copy
+          ? { ...this.planState, steps: [...this.planState.steps] }
+          : this.planState
         : undefined,
       contextHealth: this.calculateContextHealth(),
       truncationCount: aggTruncations.length,

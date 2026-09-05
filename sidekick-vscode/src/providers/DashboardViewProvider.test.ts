@@ -50,12 +50,23 @@ function disposable() {
 }
 
 function makeSessionMonitor() {
+  const handlers: { tokenUsage?: (usage: unknown) => void; timeline?: (event: unknown) => void } =
+    {};
   return {
-    onTokenUsage: vi.fn(() => disposable()),
+    handlers,
+    getStatsView: vi.fn(() => ({ sessionStartTime: null, planState: undefined })),
+    getStats: vi.fn(() => ({ sessionStartTime: null, planState: undefined })),
+    onTokenUsage: vi.fn((handler: (usage: unknown) => void) => {
+      handlers.tokenUsage = handler;
+      return disposable();
+    }),
+    onTimelineEvent: vi.fn((handler: (event: unknown) => void) => {
+      handlers.timeline = handler;
+      return disposable();
+    }),
     onSessionStart: vi.fn(() => disposable()),
     onSessionEnd: vi.fn(() => disposable()),
     onToolAnalytics: vi.fn(() => disposable()),
-    onTimelineEvent: vi.fn(() => disposable()),
     onDiscoveryModeChange: vi.fn(() => disposable()),
     onLatencyUpdate: vi.fn(() => disposable()),
     onCompaction: vi.fn(() => disposable()),
@@ -129,7 +140,60 @@ describe('DashboardViewProvider quota UI', () => {
 
     expect(postMessage).toHaveBeenCalledTimes(1);
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'updateStats' }));
+    expect(postMessage.mock.calls[0][0].state).not.toHaveProperty('timeline');
     provider.dispose();
+  });
+
+  it('coalesces a burst of token-usage and timeline events into one post per kind', () => {
+    vi.useFakeTimers();
+    try {
+      const monitor = makeSessionMonitor();
+      const provider = new DashboardViewProvider(
+        { fsPath: '/tmp/sidekick-extension' } as never,
+        monitor as never,
+      );
+      const postMessage = vi.fn();
+      (provider as unknown as { _view: unknown })._view = {
+        visible: true,
+        webview: { postMessage },
+      };
+
+      const usage = {
+        model: 'gpt-5.4',
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        timestamp: new Date('2026-09-04T12:00:00Z'),
+      };
+      for (let i = 0; i < 10; i += 1) monitor.handlers.tokenUsage!(usage);
+      for (let i = 0; i < 3; i += 1) {
+        monitor.handlers.timeline!({
+          type: 'tool_call',
+          timestamp: new Date('2026-09-04T12:00:00Z'),
+          description: `call ${i}`,
+        });
+      }
+      expect(postMessage).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(250);
+      const types = postMessage.mock.calls.map((call) => call[0].type);
+      expect(types.filter((type) => type === 'updateStats')).toHaveLength(1);
+      expect(types.filter((type) => type === 'updateTimeline')).toHaveLength(1);
+      expect(types.filter((type) => type === 'updateBurnRate')).toHaveLength(1);
+      const stats = postMessage.mock.calls.find((call) => call[0].type === 'updateStats')![0];
+      expect(stats.state).not.toHaveProperty('timeline');
+      expect(stats.state.totalInputTokens).toBe(100);
+
+      // Nothing else is pending once the burst has flushed.
+      vi.advanceTimersByTime(1_000);
+      expect(postMessage.mock.calls.filter((call) => call[0].type === 'updateStats')).toHaveLength(
+        1,
+      );
+      provider.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('drops the resolved view and its bindings when VS Code disposes it', () => {

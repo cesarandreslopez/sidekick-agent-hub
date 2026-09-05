@@ -61,6 +61,9 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Manages rotating phrase timers */
   private readonly _phrases: PhraseRotationManager;
+  /** Pending board rebuild, see _updateBoard(). */
+  private _boardTimer?: ReturnType<typeof setTimeout>;
+  private static readonly BOARD_UPDATE_MS = 250;
 
   /**
    * Creates a new TaskBoardViewProvider.
@@ -167,6 +170,10 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
    * Disposes of provider resources.
    */
   dispose(): void {
+    if (this._boardTimer) {
+      clearTimeout(this._boardTimer);
+      this._boardTimer = undefined;
+    }
     // Save current tasks to persistence if session is active
     if (this._taskPersistence && this._sessionMonitor.isActive()) {
       this._saveCurrentTasksToPersistence();
@@ -215,9 +222,14 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
    * Updates board from current session data.
    */
   private _updateBoard(): void {
-    this._syncFromSessionMonitor();
-    this._sendStateToWebview();
-    this._maybePersistTasks();
+    // Trailing throttle: a burst of tool calls rebuilds the board once.
+    if (this._boardTimer) return;
+    this._boardTimer = setTimeout(() => {
+      this._boardTimer = undefined;
+      this._syncFromSessionMonitor();
+      this._sendStateToWebview();
+      this._maybePersistTasks();
+    }, TaskBoardViewProvider.BOARD_UPDATE_MS);
   }
 
   /**
@@ -272,7 +284,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
    * Syncs state from SessionMonitor, merging in persisted tasks.
    */
   private _syncFromSessionMonitor(): void {
-    const stats = this._sessionMonitor.getStats();
+    const stats = this._sessionMonitor.getStatsView();
     const taskState = stats.taskState;
     const activeTaskId = taskState?.activeTaskId ?? null;
     const tasks = taskState?.tasks ?? new Map<string, TrackedTask>();
@@ -403,7 +415,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     const sessionId = this._sessionMonitor.getProvider().getSessionId(sessionPath);
-    const stats = this._sessionMonitor.getStats();
+    const stats = this._sessionMonitor.getStatsView();
     const taskState = stats.taskState;
 
     if (taskState) {

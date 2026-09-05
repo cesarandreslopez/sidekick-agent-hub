@@ -34,7 +34,7 @@ function makeMonitor() {
     onSessionStart: vi.fn(() => ({ dispose: vi.fn() })),
     onSessionEnd: vi.fn(() => ({ dispose: vi.fn() })),
     isActive: vi.fn(() => false),
-    getStats: vi.fn(() => ({})),
+    getStatsView: vi.fn(() => ({})),
     getSubagentStats: vi.fn(() => []),
   };
 }
@@ -55,15 +55,15 @@ describe('MindMapViewProvider graph scheduling', () => {
     };
 
     target._updateGraph();
-    expect(monitor.getStats).not.toHaveBeenCalled();
+    expect(monitor.getStatsView).not.toHaveBeenCalled();
 
     target._view = { visible: true, webview: { postMessage: vi.fn() } };
     target._updateGraph();
     target._updateGraph();
     vi.advanceTimersByTime(349);
-    expect(monitor.getStats).not.toHaveBeenCalled();
+    expect(monitor.getStatsView).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(monitor.getStats).toHaveBeenCalledTimes(1);
+    expect(monitor.getStatsView).toHaveBeenCalledTimes(1);
     expect(buildGraph).toHaveBeenCalledTimes(1);
     provider.dispose();
   });

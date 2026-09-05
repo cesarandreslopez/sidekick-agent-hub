@@ -415,6 +415,7 @@ function createFakeSessionMonitor(totalTokens = 0): {
       return disposable;
     },
     getStats: () => ({ totalInputTokens: totalTokens, totalOutputTokens: 0 }),
+    getStatsView: () => ({ totalInputTokens: totalTokens, totalOutputTokens: 0 }),
   };
   return { monitor: monitor as unknown as SessionMonitor, handlers };
 }

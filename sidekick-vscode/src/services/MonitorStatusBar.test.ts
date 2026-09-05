@@ -62,6 +62,7 @@ describe('MonitorStatusBar', () => {
         return disposable;
       },
       getStats: () => stats,
+      getStatsView: () => stats,
       getProvider: () => ({
         id: 'claude-code',
         displayName: 'Claude Code',

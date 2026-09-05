@@ -232,4 +232,16 @@ describe('SessionMonitor', () => {
 
     monitor.dispose();
   });
+
+  it('getStatsView() shares the live collections while getStats() copies them', () => {
+    const monitor = new SessionMonitor(createProvider() as never);
+    const view = monitor.getStatsView();
+    expect(monitor.getStatsView().toolCalls).toBe(view.toolCalls);
+    expect(monitor.getStatsView().modelUsage).toBe(view.modelUsage);
+    const snapshot = monitor.getStats();
+    expect(snapshot.toolCalls).not.toBe(view.toolCalls);
+    expect(snapshot.modelUsage).not.toBe(view.modelUsage);
+    expect(snapshot.toolCalls).toEqual(view.toolCalls);
+    monitor.dispose();
+  });
 });

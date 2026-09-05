@@ -263,7 +263,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    * Syncs state from SessionMonitor.
    */
   private _syncFromSessionMonitor(): void {
-    const stats = this._sessionMonitor.getStats();
+    const stats = this._sessionMonitor.getStatsView();
     const subagents = this._sessionMonitor.getSubagentStats();
     const knowledgeNotes = this._knowledgeNoteService?.getActiveNotes();
     this._state.graph = MindMapDataService.buildGraph(stats, subagents, knowledgeNotes);

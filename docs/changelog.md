@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `state.json`: a public, versioned file written by the status line and both dashboards for external tools (account, quota windows with freshness, context usage, session cost, active billing block), with a zod schema in `sidekick-shared/schemas`
 - CLI dashboard loop: session-root subscription instead of a 10 s poll, memoised panel rendering, provider-scoped status polling, and an accurate `dump --list` footer via `hasMore` on the shared preview index
 - VS Code activation: account seeding and git initialisation run in the background; mind map, plan board, and timeline views are constructed on first show and stay idle while hidden
+- VS Code dashboard: coalesced webview messaging (one post per kind per 250 ms burst), a lighter stats payload, and copy-free `getStatsView()` for hot paths
 
 ## [0.25.0] - 2026-08-18
 

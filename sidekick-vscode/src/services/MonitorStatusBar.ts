@@ -182,7 +182,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    * @param usageHint - Optional latest usage event to help with model fallback
    */
   private syncFromMonitor(usageHint?: TokenUsage): void {
-    const stats = this.monitor.getStats();
+    const stats = this.monitor.getStatsView();
     const provider = this.monitor.getProvider();
 
     this.totalTokens = summarizeTokens({
@@ -264,7 +264,7 @@ export class MonitorStatusBar implements vscode.Disposable {
     }
 
     // Build detailed tooltip
-    const stats = this.monitor.getStats();
+    const stats = this.monitor.getStatsView();
     const provider = this.monitor.getProvider();
     const contextLimit =
       provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;

@@ -159,8 +159,15 @@ export interface QuotaHistoryPayload {
  *
  * These messages update the dashboard UI with session data.
  */
+/**
+ * The `updateStats` payload: the dashboard state minus the timeline, which
+ * travels only through `updateTimeline` (the webview's stats handler never
+ * read it, and it is the largest part of the state).
+ */
+export type DashboardStatsPayload = Omit<DashboardState, 'timeline'>;
+
 export type DashboardMessage =
-  | { type: 'updateStats'; state: DashboardState }
+  | { type: 'updateStats'; state: DashboardStatsPayload }
   /**
    * The VS Code color theme changed. CSS-styled elements re-theme on their
    * own — VS Code rewrites the `--vscode-*` variables live — but Chart.js

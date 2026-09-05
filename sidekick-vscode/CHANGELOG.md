@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activation no longer waits for account seeding or for the built-in git extension: both run in the background, account surfaces refresh when seeding settles, and the commit-message, review, and PR-description commands wait for git readiness before deciding whether git is available
 - The mind map, plan board, and project timeline views are constructed on first show (`registerLazyWebviewView`); the dashboard and task board stay eager because they persist decisions, summaries, and tasks without a view
 - The timeline, task board, and plan board views drop their webview reference on dispose and skip building or posting state while hidden; they refresh when shown again
+- Dashboard messaging is coalesced: token-usage, timeline, and tool-analytics handlers mark a message kind dirty and one 250 ms trailing flush posts each kind once, so a burst of events costs one post per kind instead of one per event; the task board rebuilds once per 250 ms burst of tool calls
+- The `updateStats` payload no longer carries the timeline (the webview never read it there; it travels only through `updateTimeline`), and resolving the dashboard view no longer walks the session corpus synchronously: the session list arrives through `updateSessionList` after `webviewReady`
+- `SessionMonitor.getStatsView()` returns a read-only view of the live statistics without copying the collections; the dashboard's per-event senders, the status bar, notification checks, the mind map, and the task board use it, while `getStats()` remains the snapshot for callers that retain data
 
 ## [0.25.0] - 2026-08-18
 

@@ -584,7 +584,7 @@ export class NotificationTriggerService implements vscode.Disposable {
     if (!this.isNotificationsEnabled()) return;
     if (this.tokenThreshold <= 0) return;
 
-    const stats = this.sessionMonitor.getStats();
+    const stats = this.sessionMonitor.getStatsView();
     // Same cache-inclusive total the status bar and dashboard show.
     const totalTokens = summarizeTokens({
       inputTokens: stats.totalInputTokens,

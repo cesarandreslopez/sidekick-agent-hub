@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** the dashboard subscribes to session-root changes instead of polling every 10 s, memoises panel rendering on the metrics identity, polls only the active provider's status page, and lists sessions through the async preview index (with an accurate "raise --limit" footer)
 - **Shared:** `listSessionPreviewsAsync()` results carry `hasMore`
 - **VS Code:** activation defers account seeding and git initialisation off the awaited path, constructs the mind map, plan board, and timeline views on first show, and gates hidden or disposed views out of session-event work
+- **VS Code:** dashboard messages are coalesced per 250 ms burst, the stats payload drops the timeline, resolving the view no longer walks sessions synchronously, and hot paths read `SessionMonitor.getStatsView()` instead of copying stats per event
 
 ### Fixed
 

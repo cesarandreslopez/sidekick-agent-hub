@@ -28,6 +28,7 @@ import type {
   HistoricalDataPoint,
   LatencyDisplay,
   ClaudeMdSuggestionDisplay,
+  DashboardStatsPayload,
 } from '../types/dashboard';
 import { resolveInstructionTarget } from '../types/instructionFile';
 import type { HandoffService } from '../services/HandoffService';
@@ -117,6 +118,15 @@ import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
  * vscode.window.registerWebviewViewProvider('sidekick.dashboard', provider);
  * ```
  */
+type DashboardFlushKind = 'stats' | 'timeline' | 'toolAnalytics' | 'plan' | 'burnRate';
+
+/** The stats message without the timeline (sent separately as `updateTimeline`). */
+function statsPayload(state: DashboardState): DashboardStatsPayload {
+  const payload: Partial<DashboardState> = { ...state };
+  delete payload.timeline;
+  return payload as DashboardStatsPayload;
+}
+
 export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   /** View type identifier for VS Code registration */
   public static readonly viewType = 'sidekick.dashboard';
@@ -178,6 +188,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Debounce timer for richer panel updates */
   private _richerPanelTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * Coalesced webview sends. Hot handlers (token usage, timeline events, tool
+   * analytics) mark a kind dirty; one trailing timer posts each dirty message
+   * once, so a burst of events costs one post per kind.
+   */
+  private readonly _dirty = new Set<DashboardFlushKind>();
+  private _flushTimer?: ReturnType<typeof setTimeout>;
+  private static readonly FLUSH_MS = 250;
 
   /** Suppresses session list updates during provider switches */
   private _suppressSessionListUpdates = false;
@@ -1513,10 +1531,30 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Update context usage
     this._updateContextUsage();
 
-    // Send updated state to webview
-    this._sendStateToWebview();
-    this._sendBurnRateUpdate();
+    // Send updated state to webview (coalesced)
+    this._scheduleFlush('stats', 'burnRate');
     this._scheduleBillingBlockUpdate();
+  }
+
+  /** Mark message kinds dirty and arm the trailing flush timer. */
+  private _scheduleFlush(...kinds: DashboardFlushKind[]): void {
+    for (const kind of kinds) this._dirty.add(kind);
+    if (this._flushTimer) return;
+    this._flushTimer = setTimeout(() => {
+      this._flushTimer = undefined;
+      this._flushDirty();
+    }, DashboardViewProvider.FLUSH_MS);
+  }
+
+  /** Post each dirty message once, in a stable order. */
+  private _flushDirty(): void {
+    const kinds = new Set(this._dirty);
+    this._dirty.clear();
+    if (kinds.has('stats')) this._sendStateToWebview();
+    if (kinds.has('timeline')) this._sendTimelineToWebview();
+    if (kinds.has('toolAnalytics')) this._sendToolAnalyticsToWebview();
+    if (kinds.has('plan')) this._sendPlanState();
+    if (kinds.has('burnRate')) this._sendBurnRateUpdate();
   }
 
   /**
@@ -1525,8 +1563,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _handleToolAnalytics(analytics: ToolAnalytics): void {
     this._toolAnalytics.set(analytics.name, analytics);
     this._updateToolAnalyticsState();
-    this._sendToolAnalyticsToWebview();
-    this._sendPlanState();
+    this._scheduleFlush('toolAnalytics', 'plan');
   }
 
   /**
@@ -1542,7 +1579,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     this._updateTimelineState();
-    this._sendTimelineToWebview();
+    this._scheduleFlush('timeline');
   }
 
   /**
@@ -1958,7 +1995,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     timestamp: Date;
     source: 'reported' | 'heuristic';
   }): void {
-    const ledger = calculateCompactionLedger([event], this._sessionMonitor.getStats().lastModelId);
+    const ledger = calculateCompactionLedger(
+      [event],
+      this._sessionMonitor.getStatsView().lastModelId,
+    );
     const display: CompactionEventDisplay = {
       time: event.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
       contextBefore: event.contextBefore,
@@ -1983,7 +2023,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     });
 
     // Also update context health after each compaction
-    const stats = this._sessionMonitor.getStats();
+    const stats = this._sessionMonitor.getStatsView();
     this._postMessage({
       type: 'updateContextHealth',
       score: stats.contextHealth,
@@ -1996,7 +2036,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Posts truncation count and per-tool breakdown to the dashboard.
    */
   private _handleTruncation(): void {
-    const stats = this._sessionMonitor.getStats();
+    const stats = this._sessionMonitor.getStatsView();
     const byTool: Array<{ tool: string; count: number }> = [];
     if (stats.truncationEvents) {
       const toolCounts = new Map<string, number>();
@@ -2382,12 +2422,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Sends current state to the webview.
    */
   private _sendStateToWebview(): void {
-    this._postMessage({ type: 'updateStats', state: this._state });
+    this._postMessage({ type: 'updateStats', state: statsPayload(this._state) });
   }
 
   /** Sends plan state only on initialization and plan-relevant events. */
   private _sendPlanState(): void {
-    const plan = this._sessionMonitor.getStats().planState;
+    const plan = this._sessionMonitor.getStatsView().planState;
     this._postMessage({
       type: 'updatePlan',
       plan: plan
@@ -2520,7 +2560,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Sends burn rate and session timing update to the webview.
    */
   private _sendBurnRateUpdate(): void {
-    const stats = this._sessionMonitor.getStats();
+    const stats = this._sessionMonitor.getStatsView();
     this._postMessage({
       type: 'updateBurnRate',
       burnRate: this._burnRateCalculator.calculateBurnRate(),
@@ -2706,8 +2746,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       '?';
     const extDate = changelogEntries[0]?.date || '';
 
-    // Pre-compute session groups for initial render (avoids reliance on postMessage)
-    const initialGroups = this._sessionMonitor.getAllSessionsGrouped();
+    // Cheap flags only: the session groups arrive through `updateSessionList`
+    // once the webview posts `webviewReady`, so resolving the view no longer
+    // walks the session corpus synchronously.
     const initialIsPinned = this._sessionMonitor.isPinned();
     const initialCustomPath = this._sessionMonitor.getCustomPath();
     const initialIsUsingCustomPath = this._sessionMonitor.isUsingCustomPath();
@@ -6384,7 +6425,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   <script nonce="${nonce}">
     // Initial session data embedded at HTML generation time (no postMessage needed)
     var __initialSessionData = ${this._safeJsonForScript({
-      groups: initialGroups,
+      groups: null,
       isPinned: initialIsPinned,
       isUsingCustomPath: initialIsUsingCustomPath,
       customPathDisplay: initialCustomPath ? this._getShortPath(initialCustomPath) : null,
@@ -9885,7 +9926,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       if (window.__initialSessionData) {
         try {
           const init = window.__initialSessionData;
-          updateSessionList(init.groups, init.isPinned, init.isUsingCustomPath, init.customPathDisplay);
+          if (init.groups) {
+            updateSessionList(init.groups, init.isPinned, init.isUsingCustomPath, init.customPathDisplay);
+          }
           if (init.providerId && init.providerName) {
             updateProviderDisplay(init.providerId, init.providerName);
           }
@@ -9915,6 +9958,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._richerPanelTimer) {
       clearTimeout(this._richerPanelTimer);
     }
+    if (this._flushTimer) {
+      clearTimeout(this._flushTimer);
+      this._flushTimer = undefined;
+    }
+    this._dirty.clear();
     if (this._billingBlockTimer) {
       clearTimeout(this._billingBlockTimer);
       this._billingBlockTimer = undefined;
