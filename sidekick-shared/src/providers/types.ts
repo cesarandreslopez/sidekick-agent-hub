@@ -20,6 +20,7 @@ import type {
   ContextAttribution,
 } from '../types/sessionEvent';
 import { SESSION_PROVIDER_IDS } from '../providerIds';
+import type { AggregatedCostProvenance } from '../aggregation/types';
 
 /** Stable runtime list for consumers that must enumerate session providers. */
 export { SESSION_PROVIDER_IDS } from '../providerIds';
@@ -93,6 +94,13 @@ export interface SessionFileInfo {
   createdAt?: Date;
 }
 
+/** How much of a session `readSessionStats()` could read. */
+export type SessionFileStatsAvailability = 'full' | 'partial' | 'unavailable';
+
+/**
+ * Aggregated stats for one session file, computed by `computeSessionFileStats()`
+ * over the shared `EventAggregator` for every provider.
+ */
 export interface SessionFileStats {
   providerId: ProviderId;
   sessionId: string;
@@ -101,11 +109,29 @@ export interface SessionFileStats {
   startTime: string;
   endTime: string;
   messageCount: number;
+  /** Token buckets; `summarizeTokens()` turns them into the cache-inclusive total. */
   tokens: { input: number; output: number; cacheWrite: number; cacheRead: number };
+  /** Per-model calls and cache-inclusive token total (the `summarizeTokens().total` vocabulary). */
   modelUsage: Record<string, { calls: number; tokens: number }>;
+  /** Calls per tool name: successful, failed, and still pending. */
   toolUsage: Record<string, number>;
+  /** Failed calls per tool name; a subset of `toolUsage`. */
+  toolFailures: Record<string, number>;
   compactionEstimate: number;
   truncationCount: number;
+  /** Cost of the priced portion of the session; read `costProvenance` before labelling it. */
+  costUsd: number;
+  costProvenance: AggregatedCostProvenance;
+  /** Usage events with neither a provider-reported cost nor a catalog price. */
+  unpricedCalls: number;
+  /**
+   * `full` when every event was read, `partial` when the reader reported a
+   * truncated source, `unavailable` when the session could not be read at all
+   * (`unavailableReason` says why and every number is zero).
+   */
+  availability: SessionFileStatsAvailability;
+  unavailableReason?: string;
+  /** @deprecated Same value as `costUsd`; use it together with `costProvenance`. */
   reportedCost: number;
 }
 

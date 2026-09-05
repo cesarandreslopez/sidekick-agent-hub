@@ -21,6 +21,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { readSessionContextSnapshot } from '../context/sessionContext';
+import { readSessionFileStats } from '../sessionStats';
 import type {
   ReadSessionContextSnapshotOptions,
   SessionContextSnapshot,
@@ -382,8 +383,23 @@ function normalizePath(input: string): string {
  * Tracks which message IDs have been seen and reads new messages
  * plus their parts on each readNew() call.
  */
+interface OpenCodeFileMessageEntry {
+  msgId: string;
+  message: OpenCodeMessage;
+  mtimeMs: number;
+  parts: OpenCodePart[];
+  partIds: Set<string>;
+}
+
+function messageCreatedMs(message: OpenCodeMessage): number {
+  const created = message.time?.created;
+  const ms = typeof created === 'number' ? created : Date.parse(String(created ?? ''));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 class OpenCodeFileReader implements SessionReader {
   private seenMessages = new Map<string, { partIds: Set<string>; mtimeMs: number }>();
+  private pendingSkip = 0;
   private readonly storageBase: string;
 
   constructor(private readonly sessionId: string) {
@@ -402,49 +418,50 @@ class OpenCodeFileReader implements SessionReader {
       return [];
     }
 
-    const newEvents: SessionEvent[] = [];
-
+    const entries: OpenCodeFileMessageEntry[] = [];
     for (const file of messageFiles) {
       const msgId = path.basename(file, '.json');
       const messagePath = path.join(messageDir, file);
-
       const message = readJsonSafe<OpenCodeMessage>(messagePath);
       if (!message) continue;
 
-      let messageMtimeMs = 0;
+      let mtimeMs = 0;
       try {
-        messageMtimeMs = fs.statSync(messagePath).mtimeMs;
+        mtimeMs = fs.statSync(messagePath).mtimeMs;
       } catch {
-        messageMtimeMs = 0;
+        mtimeMs = 0;
       }
+      const parts = this.readParts(msgId);
+      entries.push({ msgId, message, mtimeMs, parts, partIds: new Set(parts.map((p) => p.id)) });
+    }
 
-      const partDir = path.join(this.storageBase, 'part', msgId);
-      let parts: OpenCodePart[] = [];
-
-      if (fs.existsSync(partDir)) {
-        try {
-          parts = fs
-            .readdirSync(partDir)
-            .filter((f) => f.endsWith('.json'))
-            .map((f) => readJsonSafe<OpenCodePart>(path.join(partDir, f)))
-            .filter((p): p is OpenCodePart => p !== null);
-        } catch {
-          // Skip unreadable part directories
-        }
+    if (this.pendingSkip > 0) {
+      // A position for this reader is a message count (see getPosition()), so a
+      // seek marks the oldest N messages as already seen without emitting them.
+      const ordered = [...entries].sort(
+        (a, b) =>
+          messageCreatedMs(a.message) - messageCreatedMs(b.message) ||
+          a.msgId.localeCompare(b.msgId),
+      );
+      for (const entry of ordered.slice(0, this.pendingSkip)) {
+        this.seenMessages.set(entry.msgId, { partIds: entry.partIds, mtimeMs: entry.mtimeMs });
       }
+      this.pendingSkip = 0;
+    }
 
-      const partIds = new Set(parts.map((part) => part.id));
-      const previous = this.seenMessages.get(msgId);
+    const newEvents: SessionEvent[] = [];
+    for (const entry of entries) {
+      const previous = this.seenMessages.get(entry.msgId);
       const isNewMessage = !previous;
       let hasNewParts = false;
 
       if (previous) {
-        if (previous.mtimeMs !== messageMtimeMs) {
+        if (previous.mtimeMs !== entry.mtimeMs) {
           hasNewParts = true;
-        } else if (partIds.size !== previous.partIds.size) {
+        } else if (entry.partIds.size !== previous.partIds.size) {
           hasNewParts = true;
         } else {
-          for (const partId of partIds) {
+          for (const partId of entry.partIds) {
             if (!previous.partIds.has(partId)) {
               hasNewParts = true;
               break;
@@ -454,8 +471,8 @@ class OpenCodeFileReader implements SessionReader {
       }
 
       if (isNewMessage || hasNewParts) {
-        newEvents.push(...convertOpenCodeMessage(message, parts));
-        this.seenMessages.set(msgId, { partIds, mtimeMs: messageMtimeMs });
+        newEvents.push(...convertOpenCodeMessage(entry.message, entry.parts));
+        this.seenMessages.set(entry.msgId, { partIds: entry.partIds, mtimeMs: entry.mtimeMs });
       }
     }
 
@@ -465,6 +482,21 @@ class OpenCodeFileReader implements SessionReader {
     );
   }
 
+  private readParts(msgId: string): OpenCodePart[] {
+    const partDir = path.join(this.storageBase, 'part', msgId);
+    if (!fs.existsSync(partDir)) return [];
+    try {
+      return fs
+        .readdirSync(partDir)
+        .filter((f) => f.endsWith('.json'))
+        .map((f) => readJsonSafe<OpenCodePart>(path.join(partDir, f)))
+        .filter((p): p is OpenCodePart => p !== null);
+    } catch {
+      // Skip unreadable part directories
+      return [];
+    }
+  }
+
   readAll(): SessionEvent[] {
     this.reset();
     return this.readNew();
@@ -472,6 +504,7 @@ class OpenCodeFileReader implements SessionReader {
 
   reset(): void {
     this.seenMessages.clear();
+    this.pendingSkip = 0;
   }
 
   exists(): boolean {
@@ -486,8 +519,10 @@ class OpenCodeFileReader implements SessionReader {
     return this.seenMessages.size;
   }
 
-  seekTo(_position: number): void {
-    // File-backed reader does not support seeking — full replay required
+  seekTo(position: number): void {
+    // Positions are message counts (getPosition()), so the next readNew() marks
+    // the oldest `position` messages as seen and emits only what follows.
+    this.pendingSkip = Number.isFinite(position) && position > 0 ? Math.floor(position) : 0;
   }
 
   wasTruncated(): boolean {
@@ -505,9 +540,14 @@ class OpenCodeFileReader implements SessionReader {
  * Uses time_updated timestamps to track which data has been seen,
  * querying only for newer messages/parts on each readNew() call.
  */
+/** How long a database-backed reader trusts its last session-row check. */
+const DB_EXISTS_MEMO_MS = 30_000;
+
 class OpenCodeDbReader implements SessionReader {
   private lastTimeUpdated = 0;
   private hasReadOnce = false;
+  private existsCheckedAtMs = 0;
+  private existsResult = true;
 
   constructor(
     private readonly sessionId: string,
@@ -725,10 +765,20 @@ class OpenCodeDbReader implements SessionReader {
   }
 
   exists(): boolean {
-    // DB-backed sessions are durable rows rather than ephemeral files.
-    // Treat transient sqlite timeout/read failures as "still exists" so
-    // SessionMonitor does not flap into discovery mode.
-    return true;
+    // DB-backed sessions are durable rows rather than ephemeral files. The row
+    // check costs a sqlite3 subprocess, so it is memoised, and a transient
+    // query failure still reports "exists" so SessionMonitor does not flap
+    // into discovery mode.
+    const now = Date.now();
+    if (now - this.existsCheckedAtMs < DB_EXISTS_MEMO_MS) return this.existsResult;
+    this.existsCheckedAtMs = now;
+    try {
+      const row = this.db.getSession(this.sessionId);
+      this.existsResult = row !== null || this.db.getRuntimeStatus().kind === 'query_failed';
+    } catch {
+      this.existsResult = true;
+    }
+    return this.existsResult;
   }
 
   flush(): void {
@@ -1413,10 +1463,8 @@ export class OpenCodeProvider implements SessionProviderBase {
     return resolveProjectId(workspacePath, db, this.getRuntimeStatus()) || workspacePath;
   }
 
-  extractSessionLabel(sessionPath: string): string | null {
-    const db = this.ensureDb();
-    const sessionId = this.getSessionId(sessionPath);
-
+  /** Session title from the metadata cache or the database; null without either. */
+  private extractSessionLabelFromMetadata(sessionPath: string): string | null {
     // Check metadata cache first
     const cached = this.sessionMetaCache.get(sessionPath);
     if (cached?.title) {
@@ -1424,15 +1472,23 @@ export class OpenCodeProvider implements SessionProviderBase {
     }
 
     // DB lookup
+    const db = this.ensureDb();
     if (db) {
-      const session = db.getSession(sessionId);
+      const session = db.getSession(this.getSessionId(sessionPath));
       if (session?.title) {
         this.recordDatabaseStatus('extractSessionLabel', true);
         return truncateTitle(session.title);
       }
     }
+    return null;
+  }
+
+  extractSessionLabel(sessionPath: string): string | null {
+    const fromMetadata = this.extractSessionLabelFromMetadata(sessionPath);
+    if (fromMetadata) return fromMetadata;
 
     // File fallback
+    const sessionId = this.getSessionId(sessionPath);
     const label = this.extractSessionLabelFromFiles(sessionPath, sessionId);
     this.recordDatabaseStatus(
       'extractSessionLabel',
@@ -1858,74 +1914,13 @@ export class OpenCodeProvider implements SessionProviderBase {
   // --- Stats ---
 
   readSessionStats(sessionPath: string): SessionFileStats {
-    const sessionId = path.basename(sessionPath, '.json');
-    const db = this.ensureDb();
-    let messageCount = 0;
-    let startTime = '';
-    let endTime = '';
-    const tokens = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
-    const modelUsage: Record<string, { calls: number; tokens: number }> = {};
-    const toolUsage: Record<string, number> = {};
-    let reportedCost = 0;
-
-    if (db) {
-      const messages = db.getMessagesForSession(sessionId);
-      const parts = db.getPartsForSession(sessionId);
-      for (const msg of messages) {
-        try {
-          const data = JSON.parse(msg.data) as Record<string, unknown>;
-          const role = data.role as string;
-          if (role === 'assistant' || role === 'user') messageCount++;
-          const msgTokens = data.tokens as Record<string, unknown> | undefined;
-          const cache = msgTokens?.cache as Record<string, unknown> | undefined;
-          if (msgTokens) {
-            tokens.input += (msgTokens.input as number) || 0;
-            tokens.output += (msgTokens.output as number) || 0;
-            tokens.cacheRead += (cache?.read as number) || 0;
-            tokens.cacheWrite += (cache?.write as number) || 0;
-          }
-          if (data.cost) reportedCost += (data.cost as number) || 0;
-          const modelId = (data.modelID as string) || 'unknown';
-          if (role === 'assistant' && msgTokens) {
-            if (!modelUsage[modelId]) modelUsage[modelId] = { calls: 0, tokens: 0 };
-            modelUsage[modelId].calls++;
-            modelUsage[modelId].tokens +=
-              ((msgTokens.input as number) || 0) + ((msgTokens.output as number) || 0);
-          }
-        } catch {
-          /* skip */
-        }
-        if (!startTime) startTime = new Date(msg.time_created).toISOString();
-        endTime = new Date(msg.time_updated || msg.time_created).toISOString();
-      }
-      for (const part of parts) {
-        try {
-          const data = JSON.parse(part.data) as Record<string, unknown>;
-          if (data.type === 'tool' || data.type === 'tool-invocation') {
-            const toolName = (data.tool as string) || 'unknown';
-            toolUsage[toolName] = (toolUsage[toolName] || 0) + 1;
-          }
-        } catch {
-          /* skip */
-        }
-      }
-    }
-
-    return {
-      providerId: 'opencode',
-      sessionId,
-      filePath: sessionPath,
-      label: this.extractSessionLabel(sessionPath),
-      startTime,
-      endTime,
-      messageCount,
-      tokens,
-      modelUsage,
-      toolUsage,
-      compactionEstimate: 0,
-      truncationCount: 0,
-      reportedCost,
-    };
+    // One reader pass (database-backed or file-backed) feeds the shared
+    // aggregator, so compaction and truncation counts are real instead of the
+    // hardcoded zeros the direct SQLite read returned, and a session that
+    // cannot be read reports `availability: 'unavailable'` instead of zeros.
+    return readSessionFileStats(this, sessionPath, {
+      resolveLabel: () => this.extractSessionLabelFromMetadata(sessionPath),
+    });
   }
 
   readSessionContextSnapshot(

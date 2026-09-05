@@ -48,6 +48,8 @@ export type {
   ProjectSessionTranscriptOptions,
 } from './transcript';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
+export { computeSessionFileStats, firstUserPrompt, readSessionFileStats } from './sessionStats';
+export type { ComputeSessionFileStatsOptions, ReadSessionFileStatsOptions } from './sessionStats';
 export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
 export {
   ObservedSessionCollector,
@@ -283,6 +285,7 @@ export type {
   SessionProvider,
   SessionProviderBase,
   SessionFileStats,
+  SessionFileStatsAvailability,
   SessionFileInfo,
   SearchHit,
   ProjectFolderInfo,

@@ -42,8 +42,13 @@ function providerFixture(events: SessionEvent[]): SessionProviderBase {
       tokens: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
       modelUsage: {},
       toolUsage: {},
+      toolFailures: {},
       compactionEstimate: 0,
       truncationCount: 0,
+      costUsd: 0,
+      costProvenance: 'none',
+      unpricedCalls: 0,
+      availability: 'full',
       reportedCost: 0,
     }),
     getSessionMetadata: (path) => ({

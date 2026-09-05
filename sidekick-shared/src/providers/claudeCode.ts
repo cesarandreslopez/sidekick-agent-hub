@@ -13,11 +13,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { StringDecoder } from 'string_decoder';
 import { readSessionContextSnapshot } from '../context/sessionContext';
+import { readSessionFileStats } from '../sessionStats';
 import type {
   ReadSessionContextSnapshotOptions,
   SessionContextSnapshot,
 } from '../context/sessionContext';
-import { JsonlParser, TRUNCATION_PATTERNS } from '../parsers/jsonl';
+import { JsonlParser } from '../parsers/jsonl';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type {
@@ -571,92 +572,10 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   // --- Stats ---
 
   readSessionStats(sessionPath: string): SessionFileStats {
-    const sessionId = path.basename(sessionPath, '.jsonl');
-    let messageCount = 0;
-    let startTime = '';
-    let endTime = '';
-    const tokens = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
-    const modelUsage: Record<string, { calls: number; tokens: number }> = {};
-    const toolUsage: Record<string, number> = {};
-    let compactionEstimate = 0;
-    let truncationCount = 0;
-    let reportedCost = 0;
-
-    try {
-      const content = fs.readFileSync(sessionPath, 'utf8');
-      const lines = content.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('{')) continue;
-        try {
-          const event = JSON.parse(trimmed) as RawSessionEvent;
-          if (!startTime && event.timestamp) startTime = event.timestamp;
-          if (event.timestamp) endTime = event.timestamp;
-
-          if (event.type === 'assistant' && event.message?.usage) {
-            messageCount++;
-            const u = event.message.usage;
-            tokens.input += u.input_tokens || 0;
-            tokens.output += u.output_tokens || 0;
-            tokens.cacheWrite += u.cache_creation_input_tokens || 0;
-            tokens.cacheRead += u.cache_read_input_tokens || 0;
-            if (u.reported_cost) reportedCost += u.reported_cost;
-
-            const model = event.message.model || 'unknown';
-            if (!modelUsage[model]) modelUsage[model] = { calls: 0, tokens: 0 };
-            modelUsage[model].calls++;
-            modelUsage[model].tokens += (u.input_tokens || 0) + (u.output_tokens || 0);
-
-            // Check content for tool_use blocks
-            if (Array.isArray(event.message.content)) {
-              for (const block of event.message.content as Array<Record<string, unknown>>) {
-                if (block.type === 'tool_use' && typeof block.name === 'string') {
-                  toolUsage[block.name] = (toolUsage[block.name] || 0) + 1;
-                }
-              }
-            }
-          }
-
-          if (event.type === 'user') messageCount++;
-
-          if (event.type === 'summary') compactionEstimate++;
-
-          // Check for truncation in tool results
-          if (event.type === 'user' && Array.isArray(event.message?.content)) {
-            for (const block of event.message.content as Array<Record<string, unknown>>) {
-              if (block.type === 'tool_result' && typeof block.content === 'string') {
-                for (const pattern of TRUNCATION_PATTERNS) {
-                  if (pattern.regex.test(block.content as string)) {
-                    truncationCount++;
-                    break;
-                  }
-                }
-              }
-            }
-          }
-        } catch {
-          // Skip malformed lines
-        }
-      }
-    } catch {
-      // Skip unreadable files
-    }
-
-    return {
-      providerId: 'claude-code',
-      sessionId,
-      filePath: sessionPath,
-      label: this.extractSessionLabel(sessionPath),
-      startTime,
-      endTime,
-      messageCount,
-      tokens,
-      modelUsage,
-      toolUsage,
-      compactionEstimate,
-      truncationCount,
-      reportedCost,
-    };
+    // One reader pass through the shared aggregator: cache-inclusive per-model
+    // totals, cost with provenance, a tool success/failure split, and the label
+    // from the first user prompt in the events already read.
+    return readSessionFileStats(this, sessionPath);
   }
 
   readSessionContextSnapshot(

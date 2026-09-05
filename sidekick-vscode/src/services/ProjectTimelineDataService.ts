@@ -9,6 +9,7 @@
  */
 
 import * as fs from 'fs';
+import { summarizeTokens } from 'sidekick-shared';
 import type { SessionProvider } from '../types/sessionProvider';
 import type {
   TimelineSessionEntry,
@@ -228,8 +229,13 @@ export class ProjectTimelineDataService {
           endTime: stats.endTime || null,
           durationMs: endMs - startMs,
           label: stats.label || sessionId.slice(0, 8),
-          totalTokens: stats.tokens.input + stats.tokens.output,
-          totalCost: stats.reportedCost,
+          totalTokens: summarizeTokens({
+            inputTokens: stats.tokens.input,
+            outputTokens: stats.tokens.output,
+            cacheWriteTokens: stats.tokens.cacheWrite,
+            cacheReadTokens: stats.tokens.cacheRead,
+          }).total,
+          totalCost: stats.costUsd,
           messageCount: stats.messageCount,
           taskCount: stats.toolUsage.TaskCreate || 0,
           errorCount: 0,

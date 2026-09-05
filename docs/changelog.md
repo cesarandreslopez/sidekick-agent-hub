@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared library: `resolveQuota()` gives every surface one quota precedence (fresh persisted sample, then session logs, then the provider API, then an older sample labelled by age) with `resolution` and `capturedSource` on each result
 - CLI: `quota`, `quota --all`, and `mcp get_quota_status` share the resolver and print a `Source` row; `--refresh` asks the API first for every provider; `--all` no longer forces Codex API-first
 - VS Code: the dashboard's first quota paint uses the shared resolver, so a fresh status-line or session sample shows without a network call
+- Shared library: one `readSessionStats()` implementation for Claude Code, Codex, and OpenCode over the shared aggregator (cache-inclusive per-model totals, cost with provenance, tool failure split, real compaction and truncation counts, explicit `availability`), with a cross-provider parity test; OpenCode's readers gain a real `seekTo()` and `exists()`
+- VS Code: the project timeline's per-session token total is cache-inclusive
 
 ## [0.25.0] - 2026-08-18
 

@@ -25,8 +25,13 @@ function makeStats(sessionPath: string): SessionFileStats {
     tokens: { input: 100, output: 50, cacheWrite: 0, cacheRead: 0 },
     modelUsage: {},
     toolUsage: {},
+    toolFailures: {},
     compactionEstimate: 0,
     truncationCount: 0,
+    costUsd: 0,
+    costProvenance: 'none',
+    unpricedCalls: 0,
+    availability: 'full',
     reportedCost: 0,
   };
 }

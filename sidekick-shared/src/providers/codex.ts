@@ -12,8 +12,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { StringDecoder } from 'string_decoder';
-import { EventAggregator } from '../aggregation/EventAggregator';
 import { readSessionContextSnapshot } from '../context/sessionContext';
+import { readSessionFileStats } from '../sessionStats';
 import type {
   ReadSessionContextSnapshotOptions,
   SessionContextSnapshot,
@@ -1070,21 +1070,26 @@ export class CodexProvider implements SessionProviderBase {
     return workspacePath;
   }
 
-  extractSessionLabel(sessionPath: string): string | null {
-    // DB first
+  /** Thread title or first user message from the SQLite index; null without it. */
+  private extractSessionLabelFromDb(sessionPath: string): string | null {
     const db = this.ensureDb();
-    if (db) {
-      const sessionId = this.getSessionId(sessionPath);
-      const thread = db.getThread(sessionId);
-      if (thread?.title) {
-        this.recordDatabaseFallback('extractSessionLabel', true);
-        return truncate(thread.title, 60);
-      }
-      if (thread?.first_user_message) {
-        this.recordDatabaseFallback('extractSessionLabel', true);
-        return truncate(thread.first_user_message, 60);
-      }
+    if (!db) return null;
+    const sessionId = this.getSessionId(sessionPath);
+    const thread = db.getThread(sessionId);
+    if (thread?.title) {
+      this.recordDatabaseFallback('extractSessionLabel', true);
+      return truncate(thread.title, 60);
     }
+    if (thread?.first_user_message) {
+      this.recordDatabaseFallback('extractSessionLabel', true);
+      return truncate(thread.first_user_message, 60);
+    }
+    return null;
+  }
+
+  extractSessionLabel(sessionPath: string): string | null {
+    const fromDb = this.extractSessionLabelFromDb(sessionPath);
+    if (fromDb) return fromDb;
 
     // File fallback: parse first user message
     const label = extractFirstUserMessage(sessionPath);
@@ -1313,57 +1318,12 @@ export class CodexProvider implements SessionProviderBase {
   // --- Stats ---
 
   readSessionStats(sessionPath: string): SessionFileStats {
-    const sessionId = extractSessionId(path.basename(sessionPath));
-    const aggregator = new EventAggregator({
-      providerId: 'codex',
-      // Same formula as `computeContextSize()` below: Codex input is normalized
-      // to uncached input at the reader boundary, so the prompt size is
-      // uncached + cached input.
-      computeContextSize: (usage) => usage.inputTokens + usage.cacheReadTokens,
+    // One reader pass computes stats and the label: the SQLite thread title is
+    // used when the index is available, otherwise the first user prompt comes
+    // from the events already read, so the rollout is never opened twice.
+    return readSessionFileStats(this, sessionPath, {
+      resolveLabel: () => this.extractSessionLabelFromDb(sessionPath),
     });
-
-    try {
-      const reader = this.createReader(sessionPath);
-      for (const event of reader.readAll()) {
-        aggregator.processEvent(event);
-      }
-    } catch (err) {
-      // Return an empty stats shell below. Surface the cause under DEBUG so a
-      // malformed rollout doesn't fail silently during dashboard refreshes.
-      if (process.env.DEBUG) console.error(`CodexProvider.readSessionStats: ${err}`);
-    }
-
-    const metrics = aggregator.getMetrics();
-    const modelUsage: Record<string, { calls: number; tokens: number }> = {};
-    for (const model of metrics.modelStats) {
-      modelUsage[model.model] = { calls: model.calls, tokens: model.tokens };
-    }
-
-    const toolUsage: Record<string, number> = {};
-    for (const tool of metrics.toolStats) {
-      toolUsage[tool.name] = tool.successCount + tool.failureCount + tool.pendingCount;
-    }
-
-    return {
-      providerId: 'codex',
-      sessionId,
-      filePath: sessionPath,
-      label: this.extractSessionLabel(sessionPath),
-      startTime: metrics.sessionStartTime || '',
-      endTime: metrics.lastEventTime || '',
-      messageCount: metrics.messageCount,
-      tokens: {
-        input: metrics.tokens.inputTokens,
-        output: metrics.tokens.outputTokens,
-        cacheWrite: metrics.tokens.cacheWriteTokens,
-        cacheRead: metrics.tokens.cacheReadTokens,
-      },
-      modelUsage,
-      toolUsage,
-      compactionEstimate: metrics.compactionCount,
-      truncationCount: metrics.truncationCount,
-      reportedCost: metrics.tokens.reportedCost,
-    };
   }
 
   readSessionContextSnapshot(

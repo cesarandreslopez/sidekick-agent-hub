@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `formatLocalDateKey()`, `parseLocalDateKey()`, and `addLocalDays()` (root and browser entry points); `hydratePricingCatalog({ offline })`; `pruneSnapshots()` and `MAX_SNAPSHOT_FILES`; `getActiveAccountStatus(error, { selfHeal })`, mirrored on `resolveActiveClaudeAccount()` and `resolveActiveCodexAccount()`; `_resetProviderDetectionCache()` and `_resetPeakHoursCache()` for tests
 - `resolveQuota({ providerId, workspacePath, preferFresh, allowApi, … })` resolves Claude, Codex, or z.ai quota with one precedence — a persisted sample younger than `QUOTA_FRESH_MAX_AGE_MS` (any origin), then session logs, then the provider API (persisted on success), then an aging or stale sample with the API failure attached — returning `ResolvedQuota` with `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`; every side effect is injectable
 - `QuotaState.capturedSource` (`api` | `session` | `statusline`) records where a cached sample came from; `readQuotaSnapshot()` fills it and `writeQuotaSnapshot()` preserves it instead of storing `cache`; the quota schema accepts it; `QuotaSnapshotRecord`, `enrichCodexQuota()`, and `enrichZaiQuota()` are exported; `fetchQuota(token, { fetchImpl })` accepts an injected fetch
+- `computeSessionFileStats(events, options)` and `readSessionFileStats(provider, sessionPath, { resolveLabel })` compute `SessionFileStats` for every provider over the shared `EventAggregator`; `firstUserPrompt(events)` derives a session label from events already in memory. `SessionFileStats` gains `availability` (`full` | `partial` | `unavailable`), `unavailableReason`, `costUsd`, `costProvenance`, `unpricedCalls`, and `toolFailures`; `reportedCost` is deprecated (same value as `costUsd`)
 
 ### Changed
 
@@ -33,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DEFAULT_PEAK_HOURS_TIMEOUT_MS` is 4 000 ms; `fetchPeakHoursStatus()` falls back to the schedule rather than returning `unavailable: true`
 - `listSessionPreviews({ since })` throws `RangeError` on an unparseable cutoff
 - `AggregatedTokens.reportedCost` is deprecated (same value as `costUsd`); `SNAPSHOT_SCHEMA_VERSION` is 5
+- Claude Code, Codex, and OpenCode `readSessionStats()` share one implementation: per-model `tokens` are cache-inclusive (`summarizeTokens().total`) for every provider, Claude sessions report catalog-estimated cost and a tool success/failure split instead of `reportedCost: 0`, OpenCode compaction and truncation counts come from the aggregator instead of hardcoded zeros, a missing or unreadable source reports `availability: 'unavailable'` with a reason instead of silent zeros, and the label is taken from the events already read (Codex and OpenCode still prefer their database title) so the file is never opened twice
+- OpenCode's file-backed reader implements `seekTo()` by message count (its `getPosition()` unit), so a reader restored from a snapshot emits only newer messages instead of replaying the whole session; the database-backed reader's `exists()` checks the session row (memoised for 30 s, treating a transient query failure as present) instead of always returning true
 
 ### Fixed
 

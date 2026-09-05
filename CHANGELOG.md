@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** `stats --csv`, `dump --list --csv`, `quota history --csv`; `quota history --window 5h|7d|max` (default `5h`, so a maxed-out week and a maxed-out five-hour block no longer look the same); `--json` on `tasks add`, `tasks done`, `note add`, `decision add`, and `report`
 - **VS Code:** quota threshold alerts — `sidekick.notifications.triggers.quota-threshold` with `quotaFiveHourThresholds` (default 80, 95) and `quotaSevenDayThresholds` (default 90), fired once per threshold per reset window with reset-aware text; the CLI dashboard raises the same toasts
 - **Shared:** `resolveQuota()` is the one quota resolution path for every surface — a persisted sample younger than five minutes (status line, session, or API) wins, then session logs, then the provider API, then an older sample labelled by age — and every result carries `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`; `readQuotaSnapshot()` keeps a sample's origin as `capturedSource`
+- **Shared:** `computeSessionFileStats()`, `readSessionFileStats()`, and `firstUserPrompt()` give every provider one `readSessionStats()` implementation over the shared aggregator; `SessionFileStats` gains `availability`, `unavailableReason`, `costUsd`, `costProvenance`, `unpricedCalls`, and `toolFailures`
 
 ### Changed
 
@@ -38,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **VS Code:** the D3 vendor bundle only includes the modules the mind map uses (611 KB → 133 KB) and Chart.js registers only the controllers the dashboard uses; the stale `out/webview/dashboard.js` (687 KB) is excluded from the package and `vscode:prepublish` cleans `out/` first
 - **CLI:** `sidekick quota`, `quota --all`, and `mcp get_quota_status` share `resolveQuota()`, so a fresh status-line sample is never outranked by an older session guess and `--all` no longer forces Codex API-first; `--refresh` asks the API first for every provider; every quota table prints a `Source` row naming the sample origin and age
 - **VS Code:** the dashboard's first quota paint goes through `resolveQuota()`, so a fresh status-line or session sample shows immediately and Codex no longer starts with an API call
+- **Shared:** Claude, Codex, and OpenCode session stats agree with the aggregator and the transcript projection (guarded by a cross-provider parity test): cache-inclusive per-model totals, cost with provenance for Claude sessions instead of `$0`, real OpenCode compaction and truncation counts, an explicit unavailable state instead of zeros, and no second file open for the label; OpenCode's file reader gains a real `seekTo()` and its database reader a real `exists()`
+- **VS Code:** the project timeline's per-session token total is cache-inclusive and its cost uses `costUsd`
 
 ### Fixed
 

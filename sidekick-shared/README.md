@@ -9,7 +9,7 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 ## Recent additions
 
-- **One token vocabulary and cost provenance (unreleased)** — `summarizeTokens()` gives every surface the same `total` (input + output + cache writes + cache reads) and `context` (input + cache) figures; `AggregatedTokens.costUsd` carries `costProvenance` so reports can say whether a cost was provider-reported or estimated; `parseClaudeStatuslinePayload()` / `quotaFromStatuslinePayload()` turn Claude Code's status-line JSON into an official `statusline` quota source; `readQuotaSnapshot()` reports `ageMs` / `freshness` and keeps the sample's origin as `capturedSource`; `resolveQuota()` is the one quota resolution path (fresh persisted sample → session logs → provider API → older sample) shared by the CLI, the MCP server, and both dashboards; `getScheduledPeakHoursState()` and `evaluateQuotaThresholds()` are shared by the CLI and extension dashboards.
+- **One token vocabulary and cost provenance (unreleased)** — `summarizeTokens()` gives every surface the same `total` (input + output + cache writes + cache reads) and `context` (input + cache) figures; `AggregatedTokens.costUsd` carries `costProvenance` so reports can say whether a cost was provider-reported or estimated; `parseClaudeStatuslinePayload()` / `quotaFromStatuslinePayload()` turn Claude Code's status-line JSON into an official `statusline` quota source; `readQuotaSnapshot()` reports `ageMs` / `freshness` and keeps the sample's origin as `capturedSource`; `resolveQuota()` is the one quota resolution path (fresh persisted sample → session logs → provider API → older sample) shared by the CLI, the MCP server, and both dashboards; `readSessionFileStats()` / `computeSessionFileStats()` give every provider one `readSessionStats()` over the shared aggregator, with `availability`, `costProvenance`, and `toolFailures` on `SessionFileStats`; `getScheduledPeakHoursState()` and `evaluateQuotaThresholds()` are shared by the CLI and extension dashboards.
 - **Host-safe APIs (0.25.0)** — `listSessionPreviewsAsync()` / `readSessionPreviewAsync()` read previews with bounded concurrency and cooperative yielding; `ObservedSessionCollector.subscribe()` and `SessionMonitor.subscribe()` replace host polling loops with debounced change batches; `createSessionProviders({ onDiagnostic })` constructs every usable provider with structured diagnostics instead of throwing; `findSessionById()` resolves one session without scanning; `exportResolvedModelCatalog()` / `importResolvedModelCatalog()` and `registerModelAlias()` transfer context/pricing resolutions across realms; `onAccountsChanged()` reports login/logout/switch events; provider constructors perform no environment I/O, and quota pollers stay dormant without an account.
 - **Native session-file helpers** — `encodeClaudeWorkspacePath()` / `getClaudeSessionDirectory()` locate Claude Code's `~/.claude/projects/` directories with the real on-disk encoding, `findCodexRolloutFile()` resolves a Codex session id to its rollout path, `readCodexHistory()` tail-reads `~/.codex/history.jsonl`, `listSessionPreviews()` / `readSessionPreview()` build a cheap stat-first recent-sessions index across providers, and `parseMcpToolName()` splits `mcp__<server>__<tool>` identifiers (browser-safe).
 - **Non-blocking account APIs & locked sync writers** — every login/switch entry point gains an async variant (`switchAccountAsync()`, `getAccountLoginStatusAsync()`, `finalizeAccountLoginAsync()`, `prepareCodexAccountAsync()`, `finalizeCodexAccountAsync()`, `switchToCodexAccountAsync()`) that keeps `codex` CLI probes off the event loop, and synchronous callers get the same cross-process store lock via `atomicWriteFileSync()` / `updateJsonStoreAtomicSync()` / `withFileLockSync()`, with progress-based timeouts and abandoned-lock reclaim.
@@ -238,6 +238,32 @@ const estimate = estimateTextTokens(sourceCode, {
 ```
 
 `sidekick-fallback-v1` counts Latin/source-code text at 3.5 characters per token, CJK code points at one token, emoji at two, and other non-ASCII code points at one. Empty input is zero. An injected finite, nonnegative exact result takes precedence.
+
+### Read session stats for any provider
+
+```typescript
+import { createSessionProviders, readSessionFileStats } from 'sidekick-shared';
+
+const { providers } = createSessionProviders();
+for (const provider of providers) {
+  for (const sessionPath of provider.findAllSessions(process.cwd())) {
+    const stats = provider.readSessionStats(sessionPath); // same as readSessionFileStats(provider, sessionPath)
+    if (stats.availability === 'unavailable') {
+      console.warn(`${provider.id}: ${stats.unavailableReason}`);
+      continue;
+    }
+    console.log(
+      stats.label,
+      stats.modelUsage,
+      stats.costUsd,
+      stats.costProvenance,
+      stats.toolFailures,
+    );
+  }
+}
+```
+
+Every provider computes `SessionFileStats` the same way — one reader pass through the shared `EventAggregator` — so per-model `tokens` are cache-inclusive, `costUsd` carries `costProvenance`, `toolFailures` splits out failed calls, and compaction and truncation counts are real for Claude Code, Codex, and OpenCode alike. `computeSessionFileStats(events, options)` does the same for events you already hold, and `firstUserPrompt(events)` derives the label.
 
 ### Read canonical session history
 
