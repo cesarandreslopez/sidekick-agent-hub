@@ -5,6 +5,13 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `resolveQuota({ preferFresh: false })` tries the API before local samples when API access is allowed. Failed live queries select the newer session or cached sample by capture time, prefer the cache on ties, and retain the API failure. Only a selected session sample is persisted.
+- Codex quota failures name Codex instead of Claude or Anthropic. Default cache preferences and API-disabled resolution are unchanged.
+
 ## [0.26.0] - 2026-09-05
 
 ### Added

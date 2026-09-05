@@ -515,23 +515,23 @@ sidekick quota
 Provider-aware quota and rate-limit display. The command detects the active provider and shows the appropriate data:
 
 - **Claude Code**: Shows Claude Max subscription quota utilization — 5-hour and 7-day windows with color-coded progress bars, projected end-of-window utilization, and reset countdowns. Requires active Claude Code credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows). JSON output includes `projectedFiveHour` and `projectedSevenDay` fields.
-- **Codex**: Shows rate limits extracted from Codex `token_count.rate_limits` events — primary and secondary windows with progress bars, projected end-of-window utilization, and reset countdowns. Session logs (the current workspace's rollouts, then recent account-level rollouts) are the session-derived step of the shared precedence described below. When quota comes from the API, the output also lists any available **reset credits** — a `Reset Credits: N available` line plus each credit's expiration.
+- **Codex**: Fetches the Codex usage API on every command — primary and secondary windows with progress bars, projected end-of-window utilization, and reset countdowns. The output also lists available **reset credits** and each credit's expiration. Session logs and cached samples are fallbacks if the API fails.
 - **OpenCode / z.ai**: OpenCode itself provides no native rate-limit data, but when z.ai Coding Plan credentials are available, `sidekick quota --provider opencode` can auto-route to authoritative z.ai quota (5-Hour / Weekly, with projected end-of-window utilization). Use `sidekick quota --provider zai` to request it explicitly.
 
 All providers render in a unified table with aligned `now` (current utilization), `projected` (estimated end-of-window utilization, shown as `—` when it can't be computed), and `resets` columns.
 
 When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel keeps a compact inline quota/rate-limit state visible even when data is unavailable, and quota failure toasts only appear when the failure state changes.
 
-Every provider — and `sidekick quota --all`, the MCP `get_quota_status` tool, and both dashboards — resolves quota through one shared path with one precedence:
+Quota commands and the MCP `get_quota_status` tool share these policies:
 
-1. A persisted sample younger than five minutes: the official status-line sample written by `sidekick statusline`, a session-log sample, or an earlier API answer. No network call is made.
-2. Session logs (Codex rollouts carry rate limits; Claude and z.ai have no local equivalent).
-3. The provider API. Its answer is persisted for the next command.
-4. The most recent older sample, labelled with its age.
+- **Codex:** always fetch the live API, including with automatic provider selection, `--provider codex`, and `--all`. If the API fails, use the newer session or cached sample by capture time, preferring the cache on ties. Missing capture times count as oldest.
+- **Claude and z.ai:** reuse a persisted sample younger than five minutes when available; otherwise fetch the API, falling back to an older cached sample. Add `--refresh` to ask the API first even when a fresh sample exists. Codex already does this on every command.
 
-The `Source` row names which step produced the numbers — `cached status-line sample from … (3m ago)`, `local session logs`, `Anthropic usage API`, and so on — and turns yellow when the sample is older than five minutes. Add `--refresh` to skip step 1 and ask the API first. Use `--json` for machine-readable output; the payload includes `resolution` (`snapshot-fresh`, `session`, `api`, `snapshot-aging`, `snapshot-stale`, or `unavailable`), `source`, `capturedSource`, `freshness`, and `ageMs`.
+The `Source` row names the origin and age of fallback data, such as `cached API sample from … (3m ago)` or `local session logs from … (1h ago)`, and turns yellow for aging or stale samples. A `Refresh` row explains a failed Codex API attempt. Dashboard refresh schedules are unchanged.
 
-Use `--all` to show Claude and Codex quota together in one run, plus z.ai when available. The providers are resolved in parallel with the same precedence as the single-provider view, so the two can never disagree, and rendered independently — if one provider's quota is unavailable, its error is shown inline and the others still print (the command never aborts on a single provider's failure). `--all --json` emits a provider-keyed payload.
+Use `--json` for machine-readable output; the payload includes `resolution` (`snapshot-fresh`, `session`, `api`, `snapshot-aging`, `snapshot-stale`, or `unavailable`), `source`, `capturedSource`, `freshness`, and `ageMs`. The `failure` descriptor retains an API failure even when fallback data is available.
+
+Use `--all` to show Claude and Codex quota together in one run, plus z.ai when available. Providers are resolved in parallel using the same policy as the single-provider view; live values can change between calls. Each provider renders independently — if one provider's quota is unavailable, its error is shown inline and the others still print. `--all --json` emits a provider-keyed payload.
 
 #### Examples
 
@@ -545,8 +545,8 @@ sidekick quota --json
 # Explicitly check Codex rate limits
 sidekick --provider codex quota
 
-# Ask the provider API first instead of reusing a fresh local sample
-sidekick quota --provider codex --refresh
+# Force an API refresh for Claude (Codex always queries its API)
+sidekick quota --provider claude-code --refresh
 
 # Authoritative z.ai Coding Plan quota
 sidekick quota --provider zai

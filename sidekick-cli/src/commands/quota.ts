@@ -131,7 +131,11 @@ function sourceMetaRow(quota: ResolvedQuota): QuotaMetaRow | null {
     case 'api':
       return { label: 'Source', value: API_LABELS[quota.runtimeProvider] };
     case 'session':
-      return { label: 'Source', value: 'local session logs' };
+      return {
+        label: 'Source',
+        value: `local session logs from ${formatSnapshotTime(quota.capturedAt)} (${formatQuotaAge(quota.ageMs)})`,
+        color: quota.freshness === 'fresh' ? undefined : chalk.yellow,
+      };
     case 'snapshot-fresh':
     case 'snapshot-aging':
     case 'snapshot-stale':
@@ -245,7 +249,7 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
   }
 
   if (provider.id === 'codex') {
-    await codexQuotaAction(provider as CodexProvider, globalOpts, localOpts, jsonOutput);
+    await codexQuotaAction(provider as CodexProvider, globalOpts, jsonOutput);
     return;
   }
 
@@ -363,14 +367,13 @@ async function fetchClaudeQuotaPayload(
 async function codexQuotaAction(
   provider: CodexProvider,
   globalOpts: Record<string, unknown>,
-  localOpts: Record<string, unknown>,
   jsonOutput: boolean,
 ): Promise<void> {
   // Resolve the live Codex account once: this self-heals the saved pointer to the
   // current login (so the fetched snapshot keys correctly) and yields the display
   // identity reused by printCodexQuota, avoiding a redundant second resolve.
   const resolvedAccount = resolveActiveCodexAccount();
-  const quota = await fetchCodexQuotaPayload(provider, globalOpts, localOpts);
+  const quota = await fetchCodexQuotaPayload(provider, globalOpts);
 
   if (!quota.available) {
     process.exitCode = 1;
@@ -395,7 +398,6 @@ async function codexQuotaAction(
 async function fetchCodexQuotaPayload(
   provider: CodexProvider,
   globalOpts: Record<string, unknown>,
-  localOpts: Record<string, unknown>,
 ): Promise<ResolvedQuota<'codex'>> {
   const workspacePath = (globalOpts.project as string) || process.cwd();
   try {
@@ -405,7 +407,8 @@ async function fetchCodexQuotaPayload(
       providerId: 'codex',
       workspacePath,
       codexProvider: provider,
-      preferFresh: preferFresh(localOpts),
+      // One-shot Codex queries always fetch current utilization and reset credits.
+      preferFresh: false,
       selfHeal: false,
     });
   } finally {
@@ -445,6 +448,15 @@ function printCodexQuota(quota: ResolvedQuota<'codex'>, resolved: ResolvedActive
   const metaRows: QuotaMetaRow[] = [];
   const source = sourceMetaRow(quota);
   if (source) metaRows.push(source);
+  if (quota.failure) {
+    metaRows.push({
+      label: 'Refresh',
+      value: [quota.failure.title, quota.failure.message, quota.failure.detail]
+        .filter(Boolean)
+        .join(' '),
+      color: chalk.yellow,
+    });
+  }
   metaRows.push(...resetCreditMetaRows(quota.resetCredits));
 
   printQuotaTable('Rate Limits', rows, metaRows);
@@ -540,11 +552,10 @@ async function allQuotaAction(
   // Self-heal the live Codex account once up front (before the fetch keys its
   // snapshot) and reuse the resolved identity when printing below.
   const resolvedCodex = resolveActiveCodexAccount();
-  // All three legs go through the same resolver with the same precedence, so
-  // `--all` and the single-provider views can never disagree on a number.
+  // Match each provider's single-query policy; Codex always asks the API first.
   const [{ quota: claude, peak }, codex, zai] = await Promise.all([
     fetchClaudeQuotaPayload(localOpts),
-    fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts),
+    fetchCodexQuotaPayload(codexProvider, globalOpts),
     fetchZaiQuotaPayload(localOpts),
   ]);
   if (!claude.available || !codex.available || (zai.detected && !zai.quota.available)) {

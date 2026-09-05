@@ -32,8 +32,21 @@ export function describeQuotaFailure(
 ): QuotaFailureDescriptor | null {
   if (!quota || quota.available || !quota.failureKind) return null;
 
+  const isCodex = quota.providerId === 'codex';
+  const apiName = isCodex ? 'Codex' : 'Anthropic';
+
   switch (quota.failureKind) {
     case 'auth':
+      if (isCodex) {
+        return {
+          severity: 'error',
+          title: quota.httpStatus ? 'Codex sign-in expired' : 'Codex sign-in required',
+          message: quota.error ?? 'The current Codex login could not be used.',
+          detail: 'Run `codex login` to sign in, then retry quota refresh.',
+          alertKey: `auth:${quota.httpStatus ?? 'no-credentials'}`,
+          isRetryable: false,
+        };
+      }
       if (quota.error === 'No OAuth token available') {
         return {
           severity: 'error',
@@ -58,7 +71,7 @@ export function describeQuotaFailure(
       return {
         severity: 'warning',
         title: 'Quota API unreachable',
-        message: 'Could not reach Anthropic from the current environment.',
+        message: `Could not reach ${apiName} from the current environment.`,
         detail: 'Check connectivity, proxy, or firewall settings, then retry.',
         alertKey: 'network',
         isRetryable: true,
@@ -73,7 +86,7 @@ export function describeQuotaFailure(
             ? `Retry in ${formatRetryAfter(quota.retryAfterMs)}.`
             : 'Retry shortly.',
         detail:
-          quota.httpStatus != null ? `Anthropic returned HTTP ${quota.httpStatus}.` : undefined,
+          quota.httpStatus != null ? `${apiName} returned HTTP ${quota.httpStatus}.` : undefined,
         alertKey: `rate_limit:${quota.httpStatus ?? 429}`,
         isRetryable: true,
       };
@@ -84,8 +97,8 @@ export function describeQuotaFailure(
         title: 'Quota API unavailable',
         message:
           quota.httpStatus != null
-            ? `Anthropic returned HTTP ${quota.httpStatus}. Try again shortly.`
-            : 'Anthropic quota data is temporarily unavailable.',
+            ? `${apiName} returned HTTP ${quota.httpStatus}. Try again shortly.`
+            : `${apiName} quota data is temporarily unavailable.`,
         alertKey: `server:${quota.httpStatus ?? 'unknown'}`,
         isRetryable: true,
       };
@@ -96,7 +109,7 @@ export function describeQuotaFailure(
         title: 'Unexpected quota response',
         message:
           quota.httpStatus != null
-            ? `Anthropic returned HTTP ${quota.httpStatus}.`
+            ? `${apiName} returned HTTP ${quota.httpStatus}.`
             : (quota.error ?? 'Quota data could not be retrieved.'),
         detail: 'This failure is not classified as retryable.',
         alertKey: `unknown:${quota.httpStatus ?? 'none'}`,

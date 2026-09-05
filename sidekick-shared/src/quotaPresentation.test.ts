@@ -134,4 +134,25 @@ describe('describeQuotaFailure', () => {
       isRetryable: false,
     });
   });
+
+  it.each([
+    { failureKind: 'auth', title: 'Codex sign-in required' },
+    { failureKind: 'auth', httpStatus: 401, title: 'Codex sign-in expired' },
+    { failureKind: 'network', title: 'Quota API unreachable' },
+    { failureKind: 'rate_limit', httpStatus: 429, title: 'Quota API rate limited' },
+    { failureKind: 'server', httpStatus: 503, title: 'Quota API unavailable' },
+    { failureKind: 'unknown', httpStatus: 418, title: 'Unexpected quota response' },
+  ] as const)('names Codex in $failureKind failure details', ({ title, ...failure }) => {
+    const descriptor = describeQuotaFailure({
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      providerId: 'codex',
+      ...failure,
+    });
+
+    expect(descriptor?.title).toBe(title);
+    expect(JSON.stringify(descriptor)).toContain('Codex');
+    expect(JSON.stringify(descriptor)).not.toMatch(/Claude|Anthropic/);
+  });
 });

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **CLI:** Codex quota commands and MCP queries fetch live utilization and reset credits on every call, fixing the 0.26.0 regression that returned session logs even with `--refresh`; fallback output includes sample age and the API failure.
+- **Shared:** `preferFresh: false` tries the API before local quota samples; failed live queries select the newer session or cached sample without persisting rejected candidates. Codex failure messages identify the correct provider.
+
 ## [0.26.0] - 2026-09-05
 
 ### Added

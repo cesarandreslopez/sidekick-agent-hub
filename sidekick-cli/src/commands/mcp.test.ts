@@ -1,6 +1,10 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import type { CodexProvider, ResolveQuotaOptions } from 'sidekick-shared';
 
 const { mockResolveQuota } = vi.hoisted(() => ({ mockResolveQuota: vi.fn() }));
 
@@ -40,9 +44,8 @@ describe('Sidekick MCP facts server', () => {
       fiveHour: { utilization: 12, resetsAt: '2026-09-04T15:00:00Z' },
       sevenDay: { utilization: 40, resetsAt: '2026-09-08T09:00:00Z' },
       available: true,
-      resolution: 'snapshot-fresh',
-      source: 'cache',
-      capturedSource: 'session',
+      resolution: 'api',
+      source: 'api',
       freshness: 'fresh',
     };
     mockResolveQuota.mockResolvedValue(resolved);
@@ -50,11 +53,11 @@ describe('Sidekick MCP facts server', () => {
     const client = await connect('codex');
     const response = await client.callTool({ name: 'get_quota_status', arguments: {} });
 
-    // Same options `sidekick quota` builds for its default view: the resolver's
-    // precedence (fresh sample first) applies unchanged.
+    // Codex uses the same live-query policy as the CLI.
     expect(mockResolveQuota).toHaveBeenCalledWith({
       providerId: 'codex',
       workspacePath: '/work/project',
+      preferFresh: false,
     });
     expect((response.structuredContent as { data: unknown }).data).toEqual(resolved);
   });
@@ -69,6 +72,71 @@ describe('Sidekick MCP facts server', () => {
       providerId: 'zai',
       workspacePath: '/work/project',
     });
+  });
+
+  it('returns live Codex usage and reset credits through the real resolver', async () => {
+    const shared = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-mcp-quota-'));
+    const now = new Date('2026-09-05T12:00:00Z');
+    const writeSnapshot = vi.fn();
+    const fetchImpl = vi.fn<typeof fetch>(async (input) =>
+      Response.json(
+        String(input).endsWith('/wham/usage')
+          ? {
+              rate_limit: {
+                primary_window: {
+                  used_percent: 48,
+                  limit_window_seconds: 604_800,
+                  reset_at: 1_789_131_600,
+                },
+              },
+            }
+          : { available_count: 2, credits: [] },
+      ),
+    );
+    mockResolveQuota.mockImplementation((options: ResolveQuotaOptions<'codex'>) =>
+      shared.resolveQuota({
+        ...options,
+        now,
+        codexHome: scratch,
+        codexAccessToken: 'test-token',
+        fetchImpl,
+        codexProvider: { findAllSessions: () => [], dispose: vi.fn() } as unknown as CodexProvider,
+        resolveCodexAccount: () => ({
+          id: 'codex-account',
+          providerId: 'codex',
+          addedAt: now.toISOString(),
+        }),
+        readSnapshot: () => ({
+          fiveHour: { utilization: 30, resetsAt: '2026-09-11T13:00:00Z' },
+          sevenDay: { utilization: 0, resetsAt: '' },
+          available: true,
+          source: 'cache',
+          capturedSource: 'session',
+          capturedAt: '2026-09-05T11:59:00Z',
+          ageMs: 60_000,
+          freshness: 'fresh',
+        }),
+        writeSnapshot,
+      }),
+    );
+
+    try {
+      const client = await connect('codex');
+      const response = await client.callTool({ name: 'get_quota_status', arguments: {} });
+
+      expect((response.structuredContent as { data: unknown }).data).toMatchObject({
+        available: true,
+        source: 'api',
+        resolution: 'api',
+        fiveHour: { utilization: 48 },
+        resetCredits: { availableCount: 2 },
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(writeSnapshot).toHaveBeenCalledOnce();
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it('advertises only the seven read-only facts tools', async () => {

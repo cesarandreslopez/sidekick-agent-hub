@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getUtilizationColor, makeChalkBar, formatTimeUntil } from './quota';
 import chalk from 'chalk';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import type { CodexProvider, ResolveQuotaOptions } from 'sidekick-shared';
 
 // ── getUtilizationColor ──
 
@@ -476,7 +480,7 @@ describe('quotaAction', () => {
       expect.objectContaining({
         providerId: 'codex',
         codexProvider: provider,
-        preferFresh: true,
+        preferFresh: false,
       }),
     );
     expect(stdoutData).toContain('Rate Limits');
@@ -587,7 +591,7 @@ describe('quotaAction', () => {
     expect(provider.dispose).toHaveBeenCalledOnce();
   });
 
-  it('resolves every provider with the same precedence in the --all aggregate view', async () => {
+  it('fetches live Codex quota while other providers may reuse fresh samples in --all', async () => {
     mockFetchOnce.mockResolvedValue({
       fiveHour: { utilization: 13, resetsAt: new Date(Date.now() + 3 * 3600_000).toISOString() },
       sevenDay: { utilization: 48, resetsAt: new Date(Date.now() + 3 * 86400_000).toISOString() },
@@ -607,15 +611,188 @@ describe('quotaAction', () => {
     const { quotaAction } = await import('./quota');
     await quotaAction({}, makeCmd(false, { all: true }));
 
-    // `--all` used to force Codex API-first while the single-provider view was
-    // local-first; both now share the resolver's precedence (fresh sample first).
+    // All one-shot Codex queries ask the API first, including the aggregate view.
     expect(mockFetchOnce).toHaveBeenCalledWith({ providerId: 'claude-code', preferFresh: true });
     expect(mockResolveCodexQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ providerId: 'codex', preferFresh: true }),
+      expect.objectContaining({ providerId: 'codex', preferFresh: false }),
     );
     expect(mockResolveZaiQuota).toHaveBeenCalledWith({ providerId: 'zai', preferFresh: true });
     expect(stdoutData).toContain('Codex');
     expect(stdoutData).toContain('17%');
+  });
+
+  it.each([
+    { name: 'automatic provider', opts: {}, json: false, cached: false, creditsStatus: 200 },
+    {
+      name: 'explicit provider',
+      opts: { provider: 'codex' },
+      json: false,
+      cached: false,
+      creditsStatus: 200,
+    },
+    { name: 'aggregate', opts: { all: true }, json: false, cached: false, creditsStatus: 200 },
+    { name: 'refresh', opts: { refresh: true }, json: false, cached: true, creditsStatus: 200 },
+    { name: 'fresh API snapshot', opts: {}, json: true, cached: true, creditsStatus: 200 },
+    { name: 'aggregate JSON', opts: { all: true }, json: true, cached: true, creditsStatus: 200 },
+    { name: 'reset-credit failure', opts: {}, json: true, cached: false, creditsStatus: 503 },
+  ])(
+    'returns live Codex data through the real resolver: $name',
+    async ({ opts, json, cached, creditsStatus }) => {
+      const shared = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
+      const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-quota-live-'));
+      const now = new Date('2026-09-05T12:00:00Z');
+      const capturedAt = '2026-09-05T11:00:00Z';
+      const resetAt = Date.parse('2026-09-11T13:00:00Z') / 1000;
+      const rollout = path.join(scratch, 'rollout-test.jsonl');
+      const provider = { id: 'codex', findAllSessions: () => [rollout], dispose: vi.fn() };
+      const writeSnapshot = vi.fn();
+      const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+        const url = String(input);
+        if (url.endsWith('/wham/usage')) {
+          return Response.json({
+            rate_limit: {
+              primary_window: {
+                used_percent: 48,
+                limit_window_seconds: 604_800,
+                reset_at: resetAt,
+              },
+            },
+          });
+        }
+        if (url.endsWith('/wham/rate-limit-reset-credits')) {
+          return Response.json(
+            {
+              available_count: 2,
+              credits: [
+                { status: 'available', title: 'Full reset', expires_at: '2026-10-04T01:54:21Z' },
+                { status: 'available', title: 'Full reset', expires_at: '2026-10-05T04:18:29Z' },
+              ],
+            },
+            { status: creditsStatus },
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      try {
+        fs.writeFileSync(
+          rollout,
+          JSON.stringify({
+            timestamp: capturedAt,
+            type: 'event_msg',
+            payload: {
+              type: 'token_count',
+              info: null,
+              rate_limits: {
+                limit_id: 'codex',
+                primary: { used_percent: 30, window_minutes: 10_080, resets_at: resetAt },
+              },
+            },
+          }) + '\n',
+        );
+        mockResolveProvider.mockReturnValue(provider);
+        mockFetchOnce.mockResolvedValue({
+          runtimeProvider: 'claude',
+          providerId: 'claude-code',
+          available: true,
+          fiveHour: { utilization: 13, resetsAt: '2026-09-05T15:00:00Z' },
+          sevenDay: { utilization: 26, resetsAt: '2026-09-11T13:00:00Z' },
+        });
+        mockResolveCodexQuota.mockImplementation((options: ResolveQuotaOptions<'codex'>) =>
+          shared.resolveQuota({
+            ...options,
+            now,
+            codexHome: scratch,
+            codexAccessToken: 'test-token',
+            fetchImpl,
+            codexProvider: provider as unknown as CodexProvider,
+            resolveCodexAccount: () => ({
+              id: 'codex-account',
+              providerId: 'codex',
+              addedAt: capturedAt,
+            }),
+            readSnapshot: () =>
+              cached
+                ? {
+                    fiveHour: { utilization: 30, resetsAt: new Date(resetAt * 1000).toISOString() },
+                    sevenDay: { utilization: 0, resetsAt: '' },
+                    available: true,
+                    source: 'cache',
+                    capturedSource: 'api',
+                    freshness: 'fresh',
+                    ageMs: 60_000,
+                    capturedAt: '2026-09-05T11:59:00Z',
+                  }
+                : null,
+            writeSnapshot,
+          }),
+        );
+
+        const { quotaAction } = await import('./quota');
+        await quotaAction({}, makeCmd(json, opts));
+
+        if (json) {
+          const output = JSON.parse(stdoutData);
+          const quota = 'all' in opts ? output.codex : output;
+          expect(quota).toMatchObject({
+            available: true,
+            source: 'api',
+            resolution: 'api',
+            fiveHour: { utilization: 48 },
+          });
+          if (creditsStatus === 200) expect(quota.resetCredits.availableCount).toBe(2);
+          else expect(quota.resetCredits).toBeUndefined();
+        } else {
+          expect(stdoutData).toContain('48%');
+          expect(stdoutData).toContain('Codex usage API');
+          expect(stdoutData).toContain('2 available');
+          expect(stdoutData).toContain('2026-10-04T01:54:21Z');
+          expect(stdoutData).toContain('2026-10-05T04:18:29Z');
+          expect(stdoutData).not.toContain('local session logs');
+        }
+        expect(fetchImpl).toHaveBeenCalledTimes(2);
+        expect(writeSnapshot).toHaveBeenCalledExactlyOnceWith(
+          'codex',
+          'codex-account',
+          expect.objectContaining({
+            source: 'api',
+            fiveHour: expect.objectContaining({ utilization: 48 }),
+          }),
+        );
+        expect(provider.dispose).toHaveBeenCalledTimes('all' in opts ? 0 : 1);
+      } finally {
+        fs.rmSync(scratch, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('prints the age and failed refresh reason for Codex session fallbacks', async () => {
+    mockResolveProvider.mockReturnValue({ id: 'codex', dispose: vi.fn() });
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      available: true,
+      fiveHour: { utilization: 30, resetsAt: '2026-09-11T13:00:00Z' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      resolution: 'session',
+      source: 'session',
+      capturedAt: '2026-09-05T11:00:00Z',
+      freshness: 'stale',
+      ageMs: 3600_000,
+      failure: {
+        title: 'Quota API unreachable',
+        message: 'Could not reach Codex from the current environment.',
+      },
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stdoutData).toContain('local session logs from');
+    expect(stdoutData).toContain('(1h ago)');
+    expect(stdoutData).toContain('Refresh');
+    expect(stdoutData).toContain('Could not reach Codex');
+    expect(process.exitCode).toBeUndefined();
   });
 
   it('builds identical resolver options for the single-provider and --all views', async () => {

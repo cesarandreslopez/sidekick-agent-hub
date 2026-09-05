@@ -3,7 +3,7 @@
  *
  * `sidekick quota`, `quota --all`, the MCP facts server, and both dashboards
  * used to pick between the live API, session logs, and the persisted snapshot
- * in four different orders. `resolveQuota()` applies one precedence:
+ * in four different orders. `resolveQuota()` defaults to this precedence:
  *
  * 1. a fresh persisted snapshot (younger than `QUOTA_FRESH_MAX_AGE_MS`, whatever
  *    its origin: the official status-line sample, a session log, or an earlier
@@ -14,7 +14,9 @@
  * 4. an aging or stale snapshot, labelled as such, with the API failure attached;
  * 5. an unavailable state describing why nothing could be resolved.
  *
- * `preferFresh: false` skips step 1 (the `--refresh` flag). Every result carries
+ * `preferFresh: false` asks the API first when allowed (the `--refresh` flag
+ * and one-shot Codex queries). On failure, the newer session or persisted
+ * sample wins, with ties going to the persisted sample. Every result carries
  * `source`, `capturedSource`, `freshness`, `ageMs`, and a `resolution` tag.
  */
 
@@ -68,9 +70,9 @@ export interface ResolveQuotaOptions<T extends QuotaResolveProviderId = QuotaRes
   accountId?: string;
   /** Workspace whose Codex rollouts are searched first for session-derived rate limits. */
   workspacePath?: string;
-  /** Use a fresh persisted snapshot before anything else (default true). `--refresh` passes false. */
+  /** Prefer local samples (default true). False asks the API before any local sample when allowed. */
   preferFresh?: boolean;
-  /** Allow a provider API call when no fresh local sample exists (default true). */
+  /** Allow provider API calls (default true), including when preferFresh is false. */
   allowApi?: boolean;
   /** Re-point a stale saved-account pointer while resolving the account (default true). */
   selfHeal?: boolean;
@@ -251,6 +253,11 @@ function snapshotResolution(state: QuotaState): QuotaResolution {
   return 'snapshot-stale';
 }
 
+function captureTimeMs(state: QuotaState): number {
+  const capturedMs = state.capturedAt ? Date.parse(state.capturedAt) : NaN;
+  return Number.isFinite(capturedMs) ? capturedMs : Number.NEGATIVE_INFINITY;
+}
+
 /**
  * Resolve the current quota for one provider with the shared precedence
  * described at the top of this file.
@@ -267,6 +274,7 @@ export async function resolveQuota<T extends QuotaResolveProviderId>(
   const capturedAt = now.toISOString();
   const preferFresh = options.preferFresh ?? true;
   const allowApi = options.allowApi ?? true;
+  const apiFirst = !preferFresh && allowApi;
   const readSnapshot = options.readSnapshot ?? readQuotaSnapshot;
   const writeSnapshot = options.writeSnapshot ?? writeQuotaSnapshot;
 
@@ -289,8 +297,8 @@ export async function resolveQuota<T extends QuotaResolveProviderId>(
     return finish(snapshot, 'snapshot-fresh');
   }
 
-  if (providerId === 'codex') {
-    const local = resolveCodexQuotaFromLocalSources({
+  const readLocalCodex = () =>
+    resolveCodexQuotaFromLocalSources({
       workspacePath: options.workspacePath,
       provider: options.codexProvider,
       activeAccount: identity.codexAccount,
@@ -298,9 +306,18 @@ export async function resolveQuota<T extends QuotaResolveProviderId>(
       // Only rollout hits count as "session-derived"; the snapshot fallback is
       // handled below so it can be labelled by age.
       readSnapshot: () => null,
-      writeSnapshot,
+      // Inspect candidates without overwriting the persisted fallback. Only
+      // the selected session sample is written, using the resolved account key.
+      writeSnapshot: () => {},
     });
-    if (local) return finish(local, 'session');
+  const finishLocal = (local: QuotaState): ResolvedQuota<T> => {
+    if (identity.accountId) writeSnapshot('codex', identity.accountId, local);
+    return finish(local, 'session');
+  };
+
+  if (providerId === 'codex' && !apiFirst) {
+    const local = readLocalCodex();
+    if (local?.available) return finishLocal(local);
   }
 
   let apiState: QuotaState | null = null;
@@ -311,6 +328,13 @@ export async function resolveQuota<T extends QuotaResolveProviderId>(
         writeSnapshot(snapshotProviderId(providerId), identity.accountId, apiState);
       }
       return finish(apiState, 'api');
+    }
+  }
+
+  if (providerId === 'codex' && apiFirst) {
+    const local = readLocalCodex();
+    if (local?.available && (!snapshot || captureTimeMs(local) > captureTimeMs(snapshot))) {
+      return { ...finishLocal(local), failure: describeQuotaFailure(apiState) };
     }
   }
 

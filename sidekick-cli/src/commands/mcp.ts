@@ -79,14 +79,14 @@ async function activeSessionFacts(cwd: string, providerId: ProviderId) {
 }
 
 /**
- * Same resolver and same precedence as `sidekick quota`: fresh snapshot, then
- * session logs, then the API, then an older snapshot. OpenCode sessions map to
- * z.ai, the only quota source they carry.
+ * Same policy as `sidekick quota`: Codex queries ask the API first; the other
+ * providers may reuse fresh snapshots. OpenCode sessions map to z.ai.
  */
 function quotaFact(cwd: string, providerId: ProviderId) {
   return resolveQuota({
     providerId: providerId === 'opencode' ? 'zai' : providerId,
     workspacePath: cwd,
+    ...(providerId === 'codex' ? { preferFresh: false } : {}),
   });
 }
 

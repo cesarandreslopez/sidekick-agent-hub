@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- CLI and MCP Codex quota queries fetch live utilization and reset credits on every call, fixing the 0.26.0 regression that returned session logs even with `--refresh`.
+- Failed live queries use the newer session or cached sample and report its age and the API failure; Codex error descriptions identify the correct provider.
+
 ## [0.26.0] - 2026-09-05
 
 - Shared library: `summarizeTokens()` defines one token vocabulary (`total` counts input, output, and both cache buckets; `context` counts input and cache) and every surface uses it, so totals agree across the CLI, the extension, and reports

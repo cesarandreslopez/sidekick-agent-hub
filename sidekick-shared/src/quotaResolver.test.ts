@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { QuotaState } from './quota';
+import { classifyQuotaFreshness } from './quota';
 import type { QuotaSnapshotProviderId } from './quotaSnapshots';
 
 const { mockLocalCodex, mockCodexApi, mockZaiApi } = vi.hoisted(() => ({
@@ -349,6 +350,201 @@ describe('resolveQuota', () => {
       expect(store.writes).toEqual([
         expect.objectContaining({ providerId: 'codex', accountId: 'codex-1' }),
       ]);
+    });
+
+    it.each(['api', 'session', null] as const)(
+      'fetches live quota before logs and a fresh %s snapshot when preferFresh is false',
+      async (source) => {
+        const store = memoryStore(
+          source ? { 'codex:codex-1': sample({ source, capturedAt: minutesAgo(1) }) } : {},
+        );
+        mockLocalCodex.mockReturnValue(
+          sample({
+            source: 'session',
+            capturedAt: minutesAgo(60),
+            fiveHour: { utilization: 30, resetsAt: '2026-09-11T13:00:00Z' },
+          }),
+        );
+        const api = sample({
+          source: 'api',
+          capturedAt: NOW.toISOString(),
+          providerId: 'codex',
+          fiveHour: { utilization: 48, resetsAt: '2026-09-11T13:00:00Z' },
+          resetCredits: {
+            availableCount: 2,
+            source: 'api',
+            capturedAt: NOW.toISOString(),
+            credits: [],
+          },
+        });
+        mockCodexApi.mockResolvedValue(api);
+
+        const result = await resolveQuota({
+          providerId: 'codex',
+          now: NOW,
+          preferFresh: false,
+          ...store,
+          resolveCodexAccount: () => codexProfile,
+        });
+
+        expect(mockCodexApi).toHaveBeenCalledOnce();
+        expect(mockLocalCodex).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+          resolution: 'api',
+          source: 'api',
+          freshness: 'fresh',
+          fiveHour: { utilization: 48 },
+          resetCredits: { availableCount: 2 },
+        });
+        expect(store.writes).toEqual([{ providerId: 'codex', accountId: 'codex-1', quota: api }]);
+      },
+    );
+
+    it.each([
+      { failureKind: 'auth', httpStatus: 401, title: 'Codex sign-in expired' },
+      { failureKind: 'network', title: 'Quota API unreachable' },
+      {
+        failureKind: 'rate_limit',
+        httpStatus: 429,
+        retryAfterMs: 45_000,
+        title: 'Quota API rate limited',
+      },
+    ] as const)(
+      'retains the $failureKind failure when returning a session fallback',
+      async ({ title, ...failure }) => {
+        const store = memoryStore();
+        const local = sample({ source: 'session', capturedAt: minutesAgo(60) });
+        mockCodexApi.mockResolvedValue({
+          ...sample({ source: 'api', capturedAt: NOW.toISOString(), providerId: 'codex' }),
+          available: false,
+          ...failure,
+        });
+        mockLocalCodex.mockImplementation((options) => {
+          expect(mockCodexApi).toHaveBeenCalledOnce();
+          options.writeSnapshot('codex', codexProfile.id, local);
+          expect(store.writes).toEqual([]);
+          return local;
+        });
+
+        const result = await resolveQuota({
+          providerId: 'codex',
+          now: NOW,
+          preferFresh: false,
+          ...store,
+          accountId: 'explicit-account',
+          resolveCodexAccount: () => codexProfile,
+        });
+
+        expect(result).toMatchObject({
+          available: true,
+          resolution: 'session',
+          source: 'session',
+          freshness: 'stale',
+          ageMs: 60 * 60_000,
+          failure: { title },
+        });
+        expect(JSON.stringify(result.failure)).not.toMatch(/Claude|Anthropic/);
+        expect(store.writes).toEqual([
+          { providerId: 'codex', accountId: 'explicit-account', quota: local },
+        ]);
+        expect(mockCodexApi).toHaveBeenCalledOnce();
+      },
+    );
+
+    it.each([
+      { localTime: minutesAgo(60), cachedTime: minutesAgo(10), winner: 'cache' },
+      { localTime: minutesAgo(10), cachedTime: minutesAgo(60), winner: 'session' },
+      { localTime: minutesAgo(10), cachedTime: minutesAgo(10), winner: 'cache' },
+      { localTime: undefined, cachedTime: minutesAgo(10), winner: 'cache' },
+      { localTime: minutesAgo(10), cachedTime: undefined, winner: 'session' },
+      { localTime: undefined, cachedTime: undefined, winner: 'cache' },
+    ])(
+      'selects $winner after an API failure (session: $localTime, cache: $cachedTime)',
+      async ({ localTime, cachedTime, winner }) => {
+        const ageMs = cachedTime ? NOW.getTime() - Date.parse(cachedTime) : undefined;
+        const cached = {
+          ...sample({ source: 'cache', capturedAt: minutesAgo(10) }),
+          capturedAt: cachedTime,
+          capturedSource: 'api' as const,
+          ageMs,
+          freshness: classifyQuotaFreshness(ageMs),
+        };
+        const local = {
+          ...sample({ source: 'session', capturedAt: minutesAgo(60) }),
+          capturedAt: localTime,
+        };
+        const writeSnapshot = vi.fn();
+        mockCodexApi.mockResolvedValue({
+          ...sample({ source: 'api', capturedAt: NOW.toISOString(), providerId: 'codex' }),
+          available: false,
+          failureKind: 'network',
+        });
+        mockLocalCodex.mockImplementation((options) => {
+          options.writeSnapshot('codex', codexProfile.id, local);
+          expect(writeSnapshot).not.toHaveBeenCalled();
+          return local;
+        });
+
+        const result = await resolveQuota({
+          providerId: 'codex',
+          now: NOW,
+          preferFresh: false,
+          readSnapshot: () => cached,
+          writeSnapshot,
+          resolveCodexAccount: () => codexProfile,
+        });
+
+        expect(result.source).toBe(winner);
+        expect(result.resolution).toBe(
+          winner === 'cache' ? `snapshot-${cached.freshness}` : 'session',
+        );
+        expect(result.capturedAt).toBe(winner === 'cache' ? cachedTime : localTime);
+        expect(result.failure?.title).toBe('Quota API unreachable');
+        expect(writeSnapshot).toHaveBeenCalledTimes(winner === 'cache' ? 0 : 1);
+      },
+    );
+
+    it('returns the API failure when neither fallback is available', async () => {
+      mockLocalCodex.mockReturnValue(null);
+      mockCodexApi.mockResolvedValue({
+        ...sample({ source: 'api', capturedAt: NOW.toISOString(), providerId: 'codex' }),
+        available: false,
+        failureKind: 'auth',
+        httpStatus: 401,
+      });
+      const store = memoryStore();
+
+      const result = await resolveQuota({
+        providerId: 'codex',
+        now: NOW,
+        preferFresh: false,
+        ...store,
+        resolveCodexAccount: () => codexProfile,
+      });
+
+      expect(result).toMatchObject({
+        available: false,
+        resolution: 'unavailable',
+        httpStatus: 401,
+        failure: { title: 'Codex sign-in expired' },
+      });
+      expect(mockCodexApi).toHaveBeenCalledOnce();
+      expect(store.writes).toEqual([]);
+    });
+
+    it('does not call the API when disabled, even with preferFresh false', async () => {
+      mockLocalCodex.mockReturnValue(sample({ source: 'session', capturedAt: minutesAgo(4) }));
+      const result = await resolveQuota({
+        providerId: 'codex',
+        now: NOW,
+        preferFresh: false,
+        allowApi: false,
+        ...memoryStore(),
+        resolveCodexAccount: () => codexProfile,
+      });
+
+      expect(result).toMatchObject({ available: true, resolution: 'session' });
+      expect(mockCodexApi).not.toHaveBeenCalled();
     });
   });
 

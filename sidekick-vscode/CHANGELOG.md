@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Shared Codex quota failure descriptions identify Codex instead of Claude or Anthropic.
+
 ## [0.26.0] - 2026-09-05
 
 ### Added
