@@ -21,6 +21,13 @@ import type {
 import { CodexRolloutParser } from '../parsers/codexParser';
 import { CodexDatabase } from './codexDatabase';
 import { getCodexMonitoringHomes } from '../codexProfiles';
+import {
+  extractRolloutSessionId as extractSessionId,
+  isRolloutFile,
+  walkRolloutFiles,
+  walkRolloutFilesAsync,
+} from './rolloutWalker';
+import type { RolloutFileInfo } from './rolloutWalker';
 import type {
   SessionProviderBase,
   SessionReader,
@@ -59,30 +66,6 @@ function getSessionsDirs(): string[] {
   return getCodexHomes().map((home) => path.join(home, 'sessions'));
 }
 
-/** Test if a filename is a Codex rollout file. */
-function isRolloutFile(filename: string): boolean {
-  return filename.startsWith('rollout-') && filename.endsWith('.jsonl');
-}
-
-/**
- * Extract session UUID from a rollout filename.
- * Format: rollout-<timestamp>-<uuid>.jsonl -> <uuid>
- */
-function extractSessionId(filename: string): string {
-  const base = path.basename(filename, '.jsonl');
-  // rollout-YYYYMMDD-HHMMSS-<uuid> or rollout-<timestamp>-<uuid>
-  const parts = base.split('-');
-  // The UUID is typically the last 5 segments (8-4-4-4-12)
-  if (parts.length >= 6) {
-    const possibleUuid = parts.slice(-5).join('-');
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(possibleUuid)) {
-      return possibleUuid;
-    }
-  }
-  // Fallback: use everything after "rollout-"
-  return base.replace(/^rollout-/, '');
-}
-
 /** Truncate a string to maxLen with ellipsis. */
 function truncate(text: string, maxLen: number): string {
   const trimmed = text.trim().replace(/\s+/g, ' ');
@@ -92,98 +75,18 @@ function truncate(text: string, maxLen: number): string {
   return trimmed;
 }
 
-/**
- * Recursively find all rollout files under a directory.
- * Handles the YYYY/MM/DD subdirectory structure.
- */
-function findRolloutFiles(dir: string): Array<{ path: string; mtime: Date }> {
-  const results: Array<{ path: string; mtime: Date }> = [];
-
-  try {
-    if (!fs.existsSync(dir)) return results;
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...findRolloutFiles(fullPath));
-      } else if (entry.isFile() && isRolloutFile(entry.name)) {
-        try {
-          const stats = fs.statSync(fullPath);
-          if (stats.size > 0) {
-            results.push({ path: fullPath, mtime: stats.mtime });
-          }
-        } catch {
-          // Skip inaccessible files
-        }
-      }
-    }
-  } catch {
-    // Skip inaccessible directories
-  }
-
-  return results;
+/** Every rollout under a directory, newest first (one capped walk). */
+function findRolloutFiles(dir: string): RolloutFileInfo[] {
+  return walkRolloutFiles([dir]);
 }
 
 function hasRolloutFile(dir: string): boolean {
-  try {
-    if (!fs.existsSync(dir)) return false;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory() && hasRolloutFile(fullPath)) return true;
-      if (entry.isFile() && isRolloutFile(entry.name)) return true;
-    }
-  } catch {
-    return false;
-  }
-  return false;
+  return walkRolloutFiles([dir], { limit: 1 }).length > 0;
 }
 
-function findRolloutFilesInConfiguredHomes(): Array<{ path: string; mtime: Date }> {
-  const results: Array<{ path: string; mtime: Date }> = [];
-  const seen = new Set<string>();
-
-  for (const sessionsDir of getSessionsDirs()) {
-    for (const file of findRolloutFiles(sessionsDir)) {
-      if (seen.has(file.path)) continue;
-      seen.add(file.path);
-      results.push(file);
-    }
-  }
-
-  return results;
-}
-
-async function findRolloutFilesAsync(dir: string): Promise<SessionFileInfo[]> {
-  const results: SessionFileInfo[] = [];
-  let entries: fs.Dirent[];
-  try {
-    entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  } catch {
-    return results;
-  }
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...(await findRolloutFilesAsync(fullPath)));
-    } else if (entry.isFile() && isRolloutFile(entry.name)) {
-      try {
-        const stats = await fs.promises.stat(fullPath);
-        if (stats.size > 0) {
-          results.push({
-            path: fullPath,
-            mtime: stats.mtime,
-            sizeBytes: stats.size,
-            sessionId: extractSessionId(entry.name),
-          });
-        }
-      } catch {
-        // Skip inaccessible files.
-      }
-    }
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
-  return results;
+/** Every rollout across the monitored homes, newest first, deduplicated by path. */
+function findRolloutFilesInConfiguredHomes(options: { limit?: number } = {}): RolloutFileInfo[] {
+  return walkRolloutFiles(getSessionsDirs(), options);
 }
 
 export interface FindCodexRolloutFileOptions {
@@ -217,42 +120,8 @@ export function findCodexRolloutFile(
     ? [path.join(options.codexHome, 'sessions')]
     : getSessionsDirs();
 
-  let best: { path: string; mtimeMs: number } | null = null;
-  for (const dir of sessionsDirs) {
-    for (const candidate of findRolloutFilesById(dir, normalizedId)) {
-      if (!best || candidate.mtimeMs > best.mtimeMs) best = candidate;
-    }
-  }
-  return best?.path ?? null;
-}
-
-function findRolloutFilesById(
-  dir: string,
-  normalizedId: string,
-): Array<{ path: string; mtimeMs: number }> {
-  const results: Array<{ path: string; mtimeMs: number }> = [];
-  try {
-    if (!fs.existsSync(dir)) return results;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...findRolloutFilesById(fullPath, normalizedId));
-      } else if (
-        entry.isFile() &&
-        isRolloutFile(entry.name) &&
-        extractSessionId(entry.name).toLowerCase() === normalizedId
-      ) {
-        try {
-          results.push({ path: fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs });
-        } catch {
-          // Skip files that vanish between readdir and stat.
-        }
-      }
-    }
-  } catch {
-    // Skip inaccessible directories.
-  }
-  return results;
+  // Name-only filter, one walk across the homes, newest modification first.
+  return walkRolloutFiles(sessionsDirs, { sessionId: normalizedId })[0]?.path ?? null;
 }
 
 /** Pick the best sessions directory for UI/search entrypoints. */
@@ -373,15 +242,28 @@ async function readSessionMetaAsync(rolloutPath: string): Promise<CodexSessionMe
   }
 }
 
-/** Read the CWD from a rollout file's session_meta. Cached. */
+/**
+ * Read the CWD from a rollout file's session_meta. Cached per path, bounded
+ * so a long-lived host watching a large history cannot grow it without limit
+ * (insertion order doubles as an eviction order).
+ */
+const CWD_CACHE_LIMIT = 5000;
 const cwdCache = new Map<string, string | null>();
+function rememberCwd(rolloutPath: string, cwd: string | null): void {
+  if (!cwdCache.has(rolloutPath) && cwdCache.size >= CWD_CACHE_LIMIT) {
+    const oldest = cwdCache.keys().next().value;
+    if (oldest !== undefined) cwdCache.delete(oldest);
+  }
+  cwdCache.set(rolloutPath, cwd);
+}
+
 function readSessionCwd(rolloutPath: string): string | null {
   const cached = cwdCache.get(rolloutPath);
   if (cached !== undefined) return cached;
 
   const meta = readSessionMeta(rolloutPath);
   const cwd = meta?.cwd || null;
-  cwdCache.set(rolloutPath, cwd);
+  rememberCwd(rolloutPath, cwd);
   return cwd;
 }
 
@@ -392,7 +274,7 @@ async function readSessionCwdAsync(rolloutPath: string): Promise<string | null> 
 
   const meta = await readSessionMetaAsync(rolloutPath);
   const cwd = meta?.cwd || null;
-  cwdCache.set(rolloutPath, cwd);
+  rememberCwd(rolloutPath, cwd);
   return cwd;
 }
 
@@ -865,18 +747,16 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // File scan: look for any rollout file whose session_meta.cwd matches
+    // (newest first; the cwd read is cached per path).
     const files = findRolloutFilesInConfiguredHomes();
     if (files.length === 0) {
       this.recordDatabaseFallback('discoverSessionDirectory', true);
       return null;
     }
 
-    // Sort by mtime descending
-    files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
     for (const file of files) {
-      const meta = readSessionMeta(file.path);
-      if (meta && cwdMatches(meta.cwd, workspacePath)) {
+      const cwd = readSessionCwd(file.path);
+      if (cwd && cwdMatches(cwd, workspacePath)) {
         this.recordDatabaseFallback('discoverSessionDirectory', true);
         return path.dirname(file.path);
       }
@@ -901,13 +781,10 @@ export class CodexProvider implements SessionProviderBase {
       }
     }
 
-    // File scan fallback
-    const files = findRolloutFilesInConfiguredHomes();
-    files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-    for (const file of files) {
-      const meta = readSessionMeta(file.path);
-      if (meta && cwdMatches(meta.cwd, workspacePath)) {
+    // File scan fallback (newest first; cwd reads are cached per path)
+    for (const file of findRolloutFilesInConfiguredHomes()) {
+      const cwd = readSessionCwd(file.path);
+      if (cwd && cwdMatches(cwd, workspacePath)) {
         this.recordDatabaseFallback('findActiveSession', true);
         return file.path;
       }
@@ -931,14 +808,11 @@ export class CodexProvider implements SessionProviderBase {
       }
     }
 
-    // File scan
-    const files = findRolloutFilesInConfiguredHomes();
-    files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-    const sessions = files
+    // File scan (newest first; cwd reads are cached per path)
+    const sessions = findRolloutFilesInConfiguredHomes()
       .filter((f) => {
-        const meta = readSessionMeta(f.path);
-        return meta && cwdMatches(meta.cwd, workspacePath);
+        const cwd = readSessionCwd(f.path);
+        return cwd !== null && cwdMatches(cwd, workspacePath);
       })
       .map((f) => f.path);
     this.recordDatabaseFallback('findAllSessions', true);
@@ -962,9 +836,7 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   findSessionsInDirectory(dir: string): string[] {
-    const files = findRolloutFiles(dir);
-    files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-    return files.map((f) => f.path);
+    return findRolloutFiles(dir).map((f) => f.path);
   }
 
   listAllSessionFiles(): SessionFileInfo[] {
@@ -974,25 +846,22 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   async listSessionFilesAsync(workspacePath?: string): Promise<SessionFileInfo[]> {
-    const seen = new Set<string>();
     const results: SessionFileInfo[] = [];
-    for (const sessionsDir of getSessionsDirs()) {
-      for (const file of await findRolloutFilesAsync(sessionsDir)) {
-        if (seen.has(file.path)) continue;
-        seen.add(file.path);
-        if (workspacePath) {
-          const cwd = await readSessionCwdAsync(file.path);
-          if (!cwd || !cwdMatches(cwd, workspacePath)) continue;
-          file.workspacePath = cwd;
-        }
-        results.push(file);
+    // One capped walk across the homes (deduplicated, newest first).
+    for (const file of await walkRolloutFilesAsync(getSessionsDirs())) {
+      const info: SessionFileInfo = { ...file };
+      if (workspacePath) {
+        const cwd = await readSessionCwdAsync(file.path);
+        if (!cwd || !cwdMatches(cwd, workspacePath)) continue;
+        info.workspacePath = cwd;
       }
+      results.push(info);
     }
     // Filesystem enumeration bypasses the database, so record that here as
     // the sync listing paths do; otherwise `getLastOperationStatus()` keeps
     // describing whichever operation ran before this one.
     this.recordDatabaseFallback('listSessionFilesAsync', true);
-    return results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    return results;
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
@@ -1015,22 +884,26 @@ export class CodexProvider implements SessionProviderBase {
       }
     }
 
-    // File scan supplement
+    // File scan supplement. When the index answered, only rollouts written
+    // after its last update can be missing from it, so older files are not
+    // opened; the cwd read itself is cached per path either way.
+    const indexedUpTo = db ? db.getDbMtime() : 0;
     for (const file of findRolloutFilesInConfiguredHomes()) {
-      const meta = readSessionMeta(file.path);
-      if (!meta?.cwd) continue;
+      if (db && indexedUpTo > 0 && file.mtime.getTime() <= indexedUpTo) continue;
+      const cwd = readSessionCwd(file.path);
+      if (!cwd) continue;
 
-      const existing = seenCwds.get(meta.cwd);
+      const existing = seenCwds.get(cwd);
       if (existing) {
         // Update mtime if newer
         if (file.mtime > existing.lastModified) {
           existing.lastModified = file.mtime;
         }
       } else {
-        seenCwds.set(meta.cwd, {
+        seenCwds.set(cwd, {
           dir: path.dirname(file.path),
-          name: meta.cwd,
-          encodedName: meta.cwd,
+          name: cwd,
+          encodedName: cwd,
           sessionCount: 1,
           lastModified: file.mtime,
         });
@@ -1167,13 +1040,10 @@ export class CodexProvider implements SessionProviderBase {
       if (forkedThreads.length > 0) return subagents;
     }
 
-    // Filesystem fallback: scan all rollout files for matching forked_from_id.
-    // Limited to recent files (last 50) to avoid excessive I/O.
-    const files = findRolloutFilesInConfiguredHomes();
-    files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-    const filesToCheck = files.slice(0, 50);
-    for (const file of filesToCheck) {
+    // Filesystem fallback: scan recent rollout files for a matching
+    // forked_from_id. The walk stops after the 50 newest-dated files instead
+    // of enumerating the whole history and slicing afterwards.
+    for (const file of findRolloutFilesInConfiguredHomes({ limit: 50 })) {
       const meta = readSessionMeta(file.path);
       if (meta?.forked_from_id === sessionId) {
         const childId = extractSessionId(path.basename(file.path));

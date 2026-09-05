@@ -9,6 +9,7 @@ import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { CodexResetCreditsSnapshot, QuotaState } from './quota';
 import { FIVE_HOUR_WINDOW_MS, SEVEN_DAY_WINDOW_MS, withQuotaProjections } from './quota';
 import { CodexProvider } from './providers/codex';
+import { walkRolloutFiles } from './providers/rolloutWalker';
 import type { ProviderQuotaState } from './providerQuota';
 import type { SavedAccountProfile } from './accountRegistry';
 import type { CodexRateLimits } from './types/codex';
@@ -420,40 +421,17 @@ function readLatestCodexQuotaHitFromRollouts(
   return latest;
 }
 
-function dedupePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const filePath of paths) {
-    if (seen.has(filePath)) continue;
-    seen.add(filePath);
-    unique.push(filePath);
-  }
-  return unique;
-}
-
-function sortPathsByMtimeDesc(paths: string[]): string[] {
-  return [...paths].sort((a, b) => {
-    const aMtime = safeMtimeMs(a);
-    const bMtime = safeMtimeMs(b);
-    return bMtime - aMtime;
-  });
-}
-
-function safeMtimeMs(filePath: string): number {
-  try {
-    return fs.statSync(filePath).mtime.getTime();
-  } catch {
-    return 0;
-  }
-}
-
-function findAccountRolloutFiles(codexHome?: string): string[] {
+/**
+ * The newest account-level rollouts, one capped walk across the monitored
+ * homes. `limit` bounds the walk itself, so a large history is never fully
+ * enumerated or stat'ed just to tail a handful of files.
+ */
+function findAccountRolloutFiles(codexHome: string | undefined, limit: number): string[] {
   const homes = codexHome ? [codexHome] : getCodexMonitoringHomes();
-  const files: string[] = [];
-  for (const home of homes) {
-    files.push(...findRolloutFiles(path.join(home, 'sessions')));
-  }
-  return sortPathsByMtimeDesc(dedupePaths(files));
+  return walkRolloutFiles(
+    homes.map((home) => path.join(home, 'sessions')),
+    { limit },
+  ).map((file) => file.path);
 }
 
 export function resolveCodexQuotaFromLocalSources(
@@ -484,7 +462,7 @@ export function resolveCodexQuotaFromLocalSources(
       if (workspaceHit) candidates.push(workspaceHit);
     }
 
-    const accountSessions = findAccountRolloutFiles(options.codexHome);
+    const accountSessions = findAccountRolloutFiles(options.codexHome, maxSessionFiles);
     const accountHit = readLatestCodexQuotaHitFromRollouts(accountSessions, {
       maxTailBytes,
       maxSessionFiles,
@@ -806,39 +784,4 @@ function readLatestQuotaFromRollout(
   }
 
   return null;
-}
-
-function findRolloutFiles(sessionsDir: string): string[] {
-  const results: Array<{ path: string; mtime: number }> = [];
-
-  function visit(dir: string): void {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        visit(fullPath);
-        continue;
-      }
-      if (!entry.isFile() || !entry.name.startsWith('rollout-') || !entry.name.endsWith('.jsonl'))
-        continue;
-      try {
-        const stat = fs.statSync(fullPath);
-        if (stat.size > 0) {
-          results.push({ path: fullPath, mtime: stat.mtime.getTime() });
-        }
-      } catch {
-        // Skip inaccessible files.
-      }
-    }
-  }
-
-  visit(sessionsDir);
-  results.sort((a, b) => b.mtime - a.mtime);
-  return results.map((item) => item.path);
 }

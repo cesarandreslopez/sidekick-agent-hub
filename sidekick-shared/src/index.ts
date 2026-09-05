@@ -384,6 +384,8 @@ export {
 export { ClaudeCodeProvider } from './providers/claudeCode';
 export { OpenCodeProvider, getOpenCodeDataDir } from './providers/openCode';
 export { CodexProvider, findCodexRolloutFile } from './providers/codex';
+export { walkRolloutFiles, walkRolloutFilesAsync } from './providers/rolloutWalker';
+export type { RolloutFileInfo, WalkRolloutFilesOptions } from './providers/rolloutWalker';
 export type { FindCodexRolloutFileOptions } from './providers/codex';
 
 // Parsers — JSONL
@@ -433,6 +435,7 @@ export {
   findActiveSession as findActiveClaudeSession,
   findAllSessions as findAllClaudeSessions,
   findSessionsInDirectory,
+  findSessionFilesWithStats,
   findSubdirectorySessionDirs,
   getMostRecentlyActiveSessionDir,
   decodeEncodedPath,

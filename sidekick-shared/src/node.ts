@@ -85,6 +85,8 @@ export type {
 } from './usage/usageReports';
 export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
 export { findCodexRolloutFile } from './providers/codex';
+export { walkRolloutFiles, walkRolloutFilesAsync } from './providers/rolloutWalker';
+export type { RolloutFileInfo, WalkRolloutFilesOptions } from './providers/rolloutWalker';
 export type { FindCodexRolloutFileOptions } from './providers/codex';
 export { readCodexHistory } from './parsers/codexHistory';
 export type { CodexHistoryEntry, ReadCodexHistoryOptions } from './parsers/codexHistory';

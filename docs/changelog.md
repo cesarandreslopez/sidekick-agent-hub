@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `sidekick daily`, `weekly`, `monthly`, and `sessions` report usage straight from session logs for every provider, bucketed by usage-event time, with per-model breakdowns, project grouping, CSV, and JSON
 - CLI: `sidekick import` backfills the history store from every provider's session logs; the extension's first-activation import now covers Codex and OpenCode too, through the same shared importer
 - Shared library: observed sessions are parsed once per discovery and only re-read when their size or mtime changes; activity is classified from events (Codex and OpenCode now get real activity states) and grace-period drift on cache hits is fixed; `sidekick report` reads the session once
+- Shared library: one capped, newest-first walker for Codex rollouts replaces six uncapped ones (plus the quota resolver's copy); project-folder enumeration only opens rollouts newer than the SQLite index and the cwd cache is bounded; Claude session listings no longer stat files twice
 
 ## [0.25.0] - 2026-08-18
 

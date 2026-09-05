@@ -43,6 +43,7 @@ import {
   findSessionsInDirectory as findSessionsInDir,
   decodeEncodedPath,
   getAllProjectFolders as getAllProjectFoldersRaw,
+  findSessionFilesWithStats,
 } from '../parsers/sessionPathResolver';
 import { scanSubagentDir } from '../parsers/subagentScanner';
 import { getModelContextWindowSize } from '../modelContext';
@@ -361,14 +362,12 @@ export class ClaudeCodeProvider implements SessionProviderBase {
     const results: SessionFileInfo[] = [];
     const seen = new Set<string>();
     for (const folder of this.getAllProjectFolders()) {
-      for (const sessionPath of this.findSessionsInDirectory(folder.dir)) {
-        if (seen.has(sessionPath)) continue;
-        seen.add(sessionPath);
-        try {
-          results.push({ path: sessionPath, mtime: fs.statSync(sessionPath).mtime });
-        } catch {
-          // Skip files that vanish between listing and stat.
-        }
+      // The directory listing already stat'ed each file; reuse it instead of
+      // stat'ing every session a second time.
+      for (const file of findSessionFilesWithStats(folder.dir)) {
+        if (seen.has(file.path)) continue;
+        seen.add(file.path);
+        results.push({ path: file.path, mtime: file.mtime, sizeBytes: file.sizeBytes });
       }
     }
     this.recordHomeStatus('listAllSessionFiles');

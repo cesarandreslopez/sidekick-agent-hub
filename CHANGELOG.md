@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** pure `historical-data.json` mutations (`applySessionSummary()` and friends) and `importSessionHistory()` shared by the CLI and the extension
 - **CLI:** `sidekick import [--since <time>]` folds finished sessions from every provider into the history store behind `stats`, `today`, and the History tab, idempotently and under one short locked write
 - **Shared:** `classifySessionActivity()` (event-based, works for every provider), `readSessionReportInputs()` (one read for metrics and transcript), `resolveSessionPath()`, and `getObservedActivityReason()`; `SessionMessage.stop_reason` survives normalization
+- **Shared:** `walkRolloutFiles()` / `walkRolloutFilesAsync()`, one capped, newest-first walker for Codex rollouts, and `findSessionFilesWithStats()` for Claude session directories
 
 ### Changed
 
@@ -53,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** observed sessions are read once per discovery and only re-read when their fingerprint changes, with activity refreshed in place; Codex and OpenCode observed sessions get real activity classification
 - **CLI:** `sidekick report` and the dashboard's report action read the session once instead of replaying it through a watcher and parsing the transcript again; the report's metrics now come from the canonical event path
 - **VS Code:** the HTML report transcript is read through the provider's canonical reader for every provider
+- **Shared:** every Codex discovery path (sessions, listings, id lookup, project folders, subagents, local quota) uses the capped walker and the bounded cwd cache; project-folder enumeration only opens rollouts newer than the SQLite index; the quota scan reads at most `maxSessionFiles` files; Claude session listings stat each file once
 
 ### Fixed
 

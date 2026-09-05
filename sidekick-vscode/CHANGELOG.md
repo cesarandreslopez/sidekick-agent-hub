@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The project timeline's per-session token total counts every billed bucket through `summarizeTokens()` (it summed input and output only) and its cost reads the shared `costUsd`
 - The first-activation history import (and **Sidekick: Import Historical Data**) reads Codex and OpenCode sessions as well as Claude Code through the shared importer, records provider, project, per-model cost, and tool usage on each session (Claude sessions used to import with `provider: 'unknown'` and no tool usage), and applies summaries with the same store mutation `sidekick import` uses
 - The HTML report's transcript is read through the provider's canonical reader (flushed, so a trailing line counts) for every provider instead of a Claude-only file parse
+- Codex session discovery and the session folder picker use the shared capped rollout walker and bounded cwd cache instead of re-reading the first line of every rollout on each refresh
 
 ## [0.25.0] - 2026-08-18
 

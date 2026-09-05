@@ -580,32 +580,40 @@ export function getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[
  * ```
  */
 export function findSessionsInDirectory(sessionDir: string): string[] {
+  return findSessionFilesWithStats(sessionDir).map((file) => file.path);
+}
+
+export interface SessionFileStat {
+  path: string;
+  mtime: Date;
+  sizeBytes: number;
+}
+
+/**
+ * The non-empty `.jsonl` files in a session directory with the stat each one
+ * already cost, newest first, so callers that need the mtime do not stat the
+ * same files a second time.
+ */
+export function findSessionFilesWithStats(sessionDir: string): SessionFileStat[] {
   try {
     if (!fs.existsSync(sessionDir)) {
       return [];
     }
 
-    const files = fs
+    return fs
       .readdirSync(sessionDir)
       .filter((file) => file.endsWith('.jsonl'))
       .map((file) => {
         const fullPath = path.join(sessionDir, file);
         try {
           const stats = fs.statSync(fullPath);
-          return {
-            path: fullPath,
-            mtime: stats.mtime.getTime(),
-            size: stats.size,
-          };
+          return { path: fullPath, mtime: stats.mtime, sizeBytes: stats.size };
         } catch {
           return null;
         }
       })
-      .filter((f): f is { path: string; mtime: number; size: number } => f !== null && f.size > 0)
-      .sort((a, b) => b.mtime - a.mtime)
-      .map((f) => f.path);
-
-    return files;
+      .filter((f): f is SessionFileStat => f !== null && f.sizeBytes > 0)
+      .sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
   } catch {
     return [];
   }
