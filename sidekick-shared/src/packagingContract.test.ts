@@ -152,6 +152,7 @@ describe('packaging contract', () => {
       'readQuotaSnapshot',
       'formatStatusline',
       'estimateTimeToQuota',
+      'writeStateFile',
     ]) {
       expect(typeof m[name]).toBe('function');
     }

@@ -6,10 +6,17 @@ import {
   getWorkspaceIdFromPath,
   parseClaudeStatuslinePayload,
   quotaFromStatuslinePayload,
+  quotaToStateFile,
   readQuotaSnapshot,
   writeQuotaSnapshot,
+  writeStateFile,
 } from 'sidekick-shared/statusline';
-import type { ClaudeStatuslinePayload, QuotaState } from 'sidekick-shared/statusline';
+import type {
+  ActiveAccountStatus,
+  ClaudeStatuslinePayload,
+  QuotaState,
+  SidekickStateInput,
+} from 'sidekick-shared/statusline';
 
 /**
  * Read the JSON Claude Code pipes to a status-line command, if any.
@@ -79,6 +86,60 @@ async function persistOfficialQuota(
 }
 
 /**
+ * Project the status-line inputs onto the public `state.json` shape.
+ * Exported for tests; the billing block is left null on this path because
+ * computing it would break the fast-path budget.
+ */
+export function buildStatuslineState(
+  accounts: ActiveAccountStatus,
+  claudeQuota: QuotaState | null,
+  codexQuota: QuotaState | null,
+  live: ClaudeStatuslinePayload | null,
+): SidekickStateInput {
+  const account = accounts.claude.present
+    ? {
+        providerId: 'claude-code' as const,
+        id: accounts.claude.accountId ?? null,
+        label: accounts.claude.label ?? null,
+      }
+    : accounts.codex.present
+      ? {
+          providerId: 'codex' as const,
+          id: accounts.codex.accountId ?? null,
+          label: accounts.codex.label ?? null,
+        }
+      : null;
+  const context = live?.contextWindow
+    ? {
+        usedPercentage: live.contextWindow.usedPercentage ?? null,
+        contextWindowSize: live.contextWindow.contextWindowSize ?? null,
+        totalInputTokens: live.contextWindow.totalInputTokens ?? null,
+        totalOutputTokens: live.contextWindow.totalOutputTokens ?? null,
+      }
+    : null;
+  const session = live
+    ? {
+        sessionId: live.sessionId ?? null,
+        cwd: live.workspace?.currentDir ?? live.cwd ?? null,
+        model: live.model?.id ?? null,
+        costUsd: live.cost?.totalCostUsd ?? null,
+        durationMs: live.cost?.totalDurationMs ?? null,
+        linesAdded: live.cost?.totalLinesAdded ?? null,
+        linesRemoved: live.cost?.totalLinesRemoved ?? null,
+        promptCacheHitRatio: live.promptCache?.hitRatio ?? null,
+      }
+    : null;
+  return {
+    writer: 'statusline',
+    account,
+    quota: { claude: quotaToStateFile(claudeQuota), codex: quotaToStateFile(codexQuota) },
+    context,
+    session,
+    billingBlock: null,
+  };
+}
+
+/**
  * Cache-only hot path used on every agent prompt.
  *
  * When Claude Code runs this as its status line it pipes a JSON document with
@@ -112,5 +173,8 @@ export async function statuslineAction(): Promise<void> {
   }
 
   process.stdout.write(`${formatStatusline({ accounts, claudeQuota, codexQuota, live })}\n`);
+  // The public state file for external tools: one small read on every prompt,
+  // one atomic write only when something changed.
+  writeStateFile(buildStatuslineState(accounts, claudeQuota, codexQuota, live));
   if (persist) await persist;
 }

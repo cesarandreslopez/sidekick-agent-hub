@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Quota threshold alerts: `sidekick.notifications.triggers.quota-threshold` (default on) warns when the five-hour window crosses `sidekick.notifications.quotaFiveHourThresholds` (default 80 and 95) or the seven-day window crosses `sidekick.notifications.quotaSevenDayThresholds` (default 90). Alerts fire once per threshold per reset window, name the reset time, and escalate the highest threshold to an error; they respect Snooze and Mute like the other triggers
 - A **Billing block** card beneath the quota gauges shows the five-hour block that is open right now, computed from session logs (window, elapsed and remaining time, cache-inclusive tokens, cost, burn rate, projected end-of-block tokens and cost), labelled a local estimate, with the official status-line sample beneath it when one has been persisted; it recomputes at most once a minute while the view is visible
+- The dashboard writes the public `state.json` (account, quota with freshness, context usage, session cost, active billing block) on quota updates and billing-block ticks, only when the content changed
 
 ### Changed
 

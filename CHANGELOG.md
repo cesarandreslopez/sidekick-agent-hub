@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** `sidekick import [--since <time>]` folds finished sessions from every provider into the history store behind `stats`, `today`, and the History tab, idempotently and under one short locked write
 - **Shared:** `classifySessionActivity()` (event-based, works for every provider), `readSessionReportInputs()` (one read for metrics and transcript), `resolveSessionPath()`, and `getObservedActivityReason()`; `SessionMessage.stop_reason` survives normalization
 - **Shared:** `walkRolloutFiles()` / `walkRolloutFilesAsync()`, one capped, newest-first walker for Codex rollouts, and `findSessionFilesWithStats()` for Claude session directories
+- **Shared:** `writeStateFile()` and `sidekickStateFileSchema` define the public, versioned `state.json` contract (`schemaVersion: 1`, additive changes only)
+- **CLI:** `sidekick statusline` and the dashboard write `state.json` (account, quota with freshness, context, session cost, active billing block) for tmux status bars, menu-bar apps, and scripts, only when the content changed
+- **VS Code:** the dashboard writes the same `state.json` on quota updates and billing-block ticks
 
 ### Changed
 

@@ -156,3 +156,24 @@ export type {
   AssistantTurnTimelineItem,
   AssistantTurnToolRef,
 } from '../turns/assistantTurn';
+
+export {
+  sidekickStateFileSchema,
+  stateFileAccountSchema,
+  stateFileBillingBlockSchema,
+  stateFileContextSchema,
+  stateFileQuotaSchema,
+  stateFileQuotaWindowSchema,
+  stateFileSessionSchema,
+  stateFileWriterSchema,
+} from './stateFile';
+export type {
+  SidekickStateFile,
+  StateFileAccount,
+  StateFileBillingBlock,
+  StateFileContext,
+  StateFileQuota,
+  StateFileQuotaWindow,
+  StateFileSession,
+  StateFileWriter,
+} from '../stateFile';

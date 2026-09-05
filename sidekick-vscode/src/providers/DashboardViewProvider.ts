@@ -78,17 +78,21 @@ import {
   ClaudeCodeProvider,
   CodexProvider,
   OpenCodeProvider,
+  billingBlockToStateFile,
   collectUsageEvents,
   computeBillingBlocks,
   describeQuotaFailure,
   findActiveBillingBlock,
+  getActiveAccountStatus,
+  quotaToStateFile,
+  writeStateFile,
   formatDurationMs,
   readQuotaHistoryDailyBuckets,
   resolveQuota,
   scopePeakHoursToSessionProvider,
   calculateCompactionLedger,
 } from 'sidekick-shared';
-import type { SessionProviderBase } from 'sidekick-shared';
+import type { BillingBlock, SessionProviderBase } from 'sidekick-shared';
 import type { BillingBlockOfficialSample } from '../types/dashboard';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
@@ -184,6 +188,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _billingBlockInFlight = false;
   /** Shared providers used only to read usage for the billing block, keyed by id. */
   private readonly _usageProviders = new Map<string, SessionProviderBase>();
+  /** Last quota shown, for the public state file. */
+  private _lastQuota: DashboardQuotaState | null = null;
+  /** Last billing block computed, for the public state file. */
+  private _lastBillingBlock: BillingBlock | null = null;
 
   /** Event logger reference for toggling from the dashboard */
   private _eventLogger?: SessionEventLogger;
@@ -1657,9 +1665,67 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _handleQuotaUpdate(quota: DashboardQuotaState): void {
     const quotaFailure = describeQuotaFailure(quota) ?? undefined;
+    this._lastQuota = quota;
     this._postMessage({ type: 'updateQuota', quota, quotaFailure });
     this._maybeEmitQuotaAlert(quota, quotaFailure);
     void this._sendQuotaHistory();
+    this._writeStateFile();
+  }
+
+  /**
+   * Public `state.json` for external tools (tmux, menu bars): written on quota
+   * updates and on the billing-block tick, only when something changed.
+   */
+  private _writeStateFile(): void {
+    try {
+      const providerId = this._sessionMonitor.getProvider().id;
+      const accounts = getActiveAccountStatus(undefined, { selfHeal: false });
+      const account =
+        providerId === 'codex' && accounts.codex.present
+          ? {
+              providerId: 'codex' as const,
+              id: accounts.codex.accountId ?? null,
+              label: accounts.codex.label ?? null,
+            }
+          : accounts.claude.present
+            ? {
+                providerId: 'claude-code' as const,
+                id: accounts.claude.accountId ?? null,
+                label: accounts.claude.label ?? null,
+              }
+            : null;
+      const quota = quotaToStateFile(this._lastQuota);
+      writeStateFile({
+        writer: 'vscode-dashboard',
+        account,
+        quota: {
+          claude: providerId === 'claude-code' ? quota : null,
+          codex: providerId === 'codex' ? quota : null,
+        },
+        context: {
+          usedPercentage: this._state.contextUsagePercent,
+          contextWindowSize: this._getContextWindowLimit() || null,
+          totalInputTokens:
+            this._state.totalInputTokens +
+            this._state.totalCacheReadTokens +
+            this._state.totalCacheWriteTokens,
+          totalOutputTokens: this._state.totalOutputTokens,
+        },
+        session: {
+          sessionId: this._sessionMonitor.getSessionId(),
+          cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null,
+          model: this._state.modelBreakdown[0]?.model ?? null,
+          costUsd: this._state.totalCost,
+          durationMs: null,
+          linesAdded: this._state.fileChangeSummary?.totalAdditions ?? null,
+          linesRemoved: this._state.fileChangeSummary?.totalDeletions ?? null,
+          promptCacheHitRatio: null,
+        },
+        billingBlock: billingBlockToStateFile(this._lastBillingBlock),
+      });
+    } catch (error) {
+      logError('Dashboard failed to write state.json', error);
+    }
   }
 
   /** Minimum spacing between billing-block recomputations. */
@@ -1729,7 +1795,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           };
         }
       }
+      this._lastBillingBlock = block;
       this._postMessage({ type: 'updateBillingBlock', block, official });
+      this._writeStateFile();
     } catch (error) {
       logError('Dashboard failed to compute the billing block', error);
     } finally {

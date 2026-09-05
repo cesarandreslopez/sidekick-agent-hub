@@ -225,6 +225,28 @@ When Claude Code runs `sidekick statusline` as its status line it pipes a JSON d
 acct:work · 5h 42% resets 14:00 · ~1h20m left · 7d 61% · ctx 37% · $0.42 · cache 93%
 ```
 
+#### State file
+
+Every status-line run, and both dashboards on their refresh ticks, also write `~/.config/sidekick/state.json` (honouring `SIDEKICK_CONFIG_DIR`) for external tools such as tmux status bars, menu-bar apps, and scripts. It is a **public, versioned contract**: `schemaVersion` is `1`, fields are only ever added, and `sidekick-shared/schemas` exports the matching zod schema (`sidekickStateFileSchema`). The file is rewritten atomically only when its content changed, so an idle prompt costs one small read.
+
+| Field                          | Contents                                                                                                                                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`                | `1`                                                                                                                                                                                                               |
+| `writtenAt`                    | ISO timestamp of the write                                                                                                                                                                                        |
+| `writer`                       | `statusline`, `cli-dashboard`, or `vscode-dashboard`                                                                                                                                                              |
+| `account`                      | `{ providerId, id, label }` for the active Claude Code or Codex account, or `null`                                                                                                                                |
+| `quota.claude` / `quota.codex` | `{ fiveHour, sevenDay, source, capturedSource, capturedAt, ageMs, freshness }` per provider, or `null` when unavailable                                                                                           |
+| `context`                      | `{ usedPercentage, contextWindowSize, totalInputTokens, totalOutputTokens }` of the live session, or `null`                                                                                                       |
+| `session`                      | `{ sessionId, cwd, model, costUsd, durationMs, linesAdded, linesRemoved, promptCacheHitRatio }`, or `null`                                                                                                        |
+| `billingBlock`                 | The open five-hour block (`start`, `end`, `isActive`, `tokens`, `costUsd`, `costProvenance`, `burnRatePerMinute`, `projectedTokens`, `projectedCostUsd`, `remainingMs`) when a dashboard computed it, else `null` |
+
+Values that a writer cannot know are `null` rather than omitted — the status line never computes the billing block, and the dashboards do not see prompt-cache statistics.
+
+```bash
+# tmux: show the five-hour window and session cost
+jq -r '"5h \(.quota.claude.fiveHour.utilization)% · $\(.session.costUsd)"' ~/.config/sidekick/state.json
+```
+
 ### Quick capture
 
 ```bash

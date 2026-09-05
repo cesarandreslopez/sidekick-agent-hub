@@ -33,6 +33,27 @@ export {
 export { readSessionReportInputs } from './report/sessionReportInputs';
 export type { SessionReportInputs } from './report/sessionReportInputs';
 export { fingerprintString, sessionFingerprintParts } from './sessionFingerprint';
+export {
+  STATE_FILE_NAME,
+  STATE_FILE_SCHEMA_VERSION,
+  billingBlockToStateFile,
+  getStateFilePath,
+  quotaToStateFile,
+  readStateFile,
+  writeStateFile,
+} from './stateFile';
+export type {
+  SidekickStateFile,
+  SidekickStateInput,
+  StateFileAccount,
+  StateFileBillingBlock,
+  StateFileContext,
+  StateFileQuota,
+  StateFileQuotaWindow,
+  StateFileSession,
+  StateFileWriter,
+  WriteStateFileOptions,
+} from './stateFile';
 export type { ComputeSessionFileStatsOptions, ReadSessionFileStatsOptions } from './sessionStats';
 export {
   BILLING_BLOCK_DURATION_MS,

@@ -24,6 +24,10 @@ import {
   collectUsageEvents,
   computeBillingBlocks,
   findActiveBillingBlock,
+  billingBlockToStateFile,
+  getActiveAccountStatus,
+  quotaToStateFile,
+  writeStateFile,
 } from 'sidekick-shared';
 import type {
   FollowEvent,
@@ -614,6 +618,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   let quotaAlertMemory: QuotaAlertMemory = {};
   quotaService.onUpdate((quota) => {
     state.setQuota(quota);
+    writeDashboardState();
     const evaluated = evaluateQuotaThresholds(quota, DEFAULT_QUOTA_THRESHOLDS, quotaAlertMemory);
     quotaAlertMemory = evaluated.memory;
     for (const alert of evaluated.alerts) {
@@ -624,6 +629,60 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     }
     scheduleRender();
   });
+
+  // Public state.json for external tools (tmux, menu bars): written on the
+  // billing-block tick and on quota updates, only when something changed.
+  function writeDashboardState(): void {
+    try {
+      const metrics = state.getMetrics();
+      const accounts = getActiveAccountStatus(undefined, { selfHeal: false });
+      const providerId = activeProvider.id;
+      const account =
+        providerId === 'codex' && accounts.codex.present
+          ? {
+              providerId: 'codex' as const,
+              id: accounts.codex.accountId ?? null,
+              label: accounts.codex.label ?? null,
+            }
+          : accounts.claude.present
+            ? {
+                providerId: 'claude-code' as const,
+                id: accounts.claude.accountId ?? null,
+                label: accounts.claude.label ?? null,
+              }
+            : null;
+      const quota = quotaToStateFile(metrics.quota);
+      const startedMs = metrics.sessionStartTime ? Date.parse(metrics.sessionStartTime) : NaN;
+      writeStateFile({
+        writer: 'cli-dashboard',
+        account,
+        quota: {
+          claude: providerId === 'claude-code' ? quota : null,
+          codex: providerId === 'codex' ? quota : null,
+        },
+        context: {
+          usedPercentage: metrics.context.percent,
+          contextWindowSize: metrics.context.limit || null,
+          totalInputTokens:
+            metrics.tokens.input + metrics.tokens.cacheRead + metrics.tokens.cacheWrite,
+          totalOutputTokens: metrics.tokens.output,
+        },
+        session: {
+          sessionId: metrics.sessionId ?? null,
+          cwd: workspacePath,
+          model: metrics.currentModel ?? null,
+          costUsd: metrics.tokens.cost,
+          durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : null,
+          linesAdded: null,
+          linesRemoved: null,
+          promptCacheHitRatio: null,
+        },
+        billingBlock: billingBlockToStateFile(metrics.billingBlock),
+      });
+    } catch {
+      // The state file is a convenience for other tools; never disturb the TUI.
+    }
+  }
 
   // Active billing block (local estimate from session logs), refreshed every
   // minute. The collector caches each session by fingerprint, so a tick that
@@ -643,6 +702,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       state.setBillingBlock(
         findActiveBillingBlock(computeBillingBlocks(collected.events, { now })),
       );
+      writeDashboardState();
       scheduleRender();
     } catch {
       // The block is an estimate; a failed refresh keeps the last one.
