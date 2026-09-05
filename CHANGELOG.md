@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** `writeStateFile()` and `sidekickStateFileSchema` define the public, versioned `state.json` contract (`schemaVersion: 1`, additive changes only)
 - **CLI:** `sidekick statusline` and the dashboard write `state.json` (account, quota with freshness, context, session cost, active billing block) for tmux status bars, menu-bar apps, and scripts, only when the content changed
 - **VS Code:** the dashboard writes the same `state.json` on quota updates and billing-block ticks
+- **VS Code:** History tab gains hourly "Today", by-model and by-tool stacked series, a project filter, and a previous-period overlay with tile deltas
 
 ### Changed
 

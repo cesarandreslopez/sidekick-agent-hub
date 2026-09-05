@@ -303,7 +303,13 @@ export type DashboardWebviewMessage =
   | { type: 'togglePin' }
   | { type: 'browseSessionFolders' }
   | { type: 'clearCustomPath' }
-  | { type: 'requestHistoricalData'; range: 'today' | 'week' | 'month' | 'all'; metric: string }
+  | {
+      type: 'requestHistoricalData';
+      range: HistoricalRange;
+      metric: string;
+      series?: HistoricalSeries;
+      project?: string | null;
+    }
   | { type: 'drillDown'; timestamp: string; currentRange: string }
   | { type: 'drillUp' }
   | { type: 'importHistoricalData' }
@@ -453,20 +459,52 @@ export interface HistoricalDataPoint {
 
   /** Number of sessions in this period */
   sessionCount: number;
+
+  /**
+   * Per-series values for this point (model id or tool name → usage), present
+   * when the summary was requested with a `model` or `tool` series and the
+   * source records carry a breakdown. Hourly buckets have none.
+   */
+  breakdown?: Record<string, HistoricalBreakdownValue>;
 }
+
+/** One series' share of a data point. Tool series carry calls only. */
+export interface HistoricalBreakdownValue {
+  tokens: number;
+  cost: number;
+  calls: number;
+}
+
+export type HistoricalRange = 'today' | 'week' | 'month' | 'all';
+export type HistoricalSeries = 'total' | 'model' | 'tool';
 
 /**
  * Historical data summary for a time range.
  */
 export interface HistoricalSummary {
   /** Time range type */
-  range: 'today' | 'week' | 'month' | 'all';
+  range: HistoricalRange;
 
   /** Granularity of data points */
   granularity: 'hourly' | 'daily' | 'monthly';
 
   /** Data points for the range */
   dataPoints: HistoricalDataPoint[];
+
+  /** Series the points were split by (default `total`). */
+  series?: HistoricalSeries;
+
+  /** Breakdown keys across all points, largest first, when `series` is not `total`. */
+  seriesKeys?: string[];
+
+  /** Distinct workspace paths seen in the durable session records (for the project filter). */
+  projects?: string[];
+
+  /** Project filter applied, if any. Filtered summaries aggregate the last 500 session records. */
+  project?: string | null;
+
+  /** The same range one period earlier (yesterday, the previous 7 days, the previous month); empty for `all`. */
+  previousPeriod?: HistoricalDataPoint[];
 
   /** Aggregated totals for the range */
   totals: {

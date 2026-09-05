@@ -662,10 +662,18 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
         <button class="range-btn" data-range="month" aria-pressed="false">This Month</button>
         <button class="range-btn" data-range="all" aria-pressed="false">All Time</button>
       </div>
-      <select class="metric-select" id="history-metric-select">
+      <select class="metric-select" id="history-metric-select" aria-label="Metric">
         <option value="tokens">Tokens</option>
         <option value="cost">Cost ($)</option>
         <option value="messages">Messages</option>
+      </select>
+      <select class="metric-select" id="history-series-select" aria-label="Series">
+        <option value="total">Total</option>
+        <option value="model">By model</option>
+        <option value="tool">By tool</option>
+      </select>
+      <select class="metric-select" id="history-project-select" aria-label="Project" title="Filter to one workspace (last 500 sessions)">
+        <option value="">All projects</option>
       </select>
     </div>
 
@@ -682,18 +690,22 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
       <div class="history-stat">
         <div class="stat-value" id="history-total-tokens">0</div>
         <div class="stat-label">Total Tokens</div>
+        <div class="stat-delta" id="history-total-tokens-delta"></div>
       </div>
       <div class="history-stat">
         <div class="stat-value" id="history-total-cost">$0.00</div>
         <div class="stat-label">Total Cost</div>
+        <div class="stat-delta" id="history-total-cost-delta"></div>
       </div>
       <div class="history-stat">
         <div class="stat-value" id="history-sessions">0</div>
         <div class="stat-label">Sessions</div>
+        <div class="stat-delta" id="history-sessions-delta"></div>
       </div>
       <div class="history-stat">
         <div class="stat-value" id="history-messages">0</div>
         <div class="stat-label">Messages</div>
+        <div class="stat-delta" id="history-messages-delta"></div>
       </div>
     </div>
 
@@ -706,7 +718,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     <div class="history-empty" id="history-empty" style="display: none;">
       <p>No historical data available.</p>
       <button class="import-btn" id="import-historical-btn">Import Historical Data</button>
-      <p class="hint">Scans ~/.claude/projects/ for past sessions</p>
+      <p class="hint">Imports finished Claude Code, Codex, and OpenCode sessions</p>
     </div>
 
     <div class="history-loading" id="history-loading" style="display: none;">

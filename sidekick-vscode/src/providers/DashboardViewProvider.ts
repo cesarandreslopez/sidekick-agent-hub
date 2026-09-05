@@ -92,7 +92,13 @@ import {
   calculateCompactionLedger,
 } from 'sidekick-shared';
 import type { BillingBlock, SessionProviderBase } from 'sidekick-shared';
-import type { BillingBlockOfficialSample, DashboardInit } from '../types/dashboard';
+import type {
+  BillingBlockOfficialSample,
+  DashboardInit,
+  HistoricalRange,
+  HistoricalSeries,
+} from '../types/dashboard';
+import { buildHistoricalSummary, buildHourlyPoints } from '../services/HistoricalSummaryBuilder';
 import { renderDashboardHtml } from './dashboardTemplate';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
@@ -164,7 +170,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _historicalDataService?: HistoricalDataService;
 
   /** Current historical data range being displayed */
-  private _currentHistoricalRange: 'today' | 'week' | 'month' | 'all' = 'week';
+  private _currentHistoricalRange: HistoricalRange = 'week';
+  private _currentHistoricalSeries: HistoricalSeries = 'total';
+  private _currentHistoricalProject: string | null = null;
 
   /** Current drill-down level for historical data */
   private _drillDownStack: Array<{ range: string; timestamp: string }> = [];
@@ -567,6 +575,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'requestHistoricalData':
         this._currentHistoricalRange = message.range;
+        this._currentHistoricalSeries = message.series ?? 'total';
+        this._currentHistoricalProject = message.project ?? null;
         this._drillDownStack = [];
         this._sendHistoricalData(message.range);
         break;
@@ -1202,133 +1212,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
-   * Builds historical summary for a given range.
+   * Builds the History tab summary for a range with the requested series and
+   * project filter (see HistoricalSummaryBuilder), plus the quality trend.
    */
-  private _buildHistoricalSummary(range: 'today' | 'week' | 'month' | 'all'): HistoricalSummary {
-    const dataPoints: HistoricalDataPoint[] = [];
-    let granularity: 'hourly' | 'daily' | 'monthly' = 'daily';
-
+  private _buildHistoricalSummary(range: HistoricalRange): HistoricalSummary {
     if (!this._historicalDataService) {
       return {
         range,
-        granularity,
+        granularity: range === 'today' ? 'hourly' : range === 'all' ? 'monthly' : 'daily',
         dataPoints: [],
         totals: { inputTokens: 0, outputTokens: 0, totalCost: 0, messageCount: 0, sessionCount: 0 },
       };
     }
-
-    const today = new Date();
-
-    switch (range) {
-      case 'today': {
-        granularity = 'hourly';
-        // For today, we need hourly data which requires session-level tracking
-        // For now, show the daily total since we don't track hourly
-        const todayData = this._historicalDataService.getTodayData();
-        if (todayData) {
-          dataPoints.push({
-            timestamp: todayData.date,
-            label: 'Today',
-            inputTokens: todayData.tokens.inputTokens,
-            outputTokens: todayData.tokens.outputTokens,
-            cacheWriteTokens: todayData.tokens.cacheWriteTokens,
-            cacheReadTokens: todayData.tokens.cacheReadTokens,
-            totalCost: todayData.totalCost,
-            messageCount: todayData.messageCount,
-            sessionCount: todayData.sessionCount,
-          });
-        }
-        break;
-      }
-
-      case 'week': {
-        granularity = 'daily';
-        const weekData = this._historicalDataService.getThisWeekData();
-        for (const day of weekData) {
-          const date = new Date(day.date);
-          dataPoints.push({
-            timestamp: day.date,
-            label: date.toLocaleDateString('en-US', { weekday: 'short' }),
-            inputTokens: day.tokens.inputTokens,
-            outputTokens: day.tokens.outputTokens,
-            cacheWriteTokens: day.tokens.cacheWriteTokens,
-            cacheReadTokens: day.tokens.cacheReadTokens,
-            totalCost: day.totalCost,
-            messageCount: day.messageCount,
-            sessionCount: day.sessionCount,
-          });
-        }
-        break;
-      }
-
-      case 'month': {
-        granularity = 'daily';
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const startDate = monthStart.toISOString().split('T')[0];
-        const endDate = today.toISOString().split('T')[0];
-        const monthDays = this._historicalDataService.getDailyData(startDate, endDate);
-        for (const day of monthDays) {
-          const date = new Date(day.date);
-          dataPoints.push({
-            timestamp: day.date,
-            label: date.getDate().toString(),
-            inputTokens: day.tokens.inputTokens,
-            outputTokens: day.tokens.outputTokens,
-            cacheWriteTokens: day.tokens.cacheWriteTokens,
-            cacheReadTokens: day.tokens.cacheReadTokens,
-            totalCost: day.totalCost,
-            messageCount: day.messageCount,
-            sessionCount: day.sessionCount,
-          });
-        }
-        break;
-      }
-
-      case 'all': {
-        granularity = 'monthly';
-        const allTime = this._historicalDataService.getAllTimeStats();
-        if (allTime.firstDate && allTime.lastDate) {
-          const startMonth = allTime.firstDate.substring(0, 7);
-          const endMonth = allTime.lastDate.substring(0, 7);
-          const months = this._historicalDataService.getMonthlyData(startMonth, endMonth);
-          for (const month of months) {
-            const [year, mon] = month.month.split('-');
-            const monthName = new Date(parseInt(year), parseInt(mon) - 1, 1).toLocaleDateString(
-              'en-US',
-              { month: 'short', year: '2-digit' },
-            );
-            dataPoints.push({
-              timestamp: month.month,
-              label: monthName,
-              inputTokens: month.tokens.inputTokens,
-              outputTokens: month.tokens.outputTokens,
-              cacheWriteTokens: month.tokens.cacheWriteTokens,
-              cacheReadTokens: month.tokens.cacheReadTokens,
-              totalCost: month.totalCost,
-              messageCount: month.messageCount,
-              sessionCount: month.sessionCount,
-            });
-          }
-        }
-        break;
-      }
-    }
-
-    // Calculate totals
-    const totals = {
-      inputTokens: dataPoints.reduce((sum, d) => sum + d.inputTokens, 0),
-      outputTokens: dataPoints.reduce((sum, d) => sum + d.outputTokens, 0),
-      totalCost: dataPoints.reduce((sum, d) => sum + d.totalCost, 0),
-      messageCount: dataPoints.reduce((sum, d) => sum + d.messageCount, 0),
-      sessionCount: dataPoints.reduce((sum, d) => sum + d.sessionCount, 0),
-    };
-
+    const summary = buildHistoricalSummary(this._historicalDataService, range, {
+      series: this._currentHistoricalSeries,
+      project: this._currentHistoricalProject,
+    });
     const latestQuality = this._historicalDataService.getLatestSessionRecord();
     return {
-      range,
-      granularity,
-      dataPoints,
-      totals,
+      ...summary,
       qualityTrend: this._historicalDataService.getQualityTrend(),
       latestQuality: latestQuality
         ? { score: latestQuality.qualityScore, factors: latestQuality.qualityFactors }
@@ -1388,23 +1290,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         };
       } else {
         // Drilling down from daily to hourly — show hourly breakdown for the day
-        const hourlyBuckets = this._historicalDataService.getHourlyData(timestamp);
-        const dataPoints: HistoricalDataPoint[] = hourlyBuckets.map((bucket) => {
-          const hour = bucket.hour;
-          const ampm = hour < 12 ? 'AM' : 'PM';
-          const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-          return {
-            timestamp: `${timestamp}T${hour.toString().padStart(2, '0')}:00:00`,
-            label: `${displayHour}${ampm}`,
-            inputTokens: bucket.tokens.inputTokens,
-            outputTokens: bucket.tokens.outputTokens,
-            cacheWriteTokens: bucket.tokens.cacheWriteTokens,
-            cacheReadTokens: bucket.tokens.cacheReadTokens,
-            totalCost: bucket.totalCost,
-            messageCount: bucket.messageCount,
-            sessionCount: bucket.sessionCount,
-          };
-        });
+        const dataPoints = buildHourlyPoints(this._historicalDataService, timestamp);
 
         const totals = {
           inputTokens: dataPoints.reduce((sum, d) => sum + d.inputTokens, 0),

@@ -201,6 +201,15 @@ export const DASHBOARD_STYLES = `
       color: var(--vscode-descriptionForeground);
     }
 
+    .stat-delta {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      min-height: 12px;
+    }
+    .stat-delta.up { color: var(--vscode-charts-red, var(--vscode-errorForeground)); }
+    .stat-delta.down { color: var(--vscode-charts-green, var(--vscode-testing-iconPassed)); }
+    .stat-delta.neutral { color: var(--vscode-descriptionForeground); }
+
     .history-summary {
       display: grid;
       grid-template-columns: repeat(2, 1fr);

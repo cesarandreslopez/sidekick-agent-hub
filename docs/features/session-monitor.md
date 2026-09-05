@@ -51,6 +51,16 @@ The dashboard organizes information into three collapsible groups:
 
 ![Tasks & Recovery — Task Performance and Completion Tracking](../images/tasks-and-recovery.png)
 
+### History Tab
+
+The History tab charts the persisted usage store (`historical-data.json`) over **Today** (hourly buckets), **This Week** and **This Month** (daily), and **All Time** (monthly), with drill-down from months to days and days to hours. Three controls shape the chart:
+
+- **Metric** — tokens (cache-inclusive), cost, or messages.
+- **Series** — _Total_, _By model_ (stacked bars per model from the daily and monthly records), or _By tool_ (stacked tool calls; the metric select is disabled because tools carry no token attribution). Hourly buckets record no breakdown, so _Today_ shows totals.
+- **Project** — filter to one workspace. Filtered views aggregate the durable per-session records, which are capped at the last 500 sessions.
+
+A dashed line overlays the previous period (yesterday, the seven days before, or the previous calendar month), and the summary tiles show the change versus it.
+
 ## HTML Session Report
 
 ![HTML Session Report](../images/session_html_report.png)

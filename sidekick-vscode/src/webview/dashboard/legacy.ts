@@ -11,8 +11,14 @@
  * loaded before this bundle).
  */
 import type { DashboardInit } from '../../types/dashboard';
+import type { LegacyHelpers } from './history';
 
-export function startLegacyDashboard(dashboardInit: DashboardInit): void {
+/**
+ * `helpers` are the typed modules this script delegates to (see index.ts);
+ * the History tab's chart data, tiles, and request payloads come from
+ * helpers.history.
+ */
+export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: LegacyHelpers): void {
   window.__initialSessionData = dashboardInit.session;
     (function() {
       const vscode = acquireVsCodeApi();
@@ -80,6 +86,15 @@ export function startLegacyDashboard(dashboardInit: DashboardInit): void {
       let currentMetric = 'quota';
       let currentRange = 'week';
       let currentHistoryData = null;
+
+      helpers.history.mount({
+        getRange: function() { return currentRange; },
+        getMetric: function() { return historyMetricSelect ? historyMetricSelect.value : 'tokens'; },
+        post: function(message) { vscode.postMessage(message); },
+        formatNumber: function(value) { return formatNumber(value); },
+        formatCost: function(value) { return formatCost(value); },
+        cssVar: function(name, fallback) { return cssVar(name, fallback); }
+      });
       let sessionState = {
         totalInputTokens: 0,
         totalOutputTokens: 0,
@@ -293,7 +308,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit): void {
 
           // Request data when switching tabs
           if (tab === 'history') {
-            vscode.postMessage({ type: 'requestHistoricalData', range: currentRange, metric: 'tokens' });
+            vscode.postMessage(helpers.history.request(currentRange, 'tokens'));
           } else if (tab === 'summary') {
             vscode.postMessage({ type: 'requestSessionSummary' });
           }
@@ -329,7 +344,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit): void {
           rangeBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
           btn.classList.add('active');
           btn.setAttribute('aria-pressed', 'true');
-          vscode.postMessage({ type: 'requestHistoricalData', range: currentRange, metric: historyMetricSelect.value });
+          vscode.postMessage(helpers.history.request(currentRange, historyMetricSelect.value));
         });
       });
 
@@ -477,35 +492,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit): void {
         }
         if (!historyChart) return;
 
-        const metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
-        const labels = data.dataPoints.map(function(d) { return d.label; });
-        const values = data.dataPoints.map(function(d) {
-          switch (metric) {
-            case 'cost': return d.totalCost;
-            case 'messages': return d.messageCount;
-            // Shared vocabulary (summarizeTokens().total): every billed bucket, cache included.
-            default: return d.inputTokens + d.outputTokens + (d.cacheWriteTokens || 0) + (d.cacheReadTokens || 0);
-          }
-        });
-
-        const METRIC_COLORS = { cost: 'rgb(76, 175, 80)', messages: 'rgb(33, 150, 243)', tokens: 'rgb(75, 192, 192)' };
-        const METRIC_LABELS = { cost: 'Cost', messages: 'Messages', tokens: 'Tokens' };
-        const color = METRIC_COLORS[metric] || 'rgb(75, 192, 192)';
-
-        historyChart.data.labels = labels;
-        historyChart.data.datasets[0].data = values;
-        historyChart.data.datasets[0].backgroundColor = color.replace('rgb', 'rgba').replace(')', ', 0.7)');
-        historyChart.data.datasets[0].borderColor = color;
-        historyChart.data.datasets[0].label = METRIC_LABELS[metric] || 'Tokens';
-        historyChart.update();
-
-        // Update summary
-        if (historySummary) {
-          document.getElementById('history-total-tokens').textContent = formatNumber(data.totals.inputTokens + data.totals.outputTokens + (data.totals.cacheWriteTokens || 0) + (data.totals.cacheReadTokens || 0));
-          document.getElementById('history-total-cost').textContent = formatCost(data.totals.totalCost);
-          document.getElementById('history-sessions').textContent = formatNumber(data.totals.sessionCount);
-          document.getElementById('history-messages').textContent = formatNumber(data.totals.messageCount);
-        }
+        const metric = helpers.history.effectiveMetric(data, historyMetricSelect ? historyMetricSelect.value : 'tokens');
+        helpers.history.applyToChart(historyChart, data, metric);
+        helpers.history.applyTiles(data, metric);
 
         const qualitySection = document.getElementById('quality-trend-section');
         const qualitySummary = document.getElementById('quality-trend-summary');

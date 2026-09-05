@@ -44,6 +44,7 @@ vi.mock('../services/Logger', () => ({
   logError: vi.fn(),
 }));
 
+import { formatLocalDateKey } from 'sidekick-shared';
 import { DashboardViewProvider } from './DashboardViewProvider';
 
 // The behaviour lives in the bundled legacy module now; the document only
@@ -341,6 +342,61 @@ describe('DashboardViewProvider quota UI', () => {
     // group. Assert the escape survives into the generated document.
     expect(rendered).toContain(String.raw`/^rgba?\(([^)]+)\)$/i`);
 
+    provider.dispose();
+  });
+
+  it('answers requestHistoricalData with the requested series and project', () => {
+    const today = formatLocalDateKey(new Date());
+    const days = [
+      {
+        date: today,
+        tokens: { inputTokens: 10, outputTokens: 1, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        totalCost: 0.01,
+        messageCount: 1,
+        sessionCount: 1,
+        modelUsage: [{ model: 'gpt-5.4', calls: 1, tokens: 11, cost: 0.01 }],
+        toolUsage: [],
+        updatedAt: '',
+      },
+    ];
+    const historical = {
+      getDailyData: (start: string, end: string) =>
+        days.filter((d) => d.date >= start && d.date <= end),
+      getHourlyData: () => [],
+      getMonthlyData: () => [],
+      getAllTimeStats: () => ({ firstDate: '2026-09-01', lastDate: '2026-09-04' }),
+      getSessionRecords: () => [],
+      getQualityTrend: () => ({ delta: null }),
+      getLatestSessionRecord: () => null,
+    };
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+      undefined,
+      historical as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+
+    (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage({
+      type: 'requestHistoricalData',
+      range: 'week',
+      metric: 'tokens',
+      series: 'model',
+      project: null,
+    });
+
+    const update = postMessage.mock.calls.find((call) => call[0].type === 'updateHistoricalData');
+    expect(update).toBeDefined();
+    expect(update![0].data).toMatchObject({
+      series: 'model',
+      seriesKeys: ['gpt-5.4'],
+      project: null,
+    });
+    expect(update![0].data.dataPoints[0].breakdown['gpt-5.4']).toMatchObject({ calls: 1 });
+    expect(update![0].data.previousPeriod).toEqual([]);
     provider.dispose();
   });
 });
