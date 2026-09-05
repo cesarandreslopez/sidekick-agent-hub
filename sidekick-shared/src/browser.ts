@@ -191,3 +191,11 @@ export type {
   UsageGroupDimension,
   UsageTotals,
 } from './usage/usageReports';
+export {
+  applySessionSummary,
+  isFileImported,
+  markFileImported,
+  removeSessionSummary,
+  sessionSummaryFromStats,
+} from './historicalStore';
+export type { ApplySessionSummaryOptions, SessionSummaryFromStatsOptions } from './historicalStore';

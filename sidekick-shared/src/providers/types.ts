@@ -111,8 +111,11 @@ export interface SessionFileStats {
   messageCount: number;
   /** Token buckets; `summarizeTokens()` turns them into the cache-inclusive total. */
   tokens: { input: number; output: number; cacheWrite: number; cacheRead: number };
-  /** Per-model calls and cache-inclusive token total (the `summarizeTokens().total` vocabulary). */
-  modelUsage: Record<string, { calls: number; tokens: number }>;
+  /**
+   * Per-model calls, cache-inclusive token total (the `summarizeTokens().total`
+   * vocabulary), priced cost, and whether every call could be priced.
+   */
+  modelUsage: Record<string, { calls: number; tokens: number; costUsd: number; priced: boolean }>;
   /** Calls per tool name: successful, failed, and still pending. */
   toolUsage: Record<string, number>;
   /** Failed calls per tool name; a subset of `toolUsage`. */

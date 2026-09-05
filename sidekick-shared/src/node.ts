@@ -51,6 +51,22 @@ export type {
   UsageEventRecord,
   UsageSessionRecord,
 } from './usage/usageEvents';
+export {
+  applySessionSummary,
+  isFileImported,
+  markFileImported,
+  removeSessionSummary,
+  sessionSummaryFromStats,
+} from './historicalStore';
+export type { ApplySessionSummaryOptions, SessionSummaryFromStatsOptions } from './historicalStore';
+export {
+  ACTIVE_SESSION_MTIME_THRESHOLD_MS,
+  importSessionHistory,
+} from './usage/importSessionHistory';
+export type {
+  ImportSessionHistoryOptions,
+  ImportSessionHistoryResult,
+} from './usage/importSessionHistory';
 export { bucketUsage, summarizeUsageRows, usageBucketKey, weekKey } from './usage/usageReports';
 export type {
   BucketUsageOptions,

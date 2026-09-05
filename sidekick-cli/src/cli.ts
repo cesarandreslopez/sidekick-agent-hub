@@ -5,6 +5,7 @@ import {
   BLOCKS_EXAMPLES,
   DUMP_EXAMPLES,
   EXTRACT_EXAMPLES,
+  IMPORT_EXAMPLES,
   USAGE_REPORT_EXAMPLES,
   HISTORY_EXAMPLES,
   QUOTA_EXAMPLES,
@@ -346,6 +347,20 @@ program.addCommand(
     },
   ),
 );
+// Import command — fold finished sessions into historical-data.json
+const importCmd = new Command('import')
+  .description('Import finished sessions from every provider into the history store')
+  .option(
+    '--since <time>',
+    'Only sessions modified after an ISO date, YYYY-MM-DD, or a relative window such as 30d',
+  )
+  .addHelpText('after', IMPORT_EXAMPLES)
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { importAction } = await import('./commands/import');
+    return importAction(_opts, cmd);
+  });
+program.addCommand(importCmd);
+
 program.addCommand(
   usageReportCommand(
     'sessions',

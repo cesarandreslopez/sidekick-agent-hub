@@ -106,6 +106,10 @@ The dashboard polls API health for both Claude (status.claude.com) and OpenAI (s
 
 The relevant status page is shown based on the monitored provider — Claude status for Claude Code, OpenAI status for Codex, and no provider-status banner for OpenCode. The banner is hidden when all systems are operational. Polls every 60 seconds, pausing when the dashboard is not visible. Also available as a standalone CLI command: `sidekick status`, which checks both endpoints directly.
 
+## Historical Import
+
+On first activation with an empty history store, the extension imports every finished session it can find — Claude Code, Codex, and OpenCode — through the shared importer that `sidekick import` also uses, with a status-bar spinner and no toast. Run **Sidekick: Import Historical Data** to import again later; files already imported, sessions the live monitor persisted, and files modified in the last minute are skipped, so re-running never double counts.
+
 ## Quota & Rate Limits Display
 
 The dashboard shows quota or rate-limit data depending on the active provider:

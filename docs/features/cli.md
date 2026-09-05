@@ -337,7 +337,7 @@ sidekick notes --type tip --status active --json
 sidekick stats [options]
 ```
 
-Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`. Unknown-model rows render as `—`; any unpriced models encountered are listed in the footer so missing pricing coverage is visible. "Total (incl. cache)" counts input, output, cache writes, and cache reads — the same total every other Sidekick surface shows.
+Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`, which the VS Code extension writes as sessions end and `sidekick import` backfills from session logs (see below); for reports computed straight from the logs, use `sidekick daily` and friends. Unknown-model rows render as `—`; any unpriced models encountered are listed in the footer so missing pricing coverage is visible. "Total (incl. cache)" counts input, output, cache writes, and cache reads — the same total every other Sidekick surface shows.
 
 | Flag    | Description                                                                                            |
 | ------- | ------------------------------------------------------------------------------------------------------ |
@@ -357,6 +357,14 @@ sidekick stats --json
 # Every recorded day as CSV, straight into a spreadsheet
 sidekick stats --csv --output-file usage.csv
 ```
+
+### Import
+
+```bash
+sidekick import [--since <time>]
+```
+
+Fold every finished session from every provider with session data (Claude Code, Codex, and OpenCode; the global `--provider` narrows to one) into the history store behind `sidekick stats`, `sidekick today`, and the VS Code History tab. Each session is read once through the same unified stats path the extension uses, so both hosts credit sessions identically: cache-inclusive per-model totals, cost with unpriced markers, and a tool success/failure split. The import is idempotent — files already imported, sessions already persisted by the live monitor, and files modified in the last minute are skipped — and the store is written in one short locked update that re-checks the on-disk state, so a concurrent extension write is never overwritten. Use `--since` (ISO date, `YYYY-MM-DD`, or a relative window such as `30d`) to limit the scan, and the global `--json` for the result (`sessionsImported`, `filesSkipped`, `filesUnavailable`, and so on).
 
 ### Billing blocks
 

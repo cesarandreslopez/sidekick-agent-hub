@@ -42,6 +42,13 @@ Examples:
   $ sidekick --provider codex daily --utc   Codex only, keyed by UTC day
 `;
 
+export const IMPORT_EXAMPLES = `
+Examples:
+  $ sidekick import                         Fold every finished session into the history store
+  $ sidekick import --since 30d             Only sessions touched in the last 30 days
+  $ sidekick --provider codex import --json Codex only, machine-readable result
+`;
+
 export const EXTRACT_EXAMPLES = `
 Examples:
   $ sidekick extract                        URLs, file paths, commands, and plans

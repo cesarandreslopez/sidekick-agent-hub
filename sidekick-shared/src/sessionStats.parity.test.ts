@@ -322,6 +322,8 @@ describe('session stats parity', () => {
         expect(stats.modelUsage[model.model], `${provider.id}:${model.model}`).toEqual({
           calls: model.calls,
           tokens: model.tokens,
+          costUsd: model.cost,
+          priced: model.priced !== false,
         });
       }
       expect(stats.costProvenance, provider.id).not.toBe('none');
@@ -350,7 +352,8 @@ describe('session stats parity', () => {
     expect(stats.messageCount).toBe(4);
     expect(stats.tokens).toEqual({ input: 130, output: 60, cacheWrite: 20, cacheRead: 500 });
     // Cache-inclusive per-model total (the old scan reported input + output only).
-    expect(stats.modelUsage[CLAUDE_MODEL]).toEqual({ calls: 2, tokens: 710 });
+    expect(stats.modelUsage[CLAUDE_MODEL]).toMatchObject({ calls: 2, tokens: 710, priced: true });
+    expect(stats.modelUsage[CLAUDE_MODEL].costUsd).toBeCloseTo(stats.costUsd, 9);
     expect(stats.compactionEstimate).toBe(1);
     expect(stats.truncationCount).toBe(1);
     expect(stats.toolUsage).toEqual({ Read: 1, Bash: 1 });

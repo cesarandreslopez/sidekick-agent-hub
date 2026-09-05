@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dashboard's Sessions summary shows the active five-hour billing block (local estimate from session logs), refreshed every minute
 - `sidekick daily`, `weekly`, `monthly`, and `sessions` report usage computed straight from session logs, so CLI-only users no longer see "No historical data found". Every provider with session data is read by default (the global `--provider` narrows to one); rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session crossing midnight is split across both days; weeks start on Monday. Options: `--since` / `--until` (ISO date, `YYYY-MM-DD`, or relative windows such as `30d`), `--breakdown` (per-model sub-rows), `--by-project`, `--csv`, `--no-cache`; the global `--json` prints the full report. Defaults: 30 days, 12 weeks, 12 calendar months, 30 days
 - `sidekick stats` points at `sidekick daily` when the history store is empty
+- `sidekick import [--since <time>]` folds finished sessions from every detected provider (or the global `--provider`) into `historical-data.json`, the store behind `stats`, `today`, and the VS Code History tab, using the same importer and store mutation as the extension. Files already imported, sessions already persisted by the live monitor, and files modified in the last minute are skipped; session logs are read without holding the store lock and the summaries are applied in one short locked write that re-checks the on-disk store
 
 ### Changed
 

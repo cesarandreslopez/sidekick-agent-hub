@@ -95,7 +95,12 @@ export function computeSessionFileStats(
   for (const model of metrics.modelStats) {
     // `tokens` is the aggregator's cache-inclusive total for the model, the
     // same figure `summarizeTokens().total` reports.
-    modelUsage[model.model] = { calls: model.calls, tokens: model.tokens };
+    modelUsage[model.model] = {
+      calls: model.calls,
+      tokens: model.tokens,
+      costUsd: model.cost,
+      priced: model.priced !== false,
+    };
   }
 
   const toolUsage: SessionFileStats['toolUsage'] = {};

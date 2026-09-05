@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **VS Code:** a Billing block card beneath the quota gauges shows the open five-hour block computed from session logs with burn rate and projections, next to the official status-line sample when present; the CLI dashboard's Sessions summary shows the same block
 - **Shared:** `bucketUsage()` and `summarizeUsageRows()` bucket usage events by event time into day, week, month, or session rows
 - **CLI:** `sidekick daily`, `weekly`, `monthly`, and `sessions` report usage computed straight from session logs for every detected provider (no extension history store needed), bucketed by usage-event time on the local calendar (`--utc` for UTC), with `--since`/`--until`, `--breakdown` (per-model sub-rows), `--by-project`, `--csv`, and `--json`; `stats` points at `daily` when its store is empty
+- **Shared:** pure `historical-data.json` mutations (`applySessionSummary()` and friends) and `importSessionHistory()` shared by the CLI and the extension
+- **CLI:** `sidekick import [--since <time>]` folds finished sessions from every provider into the history store behind `stats`, `today`, and the History tab, idempotently and under one short locked write
 
 ### Changed
 
@@ -46,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **VS Code:** the dashboard's first quota paint goes through `resolveQuota()`, so a fresh status-line or session sample shows immediately and Codex no longer starts with an API call
 - **Shared:** Claude, Codex, and OpenCode session stats agree with the aggregator and the transcript projection (guarded by a cross-provider parity test): cache-inclusive per-model totals, cost with provenance for Claude sessions instead of `$0`, real OpenCode compaction and truncation counts, an explicit unavailable state instead of zeros, and no second file open for the label; OpenCode's file reader gains a real `seekTo()` and its database reader a real `exists()`
 - **VS Code:** the project timeline's per-session token total is cache-inclusive and its cost uses `costUsd`
+- **VS Code:** the first-activation history import covers Codex and OpenCode sessions as well as Claude Code, records provider, project, per-model cost, and tool usage on each session, and uses the same importer as `sidekick import`
 
 ### Fixed
 

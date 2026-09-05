@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The D3 vendor bundle only includes the modules the mind map uses (611 KB → 133 KB) and Chart.js registers only the controllers the dashboard uses; the stale `out/webview/dashboard.js` (687 KB) is excluded from the package and `vscode:prepublish` cleans `out/` before building
 - The dashboard's first quota paint goes through the shared `resolveQuota()` path: a status-line, session, or API sample younger than five minutes is shown immediately, Codex falls through session logs before the API instead of starting with an API call, and an older sample is labelled with its age while the poller fetches live data
 - The project timeline's per-session token total counts every billed bucket through `summarizeTokens()` (it summed input and output only) and its cost reads the shared `costUsd`
+- The first-activation history import (and **Sidekick: Import Historical Data**) reads Codex and OpenCode sessions as well as Claude Code through the shared importer, records provider, project, per-model cost, and tool usage on each session (Claude sessions used to import with `provider: 'unknown'` and no tool usage), and applies summaries with the same store mutation `sidekick import` uses
 
 ## [0.25.0] - 2026-08-18
 

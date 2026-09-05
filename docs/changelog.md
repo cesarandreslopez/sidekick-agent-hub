@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `sidekick blocks` shows five-hour billing blocks from session logs, with the official status-line sample beside the local estimate
 - VS Code and CLI dashboards: a billing-block card shows the open five-hour block with burn rate and projections
 - CLI: `sidekick daily`, `weekly`, `monthly`, and `sessions` report usage straight from session logs for every provider, bucketed by usage-event time, with per-model breakdowns, project grouping, CSV, and JSON
+- CLI: `sidekick import` backfills the history store from every provider's session logs; the extension's first-activation import now covers Codex and OpenCode too, through the same shared importer
 
 ## [0.25.0] - 2026-08-18
 
