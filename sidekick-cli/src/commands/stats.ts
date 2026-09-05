@@ -8,9 +8,12 @@ import {
   readHistory,
   formatCost,
   getTopFailingTools,
+  mergeFailingToolWindows,
+  FAILING_TOOL_TREND_ARROWS,
   summarizeTokens,
   TOKEN_TOTAL_LABEL,
 } from 'sidekick-shared';
+import type { FailingToolTrendRow } from 'sidekick-shared';
 import type { DailyData, HistoricalDataStore, TopFailingTool } from 'sidekick-shared';
 import { toCsv, type CsvColumn } from '../csv';
 
@@ -20,7 +23,11 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-function printStatsSummary(history: HistoricalDataStore, topFailingTools: TopFailingTool[]): void {
+function printStatsSummary(
+  history: HistoricalDataStore,
+  topFailingTools: TopFailingTool[],
+  failingTools30: TopFailingTool[] = [],
+): void {
   const at = history.allTime;
 
   process.stdout.write(chalk.bold('All-Time Stats\n'));
@@ -113,19 +120,9 @@ function printStatsSummary(history: HistoricalDataStore, topFailingTools: TopFai
     process.stdout.write('\n');
   }
 
-  if (topFailingTools.length > 0) {
-    process.stdout.write(chalk.bold('Top Failing Tools (last 7 days)\n'));
-    process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
-    for (const tool of topFailingTools.slice(0, 10)) {
-      const categories = Object.entries(tool.categories)
-        .sort((left, right) => right[1] - left[1])
-        .map(([category, count]) => `${category}:${count}`)
-        .join(', ');
-      process.stdout.write(
-        `  ${chalk.red(tool.tool.padEnd(30))} ${String(tool.failures).padStart(5)} failures ${chalk.dim(categories)}\n`,
-      );
-    }
-    process.stdout.write('\n');
+  const failingRows = mergeFailingToolWindows(topFailingTools, failingTools30);
+  if (failingRows.length > 0) {
+    process.stdout.write(formatFailingToolsBlock(failingRows));
   }
 
   // Recent daily breakdown (last 7 days)
@@ -186,13 +183,47 @@ export function formatDailyCsv(history: HistoricalDataStore): string {
   return toCsv(days, DAILY_CSV_COLUMNS);
 }
 
+/**
+ * The failing-tools block: last 7 days beside last 30, with a trend arrow
+ * comparing the week to the 30-day weekly average (shared rule with the VS
+ * Code Health tab). Categories come from the 30-day window.
+ */
+export function formatFailingToolsBlock(rows: FailingToolTrendRow[]): string {
+  const lines = [
+    chalk.bold('Top Failing Tools (last 7 days / last 30 days)'),
+    chalk.dim('─'.repeat(50)),
+    `  ${'Tool'.padEnd(30)} ${'7d'.padStart(5)} ${'30d'.padStart(5)}  Trend`,
+  ];
+  for (const row of rows.slice(0, 10)) {
+    const categories = Object.entries(row.categories)
+      .sort((left, right) => right[1] - left[1])
+      .map(([category, count]) => `${category}:${count}`)
+      .join(', ');
+    const arrow = FAILING_TOOL_TREND_ARROWS[row.trend];
+    const trend =
+      row.trend === 'up'
+        ? chalk.red(arrow)
+        : row.trend === 'down'
+          ? chalk.green(arrow)
+          : chalk.dim(arrow);
+    lines.push(
+      `  ${chalk.red(row.tool.padEnd(30))} ${String(row.last7).padStart(5)} ${String(row.last30).padStart(5)}  ${trend} ${chalk.dim(categories)}`,
+    );
+  }
+  return lines.join('\n') + '\n\n';
+}
+
 export async function statsAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
   const jsonOutput: boolean = !!globalOpts.json;
   const csvOutput: boolean = !!cmd.opts().csv;
 
   try {
-    const [history, topFailingTools] = await Promise.all([readHistory(), getTopFailingTools(7)]);
+    const [history, topFailingTools, failingTools30] = await Promise.all([
+      readHistory(),
+      getTopFailingTools(7),
+      getTopFailingTools(30),
+    ]);
 
     if (!history) {
       if (jsonOutput) {
@@ -214,7 +245,7 @@ export async function statsAction(_opts: Record<string, unknown>, cmd: Command):
     } else if (csvOutput) {
       process.stdout.write(formatDailyCsv(history));
     } else {
-      printStatsSummary(history, topFailingTools);
+      printStatsSummary(history, topFailingTools, failingTools30);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

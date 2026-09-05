@@ -11,7 +11,7 @@
  * loaded before this bundle).
  */
 import type { DashboardInit } from '../../types/dashboard';
-import type { LegacyHelpers } from './history';
+import type { LegacyHelpers } from './helpers';
 
 /**
  * `helpers` are the typed modules this script delegates to (see index.ts);
@@ -311,9 +311,13 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             vscode.postMessage(helpers.history.request(currentRange, 'tokens'));
           } else if (tab === 'summary') {
             vscode.postMessage({ type: 'requestSessionSummary' });
+          } else if (tab === 'health') {
+            vscode.postMessage({ type: 'requestHealth' });
           }
         });
       });
+
+      helpers.health.mount({ post: function(message) { vscode.postMessage(message); } });
 
       // Metric toggle switching
       metricBtns.forEach(function(btn) {
@@ -2751,6 +2755,20 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           case 'updateSessionSummary':
             renderSessionSummary(message.summary);
             break;
+
+          case 'updateHealth':
+            helpers.health.render(message.data);
+            break;
+
+          case 'healthLoading':
+            helpers.health.setLoading(message.loading);
+            break;
+
+          case 'showTab': {
+            const tabButton = document.querySelector('.tab-btn[data-tab="' + message.tab + '"]');
+            if (tabButton) tabButton.click();
+            break;
+          }
 
           case 'updateTaskPerformance':
             renderTaskPerformance(message.data);

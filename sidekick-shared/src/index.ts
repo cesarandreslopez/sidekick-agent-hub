@@ -1127,3 +1127,9 @@ export {
   scopePeakHoursToSessionProvider,
 } from './peakHours';
 export type { FetchPeakHoursOptions, PeakHoursState } from './peakHours';
+export {
+  FAILING_TOOL_TREND_ARROWS,
+  failingToolTrend,
+  mergeFailingToolWindows,
+} from './failingTools';
+export type { FailingToolTrend, FailingToolTrendRow, FailingToolWindow } from './failingTools';

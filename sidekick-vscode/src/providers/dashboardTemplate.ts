@@ -94,6 +94,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     <button class="tab-btn active" data-tab="session" role="tab" aria-selected="true" aria-controls="session-tab">Session</button>
     <button class="tab-btn" data-tab="summary" role="tab" aria-selected="false" aria-controls="summary-tab">Summary</button>
     <button class="tab-btn" data-tab="history" role="tab" aria-selected="false" aria-controls="history-tab">History</button>
+    <button class="tab-btn" data-tab="health" role="tab" aria-selected="false" aria-controls="health-tab">Health</button>
   </div>
 
   <div id="session-tab" class="tab-content active" role="tabpanel" aria-label="Session">
@@ -729,6 +730,29 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
           <div class="sk-skeleton sk-skeleton-card" style="flex: 1; height: 60px;"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="health-tab" class="tab-content" role="tabpanel" aria-label="Health">
+    <div class="health-header">
+      <div class="section-title">Health</div>
+      <button class="range-btn" id="health-refresh" title="Run the checks again">Refresh</button>
+    </div>
+    <div id="health-loading" class="history-loading" style="display: none;">
+      <div class="sk-skeleton sk-skeleton-card" style="width: 100%; height: 48px; margin: 8px 0;"></div>
+    </div>
+    <div id="health-banner"></div>
+    <div class="section">
+      <div class="section-title">Checks</div>
+      <div id="health-checks"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Session Providers</div>
+      <div id="health-diagnostics" class="health-empty">Open this tab to probe the session providers.</div>
+    </div>
+    <div class="section">
+      <div class="section-title">Failing Tools <span class="section-hint">last 7 and 30 days</span></div>
+      <div id="health-tools"></div>
     </div>
   </div>
 

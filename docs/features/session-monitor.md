@@ -61,6 +61,17 @@ The History tab charts the persisted usage store (`historical-data.json`) over *
 
 A dashed line overlays the previous period (yesterday, the seven days before, or the previous calendar month), and the summary tiles show the change versus it.
 
+### Health Tab
+
+The Health tab runs the same checks as **Sidekick: Doctor** (which now also focuses this tab) and shows them in place:
+
+- a status banner (healthy, attention, unhealthy) with the number of items needing attention;
+- the check list — project slug, session discovery, OpenCode sqlite, accounts, provider API status, deprecated settings — each with a repair hint when there is one;
+- **Session Providers** — diagnostics the Claude Code, Codex, and OpenCode providers emit when probed for the current workspace (missing directories, an unavailable `sqlite3`, enumeration failures);
+- **Failing Tools** — the tools with the most failures over the last 7 and 30 days, with a trend arrow comparing the week to the 30-day weekly average (the same rule `sidekick stats` prints).
+
+Press **Refresh** to run the checks again.
+
 ## HTML Session Report
 
 ![HTML Session Report](../images/session_html_report.png)

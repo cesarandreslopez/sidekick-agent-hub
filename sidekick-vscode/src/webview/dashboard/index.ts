@@ -6,8 +6,12 @@
  * `legacy.ts` and wired from here.
  */
 
+import { createHealthView } from './health';
 import { createHistoryView } from './history';
 import { readDashboardInit } from './init';
 import { startLegacyDashboard } from './legacy';
 
-startLegacyDashboard(readDashboardInit(document), { history: createHistoryView(document) });
+startLegacyDashboard(readDashboardInit(document), {
+  history: createHistoryView(document),
+  health: createHealthView(document),
+});

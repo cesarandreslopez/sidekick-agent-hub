@@ -276,11 +276,6 @@ export interface HistoryView {
   applyTiles(summary: HistoricalSummary, metric: HistoryValueMetric): void;
 }
 
-/** Helpers the bundle hands to the legacy script. */
-export interface LegacyHelpers {
-  history: HistoryView;
-}
-
 const TILE_IDS: Record<keyof Omit<HistoryTiles, 'deltas'>, string> = {
   tokens: 'history-total-tokens',
   cost: 'history-total-cost',

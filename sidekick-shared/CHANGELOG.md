@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `walkRolloutFiles(roots, { maxDepth, maxFiles, limit, sessionId })` and `walkRolloutFilesAsync()` are the one capped walker for Codex rollout files: newest-dated directories first, each file stat'ed once, results newest first with size and session id, an early exit for `limit`, and defaults of six levels and 20 000 files; `findSessionFilesWithStats()` returns a Claude Code session directory's files with the stat the listing already paid for
 - `writeStateFile()`, `readStateFile()`, `getStateFilePath()`, `quotaToStateFile()`, `billingBlockToStateFile()`, `STATE_FILE_SCHEMA_VERSION`, and the `SidekickStateFile` types (root, node, and `statusline` entry points) maintain the public, versioned `<configDir>/state.json` for external tools — account, quota windows with freshness, context usage, session cost, active billing block — writing atomically only when the content changed; `sidekickStateFileSchema` and its sub-schemas are exported from `sidekick-shared/schemas`
 - `SessionPreviewListResult.hasMore` reports whether `listSessionPreviewsAsync()` left candidates beyond `limit`, so callers can offer a larger limit only when one would show more
+- `mergeFailingToolWindows()`, `failingToolTrend()`, and `FAILING_TOOL_TREND_ARROWS` (root and `browser` entry points) merge the 7-day and 30-day `getTopFailingTools()` windows into per-tool rows with a trend, shared by `sidekick stats` and the VS Code Health tab
 
 ### Changed
 

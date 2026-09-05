@@ -380,6 +380,8 @@ sidekick stats --json
 sidekick stats --csv --output-file usage.csv
 ```
 
+In text mode the **Top Failing Tools** block lists each tool's failures over the last 7 and 30 days with a trend arrow (↑ worse than the 30-day weekly average, ↓ better, → in line), the same rule the VS Code Health tab uses. `--json` output is unchanged.
+
 ### Import
 
 ```bash

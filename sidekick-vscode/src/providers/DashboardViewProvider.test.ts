@@ -30,6 +30,7 @@ vi.mock('vscode', () => ({
   },
   workspace: {
     workspaceFolders: [{ uri: { fsPath: '/workspace' } }],
+    getConfiguration: () => ({ inspect: () => undefined, get: () => undefined }),
   },
   window: {
     createWebviewPanel: vi.fn(),
@@ -38,6 +39,22 @@ vi.mock('vscode', () => ({
     onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
   },
 }));
+
+const sharedMocks = vi.hoisted(() => ({
+  runDoctor: vi.fn(),
+  getTopFailingTools: vi.fn(),
+  createSessionProviders: vi.fn(),
+}));
+
+vi.mock('sidekick-shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('sidekick-shared')>();
+  return {
+    ...actual,
+    runDoctor: sharedMocks.runDoctor,
+    getTopFailingTools: sharedMocks.getTopFailingTools,
+    createSessionProviders: sharedMocks.createSessionProviders,
+  };
+});
 
 vi.mock('../services/Logger', () => ({
   log: vi.fn(),
@@ -397,6 +414,73 @@ describe('DashboardViewProvider quota UI', () => {
     });
     expect(update![0].data.dataPoints[0].breakdown['gpt-5.4']).toMatchObject({ calls: 1 });
     expect(update![0].data.previousPeriod).toEqual([]);
+    provider.dispose();
+  });
+
+  it('answers requestHealth with the doctor report, provider diagnostics, and both failing-tool windows', async () => {
+    const report = {
+      schemaVersion: 1,
+      generatedAt: '2026-09-04T12:00:00.000Z',
+      status: 'attention',
+      checks: [{ id: 'accounts', status: 'warning', title: 'Accounts', message: 'none' }],
+    };
+    sharedMocks.runDoctor.mockResolvedValue(report);
+    sharedMocks.getTopFailingTools.mockImplementation(async (days: number) =>
+      days === 7
+        ? [{ tool: 'Bash', failures: 2, categories: {} }]
+        : [{ tool: 'Bash', failures: 5, categories: {} }],
+    );
+    const dispose = vi.fn();
+    sharedMocks.createSessionProviders.mockImplementation(
+      (options: { onDiagnostic: (d: unknown) => void }) => ({
+        providers: [
+          {
+            id: 'opencode',
+            findAllSessions: () => {
+              options.onDiagnostic({
+                providerId: 'opencode',
+                kind: 'sqlite_unavailable',
+                severity: 'warning',
+                phase: 'enumerate',
+                message: 'sqlite3 not found',
+              });
+              return [];
+            },
+            dispose,
+          },
+        ],
+        diagnostics: [],
+      }),
+    );
+
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+
+    (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage({ type: 'requestHealth' });
+    await vi.waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'updateHealth' })),
+    );
+
+    const update = postMessage.mock.calls.find((call) => call[0].type === 'updateHealth')![0];
+    expect(update.data.report).toBe(report);
+    expect(update.data.providerDiagnostics).toEqual([
+      expect.objectContaining({ providerId: 'opencode', kind: 'sqlite_unavailable' }),
+    ]);
+    expect(update.data.failingTools).toEqual([
+      expect.objectContaining({ tool: 'Bash', last7: 2, last30: 5, trend: 'up' }),
+    ]);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(sharedMocks.runDoctor).toHaveBeenCalledWith(
+      expect.objectContaining({ deprecatedSettings: expect.any(Array) }),
+    );
+    const loading = postMessage.mock.calls.filter((call) => call[0].type === 'healthLoading');
+    expect(loading.map((call) => call[0].loading)).toEqual([true, false]);
     provider.dispose();
   });
 });

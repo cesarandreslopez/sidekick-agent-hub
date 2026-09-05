@@ -61,6 +61,7 @@ import { ErrorViewProvider } from './providers/ErrorViewProvider';
 import { DashboardViewProvider } from './providers/DashboardViewProvider';
 import { MonitoringDisabledViewProvider } from './providers/MonitoringDisabledViewProvider';
 import { registerLazyWebviewView } from './providers/lazyWebviewViewProvider';
+import { collectDeprecatedSettings } from './services/deprecatedSettings';
 import { MindMapViewProvider } from './providers/MindMapViewProvider';
 import { TaskBoardViewProvider } from './providers/TaskBoardViewProvider';
 import { PlanBoardViewProvider } from './providers/PlanBoardViewProvider';
@@ -1948,33 +1949,24 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage('No workspace folder open');
         return;
       }
-      const sidekickConfig = vscode.workspace.getConfiguration('sidekick');
-      const configured = (key: string) => {
-        const inspected = sidekickConfig.inspect(key);
-        return (
-          inspected?.globalValue !== undefined ||
-          inspected?.workspaceValue !== undefined ||
-          inspected?.workspaceFolderValue !== undefined
-        );
-      };
-      const deprecatedSettings = [
-        configured('inlineTimeout')
-          ? {
-              key: 'sidekick.inlineTimeout',
-              replacement: 'sidekick.timeouts.inlineCompletion',
-            }
-          : null,
-        configured('authMode')
-          ? { key: 'sidekick.authMode', replacement: 'sidekick.inferenceProvider' }
-          : null,
-        configured('zai.tier') ? { key: 'sidekick.zai.tier' } : null,
-      ].filter((setting): setting is { key: string; replacement?: string } => setting !== null);
+      const deprecatedSettings = collectDeprecatedSettings(
+        vscode.workspace.getConfiguration('sidekick'),
+      );
       const report = await runDoctor({ cwd: workspacePath, deprecatedSettings });
       log(formatHealthReport(report));
       showLog();
       const message = `Sidekick Doctor: ${report.status} (${report.checks.filter((check) => check.status === 'warning' || check.status === 'error').length} items need attention)`;
       if (report.status === 'healthy') vscode.window.showInformationMessage(message);
       else vscode.window.showWarningMessage(message);
+      // The Health tab shows the same report with provider diagnostics and failing tools.
+      if (dashboardProvider) {
+        try {
+          await vscode.commands.executeCommand(`${DashboardViewProvider.viewType}.focus`);
+        } catch {
+          // The view container may be hidden; the tab still switches for the next show.
+        }
+        dashboardProvider.showTab('health');
+      }
     }),
     vscode.commands.registerCommand('sidekick.sessionDiagnostics', async () => {
       const { getSessionDiagnostics } = await import('./services/SessionPathResolver');

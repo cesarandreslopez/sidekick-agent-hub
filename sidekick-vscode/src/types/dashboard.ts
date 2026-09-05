@@ -17,7 +17,14 @@ import type {
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
 import type { ChangelogEntry } from '../utils/changelogParser';
-import type { BillingBlock, CodexResetCreditsSnapshot, PeakHoursState } from 'sidekick-shared';
+import type {
+  BillingBlock,
+  CodexResetCreditsSnapshot,
+  FailingToolTrendRow,
+  HealthReport,
+  PeakHoursState,
+  SessionProviderDiagnostic,
+} from 'sidekick-shared';
 
 /** Official five-hour sample persisted by the status line, shown beside the local block estimate. */
 export interface BillingBlockOfficialSample {
@@ -201,6 +208,10 @@ export type DashboardMessage =
     }
   | { type: 'updateHistoricalData'; data: HistoricalSummary }
   | { type: 'historicalDataLoading'; loading: boolean }
+  | { type: 'updateHealth'; data: DashboardHealthPayload }
+  | { type: 'healthLoading'; loading: boolean }
+  /** Activate a dashboard tab (the doctor command focuses Health). */
+  | { type: 'showTab'; tab: DashboardTab }
   | { type: 'updateLatency'; latency: LatencyDisplay }
   | { type: 'showSuggestions'; suggestions: ClaudeMdSuggestionDisplay[] }
   | { type: 'suggestionsLoading'; loading: boolean }
@@ -318,6 +329,7 @@ export type DashboardWebviewMessage =
   | { type: 'openInstructionFile' }
   | { type: 'generateNarrative' }
   | { type: 'requestSessionSummary' }
+  | { type: 'requestHealth' }
   | { type: 'searchTimeline'; query: string }
   | { type: 'requestToolCallDetails'; toolName: string }
   | { type: 'toggleEventLog'; enabled: boolean }
@@ -754,4 +766,15 @@ export interface DashboardInit {
   changelog: ChangelogEntry[];
   /** Attribution label → CSS variable name, for chart colours. */
   attributionVars: Record<string, string>;
+}
+
+export type DashboardTab = 'session' | 'summary' | 'history' | 'health';
+
+/** The Health tab's data: the shared doctor report plus live provider diagnostics and failing tools. */
+export interface DashboardHealthPayload {
+  report: HealthReport;
+  /** Diagnostics the session providers emitted while being probed for this request. */
+  providerDiagnostics: SessionProviderDiagnostic[];
+  /** The 7-day and 30-day failing-tool windows merged with a trend (mergeFailingToolWindows). */
+  failingTools: FailingToolTrendRow[];
 }

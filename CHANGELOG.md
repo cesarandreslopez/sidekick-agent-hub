@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** `sidekick statusline` and the dashboard write `state.json` (account, quota with freshness, context, session cost, active billing block) for tmux status bars, menu-bar apps, and scripts, only when the content changed
 - **VS Code:** the dashboard writes the same `state.json` on quota updates and billing-block ticks
 - **VS Code:** History tab gains hourly "Today", by-model and by-tool stacked series, a project filter, and a previous-period overlay with tile deltas
+- **VS Code:** a Health tab in the dashboard (doctor checks, provider diagnostics, failing-tool trends); **CLI:** `stats` shows failing tools over 7 and 30 days with a trend; **Shared:** `mergeFailingToolWindows()` provides the common trend rule
 
 ### Changed
 

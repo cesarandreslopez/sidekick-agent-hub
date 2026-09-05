@@ -32,7 +32,16 @@ import type {
 } from '../types/dashboard';
 import { resolveInstructionTarget } from '../types/instructionFile';
 import type { HandoffService } from '../services/HandoffService';
-import { getProjectSlug, summarizeTokens } from 'sidekick-shared';
+import {
+  createSessionProviders,
+  getProjectSlug,
+  getTopFailingTools,
+  mergeFailingToolWindows,
+  runDoctor,
+  summarizeTokens,
+} from 'sidekick-shared';
+import type { SessionProviderDiagnostic } from 'sidekick-shared';
+import { collectDeprecatedSettings } from '../services/deprecatedSettings';
 import { resolveModel } from '../services/ModelResolver';
 import { TimeoutError } from '../types';
 import type {
@@ -95,6 +104,7 @@ import type { BillingBlock, SessionProviderBase } from 'sidekick-shared';
 import type {
   BillingBlockOfficialSample,
   DashboardInit,
+  DashboardTab,
   HistoricalRange,
   HistoricalSeries,
 } from '../types/dashboard';
@@ -173,6 +183,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _currentHistoricalRange: HistoricalRange = 'week';
   private _currentHistoricalSeries: HistoricalSeries = 'total';
   private _currentHistoricalProject: string | null = null;
+  private _healthInFlight = false;
 
   /** Current drill-down level for historical data */
   private _drillDownStack: Array<{ range: string; timestamp: string }> = [];
@@ -623,6 +634,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'requestSessionSummary':
         this._handleRequestSessionSummary();
+        break;
+
+      case 'requestHealth':
+        void this._sendHealth();
         break;
 
       case 'searchTimeline':
@@ -1208,6 +1223,67 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._postMessage({ type: 'updateHistoricalData', data: summary });
     } finally {
       this._postMessage({ type: 'historicalDataLoading', loading: false });
+    }
+  }
+
+  /** Activate a dashboard tab, e.g. Health after `Sidekick: Doctor`. */
+  showTab(tab: DashboardTab): void {
+    this._postMessage({ type: 'showTab', tab });
+  }
+
+  /**
+   * Answers the Health tab: the shared doctor report (with the deprecated
+   * settings the doctor command reports), diagnostics the session providers
+   * emit when probed for this workspace, and the failing-tool windows.
+   */
+  private async _sendHealth(): Promise<void> {
+    if (this._healthInFlight) return;
+    this._healthInFlight = true;
+    this._postMessage({ type: 'healthLoading', loading: true });
+    try {
+      const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const providerDiagnostics: SessionProviderDiagnostic[] = [];
+      const created = createSessionProviders({
+        onDiagnostic: (diagnostic) => providerDiagnostics.push(diagnostic),
+      });
+      try {
+        // Constructors do no I/O; one discovery per provider surfaces the
+        // missing-directory / sqlite diagnostics that matter here.
+        for (const provider of created.providers) {
+          try {
+            provider.findAllSessions(workspacePath ?? process.cwd());
+          } catch (error) {
+            providerDiagnostics.push({
+              providerId: provider.id,
+              kind: 'read_failed',
+              severity: 'error',
+              phase: 'enumerate',
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      } finally {
+        for (const provider of created.providers) provider.dispose();
+      }
+      const [report, last7, last30] = await Promise.all([
+        runDoctor({
+          cwd: workspacePath,
+          deprecatedSettings: collectDeprecatedSettings(
+            vscode.workspace.getConfiguration('sidekick'),
+          ),
+        }),
+        getTopFailingTools(7),
+        getTopFailingTools(30),
+      ]);
+      this._postMessage({
+        type: 'updateHealth',
+        data: { report, providerDiagnostics, failingTools: mergeFailingToolWindows(last7, last30) },
+      });
+    } catch (error) {
+      logError('Dashboard: failed to build the Health tab', error);
+    } finally {
+      this._healthInFlight = false;
+      this._postMessage({ type: 'healthLoading', loading: false });
     }
   }
 

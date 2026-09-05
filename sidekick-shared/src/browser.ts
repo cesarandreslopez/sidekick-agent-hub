@@ -199,3 +199,9 @@ export {
   sessionSummaryFromStats,
 } from './historicalStore';
 export type { ApplySessionSummaryOptions, SessionSummaryFromStatsOptions } from './historicalStore';
+export {
+  FAILING_TOOL_TREND_ARROWS,
+  failingToolTrend,
+  mergeFailingToolWindows,
+} from './failingTools';
+export type { FailingToolTrend, FailingToolTrendRow, FailingToolWindow } from './failingTools';

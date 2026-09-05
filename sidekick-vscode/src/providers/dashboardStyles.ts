@@ -201,6 +201,33 @@ export const DASHBOARD_STYLES = `
       color: var(--vscode-descriptionForeground);
     }
 
+    .health-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .health-status { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; border-radius: 4px; margin-bottom: 12px; background: var(--vscode-editorWidget-background); border-left: 3px solid var(--vscode-descriptionForeground); }
+    .health-status.healthy { border-left-color: var(--vscode-charts-green, var(--vscode-testing-iconPassed)); }
+    .health-status.attention { border-left-color: var(--vscode-charts-yellow, var(--vscode-editorWarning-foreground)); }
+    .health-status.unhealthy { border-left-color: var(--vscode-charts-red, var(--vscode-errorForeground)); }
+    .health-status-label { font-weight: 600; text-transform: capitalize; }
+    .health-status-detail { font-size: 11px; color: var(--vscode-descriptionForeground); }
+    .health-check { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--vscode-widget-border, transparent); font-size: 12px; }
+    .health-check-icon { width: 14px; text-align: center; font-weight: 700; }
+    .health-check.ok .health-check-icon { color: var(--vscode-charts-green, var(--vscode-testing-iconPassed)); }
+    .health-check.warning .health-check-icon { color: var(--vscode-charts-yellow, var(--vscode-editorWarning-foreground)); }
+    .health-check.error .health-check-icon { color: var(--vscode-charts-red, var(--vscode-errorForeground)); }
+    .health-check-title { font-weight: 600; }
+    .health-check-message, .health-check-repair { color: var(--vscode-descriptionForeground); font-size: 11px; }
+    .health-check-repair { margin-top: 2px; }
+    .health-diagnostic { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; font-size: 11px; padding: 4px 0; }
+    .health-diagnostic-provider { font-weight: 600; }
+    .health-diagnostic-kind { color: var(--vscode-descriptionForeground); }
+    .health-diagnostic.error .health-diagnostic-provider { color: var(--vscode-charts-red, var(--vscode-errorForeground)); }
+    .health-empty { font-size: 11px; color: var(--vscode-descriptionForeground); padding: 4px 0; }
+    .health-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .health-table th, .health-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--vscode-widget-border, transparent); }
+    .health-table th:not(:first-child), .health-table td:not(:first-child) { text-align: right; }
+    .health-trend.up { color: var(--vscode-charts-red, var(--vscode-errorForeground)); }
+    .health-trend.down { color: var(--vscode-charts-green, var(--vscode-testing-iconPassed)); }
+    .section-hint { font-size: 10px; font-weight: 400; color: var(--vscode-descriptionForeground); margin-left: 6px; }
+
     .stat-delta {
       font-size: 10px;
       color: var(--vscode-descriptionForeground);
