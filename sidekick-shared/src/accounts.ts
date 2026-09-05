@@ -19,6 +19,8 @@ import {
   setActiveSavedAccount,
   type ResolvedActiveAccount,
   type SavedAccountProfile,
+  replaceSavedAccountProfilesUnlocked,
+  withSavedAccountRegistryLock,
 } from './accountRegistry';
 import { getClaudeProfileHome } from './claudeProfiles';
 
@@ -220,7 +222,24 @@ export function readAccountRegistry(): AccountRegistry | null {
 }
 
 export function writeAccountRegistry(registry: AccountRegistry): void {
-  const mappedClaudeProfiles: SavedAccountProfile[] = registry.accounts.map((account) => ({
+  replaceSavedAccountProfiles(
+    'claude-code',
+    mapClaudeProfiles(registry),
+    registry.activeAccountUuid,
+  );
+}
+
+/** For callers already holding the registry lock (see withSavedAccountRegistryLock). */
+function writeAccountRegistryUnlocked(registry: AccountRegistry): void {
+  replaceSavedAccountProfilesUnlocked(
+    'claude-code',
+    mapClaudeProfiles(registry),
+    registry.activeAccountUuid,
+  );
+}
+
+function mapClaudeProfiles(registry: AccountRegistry): SavedAccountProfile[] {
+  return registry.accounts.map((account) => ({
     id: account.uuid,
     providerId: 'claude-code',
     providerAccountId: account.uuid,
@@ -231,7 +250,6 @@ export function writeAccountRegistry(registry: AccountRegistry): void {
       email: account.email,
     },
   }));
-  replaceSavedAccountProfiles('claude-code', mappedClaudeProfiles, registry.activeAccountUuid);
 }
 
 // ── Read active Claude account ───────────────────────────────────────────
@@ -278,17 +296,34 @@ export function addCurrentAccount(label?: string): AccountManagerResult {
 
   ensureDirs();
 
-  // 4. Load or create registry
-  const registry = readAccountRegistry() ?? {
-    version: 1 as const,
-    activeAccountUuid: null,
-    accounts: [],
-  };
+  // 4–7 are one read-modify-write of the registry: hold the registry lock
+  // across them so a concurrent add from another process is not dropped
+  // when this write replaces the whole Claude profile set.
+  return withSavedAccountRegistryLock(() => {
+    // 4. Load or create registry
+    const registry = readAccountRegistry() ?? {
+      version: 1 as const,
+      activeAccountUuid: null,
+      accounts: [],
+    };
 
-  // 5. Check if account already exists — update credentials + label
-  const existing = registry.accounts.find((a) => a.uuid === active.uuid);
-  if (existing) {
-    if (label !== undefined) existing.label = label;
+    // 5. Check if account already exists — update credentials + label
+    const existing = registry.accounts.find((a) => a.uuid === active.uuid);
+    if (existing) {
+      if (label !== undefined) existing.label = label;
+      atomicWriteJson(path.join(getCredentialsDir(), `${active.uuid}.credentials.json`), credBlob);
+      atomicWriteJson(path.join(getConfigsDir(), `${active.uuid}.config.json`), configBlob);
+      try {
+        writeClaudeProfileMirror(active.uuid, credBlob, configBlob);
+      } catch {
+        /* flat backups remain available */
+      }
+      registry.activeAccountUuid = active.uuid;
+      writeAccountRegistryUnlocked(registry);
+      return { success: true };
+    }
+
+    // 6. New account — back up credentials
     atomicWriteJson(path.join(getCredentialsDir(), `${active.uuid}.credentials.json`), credBlob);
     atomicWriteJson(path.join(getConfigsDir(), `${active.uuid}.config.json`), configBlob);
     try {
@@ -296,31 +331,19 @@ export function addCurrentAccount(label?: string): AccountManagerResult {
     } catch {
       /* flat backups remain available */
     }
+
+    // 7. Add entry
+    registry.accounts.push({
+      uuid: active.uuid,
+      email: active.email,
+      label,
+      addedAt: new Date().toISOString(),
+    });
     registry.activeAccountUuid = active.uuid;
-    writeAccountRegistry(registry);
+    writeAccountRegistryUnlocked(registry);
+
     return { success: true };
-  }
-
-  // 6. New account — back up credentials
-  atomicWriteJson(path.join(getCredentialsDir(), `${active.uuid}.credentials.json`), credBlob);
-  atomicWriteJson(path.join(getConfigsDir(), `${active.uuid}.config.json`), configBlob);
-  try {
-    writeClaudeProfileMirror(active.uuid, credBlob, configBlob);
-  } catch {
-    /* flat backups remain available */
-  }
-
-  // 7. Add entry
-  registry.accounts.push({
-    uuid: active.uuid,
-    email: active.email,
-    label,
-    addedAt: new Date().toISOString(),
   });
-  registry.activeAccountUuid = active.uuid;
-  writeAccountRegistry(registry);
-
-  return { success: true };
 }
 
 // ── Switch to account ────────────────────────────────────────────────────
@@ -523,36 +546,39 @@ export function reconcileClaudeAuthState(): void {
 // ── Remove account ───────────────────────────────────────────────────────
 
 export function removeAccount(uuid: string): AccountManagerResult {
-  const registry = readAccountRegistry();
-  if (!registry) {
-    return { success: false, error: 'No account registry found.' };
-  }
+  // One read-modify-write under the registry lock (see addCurrentAccount).
+  return withSavedAccountRegistryLock(() => {
+    const registry = readAccountRegistry();
+    if (!registry) {
+      return { success: false, error: 'No account registry found.' };
+    }
 
-  const idx = registry.accounts.findIndex((a) => a.uuid === uuid);
-  if (idx === -1) {
-    return { success: false, error: `Account ${uuid} not found.` };
-  }
+    const idx = registry.accounts.findIndex((a) => a.uuid === uuid);
+    if (idx === -1) {
+      return { success: false, error: `Account ${uuid} not found.` };
+    }
 
-  // Remove backed-up files
-  try {
-    fs.unlinkSync(path.join(getCredentialsDir(), `${uuid}.credentials.json`));
-  } catch {
-    /* ok */
-  }
-  try {
-    fs.unlinkSync(path.join(getConfigsDir(), `${uuid}.config.json`));
-  } catch {
-    /* ok */
-  }
+    // Remove backed-up files
+    try {
+      fs.unlinkSync(path.join(getCredentialsDir(), `${uuid}.credentials.json`));
+    } catch {
+      /* ok */
+    }
+    try {
+      fs.unlinkSync(path.join(getConfigsDir(), `${uuid}.config.json`));
+    } catch {
+      /* ok */
+    }
 
-  // Remove from registry
-  registry.accounts.splice(idx, 1);
-  if (registry.activeAccountUuid === uuid) {
-    registry.activeAccountUuid = registry.accounts[0]?.uuid ?? null;
-  }
-  writeAccountRegistry(registry);
+    // Remove from registry
+    registry.accounts.splice(idx, 1);
+    if (registry.activeAccountUuid === uuid) {
+      registry.activeAccountUuid = registry.accounts[0]?.uuid ?? null;
+    }
+    writeAccountRegistryUnlocked(registry);
 
-  return { success: true };
+    return { success: true };
+  });
 }
 
 // ── Query helpers ────────────────────────────────────────────────────────
@@ -607,8 +633,10 @@ export function resolveActiveClaudeAccount(
         // Self-heal is best-effort: a registry write failure (read-only/full
         // disk) must never break display or extension activation. We still
         // return the correct live identity below.
+        // Silent: this is a read path repairing a pointer to the profile that
+        // already matches the live login, so subscribers have nothing new to see.
         try {
-          setActiveSavedAccount('claude-code', match.id);
+          setActiveSavedAccount('claude-code', match.id, { silent: true });
         } catch {
           /* keep going with the live identity */
         }

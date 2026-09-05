@@ -11,6 +11,12 @@ export interface CreateSessionProvidersOptions {
 
 export interface CreateSessionProvidersResult {
   providers: SessionProviderBase[];
+  /**
+   * Live, not a snapshot: the providers keep the emit closure and update
+   * entries in place (one per provider/kind/phase) as they run, so this array
+   * reflects the latest diagnostics whenever it is read. Copy it to freeze a
+   * point in time; use `onDiagnostic` to observe each emission.
+   */
   diagnostics: SessionProviderDiagnostic[];
 }
 

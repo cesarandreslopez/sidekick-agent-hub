@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `onAccountsChanged()` applies a later subscriber's faster `pollIntervalMs` and resets the interval after the last unsubscribe
 - `OpenCodeProvider.dispose()` resets `dbStatus`; `CodexProvider.listSessionFilesAsync()` records its filesystem fallback for `getLastOperationStatus()`
 - Observed-session cache hits could report a session as active for up to five minutes when a fresh parse would have said ended (the 0.25.0 grace-period drift note)
+- `addCurrentAccount()` and `removeAccount()` hold the registry lock across their whole read-modify-write (new `withSavedAccountRegistryLock()` and `replaceSavedAccountProfilesUnlocked()`), so a concurrent add from another process is no longer dropped when the Claude profile set is replaced
+- `resolveActiveClaudeAccount()`'s self-heal of the active pointer no longer fires an accounts-changed notification from a read path (`setActiveSavedAccount(..., { silent: true })`)
+- `readSessionPreview()` / `readSessionPreviewAsync()` honour `maxPrefixBytes: 0` as "skip the prefix scan" (`firstTimestamp` and `workspacePath` come back null, the file is not opened) instead of flooring the budget to one byte
+- `createSessionProviders()` documents that `diagnostics` is live (updated in place as providers run) and should be copied for a snapshot
+- The packaging contract tests create their scratch projects under the OS temp directory instead of inside the package, so an interrupted run cannot leave a recursive `node_modules/sidekick-shared` link behind
 
 ## [0.25.0] - 2026-08-18
 

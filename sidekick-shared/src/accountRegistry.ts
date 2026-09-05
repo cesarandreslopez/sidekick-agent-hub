@@ -80,9 +80,33 @@ function ensureAccountsDir(): void {
   fs.mkdirSync(getAccountsDir(), { recursive: true, mode: 0o700 });
 }
 
-function writeRegistryUnlocked(registry: SavedAccountRegistry): void {
+interface RegistryWriteOptions {
+  /**
+   * Skip the local change notification. Only for writes that change no
+   * observable account state, such as re-pointing the active pointer at the
+   * profile that already matches the live login (self-heal): a read path
+   * must not wake every subscriber.
+   */
+  silent?: boolean;
+}
+
+function writeRegistryUnlocked(
+  registry: SavedAccountRegistry,
+  options: RegistryWriteOptions = {},
+): void {
   atomicWriteJsonSync(getRegistryPath(), normalizeRegistry(registry));
-  _emitAccountsChanged('local');
+  if (!options.silent) _emitAccountsChanged('local');
+}
+
+/**
+ * Run `operation` while holding the registry lock. For callers that need a
+ * read-modify-write across several steps (the legacy Claude facade's
+ * add/remove); inside it use the `*Unlocked` writers, never the locking ones:
+ * the lock is not re-entrant.
+ */
+export function withSavedAccountRegistryLock<T>(operation: () => T): T {
+  ensureAccountsDir();
+  return withFileLockSync(getRegistryLockPath(), operation);
 }
 
 /**
@@ -94,13 +118,18 @@ function writeRegistryUnlocked(registry: SavedAccountRegistry): void {
  */
 function mutateSavedAccountRegistry(
   mutator: (registry: SavedAccountRegistry) => SavedAccountRegistry,
+  options: RegistryWriteOptions = {},
 ): SavedAccountRegistry {
-  ensureAccountsDir();
-  return withFileLockSync(getRegistryLockPath(), () => {
-    const next = mutator(readSavedAccountRegistry() ?? createEmptyRegistry());
-    writeRegistryUnlocked(next);
-    return next;
-  });
+  return withSavedAccountRegistryLock(() => mutateSavedAccountRegistryUnlocked(mutator, options));
+}
+
+function mutateSavedAccountRegistryUnlocked(
+  mutator: (registry: SavedAccountRegistry) => SavedAccountRegistry,
+  options: RegistryWriteOptions = {},
+): SavedAccountRegistry {
+  const next = mutator(readSavedAccountRegistry() ?? createEmptyRegistry());
+  writeRegistryUnlocked(next, options);
+  return next;
 }
 
 function createEmptyRegistry(): SavedAccountRegistry {
@@ -227,11 +256,26 @@ export function upsertSavedAccountProfile(profile: SavedAccountProfile): SavedAc
 export function setActiveSavedAccount(
   providerId: AccountProviderId,
   accountId: string | null,
+  options: RegistryWriteOptions = {},
 ): SavedAccountRegistry {
   return mutateSavedAccountRegistry((registry) => {
     registry.activeByProvider[providerId] = accountId;
     return registry;
-  });
+  }, options);
+}
+
+function replaceProfiles(
+  providerId: AccountProviderId,
+  accounts: SavedAccountProfile[],
+  activeId: string | null,
+): (registry: SavedAccountRegistry) => SavedAccountRegistry {
+  return (registry) => {
+    registry.accounts = registry.accounts
+      .filter((account) => account.providerId !== providerId)
+      .concat(accounts);
+    registry.activeByProvider[providerId] = activeId;
+    return registry;
+  };
 }
 
 export function replaceSavedAccountProfiles(
@@ -239,13 +283,19 @@ export function replaceSavedAccountProfiles(
   accounts: SavedAccountProfile[],
   activeId: string | null,
 ): SavedAccountRegistry {
-  return mutateSavedAccountRegistry((registry) => {
-    registry.accounts = registry.accounts
-      .filter((account) => account.providerId !== providerId)
-      .concat(accounts);
-    registry.activeByProvider[providerId] = activeId;
-    return registry;
-  });
+  return mutateSavedAccountRegistry(replaceProfiles(providerId, accounts, activeId));
+}
+
+/**
+ * Same as {@link replaceSavedAccountProfiles} without taking the registry
+ * lock: for callers already inside {@link withSavedAccountRegistryLock}.
+ */
+export function replaceSavedAccountProfilesUnlocked(
+  providerId: AccountProviderId,
+  accounts: SavedAccountProfile[],
+  activeId: string | null,
+): SavedAccountRegistry {
+  return mutateSavedAccountRegistryUnlocked(replaceProfiles(providerId, accounts, activeId));
 }
 
 export function removeSavedAccountProfile(

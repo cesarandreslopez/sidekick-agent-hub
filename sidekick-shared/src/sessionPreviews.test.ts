@@ -144,6 +144,20 @@ describe('readSessionPreview', () => {
 
     expect(preview!.firstTimestamp).toBeNull();
   });
+
+  it('skips the prefix scan entirely with maxPrefixBytes: 0', () => {
+    const dir = makeTempDir();
+    const filePath = writeSession(dir, 'skip.jsonl', [
+      JSON.stringify({ type: 'user', timestamp: '2026-08-18T09:00:00.000Z', cwd: '/work' }),
+    ]);
+    const { provider } = makeFakeProvider('claude-code', [filePath]);
+
+    const preview = readSessionPreview(provider, filePath, { maxPrefixBytes: 0 });
+
+    expect(preview).not.toBeNull();
+    expect(preview!.firstTimestamp).toBeNull();
+    expect(preview!.workspacePath).toBeNull();
+  });
 });
 
 describe('listSessionPreviews', () => {

@@ -8,10 +8,14 @@ import {
   writeSavedAccountRegistry,
   listSavedAccountProfiles,
   getActiveSavedAccount,
+  replaceSavedAccountProfilesUnlocked,
+  withSavedAccountRegistryLock,
+  setActiveSavedAccount,
 } from './accountRegistry';
 import { writeAccountRegistry } from './accounts';
 import type { AccountRegistry } from './accounts';
 import type { SavedAccountRegistry } from './accountRegistry';
+import { _onRawAccountsChanged } from './accountChangeSignal';
 
 let tmpDir: string;
 
@@ -194,6 +198,39 @@ describe('accountRegistry', () => {
     );
     expect(fs.existsSync(path.join(tmpDir, 'accounts', 'accounts.json.lock'))).toBe(false);
   }, 20_000);
+
+  it('replaces one provider set without the lock when the caller already holds it', () => {
+    writeSavedAccountRegistry({
+      version: 2,
+      activeByProvider: { 'claude-code': 'c1', codex: 'x1' },
+      accounts: [
+        { id: 'c1', providerId: 'claude-code', providerAccountId: 'c1', addedAt: 't' },
+        { id: 'x1', providerId: 'codex', providerAccountId: 'x1', addedAt: 't' },
+      ],
+    });
+    const reasons: string[] = [];
+    const off = _onRawAccountsChanged((reason) => reasons.push(reason));
+    try {
+      const next = withSavedAccountRegistryLock(() =>
+        replaceSavedAccountProfilesUnlocked(
+          'claude-code',
+          [{ id: 'c2', providerId: 'claude-code', providerAccountId: 'c2', addedAt: 't' }],
+          'c2',
+        ),
+      );
+      expect(next.accounts.map((a) => a.id).sort()).toEqual(['c2', 'x1']);
+      expect(next.activeByProvider).toEqual({ 'claude-code': 'c2', codex: 'x1' });
+      expect(reasons).toEqual(['local']);
+
+      reasons.length = 0;
+      setActiveSavedAccount('codex', null, { silent: true });
+      expect(reasons).toEqual([]);
+      setActiveSavedAccount('codex', 'x1');
+      expect(reasons).toEqual(['local']);
+    } finally {
+      off();
+    }
+  });
 });
 
 function runWorker(

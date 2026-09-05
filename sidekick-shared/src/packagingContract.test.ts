@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { describe, it, expect } from 'vitest';
 import { existsSync, promises as fs } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 const pkgRoot = path.resolve(__dirname, '..');
@@ -410,8 +411,9 @@ describe('packaging contract', () => {
 
   it('resolves every documented subpath in a moduleResolution: node scratch project', async () => {
     const ts = await import('typescript');
-    const scratch = await fs.mkdtemp(path.join(pkgRoot, '.tmp-node-resolution-'));
-    const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
+    // Outside the package: a crash between the symlink and the cleanup must
+    // not leave a recursive node_modules/sidekick-shared link inside it.
+    let scratch: string | undefined;
     const specifiers = [
       'sidekick-shared',
       'sidekick-shared/browser',
@@ -424,6 +426,8 @@ describe('packaging contract', () => {
       'sidekick-shared/statusline',
     ];
     try {
+      scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-shared-node-resolution-'));
+      const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
       await fs.mkdir(path.dirname(packageLink), { recursive: true });
       await fs.symlink(pkgRoot, packageLink, process.platform === 'win32' ? 'junction' : 'dir');
       const entry = path.join(scratch, 'entry.ts');
@@ -448,15 +452,13 @@ describe('packaging contract', () => {
         errors.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')),
       ).toEqual([]);
     } finally {
-      await fs.rm(scratch, { recursive: true, force: true });
+      if (scratch) await fs.rm(scratch, { recursive: true, force: true });
     }
   });
 
   it('resolves every documented subpath from a scratch Vite app without aliases', async () => {
     const { createServer } = await import('vite');
-    const scratch = await fs.mkdtemp(path.join(pkgRoot, '.tmp-vite-resolution-'));
-    const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
-    const entry = path.join(scratch, 'entry.ts');
+    let scratch: string | undefined;
     const specifiers = [
       'sidekick-shared',
       'sidekick-shared/browser',
@@ -470,8 +472,11 @@ describe('packaging contract', () => {
     ];
     let server: Awaited<ReturnType<typeof createServer>> | undefined;
     try {
+      scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-shared-vite-resolution-'));
+      const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
       await fs.mkdir(path.dirname(packageLink), { recursive: true });
       await fs.symlink(pkgRoot, packageLink, process.platform === 'win32' ? 'junction' : 'dir');
+      const entry = path.join(scratch, 'entry.ts');
       await fs.writeFile(entry, 'export {};\n');
       server = await createServer({
         root: scratch,
@@ -485,7 +490,7 @@ describe('packaging contract', () => {
       }
     } finally {
       await server?.close();
-      await fs.rm(scratch, { recursive: true, force: true });
+      if (scratch) await fs.rm(scratch, { recursive: true, force: true });
     }
   });
 

@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** `OpenCodeProvider.dispose()` resets its database status; Codex `listSessionFilesAsync()` records its filesystem fallback so `getLastOperationStatus()` describes the right operation
 - **Shared:** the status-line hot path no longer writes to the account registry (self-heal is deferred to ordinary commands)
 - **Shared:** a session active only by grace period no longer stays active on collector cache hits for up to five minutes
+- **Shared:** the legacy account facade's add/remove run under the registry lock, the self-heal write is silent, `maxPrefixBytes: 0` skips the preview prefix scan, the live `diagnostics` array is documented, and the packaging tests use the OS temp directory
 
 ## [0.25.0] - 2026-08-18
 

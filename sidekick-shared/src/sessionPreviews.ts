@@ -45,8 +45,16 @@ export interface SessionPreview {
 }
 
 export interface ReadSessionPreviewOptions {
-  /** Byte budget for the generic prefix scan (default 16 KiB). */
+  /**
+   * Byte budget for the generic prefix scan (default 16 KiB). `0` skips the
+   * scan entirely for callers that ignore `firstTimestamp` and
+   * `workspacePath`; both come back `null` and the file is not opened.
+   */
   maxPrefixBytes?: number;
+}
+
+function emptyPrefixScan(): PrefixScan {
+  return { firstTimestamp: null, workspacePath: null };
 }
 
 export interface ListSessionPreviewsOptions extends ReadSessionPreviewOptions {
@@ -136,7 +144,8 @@ export function readSessionPreview(
     // A provider that cannot identify the file still yields a usable preview.
   }
 
-  const prefix = scanPrefix(sessionPath, options.maxPrefixBytes ?? DEFAULT_PREFIX_BYTES);
+  const prefixBudget = options.maxPrefixBytes ?? DEFAULT_PREFIX_BYTES;
+  const prefix = prefixBudget > 0 ? scanPrefix(sessionPath, prefixBudget) : emptyPrefixScan();
 
   return {
     provider: provider.id,
@@ -449,7 +458,9 @@ async function readSessionPreviewFromInfoAsync(
   } catch {
     return null;
   }
-  const prefix = await scanPrefixAsync(info.path, options.maxPrefixBytes ?? DEFAULT_PREFIX_BYTES);
+  const prefixBudget = options.maxPrefixBytes ?? DEFAULT_PREFIX_BYTES;
+  const prefix =
+    prefixBudget > 0 ? await scanPrefixAsync(info.path, prefixBudget) : emptyPrefixScan();
   return {
     provider: provider.id,
     sessionId: info.sessionId ?? safeSessionId(provider, info.path),

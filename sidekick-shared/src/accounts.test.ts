@@ -19,6 +19,8 @@ import {
 } from './accounts';
 import type { AccountRegistry } from './accounts';
 import { getClaudeProfileHome } from './claudeProfiles';
+import { _onRawAccountsChanged } from './accountChangeSignal';
+import { getActiveSavedAccount, setActiveSavedAccount } from './accountRegistry';
 
 // Use a temp dir for all test data
 let tmpDir: string;
@@ -47,6 +49,35 @@ vi.mock('./credentialIO', () => ({
     fs.writeFileSync(path.join(claudeDir, '.credentials.json'), JSON.stringify(credentials));
   },
 }));
+
+// Record registry-lock scopes and registry reads to prove the facade's
+// read-modify-write happens inside one lock acquisition.
+const lockEvents = vi.hoisted(() => [] as string[]);
+vi.mock('./writers/atomic', async () => {
+  const actual = await vi.importActual<typeof import('./writers/atomic')>('./writers/atomic');
+  return {
+    ...actual,
+    withFileLockSync: <T>(lockPath: string, operation: () => T): T => {
+      const name = lockPath.split(/[\\/]/).pop() ?? lockPath;
+      lockEvents.push(`enter:${name}`);
+      try {
+        return actual.withFileLockSync(lockPath, operation);
+      } finally {
+        lockEvents.push(`exit:${name}`);
+      }
+    },
+  };
+});
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    readFileSync: ((...args: Parameters<typeof actual.readFileSync>) => {
+      if (String(args[0]).endsWith('accounts.json')) lockEvents.push('read:accounts.json');
+      return (actual.readFileSync as (...a: unknown[]) => unknown)(...args);
+    }) as typeof actual.readFileSync,
+  };
+});
 
 // Mock os.homedir to isolate .claude dir
 vi.mock('os', async () => {
@@ -541,5 +572,48 @@ describe('resolveActiveClaudeAccount', () => {
     const resolved = resolveActiveClaudeAccount();
 
     expect(resolved).toEqual({ source: 'none' });
+  });
+});
+
+describe('registry lock scope of the legacy facade', () => {
+  it('reads and writes the registry inside one lock acquisition for add and remove', () => {
+    writeClaudeConfig('a@example.com', 'uuid-a');
+    writeClaudeCredentials('token-a');
+
+    lockEvents.length = 0;
+    expect(addCurrentAccount('A').success).toBe(true);
+    const enter = lockEvents.indexOf('enter:accounts.json.lock');
+    const exit = lockEvents.lastIndexOf('exit:accounts.json.lock');
+    const read = lockEvents.indexOf('read:accounts.json');
+    expect(enter).toBeGreaterThanOrEqual(0);
+    expect(read).toBeGreaterThan(enter);
+    expect(read).toBeLessThan(exit);
+    expect(lockEvents.filter((e) => e === 'enter:accounts.json.lock')).toHaveLength(1);
+
+    lockEvents.length = 0;
+    expect(removeAccount('uuid-a').success).toBe(true);
+    const enter2 = lockEvents.indexOf('enter:accounts.json.lock');
+    const read2 = lockEvents.indexOf('read:accounts.json');
+    expect(read2).toBeGreaterThan(enter2);
+    expect(lockEvents.filter((e) => e === 'enter:accounts.json.lock')).toHaveLength(1);
+  });
+
+  it('self-heals the active pointer without notifying subscribers', () => {
+    writeClaudeConfig('a@example.com', 'uuid-a');
+    writeClaudeCredentials('token-a');
+    addCurrentAccount('A');
+    // Point the registry elsewhere so the next resolve has to repair it.
+    setActiveSavedAccount('claude-code', null);
+
+    const reasons: string[] = [];
+    const off = _onRawAccountsChanged((reason) => reasons.push(reason));
+    try {
+      const resolved = resolveActiveClaudeAccount();
+      expect(resolved.registryAccountId).toBe('uuid-a');
+      expect(getActiveSavedAccount('claude-code')?.id).toBe('uuid-a');
+      expect(reasons).toEqual([]);
+    } finally {
+      off();
+    }
   });
 });

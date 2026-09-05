@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VS Code dashboard: the webview script is a real esbuild bundle again (`out/webview/dashboard.js`), with the document reduced to markup, CSS, and a JSON init block
 - VS Code History tab: hourly today, model/tool series, project filter, previous-period overlay and deltas
 - Health: a dashboard Health tab with doctor checks, provider diagnostics, and failing-tool trends; `sidekick stats` gains the 30-day column and trend
+- Deferred review follow-ups closed: registry lock across the legacy account facade's read-modify-write, silent self-heal, `maxPrefixBytes: 0` opt-out, live-diagnostics doc, temp-dir packaging tests
 
 ## [0.25.0] - 2026-08-18
 
