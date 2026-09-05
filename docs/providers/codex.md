@@ -33,7 +33,7 @@ Codex CLI embeds rate-limit data in its event stream (via `token_count` events w
 - **CLI dashboard**: The Sessions panel Summary tab shows a "Rate Limits" section with utilization bars
 - **`sidekick quota`**: When the active provider is Codex, shows rate-limit bars with projected end-of-window utilization and reset countdowns
 
-No separate API polling is needed by default — rate-limit data arrives as part of normal session monitoring. For one-shot CLI checks, `sidekick quota --provider codex --refresh` explicitly refreshes from Codex's usage API first, then falls back to local rollout data and cached snapshots if the API is unavailable. The combined `sidekick quota --all` view is API-first for Codex (with the same local fallback), so it always reflects the aggregate plan quota.
+No separate API polling is needed for the dashboards — rate-limit data arrives as part of normal session monitoring. One-shot checks are different: `sidekick quota` (with automatic detection or `--provider codex`), `sidekick quota --all`, and the MCP `get_quota_status` tool always ask Codex's usage API first, so they reflect current utilization and reset credits without a `--refresh` flag. If the API fails, the newer of the local rollout sample and the cached snapshot is shown (the cache wins ties), labelled with its age, and a `Refresh` row explains the failed API attempt.
 
 When quota is refreshed from the API, Sidekick also reads ChatGPT's reset-credit endpoint and surfaces any available **reset credits** — one-off grants that reset your rate-limit windows — as a "Reset Credits: N available" line (with each credit's expiration) in both `sidekick quota` and the VS Code dashboard "Rate Limits" tile. The last fetched credits are cached alongside the quota snapshot, so they remain visible when a later refresh falls back to local data.
 
@@ -76,7 +76,7 @@ sidekick account --provider codex --remove Work      # remove a profile
 
 ### Quota Snapshots
 
-When no active Codex session exists, `sidekick quota` first checks recent account-level Codex rollouts for a usable rate-limit event, then falls back to the most recent cached rate-limit snapshot for the active account. Snapshots are stored in `~/.config/sidekick/quota-snapshots.json` and display with a "cached from" timestamp to indicate staleness.
+Rate-limit samples are persisted for the active account in `~/.config/sidekick/quota-snapshots.json`: the dashboards write the latest `token_count` reading they observe, and `sidekick quota` writes each successful API answer or selected rollout sample. The dashboards reuse a snapshot younger than five minutes without a network call; the CLI and MCP fall back to the snapshot only when the API fails and no newer rollout sample exists. Cached samples display with a "cached from" timestamp and their age.
 
 ## Provider Status
 

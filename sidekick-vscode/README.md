@@ -25,7 +25,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 - **Sidekick Doctor** — `Sidekick: Run Doctor` diagnoses project identity, sessions, accounts, providers, and dependencies with the same typed report as the CLI.
 - **External handoff** — `Sidekick: Open External Session Handoff` opens a URL built from the `sidekick.handoffUrlTemplate` setting with identifier-only placeholders.
 - **New dashboard views** — error forensics, quality score (beta), code impact, and compaction ledger; the Plans board/history pipeline is re-enabled with per-step timing, token, tool, and cost data.
-- **Codex reset credits** — the dashboard "Rate Limits" tile now shows available rate-limit reset credits and their expirations, resolving Codex quota API-first with local fallback.
+- **Codex reset credits** — the dashboard "Rate Limits" tile shows available rate-limit reset credits and their expirations whenever the quota sample came from Codex's usage API, and keeps the last fetched credits when a later sample comes from session logs.
 - **z.ai Coding Plan quota** — when OpenCode has z.ai Coding Plan credentials, the dashboard adds a z.ai quota card (5-Hour / Weekly) sourced from z.ai's quota API, with cached snapshot fallback.
 
 See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/CHANGELOG.md) for everything.
@@ -167,7 +167,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 | `sidekick.peakHours.enabled`            | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only)                                           |
 | `sidekick.peakHours.notifyOnTransition` | `false`        | One-time toast when peak hours start or end (opt-in)                                                                         |
 
-Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — **Claude Opus 5** (`powerful`) and **Sonnet 5** (`balanced`), with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
+Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — **Claude Opus 5** (`powerful`), **Sonnet 5** (`balanced`), and **Haiku 4.5** (`fast`) on Anthropic providers, and **GPT-5.6 Sol**, **Terra**, and **Luna** on Codex — with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
 ## Commands
 
