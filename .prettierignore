@@ -9,3 +9,7 @@ htmlcov/
 *.vsix
 *.tsbuildinfo
 **/package-lock.json
+
+# Dashboard webview script moved verbatim out of the inline template; kept
+# unformatted so the move stays reviewable until it is typed.
+sidekick-vscode/src/webview/dashboard/legacy.ts

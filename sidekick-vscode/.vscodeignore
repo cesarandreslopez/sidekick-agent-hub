@@ -38,8 +38,3 @@ dist/**
 # CHANGELOG.md - Version history
 # LICENSE - License file
 # images/ - Extension icon
-
-# Stale build outputs that esbuild no longer produces (the dashboard is
-# rendered from an inline template, not a separate bundle)
-out/webview/dashboard.js
-out/webview/dashboard.js.map

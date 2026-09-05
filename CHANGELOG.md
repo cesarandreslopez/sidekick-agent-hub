@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared:** `listSessionPreviewsAsync()` results carry `hasMore`
 - **VS Code:** activation defers account seeding and git initialisation off the awaited path, constructs the mind map, plan board, and timeline views on first show, and gates hidden or disposed views out of session-event work
 - **VS Code:** dashboard messages are coalesced per 250 ms burst, the stats payload drops the timeline, resolving the view no longer walks sessions synchronously, and hot paths read `SessionMonitor.getStatsView()` instead of copying stats per event
+- **VS Code:** the dashboard webview script moved out of the inline HTML template into an esbuild bundle (`out/webview/dashboard.js`) fed by an embedded JSON init block; the template shrank to markup and CSS modules
 
 ### Fixed
 

@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI dashboard loop: session-root subscription instead of a 10 s poll, memoised panel rendering, provider-scoped status polling, and an accurate `dump --list` footer via `hasMore` on the shared preview index
 - VS Code activation: account seeding and git initialisation run in the background; mind map, plan board, and timeline views are constructed on first show and stay idle while hidden
 - VS Code dashboard: coalesced webview messaging (one post per kind per 250 ms burst), a lighter stats payload, and copy-free `getStatsView()` for hot paths
+- VS Code dashboard: the webview script is a real esbuild bundle again (`out/webview/dashboard.js`), with the document reduced to markup, CSS, and a JSON init block
 
 ## [0.25.0] - 2026-08-18
 

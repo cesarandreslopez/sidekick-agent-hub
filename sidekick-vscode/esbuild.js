@@ -52,6 +52,22 @@ async function main() {
     logLevel: 'warning',
   });
 
+  // Webview context - Dashboard (Browser). The behaviour of the session
+  // analytics view; the document that loads it is rendered by
+  // src/providers/dashboardTemplate.ts.
+  const webviewDashboardCtx = await esbuild.context({
+    entryPoints: ['src/webview/dashboard/index.ts'],
+    bundle: true,
+    format: 'iife',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'browser',
+    outfile: 'out/webview/dashboard.js',
+    target: ['es2020'],
+    logLevel: 'warning',
+  });
+
   // Webview vendor bundle - Chart.js (Browser)
   const webviewChartjsCtx = await esbuild.context({
     entryPoints: ['src/webview/chartjs-vendor.ts'],
@@ -84,6 +100,7 @@ async function main() {
     extensionCtx,
     webviewExplainCtx,
     webviewErrorCtx,
+    webviewDashboardCtx,
     webviewChartjsCtx,
     webviewD3Ctx,
   ];

@@ -16,6 +16,7 @@ import type {
   ToolEfficiencyData,
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
+import type { ChangelogEntry } from '../utils/changelogParser';
 import type { BillingBlock, CodexResetCreditsSnapshot, PeakHoursState } from 'sidekick-shared';
 
 /** Official five-hour sample persisted by the status line, shown beside the local block estimate. */
@@ -693,4 +694,26 @@ export interface AnalyticsDisplay {
   wordFrequency: Array<{ name: string; count: number }>;
   patterns: Array<{ template: string; count: number; examples: string[] }>;
   heatmapBuckets: Array<{ timestamp: string; count: number }>;
+}
+
+/** Session-list flags embedded for the dashboard's first paint. */
+export interface DashboardInitSession {
+  /** Null until `updateSessionList` arrives after `webviewReady`. */
+  groups: SessionGroup[] | null;
+  isPinned: boolean;
+  isUsingCustomPath: boolean;
+  customPathDisplay: string | null;
+  providerId: string;
+  providerName: string;
+}
+
+/**
+ * Initial data the extension embeds in the dashboard document as JSON
+ * (`<script type="application/json">`), read by the webview bundle on load.
+ */
+export interface DashboardInit {
+  session: DashboardInitSession;
+  changelog: ChangelogEntry[];
+  /** Attribution label → CSS variable name, for chart colours. */
+  attributionVars: Record<string, string>;
 }

@@ -89,13 +89,14 @@ Do **not** use `mkdocs build` or `mkdocs serve` — use `zensical` instead.
 
 ### Build System (esbuild.js)
 
-`sidekick-vscode/esbuild.js` produces five bundles:
+`sidekick-vscode/esbuild.js` produces six bundles:
 
 | Output                                       | Format   | Platform |
 | -------------------------------------------- | -------- | -------- |
 | `out/extension.js` (from `src/extension.ts`) | CommonJS | Node.js  |
 | `out/webview/explain.js`                     | IIFE     | Browser  |
 | `out/webview/error.js`                       | IIFE     | Browser  |
+| `out/webview/dashboard.js`                   | IIFE     | Browser  |
 | `out/webview/chartjs-vendor.js`              | IIFE     | Browser  |
 | `out/webview/d3-vendor.js`                   | IIFE     | Browser  |
 
@@ -168,7 +169,7 @@ For non-VS Code consumers, `sidekick-shared/src/sessionMonitor.ts` provides a UI
 - **Shared session pipeline**: `sidekick-shared/src/types/sessionEvent.ts`, `sidekick-shared/src/sessionMonitor.ts`, `sidekick-shared/src/observedSessionCollector.ts`, `sidekick-shared/src/sessionTranscripts.ts`, `sidekick-shared/src/sessionPreviews.ts`
 - **CLI entry points**: `sidekick-cli/src/entry.ts` (fast status-line dispatch) and `sidekick-cli/src/cli.ts` (Commander registration); command implementations are in `sidekick-cli/src/commands/`
 - **z.ai quota** (shared): `sidekick-shared/src/zaiQuotaApi.ts` — `resolveZaiQuota()` reads z.ai's authoritative `api/monitor/usage/quota/limit` endpoint (5-Hour / Weekly windows), discovering credentials from OpenCode's stored z.ai token (`zai-coding-plan` → `zai`) or `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`, with cached-snapshot fallback. The older observed-traffic estimator (`zaiQuota.ts` / `zaiQuotaWatcher.ts`) is retained for backward compatibility but deprecated and no longer used for product quota display. z.ai is monitored-only — no z.ai inference provider or account-management surface yet
-- **Webview UI**: `sidekick-vscode/src/webview/` — vanilla TS bundled as IIFE; Chart.js and D3.js load from local vendor bundles
+- **Webview UI**: `sidekick-vscode/src/webview/` — vanilla TS bundled as IIFE; Chart.js and D3.js load from local vendor bundles. The dashboard document is rendered by `src/providers/dashboardTemplate.ts` (markup) and `dashboardStyles.ts` (CSS); its behaviour is the `src/webview/dashboard/` bundle, where `legacy.ts` is the still-untyped script moved out of the old inline template and new features go in typed modules beside it
 
 ### Persistence
 

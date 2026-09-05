@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as fs from 'fs';
 import * as path from 'path';
 
 vi.mock('vscode', () => ({
@@ -44,6 +45,13 @@ vi.mock('../services/Logger', () => ({
 }));
 
 import { DashboardViewProvider } from './DashboardViewProvider';
+
+// The behaviour lives in the bundled legacy module now; the document only
+// loads it. Script assertions therefore read the module source.
+const legacyScript = fs.readFileSync(
+  path.join(__dirname, '..', 'webview', 'dashboard', 'legacy.ts'),
+  'utf8',
+);
 
 function disposable() {
   return { dispose: vi.fn() };
@@ -108,14 +116,15 @@ describe('DashboardViewProvider quota UI', () => {
     const html = (
       provider as unknown as { _getHtmlForWebview(input: typeof webview): string }
     )._getHtmlForWebview(webview);
+    const rendered = html + legacyScript;
 
-    expect(html).toContain("case 'updateQuotaHistory'");
-    expect(html).toContain("case 'updateContextHealth'");
-    expect(html).toContain("case 'updateTruncations'");
-    expect(html).toContain('function renderQuotaHistory');
-    expect(html).toContain('function updateContextHealthDisplay');
-    expect(html).toContain('function updateTruncationDisplay');
-    expect(html).toContain('(t.totalCalls || 0)');
+    expect(rendered).toContain("case 'updateQuotaHistory'");
+    expect(rendered).toContain("case 'updateContextHealth'");
+    expect(rendered).toContain("case 'updateTruncations'");
+    expect(rendered).toContain('function renderQuotaHistory');
+    expect(rendered).toContain('function updateContextHealthDisplay');
+    expect(rendered).toContain('function updateTruncationDisplay');
+    expect(rendered).toContain('(t.totalCalls || 0)');
     provider.dispose();
   });
 
@@ -242,10 +251,11 @@ describe('DashboardViewProvider quota UI', () => {
         _getHtmlForWebview(webview: typeof webview): string;
       }
     )._getHtmlForWebview(webview);
+    const rendered = html + legacyScript;
 
-    expect(html).toContain('id="quota-reset-credits"');
-    expect(html).toContain('function renderResetCredits');
-    expect(html).toContain('quota.resetCredits');
+    expect(rendered).toContain('id="quota-reset-credits"');
+    expect(rendered).toContain('function renderResetCredits');
+    expect(rendered).toContain('quota.resetCredits');
 
     provider.dispose();
   });
@@ -264,16 +274,17 @@ describe('DashboardViewProvider quota UI', () => {
         _getHtmlForWebview(webview: typeof webview): string;
       }
     )._getHtmlForWebview(webview);
+    const rendered = html + legacyScript;
 
-    expect(html).toContain('function setTimelineDescription');
-    expect(html).toContain("descEl.textContent = text || ''");
-    expect(html).not.toContain('descEl.innerHTML = truncated');
-    expect(html).not.toContain('descEl.innerHTML = full');
-    expect(html).toContain("escapeHtml(status.label || 'Peak Hours')");
-    expect(html).toContain('escapeHtml(status.peakHoursDescription)');
-    expect(html).toContain('escapeHtml(step.description)');
-    expect(html).toContain('escapeHtml(step.errorMessage.substring(0, 100))');
-    expect(html).toContain('escapeHtml(rp.title)');
+    expect(rendered).toContain('function setTimelineDescription');
+    expect(rendered).toContain("descEl.textContent = text || ''");
+    expect(rendered).not.toContain('descEl.innerHTML = truncated');
+    expect(rendered).not.toContain('descEl.innerHTML = full');
+    expect(rendered).toContain("escapeHtml(status.label || 'Peak Hours')");
+    expect(rendered).toContain('escapeHtml(status.peakHoursDescription)');
+    expect(rendered).toContain('escapeHtml(step.description)');
+    expect(rendered).toContain('escapeHtml(step.errorMessage.substring(0, 100))');
+    expect(rendered).toContain('escapeHtml(rp.title)');
 
     provider.dispose();
   });
@@ -305,29 +316,30 @@ describe('DashboardViewProvider quota UI', () => {
     const html = (
       provider as unknown as { _getHtmlForWebview(input: typeof webview): string }
     )._getHtmlForWebview(webview);
+    const rendered = html + legacyScript;
 
     // The dark-theme literals that made every chart low-contrast on a light
     // theme. This fails the moment someone pastes another hex into a config.
-    expect(html).not.toContain("color: '#888'");
-    expect(html).not.toContain("color: '#ccc'");
-    expect(html).not.toContain('rgba(100,100,100,0.15)');
+    expect(rendered).not.toContain("color: '#888'");
+    expect(rendered).not.toContain("color: '#ccc'");
+    expect(rendered).not.toContain('rgba(100,100,100,0.15)');
 
     // ...and the One Dark attribution palette, previously declared three times.
-    expect(html).not.toContain("'System Prompt': '#e06c75'");
-    expect(html).not.toContain("systemPrompt: '#e06c75'");
+    expect(rendered).not.toContain("'System Prompt': '#e06c75'");
+    expect(rendered).not.toContain("systemPrompt: '#e06c75'");
 
-    expect(html).toContain('function chartTheme(');
-    expect(html).toContain('function attrColor(');
-    expect(html).toContain('function withAlpha(');
-    expect(html).toContain('function applyChartTheme(');
-    expect(html).toContain("case 'themeChanged'");
-    expect(html).toContain('--sk-attr-system');
-    expect(html).toContain('--sk-chart-grid');
+    expect(rendered).toContain('function chartTheme(');
+    expect(rendered).toContain('function attrColor(');
+    expect(rendered).toContain('function withAlpha(');
+    expect(rendered).toContain('function applyChartTheme(');
+    expect(rendered).toContain("case 'themeChanged'");
+    expect(rendered).toContain('--sk-attr-system');
+    expect(rendered).toContain('--sk-chart-grid');
 
     // withAlpha lives inside a template literal, so a single backslash would
     // collapse at emit time and turn the literal-paren match into a capture
     // group. Assert the escape survives into the generated document.
-    expect(html).toContain(String.raw`/^rgba?\(([^)]+)\)$/i`);
+    expect(rendered).toContain(String.raw`/^rgba?\(([^)]+)\)$/i`);
 
     provider.dispose();
   });
