@@ -16,7 +16,16 @@ import type {
   ToolEfficiencyData,
 } from './sessionSummary';
 import type { DecisionEntryDisplay } from './decisionLog';
-import type { CodexResetCreditsSnapshot, PeakHoursState } from 'sidekick-shared';
+import type { BillingBlock, CodexResetCreditsSnapshot, PeakHoursState } from 'sidekick-shared';
+
+/** Official five-hour sample persisted by the status line, shown beside the local block estimate. */
+export interface BillingBlockOfficialSample {
+  fiveHourUtilization: number;
+  fiveHourResetsAt: string;
+  sevenDayUtilization: number;
+  capturedAt?: string;
+  ageMs?: number;
+}
 import type { ProviderStatusDisplay } from '../utils/providerStatusDisplay';
 
 /**
@@ -177,6 +186,11 @@ export type DashboardMessage =
     }
   | { type: 'updateQuota'; quota: QuotaState; quotaFailure?: QuotaFailureDisplay }
   | { type: 'updateQuotaHistory'; payload: QuotaHistoryPayload }
+  | {
+      type: 'updateBillingBlock';
+      block: BillingBlock | null;
+      official: BillingBlockOfficialSample | null;
+    }
   | { type: 'updateHistoricalData'; data: HistoricalSummary }
   | { type: 'historicalDataLoading'; loading: boolean }
   | { type: 'updateLatency'; latency: LatencyDisplay }

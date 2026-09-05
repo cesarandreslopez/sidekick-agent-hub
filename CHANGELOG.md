@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **VS Code:** quota threshold alerts — `sidekick.notifications.triggers.quota-threshold` with `quotaFiveHourThresholds` (default 80, 95) and `quotaSevenDayThresholds` (default 90), fired once per threshold per reset window with reset-aware text; the CLI dashboard raises the same toasts
 - **Shared:** `resolveQuota()` is the one quota resolution path for every surface — a persisted sample younger than five minutes (status line, session, or API) wins, then session logs, then the provider API, then an older sample labelled by age — and every result carries `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`; `readQuotaSnapshot()` keeps a sample's origin as `capturedSource`
 - **Shared:** `computeSessionFileStats()`, `readSessionFileStats()`, and `firstUserPrompt()` give every provider one `readSessionStats()` implementation over the shared aggregator; `SessionFileStats` gains `availability`, `unavailableReason`, `costUsd`, `costProvenance`, `unpricedCalls`, and `toolFailures`
+- **Shared:** `collectUsageEvents()` collects priced usage events from session logs with a per-session cache, and `computeBillingBlocks()` / `findActiveBillingBlock()` group them into five-hour billing blocks with burn rate and end-of-block projections
+- **CLI:** `sidekick blocks [--active | --recent | --since <time>] [--csv]` shows five-hour billing blocks computed from session logs, labelled as a local estimate, with the official status-line sample beneath the active block when one has been persisted; `--since` accepts relative windows such as `7d`
+- **VS Code:** a Billing block card beneath the quota gauges shows the open five-hour block computed from session logs with burn rate and projections, next to the official status-line sample when present; the CLI dashboard's Sessions summary shows the same block
 
 ### Changed
 

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VS Code: the dashboard's first quota paint uses the shared resolver, so a fresh status-line or session sample shows without a network call
 - Shared library: one `readSessionStats()` implementation for Claude Code, Codex, and OpenCode over the shared aggregator (cache-inclusive per-model totals, cost with provenance, tool failure split, real compaction and truncation counts, explicit `availability`), with a cross-provider parity test; OpenCode's readers gain a real `seekTo()` and `exists()`
 - VS Code: the project timeline's per-session token total is cache-inclusive
+- Shared library: `collectUsageEvents()` (cached usage events from session logs) and `computeBillingBlocks()` (ccusage-style five-hour blocks with burn rate and projections)
+- CLI: `sidekick blocks` shows five-hour billing blocks from session logs, with the official status-line sample beside the local estimate
+- VS Code and CLI dashboards: a billing-block card shows the open five-hour block with burn rate and projections
 
 ## [0.25.0] - 2026-08-18
 

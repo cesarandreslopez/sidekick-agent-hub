@@ -358,6 +358,39 @@ sidekick stats --json
 sidekick stats --csv --output-file usage.csv
 ```
 
+### Billing blocks
+
+```bash
+sidekick blocks [--active | --recent | --since <time>] [--csv]
+```
+
+Five-hour billing blocks computed straight from session logs, for the auto-detected or `--provider` session provider. A block opens at the first usage event (aligned down to the UTC hour, as ccusage does), lasts five hours, and a gap longer than five hours or an event past the block's end opens a new one. Each row shows the block's cache-inclusive token total, cost, burn rate (tokens per minute over the block so far), and — for the block that is still open — the projected end-of-block tokens and cost and the time remaining.
+
+Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time, so repeat runs only re-read sessions that changed; `--no-cache` forces a full re-read. The table is a **local estimate**. When `sidekick statusline` has persisted an official rate-limit sample from Claude Code, it is printed beneath the table as `Official (status line)` with its age so the two can be compared.
+
+| Flag             | Description                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `--active`       | Only the block that is open right now (or a note that none is)                             |
+| `--recent`       | Blocks from the last three days (default)                                                  |
+| `--since <time>` | Blocks since an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`, `24h`, or `90m` |
+| `--csv`          | One row per block: window, status, token buckets, cost, provenance, burn, projection       |
+| `--no-cache`     | Re-read every session instead of using the usage cache                                     |
+
+Use the global `--json` for the full report (`blocks`, `active`, `official`, session and cache counts).
+
+#### Examples
+
+```bash
+# The block that is open now, with its burn rate and projection
+sidekick blocks --active
+
+# A week of Codex blocks as CSV
+sidekick --provider codex blocks --since 7d --csv
+
+# Feed a status bar or script
+sidekick blocks --active --json
+```
+
 ### Status
 
 ```bash
@@ -649,15 +682,15 @@ Switch panels with number keys `1`–`8`.
 
 Browse and select from recent agent sessions. The detail pane has seven tabs:
 
-| Tab            | Description                                                                                                                                                 |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Summary**    | Token usage, cost, duration, model, and session metadata                                                                                                    |
-| **Timeline**   | Chronological activity feed with tool calls, messages, and events                                                                                           |
-| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `F` to filter node types |
-| **Tools**      | Breakdown of tool usage with counts and categories                                                                                                          |
-| **Files**      | Files touched during the session                                                                                                                            |
-| **Agents**     | Subagent activity and delegation chain                                                                                                                      |
-| **AI Summary** | AI-generated narrative of the session. Press `n` to generate                                                                                                |
+| Tab            | Description                                                                                                                                                      |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Summary**    | Token usage, cost, duration, model, session metadata, quota, and the active five-hour billing block (a local estimate from session logs, refreshed every minute) |
+| **Timeline**   | Chronological activity feed with tool calls, messages, and events                                                                                                |
+| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `F` to filter node types      |
+| **Tools**      | Breakdown of tool usage with counts and categories                                                                                                               |
+| **Files**      | Files touched during the session                                                                                                                                 |
+| **Agents**     | Subagent activity and delegation chain                                                                                                                           |
+| **AI Summary** | AI-generated narrative of the session. Press `n` to generate                                                                                                     |
 
 ### Tasks (2)
 

@@ -50,7 +50,7 @@ If `sqlite3` is missing or not executable in the current shell environment, Side
 
 ```bash
 sidekick dashboard [options]
-sidekick tasks|decisions|notes|stats|quota|status|account|handoff|search|context|extract [options]
+sidekick tasks|decisions|notes|stats|blocks|quota|status|account|handoff|search|context|extract [options]
 sidekick today|doctor|statusline|mcp [options]
 sidekick tasks add|tasks done|note add|decision add [args]
 ```
@@ -83,6 +83,14 @@ sidekick doctor
 ```
 
 Diagnose project identity, sessions, accounts, providers, and dependencies in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. Global flags `--project` and `--json` also apply.
+
+## Billing Blocks
+
+```bash
+sidekick blocks [--active | --recent | --since <time>] [--csv]
+```
+
+Five-hour billing blocks computed from session logs (ccusage-style: a block opens at the first usage event, aligned to the UTC hour, lasts five hours, and a longer gap opens a new one). Each block shows its cache-inclusive token total, cost with provenance, burn rate, and — for the open block — projected end-of-block tokens and cost plus the time remaining. Sessions are read once and cached by size and mtime under the Sidekick config directory. When the status line has persisted an official Claude Code rate-limit sample, it is shown beneath the local estimate for comparison. `--since` accepts an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`; `--json` prints the full report and `--csv` one row per block.
 
 ## Quick Capture
 

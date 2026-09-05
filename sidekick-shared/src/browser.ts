@@ -171,3 +171,15 @@ export type {
   ResolvedModelCatalogEntry,
   ResolvedModelCatalogSnapshot,
 } from './modelCatalog';
+export {
+  BILLING_BLOCK_DURATION_MS,
+  computeBillingBlocks,
+  findActiveBillingBlock,
+} from './usage/billingBlocks';
+export type {
+  BillingBlock,
+  BillingBlockInput,
+  BillingBlockModelUsage,
+  BillingBlockTokens,
+  ComputeBillingBlocksOptions,
+} from './usage/billingBlocks';

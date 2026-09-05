@@ -24,6 +24,14 @@ Examples:
   $ sidekick quota history --weeks 8        Utilization heatmap for this workspace
 `;
 
+export const BLOCKS_EXAMPLES = `
+Examples:
+  $ sidekick blocks                         Five-hour blocks from the last three days
+  $ sidekick blocks --active                Only the block that is open right now
+  $ sidekick blocks --since 7d --csv        A week of blocks as CSV
+  $ sidekick blocks --active --json         Burn rate and projection for scripts
+`;
+
 export const EXTRACT_EXAMPLES = `
 Examples:
   $ sidekick extract                        URLs, file paths, commands, and plans

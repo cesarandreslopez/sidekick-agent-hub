@@ -114,6 +114,8 @@ The dashboard shows quota or rate-limit data depending on the active provider:
 - **Codex** ("Rate Limits"): Primary and secondary rate-limit windows extracted from token_count events in the Codex event stream. Data arrives automatically during active sessions — no separate polling needed. When the tile refreshes from Codex's API, it also lists available **reset credits** (rate-limit reset grants) and their expirations.
 - **OpenCode**: No quota display — OpenCode does not provide rate-limit data.
 
+Beneath the quota gauges, a **Billing block** card shows the five-hour block that is open right now, computed from session logs the way `sidekick blocks` does: the block window, elapsed and remaining time, cache-inclusive tokens, cost, burn rate, and the projected end-of-block tokens and cost. It is labelled a local estimate; when `sidekick statusline` has persisted an official Claude Code rate-limit sample, the card shows it beneath the estimate for comparison. The card recomputes at most once a minute while the view is visible.
+
 When quota cannot be fetched, the dashboard keeps the section visible and shows a structured unavailable state for missing credentials, expired sign-in, rate limits, network/server failures, or unexpected API responses. Quota failure transitions appear as lightweight dashboard toasts and are recorded in notification history, without triggering native VS Code popup notifications.
 
 ## Project Timeline

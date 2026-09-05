@@ -28,7 +28,12 @@ import {
   visibleLength,
   truncate,
 } from '../formatters';
-import { calculateCompactionLedger, formatCompactionLedger, formatCost } from 'sidekick-shared';
+import {
+  calculateCompactionLedger,
+  formatCompactionLedger,
+  formatCost,
+  formatTokenCount,
+} from 'sidekick-shared';
 
 function getUtilizationColor(percent: number): string {
   if (percent < 60) return 'green';
@@ -502,6 +507,31 @@ export class SessionsPanel implements SidePanel {
             lines.push(`  {grey-fg}${line}{/grey-fg}`);
           }
         }
+      }
+
+      // ── Billing block (local estimate from session logs)
+      if (m.billingBlock) {
+        const block = m.billingBlock;
+        const hhmm = (iso: string) =>
+          new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const hm = (ms: number) => {
+          const minutes = Math.max(0, Math.round(ms / 60_000));
+          return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
+        };
+        lines.push('', sectionHeader('Billing Block (local estimate)', w));
+        lines.push(
+          `  {grey-fg}${hhmm(block.start)}–${hhmm(block.end)}{/grey-fg}  ${hm(block.elapsedMs)} elapsed  {grey-fg}${hm(block.remainingMs)} left{/grey-fg}`,
+        );
+        const cost =
+          block.costProvenance === 'unpriced'
+            ? '{yellow-fg}—{/yellow-fg}'
+            : `{green-fg}${formatCost(block.costUsd)}{/green-fg}`;
+        lines.push(
+          `  {bold}${formatTokenCount(block.tokens.total)}{/bold} tokens  ${cost}  {grey-fg}${formatTokenCount(Math.round(block.burnRatePerMinute))}/min{/grey-fg}`,
+        );
+        lines.push(
+          `  {grey-fg}→ by end:{/grey-fg} ${formatTokenCount(block.projectedTokens)} tokens  ${formatCost(block.projectedCostUsd)}`,
+        );
       }
 
       // ── Provider Status sections (Claude + OpenAI)

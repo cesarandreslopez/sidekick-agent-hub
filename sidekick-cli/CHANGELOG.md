@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `quota history --window 5h|7d|max` selects which limit the heatmap shows (default `5h`); the header names the window
 - The global `--json` flag applies to `tasks add`, `tasks done`, `note add`, `decision add` (returning the stored record) and to `report` (returning the output path)
 - The dashboard raises a toast when the five-hour window crosses 80% or 95%, or the seven-day window crosses 90%, once per reset window
+- `sidekick blocks [--active | --recent | --since <time>] [--csv] [--no-cache]` shows five-hour billing blocks computed from session logs (a block opens at the first usage event aligned to the UTC hour, lasts five hours, and a longer gap opens a new one) with cache-inclusive totals, cost provenance, burn rate, and — for the open block — projected end-of-block tokens and cost. Sessions are read once and cached by size and mtime; the table is labelled a local estimate and the official status-line sample is shown beneath it when present. `--since` accepts an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`
+- The dashboard's Sessions summary shows the active five-hour billing block (local estimate from session logs), refreshed every minute
 
 ### Changed
 

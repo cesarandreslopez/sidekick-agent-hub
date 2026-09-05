@@ -74,16 +74,17 @@ flowchart LR
 
 Cross-session data stored in `~/.config/sidekick/`:
 
-| File                                 | Purpose                                                                                                   |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `historical-data.json`               | Token/cost/tool usage stats (schema v3: adds capped per-session records with provider/project dimensions) |
-| `tasks/{projectSlug}.json`           | Kanban board carry-over                                                                                   |
-| `decisions/{projectSlug}.json`       | Decision log                                                                                              |
-| `handoffs/`                          | Session handoff documents                                                                                 |
-| `knowledge-notes/{projectSlug}.json` | Knowledge notes per project                                                                               |
-| `event-logs/`                        | Optional JSONL audit trail                                                                                |
-| `error-history.json`                 | Categorized per-session error rollups for post-mortem forensics                                           |
-| `pricing-catalog.json`               | Cached LiteLLM catalog — prices and context window sizes (24h TTL, auto-refreshed on activation)          |
-| `observed-context-windows.json`      | Context windows a provider actually reported, per model; outranks the catalog's published maximum         |
+| File                                 | Purpose                                                                                                                                                                    |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `historical-data.json`               | Token/cost/tool usage stats (schema v3: adds capped per-session records with provider/project dimensions)                                                                  |
+| `tasks/{projectSlug}.json`           | Kanban board carry-over                                                                                                                                                    |
+| `decisions/{projectSlug}.json`       | Decision log                                                                                                                                                               |
+| `handoffs/`                          | Session handoff documents                                                                                                                                                  |
+| `knowledge-notes/{projectSlug}.json` | Knowledge notes per project                                                                                                                                                |
+| `event-logs/`                        | Optional JSONL audit trail                                                                                                                                                 |
+| `error-history.json`                 | Categorized per-session error rollups for post-mortem forensics                                                                                                            |
+| `pricing-catalog.json`               | Cached LiteLLM catalog — prices and context window sizes (24h TTL, auto-refreshed on activation)                                                                           |
+| `observed-context-windows.json`      | Context windows a provider actually reported, per model; outranks the catalog's published maximum                                                                          |
+| `usage-cache/`                       | Per-session usage events extracted from session logs, keyed by size and mtime; feeds `sidekick blocks` and the dashboards' billing-block card (pruned least-recently-used) |
 
 The Sidekick CLI reads from these same files, providing terminal access to persisted data without VS Code. Since 0.23.0 the CLI also writes to them: quick-capture commands (`sidekick tasks add`, `sidekick note add`, `sidekick decision add`) merge into the same per-project stores via atomic writes. Since 0.24.4 the root is overridable: every `sidekick-shared` reader and writer — and therefore the CLI — resolves it lazily through `getConfigDir()`, so `SIDEKICK_CONFIG_DIR` or `setConfigDir()` moves all of it. Since 0.24.5 the extension's own stores resolve through the same seam, so the override relocates the extension, the CLI, and any library consumer together.

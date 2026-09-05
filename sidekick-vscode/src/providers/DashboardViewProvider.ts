@@ -74,13 +74,22 @@ import {
   type AttributionCategory,
 } from '../utils/themePalette';
 import {
+  BILLING_BLOCK_DURATION_MS,
+  ClaudeCodeProvider,
+  CodexProvider,
+  OpenCodeProvider,
+  collectUsageEvents,
+  computeBillingBlocks,
   describeQuotaFailure,
+  findActiveBillingBlock,
   formatDurationMs,
   readQuotaHistoryDailyBuckets,
   resolveQuota,
   scopePeakHoursToSessionProvider,
   calculateCompactionLedger,
 } from 'sidekick-shared';
+import type { SessionProviderBase } from 'sidekick-shared';
+import type { BillingBlockOfficialSample } from '../types/dashboard';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
@@ -168,6 +177,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Suppresses session list updates during provider switches */
   private _suppressSessionListUpdates = false;
+
+  /** Throttles the billing-block recomputation triggered by token usage. */
+  private _billingBlockTimer?: ReturnType<typeof setTimeout>;
+  private _billingBlockLastRunMs = 0;
+  private _billingBlockInFlight = false;
+  /** Shared providers used only to read usage for the billing block, keyed by id. */
+  private readonly _usageProviders = new Map<string, SessionProviderBase>();
 
   /** Event logger reference for toggling from the dashboard */
   private _eventLogger?: SessionEventLogger;
@@ -409,6 +425,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           this._quotaService?.startRefresh();
           this._providerStatusService?.startRefresh();
           this._peakHoursService?.startRefresh();
+          void this._sendBillingBlock();
         } else {
           // Stop quota + status refresh when hidden to save resources
           this._quotaService?.stopRefresh();
@@ -440,6 +457,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._quotaService?.startRefresh();
       this._providerStatusService?.startRefresh();
       this._peakHoursService?.startRefresh();
+      void this._sendBillingBlock();
     }
 
     // Start phrase rotation timers
@@ -1490,6 +1508,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Send updated state to webview
     this._sendStateToWebview();
     this._sendBurnRateUpdate();
+    this._scheduleBillingBlockUpdate();
   }
 
   /**
@@ -1641,6 +1660,81 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({ type: 'updateQuota', quota, quotaFailure });
     this._maybeEmitQuotaAlert(quota, quotaFailure);
     void this._sendQuotaHistory();
+  }
+
+  /** Minimum spacing between billing-block recomputations. */
+  private static readonly BILLING_BLOCK_REFRESH_MS = 60_000;
+
+  /**
+   * Schedules a billing-block recomputation, at most once per minute. Token
+   * usage arrives many times per minute; the collector caches sessions by
+   * fingerprint, so a run that finds nothing changed is a few small reads.
+   */
+  private _scheduleBillingBlockUpdate(): void {
+    if (this._billingBlockTimer || !this._view?.visible) return;
+    const elapsed = Date.now() - this._billingBlockLastRunMs;
+    const delay = Math.max(0, DashboardViewProvider.BILLING_BLOCK_REFRESH_MS - elapsed);
+    this._billingBlockTimer = setTimeout(() => {
+      this._billingBlockTimer = undefined;
+      void this._sendBillingBlock();
+    }, delay);
+  }
+
+  private _usageProviderFor(id: string): SessionProviderBase | null {
+    const cached = this._usageProviders.get(id);
+    if (cached) return cached;
+    const created =
+      id === 'codex'
+        ? new CodexProvider()
+        : id === 'opencode'
+          ? new OpenCodeProvider()
+          : id === 'claude-code'
+            ? new ClaudeCodeProvider()
+            : null;
+    if (created) this._usageProviders.set(id, created);
+    return created;
+  }
+
+  /**
+   * Computes the active five-hour billing block from session logs (a local
+   * estimate) and pairs it with the official status-line sample when one has
+   * been persisted, then posts both to the webview.
+   */
+  private async _sendBillingBlock(): Promise<void> {
+    if (this._billingBlockInFlight) return;
+    this._billingBlockInFlight = true;
+    this._billingBlockLastRunMs = Date.now();
+    try {
+      const providerId = this._sessionMonitor.getProvider().id;
+      const provider = this._usageProviderFor(providerId);
+      if (!provider) return;
+      const now = new Date();
+      const collected = await collectUsageEvents({
+        providers: [provider],
+        since: new Date(now.getTime() - 2 * BILLING_BLOCK_DURATION_MS),
+        until: now,
+      });
+      const block = findActiveBillingBlock(computeBillingBlocks(collected.events, { now }));
+
+      let official: BillingBlockOfficialSample | null = null;
+      if (providerId === 'claude-code' || providerId === 'codex') {
+        const quota = await resolveQuota({ providerId, allowApi: false, selfHeal: false });
+        if (quota.available && quota.capturedSource === 'statusline') {
+          official = {
+            fiveHourUtilization: quota.fiveHour.utilization,
+            fiveHourResetsAt: quota.fiveHour.resetsAt,
+            sevenDayUtilization: quota.sevenDay.utilization,
+            capturedAt: quota.capturedAt,
+            ageMs: quota.ageMs,
+          };
+        }
+      }
+      this._postMessage({ type: 'updateBillingBlock', block, official });
+    } catch (error) {
+      logError('Dashboard failed to compute the billing block', error);
+    } finally {
+      this._billingBlockInFlight = false;
+    }
   }
 
   /**
@@ -4178,6 +4272,57 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       line-height: 1.4;
     }
 
+    .billing-block-section {
+      display: none;
+    }
+
+    .billing-block-section.visible {
+      display: block;
+      margin-bottom: 16px;
+    }
+
+    .billing-block-content {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+    }
+
+    .billing-block-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .billing-block-title {
+      font-weight: 600;
+    }
+
+    .billing-block-window,
+    .billing-block-row,
+    .billing-block-official {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.4;
+    }
+
+    .billing-block-row strong {
+      color: var(--vscode-foreground);
+      font-family: var(--vscode-editor-font-family);
+    }
+
+    .billing-block-official {
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid var(--vscode-input-border);
+    }
+
+    .billing-block-official.official {
+      color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+    }
+
     .tool-list {
       display: flex;
       flex-direction: column;
@@ -5617,6 +5762,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         </div>
       </div>
 
+      <div class="billing-block-section" id="billing-block-section" title="Five-hour billing block computed from session logs (local estimate)">
+        <div class="billing-block-content">
+          <div class="billing-block-header">
+            <span class="billing-block-title">Billing block</span>
+            <span class="billing-block-window" id="billing-block-window"></span>
+          </div>
+          <div class="billing-block-row" id="billing-block-usage"></div>
+          <div class="billing-block-row" id="billing-block-projection"></div>
+          <div class="billing-block-official" id="billing-block-official"></div>
+        </div>
+      </div>
+
       <div class="peak-hours-section" id="peak-hours-section" title="Claude peak-hours tracker — data from promoclock.co (third-party, unaffiliated)">
         <div class="peak-hours-content">
           <div class="peak-hours-indicator" id="peak-hours-indicator"></div>
@@ -7026,6 +7183,45 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       /**
        * Updates the quota display with new data.
        */
+      // Five-hour billing block (local estimate) with the official status-line sample beside it.
+      function updateBillingBlock(block, official) {
+        const sectionEl = document.getElementById('billing-block-section');
+        const windowEl = document.getElementById('billing-block-window');
+        const usageEl = document.getElementById('billing-block-usage');
+        const projectionEl = document.getElementById('billing-block-projection');
+        const officialEl = document.getElementById('billing-block-official');
+        if (!sectionEl || !windowEl || !usageEl || !projectionEl || !officialEl) return;
+
+        if (!block) {
+          sectionEl.classList.remove('visible');
+          return;
+        }
+        const hhmm = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const hm = (ms) => {
+          const minutes = Math.max(0, Math.round(ms / 60000));
+          return minutes >= 60 ? Math.floor(minutes / 60) + 'h ' + (minutes % 60) + 'm' : minutes + 'm';
+        };
+        windowEl.textContent = hhmm(block.start) + ' \u2013 ' + hhmm(block.end) + ' \u00b7 '
+          + hm(block.elapsedMs) + ' elapsed \u00b7 ' + hm(block.remainingMs) + ' left';
+        const unpriced = block.costProvenance === 'unpriced';
+        const costText = unpriced ? '\u2014' : '$' + block.costUsd.toFixed(2);
+        usageEl.innerHTML = '<strong>' + formatTokensShort(block.tokens.total) + '</strong> tokens \u00b7 <strong>' + costText
+          + '</strong> \u00b7 ' + formatTokensShort(Math.round(block.burnRatePerMinute)) + '/min \u00b7 local estimate';
+        projectionEl.innerHTML = 'Projected by end: <strong>' + formatTokensShort(block.projectedTokens) + '</strong> tokens \u00b7 <strong>'
+          + (unpriced ? '\u2014' : '$' + block.projectedCostUsd.toFixed(2)) + '</strong>';
+        if (official) {
+          const resetMs = official.fiveHourResetsAt ? Date.parse(official.fiveHourResetsAt) - Date.now() : NaN;
+          const resets = Number.isFinite(resetMs) && resetMs > 0 ? ' \u00b7 resets in ' + hm(resetMs) : '';
+          officialEl.textContent = 'Official (status line): 5h ' + Math.round(official.fiveHourUtilization) + '% used' + resets
+            + ' \u00b7 7d ' + Math.round(official.sevenDayUtilization) + '%';
+          officialEl.classList.add('official');
+        } else {
+          officialEl.textContent = 'No official sample yet \u2014 install the status line to compare.';
+          officialEl.classList.remove('official');
+        }
+        sectionEl.classList.add('visible');
+      }
+
       function updateQuota(quota, quotaFailure) {
         currentQuota = quota;
         currentQuotaFailure = quotaFailure || null;
@@ -8830,6 +9026,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             renderQuotaHistory(message.payload);
             break;
 
+          case 'updateBillingBlock':
+            updateBillingBlock(message.block, message.official);
+            break;
+
           case 'updateContextHealth':
             updateContextHealthDisplay(message.score, message.compactionCount);
             break;
@@ -9647,6 +9847,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._richerPanelTimer) {
       clearTimeout(this._richerPanelTimer);
     }
+    if (this._billingBlockTimer) {
+      clearTimeout(this._billingBlockTimer);
+      this._billingBlockTimer = undefined;
+    }
+    for (const provider of this._usageProviders.values()) provider.dispose();
+    this._usageProviders.clear();
     this._phrases.stop();
     this._disposeViewBindings();
     this._view = undefined;

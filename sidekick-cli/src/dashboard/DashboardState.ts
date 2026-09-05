@@ -7,7 +7,7 @@
  */
 
 import * as fs from 'fs';
-import type { FollowEvent } from 'sidekick-shared';
+import type { BillingBlock, FollowEvent } from 'sidekick-shared';
 import { EventAggregator } from 'sidekick-shared';
 import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared';
 import type { SessionSnapshot } from 'sidekick-shared';
@@ -164,6 +164,8 @@ export interface DashboardMetrics {
   compactionCount: number;
   compactionEvents: CompactionEvent[];
   quota: QuotaState | null;
+  /** Active five-hour billing block computed from session logs (local estimate). */
+  billingBlock: BillingBlock | null;
   providerStatus: ProviderStatusState | null;
   openaiStatus: ProviderStatusState | null;
   eventCount: number;
@@ -240,6 +242,9 @@ export class DashboardState {
 
   // Quota (external state from OAuth API or Codex rate limits)
   private _quota: QuotaState | null = null;
+
+  // Active billing block (external state from the usage collector)
+  private _billingBlock: BillingBlock | null = null;
 
   // Provider status (external state from status.claude.com / status.openai.com)
   private _providerStatus: ProviderStatusState | null = null;
@@ -485,6 +490,11 @@ export class DashboardState {
     this._quota = quota;
   }
 
+  /** Update the active billing block computed from session logs. */
+  setBillingBlock(block: BillingBlock | null): void {
+    this._billingBlock = block;
+  }
+
   /** Update Claude provider status from status.claude.com polling. */
   setProviderStatus(status: ProviderStatusState): void {
     this._providerStatus = status;
@@ -629,6 +639,7 @@ export class DashboardState {
       compactionCount: m.compactionCount,
       compactionEvents,
       quota: this._quota,
+      billingBlock: this._billingBlock,
       providerStatus: this._providerStatus,
       openaiStatus: this._openaiStatus,
       eventCount: m.eventCount,

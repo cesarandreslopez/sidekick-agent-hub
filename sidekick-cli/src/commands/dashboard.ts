@@ -22,6 +22,10 @@ import {
   DEFAULT_QUOTA_THRESHOLDS,
   describeQuotaThresholdAlert,
   evaluateQuotaThresholds,
+  BILLING_BLOCK_DURATION_MS,
+  collectUsageEvents,
+  computeBillingBlocks,
+  findActiveBillingBlock,
 } from 'sidekick-shared';
 import type {
   FollowEvent,
@@ -641,6 +645,38 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     scheduleRender();
   });
 
+  // Active billing block (local estimate from session logs), refreshed every
+  // minute. The collector caches each session by fingerprint, so a tick that
+  // finds nothing changed is a handful of small JSON reads.
+  const BILLING_BLOCK_REFRESH_MS = 60_000;
+  let billingBlockInFlight = false;
+  async function refreshBillingBlock(): Promise<void> {
+    if (billingBlockInFlight) return;
+    billingBlockInFlight = true;
+    try {
+      const now = new Date();
+      const collected = await collectUsageEvents({
+        providers: [activeProvider],
+        since: new Date(now.getTime() - 2 * BILLING_BLOCK_DURATION_MS),
+        until: now,
+      });
+      state.setBillingBlock(
+        findActiveBillingBlock(computeBillingBlocks(collected.events, { now })),
+      );
+      scheduleRender();
+    } catch {
+      // The block is an estimate; a failed refresh keeps the last one.
+    } finally {
+      billingBlockInFlight = false;
+    }
+  }
+  void refreshBillingBlock();
+  const billingBlockInterval = setInterval(
+    () => void refreshBillingBlock(),
+    BILLING_BLOCK_REFRESH_MS,
+  );
+  billingBlockInterval.unref?.();
+
   // Provider status updates trigger rerender
   providerStatusService.onUpdate((status) => {
     state.setProviderStatus(status);
@@ -663,6 +699,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     }
     try {
       clearInterval(staticRefreshInterval);
+    } catch {
+      /* ignore */
+    }
+    try {
+      clearInterval(billingBlockInterval);
     } catch {
       /* ignore */
     }

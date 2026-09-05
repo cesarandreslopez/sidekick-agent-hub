@@ -2,6 +2,7 @@ declare const __CLI_VERSION__: string;
 
 import { Command } from 'commander';
 import {
+  BLOCKS_EXAMPLES,
   DUMP_EXAMPLES,
   EXTRACT_EXAMPLES,
   HISTORY_EXAMPLES,
@@ -285,6 +286,24 @@ const statsCmd = new Command('stats')
     return statsAction(_opts, cmd);
   });
 program.addCommand(statsCmd);
+
+// Blocks command — five-hour billing blocks from session logs
+const blocksCmd = new Command('blocks')
+  .description('Show five-hour billing blocks computed from session logs')
+  .option('--active', 'Only the block that is open right now')
+  .option('--recent', 'Blocks from the last three days (default)')
+  .option(
+    '--since <time>',
+    'Blocks since an ISO date, YYYY-MM-DD, or a relative window such as 7d or 24h',
+  )
+  .option('--csv', 'Print blocks as CSV')
+  .option('--no-cache', 'Re-read every session instead of using the usage cache')
+  .addHelpText('after', BLOCKS_EXAMPLES)
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { blocksAction } = await import('./commands/blocks');
+    return blocksAction(_opts, cmd);
+  });
+program.addCommand(blocksCmd);
 
 // Quota command — one-shot quota / rate-limit check
 const quotaCmd = new Command('quota')

@@ -50,6 +50,31 @@ export type {
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
 export { computeSessionFileStats, firstUserPrompt, readSessionFileStats } from './sessionStats';
 export type { ComputeSessionFileStatsOptions, ReadSessionFileStatsOptions } from './sessionStats';
+export {
+  BILLING_BLOCK_DURATION_MS,
+  computeBillingBlocks,
+  findActiveBillingBlock,
+} from './usage/billingBlocks';
+export type {
+  BillingBlock,
+  BillingBlockInput,
+  BillingBlockModelUsage,
+  BillingBlockTokens,
+  ComputeBillingBlocksOptions,
+} from './usage/billingBlocks';
+export {
+  MAX_USAGE_CACHE_FILES,
+  USAGE_CACHE_VERSION,
+  collectUsageEvents,
+  getUsageCacheDir,
+  pruneUsageCache,
+} from './usage/usageEvents';
+export type {
+  CollectUsageEventsOptions,
+  CollectUsageEventsResult,
+  UsageEventRecord,
+  UsageSessionRecord,
+} from './usage/usageEvents';
 export type { ProviderSessionIndex, ListRecentSessionsOptions } from './sessionTranscripts';
 export {
   ObservedSessionCollector,
