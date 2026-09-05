@@ -30,9 +30,11 @@
 
 import { resolveModelAlias } from './modelAliases';
 
-/** Known model context window sizes (in tokens). */
+/** Known model context window sizes (in tokens); current models verified 2026-09-05. */
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
-  // Claude — native 1M context (Fable 5, Opus 4.6+, Sonnet 4.6+)
+  // Claude — native 1M context (Fable 5+, Opus 4.6+, Sonnet 4.6+)
+  'claude-fable-5-1': 1_000_000,
+  'claude-fable-5.1': 1_000_000,
   'claude-fable-5': 1_000_000,
   'claude-opus-5': 1_000_000,
   'claude-opus-4-8': 1_000_000,
@@ -55,16 +57,19 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'claude-3-haiku': 200_000,
   // OpenAI GPT-4.1 series (1M context)
   'gpt-4.1': 1_048_576,
-  // OpenAI GPT-5 series (keys sorted longest-first below; explicit entries
+  // OpenAI GPT-5/6 series (keys sorted longest-first below; explicit entries
   // for every variant so prefix matching can't misclassify a new one).
   // These are published model maxima. Codex reports a smaller *effective*
   // window per account tier via token_count; that value wins through the
   // observed-override layer.
+  'gpt-6-astra': 1_050_000,
   'gpt-5.6-sol': 1_050_000,
   'gpt-5.6-terra': 1_050_000,
   'gpt-5.6-luna': 1_050_000,
   'gpt-5.6': 1_050_000,
   'gpt-5.5': 1_050_000,
+  'gpt-5.4-mini': 400_000,
+  'gpt-5.4-nano': 400_000,
   'gpt-5.4': 1_050_000,
   'gpt-5.3-codex-spark': 128_000,
   'gpt-5.3-codex': 400_000,

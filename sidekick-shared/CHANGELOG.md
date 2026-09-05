@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Static model metadata verified on 2026-09-05 adds exact Fable 5.1 pricing/context entries in dashed and dotted forms, with its $0.25/M cache-read rate, and GPT-6 Astra pricing with a 1.05M context window. GPT-5.6 Sol/Terra/Luna rates and the Sol alias are current; GPT-5.4 mini cache reads cost $0.075/M and mini/nano context windows are 400K. Sonnet 5's permanent $2/$10 rate is documented. Catalog overrides, observed limits, and historical models are preserved.
 - `resolveQuota({ preferFresh: false })` tries the API before local samples when API access is allowed. Failed live queries select the newer session or cached sample by capture time, prefer the cache on ties, and retain the API failure. Only a selected session sample is persisted.
 - Codex quota failures name Codex instead of Claude or Anthropic. Default cache preferences and API-disabled resolution are unchanged.
 

@@ -118,6 +118,23 @@ describe('getModelContextWindowSize', () => {
   });
 
   describe('current models resolve from the static baseline', () => {
+    it.each(['claude-fable-5-1', 'claude-fable-5.1'])(
+      'returns native 1M context for %s and its snapshots',
+      (model) => {
+        expect(getModelContextWindowSize(model)).toBe(1_000_000);
+        expect(getModelContextWindowSize(`${model}-20260901`)).toBe(1_000_000);
+      },
+    );
+
+    it.each(['gpt-5.4-mini', 'gpt-5.4-nano'])(
+      'uses the smaller context window for %s rather than inheriting GPT-5.4',
+      (model) => {
+        expect(getModelContextWindowSize(model)).toBe(400_000);
+        expect(getModelContextWindowSize(`${model}-2026-03-17`)).toBe(400_000);
+        expect(getModelContextWindowSize('gpt-5.4')).toBe(1_050_000);
+      },
+    );
+
     it('returns 1M for Opus 5 and Sonnet 5', () => {
       // Both previously fell through to the 200K default, making context
       // gauges read ~5x too full.
@@ -125,7 +142,8 @@ describe('getModelContextWindowSize', () => {
       expect(getModelContextWindowSize('claude-sonnet-5')).toBe(1_000_000);
     });
 
-    it('returns published maxima for the GPT-5.5/5.6 line', () => {
+    it('returns published maxima for Astra and the GPT-5.5/5.6 line', () => {
+      expect(getModelContextWindowSize('gpt-6-astra')).toBe(1_050_000);
       expect(getModelContextWindowSize('gpt-5.5')).toBe(1_050_000);
       expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(1_050_000);
       expect(getModelContextWindowSize('gpt-5.6-terra')).toBe(1_050_000);

@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Direct OpenAI API dashboard summaries use GPT-5.6 Luna with reasoning disabled and a 1,024-token `max_completion_tokens` limit. Anthropic API summaries retain Haiku 4.5; native CLI summaries retain the user's model configuration.
+
 ### Fixed
 
+- Shared model metadata verified on 2026-09-05 corrects fallback costs and context gauges for Fable 5.1, GPT-6 Astra, GPT-5.6, and GPT-5.4 mini/nano.
 - Codex `quota`, `quota --provider codex`, `quota --all`, and MCP quota queries fetch live utilization and reset credits on every call. Local samples no longer prevent API refreshes, including with `--refresh`.
 - Codex fallback output shows sample age and the failed API refresh reason; older logs no longer hide newer cached data.
 

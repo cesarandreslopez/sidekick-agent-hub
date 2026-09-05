@@ -39,7 +39,15 @@ describe('resolved model catalog', () => {
       },
     });
     const snapshot = JSON.parse(
-      JSON.stringify(exportResolvedModelCatalog(['gpt-5.6-sol', 'gpt-5.6-luna'])),
+      JSON.stringify(
+        exportResolvedModelCatalog([
+          'gpt-5.6-sol',
+          'gpt-5.6-luna',
+          'gpt-6-astra',
+          'claude-fable-5-1',
+          'claude-fable-5.1',
+        ]),
+      ),
     );
     expect(snapshot.models['gpt-5.6-sol'].contextWindow).toMatchObject({
       published: 1_050_000,
@@ -50,11 +58,28 @@ describe('resolved model catalog', () => {
     _clearObservedContextWindows();
     _clearCatalogContextWindows();
     _clearPricingOverrides();
-    expect(importResolvedModelCatalog(snapshot)).toEqual({ imported: 2, diagnostics: [] });
+    expect(importResolvedModelCatalog(snapshot)).toEqual({ imported: 5, diagnostics: [] });
 
     for (const id of Object.keys(snapshot.models)) {
       expect(getModelContextWindowSize(id)).toBe(snapshot.models[id].contextWindow.tierEffective);
       expect(getModelPricing(id)).toEqual(snapshot.models[id].pricing.pricing);
+    }
+  });
+
+  it('exports new models as exact baseline entries for browser consumers', () => {
+    const { models } = exportResolvedModelCatalog();
+    for (const id of ['gpt-6-astra', 'claude-fable-5-1', 'claude-fable-5.1']) {
+      expect(models[id].pricing.provenance).toMatchObject({
+        source: 'static',
+        match: 'exact',
+        matchedModelId: id,
+        inheritedByPrefix: false,
+      });
+      expect(models[id].contextWindow.provenance).toMatchObject({
+        source: 'static',
+        match: 'exact',
+        matchedModelId: id,
+      });
     }
   });
 

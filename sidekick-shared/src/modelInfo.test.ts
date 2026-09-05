@@ -215,6 +215,7 @@ describe('getModelPricing', () => {
       ['claude-opus-4-6', 'claude-opus-4.6'],
       ['claude-opus-4-7', 'claude-opus-4.7'],
       ['claude-opus-4-8', 'claude-opus-4.8'],
+      ['claude-fable-5-1', 'claude-fable-5.1'],
     ]) {
       expect(getModelPricing(`${dashed}-20260101`)).toEqual(getModelPricing(dotted));
     }
@@ -262,16 +263,26 @@ describe('getModelPricing', () => {
 
     // gpt-5.6-sol must NOT inherit the cheaper `gpt-5` prefix entry.
     const sol = getModelPricing('gpt-5.6-sol');
-    expect(sol).not.toBeNull();
-    expect(sol!.inputCostPerMillion).toBe(5.0);
-    expect(sol!.outputCostPerMillion).toBe(30.0);
+    expect(sol).toEqual({
+      inputCostPerMillion: 4.0,
+      outputCostPerMillion: 20.0,
+      cacheWriteCostPerMillion: 5.0,
+      cacheReadCostPerMillion: 0.4,
+    });
+    expect(getModelPricing('gpt-5.6')).toEqual(sol);
 
     const terra = getModelPricing('gpt-5.6-terra');
-    expect(terra!.inputCostPerMillion).toBe(2.5);
+    expect(terra).toEqual({
+      inputCostPerMillion: 2.0,
+      outputCostPerMillion: 12.0,
+      cacheWriteCostPerMillion: 2.5,
+      cacheReadCostPerMillion: 0.2,
+    });
 
     // A mini variant must not inherit its full-size sibling's rate.
     const mini = getModelPricing('gpt-5.4-mini');
     expect(mini!.inputCostPerMillion).toBe(0.75);
+    expect(mini!.cacheReadCostPerMillion).toBe(0.075);
   });
 
   it('prices GPT-5 tier variants from their own rate, not a shorter prefix key', () => {
@@ -279,12 +290,12 @@ describe('getModelPricing', () => {
     // prefix-matched to a plausible-looking but wrong number.
     const luna = getModelPricing('gpt-5.6-luna');
     expect(luna).not.toBeNull();
-    expect(luna!.inputCostPerMillion).toBe(1.0);
-    expect(luna!.outputCostPerMillion).toBe(6.0);
-    expect(luna!.cacheWriteCostPerMillion).toBe(1.25);
-    expect(luna!.cacheReadCostPerMillion).toBe(0.1);
+    expect(luna!.inputCostPerMillion).toBe(0.2);
+    expect(luna!.outputCostPerMillion).toBe(1.2);
+    expect(luna!.cacheWriteCostPerMillion).toBe(0.25);
+    expect(luna!.cacheReadCostPerMillion).toBe(0.02);
 
-    // The bug being fixed: luna inherited `gpt-5.6`, billing at sol's $5/$30.
+    // Luna must keep its own rate rather than inherit Sol via `gpt-5.6`.
     const sol = getModelPricing('gpt-5.6-sol');
     expect(luna!.inputCostPerMillion).not.toBe(sol!.inputCostPerMillion);
     expect(luna!.outputCostPerMillion).not.toBe(sol!.outputCostPerMillion);
@@ -417,6 +428,21 @@ describe('getModelPricing', () => {
 });
 
 describe('getModelInfo', () => {
+  it('recognizes Astra with pricing and context even without a runtime catalog', () => {
+    expect(getModelInfo('gpt-6-astra')).toMatchObject({
+      provider: 'openai',
+      family: 'gpt',
+      version: '6-astra',
+      contextWindow: 1_050_000,
+      pricing: {
+        inputCostPerMillion: 10,
+        outputCostPerMillion: 50,
+        cacheWriteCostPerMillion: 12.5,
+        cacheReadCostPerMillion: 1,
+      },
+    });
+  });
+
   it('returns full info for a Claude model', () => {
     const info = getModelInfo('claude-opus-4-20250514');
     expect(info.provider).toBe('anthropic');
@@ -446,6 +472,23 @@ describe('getModelInfo', () => {
 });
 
 describe('calculateCost', () => {
+  it.each([
+    'claude-fable-5-1',
+    'claude-fable-5.1',
+    'claude-fable-5-1-20260901',
+    'CLAUDE-FABLE-5.1[1M]',
+  ])('prices %s cache reads at the 5.1 rate while preserving Fable 5', (model) => {
+    const tokens = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheWriteTokens: 100_000,
+      cacheReadTokens: 800_000,
+    };
+    // $1.25 for writes plus $0.20 for reads, formerly $0.80 via Fable 5.
+    expect(calculateCost(tokens, model)).toBeCloseTo(1.45);
+    expect(calculateCost(tokens, 'claude-fable-5')).toBeCloseTo(2.05);
+  });
+
   it('calculates cost for a Claude model', () => {
     const cost = calculateCost(
       { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },

@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **VS Code:** Codex inference tiers now use GPT-5.6 Luna (fast), Terra (balanced), and Sol (powerful). Anthropic tiers retain Haiku 4.5, Sonnet 5, and Opus 5; explicit model settings still pass through.
+- **CLI:** Direct OpenAI API session summaries use GPT-5.6 Luna with reasoning disabled and `max_completion_tokens`. Native Claude/Codex CLI summaries retain the user's model configuration.
+
 ### Fixed
 
+- **Shared:** Model metadata verified on 2026-09-05 adds exact Fable 5.1 and GPT-6 Astra pricing/context entries, updates GPT-5.6 rates, corrects GPT-5.4 mini cache pricing and mini/nano context limits, and documents Sonnet 5's permanent $2/$10 rate. Runtime catalog and observed-context precedence are preserved.
 - **CLI:** Codex quota commands and MCP queries fetch live utilization and reset credits on every call, fixing the 0.26.0 regression that returned session logs even with `--refresh`; fallback output includes sample age and the API failure.
 - **Shared:** `preferFresh: false` tries the API before local quota samples; failed live queries select the newer session or cached sample without persisting rejected candidates. Codex failure messages identify the correct provider.
 

@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Codex inference defaults use GPT-5.6 Luna for fast features, Terra for balanced features, and Sol for powerful features. Anthropic tiers retain Haiku 4.5, Sonnet 5, and Opus 5; Fable 5.1 and GPT-6 Astra remain explicit model choices.
+
 ### Fixed
 
+- Shared pricing and context metadata verified on 2026-09-05 corrects fallback estimates for Fable 5.1, GPT-6 Astra, GPT-5.6, and GPT-5.4 mini/nano while preserving provider-reported context limits.
 - Shared Codex quota failure descriptions identify Codex instead of Claude or Anthropic.
 
 ## [0.26.0] - 2026-09-05

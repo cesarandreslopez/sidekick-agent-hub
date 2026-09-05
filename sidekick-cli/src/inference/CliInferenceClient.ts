@@ -21,7 +21,7 @@ export interface InferenceResult {
 type Strategy = 'claude-cli' | 'anthropic-api' | 'openai-api' | 'codex-cli' | 'none';
 
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
-const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+const DEFAULT_OPENAI_MODEL = 'gpt-5.6-luna';
 
 const EXEC_OPTS: ExecSyncOptionsWithStringEncoding = {
   encoding: 'utf-8',
@@ -170,7 +170,9 @@ export class CliInferenceClient {
         },
         body: JSON.stringify({
           model: DEFAULT_OPENAI_MODEL,
-          max_tokens: 1024,
+          max_completion_tokens: 1024,
+          // Dashboard summaries need a short answer within the output budget.
+          reasoning_effort: 'none',
           messages: [{ role: 'user', content: prompt }],
         }),
       });

@@ -126,9 +126,10 @@ export interface ModelDisplayInfo {
  * against `claude-sonnet-4.5`.
  *
  * Sources:
- *   - Anthropic: https://www.anthropic.com/pricing
- *   - OpenAI: https://openai.com/api/pricing/
- * Snapshot taken: 2026-06-09. Runtime LiteLLM hydration refreshes this.
+ *   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
+ *   - OpenAI: https://developers.openai.com/api/docs/models
+ * Current Anthropic and GPT-5.6/6 rates verified: 2026-09-05.
+ * Runtime LiteLLM hydration refreshes this offline baseline.
  *
  * Anthropic keys appear in both dashed (`claude-opus-4-8`, the real model-ID
  * form) and dotted (`claude-opus-4.8`, the LiteLLM catalog form) spellings —
@@ -136,6 +137,19 @@ export interface ModelDisplayInfo {
  */
 const PRICING_TABLE: Record<string, ModelPricing> = {
   // ── Anthropic: Claude ──
+  // Fable 5.1 cache reads cost 0.025x input; Fable 5 retains its 0.1x rate.
+  'claude-fable-5-1': {
+    inputCostPerMillion: 10.0,
+    outputCostPerMillion: 50.0,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 0.25,
+  },
+  'claude-fable-5.1': {
+    inputCostPerMillion: 10.0,
+    outputCostPerMillion: 50.0,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 0.25,
+  },
   'claude-fable-5': {
     inputCostPerMillion: 10.0,
     outputCostPerMillion: 50.0,
@@ -160,11 +174,8 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 1.0,
     cacheReadCostPerMillion: 0.08,
   },
-  // Sonnet 5 carries the standard rate here. The introductory $2/$10 (through
-  // 2026-08-31) arrives via catalog hydration, which supersedes this baseline.
-  // Sonnet 5 is $2/$10, not the $3/$15 every earlier Sonnet charged, and it
-  // carries no >200K surcharge the way Sonnet 4.5 does. The catalog agrees
-  // across all eleven of its Sonnet 5 entries.
+  // Sonnet 5's $2/$10 introductory rate is now permanent. Standard pricing
+  // applies across its full 1M context window.
   'claude-sonnet-5': {
     inputCostPerMillion: 2.0,
     outputCostPerMillion: 10.0,
@@ -312,37 +323,44 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheReadCostPerMillion: 0,
   },
 
-  // ── OpenAI: GPT-5 family ──
-  // Published rates, verified against the LiteLLM catalog. Runtime hydration
+  // ── OpenAI: GPT-5/6 families ──
+  // Published rates, cross-checked with the LiteLLM catalog. Runtime hydration
   // still supersedes these; they are the offline baseline.
   //
   // Every tier that ships at a rate of its own needs an entry of its own. Keys
   // are matched longest-first, so a `-mini`/`-nano`/`-pro` variant with no entry
   // silently inherits its base model's rate and reports a wrong number rather
   // than none — `gpt-5-nano` read 25x its true cost this way.
+  'gpt-6-astra': {
+    inputCostPerMillion: 10.0,
+    outputCostPerMillion: 50.0,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1.0,
+  },
   'gpt-5.6-sol': {
-    inputCostPerMillion: 5.0,
-    outputCostPerMillion: 30.0,
-    cacheWriteCostPerMillion: 6.25,
-    cacheReadCostPerMillion: 0.5,
+    inputCostPerMillion: 4.0,
+    outputCostPerMillion: 20.0,
+    cacheWriteCostPerMillion: 5.0,
+    cacheReadCostPerMillion: 0.4,
   },
   'gpt-5.6-terra': {
-    inputCostPerMillion: 2.5,
-    outputCostPerMillion: 15.0,
-    cacheWriteCostPerMillion: 3.13,
-    cacheReadCostPerMillion: 0.25,
+    inputCostPerMillion: 2.0,
+    outputCostPerMillion: 12.0,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.2,
   },
   'gpt-5.6-luna': {
-    inputCostPerMillion: 1.0,
-    outputCostPerMillion: 6.0,
-    cacheWriteCostPerMillion: 1.25,
-    cacheReadCostPerMillion: 0.1,
+    inputCostPerMillion: 0.2,
+    outputCostPerMillion: 1.2,
+    cacheWriteCostPerMillion: 0.25,
+    cacheReadCostPerMillion: 0.02,
   },
+  // The GPT-5.6 alias routes to Sol.
   'gpt-5.6': {
-    inputCostPerMillion: 5.0,
-    outputCostPerMillion: 30.0,
-    cacheWriteCostPerMillion: 6.25,
-    cacheReadCostPerMillion: 0.5,
+    inputCostPerMillion: 4.0,
+    outputCostPerMillion: 20.0,
+    cacheWriteCostPerMillion: 5.0,
+    cacheReadCostPerMillion: 0.4,
   },
   'gpt-5.5-pro': {
     inputCostPerMillion: 30.0,
@@ -360,7 +378,7 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     inputCostPerMillion: 0.75,
     outputCostPerMillion: 4.5,
     cacheWriteCostPerMillion: 0,
-    cacheReadCostPerMillion: 0.07,
+    cacheReadCostPerMillion: 0.075,
   },
   'gpt-5.4-nano': {
     inputCostPerMillion: 0.2,

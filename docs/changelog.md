@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- VS Code Codex tiers use GPT-5.6 Luna, Terra, and Sol for fast, balanced, and powerful features. Anthropic retains Haiku 4.5, Sonnet 5, and Opus 5.
+- CLI direct OpenAI API summaries use Luna with reasoning disabled and the current completion-token parameter. Native CLI model configuration is preserved.
+
 ### Fixed
 
+- Model metadata verified on 2026-09-05 adds exact Fable 5.1 and GPT-6 Astra entries, updates GPT-5.6 prices, corrects GPT-5.4 mini cache pricing and mini/nano context limits, and documents Sonnet 5's permanent $2/$10 rate.
 - CLI and MCP Codex quota queries fetch live utilization and reset credits on every call, fixing the 0.26.0 regression that returned session logs even with `--refresh`.
 - Failed live queries use the newer session or cached sample and report its age and the API failure; Codex error descriptions identify the correct provider.
 

@@ -39,8 +39,8 @@ export const DEFAULT_MODEL_MAPPINGS: Record<InferenceProviderId, ModelMapping> =
     powerful: 'anthropic/claude-opus-5',
   },
   codex: {
-    fast: 'gpt-5.4-mini',
-    balanced: 'gpt-5.6-sol',
+    fast: 'gpt-5.6-luna',
+    balanced: 'gpt-5.6-terra',
     powerful: 'gpt-5.6-sol',
   },
 };

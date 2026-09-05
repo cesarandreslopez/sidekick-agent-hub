@@ -24,7 +24,9 @@ describe('ModelResolver', () => {
     });
 
     it('resolves "auto" for codex provider', () => {
-      expect(resolveModel('auto', 'codex', 'inlineModel')).toBe('gpt-5.4-mini');
+      expect(resolveModel('auto', 'codex', 'inlineModel')).toBe('gpt-5.6-luna');
+      expect(resolveModel('auto', 'codex', 'reviewModel')).toBe('gpt-5.6-terra');
+      expect(resolveModel('auto', 'codex', 'transformModel')).toBe('gpt-5.6-sol');
     });
   });
 
@@ -48,6 +50,11 @@ describe('ModelResolver', () => {
     it('maps opus -> powerful -> provider model (codex)', () => {
       expect(resolveModel('opus', 'codex', 'transformModel')).toBe('gpt-5.6-sol');
     });
+
+    it('maps legacy fast and balanced names to the corresponding Codex tiers', () => {
+      expect(resolveModel('haiku', 'codex', 'reviewModel')).toBe('gpt-5.6-luna');
+      expect(resolveModel('sonnet', 'codex', 'inlineModel')).toBe('gpt-5.6-terra');
+    });
   });
 
   describe('tier name resolution', () => {
@@ -62,9 +69,21 @@ describe('ModelResolver', () => {
     it('resolves powerful tier for codex', () => {
       expect(resolveModel('powerful', 'codex', 'inlineModel')).toBe('gpt-5.6-sol');
     });
+
+    it('honors explicit fast and balanced Codex tiers over the feature default', () => {
+      expect(resolveModel('fast', 'codex', 'transformModel')).toBe('gpt-5.6-luna');
+      expect(resolveModel('balanced', 'codex', 'transformModel')).toBe('gpt-5.6-terra');
+    });
   });
 
   describe('full model ID passthrough', () => {
+    it('keeps the newest flagships available as explicit model choices', () => {
+      expect(resolveModel('gpt-6-astra', 'codex', 'inlineModel')).toBe('gpt-6-astra');
+      expect(resolveModel('claude-fable-5-1', 'claude-api', 'inlineModel')).toBe(
+        'claude-fable-5-1',
+      );
+    });
+
     it('passes through full Claude model ID', () => {
       expect(resolveModel('claude-3-5-haiku-20241022', 'claude-max', 'inlineModel')).toBe(
         'claude-3-5-haiku-20241022',
