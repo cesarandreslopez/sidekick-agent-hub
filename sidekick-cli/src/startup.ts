@@ -25,6 +25,22 @@ export function needsFullStartup(commandToken: string | undefined): boolean {
   return !CACHE_ONLY_COMMANDS.has(commandToken);
 }
 
+/**
+ * Whether this run must never refresh the pricing catalog over the network.
+ *
+ * `--offline` on the command line or `SIDEKICK_OFFLINE=1` in the environment.
+ * The flag is read from argv directly because startup runs before Commander
+ * has parsed options.
+ */
+export function isOfflineRun(
+  argv: readonly string[] = process.argv.slice(2),
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (argv.includes('--offline')) return true;
+  const value = env.SIDEKICK_OFFLINE;
+  return value === '1' || value === 'true';
+}
+
 let started: Promise<void> | null = null;
 
 /** Reset the memoised run. Test-only. */
@@ -33,11 +49,15 @@ export function _resetStartupForTests(): void {
 }
 
 /**
- * Run the startup side effects once, awaiting only what a command depends on.
+ * Run the startup side effects once, awaiting what a command depends on.
  *
- * Resolves when account bootstrap is done. The pricing catalog is deliberately
- * left unawaited so it warms in parallel with the command rather than delaying
- * it — a stale or missing catalog falls back to the static price table.
+ * The pricing catalog is awaited so that every figure a command prints is
+ * priced from the same catalog. Hydration is bounded: a fresh on-disk cache is
+ * a local read, and a refresh is capped by the catalog's own 3 s network
+ * timeout before falling back to the cached or static tables. Before this was
+ * awaited, a command that finished quickly could price from the static table
+ * while the next run priced from LiteLLM rates, so the same session reported
+ * two different costs.
  */
 export function runStartupSideEffects(commandToken: string | undefined): Promise<void> {
   if (started) return started;
@@ -51,13 +71,14 @@ export function runStartupSideEffects(commandToken: string | undefined): Promise
     if (!needsFullStartup(commandToken)) return;
 
     // cacheDir defaults to the config dir, which honors SIDEKICK_CONFIG_DIR.
-    void hydratePricingCatalog().catch(() => {
-      /* non-fatal; static table still works */
-    });
-
-    await ensureDefaultAccounts().catch(() => {
-      /* non-fatal; account bootstrap must not block startup */
-    });
+    await Promise.all([
+      hydratePricingCatalog({ offline: isOfflineRun() }).catch(() => {
+        /* non-fatal; static table still works */
+      }),
+      ensureDefaultAccounts().catch(() => {
+        /* non-fatal; account bootstrap must not block startup */
+      }),
+    ]);
   })();
   return started;
 }

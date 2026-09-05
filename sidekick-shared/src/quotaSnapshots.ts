@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from './paths';
 import { atomicWriteJsonSync, withFileLockSync } from './writers/atomic';
-import type { QuotaState } from './quota';
+import { classifyQuotaFreshness, type QuotaState } from './quota';
 import type { AccountProviderId } from './accountRegistry';
 import { isAggregateCodexLimit } from './types/codex';
 
@@ -134,9 +134,17 @@ export function writeQuotaSnapshot(
   });
 }
 
+/**
+ * Read the persisted snapshot for one provider/account.
+ *
+ * `stale: true` and `source: 'cache'` mean "not a live fetch"; the age of the
+ * sample is reported separately as `ageMs` and `freshness` so a reader can
+ * tell a ten-second-old snapshot from a two-day-old one.
+ */
 export function readQuotaSnapshot(
   providerId: QuotaSnapshotProviderId,
   accountId: string,
+  now: Date = new Date(),
 ): QuotaState | null {
   const store = readStore();
   const snapshot = store.snapshots.find(
@@ -144,10 +152,14 @@ export function readQuotaSnapshot(
   );
   if (!snapshot) return null;
 
+  const capturedMs = snapshotTimeMs(snapshot.quota);
+  const ageMs = capturedMs > 0 ? Math.max(0, now.getTime() - capturedMs) : undefined;
   return {
     ...snapshot.quota,
     providerId,
     source: 'cache',
     stale: true,
+    ...(ageMs !== undefined ? { ageMs } : {}),
+    freshness: classifyQuotaFreshness(ageMs),
   };
 }

@@ -94,7 +94,8 @@ describe('formatSessionText', () => {
   it('includes token summary', () => {
     const result = formatSessionText(mockMetrics());
     expect(result).toContain('Tokens:');
-    expect(result).toContain('18.0k total');
+    // Total counts every billed bucket: 15.0k in + 3.0k out + 500 cache-write + 12.0k cache-read.
+    expect(result).toContain('30.5k total incl. cache');
     expect(result).toContain('15.0k in');
     expect(result).toContain('3.0k out');
   });
@@ -238,7 +239,7 @@ describe('formatSessionMarkdown', () => {
     expect(result).toContain('| Output | 3.0k |');
   });
 
-  it('includes cost row when reportedCost > 0', () => {
+  it('includes a cost row with its provenance when costUsd > 0', () => {
     const result = formatSessionMarkdown(
       mockMetrics({
         tokens: {
@@ -246,11 +247,41 @@ describe('formatSessionMarkdown', () => {
           outputTokens: 500,
           cacheWriteTokens: 0,
           cacheReadTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 1500,
+          costUsd: 0.05,
+          reportedCostUsd: 0,
+          estimatedCostUsd: 0.05,
+          unpricedCalls: 0,
+          costProvenance: 'estimated',
           reportedCost: 0.05,
         },
       }),
     );
-    expect(result).toContain('| Cost | $0.05 |');
+    expect(result).toContain('| Cost | $0.05 (estimated from catalog pricing) |');
+    expect(result).toContain('| Total (incl. cache) | 1.5k |');
+  });
+
+  it('marks unpriced sessions instead of printing $0', () => {
+    const result = formatSessionMarkdown(
+      mockMetrics({
+        tokens: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 1500,
+          costUsd: 0,
+          reportedCostUsd: 0,
+          estimatedCostUsd: 0,
+          unpricedCalls: 3,
+          costProvenance: 'unpriced',
+          reportedCost: 0,
+        },
+      }),
+    );
+    expect(result).toContain('| Cost | — (unpriced · 3 unpriced calls) |');
   });
 
   it('includes tool calls table', () => {

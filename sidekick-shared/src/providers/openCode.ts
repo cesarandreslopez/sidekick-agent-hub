@@ -196,16 +196,24 @@ function isDbSessionPath(sessionPath: string): boolean {
   return sessionPath.includes(path.sep + DB_SESSION_PREFIX + path.sep);
 }
 
-function workspaceMatches(left: string, right: string): boolean {
-  const a = path
-    .resolve(left)
+/**
+ * Whether a session recorded in `sessionDirectory` belongs to `workspacePath`.
+ *
+ * A session started inside the workspace (the workspace itself or any
+ * subdirectory, e.g. a monorepo package) matches. A session started in a
+ * *parent* of the workspace does not: a sub-package workspace must not list
+ * every session of the enclosing repo as its own.
+ */
+function workspaceMatches(sessionDirectory: string, workspacePath: string): boolean {
+  const session = path
+    .resolve(sessionDirectory)
     .replace(/[\\/]+$/, '')
     .toLowerCase();
-  const b = path
-    .resolve(right)
+  const workspace = path
+    .resolve(workspacePath)
     .replace(/[\\/]+$/, '')
     .toLowerCase();
-  return a === b || a.startsWith(b + path.sep) || b.startsWith(a + path.sep);
+  return session === workspace || session.startsWith(workspace + path.sep);
 }
 
 /** Extract project ID from a synthetic DB session path. */
@@ -2146,6 +2154,7 @@ export class OpenCodeProvider implements SessionProviderBase {
     this.db?.close();
     this.db = null;
     this.dbInitialized = false;
+    this.dbStatus = { available: false, kind: 'db_missing' };
     this.sessionMetaCache.clear();
     this.dynamicContextWindowLimit = null;
   }

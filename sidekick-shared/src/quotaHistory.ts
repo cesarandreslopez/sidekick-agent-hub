@@ -10,10 +10,12 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { addLocalDays, formatLocalDateKey } from './formatting';
 import { getConfigDir } from './paths';
 import type { QuotaState } from './quota';
 import { writeQuotaSnapshot } from './quotaSnapshots';
 import type { RuntimeQuotaProviderId } from './providerIds';
+import { atomicWriteFileSync, withFileLockSync } from './writers/atomic';
 
 export type QuotaHistoryRuntimeProvider = RuntimeQuotaProviderId;
 
@@ -26,7 +28,7 @@ export interface QuotaHistorySample {
   sevenDay: { utilization: number; resetsAt: string };
   available: boolean;
   error?: string;
-  source?: 'session' | 'cache' | 'api';
+  source?: 'session' | 'cache' | 'api' | 'statusline';
   stale?: boolean;
 }
 
@@ -155,19 +157,17 @@ function readLastSampleTimestampMs(filePath: string): number | null {
   }
 }
 
+/**
+ * Append-and-prune under the shared cross-process lock. Without it a prune
+ * rewrite (rename over the file) could race another process's append, and
+ * the appended line would land on the old, unlinked inode.
+ */
+function withHistoryFileLock<T>(filePath: string, operation: () => T): T {
+  return withFileLockSync(`${filePath}.lock`, operation);
+}
+
 function atomicRewriteFile(filePath: string, contents: string): void {
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomBytes(8).toString('hex')}.tmp`;
-  try {
-    fs.writeFileSync(tmp, contents, { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(tmp, filePath);
-  } catch (error) {
-    try {
-      fs.rmSync(tmp, { force: true });
-    } catch {
-      // Best effort cleanup only.
-    }
-    throw error;
-  }
+  atomicWriteFileSync(filePath, contents, 0o600);
 }
 
 function pruneFileSync(filePath: string, retentionDays: number): { kept: number; pruned: number } {
@@ -257,18 +257,18 @@ async function runAppend(
 
   ensureHistoryDir(sample.workspaceId);
   const line = JSON.stringify(sample) + '\n';
-  await fs.promises.appendFile(filePath, line, { encoding: 'utf8', mode: 0o600 });
-  lastWriteCache.set(filePath, Number.isFinite(sampleTs) ? sampleTs : Date.now());
-
-  // Opportunistic prune. Skip when the file is small to avoid pointless rewrite churn.
-  try {
-    const stat = await fs.promises.stat(filePath);
-    if (stat.size >= PRUNE_FILESIZE_THRESHOLD) {
-      pruneFileSync(filePath, options.retentionDays);
+  withHistoryFileLock(filePath, () => {
+    fs.appendFileSync(filePath, line, { encoding: 'utf8', mode: 0o600 });
+    // Opportunistic prune. Skip when the file is small to avoid pointless rewrite churn.
+    try {
+      if (fs.statSync(filePath).size >= PRUNE_FILESIZE_THRESHOLD) {
+        pruneFileSync(filePath, options.retentionDays);
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
-  }
+  });
+  lastWriteCache.set(filePath, Number.isFinite(sampleTs) ? sampleTs : Date.now());
 
   // Backwards-compat: keep the latest-snapshot store hot so existing callers (DashboardViewProvider,
   // codex session provider, external consumers) don't have to query history for "latest".
@@ -341,13 +341,12 @@ export async function readQuotaHistoryRange(
   return samples;
 }
 
-function utcDateString(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
-function addDaysUtc(dateString: string, days: number): string {
-  const ms = Date.parse(`${dateString}T00:00:00Z`) + days * MS_PER_DAY;
-  return utcDateString(ms);
+/**
+ * Daily buckets are keyed by the machine's local calendar day, matching the
+ * `today` brief, the historical-data store, and the dashboard date filters.
+ */
+function localDateString(ms: number): string {
+  return formatLocalDateKey(ms);
 }
 
 export async function readQuotaHistoryDailyBuckets(
@@ -359,12 +358,14 @@ export async function readQuotaHistoryDailyBuckets(
   const fromMs = options.from ? Date.parse(options.from) : defaultFromMs;
   const toMs = options.to ? Date.parse(options.to) : defaultToMs;
 
-  const startDate = utcDateString(fromMs);
-  const endDate = utcDateString(toMs);
+  const startDate = localDateString(fromMs);
+  const endDate = localDateString(toMs);
 
   const grouped = new Map<string, QuotaHistorySample[]>();
   for (const sample of samples) {
-    const day = sample.timestamp.slice(0, 10);
+    const sampleMs = Date.parse(sample.timestamp);
+    if (!Number.isFinite(sampleMs)) continue;
+    const day = localDateString(sampleMs);
     const bucket = grouped.get(day);
     if (bucket) {
       bucket.push(sample);
@@ -412,7 +413,7 @@ export async function readQuotaHistoryDailyBuckets(
         anyUnavailable,
       });
     }
-    cursor = addDaysUtc(cursor, 1);
+    cursor = addLocalDays(cursor, 1);
   }
   return buckets;
 }

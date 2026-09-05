@@ -26,7 +26,7 @@ import type {
 import { ModelPricingService } from './ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { buildNarrativePrompt } from '../utils/summaryPrompts';
-import { calculateCodeImpact, formatDurationMs } from 'sidekick-shared';
+import { calculateCodeImpact, formatDurationMs, summarizeTokens } from 'sidekick-shared';
 
 /**
  * Weights for tool cost attribution.
@@ -84,7 +84,12 @@ export class SessionSummaryService {
   ): SessionSummaryData {
     const duration = stats.sessionStartTime ? Date.now() - stats.sessionStartTime.getTime() : 0;
 
-    const totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
+    const totalTokens = summarizeTokens({
+      inputTokens: stats.totalInputTokens,
+      outputTokens: stats.totalOutputTokens,
+      cacheWriteTokens: stats.totalCacheWriteTokens,
+      cacheReadTokens: stats.totalCacheReadTokens,
+    }).total;
     const totalCost = this._computeTotalCost(stats);
     const apiCalls = stats.messageCount;
     const contextPeak = (stats.currentContextSize / contextWindowLimit) * 100;
@@ -252,8 +257,14 @@ export class SessionSummaryService {
       ? Date.now() - stats.sessionStartTime.getTime()
       : 0;
 
-    // Per-model rate approximation: distribute overall rate by model share
-    const totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
+    // Per-model rate approximation: distribute overall rate by model share.
+    // Uses the same cache-inclusive total the per-model `tokens` accumulate.
+    const totalTokens = summarizeTokens({
+      inputTokens: stats.totalInputTokens,
+      outputTokens: stats.totalOutputTokens,
+      cacheWriteTokens: stats.totalCacheWriteTokens,
+      cacheReadTokens: stats.totalCacheReadTokens,
+    }).total;
     const rateByModel: { model: string; tokensPerMin: number }[] = [];
 
     if (totalTokens > 0) {

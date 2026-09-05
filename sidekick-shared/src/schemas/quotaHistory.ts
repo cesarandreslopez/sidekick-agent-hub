@@ -35,7 +35,7 @@ export const quotaHistorySampleSchema = z.object({
   sevenDay: z.object({ utilization: z.number(), resetsAt: z.string() }),
   available: z.boolean(),
   error: z.string().optional(),
-  source: z.enum(['session', 'cache', 'api']).optional(),
+  source: z.enum(['session', 'cache', 'api', 'statusline']).optional(),
   stale: z.boolean().optional(),
 }) satisfies z.ZodType<QuotaHistorySample>;
 

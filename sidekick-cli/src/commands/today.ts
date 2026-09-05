@@ -2,11 +2,14 @@ import type { Command } from 'commander';
 import {
   composeContext,
   formatCost,
+  formatLocalDateKey,
   formatStatusline,
   getActiveAccountStatus,
+  getScheduledPeakHoursState,
   readHistory,
   readQuotaSnapshot,
   resolveProjectIdentity,
+  summarizeTokens,
 } from 'sidekick-shared';
 import type { DailyData } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -29,20 +32,19 @@ export function compactBriefText(value: string | null | undefined, limit = 160):
   return compact.length > limit ? `${compact.slice(0, limit - 1)}…` : compact;
 }
 
-// Daily buckets in historical-data.json are keyed by UTC date (the writer
-// derives keys from ISO timestamps), so lookups must use UTC dates too.
-function utcDateKey(date: Date): string {
-  return date.toISOString().split('T')[0];
+// Daily buckets in historical-data.json are keyed by the local calendar day
+// (the extension writes them with the same helper), so "yesterday" must be
+// the local yesterday too.
+function localDateKey(date: Date): string {
+  return formatLocalDateKey(date);
 }
 
+/** Peak-window line from the shared schedule, so it always agrees with `sidekick peak`. */
 export function scheduledPeakHoursLine(now = new Date()): string {
-  const day = now.getUTCDay();
-  const hour = now.getUTCHours();
-  const weekday = day >= 1 && day <= 5;
-  const active = weekday && hour >= 13 && hour < 19;
-  return active
-    ? 'Peak window: active (weekday 13:00–19:00 UTC; limits may drain faster)'
-    : 'Peak window: off-peak (weekday peak is 13:00–19:00 UTC)';
+  const state = getScheduledPeakHoursState(now);
+  return state.isPeak
+    ? `Peak window: active (${state.peakHoursDescription}; limits may drain faster)`
+    : `Peak window: off-peak (peak is ${state.peakHoursDescription})`;
 }
 
 export async function todayAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
@@ -55,7 +57,7 @@ export async function todayAction(_opts: Record<string, unknown>, cmd: Command):
       readHistory(),
       composeContext(project, 'compact', provider),
     ]);
-    const yesterdayKey = utcDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const yesterdayKey = localDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
     const accounts = getActiveAccountStatus();
     const claudeQuota = accounts.claude.accountId
       ? readQuotaSnapshot('claude-code', accounts.claude.accountId)
@@ -68,7 +70,7 @@ export async function todayAction(_opts: Record<string, unknown>, cmd: Command):
       (task) => task.status === 'pending' || task.status === 'in_progress',
     );
     const brief: TodayBrief = {
-      date: utcDateKey(new Date()),
+      date: localDateKey(new Date()),
       yesterday: history?.daily?.[yesterdayKey] ?? null,
       openTasks: openTasks.slice(0, 8).map((task) => ({
         id: task.taskId,
@@ -93,7 +95,7 @@ export async function todayAction(_opts: Record<string, unknown>, cmd: Command):
     }
     const lines = [`Sidekick Today — ${brief.date}`, brief.quota, brief.peakHours, ''];
     if (brief.yesterday) {
-      const tokens = brief.yesterday.tokens.inputTokens + brief.yesterday.tokens.outputTokens;
+      const tokens = summarizeTokens(brief.yesterday.tokens).total;
       lines.push(
         `Yesterday: ${brief.yesterday.sessionCount} sessions · ${tokens.toLocaleString()} tokens · ${formatCost(brief.yesterday.totalCost)}`,
       );

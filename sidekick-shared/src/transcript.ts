@@ -89,7 +89,12 @@ export interface CanonicalSessionTranscript {
     events: NormalizedUsage[];
     costs: NormalizedUsageCost[];
     totals: CanonicalTranscriptUsageTotals;
+    /** Strict total: `null` unless every usage event could be priced. */
     totalCostUsd: number | null;
+    /** Sum of the events that could be priced; pair with `unpricedEvents`. */
+    pricedCostUsd: number;
+    /** Usage events with neither a reported cost nor a catalog price. */
+    unpricedEvents: number;
   };
   provenance: { source: 'session-events'; fidelity: TranscriptFidelity; eventCount: number };
 }
@@ -253,6 +258,8 @@ export function projectSessionTranscript(
         usageCosts.length > 0 && usageCosts.every((cost) => cost.costUsd !== null)
           ? usageCosts.reduce((sum, cost) => sum + (cost.costUsd ?? 0), 0)
           : null,
+      pricedCostUsd: usageCosts.reduce((sum, cost) => sum + (cost.costUsd ?? 0), 0),
+      unpricedEvents: usageCosts.filter((cost) => cost.costUsd === null).length,
     },
     provenance: { source: 'session-events', fidelity, eventCount: events.length },
   };

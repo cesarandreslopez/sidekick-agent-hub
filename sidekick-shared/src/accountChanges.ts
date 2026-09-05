@@ -29,7 +29,8 @@ let pollTimer: ReturnType<typeof setInterval> | undefined;
 let stopRawListener: (() => void) | undefined;
 let lastFingerprint: string | undefined;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-let activePollIntervalMs = 30_000;
+const DEFAULT_POLL_INTERVAL_MS = 30_000;
+let activePollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
 
 /**
  * Observe login, logout, and active-account switches. Local Sidekick mutations
@@ -41,8 +42,16 @@ export function onAccountsChanged(
   options: OnAccountsChangedOptions = {},
 ): Disposable {
   listeners.add(listener);
-  activePollIntervalMs = Math.max(1_000, options.pollIntervalMs ?? activePollIntervalMs);
-  ensureMonitoring();
+  // The fastest interval any live subscriber asked for wins; a later, faster
+  // subscriber restarts the timer rather than being silently ignored.
+  const requestedPollMs = Math.max(1_000, options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS);
+  if (!stopRawListener) {
+    activePollIntervalMs = requestedPollMs;
+    ensureMonitoring();
+  } else if (requestedPollMs < activePollIntervalMs) {
+    activePollIntervalMs = requestedPollMs;
+    restartPollTimer();
+  }
   if (options.emitCurrent) emitIfChanged('poll', true, listener);
   return {
     dispose: () => {
@@ -74,8 +83,17 @@ function ensureMonitoring(): void {
       // Missing/unwatchable directories are covered by the catch-up poll.
     }
   }
+  startPollTimer();
+}
+
+function startPollTimer(): void {
   pollTimer = setInterval(() => emitIfChanged('poll'), activePollIntervalMs);
   pollTimer.unref?.();
+}
+
+function restartPollTimer(): void {
+  if (pollTimer) clearInterval(pollTimer);
+  startPollTimer();
 }
 
 function stopMonitoring(): void {
@@ -88,6 +106,7 @@ function stopMonitoring(): void {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = undefined;
   lastFingerprint = undefined;
+  activePollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
 }
 
 function watchTargets(): string[] {

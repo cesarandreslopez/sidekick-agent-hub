@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Shared:** `summarizeTokens()` defines one token vocabulary — `total` (input, output, cache writes, cache reads) and `context` (input plus cache) — and every CLI, report, dashboard, and status-bar total now goes through it; `TOKEN_TOTAL_LABEL` / `TOKEN_CONTEXT_LABEL` name the columns
+- **Shared:** aggregated cost carries provenance: `AggregatedTokens.costUsd` with `costProvenance` (`reported`, `estimated`, `mixed`, `unpriced`, `none`), `reportedCostUsd` / `estimatedCostUsd`, and `unpricedCalls`; `describeCostProvenance()` renders the qualifier; transcripts add `pricedCostUsd` and `unpricedEvents`
+- **Shared:** `parseClaudeStatuslinePayload()` and `quotaFromStatuslinePayload()` read the JSON Claude Code pipes to its status-line command, including the official five-hour and seven-day rate limits; `QuotaState.source` gains `statusline`
+- **Shared:** `readQuotaSnapshot()` reports `ageMs` and a `freshness` tier (`classifyQuotaFreshness()`, `formatQuotaAge()`) so an hours-old snapshot can no longer read like a live figure
+- **Shared:** `getScheduledPeakHoursState()` computes peak hours from the published weekday schedule; `fetchPeakHoursStatus()` caches promoclock.co answers for ten minutes and falls back to the schedule (`source: 'schedule'`) instead of reporting "unavailable"
+- **Shared:** `evaluateQuotaThresholds()` and `describeQuotaThresholdAlert()` detect threshold crossings once per reset window, shared by both dashboards
+- **Shared:** `formatLocalDateKey()`, `parseLocalDateKey()`, and `addLocalDays()` for local calendar-day keys; `hydratePricingCatalog({ offline })`; `pruneSnapshots()`; `getActiveAccountStatus(error, { selfHeal })`
+- **CLI:** `sidekick statusline` reads Claude Code's status-line payload from stdin, appends context %, session cost, and prompt-cache hit rate to the line, and persists the official rate limits to the quota snapshot and history stores as a zero-network quota source; snapshot age is shown when older than five minutes
+- **CLI:** `--offline` (or `SIDEKICK_OFFLINE=1`) prices from the cached catalog only; `--output-file <path>` writes a command's stdout to a file
+- **CLI:** `stats --csv`, `dump --list --csv`, `quota history --csv`; `quota history --window 5h|7d|max` (default `5h`, so a maxed-out week and a maxed-out five-hour block no longer look the same); `--json` on `tasks add`, `tasks done`, `note add`, `decision add`, and `report`
+- **VS Code:** quota threshold alerts — `sidekick.notifications.triggers.quota-threshold` with `quotaFiveHourThresholds` (default 80, 95) and `quotaSevenDayThresholds` (default 90), fired once per threshold per reset window with reset-aware text; the CLI dashboard raises the same toasts
+
+### Changed
+
+- **Shared:** cost figures are labelled by provenance in the HTML report and session dump ("estimated from catalog pricing", "provider-reported", "partly provider-reported, partly estimated"), and unpriced sessions show `—` with the unpriced call count instead of `$0`; the compaction ledger prices re-establishment through the normalized cost path
+- **Shared:** Codex `readSessionStats()` uses the same context formula as `computeContextSize()` (uncached plus cached input)
+- **Shared:** OpenCode workspace matching no longer treats a parent directory's sessions as belonging to a sub-package workspace
+- **Shared:** quota-history daily buckets are keyed by local calendar day, matching the history store and the dashboards
+- **Shared:** provider detection is memoised for five seconds per process (`_resetProviderDetectionCache()` for tests)
+- **Shared:** observed context windows older than 30 days are ignored on load; session snapshots use the fsynced atomic writer and the directory is trimmed to the newest 200; quota-history appends and prunes run under the cross-process lock; the pricing catalog cache is written atomically
+- **Shared:** the promoclock.co request budget drops from 10 s to 4 s; `listSessionPreviews({ since })` rejects an unparseable cutoff instead of silently listing everything
+- **Shared:** `AggregatedTokens.reportedCost` is deprecated in favour of `costUsd`; aggregator snapshots bump to schema 5, so snapshots written by earlier versions are replaced by one replay
+- **CLI:** startup awaits bounded pricing-catalog hydration so two runs of the same command price identically; the global `--json` flag applies to `dump` (same as `--format json`); commands set an exit code instead of calling `process.exit(1)`, so piped output is never truncated
+- **CLI:** every token total (stats, today, dashboard session panel, dump, report) includes cache reads and writes and is labelled "Total (incl. cache)"; `sidekick today` looks up yesterday by local day and takes its peak-hours line from the shared schedule
+- **VS Code:** dashboard totals, per-model rows, burn rate, history chart, status bar, session summary, imported history, and the `tokenThreshold` notification all count every billed bucket; `sidekick.notifications.tokenThreshold` now compares against the cache-inclusive total
+- **VS Code:** the D3 vendor bundle only includes the modules the mind map uses (611 KB → 133 KB) and Chart.js registers only the controllers the dashboard uses; the stale `out/webview/dashboard.js` (687 KB) is excluded from the package and `vscode:prepublish` cleans `out/` first
+
+### Fixed
+
+- **Shared:** `onAccountsChanged({ pollIntervalMs })` from a later subscriber is applied (fastest interval wins) instead of being ignored, and the interval resets after the last unsubscribe
+- **Shared:** `OpenCodeProvider.dispose()` resets its database status; Codex `listSessionFilesAsync()` records its filesystem fallback so `getLastOperationStatus()` describes the right operation
+- **Shared:** the status-line hot path no longer writes to the account registry (self-heal is deferred to ordinary commands)
+
 ## [0.25.0] - 2026-08-18
 
 ### Added

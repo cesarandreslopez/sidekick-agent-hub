@@ -20,6 +20,15 @@ vi.mock('vscode', () => ({
 }));
 vi.mock('sidekick-shared', () => ({
   formatTokenCount: (value: number) => String(value),
+  // Mirror the real helper: every billed bucket, cache included.
+  summarizeTokens: (t: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheWriteTokens?: number;
+    cacheReadTokens?: number;
+  }) => ({
+    total: t.inputTokens + t.outputTokens + (t.cacheWriteTokens ?? 0) + (t.cacheReadTokens ?? 0),
+  }),
 }));
 vi.mock('sidekick-shared/phrases', () => ({ getRandomPhrase: () => 'phrase' }));
 vi.mock('./SessionMonitor', () => ({ SessionMonitor: class SessionMonitor {} }));

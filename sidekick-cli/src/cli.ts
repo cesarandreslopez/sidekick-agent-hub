@@ -35,13 +35,30 @@ program
   // Chalk already honors --no-color, NO_COLOR, and a non-TTY stdout on its own;
   // declaring it here only stops Commander rejecting the flag as unknown.
   .option('--no-color', 'Disable colored output (also honors NO_COLOR)')
+  .option(
+    '--offline',
+    'Price from the cached catalog only; never refresh it over the network (also SIDEKICK_OFFLINE=1)',
+  )
+  .option('--output-file <path>', 'Write everything the command prints to stdout into this file')
   .addOption(rootProviderOption())
   .addHelpText('after', ROOT_EXAMPLES);
 
 // preAction fires for real action handlers and not for --help, --version, or a
 // bare invocation, so the network fetch and account bootstrap stay off those
 // paths entirely.
-program.hook('preAction', () => runStartupSideEffects(commandToken));
+program.hook('preAction', async () => {
+  const outputFile = program.opts().outputFile as string | undefined;
+  if (outputFile) {
+    const { installOutputRedirect, REDIRECT_UNSUPPORTED_COMMANDS } =
+      await import('./outputRedirect');
+    if (commandToken && REDIRECT_UNSUPPORTED_COMMANDS.has(commandToken)) {
+      process.stderr.write(`--output-file is ignored for '${commandToken}'.\n`);
+    } else {
+      installOutputRedirect(outputFile);
+    }
+  }
+  return runStartupSideEffects(commandToken);
+});
 
 export function resolveProviderId(
   opts: { provider?: string },
@@ -85,6 +102,7 @@ program.addCommand(dashCmd);
 const dumpCmd = new Command('dump')
   .description('Dump session data as text timeline, JSON metrics, or markdown report')
   .option('--list', 'List available session IDs for the current project')
+  .option('--csv', 'With --list, print the session table as CSV')
   .option('--limit <n>', 'Maximum sessions listed with --list (default: 50)')
   .option('--session <id>', 'Target a specific session (default: most recent)')
   .option('--width <cols>', 'Terminal width for text output (default: auto-detect)')
@@ -129,6 +147,10 @@ const reportCmd = new Command('report')
   .option('--no-open', 'Do not auto-open the report in the browser')
   .addOption(reportThemeOption())
   .option('--no-thinking', 'Exclude thinking blocks from the transcript')
+  .addHelpText(
+    'after',
+    '\nWith the global --json flag the report path is printed to stdout as {"path": ...}.\n',
+  )
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { reportAction } = await import('./commands/report');
     return reportAction(_opts, cmd);
@@ -257,6 +279,7 @@ program.addCommand(mcpCmd);
 // Stats command — show historical stats summary
 const statsCmd = new Command('stats')
   .description('Show historical usage stats (tokens, costs, models, tools)')
+  .option('--csv', 'Print every recorded day as CSV (date, sessions, tokens, cost)')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { statsAction } = await import('./commands/stats');
     return statsAction(_opts, cmd);
@@ -284,6 +307,12 @@ quotaCmd
   .option('--weeks <n>', 'Weeks of history to render (default: 13, clamped 1-26)', '13')
   .addOption(quotaHistoryProviderOption())
   .option('--workspace <path>', 'Workspace path used to derive the history scope (default: cwd)')
+  .option(
+    '--window <window>',
+    'Which limit the heatmap shows: 5h (default), 7d, or max (the higher of the two)',
+    '5h',
+  )
+  .option('--csv', 'Print the daily buckets as CSV instead of a heatmap')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { quotaHistoryAction } = await import('./commands/quotaHistory');
     return quotaHistoryAction(_opts, cmd);
@@ -304,7 +333,7 @@ const statuslineCmd = new Command('statusline')
   .description('Render the cache-only one-line agent status footer')
   .action(async () => {
     const { statuslineAction } = await import('./commands/statusline');
-    statuslineAction();
+    return statuslineAction();
   });
 program.addCommand(statuslineCmd);
 

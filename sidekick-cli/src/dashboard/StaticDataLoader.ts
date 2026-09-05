@@ -10,6 +10,7 @@ import {
   readPlans,
   readClaudeCodePlanFiles,
   resolveProjectIdentity,
+  summarizeTokens,
 } from 'sidekick-shared';
 import type {
   HistoricalDataStore,
@@ -28,6 +29,10 @@ export interface SessionRecord {
   duration?: string;
   inputTokens: number;
   outputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  /** Every billed token for the day (see `summarizeTokens`). */
+  totalTokens: number;
   totalCost: number;
   messageCount: number;
   modelUsage: Array<{ model: string; calls: number }>;
@@ -102,6 +107,9 @@ function extractSessions(history: HistoricalDataStore | null): SessionRecord[] {
       sessionCount: day.sessionCount,
       inputTokens: day.tokens.inputTokens,
       outputTokens: day.tokens.outputTokens,
+      cacheWriteTokens: day.tokens.cacheWriteTokens,
+      cacheReadTokens: day.tokens.cacheReadTokens,
+      totalTokens: summarizeTokens(day.tokens).total,
       totalCost: day.totalCost,
       messageCount: day.messageCount,
       modelUsage: day.modelUsage.map((m) => ({ model: m.model, calls: m.calls })),
@@ -120,7 +128,7 @@ function computeTotals(history: HistoricalDataStore | null): {
   if (!history?.allTime) return { tokens: 0, cost: 0, sessions: 0 };
   const at = history.allTime;
   return {
-    tokens: at.tokens.inputTokens + at.tokens.outputTokens,
+    tokens: summarizeTokens(at.tokens).total,
     cost: at.totalCost,
     sessions: at.sessionCount,
   };

@@ -9,11 +9,14 @@
 import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
 import {
+  formatLocalDateKey,
   getWorkspaceIdFromPath,
+  parseLocalDateKey,
   readQuotaHistoryDailyBuckets,
   type QuotaHistoryDailyBucket,
   type QuotaHistoryRuntimeProvider,
 } from 'sidekick-shared';
+import { toCsv, type CsvColumn } from '../csv';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -27,6 +30,8 @@ interface QuotaHistoryDailyCell {
 interface QuotaHistoryPayload {
   workspaceId: string;
   weeks: number;
+  /** Which limit each cell's utilization refers to. */
+  window: QuotaHistoryWindow;
   providers: {
     claude?: { cells: QuotaHistoryDailyCell[] };
     codex?: { cells: QuotaHistoryDailyCell[] };
@@ -63,14 +68,60 @@ export function colorForBucket(bucket: number): ChalkInstance {
   }
 }
 
-function bucketsToCells(buckets: QuotaHistoryDailyBucket[]): QuotaHistoryDailyCell[] {
+/** Which rate-limit window a heatmap cell shows. */
+export type QuotaHistoryWindow = '5h' | '7d' | 'max';
+
+export function parseWindow(value: unknown): QuotaHistoryWindow {
+  if (typeof value !== 'string') return '5h';
+  const lower = value.toLowerCase();
+  if (lower === '7d' || lower === 'weekly' || lower === 'seven-day') return '7d';
+  if (lower === 'max' || lower === 'both') return 'max';
+  return '5h';
+}
+
+export function windowLabel(window: QuotaHistoryWindow): string {
+  switch (window) {
+    case '7d':
+      return '7-day window';
+    case 'max':
+      return 'higher of 5h / 7d';
+    default:
+      return '5-hour window';
+  }
+}
+
+/**
+ * Collapse a day's samples to one cell for the chosen window. The two windows
+ * are kept separate by default so a maxed-out week and a maxed-out five-hour
+ * block no longer look the same; `max` restores the old combined view.
+ */
+export function bucketsToCells(
+  buckets: QuotaHistoryDailyBucket[],
+  window: QuotaHistoryWindow = '5h',
+): QuotaHistoryDailyCell[] {
   return buckets.map((b) => ({
     date: b.date,
-    utilization: Math.max(b.maxUtilizationFiveHour, b.maxUtilizationSevenDay),
+    utilization:
+      window === '7d'
+        ? b.maxUtilizationSevenDay
+        : window === 'max'
+          ? Math.max(b.maxUtilizationFiveHour, b.maxUtilizationSevenDay)
+          : b.maxUtilizationFiveHour,
     unavailable: b.anyUnavailable,
     samples: b.samples,
   }));
 }
+
+const BUCKET_CSV_COLUMNS: CsvColumn<{ provider: string; bucket: QuotaHistoryDailyBucket }>[] = [
+  { header: 'date', value: (row) => row.bucket.date },
+  { header: 'provider', value: (row) => row.provider },
+  { header: 'samples', value: (row) => row.bucket.samples },
+  { header: 'max_5h', value: (row) => row.bucket.maxUtilizationFiveHour },
+  { header: 'avg_5h', value: (row) => row.bucket.avgUtilizationFiveHour },
+  { header: 'max_7d', value: (row) => row.bucket.maxUtilizationSevenDay },
+  { header: 'avg_7d', value: (row) => row.bucket.avgUtilizationSevenDay },
+  { header: 'unavailable', value: (row) => row.bucket.anyUnavailable },
+];
 
 export function renderProviderHeatmap(
   label: string,
@@ -83,7 +134,8 @@ export function renderProviderHeatmap(
   const totalCells = cols * rows;
   let firstDayOfWeek = 0;
   if (cells.length > 0) {
-    firstDayOfWeek = new Date(`${cells[0].date}T00:00:00Z`).getUTCDay();
+    // Dates are local calendar days, so the weekday must be read in local time too.
+    firstDayOfWeek = parseLocalDateKey(cells[0].date)?.getDay() ?? 0;
   }
   const padded: (QuotaHistoryDailyCell | null)[] = [];
   for (let i = 0; i < firstDayOfWeek; i += 1) padded.push(null);
@@ -174,6 +226,8 @@ export async function quotaHistoryAction(
   const globalOpts = cmd.parent?.parent?.opts() ?? cmd.parent?.opts() ?? {};
   const localOpts = cmd.opts();
   const jsonOutput: boolean = !!globalOpts.json;
+  const csvOutput: boolean = !!localOpts.csv;
+  const window = parseWindow(localOpts.window);
 
   const weeks = clampWeeks(localOpts.weeks);
   const providerFilter = parseProviderFilter(localOpts.provider ?? globalOpts.provider);
@@ -193,14 +247,27 @@ export async function quotaHistoryAction(
     providerFilter === 'auto' ? ['claude', 'codex', 'zai'] : [providerFilter];
 
   const providerCells: Partial<Record<QuotaHistoryRuntimeProvider, QuotaHistoryDailyCell[]>> = {};
-  for (const provider of wanted) {
-    const buckets = await readQuotaHistoryDailyBuckets({ workspaceId, provider, from, to });
-    providerCells[provider] = bucketsToCells(buckets);
+  const csvRows: Array<{ provider: string; bucket: QuotaHistoryDailyBucket }> = [];
+  const bucketsByProvider = await Promise.all(
+    wanted.map(async (provider) => ({
+      provider,
+      buckets: await readQuotaHistoryDailyBuckets({ workspaceId, provider, from, to }),
+    })),
+  );
+  for (const { provider, buckets } of bucketsByProvider) {
+    providerCells[provider] = bucketsToCells(buckets, window);
+    for (const bucket of buckets) csvRows.push({ provider, bucket });
+  }
+
+  if (csvOutput) {
+    process.stdout.write(toCsv(csvRows, BUCKET_CSV_COLUMNS));
+    return;
   }
 
   const payload: QuotaHistoryPayload = {
     workspaceId,
     weeks,
+    window,
     providers: {
       ...(providerCells.claude ? { claude: { cells: providerCells.claude } } : {}),
       ...(providerCells.codex ? { codex: { cells: providerCells.codex } } : {}),
@@ -242,7 +309,7 @@ export async function quotaHistoryAction(
   }
 
   const header = chalk.dim(
-    `workspace ${workspaceId}  ·  ${from.slice(0, 10)} → ${to.slice(0, 10)}`,
+    `workspace ${workspaceId}  ·  ${formatLocalDateKey(fromMs)} → ${formatLocalDateKey(toMs)}  ·  ${windowLabel(window)}`,
   );
   process.stdout.write(`${header}\n${legend()}\n\n${sections.join('\n\n')}\n`);
 }

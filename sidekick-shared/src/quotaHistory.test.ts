@@ -122,12 +122,14 @@ describe('quotaHistory', () => {
   });
 
   it('aggregates daily buckets with max, avg, and sample count', async () => {
-    // Five samples within the same UTC day.
+    // Buckets are keyed by the local calendar day. Midday UTC timestamps land
+    // on the same local day for any zone within UTC±9, so the assertions hold
+    // on CI (UTC) and on developer machines alike.
     const day = '2026-05-19';
     const utilizations = [10, 30, 50, 80, 60];
     let cursor = 0;
     for (const u of utilizations) {
-      const ts = `${day}T0${cursor}:00:00.000Z`;
+      const ts = `${day}T1${cursor}:00:00.000Z`;
       await appendQuotaHistorySample(
         makeSample({
           timestamp: ts,
@@ -142,8 +144,8 @@ describe('quotaHistory', () => {
     const buckets = await readQuotaHistoryDailyBuckets({
       workspaceId: WORKSPACE,
       provider: 'claude',
-      from: `${day}T00:00:00.000Z`,
-      to: `${day}T23:59:59.999Z`,
+      from: `${day}T09:00:00.000Z`,
+      to: `${day}T15:00:00.000Z`,
     });
     expect(buckets).toHaveLength(1);
     const bucket = buckets[0];
@@ -168,8 +170,8 @@ describe('quotaHistory', () => {
     const buckets = await readQuotaHistoryDailyBuckets({
       workspaceId: WORKSPACE,
       provider: 'claude',
-      from: '2026-05-17T00:00:00.000Z',
-      to: '2026-05-19T23:59:59.999Z',
+      from: '2026-05-17T12:00:00.000Z',
+      to: '2026-05-19T12:00:00.000Z',
     });
 
     expect(buckets.map((b) => b.date)).toEqual(['2026-05-17', '2026-05-18', '2026-05-19']);

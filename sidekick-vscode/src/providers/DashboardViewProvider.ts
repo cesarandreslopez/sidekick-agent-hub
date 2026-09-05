@@ -31,7 +31,7 @@ import type {
 } from '../types/dashboard';
 import { resolveInstructionTarget } from '../types/instructionFile';
 import type { HandoffService } from '../services/HandoffService';
-import { getProjectSlug } from 'sidekick-shared';
+import { getProjectSlug, summarizeTokens } from 'sidekick-shared';
 import { resolveModel } from '../services/ModelResolver';
 import { TimeoutError } from '../types';
 import type {
@@ -1449,25 +1449,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Update model breakdown (keep `priced` sticky: one unpriced event taints
     // the aggregate so the UI shows "—" for the row).
+    // Per-model tokens use the shared vocabulary (every billed bucket, cache
+    // included) so this row agrees with the aggregator's per-model stats.
+    const usageTokens = summarizeTokens(usage).total;
     const existingModel = this._state.modelBreakdown.find((m) => m.model === usage.model);
     if (existingModel) {
       existingModel.calls += 1;
-      existingModel.tokens += usage.inputTokens + usage.outputTokens;
+      existingModel.tokens += usageTokens;
       existingModel.cost += cost;
       if (!priced) existingModel.priced = false;
     } else {
       this._state.modelBreakdown.push({
         model: usage.model,
         calls: 1,
-        tokens: usage.inputTokens + usage.outputTokens,
+        tokens: usageTokens,
         cost: cost,
         priced,
       });
     }
 
-    // Track burn rate (total tokens including cache)
-    const totalTokens = usage.inputTokens + usage.outputTokens + usage.cacheWriteTokens;
-    this._burnRateCalculator.addEvent(totalTokens, usage.timestamp);
+    // Track burn rate on the same total the aggregator samples.
+    this._burnRateCalculator.addEvent(usageTokens, usage.timestamp);
 
     // Update current context size (provider-specific formula).
     // OpenCode emits some assistant step rows with zero token signal; those
@@ -6561,9 +6563,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
               primaryMetricSubtitle.textContent = 'Estimated session cost';
               break;
             case 'tokens':
-              const totalTokens = sessionState.totalInputTokens + sessionState.totalOutputTokens;
+              // Shared vocabulary (summarizeTokens().total): every billed bucket, cache included.
+              const totalTokens = sessionState.totalInputTokens + sessionState.totalOutputTokens + (sessionState.totalCacheWriteTokens || 0) + (sessionState.totalCacheReadTokens || 0);
               primaryMetricValue.textContent = formatNumber(totalTokens);
-              primaryMetricSubtitle.textContent = formatNumber(sessionState.totalInputTokens) + ' in / ' + formatNumber(sessionState.totalOutputTokens) + ' out';
+              primaryMetricSubtitle.textContent = formatNumber(sessionState.totalInputTokens) + ' in / ' + formatNumber(sessionState.totalOutputTokens) + ' out / ' + formatNumber((sessionState.totalCacheWriteTokens || 0) + (sessionState.totalCacheReadTokens || 0)) + ' cache';
               break;
             case 'cache':
               const totalCache = sessionState.totalCacheWriteTokens + sessionState.totalCacheReadTokens;
@@ -6673,7 +6676,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           switch (metric) {
             case 'cost': return d.totalCost;
             case 'messages': return d.messageCount;
-            default: return d.inputTokens + d.outputTokens;
+            // Shared vocabulary (summarizeTokens().total): every billed bucket, cache included.
+            default: return d.inputTokens + d.outputTokens + (d.cacheWriteTokens || 0) + (d.cacheReadTokens || 0);
           }
         });
 
@@ -6690,7 +6694,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
         // Update summary
         if (historySummary) {
-          document.getElementById('history-total-tokens').textContent = formatNumber(data.totals.inputTokens + data.totals.outputTokens);
+          document.getElementById('history-total-tokens').textContent = formatNumber(data.totals.inputTokens + data.totals.outputTokens + (data.totals.cacheWriteTokens || 0) + (data.totals.cacheReadTokens || 0));
           document.getElementById('history-total-cost').textContent = formatCost(data.totals.totalCost);
           document.getElementById('history-sessions').textContent = formatNumber(data.totals.sessionCount);
           document.getElementById('history-messages').textContent = formatNumber(data.totals.messageCount);

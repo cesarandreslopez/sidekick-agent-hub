@@ -14,6 +14,13 @@ import type { SessionMonitor } from './SessionMonitor';
 import type { ToolCall, CompactionEvent } from '../types/claudeSession';
 import type { NotificationPersistenceService } from './NotificationPersistenceService';
 import { log } from './Logger';
+import {
+  DEFAULT_QUOTA_THRESHOLDS,
+  describeQuotaThresholdAlert,
+  evaluateQuotaThresholds,
+  summarizeTokens,
+} from 'sidekick-shared';
+import type { QuotaAlertMemory, QuotaState, QuotaThresholdConfig } from 'sidekick-shared';
 
 /**
  * Trigger definition for pattern-based notifications.
@@ -115,7 +122,17 @@ export const TRIGGER_BUTTONS: Record<string, string[]> = {
   compaction: [NOTIFICATION_BUTTONS.snooze, NOTIFICATION_BUTTONS.mute],
   'cycle-detected': [NOTIFICATION_BUTTONS.snooze, NOTIFICATION_BUTTONS.mute],
   'high-token-usage': [NOTIFICATION_BUTTONS.openDashboard, NOTIFICATION_BUTTONS.snooze],
+  'quota-threshold': [
+    NOTIFICATION_BUTTONS.openDashboard,
+    NOTIFICATION_BUTTONS.snooze,
+    NOTIFICATION_BUTTONS.mute,
+  ],
 };
+
+/** Anything that publishes quota samples: the extension's QuotaService or a session monitor. */
+export interface QuotaUpdateSource {
+  onQuotaUpdate: vscode.Event<QuotaState>;
+}
 
 /**
  * Service that monitors session events and fires VS Code notifications
@@ -146,9 +163,13 @@ export class NotificationTriggerService implements vscode.Disposable {
   /** Optional persistence service for notification history */
   private notificationPersistence?: NotificationPersistenceService;
 
+  /** Which quota thresholds have already been announced, per reset window. */
+  private quotaAlertMemory: QuotaAlertMemory = {};
+
   constructor(
     private readonly sessionMonitor: SessionMonitor,
     notificationPersistence?: NotificationPersistenceService,
+    quotaSource?: QuotaUpdateSource,
   ) {
     this.notificationPersistence = notificationPersistence;
     // Load triggers from settings, falling back to built-in defaults
@@ -169,6 +190,15 @@ export class NotificationTriggerService implements vscode.Disposable {
     this.disposables.push(
       this.sessionMonitor.onCycleDetected((cycle) => this.handleCycleDetected(cycle)),
     );
+
+    // Quota samples: session-derived (Codex rate limits, z.ai) from the
+    // monitor, and polled/official Claude samples from the quota service.
+    this.disposables.push(
+      this.sessionMonitor.onQuotaUpdate((quota) => this.handleQuotaUpdate(quota)),
+    );
+    if (quotaSource) {
+      this.disposables.push(quotaSource.onQuotaUpdate((quota) => this.handleQuotaUpdate(quota)));
+    }
 
     // Listen for settings changes
     this.disposables.push(
@@ -510,6 +540,42 @@ export class NotificationTriggerService implements vscode.Disposable {
   }
 
   /**
+   * Raises a warning the first time a subscription window crosses one of the
+   * configured thresholds in a given reset window. Runs the shared evaluator
+   * so the CLI dashboard announces the same crossings.
+   */
+  handleQuotaUpdate(quota: QuotaState): void {
+    if (!this.isNotificationsEnabled()) return;
+    const config = vscode.workspace.getConfiguration('sidekick.notifications');
+    if (!config.get<boolean>('triggers.quota-threshold', true)) return;
+
+    const thresholds: QuotaThresholdConfig = {
+      fiveHour: config.get<number[]>('quotaFiveHourThresholds', [
+        ...DEFAULT_QUOTA_THRESHOLDS.fiveHour,
+      ]),
+      sevenDay: config.get<number[]>('quotaSevenDayThresholds', [
+        ...DEFAULT_QUOTA_THRESHOLDS.sevenDay,
+      ]),
+    };
+    const { alerts, memory } = evaluateQuotaThresholds(quota, thresholds, this.quotaAlertMemory);
+    this.quotaAlertMemory = memory;
+
+    const providerLabel =
+      quota.providerId === 'codex' ? 'Codex' : quota.providerId === 'zai' ? 'z.ai' : 'Claude';
+    for (const alert of alerts) {
+      this.fireNotification(
+        'Quota',
+        describeQuotaThresholdAlert(alert, { providerLabel }),
+        alert.severity === 'critical' ? 'error' : 'warning',
+        {
+          triggerId: 'quota-threshold',
+          triggerName: 'Quota threshold',
+        },
+      );
+    }
+  }
+
+  /**
    * Handles token usage events for threshold crossing detection.
    * Skips notifications during initial session replay.
    */
@@ -519,7 +585,13 @@ export class NotificationTriggerService implements vscode.Disposable {
     if (this.tokenThreshold <= 0) return;
 
     const stats = this.sessionMonitor.getStats();
-    const totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
+    // Same cache-inclusive total the status bar and dashboard show.
+    const totalTokens = summarizeTokens({
+      inputTokens: stats.totalInputTokens,
+      outputTokens: stats.totalOutputTokens,
+      cacheWriteTokens: stats.totalCacheWriteTokens,
+      cacheReadTokens: stats.totalCacheReadTokens,
+    }).total;
 
     // Check if we crossed a threshold boundary since last notification
     const crossedThreshold =

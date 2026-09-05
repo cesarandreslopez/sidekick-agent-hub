@@ -18,7 +18,7 @@
 
 import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
-import { formatTokenCount } from 'sidekick-shared';
+import { formatTokenCount, summarizeTokens } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import type { TokenUsage } from '../types/claudeSession';
 import type { PermissionMode } from 'sidekick-shared';
@@ -185,11 +185,12 @@ export class MonitorStatusBar implements vscode.Disposable {
     const stats = this.monitor.getStats();
     const provider = this.monitor.getProvider();
 
-    this.totalTokens =
-      stats.totalInputTokens +
-      stats.totalOutputTokens +
-      stats.totalCacheWriteTokens +
-      stats.totalCacheReadTokens;
+    this.totalTokens = summarizeTokens({
+      inputTokens: stats.totalInputTokens,
+      outputTokens: stats.totalOutputTokens,
+      cacheWriteTokens: stats.totalCacheWriteTokens,
+      cacheReadTokens: stats.totalCacheReadTokens,
+    }).total;
 
     const modelId = stats.lastModelId ?? usageHint?.model;
     const contextLimit = provider.getContextWindowLimit?.(modelId) ?? DEFAULT_CONTEXT_WINDOW;

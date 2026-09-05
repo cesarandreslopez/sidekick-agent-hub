@@ -1,19 +1,51 @@
 /**
  * Chart.js Vendor Bundle — Browser Entry Point
  *
- * Imports Chart.js and exposes it on `window.Chart` so that inline
- * webview scripts can use it the same way they did when it was loaded
- * from a CDN `<script>` tag.
+ * Registers only the controllers, elements, scales, and plugins the dashboard
+ * uses (doughnut, line with fill, bar, category and linear axes, legend,
+ * tooltip, title) instead of `registerables`, so esbuild can drop the rest
+ * (radar, polar, bubble, scatter, time and log scales, decimation, ...).
+ *
+ * Adding a new chart type to the dashboard means registering its controller
+ * and elements here, or it renders nothing.
  *
  * Bundled by esbuild as an IIFE into `out/webview/chartjs-vendor.js`.
  *
  * @module webview/chartjs-vendor
  */
 
-import { Chart, registerables } from 'chart.js';
+import {
+  ArcElement,
+  BarController,
+  BarElement,
+  CategoryScale,
+  Chart,
+  DoughnutController,
+  Filler,
+  Legend,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Title,
+  Tooltip,
+} from 'chart.js';
 
-// Register all built-in components (scales, controllers, elements, plugins)
-Chart.register(...registerables);
+Chart.register(
+  ArcElement,
+  BarController,
+  BarElement,
+  CategoryScale,
+  DoughnutController,
+  Filler,
+  Legend,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Title,
+  Tooltip,
+);
 
 // Expose on window for inline scripts that reference `window.Chart` / `new Chart(...)`
 (window as unknown as Record<string, unknown>).Chart = Chart;

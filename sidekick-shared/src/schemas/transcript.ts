@@ -86,6 +86,8 @@ export const canonicalSessionTranscriptSchema: z.ZodType<CanonicalSessionTranscr
       totalTokens: z.number().finite().nonnegative(),
     }),
     totalCostUsd: z.number().finite().nonnegative().nullable(),
+    pricedCostUsd: z.number().finite().nonnegative(),
+    unpricedEvents: z.number().int().nonnegative(),
   }),
   provenance: z.object({
     source: z.literal('session-events'),

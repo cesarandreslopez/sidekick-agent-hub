@@ -19,6 +19,7 @@ import {
 } from 'sidekick-shared';
 import type { FollowEvent, SessionPreview } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { toCsv, type CsvColumn } from '../csv';
 import { parseLimit } from '../utils/parseLimit';
 
 type OutputFormat = 'text' | 'json' | 'markdown';
@@ -76,21 +77,31 @@ export function buildSessionListRows(previews: SessionPreview[]): Array<{
   });
 }
 
+const SESSION_LIST_CSV_COLUMNS: CsvColumn<ReturnType<typeof buildSessionListRows>[number]>[] = [
+  { header: 'id', value: (row) => row.id },
+  { header: 'modified', value: (row) => row.timestamp },
+  { header: 'age', value: (row) => row.age },
+  { header: 'label', value: (row) => row.label },
+  { header: 'size_bytes', value: (row) => row.size },
+];
+
 /**
- * List available sessions for the current project and output as table or JSON.
- * Bounded: labels are read only for the `limit` most recent sessions.
+ * List available sessions for the current project and output as table, JSON,
+ * or CSV. Bounded: labels are read only for the `limit` most recent sessions.
  */
 function listSessions(
   provider: ReturnType<typeof resolveProvider>,
   workspacePath: string,
-  asJson: boolean,
+  output: 'table' | 'json' | 'csv',
   limit: number,
 ): void {
   const previews = listSessionPreviews([provider], { workspacePath, limit });
 
   if (previews.length === 0) {
-    if (asJson) {
+    if (output === 'json') {
       process.stdout.write('[]\n');
+    } else if (output === 'csv') {
+      process.stdout.write(toCsv([], SESSION_LIST_CSV_COLUMNS));
     } else {
       process.stderr.write('No sessions found for this project.\n');
     }
@@ -99,8 +110,12 @@ function listSessions(
 
   const sessions = buildSessionListRows(previews);
 
-  if (asJson) {
+  if (output === 'json') {
     process.stdout.write(JSON.stringify(sessions, null, 2) + '\n');
+    return;
+  }
+  if (output === 'csv') {
+    process.stdout.write(toCsv(sessions, SESSION_LIST_CSV_COLUMNS));
     return;
   }
 
@@ -152,7 +167,12 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
   if (opts.list) {
     try {
       const limit = parseLimit(opts.limit as string | undefined) ?? 50;
-      listSessions(provider, workspacePath, !!globalOpts.json, limit);
+      listSessions(
+        provider,
+        workspacePath,
+        globalOpts.json ? 'json' : opts.csv ? 'csv' : 'table',
+        limit,
+      );
     } finally {
       try {
         provider.dispose();
@@ -164,7 +184,9 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
   }
 
   const sessionId: string | undefined = opts.session;
-  const format: OutputFormat = (opts.format as OutputFormat) || 'text';
+  // The global --json flag means JSON here too, so `sidekick --json dump` and
+  // `sidekick dump --format json` are the same request.
+  const format: OutputFormat = globalOpts.json ? 'json' : (opts.format as OutputFormat) || 'text';
   const termWidth: number = opts.width
     ? parseInt(opts.width as string, 10)
     : process.stdout.columns || 120;
@@ -197,7 +219,8 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`Error: ${msg}\n`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Process all events through the aggregator

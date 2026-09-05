@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Quota threshold alerts: `sidekick.notifications.triggers.quota-threshold` (default on) warns when the five-hour window crosses `sidekick.notifications.quotaFiveHourThresholds` (default 80 and 95) or the seven-day window crosses `sidekick.notifications.quotaSevenDayThresholds` (default 90). Alerts fire once per threshold per reset window, name the reset time, and escalate the highest threshold to an error; they respect Snooze and Mute like the other triggers
+
+### Changed
+
+- Dashboard totals, per-model rows, burn rate, the history chart, the status bar, the session summary, imported history, and the `tokenThreshold` notification all count every billed bucket (input, output, cache writes, cache reads) through the shared `summarizeTokens()` vocabulary, so the status bar and the dashboard no longer disagree on the same session. `sidekick.notifications.tokenThreshold` now compares against that cache-inclusive total
+- The D3 vendor bundle only includes the modules the mind map uses (611 KB → 133 KB) and Chart.js registers only the controllers the dashboard uses; the stale `out/webview/dashboard.js` (687 KB) is excluded from the package and `vscode:prepublish` cleans `out/` before building
+
 ## [0.25.0] - 2026-08-18
 
 ### Changed

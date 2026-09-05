@@ -11,10 +11,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from '../paths';
+import { atomicWriteJsonSync } from '../writers/atomic';
 import { SNAPSHOT_SCHEMA_VERSION, type SerializedAggregatorState } from './EventAggregator';
 
 /** Current schema version — bump when format changes. */
 const SNAPSHOT_VERSION = SNAPSHOT_SCHEMA_VERSION;
+
+/** Newest snapshots kept on disk; older ones are pruned opportunistically. */
+export const MAX_SNAPSHOT_FILES = 200;
+/** Prune runs once per this many saves, so steady-state writes stay one file each. */
+const PRUNE_EVERY_N_SAVES = 25;
+let savesSincePrune = 0;
 
 /** Snapshot sidecar file content. */
 export interface SessionSnapshot {
@@ -51,8 +58,12 @@ export function getSnapshotPath(sessionId: string): string {
 /**
  * Saves a session snapshot to disk.
  *
- * Creates the snapshots directory if it doesn't exist.
- * Writes atomically via rename to avoid partial reads.
+ * Creates the snapshots directory if it doesn't exist. Uses the shared
+ * fsynced atomic writer with a per-process temp name, so the CLI dashboard and
+ * the extension host snapshotting the same session cannot collide on a shared
+ * `.tmp` file. Every {@link PRUNE_EVERY_N_SAVES} saves the directory is
+ * trimmed to the newest {@link MAX_SNAPSHOT_FILES}; snapshots are caches, so
+ * dropping an old one only costs a replay.
  */
 export function saveSnapshot(snapshot: SessionSnapshot): void {
   try {
@@ -61,12 +72,49 @@ export function saveSnapshot(snapshot: SessionSnapshot): void {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    const filePath = getSnapshotPath(snapshot.sessionId);
-    const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, JSON.stringify(snapshot), 'utf-8');
-    fs.renameSync(tmpPath, filePath);
+    atomicWriteJsonSync(getSnapshotPath(snapshot.sessionId), snapshot);
+    savesSincePrune += 1;
+    if (savesSincePrune >= PRUNE_EVERY_N_SAVES) {
+      savesSincePrune = 0;
+      pruneSnapshots(MAX_SNAPSHOT_FILES);
+    }
   } catch {
     // Non-critical — snapshot failure should never break session monitoring
+  }
+}
+
+/**
+ * Deletes all but the newest `keep` snapshot files (by modification time).
+ * Returns how many files were removed. Best-effort; never throws.
+ */
+export function pruneSnapshots(keep: number = MAX_SNAPSHOT_FILES): number {
+  try {
+    const dir = getSnapshotsDir();
+    const entries = fs
+      .readdirSync(dir)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => {
+        const filePath = path.join(dir, name);
+        try {
+          return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is { filePath: string; mtimeMs: number } => entry !== null)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    let removed = 0;
+    for (const entry of entries.slice(Math.max(0, keep))) {
+      try {
+        fs.unlinkSync(entry.filePath);
+        removed += 1;
+      } catch {
+        // Already gone or locked; skip.
+      }
+    }
+    return removed;
+  } catch {
+    return 0;
   }
 }
 

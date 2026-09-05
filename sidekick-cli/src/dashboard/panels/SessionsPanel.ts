@@ -544,10 +544,10 @@ export class SessionsPanel implements SidePanel {
     // Historical session
     const s = d.session!;
     const w = ctx?.width ?? detailWidth();
-    const totalTokens = s.inputTokens + s.outputTokens;
+    const totalTokens = s.totalTokens;
     return [
       `{bold}${s.date}{/bold}  {bold}${s.sessionCount}{/bold}{grey-fg} sessions{/grey-fg}  {bold}${s.messageCount}{/bold}{grey-fg} messages{/grey-fg}`,
-      `{grey-fg}Tokens{/grey-fg} {bold}${fmtNum(totalTokens)}{/bold} ({grey-fg}In{/grey-fg} ${fmtNum(s.inputTokens)}  {grey-fg}Out{/grey-fg} ${fmtNum(s.outputTokens)})  {green-fg}${formatCost(s.totalCost)}{/green-fg}`,
+      `{grey-fg}Tokens{/grey-fg} {bold}${fmtNum(totalTokens)}{/bold} ({grey-fg}In{/grey-fg} ${fmtNum(s.inputTokens)}  {grey-fg}Out{/grey-fg} ${fmtNum(s.outputTokens)}  {grey-fg}Cache{/grey-fg} ${fmtNum(s.cacheReadTokens + s.cacheWriteTokens)})  {green-fg}${formatCost(s.totalCost)}{/green-fg}`,
       '',
       sectionHeader('Models', w),
       ...s.modelUsage.map((u) => `  ${u.model}: {bold}${u.calls}{/bold} calls`),

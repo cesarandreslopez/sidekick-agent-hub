@@ -139,11 +139,28 @@ function getProviderPaths() {
   };
 }
 
+/** Ranked detection results are reused within a process for this long. */
+const DETECTION_CACHE_TTL_MS = 5_000;
+let detectionCache: { at: number; ranked: ProviderId[] } | null = null;
+
+/** Forget the memoised ranking. Test-only. */
+export function _resetProviderDetectionCache(): void {
+  detectionCache = null;
+}
+
 /**
- * Returns all provider IDs whose data directories exist on the filesystem.
- * Ordered by most-recent activity first.
+ * Providers with data on disk, most recently active first.
+ *
+ * Detection walks every provider's session corpus (a recursive stat over
+ * `~/.claude/projects`, every Codex home, and the OpenCode data dir), so the
+ * ranking is memoised briefly: the CLI resolves the provider several times per
+ * command and the extension asks again on every settings-driven re-detect.
  */
-export function getAllDetectedProviders(): ProviderId[] {
+function rankDetectedProviders(now: number = Date.now()): ProviderId[] {
+  if (detectionCache && now - detectionCache.at < DETECTION_CACHE_TTL_MS) {
+    return detectionCache.ranked;
+  }
+
   const { claudeBase, openCodeDbPath, openCodeStorageDir, codexHomes } = getProviderPaths();
 
   const hasClaude = fs.existsSync(claudeBase);
@@ -158,7 +175,17 @@ export function getAllDetectedProviders(): ProviderId[] {
   if (hasCodex) available.push({ id: 'codex', mtime: getCodexActivityMtime() });
 
   available.sort((a, b) => b.mtime - a.mtime);
-  return available.map((a) => a.id);
+  const ranked = available.map((a) => a.id);
+  detectionCache = { at: now, ranked };
+  return ranked;
+}
+
+/**
+ * Returns all provider IDs whose data directories exist on the filesystem.
+ * Ordered by most-recent activity first.
+ */
+export function getAllDetectedProviders(): ProviderId[] {
+  return [...rankDetectedProviders()];
 }
 
 /**
@@ -167,30 +194,5 @@ export function getAllDetectedProviders(): ProviderId[] {
  */
 export function detectProvider(override?: ProviderId | 'auto'): ProviderId {
   if (override && override !== 'auto') return override;
-
-  const { claudeBase, openCodeDbPath, openCodeStorageDir, codexHomes } = getProviderPaths();
-
-  const hasClaude = fs.existsSync(claudeBase);
-  const hasOpenCode = fs.existsSync(openCodeStorageDir) || fs.existsSync(openCodeDbPath);
-  const hasCodex = codexHomes.some(
-    (codexHome) => fs.existsSync(path.join(codexHome, 'sessions')) || hasCodexStateDb(codexHome),
-  );
-
-  const available: Array<{ id: ProviderId; mtime: number }> = [];
-
-  if (hasClaude) {
-    available.push({ id: 'claude-code', mtime: getClaudeActivityMtime(claudeBase) });
-  }
-  if (hasOpenCode) {
-    available.push({ id: 'opencode', mtime: getOpenCodeActivityMtime() });
-  }
-  if (hasCodex) {
-    available.push({ id: 'codex', mtime: getCodexActivityMtime() });
-  }
-
-  if (available.length === 0) return 'claude-code';
-  if (available.length === 1) return available[0].id;
-
-  available.sort((a, b) => b.mtime - a.mtime);
-  return available[0].id;
+  return rankDetectedProviders()[0] ?? 'claude-code';
 }

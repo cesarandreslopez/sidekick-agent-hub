@@ -5,6 +5,27 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `sidekick statusline` reads the JSON Claude Code pipes to its status-line command (`SIDEKICK_STATUSLINE_STDIN=0` disables it), appends context %, session cost, and prompt-cache hit rate, and persists the official five-hour and seven-day limits to the quota snapshot and history stores, so every other command and dashboard sees them without a network call. Cached quota older than five minutes is labelled with its age
+- Global `--offline` (or `SIDEKICK_OFFLINE=1`) prices from the cached catalog only; global `--output-file <path>` writes a command's stdout to a file (not for `dashboard` or `mcp`)
+- `stats --csv` prints every recorded day; `dump --list --csv` and `quota history --csv` print their tables as CSV
+- `quota history --window 5h|7d|max` selects which limit the heatmap shows (default `5h`); the header names the window
+- The global `--json` flag applies to `tasks add`, `tasks done`, `note add`, `decision add` (returning the stored record) and to `report` (returning the output path)
+- The dashboard raises a toast when the five-hour window crosses 80% or 95%, or the seven-day window crosses 90%, once per reset window
+
+### Changed
+
+- Startup awaits bounded pricing-catalog hydration, so two runs of the same command price identically; a fresh cache is a local read and a refresh is capped by the catalog's 3 s timeout
+- Every token total (`stats`, `today`, the dashboard session panel, `dump`, `report`) includes cache reads and writes and is labelled "Total (incl. cache)"; cost figures carry their provenance
+- `sidekick today` looks up yesterday by local calendar day (the history store has always been keyed that way) and takes its peak-hours line from the shared schedule, so it agrees with `sidekick peak`
+- `sidekick quota` shows the age of a cached snapshot and only colours it as a warning when it is older than five minutes; `quota history` reads providers in parallel
+- The global `--json` flag applies to `dump` (same as `--format json`)
+- Commands set `process.exitCode` instead of calling `process.exit(1)` on errors, so piped output is never truncated
+- The status line no longer writes to the account registry on its hot path
+
 ## [0.25.0] - 2026-08-18
 
 ### Changed

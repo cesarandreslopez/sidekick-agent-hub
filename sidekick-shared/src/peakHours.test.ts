@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  _resetPeakHoursCache,
   createPeakHoursNotApplicableState,
   DEFAULT_PEAK_HOURS_TIMEOUT_MS,
   fetchPeakHoursStatus,
@@ -11,6 +12,7 @@ describe('fetchPeakHoursStatus', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    _resetPeakHoursCache();
     mockFetch = vi.fn();
     vi.stubGlobal('fetch', mockFetch);
   });
@@ -57,6 +59,7 @@ describe('fetchPeakHoursStatus', () => {
       note: 'No known end date for peak hours adjustment. Weekly limits unchanged.',
       updatedAt: '2026-04-20T16:46:00.000Z',
       unavailable: false,
+      source: 'promoclock',
     });
   });
 
@@ -87,25 +90,26 @@ describe('fetchPeakHoursStatus', () => {
     expect(result.unavailable).toBe(false);
   });
 
-  it('returns unavailable state on non-ok response', async () => {
+  it('falls back to the published schedule on a non-ok response', async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
 
     const result = await fetchPeakHoursStatus();
 
-    expect(result.unavailable).toBe(true);
-    expect(result.status).toBe('unknown');
-    expect(result.sessionLimitSpeed).toBe('unknown');
-    expect(result.isPeak).toBe(false);
+    expect(result.unavailable).toBe(false);
+    expect(result.source).toBe('schedule');
+    expect(['peak', 'off_peak']).toContain(result.status);
+    expect(['faster', 'normal']).toContain(result.sessionLimitSpeed);
     expect(result.updatedAt).toBeTruthy();
   });
 
-  it('returns unavailable state on network error', async () => {
+  it('falls back to the published schedule on a network error', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
     const result = await fetchPeakHoursStatus();
 
-    expect(result.unavailable).toBe(true);
-    expect(result.label).toBe('Peak-hours status unavailable');
+    expect(result.unavailable).toBe(false);
+    expect(result.source).toBe('schedule');
+    expect(result.note).toContain('promoclock.co unreachable');
   });
 
   it('tolerates unexpected status/speed values', async () => {
@@ -129,7 +133,7 @@ describe('fetchPeakHoursStatus', () => {
     expect(result.unavailable).toBe(false);
   });
 
-  it('aborts and reports unavailable when the host does not answer in time', async () => {
+  it('aborts and falls back to the schedule when the host does not answer in time', async () => {
     vi.useFakeTimers();
     try {
       // Resolve only when the caller's signal fires, so the abort is what ends
@@ -147,8 +151,8 @@ describe('fetchPeakHoursStatus', () => {
       await vi.advanceTimersByTimeAsync(51);
       const result = await pending;
 
-      expect(result.unavailable).toBe(true);
-      expect(result.label).toBe('Peak-hours status unavailable');
+      expect(result.unavailable).toBe(false);
+      expect(result.source).toBe('schedule');
     } finally {
       vi.useRealTimers();
     }
@@ -173,7 +177,7 @@ describe('fetchPeakHoursStatus', () => {
 
     await fetchPeakHoursStatus();
 
-    expect(DEFAULT_PEAK_HOURS_TIMEOUT_MS).toBe(10_000);
+    expect(DEFAULT_PEAK_HOURS_TIMEOUT_MS).toBe(4_000);
     const [, init] = mockFetch.mock.calls[0];
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(init.signal.aborted).toBe(false);

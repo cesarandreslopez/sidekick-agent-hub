@@ -1,12 +1,18 @@
 import type { ActiveAccountStatus } from '../accountStatus';
 import type { QuotaState } from '../quota';
-import { FIVE_HOUR_WINDOW_MS } from '../quota';
+import { FIVE_HOUR_WINDOW_MS, formatQuotaAge } from '../quota';
 import { estimateTimeToQuota } from './BurnRateCalculator';
+import type { ClaudeStatuslinePayload } from './claudeStatuslinePayload';
 
 export interface StatuslineInput {
   accounts: ActiveAccountStatus;
   claudeQuota?: QuotaState | null;
   codexQuota?: QuotaState | null;
+  /**
+   * The document Claude Code piped to the status-line command, when running
+   * as one. Adds context usage, session cost, and prompt-cache hit rate.
+   */
+  live?: ClaudeStatuslinePayload | null;
   now?: Date;
 }
 
@@ -37,19 +43,59 @@ export function selectStatuslineAccount(input: StatuslineInput): StatuslineSelec
   return null;
 }
 
+/**
+ * One-line status. Segments, in order, each omitted when unknown:
+ * `acct:<label> · 5h 42% resets 14:00 · ~1h20m left · 7d 61% · (2h ago) · ctx 37% · $0.42 · cache 92%`
+ *
+ * The age segment appears only for cached quota older than five minutes, so
+ * a snapshot from yesterday can no longer read like a live figure.
+ */
 export function formatStatusline(input: StatuslineInput): string {
   const selected = selectStatuslineAccount(input);
-  if (!selected) return 'acct:none · quota unavailable';
+  const now = input.now ?? new Date();
+  const liveSegments = formatLiveSegments(input.live);
+  if (!selected) return joinSegments(['acct:none', 'quota unavailable', ...liveSegments]);
   const account = compactLabel(selected.accountLabel);
   const quota = selected.quota;
-  if (!quota?.available) return `acct:${account} · quota unavailable`;
+  if (!quota?.available) {
+    return joinSegments([`acct:${account}`, 'quota unavailable', ...liveSegments]);
+  }
 
-  const now = input.now ?? new Date();
   const utilization = clampPercent(quota.fiveHour.utilization);
   const reset = formatReset(quota.fiveHour.resetsAt, now);
   const eta = estimateWindowEta(quota, now);
-  const etaText = eta == null ? '' : ` · ~${formatMinutes(eta)} left`;
-  return `acct:${account} · 5h ${Math.round(utilization)}% resets ${reset}${etaText}`;
+  const segments = [`acct:${account}`, `5h ${Math.round(utilization)}% resets ${reset}`];
+  if (eta != null) segments.push(`~${formatMinutes(eta)} left`);
+  if (quota.sevenDay.resetsAt && quota.sevenDay.utilization > 0) {
+    segments.push(`7d ${Math.round(clampPercent(quota.sevenDay.utilization))}%`);
+  }
+  if (quota.freshness && quota.freshness !== 'fresh') {
+    segments.push(`(${formatQuotaAge(quota.ageMs)})`);
+  }
+  return joinSegments([...segments, ...liveSegments]);
+}
+
+function formatLiveSegments(live: ClaudeStatuslinePayload | null | undefined): string[] {
+  if (!live) return [];
+  const segments: string[] = [];
+  const context = live.contextWindow?.usedPercentage;
+  if (typeof context === 'number') segments.push(`ctx ${Math.round(clampPercent(context))}%`);
+  const cost = live.cost?.totalCostUsd;
+  if (typeof cost === 'number' && cost > 0) segments.push(`$${formatCost(cost)}`);
+  const hitRatio = live.promptCache?.hitRatio;
+  if (typeof hitRatio === 'number')
+    segments.push(`cache ${Math.round(clampPercent(hitRatio * 100))}%`);
+  return segments;
+}
+
+function joinSegments(segments: string[]): string {
+  return segments.join(' · ');
+}
+
+function formatCost(value: number): string {
+  if (value >= 100) return value.toFixed(0);
+  if (value >= 10) return value.toFixed(1);
+  return value.toFixed(2);
 }
 
 function estimateWindowEta(quota: QuotaState, now: Date): number | null {

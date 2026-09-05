@@ -86,7 +86,11 @@ export interface QuotaState {
   /** Provider that produced this quota sample */
   providerId?: 'claude-code' | 'codex' | 'zai';
   /** Source of the sample */
-  source?: 'api' | 'session' | 'cache';
+  source?: 'api' | 'session' | 'cache' | 'statusline';
+  /** Milliseconds between `capturedAt` and the read, when read from a snapshot. */
+  ageMs?: number;
+  /** Freshness tier derived from `ageMs` (see sidekick-shared `classifyQuotaFreshness`). */
+  freshness?: 'fresh' | 'aging' | 'stale';
   /** When the sample was captured */
   capturedAt?: string;
   /** Whether the sample is cached rather than live */

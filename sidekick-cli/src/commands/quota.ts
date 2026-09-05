@@ -5,6 +5,7 @@
 import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
 import {
+  formatQuotaAge,
   describeQuotaFailure,
   resolveActiveClaudeAccount,
   getOpenCodeDataDir,
@@ -417,8 +418,9 @@ function printCodexQuota(
   if (quota.stale) {
     metaRows.push({
       label: 'Source',
-      value: `cached snapshot from ${formatSnapshotTime(quota.capturedAt)}`,
-      color: chalk.yellow,
+      value: `cached snapshot from ${formatSnapshotTime(quota.capturedAt)} (${formatQuotaAge(quota.ageMs)})`,
+      // A snapshot under five minutes old is as good as live; only older ones get the warning colour.
+      color: quota.freshness === 'fresh' ? undefined : chalk.yellow,
     });
   } else if (source) {
     metaRows.push({ label: 'Source', value: source });
@@ -505,8 +507,8 @@ function printZaiQuota(quota: Awaited<ReturnType<typeof resolveZaiQuota>>): void
       quota.stale
         ? {
             label: 'Source',
-            value: `cached z.ai API snapshot from ${formatSnapshotTime(quota.capturedAt)}`,
-            color: chalk.yellow,
+            value: `cached z.ai API snapshot from ${formatSnapshotTime(quota.capturedAt)} (${formatQuotaAge(quota.ageMs)})`,
+            color: quota.freshness === 'fresh' ? undefined : chalk.yellow,
           }
         : { label: 'Source', value: 'z.ai quota API' },
     ],

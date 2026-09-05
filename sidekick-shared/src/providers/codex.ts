@@ -988,6 +988,10 @@ export class CodexProvider implements SessionProviderBase {
         results.push(file);
       }
     }
+    // Filesystem enumeration bypasses the database, so record that here as
+    // the sync listing paths do; otherwise `getLastOperationStatus()` keeps
+    // describing whichever operation ran before this one.
+    this.recordDatabaseFallback('listSessionFilesAsync', true);
     return results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
   }
 
@@ -1312,7 +1316,10 @@ export class CodexProvider implements SessionProviderBase {
     const sessionId = extractSessionId(path.basename(sessionPath));
     const aggregator = new EventAggregator({
       providerId: 'codex',
-      computeContextSize: (usage) => usage.inputTokens,
+      // Same formula as `computeContextSize()` below: Codex input is normalized
+      // to uncached input at the reader boundary, so the prompt size is
+      // uncached + cached input.
+      computeContextSize: (usage) => usage.inputTokens + usage.cacheReadTokens,
     });
 
     try {

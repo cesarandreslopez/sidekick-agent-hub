@@ -5,6 +5,16 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- Shared library: `summarizeTokens()` defines one token vocabulary (`total` counts input, output, and both cache buckets; `context` counts input and cache) and every surface uses it, so totals agree across the CLI, the extension, and reports
+- Shared library: aggregated cost carries provenance (`reported`, `estimated`, `mixed`, `unpriced`); reports label it and show `—` for unpriced sessions instead of `$0`
+- Shared library: the Claude Code status-line payload is parsed into an official `statusline` quota source; cached quota reports its age and freshness; peak hours fall back to the published schedule and cache promoclock.co answers; threshold-crossing detection is shared by both dashboards
+- Shared library: local calendar-day helpers, offline pricing hydration, snapshot pruning, locked quota-history writes, a 30-day TTL on observed context windows, memoised provider detection, and several review follow-ups (OpenCode workspace matching, account poll interval, strict `since`)
+- CLI: `sidekick statusline` reads Claude Code's payload from stdin, shows context, cost, and cache hit rate, and persists the official limits; `--offline`, `--output-file`, `--csv` on `stats` / `dump --list` / `quota history`, `quota history --window`, and `--json` on capture commands and `report`
+- CLI: startup awaits bounded pricing hydration for deterministic costs; totals are cache-inclusive; `today` uses local days and the shared peak schedule; commands set exit codes instead of exiting mid-write
+- VS Code: quota threshold alerts (five-hour 80/95%, seven-day 90%, once per reset window); cache-inclusive totals everywhere; the D3 vendor bundle shrinks from 611 KB to 133 KB and a stale 687 KB dashboard bundle no longer ships
+
 ## [0.25.0] - 2026-08-18
 
 - Shared library: async session previews use bounded concurrency, yield between reads, batch Codex/OpenCode labels into a handful of database subprocesses per provider, and include OpenCode's native all-session enumeration

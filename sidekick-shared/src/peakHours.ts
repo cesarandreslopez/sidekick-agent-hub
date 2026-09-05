@@ -24,6 +24,12 @@ export interface PeakHoursState {
   updatedAt: string;
   unavailable: boolean;
   notApplicable?: boolean;
+  /**
+   * `promoclock` when the state came from promoclock.co, `schedule` when it
+   * was computed locally from the published weekday window. Absent on the
+   * not-applicable and unavailable placeholder states.
+   */
+  source?: 'promoclock' | 'schedule';
 }
 
 interface PromoClockResponse {
@@ -40,8 +46,74 @@ interface PromoClockResponse {
 
 const PROMOCLOCK_ENDPOINT = 'https://promoclock.co/api/status';
 
-/** Default budget for the promoclock.co request, in milliseconds. */
-export const DEFAULT_PEAK_HOURS_TIMEOUT_MS = 10_000;
+/**
+ * Default budget for the promoclock.co request, in milliseconds. The schedule
+ * fallback answers the question anyway, so a slow third-party host should not
+ * hold up a `sidekick status` or `sidekick quota` run for long.
+ */
+export const DEFAULT_PEAK_HOURS_TIMEOUT_MS = 4_000;
+/** A promoclock.co answer is reused for this long before the host is asked again. */
+export const PEAK_HOURS_CACHE_MS = 10 * 60_000;
+
+/** Published peak window: weekdays 13:00–19:00 UTC. */
+export const PEAK_WINDOW_START_UTC_HOUR = 13;
+export const PEAK_WINDOW_END_UTC_HOUR = 19;
+export const PEAK_HOURS_DESCRIPTION = 'Weekdays 13:00–19:00 UTC';
+
+let cachedNetworkState: { state: PeakHoursState; fetchedAt: number } | null = null;
+
+/** Forget the cached promoclock.co answer. Test-only. */
+export function _resetPeakHoursCache(): void {
+  cachedNetworkState = null;
+}
+
+function isWeekdayUtc(date: Date): boolean {
+  const day = date.getUTCDay();
+  return day >= 1 && day <= 5;
+}
+
+function utcDateAtHour(date: Date, hour: number, dayOffset = 0): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + dayOffset, hour),
+  );
+}
+
+/**
+ * Peak-hours state computed from the published schedule alone, with no
+ * network access. Used directly by cache-only commands (`sidekick today`) and
+ * as the fallback when promoclock.co cannot be reached, so every surface
+ * agrees on whether it is currently peak.
+ */
+export function getScheduledPeakHoursState(now: Date = new Date()): PeakHoursState {
+  const hour = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const isPeak =
+    isWeekdayUtc(now) && hour >= PEAK_WINDOW_START_UTC_HOUR && hour < PEAK_WINDOW_END_UTC_HOUR;
+
+  let nextChange: Date;
+  if (isPeak) {
+    nextChange = utcDateAtHour(now, PEAK_WINDOW_END_UTC_HOUR);
+  } else if (isWeekdayUtc(now) && hour < PEAK_WINDOW_START_UTC_HOUR) {
+    nextChange = utcDateAtHour(now, PEAK_WINDOW_START_UTC_HOUR);
+  } else {
+    let offset = 1;
+    while (!isWeekdayUtc(utcDateAtHour(now, 0, offset))) offset += 1;
+    nextChange = utcDateAtHour(now, PEAK_WINDOW_START_UTC_HOUR, offset);
+  }
+
+  return {
+    status: isPeak ? 'peak' : 'off_peak',
+    isPeak,
+    sessionLimitSpeed: isPeak ? 'faster' : 'normal',
+    label: isPeak ? 'Peak Hours' : 'Off-Peak',
+    peakHoursDescription: PEAK_HOURS_DESCRIPTION,
+    nextChange: nextChange.toISOString(),
+    minutesUntilChange: Math.max(0, Math.round((nextChange.getTime() - now.getTime()) / 60_000)),
+    note: 'Computed from the published weekday schedule.',
+    updatedAt: now.toISOString(),
+    unavailable: false,
+    source: 'schedule',
+  };
+}
 
 /** Options for {@link fetchPeakHoursStatus}. */
 export interface FetchPeakHoursOptions {
@@ -50,6 +122,8 @@ export interface FetchPeakHoursOptions {
    * Defaults to {@link DEFAULT_PEAK_HOURS_TIMEOUT_MS}.
    */
   timeoutMs?: number;
+  /** Bypass the in-process cache and ask promoclock.co again. */
+  force?: boolean;
 }
 
 function unavailableState(): PeakHoursState {
@@ -116,7 +190,11 @@ function normalizeSpeed(raw: string | undefined): PeakHoursState['sessionLimitSp
  * Fetch current Claude peak-hours state from promoclock.co.
  *
  * Single-shot — caller wraps in polling loop, EventEmitter, or interval.
- * Returns `unavailable: true` on any network, timeout, or parse error.
+ * A successful answer is cached in-process for {@link PEAK_HOURS_CACHE_MS}.
+ * On any network, timeout, or parse error the state is computed from the
+ * published schedule instead (`source: 'schedule'`), so callers always get a
+ * usable answer and every surface agrees on it; {@link unavailableState} is
+ * only returned when the schedule itself cannot be evaluated.
  *
  * promoclock.co is a third-party host, so the request is always bounded by
  * an abort timeout. Without one a hung host would stall the caller — and
@@ -125,13 +203,22 @@ function normalizeSpeed(raw: string | undefined): PeakHoursState['sessionLimitSp
 export async function fetchPeakHoursStatus(
   options: FetchPeakHoursOptions = {},
 ): Promise<PeakHoursState> {
+  const now = Date.now();
+  if (
+    !options.force &&
+    cachedNetworkState &&
+    now - cachedNetworkState.fetchedAt < PEAK_HOURS_CACHE_MS
+  ) {
+    return cachedNetworkState.state;
+  }
+
   const timeoutMs = options.timeoutMs ?? DEFAULT_PEAK_HOURS_TIMEOUT_MS;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   timeout.unref();
   try {
     const res = await fetch(PROMOCLOCK_ENDPOINT, { signal: controller.signal });
-    if (!res.ok) return unavailableState();
+    if (!res.ok) return scheduleFallback();
 
     const data: PromoClockResponse = await res.json();
 
@@ -139,7 +226,7 @@ export async function fetchPeakHoursStatus(
     const sessionLimitSpeed = normalizeSpeed(data.sessionLimitSpeed);
     const isPeak = typeof data.isPeak === 'boolean' ? data.isPeak : status === 'peak';
 
-    return {
+    const state: PeakHoursState = {
       status,
       isPeak,
       sessionLimitSpeed,
@@ -151,11 +238,26 @@ export async function fetchPeakHoursStatus(
       note: data.note ?? '',
       updatedAt: data.timestamp ?? new Date().toISOString(),
       unavailable: false,
+      source: 'promoclock',
     };
+    cachedNetworkState = { state, fetchedAt: now };
+    return state;
   } catch {
     // Covers AbortError from the timeout above alongside network/parse failures.
-    return unavailableState();
+    return scheduleFallback();
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+function scheduleFallback(): PeakHoursState {
+  try {
+    const state = getScheduledPeakHoursState();
+    return {
+      ...state,
+      note: 'promoclock.co unreachable; computed from the published weekday schedule.',
+    };
+  } catch {
+    return unavailableState();
   }
 }

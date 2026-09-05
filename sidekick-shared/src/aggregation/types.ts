@@ -92,7 +92,18 @@ export interface EventAggregatorOptions {
   readPlanFile?: (path: string) => string | null;
 }
 
-/** Token accumulation totals (aggregation-specific, includes reportedCost). */
+/**
+ * How an aggregate cost figure was produced.
+ *
+ * - `reported`  — every priced event carried a provider-reported cost.
+ * - `estimated` — every priced event was priced from the model catalog.
+ * - `mixed`     — some events reported, some estimated.
+ * - `unpriced`  — no event could be priced at all.
+ * - `none`      — no usage events yet.
+ */
+export type AggregatedCostProvenance = 'reported' | 'estimated' | 'mixed' | 'unpriced' | 'none';
+
+/** Token accumulation totals (aggregation-specific, includes cost). */
 export interface AggregatedTokens {
   inputTokens: number;
   outputTokens: number;
@@ -101,6 +112,25 @@ export interface AggregatedTokens {
   reasoningTokens: number;
   /** Overall total after applying provider reasoning-in-output semantics. */
   totalTokens: number;
+  /**
+   * Cost in USD for the priced portion of the session. Read `costProvenance`
+   * before labelling it: only `'reported'` came from the provider; anything
+   * else includes Sidekick's own catalog estimate.
+   */
+  costUsd: number;
+  /** Portion of `costUsd` the provider reported itself. */
+  reportedCostUsd: number;
+  /** Portion of `costUsd` Sidekick estimated from catalog pricing. */
+  estimatedCostUsd: number;
+  /** Usage events that had neither a reported cost nor a catalog price. */
+  unpricedCalls: number;
+  /** Classification of `costUsd`. */
+  costProvenance: AggregatedCostProvenance;
+  /**
+   * @deprecated Same value as `costUsd`. Despite the name it has always mixed
+   * catalog estimates with provider-reported figures; use `costUsd` together
+   * with `costProvenance`.
+   */
   reportedCost: number;
 }
 

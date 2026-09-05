@@ -23,6 +23,7 @@ import * as path from 'node:path';
 import { _setCatalogContextWindows } from './modelContext';
 import { _setPricingOverrides, type ModelPricing } from './modelInfo';
 import { getConfigDir } from './paths';
+import { atomicWriteJson } from './writers/atomic';
 
 // ── Types ──
 
@@ -43,6 +44,13 @@ export interface HydrateOptions {
   url?: string;
   /** Optional logger (useful for diagnostics without pulling a logger dep). */
   logger?: (msg: string) => void;
+  /**
+   * Never touch the network: apply the on-disk cache regardless of its age, or
+   * stay on the static tables when there is none. Callers that must produce
+   * the same figures on every run (scripted reports, tests, air-gapped hosts)
+   * set this; `SIDEKICK_OFFLINE=1` does the same for the CLI.
+   */
+  offline?: boolean;
 }
 
 export interface HydrateResult {
@@ -112,19 +120,20 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
     timeoutMs = DEFAULT_TIMEOUT_MS,
     url = LITELLM_CATALOG_URL,
     logger,
+    offline = false,
   } = options;
 
   const cachePath = path.join(cacheDir, CACHE_FILE_NAME);
   const now = Date.now();
 
-  // 1. Fresh cache?
+  // 1. Fresh cache? (Offline callers take any cache, however old.)
   const cached = await readCache(cachePath);
-  if (cached && now - Date.parse(cached.fetchedAt) < ttlMs) {
+  if (cached && (offline || now - Date.parse(cached.fetchedAt) < ttlMs)) {
     return applyCacheFile(cached, 'cache');
   }
 
   // 2. Try network.
-  if (fetchImpl) {
+  if (fetchImpl && !offline) {
     const fetched = await fetchCatalog(url, fetchImpl, timeoutMs, logger);
     if (fetched) {
       const payload: CacheFile = {
@@ -311,7 +320,9 @@ async function writeCache(
 ): Promise<void> {
   try {
     await fs.mkdir(path.dirname(cachePath), { recursive: true });
-    await fs.writeFile(cachePath, JSON.stringify(payload, null, 2), 'utf8');
+    // The CLI and the extension host can both refresh the catalog at once;
+    // the atomic writer keeps a reader from ever seeing a half-written file.
+    await atomicWriteJson(cachePath, payload);
   } catch (err) {
     logger?.(`pricingCatalog: failed to write cache: ${String(err)}`);
   }

@@ -1,4 +1,5 @@
 import type { AggregatedMetrics } from '../aggregation/types';
+import { summarizeTokens } from '../tokenSummary';
 import type { SessionHistoryRecord } from '../types/historicalData';
 
 export type QualityFactorId =
@@ -43,10 +44,7 @@ export function scoreSessionQuality(metrics: AggregatedMetrics): SessionQualityS
   const completedCalls = metrics.toolStats.reduce((sum, tool) => sum + tool.completedCount, 0);
   const errorRate = completedCalls > 0 ? metrics.errorRollup.totalFailures / completedCalls : 0;
 
-  const contextTokens = Math.max(
-    1,
-    metrics.tokens.inputTokens + metrics.tokens.cacheReadTokens + metrics.tokens.cacheWriteTokens,
-  );
+  const contextTokens = Math.max(1, summarizeTokens(metrics.tokens).context);
   const evicted = metrics.compactionEvents.reduce((sum, event) => sum + event.tokensReclaimed, 0);
   const contextRatio = 1 - Math.min(1, evicted / contextTokens);
 

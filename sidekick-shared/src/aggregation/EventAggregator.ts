@@ -49,6 +49,7 @@ import type {
   ErrorRollupEntry,
   ErrorBucketMetric,
 } from './types';
+import { classifyCostProvenance } from './costProvenance';
 import { FrequencyTracker } from './FrequencyTracker';
 import type { SerializedFrequencyState } from './FrequencyTracker';
 import { HeatmapTracker } from './HeatmapTracker';
@@ -74,7 +75,7 @@ const DEFAULT_BURN_SAMPLE_MS = 10_000;
 const COMPACTION_DROP_THRESHOLD = 0.8; // >20% drop
 
 /** Schema version for serialized snapshots. */
-export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SNAPSHOT_SCHEMA_VERSION = 5;
 
 /**
  * JSON-serializable snapshot of EventAggregator state.
@@ -89,7 +90,14 @@ export interface SerializedAggregatorState {
     cacheRead: number;
     reasoning: number;
     total: number;
+    /** @deprecated Mirrors `costUsd`; kept so older readers of the field keep working. */
     reportedCost: number;
+    costUsd: number;
+    reportedCostUsd: number;
+    estimatedCostUsd: number;
+    reportedCalls: number;
+    estimatedCalls: number;
+    unpricedCalls: number;
   };
   modelUsage: Array<
     [
@@ -246,7 +254,13 @@ export class EventAggregator {
   private cacheReadTokens = 0;
   private reasoningTokens = 0;
   private totalTokens = 0;
-  private reportedCost = 0;
+  /** Running cost in USD (reported + estimated). */
+  private costUsd = 0;
+  private reportedCostUsd = 0;
+  private estimatedCostUsd = 0;
+  private reportedCalls = 0;
+  private estimatedCalls = 0;
+  private unpricedCalls = 0;
 
   // Per-model usage
   private modelUsage = new Map<string, ModelAccumulator>();
@@ -473,8 +487,10 @@ export class EventAggregator {
       const cost = this.accumulateUsage(normalized, event.timestamp, event.model);
       this.attributePlanUsage(normalized.totalTokens, cost);
     } else if (typeof event.cost === 'number' && Number.isFinite(event.cost) && event.cost >= 0) {
-      // Compatibility for cost-only follow events.
-      this.reportedCost += event.cost;
+      // Compatibility for cost-only follow events (provider-reported by definition).
+      this.costUsd += event.cost;
+      this.reportedCostUsd += event.cost;
+      this.reportedCalls += 1;
     }
 
     // 4. Tool tracking from FollowEvent
@@ -531,7 +547,16 @@ export class EventAggregator {
       cacheReadTokens: this.cacheReadTokens,
       reasoningTokens: this.reasoningTokens,
       totalTokens: this.totalTokens,
-      reportedCost: this.reportedCost,
+      costUsd: this.costUsd,
+      reportedCostUsd: this.reportedCostUsd,
+      estimatedCostUsd: this.estimatedCostUsd,
+      unpricedCalls: this.unpricedCalls,
+      costProvenance: classifyCostProvenance({
+        reportedCalls: this.reportedCalls,
+        estimatedCalls: this.estimatedCalls,
+        unpricedCalls: this.unpricedCalls,
+      }),
+      reportedCost: this.costUsd,
     };
   }
 
@@ -685,7 +710,12 @@ export class EventAggregator {
     this.cacheReadTokens = 0;
     this.reasoningTokens = 0;
     this.totalTokens = 0;
-    this.reportedCost = 0;
+    this.costUsd = 0;
+    this.reportedCostUsd = 0;
+    this.estimatedCostUsd = 0;
+    this.reportedCalls = 0;
+    this.estimatedCalls = 0;
+    this.unpricedCalls = 0;
     this.modelUsage.clear();
     this.currentContextSize = 0;
     this.previousContextSize = 0;
@@ -766,7 +796,13 @@ export class EventAggregator {
         cacheRead: this.cacheReadTokens,
         reasoning: this.reasoningTokens,
         total: this.totalTokens,
-        reportedCost: this.reportedCost,
+        reportedCost: this.costUsd,
+        costUsd: this.costUsd,
+        reportedCostUsd: this.reportedCostUsd,
+        estimatedCostUsd: this.estimatedCostUsd,
+        reportedCalls: this.reportedCalls,
+        estimatedCalls: this.estimatedCalls,
+        unpricedCalls: this.unpricedCalls,
       },
       modelUsage: Array.from(this.modelUsage.entries()),
       contextSize: this.currentContextSize,
@@ -815,7 +851,12 @@ export class EventAggregator {
     this.cacheReadTokens = state.tokens.cacheRead;
     this.reasoningTokens = state.tokens.reasoning;
     this.totalTokens = state.tokens.total;
-    this.reportedCost = state.tokens.reportedCost;
+    this.costUsd = state.tokens.costUsd;
+    this.reportedCostUsd = state.tokens.reportedCostUsd;
+    this.estimatedCostUsd = state.tokens.estimatedCostUsd;
+    this.reportedCalls = state.tokens.reportedCalls;
+    this.estimatedCalls = state.tokens.estimatedCalls;
+    this.unpricedCalls = state.tokens.unpricedCalls;
 
     this.modelUsage = new Map(state.modelUsage);
     this.currentContextSize = state.contextSize;
@@ -889,7 +930,16 @@ export class EventAggregator {
     this.cacheReadTokens += cacheRead;
     this.reasoningTokens += reasoningTok;
     this.totalTokens += usage.totalTokens;
-    this.reportedCost += cost;
+    this.costUsd += cost;
+    if (pricedUsage.source === 'provider-reported') {
+      this.reportedCostUsd += cost;
+      this.reportedCalls += 1;
+    } else if (pricedUsage.source === 'unpriced') {
+      this.unpricedCalls += 1;
+    } else {
+      this.estimatedCostUsd += cost;
+      this.estimatedCalls += 1;
+    }
 
     // Burn rate sample accumulation
     this.tokensSinceLastSample += usage.totalTokens;

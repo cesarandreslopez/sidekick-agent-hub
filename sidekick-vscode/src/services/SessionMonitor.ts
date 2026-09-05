@@ -66,6 +66,7 @@ import {
   extractErrorMessage,
   calculateCodeImpact,
   scoreSessionQuality,
+  summarizeTokens,
 } from 'sidekick-shared';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 
@@ -2366,7 +2367,8 @@ export class SessionMonitor implements vscode.Disposable {
         reasoningTokens: 0,
       };
       modelStats.calls++;
-      modelStats.tokens += usage.inputTokens + usage.outputTokens;
+      // Shared vocabulary: every billed bucket, matching the aggregator's per-model rows.
+      modelStats.tokens += summarizeTokens(usage).total;
       modelStats.inputTokens += usage.inputTokens;
       modelStats.outputTokens += usage.outputTokens;
       modelStats.cacheWriteTokens += usage.cacheWriteTokens;
@@ -2391,7 +2393,7 @@ export class SessionMonitor implements vscode.Disposable {
       if (this.planState && !this.planState.active) {
         const activeStep = this.planState.steps.find((s) => s.status === 'in_progress');
         if (activeStep) {
-          const stepTokens = usage.inputTokens + usage.outputTokens;
+          const stepTokens = summarizeTokens(usage).total;
           activeStep.tokensUsed = (activeStep.tokensUsed ?? 0) + stepTokens;
           this.planStepTokens += stepTokens;
         }

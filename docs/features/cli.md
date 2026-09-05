@@ -38,14 +38,16 @@ If you have sessions from multiple providers, the most recently active one is se
 sidekick dashboard [options]
 ```
 
-| Flag               | Description                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------ |
-| `--project <path>` | Override project path (default: current working directory)                           |
-| `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)            |
-| `--session <id>`   | Follow a specific session by ID (default: most recent or session picker)             |
-| `--replay`         | Replay existing events from the beginning before streaming live                      |
-| `--no-mouse`       | Start with mouse capture disabled so terminal text selection works (toggle with `M`) |
-| `--no-color`       | Disable colored output for any command (also honors `NO_COLOR`)                      |
+| Flag                   | Description                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| `--project <path>`     | Override project path (default: current working directory)                                        |
+| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                         |
+| `--session <id>`       | Follow a specific session by ID (default: most recent or session picker)                          |
+| `--replay`             | Replay existing events from the beginning before streaming live                                   |
+| `--no-mouse`           | Start with mouse capture disabled so terminal text selection works (toggle with `M`)              |
+| `--no-color`           | Disable colored output for any command (also honors `NO_COLOR`)                                   |
+| `--offline`            | Price from the cached catalog only; never refresh it over the network (also `SIDEKICK_OFFLINE=1`) |
+| `--output-file <path>` | Write everything a command prints to stdout into a file (not for `dashboard` or `mcp`)            |
 
 ### Examples
 
@@ -74,13 +76,14 @@ Dump session data as a text timeline, JSON metrics, or markdown report for shari
 | Flag             | Description                                            |
 | ---------------- | ------------------------------------------------------ |
 | `--list`         | List available session IDs for the current project     |
+| `--csv`          | With `--list`, print the session table as CSV          |
 | `--limit <n>`    | Maximum sessions listed with `--list` (default: 50)    |
 | `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
 | `--width <cols>` | Terminal width for text output (default: auto-detect)  |
 | `--expand`       | Show all events including noise                        |
 | `--session <id>` | Target a specific session (default: most recent)       |
 
-Global flags `--project`, `--provider`, and `--json` also apply (see above).
+Global flags `--project`, `--provider`, and `--json` also apply (see above); `--json` on a non-list dump is the same as `--format json`. Token totals count every billed bucket (input, output, cache writes, and cache reads) and cost figures name their provenance (provider-reported or estimated from catalog pricing).
 
 ### Examples
 
@@ -143,7 +146,7 @@ Generate a self-contained HTML session report and open it in the default browser
 | `--no-open`       | Write the file without opening the browser       |
 | `--no-thinking`   | Omit thinking blocks from the transcript         |
 
-Global flags `--project` and `--provider` also apply (see above).
+Global flags `--project` and `--provider` also apply (see above). With the global `--json` flag the command prints `{ "path", "sessionPath", "sessionFileName", "bytes" }` to stdout instead of the "Report written to" note.
 
 ### Examples
 
@@ -216,6 +219,12 @@ sidekick statusline  # fast one-line account/quota/burn-rate footer
 
 `today` and `statusline` bypass account bootstrap, pricing hydration, and quota network calls. Use `Sidekick: Install Statusline` in VS Code to merge the status-line command into Claude Code settings; uninstalling it restores the previous block.
 
+When Claude Code runs `sidekick statusline` as its status line it pipes a JSON document on stdin. Sidekick reads it and appends context usage, session cost, and prompt-cache hit rate to the line, and — for Claude.ai Pro and Max subscribers — writes the **official** five-hour and seven-day rate limits into the quota snapshot and history stores. Every other command and both dashboards then see authoritative quota without a network call. Cached quota older than five minutes is labelled with its age. Set `SIDEKICK_STATUSLINE_STDIN=0` to ignore stdin.
+
+```
+acct:work · 5h 42% resets 14:00 · ~1h20m left · 7d 61% · ctx 37% · $0.42 · cache 93%
+```
+
 ### Quick capture
 
 ```bash
@@ -225,7 +234,7 @@ sidekick note add "Migration requires a cache clear" --type gotcha
 sidekick decision add "Use SQLite" --rationale "Local and portable"
 ```
 
-Capture commands atomically merge with the same per-project stores used by VS Code. An open Kanban board refreshes when a CLI write lands, without restarting the extension.
+Capture commands atomically merge with the same per-project stores used by VS Code. An open Kanban board refreshes when a CLI write lands, without restarting the extension. With the global `--json` flag each capture command prints the stored record (`{ ok, action, task | note | decision }`) instead of a sentence.
 
 ### External handoff
 
@@ -328,9 +337,13 @@ sidekick notes --type tip --status active --json
 sidekick stats [options]
 ```
 
-Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`. Unknown-model rows render as `—`; any unpriced models encountered are listed in the footer so missing pricing coverage is visible.
+Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`. Unknown-model rows render as `—`; any unpriced models encountered are listed in the footer so missing pricing coverage is visible. "Total (incl. cache)" counts input, output, cache writes, and cache reads — the same total every other Sidekick surface shows.
 
-No command-specific flags. Use `--json` for machine-readable output.
+| Flag    | Description                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------------------ |
+| `--csv` | Print every recorded day as CSV: date, sessions, messages, token buckets, total, cost, unpriced models |
+
+Use the global `--json` for the raw store.
 
 #### Examples
 
@@ -340,6 +353,9 @@ sidekick stats
 
 # Export raw historical data as JSON
 sidekick stats --json
+
+# Every recorded day as CSV, straight into a spreadsheet
+sidekick stats --csv --output-file usage.csv
 ```
 
 ### Status
@@ -441,14 +457,16 @@ z.ai quota is read from z.ai's quota API using the token stored by OpenCode, wit
 sidekick quota history
 ```
 
-Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one calendar day; brightness encodes the peak utilization observed that day (≤0% empty, <25% low, <50% mid, <75% high, ≥75% peak). Days that had at least one `available: false` sample render as a red `×`.
+Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one local calendar day; brightness encodes the peak utilization of the selected window observed that day (≤0% empty, <25% low, <50% mid, <75% high, ≥75% peak). Days that had at least one `available: false` sample render as a red `×`.
 
-| Flag                 | Description                                                                                                                         |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `--weeks <n>`        | Weeks of history to render (default `13`, clamped 1-26)                                                                             |
-| `--provider <id>`    | Limit to a single runtime provider: `claude`, `codex`, or `zai`. Default: all available, in stacked grids                           |
-| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()`                                                           |
-| `--json`             | Emit a `{ workspaceId, weeks, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
+| Flag                 | Description                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--weeks <n>`        | Weeks of history to render (default `13`, clamped 1-26)                                                                                     |
+| `--provider <id>`    | Limit to a single runtime provider: `claude`, `codex`, or `zai`. Default: all available, in stacked grids                                   |
+| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()`                                                                   |
+| `--window <window>`  | Which limit the cells show: `5h` (default), `7d`, or `max` (the higher of the two, the previous behaviour)                                  |
+| `--csv`              | Print the daily buckets (date, provider, samples, max/avg for both windows, unavailable) as CSV                                             |
+| `--json`             | Emit a `{ workspaceId, weeks, window, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
 
 History is sourced from per-workspace JSONL written by both the CLI's quota path and the VS Code extension (Claude via `QuotaService`, Codex via the session provider and `CodexQuotaWatcher`), stored under `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` with `0600` file permissions, a 60-second per-sample debounce, and a 91-day retention window. The workspace id is `sha256(realpath(workspace))[0..16]` — stable across CLI invocations and VS Code sessions for the same folder.
 

@@ -57,13 +57,15 @@ sidekick tasks add|tasks done|note add|decision add [args]
 
 The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
 
-| Flag               | Description                                                               |
-| ------------------ | ------------------------------------------------------------------------- |
-| `--project <path>` | Override project path (default: current working directory)                |
-| `--provider <id>`  | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
-| `--no-color`       | Disable colored output (also honors `NO_COLOR`)                           |
-| `--session <id>`   | Follow a specific session by ID                                           |
-| `--replay`         | Replay existing events from the beginning before streaming live           |
+| Flag                   | Description                                                               |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `--project <path>`     | Override project path (default: current working directory)                |
+| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
+| `--no-color`           | Disable colored output (also honors `NO_COLOR`)                           |
+| `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)            |
+| `--output-file <path>` | Write a command's stdout to a file                                        |
+| `--session <id>`       | Follow a specific session by ID                                           |
+| `--replay`             | Replay existing events from the beginning before streaming live           |
 
 ## Daily Brief & Statusline
 
@@ -72,7 +74,7 @@ sidekick today
 sidekick statusline
 ```
 
-`sidekick today` prints a cache-only daily brief: yesterday's sessions/tokens/cost, open tasks, the newest decision, the latest handoff, a quota summary, and the scheduled peak-hours window. `sidekick statusline` renders the same account/quota/burn summary as a single line, entirely from cached snapshots — no account bootstrap, pricing hydration, or quota network access — so it is fast enough to run on every agent prompt (the VS Code extension can wire it into Claude Code's `statusLine` setting). Global flags `--project`, `--provider`, and `--json` apply to `today`; `statusline` takes no flags.
+`sidekick today` prints a cache-only daily brief: yesterday's sessions/tokens/cost, open tasks, the newest decision, the latest handoff, a quota summary, and the scheduled peak-hours window. `sidekick statusline` renders the same account/quota/burn summary as a single line with no account bootstrap, pricing hydration, or quota network access, so it is fast enough to run on every agent prompt (the VS Code extension can wire it into Claude Code's `statusLine` setting). When Claude Code runs it as the status line it pipes a JSON document on stdin: Sidekick appends context usage, session cost, and prompt-cache hit rate, and persists the official five-hour and seven-day limits so every other command sees authoritative quota without a network call. Cached quota older than five minutes shows its age. Global flags `--project`, `--provider`, and `--json` apply to `today`; `statusline` takes no flags (`SIDEKICK_STATUSLINE_STDIN=0` ignores stdin).
 
 ## Doctor
 
@@ -267,7 +269,7 @@ Mon ··▒▒▓█▒░· ·░░·· ·▒▓
 Peak 92%  ·  Avg 38%  ·  Samples 612
 ```
 
-Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex|zai` (default all available, stacked), `--workspace <path>` (default `cwd`). `--json` emits a `{ workspaceId, weeks, providers, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel.
+Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex|zai` (default all available, stacked), `--workspace <path>` (default `cwd`), `--window 5h|7d|max` (default `5h`), `--csv`. `--json` emits a `{ workspaceId, weeks, window, providers, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel. Cells are local calendar days.
 
 History is stored at `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` (mode `0600`, 60-second debounce, 91-day retention). The workspace id is `sha256(realpath)[0..16]`, so the same folder yields the same store whether sampled from the CLI or VS Code.
 

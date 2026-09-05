@@ -306,7 +306,13 @@ export async function listSessionPreviewsAsync(
 function resolveSinceMs(since: Date | string | undefined): number | null {
   if (since === undefined) return null;
   const ms = since instanceof Date ? since.getTime() : Date.parse(since);
-  return Number.isFinite(ms) ? ms : null;
+  if (!Number.isFinite(ms)) {
+    // An unparseable cutoff used to mean "no cutoff", silently returning
+    // every session. Fail loudly instead so a typo cannot masquerade as a
+    // full listing.
+    throw new RangeError(`Invalid \`since\` value: ${String(since)}`);
+  }
+  return ms;
 }
 
 function enumerateSessionFiles(

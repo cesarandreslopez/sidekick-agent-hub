@@ -52,3 +52,49 @@ describe('formatStatusline', () => {
     ).not.toContain('left');
   });
 });
+
+describe('formatStatusline live segments', () => {
+  const now = new Date('2026-07-18T13:00:00.000Z');
+  const quota = {
+    available: true,
+    capturedAt: now.toISOString(),
+    fiveHour: { utilization: 42, resetsAt: '2026-07-18T16:00:00.000Z' },
+    sevenDay: { utilization: 61, resetsAt: '2026-07-20T00:00:00.000Z' },
+  };
+
+  it('appends context, cost, cache, and the seven-day window', () => {
+    const result = formatStatusline({
+      accounts,
+      now,
+      claudeQuota: quota,
+      live: {
+        contextWindow: { usedPercentage: 37.4 },
+        cost: { totalCostUsd: 0.4211 },
+        promptCache: { hitRatio: 0.925 },
+        raw: {},
+      },
+    });
+    expect(result).toMatch(/^acct:work · 5h 42% resets /);
+    expect(result).toContain('7d 61%');
+    expect(result).toContain('ctx 37%');
+    expect(result).toContain('$0.42');
+    expect(result).toContain('cache 93%');
+  });
+
+  it('labels quota older than five minutes with its age', () => {
+    const result = formatStatusline({
+      accounts,
+      now,
+      claudeQuota: { ...quota, ageMs: 2 * 3_600_000, freshness: 'stale' },
+    });
+    expect(result).toContain('(2h ago)');
+  });
+
+  it('keeps live segments even when no account is known', () => {
+    const result = formatStatusline({
+      accounts: { ok: false, claude: { present: false }, codex: { present: false } },
+      live: { contextWindow: { usedPercentage: 12 }, raw: {} },
+    });
+    expect(result).toBe('acct:none · quota unavailable · ctx 12%');
+  });
+});

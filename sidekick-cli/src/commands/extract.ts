@@ -156,7 +156,8 @@ export async function extractAction(_opts: Record<string, unknown>, cmd: Command
       process.stderr.write(
         `Error: sidekick extract supports Claude Code and Codex sessions; provider '${unsupportedProvider}' is not supported yet.\n`,
       );
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     const caps =
@@ -203,6 +204,7 @@ export async function extractAction(_opts: Record<string, unknown>, cmd: Command
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`Error: ${message}\n`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }

@@ -447,7 +447,10 @@ export function resolveSidekickCodexHome(): string {
  * isn't the current active pointer, the pointer is re-pointed so registry-keyed data
  * (quota history, auto-switch) tracks reality too. Never creates or deletes profiles.
  */
-export function resolveActiveCodexAccount(): ResolvedActiveAccount {
+export function resolveActiveCodexAccount(
+  options: { selfHeal?: boolean } = {},
+): ResolvedActiveAccount {
+  const selfHeal = options.selfHeal ?? true;
   const identity = readAuthIdentityFromRaw(
     readFileOrNull(path.join(resolveSidekickCodexHome(), 'auth.json')),
   );
@@ -456,7 +459,8 @@ export function resolveActiveCodexAccount(): ResolvedActiveAccount {
     const match = findProfileForIdentity(identity);
     if (match) {
       const active = getActiveSavedAccount('codex');
-      if (!active || active.id !== match.id) {
+      // See resolveActiveClaudeAccount: hot paths opt out of the repair write.
+      if (selfHeal && (!active || active.id !== match.id)) {
         // Self-heal is best-effort: a registry write failure (read-only/full
         // disk) must never break display, extension activation, or the quota
         // watcher's hot path. We still return the correct live identity below.

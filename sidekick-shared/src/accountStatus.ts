@@ -19,16 +19,28 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export interface ActiveAccountStatusOptions {
+  /**
+   * Re-point a stale saved-account pointer at the live identity when they
+   * disagree (default true). Hot paths such as the status line pass `false`
+   * so they never write; an ordinary command repairs the pointer later.
+   */
+  selfHeal?: boolean;
+}
+
 /**
  * Reads active Claude Code and Codex account status in one filesystem pass.
  *
  * If reading either provider throws, the result still has provider-shaped
  * fields so startup flows can render a consistent "not configured" state.
  */
-export function getActiveAccountStatus(error?: string): ActiveAccountStatus {
+export function getActiveAccountStatus(
+  error?: string,
+  options: ActiveAccountStatusOptions = {},
+): ActiveAccountStatus {
   try {
-    const claudeAccount = resolveActiveClaudeAccount();
-    const codexAccount = resolveActiveCodexAccount();
+    const claudeAccount = resolveActiveClaudeAccount(options);
+    const codexAccount = resolveActiveCodexAccount(options);
 
     const claude =
       claudeAccount.source !== 'none'

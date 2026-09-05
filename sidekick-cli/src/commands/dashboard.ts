@@ -19,6 +19,9 @@ import {
   readPlans,
   writePlans,
   resolveProjectIdentity,
+  DEFAULT_QUOTA_THRESHOLDS,
+  describeQuotaThresholdAlert,
+  evaluateQuotaThresholds,
 } from 'sidekick-shared';
 import type {
   FollowEvent,
@@ -53,6 +56,7 @@ import { readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
 import { staticDataFingerprint } from '../dashboard/staticDataFingerprint';
 import { initialDataStatus, type DataStatus } from '../dashboard/ink/dataStatus';
 import type { DashboardNotice } from '../dashboard/ink/notice';
+import type { QuotaAlertMemory } from 'sidekick-shared';
 import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
 import { createDashboardSignalHandler, selectSessionProvider } from './dashboardLifecycle';
 
@@ -621,8 +625,19 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   }
 
   // Quota updates trigger rerender
+  // Threshold crossings are announced once per reset window, through the same
+  // shared evaluator the VS Code extension uses.
+  let quotaAlertMemory: QuotaAlertMemory = {};
   quotaService.onUpdate((quota) => {
     state.setQuota(quota);
+    const evaluated = evaluateQuotaThresholds(quota, DEFAULT_QUOTA_THRESHOLDS, quotaAlertMemory);
+    quotaAlertMemory = evaluated.memory;
+    for (const alert of evaluated.alerts) {
+      pushNotice(
+        describeQuotaThresholdAlert(alert),
+        alert.severity === 'critical' ? 'error' : 'warning',
+      );
+    }
     scheduleRender();
   });
 

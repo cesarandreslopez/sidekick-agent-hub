@@ -313,3 +313,38 @@ function makeQuotaState(utilization: number): QuotaState {
     sevenDayLabel: 'Secondary',
   };
 }
+
+describe('readQuotaSnapshot freshness', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-quota-freshness-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('reports the sample age and tier alongside the cached flag', () => {
+    writeQuotaSnapshot('claude-code', 'acct-1', {
+      fiveHour: { utilization: 10, resetsAt: '2026-04-13T20:00:00Z' },
+      sevenDay: { utilization: 5, resetsAt: '2026-04-18T20:00:00Z' },
+      available: true,
+      source: 'statusline',
+      capturedAt: '2026-04-13T12:00:00Z',
+    });
+
+    const fresh = readQuotaSnapshot('claude-code', 'acct-1', new Date('2026-04-13T12:01:00Z'));
+    expect(fresh).toMatchObject({
+      source: 'cache',
+      stale: true,
+      ageMs: 60_000,
+      freshness: 'fresh',
+    });
+
+    const aging = readQuotaSnapshot('claude-code', 'acct-1', new Date('2026-04-13T12:30:00Z'));
+    expect(aging?.freshness).toBe('aging');
+
+    const stale = readQuotaSnapshot('claude-code', 'acct-1', new Date('2026-04-14T12:00:00Z'));
+    expect(stale?.freshness).toBe('stale');
+    expect(stale?.ageMs).toBe(86_400_000);
+  });
+});

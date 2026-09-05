@@ -52,12 +52,20 @@ export interface QuotaState {
   projectedSevenDay?: number;
   /** Provider that produced this quota sample */
   providerId?: QuotaProviderId;
-  /** Source of the sample */
-  source?: 'api' | 'session' | 'cache';
+  /**
+   * Source of the sample. `statusline` is the official rate-limit block Claude
+   * Code hands to its status-line command; `session` is inferred from session
+   * logs; `api` is a live usage-endpoint fetch; `cache` is a persisted snapshot.
+   */
+  source?: 'api' | 'session' | 'cache' | 'statusline';
   /** ISO timestamp when the sample was captured */
   capturedAt?: string;
   /** Whether the sample is stale cached data */
   stale?: boolean;
+  /** Milliseconds between `capturedAt` and the read, when read from a snapshot. */
+  ageMs?: number;
+  /** Freshness tier derived from `ageMs`; see `classifyQuotaFreshness`. */
+  freshness?: QuotaFreshness;
   /** Provider-specific display label for the first window */
   fiveHourLabel?: string;
   /** Provider-specific display label for the second window */
@@ -86,6 +94,33 @@ const BETA_HEADER = 'oauth-2025-04-20';
 const FETCH_TIMEOUT_MS = 10_000;
 export const FIVE_HOUR_WINDOW_MS = 5 * 3_600_000;
 export const SEVEN_DAY_WINDOW_MS = 7 * 86_400_000;
+
+/** How much to trust a cached quota sample, by age. */
+export type QuotaFreshness = 'fresh' | 'aging' | 'stale';
+
+/** A snapshot younger than this is as good as live. */
+export const QUOTA_FRESH_MAX_AGE_MS = 5 * 60_000;
+/** A snapshot older than this should be labelled as stale wherever it is shown. */
+export const QUOTA_AGING_MAX_AGE_MS = 60 * 60_000;
+
+/** Classify a cached sample's age. Non-finite or negative ages count as stale. */
+export function classifyQuotaFreshness(ageMs: number | undefined): QuotaFreshness {
+  if (typeof ageMs !== 'number' || !Number.isFinite(ageMs) || ageMs < 0) return 'stale';
+  if (ageMs < QUOTA_FRESH_MAX_AGE_MS) return 'fresh';
+  if (ageMs < QUOTA_AGING_MAX_AGE_MS) return 'aging';
+  return 'stale';
+}
+
+/** Compact age label for status lines and table footers: `just now`, `3m ago`, `2h ago`, `3d ago`. */
+export function formatQuotaAge(ageMs: number | undefined): string {
+  if (typeof ageMs !== 'number' || !Number.isFinite(ageMs) || ageMs < 0) return 'age unknown';
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 export interface QuotaProjectionInput {
   utilization: number;

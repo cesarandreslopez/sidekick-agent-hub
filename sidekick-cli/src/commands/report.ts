@@ -67,7 +67,8 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`Error: ${msg}\n`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Process events through the aggregator for stats
@@ -98,7 +99,13 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
     // Write to output file
     const outFile = outputPath || path.join(os.tmpdir(), `sidekick-report-${Date.now()}.html`);
     fs.writeFileSync(outFile, html, 'utf-8');
-    process.stderr.write(`Report written to: ${outFile}\n`);
+    if (globalOpts.json) {
+      process.stdout.write(
+        `${JSON.stringify({ path: outFile, sessionPath, sessionFileName, bytes: Buffer.byteLength(html, 'utf8') })}\n`,
+      );
+    } else {
+      process.stderr.write(`Report written to: ${outFile}\n`);
+    }
 
     // Open in browser unless --no-open
     if (!noOpen) {

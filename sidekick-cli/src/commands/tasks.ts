@@ -88,6 +88,7 @@ export async function tasksAction(_opts: Record<string, unknown>, cmd: Command):
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }

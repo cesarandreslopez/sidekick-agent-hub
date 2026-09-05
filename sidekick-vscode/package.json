@@ -574,7 +574,37 @@
             "type": "number",
             "default": 500000,
             "minimum": 0,
-            "description": "Show a warning when session token usage crosses this threshold (0 to disable). Warns at each multiple."
+            "description": "Show a warning when the session's total tokens (input, output, and cache reads and writes) cross this threshold (0 to disable). Warns at each multiple."
+          },
+          "sidekick.notifications.triggers.quota-threshold": {
+            "type": "boolean",
+            "default": true,
+            "description": "Warn when the subscription's five-hour or seven-day window crosses a configured threshold. Fires once per threshold per reset window."
+          },
+          "sidekick.notifications.quotaFiveHourThresholds": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "default": [
+              80,
+              95
+            ],
+            "description": "Five-hour window utilization percentages that raise a quota warning. The highest value is raised as an error."
+          },
+          "sidekick.notifications.quotaSevenDayThresholds": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "default": [
+              90
+            ],
+            "description": "Seven-day window utilization percentages that raise a quota warning. The highest value is raised as an error."
           }
         }
       },
@@ -1393,7 +1423,8 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
+    "vscode:prepublish": "npm run clean && npm run build",
+    "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
     "build": "node esbuild.js --production",
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",

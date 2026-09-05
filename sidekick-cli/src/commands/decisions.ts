@@ -76,6 +76,7 @@ export async function decisionsAction(_opts: Record<string, unknown>, cmd: Comma
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }

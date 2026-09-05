@@ -20,6 +20,13 @@ export type {
   NormalizedUsageCostInput,
   NormalizedUsageCost,
 } from './usageNormalization';
+export {
+  summarizeTokens,
+  sumTokenTotals,
+  TOKEN_CONTEXT_LABEL,
+  TOKEN_TOTAL_LABEL,
+} from './tokenSummary';
+export type { TokenSummary, TokenTotalsLike } from './tokenSummary';
 export { estimateTextTokens, estimateSerializedTokens } from './tokenEstimation';
 export type {
   ExactTokenCounterContext,
@@ -308,7 +315,11 @@ export type {
   ProviderSessionAdapterV1Options,
   SessionEvidenceRefV1,
 } from './types/observedSessionV1';
-export { detectProvider, getAllDetectedProviders } from './providers/detect';
+export {
+  _resetProviderDetectionCache,
+  detectProvider,
+  getAllDetectedProviders,
+} from './providers/detect';
 export { ClaudeCodeProvider } from './providers/claudeCode';
 export { OpenCodeProvider, getOpenCodeDataDir } from './providers/openCode';
 export { CodexProvider, findCodexRolloutFile } from './providers/codex';
@@ -489,7 +500,13 @@ export { createJsonlTail } from './watchers/jsonlTail';
 export type { JsonlTail, JsonlTailBatch, JsonlTailOptions } from './watchers/jsonlTail';
 
 // Formatters
-export { formatDurationMs, formatTokenCount } from './formatting';
+export {
+  addLocalDays,
+  formatDurationMs,
+  formatLocalDateKey,
+  formatTokenCount,
+  parseLocalDateKey,
+} from './formatting';
 export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
 export { formatToolSummary } from './formatters/toolSummary';
 export {
@@ -529,11 +546,14 @@ export {
   loadSnapshot,
   deleteSnapshot,
   isSnapshotValid,
+  pruneSnapshots,
+  MAX_SNAPSHOT_FILES,
   getSnapshotPath,
 } from './aggregation/snapshot';
 export type { SessionSnapshot } from './aggregation/snapshot';
 export type {
   EventAggregatorOptions,
+  AggregatedCostProvenance,
   AggregatedTokens,
   ModelUsageStats,
   BurnRateInfo,
@@ -571,6 +591,8 @@ export type {
 } from './analytics/qualityScore';
 export { calculateCodeImpact } from './analytics/codeImpact';
 export type { CodeImpact, ModelCostInput } from './analytics/codeImpact';
+export { classifyCostProvenance, describeCostProvenance } from './aggregation/costProvenance';
+export type { AggregatedCostProvenanceInput } from './aggregation/costProvenance';
 export { calculateCompactionLedger, formatCompactionLedger } from './analytics/compactionLedger';
 export type { CompactionLedger } from './analytics/compactionLedger';
 
@@ -659,7 +681,11 @@ export type {
 } from './accountRegistry';
 export { ACCOUNT_PROVIDER_IDS } from './accountRegistry';
 export { getActiveAccountStatus } from './accountStatus';
-export type { ActiveAccountStatus, ActiveProviderAccountStatus } from './accountStatus';
+export type {
+  ActiveAccountStatus,
+  ActiveAccountStatusOptions,
+  ActiveProviderAccountStatus,
+} from './accountStatus';
 export { onAccountsChanged } from './accountChanges';
 export type { AccountsChangedEvent, OnAccountsChangedOptions } from './accountChanges';
 export {
@@ -730,6 +756,34 @@ export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
 export type { QuotaPollerOptions } from './quotaPoller';
 export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
+export {
+  classifyQuotaFreshness,
+  formatQuotaAge,
+  QUOTA_AGING_MAX_AGE_MS,
+  QUOTA_FRESH_MAX_AGE_MS,
+} from './quota';
+export type { QuotaFreshness } from './quota';
+export {
+  DEFAULT_QUOTA_THRESHOLDS,
+  describeQuotaThresholdAlert,
+  evaluateQuotaThresholds,
+} from './quotaThresholds';
+export type {
+  QuotaAlertMemory,
+  QuotaThresholdAlert,
+  QuotaThresholdConfig,
+  QuotaThresholdEvaluation,
+  QuotaThresholdWindow,
+} from './quotaThresholds';
+export {
+  parseClaudeStatuslinePayload,
+  quotaFromStatuslinePayload,
+} from './statusline/claudeStatuslinePayload';
+export type {
+  ClaudeStatuslinePayload,
+  ClaudeStatuslineRateLimitWindow,
+  QuotaFromStatuslineOptions,
+} from './statusline/claudeStatuslinePayload';
 export {
   appendQuotaHistorySample,
   readQuotaHistoryRange,
@@ -965,10 +1019,14 @@ export type {
 
 // Peak Hours (PromoClock — third-party)
 export {
+  _resetPeakHoursCache,
   createPeakHoursNotApplicableState,
   DEFAULT_PEAK_HOURS_TIMEOUT_MS,
   fetchPeakHoursStatus,
+  getScheduledPeakHoursState,
   isClaudeCodeSessionProvider,
+  PEAK_HOURS_CACHE_MS,
+  PEAK_HOURS_DESCRIPTION,
   scopePeakHoursToSessionProvider,
 } from './peakHours';
 export type { FetchPeakHoursOptions, PeakHoursState } from './peakHours';

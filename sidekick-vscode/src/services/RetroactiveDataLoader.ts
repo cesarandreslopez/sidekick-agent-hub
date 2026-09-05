@@ -28,6 +28,7 @@ import type {
 } from '../types/historicalData';
 import { createEmptyTokenTotals } from '../types/historicalData';
 import { log, logError } from './Logger';
+import { summarizeTokens } from 'sidekick-shared';
 
 const ACTIVE_SESSION_MTIME_THRESHOLD_MS = 60_000;
 
@@ -350,17 +351,18 @@ export class RetroactiveDataLoader {
       const priced = cost !== null;
       const contribution = cost ?? 0;
 
+      const recordTokens = summarizeTokens(record).total;
       const existing = modelUsageMap.get(record.model);
       if (existing) {
         existing.calls += 1;
-        existing.tokens += record.inputTokens + record.outputTokens;
+        existing.tokens += recordTokens;
         existing.cost += contribution;
         // One unpriced record taints the aggregate for this model.
         if (!priced) existing.priced = false;
       } else {
         modelUsageMap.set(record.model, {
           calls: 1,
-          tokens: record.inputTokens + record.outputTokens,
+          tokens: recordTokens,
           cost: contribution,
           priced,
         });

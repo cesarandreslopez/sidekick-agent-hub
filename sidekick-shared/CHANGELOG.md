@@ -5,6 +5,38 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `summarizeTokens()`, `sumTokenTotals()`, `TOKEN_TOTAL_LABEL`, and `TOKEN_CONTEXT_LABEL` define the one token vocabulary every Sidekick surface uses: `total` is input + output + cache writes + cache reads, `context` is input + cache; browser-safe
+- `AggregatedTokens` gains `costUsd`, `costProvenance` (`reported` | `estimated` | `mixed` | `unpriced` | `none`), `reportedCostUsd`, `estimatedCostUsd`, and `unpricedCalls`; `describeCostProvenance()` and `classifyCostProvenance()` are exported; `CanonicalSessionTranscript.usage` adds `pricedCostUsd` and `unpricedEvents` (schema updated)
+- `parseClaudeStatuslinePayload()` and `quotaFromStatuslinePayload()` (also on the `sidekick-shared/statusline` subpath, which now exports `writeQuotaSnapshot`, `appendQuotaHistorySample`, and `getWorkspaceIdFromPath`) read the JSON Claude Code pipes to a status-line command; `QuotaState.source` and quota-history samples accept `statusline`
+- `formatStatusline({ live })` renders context %, session cost, prompt-cache hit rate, the seven-day window, and the snapshot age when it is older than five minutes
+- `readQuotaSnapshot()` reports `ageMs` and `freshness`; `classifyQuotaFreshness()`, `formatQuotaAge()`, `QUOTA_FRESH_MAX_AGE_MS`, and `QUOTA_AGING_MAX_AGE_MS` are exported and the quota schema accepts the new fields
+- `getScheduledPeakHoursState()`, `PEAK_HOURS_DESCRIPTION`, `PEAK_HOURS_CACHE_MS`, and `PeakHoursState.source` (`promoclock` | `schedule`); `fetchPeakHoursStatus({ force })` bypasses the ten-minute cache
+- `evaluateQuotaThresholds()`, `describeQuotaThresholdAlert()`, and `DEFAULT_QUOTA_THRESHOLDS` for once-per-reset-window threshold alerts
+- `formatLocalDateKey()`, `parseLocalDateKey()`, and `addLocalDays()` (root and browser entry points); `hydratePricingCatalog({ offline })`; `pruneSnapshots()` and `MAX_SNAPSHOT_FILES`; `getActiveAccountStatus(error, { selfHeal })`, mirrored on `resolveActiveClaudeAccount()` and `resolveActiveCodexAccount()`; `_resetProviderDetectionCache()` and `_resetPeakHoursCache()` for tests
+
+### Changed
+
+- The HTML report and session dump label cost by provenance and render unpriced sessions as `—` with the unpriced call count; their "Total" row is cache-inclusive and labelled "Total (incl. cache)"
+- `calculateCompactionLedger()` prices re-establishment through `calculateNormalizedUsageCost()` instead of the deprecated additive-reasoning path
+- Codex `readSessionStats()` computes context as uncached + cached input, matching `CodexProvider.computeContextSize()`
+- OpenCode `workspaceMatches` only matches sessions started in the workspace or a subdirectory of it
+- `readQuotaHistoryDailyBuckets()` keys buckets by local calendar day
+- `detectProvider()` and `getAllDetectedProviders()` share one implementation memoised for five seconds
+- `loadObservedContextWindows()` ignores entries older than `OBSERVED_CONTEXT_WINDOW_TTL_MS` (30 days)
+- `saveSnapshot()` writes through the fsynced atomic writer and prunes the directory to the newest 200 files every 25 saves; quota-history append and prune run under a per-file cross-process lock with fsync; the pricing catalog cache is written atomically
+- `DEFAULT_PEAK_HOURS_TIMEOUT_MS` is 4 000 ms; `fetchPeakHoursStatus()` falls back to the schedule rather than returning `unavailable: true`
+- `listSessionPreviews({ since })` throws `RangeError` on an unparseable cutoff
+- `AggregatedTokens.reportedCost` is deprecated (same value as `costUsd`); `SNAPSHOT_SCHEMA_VERSION` is 5
+
+### Fixed
+
+- `onAccountsChanged()` applies a later subscriber's faster `pollIntervalMs` and resets the interval after the last unsubscribe
+- `OpenCodeProvider.dispose()` resets `dbStatus`; `CodexProvider.listSessionFilesAsync()` records its filesystem fallback for `getLastOperationStatus()`
+
 ## [0.25.0] - 2026-08-18
 
 ### Added

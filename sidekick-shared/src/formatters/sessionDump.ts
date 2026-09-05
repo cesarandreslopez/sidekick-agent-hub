@@ -8,7 +8,9 @@
  */
 
 import type { AggregatedMetrics } from '../aggregation/types';
+import { describeCostProvenance } from '../aggregation/costProvenance';
 import { formatDurationMs, formatTokenCount } from '../formatting';
+import { summarizeTokens, TOKEN_TOTAL_LABEL } from '../tokenSummary';
 
 /** Options for text and markdown formatters. */
 export interface SessionDumpOptions {
@@ -156,9 +158,13 @@ export function formatSessionMarkdown(
   lines.push(`| Output | ${fmtTokens(metrics.tokens.outputTokens)} |`);
   lines.push(`| Cache write | ${fmtTokens(metrics.tokens.cacheWriteTokens)} |`);
   lines.push(`| Cache read | ${fmtTokens(metrics.tokens.cacheReadTokens)} |`);
-  lines.push(`| Total | ${fmtTokens(metrics.tokens.inputTokens + metrics.tokens.outputTokens)} |`);
-  if (metrics.tokens.reportedCost > 0) {
-    lines.push(`| Cost | ${fmtCost(metrics.tokens.reportedCost)} |`);
+  lines.push(`| ${TOKEN_TOTAL_LABEL} | ${fmtTokens(summarizeTokens(metrics.tokens).total)} |`);
+  if (metrics.tokens.costUsd > 0) {
+    lines.push(
+      `| Cost | ${fmtCost(metrics.tokens.costUsd)} (${describeCostProvenance(metrics.tokens)}) |`,
+    );
+  } else if (metrics.tokens.unpricedCalls > 0) {
+    lines.push(`| Cost | — (${describeCostProvenance(metrics.tokens)}) |`);
   }
   lines.push('');
 
@@ -263,16 +269,18 @@ function formatHeader(metrics: AggregatedMetrics): string {
 
 function formatTokenSummary(metrics: AggregatedMetrics): string {
   const t = metrics.tokens;
-  const total = t.inputTokens + t.outputTokens;
+  const total = summarizeTokens(t).total;
   const parts = [
-    `Tokens: ${fmtTokens(total)} total`,
+    `Tokens: ${fmtTokens(total)} total incl. cache`,
     `(${fmtTokens(t.inputTokens)} in`,
     `${fmtTokens(t.outputTokens)} out`,
   ];
   if (t.cacheReadTokens > 0) parts.push(`${fmtTokens(t.cacheReadTokens)} cache-read`);
   if (t.cacheWriteTokens > 0) parts.push(`${fmtTokens(t.cacheWriteTokens)} cache-write`);
   const line = parts.join(', ');
-  if (t.reportedCost > 0) return `${line})  Cost: ${fmtCost(t.reportedCost)}`;
+  if (t.costUsd > 0) {
+    return `${line})  Cost: ${fmtCost(t.costUsd)} (${describeCostProvenance(t)})`;
+  }
   return line + ')';
 }
 

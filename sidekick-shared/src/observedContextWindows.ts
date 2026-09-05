@@ -61,6 +61,13 @@ export interface ObservedContextWindowStore {
 
 const STORE_FILE_NAME = 'observed-context-windows.json';
 const STORE_VERSION = 1;
+/**
+ * Observations older than this are ignored on load. A provider reports its
+ * context window on every session, so a live model refreshes its entry
+ * constantly; an entry that has gone quiet this long belongs to a tier or
+ * model the user no longer runs and must not outrank the catalog forever.
+ */
+export const OBSERVED_CONTEXT_WINDOW_TTL_MS = 30 * 86_400_000;
 
 /** Resolve the on-disk store path. */
 export function getObservedContextWindowPath(cacheDir?: string): string {
@@ -88,12 +95,21 @@ export function _clearObservedContextWindowWriteCache(): void {
   lastPersistedByStore.clear();
 }
 
-/** Keep only well-formed entries; a hand-edited or partly-corrupt file shouldn't poison lookups. */
-function toOverrideMap(store: ObservedContextWindowStore): Record<string, number> {
+/**
+ * Keep only well-formed, recent entries; a hand-edited or partly-corrupt file
+ * shouldn't poison lookups, and a stale observation shouldn't outrank the
+ * catalog (see {@link OBSERVED_CONTEXT_WINDOW_TTL_MS}).
+ */
+function toOverrideMap(
+  store: ObservedContextWindowStore,
+  now: number = Date.now(),
+): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [modelId, entry] of Object.entries(store.models ?? {})) {
     const window = entry?.contextWindow;
     if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) continue;
+    const observedAt = typeof entry.observedAt === 'string' ? Date.parse(entry.observedAt) : NaN;
+    if (Number.isFinite(observedAt) && now - observedAt > OBSERVED_CONTEXT_WINDOW_TTL_MS) continue;
     out[modelId] = window;
   }
   return out;

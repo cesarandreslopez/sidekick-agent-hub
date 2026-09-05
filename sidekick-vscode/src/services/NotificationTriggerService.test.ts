@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SessionMonitor } from './SessionMonitor';
 import type { NotificationPersistenceService } from './NotificationPersistenceService';
 import type { ToolCall, CompactionEvent } from '../types/claudeSession';
+import type { QuotaState } from 'sidekick-shared';
 import {
   NotificationTriggerService,
   NOTIFICATION_BUTTONS,
@@ -344,6 +345,7 @@ describe('trigger action buttons', () => {
         'compaction',
         'cycle-detected',
         'high-token-usage',
+        'quota-threshold',
       ].sort(),
     );
   });
@@ -381,6 +383,7 @@ interface CapturedHandlers {
   compaction?: (event: CompactionEvent) => void;
   tokenUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
   cycleDetected?: (cycle: { description: string; affectedFiles: string[] }) => void;
+  quotaUpdate?: (quota: QuotaState) => void;
 }
 
 function createFakeSessionMonitor(totalTokens = 0): {
@@ -405,6 +408,10 @@ function createFakeSessionMonitor(totalTokens = 0): {
     },
     onCycleDetected: (h: (cycle: { description: string; affectedFiles: string[] }) => void) => {
       handlers.cycleDetected = h;
+      return disposable;
+    },
+    onQuotaUpdate: (h: (quota: QuotaState) => void) => {
+      handlers.quotaUpdate = h;
       return disposable;
     },
     getStats: () => ({ totalInputTokens: totalTokens, totalOutputTokens: 0 }),
@@ -547,6 +554,58 @@ describe('notification action handling', () => {
     await flush();
 
     expect(mocks.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('announces quota threshold crossings once per threshold per reset window', () => {
+    const { monitor, handlers } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+    const sample = (fiveHour: number): QuotaState => ({
+      fiveHour: { utilization: fiveHour, resetsAt: '2026-07-18T16:00:00.000Z' },
+      sevenDay: { utilization: 10, resetsAt: '2026-07-21T00:00:00.000Z' },
+      available: true,
+      providerId: 'claude-code',
+    });
+
+    handlers.quotaUpdate!(sample(50));
+    expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+
+    handlers.quotaUpdate!(sample(82));
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+    expect((mocks.showWarningMessage.mock.calls[0] as unknown as [string])[0]).toContain(
+      'Claude five-hour window at 82%',
+    );
+
+    // Still above 80 in the same window: no repeat.
+    handlers.quotaUpdate!(sample(88));
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+
+    // The highest threshold escalates to an error.
+    handlers.quotaUpdate!(sample(96));
+    expect(mocks.showErrorMessage).toHaveBeenCalledTimes(1);
+    expect((mocks.showErrorMessage.mock.calls[0] as unknown as [string])[0]).toContain('at 96%');
+    service.dispose();
+  });
+
+  it('also listens to an injected quota source', () => {
+    const { monitor } = createFakeSessionMonitor();
+    let emit: ((quota: QuotaState) => void) | undefined;
+    const source = {
+      onQuotaUpdate: (h: (quota: QuotaState) => void) => {
+        emit = h;
+        return { dispose: () => {} };
+      },
+    };
+    const service = new NotificationTriggerService(monitor, undefined, source);
+    emit!({
+      fiveHour: { utilization: 5, resetsAt: '' },
+      sevenDay: { utilization: 91, resetsAt: '' },
+      available: true,
+    });
+    expect(mocks.showErrorMessage).toHaveBeenCalledTimes(1);
+    expect((mocks.showErrorMessage.mock.calls[0] as unknown as [string])[0]).toContain(
+      'seven-day window at 91%',
+    );
+    service.dispose();
   });
 
   it('honors the master notification toggle for cycle and token events', () => {

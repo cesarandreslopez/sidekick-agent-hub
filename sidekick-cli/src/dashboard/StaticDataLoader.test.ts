@@ -15,6 +15,16 @@ vi.mock('sidekick-shared', () => ({
   readNotes: vi.fn(),
   readPlans: vi.fn(),
   readClaudeCodePlanFiles: vi.fn().mockResolvedValue([]),
+  // Mirror the real helper: every billed bucket, cache included.
+  summarizeTokens: (t: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheWriteTokens?: number;
+    cacheReadTokens?: number;
+  }) => ({
+    total: t.inputTokens + t.outputTokens + (t.cacheWriteTokens ?? 0) + (t.cacheReadTokens ?? 0),
+    context: t.inputTokens + (t.cacheWriteTokens ?? 0) + (t.cacheReadTokens ?? 0),
+  }),
 }));
 
 import { loadStaticData } from './StaticDataLoader';

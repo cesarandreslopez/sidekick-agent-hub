@@ -42,8 +42,15 @@ export const quotaProviderIdSchema = z.enum(QUOTA_PROVIDER_IDS) satisfies z.ZodT
   NonNullable<QuotaState['providerId']>
 >;
 
-export const quotaSourceSchema = z.enum(['api', 'session', 'cache']) satisfies z.ZodType<
-  NonNullable<QuotaState['source']>
+export const quotaSourceSchema = z.enum([
+  'api',
+  'session',
+  'cache',
+  'statusline',
+]) satisfies z.ZodType<NonNullable<QuotaState['source']>>;
+
+export const quotaFreshnessSchema = z.enum(['fresh', 'aging', 'stale']) satisfies z.ZodType<
+  NonNullable<QuotaState['freshness']>
 >;
 
 export const codexResetCreditSchema = z.object({
@@ -76,6 +83,8 @@ export const quotaStateSchema = z.object({
   source: quotaSourceSchema.optional(),
   capturedAt: z.string().optional(),
   stale: z.boolean().optional(),
+  ageMs: z.number().finite().nonnegative().optional(),
+  freshness: quotaFreshnessSchema.optional(),
   fiveHourLabel: z.string().optional(),
   sevenDayLabel: z.string().optional(),
   limitId: z.string().optional(),
@@ -100,6 +109,7 @@ export const peakHoursStateSchema = z.object({
   updatedAt: z.string(),
   unavailable: z.boolean(),
   notApplicable: z.boolean().optional(),
+  source: z.enum(['promoclock', 'schedule']).optional(),
 }) satisfies z.ZodType<PeakHoursState>;
 
 // ── QuotaFailureDescriptor ──

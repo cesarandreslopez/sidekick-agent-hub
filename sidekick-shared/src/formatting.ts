@@ -66,3 +66,35 @@ export function formatDurationMs(ms: number, options: FormatDurationMsOptions = 
   }
   return `${minutes}m${separator}${remainingSeconds}s`;
 }
+
+/**
+ * Calendar-date key (`YYYY-MM-DD`) in the machine's local time zone.
+ *
+ * Sidekick buckets "today", daily history, and heatmaps by the user's local
+ * day, so every writer and reader of a date key goes through this helper.
+ * A UTC key would move late-evening work onto the next day for anyone west
+ * of Greenwich and onto the previous day for anyone east of it.
+ */
+export function formatLocalDateKey(value: Date | number = new Date()): string {
+  const date = typeof value === 'number' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** Parse a `YYYY-MM-DD` key produced by `formatLocalDateKey` back into local midnight. */
+export function parseLocalDateKey(key: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Shift a `YYYY-MM-DD` key by whole local days (DST-safe). */
+export function addLocalDays(key: string, days: number): string {
+  const date = parseLocalDateKey(key);
+  if (!date) return key;
+  return formatLocalDateKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + days));
+}

@@ -588,7 +588,10 @@ export function getActiveAccount(): AccountEntry | null {
  * re-pointed so registry-keyed data tracks reality too. Never creates or deletes
  * profiles; an unknown live account is shown as-is with no label and no write.
  */
-export function resolveActiveClaudeAccount(): ResolvedActiveAccount {
+export function resolveActiveClaudeAccount(
+  options: { selfHeal?: boolean } = {},
+): ResolvedActiveAccount {
+  const selfHeal = options.selfHeal ?? true;
   const live = readActiveClaudeAccount();
   if (live) {
     const profiles = listSavedAccountProfiles('claude-code');
@@ -597,7 +600,10 @@ export function resolveActiveClaudeAccount(): ResolvedActiveAccount {
       profiles.find((p) => (p.email ?? p.metadata?.email) === live.email);
     if (match) {
       const active = getActiveSavedAccount('claude-code');
-      if (!active || active.id !== match.id) {
+      // Hot paths (the status line runs on every prompt) pass selfHeal: false
+      // so a persistently failing registry write never becomes a write per
+      // prompt; the next ordinary command repairs the pointer instead.
+      if (selfHeal && (!active || active.id !== match.id)) {
         // Self-heal is best-effort: a registry write failure (read-only/full
         // disk) must never break display or extension activation. We still
         // return the correct live identity below.

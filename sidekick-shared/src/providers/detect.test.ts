@@ -17,10 +17,11 @@ vi.mock('../codexProfiles', () => ({
   getCodexMonitoringHomes: mockGetCodexMonitoringHomes,
 }));
 
-import { detectProvider } from './detect';
+import { _resetProviderDetectionCache, detectProvider } from './detect';
 
 describe('detectProvider', () => {
   beforeEach(() => {
+    _resetProviderDetectionCache();
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 0, mtime: new Date(0) } as fs.Stats);
     vi.mocked(fs.readdirSync).mockReturnValue([]);

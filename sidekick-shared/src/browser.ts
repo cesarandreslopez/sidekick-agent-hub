@@ -37,6 +37,13 @@ export type {
   NormalizedUsageCostInput,
   NormalizedUsageCost,
 } from './usageNormalization';
+export {
+  summarizeTokens,
+  sumTokenTotals,
+  TOKEN_CONTEXT_LABEL,
+  TOKEN_TOTAL_LABEL,
+} from './tokenSummary';
+export type { TokenSummary, TokenTotalsLike } from './tokenSummary';
 export { estimateTextTokens, estimateSerializedTokens } from './tokenEstimation';
 export type {
   ExactTokenCounterContext,
@@ -57,7 +64,13 @@ export type {
   CanonicalSessionTranscript,
   ProjectSessionTranscriptOptions,
 } from './transcript';
-export { formatDurationMs, formatTokenCount } from './formatting';
+export {
+  addLocalDays,
+  formatDurationMs,
+  formatLocalDateKey,
+  formatTokenCount,
+  parseLocalDateKey,
+} from './formatting';
 export type { FormatDurationMsOptions, FormatTokenCountOptions } from './formatting';
 export { parseMcpToolName } from './parsers/mcpToolName';
 export type { McpToolNameParts } from './parsers/mcpToolName';

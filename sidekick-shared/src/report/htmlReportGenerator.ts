@@ -5,6 +5,8 @@
  */
 
 import type { AggregatedMetrics } from '../aggregation/types';
+import { describeCostProvenance } from '../aggregation/costProvenance';
+import { summarizeTokens, TOKEN_TOTAL_LABEL } from '../tokenSummary';
 import type { TranscriptEntry, TranscriptContentBlock, HtmlReportOptions } from './types';
 import {
   escapeHtml,
@@ -33,7 +35,7 @@ export function generateHtmlReport(
   } = options;
 
   const duration = formatDuration(metrics.sessionStartTime, metrics.lastEventTime);
-  const totalTokens = metrics.tokens.inputTokens + metrics.tokens.outputTokens;
+  const totalTokens = summarizeTokens(metrics.tokens).total;
 
   return `<!DOCTYPE html>
 <html lang="en" data-theme="${theme}">
@@ -463,7 +465,7 @@ function generateStatsCards(
       sub: metrics.sessionStartTime ? formatTimestamp(metrics.sessionStartTime) + ' start' : '',
     },
     {
-      label: 'Total Tokens',
+      label: TOKEN_TOTAL_LABEL,
       value: fmtTokens(totalTokens),
       sub: `${fmtTokens(metrics.tokens.inputTokens)} in / ${fmtTokens(metrics.tokens.outputTokens)} out`,
     },
@@ -479,8 +481,12 @@ function generateStatsCards(
     },
   ];
 
-  if (metrics.tokens.reportedCost > 0) {
-    cards.push({ label: 'Cost', value: fmtCost(metrics.tokens.reportedCost), sub: 'reported' });
+  if (metrics.tokens.costUsd > 0 || metrics.tokens.unpricedCalls > 0) {
+    cards.push({
+      label: 'Cost',
+      value: metrics.tokens.costUsd > 0 ? fmtCost(metrics.tokens.costUsd) : '—',
+      sub: escapeHtml(describeCostProvenance(metrics.tokens)),
+    });
   }
 
   return `<div class="container">

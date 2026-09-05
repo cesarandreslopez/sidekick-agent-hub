@@ -7,7 +7,7 @@
 import type { DashboardMetrics } from '../dashboard/DashboardState';
 import type { DiffStat } from '../dashboard/GitDiffCache';
 import { fmtNum } from '../dashboard/formatters';
-import { formatCost } from 'sidekick-shared';
+import { formatCost, summarizeTokens } from 'sidekick-shared';
 
 export function buildNarrativePrompt(
   metrics: DashboardMetrics,
@@ -19,7 +19,12 @@ export function buildNarrativePrompt(
   const durationMin = Math.round(durationMs / 60_000);
 
   const t = metrics.tokens;
-  const totalTokens = t.input + t.output + t.cacheRead + t.cacheWrite;
+  const totalTokens = summarizeTokens({
+    inputTokens: t.input,
+    outputTokens: t.output,
+    cacheReadTokens: t.cacheRead,
+    cacheWriteTokens: t.cacheWrite,
+  }).total;
   const costStr = formatCost(t.cost);
 
   // Task summary

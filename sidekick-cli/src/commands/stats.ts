@@ -4,8 +4,15 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { readHistory, formatCost, getTopFailingTools } from 'sidekick-shared';
-import type { HistoricalDataStore, TopFailingTool } from 'sidekick-shared';
+import {
+  readHistory,
+  formatCost,
+  getTopFailingTools,
+  summarizeTokens,
+  TOKEN_TOTAL_LABEL,
+} from 'sidekick-shared';
+import type { DailyData, HistoricalDataStore, TopFailingTool } from 'sidekick-shared';
+import { toCsv, type CsvColumn } from '../csv';
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -19,7 +26,7 @@ function printStatsSummary(history: HistoricalDataStore, topFailingTools: TopFai
   process.stdout.write(chalk.bold('All-Time Stats\n'));
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
-  const totalTokens = at.tokens.inputTokens + at.tokens.outputTokens;
+  const totalTokens = summarizeTokens(at.tokens).total;
   process.stdout.write(
     `  ${chalk.dim('Sessions:')}       ${chalk.bold(formatNumber(at.sessionCount))}\n`,
   );
@@ -27,7 +34,7 @@ function printStatsSummary(history: HistoricalDataStore, topFailingTools: TopFai
     `  ${chalk.dim('Messages:')}       ${chalk.bold(formatNumber(at.messageCount))}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim('Total tokens:')}   ${chalk.bold(formatNumber(totalTokens))}\n`,
+    `  ${chalk.dim(`${TOKEN_TOTAL_LABEL}:`)} ${chalk.bold(formatNumber(totalTokens))}\n`,
   );
   process.stdout.write(
     `  ${chalk.dim('  Input:')}         ${formatNumber(at.tokens.inputTokens)}\n`,
@@ -140,7 +147,7 @@ function printStatsSummary(history: HistoricalDataStore, topFailingTools: TopFai
     );
 
     for (const day of recent) {
-      const tokens = day.tokens.inputTokens + day.tokens.outputTokens;
+      const tokens = summarizeTokens(day.tokens).total;
       process.stdout.write(
         `  ${day.date.padEnd(14)}` +
           `${String(day.sessionCount).padStart(10)}` +
@@ -153,9 +160,36 @@ function printStatsSummary(history: HistoricalDataStore, topFailingTools: TopFai
   }
 }
 
+const DAILY_CSV_COLUMNS: CsvColumn<DailyData>[] = [
+  { header: 'date', value: (day) => day.date },
+  { header: 'sessions', value: (day) => day.sessionCount },
+  { header: 'messages', value: (day) => day.messageCount },
+  { header: 'input_tokens', value: (day) => day.tokens.inputTokens },
+  { header: 'output_tokens', value: (day) => day.tokens.outputTokens },
+  { header: 'cache_write_tokens', value: (day) => day.tokens.cacheWriteTokens },
+  { header: 'cache_read_tokens', value: (day) => day.tokens.cacheReadTokens },
+  { header: 'total_tokens', value: (day) => summarizeTokens(day.tokens).total },
+  { header: 'cost_usd', value: (day) => day.totalCost },
+  {
+    header: 'unpriced_models',
+    value: (day) =>
+      day.modelUsage
+        .filter((model) => model.priced === false)
+        .map((model) => model.model)
+        .join(';'),
+  },
+];
+
+/** Every recorded day, oldest first, as CSV. */
+export function formatDailyCsv(history: HistoricalDataStore): string {
+  const days = Object.values(history.daily ?? {}).sort((a, b) => a.date.localeCompare(b.date));
+  return toCsv(days, DAILY_CSV_COLUMNS);
+}
+
 export async function statsAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
   const jsonOutput: boolean = !!globalOpts.json;
+  const csvOutput: boolean = !!cmd.opts().csv;
 
   try {
     const [history, topFailingTools] = await Promise.all([readHistory(), getTopFailingTools(7)]);
@@ -163,6 +197,8 @@ export async function statsAction(_opts: Record<string, unknown>, cmd: Command):
     if (!history) {
       if (jsonOutput) {
         process.stdout.write(JSON.stringify(null) + '\n');
+      } else if (csvOutput) {
+        process.stdout.write(toCsv([], DAILY_CSV_COLUMNS));
       } else {
         process.stdout.write(chalk.dim('No historical data found.\n'));
         process.stdout.write(chalk.dim('Run some sessions with Sidekick to accumulate stats.\n'));
@@ -172,12 +208,15 @@ export async function statsAction(_opts: Record<string, unknown>, cmd: Command):
 
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(history, null, 2) + '\n');
+    } else if (csvOutput) {
+      process.stdout.write(formatDailyCsv(history));
     } else {
       printStatsSummary(history, topFailingTools);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
