@@ -268,9 +268,13 @@ export function Dashboard({
     [panel, state.sessionFilter, state.filterString, state.filterMode],
   );
 
-  const { allItems, currentItems } = getPanelItemsOnce(
-    () => panel.getItems(metrics, staticData),
-    filterItems,
+  // Items are rebuilt only when the metrics identity, the static data, the
+  // filters, or the panel's own view state change; key presses and scrolling
+  // re-render without touching the panels.
+  const panelViewVersion = panel.viewVersion ?? 0;
+  const { allItems, currentItems } = useMemo(
+    () => getPanelItemsOnce(() => panel.getItems(metrics, staticData), filterItems),
+    [panel, panelViewVersion, metrics, staticData, filterItems],
   );
 
   // Clamp selection
@@ -305,21 +309,34 @@ export function Dashboard({
   // panel minus border/padding overhead (parity with the legacy 29 - 26 = 3).
   const detailContentWidth = Math.max(40, columns - sideWidth - 3);
 
-  let detailContent = '';
-  if (selectedItem && detailTabs.length > 0 && tabIdx >= 0) {
-    const tab = detailTabs[tabIdx];
-    const tabLabel = tab.label;
-    const skipPhrase = tabLabel === 'Timeline' || tabLabel === 'Mind Map';
-    const prefix = skipPhrase ? '' : detailPhrase + '\n';
-    detailContent =
-      prefix + tab.render(selectedItem, metrics, staticData, { width: detailContentWidth });
-  } else if (!selectedItem) {
-    const filterablePanel = ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id);
-    detailContent =
-      state.sessionFilter && filterablePanel
+  const sessionFilterActive = Boolean(state.sessionFilter);
+  const detailContent = useMemo(() => {
+    if (selectedItem && detailTabs.length > 0 && tabIdx >= 0) {
+      const tab = detailTabs[tabIdx];
+      const tabLabel = tab.label;
+      const skipPhrase = tabLabel === 'Timeline' || tabLabel === 'Mind Map';
+      const prefix = skipPhrase ? '' : detailPhrase + '\n';
+      return prefix + tab.render(selectedItem, metrics, staticData, { width: detailContentWidth });
+    }
+    if (!selectedItem) {
+      const filterablePanel = ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id);
+      return sessionFilterActive && filterablePanel
         ? '{grey-fg}No items in this session — press {/grey-fg}{magenta-fg}f{/magenta-fg}{grey-fg} to see all{/grey-fg}'
         : '{grey-fg}(no item selected){/grey-fg}';
-  }
+    }
+    return '';
+  }, [
+    selectedItem,
+    detailTabs,
+    tabIdx,
+    detailPhrase,
+    metrics,
+    staticData,
+    detailContentWidth,
+    panel,
+    panelViewVersion,
+    sessionFilterActive,
+  ]);
 
   const detailLines = detailContent.split('\n');
   const detailViewportHeight = Math.max(1, rows - 5);

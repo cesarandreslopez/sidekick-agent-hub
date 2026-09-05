@@ -7,8 +7,8 @@ import {
 } from './SessionPickerHelpers';
 import type { SessionPreview, SessionProvider, SessionProviderBase } from 'sidekick-shared';
 
-const { mockListSessionPreviews } = vi.hoisted(() => ({
-  mockListSessionPreviews: vi.fn(),
+const { mockListSessionPreviewsAsync } = vi.hoisted(() => ({
+  mockListSessionPreviewsAsync: vi.fn(),
 }));
 
 // Mock fs.statSync. Vitest hoists vi.mock calls, so keep this top-level.
@@ -24,7 +24,7 @@ vi.mock('sidekick-shared', async () => {
   const actual = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
   return {
     ...actual,
-    listSessionPreviews: mockListSessionPreviews,
+    listSessionPreviewsAsync: mockListSessionPreviewsAsync,
   };
 });
 
@@ -236,34 +236,38 @@ describe('previewToPickerItem', () => {
 describe('collectMultiProviderItems', () => {
   const now = new Date('2026-02-20T12:00:00Z');
 
-  it('delegates to the bounded shared preview index and maps in order', () => {
+  it('delegates to the bounded shared preview index and maps in order', async () => {
     const providers = [{ id: 'claude-code' }, { id: 'codex' }] as unknown as SessionProviderBase[];
-    mockListSessionPreviews.mockReturnValue([
-      {
-        provider: 'codex',
-        sessionId: 'newer-session',
-        filePath: '/codex/newer.jsonl',
-        modifiedAt: '2026-02-20T11:59:00Z',
-        sizeBytes: 10,
-        firstUserPrompt: 'Newer',
-        firstTimestamp: null,
-        workspacePath: null,
-      },
-      {
-        provider: 'claude-code',
-        sessionId: 'older',
-        filePath: '/claude/older.jsonl',
-        modifiedAt: '2026-02-20T11:00:00Z',
-        sizeBytes: 10,
-        firstUserPrompt: 'Older',
-        firstTimestamp: null,
-        workspacePath: null,
-      },
-    ]);
+    mockListSessionPreviewsAsync.mockResolvedValue({
+      diagnostics: [],
+      hasMore: false,
+      previews: [
+        {
+          provider: 'codex',
+          sessionId: 'newer-session',
+          filePath: '/codex/newer.jsonl',
+          modifiedAt: '2026-02-20T11:59:00Z',
+          sizeBytes: 10,
+          firstUserPrompt: 'Newer',
+          firstTimestamp: null,
+          workspacePath: null,
+        },
+        {
+          provider: 'claude-code',
+          sessionId: 'older',
+          filePath: '/claude/older.jsonl',
+          modifiedAt: '2026-02-20T11:00:00Z',
+          sizeBytes: 10,
+          firstUserPrompt: 'Older',
+          firstTimestamp: null,
+          workspacePath: null,
+        },
+      ],
+    });
 
-    const items = collectMultiProviderItems(providers, '/work/project', now);
+    const items = await collectMultiProviderItems(providers, '/work/project', now);
 
-    expect(mockListSessionPreviews).toHaveBeenCalledWith(providers, {
+    expect(mockListSessionPreviewsAsync).toHaveBeenCalledWith(providers, {
       workspacePath: '/work/project',
       limit: 50,
     });

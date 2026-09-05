@@ -15,7 +15,7 @@ import {
   formatSessionText,
   formatSessionMarkdown,
   formatSessionJson,
-  listSessionPreviews,
+  listSessionPreviewsAsync,
 } from 'sidekick-shared';
 import type { FollowEvent, SessionPreview } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -89,13 +89,25 @@ const SESSION_LIST_CSV_COLUMNS: CsvColumn<ReturnType<typeof buildSessionListRows
  * List available sessions for the current project and output as table, JSON,
  * or CSV. Bounded: labels are read only for the `limit` most recent sessions.
  */
-function listSessions(
+export function sessionListFooter(shown: number, hasMore: boolean): string {
+  return hasMore
+    ? `\n${shown} most recent session(s) shown (raise --limit for more).\n`
+    : `\n${shown} session(s) found.\n`;
+}
+
+async function listSessions(
   provider: ReturnType<typeof resolveProvider>,
   workspacePath: string,
   output: 'table' | 'json' | 'csv',
   limit: number,
-): void {
-  const previews = listSessionPreviews([provider], { workspacePath, limit });
+): Promise<void> {
+  const { previews, diagnostics, hasMore } = await listSessionPreviewsAsync([provider], {
+    workspacePath,
+    limit,
+  });
+  for (const diagnostic of diagnostics) {
+    process.stderr.write(`${diagnostic.providerId}: ${diagnostic.message}\n`);
+  }
 
   if (previews.length === 0) {
     if (output === 'json') {
@@ -148,13 +160,7 @@ function listSessions(
     process.stdout.write(row + '\n');
   }
 
-  if (sessions.length === limit) {
-    process.stdout.write(
-      `\n${sessions.length} most recent session(s) shown (raise --limit for more).\n`,
-    );
-  } else {
-    process.stdout.write(`\n${sessions.length} session(s) found.\n`);
-  }
+  process.stdout.write(sessionListFooter(sessions.length, hasMore));
 }
 
 export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
@@ -167,7 +173,7 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
   if (opts.list) {
     try {
       const limit = parseLimit(opts.limit as string | undefined) ?? 50;
-      listSessions(
+      await listSessions(
         provider,
         workspacePath,
         globalOpts.json ? 'json' : opts.csv ? 'csv' : 'table',

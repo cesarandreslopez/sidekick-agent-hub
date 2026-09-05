@@ -256,6 +256,13 @@ export class DashboardState {
   // Session ID (for plan persistence)
   private _sessionId: string | undefined;
 
+  /**
+   * Monotonic mutation counter. `getMetrics()` returns the same object while
+   * it is unchanged, so React memoisation keyed on the metrics identity works.
+   */
+  private _version = 0;
+  private _metricsCache: { version: number; metrics: DashboardMetrics } | null = null;
+
   // Track previous compaction count to detect new compactions for timeline injection
   private _lastKnownCompactionCount = 0;
   private _timelineAppendCount = 0;
@@ -266,8 +273,18 @@ export class DashboardState {
   // Task management tools that don't count towards task tool call counts
   private static readonly TASK_MGMT_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'];
 
+  /** Number of mutations applied so far; changes whenever `getMetrics()` identity changes. */
+  get version(): number {
+    return this._version;
+  }
+
+  private touch(): void {
+    this._version++;
+  }
+
   /** Reset all accumulated metrics to prepare for a new session. */
   reset(): void {
+    this.touch();
     this._aggregator.reset();
     this._timeline = [];
     this._timelineAppendCount = 0;
@@ -289,6 +306,7 @@ export class DashboardState {
 
   /** Set the session ID for plan persistence. */
   setSessionId(id: string): void {
+    this.touch();
     this._sessionId = id;
   }
 
@@ -297,6 +315,7 @@ export class DashboardState {
    * Returns the reader position to seek to, or null if no valid snapshot.
    */
   tryRestoreFromSnapshot(sessionId: string, providerId: string, sourceSize: number): number | null {
+    this.touch();
     const snapshot = loadSnapshot(sessionId);
     if (!snapshot) return null;
     if (snapshot.providerId !== providerId) {
@@ -418,6 +437,7 @@ export class DashboardState {
 
   /** Process a single FollowEvent and update all metrics. */
   processEvent(event: FollowEvent): void {
+    this.touch();
     // Delegate shared aggregation first
     this._aggregator.processFollowEvent(event);
 
@@ -487,31 +507,48 @@ export class DashboardState {
 
   /** Update quota from external source (OAuth API polling). */
   setQuota(quota: QuotaState): void {
+    this.touch();
     this._quota = quota;
   }
 
   /** Update the active billing block computed from session logs. */
   setBillingBlock(block: BillingBlock | null): void {
+    this.touch();
     this._billingBlock = block;
   }
 
   /** Update Claude provider status from status.claude.com polling. */
   setProviderStatus(status: ProviderStatusState): void {
+    this.touch();
     this._providerStatus = status;
   }
 
   /** Update OpenAI provider status from status.openai.com polling. */
   setOpenAIStatus(status: ProviderStatusState): void {
+    this.touch();
     this._openaiStatus = status;
   }
 
   /** Set update availability info from UpdateCheckService. */
   setUpdateInfo(info: UpdateInfo): void {
+    this.touch();
     this._updateInfo = info;
   }
 
-  /** Get the current snapshot of all metrics. */
+  /**
+   * Get the current snapshot of all metrics. The same object is returned until
+   * the next mutation, so callers can compare by identity.
+   */
   getMetrics(): DashboardMetrics {
+    if (this._metricsCache && this._metricsCache.version === this._version) {
+      return this._metricsCache.metrics;
+    }
+    const metrics = this.buildMetrics();
+    this._metricsCache = { version: this._version, metrics };
+    return metrics;
+  }
+
+  private buildMetrics(): DashboardMetrics {
     const m = this._aggregator.getMetrics();
 
     // Map subagents from aggregator's SubagentLifecycle to CLI's SubagentInfo

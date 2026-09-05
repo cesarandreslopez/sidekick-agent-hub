@@ -79,6 +79,8 @@ export interface SessionPreviewReadResult {
 export interface SessionPreviewListResult {
   previews: SessionPreview[];
   diagnostics: SessionProviderDiagnostic[];
+  /** True when more candidates existed than `limit` allowed; the caller may offer a larger limit. */
+  hasMore: boolean;
 }
 
 const DEFAULT_PREFIX_BYTES = 16 * 1024;
@@ -296,6 +298,7 @@ export async function listSessionPreviewsAsync(
 
   return {
     previews: previews.filter((preview): preview is SessionPreview => preview !== null),
+    hasMore: candidates.length > limit,
     diagnostics: dedupeDiagnostics([
       ...operationDiagnostics,
       ...providers.flatMap(providerDiagnostics),

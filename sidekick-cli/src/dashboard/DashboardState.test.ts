@@ -682,4 +682,30 @@ describe('DashboardState', () => {
       expect(state.getMetrics().eventCount).toBe(3);
     });
   });
+
+  describe('metrics identity', () => {
+    it('returns the same object until the next mutation', () => {
+      const state = new DashboardState();
+      state.processEvent(makeEvent({ tokens: { input: 100, output: 50 } }));
+      const first = state.getMetrics();
+      expect(state.getMetrics()).toBe(first);
+      const version = state.version;
+
+      state.processEvent(makeEvent({ tokens: { input: 1, output: 1 } }));
+      const second = state.getMetrics();
+      expect(second).not.toBe(first);
+      expect(second.tokens.input).toBe(101);
+      expect(state.version).toBeGreaterThan(version);
+
+      state.setQuota({
+        fiveHour: { utilization: 10, resetsAt: '' },
+        sevenDay: { utilization: 20, resetsAt: '' },
+        available: true,
+      });
+      const third = state.getMetrics();
+      expect(third).not.toBe(second);
+      expect(third.quota?.fiveHour.utilization).toBe(10);
+      expect(state.getMetrics()).toBe(third);
+    });
+  });
 });

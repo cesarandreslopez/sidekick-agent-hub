@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared library: observed sessions are parsed once per discovery and only re-read when their size or mtime changes; activity is classified from events (Codex and OpenCode now get real activity states) and grace-period drift on cache hits is fixed; `sidekick report` reads the session once
 - Shared library: one capped, newest-first walker for Codex rollouts replaces six uncapped ones (plus the quota resolver's copy); project-folder enumeration only opens rollouts newer than the SQLite index and the cwd cache is bounded; Claude session listings no longer stat files twice
 - `state.json`: a public, versioned file written by the status line and both dashboards for external tools (account, quota windows with freshness, context usage, session cost, active billing block), with a zod schema in `sidekick-shared/schemas`
+- CLI dashboard loop: session-root subscription instead of a 10 s poll, memoised panel rendering, provider-scoped status polling, and an accurate `dump --list` footer via `hasMore` on the shared preview index
 
 ## [0.25.0] - 2026-08-18
 

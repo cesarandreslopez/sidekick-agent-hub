@@ -21,6 +21,8 @@ import {
   describeQuotaThresholdAlert,
   evaluateQuotaThresholds,
   BILLING_BLOCK_DURATION_MS,
+  ObservedSessionCollector,
+  observedSessionSourceFromProvider,
   collectUsageEvents,
   computeBillingBlocks,
   findActiveBillingBlock,
@@ -39,11 +41,13 @@ import type {
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
 import { DashboardState } from '../dashboard/DashboardState';
+import type { DashboardMetrics } from '../dashboard/DashboardState';
 import { loadStaticData } from '../dashboard/StaticDataLoader';
 import type { StaticData } from '../dashboard/StaticDataLoader';
 import { QuotaService } from '../dashboard/QuotaService';
 import { ProviderStatusService } from '../dashboard/ProviderStatusService';
 import { scopeDashboardProviderStatuses } from '../dashboard/providerStatusScope';
+import type { DashboardProviderId } from '../dashboard/providerStatusScope';
 import { UpdateCheckService } from '../dashboard/UpdateCheckService';
 import { SessionsPanel } from '../dashboard/panels/SessionsPanel';
 import { TasksPanel } from '../dashboard/panels/TasksPanel';
@@ -361,8 +365,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // Subscription quota polling
   const quotaService = new QuotaService();
 
-  // Provider status polling (status.claude.com)
-  const providerStatusService = new ProviderStatusService();
+  // Provider status polling, scoped to the page that matters for this provider
+  const providerStatusService = new ProviderStatusService(activeProvider.id as DashboardProviderId);
 
   // One-shot update check
   const updateCheckService = new UpdateCheckService();
@@ -484,11 +488,17 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // unchanged project keeps the previous object identity and schedules no
   // render at all, so this costs a handful of JSON reads per tick.
   const STATIC_REFRESH_MS = 15_000;
+  const SESSION_CHANGE_DEBOUNCE_MS = 2_000;
+  const SESSION_CATCH_UP_POLL_MS = 30_000;
   const staticRefreshInterval = setInterval(() => {
     void refreshStaticData('auto');
   }, STATIC_REFRESH_MS);
 
-  const sessionPollInterval = setInterval(() => {
+  // New-session detection: subscribe to the provider's session root (fs.watch
+  // with a 30 s catch-up poll) instead of walking the corpus every 10 s. The
+  // followed session changes on every event, so only batches that touch some
+  // other session trigger the (cheap, cached) newest-session lookup.
+  function checkForNewerSession(): void {
     try {
       const sessions = activeProvider.findAllSessions(workspacePath);
       if (sessions.length === 0) return;
@@ -507,7 +517,22 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     } catch {
       /* ignore */
     }
-  }, 10_000);
+  }
+  const sessionCollector = new ObservedSessionCollector({
+    sources: [
+      observedSessionSourceFromProvider(activeProvider, workspacePath, { observationOnly: true }),
+    ],
+  });
+  const sessionSubscription = sessionCollector.subscribe(
+    (batch) => {
+      if (stopped) return;
+      const touchesOtherSession = batch.changes.some(
+        (change) => change.type !== 'removed' && change.reference.sourceKey !== sessionPath,
+      );
+      if (touchesOtherSession) checkForNewerSession();
+    },
+    { debounceMs: SESSION_CHANGE_DEBOUNCE_MS, pollIntervalMs: SESSION_CATCH_UP_POLL_MS },
+  );
 
   // ── Render with Ink ──
   const { render } = await import('ink');
@@ -541,17 +566,30 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     openInBrowser(outFile);
   };
 
+  // The Dashboard memoises on the metrics identity, so the scoped copy is
+  // rebuilt only when the state's own metrics object changes.
+  let lastRawMetrics: DashboardMetrics | null = null;
+  let lastScopedMetrics: DashboardMetrics | null = null;
+  function scopedMetrics(): DashboardMetrics {
+    const metrics = state.getMetrics();
+    if (metrics !== lastRawMetrics || !lastScopedMetrics) {
+      lastRawMetrics = metrics;
+      lastScopedMetrics = {
+        ...metrics,
+        ...scopeDashboardProviderStatuses(
+          activeProvider.id as DashboardProviderId,
+          metrics.providerStatus,
+          metrics.openaiStatus,
+        ),
+      };
+    }
+    return lastScopedMetrics;
+  }
+
   const instance = render(
     React.createElement(Dashboard, {
       panels,
-      metrics: {
-        ...state.getMetrics(),
-        ...scopeDashboardProviderStatuses(
-          activeProvider.id as 'claude-code' | 'opencode' | 'codex',
-          state.getMetrics().providerStatus,
-          state.getMetrics().openaiStatus,
-        ),
-      },
+      metrics: scopedMetrics(),
       staticData,
       isPinned,
       pendingSessionPath,
@@ -579,18 +617,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     if (!renderReady || renderTimer) return;
     renderTimer = setTimeout(() => {
       renderTimer = null;
-      const metrics = state.getMetrics();
       instance.rerender(
         React.createElement(Dashboard, {
           panels,
-          metrics: {
-            ...metrics,
-            ...scopeDashboardProviderStatuses(
-              activeProvider.id as 'claude-code' | 'opencode' | 'codex',
-              metrics.providerStatus,
-              metrics.openaiStatus,
-            ),
-          },
+          metrics: scopedMetrics(),
           staticData,
           isPinned,
           pendingSessionPath,
@@ -733,7 +763,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     stopped = true;
     persistPlan(state, workspacePath).catch(() => {});
     try {
-      clearInterval(sessionPollInterval);
+      sessionSubscription.dispose();
+      sessionCollector.dispose();
     } catch {
       /* ignore */
     }

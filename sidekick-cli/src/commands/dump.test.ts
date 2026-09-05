@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSessionListRows } from './dump';
+import { buildSessionListRows, sessionListFooter } from './dump';
 import type { SessionPreview } from 'sidekick-shared';
 
 function preview(overrides: Partial<SessionPreview>): SessionPreview {
@@ -40,5 +40,13 @@ describe('buildSessionListRows', () => {
   it('renders promptless sessions with an empty label', () => {
     const [row] = buildSessionListRows([preview({ firstUserPrompt: null })]);
     expect(row.label).toBe('');
+  });
+});
+
+describe('sessionListFooter', () => {
+  it('offers a larger limit only when candidates were left out', () => {
+    expect(sessionListFooter(50, true)).toContain('raise --limit');
+    // Exactly `limit` sessions with nothing beyond them is a complete listing.
+    expect(sessionListFooter(50, false)).toBe('\n50 session(s) found.\n');
   });
 });

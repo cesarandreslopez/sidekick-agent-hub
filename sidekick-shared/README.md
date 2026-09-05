@@ -335,7 +335,7 @@ Hosts with a UI loop should prefer the async variants from `sidekick-shared/node
 ```typescript
 import { listSessionPreviewsAsync, readSessionPreviewAsync } from 'sidekick-shared/node';
 
-const { previews, diagnostics } = await listSessionPreviewsAsync(providers, { limit: 10 });
+const { previews, diagnostics, hasMore } = await listSessionPreviewsAsync(providers, { limit: 10 });
 const { preview } = await readSessionPreviewAsync(provider, filePath);
 ```
 

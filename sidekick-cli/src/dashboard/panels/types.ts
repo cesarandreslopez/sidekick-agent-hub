@@ -74,6 +74,12 @@ export interface SidePanel {
   readonly detailTabs: DetailTab[];
   /** Hint shown in side list when no items are available. */
   readonly emptyStateHint?: string;
+  /**
+   * Optional counter a panel bumps whenever its own view state (a cycled
+   * view mode, a filter, async text) changes, so the dashboard can memoise
+   * items and detail rendering on it together with the metrics identity.
+   */
+  readonly viewVersion?: number;
 
   /** Build the list of items to display. */
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[];

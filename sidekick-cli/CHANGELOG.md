@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every quota table prints a `Source` row naming where the numbers came from (`cached status-line sample from … (3m ago)`, `local session logs`, `Anthropic usage API`, …); JSON output adds `resolution`, `capturedSource`, `freshness`, and `ageMs`
 - `sidekick report` and the dashboard's report action read the session once through its provider reader and derive both the metrics and the transcript from those events, instead of replaying the session through a watcher and then parsing the file again; report metrics now come from the canonical event path (the same one `readSessionStats()` uses)
 - Codex session discovery, listings, and the local quota scan use the shared capped walker, so the dashboard's session poll and `sidekick quota` no longer enumerate and re-read the whole rollout history on every call
+- The dashboard detects new sessions by subscribing to the provider's session root (`fs.watch` with a 30 s catch-up poll) instead of walking the session corpus every 10 s; the followed session's own writes no longer trigger a lookup
+- `DashboardState.getMetrics()` returns the same object until the next mutation, and the dashboard memoises panel items and detail rendering on that identity (plus each panel's `viewVersion`), so key presses, scrolling, and toasts no longer rebuild every panel
+- Provider status polling is scoped to the active provider: status.claude.com for Claude Code, status.openai.com for Codex, nothing for OpenCode
+- `sidekick dump --list` and the multi-provider session picker read the bounded async preview index; `--list` prints enumeration diagnostics to stderr and shows the "raise --limit" footer only when more sessions exist beyond the limit
 
 ## [0.25.0] - 2026-08-18
 

@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { listSessionPreviews } from 'sidekick-shared';
+import { listSessionPreviewsAsync } from 'sidekick-shared';
 import type { SessionPreview, SessionProviderBase, ProviderId } from 'sidekick-shared';
 
 export interface SessionPickerItem {
@@ -99,12 +99,14 @@ export function previewToPickerItem(
  * Each item is tagged with its providerId. Labels are read only for the
  * returned slice (via the shared preview index), not every discovered file.
  */
-export function collectMultiProviderItems(
+export async function collectMultiProviderItems(
   providers: SessionProviderBase[],
   workspacePath: string,
   now: Date = new Date(),
-): SessionPickerItem[] {
-  return listSessionPreviews(providers, { workspacePath, limit: MAX_ITEMS }).map((preview) =>
-    previewToPickerItem(preview, now),
-  );
+): Promise<SessionPickerItem[]> {
+  const { previews } = await listSessionPreviewsAsync(providers, {
+    workspacePath,
+    limit: MAX_ITEMS,
+  });
+  return previews.map((preview) => previewToPickerItem(preview, now));
 }

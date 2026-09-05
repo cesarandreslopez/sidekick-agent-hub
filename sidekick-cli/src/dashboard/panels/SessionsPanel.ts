@@ -97,6 +97,9 @@ export class SessionsPanel implements SidePanel {
   /** Set by PanelLayout to track which detail tab is active. */
   activeDetailTabIndex = 0;
 
+  /** Bumped whenever the mind-map view, its filter, or the narrative state changes. */
+  viewVersion = 0;
+
   readonly detailTabs: DetailTab[] = [
     { label: 'Summary', render: (item, m, _sd, ctx) => this.renderSummary(item, m, ctx) },
     {
@@ -188,6 +191,7 @@ export class SessionsPanel implements SidePanel {
           const modes: MindMapView[] = ['tree', 'boxed', 'flow'];
           const idx = modes.indexOf(this.mindMapView);
           this.mindMapView = modes[(idx + 1) % modes.length];
+          this.viewVersion++;
         },
         // Only active when Mind Map tab is selected (tab index 2)
         condition: () => this.activeDetailTabIndex === 2,
@@ -201,6 +205,7 @@ export class SessionsPanel implements SidePanel {
         handler: () => {
           const idx = MINDMAP_FILTERS.indexOf(this.mindMapFilter);
           this.mindMapFilter = MINDMAP_FILTERS[(idx + 1) % MINDMAP_FILTERS.length];
+          this.viewVersion++;
         },
         // Only active when Mind Map tab is selected (tab index 2)
         condition: () => this.activeDetailTabIndex === 2,
@@ -221,11 +226,13 @@ export class SessionsPanel implements SidePanel {
   private generateNarrative(): void {
     if (!this.inferenceClient) {
       this.narrativeError = 'No inference client configured';
+      this.viewVersion++;
       this.onNarrativeComplete?.();
       return;
     }
     if (!this.inferenceClient.isAvailable) {
       this.narrativeError = this.inferenceClient.getEnableHint();
+      this.viewVersion++;
       this.onNarrativeComplete?.();
       return;
     }
@@ -234,6 +241,7 @@ export class SessionsPanel implements SidePanel {
 
     this.narrativeLoading = true;
     this.narrativeError = null;
+    this.viewVersion++;
     this.onNarrativeComplete?.();
 
     // We need metrics at generation time — store a reference via the last render
@@ -248,11 +256,13 @@ export class SessionsPanel implements SidePanel {
         } else {
           this.narrativeText = result.text;
         }
+        this.viewVersion++;
         this.onNarrativeComplete?.();
       })
       .catch((err) => {
         this.narrativeLoading = false;
         this.narrativeError = (err as Error).message;
+        this.viewVersion++;
         this.onNarrativeComplete?.();
       });
   }

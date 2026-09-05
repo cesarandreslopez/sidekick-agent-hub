@@ -46,6 +46,8 @@ export class PlansPanel implements SidePanel {
   readonly emptyStateHint = 'Plans created by your agent appear here.';
 
   private sourceFilter: PlanSource | 'all' = 'all';
+  /** Bumped when the source filter cycles. */
+  viewVersion = 0;
 
   readonly detailTabs: DetailTab[] = [
     { label: 'Steps', render: (item, _m, _sd, ctx) => this.renderSteps(item, ctx) },
@@ -316,5 +318,6 @@ export class PlansPanel implements SidePanel {
   private cycleSource(): void {
     const idx = SOURCE_CYCLE.indexOf(this.sourceFilter);
     this.sourceFilter = SOURCE_CYCLE[(idx + 1) % SOURCE_CYCLE.length];
+    this.viewVersion++;
   }
 }
