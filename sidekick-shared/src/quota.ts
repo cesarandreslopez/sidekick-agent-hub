@@ -58,6 +58,12 @@ export interface QuotaState {
    * logs; `api` is a live usage-endpoint fetch; `cache` is a persisted snapshot.
    */
   source?: 'api' | 'session' | 'cache' | 'statusline';
+  /**
+   * Where a cached sample originally came from. `readQuotaSnapshot()` forces
+   * `source` to `cache`; this keeps the origin (`statusline`, `session`, `api`)
+   * so a reader can rank an official status-line sample above a session guess.
+   */
+  capturedSource?: 'api' | 'session' | 'statusline';
   /** ISO timestamp when the sample was captured */
   capturedAt?: string;
   /** Whether the sample is stale cached data */
@@ -220,14 +226,19 @@ function parseRetryAfterMs(retryAfter: string | null): number | undefined {
  * it in a polling loop, VS Code EventEmitter, or CLI interval as needed.
  *
  * @param accessToken - OAuth access token from `readClaudeMaxCredentials()`
+ * @param options.fetchImpl - Fetch implementation (defaults to the global `fetch`; tests inject a stub)
  * @returns QuotaState with utilization data and elapsed-time projections
  */
-export async function fetchQuota(accessToken: string): Promise<QuotaState> {
+export async function fetchQuota(
+  accessToken: string,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<QuotaState> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   timeout.unref();
   try {
-    const res = await fetch(USAGE_URL, {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const res = await fetchImpl(USAGE_URL, {
       method: 'GET',
       signal: controller.signal,
       headers: {

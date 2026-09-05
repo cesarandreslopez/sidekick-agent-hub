@@ -32,7 +32,7 @@ Use `claude mcp list` or `codex mcp list` to verify registration. Both commands 
 | `get_notes`            | Persisted knowledge notes                                         |
 | `get_project_context`  | Composed tasks, decisions, notes, handoff, and project statistics |
 
-Every tool is annotated as read-only, non-destructive, and idempotent. The server exposes no capture or store-mutation tools. `get_quota_status` uses the same provider-specific resolver as Sidekick's quota command; the remaining facts come from local session and persistence data.
+Every tool is annotated as read-only, non-destructive, and idempotent. The server exposes no capture or store-mutation tools. `get_quota_status` calls the same shared resolver as `sidekick quota` — a persisted sample under five minutes old, then session logs, then the provider API, then an older sample — so its numbers and `resolution` label match the CLI and the dashboards; the remaining facts come from local session and persistence data.
 
 Example prompt after registration:
 

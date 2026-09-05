@@ -293,7 +293,7 @@ const quotaCmd = new Command('quota')
   .option('--all', 'Show all providers (Claude, Codex, z.ai if active)')
   .option(
     '--refresh',
-    'For Codex, explicitly refresh from the Codex usage API before falling back to local data',
+    'Ask the provider API first instead of reusing a fresh local sample (status line, session logs, or cache)',
   )
   .addHelpText('after', QUOTA_EXAMPLES)
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {

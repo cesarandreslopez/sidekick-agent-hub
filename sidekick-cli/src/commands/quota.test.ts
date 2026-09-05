@@ -132,6 +132,13 @@ vi.mock('sidekick-shared', () => ({
     fiveHourStartedAtMs: turns.length ? Date.now() - 60_000 : null,
     weeklyStartedAtMs: turns.length ? Date.now() - 60_000 : null,
   }),
+  formatQuotaAge: (ageMs?: number) => {
+    if (typeof ageMs !== 'number' || !Number.isFinite(ageMs) || ageMs < 0) return 'age unknown';
+    const minutes = Math.floor(ageMs / 60_000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    return `${Math.floor(minutes / 60)}h ago`;
+  },
   resolveActiveClaudeAccount: () => ({ source: 'none' }),
   getActiveCodexAccount: () => mockActiveCodexAccount(),
   resolveActiveCodexAccount: () => {
@@ -177,8 +184,13 @@ vi.mock('sidekick-shared', () => ({
     }
     return null;
   },
-  resolveCodexQuota: mockResolveCodexQuota,
-  resolveZaiQuota: mockResolveZaiQuota,
+  // The command goes through the shared resolver; route each provider to the
+  // stub the assertions below already use.
+  resolveQuota: (options: { providerId: string }) => {
+    if (options.providerId === 'codex') return mockResolveCodexQuota(options);
+    if (options.providerId === 'zai') return mockResolveZaiQuota(options);
+    return mockFetchOnce(options);
+  },
   resolveZaiTier: () => 'lite',
   rowsToZaiTurnsAndErrors: (rows: unknown[]) => ({ turns: rows, errors: [] }),
   fetchPeakHoursStatus: (...args: unknown[]) => mockFetchPeakHoursStatus(...args),
@@ -244,12 +256,6 @@ vi.mock('sidekick-shared', () => ({
 
 vi.mock('../cli', () => ({
   resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
-}));
-
-vi.mock('../dashboard/QuotaService', () => ({
-  QuotaService: vi.fn().mockImplementation(function () {
-    return { fetchOnce: mockFetchOnce };
-  }),
 }));
 
 describe('quotaAction', () => {
@@ -468,8 +474,9 @@ describe('quotaAction', () => {
 
     expect(mockResolveCodexQuota).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider,
-        source: 'local',
+        providerId: 'codex',
+        codexProvider: provider,
+        preferFresh: true,
       }),
     );
     expect(stdoutData).toContain('Rate Limits');
@@ -570,8 +577,9 @@ describe('quotaAction', () => {
 
     expect(mockResolveCodexQuota).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider,
-        source: 'api',
+        providerId: 'codex',
+        codexProvider: provider,
+        preferFresh: false,
       }),
     );
     expect(stdoutData).toContain('Rate Limits');
@@ -579,7 +587,7 @@ describe('quotaAction', () => {
     expect(provider.dispose).toHaveBeenCalledOnce();
   });
 
-  it('fetches Codex API-first in the --all aggregate view', async () => {
+  it('resolves every provider with the same precedence in the --all aggregate view', async () => {
     mockFetchOnce.mockResolvedValue({
       fiveHour: { utilization: 13, resetsAt: new Date(Date.now() + 3 * 3600_000).toISOString() },
       sevenDay: { utilization: 48, resetsAt: new Date(Date.now() + 3 * 86400_000).toISOString() },
@@ -599,11 +607,78 @@ describe('quotaAction', () => {
     const { quotaAction } = await import('./quota');
     await quotaAction({}, makeCmd(false, { all: true }));
 
-    // Codex must be resolved API-first in --all (no --refresh needed), matching the
-    // live Claude/z.ai legs. The single-provider command stays local-by-default.
-    expect(mockResolveCodexQuota).toHaveBeenCalledWith(expect.objectContaining({ source: 'api' }));
+    // `--all` used to force Codex API-first while the single-provider view was
+    // local-first; both now share the resolver's precedence (fresh sample first).
+    expect(mockFetchOnce).toHaveBeenCalledWith({ providerId: 'claude-code', preferFresh: true });
+    expect(mockResolveCodexQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: 'codex', preferFresh: true }),
+    );
+    expect(mockResolveZaiQuota).toHaveBeenCalledWith({ providerId: 'zai', preferFresh: true });
     expect(stdoutData).toContain('Codex');
     expect(stdoutData).toContain('17%');
+  });
+
+  it('builds identical resolver options for the single-provider and --all views', async () => {
+    const claude = {
+      runtimeProvider: 'claude',
+      providerId: 'claude-code',
+      fiveHour: { utilization: 40, resetsAt: '2026-09-04T15:00:00Z' },
+      sevenDay: { utilization: 72, resetsAt: '2026-09-08T09:00:00Z' },
+      available: true,
+      resolution: 'snapshot-fresh',
+      source: 'cache',
+      capturedSource: 'statusline',
+      capturedAt: '2026-09-04T11:58:00Z',
+      ageMs: 120_000,
+      freshness: 'fresh',
+    };
+    mockFetchOnce.mockResolvedValue(claude);
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: { utilization: 17, resetsAt: '2026-05-19T15:00:00Z' },
+      sevenDay: { utilization: 3, resetsAt: '2026-05-26T15:00:00Z' },
+      available: true,
+      resolution: 'session',
+      source: 'session',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd(true));
+    const single = JSON.parse(stdoutData);
+    const singleClaudeCall = mockFetchOnce.mock.calls.at(-1)?.[0];
+
+    stdoutData = '';
+    await quotaAction({}, makeCmd(true, { all: true }));
+    const all = JSON.parse(stdoutData);
+
+    expect(mockFetchOnce.mock.calls.at(-1)?.[0]).toEqual(singleClaudeCall);
+    expect(all.claude).toEqual(single);
+    expect(all.claude.resolution).toBe('snapshot-fresh');
+    expect(all.codex.resolution).toBe('session');
+  });
+
+  it('prints the cached sample origin and age as the Source row', async () => {
+    mockFetchOnce.mockResolvedValue({
+      runtimeProvider: 'claude',
+      providerId: 'claude-code',
+      fiveHour: { utilization: 40, resetsAt: '2026-09-04T15:00:00Z' },
+      sevenDay: { utilization: 72, resetsAt: '2026-09-08T09:00:00Z' },
+      available: true,
+      resolution: 'snapshot-aging',
+      source: 'cache',
+      capturedSource: 'statusline',
+      capturedAt: '2026-09-04T11:30:00Z',
+      ageMs: 30 * 60_000,
+      freshness: 'aging',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stdoutData).toContain('Source');
+    expect(stdoutData).toContain('cached status-line sample from');
+    expect(stdoutData).toContain('(30m ago)');
   });
 
   it('prints authoritative z.ai quota without estimated budget text', async () => {

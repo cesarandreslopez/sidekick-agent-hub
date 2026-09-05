@@ -756,6 +756,14 @@ export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
 export type { QuotaPollerOptions } from './quotaPoller';
 export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
+export type { QuotaSnapshotRecord } from './quotaSnapshots';
+export { resolveQuota } from './quotaResolver';
+export type {
+  QuotaResolution,
+  QuotaResolveProviderId,
+  ResolveQuotaOptions,
+  ResolvedQuota,
+} from './quotaResolver';
 export {
   classifyQuotaFreshness,
   formatQuotaAge,

@@ -13,7 +13,7 @@ import { isAggregateCodexLimit } from './types/codex';
  */
 export type QuotaSnapshotProviderId = AccountProviderId | 'zai';
 
-interface QuotaSnapshotRecord {
+export interface QuotaSnapshotRecord {
   providerId: QuotaSnapshotProviderId;
   accountId: string;
   quota: QuotaState;
@@ -114,11 +114,18 @@ export function writeQuotaSnapshot(
       (item) => item.providerId === providerId && item.accountId === accountId,
     );
     const existingQuota = index >= 0 ? store.snapshots[index].quota : undefined;
+    // `ageMs`, `freshness`, `stale`, and `capturedSource` are read-time facts: a
+    // sample that came back from `readQuotaSnapshot()` and is written again keeps
+    // its original source rather than being stored as `cache`.
+    const { capturedSource, ...sample } = quota;
+    delete sample.ageMs;
+    delete sample.freshness;
     const snapshot: QuotaState = {
-      ...quota,
+      ...sample,
       providerId,
       capturedAt: quota.capturedAt ?? new Date().toISOString(),
-      source: quota.source ?? 'session',
+      source:
+        sample.source && sample.source !== 'cache' ? sample.source : (capturedSource ?? 'session'),
       stale: false,
       resetCredits:
         quota.resetCredits ?? (providerId === 'codex' ? existingQuota?.resetCredits : undefined),
@@ -139,7 +146,8 @@ export function writeQuotaSnapshot(
  *
  * `stale: true` and `source: 'cache'` mean "not a live fetch"; the age of the
  * sample is reported separately as `ageMs` and `freshness` so a reader can
- * tell a ten-second-old snapshot from a two-day-old one.
+ * tell a ten-second-old snapshot from a two-day-old one, and the original
+ * origin is kept as `capturedSource` (`statusline`, `session`, or `api`).
  */
 export function readQuotaSnapshot(
   providerId: QuotaSnapshotProviderId,
@@ -154,10 +162,13 @@ export function readQuotaSnapshot(
 
   const capturedMs = snapshotTimeMs(snapshot.quota);
   const ageMs = capturedMs > 0 ? Math.max(0, now.getTime() - capturedMs) : undefined;
+  const storedSource = snapshot.quota.capturedSource ?? snapshot.quota.source;
+  const capturedSource = storedSource && storedSource !== 'cache' ? storedSource : undefined;
   return {
     ...snapshot.quota,
     providerId,
     source: 'cache',
+    ...(capturedSource ? { capturedSource } : {}),
     stale: true,
     ...(ageMs !== undefined ? { ageMs } : {}),
     freshness: classifyQuotaFreshness(ageMs),

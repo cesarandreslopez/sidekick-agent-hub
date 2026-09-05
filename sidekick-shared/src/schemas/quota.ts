@@ -49,6 +49,12 @@ export const quotaSourceSchema = z.enum([
   'statusline',
 ]) satisfies z.ZodType<NonNullable<QuotaState['source']>>;
 
+export const quotaCapturedSourceSchema = z.enum([
+  'api',
+  'session',
+  'statusline',
+]) satisfies z.ZodType<NonNullable<QuotaState['capturedSource']>>;
+
 export const quotaFreshnessSchema = z.enum(['fresh', 'aging', 'stale']) satisfies z.ZodType<
   NonNullable<QuotaState['freshness']>
 >;
@@ -81,6 +87,7 @@ export const quotaStateSchema = z.object({
   projectedSevenDay: z.number().optional(),
   providerId: quotaProviderIdSchema.optional(),
   source: quotaSourceSchema.optional(),
+  capturedSource: quotaCapturedSourceSchema.optional(),
   capturedAt: z.string().optional(),
   stale: z.boolean().optional(),
   ageMs: z.number().finite().nonnegative().optional(),

@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `sidekick statusline` reads Claude Code's payload from stdin, shows context, cost, and cache hit rate, and persists the official limits; `--offline`, `--output-file`, `--csv` on `stats` / `dump --list` / `quota history`, `quota history --window`, and `--json` on capture commands and `report`
 - CLI: startup awaits bounded pricing hydration for deterministic costs; totals are cache-inclusive; `today` uses local days and the shared peak schedule; commands set exit codes instead of exiting mid-write
 - VS Code: quota threshold alerts (five-hour 80/95%, seven-day 90%, once per reset window); cache-inclusive totals everywhere; the D3 vendor bundle shrinks from 611 KB to 133 KB and a stale 687 KB dashboard bundle no longer ships
+- Shared library: `resolveQuota()` gives every surface one quota precedence (fresh persisted sample, then session logs, then the provider API, then an older sample labelled by age) with `resolution` and `capturedSource` on each result
+- CLI: `quota`, `quota --all`, and `mcp get_quota_status` share the resolver and print a `Source` row; `--refresh` asks the API first for every provider; `--all` no longer forces Codex API-first
+- VS Code: the dashboard's first quota paint uses the shared resolver, so a fresh status-line or session sample shows without a network call
 
 ## [0.25.0] - 2026-08-18
 

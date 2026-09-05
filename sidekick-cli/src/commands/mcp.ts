@@ -9,18 +9,14 @@ import {
   buildSessionContextSnapshot,
   composeContext,
   detectProvider,
-  getActiveCodexAccount,
   readDecisions,
   readNotes,
   readTasks,
-  resolveActiveCodexAccount,
-  resolveCodexQuota,
   resolveProjectIdentity,
-  resolveZaiQuota,
+  resolveQuota,
 } from 'sidekick-shared';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import type { Command } from 'commander';
-import { QuotaService } from '../dashboard/QuotaService';
 
 declare const __CLI_VERSION__: string;
 
@@ -82,21 +78,16 @@ async function activeSessionFacts(cwd: string, providerId: ProviderId) {
   }
 }
 
-async function quotaFact(cwd: string, providerId: ProviderId) {
-  if (providerId === 'claude-code') return new QuotaService().fetchOnce();
-  if (providerId === 'opencode') return resolveZaiQuota();
-  resolveActiveCodexAccount();
-  const provider = new CodexProvider();
-  try {
-    return await resolveCodexQuota({
-      workspacePath: cwd,
-      provider,
-      activeAccount: getActiveCodexAccount(),
-      source: 'local',
-    });
-  } finally {
-    provider.dispose();
-  }
+/**
+ * Same resolver and same precedence as `sidekick quota`: fresh snapshot, then
+ * session logs, then the API, then an older snapshot. OpenCode sessions map to
+ * z.ai, the only quota source they carry.
+ */
+function quotaFact(cwd: string, providerId: ProviderId) {
+  return resolveQuota({
+    providerId: providerId === 'opencode' ? 'zai' : providerId,
+    workspacePath: cwd,
+  });
 }
 
 export function createMcpFactsServer(options: McpFactsOptions): McpServer {

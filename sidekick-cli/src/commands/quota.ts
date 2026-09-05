@@ -11,15 +11,12 @@ import {
   getOpenCodeDataDir,
   CodexProvider,
   OpenCodeDatabase,
-  getActiveCodexAccount,
   resolveActiveCodexAccount,
-  resolveCodexQuota,
-  resolveZaiQuota,
+  resolveQuota,
   fetchPeakHoursStatus,
 } from 'sidekick-shared';
-import type { PeakHoursState, ResolvedActiveAccount } from 'sidekick-shared';
+import type { PeakHoursState, ResolvedActiveAccount, ResolvedQuota } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
-import { QuotaService } from '../dashboard/QuotaService';
 import { formatPeakHoursLine } from './peakHoursRender';
 
 const ZAI_ROUTING_PROVIDER_IDS = ['zai', 'zai-coding-plan'] as const;
@@ -106,23 +103,50 @@ function formatAccountIdentity(label?: string, detail?: string): string | null {
   return `${primary} (${secondary})`;
 }
 
-function sourceLabel(source?: string, stale?: boolean): string | null {
-  if (stale) return 'cached snapshot';
+const API_LABELS: Record<ResolvedQuota['runtimeProvider'], string> = {
+  claude: 'Anthropic usage API',
+  codex: 'Codex usage API',
+  zai: 'z.ai quota API',
+};
+
+function capturedSourceLabel(source: ResolvedQuota['capturedSource']): string {
   switch (source) {
+    case 'statusline':
+      return 'status-line sample';
     case 'api':
-      return 'API';
+      return 'API sample';
     case 'session':
-      return 'local session snapshot';
-    case 'cache':
-      return 'cached snapshot';
+      return 'session sample';
+    default:
+      return 'snapshot';
+  }
+}
+
+/**
+ * One "Source" row for every provider, driven by the shared resolver's
+ * `resolution` so the three legs and `--all` describe their numbers the same way.
+ */
+function sourceMetaRow(quota: ResolvedQuota): QuotaMetaRow | null {
+  switch (quota.resolution) {
+    case 'api':
+      return { label: 'Source', value: API_LABELS[quota.runtimeProvider] };
+    case 'session':
+      return { label: 'Source', value: 'local session logs' };
+    case 'snapshot-fresh':
+    case 'snapshot-aging':
+    case 'snapshot-stale':
+      return {
+        label: 'Source',
+        value: `cached ${capturedSourceLabel(quota.capturedSource)} from ${formatSnapshotTime(quota.capturedAt)} (${formatQuotaAge(quota.ageMs)})`,
+        // A snapshot under five minutes old is as good as live; only older ones get the warning colour.
+        color: quota.freshness === 'fresh' ? undefined : chalk.yellow,
+      };
     default:
       return null;
   }
 }
 
-function resetCreditMetaRows(
-  resetCredits: Awaited<ReturnType<typeof resolveCodexQuota>>['resetCredits'],
-): QuotaMetaRow[] {
+function resetCreditMetaRows(resetCredits: ResolvedQuota<'codex'>['resetCredits']): QuotaMetaRow[] {
   if (!resetCredits) return [];
 
   const availableCredits = resetCredits.credits.filter(
@@ -225,15 +249,23 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
     return;
   }
 
-  // claude-code: existing OAuth quota flow
+  // claude-code: shared resolver (fresh snapshot → API → older snapshot)
   provider.dispose();
-  await claudeQuotaAction(jsonOutput);
+  await claudeQuotaAction(localOpts, jsonOutput);
 }
 
-type ClaudeQuota = Awaited<ReturnType<QuotaService['fetchOnce']>>;
+type ClaudeQuota = ResolvedQuota<'claude-code'>;
 
-async function claudeQuotaAction(jsonOutput: boolean): Promise<void> {
-  const { quota, peak } = await fetchClaudeQuotaPayload();
+/** `--refresh` skips a fresh local sample and asks the provider API first. */
+function preferFresh(localOpts: Record<string, unknown>): boolean {
+  return !localOpts.refresh;
+}
+
+async function claudeQuotaAction(
+  localOpts: Record<string, unknown>,
+  jsonOutput: boolean,
+): Promise<void> {
+  const { quota, peak } = await fetchClaudeQuotaPayload(localOpts);
 
   if (!quota.available) {
     process.exitCode = 1;
@@ -294,6 +326,10 @@ function printClaudeQuota(quota: ClaudeQuota, peak: PeakHoursState): void {
   }
 
   const peakLine = formatPeakHoursLine(peak);
+  const metaRows: QuotaMetaRow[] = [];
+  const source = sourceMetaRow(quota);
+  if (source) metaRows.push(source);
+  if (peakLine) metaRows.push({ label: 'Peak', value: peakLine, color: (value) => value });
   printQuotaTable(
     'Subscription Quota',
     [
@@ -310,16 +346,17 @@ function printClaudeQuota(quota: ClaudeQuota, peak: PeakHoursState): void {
         resetsAt: quota.sevenDay.resetsAt,
       },
     ],
-    peakLine ? [{ label: 'Peak', value: peakLine, color: (value) => value }] : [],
+    metaRows,
   );
 }
 
-async function fetchClaudeQuotaPayload(): Promise<{
-  quota: Awaited<ReturnType<QuotaService['fetchOnce']>>;
-  peak: PeakHoursState;
-}> {
-  const service = new QuotaService();
-  const [quota, peak] = await Promise.all([service.fetchOnce(), fetchPeakHoursStatus()]);
+async function fetchClaudeQuotaPayload(
+  localOpts: Record<string, unknown>,
+): Promise<{ quota: ClaudeQuota; peak: PeakHoursState }> {
+  const [quota, peak] = await Promise.all([
+    resolveQuota({ providerId: 'claude-code', preferFresh: preferFresh(localOpts) }),
+    fetchPeakHoursStatus(),
+  ]);
   return { quota, peak };
 }
 
@@ -359,32 +396,24 @@ async function fetchCodexQuotaPayload(
   provider: CodexProvider,
   globalOpts: Record<string, unknown>,
   localOpts: Record<string, unknown>,
-  apiFirst = false,
-): Promise<Awaited<ReturnType<typeof resolveCodexQuota>>> {
+): Promise<ResolvedQuota<'codex'>> {
   const workspacePath = (globalOpts.project as string) || process.cwd();
-  // Callers self-heal the active pointer (resolveActiveCodexAccount) before invoking
-  // this, so getActiveCodexAccount() already reflects the live login and any snapshot
-  // written by resolveCodexQuota is keyed to the current account.
-  const activeAccount = getActiveCodexAccount();
   try {
-    // `--all` is API-first (apiFirst) to match the live Claude/z.ai legs; the
-    // single-provider command stays local-by-default unless `--refresh` is passed.
-    // `source: 'api'` already falls back to local rollouts/cache on any API failure.
-    return await resolveCodexQuota({
+    // Callers already self-healed the active pointer (resolveActiveCodexAccount),
+    // so the resolver's own account lookup only needs to read it.
+    return await resolveQuota({
+      providerId: 'codex',
       workspacePath,
-      provider,
-      activeAccount,
-      source: apiFirst || localOpts.refresh ? 'api' : 'local',
+      codexProvider: provider,
+      preferFresh: preferFresh(localOpts),
+      selfHeal: false,
     });
   } finally {
     provider.dispose();
   }
 }
 
-function printCodexQuota(
-  quota: Awaited<ReturnType<typeof resolveCodexQuota>>,
-  resolved: ResolvedActiveAccount,
-): void {
+function printCodexQuota(quota: ResolvedQuota<'codex'>, resolved: ResolvedActiveAccount): void {
   const fiveLabel = quota.fiveHourLabel ?? '5-Hour';
   const sevenLabel = quota.sevenDayLabel ?? '7-Day';
   // Live-first identity (resolved once by the caller): reflects the currently
@@ -413,18 +442,9 @@ function printCodexQuota(
     });
   }
 
-  const source = sourceLabel(quota.source, quota.stale);
   const metaRows: QuotaMetaRow[] = [];
-  if (quota.stale) {
-    metaRows.push({
-      label: 'Source',
-      value: `cached snapshot from ${formatSnapshotTime(quota.capturedAt)} (${formatQuotaAge(quota.ageMs)})`,
-      // A snapshot under five minutes old is as good as live; only older ones get the warning colour.
-      color: quota.freshness === 'fresh' ? undefined : chalk.yellow,
-    });
-  } else if (source) {
-    metaRows.push({ label: 'Source', value: source });
-  }
+  const source = sourceMetaRow(quota);
+  if (source) metaRows.push(source);
   metaRows.push(...resetCreditMetaRows(quota.resetCredits));
 
   printQuotaTable('Rate Limits', rows, metaRows);
@@ -450,11 +470,14 @@ async function detectZaiRouting(): Promise<boolean> {
   }
 }
 
-async function fetchZaiQuotaPayload(_localOpts: Record<string, unknown>): Promise<{
-  quota: Awaited<ReturnType<typeof resolveZaiQuota>>;
+async function fetchZaiQuotaPayload(localOpts: Record<string, unknown>): Promise<{
+  quota: ResolvedQuota<'zai'>;
   detected: boolean;
 }> {
-  const [quota, detected] = await Promise.all([resolveZaiQuota(), detectZaiRouting()]);
+  const [quota, detected] = await Promise.all([
+    resolveQuota({ providerId: 'zai', preferFresh: preferFresh(localOpts) }),
+    detectZaiRouting(),
+  ]);
   return { quota, detected };
 }
 
@@ -483,9 +506,10 @@ async function zaiQuotaAction(
   printZaiQuota(quota);
 }
 
-function printZaiQuota(quota: Awaited<ReturnType<typeof resolveZaiQuota>>): void {
+function printZaiQuota(quota: ResolvedQuota<'zai'>): void {
   const tier = quota.planType ?? 'auto';
   const title = 'z.ai Coding Plan' + (tier !== 'auto' ? ` (plan: ${tier})` : '');
+  const source = sourceMetaRow(quota);
 
   printQuotaTable(
     title,
@@ -503,15 +527,7 @@ function printZaiQuota(quota: Awaited<ReturnType<typeof resolveZaiQuota>>): void
         resetsAt: quota.sevenDay.resetsAt,
       },
     ],
-    [
-      quota.stale
-        ? {
-            label: 'Source',
-            value: `cached z.ai API snapshot from ${formatSnapshotTime(quota.capturedAt)} (${formatQuotaAge(quota.ageMs)})`,
-            color: quota.freshness === 'fresh' ? undefined : chalk.yellow,
-          }
-        : { label: 'Source', value: 'z.ai quota API' },
-    ],
+    source ? [source] : [],
   );
 }
 
@@ -524,11 +540,11 @@ async function allQuotaAction(
   // Self-heal the live Codex account once up front (before the fetch keys its
   // snapshot) and reuse the resolved identity when printing below.
   const resolvedCodex = resolveActiveCodexAccount();
+  // All three legs go through the same resolver with the same precedence, so
+  // `--all` and the single-provider views can never disagree on a number.
   const [{ quota: claude, peak }, codex, zai] = await Promise.all([
-    fetchClaudeQuotaPayload(),
-    // API-first for the aggregate `--all` view, matching the live Claude/z.ai legs;
-    // falls back to local rollouts/cache on any API failure.
-    fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts, true),
+    fetchClaudeQuotaPayload(localOpts),
+    fetchCodexQuotaPayload(codexProvider, globalOpts, localOpts),
     fetchZaiQuotaPayload(localOpts),
   ]);
   if (!claude.available || !codex.available || (zai.detected && !zai.quota.available)) {

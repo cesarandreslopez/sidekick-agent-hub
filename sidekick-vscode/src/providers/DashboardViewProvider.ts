@@ -76,12 +76,8 @@ import {
 import {
   describeQuotaFailure,
   formatDurationMs,
-  getActiveCodexAccount,
-  resolveActiveCodexAccount,
-  readQuotaSnapshot,
   readQuotaHistoryDailyBuckets,
-  resolveCodexQuota,
-  resolveCodexQuotaFromLocalSources,
+  resolveQuota,
   scopePeakHoursToSessionProvider,
   calculateCompactionLedger,
 } from 'sidekick-shared';
@@ -1647,11 +1643,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     void this._sendQuotaHistory();
   }
 
+  /**
+   * First quota paint for the active session provider, through the shared
+   * resolver so the card agrees with `sidekick quota` and the MCP facts server:
+   * a fresh status-line, session, or API sample is shown without a network
+   * round trip; otherwise the resolver falls through to the API and then to an
+   * older snapshot labelled by age.
+   */
   private async _sendProviderQuotaToWebview(): Promise<void> {
     const provider = this._sessionMonitor.getProvider();
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     try {
       if (provider.id === 'codex') {
-        this._handleQuotaUpdate(await this._getCodexQuota());
+        this._handleQuotaUpdate(await resolveQuota({ providerId: 'codex', workspacePath }));
         return;
       }
 
@@ -1662,8 +1666,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       if (this._quotaService && provider.id === 'claude-code') {
+        // The poller's first live fetch follows immediately, so this paint only
+        // uses local samples (no API call) and never overwrites a cached value
+        // with an "unavailable" placeholder.
+        const local = await resolveQuota({
+          providerId: 'claude-code',
+          workspacePath,
+          allowApi: false,
+        });
         const cached = this._quotaService.getCachedQuota();
-        if (cached) {
+        if (local.available) {
+          this._handleQuotaUpdate(local);
+        } else if (cached) {
           this._handleQuotaUpdate(cached);
         }
         this._quotaService.startRefresh();
@@ -1678,59 +1692,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     } catch (error) {
       logError('Dashboard failed to resolve provider quota', error);
     }
-  }
-
-  private async _getCodexQuota(): Promise<DashboardQuotaState> {
-    // Self-heal the saved active pointer to the live login before keying/labeling.
-    resolveActiveCodexAccount();
-    const activeCodexAccount = getActiveCodexAccount();
-    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-    try {
-      return await resolveCodexQuota({
-        workspacePath,
-        activeAccount: activeCodexAccount,
-        source: 'api',
-      });
-    } catch (error) {
-      logError('Failed to refresh Codex quota from API', error);
-      return this._getCodexLocalQuota();
-    }
-  }
-
-  private _getCodexLocalQuota(): DashboardQuotaState {
-    // Self-heal the saved active pointer to the live login before keying/labeling.
-    resolveActiveCodexAccount();
-    const activeCodexAccount = getActiveCodexAccount();
-    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-    try {
-      const local = resolveCodexQuotaFromLocalSources({
-        workspacePath,
-        activeAccount: activeCodexAccount,
-      });
-      if (local) return local;
-    } catch (error) {
-      logError('Failed to resolve Codex quota from local sessions', error);
-    }
-
-    const cached = activeCodexAccount ? readQuotaSnapshot('codex', activeCodexAccount.id) : null;
-    if (cached) {
-      return {
-        ...cached,
-        accountLabel: activeCodexAccount?.label,
-        accountDetail: activeCodexAccount?.email,
-      };
-    }
-
-    return {
-      fiveHour: { utilization: 0, resetsAt: '' },
-      sevenDay: { utilization: 0, resetsAt: '' },
-      available: false,
-      providerId: 'codex',
-      fiveHourLabel: 'Primary',
-      sevenDayLabel: 'Secondary',
-    };
   }
 
   /**

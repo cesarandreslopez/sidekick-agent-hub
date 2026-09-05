@@ -9,23 +9,13 @@
  * Delegates to the shared QuotaPoller for polling, caching, and backoff.
  */
 
-import { readClaudeMaxCredentials, fetchQuota, QuotaPoller } from 'sidekick-shared';
+import { readClaudeMaxCredentials, resolveQuota, QuotaPoller } from 'sidekick-shared';
 import type { QuotaState, QuotaWindow } from 'sidekick-shared';
 
 export type { QuotaWindow, QuotaState };
 
 const POLL_INTERVAL_MS = 300_000;
 const NO_CREDENTIALS_ERROR = 'No OAuth token available';
-
-function unavailableAuthState(): QuotaState {
-  return {
-    fiveHour: { utilization: 0, resetsAt: '' },
-    sevenDay: { utilization: 0, resetsAt: '' },
-    available: false,
-    error: NO_CREDENTIALS_ERROR,
-    failureKind: 'auth',
-  };
-}
 
 export class QuotaService {
   private _poller: QuotaPoller;
@@ -67,12 +57,12 @@ export class QuotaService {
     return this._poller.getLatest();
   }
 
-  /** Single fetch — no polling, includes elapsed-time projections. */
+  /**
+   * Single resolution — no polling. Uses the shared resolver so the first paint
+   * matches `sidekick quota`: a fresh status-line or API snapshot is returned
+   * without a network round trip, otherwise the API is called.
+   */
   async fetchOnce(): Promise<QuotaState> {
-    const creds = await readClaudeMaxCredentials();
-    if (!creds) {
-      return unavailableAuthState();
-    }
-    return fetchQuota(creds.accessToken);
+    return resolveQuota({ providerId: 'claude-code' });
   }
 }

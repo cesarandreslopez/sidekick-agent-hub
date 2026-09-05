@@ -9,7 +9,7 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 ## Recent additions
 
-- **One token vocabulary and cost provenance (unreleased)** — `summarizeTokens()` gives every surface the same `total` (input + output + cache writes + cache reads) and `context` (input + cache) figures; `AggregatedTokens.costUsd` carries `costProvenance` so reports can say whether a cost was provider-reported or estimated; `parseClaudeStatuslinePayload()` / `quotaFromStatuslinePayload()` turn Claude Code's status-line JSON into an official `statusline` quota source; `readQuotaSnapshot()` reports `ageMs` / `freshness`; `getScheduledPeakHoursState()` and `evaluateQuotaThresholds()` are shared by the CLI and extension dashboards.
+- **One token vocabulary and cost provenance (unreleased)** — `summarizeTokens()` gives every surface the same `total` (input + output + cache writes + cache reads) and `context` (input + cache) figures; `AggregatedTokens.costUsd` carries `costProvenance` so reports can say whether a cost was provider-reported or estimated; `parseClaudeStatuslinePayload()` / `quotaFromStatuslinePayload()` turn Claude Code's status-line JSON into an official `statusline` quota source; `readQuotaSnapshot()` reports `ageMs` / `freshness` and keeps the sample's origin as `capturedSource`; `resolveQuota()` is the one quota resolution path (fresh persisted sample → session logs → provider API → older sample) shared by the CLI, the MCP server, and both dashboards; `getScheduledPeakHoursState()` and `evaluateQuotaThresholds()` are shared by the CLI and extension dashboards.
 - **Host-safe APIs (0.25.0)** — `listSessionPreviewsAsync()` / `readSessionPreviewAsync()` read previews with bounded concurrency and cooperative yielding; `ObservedSessionCollector.subscribe()` and `SessionMonitor.subscribe()` replace host polling loops with debounced change batches; `createSessionProviders({ onDiagnostic })` constructs every usable provider with structured diagnostics instead of throwing; `findSessionById()` resolves one session without scanning; `exportResolvedModelCatalog()` / `importResolvedModelCatalog()` and `registerModelAlias()` transfer context/pricing resolutions across realms; `onAccountsChanged()` reports login/logout/switch events; provider constructors perform no environment I/O, and quota pollers stay dormant without an account.
 - **Native session-file helpers** — `encodeClaudeWorkspacePath()` / `getClaudeSessionDirectory()` locate Claude Code's `~/.claude/projects/` directories with the real on-disk encoding, `findCodexRolloutFile()` resolves a Codex session id to its rollout path, `readCodexHistory()` tail-reads `~/.codex/history.jsonl`, `listSessionPreviews()` / `readSessionPreview()` build a cheap stat-first recent-sessions index across providers, and `parseMcpToolName()` splits `mcp__<server>__<tool>` identifiers (browser-safe).
 - **Non-blocking account APIs & locked sync writers** — every login/switch entry point gains an async variant (`switchAccountAsync()`, `getAccountLoginStatusAsync()`, `finalizeAccountLoginAsync()`, `prepareCodexAccountAsync()`, `finalizeCodexAccountAsync()`, `switchToCodexAccountAsync()`) that keeps `codex` CLI probes off the event loop, and synchronous callers get the same cross-process store lock via `atomicWriteFileSync()` / `updateJsonStoreAtomicSync()` / `withFileLockSync()`, with progress-based timeouts and abandoned-lock reclaim.
@@ -448,6 +448,25 @@ if (!peak.unavailable && peak.isPeak) {
   console.log(`${peak.label} — off-peak in ${peak.minutesUntilChange}m`);
 }
 ```
+
+### Resolve quota with one precedence
+
+```typescript
+import { resolveQuota } from 'sidekick-shared';
+
+// Fresh persisted sample (status line, session, or API; under five minutes) →
+// session logs (Codex rollouts) → provider API → older sample labelled by age.
+const quota = await resolveQuota({ providerId: 'claude-code' });
+console.log(quota.resolution); // 'snapshot-fresh' | 'session' | 'api' | 'snapshot-aging' | 'snapshot-stale' | 'unavailable'
+console.log(quota.source, quota.capturedSource, quota.freshness, quota.ageMs);
+
+// `--refresh` semantics: ask the API first.
+await resolveQuota({ providerId: 'codex', workspacePath: process.cwd(), preferFresh: false });
+// Paint from local samples only (a poller will fetch live data next).
+await resolveQuota({ providerId: 'claude-code', allowApi: false });
+```
+
+`resolveQuota()` is what `sidekick quota`, `quota --all`, the MCP `get_quota_status` tool, and both dashboards call, so every surface reports the same numbers and the same `resolution`. Every side effect is injectable (`readSnapshot`, `writeSnapshot`, `fetchImpl`, `getClaudeAccessToken`, the account resolvers) for tests.
 
 ### Fetch subscription quota
 

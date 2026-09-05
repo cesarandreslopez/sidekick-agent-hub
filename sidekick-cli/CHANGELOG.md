@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The global `--json` flag applies to `dump` (same as `--format json`)
 - Commands set `process.exitCode` instead of calling `process.exit(1)` on errors, so piped output is never truncated
 - The status line no longer writes to the account registry on its hot path
+- `sidekick quota`, `quota --all`, and `mcp get_quota_status` resolve quota through the shared `resolveQuota()` precedence (fresh persisted sample, then session logs, then the provider API, then an older sample), so a fresh status-line sample is never outranked by an older session-derived value and `--all` no longer forces Codex API-first; `--refresh` asks the API first for every provider, not only Codex
+- Every quota table prints a `Source` row naming where the numbers came from (`cached status-line sample from … (3m ago)`, `local session logs`, `Anthropic usage API`, …); JSON output adds `resolution`, `capturedSource`, `freshness`, and `ageMs`
 
 ## [0.25.0] - 2026-08-18
 

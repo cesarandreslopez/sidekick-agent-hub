@@ -190,7 +190,8 @@ function accountEmail(account: SavedAccountProfile | null): string | undefined {
   return account?.email ?? account?.metadata?.email;
 }
 
-function enrichCodexQuota(
+/** Stamp a Codex quota sample with its runtime provider, projections, and account identity. */
+export function enrichCodexQuota(
   state: QuotaState,
   account: SavedAccountProfile | null,
 ): ProviderQuotaState<'codex'> {

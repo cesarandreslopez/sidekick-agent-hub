@@ -349,7 +349,8 @@ export async function fetchZaiQuotaFromApi(options: ZaiQuotaApiOptions = {}): Pr
   }
 }
 
-function enrichZaiQuota(state: QuotaState): ProviderQuotaState<'zai'> {
+/** Stamp a z.ai quota sample with its runtime provider, projections, and window labels. */
+export function enrichZaiQuota(state: QuotaState): ProviderQuotaState<'zai'> {
   const withProjections = withQuotaProjections(state);
   return {
     ...withProjections,

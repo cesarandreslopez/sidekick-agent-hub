@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `getScheduledPeakHoursState()`, `PEAK_HOURS_DESCRIPTION`, `PEAK_HOURS_CACHE_MS`, and `PeakHoursState.source` (`promoclock` | `schedule`); `fetchPeakHoursStatus({ force })` bypasses the ten-minute cache
 - `evaluateQuotaThresholds()`, `describeQuotaThresholdAlert()`, and `DEFAULT_QUOTA_THRESHOLDS` for once-per-reset-window threshold alerts
 - `formatLocalDateKey()`, `parseLocalDateKey()`, and `addLocalDays()` (root and browser entry points); `hydratePricingCatalog({ offline })`; `pruneSnapshots()` and `MAX_SNAPSHOT_FILES`; `getActiveAccountStatus(error, { selfHeal })`, mirrored on `resolveActiveClaudeAccount()` and `resolveActiveCodexAccount()`; `_resetProviderDetectionCache()` and `_resetPeakHoursCache()` for tests
+- `resolveQuota({ providerId, workspacePath, preferFresh, allowApi, … })` resolves Claude, Codex, or z.ai quota with one precedence — a persisted sample younger than `QUOTA_FRESH_MAX_AGE_MS` (any origin), then session logs, then the provider API (persisted on success), then an aging or stale sample with the API failure attached — returning `ResolvedQuota` with `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`; every side effect is injectable
+- `QuotaState.capturedSource` (`api` | `session` | `statusline`) records where a cached sample came from; `readQuotaSnapshot()` fills it and `writeQuotaSnapshot()` preserves it instead of storing `cache`; the quota schema accepts it; `QuotaSnapshotRecord`, `enrichCodexQuota()`, and `enrichZaiQuota()` are exported; `fetchQuota(token, { fetchImpl })` accepts an injected fetch
 
 ### Changed
 

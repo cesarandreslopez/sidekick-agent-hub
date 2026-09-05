@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** `--offline` (or `SIDEKICK_OFFLINE=1`) prices from the cached catalog only; `--output-file <path>` writes a command's stdout to a file
 - **CLI:** `stats --csv`, `dump --list --csv`, `quota history --csv`; `quota history --window 5h|7d|max` (default `5h`, so a maxed-out week and a maxed-out five-hour block no longer look the same); `--json` on `tasks add`, `tasks done`, `note add`, `decision add`, and `report`
 - **VS Code:** quota threshold alerts — `sidekick.notifications.triggers.quota-threshold` with `quotaFiveHourThresholds` (default 80, 95) and `quotaSevenDayThresholds` (default 90), fired once per threshold per reset window with reset-aware text; the CLI dashboard raises the same toasts
+- **Shared:** `resolveQuota()` is the one quota resolution path for every surface — a persisted sample younger than five minutes (status line, session, or API) wins, then session logs, then the provider API, then an older sample labelled by age — and every result carries `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`; `readQuotaSnapshot()` keeps a sample's origin as `capturedSource`
 
 ### Changed
 
@@ -35,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** every token total (stats, today, dashboard session panel, dump, report) includes cache reads and writes and is labelled "Total (incl. cache)"; `sidekick today` looks up yesterday by local day and takes its peak-hours line from the shared schedule
 - **VS Code:** dashboard totals, per-model rows, burn rate, history chart, status bar, session summary, imported history, and the `tokenThreshold` notification all count every billed bucket; `sidekick.notifications.tokenThreshold` now compares against the cache-inclusive total
 - **VS Code:** the D3 vendor bundle only includes the modules the mind map uses (611 KB → 133 KB) and Chart.js registers only the controllers the dashboard uses; the stale `out/webview/dashboard.js` (687 KB) is excluded from the package and `vscode:prepublish` cleans `out/` first
+- **CLI:** `sidekick quota`, `quota --all`, and `mcp get_quota_status` share `resolveQuota()`, so a fresh status-line sample is never outranked by an older session guess and `--all` no longer forces Codex API-first; `--refresh` asks the API first for every provider; every quota table prints a `Source` row naming the sample origin and age
+- **VS Code:** the dashboard's first quota paint goes through `resolveQuota()`, so a fresh status-line or session sample shows immediately and Codex no longer starts with an API call
 
 ### Fixed
 
