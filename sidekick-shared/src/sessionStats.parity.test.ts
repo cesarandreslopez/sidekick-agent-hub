@@ -9,6 +9,14 @@ vi.mock('./paths', () => ({
   getConfigDir: () => tmpDir,
 }));
 
+// The Claude provider reports a missing session home before a missing file,
+// so the home lives under the scratch directory: the "source not found"
+// reason is then the same on a developer machine and on a bare CI runner.
+vi.mock('os', async () => {
+  const actual = await vi.importActual<typeof import('os')>('os');
+  return { ...actual, homedir: () => tmpDir };
+});
+
 // Codex: no SQLite index, so labels come from the events already read.
 vi.mock('./providers/codexDatabase', () => ({
   CodexDatabase: class {
@@ -263,6 +271,7 @@ describe('session stats parity', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-session-stats-parity-'));
+    fs.mkdirSync(path.join(tmpDir, '.claude', 'projects'), { recursive: true });
     vi.stubEnv('XDG_DATA_HOME', path.join(tmpDir, 'data'));
     mockExecFileSync.mockImplementation(() => {
       throw Object.assign(new Error('spawn sqlite3 ENOENT'), { code: 'ENOENT' });
