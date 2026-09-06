@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Monitoring can stop and resume without losing dashboard subscriptions or a selected session folder; cancelled inline completions abort inference.
+- Session cursors and dashboard checkpoints preserve complete event batches, split UTF-8 characters, and parser context across restarts. Snapshots use the current schema and validate their dashboard format.
+- Project-scoped search works across Claude Code, Codex, and database-only OpenCode sessions. Search results open the conversation viewer.
+- OpenCode watchers use the canonical platform data directory. Doctor prioritizes the selected session provider and treats unused integrations as informational.
+
+### Changed
+
+- The VS Code dashboard shows provider and location details with Refresh, Browse, Run Doctor, and Resume actions when monitoring is empty, unavailable, or paused.
+- Dashboard tabs, session cards, and section toggles support keyboard navigation; refreshing sessions preserves focus.
+
 ## [0.26.1] - 2026-09-05
 
 ### Changed

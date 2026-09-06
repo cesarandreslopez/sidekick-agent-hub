@@ -484,6 +484,8 @@ function extractTextFromUnknownContent(content: unknown): string {
 class CodexReader implements SessionReader {
   private parser: CodexRolloutParser;
   private filePosition = 0;
+  /** Cursor after the last complete line, safe to persist across restarts. */
+  private committedPosition = 0;
   private lineBuffer = '';
   private _wasTruncated = false;
   private decoder = new StringDecoder('utf8');
@@ -502,7 +504,7 @@ class CodexReader implements SessionReader {
     return this.parser.getSessionMeta();
   }
 
-  readNew(): SessionEvent[] {
+  readNew(endPosition?: number): SessionEvent[] {
     this._wasTruncated = false;
     const events: SessionEvent[] = [];
 
@@ -510,12 +512,13 @@ class CodexReader implements SessionReader {
       if (!fs.existsSync(this.rolloutPath)) return [];
 
       const stats = fs.statSync(this.rolloutPath);
-      const currentSize = stats.size;
+      const currentSize = Math.min(stats.size, endPosition ?? stats.size);
 
       // Handle truncation
       if (currentSize < this.filePosition) {
         this._wasTruncated = true;
         this.filePosition = 0;
+        this.committedPosition = 0;
         this.lineBuffer = '';
         this.parser.reset();
         this.decoder = new StringDecoder('utf8');
@@ -535,7 +538,10 @@ class CodexReader implements SessionReader {
         fs.closeSync(fd);
       }
 
-      const chunk = this.decoder.write(buffer.subarray(0, bytesRead));
+      const bytes = buffer.subarray(0, bytesRead);
+      const newline = bytes.lastIndexOf(0x0a);
+      if (newline >= 0) this.committedPosition = this.filePosition + newline + 1;
+      const chunk = this.decoder.write(bytes);
       this.filePosition += bytesRead;
 
       // Process lines
@@ -608,6 +614,7 @@ class CodexReader implements SessionReader {
 
   reset(): void {
     this.filePosition = 0;
+    this.committedPosition = 0;
     this.lineBuffer = '';
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
@@ -633,13 +640,14 @@ class CodexReader implements SessionReader {
   }
 
   getPosition(): number {
-    return this.filePosition;
+    return this.committedPosition;
   }
 
   seekTo(position: number): void {
-    this.filePosition = position;
-    this.lineBuffer = '';
-    this.decoder = new StringDecoder('utf8');
+    // Rebuild model, turn, and cumulative-token context before resuming.
+    // The prefix is parsed only; its events are already in the consumer snapshot.
+    this.reset();
+    if (position > 0) this.readNew(position);
   }
 
   wasTruncated(): boolean {

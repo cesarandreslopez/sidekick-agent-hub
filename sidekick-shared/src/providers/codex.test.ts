@@ -163,6 +163,54 @@ describe('CodexProvider', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('restores parser context and a partial Unicode line from a committed cursor', async () => {
+    const filename = path.join(tmpDir, 'rollout-checkpoint.jsonl');
+    const line = (row: unknown) => Buffer.from(JSON.stringify(row) + '\n');
+    const prefix = Buffer.concat([
+      line({ type: 'session_meta', payload: { id: 'session', cwd: tmpDir } }),
+      line({ type: 'turn_context', payload: { model: 'gpt-5-codex', cwd: tmpDir } }),
+    ]);
+    const final = line({
+      type: 'response_item',
+      timestamp: '2026-09-06T12:00:00Z',
+      payload: {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'café ☕' }],
+      },
+    });
+    const split = final.indexOf(Buffer.from('é')) + 1;
+    fs.writeFileSync(filename, Buffer.concat([prefix, final.subarray(0, split)]));
+    const { CodexProvider } = await import('./codex');
+    const provider = new CodexProvider();
+    const { ProviderReaderSessionWatcher } = await import('../watchers/providerReaderWatcher');
+    const followed: string[] = [];
+    const watcher = new ProviderReaderSessionWatcher(provider, filename, {
+      onEvent: (event) => followed.push(event.summary),
+    });
+    try {
+      watcher.start(true);
+      watcher.stop();
+      const live = provider.createReader(filename);
+      live.readNew();
+      expect(live.getPosition()).toBe(prefix.length);
+      const restored = provider.createReader(filename);
+      restored.seekTo(live.getPosition());
+      fs.appendFileSync(filename, final.subarray(split));
+      watcher.start(true);
+      expect(followed.at(-1)).toBe('café ☕');
+      const events = restored.readNew();
+      expect(events).toEqual(live.readNew());
+      expect(events).toMatchObject([
+        { message: { model: 'gpt-5-codex', content: [{ text: 'café ☕' }] } },
+      ]);
+      expect(restored.getPosition()).toBe(prefix.length + final.length);
+    } finally {
+      watcher.stop();
+      provider.dispose();
+    }
+  });
+
   it('records the reported context window against the session model', async () => {
     // Codex reports a tier-specific model_context_window on every token_count
     // event. It must be persisted per model so historical views don't fall back

@@ -12,6 +12,9 @@ import {
 } from './parsers/sessionPathResolver';
 import { fetchOpenAIStatus, fetchProviderStatus, type ProviderStatusState } from './providerStatus';
 import { getOpenCodeDataDir } from './providers/openCode';
+import { createSessionProviders } from './providers/factory';
+import { detectProvider } from './providers/detect';
+import type { ProviderId } from './providers/types';
 import { OpenCodeDatabase, type OpenCodeDbRuntimeStatus } from './providers/openCodeDatabase';
 
 export type HealthCheckStatus = 'ok' | 'warning' | 'error' | 'info';
@@ -57,11 +60,15 @@ export interface HealthReport {
   accounts: ActiveAccountStatus;
   openCode: OpenCodeDbRuntimeStatus;
   providerStatus: { claude: ProviderStatusState; openai: ProviderStatusState };
+  /** Legacy Claude Code path diagnostics, retained for compatibility. */
   sessions: SessionDiagnostics;
+  sessionProvider?: ProviderId;
 }
 
 export interface DoctorOptions {
   cwd?: string;
+  /** Session provider to diagnose; defaults to auto-detection. */
+  provider?: ProviderId | 'auto';
   deprecatedSettings?: DeprecatedSetting[];
   openCodeStatus?: OpenCodeDbRuntimeStatus;
   fetchStatuses?: () => Promise<{ claude: ProviderStatusState; openai: ProviderStatusState }>;
@@ -128,15 +135,69 @@ function statusUnavailable(): ProviderStatusState {
   };
 }
 
+async function checkSessionProvider(
+  providerId: ProviderId,
+  workspacePath: string,
+): Promise<HealthCheck> {
+  const { providers } = createSessionProviders({ providerIds: [providerId] });
+  const provider = providers[0];
+  const title = `Session discovery (${provider?.displayName ?? providerId})`;
+  try {
+    if (!provider) throw new Error(`${providerId} could not be initialized.`);
+    const sessions = provider.listSessionFilesAsync
+      ? await provider.listSessionFilesAsync(workspacePath)
+      : provider.findAllSessions(workspacePath);
+    if (sessions.length > 0) {
+      return {
+        id: 'session_discovery',
+        status: 'ok',
+        title,
+        message: `Found ${sessions.length} ${provider.displayName} session${sessions.length === 1 ? '' : 's'} for ${workspacePath}.`,
+      };
+    }
+    const operation = provider.getLastOperationStatus?.();
+    const runtime = provider.getRuntimeStatus?.();
+    const issue =
+      operation && !operation.usable
+        ? operation.runtimeStatus
+        : runtime && !runtime.available
+          ? runtime
+          : undefined;
+    return {
+      id: 'session_discovery',
+      status: 'warning',
+      title,
+      message: issue?.message ?? `No ${provider.displayName} sessions found for ${workspacePath}.`,
+      repair:
+        issue?.kind === 'sqlite_missing'
+          ? 'Install sqlite3 and ensure it is on PATH, then rerun sidekick doctor.'
+          : `Start ${provider.displayName} in this project, or inspect ${provider.getSessionDirectory(workspacePath)}.`,
+    };
+  } catch (error) {
+    return {
+      id: 'session_discovery',
+      status: 'warning',
+      title,
+      message: error instanceof Error ? error.message : String(error),
+      repair: `Check ${providerId} session storage permissions and rerun sidekick doctor.`,
+    };
+  } finally {
+    for (const candidate of providers) candidate.dispose();
+  }
+}
+
 export async function runDoctor(options: DoctorOptions = {}): Promise<HealthReport> {
   const project = resolveProjectIdentity(options.cwd);
   const sessions = getSessionDiagnostics(project.cwd);
-  const accounts = getActiveAccountStatus();
+  const accounts = getActiveAccountStatus(undefined, { selfHeal: false });
+  const sessionProvider =
+    options.provider && options.provider !== 'auto' ? options.provider : detectProvider();
   let openCode = options.openCodeStatus;
   if (!openCode) {
     const database = new OpenCodeDatabase(getOpenCodeDataDir());
     database.open();
     openCode = database.getRuntimeStatus();
+    database.close();
   }
   const providerStatus = await (
     options.fetchStatuses ??
@@ -163,22 +224,7 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<HealthRepo
           message: `Canonical slug: ${project.canonicalSlug}`,
         },
   );
-  checks.push(
-    sessions.discoveredSessionDir
-      ? {
-          id: 'session_discovery',
-          status: 'ok',
-          title: 'Session discovery',
-          message: `Found Claude Code sessions at ${sessions.discoveredSessionDir}.`,
-        }
-      : {
-          id: 'session_discovery',
-          status: 'warning',
-          title: 'Session discovery',
-          message: `No Claude Code session directory found for ${project.cwd}.`,
-          repair: `Start Claude Code in this project, or inspect ${sessions.expectedSessionDir}.`,
-        },
-  );
+  checks.push(await checkSessionProvider(sessionProvider, project.resolvedCwd));
 
   const openCodeCheck: HealthCheck = openCode.available
     ? {
@@ -204,17 +250,24 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<HealthRepo
               ? 'Install sqlite3 and ensure the sqlite3 executable is on PATH, then rerun sidekick doctor.'
               : 'Make sqlite3 executable and verify the OpenCode database is readable.',
         };
+  if (sessionProvider !== 'opencode' && openCodeCheck.status === 'warning') {
+    openCodeCheck.status = 'info';
+    openCodeCheck.message += ' This does not affect the selected session provider.';
+  }
   checks.push(openCodeCheck);
 
   checks.push({
     id: 'accounts',
-    status: accounts.ok ? 'ok' : 'warning',
+    status: accounts.ok ? 'ok' : 'info',
     title: 'Accounts and credentials',
     message: accounts.ok
       ? `Detected ${[accounts.claude.present && 'Claude', accounts.codex.present && 'Codex'].filter(Boolean).join(' and ')} credentials.`
       : (accounts.error ?? 'No Claude or Codex credentials were detected.'),
     ...(!accounts.ok
-      ? { repair: 'Sign in with claude or codex, then rerun sidekick doctor.' }
+      ? {
+          repair:
+            'Sign in with claude or codex to refresh account quota. Existing sessions can be monitored without saved credentials.',
+        }
       : {}),
   });
 
@@ -226,8 +279,13 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<HealthRepo
     .map(([name]) => name);
   checks.push({
     id: 'provider_api',
-    status:
-      degradedProviders.length > 0 ? 'warning' : unavailableProviders.length > 0 ? 'info' : 'ok',
+    status: degradedProviders.includes(
+      sessionProvider === 'codex' ? 'openai' : sessionProvider === 'claude-code' ? 'claude' : '',
+    )
+      ? 'warning'
+      : degradedProviders.length > 0 || unavailableProviders.length > 0
+        ? 'info'
+        : 'ok',
     title: 'Provider API status',
     message:
       degradedProviders.length > 0
@@ -274,6 +332,7 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<HealthRepo
     openCode,
     providerStatus,
     sessions,
+    sessionProvider,
   };
 }
 

@@ -2,8 +2,8 @@
  * Factory for creating the correct session watcher by provider.
  */
 
-import * as os from 'os';
 import * as path from 'path';
+import { getOpenCodeDataDir } from '../providers/openCode';
 import type { SessionProviderBase } from '../providers/types';
 import type { SessionWatcher, SessionWatcherCallbacks } from './types';
 import { JsonlSessionWatcher } from './jsonlWatcher';
@@ -15,12 +15,6 @@ export interface CreateWatcherOptions {
   workspacePath: string;
   sessionId?: string;
   callbacks: SessionWatcherCallbacks;
-}
-
-function getOpenCodeDataDir(): string {
-  const xdg = process.env.XDG_DATA_HOME;
-  if (xdg) return path.join(xdg, 'opencode');
-  return path.join(os.homedir(), '.local', 'share', 'opencode');
 }
 
 /**

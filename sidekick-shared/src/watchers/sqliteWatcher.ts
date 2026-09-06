@@ -296,6 +296,7 @@ export class SqliteSessionWatcher implements SessionWatcher {
         this.seenPartVersions.set(part.id, `${part.time_updated}:${part.data}`);
         if (part.time_updated > this.lastPartTime) this.lastPartTime = part.time_updated;
       }
+      this.callbacks.onBatchComplete?.();
     } catch (err) {
       this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
     }

@@ -214,8 +214,11 @@ Standalone commands that query Sidekick's persisted project data without launchi
 ```bash
 sidekick today       # cache-only yesterday/tasks/decision/handoff/quota brief
 sidekick doctor      # diagnose project, session, account, provider, and dependency health
+sidekick --provider codex doctor  # diagnose Codex monitoring
 sidekick statusline  # fast one-line account/quota/burn-rate footer
 ```
+
+`doctor` checks the selected session provider (`--provider`, or auto-detection). Missing sessions or dependencies for that provider include a repair hint; unused integrations and missing saved accounts are informational. Existing sessions can be monitored without adding a Sidekick account.
 
 `today` and `statusline` bypass account bootstrap, pricing hydration, and quota network calls. Use `Sidekick: Install Statusline` in VS Code to merge the status-line command into Claude Code settings; uninstalling it restores the previous block.
 

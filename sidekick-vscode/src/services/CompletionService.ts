@@ -66,6 +66,11 @@ export class CompletionService implements vscode.Disposable {
    * Can be called externally (e.g., from a progress notification cancel button).
    */
   cancelPending(): void {
+    this.lastRequestId++;
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceResolve?.();
+    }
     if (this.pendingController) {
       log('Service: externally cancelled pending request');
       this.pendingController.abort();
@@ -168,11 +173,11 @@ export class CompletionService implements vscode.Disposable {
     log(`Service: cache miss, calling API for request #${requestId}`);
 
     // Create new AbortController for this request
-    this.pendingController = new AbortController();
+    const controller = new AbortController();
+    this.pendingController = controller;
 
     // Link VS Code CancellationToken to AbortController
-    const abortHandler = () => this.pendingController?.abort();
-    token.onCancellationRequested(abortHandler);
+    const cancellation = token.onCancellationRequested(() => controller.abort());
 
     try {
       // Build prompt
@@ -186,6 +191,7 @@ export class CompletionService implements vscode.Disposable {
         model,
         maxTokens: 200,
         timeout: timeoutMs,
+        signal: controller.signal,
       });
 
       // Check validity after API call
@@ -193,7 +199,7 @@ export class CompletionService implements vscode.Disposable {
         log(`Service: request #${requestId} superseded after API call`);
         return undefined;
       }
-      if (token.isCancellationRequested) {
+      if (token.isCancellationRequested || controller.signal.aborted) {
         log(`Service: request #${requestId} cancelled after API call`);
         return undefined;
       }
@@ -228,6 +234,9 @@ export class CompletionService implements vscode.Disposable {
         return undefined;
       }
       throw error;
+    } finally {
+      cancellation?.dispose();
+      if (this.pendingController === controller) this.pendingController = undefined;
     }
   }
 
@@ -293,11 +302,7 @@ export class CompletionService implements vscode.Disposable {
    * Aborts pending requests, clears timers, and clears cache.
    */
   dispose(): void {
-    this.pendingController?.abort();
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceResolve?.();
-    }
+    this.cancelPending();
     this.cache.clear();
   }
 }

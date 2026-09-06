@@ -163,6 +163,17 @@ The monitor automatically discovers sessions based on your configured provider. 
 - Selection persists across VS Code restarts
 - **"Sidekick: Reset to Auto-Detect Session"** clears manual selection
 
+## When no session is visible
+
+The dashboard distinguishes an empty session list, an unavailable provider, and paused monitoring. It shows the selected provider, workspace, and session location so you can check where Sidekick is looking.
+
+- **Refresh** retries discovery and updates the session list.
+- **Browse** lets you select an existing session folder.
+- **Run Doctor** opens diagnostics for the selected session provider.
+- **Resume** restarts paused monitoring, preserving your provider and custom folder. Refreshing the list while paused keeps monitoring paused.
+
+Use **Sidekick: Stop Session Monitoring** to pause and **Sidekick: Start Session Monitoring** to resume. Views continue updating after resume without a window reload.
+
 ## Configuration
 
 | Setting                            | Default | Description                                                        |
@@ -171,6 +182,8 @@ The monitor automatically discovers sessions based on your configured provider. 
 | `sidekick.sessionProvider`         | `auto`  | Which agent to monitor: `auto`, `claude-code`, `opencode`, `codex` |
 
 ## Accessibility
+
+In the dashboard, use **Left/Right Arrow**, **Home**, and **End** to move between tabs. Session cards and section headings are buttons: use **Tab** to reach them and **Enter** or **Space** to activate them. Collapsed content is removed from keyboard navigation, and session-list updates preserve focus on the same session when it is still available.
 
 All webview panels include:
 

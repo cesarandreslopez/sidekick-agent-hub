@@ -5,6 +5,20 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Stop/resume preserves VS Code monitoring subscriptions and custom session folders; cancelled inline requests stop inference.
+- Complete-line cursors and batch checkpoints prevent skipped events and damaged Unicode on resume. Dashboard snapshots now use the current schema and verify their format.
+- Search respects the project for all providers, includes database-only OpenCode sessions, and opens VS Code results in the conversation viewer.
+- OpenCode watchers use the correct platform data directory; Doctor focuses on the selected provider.
+
+### Changed
+
+- Empty and paused dashboards offer Refresh, Browse, Run Doctor, and Resume with provider/location details.
+- Dashboard tabs, session cards, and section toggles support keyboard navigation and retain session focus after refresh.
+
 ## [0.26.1] - 2026-09-05
 
 ### Changed

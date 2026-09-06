@@ -294,19 +294,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
       // ==== End Suggestions Functions ====
 
-      // Tab switching
-      tabBtns.forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          const tab = btn.getAttribute('data-tab');
-
-          tabBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
-          tabContents.forEach(function(c) { c.classList.remove('active'); });
-
-          btn.classList.add('active');
-          btn.setAttribute('aria-selected', 'true');
-          document.getElementById(tab + '-tab').classList.add('active');
-
-          // Request data when switching tabs
+      helpers.navigation.mount({
+        post: function(message) { vscode.postMessage(message); },
+        onTabChange: function(tab) {
           if (tab === 'history') {
             vscode.postMessage(helpers.history.request(currentRange, 'tokens'));
           } else if (tab === 'summary') {
@@ -314,7 +304,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           } else if (tab === 'health') {
             vscode.postMessage({ type: 'requestHealth' });
           }
-        });
+        }
       });
 
       helpers.health.mount({ post: function(message) { vscode.postMessage(message); } });
@@ -327,17 +317,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           btn.classList.add('active');
           btn.setAttribute('aria-pressed', 'true');
           updatePrimaryMetric();
-        });
-      });
-
-      // Group section toggles
-      groupToggles.forEach(function(toggle) {
-        toggle.addEventListener('click', function() {
-          const sectionId = toggle.getAttribute('data-group-toggle');
-          const section = document.getElementById(sectionId);
-          if (section) {
-            section.classList.toggle('expanded');
-          }
         });
       });
 
@@ -1800,13 +1779,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           sessionProviderSelect.value = providerId;
         }
 
-        if (emptyStateTitle) {
-          emptyStateTitle.textContent = 'No active ' + providerName + ' session detected.';
-        }
-        if (emptyStateHint) {
-          emptyStateHint.textContent = 'Start a ' + providerName + ' session to see analytics.';
-        }
-
         const quotaSectionEl = document.getElementById('quota-section');
         const quotaContentEl = document.getElementById('quota-content');
         const quotaErrorEl = document.getElementById('quota-error');
@@ -1838,103 +1810,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
        * Updates the session card navigator.
        */
       function updateSessionList(groups, isPinned, isUsingCustomPath, customPathDisplay) {
-        if (!sessionListEl) return;
-
-        // Update custom path indicator
-        if (customPathIndicator && customPathText) {
-          if (isUsingCustomPath && customPathDisplay) {
-            customPathIndicator.classList.add('visible');
-            customPathText.textContent = 'Custom: ' + customPathDisplay;
-          } else {
-            customPathIndicator.classList.remove('visible');
-          }
-        }
-
-        // Update pin button
-        if (pinSessionBtn) {
-          pinSessionBtn.textContent = isPinned ? 'Unpin' : 'Pin';
-          pinSessionBtn.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
-          if (isPinned) {
-            pinSessionBtn.classList.add('pinned');
-            pinSessionBtn.title = 'Unpin session to allow auto-switching';
-          } else {
-            pinSessionBtn.classList.remove('pinned');
-            pinSessionBtn.title = 'Pin session to prevent auto-switching';
-          }
-        }
-
-        // Clear current content
-        sessionListEl.innerHTML = '';
-
-        if (!groups || groups.length === 0) {
-          sessionListEl.innerHTML = '<div class="session-list-empty">No sessions available</div>';
-          return;
-        }
-
-        let totalSessions = 0;
-        groups.forEach(function(group) {
-          // Add group header for non-current groups
-          if (group.proximity !== 'current') {
-            const header = document.createElement('div');
-            header.className = 'session-group-header';
-            header.textContent = group.displayPath || group.projectPath;
-            sessionListEl.appendChild(header);
-          }
-
-          // Add session cards
-          group.sessions.forEach(function(session, index) {
-            const card = document.createElement('div');
-            card.className = 'session-card' + (session.isCurrent ? ' current' : '');
-            card.setAttribute('data-path', session.path);
-
-            const statusDiv = document.createElement('div');
-            statusDiv.className = 'session-card-status';
-            const dot = document.createElement('span');
-            dot.className = 'status-dot' + (session.isActive ? ' active' : '');
-            statusDiv.appendChild(dot);
-
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'session-card-content';
-
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'session-card-label';
-            labelDiv.textContent = session.label || session.filename.slice(0, 8) + '...';
-
-            const metaDiv = document.createElement('div');
-            metaDiv.className = 'session-card-meta';
-            const date = new Date(session.modifiedTime);
-            metaDiv.textContent = (index === 0 && group.proximity === 'current') ? 'Latest' : formatRelativeTime(date);
-
-            contentDiv.appendChild(labelDiv);
-            contentDiv.appendChild(metaDiv);
-
-            card.appendChild(statusDiv);
-            card.appendChild(contentDiv);
-
-            sessionListEl.appendChild(card);
-            totalSessions++;
-          });
-        });
-
-        if (totalSessions === 0) {
-          sessionListEl.innerHTML = '<div class="session-list-empty">No sessions available</div>';
-        }
-      }
-
-      /**
-       * Formats a date as relative time (e.g., "5m ago", "2h ago").
-       */
-      function formatRelativeTime(date) {
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
-
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return diffMins + 'm ago';
-        if (diffHours < 24) return diffHours + 'h ago';
-        return diffDays + 'd ago';
+        helpers.navigation.renderSessions({ type: 'updateSessionList', groups: groups || [], isPinned: isPinned, isUsingCustomPath: isUsingCustomPath, customPathDisplay: customPathDisplay });
       }
 
       /**
@@ -2056,6 +1932,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
         // ── Update group summaries ──
         updateGroupSummaries(state);
+        helpers.navigation.syncAvailability();
       }
 
       function updateGroupSummaries(state) {
@@ -2674,6 +2551,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             updateInlineStats();
             break;
 
+          case 'updateSessionAvailability':
+            helpers.navigation.renderAvailability(message.availability);
+            break;
+
           case 'updateSessionList':
             updateSessionList(message.groups, message.isPinned, message.isUsingCustomPath, message.customPathDisplay);
             break;
@@ -3061,23 +2942,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         });
       }
 
-      // Session navigator event handlers
-      if (sessionListEl) {
-        sessionListEl.addEventListener('click', function(e) {
-          let target = e.target;
-          while (target && target !== sessionListEl) {
-            if (target.classList && target.classList.contains('session-card')) {
-              const sessionPath = target.getAttribute('data-path');
-              if (sessionPath) {
-                vscode.postMessage({ type: 'selectSession', sessionPath: sessionPath });
-              }
-              return;
-            }
-            target = target.parentElement;
-          }
-        });
-      }
-
       if (pinSessionBtn) {
         pinSessionBtn.addEventListener('click', function(e) {
           e.stopPropagation();
@@ -3150,22 +3014,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       const suggestionsHeader = document.getElementById('suggestions-header');
       const analyzeBtn = document.getElementById('analyze-btn');
 
-      if (suggestionsHeader && suggestionsPanel) {
-        suggestionsHeader.addEventListener('click', function(e) {
-          // Don't toggle if clicking the analyze button
-          if (analyzeBtn && (e.target === analyzeBtn || analyzeBtn.contains(e.target))) {
-            return;
-          }
-          suggestionsPanel.classList.toggle('expanded');
-        });
-      }
-
       if (analyzeBtn) {
         analyzeBtn.addEventListener('click', function(e) {
           e.stopPropagation(); // Prevent header toggle
           // Auto-expand when analyzing
           if (suggestionsPanel) {
-            suggestionsPanel.classList.add('expanded');
+            helpers.navigation.expand('suggestions-panel');
           }
           vscode.postMessage({ type: 'analyzeSession' });
         });
@@ -3195,13 +3049,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
       // Request notification history on load
       vscode.postMessage({ type: 'requestNotificationHistory' });
-
-      // ==== Collapsible panel toggles ====
-      document.querySelectorAll('[data-collapsible="true"]').forEach(function(header) {
-        header.addEventListener('click', function() {
-          header.parentElement.classList.toggle('expanded');
-        });
-      });
 
       // ==== Summary tab + Richer panels ====
 

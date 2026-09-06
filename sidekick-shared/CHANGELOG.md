@@ -5,6 +5,20 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Optional watcher `onBatchComplete` callback for persisting state after all events in a read have been delivered.
+- `SessionSearchOptions.projectPath` and `signal` for provider-aware workspace filtering and cancellation; legacy `projectSlug` remains supported.
+
+### Fixed
+
+- JSONL watcher and provider reader checkpoints end at complete lines, retaining partial UTF-8 characters across reads and restarts. Codex restores parser context when seeking.
+- Watcher failures retain polling fallback; OpenCode watchers share the canonical data-directory resolver.
+- Session search enumerates through providers, includes database-only sessions, and deduplicates paths.
+- Doctor checks the selected session provider, treats unrelated integrations as informational, and reads account status without changing account selection.
+
 ## [0.26.1] - 2026-09-05
 
 ### Fixed

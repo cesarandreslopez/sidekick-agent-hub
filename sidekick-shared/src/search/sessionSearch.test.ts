@@ -46,7 +46,13 @@ function makeProvider(
     displayName: 'fake',
     getProjectsBaseDir: () => baseDir,
     getAllProjectFolders: () => folders,
-    findSessionsInDirectory: () => [],
+    findSessionsInDirectory: (directory: string) => {
+      if (!fs.existsSync(directory)) return [];
+      return fs
+        .readdirSync(directory)
+        .filter((file) => file.endsWith('.jsonl'))
+        .map((file) => path.join(directory, file));
+    },
     searchInSession: (sessionPath: string, _query: string, maxResults: number) => {
       searchedPaths.push(sessionPath);
       budgets.push(maxResults);
@@ -64,7 +70,7 @@ describe('searchSessions', () => {
     expect(await searchSessions(provider, 'query')).toEqual([]);
   });
 
-  it('maps hits from session files discovered by directory scan', async () => {
+  it('maps hits from session files discovered by the provider', async () => {
     const baseDir = makeTempDir();
     const folderDir = path.join(baseDir, 'project-a');
     fs.mkdirSync(folderDir);
@@ -191,4 +197,95 @@ describe('searchSessions', () => {
 
     expect(results.map((result) => result.snippet)).toEqual(['good hit']);
   });
+});
+
+it.each(['claude-code', 'opencode', 'codex'] as const)(
+  'searches a canonical project path with %s without using config-store slugs',
+  async (id) => {
+    const project = path.join(makeTempDir(), 'my.project with spaces');
+    fs.mkdirSync(project);
+    const session = '/virtual/session';
+    const requested: Array<string | undefined> = [];
+    const { provider } = makeProvider(
+      '/missing/legacy-storage',
+      [],
+      {},
+      {
+        id,
+        listSessionFilesAsync: async (workspace: string | undefined) => {
+          requested.push(workspace);
+          return [{ path: session, workspacePath: project, mtime: new Date() }];
+        },
+        searchInSession: () => [makeHit(session, 'matching content', project)],
+      },
+    );
+    const results = await searchSessions(provider, 'matching', { projectPath: project });
+    expect(requested).toEqual([fs.realpathSync(project)]);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ providerId: id, projectPath: project });
+  },
+);
+
+it('searches database-only sessions and deduplicates repeated session paths', async () => {
+  const session = '/virtual/db-sessions/project/session.json';
+  const { provider, searchedPaths } = makeProvider(
+    '/missing/legacy-storage',
+    [],
+    {
+      [session]: [makeHit(session, 'database match')],
+    },
+    {
+      id: 'opencode',
+      listSessionFilesAsync: async () => [
+        { path: session, mtime: new Date(), workspacePath: '/workspace' },
+        { path: session, mtime: new Date(), workspacePath: '/workspace' },
+      ],
+    },
+  );
+  expect(await searchSessions(provider, 'match')).toHaveLength(1);
+  expect(searchedPaths).toEqual([session]);
+});
+
+it('keeps legacy Codex project slugs scoped to the actual workspace', async () => {
+  const cwd = '/workspace/my.project';
+  const session = '/virtual/shared-dates/session.jsonl';
+  const requested: string[] = [];
+  const { provider } = makeProvider(
+    '/missing',
+    [makeFolder('/virtual/shared-dates', cwd)],
+    {
+      [session]: [makeHit(session, 'match', cwd)],
+    },
+    {
+      id: 'codex',
+      findAllSessions: (workspace: string) => {
+        requested.push(workspace);
+        return [session];
+      },
+      findSessionsInDirectory: () => {
+        throw new Error('must not search a shared date directory');
+      },
+    },
+  );
+  expect(await searchSessions(provider, 'match', { projectSlug: cwd })).toHaveLength(1);
+  expect(requested).toEqual([cwd]);
+});
+
+it('stops searching additional sessions when cancelled', async () => {
+  const controller = new AbortController();
+  const { provider } = makeProvider(
+    '/missing',
+    [],
+    {},
+    {
+      listSessionFilesAsync: async () =>
+        ['first', 'second'].map((path) => ({ path, mtime: new Date(0) })),
+      searchInSession: (session: string) => {
+        expect(session).toBe('first');
+        controller.abort();
+        return [makeHit(session, 'match')];
+      },
+    },
+  );
+  expect(await searchSessions(provider, 'match', { signal: controller.signal })).toHaveLength(1);
 });

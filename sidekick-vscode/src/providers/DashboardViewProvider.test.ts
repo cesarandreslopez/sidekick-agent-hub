@@ -25,6 +25,7 @@ vi.mock('vscode', () => ({
       fsPath: path.join(base.fsPath, ...segments),
     }),
   },
+  commands: { executeCommand: vi.fn() },
   extensions: {
     getExtension: () => ({ packageJSON: { version: '0.0.0-test' } }),
   },
@@ -66,6 +67,7 @@ vi.mock('../services/Logger', () => ({
 }));
 
 import { formatLocalDateKey } from 'sidekick-shared';
+import { commands } from 'vscode';
 import { DashboardViewProvider } from './DashboardViewProvider';
 
 // The behaviour lives in the bundled legacy module now; the document only
@@ -103,11 +105,18 @@ function makeSessionMonitor() {
     onTruncation: vi.fn(() => disposable()),
     onQuotaUpdate: vi.fn(() => disposable()),
     isActive: vi.fn(() => false),
+    isStopped: vi.fn(() => false),
+    getWorkspacePath: vi.fn(() => null),
+    refreshSession: vi.fn(async () => false),
     getAllSessionsGrouped: vi.fn(() => []),
     isPinned: vi.fn(() => false),
     getCustomPath: vi.fn(() => null),
     isUsingCustomPath: vi.fn(() => false),
-    getProvider: vi.fn(() => ({ id: 'codex', displayName: 'Codex CLI' })),
+    getProvider: vi.fn(() => ({
+      id: 'codex',
+      displayName: 'Codex CLI',
+      getSessionDirectory: () => '/sessions',
+    })),
     getState: vi.fn(() => ({
       totalInputTokens: 0,
       totalOutputTokens: 0,
@@ -614,4 +623,64 @@ describe('DashboardViewProvider quota UI', () => {
     expect(loading.map((call) => call[0].loading)).toEqual([true, false]);
     provider.dispose();
   });
+});
+
+it('refreshes discovery and explains the selected provider when no sessions exist', async () => {
+  const monitor = makeSessionMonitor();
+  const provider = new DashboardViewProvider(
+    { fsPath: '/tmp/extension' } as never,
+    monitor as never,
+  );
+  const postMessage = vi.fn();
+  const host = provider as unknown as {
+    _view: unknown;
+    _handleDashboardWebviewMessage(message: unknown): void;
+  };
+  host._view = { visible: true, webview: { postMessage } };
+  host._handleDashboardWebviewMessage({ type: 'refreshSessions' });
+  await vi.waitFor(() =>
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'updateSessionAvailability',
+      availability: {
+        status: 'empty',
+        providerName: 'Codex CLI',
+        workspacePath: '/workspace',
+        sessionDirectory: '/sessions',
+        message: undefined,
+      },
+    }),
+  );
+  expect(monitor.refreshSession).toHaveBeenCalledOnce();
+  expect(postMessage).toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'updateSessionList', groups: [] }),
+  );
+  provider.dispose();
+});
+
+it('keeps refresh paused and routes Resume and Doctor to their commands', () => {
+  const monitor = makeSessionMonitor();
+  monitor.isStopped.mockReturnValue(true);
+  const provider = new DashboardViewProvider(
+    { fsPath: '/tmp/extension' } as never,
+    monitor as never,
+  );
+  const postMessage = vi.fn();
+  const host = provider as unknown as {
+    _view: unknown;
+    _handleDashboardWebviewMessage(message: unknown): void;
+  };
+  host._view = { visible: true, webview: { postMessage } };
+  host._handleDashboardWebviewMessage({ type: 'refreshSessions' });
+  expect(monitor.refreshSession).not.toHaveBeenCalled();
+  expect(postMessage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'updateSessionAvailability',
+      availability: expect.objectContaining({ status: 'paused' }),
+    }),
+  );
+  host._handleDashboardWebviewMessage({ type: 'resumeMonitoring' });
+  host._handleDashboardWebviewMessage({ type: 'runDoctor' });
+  expect(commands.executeCommand).toHaveBeenCalledWith('sidekick.startMonitoring');
+  expect(commands.executeCommand).toHaveBeenCalledWith('sidekick.doctor');
+  provider.dispose();
 });

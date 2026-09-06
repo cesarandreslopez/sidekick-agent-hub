@@ -174,6 +174,14 @@ export interface QuotaHistoryPayload {
  */
 export type DashboardStatsPayload = Omit<DashboardState, 'timeline'>;
 
+export interface SessionAvailability {
+  status: 'active' | 'paused' | 'empty' | 'unavailable';
+  providerName: string;
+  workspacePath: string | null;
+  sessionDirectory: string | null;
+  message?: string;
+}
+
 export type DashboardMessage =
   | { type: 'updateStats'; state: DashboardStatsPayload }
   /**
@@ -228,6 +236,7 @@ export type DashboardMessage =
   | { type: 'updateCompactions'; compactions: CompactionEventDisplay[] }
   | { type: 'updateContextAttribution'; attribution: ContextAttributionDisplay[] }
   | { type: 'sessionsLoading'; loading: boolean }
+  | { type: 'updateSessionAvailability'; availability: SessionAvailability }
   | { type: 'notification'; title: string; body: string; severity: 'info' | 'warning' | 'error' }
   | { type: 'toolCallDetails'; toolName: string; calls: ToolCallDetailDisplay[] }
   | { type: 'syncEventLogState'; enabled: boolean }
@@ -311,6 +320,8 @@ export type DashboardWebviewMessage =
   | { type: 'selectSession'; sessionPath: string }
   | { type: 'setSessionProvider'; providerId: 'claude-code' | 'opencode' | 'codex' }
   | { type: 'refreshSessions' }
+  | { type: 'resumeMonitoring' }
+  | { type: 'runDoctor' }
   | { type: 'togglePin' }
   | { type: 'browseSessionFolders' }
   | { type: 'clearCustomPath' }

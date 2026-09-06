@@ -65,21 +65,8 @@ export async function searchAction(_opts: Record<string, unknown>, cmd: Command)
   const provider = resolveProvider(globalOpts);
 
   try {
-    // Determine project slug if --project is specified
-    const projectPath: string | undefined = globalOpts.project || undefined;
-    let projectSlug: string | undefined;
-    if (projectPath) {
-      // Use the provider's encoding to match folder names
-      const path = await import('path');
-      const resolved = path.resolve(projectPath);
-      // The projectSlug in searchSessions filters by encodedName,
-      // which corresponds to the folder name under the provider's base dir
-      const { encodeWorkspacePath } = await import('sidekick-shared');
-      projectSlug = encodeWorkspacePath(resolved);
-    }
-
     const results: SearchResult[] = await searchSessions(provider, query.trim(), {
-      projectSlug,
+      projectPath: globalOpts.project as string | undefined,
       maxResults: limit,
     });
 

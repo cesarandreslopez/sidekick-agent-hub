@@ -16,12 +16,7 @@
 
 import type * as vscode from 'vscode';
 import type { QuotaState } from './dashboard';
-import type {
-  ProjectFolderInfo as SharedProjectFolderInfo,
-  ProviderRuntimeStatus as SharedProviderRuntimeStatus,
-  SearchHit as SharedSearchHit,
-  SessionReader as SharedSessionReader,
-} from 'sidekick-shared';
+import type { SessionProviderBase } from 'sidekick-shared';
 
 // Re-export shared types
 export type {
@@ -47,87 +42,8 @@ export type { SessionEvent, ContextAttribution, SubagentStats, TokenUsage } from
  * Extends SessionProviderBase from sidekick-shared with vscode.Disposable
  * and optional VS Code-specific methods.
  */
-export interface SessionProvider extends vscode.Disposable {
-  /** Unique provider identifier */
-  readonly id: 'claude-code' | 'opencode' | 'codex';
-  /** Human-readable display name */
-  readonly displayName: string;
-
-  // --- Path resolution ---
-
-  /** Gets the expected session directory for a workspace (may not exist). */
-  getSessionDirectory(workspacePath: string): string;
-
-  /** Discovers the actual session directory using multiple strategies. Returns null if not found. */
-  discoverSessionDirectory(workspacePath: string): string | null;
-
-  // --- Session discovery ---
-
-  /** Finds the most recently active session file for a workspace. */
-  findActiveSession(workspacePath: string): string | null;
-
-  /** Finds all session files for a workspace, sorted by mtime (most recent first). */
-  findAllSessions(workspacePath: string): string[];
-
-  /** Finds all session files in a specific directory. */
-  findSessionsInDirectory(dir: string): string[];
-
-  /** Gets all project folders with session data. */
-  getAllProjectFolders(workspacePath?: string): SharedProjectFolderInfo[];
-
-  // --- File identification ---
-
-  /** Tests whether a filename is a session file for this provider. */
-  isSessionFile(filename: string): boolean;
-
-  /** Extracts a session ID from a session file path. */
-  getSessionId(sessionPath: string): string;
-
-  /** Encodes a workspace path to the provider's directory naming scheme. */
-  encodeWorkspacePath(workspacePath: string): string;
-
-  /** Extracts a human-readable label from a session file (e.g., first user prompt). */
-  extractSessionLabel(sessionPath: string): string | null;
-
-  // --- Data reading ---
-
-  /** Creates an incremental reader for a session file. */
-  createReader(sessionPath: string): SharedSessionReader;
-
-  // --- Subagent support ---
-
-  /** Scans for subagent data associated with a session. */
-  scanSubagents(sessionDir: string, sessionId: string): SubagentStats[];
-
-  // --- Cross-session search ---
-
-  /** Searches for text within a session file. */
-  searchInSession(sessionPath: string, query: string, maxResults: number): SharedSearchHit[];
-
-  /** Gets the base projects directory path for cross-session search. */
-  getProjectsBaseDir(): string;
-
-  /** Get session metadata without filesystem access (for DB-backed providers). */
-  getSessionMetadata?(sessionPath: string): { mtime: Date } | null;
-
-  /** Gets the context window token limit for a model. Returns 200K by default. */
-  getContextWindowLimit?(modelId?: string): number;
-
-  /** Computes context window size from token usage. Provider-specific formula. */
-  computeContextSize?(usage: TokenUsage): number;
-
-  /** Gets latest assistant usage snapshot for an active session, if available. */
-  getCurrentUsageSnapshot?(sessionPath: string): TokenUsage | null;
-
-  /** Gets context attribution breakdown from provider data, if available. */
-  getContextAttribution?(sessionPath: string): ContextAttribution | null;
-
-  /** Reports provider runtime readiness for DB-backed providers. */
-  getRuntimeStatus?(): SharedProviderRuntimeStatus;
-
-  /** Tests whether a provider can monitor a directory path, including synthetic DB-backed paths. */
-  canMonitorDirectory?(dir: string): boolean;
-
+export interface SessionProvider extends SessionProviderBase, vscode.Disposable {
+  dispose(): void;
   /** Gets subscription quota state from session data or provider APIs (e.g., Codex rate_limits, z.ai quota API). */
   getQuotaFromSession?(): QuotaState | null | Promise<QuotaState | null>;
 }

@@ -124,6 +124,8 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Current workspace path being monitored */
   private workspacePath: string | null = null;
+  private stopped = false;
+  private lifecycleGeneration = 0;
 
   /** Session provider for I/O operations */
   private provider: SessionProvider;
@@ -439,8 +441,11 @@ export class SessionMonitor implements vscode.Disposable {
    * ```
    */
   async start(workspacePath: string): Promise<boolean> {
-    // Store workspace path for session detection
+    // Keep the same monitor and subscriptions when resuming a paused session.
     this.workspacePath = workspacePath;
+    if (this.customSessionDir) return this.startWithCustomPath(this.customSessionDir);
+    const generation = ++this.lifecycleGeneration;
+    this.stopped = false;
 
     if (this.getProviderRuntimeIssue()) {
       this.reportProviderRuntimeIssue();
@@ -459,6 +464,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     // Always set up directory watching, even without an active session
     await this.setupDirectoryWatcher();
+    if (generation !== this.lifecycleGeneration) return false;
 
     if (!this.sessionPath) {
       log(`No active ${this.provider.displayName} session detected, entering discovery mode`);
@@ -500,6 +506,7 @@ export class SessionMonitor implements vscode.Disposable {
 
       // Read existing content
       await this.readInitialContent();
+      if (generation !== this.lifecycleGeneration) return false;
 
       // Start activity polling for providers without file-level updates
       this.startActivityPolling();
@@ -511,6 +518,7 @@ export class SessionMonitor implements vscode.Disposable {
 
       return true;
     } catch (error) {
+      if (generation !== this.lifecycleGeneration) return false;
       logError('Failed to start session monitoring', error);
       this.sessionPath = null;
       this.isWaitingForSession = true;
@@ -866,8 +874,11 @@ export class SessionMonitor implements vscode.Disposable {
     // Stop existing polling
     this.stopDiscoveryPolling();
 
+    const generation = this.lifecycleGeneration;
     const poll = () => {
+      if (this.stopped || generation !== this.lifecycleGeneration) return;
       this.performSessionDiscovery();
+      if (this.stopped || generation !== this.lifecycleGeneration) return;
 
       // Determine next interval
       let interval = this.DISCOVERY_INTERVAL_MS;
@@ -958,6 +969,8 @@ export class SessionMonitor implements vscode.Disposable {
    * @param sessionPath - Path to the session file
    */
   private async attachToSession(sessionPath: string): Promise<void> {
+    const generation = ++this.lifecycleGeneration;
+    this.stopped = false;
     const wasWaiting = this.isWaitingForSession;
     this.sessionPath = sessionPath;
     this.sessionId = this.provider.getSessionId(sessionPath);
@@ -993,6 +1006,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     // Re-setup watcher to track the new session file
     await this.setupDirectoryWatcher();
+    if (generation !== this.lifecycleGeneration) return;
 
     // Try to restore from snapshot for fast resume
     const restored = this.tryRestoreFromSnapshot(sessionPath);
@@ -1021,6 +1035,7 @@ export class SessionMonitor implements vscode.Disposable {
     // Read content from session (full replay if no snapshot, incremental if restored)
     try {
       await this.readInitialContent();
+      if (generation !== this.lifecycleGeneration) return;
 
       // Save snapshot after initial replay for future fast resume
       this.persistSnapshot();
@@ -1029,6 +1044,7 @@ export class SessionMonitor implements vscode.Disposable {
       log(`Attached to session: ${sessionPath}${restored ? ' (restored from snapshot)' : ''}`);
       this._onSessionStart.fire(sessionPath);
     } catch (error) {
+      if (generation !== this.lifecycleGeneration) return;
       logError('Failed to attach to session', error);
       // Fall back to discovery mode
       this.sessionPath = null;
@@ -1044,13 +1060,17 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns True if a session was found and attached
    */
   async refreshSession(): Promise<boolean> {
-    if (!this.workspacePath) {
-      return false;
+    if (this.stopped) {
+      if (this.customSessionDir) return this.startWithCustomPath(this.customSessionDir);
+      return this.workspacePath ? this.start(this.workspacePath) : false;
     }
+    if (!this.workspacePath && !this.customSessionDir) return false;
 
     log('Manual session refresh triggered');
 
-    const newSessionPath = this.provider.findActiveSession(this.workspacePath);
+    const newSessionPath = this.customSessionDir
+      ? (this.provider.findSessionsInDirectory(this.customSessionDir)[0] ?? null)
+      : this.provider.findActiveSession(this.workspacePath!);
 
     if (newSessionPath && newSessionPath !== this.sessionPath) {
       await this.attachToSession(newSessionPath);
@@ -1099,12 +1119,20 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns True if monitoring is active
    */
   isActive(): boolean {
-    return this.sessionPath !== null && this.watcher !== undefined;
+    return this.sessionPath !== null && this.reader !== null && !this.stopped;
   }
 
   /**
    * Gets the session provider for this monitor.
    */
+  getWorkspacePath(): string | null {
+    return this.workspacePath;
+  }
+
+  isStopped(): boolean {
+    return this.stopped;
+  }
+
   getProvider(): SessionProvider {
     return this.provider;
   }
@@ -1406,6 +1434,8 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns True if a session was found and monitoring started
    */
   async startWithCustomPath(sessionDirectory: string): Promise<boolean> {
+    const generation = ++this.lifecycleGeneration;
+    this.stopped = false;
     if (!this.canMonitorDirectory(sessionDirectory)) {
       if (this.getProviderRuntimeIssue()) {
         this.reportProviderRuntimeIssue();
@@ -1420,9 +1450,11 @@ export class SessionMonitor implements vscode.Disposable {
     // Save the custom path
     this.customSessionDir = sessionDirectory;
     await this.workspaceState?.update(CUSTOM_SESSION_PATH_KEY, sessionDirectory);
+    if (generation !== this.lifecycleGeneration) return false;
 
     // Set up directory watcher for the custom directory
     await this.setupDirectoryWatcher();
+    if (generation !== this.lifecycleGeneration) return false;
 
     // Find sessions in the custom directory
     const sessions = this.provider.findSessionsInDirectory(sessionDirectory);
@@ -1437,7 +1469,7 @@ export class SessionMonitor implements vscode.Disposable {
 
     // Attach to the most recent session
     await this.attachToSession(sessions[0]);
-    return true;
+    return this.isActive();
   }
 
   /**
@@ -1639,15 +1671,21 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
-   * Stops monitoring and cleans up resources.
-   *
-   * Closes file watcher, disposes event emitters, and resets state.
+   * Pauses monitoring while preserving provider, custom path, and subscriptions.
    * Safe to call multiple times.
    */
-  dispose(): void {
+  stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.lifecycleGeneration++;
     // Save final snapshot before teardown
     if (this.sessionId && this.reader) {
       this.persistSnapshot();
+    }
+
+    if (this.sessionPath) {
+      this.eventLogger?.endSession();
+      this._onSessionEnd.fire();
     }
 
     // Clear debounce timers
@@ -1674,25 +1712,9 @@ export class SessionMonitor implements vscode.Disposable {
       this.dbWalWatcher = undefined;
     }
 
-    // Dispose event emitters
-    this._onTokenUsage.dispose();
-    this._onToolCall.dispose();
-    this._onSessionStart.dispose();
-    this._onSessionEnd.dispose();
-    this._onToolAnalytics.dispose();
-    this._onTimelineEvent.dispose();
-    this._onDiscoveryModeChange.dispose();
-    this._onLatencyUpdate.dispose();
-    this._onCompaction.dispose();
-    this._onTruncation.dispose();
-    this._onCycleDetected.dispose();
-    this._onQuotaUpdate.dispose();
-    this._onReplayStateChange.dispose();
-
     // Reset state
     this.sessionPath = null;
     this.sessionId = null;
-    this.workspacePath = null;
     this.reader = null;
     this.pendingToolCalls.clear();
     this.toolCallsById.clear();
@@ -1712,7 +1734,31 @@ export class SessionMonitor implements vscode.Disposable {
     this.contextTimeline = [];
     this.aggregator.reset();
 
-    log('SessionMonitor disposed');
+    this.lastModelId = null;
+    this.stats = this.createEmptyStats();
+    this._onDiscoveryModeChange.fire(false);
+    log('SessionMonitor stopped');
+  }
+
+  /** Permanently releases the monitor and its subscriptions. */
+  dispose(): void {
+    this.stop();
+    // Dispose event emitters
+    this._onTokenUsage.dispose();
+    this._onToolCall.dispose();
+    this._onSessionStart.dispose();
+    this._onSessionEnd.dispose();
+    this._onToolAnalytics.dispose();
+    this._onTimelineEvent.dispose();
+    this._onDiscoveryModeChange.dispose();
+    this._onLatencyUpdate.dispose();
+    this._onCompaction.dispose();
+    this._onTruncation.dispose();
+    this._onCycleDetected.dispose();
+    this._onQuotaUpdate.dispose();
+    this._onReplayStateChange.dispose();
+
+    this.workspacePath = null;
   }
 
   /**
@@ -1734,7 +1780,6 @@ export class SessionMonitor implements vscode.Disposable {
       for (const event of events) {
         this.handleEvent(event);
       }
-      this.reader.flush();
       log(
         `Initial content parsed: ${this.reader.getPosition()} position, stats: input=${this.stats.totalInputTokens}, output=${this.stats.totalOutputTokens}`,
       );
@@ -1762,7 +1807,11 @@ export class SessionMonitor implements vscode.Disposable {
     if (!snapshot) return false;
 
     // Verify provider matches
-    if (snapshot.providerId !== this.provider.id) {
+    if (
+      snapshot.providerId !== this.provider.id ||
+      snapshot.consumer.checkpointRevision !== 2 ||
+      snapshot.consumer.consumerType !== 'vscode'
+    ) {
       deleteSnapshot(this.sessionId);
       return false;
     }
@@ -1906,15 +1955,18 @@ export class SessionMonitor implements vscode.Disposable {
       }
     }
 
+    const aggregator = this.aggregator.serialize();
     const snapshot: SessionSnapshot = {
-      version: 1,
+      version: aggregator.version,
       sessionId: this.sessionId,
       providerId: this.provider.id,
       readerPosition: this.reader.getPosition(),
       sourceSize,
       createdAt: new Date().toISOString(),
-      aggregator: this.aggregator.serialize(),
+      aggregator,
       consumer: {
+        consumerType: 'vscode',
+        checkpointRevision: 2,
         stats: {
           totalInputTokens: this.stats.totalInputTokens,
           totalOutputTokens: this.stats.totalOutputTokens,
@@ -2013,9 +2065,10 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   private async emitQuotaFromSession(): Promise<void> {
+    const generation = this.lifecycleGeneration;
     try {
       const quota = await Promise.resolve(this.provider.getQuotaFromSession?.() ?? null);
-      if (quota) {
+      if (quota && !this.stopped && generation === this.lifecycleGeneration) {
         this._onQuotaUpdate.fire(quota);
       }
     } catch (error) {

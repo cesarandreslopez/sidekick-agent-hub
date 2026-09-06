@@ -9,25 +9,10 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as os from 'os';
-import * as path from 'path';
+import { searchSessions, type SearchResult } from 'sidekick-shared';
 import { log } from './Logger';
 import type { SessionProvider } from '../types/sessionProvider';
-
-/** Search result with context */
-interface SearchResult {
-  /** Session file path */
-  sessionPath: string;
-  /** Project path (decoded from directory name) */
-  projectPath: string;
-  /** Matched line content (truncated) */
-  snippet: string;
-  /** Event type (user, assistant, tool_use, etc.) */
-  eventType: string;
-  /** Timestamp of the matching event */
-  timestamp: string;
-}
 
 /**
  * Provides cross-session text search using VS Code QuickPick.
@@ -54,9 +39,11 @@ export class CrossSessionSearch implements vscode.Disposable {
 
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
     let searchGeneration = 0;
+    let searchController: AbortController | undefined;
 
     quickPick.onDidChangeValue((query) => {
       searchGeneration++;
+      searchController?.abort();
       const generation = searchGeneration;
       if (searchTimer) {
         clearTimeout(searchTimer);
@@ -68,12 +55,23 @@ export class CrossSessionSearch implements vscode.Disposable {
         return;
       }
       quickPick.busy = true;
+      const controller = new AbortController();
+      searchController = controller;
       searchTimer = setTimeout(async () => {
         searchTimer = undefined;
         try {
-          const results = await this.performSearch(query);
+          const results = await searchSessions(provider, query, {
+            maxResults: 50,
+            signal: controller.signal,
+          });
           if (generation === searchGeneration) {
             quickPick.items = results.map((r) => new SearchResultItem(r));
+          }
+        } catch (error) {
+          if (generation === searchGeneration) {
+            quickPick.items = [];
+            quickPick.placeholder = 'Search failed. Use Sidekick: Run Doctor for details.';
+            log(`CrossSessionSearch error: ${error}`);
           }
         } finally {
           if (generation === searchGeneration) quickPick.busy = false;
@@ -84,87 +82,21 @@ export class CrossSessionSearch implements vscode.Disposable {
     quickPick.onDidAccept(() => {
       const selected = quickPick.selectedItems[0];
       if (selected) {
-        // Open the session file at the matching location
-        vscode.commands.executeCommand('vscode.open', vscode.Uri.file(selected.result.sessionPath));
+        // The conversation viewer can read both files and synthetic database paths.
+        vscode.commands.executeCommand('sidekick.openConversation', selected.result.sessionPath);
       }
       quickPick.hide();
     });
 
     quickPick.onDidHide(() => {
       searchGeneration++;
+      searchController?.abort();
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = undefined;
       quickPick.busy = false;
       quickPick.dispose();
     });
     quickPick.show();
-  }
-
-  /**
-   * Searches across all session files for the given query.
-   */
-  private async performSearch(query: string): Promise<SearchResult[]> {
-    const results: SearchResult[] = [];
-    const provider = this._sessionMonitor.getProvider();
-    const projectsDir = provider.getProjectsBaseDir();
-    const MAX_RESULTS = 50;
-    const MAX_FILES_PER_PROJECT = 20;
-
-    try {
-      if (!fs.existsSync(projectsDir)) return results;
-
-      const projectDirs = fs.readdirSync(projectsDir);
-
-      for (const projectDir of projectDirs) {
-        if (results.length >= MAX_RESULTS) break;
-
-        const projectPath = path.join(projectsDir, projectDir);
-        try {
-          const stat = fs.statSync(projectPath);
-          if (!stat.isDirectory()) continue;
-        } catch {
-          continue;
-        }
-
-        // Find session files in this project directory
-        const sessionFiles = provider
-          .findSessionsInDirectory(projectPath)
-          .slice(0, MAX_FILES_PER_PROJECT);
-
-        for (const filePath of sessionFiles) {
-          if (results.length >= MAX_RESULTS) break;
-
-          const remaining = MAX_RESULTS - results.length;
-          const hits = provider.searchInSession(filePath, query, remaining);
-
-          for (const hit of hits) {
-            if (results.length >= MAX_RESULTS) break;
-
-            const displayPath = hit.projectPath || this.decodeProjectPath(projectDir);
-
-            results.push({
-              sessionPath: hit.sessionPath,
-              projectPath: displayPath,
-              snippet: hit.line,
-              eventType: hit.eventType,
-              timestamp: hit.timestamp,
-            });
-          }
-        }
-      }
-    } catch (err) {
-      log(`CrossSessionSearch error: ${err}`);
-    }
-
-    return results;
-  }
-
-  /**
-   * Decodes an encoded project path directory name.
-   */
-  private decodeProjectPath(encoded: string): string {
-    // Project dirs are encoded as: -home-user-code-myproject
-    return encoded.replace(/^-/, '/').replace(/-/g, '/');
   }
 
   dispose(): void {

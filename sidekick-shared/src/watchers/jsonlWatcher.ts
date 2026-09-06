@@ -3,16 +3,12 @@
  * Uses byte-offset tracking + fs.watch with debounce + catch-up polling.
  */
 
-import * as fs from 'fs';
-import { JsonlParser } from '../parsers/jsonl';
+import { createJsonlTail, type JsonlTail } from './jsonlTail';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { ProviderId } from '../providers/types';
 import { normalizeCodexToolName } from '../parsers/codexParser';
 import { formatToolSummary } from '../formatters/toolSummary';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
-
-const DEBOUNCE_MS = 100;
-const CATCHUP_INTERVAL_MS = 30_000;
 
 // ── Normalizers ──
 
@@ -197,144 +193,47 @@ function truncate(text: string, maxLen: number): string {
 // ── Watcher ──
 
 export class JsonlSessionWatcher implements SessionWatcher {
-  private _isActive = false;
-  private filePosition = 0;
-  private fsWatcher: fs.FSWatcher | null = null;
-  private catchupTimer: ReturnType<typeof setInterval> | null = null;
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private tail: JsonlTail | undefined;
+  private startOffset: number | undefined;
   private codexInPlanMode = false;
-  private readonly parser: JsonlParser;
-  private readonly providerId: ProviderId;
-  private readonly sessionPath: string;
-  private readonly callbacks: SessionWatcherCallbacks;
 
-  constructor(providerId: ProviderId, sessionPath: string, callbacks: SessionWatcherCallbacks) {
-    this.providerId = providerId;
-    this.sessionPath = sessionPath;
-    this.callbacks = callbacks;
-    this.parser = new JsonlParser({
-      onEvent: (event) => this.handleRawEvent(event),
-      onError: (err) => callbacks.onError?.(err),
-    });
-  }
+  constructor(
+    private readonly providerId: ProviderId,
+    private readonly sessionPath: string,
+    private readonly callbacks: SessionWatcherCallbacks,
+  ) {}
 
   get isActive(): boolean {
-    return this._isActive;
+    return this.tail?.isActive ?? false;
   }
 
-  /** Seek to a byte offset. Must be called before start(). */
+  /** Seek to a committed byte offset before starting replay. */
   seekTo(position: number): void {
-    this.filePosition = position;
-    this.parser.reset();
+    this.startOffset = Math.max(0, position);
+    this.tail?.seekTo(this.startOffset);
   }
 
-  /** Get the current byte position. */
+  /** Position after the last complete JSONL line. */
   getPosition(): number {
-    return this.filePosition;
+    return this.tail?.getOffset() ?? this.startOffset ?? 0;
   }
 
   start(replay: boolean): void {
-    if (this._isActive) return;
-    this._isActive = true;
-
-    if (replay) {
-      // Read entire file from offset 0
-      this.readNewBytes();
-    } else {
-      // Skip to end of file
-      try {
-        const stat = fs.statSync(this.sessionPath);
-        this.filePosition = stat.size;
-      } catch {
-        this.filePosition = 0;
-      }
-    }
-
-    // Watch for changes
-    try {
-      this.fsWatcher = fs.watch(this.sessionPath, { persistent: false }, () => {
-        this.debouncedRead();
-      });
-      this.fsWatcher.on('error', (error) => {
-        // Degrade to catch-up polling without killing the live session.
-        this.fsWatcher?.close();
-        this.fsWatcher = null;
-        this.callbacks.onError?.(error);
-      });
-    } catch {
-      // fs.watch not available, rely on polling only
-    }
-
-    // Catch-up polling
-    this.catchupTimer = setInterval(() => {
-      if (this._isActive) this.readNewBytes();
-    }, CATCHUP_INTERVAL_MS);
+    if (this.isActive) return;
+    this.tail = createJsonlTail<RawSessionEvent>({
+      path: this.sessionPath,
+      startOffset: replay ? this.getPosition() : undefined,
+      startAtEnd: !replay,
+      onEvent: (event) => this.handleRawEvent(event),
+      onBatchComplete: () => this.callbacks.onBatchComplete?.(),
+      onError: (error) => this.callbacks.onError?.(error),
+    });
+    this.tail.start();
   }
 
   stop(): void {
-    if (!this._isActive) return;
-    this._isActive = false;
-
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-    if (this.fsWatcher) {
-      this.fsWatcher.close();
-      this.fsWatcher = null;
-    }
-    if (this.catchupTimer) {
-      clearInterval(this.catchupTimer);
-      this.catchupTimer = null;
-    }
-
-    this.parser.flush();
+    this.tail?.stop();
     this.codexInPlanMode = false;
-  }
-
-  private debouncedRead(): void {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.readNewBytes();
-    }, DEBOUNCE_MS);
-  }
-
-  private readNewBytes(): void {
-    if (!this._isActive) return;
-    let fd: number | null = null;
-    try {
-      const stat = fs.statSync(this.sessionPath);
-
-      // Handle file truncation (shouldn't happen with append-only, but be safe)
-      if (stat.size < this.filePosition) {
-        this.filePosition = 0;
-        this.parser.reset();
-      }
-
-      if (stat.size <= this.filePosition) return;
-
-      fd = fs.openSync(this.sessionPath, 'r');
-      const bytesToRead = stat.size - this.filePosition;
-      const buffer = Buffer.alloc(bytesToRead);
-      const bytesRead = fs.readSync(fd, buffer, 0, bytesToRead, this.filePosition);
-      fs.closeSync(fd);
-      fd = null;
-
-      if (bytesRead > 0) {
-        this.filePosition += bytesRead;
-        const chunk = buffer.toString('utf-8', 0, bytesRead);
-        this.parser.processChunk(chunk);
-      }
-    } catch (err) {
-      if (fd !== null) {
-        try {
-          fs.closeSync(fd);
-        } catch {
-          /* ignore */
-        }
-      }
-      this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
-    }
   }
 
   private handleRawEvent(event: RawSessionEvent): void {

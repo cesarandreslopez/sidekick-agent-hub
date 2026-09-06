@@ -5,6 +5,15 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Dashboard checkpoints save after complete event batches, use the current snapshot schema, and reject obsolete or incompatible consumer formats.
+- Project-scoped search passes the workspace path through shared provider discovery, including Codex and database-only OpenCode sessions.
+- Doctor honors `--provider`; unused integrations and missing saved accounts are informational when monitoring existing sessions.
+- Shared watchers preserve partial UTF-8 lines and use OpenCode's platform-specific data directory.
+
 ## [0.26.1] - 2026-09-05
 
 ### Changed

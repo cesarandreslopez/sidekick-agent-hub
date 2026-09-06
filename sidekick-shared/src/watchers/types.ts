@@ -39,6 +39,8 @@ export interface FollowEvent {
 
 export interface SessionWatcherCallbacks {
   onEvent: (event: FollowEvent) => void;
+  /** All events in this read have been delivered; the cursor can now be checkpointed. */
+  onBatchComplete?: () => void;
   onError?: (error: Error) => void;
 }
 

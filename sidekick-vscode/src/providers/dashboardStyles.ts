@@ -23,6 +23,7 @@ export const DASHBOARD_STYLES = `
 
     .header {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: var(--sk-space-2);
       margin-bottom: var(--sk-space-4);
@@ -94,7 +95,8 @@ export const DASHBOARD_STYLES = `
 
     .tab-btn {
       flex: 1;
-      padding: 8px 12px;
+      min-width: 0;
+      padding: 8px 4px;
       font-size: 12px;
       font-weight: 500;
       background: transparent;
@@ -2380,16 +2382,13 @@ export const DASHBOARD_STYLES = `
 
     .session-nav-header {
       display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
       align-items: center;
       justify-content: space-between;
       padding: 6px 8px;
       background: var(--vscode-input-background);
       border-bottom: 1px solid var(--vscode-panel-border);
-      cursor: pointer;
-    }
-
-    .session-nav-header:hover {
-      opacity: 0.85;
     }
 
     .session-nav-header-left {
@@ -2424,7 +2423,9 @@ export const DASHBOARD_STYLES = `
 
     .session-nav-actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 4px;
+      min-width: 0;
     }
 
     .session-provider {
@@ -2496,7 +2497,65 @@ export const DASHBOARD_STYLES = `
       border-top: 1px solid var(--vscode-panel-border);
     }
 
+    [hidden] { display: none !important; }
+    .section-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .session-nav-header-left.section-toggle { flex: 0 0 auto; }
+    button:focus-visible {
+      outline: 2px solid var(--vscode-focusBorder);
+      outline-offset: -2px;
+    }
+    .empty-state-location {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+    }
+    .empty-state-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .empty-state-actions button {
+      padding: 6px 10px;
+      border: 1px solid var(--vscode-button-border, transparent);
+      border-radius: var(--sk-radius-sm);
+      background: var(--vscode-button-secondaryBackground, var(--vscode-input-background));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      font: inherit;
+      cursor: pointer;
+    }
+    .empty-state-actions button:hover {
+      background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+    }
+    .empty-state-actions #resume-monitoring {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+    }
+    .empty-state-actions #resume-monitoring:hover {
+      background: var(--vscode-button-hoverBackground);
+    }
     .session-card {
+      width: 100%;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      border: 0;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -2537,6 +2596,7 @@ export const DASHBOARD_STYLES = `
     }
 
     .session-card-label {
+      display: block;
       font-size: 11px;
       line-height: 1.3;
       overflow: hidden;
@@ -2545,6 +2605,7 @@ export const DASHBOARD_STYLES = `
     }
 
     .session-card-meta {
+      display: block;
       font-size: 10px;
       color: var(--vscode-descriptionForeground);
     }
@@ -2608,6 +2669,10 @@ export const DASHBOARD_STYLES = `
     }
 
     .custom-path-indicator .reset-link {
+      background: none;
+      border: 0;
+      padding: 0;
+      font: inherit;
       color: var(--vscode-textLink-foreground);
       cursor: pointer;
       white-space: nowrap;

@@ -25,8 +25,8 @@ export type {
   OpenCodeRetryPart,
   OpenCodeSnapshotPart,
   OpenCodeProject,
-  DbProject,
-  DbSession,
-  DbMessage,
-  DbPart,
+  OpenCodeDbProject as DbProject,
+  OpenCodeDbSession as DbSession,
+  OpenCodeDbMessage as DbMessage,
+  OpenCodeDbPart as DbPart,
 } from 'sidekick-shared';

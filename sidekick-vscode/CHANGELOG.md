@@ -5,6 +5,20 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Stop and resume keep the same monitor, provider, custom folder, and event subscriptions; cancelled inline requests abort inference and dispose cancellation listeners.
+- Cross-session search uses shared provider discovery, includes database-only sessions, and opens results in the conversation viewer.
+- Dashboard snapshots use the current aggregation schema and validate their consumer format and checkpoint revision.
+
+### Changed
+
+- Empty, unavailable, and paused dashboards show the provider and session location with Refresh, Browse, Run Doctor, and Resume actions.
+- Native session buttons and section toggles, arrow/Home/End tab navigation, and focus preservation make the dashboard usable by keyboard.
+- Health diagnostics prioritize the selected session provider.
+
 ## [0.26.1] - 2026-09-05
 
 ### Changed

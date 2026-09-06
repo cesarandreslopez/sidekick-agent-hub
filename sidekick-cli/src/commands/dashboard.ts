@@ -384,6 +384,20 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   let isPinned = false;
   let pendingSessionPath: string | null = null;
 
+  function checkpointBatch(): void {
+    if (stopped || !sessionPath || !watcher?.getPosition) return;
+    const now = Date.now();
+    if (now - lastSnapshotTime <= SNAPSHOT_INTERVAL_MS) return;
+    let sourceSize = 0;
+    try {
+      sourceSize = fs.statSync(sessionPath).size;
+    } catch {
+      /* DB-backed sessions have no physical session file. */
+    }
+    state.persistSnapshot(watcher.getPosition(), sourceSize);
+    lastSnapshotTime = now;
+  }
+
   function switchToSession(newSessionPath: string) {
     // Save snapshot for current session before switching
     if (watcher?.getPosition && sessionPath) {
@@ -426,22 +440,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
               persistPlan(state, workspacePath).catch(() => {});
             }
 
-            // Periodically save snapshot
-            const now = Date.now();
-            if (now - lastSnapshotTime > SNAPSHOT_INTERVAL_MS && watcher?.getPosition) {
-              lastSnapshotTime = now;
-              let ss = 0;
-              try {
-                if (sessionPath) ss = fs.statSync(sessionPath).size;
-              } catch {
-                /* ignore */
-              }
-              state.persistSnapshot(watcher.getPosition(), ss);
-            }
-
             scheduleRender();
           },
           onError: (err: Error) => reportWatcherError(err),
+          onBatchComplete: checkpointBatch,
         },
       });
       watcher = result.watcher;
@@ -843,22 +845,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
             persistPlan(state, workspacePath).catch(() => {});
           }
 
-          // Periodically save snapshot
-          const now = Date.now();
-          if (now - lastSnapshotTime > SNAPSHOT_INTERVAL_MS && watcher?.getPosition) {
-            lastSnapshotTime = now;
-            let sourceSize = 0;
-            try {
-              if (sessionPath) sourceSize = fs.statSync(sessionPath).size;
-            } catch {
-              /* DB-backed */
-            }
-            state.persistSnapshot(watcher.getPosition(), sourceSize);
-          }
-
           scheduleRender();
         },
         onError: (err: Error) => reportWatcherError(err),
+        onBatchComplete: checkpointBatch,
       },
     });
     watcher = result.watcher;

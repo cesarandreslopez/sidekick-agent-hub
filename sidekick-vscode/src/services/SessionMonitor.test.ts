@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockShowErrorMessage, mockExistsSync } = vi.hoisted(() => ({
   mockShowErrorMessage: vi.fn().mockResolvedValue(undefined),
@@ -41,7 +41,16 @@ vi.mock('./Logger', () => ({
   logError: vi.fn(),
 }));
 
+vi.mock('sidekick-shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('sidekick-shared')>()),
+  saveSnapshot: vi.fn(),
+  loadSnapshot: vi.fn(() => null),
+  deleteSnapshot: vi.fn(),
+}));
+
 import { SessionMonitor } from './SessionMonitor';
+
+afterEach(() => vi.useRealTimers());
 
 function createProvider(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -244,4 +253,85 @@ describe('SessionMonitor', () => {
     expect(snapshot.toolCalls).toEqual(view.toolCalls);
     monitor.dispose();
   });
+});
+
+it('preserves subscribers and provider through repeated stop/start cycles', async () => {
+  vi.useFakeTimers();
+  const pending: unknown[] = [];
+  const provider = createProvider({
+    findActiveSession: vi.fn(() => '/tmp/db-sessions/proj_1/session.json'),
+    createReader: vi.fn(() => ({
+      readNew: () => pending.splice(0),
+      exists: () => true,
+      wasTruncated: () => false,
+      flush: vi.fn(),
+      getPosition: () => 100,
+    })),
+  });
+  const monitor = new SessionMonitor(provider as never);
+  const started = vi.fn();
+  const ended = vi.fn();
+  const usage = vi.fn();
+  monitor.onSessionStart(started);
+  monitor.onSessionEnd(ended);
+  monitor.onTokenUsage(usage);
+  for (let i = 1; i <= 3; i++) {
+    expect(await monitor.start('/workspace')).toBe(true);
+    expect(started).toHaveBeenCalledTimes(i);
+    pending.push({
+      type: 'assistant',
+      timestamp: '2026-09-06T12:00:00Z',
+      message: {
+        role: 'assistant',
+        model: 'test-model',
+        content: [{ type: 'text', text: 'Hello' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(usage).toHaveBeenCalledTimes(i);
+    expect(monitor.getStats().totalInputTokens).toBe(10);
+    monitor.stop();
+    monitor.stop();
+    expect(ended).toHaveBeenCalledTimes(i);
+    expect(monitor.isStopped()).toBe(true);
+    expect(monitor.isActive()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  }
+  expect(monitor.getProvider()).toBe(provider);
+  expect(provider.dispose).not.toHaveBeenCalled();
+  monitor.dispose();
+});
+
+it('resumes the saved custom directory and retains discovery subscriptions', async () => {
+  vi.useFakeTimers();
+  const provider = createProvider({ canMonitorDirectory: () => true });
+  const monitor = new SessionMonitor(
+    provider as never,
+    { get: () => null, update: vi.fn() } as never,
+  );
+  const discovery = vi.fn();
+  monitor.onDiscoveryModeChange(discovery);
+  await monitor.startWithCustomPath('/custom/sessions');
+  monitor.stop();
+  expect(monitor.getCustomPath()).toBe('/custom/sessions');
+  await monitor.start('/workspace');
+  expect(provider.findSessionsInDirectory).toHaveBeenLastCalledWith('/custom/sessions');
+  expect(provider.findActiveSession).not.toHaveBeenCalled();
+  expect(discovery.mock.calls.map(([value]) => value)).toEqual([true, false, true]);
+  monitor.stop();
+  expect(vi.getTimerCount()).toBe(0);
+  monitor.dispose();
+});
+
+it('does not restart discovery when stopped during an asynchronous start', async () => {
+  vi.useFakeTimers();
+  const monitor = new SessionMonitor(createProvider() as never);
+  const start = monitor.start('/workspace');
+  monitor.stop();
+  await expect(start).resolves.toBe(false);
+  expect(monitor.isInDiscoveryMode()).toBe(false);
+  expect(monitor.isStopped()).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
+  monitor.dispose();
 });

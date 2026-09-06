@@ -511,7 +511,7 @@ export { CodexDatabase } from './providers/codexDatabase';
 
 // Search
 export { searchSessions } from './search/sessionSearch';
-export type { SearchResult } from './search/sessionSearch';
+export type { SearchResult, SessionSearchOptions } from './search/sessionSearch';
 export { FilterEngine } from './search/advancedFilter';
 export type {
   FilterMode,

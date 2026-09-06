@@ -560,7 +560,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'refreshSessions':
-        this._sendSessionList();
+        if (this._sessionMonitor.isStopped()) {
+          this._sendSessionList();
+        } else {
+          void this._sessionMonitor.refreshSession().then(
+            () => this._sendSessionList(),
+            (error) => {
+              logError('Failed to refresh sessions', error);
+              this._sendSessionList();
+            },
+          );
+        }
+        break;
+
+      case 'resumeMonitoring':
+        void vscode.commands.executeCommand('sidekick.startMonitoring');
+        break;
+
+      case 'runDoctor':
+        void vscode.commands.executeCommand('sidekick.doctor');
         break;
 
       case 'togglePin':
@@ -1243,7 +1261,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       const providerDiagnostics: SessionProviderDiagnostic[] = [];
       const created = createSessionProviders({
-        onDiagnostic: (diagnostic) => providerDiagnostics.push(diagnostic),
+        onDiagnostic: (diagnostic) =>
+          providerDiagnostics.push(
+            diagnostic.providerId === this._sessionMonitor.getProvider().id
+              ? diagnostic
+              : { ...diagnostic, severity: 'info' },
+          ),
       });
       try {
         // Constructors do no I/O; one discovery per provider surfaces the
@@ -1255,7 +1278,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             providerDiagnostics.push({
               providerId: provider.id,
               kind: 'read_failed',
-              severity: 'error',
+              severity: provider.id === this._sessionMonitor.getProvider().id ? 'error' : 'info',
               phase: 'enumerate',
               message: error instanceof Error ? error.message : String(error),
             });
@@ -1267,6 +1290,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const [report, last7, last30] = await Promise.all([
         runDoctor({
           cwd: workspacePath,
+          provider: this._sessionMonitor.getProvider().id,
           deprecatedSettings: collectDeprecatedSettings(
             vscode.workspace.getConfiguration('sidekick'),
           ),
@@ -2497,12 +2521,35 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._suppressSessionListUpdates) {
       return;
     }
-    if (this._sessionMonitor.isInDiscoveryMode()) {
-      this._postMessage({ type: 'sessionsLoading', loading: true });
-      return;
-    }
     const groups = this._sessionMonitor.getAllSessionsGrouped();
     const customPath = this._sessionMonitor.getCustomPath();
+    const provider = this._sessionMonitor.getProvider();
+    const workspacePath =
+      this._sessionMonitor.getWorkspacePath() ??
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
+      null;
+    const operation = provider.getLastOperationStatus?.();
+    const runtime = provider.getRuntimeStatus?.();
+    const issue = operation
+      ? !operation.usable && operation.runtimeStatus
+      : runtime && !runtime.available && runtime;
+    this._postMessage({
+      type: 'updateSessionAvailability',
+      availability: {
+        status: this._sessionMonitor.isStopped()
+          ? 'paused'
+          : this._sessionMonitor.isActive()
+            ? 'active'
+            : issue
+              ? 'unavailable'
+              : 'empty',
+        providerName: provider.displayName,
+        workspacePath,
+        sessionDirectory:
+          customPath ?? (workspacePath ? provider.getSessionDirectory(workspacePath) : null),
+        message: issue ? issue.message : undefined,
+      },
+    });
     this._postMessage({
       type: 'updateSessionList',
       groups,

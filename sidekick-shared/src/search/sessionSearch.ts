@@ -1,10 +1,7 @@
-/**
- * Provider-aware cross-session search.
- */
+/** Provider-aware cross-session search. */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import type { SessionProviderBase, ProviderId } from '../providers/types';
+import { resolveProjectIdentity } from '../paths';
+import type { SessionProviderBase, ProviderId, SessionFileInfo } from '../providers/types';
 
 export interface SearchResult {
   providerId: ProviderId;
@@ -15,67 +12,81 @@ export interface SearchResult {
   timestamp: string;
 }
 
+export interface SessionSearchOptions {
+  /** Workspace path, resolved canonically. Takes precedence over projectSlug. */
+  projectPath?: string;
+  /** Legacy provider-encoded project identifier. */
+  projectSlug?: string;
+  maxResults?: number;
+  /** Stop obsolete interactive searches between session reads. */
+  signal?: AbortSignal;
+}
+
+async function enumerateSessions(
+  provider: SessionProviderBase,
+  options: SessionSearchOptions,
+): Promise<SessionFileInfo[]> {
+  const workspace = options.projectPath
+    ? resolveProjectIdentity(options.projectPath).resolvedCwd
+    : undefined;
+  if (!options.projectSlug || workspace) {
+    if (provider.listSessionFilesAsync) return provider.listSessionFilesAsync(workspace);
+    if (workspace) {
+      return provider
+        .findAllSessions(workspace)
+        .map((path) => ({ path, mtime: new Date(0), workspacePath: workspace }));
+    }
+    if (provider.listAllSessionFiles) return provider.listAllSessionFiles();
+  }
+
+  // Older/custom providers can expose virtual project directories. Let the
+  // provider enumerate them instead of assuming a particular on-disk layout.
+  const files: SessionFileInfo[] = [];
+  for (const folder of provider.getAllProjectFolders()) {
+    if (options.signal?.aborted) break;
+    if (options.projectSlug && folder.encodedName !== options.projectSlug) continue;
+    const paths =
+      provider.id === 'codex'
+        ? provider.findAllSessions(folder.name)
+        : provider.findSessionsInDirectory(folder.dir);
+    files.push(
+      ...paths.map((path) => ({ path, mtime: folder.lastModified, workspacePath: folder.name })),
+    );
+  }
+  return files;
+}
+
 export async function searchSessions(
   provider: SessionProviderBase,
   query: string,
-  opts?: { projectSlug?: string; maxResults?: number },
+  options: SessionSearchOptions = {},
 ): Promise<SearchResult[]> {
-  const maxResults = opts?.maxResults ?? 50;
+  const maxResults = options.maxResults ?? 50;
   const results: SearchResult[] = [];
-  const baseDir = provider.getProjectsBaseDir();
-
-  try {
-    if (!fs.existsSync(baseDir)) return results;
-
-    // Get all project folders
-    const folders = provider.getAllProjectFolders();
-
-    for (const folder of folders) {
-      if (results.length >= maxResults) break;
-
-      // If projectSlug specified, filter by encoded name
-      if (opts?.projectSlug && folder.encodedName !== opts.projectSlug) continue;
-
-      // Get session files in this folder
-      let sessionFiles: string[] = [];
-      try {
-        const dir = folder.dir;
-        if (fs.existsSync(dir)) {
-          const entries = fs
-            .readdirSync(dir)
-            .filter((f) => f.endsWith('.jsonl') || f.endsWith('.json'));
-          sessionFiles = entries.map((f) => path.join(dir, f));
-        }
-      } catch {
-        /* skip */
+  if (maxResults <= 0 || !query.trim() || options.signal?.aborted) return results;
+  const files = await enumerateSessions(provider, options);
+  const seen = new Set<string>();
+  files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+  for (const file of files) {
+    if (results.length >= maxResults || options.signal?.aborted) break;
+    if (seen.has(file.path)) continue;
+    seen.add(file.path);
+    try {
+      const hits = provider.searchInSession(file.path, query, maxResults - results.length);
+      for (const hit of hits.slice(0, maxResults - results.length)) {
+        results.push({
+          providerId: provider.id,
+          projectPath: hit.projectPath || file.workspacePath || '',
+          sessionPath: hit.sessionPath,
+          snippet: hit.line,
+          eventType: hit.eventType,
+          timestamp: hit.timestamp,
+        });
       }
-
-      // If no files found from dir scan, try findAllSessions with the folder name
-      if (sessionFiles.length === 0) {
-        // Let canonical directory discovery handle synthetic DB-backed paths.
-        sessionFiles = provider.findSessionsInDirectory(folder.dir);
-      }
-
-      for (const sessionPath of sessionFiles) {
-        if (results.length >= maxResults) break;
-        const remaining = maxResults - results.length;
-        const hits = provider.searchInSession(sessionPath, query, remaining);
-
-        for (const hit of hits) {
-          results.push({
-            providerId: provider.id,
-            projectPath: hit.projectPath || folder.name,
-            sessionPath: hit.sessionPath,
-            snippet: hit.line,
-            eventType: hit.eventType,
-            timestamp: hit.timestamp,
-          });
-        }
-      }
+    } catch {
+      // An unreadable session must not hide matches in the remaining sessions.
     }
-  } catch {
-    /* skip */
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
-
-  return results.slice(0, maxResults);
+  return results;
 }

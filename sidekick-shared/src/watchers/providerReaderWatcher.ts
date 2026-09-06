@@ -84,13 +84,14 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
       clearInterval(this.catchupTimer);
       this.catchupTimer = null;
     }
-    this.reader.flush();
+    // Keep unfinished input buffered so a later start can resume losslessly.
   }
 
   private seekToEnd(): void {
     try {
-      const stat = fs.statSync(this.sessionPath);
-      this.reader.seekTo(stat.size);
+      // Consume existing complete records to retain parser context and any
+      // unfinished line, without emitting historical events.
+      this.reader.readNew();
     } catch {
       this.reader.reset();
     }
@@ -115,6 +116,7 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
           this.callbacks.onEvent(followEvent);
         }
       }
+      this.callbacks.onBatchComplete?.();
     } catch (err) {
       this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
     }

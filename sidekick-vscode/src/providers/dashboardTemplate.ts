@@ -58,15 +58,15 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
   <div class="custom-path-indicator" id="custom-path-indicator" title="Using a manually selected session folder">
     <span class="path-text" id="custom-path-text">Custom: /path/to/folder</span>
-    <span class="reset-link" id="reset-custom-path" title="Switch back to auto-detect mode">Reset</span>
+    <button type="button" class="reset-link" id="reset-custom-path" title="Switch back to auto-detect mode">Reset</button>
   </div>
 
   <div class="session-navigator expanded" id="session-navigator">
-    <div class="session-nav-header" data-collapsible="true">
-      <div class="session-nav-header-left">
+    <div class="session-nav-header">
+      <button type="button" class="section-toggle session-nav-header-left" data-toggle-section="session-navigator" aria-controls="session-list" aria-expanded="true">
         <span class="toggle-icon">▶</span>
         <span class="session-nav-title">Sessions</span>
-      </div>
+      </button>
       <div class="session-nav-actions">
         <div class="session-provider">
           <label for="session-provider-select">Provider</label>
@@ -102,6 +102,13 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
       <div class="empty-state">
         <p id="empty-state-title">No active session detected.</p>
         <p id="empty-state-hint">Start a Claude Code, OpenCode, or Codex session to see real-time analytics here.</p>
+        <p id="empty-state-location" class="empty-state-location"></p>
+        <div class="empty-state-actions">
+          <button type="button" id="resume-monitoring" hidden>Resume monitoring</button>
+          <button type="button" id="empty-refresh">Refresh</button>
+          <button type="button" id="empty-browse">Browse sessions</button>
+          <button type="button" id="empty-doctor">Run Doctor</button>
+        </div>
         <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
       </div>
     </div>
@@ -293,13 +300,13 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
       <!-- Agent Guidance Suggestions Panel -->
       <div class="suggestions-section" id="suggestions-panel">
         <div class="suggestions-header" id="suggestions-header">
-          <div class="suggestions-header-left">
+          <button type="button" class="section-toggle suggestions-header-left" data-toggle-section="suggestions-panel" aria-controls="suggestions-body" aria-expanded="false">
             <span class="suggestions-toggle-icon">▶</span>
-            <h3>Improve Agent Guidance</h3>
-          </div>
+            <span class="details-title">Improve Agent Guidance</span>
+          </button>
           <button id="analyze-btn" title="Analyze your session patterns to generate suggestions for your agent's instruction file. Better guidance helps the agent work more efficiently on your project.">Get Suggestions</button>
         </div>
-        <div class="suggestions-body">
+        <div class="suggestions-body" id="suggestions-body">
           <p class="suggestions-intro">
             Analyze your session to get AI-powered suggestions for improving your agent's instruction file.
             <a id="guidance-docs-link" href="https://docs.anthropic.com/en/docs/claude-code/memory#claudemd" target="_blank">Best practices →</a>
@@ -317,15 +324,17 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
       <!-- Session Activity Group -->
       <div class="details-section" id="session-activity-section">
-        <div class="details-toggle" data-group-toggle="session-activity-section">
-          <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Session Activity <span class="group-count-badge" id="activity-count-badge" style="display:none;">0</span></h3>
-          <span class="group-summary" id="session-activity-summary"></span>
-          <label class="filter-toggle event-log-toggle" title="Record all session events to ~/.config/sidekick/event-logs/ for debugging. Events are written in real-time as a JSONL audit trail." onclick="event.stopPropagation()">
+        <div class="details-toggle">
+          <button type="button" class="section-toggle" data-group-toggle="session-activity-section" aria-controls="session-activity-section-body" aria-expanded="false">
+            <span class="toggle-icon">▶</span>
+            <span class="details-title">Session Activity <span class="group-count-badge" id="activity-count-badge" style="display:none;">0</span></span>
+            <span class="group-summary" id="session-activity-summary"></span>
+          </button>
+          <label class="filter-toggle event-log-toggle" title="Record all session events to ~/.config/sidekick/event-logs/ for debugging. Events are written in real-time as a JSONL audit trail.">
             <input type="checkbox" id="event-log-toggle" /> Event Log
           </label>
         </div>
-        <div class="details-content">
+        <div class="details-content" id="session-activity-section-body">
           <!-- Context Attribution -->
           <div class="section" id="context-attribution-section" style="display: none;">
             <div class="section-title section-title-with-info">
@@ -472,12 +481,15 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
       <!-- Performance & Cost Group -->
       <div class="details-section" id="perf-cost-section">
-        <div class="details-toggle" data-group-toggle="perf-cost-section">
-          <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Performance &amp; Cost</h3>
-          <span class="group-summary" id="perf-cost-summary"></span>
+        <div class="details-toggle">
+          <button type="button" class="section-toggle" data-group-toggle="perf-cost-section" aria-controls="perf-cost-section-body" aria-expanded="false">
+            <span class="toggle-icon">▶</span>
+            <span class="details-title">Performance &amp; Cost</span>
+            <span class="group-summary" id="perf-cost-summary"></span>
+          </button>
+
         </div>
-        <div class="details-content">
+        <div class="details-content" id="perf-cost-section-body">
           <div class="section">
             <div class="section-title section-title-with-info">
               Model Breakdown
@@ -527,12 +539,15 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
       <!-- Tasks & Recovery Group -->
       <div class="details-section" id="tasks-recovery-section">
-        <div class="details-toggle" data-group-toggle="tasks-recovery-section">
-          <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Tasks &amp; Recovery</h3>
-          <span class="group-summary" id="tasks-recovery-summary"></span>
+        <div class="details-toggle">
+          <button type="button" class="section-toggle" data-group-toggle="tasks-recovery-section" aria-controls="tasks-recovery-section-body" aria-expanded="false">
+            <span class="toggle-icon">▶</span>
+            <span class="details-title">Tasks &amp; Recovery</span>
+            <span class="group-summary" id="tasks-recovery-summary"></span>
+          </button>
+
         </div>
-        <div class="details-content">
+        <div class="details-content" id="tasks-recovery-section-body">
           <div class="section" id="task-perf-section" style="display: none;">
             <div class="section-title">Task Performance</div>
             <div id="task-perf-body"></div>
@@ -547,12 +562,15 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
       <!-- Decisions Group -->
       <div class="details-section" id="decisions-section-group">
-        <div class="details-toggle" data-group-toggle="decisions-section-group">
-          <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Decisions <span class="group-count-badge" id="decisions-count-badge" style="display:none;">0</span></h3>
-          <span class="group-summary" id="decisions-summary"></span>
+        <div class="details-toggle">
+          <button type="button" class="section-toggle" data-group-toggle="decisions-section-group" aria-controls="decisions-section-group-body" aria-expanded="false">
+            <span class="toggle-icon">▶</span>
+            <span class="details-title">Decisions <span class="group-count-badge" id="decisions-count-badge" style="display:none;">0</span></span>
+            <span class="group-summary" id="decisions-summary"></span>
+          </button>
+
         </div>
-        <div class="details-content">
+        <div class="details-content" id="decisions-section-group-body">
           <div class="section" id="decisions-section" style="display: none;">
             <div style="margin-bottom:8px;">
               <input type="text" id="decisions-search" placeholder="Search decisions..."
@@ -568,12 +586,15 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
       <!-- Analytics Group (Gonzo/Lazyjournal integration) -->
       <div class="details-section" id="analytics-section-group">
-        <div class="details-toggle" data-group-toggle="analytics-section-group">
-          <span class="toggle-icon">▶</span>
-          <h3 class="details-title">Analytics</h3>
-          <span class="group-summary" id="analytics-summary"></span>
+        <div class="details-toggle">
+          <button type="button" class="section-toggle" data-group-toggle="analytics-section-group" aria-controls="analytics-section-group-body" aria-expanded="false">
+            <span class="toggle-icon">▶</span>
+            <span class="details-title">Analytics</span>
+            <span class="group-summary" id="analytics-summary"></span>
+          </button>
+
         </div>
-        <div class="details-content">
+        <div class="details-content" id="analytics-section-group-body">
           <div class="section" id="tool-freq-section" style="display: none;">
             <div class="section-title">Tool Frequency</div>
             <div class="chart-container" style="height:160px;">

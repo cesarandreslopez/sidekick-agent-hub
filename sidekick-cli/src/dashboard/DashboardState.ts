@@ -318,7 +318,11 @@ export class DashboardState {
     this.touch();
     const snapshot = loadSnapshot(sessionId);
     if (!snapshot) return null;
-    if (snapshot.providerId !== providerId) {
+    if (
+      snapshot.providerId !== providerId ||
+      snapshot.consumer.checkpointRevision !== 2 ||
+      snapshot.consumer.consumerType !== 'cli'
+    ) {
       deleteSnapshot(sessionId);
       return null;
     }
@@ -411,15 +415,18 @@ export class DashboardState {
   persistSnapshot(readerPosition: number, sourceSize: number): void {
     if (!this._sessionId) return;
 
+    const aggregator = this._aggregator.serialize();
     const snapshot: SessionSnapshot = {
-      version: 1,
+      version: aggregator.version,
       sessionId: this._sessionId,
       providerId: this._aggregator.getMetrics().providerId || 'claude-code',
       readerPosition,
       sourceSize,
       createdAt: new Date().toISOString(),
-      aggregator: this._aggregator.serialize(),
+      aggregator,
       consumer: {
+        consumerType: 'cli',
+        checkpointRevision: 2,
         timeline: this._timeline,
         fileMap: Array.from(this._fileMap.entries()),
         urlMap: Array.from(this._urlMap.entries()),

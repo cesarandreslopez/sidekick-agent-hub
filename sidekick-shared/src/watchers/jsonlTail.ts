@@ -10,6 +10,25 @@ import { JsonlParser } from '../parsers/jsonl';
 const DEFAULT_DEBOUNCE_MS = 100;
 const DEFAULT_CATCHUP_INTERVAL_MS = 30_000;
 
+/** Skip old complete events while retaining an in-progress final line. */
+function lastCompleteLineOffset(filePath: string): number {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    let end = fs.fstatSync(fd).size;
+    const buffer = Buffer.alloc(64 * 1024);
+    while (end > 0) {
+      const start = Math.max(0, end - buffer.length);
+      const count = fs.readSync(fd, buffer, 0, end - start, start);
+      const newline = buffer.subarray(0, count).lastIndexOf(0x0a);
+      if (newline >= 0) return start + newline + 1;
+      end = start;
+    }
+    return 0;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export interface JsonlTailBatch {
   bytesRead: number;
   eventsRead: number;
@@ -80,7 +99,7 @@ class JsonlTailReader<T> implements JsonlTail {
 
     if (this.options.startAtEnd && this.options.startOffset === undefined) {
       try {
-        this.readOffset = fs.statSync(this.options.path).size;
+        this.readOffset = lastCompleteLineOffset(this.options.path);
       } catch {
         this.readOffset = 0;
       }
@@ -188,7 +207,11 @@ class JsonlTailReader<T> implements JsonlTail {
       this.fsWatcher = fs.watch(this.options.path, { persistent: false }, () => {
         this.debouncedRead();
       });
-      this.fsWatcher.on('error', (error) => this.options.onError?.(error));
+      this.fsWatcher.on('error', (error) => {
+        this.fsWatcher?.close();
+        this.fsWatcher = null;
+        this.options.onError?.(error);
+      });
     } catch {
       // Polling still covers filesystems where fs.watch is unavailable.
     }

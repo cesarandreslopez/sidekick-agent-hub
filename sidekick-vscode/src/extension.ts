@@ -778,8 +778,8 @@ export async function activate(context: vscode.ExtensionContext) {
     const conversationViewer = new ConversationViewProvider(context.extensionUri, sessionMonitor);
     context.subscriptions.push(conversationViewer);
     context.subscriptions.push(
-      vscode.commands.registerCommand('sidekick.openConversation', () => {
-        conversationViewer.open();
+      vscode.commands.registerCommand('sidekick.openConversation', (sessionPath?: string) => {
+        return conversationViewer.open(sessionPath);
       }),
     );
     log('ConversationViewProvider initialized');
@@ -1841,18 +1841,21 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      if (!workspaceFolder) {
-        vscode.window.showWarningMessage('No workspace folder open');
+      const customPath = sessionMonitor.getCustomPath();
+      if (!workspaceFolder && !customPath) {
+        vscode.window.showWarningMessage('Open a workspace folder or browse for a session folder.');
         return;
       }
 
-      const active = await sessionMonitor.start(workspaceFolder.uri.fsPath);
+      const active = workspaceFolder
+        ? await sessionMonitor.start(workspaceFolder.uri.fsPath)
+        : await sessionMonitor.startWithCustomPath(customPath!);
       if (active) {
         vscode.window.showInformationMessage('Session monitoring started');
         log(`Session monitoring started: ${sessionMonitor.getSessionPath()}`);
-      } else {
+      } else if (sessionMonitor.isInDiscoveryMode()) {
         vscode.window.showInformationMessage(
-          'No active session found. Waiting for Claude Code to start...',
+          `No active session found. Waiting for ${sessionMonitor.getProvider().displayName} to start...`,
         );
         log('Session monitor in discovery mode, waiting for session');
       }
@@ -1867,20 +1870,12 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      if (!sessionMonitor.isActive() && !sessionMonitor.isInDiscoveryMode()) {
+      if (sessionMonitor.isStopped()) {
         vscode.window.showInformationMessage('Session monitoring is not active');
         return;
       }
 
-      // Dispose old provider before tearing down the monitor (monitor.dispose() doesn't do it)
-      const oldProvider = sessionMonitor.getProvider();
-      sessionMonitor.dispose();
-      oldProvider.dispose();
-
-      // Reinitialize for potential future use
-      const newProvider = detectProvider();
-      sessionMonitor = new SessionMonitor(newProvider, context.workspaceState);
-      context.subscriptions.push(newProvider, sessionMonitor);
+      sessionMonitor.stop();
 
       vscode.window.showInformationMessage('Session monitoring stopped');
       log('Session monitoring stopped by user');
@@ -1952,7 +1947,11 @@ export async function activate(context: vscode.ExtensionContext) {
       const deprecatedSettings = collectDeprecatedSettings(
         vscode.workspace.getConfiguration('sidekick'),
       );
-      const report = await runDoctor({ cwd: workspacePath, deprecatedSettings });
+      const report = await runDoctor({
+        cwd: workspacePath,
+        deprecatedSettings,
+        provider: sessionMonitor?.getProvider().id,
+      });
       log(formatHealthReport(report));
       showLog();
       const message = `Sidekick Doctor: ${report.status} (${report.checks.filter((check) => check.status === 'warning' || check.status === 'error').length} items need attention)`;

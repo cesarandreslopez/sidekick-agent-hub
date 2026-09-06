@@ -129,6 +129,8 @@ function extractClaudeLabelFromPrefix(chunk: string): string | null {
 class ClaudeCodeReader implements SessionReader {
   private parser: JsonlParser<unknown>;
   private filePosition = 0;
+  /** Cursor after the last complete line, safe to persist across restarts. */
+  private committedPosition = 0;
   private events: SessionEvent[] = [];
   private _wasTruncated = false;
   private decoder = new StringDecoder('utf8');
@@ -162,6 +164,7 @@ class ClaudeCodeReader implements SessionReader {
       if (currentSize < this.filePosition) {
         this._wasTruncated = true;
         this.filePosition = 0;
+        this.committedPosition = 0;
         this.parser.reset();
         this.decoder = new StringDecoder('utf8');
       }
@@ -182,7 +185,10 @@ class ClaudeCodeReader implements SessionReader {
         fs.closeSync(fd);
       }
 
-      const chunk = this.decoder.write(buffer.subarray(0, bytesRead));
+      const bytes = buffer.subarray(0, bytesRead);
+      const newline = bytes.lastIndexOf(0x0a);
+      if (newline >= 0) this.committedPosition = this.filePosition + newline + 1;
+      const chunk = this.decoder.write(bytes);
       this.parser.processChunk(chunk);
       this.filePosition += bytesRead;
     } catch (error) {
@@ -199,6 +205,7 @@ class ClaudeCodeReader implements SessionReader {
 
   reset(): void {
     this.filePosition = 0;
+    this.committedPosition = 0;
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
     this._wasTruncated = false;
@@ -216,11 +223,12 @@ class ClaudeCodeReader implements SessionReader {
   }
 
   getPosition(): number {
-    return this.filePosition;
+    return this.committedPosition;
   }
 
   seekTo(position: number): void {
     this.filePosition = position;
+    this.committedPosition = position;
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
   }
