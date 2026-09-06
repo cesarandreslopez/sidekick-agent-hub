@@ -1802,6 +1802,9 @@ export class SessionMonitor implements vscode.Disposable {
    */
   private tryRestoreFromSnapshot(sessionPath: string): boolean {
     if (!this.sessionId || !this.reader) return false;
+    // SQLite timestamp cursors do not retain row-version deduplication state.
+    // Replaying OpenCode history avoids counting the boundary rows twice.
+    if (this.provider.id === 'opencode') return false;
 
     const snapshot = loadSnapshot(this.sessionId);
     if (!snapshot) return false;
@@ -1809,7 +1812,7 @@ export class SessionMonitor implements vscode.Disposable {
     // Verify provider matches
     if (
       snapshot.providerId !== this.provider.id ||
-      snapshot.consumer.checkpointRevision !== 2 ||
+      snapshot.consumer?.checkpointRevision !== 2 ||
       snapshot.consumer.consumerType !== 'vscode'
     ) {
       deleteSnapshot(this.sessionId);
@@ -1944,6 +1947,7 @@ export class SessionMonitor implements vscode.Disposable {
    */
   private persistSnapshot(): void {
     if (!this.sessionId || !this.reader) return;
+    if (this.provider.id === 'opencode') return;
 
     let sourceSize = 0;
     if (this.sessionPath) {

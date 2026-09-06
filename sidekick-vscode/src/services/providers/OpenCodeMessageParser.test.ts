@@ -9,6 +9,13 @@ import {
 } from './OpenCodeMessageParser';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../../types/opencode';
 
+import type { SessionEvent } from 'sidekick-shared';
+
+function messageOf(event: SessionEvent | undefined): NonNullable<SessionEvent['message']> {
+  if (!event?.message) throw new Error('Expected a message-bearing session event');
+  return event.message;
+}
+
 describe('OpenCodeMessageParser', () => {
   describe('convertOpenCodeMessage', () => {
     it('should convert a user text message', () => {
@@ -27,8 +34,10 @@ describe('OpenCodeMessageParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      expect(events[0].message.role).toBe('user');
-      expect(events[0].message.content).toEqual([{ type: 'text', text: 'Hello, please help me.' }]);
+      expect(messageOf(events[0]).role).toBe('user');
+      expect(messageOf(events[0]).content).toEqual([
+        { type: 'text', text: 'Hello, please help me.' },
+      ]);
       expect(events[0].timestamp).toBe('2025-01-15T10:00:00Z');
     });
 
@@ -49,16 +58,16 @@ describe('OpenCodeMessageParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      expect(events[0].message.role).toBe('assistant');
-      expect(events[0].message.model).toBe('claude-sonnet-4-20250514');
-      expect(events[0].message.usage).toEqual({
+      expect(messageOf(events[0]).role).toBe('assistant');
+      expect(messageOf(events[0]).model).toBe('claude-sonnet-4-20250514');
+      expect(messageOf(events[0]).usage).toEqual({
         input_tokens: 1000,
         output_tokens: 500,
         cache_creation_input_tokens: 100,
         cache_read_input_tokens: 200,
         reasoning_tokens: 0,
       });
-      expect(events[0].message.content).toEqual([{ type: 'text', text: 'Sure, I can help!' }]);
+      expect(messageOf(events[0]).content).toEqual([{ type: 'text', text: 'Sure, I can help!' }]);
       expect(events[0].timestamp).toBe('2025-01-15T10:00:05Z');
     });
 
@@ -77,7 +86,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      expect(events[0].message.usage).toEqual({
+      expect(messageOf(events[0]).usage).toEqual({
         input_tokens: 1000,
         output_tokens: 500,
         cache_creation_input_tokens: 100,
@@ -102,7 +111,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as unknown[];
+      const content = messageOf(events[0]).content as unknown[];
       expect(content).toHaveLength(2);
       expect(content[0]).toEqual({ type: 'thinking', thinking: 'Let me think about this...' });
       expect(content[1]).toEqual({ type: 'text', text: 'Here is my answer.' });
@@ -140,7 +149,7 @@ describe('OpenCodeMessageParser', () => {
       // Assistant event with tool_use block
       const assistantEvent = events[0];
       expect(assistantEvent.type).toBe('assistant');
-      const content = assistantEvent.message.content as unknown[];
+      const content = messageOf(assistantEvent).content as unknown[];
       expect(content).toHaveLength(1);
       expect(content[0]).toEqual({
         type: 'tool_use',
@@ -152,7 +161,7 @@ describe('OpenCodeMessageParser', () => {
       // Synthetic tool_result event
       const resultEvent = events[1];
       expect(resultEvent.type).toBe('user');
-      const resultContent = resultEvent.message.content as unknown[];
+      const resultContent = messageOf(resultEvent).content as unknown[];
       expect(resultContent).toHaveLength(1);
       expect(resultContent[0]).toEqual({
         type: 'tool_result',
@@ -191,7 +200,7 @@ describe('OpenCodeMessageParser', () => {
       expect(events).toHaveLength(2);
 
       const resultEvent = events[1];
-      const resultContent = resultEvent.message.content as unknown[];
+      const resultContent = messageOf(resultEvent).content as unknown[];
       expect(resultContent[0]).toEqual({
         type: 'tool_result',
         tool_use_id: 'call-456',
@@ -218,7 +227,7 @@ describe('OpenCodeMessageParser', () => {
       // Should produce: assistant event + summary event
       const summaryEvent = events.find((e) => e.type === 'summary');
       expect(summaryEvent).toBeDefined();
-      expect(summaryEvent!.message.content).toBe('Context compacted');
+      expect(messageOf(summaryEvent!).content).toBe('Context compacted');
     });
 
     it('should detect compaction from compaction part', () => {
@@ -254,7 +263,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as { type: string; text: string }[];
+      const content = messageOf(events[0]).content as { type: string; text: string }[];
       expect(content[0].text).toBe('First');
       expect(content[1].text).toBe('Second');
     });
@@ -350,7 +359,7 @@ describe('OpenCodeMessageParser', () => {
       // Should produce assistant event + tool_result
       expect(events).toHaveLength(2);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as unknown[];
+      const content = messageOf(events[0]).content as unknown[];
       expect(content[0]).toEqual({
         type: 'tool_use',
         id: 'call_abc',
@@ -360,7 +369,7 @@ describe('OpenCodeMessageParser', () => {
 
       const resultEvent = events[1];
       expect(resultEvent.type).toBe('user');
-      const resultContent = resultEvent.message.content as unknown[];
+      const resultContent = messageOf(resultEvent).content as unknown[];
       expect(resultContent[0]).toEqual({
         type: 'tool_result',
         tool_use_id: 'call_abc',
@@ -394,7 +403,7 @@ describe('OpenCodeMessageParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as unknown[];
+      const content = messageOf(events[0]).content as unknown[];
       // Only the text part should be in content
       expect(content).toHaveLength(1);
       expect(content[0]).toEqual({ type: 'text', text: 'Hello' });
@@ -421,7 +430,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as unknown[];
+      const content = messageOf(events[0]).content as unknown[];
       expect(content).toHaveLength(2);
       expect(content[0]).toEqual({
         type: 'tool_use',
@@ -457,7 +466,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as unknown[];
+      const content = messageOf(events[0]).content as unknown[];
       expect(content[0]).toEqual({
         type: 'tool_use',
         id: 'patch-part-1',
@@ -805,7 +814,7 @@ describe('OpenCodeMessageParser', () => {
 
       const assistantEvent = events[0];
       expect(assistantEvent.type).toBe('assistant');
-      const content = assistantEvent.message.content as unknown[];
+      const content = messageOf(assistantEvent).content as unknown[];
       expect(content[0]).toEqual({
         type: 'tool_use',
         id: 'subtask-part-sub-1',
@@ -821,7 +830,7 @@ describe('OpenCodeMessageParser', () => {
 
       const resultEvent = events[1];
       expect(resultEvent.type).toBe('user');
-      const resultContent = resultEvent.message.content as unknown[];
+      const resultContent = messageOf(resultEvent).content as unknown[];
       expect(resultContent[0]).toEqual({
         type: 'tool_result',
         tool_use_id: 'subtask-part-sub-1',
@@ -851,7 +860,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as { type: string; text: string }[];
+      const content = messageOf(events[0]).content as { type: string; text: string }[];
       expect(content[0]).toEqual({ type: 'text', text: '[File: output.log (text/plain)]' });
     });
 
@@ -876,7 +885,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as { type: string; text: string }[];
+      const content = messageOf(events[0]).content as { type: string; text: string }[];
       expect(content[0]).toEqual({ type: 'text', text: '[Retry attempt 3: Timeout]' });
     });
 
@@ -897,7 +906,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as unknown[];
+      const content = messageOf(events[0]).content as unknown[];
       // Only the text part should appear
       expect(content).toHaveLength(1);
       expect(content[0]).toEqual({ type: 'text', text: 'Hello' });
@@ -927,7 +936,7 @@ describe('OpenCodeMessageParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      const content = events[0].message.content as { type: string; text: string }[];
+      const content = messageOf(events[0]).content as { type: string; text: string }[];
       expect(content).toHaveLength(3);
       expect(content[0]).toEqual({ type: 'text', text: 'Check this file' });
       expect(content[1]).toEqual({ type: 'text', text: '[File: screen.png (image/png)]' });
@@ -1060,7 +1069,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as { type: string; text: string }[];
+      const content = messageOf(events[0]).content as { type: string; text: string }[];
       // Text part + error block
       expect(content).toHaveLength(2);
       expect(content[0]).toEqual({ type: 'text', text: 'Partial response' });
@@ -1084,7 +1093,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as { type: string; text: string }[];
+      const content = messageOf(events[0]).content as { type: string; text: string }[];
       expect(content[0]).toEqual({ type: 'text', text: '[AuthError] Invalid API key' });
     });
 
@@ -1102,7 +1111,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as { type: string; text: string }[];
+      const content = messageOf(events[0]).content as { type: string; text: string }[];
       expect(content[0]).toEqual({ type: 'text', text: '[Error] Unknown error' });
     });
   });
@@ -1175,7 +1184,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as Array<{ type: string; name: string }>;
+      const content = messageOf(events[0]).content as Array<{ type: string; name: string }>;
       expect(content[0].name).toBe('Glob');
     });
 
@@ -1205,7 +1214,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         name: string;
         input: Record<string, unknown>;
@@ -1270,7 +1279,7 @@ describe('OpenCodeMessageParser', () => {
       const events = convertOpenCodeMessage(message, parts);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<Record<string, unknown>>;
+      const content = messageOf(events[0]).content as Array<Record<string, unknown>>;
       expect(content).toHaveLength(2); // text + synthetic tool_use
       expect(content[1]).toEqual({
         type: 'tool_use',
@@ -1299,7 +1308,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as Array<Record<string, unknown>>;
+      const content = messageOf(events[0]).content as Array<Record<string, unknown>>;
       expect(content).toHaveLength(2);
       expect(content[1]).toEqual({
         type: 'tool_use',
@@ -1334,7 +1343,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as Array<Record<string, unknown>>;
+      const content = messageOf(events[0]).content as Array<Record<string, unknown>>;
       // thinking + text + synthetic tool_use
       expect(content).toHaveLength(3);
       expect(content[2].name).toBe('EnterPlanMode');
@@ -1362,7 +1371,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as Array<Record<string, unknown>>;
+      const content = messageOf(events[0]).content as Array<Record<string, unknown>>;
       // text + real tool_use — no synthetic duplicate
       const planModeBlocks = content.filter(
         (b) => b.type === 'tool_use' && (b.name === 'EnterPlanMode' || b.name === 'ExitPlanMode'),
@@ -1389,7 +1398,7 @@ describe('OpenCodeMessageParser', () => {
 
       const events = convertOpenCodeMessage(message, parts);
 
-      const content = events[0].message.content as Array<Record<string, unknown>>;
+      const content = messageOf(events[0]).content as Array<Record<string, unknown>>;
       expect(content).toHaveLength(1); // Just the text block
       expect(content[0].type).toBe('text');
     });

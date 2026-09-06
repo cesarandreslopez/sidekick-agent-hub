@@ -7,6 +7,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { CodexRolloutParser, extractPatchFilePaths } from './CodexRolloutParser';
 import type { CodexRolloutLine } from '../../types/codex';
 
+import type { SessionEvent } from 'sidekick-shared';
+
+function messageOf(event: SessionEvent | undefined): NonNullable<SessionEvent['message']> {
+  if (!event?.message) throw new Error('Expected a message-bearing session event');
+  return event.message;
+}
+
 describe('CodexRolloutParser', () => {
   let parser: CodexRolloutParser;
 
@@ -64,9 +71,9 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      expect(events[0].message.role).toBe('user');
-      expect(events[0].message.id).toBe('msg-1');
-      const content = events[0].message.content as Array<{ type: string; text: string }>;
+      expect(messageOf(events[0]).role).toBe('user');
+      expect(messageOf(events[0]).id).toBe('msg-1');
+      const content = messageOf(events[0]).content as Array<{ type: string; text: string }>;
       expect(content[0].text).toBe('Hello, world!');
     });
 
@@ -88,7 +95,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      const content = events[0].message.content as Array<{ type: string; text: string }>;
+      const content = messageOf(events[0]).content as Array<{ type: string; text: string }>;
       expect(content[0].text).toBe('Part 1\nPart 2');
     });
 
@@ -114,8 +121,8 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      expect(events[0].message.model).toBe('gpt-4.1');
-      const content = events[0].message.content as Array<{ type: string; text: string }>;
+      expect(messageOf(events[0]).model).toBe('gpt-4.1');
+      const content = messageOf(events[0]).content as Array<{ type: string; text: string }>;
       expect(content[0].text).toBe('Hello from assistant');
     });
 
@@ -150,8 +157,8 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('system');
-      expect(events[0].message.sourceLabel).toBe('system');
-      expect(events[0].message.content).toEqual([{ type: 'text', text: 'System prompt' }]);
+      expect(messageOf(events[0]).sourceLabel).toBe('system');
+      expect(messageOf(events[0]).content).toEqual([{ type: 'text', text: 'System prompt' }]);
     });
   });
 
@@ -175,7 +182,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{ type: string; thinking: string }>;
+      const content = messageOf(events[0]).content as Array<{ type: string; thinking: string }>;
       expect(content[0].type).toBe('thinking');
       expect(content[0].thinking).toContain('I need to think about this...');
       expect(content[0].thinking).toContain('Let me reason step by step.');
@@ -216,7 +223,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         id: string;
         name: string;
@@ -246,7 +253,7 @@ describe('CodexRolloutParser', () => {
 
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         input: Record<string, unknown>;
       }>;
@@ -268,7 +275,7 @@ describe('CodexRolloutParser', () => {
 
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         name: string;
         input: Record<string, unknown>;
       }>;
@@ -296,7 +303,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         tool_use_id: string;
         content: string;
@@ -318,7 +325,7 @@ describe('CodexRolloutParser', () => {
       };
 
       const events = parser.convertLine(line);
-      const content = events[0].message.content as Array<{ is_error?: boolean }>;
+      const content = messageOf(events[0]).content as Array<{ is_error?: boolean }>;
       expect(content[0].is_error).toBe(true);
     });
   });
@@ -345,7 +352,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         name: string;
         input: Record<string, unknown>;
@@ -370,7 +377,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('summary');
-      expect(events[0].message.content).toBe('Previous context was summarized.');
+      expect(messageOf(events[0]).content).toBe('Previous context was summarized.');
     });
 
     it('should handle compacted without summary', () => {
@@ -383,7 +390,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('summary');
-      expect(events[0].message.content).toBe('Context compacted');
+      expect(messageOf(events[0]).content).toBe('Context compacted');
     });
   });
 
@@ -431,8 +438,8 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('system');
-      expect(events[0].message.sourceLabel).toBe('token count');
-      expect(events[0].message.usage).toEqual({
+      expect(messageOf(events[0]).sourceLabel).toBe('token count');
+      expect(messageOf(events[0]).usage).toEqual({
         input_tokens: 500,
         output_tokens: 200,
         cache_read_input_tokens: 500,
@@ -537,7 +544,7 @@ describe('CodexRolloutParser', () => {
       // First: tool_use (Bash)
       expect(endEvents[0].type).toBe('assistant');
       const toolUse = (
-        endEvents[0].message.content as Array<{
+        messageOf(endEvents[0]).content as Array<{
           type: string;
           name: string;
           input: Record<string, unknown>;
@@ -549,7 +556,7 @@ describe('CodexRolloutParser', () => {
       // Second: tool_result
       expect(endEvents[1].type).toBe('user');
       const toolResult = (
-        endEvents[1].message.content as Array<{
+        messageOf(endEvents[1]).content as Array<{
           type: string;
           tool_use_id: string;
           content: string;
@@ -585,7 +592,7 @@ describe('CodexRolloutParser', () => {
       });
 
       const toolResult = (
-        events[1].message.content as Array<{ is_error: boolean; content: string }>
+        messageOf(events[1]).content as Array<{ is_error: boolean; content: string }>
       )[0];
       expect(toolResult.is_error).toBe(true);
       expect(toolResult.content).toBe('command failed');
@@ -605,7 +612,9 @@ describe('CodexRolloutParser', () => {
 
       // Should still emit events (with empty command)
       expect(events).toHaveLength(2);
-      const toolUse = (events[0].message.content as Array<{ input: Record<string, unknown> }>)[0];
+      const toolUse = (
+        messageOf(events[0]).content as Array<{ input: Record<string, unknown> }>
+      )[0];
       expect(toolUse.input.command).toBe('');
     });
   });
@@ -641,12 +650,12 @@ describe('CodexRolloutParser', () => {
       expect(events).toHaveLength(2);
 
       const toolUse = (
-        events[0].message.content as Array<{ name: string; input: Record<string, unknown> }>
+        messageOf(events[0]).content as Array<{ name: string; input: Record<string, unknown> }>
       )[0];
       expect(toolUse.name).toBe('Read_file');
 
       const toolResult = (
-        events[1].message.content as Array<{ content: string; is_error: boolean }>
+        messageOf(events[1]).content as Array<{ content: string; is_error: boolean }>
       )[0];
       expect(toolResult.content).toBe('file content');
       expect(toolResult.is_error).toBe(false);
@@ -674,7 +683,7 @@ describe('CodexRolloutParser', () => {
         },
       });
 
-      const toolResult = (events[1].message.content as Array<{ is_error: boolean }>)[0];
+      const toolResult = (messageOf(events[1]).content as Array<{ is_error: boolean }>)[0];
       expect(toolResult.is_error).toBe(true);
     });
   });
@@ -696,7 +705,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{ text: string }>;
+      const content = messageOf(events[0]).content as Array<{ text: string }>;
       expect(content[0].text).toContain('[Error (429)]');
       expect(content[0].text).toContain('Rate limit exceeded');
     });
@@ -711,7 +720,7 @@ describe('CodexRolloutParser', () => {
         },
       });
 
-      const content = events[0].message.content as Array<{ text: string }>;
+      const content = messageOf(events[0]).content as Array<{ text: string }>;
       expect(content[0].text).toBe('[Error] Something went wrong');
     });
   });
@@ -734,7 +743,7 @@ describe('CodexRolloutParser', () => {
       const events = parser.convertLine(line);
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('summary');
-      expect(events[0].message.content).toBe('Context was trimmed');
+      expect(messageOf(events[0]).content).toBe('Context was trimmed');
     });
   });
 
@@ -752,7 +761,7 @@ describe('CodexRolloutParser', () => {
       });
 
       expect(enter).toHaveLength(1);
-      const enterContent = enter[0].message.content as Array<{ name: string }>;
+      const enterContent = messageOf(enter[0]).content as Array<{ name: string }>;
       expect(enterContent[0].name).toBe('EnterPlanMode');
 
       const exit = parser.convertLine({
@@ -764,7 +773,7 @@ describe('CodexRolloutParser', () => {
       });
 
       expect(exit).toHaveLength(1);
-      const exitContent = exit[0].message.content as Array<{ name: string }>;
+      const exitContent = messageOf(exit[0]).content as Array<{ name: string }>;
       expect(exitContent[0].name).toBe('ExitPlanMode');
     });
 
@@ -804,8 +813,8 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      expect(events[0].message.model).toBe('o4-mini');
-      const content = events[0].message.content as Array<{
+      expect(messageOf(events[0]).model).toBe('o4-mini');
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         id: string;
         name: string;
@@ -955,8 +964,8 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      expect(events[0].message.model).toBe('o4-mini');
-      const content = events[0].message.content as Array<{
+      expect(messageOf(events[0]).model).toBe('o4-mini');
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         id: string;
         name: string;
@@ -991,7 +1000,7 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(3);
       const names = events.map((e) => {
-        const c = e.message.content as Array<{ name: string; input: Record<string, unknown> }>;
+        const c = messageOf(e).content as Array<{ name: string; input: Record<string, unknown> }>;
         return { name: c[0].name, file: c[0].input.file_path };
       });
       expect(names).toEqual([
@@ -1032,7 +1041,7 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('assistant');
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         name: string;
         input: Record<string, unknown>;
@@ -1058,7 +1067,7 @@ describe('CodexRolloutParser', () => {
       } as unknown as CodexRolloutLine);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{ input: Record<string, unknown> }>;
+      const content = messageOf(events[0]).content as Array<{ input: Record<string, unknown> }>;
       expect(content[0].input).toEqual({
         raw: 'not json at all',
         _sidekickRawToolName: 'some_tool',
@@ -1083,7 +1092,7 @@ describe('CodexRolloutParser', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user');
-      const content = events[0].message.content as Array<{
+      const content = messageOf(events[0]).content as Array<{
         type: string;
         tool_use_id: string;
         content: string;
@@ -1106,7 +1115,7 @@ describe('CodexRolloutParser', () => {
       } as unknown as CodexRolloutLine);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{ is_error: boolean }>;
+      const content = messageOf(events[0]).content as Array<{ is_error: boolean }>;
       expect(content[0].is_error).toBe(true);
     });
 
@@ -1122,7 +1131,7 @@ describe('CodexRolloutParser', () => {
       } as unknown as CodexRolloutLine);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{ duration?: number }>;
+      const content = messageOf(events[0]).content as Array<{ duration?: number }>;
       expect(content[0].duration).toBe(1234);
     });
 
@@ -1138,7 +1147,7 @@ describe('CodexRolloutParser', () => {
       } as unknown as CodexRolloutLine);
 
       expect(events).toHaveLength(1);
-      const content = events[0].message.content as Array<{ content: string; is_error: boolean }>;
+      const content = messageOf(events[0]).content as Array<{ content: string; is_error: boolean }>;
       expect(content[0].content).toBe('plain text output');
       expect(content[0].is_error).toBe(false);
     });
@@ -1360,7 +1369,7 @@ describe('CodexRolloutParser', () => {
         },
       });
 
-      const content = events[0].message.content as Array<{ name: string }>;
+      const content = messageOf(events[0]).content as Array<{ name: string }>;
       expect(content[0].name).toBe('Bash');
     });
 
@@ -1376,7 +1385,7 @@ describe('CodexRolloutParser', () => {
         },
       });
 
-      const content = events[0].message.content as Array<{ name: string }>;
+      const content = messageOf(events[0]).content as Array<{ name: string }>;
       expect(content[0].name).toBe('Bash');
     });
   });
@@ -1401,7 +1410,7 @@ describe('CodexRolloutParser', () => {
         },
       });
 
-      expect(events[0].message.model).toBe('o4-mini');
+      expect(messageOf(events[0]).model).toBe('o4-mini');
     });
 
     it('should update model when turn_context changes', () => {
@@ -1420,7 +1429,7 @@ describe('CodexRolloutParser', () => {
           content: 'First response',
         },
       });
-      expect(events[0].message.model).toBe('gpt-4o');
+      expect(messageOf(events[0]).model).toBe('gpt-4o');
 
       parser.convertLine({
         timestamp: '2025-01-15T10:02:00Z',
@@ -1437,7 +1446,7 @@ describe('CodexRolloutParser', () => {
           content: 'Second response',
         },
       });
-      expect(events[0].message.model).toBe('o3');
+      expect(messageOf(events[0]).model).toBe('o3');
     });
   });
 });

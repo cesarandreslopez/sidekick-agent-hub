@@ -466,6 +466,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       }
 
       watcher.start(true); // replay from current position (snapshot or start)
+      state.markHistoryReplayed(activeProvider.id);
 
       // Save snapshot after catching up
       if (!switchRestored && watcher.getPosition) {
@@ -905,6 +906,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       }
     } else {
       watcher.start(replay);
+      if (replay) state.markHistoryReplayed(activeProvider.id);
       // Save initial snapshot after full replay
       if (replay && watcher.getPosition && sessionPath) {
         let sourceSize = 0;

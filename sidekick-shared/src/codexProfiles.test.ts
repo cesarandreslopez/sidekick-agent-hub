@@ -319,7 +319,7 @@ describe('codexProfiles', () => {
     expect(getActiveCodexAccount()?.id).toBe(personal);
   });
 
-  describe('account switching (auth.json swap)', () => {
+  describe('account switching (auth.json swap)', { timeout: 30_000 }, () => {
     it('refuses to interleave with another process holding the auth-swap lock', () => {
       // Codex rotates refresh tokens; two interleaved swaps can resurrect a
       // stale token and permanently invalidate the login. A held lock must

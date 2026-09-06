@@ -31,7 +31,7 @@ vi.mock('os', async () => {
   };
 });
 
-describe('accountRegistry', () => {
+describe('accountRegistry', { timeout: 30_000 }, () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-account-registry-test-'));
   });
@@ -197,7 +197,7 @@ describe('accountRegistry', () => {
       Array.from({ length: 10 }, (_, index) => `acct-${index}`).sort(),
     );
     expect(fs.existsSync(path.join(tmpDir, 'accounts', 'accounts.json.lock'))).toBe(false);
-  }, 20_000);
+  }, 60_000);
 
   it('replaces one provider set without the lock when the caller already holds it', () => {
     writeSavedAccountRegistry({

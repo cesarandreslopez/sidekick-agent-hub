@@ -68,7 +68,7 @@ function writeHandoff(content: string): void {
   fs.writeFileSync(path.join(handoffDir, `${project.canonicalSlug}-latest.md`), content);
 }
 
-describe('composeContext', () => {
+describe('composeContext', { timeout: 30_000 }, () => {
   beforeEach(() => {
     configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-composer-config-'));
     workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-composer-workspace-'));

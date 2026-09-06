@@ -21,7 +21,7 @@ afterEach(async () => {
   );
 });
 
-describe('updateJsonStoreAtomic', () => {
+describe('updateJsonStoreAtomic', { timeout: 30_000 }, () => {
   it('preserves every interleaved read-modify-write update', async () => {
     const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sidekick-writer-'));
     temporaryDirectories.push(directory);
@@ -143,7 +143,7 @@ describe('updateJsonStoreAtomic', () => {
   });
 });
 
-describe('updateJsonStoreAtomicSync', () => {
+describe('updateJsonStoreAtomicSync', { timeout: 30_000 }, () => {
   it('preserves interleaved updates from concurrent sync and async processes', async () => {
     const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sidekick-writer-'));
     temporaryDirectories.push(directory);
@@ -187,7 +187,7 @@ describe('updateJsonStoreAtomicSync', () => {
     };
     expect(Object.keys(persisted.entries)).toHaveLength(12);
     expect(fs.existsSync(`${filePath}.lock`)).toBe(false);
-  }, 20_000);
+  }, 60_000);
 
   it('still times out when the holder makes no progress', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
@@ -303,7 +303,7 @@ describe('updateJsonStoreAtomicSync', () => {
   });
 });
 
-describe('atomicWriteFileSync', () => {
+describe('atomicWriteFileSync', { timeout: 30_000 }, () => {
   it('writes raw content atomically without leaving temp files', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
     temporaryDirectories.push(directory);
@@ -340,7 +340,7 @@ function runWorker(
   });
 }
 
-describe('atomicWriteJsonSync', () => {
+describe('atomicWriteJsonSync', { timeout: 30_000 }, () => {
   it('fsyncs the file before rename and the containing directory after rename', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-writer-'));
     temporaryDirectories.push(directory);

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { calculateCodeImpact } from 'sidekick-shared';
 
 // Mock vscode
 vi.mock('vscode', () => ({
@@ -49,6 +50,7 @@ function makeSummary(overrides?: Partial<SessionSummaryData>): SessionSummaryDat
     totalFilesChanged: 2,
     totalAdditions: 70,
     totalDeletions: 5,
+    codeImpact: calculateCodeImpact(1.5, 70, 5),
     costByModel: [],
     costByTool: [],
     errors: [],

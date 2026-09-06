@@ -49,6 +49,7 @@ vi.mock('sidekick-shared', async (importOriginal) => ({
 }));
 
 import { SessionMonitor } from './SessionMonitor';
+import { loadSnapshot, saveSnapshot } from 'sidekick-shared';
 
 afterEach(() => vi.useRealTimers());
 
@@ -98,6 +99,46 @@ describe('SessionMonitor', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     mockExistsSync.mockReturnValue(false);
+  });
+
+  it('replays unchanged OpenCode history on reopen without timestamp snapshots', async () => {
+    const seekTo = vi.fn();
+    const readNew = vi.fn(() => [
+      {
+        type: 'assistant',
+        timestamp: '2026-09-06T12:00:00Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'text', text: 'hello' }],
+          usage: { input_tokens: 100, output_tokens: 1 },
+        },
+      },
+    ]);
+    const provider = createProvider({
+      createReader: vi.fn(() => ({
+        readNew,
+        readAll: readNew,
+        reset: vi.fn(),
+        exists: () => true,
+        flush: vi.fn(),
+        getPosition: () => 100,
+        seekTo,
+        wasTruncated: () => false,
+      })),
+    });
+    const monitor = new SessionMonitor(provider as never);
+    const target = monitor as unknown as { attachToSession(path: string): Promise<void> };
+    await target.attachToSession('/tmp/session.json');
+    expect(monitor.getStats().totalInputTokens).toBe(100);
+    monitor.stop();
+    await target.attachToSession('/tmp/session.json');
+    expect(monitor.getStats().totalInputTokens).toBe(100);
+    expect(readNew).toHaveBeenCalledTimes(2);
+    expect(seekTo).not.toHaveBeenCalled();
+    expect(loadSnapshot).not.toHaveBeenCalled();
+    expect(saveSnapshot).not.toHaveBeenCalled();
+    monitor.dispose();
   });
 
   it('deduplicates ID-less events by content instead of timestamp alone', () => {
@@ -224,9 +265,8 @@ describe('SessionMonitor', () => {
       providerId: 'zai',
       source: 'api',
     };
-    const provider = createProvider({
-      getQuotaFromSession: vi.fn().mockResolvedValue(quota),
-    });
+    const getQuotaFromSession = vi.fn().mockResolvedValue(quota);
+    const provider = createProvider({ getQuotaFromSession });
     const monitor = new SessionMonitor(
       provider as never,
       { get: vi.fn(() => null), update: vi.fn() } as never,
@@ -236,7 +276,7 @@ describe('SessionMonitor', () => {
 
     await (monitor as unknown as { emitQuotaFromSession(): Promise<void> }).emitQuotaFromSession();
 
-    expect(provider.getQuotaFromSession).toHaveBeenCalledOnce();
+    expect(getQuotaFromSession).toHaveBeenCalledOnce();
     expect(updates).toEqual([quota]);
 
     monitor.dispose();

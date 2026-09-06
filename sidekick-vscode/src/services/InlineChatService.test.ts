@@ -48,6 +48,8 @@ describe('InlineChatService', () => {
         languageId: 'typescript',
         contextBefore: '',
         contextAfter: '',
+        cursorPosition: { line: 0, character: 0 },
+        documentUri: 'file:///tmp/test.ts',
       },
       controller.signal,
     );

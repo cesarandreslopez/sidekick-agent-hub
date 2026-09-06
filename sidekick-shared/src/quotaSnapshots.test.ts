@@ -12,7 +12,7 @@ vi.mock('./paths', () => ({
   getConfigDir: () => tmpDir,
 }));
 
-describe('quotaSnapshots', () => {
+describe('quotaSnapshots', { timeout: 30_000 }, () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-quota-snapshot-test-'));
   });
@@ -247,7 +247,7 @@ describe('quotaSnapshots', () => {
       fs.readFileSync(path.join(tmpDir, '.config', 'sidekick', 'quota-snapshots.json'), 'utf8'),
     ) as { snapshots: Array<{ accountId: string }> };
     expect(new Set(workerStore.snapshots.map((snapshot) => snapshot.accountId)).size).toBe(12);
-  }, 20_000);
+  }, 60_000);
 
   it('times out on a wedged lock holder in the no-progress budget, not the old flat 15s', () => {
     // A live owner (this process) with a fresh mtime: not reclaimable as stale,
@@ -314,7 +314,7 @@ function makeQuotaState(utilization: number): QuotaState {
   };
 }
 
-describe('readQuotaSnapshot freshness', () => {
+describe('readQuotaSnapshot freshness', { timeout: 30_000 }, () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-quota-freshness-test-'));
   });

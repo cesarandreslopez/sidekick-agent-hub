@@ -10,7 +10,11 @@ const registrationDisposable = vi.hoisted(() => ({ dispose: vi.fn() }));
 
 vi.mock('vscode', () => ({
   window: {
-    registerWebviewViewProvider: (viewType: string, provider: unknown, options: unknown) => {
+    registerWebviewViewProvider: (
+      viewType: string,
+      provider: ResolveForwarder,
+      options: unknown,
+    ) => {
       registrations.push({ viewType, provider, options });
       return registrationDisposable;
     },

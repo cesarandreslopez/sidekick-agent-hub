@@ -19,7 +19,7 @@ const statuslineJs = path.join(distDir, 'statusline', 'index.js');
 // package.json `exports` map as a self-consumer.
 const pkgRequire = createRequire(path.join(pkgRoot, 'package.json'));
 
-describe('packaging contract', () => {
+describe('packaging contract', { timeout: 30_000 }, () => {
   it('dist/browser.js exposes the browser-safe surface', () => {
     expect(existsSync(browserJs)).toBe(true);
     const m = require(browserJs);

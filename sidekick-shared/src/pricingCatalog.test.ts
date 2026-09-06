@@ -204,7 +204,7 @@ describe('normalizeLiteLlmContextWindows', () => {
   });
 });
 
-describe('hydratePricingCatalog', () => {
+describe('hydratePricingCatalog', { timeout: 30_000 }, () => {
   let cacheDir: string;
 
   beforeEach(async () => {

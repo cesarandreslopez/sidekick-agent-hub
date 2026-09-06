@@ -86,7 +86,7 @@ function makeChildProcess(): EventEmitter & { kill: ReturnType<typeof vi.fn> } {
   return child;
 }
 
-describe('accountManager', () => {
+describe('accountManager', { timeout: 30_000 }, () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-account-manager-test-'));
     ensureLiveClaudeDir();

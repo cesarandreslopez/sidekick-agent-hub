@@ -279,7 +279,7 @@ describe('DashboardViewProvider quota UI', () => {
 
     const html = (
       provider as unknown as {
-        _getHtmlForWebview(webview: typeof webview): string;
+        _getHtmlForWebview(view: typeof webview): string;
       }
     )._getHtmlForWebview(webview);
     const rendered = html + legacyScript;
@@ -302,7 +302,7 @@ describe('DashboardViewProvider quota UI', () => {
     };
     const html = (
       provider as unknown as {
-        _getHtmlForWebview(webview: typeof webview): string;
+        _getHtmlForWebview(view: typeof webview): string;
       }
     )._getHtmlForWebview(webview);
     const rendered = html + legacyScript;

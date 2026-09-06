@@ -62,7 +62,7 @@ vi.mock('vscode', () => ({
     showErrorMessage: (...args: unknown[]) => mockShowErrorMessage(...args),
     showInformationMessage: (...args: unknown[]) => mockShowInformationMessage(...args),
     showTextDocument: (...args: unknown[]) => mockShowTextDocument(...args),
-    createQuickPick: (...args: unknown[]) => mockCreateQuickPick(...args),
+    createQuickPick: () => mockCreateQuickPick(),
   },
   workspace: {
     openTextDocument: (...args: unknown[]) => mockOpenTextDocument(...args),

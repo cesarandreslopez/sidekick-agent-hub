@@ -256,6 +256,10 @@ export class DashboardState {
   // Session ID (for plan persistence)
   private _sessionId: string | undefined;
 
+  // Only complete history can be reused by a later replay. Live-only runs must
+  // leave any existing complete checkpoint untouched.
+  private _checkpointProviderId: string | undefined;
+
   /**
    * Monotonic mutation counter. `getMetrics()` returns the same object while
    * it is unchanged, so React memoisation keyed on the metrics identity works.
@@ -300,6 +304,7 @@ export class DashboardState {
     this._openaiStatus = null;
     this._updateInfo = null;
     this._sessionId = undefined;
+    this._checkpointProviderId = undefined;
     this._lastKnownCompactionCount = 0;
     this._taskToolCallCounts.clear();
   }
@@ -307,7 +312,16 @@ export class DashboardState {
   /** Set the session ID for plan persistence. */
   setSessionId(id: string): void {
     this.touch();
+    if (id !== this._sessionId) this._checkpointProviderId = undefined;
     this._sessionId = id;
+  }
+
+  /** Enable checkpoints after a successful full replay for this session. */
+  markHistoryReplayed(providerId: string): void {
+    // SQLite timestamps cannot restore row-version deduplication state. Until
+    // that cursor is persistent, OpenCode must replay from the beginning.
+    this._checkpointProviderId =
+      this._sessionId && providerId !== 'opencode' ? providerId : undefined;
   }
 
   /**
@@ -316,11 +330,13 @@ export class DashboardState {
    */
   tryRestoreFromSnapshot(sessionId: string, providerId: string, sourceSize: number): number | null {
     this.touch();
+    this._checkpointProviderId = undefined;
+    if (providerId === 'opencode') return null;
     const snapshot = loadSnapshot(sessionId);
     if (!snapshot) return null;
     if (
       snapshot.providerId !== providerId ||
-      snapshot.consumer.checkpointRevision !== 2 ||
+      snapshot.consumer?.checkpointRevision !== 3 ||
       snapshot.consumer.consumerType !== 'cli'
     ) {
       deleteSnapshot(sessionId);
@@ -406,6 +422,7 @@ export class DashboardState {
     }
 
     this._sessionId = sessionId;
+    this._checkpointProviderId = providerId;
     return snapshot.readerPosition;
   }
 
@@ -413,20 +430,20 @@ export class DashboardState {
    * Persists the current state as a snapshot sidecar file.
    */
   persistSnapshot(readerPosition: number, sourceSize: number): void {
-    if (!this._sessionId) return;
+    if (!this._sessionId || !this._checkpointProviderId) return;
 
     const aggregator = this._aggregator.serialize();
     const snapshot: SessionSnapshot = {
       version: aggregator.version,
       sessionId: this._sessionId,
-      providerId: this._aggregator.getMetrics().providerId || 'claude-code',
+      providerId: this._checkpointProviderId,
       readerPosition,
       sourceSize,
       createdAt: new Date().toISOString(),
       aggregator,
       consumer: {
         consumerType: 'cli',
-        checkpointRevision: 2,
+        checkpointRevision: 3,
         timeline: this._timeline,
         fileMap: Array.from(this._fileMap.entries()),
         urlMap: Array.from(this._urlMap.entries()),

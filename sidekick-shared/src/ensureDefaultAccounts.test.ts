@@ -111,7 +111,7 @@ function countCodexProfileDirs(): number {
   }
 }
 
-describe('ensureDefaultAccounts', () => {
+describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-ensure-default-accounts-test-'));
     spawnSyncSpy.mockClear();

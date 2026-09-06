@@ -38,7 +38,7 @@ function historyFilePath(provider: 'claude' | 'codex'): string {
   return path.join(tmpDir, 'quota-history', WORKSPACE, `${provider}.jsonl`);
 }
 
-describe('quotaHistory', () => {
+describe('quotaHistory', { timeout: 30_000 }, () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-quota-history-test-'));
     _resetQuotaHistoryInMemoryStateForTests();

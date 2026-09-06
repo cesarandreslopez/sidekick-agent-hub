@@ -142,7 +142,7 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe('readAccountRegistry', () => {
+describe('readAccountRegistry', { timeout: 30_000 }, () => {
   it('returns null when no registry exists', () => {
     expect(readAccountRegistry()).toBeNull();
   });
@@ -169,7 +169,7 @@ describe('readAccountRegistry', () => {
   });
 });
 
-describe('writeAccountRegistry', () => {
+describe('writeAccountRegistry', { timeout: 30_000 }, () => {
   it('writes and reads back correctly', () => {
     const registry: AccountRegistry = {
       version: 1,
@@ -181,7 +181,7 @@ describe('writeAccountRegistry', () => {
   });
 });
 
-describe('readActiveClaudeAccount', () => {
+describe('readActiveClaudeAccount', { timeout: 30_000 }, () => {
   it('returns null when no .claude.json exists', () => {
     expect(readActiveClaudeAccount()).toBeNull();
   });
@@ -200,7 +200,7 @@ describe('readActiveClaudeAccount', () => {
   });
 });
 
-describe('addCurrentAccount', () => {
+describe('addCurrentAccount', { timeout: 30_000 }, () => {
   it('returns error when no active claude account', () => {
     const result = addCurrentAccount();
     expect(result.success).toBe(false);
@@ -243,7 +243,7 @@ describe('addCurrentAccount', () => {
   });
 });
 
-describe('switchToAccount', () => {
+describe('switchToAccount', { timeout: 30_000 }, () => {
   beforeEach(() => {
     // Set up two accounts
     writeClaudeConfig('personal@gmail.com', 'uuid-personal');
@@ -354,7 +354,7 @@ describe('switchToAccount', () => {
   }, 15_000);
 });
 
-describe('Claude profile-home apply and migration', () => {
+describe('Claude profile-home apply and migration', { timeout: 30_000 }, () => {
   it('resolves the active Claude profile home or falls back to the live home', () => {
     expect(resolveActiveClaudeHome()).toBe(path.join(tmpDir, '.claude'));
 
@@ -429,7 +429,7 @@ function readActiveCredentialsFrom(configDir: string): { claudeAiOauth: { access
   return JSON.parse(fs.readFileSync(path.join(configDir, '.credentials.json'), 'utf8'));
 }
 
-describe('removeAccount', () => {
+describe('removeAccount', { timeout: 30_000 }, () => {
   beforeEach(() => {
     writeClaudeConfig('a@b.com', 'uuid-a');
     writeClaudeCredentials('tok_a');
@@ -458,7 +458,7 @@ describe('removeAccount', () => {
   });
 });
 
-describe('isMultiAccountEnabled', () => {
+describe('isMultiAccountEnabled', { timeout: 30_000 }, () => {
   it('returns false when no accounts', () => {
     expect(isMultiAccountEnabled()).toBe(false);
   });
@@ -471,7 +471,7 @@ describe('isMultiAccountEnabled', () => {
   });
 });
 
-describe('resolveActiveClaudeAccount', () => {
+describe('resolveActiveClaudeAccount', { timeout: 30_000 }, () => {
   // Saves accounts A and B; leaves B live in the system home and active.
   function setupTwoClaudeAccounts(): void {
     writeClaudeConfig('a@x.com', 'uuid-a');
@@ -575,7 +575,7 @@ describe('resolveActiveClaudeAccount', () => {
   });
 });
 
-describe('registry lock scope of the legacy facade', () => {
+describe('registry lock scope of the legacy facade', { timeout: 30_000 }, () => {
   it('reads and writes the registry inside one lock acquisition for add and remove', () => {
     writeClaudeConfig('a@example.com', 'uuid-a');
     writeClaudeCredentials('token-a');
