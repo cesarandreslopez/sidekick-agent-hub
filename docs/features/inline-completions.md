@@ -27,7 +27,8 @@ Completions appear as ghost text that you can accept with Tab.
 | `sidekick.completionHintDelayMs` | `1500`  | Delay before showing hint (ms)                  |
 
 !!! note
-Prose files (Markdown, plaintext, HTML, XML, LaTeX) automatically use multiline mode regardless of the `multiline` setting.
+
+    Prose files (Markdown, plaintext, HTML, XML, LaTeX) automatically use multiline mode regardless of the `multiline` setting.
 
 ## Multiple Windows
 

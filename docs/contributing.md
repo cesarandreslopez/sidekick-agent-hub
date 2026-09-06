@@ -6,7 +6,7 @@ Contributions are welcome! Whether it's bug fixes, new features, or documentatio
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22 recommended for development (release CI uses Node 20 for the extension and Node 22 for the shared library and CLI)
 - VS Code 1.85+
 - At least one provider set up (Claude Max recommended)
 
@@ -19,17 +19,18 @@ Contributions are welcome! Whether it's bug fixes, new features, or documentatio
    cd sidekick-agent-hub
    ```
 
-2. Set up the VS Code extension:
+2. Build all packages from the repository root (shared library first):
 
    ```bash
-   cd sidekick-vscode
-   npm install
-   npm run compile
+   bash scripts/build-all.sh
    ```
 
-3. Run tests to verify setup:
+3. Run package tests from the repository root:
+
    ```bash
-   npm test
+   (cd sidekick-shared && npm test)
+   (cd sidekick-vscode && npm test)
+   (cd sidekick-cli && npm test)
    ```
 
 ### Running Locally
@@ -62,9 +63,9 @@ bash scripts/build-all.sh    # Build sidekick-shared, sidekick-vscode, and sidek
 Or build individually:
 
 ```bash
-cd sidekick-shared && npm install && npm run build
-cd sidekick-vscode && npm install && npm run compile
-cd sidekick-cli && npm install && npm run build
+(cd sidekick-shared && npm install && npm run build)
+(cd sidekick-vscode && npm install && npm run compile)
+(cd sidekick-cli && npm install && npm run build)
 ```
 
 ## Code Style
@@ -77,6 +78,20 @@ cd sidekick-cli && npm install && npm run build
   ```
 - TypeScript strict mode
 - Tests co-located with source files (`Foo.ts` / `Foo.test.ts`)
+
+## Release Validation
+
+From the repository root, after building `sidekick-shared` and running the package tests:
+
+```bash
+bash scripts/lint-all.sh
+bash scripts/format-check-all.sh
+(cd sidekick-vscode && npx tsc --noEmit)
+(cd sidekick-cli && npx tsc --noEmit)
+zensical build --strict
+```
+
+Use `zensical serve` for local documentation previews. The documentation site uses Zensical with `mkdocs.yml`; do not use `mkdocs build` or `mkdocs serve`. Inspect the build output and rendered pages as well: Zensical currently warns that strict mode is unsupported.
 
 ## Branch Naming
 

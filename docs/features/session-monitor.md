@@ -192,3 +192,7 @@ All webview panels include:
 - Custom scrollbar styling (6px, themed) and text selection colors matching the VS Code editor
 - Responsive layout adjustments for narrow sidebar panels (under 260px)
 - Card entrance animations with stagger delay in Task Board, Plan Board, and Project Timeline (respects reduced motion)
+
+## Reopening Sessions
+
+Claude Code and Codex restore compatible dashboard checkpoints and catch up with complete events written since the checkpoint. Older or incompatible snapshots are replaced after replay. OpenCode reloads its history on reopen so boundary rows are not counted twice. Stopping and resuming monitoring preserves subscriptions and your selected session folder.

@@ -51,7 +51,7 @@ interface ClaudeClient {
 
 ## Session Providers
 
-Defined as `SessionProvider` in `src/types/sessionProvider.ts`:
+Defined as `ProviderId` and `SessionProviderBase` in `sidekick-shared/src/providers/types.ts`, extended by the VS Code `SessionProvider` in `sidekick-vscode/src/types/sessionProvider.ts`:
 
 | ID            | Description          | Data Source                                                                                                        |
 | ------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -59,7 +59,7 @@ Defined as `SessionProvider` in `src/types/sessionProvider.ts`:
 | `opencode`    | OpenCode sessions    | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) |
 | `codex`       | Codex CLI sessions   | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model)              |
 
-Each session provider normalizes raw data into the common `ClaudeSessionEvent` format.
+Each session provider normalizes raw data into the canonical `SessionEvent` format (`ClaudeSessionEvent` is a compatibility alias).
 
 ### Provider construction and diagnostics
 
@@ -75,9 +75,11 @@ every usable provider plus the coalesced diagnostics, and can resolve a single s
 
 Both provider types support auto-detection via `ProviderDetector`, which checks:
 
-1. Which CLI tools are installed on the system
-2. Which have the most recent filesystem activity (mtime)
-3. Selects the most recently used provider
+1. Which providers have session data on disk
+2. Which session data has the most recent activity (mtime)
+3. Selects the most recently active provider; explicit settings override detection
+
+Detection does not establish that the inference executable is installed or authenticated. The selected inference client checks availability separately.
 
 ## Independence
 
@@ -94,7 +96,7 @@ The registry auto-migrates from v1 (single-provider) to v2 (multi-provider) on f
 
 ### Default account bootstrap
 
-On startup, both the CLI and the VS Code extension call `ensureDefaultAccounts()` from `sidekick-shared`. If an active system Claude Code credential exists and no saved Claude Code account is active yet, it is registered as a **"Default"** account. The same check runs independently for Codex — if `~/.codex/auth.json` exists and no active Codex account is saved yet, a "Default" Codex profile is registered.
+The VS Code extension bootstraps accounts in the background. CLI commands that need full startup call `ensureDefaultAccounts()` from `sidekick-shared`; help/version and cache-only `statusline`, `today`, and `history` skip it. If an active system Claude Code credential exists and no saved Claude Code account is active yet, it is registered as a **"Default"** account. The same check runs independently for Codex — if `~/.codex/auth.json` exists and no active Codex account is saved yet, a "Default" Codex profile is registered.
 
 The bootstrap is idempotent (repeated calls do not create duplicates), never overwrites accounts that were saved manually, and swallows per-provider errors so they can never block startup. It ensures that quota, analytics, and dashboard surfaces that read from the registry work out of the box, without requiring users to run **`Save Current Claude Account`** / `sidekick account --add` first.
 

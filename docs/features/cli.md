@@ -5,7 +5,12 @@ The Sidekick CLI provides a full-screen terminal dashboard for monitoring agent 
 ![Sidekick CLI Dashboard](../images/sidekick-cli.gif)
 
 !!! warning "Package name vs binary name"
-The npm package is `sidekick-agent-hub`, but the binary it installs is called **`sidekick`**. After installation, run `sidekick dashboard` — not `sidekick-agent-hub`.
+
+    The npm package is `sidekick-agent-hub`, but the binary it installs is called **`sidekick`**. After installation, run `sidekick dashboard` — not `sidekick-agent-hub`.
+
+## Replay and Recovery
+
+Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex can reuse compatible complete-history checkpoints. Live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
 
 ## Installation
 

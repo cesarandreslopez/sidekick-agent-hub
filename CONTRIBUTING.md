@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22 recommended for development (release CI uses Node 20 for the extension and Node 22 for the shared library and CLI)
 - VS Code 1.85+
 - Claude Max subscription with authenticated CLI (`claude auth`), or an Anthropic API key
 
@@ -19,25 +19,18 @@ Thank you for your interest in contributing! This document provides guidelines a
    cd sidekick-agent-hub
    ```
 
-2. **Set up the VS Code extension**
-
-   ```bash
-   cd sidekick-vscode
-   npm install
-   npm run compile
-   cd ..
-   ```
-
-3. **Build all packages** (optional)
+2. Build all packages from the repository root (shared library first):
 
    ```bash
    bash scripts/build-all.sh
    ```
 
-4. **Run tests to verify setup**
+3. Run package tests from the repository root:
+
    ```bash
-   cd sidekick-vscode
-   npm test
+   (cd sidekick-shared && npm test)
+   (cd sidekick-vscode && npm test)
+   (cd sidekick-cli && npm test)
    ```
 
 ## Development Workflow
@@ -71,9 +64,9 @@ npm run package      # Create .vsix for distribution
   ```
 - Or lint a single package:
   ```bash
-  cd sidekick-vscode && npm run lint
-  cd sidekick-cli && npm run lint
-  cd sidekick-shared && npm run lint
+  (cd sidekick-vscode && npm run lint)
+  (cd sidekick-cli && npm run lint)
+  (cd sidekick-shared && npm run lint)
   ```
 
 ### Running Tests
@@ -84,6 +77,20 @@ Tests use Vitest and are co-located with source files (e.g., `FooService.ts` / `
 npm test             # Run all tests
 npm run test:watch   # Watch mode
 ```
+
+## Release Validation
+
+From the repository root, after building `sidekick-shared` and running the package tests:
+
+```bash
+bash scripts/lint-all.sh
+bash scripts/format-check-all.sh
+(cd sidekick-vscode && npx tsc --noEmit)
+(cd sidekick-cli && npx tsc --noEmit)
+zensical build --strict
+```
+
+Use `zensical serve` for local documentation previews. The documentation site uses Zensical with `mkdocs.yml`; do not use `mkdocs build` or `mkdocs serve`. Inspect the build output and rendered pages as well: Zensical currently warns that strict mode is unsupported.
 
 ## Project Structure
 
@@ -121,7 +128,7 @@ sidekick-vscode/src/
 │   ├── CompletionCache.ts       # LRU cache for completions
 │   ├── CommitMessageService.ts  # AI commit messages from git diffs
 │   ├── GitService.ts            # Git operations (diff, staging)
-│   ├── SessionMonitor.ts        # Real-time JSONL session file monitoring
+│   ├── SessionMonitor.ts        # Provider-aware live session monitoring
 │   ├── SessionPathResolver.ts   # Cross-platform Claude Code directory detection
 │   ├── JsonlParser.ts           # JSONL parser with line buffering
 │   ├── ModelPricingService.ts   # Token cost calculation by model
@@ -162,9 +169,9 @@ bash scripts/build-all.sh    # Build sidekick-shared, sidekick-vscode, and sidek
 Or build individually:
 
 ```bash
-cd sidekick-shared && npm install && npm run build
-cd sidekick-vscode && npm install && npm run compile
-cd sidekick-cli && npm install && npm run build
+(cd sidekick-shared && npm install && npm run build)
+(cd sidekick-vscode && npm install && npm run compile)
+(cd sidekick-cli && npm install && npm run build)
 ```
 
 ## Making Changes

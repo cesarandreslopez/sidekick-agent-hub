@@ -12,8 +12,7 @@ Uses your configured OpenCode provider and model for inference.
 ## How It Works
 
 - Uses `@opencode-ai/sdk` to connect to the local OpenCode server
-- Model selection is handled by your OpenCode configuration
-- Tier values (fast/balanced/powerful) are passed as hints, but OpenCode's settings take precedence
+- Sidekick resolves model tiers to explicit `provider/model` IDs and sends them with each request. An explicit `provider/model` setting overrides OpenCode's default; a bare model ID is not sent, so OpenCode uses its configured default.
 
 ## Session Monitoring
 
@@ -26,6 +25,8 @@ OpenCode sessions are monitored from OpenCode's platform-specific data directory
 Set `sidekick.sessionProvider` to `opencode` or leave as `auto`.
 
 Sidekick reads `opencode.db` for DB-backed session discovery and monitoring. If `opencode.db` exists but `sqlite3` is missing or cannot be executed in the current environment, Sidekick now shows an actionable OpenCode-specific notice instead of silently failing session detection.
+
+Dashboard history is replayed when a session is reopened, avoiding duplicate totals from timestamp-only database checkpoints. Explicit CLI live-only mode still skips existing history.
 
 ## z.ai Coding Plan quota
 

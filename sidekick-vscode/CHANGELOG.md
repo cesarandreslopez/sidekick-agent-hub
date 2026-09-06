@@ -5,10 +5,11 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.2] - 2026-09-06
 
 ### Fixed
 
+- OpenCode dashboards replay history instead of restoring timestamp-only snapshots, preventing duplicate token totals on reopen.
 - Stop and resume keep the same monitor, provider, custom folder, and event subscriptions; cancelled inline requests abort inference and dispose cancellation listeners.
 - Cross-session search uses shared provider discovery, includes database-only sessions, and opens results in the conversation viewer.
 - Dashboard snapshots use the current aggregation schema and validate their consumer format and checkpoint revision.

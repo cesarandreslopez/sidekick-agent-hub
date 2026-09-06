@@ -10,6 +10,8 @@ All settings use the `sidekick.*` prefix. Open VS Code Settings (`Ctrl+,`) and s
 | `sidekick.claudePath`        | (empty) | Custom path to Claude CLI (for pnpm/yarn/non-standard installs)           |
 | `sidekick.sidekickCliPath`   | (empty) | Custom path to the `sidekick` CLI executable (leave empty to auto-detect) |
 
+`sidekick.authMode` is a deprecated compatibility setting (`max-subscription` or `api-key`, default `max-subscription`). Use `sidekick.inferenceProvider` for new configuration.
+
 ## Accounts
 
 | Setting                                 | Default | Description                                                                                                                     |
@@ -107,9 +109,23 @@ Only applies when the inference provider is Claude Max and the session provider 
 | `sidekick.notifications.quotaSevenDayThresholds`       | `[90]`     | Seven-day window percentages that alert (highest is an error) |
 
 !!! warning "Deprecated"
-`sidekick.inlineTimeout` is deprecated and will be removed in a future release. Use `sidekick.timeouts.inlineCompletion` instead.
+
+    `sidekick.inlineTimeout` is deprecated and will be removed in a future release. Use `sidekick.timeouts.inlineCompletion` instead.
 
 ## Timeouts
+
+The dotted timeout names below describe fields of the `sidekick.timeouts` object. In `settings.json`, configure that object rather than separate dotted keys:
+
+```json
+{
+  "sidekick.timeouts": {
+    "inlineCompletion": 15000,
+    "explanation": 30000
+  }
+}
+```
+
+Omitted fields retain their defaults. `sidekick.timeoutPerKb` and the other scaling settings are separate top-level settings.
 
 | Setting                              | Default  | Description                               |
 | ------------------------------------ | -------- | ----------------------------------------- |

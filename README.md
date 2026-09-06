@@ -24,6 +24,8 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **0.26.2: monitoring recovery** — stop/resume keeps dashboard subscriptions and custom session folders; cancelled inline requests stop inference. Empty dashboards offer recovery actions, and tabs and session cards support keyboard navigation.
+- **Reliable replay and search** — complete-line checkpoints preserve Unicode and parser context; live-only CLI runs keep complete-history caches intact. Project search includes database-only OpenCode sessions, and Doctor focuses on the selected provider.
 - **Usage straight from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` report tokens and cost for every provider without the extension's history store; `sidekick blocks` shows five-hour billing blocks with burn rate and end-of-block projections; `sidekick import` backfills the history store behind `stats`, `today`, and the History tab.
 - **One token vocabulary with cost provenance** — every total across the CLI, the extension, and reports counts input, output, and both cache buckets, and every cost says whether it was provider-reported or estimated from catalog pricing.
 - **Official quota from the status line** — `sidekick statusline` reads the JSON Claude Code pipes to it and persists the official five-hour and seven-day limits; `resolveQuota()` gives `sidekick quota`, the MCP server, and both dashboards one resolver (fresh sample → session logs → provider API for Claude and z.ai; API first for one-shot Codex queries), and every quota table names its source and age.

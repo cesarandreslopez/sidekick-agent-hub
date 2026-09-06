@@ -16,7 +16,7 @@ Direct Anthropic API access with per-token billing.
 
 ## Session Monitoring
 
-Claude API mode does not include session monitoring (there are no CLI sessions to monitor). Session monitoring is only available for Claude Code, OpenCode, and Codex CLI.
+Direct API requests do not create CLI session files. Session monitoring is independent of inference: you can use Claude API for completions while monitoring Claude Code, OpenCode, or Codex sessions through `sidekick.sessionProvider`.
 
 ## Best For
 

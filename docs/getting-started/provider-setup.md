@@ -15,7 +15,8 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 3. Start coding — Sidekick auto-detects Claude Code and uses it for inference
 
 !!! tip "Why Claude Max is recommended"
-Inline completions fire frequently as you type. With an API key, per-token costs add up quickly. With Max, completions are covered by your existing plan.
+
+    Inline completions fire frequently as you type. With an API key, per-token costs add up quickly. With Max, completions are covered by your existing plan.
 
 ## Claude API
 
@@ -39,19 +40,18 @@ Uses your configured OpenCode provider and model.
    - Or: status bar → "Switch Inference Provider" → OpenCode
 
 !!! note
-Model selection is handled by your OpenCode configuration. Tier values (fast/balanced/powerful) are passed as hints, but OpenCode's own model settings take precedence.
+
+    Sidekick resolves model tiers to explicit `provider/model` IDs and sends them with each request. An explicit `provider/model` setting overrides OpenCode's default; a bare model ID is not sent, so OpenCode uses its configured default.
 
 ## Codex CLI
 
-Uses the OpenAI API via Codex CLI.
+Uses your authenticated Codex CLI.
 
 1. Install Codex CLI globally:
    ```bash
    npm install -g @openai/codex
    ```
-2. Ensure your OpenAI API key is available:
-   - `OPENAI_API_KEY` or `CODEX_API_KEY` environment variable
-   - Or `~/.codex/.credentials.json`
+2. Authenticate with `codex login`, or provide `OPENAI_API_KEY` / `CODEX_API_KEY`. Sidekick recognizes `auth.json` in the resolved Codex home (`CODEX_HOME` or `~/.codex/`), with legacy `.credentials.json` support.
 3. Switch provider:
    - Settings → `sidekick.inferenceProvider` → `codex`
    - Or: status bar → "Switch Inference Provider" → Codex CLI

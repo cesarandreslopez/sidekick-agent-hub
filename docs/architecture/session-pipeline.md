@@ -10,7 +10,7 @@ flowchart TD
     OC["OpenCode<br/><small>Database/files</small>"] --> SP
     CX["Codex CLI<br/><small>Session files</small>"] --> SP
 
-    SP["SessionProvider<br/><small>Normalizes to ClaudeSessionEvent</small>"]
+    SP["SessionProvider<br/><small>Normalizes to SessionEvent</small>"]
     SP --> SM["SessionMonitor<br/><small>Watch files · Aggregate stats · Emit events</small>"]
 
     SM --> Dashboard["DashboardViewProvider"]
@@ -25,7 +25,7 @@ flowchart TD
 
 ## SessionProvider
 
-Each CLI agent stores session data differently. Provider implementations in `src/services/providers/` normalize raw data into the common `ClaudeSessionEvent` format defined in `src/types/claudeSession.ts`.
+Each CLI agent stores session data differently. Canonical implementations in `sidekick-shared/src/providers/` normalize raw data into `SessionEvent`, defined in `sidekick-shared/src/types/sessionEvent.ts`. The extension classes in `sidekick-vscode/src/services/providers/` are thin adapters; `ClaudeSessionEvent` remains a compatibility alias.
 
 | Provider    | Data Source                                                                                                        | Format                          |
 | ----------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
@@ -37,11 +37,17 @@ Each CLI agent stores session data differently. Provider implementations in `src
 
 The `SessionMonitor` class:
 
-1. Watches session files for changes via filesystem polling
-2. Parses new entries using `JsonlParser` with line buffering
+1. Watches session files with filesystem notifications and catch-up polling; database readers poll for changes
+2. Reads canonical events through the selected provider, with complete-line buffering for JSONL
 3. Aggregates statistics (tokens, costs, tool usage)
 4. Runs detection systems on incoming events (truncation, context health, goal gates, cycles)
 5. Emits typed events consumed by UI components
+
+### Checkpoints and recovery
+
+Claude Code and Codex dashboards save a matching aggregation snapshot and complete-line reader position after delivered batches. Restores validate the aggregation schema and dashboard format; incompatible snapshots trigger replay. Codex seeking reconstructs parser context, and partial UTF-8 records remain buffered until complete. CLI snapshots require complete history: live-only sessions never overwrite a replay checkpoint, and session switches reset eligibility.
+
+OpenCode dashboard snapshots are bypassed because a SQLite timestamp alone cannot restore row-version deduplication. Reopening with history enabled performs a full replay; explicit CLI live-only mode still follows only new activity. VS Code stop/resume preserves the monitor's subscriptions and selected folder.
 
 ### Detection Systems
 
@@ -71,7 +77,7 @@ These systems feed their results into the dashboard, handoffs, notifications, mi
 
 ## CLI Reader Path
 
-The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) library provides a read-only alternative to the SessionMonitor pipeline. Instead of watching files in real time, the CLI reads session data on demand — useful for loading context at session start or querying session history in batch. Third-party tools can consume the same library directly (`npm install sidekick-shared`).
+The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) library supplies both the CLI dashboard's live watchers and one-shot readers for history, reports, and context. Shared writers also support CLI task, note, decision, and history-import commands. Third-party tools can consume the same library directly (`npm install sidekick-shared`).
 
 Codex sessions flow through the same canonical path as the other providers: a `ProviderReaderSessionWatcher` (or a one-shot reader) yields canonical `SessionEvent`s, and `parseTranscriptFromEvents()` turns those into the transcript used by the dashboard, reports, and project timeline. This keeps the CLI and the VS Code extension rendering identical evidence for a given session.
 

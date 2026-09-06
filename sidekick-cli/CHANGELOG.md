@@ -5,10 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.2] - 2026-09-06
 
 ### Fixed
 
+- CLI live-only sessions no longer overwrite complete-history checkpoints. Older CLI checkpoints are invalidated and replayed once.
+- OpenCode dashboards replay history instead of restoring timestamp-only snapshots, preventing duplicate token totals on reopen.
 - Dashboard checkpoints save after complete event batches, use the current snapshot schema, and reject obsolete or incompatible consumer formats.
 - Project-scoped search passes the workspace path through shared provider discovery, including Codex and database-only OpenCode sessions.
 - Doctor honors `--provider`; unused integrations and missing saved accounts are informational when monitoring existing sessions.

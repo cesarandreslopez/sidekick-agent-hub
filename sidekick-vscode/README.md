@@ -15,6 +15,8 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.26.2: monitoring recovery** — stop/resume preserves subscriptions and custom folders; empty or paused dashboards offer Refresh, Browse, Run Doctor, and Resume. Keyboard navigation works across tabs, session cards, and section toggles.
+- **Reliable session history** — search covers every provider and opens results in the conversation viewer. Claude Code and Codex resume from validated checkpoints; OpenCode replays history to keep totals accurate. Cancelled inline requests stop inference.
 - **History and Health tabs** — the History tab charts hourly today, by-model and by-tool series, a project filter, and a previous-period overlay with deltas; the new Health tab shows doctor checks, provider diagnostics, and failing-tool trends over 7 and 30 days.
 - **Billing block and quota alerts** — a Billing block card beneath the quota gauges shows the open five-hour block computed from session logs with burn rate and projections, next to the official status-line sample; `sidekick.notifications.triggers.quota-threshold` warns once per reset window when the five-hour or seven-day window crosses a configurable threshold.
 - **Consistent totals and costs** — the status bar, the dashboard, the timeline, imported history, and the `tokenThreshold` notification all count input, output, and both cache buckets through one shared vocabulary, and costs carry their provenance.

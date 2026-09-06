@@ -1,6 +1,6 @@
 # Codex CLI
 
-Uses the OpenAI API via Codex CLI for inference.
+Uses your authenticated Codex CLI for inference.
 
 ## Setup
 
@@ -8,16 +8,14 @@ Uses the OpenAI API via Codex CLI for inference.
    ```bash
    npm install -g @openai/codex
    ```
-2. Ensure your OpenAI API key is available:
-   - `OPENAI_API_KEY` or `CODEX_API_KEY` environment variable
-   - Or `~/.codex/.credentials.json`
+2. Authenticate with `codex login`, or provide `OPENAI_API_KEY` / `CODEX_API_KEY`. Sidekick recognizes `auth.json` in the resolved Codex home (`CODEX_HOME` or `~/.codex/`), with legacy `.credentials.json` support.
 3. Set `sidekick.inferenceProvider` to `codex` in settings
 
 ## How It Works
 
 - Spawns the Codex CLI as a subprocess for each inference request
 - No SDK dependency — direct CLI invocation
-- Uses OpenAI API billing
+- Uses the Codex login or API credentials available to the CLI
 
 ## Session Monitoring
 
@@ -86,6 +84,6 @@ Sidekick monitors OpenAI API health via status.openai.com when Codex is the acti
 
 ### Connection issues
 
-- Verify `OPENAI_API_KEY` or `CODEX_API_KEY` is set
-- Check `~/.codex/.credentials.json` exists if using file-based credentials
+- Verify Codex is authenticated, or that `OPENAI_API_KEY` / `CODEX_API_KEY` is available to VS Code
+- Check `auth.json` in the resolved Codex home if using file-based credentials
 - Verify Codex CLI is installed: `codex --version`

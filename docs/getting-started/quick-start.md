@@ -45,7 +45,8 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 | Quick Ask          | `Ctrl+K Ctrl+A`    |
 
 !!! tip
-Click "Sidekick" in the status bar for quick access to settings, logs, and provider switching.
+
+    Click "Sidekick" in the status bar for quick access to settings, logs, and provider switching.
 
 ## Command Hub & Troubleshooting
 

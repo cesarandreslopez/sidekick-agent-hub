@@ -5,10 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.2] - 2026-09-06
 
 ### Fixed
 
+- CLI live-only sessions no longer overwrite complete-history checkpoints. Older CLI checkpoints are invalidated and replayed once.
+- OpenCode dashboards replay history instead of restoring timestamp-only snapshots, preventing duplicate token totals on reopen.
+- Provider setup, settings examples, contribution instructions, and documentation callouts now match the current implementation.
 - Monitoring can stop and resume without losing dashboard subscriptions or a selected session folder; cancelled inline completions abort inference.
 - Session cursors and dashboard checkpoints preserve complete event batches, split UTF-8 characters, and parser context across restarts. Snapshots use the current schema and validate their dashboard format.
 - Project-scoped search works across Claude Code, Codex, and database-only OpenCode sessions. Search results open the conversation viewer.
