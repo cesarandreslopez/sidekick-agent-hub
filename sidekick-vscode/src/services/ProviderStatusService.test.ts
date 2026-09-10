@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-
-const mockFetchProviderStatus = vi.hoisted(() => vi.fn());
-const mockFetchOpenAIStatus = vi.hoisted(() => vi.fn());
-
+const { fetchProviderServiceStatus } = vi.hoisted(() => ({ fetchProviderServiceStatus: vi.fn() }));
 vi.mock('vscode', () => ({
   EventEmitter: class<T> {
     event = vi.fn();
@@ -10,40 +7,47 @@ vi.mock('vscode', () => ({
     dispose = vi.fn();
   },
 }));
-vi.mock('sidekick-shared', () => ({
-  fetchProviderStatus: (...args: unknown[]) => mockFetchProviderStatus(...args),
-  fetchOpenAIStatus: (...args: unknown[]) => mockFetchOpenAIStatus(...args),
-}));
+vi.mock('sidekick-shared', () => ({ fetchProviderServiceStatus }));
 vi.mock('./Logger', () => ({ log: vi.fn() }));
-
 import { ProviderStatusService } from './ProviderStatusService';
-
+const unavailable = {
+  availability: 'unavailable',
+  provider: 'codex',
+  reason: 'network_error',
+  checkedAt: '2026-09-09T00:00:00Z',
+  sourceUrl: 'https://status.openai.com/api/v2/summary.json',
+};
 describe('ProviderStatusService', () => {
-  it('does not overlap status-page poll cycles', async () => {
-    let resolve!: (value: unknown) => void;
-    const deferred = new Promise((done) => {
-      resolve = done;
-    });
-    mockFetchProviderStatus.mockReturnValue(deferred);
-    mockFetchOpenAIStatus.mockReturnValue(deferred);
+  it('coalesces fetches and retains explicit unavailable evidence', async () => {
+    let finish!: (value: unknown) => void;
+    fetchProviderServiceStatus.mockReset().mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
     const service = new ProviderStatusService();
-    const fetchAll = (service as never as { fetchAll(): Promise<void> }).fetchAll.bind(service);
-
-    const first = fetchAll();
-    const overlapping = fetchAll();
-
-    expect(mockFetchProviderStatus).toHaveBeenCalledOnce();
-    expect(mockFetchOpenAIStatus).toHaveBeenCalledOnce();
-    await expect(overlapping).resolves.toBeUndefined();
-
-    resolve({
-      indicator: 'none',
-      description: 'ok',
-      affectedComponents: [],
-      activeIncident: null,
-      updatedAt: '2026-07-21T00:00:00Z',
-    });
+    const first = service.fetchOpenAIStatus();
+    const second = service.fetchOpenAIStatus();
+    expect(first).toBe(second);
+    expect(fetchProviderServiceStatus).toHaveBeenCalledOnce();
+    finish(unavailable);
     await first;
+    expect(service.getCachedOpenAIStatus()).toEqual(unavailable);
     service.dispose();
+  });
+  it('cancels outstanding requests and ignores results after disposal', async () => {
+    let finish!: (value: unknown) => void;
+    fetchProviderServiceStatus.mockReset().mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const service = new ProviderStatusService();
+    const pending = service.fetchStatus();
+    service.dispose();
+    expect(fetchProviderServiceStatus.mock.calls[0][1].signal.aborted).toBe(true);
+    finish(unavailable);
+    await pending;
+    expect(service.getCachedStatus()).toBeNull();
   });
 });

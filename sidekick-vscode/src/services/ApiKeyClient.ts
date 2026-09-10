@@ -65,17 +65,13 @@ export class ApiKeyClient implements ClaudeClient {
    * @returns Promise resolving to true if the API key works
    */
   async isAvailable(): Promise<boolean> {
-    try {
-      // Simple test call with minimal tokens
-      await this.client.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 10,
-        messages: [{ role: 'user', content: 'test' }],
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    // Preserve the request error so callers can distinguish auth, service and network failures.
+    await this.client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: 'test' }],
+    });
+    return true;
   }
 
   /**

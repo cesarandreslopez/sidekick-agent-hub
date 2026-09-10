@@ -89,13 +89,36 @@ describe('CliInferenceClient', () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-openai-key');
     fetchMock.mockResolvedValue(new Response('Model not available', { status: 404 }));
 
-    await expect(new CliInferenceClient('codex').complete('Summarize')).resolves.toEqual({
+    await expect(new CliInferenceClient('codex').complete('Summarize')).resolves.toMatchObject({
       text: '',
       error: 'API error 404: Model not available',
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(spawnMock).not.toHaveBeenCalled();
   });
+
+  it.each(['codex', 'opencode'] as const)(
+    'retains structured HTTP and retry evidence for %s API inference',
+    async (provider) => {
+      vi.stubEnv(provider === 'codex' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY', 'test-key');
+      fetchMock.mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: { code: 'invalid_api_key', message: 'private detail' } }),
+          { status: 403, headers: { 'retry-after': '5' } },
+        ),
+      );
+      const result = await new CliInferenceClient(provider).complete('Summarize');
+      expect(result.diagnosis).toMatchObject({
+        provider: provider === 'codex' ? 'codex' : 'claude-code',
+        diagnosis: 'api_credentials_rejected',
+        httpStatus: 403,
+        retryAfter: { kind: 'delay', delayMs: 5000 },
+      });
+      expect(JSON.stringify(result.diagnosis)).not.toContain('private detail');
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(spawnMock).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ['claude-code', 'claude', ['--print']],

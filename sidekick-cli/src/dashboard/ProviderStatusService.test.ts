@@ -1,61 +1,62 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const { fetchProviderStatus, fetchOpenAIStatus } = vi.hoisted(() => ({
-  fetchProviderStatus: vi.fn(),
-  fetchOpenAIStatus: vi.fn(),
-}));
-
-vi.mock('sidekick-shared', () => ({ fetchProviderStatus, fetchOpenAIStatus }));
-
+const { fetchProviderServiceStatus } = vi.hoisted(() => ({ fetchProviderServiceStatus: vi.fn() }));
+vi.mock('sidekick-shared', () => ({ fetchProviderServiceStatus }));
 import { ProviderStatusService } from './ProviderStatusService';
-
+const unavailable = {
+  availability: 'unavailable',
+  provider: 'codex',
+  reason: 'network_error',
+  checkedAt: '2026-09-09T00:00:00Z',
+  sourceUrl: 'https://status.openai.com/api/v2/summary.json',
+};
+beforeEach(() => {
+  vi.useFakeTimers();
+  fetchProviderServiceStatus.mockReset().mockResolvedValue(unavailable);
+});
+afterEach(() => vi.useRealTimers());
 describe('ProviderStatusService', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    fetchProviderStatus.mockReset().mockResolvedValue({ status: 'operational', source: 'claude' });
-    fetchOpenAIStatus.mockReset().mockResolvedValue({ status: 'operational', source: 'openai' });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('polls only the Claude status page for claude-code', async () => {
-    const service = new ProviderStatusService('claude-code');
-    const updates: unknown[] = [];
-    service.onUpdate((status) => updates.push(status));
-    service.onOpenAIUpdate(() => updates.push('openai'));
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(60_000);
-
-    expect(fetchProviderStatus).toHaveBeenCalledTimes(2);
-    expect(fetchOpenAIStatus).not.toHaveBeenCalled();
-    expect(updates).toHaveLength(2);
-    expect(service.getCachedOpenAI()).toBeNull();
-    service.stop();
-  });
-
-  it('polls only the OpenAI status page for codex', async () => {
-    const service = new ProviderStatusService('codex');
-    service.start();
-    await vi.advanceTimersByTimeAsync(60_000);
-
-    expect(fetchOpenAIStatus).toHaveBeenCalledTimes(2);
-    expect(fetchProviderStatus).not.toHaveBeenCalled();
-    expect(service.getCached()).toBeNull();
-    expect(service.getCachedOpenAI()).toEqual({ status: 'operational', source: 'openai' });
-    service.stop();
-  });
-
-  it('polls nothing for opencode', async () => {
+  it.each(['claude-code', 'codex'] as const)(
+    'polls only %s and emits unavailable evidence',
+    async (provider) => {
+      const service = new ProviderStatusService(provider);
+      const update = vi.fn();
+      if (provider === 'codex') service.onOpenAIUpdate(update);
+      else service.onUpdate(update);
+      service.start();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchProviderServiceStatus).toHaveBeenCalledTimes(2);
+      expect(fetchProviderServiceStatus).toHaveBeenCalledWith(provider, {
+        signal: expect.any(AbortSignal),
+      });
+      expect(update).toHaveBeenCalledWith(unavailable);
+      service.stop();
+    },
+  );
+  it('does not poll OpenCode', async () => {
     const service = new ProviderStatusService('opencode');
-    expect(service.pollsAnything).toBe(false);
     service.start();
     await vi.advanceTimersByTimeAsync(120_000);
-
-    expect(fetchProviderStatus).not.toHaveBeenCalled();
-    expect(fetchOpenAIStatus).not.toHaveBeenCalled();
+    expect(fetchProviderServiceStatus).not.toHaveBeenCalled();
     service.stop();
+  });
+  it('coalesces polls and ignores late results after stop', async () => {
+    let finish!: (value: unknown) => void;
+    fetchProviderServiceStatus.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const service = new ProviderStatusService('codex');
+    const update = vi.fn();
+    service.onOpenAIUpdate(update);
+    service.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchProviderServiceStatus).toHaveBeenCalledOnce();
+    service.stop();
+    expect(fetchProviderServiceStatus.mock.calls[0][1].signal.aborted).toBe(true);
+    finish(unavailable);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(update).not.toHaveBeenCalled();
+    expect(service.getCachedOpenAI()).toBeNull();
   });
 });

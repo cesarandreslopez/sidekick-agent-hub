@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `sidekick status --json` includes `serviceStatus` evidence alongside existing Claude, OpenAI, and peak-hour fields. Human-readable output and dashboard details include multiple incidents, component associations, and separate check/provider-update timestamps.
+
+### Fixed
+
+- Status displays distinguish unavailable and partial evidence, including omitted incident data. Dashboard polling coalesces overlapping checks and cancels outstanding checks when stopped.
+- AI summary failures retain structured provider diagnoses and show appropriate authentication, session, service, connection, policy, runtime, and context guidance without automatic replay or provider switching.
+
 ## [0.26.2] - 2026-09-06
 
 ### Fixed

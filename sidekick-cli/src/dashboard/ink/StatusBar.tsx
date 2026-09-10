@@ -1,3 +1,4 @@
+import { presentProviderStatus } from '../providerStatusPresentation';
 /**
  * Status bar (bottom row) with segmented zones:
  * Left: brand + version | Center: provider, permission, events | Right: keybinding hints
@@ -66,11 +67,8 @@ export function StatusBar({
           ? 'PLAN'
           : undefined;
 
-  const statusIndicator = providerStatus && providerStatus.indicator !== 'none';
-  const statusColor = providerStatus?.indicator === 'minor' ? 'yellow' : 'red';
-
-  const openaiIndicator = openaiStatus && openaiStatus.indicator !== 'none';
-  const openaiColor = openaiStatus?.indicator === 'minor' ? 'yellow' : 'red';
+  const claudeDisplay = providerStatus ? presentProviderStatus(providerStatus) : null;
+  const openaiDisplay = openaiStatus ? presentProviderStatus(openaiStatus) : null;
 
   return (
     <Box height={1} width="100%">
@@ -97,20 +95,16 @@ export function StatusBar({
         )}
         <Text dimColor> {'\u2502'} </Text>
         <Text>{evtLabel}</Text>
-        {statusIndicator && (
+        {claudeDisplay?.visible && (
           <>
             <Text dimColor> {'\u2502'} </Text>
-            <Text color={statusColor}>
-              {'\u25cf'} Claude {providerStatus!.indicator}
-            </Text>
+            <Text color={claudeDisplay.color}>{claudeDisplay.summary}</Text>
           </>
         )}
-        {openaiIndicator && (
+        {openaiDisplay?.visible && (
           <>
             <Text dimColor> {'\u2502'} </Text>
-            <Text color={openaiColor}>
-              {'\u25cf'} OpenAI {openaiStatus!.indicator}
-            </Text>
+            <Text color={openaiDisplay.color}>{openaiDisplay.summary}</Text>
           </>
         )}
         {mouseEnabled === false && (

@@ -5,12 +5,45 @@
  * Polling / eventing is the caller's responsibility.
  */
 
+/** Legacy projection. Use ProviderServiceStatus for explicit availability evidence. */
 export interface ProviderStatusState {
   indicator: 'none' | 'minor' | 'major' | 'critical';
   description: string;
   affectedComponents: Array<{ name: string; status: string }>;
   activeIncident: { name: string; impact: string; shortlink: string; updatedAt: string } | null;
   updatedAt: string;
+}
+
+/** Compatibility projection only; it cannot express evidence availability. */
+export function toLegacyProviderStatus(
+  status: import('./providerServiceStatusTypes').ProviderServiceStatus,
+): ProviderStatusState {
+  if (status.availability === 'unavailable') {
+    return {
+      indicator: 'none',
+      description: 'Status unavailable',
+      affectedComponents: [],
+      activeIncident: null,
+      updatedAt: status.checkedAt,
+    };
+  }
+  const incident = status.incidents?.[0];
+  return {
+    indicator: status.severity === 'maintenance' ? 'minor' : status.severity,
+    description: status.description,
+    affectedComponents: status.components
+      .filter((component) => component.status !== 'operational')
+      .map(({ name, status }) => ({ name, status })),
+    activeIncident: incident
+      ? {
+          name: incident.title,
+          impact: incident.impact,
+          shortlink: incident.url ?? '',
+          updatedAt: incident.updatedAt ?? '',
+        }
+      : null,
+    updatedAt: status.providerUpdatedAt ?? '',
+  };
 }
 
 interface StatusResponse {
@@ -115,6 +148,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
  * Fetch current Claude API status from status.claude.com.
  *
  * Single-shot — caller wraps in polling loop, EventEmitter, or interval.
+ * Consumers requiring reliable availability semantics should use fetchProviderServiceStatus.
  */
 export async function fetchProviderStatus(): Promise<ProviderStatusState> {
   return fetchStatusPage(CLAUDE_BASE);
@@ -124,6 +158,7 @@ export async function fetchProviderStatus(): Promise<ProviderStatusState> {
  * Fetch current OpenAI API status from status.openai.com.
  *
  * Single-shot — caller wraps in polling loop, EventEmitter, or interval.
+ * Consumers requiring reliable availability semantics should use fetchProviderServiceStatus.
  */
 export async function fetchOpenAIStatus(): Promise<ProviderStatusState> {
   return fetchStatusPage(OPENAI_BASE);

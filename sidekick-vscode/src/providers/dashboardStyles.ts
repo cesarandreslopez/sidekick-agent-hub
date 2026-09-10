@@ -1501,7 +1501,8 @@ export const DASHBOARD_STYLES = `
       font-size: 11px;
     }
 
-    .provider-status-section.status-minor .provider-status-content {
+    .provider-status-section.status-minor .provider-status-content,
+    .provider-status-section.status-maintenance .provider-status-content {
       border-left-color: var(--vscode-charts-yellow);
     }
 
@@ -1525,7 +1526,8 @@ export const DASHBOARD_STYLES = `
       background: var(--vscode-descriptionForeground);
     }
 
-    .provider-status-section.status-minor .provider-status-dot {
+    .provider-status-section.status-minor .provider-status-dot,
+    .provider-status-section.status-maintenance .provider-status-dot {
       background: var(--vscode-charts-yellow);
     }
 

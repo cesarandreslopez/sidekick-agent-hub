@@ -151,3 +151,16 @@ export type {
   ObservedSessionCollection,
   ObservedSessionCollectorOptions,
 } from './observedSessionCollector';
+
+export type {
+  ProviderServiceSeverity,
+  ProviderServiceComponent,
+  ProviderServiceIncident,
+  ProviderServiceStatusFailureReason,
+  ObservedProviderServiceStatus,
+  UnavailableProviderServiceStatus,
+  ProviderServiceStatus,
+  FetchProviderServiceStatusOptions,
+} from './providerServiceStatusTypes';
+
+export { fetchProviderServiceStatus } from './providerServiceStatus';

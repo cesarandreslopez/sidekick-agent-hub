@@ -10,6 +10,7 @@
  * Runtime globals: acquireVsCodeApi (VS Code) and Chart (chartjs-vendor.js,
  * loaded before this bundle).
  */
+import { renderProviderStatus as renderPublicStatus } from './providerStatus';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
 
@@ -1019,83 +1020,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       }
 
       function renderProviderStatus(idPrefix, display) {
-        const sectionEl = document.getElementById(idPrefix + '-section');
-        const titleEl = document.getElementById(idPrefix + '-title');
-        const summaryEl = document.getElementById(idPrefix + '-summary');
-        const affectedEl = document.getElementById(idPrefix + '-affected');
-        const toggleEl = document.getElementById(idPrefix + '-toggle');
-        const linkEl = document.getElementById(idPrefix + '-link');
-        const detailsEl = document.getElementById(idPrefix + '-details');
-        if (!sectionEl || !titleEl || !summaryEl || !affectedEl || !toggleEl || !linkEl || !detailsEl) return;
-
-        sectionEl.classList.remove('visible', 'status-minor', 'status-major', 'status-critical');
-
-        if (!display || !display.visible) {
-          sectionEl.classList.remove('visible');
-          detailsEl.hidden = true;
-          sectionEl.removeAttribute('data-status-key');
-          return;
-        }
-
-        const components = display.components || [];
-        const statusKey = [
-          display.severity,
-          display.title,
-          display.summary,
-          components.map(function(component) {
-            return component.name + ':' + component.status;
-          }).join('|')
-        ].join('\n');
-        const keepExpanded = sectionEl.getAttribute('data-status-key') === statusKey && detailsEl.hidden === false;
-        sectionEl.setAttribute('data-status-key', statusKey);
-
-        sectionEl.classList.add('visible', 'status-' + display.severity);
-        titleEl.textContent = display.title || display.providerLabel || 'Provider status';
-        summaryEl.textContent = display.summary || '';
-        affectedEl.textContent = components.length > 0 ? display.affectedSummary || '' : '';
-        affectedEl.style.display = components.length > 0 ? '' : 'none';
-
-        if (display.incidentUrl) {
-          linkEl.setAttribute('href', display.incidentUrl);
-          linkEl.setAttribute('rel', 'noopener noreferrer');
-          linkEl.style.display = '';
-        } else {
-          linkEl.removeAttribute('href');
-          linkEl.style.display = 'none';
-        }
-
-        detailsEl.textContent = '';
-        for (const component of components) {
-          const row = document.createElement('div');
-          row.className = 'provider-status-component';
-          const name = document.createElement('span');
-          name.className = 'provider-status-component-name';
-          name.textContent = component.name || 'Unknown';
-          const state = document.createElement('span');
-          state.className = 'provider-status-component-state';
-          state.textContent = component.status || 'unknown';
-          row.appendChild(name);
-          row.appendChild(state);
-          detailsEl.appendChild(row);
-        }
-
-        if (components.length > 0) {
-          detailsEl.hidden = !keepExpanded;
-          toggleEl.hidden = false;
-          toggleEl.textContent = keepExpanded ? 'Hide' : 'Details';
-          toggleEl.setAttribute('aria-expanded', String(keepExpanded));
-          toggleEl.onclick = function() {
-            const expanded = detailsEl.hidden;
-            detailsEl.hidden = !expanded;
-            toggleEl.textContent = expanded ? 'Hide' : 'Details';
-            toggleEl.setAttribute('aria-expanded', String(expanded));
-          };
-        } else {
-          detailsEl.hidden = true;
-          toggleEl.hidden = true;
-          toggleEl.onclick = null;
-          toggleEl.setAttribute('aria-expanded', 'false');
-        }
+        renderPublicStatus(document, idPrefix, display);
       }
 
       /**

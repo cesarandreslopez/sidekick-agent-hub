@@ -4,60 +4,20 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { fetchProviderStatus, fetchOpenAIStatus, fetchPeakHoursStatus } from 'sidekick-shared';
-import type { ProviderStatusState } from 'sidekick-shared';
+import {
+  fetchProviderServiceStatus,
+  toLegacyProviderStatus,
+  fetchPeakHoursStatus,
+} from 'sidekick-shared';
+import type { ProviderServiceStatus } from 'sidekick-shared';
+import { presentProviderStatus } from '../dashboard/providerStatusPresentation';
 import { printPeakHoursBlock } from './peakHoursRender';
 import { resolveProviderId } from '../cli';
 
-function printStatus(label: string, statusPageHost: string, status: ProviderStatusState): void {
-  const indicatorColor =
-    status.indicator === 'none'
-      ? chalk.green
-      : status.indicator === 'minor'
-        ? chalk.yellow
-        : chalk.red;
-
-  const indicatorLabel =
-    status.indicator === 'none' ? '●' : status.indicator === 'minor' ? '◐' : '●';
-
-  process.stdout.write(chalk.bold(`${label}\n`));
-  process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
-  process.stdout.write(
-    `  ${indicatorColor(indicatorLabel)} ${indicatorColor(status.description || status.indicator)}\n`,
-  );
-
-  if (status.description === 'Status unavailable') {
-    process.stdout.write(chalk.dim(`  Could not reach ${statusPageHost}\n`));
-    return;
-  }
-
-  if (status.affectedComponents.length > 0) {
-    process.stdout.write('\n' + chalk.bold('  Affected Components:\n'));
-    for (const c of status.affectedComponents) {
-      const statusColor = c.status.includes('major')
-        ? chalk.red
-        : c.status.includes('partial') || c.status.includes('degraded')
-          ? chalk.yellow
-          : chalk.dim;
-      process.stdout.write(
-        `    ${statusColor('•')} ${c.name} ${chalk.dim('—')} ${statusColor(c.status.replace(/_/g, ' '))}\n`,
-      );
-    }
-  }
-
-  if (status.activeIncident) {
-    const inc = status.activeIncident;
-    const impactColor =
-      inc.impact === 'critical' || inc.impact === 'major' ? chalk.red : chalk.yellow;
-    process.stdout.write('\n' + chalk.bold('  Active Incident:\n'));
-    process.stdout.write(`    ${impactColor(inc.name)}\n`);
-    process.stdout.write(
-      `    Impact: ${impactColor(inc.impact)}  Updated: ${chalk.dim(inc.updatedAt)}\n`,
-    );
-    if (inc.shortlink) {
-      process.stdout.write(`    ${chalk.dim(inc.shortlink)}\n`);
-    }
-  }
+function printStatus(status: ProviderServiceStatus): void {
+  const display = presentProviderStatus(status);
+  process.stdout.write(chalk.bold(`${display.label}\n`));
+  for (const line of display.lines) process.stdout.write(`  ${chalk[display.color](line)}\n`);
 }
 
 export async function statusAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
@@ -71,19 +31,30 @@ export async function statusAction(_opts: Record<string, unknown>, cmd: Command)
   const wantsPeak = providerId === 'claude-code';
 
   const [claude, openai, peak] = await Promise.all([
-    fetchProviderStatus(),
-    fetchOpenAIStatus(),
+    fetchProviderServiceStatus('claude-code'),
+    fetchProviderServiceStatus('codex'),
     wantsPeak ? fetchPeakHoursStatus() : Promise.resolve(null),
   ]);
 
   if (jsonOutput) {
-    process.stdout.write(JSON.stringify({ claude, openai, peak }, null, 2) + '\n');
+    process.stdout.write(
+      JSON.stringify(
+        {
+          claude: toLegacyProviderStatus(claude),
+          openai: toLegacyProviderStatus(openai),
+          peak,
+          serviceStatus: { claude, openai },
+        },
+        null,
+        2,
+      ) + '\n',
+    );
     return;
   }
 
-  printStatus('Claude API Status', 'status.claude.com', claude);
+  printStatus(claude);
   process.stdout.write('\n');
-  printStatus('OpenAI API Status', 'status.openai.com', openai);
+  printStatus(openai);
   if (peak) {
     process.stdout.write('\n');
     printPeakHoursBlock(peak);

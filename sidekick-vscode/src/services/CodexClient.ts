@@ -97,6 +97,7 @@ export class CodexClient implements ClaudeClient {
         // Parse JSONL from stdout
         let response = '';
         let errorMessage = '';
+        let terminalError: unknown;
 
         const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
         rl.on('line', (line: string) => {
@@ -112,6 +113,7 @@ export class CodexClient implements ClaudeClient {
             // turn.failed carries error info
             if (type === 'turn.failed' && parsed.error?.message) {
               errorMessage = parsed.error.message;
+              terminalError = parsed.error;
             }
           } catch {
             // Skip non-JSON lines
@@ -126,7 +128,7 @@ export class CodexClient implements ClaudeClient {
             error.name = 'AbortError';
             reject(error);
           } else if (errorMessage) {
-            reject(new Error(`Codex error: ${errorMessage}`));
+            reject(new Error(`Codex error: ${errorMessage}`, { cause: terminalError }));
           } else if (code !== 0 && code !== null) {
             reject(
               new Error(`Codex exited with code ${code}${stderr ? ': ' + stderr.trim() : ''}`),
@@ -140,6 +142,7 @@ export class CodexClient implements ClaudeClient {
   }
 
   async isAvailable(): Promise<boolean> {
+    findCodexCli();
     // Check for API key availability
     if (process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY) {
       log('CodexClient: API key found in env');
@@ -156,7 +159,9 @@ export class CodexClient implements ClaudeClient {
     }
 
     logError('CodexClient: no API key or credentials found');
-    return false;
+    throw Object.assign(new Error('No Codex credentials available'), {
+      code: 'missing_credentials',
+    });
   }
 
   dispose(): void {

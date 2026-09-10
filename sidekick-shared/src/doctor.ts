@@ -10,7 +10,9 @@ import {
   getMostRecentlyActiveSessionDir,
   getSessionDirectory,
 } from './parsers/sessionPathResolver';
-import { fetchOpenAIStatus, fetchProviderStatus, type ProviderStatusState } from './providerStatus';
+import { toLegacyProviderStatus, type ProviderStatusState } from './providerStatus';
+import { fetchProviderServiceStatus } from './providerServiceStatus';
+import type { ProviderServiceStatus } from './providerServiceStatusTypes';
 import { getOpenCodeDataDir } from './providers/openCode';
 import { createSessionProviders } from './providers/factory';
 import { detectProvider } from './providers/detect';
@@ -60,6 +62,7 @@ export interface HealthReport {
   accounts: ActiveAccountStatus;
   openCode: OpenCodeDbRuntimeStatus;
   providerStatus: { claude: ProviderStatusState; openai: ProviderStatusState };
+  serviceStatus?: { claude: ProviderServiceStatus; openai: ProviderServiceStatus };
   /** Legacy Claude Code path diagnostics, retained for compatibility. */
   sessions: SessionDiagnostics;
   sessionProvider?: ProviderId;
@@ -71,6 +74,11 @@ export interface DoctorOptions {
   provider?: ProviderId | 'auto';
   deprecatedSettings?: DeprecatedSetting[];
   openCodeStatus?: OpenCodeDbRuntimeStatus;
+  fetchServiceStatuses?: () => Promise<{
+    claude: ProviderServiceStatus;
+    openai: ProviderServiceStatus;
+  }>;
+  /** Legacy injection; does not establish service evidence availability. */
   fetchStatuses?: () => Promise<{ claude: ProviderStatusState; openai: ProviderStatusState }>;
 }
 
@@ -199,13 +207,37 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<HealthRepo
     openCode = database.getRuntimeStatus();
     database.close();
   }
-  const providerStatus = await (
-    options.fetchStatuses ??
-    (async () => {
-      const [claude, openai] = await Promise.all([fetchProviderStatus(), fetchOpenAIStatus()]);
-      return { claude, openai };
-    })
-  )().catch(() => ({ claude: statusUnavailable(), openai: statusUnavailable() }));
+  const serviceStatus =
+    options.fetchServiceStatuses || !options.fetchStatuses
+      ? await (
+          options.fetchServiceStatuses ??
+          (async () => {
+            const [claude, openai] = await Promise.all([
+              fetchProviderServiceStatus('claude-code'),
+              fetchProviderServiceStatus('codex'),
+            ]);
+            return { claude, openai };
+          })
+        )().catch(() => {
+          const unavailable = (provider: 'claude-code' | 'codex'): ProviderServiceStatus => ({
+            availability: 'unavailable',
+            provider,
+            checkedAt: new Date().toISOString(),
+            sourceUrl: `https://status.${provider === 'codex' ? 'openai' : 'claude'}.com/api/v2/summary.json`,
+            reason: 'network_error',
+          });
+          return { claude: unavailable('claude-code'), openai: unavailable('codex') };
+        })
+      : undefined;
+  const providerStatus = serviceStatus
+    ? {
+        claude: toLegacyProviderStatus(serviceStatus.claude),
+        openai: toLegacyProviderStatus(serviceStatus.openai),
+      }
+    : await options.fetchStatuses!().catch(() => ({
+        claude: statusUnavailable(),
+        openai: statusUnavailable(),
+      }));
 
   const checks: HealthCheck[] = [];
   checks.push(
@@ -271,28 +303,51 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<HealthRepo
       : {}),
   });
 
-  const unavailableProviders = Object.entries(providerStatus)
-    .filter(([, status]) => status.description === 'Status unavailable')
-    .map(([name]) => name);
-  const degradedProviders = Object.entries(providerStatus)
-    .filter(([, status]) => status.indicator !== 'none')
-    .map(([name]) => name);
+  const unavailableProviders = serviceStatus
+    ? Object.entries(serviceStatus)
+        .filter(([, status]) => status.availability === 'unavailable')
+        .map(([name]) => name)
+    : Object.entries(providerStatus)
+        .filter(([, status]) => status.description === 'Status unavailable')
+        .map(([name]) => name);
+  const degradedProviders = serviceStatus
+    ? Object.entries(serviceStatus)
+        .filter(([, status]) => status.availability === 'observed' && status.severity !== 'none')
+        .map(([name]) => name)
+    : Object.entries(providerStatus)
+        .filter(([, status]) => status.indicator !== 'none')
+        .map(([name]) => name);
+  const partialProviders = serviceStatus
+    ? Object.entries(serviceStatus)
+        .filter(([, status]) => status.availability === 'observed' && status.incidents === null)
+        .map(([name]) => name)
+    : [];
+  const observations = [
+    ...(degradedProviders.length
+      ? [`Public vendor degradation reported for: ${degradedProviders.join(', ')}.`]
+      : []),
+    ...(unavailableProviders.length
+      ? [`Status pages unavailable for: ${unavailableProviders.join(', ')}.`]
+      : []),
+    ...(partialProviders.length
+      ? [`Incident information unavailable for: ${partialProviders.join(', ')}.`]
+      : []),
+  ];
   checks.push({
     id: 'provider_api',
     status: degradedProviders.includes(
       sessionProvider === 'codex' ? 'openai' : sessionProvider === 'claude-code' ? 'claude' : '',
     )
       ? 'warning'
-      : degradedProviders.length > 0 || unavailableProviders.length > 0
+      : observations.length
         ? 'info'
         : 'ok',
-    title: 'Provider API status',
+    title: 'Public provider service status',
     message:
-      degradedProviders.length > 0
-        ? `Provider incidents reported for: ${degradedProviders.join(', ')}.`
-        : unavailableProviders.length > 0
-          ? `Status pages unavailable for: ${unavailableProviders.join(', ')}.`
-          : 'Claude and OpenAI status pages report normal operation.',
+      (observations.length
+        ? observations.join(' ')
+        : 'Claude and OpenAI status pages report normal operation.') +
+      ' Public status does not establish request connectivity or authentication.',
   });
 
   const deprecatedSettings = options.deprecatedSettings ?? [];
@@ -331,6 +386,7 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<HealthRepo
     accounts,
     openCode,
     providerStatus,
+    ...(serviceStatus ? { serviceStatus } : {}),
     sessions,
     sessionProvider,
   };

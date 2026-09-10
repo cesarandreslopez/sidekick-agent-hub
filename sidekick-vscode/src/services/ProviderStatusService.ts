@@ -1,96 +1,77 @@
-/**
- * @fileoverview Service for fetching provider API status from status pages.
- *
- * Uses sidekick-shared for the stateless status fetchers.
- * Polls both status.claude.com and status.openai.com in parallel.
- * Wraps results in VS Code EventEmitter pattern for the dashboard.
- *
- * @module services/ProviderStatusService
- */
-
+/** Consumer-owned public status polling, coalescing and cancellation. */
 import * as vscode from 'vscode';
-import { fetchProviderStatus, fetchOpenAIStatus } from 'sidekick-shared';
-import type { ProviderStatusState } from 'sidekick-shared';
+import { fetchProviderServiceStatus } from 'sidekick-shared';
+import type { AccountProviderId, ProviderServiceStatus } from 'sidekick-shared';
 import { log } from './Logger';
 
-export type { ProviderStatusState };
+export type { ProviderServiceStatus as ProviderStatusState };
 
-/**
- * Service for fetching and managing provider API status.
- *
- * Polls status.claude.com and status.openai.com (Atlassian Statuspage)
- * every 60s and emits events when the status changes.
- */
 export class ProviderStatusService implements vscode.Disposable {
-  private readonly _onStatusUpdate = new vscode.EventEmitter<ProviderStatusState>();
-  private readonly _onOpenAIStatusUpdate = new vscode.EventEmitter<ProviderStatusState>();
-  private _cachedStatus: ProviderStatusState | null = null;
-  private _cachedOpenAIStatus: ProviderStatusState | null = null;
+  private readonly _onStatusUpdate = new vscode.EventEmitter<ProviderServiceStatus>();
+  private readonly _onOpenAIStatusUpdate = new vscode.EventEmitter<ProviderServiceStatus>();
+  private _cachedStatus: ProviderServiceStatus | null = null;
+  private _cachedOpenAIStatus: ProviderServiceStatus | null = null;
   private _refreshInterval: ReturnType<typeof setInterval> | null = null;
-  private _fetching = false;
-  private readonly _disposables: vscode.Disposable[] = [];
-  private readonly REFRESH_INTERVAL_MS = 60_000;
-
+  private readonly pending = new Map<
+    AccountProviderId,
+    { controller: AbortController; promise: Promise<ProviderServiceStatus> }
+  >();
   readonly onStatusUpdate = this._onStatusUpdate.event;
   readonly onOpenAIStatusUpdate = this._onOpenAIStatusUpdate.event;
 
-  constructor() {
-    this._disposables.push(this._onStatusUpdate, this._onOpenAIStatusUpdate);
-    log('ProviderStatusService initialized');
+  fetchStatus(): Promise<ProviderServiceStatus> {
+    return this.fetchOne('claude-code');
   }
-
-  async fetchStatus(): Promise<ProviderStatusState> {
-    const state = await fetchProviderStatus();
-    this._cachedStatus = state;
-    this._onStatusUpdate.fire(state);
-    log(`Claude status: ${state.indicator} — ${state.description}`);
-    return state;
+  fetchOpenAIStatus(): Promise<ProviderServiceStatus> {
+    return this.fetchOne('codex');
   }
-
-  async fetchOpenAIStatus(): Promise<ProviderStatusState> {
-    const state = await fetchOpenAIStatus();
-    this._cachedOpenAIStatus = state;
-    this._onOpenAIStatusUpdate.fire(state);
-    log(`OpenAI status: ${state.indicator} — ${state.description}`);
-    return state;
+  private fetchOne(provider: AccountProviderId): Promise<ProviderServiceStatus> {
+    const pending = this.pending.get(provider);
+    if (pending) return pending.promise;
+    const controller = new AbortController();
+    const promise = fetchProviderServiceStatus(provider, { signal: controller.signal })
+      .then((state) => {
+        if (!controller.signal.aborted) {
+          if (provider === 'claude-code') {
+            this._cachedStatus = state;
+            this._onStatusUpdate.fire(state);
+          } else {
+            this._cachedOpenAIStatus = state;
+            this._onOpenAIStatusUpdate.fire(state);
+          }
+          log(`${provider} public status: ${state.availability}`);
+        }
+        return state;
+      })
+      .finally(() => {
+        if (this.pending.get(provider)?.controller === controller) this.pending.delete(provider);
+      });
+    this.pending.set(provider, { controller, promise });
+    return promise;
   }
-
   private async fetchAll(): Promise<void> {
-    if (this._fetching) return;
-    this._fetching = true;
-    try {
-      await Promise.all([this.fetchStatus(), this.fetchOpenAIStatus()]);
-    } finally {
-      this._fetching = false;
-    }
+    await Promise.all([this.fetchStatus(), this.fetchOpenAIStatus()]);
   }
-
-  getCachedStatus(): ProviderStatusState | null {
+  getCachedStatus(): ProviderServiceStatus | null {
     return this._cachedStatus;
   }
-
-  getCachedOpenAIStatus(): ProviderStatusState | null {
+  getCachedOpenAIStatus(): ProviderServiceStatus | null {
     return this._cachedOpenAIStatus;
   }
-
   startRefresh(): void {
     if (this._refreshInterval) return;
     void this.fetchAll();
-    this._refreshInterval = setInterval(() => void this.fetchAll(), this.REFRESH_INTERVAL_MS);
-    log('Provider status refresh started');
+    this._refreshInterval = setInterval(() => void this.fetchAll(), 60_000);
   }
-
   stopRefresh(): void {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = null;
-      log('Provider status refresh stopped');
-    }
+    if (this._refreshInterval) clearInterval(this._refreshInterval);
+    this._refreshInterval = null;
+    for (const { controller } of this.pending.values()) controller.abort();
+    this.pending.clear();
   }
-
   dispose(): void {
     this.stopRefresh();
-    this._disposables.forEach((d) => d.dispose());
-    log('ProviderStatusService disposed');
+    this._onStatusUpdate.dispose();
+    this._onOpenAIStatusUpdate.dispose();
   }
 }

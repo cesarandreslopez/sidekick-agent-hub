@@ -105,3 +105,16 @@ The bootstrap is idempotent (repeated calls do not create duplicates), never ove
 The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) package is the canonical home of the session provider implementations and the auto-detection algorithm — checking filesystem presence and most-recent modification time. The VS Code extension's `ProviderDetector` is a thin adapter that delegates to shared detection and layers the VS Code setting fallback on top. Any npm project can consume these providers directly via `npm install sidekick-shared`.
 
 The CLI's `--provider` flag serves as an explicit override when auto-detection isn't appropriate. Providers read session data in the same formats (JSONL, SQLite, JSON) as the extension, so the CLI produces identical results from the same data files.
+
+## Provider failure and service evidence
+
+`sidekick-shared` exposes two separate APIs for Claude Code and Codex:
+
+- `diagnoseProviderFailure()` is pure and available through root and browser. It classifies caller-designated terminal errors into bounded diagnosis and recovery identifiers, preserving evidence provenance and optional HTTP/retry-after information without raw errors or credentials. Consumers supply the credential kind and may supply timestamped authentication observations.
+- `fetchProviderServiceStatus()` is available through root and Node, with result types through browser. It fetches the official public summary once without credentials and with a ten-second deadline and optional cancellation. `availability: observed` retains reported severity, components, incidents, associations, and independent check/provider-update timestamps. `availability: unavailable` carries a bounded reason and no severity. Omitted incidents are `null`, distinct from an explicit empty array.
+
+Authentication, request outcomes, CLI readiness, and public status are separate observations. A 5xx or connection reset does not establish rejected credentials; a provider thread failure does not establish account sign-out. A successful local OAuth check cannot validate an API key or override explicit rejection from the actual request. Public incidents do not establish request causation, and an operational public page does not prove the user's connection works. Unknown component mappings and custom endpoints remain uncorrelated.
+
+The extension uses these APIs for terminal inference guidance and public status cards; the CLI uses them for AI summary failures, `status`, dashboard details, and Doctor. Missing or partial public evidence remains visible. Local readiness checks are labeled separately from authenticated request success. Polling, cancellation, coalescing, and cached display state belong to the host services.
+
+The caller retains control over SDK event terminality and recovery. These APIs do not sign in, modify credentials, switch providers, invoke models, or replay turns. Legacy status functions and the transcript/tool and quota taxonomies remain compatible. See the [shared package API examples](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/sidekick-shared/README.md#diagnose-terminal-provider-failures).

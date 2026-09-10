@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Public service-status cards show unavailable and partial evidence, multiple incidents with component associations, and separate check/provider-update timestamps. Status rendering now lives in a typed webview module.
+
+### Fixed
+
+- API connection checks preserve service and network errors instead of labeling every failure as rejected credentials. Local CLI readiness is distinguished from authenticated request success.
+- Terminal inference failures use shared provider diagnoses with extension-specific guidance while preserving cancellation and timeout behavior. Codex reconnect items continue to permit successful completion.
+- Status polling coalesces checks and cancels outstanding requests when the dashboard stops polling.
+
 ## [0.26.2] - 2026-09-06
 
 ### Fixed

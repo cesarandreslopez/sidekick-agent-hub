@@ -122,7 +122,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
       </div>
 
       <div class="provider-status-stack" aria-live="polite">
-        <div class="provider-status-section" id="provider-status-section" title="Claude API status from status.claude.com">
+        <div class="provider-status-section" id="provider-status-section" title="Public Claude service information from status.claude.com">
           <div class="provider-status-content" id="provider-status-content">
             <div class="provider-status-summary-row">
               <span class="provider-status-dot" id="provider-status-dot" aria-hidden="true"></span>
@@ -138,7 +138,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
           </div>
         </div>
 
-        <div class="provider-status-section" id="openai-status-section" title="OpenAI API status from status.openai.com">
+        <div class="provider-status-section" id="openai-status-section" title="Public OpenAI service information from status.openai.com">
           <div class="provider-status-content" id="openai-status-content">
             <div class="provider-status-summary-row">
               <span class="provider-status-dot" id="openai-status-dot" aria-hidden="true"></span>

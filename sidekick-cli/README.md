@@ -461,3 +461,11 @@ Full documentation at [cesarandreslopez.github.io/sidekick-agent-hub](https://ce
 ## License
 
 MIT
+
+### Public provider status and failure guidance
+
+`sidekick status` shows public vendor status with component associations, all unresolved incidents supplied by the feed, and separate check/provider-update timestamps. Failed checks display **Status unavailable**; a feed that omits incidents displays **Incident information unavailable**. Public incidents do not establish why a particular request failed. Dashboard details and Doctor use the same evidence semantics.
+
+`sidekick status --json` retains `claude`, `openai`, and `peak` for compatibility and adds `serviceStatus: { claude, openai }`. New integrations should use each result's `availability` discriminator; the legacy `indicator: none` fallback cannot distinguish operational status from failed fetching. Doctor similarly adds `serviceStatus` alongside its legacy `providerStatus` field.
+
+AI summary failures distinguish authentication, provider sessions, service unavailability, connection failures, timeouts, rate limiting, execution policy, missing runtimes, and context limits. Guidance does not automatically sign in, change credentials, switch providers, or replay the request.

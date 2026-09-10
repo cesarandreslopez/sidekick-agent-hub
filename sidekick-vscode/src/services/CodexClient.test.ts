@@ -38,6 +38,46 @@ function makeChild() {
 describe('CodexClient', () => {
   beforeEach(() => mockSpawn.mockReset());
 
+  it('continues through non-fatal reconnect items and returns the successful reply', async () => {
+    const child = makeChild();
+    mockSpawn.mockReturnValue(child);
+    const pending = new CodexClient().complete('prompt');
+    child.stdout.write(
+      JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'error',
+          message:
+            'Reconnecting... 2/5 (unexpected status 503 Service Unavailable: upstream connect error or disconnect/reset before headers. reset reason: connection termination)',
+        },
+      }) + '\n',
+    );
+    child.stdout.write(
+      JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'ok' } }) +
+        '\n',
+    );
+    child.stdout.write(JSON.stringify({ type: 'turn.completed' }) + '\n');
+    child.emit('close', 0);
+    await expect(pending).resolves.toBe('ok');
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
+  it('retains structured terminal request errors', async () => {
+    const child = makeChild();
+    mockSpawn.mockReturnValue(child);
+    const pending = new CodexClient().complete('prompt');
+    child.stdout.write(
+      JSON.stringify({
+        type: 'turn.failed',
+        error: { message: 'Rejected', code: 'invalid_thread_id', status: 404 },
+      }) + '\n',
+    );
+    child.emit('close', 1);
+    await expect(pending).rejects.toMatchObject({
+      cause: { code: 'invalid_thread_id', status: 404 },
+    });
+  });
+
   it('handles stdin EPIPE as a rejected completion', async () => {
     const child = makeChild();
     child.stdin.write.mockImplementation(() => {

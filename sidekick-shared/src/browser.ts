@@ -205,3 +205,26 @@ export {
   mergeFailingToolWindows,
 } from './failingTools';
 export type { FailingToolTrend, FailingToolTrendRow, FailingToolWindow } from './failingTools';
+
+export { diagnoseProviderFailure } from './providerFailure';
+export type {
+  ProviderCredentialKind,
+  ProviderAuthenticationEvidence,
+  ProviderFailureInput,
+  ProviderFailureCode,
+  ProviderRecoveryAction,
+  ProviderRetryAfter,
+  ProviderFailureEvidence,
+  ProviderFailureDiagnosis,
+} from './providerFailure';
+
+export type {
+  ProviderServiceSeverity,
+  ProviderServiceComponent,
+  ProviderServiceIncident,
+  ProviderServiceStatusFailureReason,
+  ObservedProviderServiceStatus,
+  UnavailableProviderServiceStatus,
+  ProviderServiceStatus,
+  FetchProviderServiceStatusOptions,
+} from './providerServiceStatusTypes';

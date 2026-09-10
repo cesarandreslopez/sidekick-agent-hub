@@ -449,19 +449,82 @@ const tasks = await readTasks(project, { status: 'pending' });
 console.log(`Found ${tasks.length} tasks`);
 ```
 
-### Check provider status
+### Diagnose terminal provider failures
+
+`diagnoseProviderFailure()` is a pure, synchronous helper exported from `sidekick-shared` and `sidekick-shared/browser`. The caller decides whether an SDK event is terminal: a Codex `ErrorItem`, including a reconnect notice, must not become terminal merely because its message can be classified.
 
 ```typescript
-import { fetchProviderStatus } from 'sidekick-shared';
+import { diagnoseProviderFailure } from 'sidekick-shared/browser';
 
-const status = await fetchProviderStatus();
-if (status.indicator !== 'none') {
-  console.log(`Claude API: ${status.description}`);
-  for (const c of status.affectedComponents) {
-    console.log(`  ${c.name}: ${c.status}`);
-  }
+function diagnoseTerminalError(error: unknown) {
+  return diagnoseProviderFailure({
+    provider: 'codex', // AccountProviderId: 'claude-code' | 'codex'
+    credentialKind: 'oauth', // 'oauth' | 'api-key' | 'unknown'
+    error,
+    authentication: {
+      credentialKind: 'oauth',
+      state: 'authenticated',
+      source: 'local-check',
+      checkedAt: '2026-09-09T12:00:00.000Z',
+    },
+  });
 }
 ```
+
+Authentication evidence is optional. Its states are `authenticated`, `missing`, `signed-out`, `expired`, `rejected`, and `unknown`; sources are `local-check` and `provider-response`. The caller owns the observation's freshness and relevance. File presence alone does not establish authenticated request success.
+
+The result contains `provider`, caller-supplied `credentialKind`, `diagnosis`, `recovery`, and `evidence`. Evidence records a bounded rule and its source (`structured-error`, `http-status`, `message`, or `authentication-check`); authentication-check evidence includes `checkedAt`. Valid supplied authentication evidence is preserved separately. Optional `httpStatus` and `retryAfter` retain request information; retry-after is `{ kind: 'delay', delayMs }` or `{ kind: 'date', at }`, without a clock-dependent conversion.
+
+| Diagnosis                                                      | Recovery identifier                                                                      |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `missing_credentials`                                          | `sign_in`, `update_credentials`, or `check_authentication`, according to credential kind |
+| `oauth_reauthentication_required`                              | `sign_in`                                                                                |
+| `api_credentials_rejected`                                     | `update_credentials`                                                                     |
+| `authentication_rejected` (credential kind unknown)            | `check_authentication`                                                                   |
+| `invalid_provider_session`                                     | `start_new_session`                                                                      |
+| `service_unavailable`, `timeout`, `rate_limited`, `overloaded` | `retry_later`                                                                            |
+| `connection_failed`                                            | `check_connection`                                                                       |
+| `execution_policy_denied`                                      | `review_execution_policy`                                                                |
+| `runtime_unavailable`                                          | `repair_runtime`                                                                         |
+| `context_overflow`                                             | `reduce_context`                                                                         |
+| `unknown`                                                      | `inspect_error`                                                                          |
+
+Recognized structured request codes take precedence over HTTP status, followed by narrow message patterns. A bare 401 establishes credential rejection, with recovery chosen from the credential kind; a bare 403 does not distinguish authentication from execution policy and remains unknown. Explicit credential rejection from the request overrides a successful local OAuth check. OAuth observations never validate API keys. Thread/conversation failures, 5xx responses, DNS failures, and connection resets do not establish rejected account credentials. The reported `Reconnecting... 2/5 (unexpected status 503 Service Unavailable: upstream connect error or disconnect/reset before headers. reset reason: connection termination)` is classified as `service_unavailable`, with message provenance and HTTP 503, if the caller supplies it as a terminal error.
+
+The projection contains no raw errors, stacks, credentials, or request URLs. Product wording belongs to consumers. The helper performs no I/O, credential reads, SDK calls, stream control, retries, or UI actions. Existing transcript/tool `ErrorCategory` and quota-specific guidance contracts remain unchanged.
+
+### Check public provider service status
+
+```typescript
+import { fetchProviderServiceStatus } from 'sidekick-shared/node';
+import type { ProviderServiceStatus } from 'sidekick-shared/browser';
+
+const controller = new AbortController();
+const status: ProviderServiceStatus = await fetchProviderServiceStatus('codex', {
+  signal: controller.signal,
+});
+
+if (status.availability === 'unavailable') {
+  console.log('Public status unavailable', status.reason, status.checkedAt);
+} else {
+  console.log(status.severity, status.checkedAt, status.providerUpdatedAt);
+  // null means the feed omitted incident evidence; [] explicitly reports none unresolved.
+  console.log(status.incidents === null ? 'Incident information unavailable' : status.incidents);
+}
+```
+
+The fetcher is exported from root and Node, with pure result types also exported from browser. It requests the official [Claude summary](https://status.claude.com/api/v2/summary.json) or [OpenAI summary](https://status.openai.com/api/v2/summary.json) without credentials. Every call has a ten-second deadline covering headers and body consumption, supports caller cancellation, and performs one request with no retries or cache.
+
+- `observed` results contain provider, source URL, check timestamp, reported severity/description, provider page update timestamp, all reported components, and unresolved incidents. Supported severity values are `none`, `minor`, `major`, `critical`, and `maintenance`.
+- Components retain IDs, names, and reported states. Incidents retain IDs, titles, status, impact, HTTP(S) links, provider update timestamps, and component IDs. Unknown associations are `null`; unmatched IDs are preserved. Resolved and postmortem incidents are excluded.
+- Omitted incident data is represented as `incidents: null`, preserving a partial observation without claiming zero incidents. Missing provider timestamps and links remain `null`; the check timestamp never substitutes for a provider update.
+- `unavailable` results contain no severity. Reasons are `http_error`, `network_error`, `timeout`, `cancelled`, or `invalid_response`, with optional HTTP status and no raw error text. Malformed supplied fields are rejected rather than defaulted to operational.
+
+Request failure, authentication, CLI readiness, and public service status are separate observations. Public incidents supplement a diagnosis but do not prove a failed request's cause. An operational public page does not prove that the user's connection works. Preserve component associations to avoid attributing unrelated vendor incidents to Claude Code or Codex; unknown component mappings and custom provider endpoints remain uncorrelated. The result's `provider` identifies the selected public feed, not a verified request-backend mapping.
+
+Consumers own caching, stale-evidence presentation, polling, and request coalescing. Neither API initiates sign-in, modifies credentials, switches providers, requests a model response, or replays a turn.
+
+`fetchProviderStatus()`, `fetchOpenAIStatus()`, and `ProviderStatusState` remain compatible. Their historical fallback combines `indicator: 'none'` with `Status unavailable`; migrate to the new API for reliable availability semantics. `toLegacyProviderStatus()` is a lossy compatibility projection for older output contracts, not an availability check. Doctor includes optional `serviceStatus` evidence alongside legacy `providerStatus`; its new `fetchServiceStatuses` injection takes precedence over legacy `fetchStatuses`, which remains supported without additional network requests.
 
 ### Check Claude peak-hours state
 

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Shared provider-failure diagnosis distinguishes authentication, provider sessions, execution policy, runtime readiness, context limits, service, rate-limit, timeout, and connection failures without triggering recovery.
+- Explicit public service-status evidence preserves components, multiple incident associations, check/update timestamps, unavailable results, and partial results when incident data is omitted.
+
+### Fixed
+
+- CLI and VS Code status displays and Doctor show unavailable or partial evidence instead of implying normal operation after a failed status check.
+- Terminal inference failures use provider-specific recovery guidance; VS Code connection checks preserve API failure evidence and distinguish local readiness from authenticated requests.
+
 ## [0.26.2] - 2026-09-06
 
 ### Fixed

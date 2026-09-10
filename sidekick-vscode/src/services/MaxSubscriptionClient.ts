@@ -251,7 +251,7 @@ export class MaxSubscriptionClient implements ClaudeClient {
           log(`Result message: ${JSON.stringify(message, null, 2)}`);
           const errorMsg = message.errors?.join(', ') || message.subtype || 'Unknown error';
           logError(`Query failed: ${errorMsg}`);
-          throw new ApiError(errorMsg, 'claude-max');
+          throw new ApiError(errorMsg, 'claude-max', undefined, { cause: message });
         }
       }
       throw new ApiError('No result received', 'claude-max');
@@ -269,18 +269,15 @@ export class MaxSubscriptionClient implements ClaudeClient {
    * @returns Promise resolving to true if CLI is available
    */
   async isAvailable(): Promise<boolean> {
-    try {
-      const claudePath = findClaudeCli();
-
-      log(`Testing CLI availability with: ${claudePath}`);
-
-      spawnSync(claudePath, ['--version'], { stdio: 'ignore' });
-      log('Claude CLI is available');
-      return true;
-    } catch (error) {
-      logError('Claude CLI not available', error);
-      return false;
+    const claudePath = findClaudeCli();
+    const result = spawnSync(claudePath, ['--version'], { stdio: 'ignore' });
+    if (result.error || result.status !== 0) {
+      throw Object.assign(new ConnectionError('Claude CLI is unavailable', 'claude-max'), {
+        code: 'runtime_unavailable',
+        cause: result.error,
+      });
     }
+    return true;
   }
 
   /**

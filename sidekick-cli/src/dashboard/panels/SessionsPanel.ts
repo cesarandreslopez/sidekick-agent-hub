@@ -1,3 +1,5 @@
+import { describeInferenceFailure } from '../../inference/providerFailure';
+import { presentProviderStatus } from '../providerStatusPresentation';
 /**
  * Sessions panel — consolidates MetricsPage + ProjectTimelinePage logic.
  * Shows active + historical sessions in the side list,
@@ -252,7 +254,10 @@ export class SessionsPanel implements SidePanel {
       .then((result) => {
         this.narrativeLoading = false;
         if (result.error) {
-          this.narrativeError = result.error;
+          this.narrativeError =
+            result.diagnosis && result.diagnosis.diagnosis !== 'unknown'
+              ? describeInferenceFailure(result.diagnosis)
+              : result.error;
         } else {
           this.narrativeText = result.text;
         }
@@ -544,32 +549,12 @@ export class SessionsPanel implements SidePanel {
         );
       }
 
-      // ── Provider Status sections (Claude + OpenAI)
-      const statusEntries: Array<{
-        label: string;
-        status: import('../DashboardState').DashboardMetrics['providerStatus'];
-      }> = [
-        { label: 'Claude API Status', status: m.providerStatus },
-        { label: 'OpenAI API Status', status: m.openaiStatus },
-      ];
-      for (const { label, status: ps } of statusEntries) {
-        if (ps && ps.indicator !== 'none') {
-          const statusColor = ps.indicator === 'minor' ? 'yellow' : 'red';
-          lines.push('', sectionHeader(label, w));
-          lines.push(`  {${statusColor}-fg}\u25cf ${ps.description}{/${statusColor}-fg}`);
-          for (const c of ps.affectedComponents) {
-            const cColor = c.status.includes('major') ? 'red' : 'yellow';
-            lines.push(
-              `  {${cColor}-fg}\u2022{/${cColor}-fg} ${c.name} {grey-fg}\u2014 ${c.status.replace(/_/g, ' ')}{/grey-fg}`,
-            );
-          }
-          if (ps.activeIncident) {
-            lines.push(`  {${statusColor}-fg}${ps.activeIncident.name}{/${statusColor}-fg}`);
-            if (ps.activeIncident.shortlink) {
-              lines.push(`  {grey-fg}${ps.activeIncident.shortlink}{/grey-fg}`);
-            }
-          }
-        }
+      for (const status of [m.providerStatus, m.openaiStatus]) {
+        if (!status) continue;
+        const display = presentProviderStatus(status);
+        if (!display.visible) continue;
+        lines.push('', sectionHeader(display.label, w));
+        for (const line of display.lines) lines.push(`  ${line}`);
       }
 
       // ── Context Attribution section

@@ -1100,7 +1100,7 @@ export {
 } from './schemas/assistantTurn';
 
 // Provider Status
-export { fetchProviderStatus, fetchOpenAIStatus } from './providerStatus';
+export { fetchProviderStatus, fetchOpenAIStatus, toLegacyProviderStatus } from './providerStatus';
 export type { ProviderStatusState } from './providerStatus';
 
 // Shared diagnostics / health report
@@ -1133,3 +1133,28 @@ export {
   mergeFailingToolWindows,
 } from './failingTools';
 export type { FailingToolTrend, FailingToolTrendRow, FailingToolWindow } from './failingTools';
+
+export { diagnoseProviderFailure } from './providerFailure';
+export type {
+  ProviderCredentialKind,
+  ProviderAuthenticationEvidence,
+  ProviderFailureInput,
+  ProviderFailureCode,
+  ProviderRecoveryAction,
+  ProviderRetryAfter,
+  ProviderFailureEvidence,
+  ProviderFailureDiagnosis,
+} from './providerFailure';
+
+export type {
+  ProviderServiceSeverity,
+  ProviderServiceComponent,
+  ProviderServiceIncident,
+  ProviderServiceStatusFailureReason,
+  ObservedProviderServiceStatus,
+  UnavailableProviderServiceStatus,
+  ProviderServiceStatus,
+  FetchProviderServiceStatusOptions,
+} from './providerServiceStatusTypes';
+
+export { fetchProviderServiceStatus } from './providerServiceStatus';

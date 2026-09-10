@@ -5,6 +5,18 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `diagnoseProviderFailure()` and its pure types are available from the root and browser entry points. Results contain bounded diagnosis/recovery identifiers, evidence provenance, and optional HTTP/retry-after data without raw errors or credentials.
+- `fetchProviderServiceStatus()` is available from the root and Node entry points, with pure result types also exported through browser. Stateless official-feed checks support cancellation and a ten-second deadline, preserve component/incident associations and independent timestamps, and distinguish observed, unavailable, and omitted incident evidence.
+- `HealthReport.serviceStatus` and `DoctorOptions.fetchServiceStatuses` add explicit service evidence while retaining legacy status output and injection. `toLegacyProviderStatus()` supports compatibility projections.
+
+### Changed
+
+- Doctor reports unavailable and partial public evidence explicitly. Existing `ErrorCategory`, quota guidance, and legacy status functions/types remain compatible; consumers needing availability semantics should adopt the new API.
+
 ## [0.26.2] - 2026-09-06
 
 ### Added

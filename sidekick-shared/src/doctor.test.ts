@@ -144,3 +144,40 @@ it('names the selected provider when no sessions exist', async () => {
   expect(check?.repair).toContain('Start Codex CLI');
   expect(check?.repair).not.toContain('Claude');
 });
+
+describe('doctor service evidence', () => {
+  it('keeps unavailable and partial evidence explicit alongside legacy output', async () => {
+    const report = await runDoctor({
+      cwd: '/virtual/project',
+      provider: 'codex',
+      openCodeStatus: { available: false, kind: 'db_missing' },
+      fetchServiceStatuses: async () => ({
+        claude: {
+          availability: 'unavailable',
+          provider: 'claude-code',
+          checkedAt: '2026-09-09T00:00:00Z',
+          sourceUrl: 'https://status.claude.com/api/v2/summary.json',
+          reason: 'network_error',
+        },
+        openai: {
+          availability: 'observed',
+          provider: 'codex',
+          checkedAt: '2026-09-09T00:00:00Z',
+          sourceUrl: 'https://status.openai.com/api/v2/summary.json',
+          providerUpdatedAt: '2026-09-01T00:00:00Z',
+          severity: 'none',
+          description: 'Operational',
+          components: [],
+          incidents: null,
+        },
+      }),
+    });
+    expect(report.providerStatus.claude.description).toBe('Status unavailable');
+    expect(report.serviceStatus?.claude.availability).toBe('unavailable');
+    const check = report.checks.find((check) => check.id === 'provider_api');
+    expect(check?.status).toBe('info');
+    expect(check?.message).toContain('Status pages unavailable for: claude');
+    expect(check?.message).toContain('Incident information unavailable for: openai');
+    expect(check?.message).not.toContain('normal operation');
+  });
+});

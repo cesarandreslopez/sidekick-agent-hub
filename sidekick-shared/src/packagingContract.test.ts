@@ -20,6 +20,59 @@ const statuslineJs = path.join(distDir, 'statusline', 'index.js');
 const pkgRequire = createRequire(path.join(pkgRoot, 'package.json'));
 
 describe('packaging contract', { timeout: 30_000 }, () => {
+  it('exports diagnosis and status evidence across the supported runtime boundaries', async () => {
+    const root = pkgRequire('sidekick-shared');
+    const browser = pkgRequire('sidekick-shared/browser');
+    const node = pkgRequire('sidekick-shared/node');
+    expect(root.diagnoseProviderFailure).toBe(browser.diagnoseProviderFailure);
+    expect(root.fetchProviderServiceStatus).toBe(node.fetchProviderServiceStatus);
+    expect(browser.fetchProviderServiceStatus).toBeUndefined();
+    for (const file of [rootDts, browserDts]) {
+      const declarations = await fs.readFile(file, 'utf8');
+      expect(declarations).toContain('ProviderFailureInput');
+      expect(declarations).toContain('ProviderFailureDiagnosis');
+    }
+    for (const file of [rootDts, browserDts, nodeDts]) {
+      expect(await fs.readFile(file, 'utf8')).toContain('ProviderServiceStatus');
+    }
+  });
+
+  it('bundles the complete browser surface without filesystem or network fetcher modules', async () => {
+    const { build } = await import('vite');
+    const inputs: string[] = [];
+    const result = await build({
+      configFile: false,
+      root: pkgRoot,
+      logLevel: 'silent',
+      build: {
+        write: false,
+        minify: false,
+        lib: { entry: browserJs, formats: ['es'] },
+        commonjsOptions: { include: [/dist/, /node_modules/] },
+      },
+      plugins: [
+        {
+          name: 'inspect-browser-graph',
+          generateBundle() {
+            inputs.push(...this.getModuleIds());
+          },
+        },
+      ],
+    });
+    expect(inputs.some((file) => file.endsWith('/providerFailure.js'))).toBe(true);
+    expect(inputs.some((file) => /\/(providerServiceStatus|providerStatus)\.js$/.test(file))).toBe(
+      false,
+    );
+    expect(inputs.some((file) => /(?:node:|browser-external)/.test(file))).toBe(false);
+    const bundles = Array.isArray(result) ? result : [result];
+    const code = bundles
+      .flatMap((bundle) => ('output' in bundle ? bundle.output : []))
+      .filter((entry) => entry.type === 'chunk')
+      .map((entry) => entry.code)
+      .join('\n');
+    expect(code).toContain('diagnoseProviderFailure');
+    expect(code).not.toMatch(/require\(["'](?:node:)?(?:fs|path|http|https)["']\)/);
+  });
   it('dist/browser.js exposes the browser-safe surface', () => {
     expect(existsSync(browserJs)).toBe(true);
     const m = require(browserJs);

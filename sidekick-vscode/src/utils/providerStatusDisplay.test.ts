@@ -1,102 +1,91 @@
 import { describe, expect, it } from 'vitest';
-import type { ProviderStatusState } from 'sidekick-shared';
+import type { ObservedProviderServiceStatus } from 'sidekick-shared';
 import { formatProviderStatusDisplay } from './providerStatusDisplay';
-
-function status(overrides: Partial<ProviderStatusState>): ProviderStatusState {
+function status(
+  overrides: Partial<ObservedProviderServiceStatus> = {},
+): ObservedProviderServiceStatus {
   return {
-    indicator: 'none',
+    availability: 'observed',
+    provider: 'claude-code',
+    sourceUrl: 'https://status.claude.com/api/v2/summary.json',
+    checkedAt: '2026-09-09T12:00:00Z',
+    providerUpdatedAt: '2026-09-01T00:00:00Z',
+    severity: 'none',
     description: 'All Systems Operational',
-    affectedComponents: [],
-    activeIncident: null,
-    updatedAt: '2026-06-23T12:00:00.000Z',
+    components: [],
+    incidents: [],
     ...overrides,
   };
 }
-
+const incident = {
+  id: 'incident-a',
+  title: 'Errors',
+  impact: 'major',
+  status: 'investigating',
+  url: 'https://status.example/incidents/123',
+  updatedAt: '2026-09-01T00:00:00Z',
+  componentIds: ['api'],
+};
 describe('formatProviderStatusDisplay', () => {
-  it('hides operational provider status', () => {
-    const display = formatProviderStatusDisplay('Claude', status({ indicator: 'none' }));
-
-    expect(display.visible).toBe(false);
+  it('hides fully observed operational status', () => {
+    expect(formatProviderStatusDisplay('Claude', status()).visible).toBe(false);
   });
-
-  it('summarizes a major outage without flooding the compact banner', () => {
+  it('shows unavailable status independently of severity', () => {
+    expect(
+      formatProviderStatusDisplay('Claude', {
+        availability: 'unavailable',
+        provider: 'claude-code',
+        checkedAt: '2026-09-09T00:00:00Z',
+        sourceUrl: 'https://status.claude.com/api/v2/summary.json',
+        reason: 'network_error',
+      }),
+    ).toMatchObject({
+      visible: true,
+      severity: 'unavailable',
+      title: 'Claude public status unavailable',
+    });
+  });
+  it('shows partially observed status instead of claiming there are no incidents', () => {
+    expect(formatProviderStatusDisplay('OpenAI', status({ incidents: null }))).toMatchObject({
+      visible: true,
+      summary: 'Incident information unavailable.',
+    });
+  });
+  it('preserves multiple incidents, associations and check/update timestamps', () => {
     const display = formatProviderStatusDisplay(
       'Claude',
       status({
-        indicator: 'major',
-        description: 'Partial System Outage',
-        affectedComponents: [
-          { name: 'claude.ai', status: 'major_outage' },
-          { name: 'Claude API', status: 'major_outage' },
-          { name: 'Claude Code', status: 'degraded_performance' },
-          { name: 'Claude Console', status: 'partial_outage' },
+        severity: 'major',
+        components: [{ id: 'api', name: 'API', status: 'major_outage' }],
+        incidents: [
+          incident,
+          { ...incident, id: 'incident-b', title: 'Other issue', componentIds: ['unknown-id'] },
         ],
-        activeIncident: {
-          name: 'Elevated error rate across multiple models',
-          impact: 'major',
-          shortlink: 'https://status.example/incidents/123',
-          updatedAt: '2026-06-23T11:45:00.000Z',
-        },
       }),
     );
-
     expect(display).toMatchObject({
       visible: true,
-      providerLabel: 'Claude',
       severity: 'major',
-      title: 'Claude: Partial System Outage',
-      summary: 'Elevated error rate across multiple models',
-      affectedSummary: '4 affected',
-      incidentUrl: 'https://status.example/incidents/123',
+      affectedSummary: '1 affected',
+      checkedAt: '2026-09-09T12:00:00Z',
+      providerUpdatedAt: '2026-09-01T00:00:00Z',
     });
-    expect(display.components).toEqual([
-      { name: 'claude.ai', status: 'major outage' },
-      { name: 'Claude API', status: 'major outage' },
-      { name: 'Claude Code', status: 'degraded performance' },
-      { name: 'Claude Console', status: 'partial outage' },
-    ]);
+    expect(display.incidents).toHaveLength(2);
+    expect(display.incidents[0].detail).toContain('Components: API');
+    expect(display.incidents[1].detail).toContain('unknown-id (unmapped)');
   });
-
-  it('falls back to affected component count when there is no incident', () => {
-    const display = formatProviderStatusDisplay(
-      'OpenAI',
-      status({
-        indicator: 'minor',
-        description: 'Degraded Performance',
-        affectedComponents: [{ name: 'ChatGPT', status: 'degraded_performance' }],
-      }),
-    );
-
-    expect(display.visible).toBe(true);
-    expect(display.title).toBe('OpenAI: Degraded Performance');
-    expect(display.summary).toBe('1 component affected');
-    expect(display.affectedSummary).toBe('1 affected');
-    expect(display.incidentUrl).toBeUndefined();
-  });
-
-  it('preserves untrusted status text as plain display data', () => {
+  it('keeps untrusted text plain and rejects unsafe links', () => {
     const display = formatProviderStatusDisplay(
       'Claude',
       status({
-        indicator: 'critical',
-        description: '<img src=x onerror=alert(1)>',
-        affectedComponents: [{ name: '<script>alert(1)</script>', status: 'major_outage' }],
-        activeIncident: {
-          name: '<b>Incident</b>',
-          impact: 'critical',
-          shortlink: 'javascript:alert(1)',
-          updatedAt: '2026-06-23T11:45:00.000Z',
-        },
+        severity: 'critical',
+        description: '<img src=x>',
+        incidents: [{ ...incident, title: '<b>Incident</b>', url: 'javascript:alert(1)' }],
       }),
     );
-
-    expect(display.title).toBe('Claude: <img src=x onerror=alert(1)>');
+    expect(display.title).toContain('<img src=x>');
     expect(display.summary).toBe('<b>Incident</b>');
-    expect(display.components[0]).toEqual({
-      name: '<script>alert(1)</script>',
-      status: 'major outage',
-    });
     expect(display.incidentUrl).toBeUndefined();
+    expect(display.incidents[0].url).toBeUndefined();
   });
 });

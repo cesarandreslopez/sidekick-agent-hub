@@ -229,3 +229,9 @@ Found a bug or have a feature idea? [Open an issue](https://github.com/cesarandr
 ## License
 
 MIT
+
+### Provider failure guidance and public status
+
+Terminal inference failures now distinguish credential problems, invalid provider conversations, service and connection failures, timeouts, rate limiting, execution policy, missing runtimes, and context limits. Connection tests distinguish local CLI readiness from a successful authenticated API request; network failures are not automatically labeled rejected credentials.
+
+Dashboard public status cards explicitly show unavailable or partial evidence. Details include multiple incidents, component associations, and separate check/provider-update timestamps. Public incidents do not establish the cause of a failed request, and an operational status page does not prove your connection works. These diagnostics do not automatically sign in, modify credentials, switch providers, or replay a turn.

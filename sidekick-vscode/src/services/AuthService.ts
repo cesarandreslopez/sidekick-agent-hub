@@ -9,7 +9,7 @@
  */
 
 import * as vscode from 'vscode';
-import { AuthMode, ClaudeClient, CompletionOptions } from '../types';
+import { AuthMode, ClaudeClient, CompletionOptions, TimeoutError } from '../types';
 import type { InferenceProviderId } from '../types/inferenceProvider';
 import { PROVIDER_DISPLAY_NAMES } from '../types/inferenceProvider';
 import { SecretsManager } from './SecretsManager';
@@ -17,11 +17,15 @@ import { ApiKeyClient } from './ApiKeyClient';
 import { MaxSubscriptionClient } from './MaxSubscriptionClient';
 import { detectInferenceProvider } from './providers/ProviderDetector';
 import { log } from './Logger';
+import { ProviderRequestError } from '../utils/providerFailure';
+import type { ProviderFailureDiagnosis } from 'sidekick-shared';
 
 /**
  * Result from testing the connection.
  */
 export interface ConnectionTestResult {
+  diagnosis?: ProviderFailureDiagnosis;
+  observation?: 'request' | 'local-readiness';
   /** Whether the connection test succeeded */
   success: boolean;
   /** Human-readable message about the result */
@@ -160,27 +164,39 @@ export class AuthService implements vscode.Disposable {
    * Sends a prompt and returns the completion.
    */
   async complete(prompt: string, options?: CompletionOptions): Promise<string> {
-    const client = await this.getClient();
-    return client.complete(prompt, options);
+    const providerId = this.providerId;
+    try {
+      const client = await this.getClient();
+      return await client.complete(prompt, options);
+    } catch (error) {
+      if (error instanceof TimeoutError || (error instanceof Error && error.name === 'AbortError'))
+        throw error;
+      throw this.diagnoseFailure(error, providerId);
+    }
   }
 
   /**
    * Tests the connection using the current provider.
    */
   async testConnection(): Promise<ConnectionTestResult> {
+    const providerId = this.providerId;
     try {
       const client = await this.getClient();
       const available = await client.isAvailable();
 
       if (available) {
-        const name = PROVIDER_DISPLAY_NAMES[this.providerId];
+        const name = PROVIDER_DISPLAY_NAMES[providerId];
         return {
           success: true,
-          message: `Connected successfully via ${name}.`,
+          observation: providerId === 'claude-api' ? 'request' : 'local-readiness',
+          message:
+            providerId === 'claude-api'
+              ? `Request succeeded via ${name}.`
+              : `${name} is available locally. Request authentication has not been verified.`,
         };
       }
 
-      switch (this.providerId) {
+      switch (providerId) {
         case 'claude-max':
           return {
             success: false,
@@ -192,7 +208,8 @@ export class AuthService implements vscode.Disposable {
         case 'claude-api':
           return {
             success: false,
-            message: 'API key authentication failed. Please check your API key.',
+            message:
+              'The API readiness check did not succeed. No credential rejection was established.',
           };
         case 'opencode':
           return {
@@ -202,13 +219,26 @@ export class AuthService implements vscode.Disposable {
         case 'codex':
           return {
             success: false,
-            message: 'Codex CLI not found. Install it from https://github.com/openai/codex',
+            message: 'Codex readiness could not be established. Check the CLI and credentials.',
           };
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, message };
+      const failure = this.diagnoseFailure(error, providerId);
+      return {
+        success: false,
+        message: failure instanceof Error ? failure.message : 'Unknown error',
+        ...(failure instanceof ProviderRequestError ? { diagnosis: failure.diagnosis } : {}),
+      };
     }
+  }
+
+  private diagnoseFailure(error: unknown, providerId: InferenceProviderId): unknown {
+    if (providerId === 'opencode' || error instanceof ProviderRequestError) return error;
+    return new ProviderRequestError({
+      provider: providerId === 'codex' ? 'codex' : 'claude-code',
+      credentialKind: providerId === 'claude-api' ? 'api-key' : 'unknown',
+      error,
+    });
   }
 
   /** Resets the cached client so the next call creates a fresh one (e.g. after account switch). */

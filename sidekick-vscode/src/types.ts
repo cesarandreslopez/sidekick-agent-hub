@@ -92,8 +92,9 @@ export class ApiError extends Error {
     message: string,
     public readonly provider: InferenceProviderId,
     public readonly statusCode?: number,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'ApiError';
   }
 }

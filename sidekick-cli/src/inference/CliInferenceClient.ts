@@ -10,12 +10,13 @@
  */
 
 import { spawn, execSync, type ExecSyncOptionsWithStringEncoding } from 'child_process';
-import type { ProviderId } from 'sidekick-shared';
-import { getCodexExecutionEnv } from 'sidekick-shared';
+import type { ProviderId, ProviderFailureDiagnosis, ProviderFailureInput } from 'sidekick-shared';
+import { getCodexExecutionEnv, diagnoseProviderFailure } from 'sidekick-shared';
 
 export interface InferenceResult {
   text: string;
   error?: string;
+  diagnosis?: ProviderFailureDiagnosis;
 }
 
 type Strategy = 'claude-cli' | 'anthropic-api' | 'openai-api' | 'codex-cli' | 'none';
@@ -122,12 +123,20 @@ export class CliInferenceClient {
 
   private completeViaClaude(prompt: string): Promise<InferenceResult> {
     // Pipe prompt via stdin to avoid argument length limits and escaping issues
-    return spawnWithStdin('claude', ['--print'], prompt);
+    return spawnWithStdin('claude', ['--print'], prompt, undefined, {
+      provider: 'claude-code',
+      credentialKind: 'unknown',
+    });
   }
 
   private async completeViaAnthropicApi(prompt: string): Promise<InferenceResult> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return { text: '', error: 'ANTHROPIC_API_KEY not set' };
+    if (!apiKey)
+      return this.apiFailure(
+        { code: 'missing_credentials' },
+        'ANTHROPIC_API_KEY not set',
+        'claude-code',
+      );
 
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -146,20 +155,29 @@ export class CliInferenceClient {
 
       if (!response.ok) {
         const body = await response.text();
-        return { text: '', error: `API error ${response.status}: ${body.substring(0, 200)}` };
+        return this.apiFailure(
+          { status: response.status, headers: response.headers, body },
+          `API error ${response.status}: ${body.substring(0, 200)}`,
+          'claude-code',
+        );
       }
 
       const data = (await response.json()) as { content: Array<{ text: string }> };
       const text = data.content?.map((b) => b.text).join('') || '';
       return { text };
     } catch (err) {
-      return { text: '', error: `Anthropic API failed: ${(err as Error).message}` };
+      return this.apiFailure(err, `Anthropic API failed: ${(err as Error).message}`, 'claude-code');
     }
   }
 
   private async completeViaOpenAiApi(prompt: string): Promise<InferenceResult> {
     const apiKey = process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY;
-    if (!apiKey) return { text: '', error: 'OPENAI_API_KEY/CODEX_API_KEY not set' };
+    if (!apiKey)
+      return this.apiFailure(
+        { code: 'missing_credentials' },
+        'OPENAI_API_KEY/CODEX_API_KEY not set',
+        'codex',
+      );
 
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -179,19 +197,38 @@ export class CliInferenceClient {
 
       if (!response.ok) {
         const body = await response.text();
-        return { text: '', error: `API error ${response.status}: ${body.substring(0, 200)}` };
+        return this.apiFailure(
+          { status: response.status, headers: response.headers, body },
+          `API error ${response.status}: ${body.substring(0, 200)}`,
+          'codex',
+        );
       }
 
       const data = (await response.json()) as { choices: Array<{ message: { content: string } }> };
       const text = data.choices?.[0]?.message?.content || '';
       return { text };
     } catch (err) {
-      return { text: '', error: `OpenAI API failed: ${(err as Error).message}` };
+      return this.apiFailure(err, `OpenAI API failed: ${(err as Error).message}`, 'codex');
     }
   }
 
+  private apiFailure(
+    error: unknown,
+    message: string,
+    provider: 'claude-code' | 'codex',
+  ): InferenceResult {
+    return {
+      text: '',
+      error: message,
+      diagnosis: diagnoseProviderFailure({ provider, credentialKind: 'api-key', error }),
+    };
+  }
+
   private completeViaCodexCli(prompt: string): Promise<InferenceResult> {
-    return spawnWithStdin('codex', ['exec'], prompt, getCodexExecutionEnv());
+    return spawnWithStdin('codex', ['exec'], prompt, getCodexExecutionEnv(), {
+      provider: 'codex',
+      credentialKind: 'unknown',
+    });
   }
 }
 
@@ -201,6 +238,7 @@ export function spawnWithStdin(
   args: string[],
   prompt: string,
   env?: NodeJS.ProcessEnv,
+  context?: Pick<ProviderFailureInput, 'provider' | 'credentialKind'>,
 ): Promise<InferenceResult> {
   return new Promise((resolve) => {
     const proc = spawn(cmd, args, {
@@ -213,11 +251,18 @@ export function spawnWithStdin(
     let settled = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
 
-    const finish = (result: InferenceResult): void => {
+    const finish = (result: InferenceResult, error?: unknown): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(result);
+      resolve(
+        result.error && context
+          ? {
+              ...result,
+              diagnosis: diagnoseProviderFailure({ ...context, error: error ?? result.error }),
+            }
+          : result,
+      );
     };
 
     const timer = setTimeout(() => {
@@ -240,21 +285,24 @@ export function spawnWithStdin(
     proc.on('close', (code) => {
       if (forceKillTimer) clearTimeout(forceKillTimer);
       if (code !== 0) {
-        finish({
-          text: '',
-          error: `${cmd} CLI failed (exit ${code}): ${stderr.substring(0, 200)}`,
-        });
+        finish(
+          {
+            text: '',
+            error: `${cmd} CLI failed (exit ${code}): ${stderr.substring(0, 200)}`,
+          },
+          { message: stderr },
+        );
       } else {
         finish({ text: stdout.trim() });
       }
     });
 
     proc.on('error', (err) => {
-      finish({ text: '', error: `${cmd} CLI failed: ${err.message}` });
+      finish({ text: '', error: `${cmd} CLI failed: ${err.message}` }, err);
     });
 
     proc.stdin.on('error', (err) => {
-      finish({ text: '', error: `${cmd} CLI stdin failed: ${err.message}` });
+      finish({ text: '', error: `${cmd} CLI stdin failed: ${err.message}` }, err);
     });
 
     proc.stdin.write(prompt);

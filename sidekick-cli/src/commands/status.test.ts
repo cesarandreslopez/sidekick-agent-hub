@@ -12,9 +12,10 @@ const {
   mockResolveProviderId: vi.fn(),
 }));
 
-vi.mock('sidekick-shared', () => ({
-  fetchProviderStatus: (...args: unknown[]) => mockFetchProviderStatus(...args),
-  fetchOpenAIStatus: (...args: unknown[]) => mockFetchOpenAIStatus(...args),
+vi.mock('sidekick-shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('sidekick-shared')>()),
+  fetchProviderServiceStatus: (provider: string) =>
+    provider === 'codex' ? mockFetchOpenAIStatus() : mockFetchProviderStatus(),
   fetchPeakHoursStatus: (...args: unknown[]) => mockFetchPeakHoursStatus(...args),
 }));
 
@@ -26,11 +27,15 @@ import { statusAction } from './status';
 
 function okStatus() {
   return {
-    indicator: 'none',
+    availability: 'observed',
+    provider: 'claude-code',
+    sourceUrl: 'https://status.claude.com/api/v2/summary.json',
+    providerUpdatedAt: '2026-05-26T00:00:00.000Z',
+    severity: 'none',
     description: 'All systems operational',
-    affectedComponents: [],
-    activeIncident: null,
-    updatedAt: '2026-05-27T00:00:00.000Z',
+    components: [],
+    incidents: [],
+    checkedAt: '2026-05-27T00:00:00.000Z',
   };
 }
 
@@ -51,7 +56,7 @@ describe('statusAction', () => {
       return true;
     });
     mockFetchProviderStatus.mockResolvedValue(okStatus());
-    mockFetchOpenAIStatus.mockResolvedValue(okStatus());
+    mockFetchOpenAIStatus.mockResolvedValue({ ...okStatus(), provider: 'codex' });
     mockFetchPeakHoursStatus.mockResolvedValue({
       status: 'off_peak',
       isPeak: false,
@@ -87,5 +92,28 @@ describe('statusAction', () => {
     expect(mockFetchPeakHoursStatus).toHaveBeenCalledOnce();
     const parsed = JSON.parse(stdoutData);
     expect(parsed.peak.label).toBe('Off-Peak');
+  });
+  it('keeps legacy JSON fields and adds explicit unavailable evidence', async () => {
+    mockFetchOpenAIStatus.mockResolvedValue({
+      availability: 'unavailable',
+      provider: 'codex',
+      checkedAt: '2026-09-09T00:00:00Z',
+      sourceUrl: 'https://status.openai.com/api/v2/summary.json',
+      reason: 'network_error',
+    });
+    await statusAction({}, makeCmd(true));
+    const result = JSON.parse(stdoutData);
+    expect(result.claude.indicator).toBe('none');
+    expect(result.openai.description).toBe('Status unavailable');
+    expect(result.serviceStatus.openai.availability).toBe('unavailable');
+    expect(result.serviceStatus.openai).not.toHaveProperty('severity');
+  });
+
+  it('renders missing incident evidence explicitly', async () => {
+    mockFetchProviderStatus.mockResolvedValue({ ...okStatus(), incidents: null });
+    await statusAction({}, makeCmd());
+    expect(stdoutData).toContain('Incident information unavailable');
+    expect(stdoutData).toContain('Checked:');
+    expect(stdoutData).toContain('Provider updated:');
   });
 });
