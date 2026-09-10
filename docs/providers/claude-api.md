@@ -30,4 +30,4 @@ Direct API requests do not create CLI session files. Session monitoring is indep
 
 - Run **"Sidekick: Set API Key"** to update your key
 - Ensure your API key has sufficient credits
-- Run **"Sidekick: Test Connection"** to verify connectivity
+- Run **"Sidekick: Test Connection"** to verify connectivity. For the Claude API this sends a real authenticated request, and the result distinguishes a rejected key from a service or network failure rather than labeling every failure as bad credentials

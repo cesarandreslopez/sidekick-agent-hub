@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Co
 
 ## What's New
 
+- **0.26.3: provider failure diagnosis and status evidence** — AI summary failures distinguish authentication, provider sessions, service, connection, timeout, rate-limit, execution-policy, runtime, and context-limit problems with provider-specific guidance, without signing in, switching providers, or replaying. `sidekick status`, the dashboard, and `doctor` show unavailable or partial public status instead of implying normal operation, and `status --json` adds `serviceStatus` with an `availability` discriminator.
 - **0.26.2: reliable dashboard replay** — complete-line checkpoints preserve Unicode and parser context. Live-only runs leave complete-history caches intact; OpenCode replays history when requested.
 - **Project search and Doctor** — project-scoped searches include Codex and database-only OpenCode sessions; `doctor --provider` focuses diagnostics on the selected session provider.
 - **Usage reports from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` compute tokens and cost for every provider straight from session logs (local calendar days, `--breakdown`, `--by-project`, `--csv`, `--json`), so CLI-only users no longer need the extension's history store; `sidekick import` backfills that store when you want `stats` and `today` to see older sessions.
@@ -246,7 +247,9 @@ sidekick extract -i
 sidekick status
 ```
 
-Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicators with color coding (green/yellow/red), affected components, and active incident details. Use `--json` for machine-readable output. In the dashboard, provider-status surfaces are scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, and hidden for OpenCode.
+Check public service status for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicators with color coding (green/yellow/red), component associations, every unresolved incident the feed supplies, and separate check and provider-update timestamps. A failed check displays **Status unavailable** instead of implying normal operation; a feed that omits incidents displays **Incident information unavailable**. Public incidents do not establish why a particular request failed. In the dashboard, provider-status surfaces are scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, and hidden for OpenCode. Dashboard details and Doctor use the same evidence semantics.
+
+`sidekick status --json` retains `claude`, `openai`, and `peak` for compatibility and adds `serviceStatus: { claude, openai }`. New integrations should use each result's `availability` discriminator; the legacy `indicator: none` fallback cannot distinguish operational status from failed fetching. Doctor similarly adds `serviceStatus` alongside its legacy `providerStatus` field.
 
 When the active provider is `claude-code`, the output also includes a **Claude Peak Hours** block (see below).
 
@@ -461,11 +464,3 @@ Full documentation at [cesarandreslopez.github.io/sidekick-agent-hub](https://ce
 ## License
 
 MIT
-
-### Public provider status and failure guidance
-
-`sidekick status` shows public vendor status with component associations, all unresolved incidents supplied by the feed, and separate check/provider-update timestamps. Failed checks display **Status unavailable**; a feed that omits incidents displays **Incident information unavailable**. Public incidents do not establish why a particular request failed. Dashboard details and Doctor use the same evidence semantics.
-
-`sidekick status --json` retains `claude`, `openai`, and `peak` for compatibility and adds `serviceStatus: { claude, openai }`. New integrations should use each result's `availability` discriminator; the legacy `indicator: none` fallback cannot distinguish operational status from failed fetching. Doctor similarly adds `serviceStatus` alongside its legacy `providerStatus` field.
-
-AI summary failures distinguish authentication, provider sessions, service unavailability, connection failures, timeouts, rate limiting, execution policy, missing runtimes, and context limits. Guidance does not automatically sign in, change credentials, switch providers, or replay the request.

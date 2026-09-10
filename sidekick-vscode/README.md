@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.26.3: provider failure guidance and status evidence** — inference failures distinguish credential, session, service, connection, timeout, rate-limit, execution-policy, runtime, and context-limit problems with recovery hints; "Test Connection" separates local CLI readiness from an authenticated request and no longer labels network errors as rejected keys. Public status cards show unavailable or partial evidence, multiple incidents with component associations, and separate check/provider-update timestamps.
 - **0.26.2: monitoring recovery** — stop/resume preserves subscriptions and custom folders; empty or paused dashboards offer Refresh, Browse, Run Doctor, and Resume. Keyboard navigation works across tabs, session cards, and section toggles.
 - **Reliable session history** — search covers every provider and opens results in the conversation viewer. Claude Code and Codex resume from validated checkpoints; OpenCode replays history to keep totals accurate. Cancelled inline requests stop inference.
 - **History and Health tabs** — the History tab charts hourly today, by-model and by-tool series, a project filter, and a previous-period overlay with deltas; the new Health tab shows doctor checks, provider diagnostics, and failing-tool trends over 7 and 30 days.
@@ -210,6 +211,10 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 
 **Codex issues?** Verify `OPENAI_API_KEY` or `CODEX_API_KEY` is set.
 
+**Request failed?** Inference failures name the problem — missing or rejected credentials, an expired OAuth sign-in, an invalid provider conversation, a service or connection failure, a timeout, rate limiting, an execution-policy denial, a missing runtime, or a context limit — with a recovery hint. Sidekick never signs in, changes credentials, switches providers, or replays a turn for you. "Test Connection" distinguishes local CLI readiness (Claude Max, Codex) from a successful authenticated request (Claude API), and a network or service error is not reported as a rejected key.
+
+**Status card says unavailable?** The dashboard's public status card shows **Status unavailable** when the vendor status page could not be fetched, and **Incident information unavailable** when the feed omitted incidents. Details list every unresolved incident with its component associations and separate check and provider-update timestamps. A public incident does not establish the cause of a failed request, and an operational status page does not prove your connection works.
+
 ## Full Documentation
 
 For detailed guides, configuration reference, and architecture docs, visit the [documentation site](https://cesarandreslopez.github.io/sidekick-agent-hub/).
@@ -229,9 +234,3 @@ Found a bug or have a feature idea? [Open an issue](https://github.com/cesarandr
 ## License
 
 MIT
-
-### Provider failure guidance and public status
-
-Terminal inference failures now distinguish credential problems, invalid provider conversations, service and connection failures, timeouts, rate limiting, execution policy, missing runtimes, and context limits. Connection tests distinguish local CLI readiness from a successful authenticated API request; network failures are not automatically labeled rejected credentials.
-
-Dashboard public status cards explicitly show unavailable or partial evidence. Details include multiple incidents, component associations, and separate check/provider-update timestamps. Public incidents do not establish the cause of a failed request, and an operational status page does not prove your connection works. These diagnostics do not automatically sign in, modify credentials, switch providers, or replay a turn.

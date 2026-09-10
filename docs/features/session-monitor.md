@@ -66,7 +66,7 @@ A dashed line overlays the previous period (yesterday, the seven days before, or
 The Health tab runs the same checks as **Sidekick: Doctor** (which now also focuses this tab) and shows them in place:
 
 - a status banner (healthy, attention, unhealthy) with the number of items needing attention;
-- the check list — project slug, session discovery, OpenCode sqlite, accounts, provider API status, deprecated settings — each with a repair hint when there is one;
+- the check list — project slug, session discovery, OpenCode sqlite, accounts, public provider service status, deprecated settings — each with a repair hint when there is one. The service-status check reports degraded, unavailable, and partial (incidents omitted) evidence separately and notes that public status does not establish request connectivity or authentication;
 - **Session Providers** — diagnostics the Claude Code, Codex, and OpenCode providers emit when probed for the current workspace (missing directories, an unavailable `sqlite3`, enumeration failures);
 - **Failing Tools** — the tools with the most failures over the last 7 and 30 days, with a trend arrow comparing the week to the 30-day weekly average (the same rule `sidekick stats` prints).
 
@@ -119,13 +119,16 @@ When a cycle is detected, a VS Code notification fires with the affected files s
 
 ## Provider Status
 
-The dashboard polls API health for both Claude (status.claude.com) and OpenAI (status.openai.com), then shows the banner only for the monitored provider. When the relevant API is degraded or experiencing an outage, a banner appears in the gauge row showing:
+The dashboard polls the public status pages for both Claude (status.claude.com) and OpenAI (status.openai.com), then shows the card only for the monitored provider. When the relevant service is degraded or experiencing an outage, a card appears in the gauge row showing:
 
-- Color-coded indicator (yellow for minor, red for major/critical)
+- Color-coded indicator (yellow for minor or maintenance, red for major/critical)
 - Affected components and their status
-- Active incident name with link to the status page
+- Every unresolved incident with its component associations and a link to the status page
+- Separate timestamps for when Sidekick checked and when the provider last updated the page
 
-The relevant status page is shown based on the monitored provider — Claude status for Claude Code, OpenAI status for Codex, and no provider-status banner for OpenCode. The banner is hidden when all systems are operational. Polls every 60 seconds, pausing when the dashboard is not visible. Also available as a standalone CLI command: `sidekick status`, which checks both endpoints directly.
+Evidence is shown explicitly rather than assumed: a check that fails shows **Status unavailable**, and a feed that omits incident data shows **Incident information unavailable**. A public incident does not establish the cause of a failed request, and an operational status page does not prove your connection works.
+
+The relevant status page is shown based on the monitored provider — Claude status for Claude Code, OpenAI status for Codex, and no provider-status card for OpenCode. The card is hidden when all systems are operational and the check succeeded. Polls every 60 seconds, pausing when the dashboard is not visible; overlapping checks are coalesced and outstanding requests are cancelled when polling stops. Also available as a standalone CLI command: `sidekick status`, which checks both endpoints directly.
 
 ## Historical Import
 

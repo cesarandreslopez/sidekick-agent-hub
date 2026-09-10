@@ -478,9 +478,11 @@ sidekick sessions --since 24h --json
 sidekick status
 ```
 
-Check API health for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicator with color coding (green = operational, yellow = minor, red = major/critical), affected components, and active incident details with shortlink.
+Check public service status for both Claude (status.claude.com) and OpenAI (status.openai.com). Shows indicator with color coding (green = operational, yellow = minor, red = major/critical), component associations, every unresolved incident the feed supplies with its link, and separate check and provider-update timestamps.
 
-No command-specific flags. Use `--json` for machine-readable output.
+A failed check prints **Status unavailable** rather than implying normal operation; a feed that omits incident data prints **Incident information unavailable**. Public incidents do not establish why a particular request failed, and an operational status page does not prove your own connection works.
+
+No command-specific flags. Use `--json` for machine-readable output. The JSON keeps the legacy `claude`, `openai`, and `peak` fields and adds `serviceStatus: { claude, openai }`; each result carries an `availability` discriminator (`observed` or `unavailable`), because the legacy `indicator: "none"` fallback cannot distinguish an operational page from a failed fetch. `sidekick doctor --json` likewise adds `serviceStatus` beside its legacy `providerStatus`.
 
 #### Examples
 
@@ -494,7 +496,9 @@ sidekick status --json
 
 When the active provider is `claude-code`, the status output is followed by a **Claude Peak Hours** block pulled from [promoclock.co](https://promoclock.co/) — see [Peak Hours](peak-hours.md) for background.
 
-The dashboard also monitors status automatically, but only for the monitored provider — Claude for Claude Code sessions, OpenAI for Codex sessions, and no provider-status section for OpenCode. When degraded, the status bar shows a colored indicator and the Sessions panel Summary tab shows affected components and incident details.
+The dashboard also monitors status automatically, but only for the monitored provider — Claude for Claude Code sessions, OpenAI for Codex sessions, and no provider-status section for OpenCode. When degraded, the status bar shows a colored indicator and the Sessions panel Summary tab shows component associations, every unresolved incident, and the check and provider-update timestamps; unavailable or partial evidence is shown explicitly. Overlapping polls are coalesced and outstanding checks are cancelled when the dashboard stops polling.
+
+AI summary failures in the dashboard use the same shared diagnosis as the extension: the message names the problem — missing or rejected credentials, an expired OAuth sign-in, an invalid provider session, a service or connection failure, a timeout, rate limiting, an execution-policy denial, a missing runtime, or a context limit — with a recovery hint. Sidekick does not sign in, change credentials, switch providers, or replay the request on your behalf.
 
 ### Peak
 

@@ -78,7 +78,7 @@ Rate-limit samples are persisted for the active account in `~/.config/sidekick/q
 
 ## Provider Status
 
-Sidekick monitors OpenAI API health via status.openai.com when Codex is the active provider. Degraded or outage states appear as a banner in the dashboard gauge row. Also available via `sidekick status`.
+Sidekick monitors public OpenAI service status via status.openai.com when Codex is the active provider. Degraded or outage states appear as a card in the dashboard gauge row with component associations, unresolved incidents, and check/provider-update timestamps; a failed check shows **Status unavailable** rather than implying normal operation. Also available via `sidekick status`. A public incident does not establish why a particular Codex request failed.
 
 ## Troubleshooting
 
