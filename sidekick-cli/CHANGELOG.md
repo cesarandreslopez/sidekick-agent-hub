@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- AI summary failures distinguish refresh-token rejection from expired conversations and recognize expired-login and reauthentication messages with guidance appropriate to the known credential kind.
+- Policy-denial messages, including HTTP 403 responses, direct users to review execution permissions.
+
 ## [0.26.3] - 2026-09-09
 
 ### Added

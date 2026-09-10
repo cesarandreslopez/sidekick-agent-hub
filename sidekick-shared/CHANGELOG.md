@@ -5,6 +5,13 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `diagnoseProviderFailure()` recognizes explicit login expiry and reauthentication requests, and gives refresh-token rejection precedence over conversation-expiry wording while preserving structured evidence and credential-aware recovery.
+- `Permission denied by policy` is classified as execution-policy denial, including HTTP 403 responses. Ambiguous session and permission messages retain their existing classifications.
+
 ## [0.26.3] - 2026-09-09
 
 ### Added

@@ -16,6 +16,16 @@ const auth: ProviderAuthenticationEvidence = {
 };
 const reconnect =
   'Reconnecting... 2/5 (unexpected status 503 Service Unavailable: upstream connect error or disconnect/reset before headers. reset reason: connection termination)';
+const authenticationMessages = [
+  'Conversation session expired because the refresh token is invalid.',
+  'Your login has expired, please log in again.',
+  'Please re-authenticate to continue.',
+];
+const policyDenial = 'Permission denied by policy';
+const transportMessages = [
+  'Reconnecting... 4/5 … Unexpected status 503 Service Unavailable: upstream connect error … connection termination',
+  'Falling back from WebSockets to HTTPS transport. unexpected status 503 Service Unavailable …',
+];
 
 describe.each(ACCOUNT_PROVIDER_IDS)('diagnoseProviderFailure: %s', (provider) => {
   const cases: Array<[string, ProviderCredentialKind, unknown, ProviderFailureCode]> = [
@@ -124,6 +134,180 @@ describe.each(ACCOUNT_PROVIDER_IDS)('diagnoseProviderFailure: %s', (provider) =>
     const result = diagnoseProviderFailure({ provider, credentialKind, error });
     expect(result.diagnosis).toBe(expected);
     expect(result.provider).toBe(provider);
+  });
+
+  it.each([
+    ...authenticationMessages,
+    'Conversation session expired because the OAuth access token has been revoked.',
+    'Conversation session expired because the refresh token was rejected.',
+  ])('requires OAuth sign-in for %s', (message) => {
+    expect(
+      diagnoseProviderFailure({ provider, credentialKind: 'oauth', error: new Error(message) }),
+    ).toEqual({
+      provider,
+      credentialKind: 'oauth',
+      diagnosis: 'oauth_reauthentication_required',
+      recovery: 'sign_in',
+      evidence: [{ source: 'message', rule: 'oauth_reauthentication_required' }],
+    });
+  });
+
+  describe.each([
+    ['api-key', 'api_credentials_rejected', 'update_credentials'],
+    ['unknown', 'authentication_rejected', 'check_authentication'],
+  ] as const)('login messages with %s credentials', (credentialKind, diagnosis, recovery) => {
+    it.each(authenticationMessages.slice(1))('respects credential kind for %s', (message) => {
+      expect(
+        diagnoseProviderFailure({ provider, credentialKind, error: new Error(message) }),
+      ).toEqual({
+        provider,
+        credentialKind,
+        diagnosis,
+        recovery,
+        evidence: [{ source: 'message', rule: diagnosis }],
+      });
+    });
+  });
+
+  describe.each(['oauth', 'api-key'] as const)(
+    'policy messages with %s credentials',
+    (credentialKind) => {
+      it.each([
+        ['text', policyDenial, undefined],
+        ['Error', new Error(policyDenial), undefined],
+        ['403 object', { status: 403, message: policyDenial }, 403],
+        [
+          'overlapping auth prose',
+          new Error(`${policyDenial}. ${authenticationMessages[0]}`),
+          undefined,
+        ],
+      ] as const)('recognizes policy denial from %s', (_name, error, httpStatus) => {
+        const result = diagnoseProviderFailure({ provider, credentialKind, error });
+        expect(result).toMatchObject({
+          diagnosis: 'execution_policy_denied',
+          recovery: 'review_execution_policy',
+          evidence: [{ source: 'message', rule: 'execution_policy_denied' }],
+        });
+        expect(result.httpStatus).toBe(httpStatus);
+      });
+    },
+  );
+
+  describe.each([
+    [
+      { code: 'execution_policy_denied', status: 401 },
+      'execution_policy_denied',
+      'review_execution_policy',
+      'structured-error',
+    ],
+    [
+      { code: 'invalid_thread_id' },
+      'invalid_provider_session',
+      'start_new_session',
+      'structured-error',
+    ],
+    [{ status: 503 }, 'service_unavailable', 'retry_later', 'http-status'],
+  ] as const)('preserves stronger evidence %j', (structured, diagnosis, recovery, source) => {
+    it.each(authenticationMessages)('takes precedence over %s', (message) => {
+      const result = diagnoseProviderFailure({
+        provider,
+        credentialKind: 'oauth',
+        error: Object.assign(new Error(message), structured),
+      });
+      expect(result).toMatchObject({
+        diagnosis,
+        recovery,
+        evidence: [{ source, rule: diagnosis }],
+      });
+      expect(result.httpStatus).toBe('status' in structured ? structured.status : undefined);
+    });
+  });
+
+  describe.each(['oauth', 'api-key', 'unknown'] as const)(
+    'ambiguous messages with %s credentials',
+    (credentialKind) => {
+      it.each([
+        'Session expired',
+        'Permission denied',
+        'Token budget exhausted',
+        'Login page could not be opened',
+        'Credentials loaded successfully',
+        'Your login has not expired',
+        'Re-authentication documentation unavailable',
+      ])('does not infer rejection from %s', (message) => {
+        expect(
+          diagnoseProviderFailure({ provider, credentialKind, error: new Error(message) }),
+        ).toEqual({
+          provider,
+          credentialKind,
+          diagnosis: 'unknown',
+          recovery: 'inspect_error',
+          evidence: [],
+        });
+      });
+
+      it('leaves a bare 403 ambiguous', () => {
+        expect(
+          diagnoseProviderFailure({
+            provider,
+            credentialKind,
+            error: { status: 403, message: 'Forbidden' },
+          }),
+        ).toMatchObject({
+          diagnosis: 'unknown',
+          recovery: 'inspect_error',
+          httpStatus: 403,
+          evidence: [],
+        });
+      });
+
+      it.each([
+        ['Login request timed out', 'timeout', 'retry_later'],
+        ['Refresh token request timed out', 'timeout', 'retry_later'],
+        [
+          'Conversation session expired; refresh token is still valid.',
+          'invalid_provider_session',
+          'start_new_session',
+        ],
+        ['Conversation token expired', 'invalid_provider_session', 'start_new_session'],
+        [
+          'Refresh token is valid, but the conversation expired.',
+          'invalid_provider_session',
+          'start_new_session',
+        ],
+        ['OAuth conversation expired', 'invalid_provider_session', 'start_new_session'],
+        ['OAuth invalid conversation', 'invalid_provider_session', 'start_new_session'],
+      ] as const)('preserves non-authentication failure: %s', (message, diagnosis, recovery) => {
+        expect(
+          diagnoseProviderFailure({ provider, credentialKind, error: new Error(message) }),
+        ).toMatchObject({
+          diagnosis,
+          recovery,
+          evidence: [{ source: 'message', rule: diagnosis }],
+        });
+      });
+    },
+  );
+
+  describe.each(transportMessages)('terminal transport failure: %s', (message) => {
+    it.each([undefined, auth, { ...auth, state: 'expired' } as const])(
+      'retains HTTP 503 with authentication observation %j',
+      (authentication) => {
+        const result = diagnoseProviderFailure({
+          provider,
+          credentialKind: 'oauth',
+          error: new Error(message),
+          authentication,
+        });
+        expect(result).toMatchObject({
+          diagnosis: 'service_unavailable',
+          recovery: 'retry_later',
+          httpStatus: 503,
+          evidence: [{ source: 'message', rule: 'service_unavailable' }],
+        });
+        expect(result.authentication).toEqual(authentication);
+      },
+    );
   });
 
   it.each(['missing', 'signed-out', 'expired', 'rejected'] as const)(

@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Provider-failure guidance recognizes expired logins and explicit reauthentication requests. Rejected refresh tokens take precedence over conversation-expiry wording while preserving structured evidence and credential-aware recovery.
+- Terminal errors stating `Permission denied by policy`, including HTTP 403 responses, now advise reviewing execution permissions in the CLI and VS Code extension.
+
 ## [0.26.3] - 2026-09-09
 
 ### Added

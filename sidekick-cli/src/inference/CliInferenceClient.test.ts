@@ -5,6 +5,7 @@ const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 vi.mock('child_process', () => ({ spawn: spawnMock, execSync: vi.fn() }));
 
 import { CliInferenceClient, spawnWithStdin } from './CliInferenceClient';
+import { describeInferenceFailure } from './providerFailure';
 
 function fakeProcess() {
   const proc = new EventEmitter() as EventEmitter & Record<string, any>;
@@ -119,6 +120,103 @@ describe('CliInferenceClient', () => {
       expect(spawnMock).not.toHaveBeenCalled();
     },
   );
+
+  describe.each(['codex', 'opencode'] as const)('%s API failure guidance', (provider) => {
+    it.each([
+      [
+        'Your login has expired, please log in again.',
+        403,
+        'api_credentials_rejected',
+        'update_credentials',
+        'Update the API key',
+        'message',
+      ],
+      [
+        'Please re-authenticate to continue.',
+        403,
+        'api_credentials_rejected',
+        'update_credentials',
+        'Update the API key',
+        'message',
+      ],
+      [
+        'Permission denied by policy',
+        403,
+        'execution_policy_denied',
+        'review_execution_policy',
+        'Review the requested operation',
+        'message',
+      ],
+    ] as const)(
+      'shows actionable guidance for %s',
+      async (message, status, diagnosis, recovery, guidance, source) => {
+        vi.stubEnv(provider === 'codex' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY', 'test-key');
+        fetchMock.mockResolvedValue(
+          new Response(JSON.stringify({ error: { message } }), { status }),
+        );
+        const result = await new CliInferenceClient(provider).complete('Summarize');
+        expect(result.diagnosis).toMatchObject({
+          provider: provider === 'codex' ? 'codex' : 'claude-code',
+          credentialKind: 'api-key',
+          diagnosis,
+          recovery,
+          httpStatus: status,
+          evidence: [{ source, rule: diagnosis }],
+        });
+        expect(describeInferenceFailure(result.diagnosis!)).toContain(guidance);
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(spawnMock).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe.each(['claude-code', 'codex'] as const)('native %s failure guidance', (provider) => {
+    it.each([
+      [
+        'Conversation session expired because the refresh token is invalid.',
+        'oauth_reauthentication_required',
+        'sign_in',
+        'Sign in again',
+      ],
+      [
+        'Your login has expired, please log in again.',
+        'authentication_rejected',
+        'check_authentication',
+        'Check the credentials',
+      ],
+      [
+        'Please re-authenticate to continue.',
+        'authentication_rejected',
+        'check_authentication',
+        'Check the credentials',
+      ],
+      [
+        'Permission denied by policy',
+        'execution_policy_denied',
+        'review_execution_policy',
+        'Review the requested operation',
+      ],
+    ])('shows actionable guidance for %s', async (message, diagnosis, recovery, guidance) => {
+      const proc = fakeProcess();
+      spawnMock.mockReturnValue(proc);
+      const client = new CliInferenceClient(provider);
+      await client.checkAvailability();
+      const pending = client.complete('Summarize');
+      proc.stderr.emit('data', Buffer.from(message));
+      proc.emit('close', 1);
+      const result = await pending;
+      expect(result.diagnosis).toMatchObject({
+        provider,
+        credentialKind: 'unknown',
+        diagnosis,
+        recovery,
+        evidence: [{ source: 'message', rule: diagnosis }],
+      });
+      expect(describeInferenceFailure(result.diagnosis!)).toContain(guidance);
+      expect(spawnMock).toHaveBeenCalledOnce();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
 
   it.each([
     ['claude-code', 'claude', ['--print']],

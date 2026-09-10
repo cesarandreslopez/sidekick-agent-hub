@@ -83,6 +83,99 @@ describe('AuthService failure evidence', () => {
       service.dispose();
     },
   );
+  describe.each(['claude-max', 'codex'])('native %s failure guidance', (provider) => {
+    it.each([
+      [
+        'Conversation session expired because the refresh token is invalid.',
+        'oauth_reauthentication_required',
+        'sign_in',
+        'Sign in again',
+      ],
+      [
+        'Your login has expired, please log in again.',
+        'authentication_rejected',
+        'check_authentication',
+        'Check the credentials',
+      ],
+      [
+        'Please re-authenticate to continue.',
+        'authentication_rejected',
+        'check_authentication',
+        'Check the credentials',
+      ],
+      [
+        'Permission denied by policy',
+        'execution_policy_denied',
+        'review_execution_policy',
+        'Review the requested operation',
+      ],
+    ])('shows actionable guidance for %s', async (message, diagnosis, recovery, guidance) => {
+      state.provider = provider;
+      const error = new Error(message);
+      state.complete.mockRejectedValue(error);
+      const service = new AuthService(context);
+      try {
+        await expect(service.complete('prompt')).rejects.toMatchObject({
+          cause: error,
+          diagnosis: {
+            provider: provider === 'codex' ? 'codex' : 'claude-code',
+            credentialKind: 'unknown',
+            diagnosis,
+            recovery,
+            evidence: [{ source: 'message', rule: diagnosis }],
+          },
+          message: expect.stringContaining(guidance),
+        });
+        expect(state.complete).toHaveBeenCalledOnce();
+      } finally {
+        service.dispose();
+      }
+    });
+  });
+  it.each([
+    [
+      'Your login has expired, please log in again.',
+      undefined,
+      'api_credentials_rejected',
+      'update_credentials',
+      'Update the API key',
+    ],
+    [
+      'Please re-authenticate to continue.',
+      undefined,
+      'api_credentials_rejected',
+      'update_credentials',
+      'Update the API key',
+    ],
+    [
+      'Permission denied by policy',
+      403,
+      'execution_policy_denied',
+      'review_execution_policy',
+      'Review the requested operation',
+    ],
+  ] as const)(
+    'preserves API credential recovery for %s',
+    async (message, status, diagnosis, recovery, guidance) => {
+      state.complete.mockRejectedValue(Object.assign(new Error(message), { status }));
+      const service = new AuthService(context);
+      try {
+        await expect(service.complete('prompt')).rejects.toMatchObject({
+          diagnosis: {
+            credentialKind: 'api-key',
+            diagnosis,
+            recovery,
+            ...(status ? { httpStatus: status } : {}),
+            evidence: [{ source: 'message', rule: diagnosis }],
+          },
+          message: expect.stringContaining(guidance),
+        });
+        expect(state.complete).toHaveBeenCalledOnce();
+      } finally {
+        service.dispose();
+      }
+    },
+  );
   it.each([
     [401, 'api_credentials_rejected'],
     [503, 'service_unavailable'],

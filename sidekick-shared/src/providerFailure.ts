@@ -200,11 +200,18 @@ function classifyMessage(
   kind: ProviderCredentialKind,
 ): ProviderFailureCode | undefined {
   if (
-    /\b(execution policy|sandbox policy|approval)\b.{0,60}\b(denied|blocked|rejected|not allowed)\b/i.test(
+    /\b(execution policy|sandbox policy|approval)\b.{0,60}\b(denied|blocked|rejected|not allowed)\b|\bdenied by policy\b/i.test(
       message,
     )
   )
     return 'execution_policy_denied';
+  // Only explicit credential rejection outranks an overlapping conversation error.
+  if (
+    /\b(oauth (?:(?:access |refresh )?token|credentials?)|refresh token) (?:is |was |has (?:been )?)?(expired|invalid|rejected|revoked)\b/i.test(
+      message,
+    )
+  )
+    return 'oauth_reauthentication_required';
   if (
     /\b(thread|conversation|session id)\b.{0,60}\b(not found|invalid|expired|does not exist)\b|\b(invalid|expired) (thread|conversation|session id)\b/i.test(
       message,
@@ -226,7 +233,7 @@ function classifyMessage(
   )
     return 'missing_credentials';
   if (
-    /\b(authentication failed|invalid authentication|credentials (rejected|expired)|token (expired|rejected|invalid))\b/i.test(
+    /\b(authentication failed|invalid authentication|credentials (rejected|expired)|token (expired|rejected|invalid)|login (has |is )?expired|please re-?authenticate)\b/i.test(
       message,
     )
   )
