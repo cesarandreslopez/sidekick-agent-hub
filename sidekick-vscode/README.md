@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.26.4: sharper authentication and policy guidance** — terminal inference failures recognize expired-login and re-authentication messages with guidance matched to the credential kind, distinguish a rejected refresh token from an expired conversation, and treat `Permission denied by policy` (including HTTP 403) as an execution-policy denial.
 - **0.26.3: provider failure guidance and status evidence** — inference failures distinguish credential, session, service, connection, timeout, rate-limit, execution-policy, runtime, and context-limit problems with recovery hints; "Test Connection" separates local CLI readiness from an authenticated request and no longer labels network errors as rejected keys. Public status cards show unavailable or partial evidence, multiple incidents with component associations, and separate check/provider-update timestamps.
 - **0.26.2: monitoring recovery** — stop/resume preserves subscriptions and custom folders; empty or paused dashboards offer Refresh, Browse, Run Doctor, and Resume. Keyboard navigation works across tabs, session cards, and section toggles.
 - **Reliable session history** — search covers every provider and opens results in the conversation viewer. Claude Code and Codex resume from validated checkpoints; OpenCode replays history to keep totals accurate. Cancelled inline requests stop inference.

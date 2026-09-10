@@ -24,6 +24,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **0.26.4: sharper authentication and policy guidance** — inference failures that say a login expired or ask to re-authenticate get credential-aware recovery hints, a rejected refresh token is reported as sign-in required even when the message also mentions an expired conversation, and `Permission denied by policy` (including HTTP 403) points to execution permissions.
 - **0.26.3: provider failure diagnosis and status evidence** — `sidekick-shared` adds `diagnoseProviderFailure()` (pure, browser-safe) and `fetchProviderServiceStatus()` (explicit observed/unavailable evidence). The extension and CLI use them so inference failures name the actual problem with a recovery hint, connection tests separate local readiness from authenticated requests, and `sidekick status`, the dashboards, and Doctor show unavailable or partial public status instead of implying normal operation.
 - **0.26.2: monitoring recovery** — stop/resume keeps dashboard subscriptions and custom session folders; cancelled inline requests stop inference. Empty dashboards offer recovery actions, and tabs and session cards support keyboard navigation.
 - **Reliable replay and search** — complete-line checkpoints preserve Unicode and parser context; live-only CLI runs keep complete-history caches intact. Project search includes database-only OpenCode sessions, and Doctor focuses on the selected provider.
