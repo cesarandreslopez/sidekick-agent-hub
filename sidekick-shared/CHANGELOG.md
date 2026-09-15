@@ -5,6 +5,23 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.5] - 2026-09-15
+
+### Added
+
+- `ObservedSessionCollector` accepts `discover({ limit, since })` and `collect({ limit, since })` bounds, a `minReconcileGapMs` option, and parse-cache bounds `maxCacheEntries` (default 20,000) and `maxCacheBytes` (default 128 MiB).
+- `DirectoryListingCache` and `splitWatchedPath()` are exported from the root and Node entry points with their option and counter types. Session providers may implement `statWatchedSessionFile()`; `ListSessionFilesOptions`, `WatchedSessionFile`, and `SessionEnumerationCounters` describe bounded enumeration and per-file stat results.
+- `provider-discovery-completed` is a new info-severity `ObservedSessionDiagnostic` emitted after every discovery pass with `trigger`, `durationMs`, `referenceCount`, `directoriesListed`, `directoriesStatted`, `filesStatted`, and `partial`.
+
+### Changed
+
+- `ObservedSessionCollector.subscribe()` reconciles each recursive-watch event with one stat through `statWatchedSessionFile()` and runs a full `discover()` only for unknown paths, catch-up polls, and the initial pass, at most once per `minReconcileGapMs` (2 s ceiling, scaled down to four times the last walk's duration for cheap sources). Claude Code and Codex enumerate through a per-instance directory-listing cache, so a full pass costs one stat per unchanged directory. The parse cache is bounded and evicts the least recently observed entries.
+- Hosts that treat every `onDiagnostic` call as a problem should branch on `severity`: the new diagnostic is `info` and emitted per pass. Consumers that switch exhaustively over `ObservedSessionDiagnosticKind` must handle the new member.
+
+### Fixed
+
+- A reconcile pass that joins a full walk started earlier by a concurrent `collect()` compares scoped watch results against the walk's start, so a change observed while the walk ran is no longer reported back as the walk's older fingerprint.
+
 ## [0.26.4] - 2026-09-09
 
 ### Fixed

@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Co
 
 ## What's New
 
+- **0.26.5: cheaper dashboard watching** — newer-session detection reconciles each watched-file event with one stat, and catch-up polls cost one stat per unchanged directory instead of walking every session file.
 - **0.26.4: sharper authentication and policy guidance** — AI summary failures recognize expired-login and re-authentication messages with guidance matched to the credential kind, distinguish a rejected refresh token from an expired conversation, and treat `Permission denied by policy` (including HTTP 403) as an execution-policy denial.
 - **0.26.3: provider failure diagnosis and status evidence** — AI summary failures distinguish authentication, provider sessions, service, connection, timeout, rate-limit, execution-policy, runtime, and context-limit problems with provider-specific guidance, without signing in, switching providers, or replaying. `sidekick status`, the dashboard, and `doctor` show unavailable or partial public status instead of implying normal operation, and `status --json` adds `serviceStatus` with an `availability` discriminator.
 - **0.26.2: reliable dashboard replay** — complete-line checkpoints preserve Unicode and parser context. Live-only runs leave complete-history caches intact; OpenCode replays history when requested.

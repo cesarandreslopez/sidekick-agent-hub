@@ -443,6 +443,50 @@ describe('ObservedSessionCollector coalescing and discovery reuse', () => {
     expect(state.discoverCalls).toBe(3);
     collector.dispose();
   });
+
+  it('a walk started by collect() before a scoped result cannot undo it when a pass joins the walk', async () => {
+    vi.useFakeTimers(FAKE_TIMERS);
+    const state = newState(100);
+    const collector = new ObservedSessionCollector({
+      sources: [fakeSource(state)],
+      yieldBetweenReads: () => undefined,
+    });
+    const batches: ObservedSessionChangeBatch[] = [];
+    collector.subscribe((batch) => batches.push(batch), { debounceMs: 0, pollIntervalMs: 0 });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(batches).toHaveLength(1);
+    expect(state.discoverCalls).toBe(1);
+
+    // Past the gap, a host collect() starts a full walk that captured '1:1' and stalls.
+    await vi.advanceTimersByTimeAsync(1_000);
+    let release: () => void = () => undefined;
+    state.block = new Promise<void>((resolve) => (release = resolve));
+    const walk = collector.collect();
+    expect(state.discoverCalls).toBe(2);
+
+    // The file changes and its scoped event lands while that walk is in flight.
+    state.fingerprint = '2:2';
+    state.listeners[0]({ trigger: 'event', root: '/r', filename: 'a.jsonl' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(batches).toHaveLength(2);
+    expect(batches[1].changes[0]).toMatchObject({ type: 'changed', fingerprint: '2:2' });
+
+    // An unscoped signal now joins the in-flight walk rather than starting its own.
+    state.listeners[0]();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state.discoverCalls).toBe(2);
+
+    release();
+    state.block = null;
+    await walk;
+    await vi.advanceTimersByTimeAsync(1);
+    // The walk's stale '1:1' copy must not be reported as a change back.
+    expect(batches).toHaveLength(2);
+    const rows = await collector.collect();
+    expect(rows[0].fingerprint).toBe('2:2');
+    expect(state.discoverCalls).toBe(2);
+    collector.dispose();
+  });
 });
 
 describe('ObservedSessionCollector cache bounds', () => {

@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.5] - 2026-09-15
+
+### Fixed
+
+- The high-token-usage warning fires once when a session's cache-inclusive total first crosses `sidekick.notifications.tokenThreshold`; later multiples warn at most every 30 minutes, and a new session starts from its own first crossing. The default threshold is now 5,000,000: totals have included cache reads since 0.26.0, so the previous 500,000 default warned within a step or two in most sessions.
+
+### Changed
+
+- Session discovery reconciles each watched-file event with one stat and re-walks the session directory only for unknown paths, catch-up polls, and the initial pass.
+
 ## [0.26.4] - 2026-09-09
 
 ### Fixed

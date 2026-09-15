@@ -71,6 +71,11 @@ silently empty results. Hosts construct through `createSessionProviders({ onDiag
 every usable provider plus the coalesced diagnostics, and can resolve a single session with
 `findSessionById()` through each provider's native filename or database index.
 
+`ObservedSessionCollector` has its own diagnostic stream. As of 0.26.5 it also emits an **info**-severity
+`provider-discovery-completed` diagnostic after every discovery pass, carrying the trigger, duration,
+reference count, and directory/file stat counters so a host can see what each pass cost. Hosts that surface
+every diagnostic as a problem should branch on `severity`.
+
 ## Auto-Detection
 
 Both provider types support auto-detection via `ProviderDetector`, which checks:

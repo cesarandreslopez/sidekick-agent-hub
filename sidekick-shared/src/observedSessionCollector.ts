@@ -247,6 +247,12 @@ interface ScopedReference {
   generation: number;
 }
 
+interface InflightDiscovery {
+  promise: Promise<ObservedSessionReference[]>;
+  /** `generation` when the walk started; scoped results above it are newer than its copy. */
+  generation: number;
+}
+
 const DEFAULT_MAX_CONCURRENT_READS = 4;
 const MAX_CONCURRENT_READS = 16;
 const DEFAULT_DEBOUNCE_MS = 100;
@@ -269,7 +275,7 @@ export class ObservedSessionCollector<T = unknown> {
   /** Latest complete reference set per provider, kept current by scoped reconciles. */
   private readonly lastDiscovery = new Map<string, DiscoverySnapshot>();
   /** One full discovery per provider at a time; concurrent callers share it. */
-  private readonly inflightDiscovery = new Map<string, Promise<ObservedSessionReference[]>>();
+  private readonly inflightDiscovery = new Map<string, InflightDiscovery>();
   private readonly fullPassState = new Map<string, { endedAt: number; durationMs: number }>();
   /** Scoped results newer than an in-flight walk, so the walk cannot undo them. */
   private readonly scopedReferences = new Map<string, ScopedReference>();
@@ -714,12 +720,26 @@ export class ObservedSessionCollector<T = unknown> {
     trigger: ObservedSessionDiscoveryTrigger,
     options: ObservedSessionCollectOptions = {},
   ): Promise<ObservedSessionReference[]> {
+    return this.startDiscovery(source, trigger, options).promise;
+  }
+
+  /**
+   * Starts (or joins) a discovery and reports the generation it started at,
+   * so a reconcile that joins a walk begun earlier by `collect()` compares
+   * scoped results against the walk's start rather than its own entry.
+   */
+  private startDiscovery(
+    source: ObservedSessionCollectionSource<T>,
+    trigger: ObservedSessionDiscoveryTrigger,
+    options: ObservedSessionCollectOptions = {},
+  ): InflightDiscovery {
     const providerId = source.providerId;
     const partial = options.limit !== undefined || options.since !== undefined;
     if (!partial) {
       const inflight = this.inflightDiscovery.get(providerId);
       if (inflight) return inflight;
     }
+    const generation = this.generation;
     const stats: ObservedSessionDiscoveryStats = {};
     const startedAt = Date.now();
     const promise = (async () => {
@@ -748,16 +768,17 @@ export class ObservedSessionCollector<T = unknown> {
       );
       return references;
     })();
+    const handle: InflightDiscovery = { promise, generation };
     if (!partial) {
-      this.inflightDiscovery.set(providerId, promise);
+      this.inflightDiscovery.set(providerId, handle);
       const settle = (): void => {
-        if (this.inflightDiscovery.get(providerId) === promise) {
+        if (this.inflightDiscovery.get(providerId) === handle) {
           this.inflightDiscovery.delete(providerId);
         }
       };
       promise.then(settle, settle);
     }
-    return promise;
+    return handle;
   }
 
   private effectiveGapMs(providerId: string, ceilingMs: number): number {
@@ -837,10 +858,15 @@ export class ObservedSessionCollector<T = unknown> {
   ): Promise<ObservedSessionChangeBatch | null> {
     const providerId = source.providerId;
     const prefix = `${providerId}\0`;
-    const startGeneration = this.generation;
+    // The walk may have been started earlier by a concurrent collect(); its
+    // start generation, not this pass's entry, decides which scoped results
+    // are newer than the references it returns.
+    let startGeneration: number;
     let references: ObservedSessionReference[];
     try {
-      references = await this.runDiscovery(source, trigger);
+      const discovery = this.startDiscovery(source, trigger);
+      startGeneration = discovery.generation;
+      references = await discovery.promise;
     } catch {
       return null;
     }

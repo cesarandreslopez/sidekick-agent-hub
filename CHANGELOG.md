@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.5] - 2026-09-15
+
+### Added
+
+- `sidekick-shared` bounds discovery and collection with `limit` and `since`, exposes a configurable reconcile gap and parse-cache limits, exports `DirectoryListingCache`, and emits an info-severity `provider-discovery-completed` diagnostic that reports what each discovery pass cost.
+
+### Changed
+
+- Observed-session watching reconciles each file event with one stat and re-walks session directories only for unknown paths, catch-up polls, and the initial pass. Claude Code and Codex enumerate through a directory-listing cache, so long-lived hosts over large histories no longer walk every session per event.
+
+### Fixed
+
+- The VS Code high-token-usage warning fires once per session on the first crossing, then at most every 30 minutes. The default threshold is 5,000,000 because totals have included cache reads since 0.26.0.
+- A collector pass that joins an in-flight walk keeps changes observed while the walk ran instead of reverting them to the walk's older fingerprint.
+
 ## [0.26.4] - 2026-09-09
 
 ### Fixed

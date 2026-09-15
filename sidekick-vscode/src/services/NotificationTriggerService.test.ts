@@ -546,9 +546,11 @@ describe('high-token-usage alert', () => {
 
     mocks.settings.notificationsEnabled = true;
     mocks.settings.tokenThreshold = 0;
-    const disabled = new NotificationTriggerService(createFakeSessionMonitor(5_100_000).monitor);
-    const { handlers: disabledHandlers } = createFakeSessionMonitor(5_100_000);
-    disabledHandlers.tokenUsage?.(usage);
+    const disabledFake = createFakeSessionMonitor(5_100_000);
+    const disabled = new NotificationTriggerService(disabledFake.monitor);
+    // The service subscribed to this monitor, so its handler is the one under test.
+    expect(disabledFake.handlers.tokenUsage).toBeDefined();
+    disabledFake.handlers.tokenUsage!(usage);
     expect(mocks.showWarningMessage).not.toHaveBeenCalled();
     disabled.dispose();
   });
