@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { EventAggregator } from './aggregation/EventAggregator';
 import type { AggregatedMetrics, EventAggregatorOptions } from './aggregation/types';
 import type { SessionProviderBase, SessionReader } from './providers/types';
@@ -102,6 +103,20 @@ export class SessionMonitor {
         ];
       },
       read: () => null,
+      // One session is watched, so an event naming any other file costs
+      // nothing; an event naming this file costs one stat.
+      resolveReference: async (signal) => {
+        if (!signal.root || typeof signal.filename !== 'string' || !signal.filename) {
+          return { status: 'unknown' };
+        }
+        if (!this.sessionPath) return { status: 'ignored' };
+        const eventPath = path.resolve(signal.root, signal.filename);
+        if (eventPath !== path.resolve(this.sessionPath)) return { status: 'ignored' };
+        const [reference] = await source.discover();
+        return reference
+          ? { status: 'present', reference }
+          : { status: 'missing', sessionId: this.provider.getSessionId(this.sessionPath) };
+      },
       subscribe: (listener, sourceOptions) => {
         const watchers = new Set<fs.FSWatcher>();
         let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -113,7 +128,17 @@ export class SessionMonitor {
         }
         for (const root of new Set(roots)) {
           try {
-            const watcher = fs.watch(root, { persistent: false, recursive: true }, listener);
+            const watcher = fs.watch(
+              root,
+              { persistent: false, recursive: true },
+              (eventType, filename) =>
+                listener({
+                  trigger: 'event',
+                  root,
+                  eventType,
+                  filename: filename === null || filename === undefined ? null : String(filename),
+                }),
+            );
             watchers.add(watcher);
             watcher.on('error', () => {
               watchers.delete(watcher);
@@ -129,7 +154,7 @@ export class SessionMonitor {
         }
         const pollIntervalMs = sourceOptions?.pollIntervalMs ?? 0;
         if (pollIntervalMs > 0) {
-          pollTimer = setInterval(listener, pollIntervalMs);
+          pollTimer = setInterval(() => listener({ trigger: 'poll' }), pollIntervalMs);
           pollTimer.unref?.();
         }
         return {

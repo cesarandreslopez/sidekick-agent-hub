@@ -136,6 +136,7 @@ interface ClaudeClient {
 - `sidekick-shared/node` contains explicitly Node-only catalog hydration, observed-context persistence, transcript/history reads, session previews, and observed-session collection.
 - `sidekick-shared/schemas` and `sidekick-shared/statusline` are dedicated schema and status-line entry points. Prefer public entry points over `sidekick-shared/dist/*` compatibility deep imports.
 - Built-in provider constructors perform no environment probing. Long-lived hosts should use `createSessionProviders({ onDiagnostic })`; missing databases, directories, or `sqlite3` are reported as structured diagnostics on use rather than constructor failures.
+- `ObservedSessionCollector` reconciles a recursive-watch event with one stat when the provider implements `statWatchedSessionFile()`, and only falls back to a full `discover()` for unknown paths, catch-up polls, and the initial pass, at most once per `minReconcileGapMs` (default 2 s, scaled down for cheap sources). Providers enumerate through a per-instance `DirectoryListingCache`, so a full discovery is one stat per directory. Long-lived hosts over large histories should pass `discover({ limit })`/`collect({ limit })`, keep the parse cache bounds (`maxCacheEntries`, `maxCacheBytes`) above their session count, and log `provider-discovery-completed` diagnostics to see what each pass cost.
 
 ### Session Monitoring Pipeline
 

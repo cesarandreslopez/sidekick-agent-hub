@@ -22,6 +22,7 @@ import { JsonlParser } from '../parsers/jsonl';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type {
+  ListSessionFilesOptions,
   SessionProviderBase,
   SessionReader,
   SessionFileInfo,
@@ -32,8 +33,10 @@ import type {
   ProviderOperationStatus,
   ProviderRuntimeStatus,
   SessionProviderOptions,
+  WatchedSessionFile,
 } from './types';
 import { ProviderDiagnosticTracker } from './diagnostics';
+import { DirectoryListingCache, splitWatchedPath } from './directoryListingCache';
 import {
   encodeWorkspacePath as encodeWsPath,
   getSessionDirectory as getSessionDir,
@@ -83,6 +86,29 @@ function extractSearchableText(event: Record<string, unknown>): string {
   }
 
   return '';
+}
+
+/**
+ * Project-directory filter for a workspace: the encoded workspace path, a
+ * worktree suffix of it, or a directory ending in the workspace's basename.
+ * Without a workspace every directory matches.
+ */
+function workspaceDirectoryFilter(workspacePath?: string): (directoryName: string) => boolean {
+  if (!workspacePath) return () => true;
+  const encodedWorkspace = encodeWsPath(workspacePath).toLowerCase();
+  const workspaceBasename = path
+    .basename(workspacePath)
+    .replace(/[^a-zA-Z0-9]/g, '-')
+    .toLowerCase();
+  return (directoryName) => {
+    const name = directoryName.toLowerCase();
+    return (
+      name === encodedWorkspace ||
+      name.startsWith(`${encodedWorkspace}-`) ||
+      name === workspaceBasename ||
+      name.endsWith(`-${workspaceBasename}`)
+    );
+  };
 }
 
 function extractClaudeLabelFromPrefix(chunk: string): string | null {
@@ -293,6 +319,9 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   /** Runtime-reported context window limit (overrides static map when set). */
   private dynamicContextWindowLimit: number | null = null;
 
+  /** Project-directory listings reused across async enumerations. */
+  private readonly directoryCache = new DirectoryListingCache();
+
   constructor(options: SessionProviderOptions = {}) {
     this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
   }
@@ -382,75 +411,148 @@ export class ClaudeCodeProvider implements SessionProviderBase {
     return results;
   }
 
-  async listSessionFilesAsync(workspacePath?: string): Promise<SessionFileInfo[]> {
+  /**
+   * Enumerate session files across project directories through the
+   * directory cache: one stat per project directory, a readdir only for
+   * directories whose mtime changed, and a stat only for files new to a
+   * changed directory (or recently modified, with `revalidateRecent`).
+   *
+   * With `limit`, directories are visited newest-mtime first and the walk
+   * stops once the remaining directories are older than the newest `limit`
+   * files found. A directory's mtime ignores appends, so a cold limited walk
+   * can miss a long-running session in an old directory until its next watch
+   * event; `since` filters files and shares the caveat.
+   */
+  async listSessionFilesAsync(
+    workspacePath?: string,
+    options: ListSessionFilesOptions = {},
+  ): Promise<SessionFileInfo[]> {
     const projectsRoot = this.getProjectsBaseDir();
-    let projectEntries: fs.Dirent[] = [];
-    try {
-      projectEntries = await fs.promises.readdir(projectsRoot, { withFileTypes: true });
-    } catch {
+    if (options.stats) {
+      options.stats.directoriesListed ??= 0;
+      options.stats.directoriesStatted ??= 0;
+      options.stats.filesStatted ??= 0;
+    }
+    const root = await this.directoryCache.listDirectory(projectsRoot, () => false, {
+      revalidateRecent: options.revalidateRecent,
+      stats: options.stats,
+    });
+    if (!root) {
       this.recordHomeStatus('listSessionFilesAsync');
       return [];
     }
 
-    const encodedWorkspace = workspacePath ? encodeWsPath(workspacePath).toLowerCase() : null;
-    const workspaceBasename = workspacePath
-      ? path
-          .basename(workspacePath)
-          .replace(/[^a-zA-Z0-9]/g, '-')
-          .toLowerCase()
-      : null;
-    const directories: string[] = [];
-    for (const entry of projectEntries) {
-      const directory = path.join(projectsRoot, entry.name);
-      try {
-        const stat = entry.isDirectory() ? null : await fs.promises.stat(directory);
-        if (!entry.isDirectory() && !stat?.isDirectory()) continue;
-      } catch {
-        continue;
-      }
-      const name = entry.name.toLowerCase();
-      if (
-        encodedWorkspace &&
-        name !== encodedWorkspace &&
-        !name.startsWith(`${encodedWorkspace}-`) &&
-        name !== workspaceBasename &&
-        !name.endsWith(`-${workspaceBasename}`)
-      ) {
-        continue;
-      }
-      directories.push(directory);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+    const limit =
+      options.limit !== undefined && Number.isFinite(options.limit)
+        ? Math.max(0, Math.floor(options.limit))
+        : null;
+    if (limit === 0) {
+      this.recordHomeStatus('listSessionFilesAsync');
+      return [];
     }
+    const since =
+      options.since !== undefined && Number.isFinite(options.since) ? options.since : null;
+    const matchesWorkspace = workspaceDirectoryFilter(workspacePath);
 
-    const results: SessionFileInfo[] = [];
-    for (const directory of directories) {
-      let entries: fs.Dirent[] = [];
+    const candidates: Array<{ directory: string; stat: fs.Stats }> = [];
+    let sinceYield = 0;
+    for (const name of root.subdirectories) {
+      if (!matchesWorkspace(name)) continue;
+      const directory = path.join(projectsRoot, name);
       try {
-        entries = await fs.promises.readdir(directory, { withFileTypes: true });
+        const stat = await fs.promises.stat(directory);
+        if (options.stats) {
+          options.stats.directoriesStatted = (options.stats.directoriesStatted ?? 0) + 1;
+        }
+        if (stat.isDirectory()) candidates.push({ directory, stat });
       } catch {
         continue;
       }
-      for (const entry of entries) {
-        if (!entry.isFile() || !this.isSessionFile(entry.name)) continue;
-        const sessionPath = path.join(directory, entry.name);
-        try {
-          const stat = await fs.promises.stat(sessionPath);
-          if (stat.size > 0) {
-            results.push({
-              path: sessionPath,
-              mtime: stat.mtime,
-              sizeBytes: stat.size,
-              sessionId: this.getSessionId(sessionPath),
-            });
-          }
-        } catch {
-          // Skip files that vanish between discovery and stat.
-        }
+      if (++sinceYield >= 50) {
+        sinceYield = 0;
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
+    if (limit !== null) candidates.sort((left, right) => right.stat.mtimeMs - left.stat.mtimeMs);
+
+    const byNewest = (left: SessionFileInfo, right: SessionFileInfo): number =>
+      right.mtime.getTime() - left.mtime.getTime();
+    const results: SessionFileInfo[] = [];
+    let cutoffMs: number | null = null;
+    for (const candidate of candidates) {
+      if (limit !== null && cutoffMs !== null && candidate.stat.mtimeMs < cutoffMs) break;
+      const listing = await this.directoryCache.listDirectory(
+        candidate.directory,
+        (name) => this.isSessionFile(name),
+        {
+          dirStat: candidate.stat,
+          revalidateRecent: options.revalidateRecent,
+          stats: options.stats,
+        },
+      );
+      if (!listing) continue;
+      for (const [name, stat] of listing.files) {
+        if (stat.sizeBytes <= 0) continue;
+        if (since !== null && stat.mtimeMs < since) continue;
+        const sessionPath = path.join(candidate.directory, name);
+        results.push({
+          path: sessionPath,
+          mtime: new Date(stat.mtimeMs),
+          sizeBytes: stat.sizeBytes,
+          sessionId: this.getSessionId(sessionPath),
+        });
+      }
+      if (limit !== null && results.length >= limit) {
+        results.sort(byNewest);
+        results.length = limit;
+        cutoffMs = results[limit - 1].mtime.getTime();
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
     this.recordHomeStatus('listSessionFilesAsync');
-    return results.sort((left, right) => right.mtime.getTime() - left.mtime.getTime());
+    results.sort(byNewest);
+    return limit !== null && results.length > limit ? results.slice(0, limit) : results;
+  }
+
+  /**
+   * Resolve a recursive-watch event under the projects root with one stat.
+   * Sessions live exactly one directory below the root; deeper paths are
+   * subagent transcripts and are ignored. A path at the root itself is a
+   * project directory appearing or vanishing, which needs a full listing.
+   */
+  async statWatchedSessionFile(
+    root: string,
+    relativePath: string,
+    workspacePath?: string,
+  ): Promise<WatchedSessionFile> {
+    const segments = splitWatchedPath(relativePath);
+    if (!segments) return { status: 'unknown' };
+    if (segments.length > 2) return { status: 'ignored' };
+    const fullPath = path.join(root, ...segments);
+    if (segments.length === 1) {
+      this.directoryCache.invalidate(fullPath);
+      try {
+        const stat = await fs.promises.stat(fullPath);
+        return stat.isDirectory() ? { status: 'unknown' } : { status: 'ignored' };
+      } catch {
+        return { status: 'unknown' };
+      }
+    }
+    const [directoryName, fileName] = segments;
+    if (!this.isSessionFile(fileName)) return { status: 'ignored' };
+    if (!workspaceDirectoryFilter(workspacePath)(directoryName)) return { status: 'ignored' };
+    const sessionId = this.getSessionId(fullPath);
+    const stat = await this.directoryCache.refreshFile(fullPath);
+    if (!stat || stat.sizeBytes <= 0) return { status: 'missing', path: fullPath, sessionId };
+    return {
+      status: 'present',
+      file: {
+        path: fullPath,
+        mtime: new Date(stat.mtimeMs),
+        sizeBytes: stat.sizeBytes,
+        sessionId,
+      },
+    };
   }
 
   // --- File identification ---
@@ -675,6 +777,7 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   dispose(): void {
     this.dynamicContextWindowLimit = null;
+    this.directoryCache.invalidate();
   }
 
   private recordHomeStatus(operation: string): void {

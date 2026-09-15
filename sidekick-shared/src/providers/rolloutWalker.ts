@@ -8,17 +8,23 @@
  * `limit` can stop early, stats each file exactly once, and returns results
  * newest first with the size and session id already attached.
  *
- * With `limit`, the early exit is by directory date: a rollout that was
- * created days ago but is still being written lands in its creation day's
- * directory, so a very small limit can miss it in favour of newer-dated,
- * older-modified files. Callers that need exact mtime order over the whole
- * history omit `limit` (the `maxFiles` cap still applies).
+ * With `limit` or `since`, the early exit is by directory date: a rollout
+ * that was created days ago but is still being written lands in its creation
+ * day's directory, so a very small limit (or a recent `since`) can miss it in
+ * favour of newer-dated, older-modified files. Callers that need exact mtime
+ * order over the whole history omit both (the `maxFiles` cap still applies);
+ * a live session missed this way is picked up by its next watch event.
+ *
+ * The async walker accepts a {@link DirectoryListingCache}: unchanged
+ * directories are then one stat each instead of a readdir plus a stat per
+ * file, which is what makes repeated discovery over a large history cheap.
  *
  * @module providers/rolloutWalker
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { DirectoryListingCache, DirectoryListingCounters } from './directoryListingCache';
 
 export interface RolloutFileInfo {
   path: string;
@@ -35,10 +41,21 @@ export interface WalkRolloutFilesOptions {
   maxFiles?: number;
   /** Stop once this many files are collected, visiting newest-dated directories first. */
   limit?: number;
+  /**
+   * Skip files modified before this epoch-ms, and skip dated directories
+   * whose whole day, month, or year ended more than a day before it.
+   */
+  since?: number;
   /** Only files whose name carries this session id (case-insensitive). */
   sessionId?: string;
   /** Include zero-byte files (default false). */
   includeEmpty?: boolean;
+  /** Reuse directory listings across walks (async walker only). */
+  cache?: DirectoryListingCache;
+  /** With `cache`: re-stat recently modified files even in unchanged directories. */
+  revalidateRecent?: boolean;
+  /** Payload-free counters of what the walk cost. */
+  stats?: DirectoryListingCounters;
 }
 
 export const DEFAULT_ROLLOUT_WALK_MAX_DEPTH = 6;
@@ -73,8 +90,12 @@ interface WalkState {
   seen: Set<string>;
   cap: number;
   maxDepth: number;
+  since: number | null;
   sessionId: string | null;
   includeEmpty: boolean;
+  cache: DirectoryListingCache | null;
+  revalidateRecent: boolean;
+  stats: DirectoryListingCounters | undefined;
 }
 
 function walkState(options: WalkRolloutFilesOptions): WalkState {
@@ -85,8 +106,12 @@ function walkState(options: WalkRolloutFilesOptions): WalkState {
     seen: new Set(),
     cap: Math.min(maxFiles, limit),
     maxDepth: options.maxDepth ?? DEFAULT_ROLLOUT_WALK_MAX_DEPTH,
+    since: options.since !== undefined && Number.isFinite(options.since) ? options.since : null,
     sessionId: options.sessionId ? options.sessionId.trim().toLowerCase() : null,
     includeEmpty: options.includeEmpty ?? false,
+    cache: options.cache ?? null,
+    revalidateRecent: options.revalidateRecent ?? false,
+    stats: options.stats,
   };
 }
 
@@ -102,13 +127,19 @@ function matchesFilter(state: WalkState, name: string): boolean {
   );
 }
 
-function record(state: WalkState, fullPath: string, name: string, stat: fs.Stats): void {
+function record(
+  state: WalkState,
+  fullPath: string,
+  name: string,
+  stat: { size: number; mtimeMs: number },
+): void {
   if (!state.includeEmpty && stat.size <= 0) return;
+  if (state.since !== null && stat.mtimeMs < state.since) return;
   if (state.seen.has(fullPath)) return;
   state.seen.add(fullPath);
   state.results.push({
     path: fullPath,
-    mtime: stat.mtime,
+    mtime: new Date(stat.mtimeMs),
     sizeBytes: stat.size,
     sessionId: extractRolloutSessionId(name),
   });
@@ -118,8 +149,34 @@ function finish(state: WalkState): RolloutFileInfo[] {
   return state.results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 }
 
-function visitSync(state: WalkState, dir: string, depth: number): void {
+/** Slack added to a dated directory's range so a timezone skew cannot prune a live day. */
+const DATE_DIR_SLACK_MS = 24 * 60 * 60_000;
+
+/**
+ * True when `segments` (the directory names below the root, e.g. `['2026',
+ * '09', '04']`) are all numeric and describe a year, month, or day that ended
+ * more than a day before `since`. Non-numeric names are never pruned.
+ */
+export function isDatedDirectoryBefore(segments: readonly string[], since: number): boolean {
+  if (segments.length === 0 || segments.length > 3) return false;
+  const numbers = segments.map((segment) => (/^\d+$/.test(segment) ? Number(segment) : NaN));
+  if (numbers.some((value) => !Number.isFinite(value))) return false;
+  const [year, month, day] = numbers;
+  if (year < 1970 || year > 9999) return false;
+  if (segments.length >= 2 && (month < 1 || month > 12)) return false;
+  if (segments.length === 3 && (day < 1 || day > 31)) return false;
+  const rangeEnd =
+    segments.length === 1
+      ? new Date(year + 1, 0, 1).getTime()
+      : segments.length === 2
+        ? new Date(year, month, 1).getTime()
+        : new Date(year, month - 1, day + 1).getTime();
+  return rangeEnd + DATE_DIR_SLACK_MS < since;
+}
+
+function visitSync(state: WalkState, dir: string, depth: number, segments: string[]): void {
   if (depth > state.maxDepth || state.results.length >= state.cap) return;
+  if (state.since !== null && isDatedDirectoryBefore(segments, state.since)) return;
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -140,7 +197,9 @@ function visitSync(state: WalkState, dir: string, depth: number): void {
   }
   for (const entry of entries) {
     if (state.results.length >= state.cap) return;
-    if (entry.isDirectory()) visitSync(state, path.join(dir, entry.name), depth + 1);
+    if (entry.isDirectory()) {
+      visitSync(state, path.join(dir, entry.name), depth + 1, [...segments, entry.name]);
+    }
   }
 }
 
@@ -153,7 +212,7 @@ export function walkRolloutFiles(
   options: WalkRolloutFilesOptions = {},
 ): RolloutFileInfo[] {
   const state = walkState(options);
-  for (const root of roots) visitSync(state, root, 0);
+  for (const root of roots) visitSync(state, root, 0, []);
   return finish(state);
 }
 
@@ -161,11 +220,51 @@ function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-async function visitAsync(state: WalkState, dir: string, depth: number): Promise<void> {
+function byStringDescending(a: string, b: string): number {
+  return b.localeCompare(a);
+}
+
+async function visitCached(
+  state: WalkState,
+  cache: DirectoryListingCache,
+  dir: string,
+  depth: number,
+  segments: string[],
+): Promise<void> {
   if (depth > state.maxDepth || state.results.length >= state.cap) return;
+  if (state.since !== null && isDatedDirectoryBefore(segments, state.since)) return;
+  const listing = await cache.listDirectory(dir, (name) => matchesFilter(state, name), {
+    revalidateRecent: state.revalidateRecent,
+    stats: state.stats,
+  });
+  if (!listing) return;
+
+  const names = [...listing.files.keys()].sort(byStringDescending);
+  for (const name of names) {
+    if (state.results.length >= state.cap) return;
+    const stat = listing.files.get(name);
+    if (!stat) continue;
+    record(state, path.join(dir, name), name, { size: stat.sizeBytes, mtimeMs: stat.mtimeMs });
+  }
+  await yieldToEventLoop();
+  for (const name of [...listing.subdirectories].sort(byStringDescending)) {
+    if (state.results.length >= state.cap) return;
+    await visitCached(state, cache, path.join(dir, name), depth + 1, [...segments, name]);
+  }
+}
+
+async function visitAsync(
+  state: WalkState,
+  dir: string,
+  depth: number,
+  segments: string[],
+): Promise<void> {
+  if (depth > state.maxDepth || state.results.length >= state.cap) return;
+  if (state.since !== null && isDatedDirectoryBefore(segments, state.since)) return;
   let entries: fs.Dirent[];
   try {
     entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    if (state.stats) state.stats.directoriesListed = (state.stats.directoriesListed ?? 0) + 1;
   } catch {
     return;
   }
@@ -177,7 +276,9 @@ async function visitAsync(state: WalkState, dir: string, depth: number): Promise
     if (!entry.isFile() || !matchesFilter(state, entry.name)) continue;
     const fullPath = path.join(dir, entry.name);
     try {
-      record(state, fullPath, entry.name, await fs.promises.stat(fullPath));
+      const stat = await fs.promises.stat(fullPath);
+      if (state.stats) state.stats.filesStatted = (state.stats.filesStatted ?? 0) + 1;
+      record(state, fullPath, entry.name, stat);
     } catch {
       // Skip files that vanish between readdir and stat.
     }
@@ -189,7 +290,9 @@ async function visitAsync(state: WalkState, dir: string, depth: number): Promise
   await yieldToEventLoop();
   for (const entry of entries) {
     if (state.results.length >= state.cap) return;
-    if (entry.isDirectory()) await visitAsync(state, path.join(dir, entry.name), depth + 1);
+    if (entry.isDirectory()) {
+      await visitAsync(state, path.join(dir, entry.name), depth + 1, [...segments, entry.name]);
+    }
   }
 }
 
@@ -199,6 +302,9 @@ export async function walkRolloutFilesAsync(
   options: WalkRolloutFilesOptions = {},
 ): Promise<RolloutFileInfo[]> {
   const state = walkState(options);
-  for (const root of roots) await visitAsync(state, root, 0);
+  for (const root of roots) {
+    if (state.cache) await visitCached(state, state.cache, root, 0, []);
+    else await visitAsync(state, root, 0, []);
+  }
   return finish(state);
 }

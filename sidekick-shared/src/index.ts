@@ -152,7 +152,22 @@ export type {
   ObservedSessionDiagnostic,
   ObservedSessionCollection,
   ObservedSessionCollectorOptions,
+  ObservedSessionCollectOptions,
+  ObservedSessionDiscoverOptions,
+  ObservedSessionDiscoveryStats,
+  ObservedSessionDiscoveryTrigger,
+  ObservedSessionSourceSignal,
+  ObservedSessionSourceListener,
+  ObservedSessionResolution,
 } from './observedSessionCollector';
+export { DirectoryListingCache, splitWatchedPath } from './providers/directoryListingCache';
+export type {
+  CachedDirectoryListing,
+  CachedFileStat,
+  DirectoryListingCacheOptions,
+  DirectoryListingCounters,
+  ListDirectoryOptions,
+} from './providers/directoryListingCache';
 
 // Session Event Types (canonical, shared across VS Code extension and CLI)
 export type {
@@ -362,6 +377,9 @@ export type {
   ProviderId,
   SessionProvider,
   SessionProviderBase,
+  SessionEnumerationCounters,
+  ListSessionFilesOptions,
+  WatchedSessionFile,
   SessionFileStats,
   SessionFileStatsAvailability,
   SessionFileInfo,

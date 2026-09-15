@@ -27,7 +27,9 @@ describe('ObservedSessionCollector', () => {
     ];
     const collector = new ObservedSessionCollector({
       sources,
-      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      onDiagnostic: (diagnostic) => {
+        if (diagnostic.kind !== 'provider-discovery-completed') diagnostics.push(diagnostic);
+      },
     });
 
     await expect(collector.collect()).resolves.toEqual([
@@ -70,7 +72,9 @@ describe('ObservedSessionCollector', () => {
       clock: { now: () => now },
       initialBackoffMs: 30_000,
       maxBackoffMs: 300_000,
-      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      onDiagnostic: (diagnostic) => {
+        if (diagnostic.kind !== 'provider-discovery-completed') diagnostics.push(diagnostic);
+      },
     });
 
     expect(await collector.collect()).toEqual([]);
@@ -125,7 +129,9 @@ describe('ObservedSessionCollector', () => {
       clock: { now: () => now },
       initialBackoffMs: 10,
       maxBackoffMs: 25,
-      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      onDiagnostic: (diagnostic) => {
+        if (diagnostic.kind !== 'provider-discovery-completed') diagnostics.push(diagnostic);
+      },
     });
 
     const attemptTimes = [0, 10, 30, 55];

@@ -150,7 +150,27 @@ export type {
   ObservedSessionDiagnostic,
   ObservedSessionCollection,
   ObservedSessionCollectorOptions,
+  ObservedSessionCollectOptions,
+  ObservedSessionDiscoverOptions,
+  ObservedSessionDiscoveryStats,
+  ObservedSessionDiscoveryTrigger,
+  ObservedSessionSourceSignal,
+  ObservedSessionSourceListener,
+  ObservedSessionResolution,
 } from './observedSessionCollector';
+export { DirectoryListingCache, splitWatchedPath } from './providers/directoryListingCache';
+export type {
+  CachedDirectoryListing,
+  CachedFileStat,
+  DirectoryListingCacheOptions,
+  DirectoryListingCounters,
+  ListDirectoryOptions,
+} from './providers/directoryListingCache';
+export type {
+  ListSessionFilesOptions,
+  SessionEnumerationCounters,
+  WatchedSessionFile,
+} from './providers/types';
 
 export type {
   ProviderServiceSeverity,

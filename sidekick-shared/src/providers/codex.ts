@@ -22,13 +22,16 @@ import { CodexRolloutParser } from '../parsers/codexParser';
 import { CodexDatabase } from './codexDatabase';
 import { getCodexMonitoringHomes } from '../codexProfiles';
 import {
+  DEFAULT_ROLLOUT_WALK_MAX_DEPTH,
   extractRolloutSessionId as extractSessionId,
   isRolloutFile,
   walkRolloutFiles,
   walkRolloutFilesAsync,
 } from './rolloutWalker';
 import type { RolloutFileInfo } from './rolloutWalker';
+import { DirectoryListingCache, splitWatchedPath } from './directoryListingCache';
 import type {
+  ListSessionFilesOptions,
   SessionProviderBase,
   SessionReader,
   ProjectFolderInfo,
@@ -39,6 +42,7 @@ import type {
   ProviderOperationStatus,
   ProviderRuntimeStatus,
   SessionProviderOptions,
+  WatchedSessionFile,
 } from './types';
 import { ProviderDiagnosticTracker, diagnosticFromRuntimeStatus } from './diagnostics';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
@@ -210,7 +214,15 @@ function readSessionMeta(rolloutPath: string): CodexSessionMeta | null {
   return null;
 }
 
-async function readSessionMetaAsync(rolloutPath: string): Promise<CodexSessionMeta | null> {
+/**
+ * First line of a rollout, chunk-read under the same 256 KiB cap as
+ * readFirstLines(). `complete` is false while the line has no newline yet
+ * (a rollout that was just created) or the file could not be read, so
+ * callers know not to cache the answer.
+ */
+async function readFirstLineAsync(
+  rolloutPath: string,
+): Promise<{ line: string | null; complete: boolean }> {
   // Mirrors readSessionMeta()/readFirstLines(): chunk-read until the first
   // line is complete under the same 256 KiB cap — session_meta carries
   // `instructions` and can far exceed a single chunk.
@@ -232,13 +244,21 @@ async function readSessionMetaAsync(rolloutPath: string): Promise<CodexSessionMe
       newlineFound = chunk.includes(0x0a);
     }
     const firstLine = Buffer.concat(chunks).toString('utf8').split('\n', 1)[0]?.trim();
-    if (!firstLine) return null;
-    const parsed = JSON.parse(firstLine) as CodexRolloutLine;
+    return { line: firstLine || null, complete: newlineFound || totalRead >= maxBytes };
+  } catch {
+    return { line: null, complete: false };
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
+
+function parseSessionMetaLine(line: string | null): CodexSessionMeta | null {
+  if (!line) return null;
+  try {
+    const parsed = JSON.parse(line) as CodexRolloutLine;
     return parsed.type === 'session_meta' ? (parsed.payload as CodexSessionMeta) : null;
   } catch {
     return null;
-  } finally {
-    await handle?.close().catch(() => undefined);
   }
 }
 
@@ -272,10 +292,21 @@ async function readSessionCwdAsync(rolloutPath: string): Promise<string | null> 
   const cached = cwdCache.get(rolloutPath);
   if (cached !== undefined) return cached;
 
-  const meta = await readSessionMetaAsync(rolloutPath);
-  const cwd = meta?.cwd || null;
-  rememberCwd(rolloutPath, cwd);
+  const { line, complete } = await readFirstLineAsync(rolloutPath);
+  const cwd = parseSessionMetaLine(line)?.cwd || null;
+  // A rollout observed before its session_meta line is flushed has no cwd
+  // yet; caching that null would hide the session from its workspace until
+  // the entry aged out, so only conclusive answers are remembered.
+  if (cwd !== null || complete) rememberCwd(rolloutPath, cwd);
   return cwd;
+}
+
+/** Built-in enumerators report explicit zeros rather than leaving a counter unset. */
+function initializeCounters(stats: ListSessionFilesOptions['stats']): void {
+  if (!stats) return;
+  stats.directoriesListed ??= 0;
+  stats.directoriesStatted ??= 0;
+  stats.filesStatted ??= 0;
 }
 
 /** Check if a session's CWD matches a workspace path. */
@@ -677,6 +708,9 @@ export class CodexProvider implements SessionProviderBase {
   private lastRateLimitsData: CodexRateLimits | null = null;
   private lastTokenUsageData: TokenUsage | null = null;
 
+  /** Dated rollout-directory listings reused across async enumerations. */
+  private readonly directoryCache = new DirectoryListingCache();
+
   constructor(options: SessionProviderOptions = {}) {
     this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
   }
@@ -853,10 +887,24 @@ export class CodexProvider implements SessionProviderBase {
     return files;
   }
 
-  async listSessionFilesAsync(workspacePath?: string): Promise<SessionFileInfo[]> {
+  async listSessionFilesAsync(
+    workspacePath?: string,
+    options: ListSessionFilesOptions = {},
+  ): Promise<SessionFileInfo[]> {
     const results: SessionFileInfo[] = [];
-    // One capped walk across the homes (deduplicated, newest first).
-    for (const file of await walkRolloutFilesAsync(getSessionsDirs())) {
+    initializeCounters(options.stats);
+    // One capped walk across the homes (deduplicated, newest first) through
+    // the directory cache. With a workspace filter the limit applies after
+    // filtering, so the walk itself is bounded only by its file cap.
+    const files = await walkRolloutFilesAsync(getSessionsDirs(), {
+      limit: workspacePath ? undefined : options.limit,
+      since: options.since,
+      cache: this.directoryCache,
+      revalidateRecent: options.revalidateRecent,
+      stats: options.stats,
+    });
+    for (const file of files) {
+      if (options.limit !== undefined && results.length >= options.limit) break;
       const info: SessionFileInfo = { ...file };
       if (workspacePath) {
         const cwd = await readSessionCwdAsync(file.path);
@@ -870,6 +918,47 @@ export class CodexProvider implements SessionProviderBase {
     // describing whichever operation ran before this one.
     this.recordDatabaseFallback('listSessionFilesAsync', true);
     return results;
+  }
+
+  /**
+   * Resolve a recursive-watch event under a sessions root with one stat.
+   * Rollouts are matched by name at any depth the walker would visit; a
+   * dated directory appearing or vanishing needs a full walk.
+   */
+  async statWatchedSessionFile(
+    root: string,
+    relativePath: string,
+    workspacePath?: string,
+  ): Promise<WatchedSessionFile> {
+    const segments = splitWatchedPath(relativePath);
+    if (!segments) return { status: 'unknown' };
+    const fullPath = path.join(root, ...segments);
+    const name = segments[segments.length - 1];
+    if (segments.length - 1 > DEFAULT_ROLLOUT_WALK_MAX_DEPTH) return { status: 'ignored' };
+    if (!isRolloutFile(name)) {
+      this.directoryCache.invalidate(fullPath);
+      try {
+        const stat = await fs.promises.stat(fullPath);
+        return stat.isDirectory() ? { status: 'unknown' } : { status: 'ignored' };
+      } catch {
+        return { status: 'unknown' };
+      }
+    }
+    const sessionId = extractSessionId(name);
+    const stat = await this.directoryCache.refreshFile(fullPath);
+    if (!stat || stat.sizeBytes <= 0) return { status: 'missing', path: fullPath, sessionId };
+    const file: SessionFileInfo = {
+      path: fullPath,
+      mtime: new Date(stat.mtimeMs),
+      sizeBytes: stat.sizeBytes,
+      sessionId,
+    };
+    if (workspacePath) {
+      const cwd = await readSessionCwdAsync(fullPath);
+      if (!cwd || !cwdMatches(cwd, workspacePath)) return { status: 'ignored' };
+      file.workspacePath = cwd;
+    }
+    return { status: 'present', file };
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
@@ -1248,6 +1337,7 @@ export class CodexProvider implements SessionProviderBase {
     this.dynamicContextWindowLimit = null;
     this.lastRateLimitsData = null;
     this.lastTokenUsageData = null;
+    this.directoryCache.invalidate();
   }
 
   private recordDatabaseFallback(operation: string, usable: boolean): void {

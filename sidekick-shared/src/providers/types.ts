@@ -94,6 +94,42 @@ export interface SessionFileInfo {
   createdAt?: Date;
 }
 
+/** Payload-free counters of what an enumeration cost. */
+export interface SessionEnumerationCounters {
+  directoriesListed?: number;
+  directoriesStatted?: number;
+  filesStatted?: number;
+}
+
+/** Options for `listSessionFilesAsync()`; every field is optional and additive. */
+export interface ListSessionFilesOptions {
+  /** Return at most this many files, newest first (may skip an old-directory live session; see rolloutWalker). */
+  limit?: number;
+  /** Only files modified at or after this epoch-ms. */
+  since?: number;
+  /** Re-stat recently modified files even when their directory is unchanged. */
+  revalidateRecent?: boolean;
+  /** Counters the enumerator increments for real readdir/stat calls. */
+  stats?: SessionEnumerationCounters;
+}
+
+/**
+ * What a recursive-watch event under one of the provider's watch roots maps
+ * to, resolved with at most one stat.
+ *
+ * - `ignored`: structurally not a session of this provider (wrong depth or
+ *   extension, another workspace); nothing to do.
+ * - `unknown`: a directory or something the provider cannot classify; the
+ *   caller should fall back to a full enumeration.
+ * - `missing`: the path names a session that is gone or still empty.
+ * - `present`: the session file with its current stat.
+ */
+export type WatchedSessionFile =
+  | { status: 'ignored' }
+  | { status: 'unknown' }
+  | { status: 'missing'; path: string; sessionId: string }
+  | { status: 'present'; file: SessionFileInfo };
+
 /** How much of a session `readSessionStats()` could read. */
 export type SessionFileStatsAvailability = 'full' | 'partial' | 'unavailable';
 
@@ -305,7 +341,22 @@ export interface SessionProviderBase {
   listAllSessionFiles?(): SessionFileInfo[];
 
   /** Event-loop-safe enumeration used by async preview and subscription APIs. */
-  listSessionFilesAsync?(workspacePath?: string): Promise<SessionFileInfo[]>;
+  listSessionFilesAsync?(
+    workspacePath?: string,
+    options?: ListSessionFilesOptions,
+  ): Promise<SessionFileInfo[]>;
+
+  /**
+   * Resolve a recursive-watch event (`root` from `getWatchRoots()`, the
+   * root-relative `relativePath` the watcher reported) to a session file with
+   * at most one stat, applying the same workspace filter as
+   * `listSessionFilesAsync(workspacePath)`.
+   */
+  statWatchedSessionFile?(
+    root: string,
+    relativePath: string,
+    workspacePath?: string,
+  ): Promise<WatchedSessionFile>;
 
   /** Batch label extraction. DB-backed implementations use at most one query. */
   extractSessionLabelsAsync?(sessionPaths: readonly string[]): Promise<Map<string, string | null>>;
