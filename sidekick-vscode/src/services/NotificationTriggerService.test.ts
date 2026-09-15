@@ -6,7 +6,7 @@
  * action buttons (Open Dashboard / Snooze 1h / Mute This Trigger).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SessionMonitor } from './SessionMonitor';
 import type { NotificationPersistenceService } from './NotificationPersistenceService';
 import type { ToolCall, CompactionEvent } from '../types/claudeSession';
@@ -19,14 +19,18 @@ import {
 
 const mocks = vi.hoisted(() => {
   const configUpdate = vi.fn((): Promise<void> => Promise.resolve());
-  const settings = { notificationsEnabled: true };
+  const settings = { notificationsEnabled: true, tokenThreshold: undefined as number | undefined };
   return {
     settings,
     configUpdate,
     getConfiguration: vi.fn(() => ({
-      get: vi.fn((key: string, defaultValue?: unknown) =>
-        key === 'enabled' ? settings.notificationsEnabled : defaultValue,
-      ),
+      get: vi.fn((key: string, defaultValue?: unknown) => {
+        if (key === 'enabled') return settings.notificationsEnabled;
+        if (key === 'tokenThreshold' && settings.tokenThreshold !== undefined) {
+          return settings.tokenThreshold;
+        }
+        return defaultValue;
+      }),
       update: configUpdate,
     })),
     showInformationMessage: vi.fn((): Promise<string | undefined> => Promise.resolve(undefined)),
@@ -384,16 +388,23 @@ interface CapturedHandlers {
   tokenUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
   cycleDetected?: (cycle: { description: string; affectedFiles: string[] }) => void;
   quotaUpdate?: (quota: QuotaState) => void;
+  sessionStart?: (sessionPath: string) => void;
 }
 
 function createFakeSessionMonitor(totalTokens = 0): {
   monitor: SessionMonitor;
   handlers: CapturedHandlers;
+  setTotalTokens: (total: number) => void;
 } {
   const handlers: CapturedHandlers = {};
   const disposable = { dispose: () => {} };
+  let total = totalTokens;
   const monitor = {
     isReplaying: false,
+    onSessionStart: (h: (sessionPath: string) => void) => {
+      handlers.sessionStart = h;
+      return disposable;
+    },
     onToolCall: (h: (call: ToolCall) => void) => {
       handlers.toolCall = h;
       return disposable;
@@ -414,11 +425,134 @@ function createFakeSessionMonitor(totalTokens = 0): {
       handlers.quotaUpdate = h;
       return disposable;
     },
-    getStats: () => ({ totalInputTokens: totalTokens, totalOutputTokens: 0 }),
-    getStatsView: () => ({ totalInputTokens: totalTokens, totalOutputTokens: 0 }),
+    getStats: () => ({ totalInputTokens: total, totalOutputTokens: 0 }),
+    getStatsView: () => ({ totalInputTokens: total, totalOutputTokens: 0 }),
   };
-  return { monitor: monitor as unknown as SessionMonitor, handlers };
+  return {
+    monitor: monitor as unknown as SessionMonitor,
+    handlers,
+    setTotalTokens: (next: number) => {
+      total = next;
+    },
+  };
 }
+
+describe('high-token-usage alert', () => {
+  const usage = { inputTokens: 1, outputTokens: 1 };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.settings.notificationsEnabled = true;
+    mocks.settings.tokenThreshold = undefined;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('warns once when the cache-inclusive total first crosses the threshold', () => {
+    const { monitor, handlers, setTotalTokens } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    setTotalTokens(4_900_000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+
+    setTotalTokens(5_100_000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+      'High Token Usage: Session has consumed 5100K tokens',
+      NOTIFICATION_BUTTONS.openDashboard,
+      NOTIFICATION_BUTTONS.snooze,
+    );
+
+    // Every later step keeps growing the total; none of them warn again.
+    for (const total of [5_400_000, 6_000_000, 9_900_000]) {
+      setTotalTokens(total);
+      handlers.tokenUsage!(usage);
+    }
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+
+    service.dispose();
+  });
+
+  it('warns for later multiples at most every thirty minutes', () => {
+    const { monitor, handlers, setTotalTokens } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    setTotalTokens(5_100_000);
+    handlers.tokenUsage!(usage);
+    setTotalTokens(10_200_000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(29 * 60 * 1000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(2 * 60 * 1000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.showWarningMessage).toHaveBeenLastCalledWith(
+      'High Token Usage: Session has consumed 10200K tokens',
+      NOTIFICATION_BUTTONS.openDashboard,
+      NOTIFICATION_BUTTONS.snooze,
+    );
+
+    service.dispose();
+  });
+
+  it('starts a new session from a clean slate, ignoring the previous high-water mark', () => {
+    const { monitor, handlers, setTotalTokens } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+
+    setTotalTokens(5_100_000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+
+    handlers.sessionStart!('/sessions/next.jsonl');
+    setTotalTokens(200_000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+
+    // Within the old throttle window, but this is the new session's first crossing.
+    setTotalTokens(5_050_000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(2);
+
+    // Re-announcing the same session does not reset anything.
+    handlers.sessionStart!('/sessions/next.jsonl');
+    setTotalTokens(5_900_000);
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(2);
+
+    service.dispose();
+  });
+
+  it('stays silent during replay, when disabled, and when the threshold is zero', () => {
+    const { monitor, handlers, setTotalTokens } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+    setTotalTokens(5_100_000);
+
+    (monitor as unknown as { isReplaying: boolean }).isReplaying = true;
+    handlers.tokenUsage!(usage);
+    (monitor as unknown as { isReplaying: boolean }).isReplaying = false;
+    mocks.settings.notificationsEnabled = false;
+    handlers.tokenUsage!(usage);
+    expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+    service.dispose();
+
+    mocks.settings.notificationsEnabled = true;
+    mocks.settings.tokenThreshold = 0;
+    const disabled = new NotificationTriggerService(createFakeSessionMonitor(5_100_000).monitor);
+    const { handlers: disabledHandlers } = createFakeSessionMonitor(5_100_000);
+    disabledHandlers.tokenUsage?.(usage);
+    expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+    disabled.dispose();
+  });
+});
 
 function createFakePersistence(): NotificationPersistenceService {
   return { addNotification: vi.fn() } as unknown as NotificationPersistenceService;

@@ -572,9 +572,9 @@
           },
           "sidekick.notifications.tokenThreshold": {
             "type": "number",
-            "default": 500000,
+            "default": 5000000,
             "minimum": 0,
-            "description": "Show a warning when the session's total tokens (input, output, and cache reads and writes) cross this threshold (0 to disable). Warns at each multiple."
+            "description": "Show a warning when the session's total tokens (input, output, and cache reads and writes) first cross this threshold (0 to disable). Later multiples warn at most every 30 minutes; a new session starts fresh."
           },
           "sidekick.notifications.triggers.quota-threshold": {
             "type": "boolean",

@@ -103,6 +103,16 @@ export const NOTIFICATION_BUTTONS = {
 const SNOOZE_DURATION_MS = 60 * 60 * 1000;
 
 /**
+ * Cache-inclusive token total that warns once per session. Every assistant
+ * message re-reads its whole context as cache-read tokens, so a session at
+ * a modest context passes a few hundred thousand tokens in a step or two.
+ */
+const DEFAULT_TOKEN_THRESHOLD = 5_000_000;
+
+/** After the first crossing, later multiples of the threshold warn at most this often. */
+const HIGH_TOKEN_USAGE_THROTTLE_SECONDS = 30 * 60;
+
+/**
  * Action buttons per trigger ID.
  *
  * Security triggers (env-access, destructive-cmd, sensitive-path-write) get
@@ -157,8 +167,11 @@ export class NotificationTriggerService implements vscode.Disposable {
   /** Token threshold for high-usage warning (configurable) */
   private tokenThreshold: number;
 
-  /** Total tokens seen, used for threshold crossing */
+  /** Cache-inclusive total at the last high-token warning; reset per session. */
   private lastNotifiedTokenTotal: number = 0;
+
+  /** Session the high-token state belongs to, so a new session warns on its own first crossing. */
+  private tokenAlertSessionPath: string | null = null;
 
   /** Optional persistence service for notification history */
   private notificationPersistence?: NotificationPersistenceService;
@@ -189,6 +202,10 @@ export class NotificationTriggerService implements vscode.Disposable {
 
     this.disposables.push(
       this.sessionMonitor.onCycleDetected((cycle) => this.handleCycleDetected(cycle)),
+    );
+
+    this.disposables.push(
+      this.sessionMonitor.onSessionStart((sessionPath) => this.handleSessionStart(sessionPath)),
     );
 
     // Quota samples: session-derived (Codex rate limits, z.ai) from the
@@ -250,7 +267,7 @@ export class NotificationTriggerService implements vscode.Disposable {
    */
   private getTokenThreshold(): number {
     const config = vscode.workspace.getConfiguration('sidekick.notifications');
-    return config.get<number>('tokenThreshold', 500000);
+    return config.get<number>('tokenThreshold', DEFAULT_TOKEN_THRESHOLD);
   }
 
   private isNotificationsEnabled(): boolean {
@@ -332,8 +349,8 @@ export class NotificationTriggerService implements vscode.Disposable {
     const message = `${title}: ${body}`;
 
     // Snoozed triggers stay quiet but keep history complete. Checked here
-    // (not only in isThrottled) because cycle-detected and high-token-usage
-    // never go through isThrottled.
+    // (not only in isThrottled) because cycle-detected and a session's first
+    // high-token-usage crossing never go through isThrottled.
     if (persistParams && this.isSnoozed(persistParams.triggerId)) {
       if (this.notificationPersistence) {
         this.notificationPersistence.addNotification({
@@ -576,8 +593,22 @@ export class NotificationTriggerService implements vscode.Disposable {
   }
 
   /**
+   * A new session starts from a clean high-token state: its own first
+   * crossing warns even if the previous session had already warned higher.
+   */
+  private handleSessionStart(sessionPath: string): void {
+    if (sessionPath === this.tokenAlertSessionPath) return;
+    this.tokenAlertSessionPath = sessionPath;
+    this.lastNotifiedTokenTotal = 0;
+    this.lastFiredAt.delete('high-token-usage');
+  }
+
+  /**
    * Handles token usage events for threshold crossing detection.
-   * Skips notifications during initial session replay.
+   *
+   * Warns once per session when the cache-inclusive total first crosses the
+   * threshold; later multiples warn at most every thirty minutes. Skips
+   * notifications during initial session replay.
    */
   private handleTokenUsage(_usage: { inputTokens: number; outputTokens: number }): void {
     if (this.sessionMonitor.isReplaying) return;
@@ -597,21 +628,21 @@ export class NotificationTriggerService implements vscode.Disposable {
     const crossedThreshold =
       Math.floor(totalTokens / this.tokenThreshold) >
       Math.floor(this.lastNotifiedTokenTotal / this.tokenThreshold);
+    if (!crossedThreshold) return;
 
-    if (crossedThreshold) {
-      const totalK = Math.round(totalTokens / 1000);
-      this.fireNotification(
-        'High Token Usage',
-        `Session has consumed ${totalK}K tokens`,
-        'warning',
-        {
-          triggerId: 'high-token-usage',
-          triggerName: 'High Token Usage',
-          context: { tokenCount: totalTokens },
-        },
-      );
-      this.lastNotifiedTokenTotal = totalTokens;
+    const firstCrossing = this.lastNotifiedTokenTotal < this.tokenThreshold;
+    if (!firstCrossing && this.isThrottled('high-token-usage', HIGH_TOKEN_USAGE_THROTTLE_SECONDS)) {
+      return;
     }
+
+    const totalK = Math.round(totalTokens / 1000);
+    this.fireNotification('High Token Usage', `Session has consumed ${totalK}K tokens`, 'warning', {
+      triggerId: 'high-token-usage',
+      triggerName: 'High Token Usage',
+      context: { tokenCount: totalTokens },
+    });
+    this.recordFire('high-token-usage');
+    this.lastNotifiedTokenTotal = totalTokens;
   }
 
   dispose(): void {

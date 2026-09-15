@@ -94,19 +94,19 @@ Only applies when the inference provider is Claude Max and the session provider 
 
 ## Notifications
 
-| Setting                                                | Default    | Description                                                   |
-| ------------------------------------------------------ | ---------- | ------------------------------------------------------------- |
-| `sidekick.notifications.enabled`                       | `true`     | Enable session notifications                                  |
-| `sidekick.notifications.triggers.env-access`           | `true`     | Alert on credential file access                               |
-| `sidekick.notifications.triggers.destructive-cmd`      | `true`     | Alert on destructive commands                                 |
-| `sidekick.notifications.triggers.tool-error`           | `true`     | Alert on tool error bursts                                    |
-| `sidekick.notifications.triggers.compaction`           | `true`     | Alert on context compaction                                   |
-| `sidekick.notifications.triggers.sensitive-path-write` | `true`     | Alert on writes to sensitive paths                            |
-| `sidekick.notifications.triggers.cycle-detected`       | `true`     | Alert on detected agent retry cycles                          |
-| `sidekick.notifications.tokenThreshold`                | `500000`   | Total-token (incl. cache) alert threshold (0 = disabled)      |
-| `sidekick.notifications.triggers.quota-threshold`      | `true`     | Alert when a subscription window crosses a threshold          |
-| `sidekick.notifications.quotaFiveHourThresholds`       | `[80, 95]` | Five-hour window percentages that alert (highest is an error) |
-| `sidekick.notifications.quotaSevenDayThresholds`       | `[90]`     | Seven-day window percentages that alert (highest is an error) |
+| Setting                                                | Default    | Description                                                                                           |
+| ------------------------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------- |
+| `sidekick.notifications.enabled`                       | `true`     | Enable session notifications                                                                          |
+| `sidekick.notifications.triggers.env-access`           | `true`     | Alert on credential file access                                                                       |
+| `sidekick.notifications.triggers.destructive-cmd`      | `true`     | Alert on destructive commands                                                                         |
+| `sidekick.notifications.triggers.tool-error`           | `true`     | Alert on tool error bursts                                                                            |
+| `sidekick.notifications.triggers.compaction`           | `true`     | Alert on context compaction                                                                           |
+| `sidekick.notifications.triggers.sensitive-path-write` | `true`     | Alert on writes to sensitive paths                                                                    |
+| `sidekick.notifications.triggers.cycle-detected`       | `true`     | Alert on detected agent retry cycles                                                                  |
+| `sidekick.notifications.tokenThreshold`                | `5000000`  | Total-token (incl. cache) threshold; warns once per session, then at most every 30 min (0 = disabled) |
+| `sidekick.notifications.triggers.quota-threshold`      | `true`     | Alert when a subscription window crosses a threshold                                                  |
+| `sidekick.notifications.quotaFiveHourThresholds`       | `[80, 95]` | Five-hour window percentages that alert (highest is an error)                                         |
+| `sidekick.notifications.quotaSevenDayThresholds`       | `[90]`     | Seven-day window percentages that alert (highest is an error)                                         |
 
 !!! warning "Deprecated"
 
