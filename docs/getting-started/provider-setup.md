@@ -9,7 +9,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 1. Install and authenticate Claude Code CLI:
    ```bash
    npm install -g @anthropic-ai/claude-code
-   claude auth
+   claude auth login
    ```
 2. Follow the prompts to authenticate with your Claude Max subscription
 3. Start coding — Sidekick auto-detects Claude Code and uses it for inference

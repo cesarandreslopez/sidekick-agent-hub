@@ -4,7 +4,7 @@ Full-screen terminal dashboard for monitoring AI agent sessions — standalone, 
 
 ![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
-Sidekick CLI reads from `~/.config/sidekick/` — the same data files the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) writes. Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in an interactive terminal UI.
+Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows) — the same data files the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) writes. Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in an interactive terminal UI.
 
 ## What's New
 
@@ -57,7 +57,7 @@ OpenCode session data lives in OpenCode's platform-specific data directory:
 
 - Linux: `~/.local/share/opencode/`
 - macOS: `~/Library/Application Support/opencode/`
-- Windows: `%APPDATA%\\opencode\\`
+- Windows: `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
 
 If `sqlite3` is missing or not executable in the current shell environment, Sidekick prints an actionable OpenCode-specific notice instead of silently failing session detection.
 
@@ -66,21 +66,21 @@ If `sqlite3` is missing or not executable in the current shell environment, Side
 ```bash
 sidekick dashboard [options]
 sidekick tasks|decisions|notes|stats|import|blocks|daily|weekly|monthly|sessions|quota|status|accounts|handoff|search|context|extract [options]
-sidekick today|doctor|statusline|mcp [options]
+sidekick dump|history|report|peak|today|doctor|statusline|mcp [options]
 sidekick tasks add|tasks done|note add|decision add [args]
 ```
 
-The standalone commands open the dashboard directly to a specific panel or run a one-shot query. All accept `--project` and `--provider` flags.
+The standalone commands run one-shot queries and print to stdout; only `dashboard` opens the TUI. All accept the global `--project` and `--provider` flags.
 
-| Flag                   | Description                                                               |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `--project <path>`     | Override project path (default: current working directory)                |
-| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
-| `--no-color`           | Disable colored output (also honors `NO_COLOR`)                           |
-| `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)            |
-| `--output-file <path>` | Write a command's stdout to a file, without colour codes                  |
-| `--session <id>`       | Follow a specific session by ID                                           |
-| `--replay`             | Replay existing events from the beginning before streaming live           |
+| Flag                   | Description                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| `--project <path>`     | Override project path (default: current working directory)                         |
+| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)          |
+| `--no-color`           | Disable colored output (also honors `NO_COLOR`)                                    |
+| `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)                     |
+| `--output-file <path>` | Write a command's stdout to a file, without colour codes                           |
+| `--session <id>`       | Follow a specific session by ID (`dashboard`, `dump`, `report`, `handoff open`)    |
+| `--replay`             | Replay existing events from the beginning before streaming live (`dashboard` only) |
 
 ## Daily Brief & Statusline
 
@@ -97,12 +97,12 @@ sidekick statusline
 sidekick doctor
 ```
 
-Diagnose project identity, sessions, accounts, providers, and dependencies in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. Global flags `--project` and `--json` also apply.
+Diagnose project identity, sessions, accounts, providers, and dependencies in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. Global flags `--project`, `--provider`, and `--json` also apply.
 
 ## Billing Blocks
 
 ```bash
-sidekick blocks [--active | --recent | --since <time>] [--csv]
+sidekick blocks [--active | --recent | --since <time>] [--csv] [--no-cache]
 ```
 
 Five-hour billing blocks computed from session logs (ccusage-style: a block opens at the first usage event, aligned to the UTC hour, lasts five hours, and a longer gap opens a new one). Each block shows its cache-inclusive token total, cost with provenance, burn rate, and — for the open block — projected end-of-block tokens and cost plus the time remaining. Sessions are read once and cached by size and mtime under the Sidekick config directory. When the status line has persisted an official Claude Code rate-limit sample, it is shown beneath the local estimate for comparison. `--since` accepts an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`; `--json` prints the full report and `--csv` one row per block.
@@ -118,7 +118,7 @@ Fold finished sessions from every provider into the history store that `sidekick
 ## Usage Reports
 
 ```bash
-sidekick daily|weekly|monthly|sessions [--since <time>] [--until <time>] [--breakdown] [--by-project] [--utc] [--csv]
+sidekick daily|weekly|monthly|sessions [--since <time>] [--until <time>] [--breakdown] [--by-project] [--utc] [--csv] [--no-cache]
 ```
 
 Usage computed straight from session logs — no VS Code extension or history store required — for every provider with session data side by side (`--provider` narrows to one). Rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session that crosses midnight is split across both days; weeks start on Monday. `--breakdown` adds per-model sub-rows, `--by-project` groups by project, `sessions` prints one row per session, and `--json` / `--csv` feed scripts. Defaults: 30 days, 12 weeks, 12 calendar months, 30 days.
@@ -134,12 +134,12 @@ sidekick decision add "Store history as JSONL" --rationale "Append-only, crash-s
 
 Capture tasks, knowledge notes, and decisions from the terminal without opening the dashboard. Writes use the shared atomic merge writers, so concurrent captures from VS Code or other terminals are never lost (the extension's Kanban board picks them up live).
 
-| Command                      | Flags                                                                                                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `tasks add <subject>`        | `--description <text>`, `--tags <csv>`                                                                                             |
-| `tasks done <id>`            | Accepts a task ID or unique prefix                                                                                                 |
-| `note add <content>`         | `--file <path>`, `--title <title>`, `--type <type>` (`gotcha`/`pattern`/`guideline`/`tip`), `--importance <level>`, `--tags <csv>` |
-| `decision add <description>` | `--rationale <text>`, `--chosen <text>`, `--alternatives <csv>`, `--tags <csv>`                                                    |
+| Command                      | Flags                                                                                                                                                                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tasks add <subject>`        | `--description <text>`, `--tags <csv>`                                                                                                                                                                                           |
+| `tasks done <id>`            | Accepts a task ID or unique prefix                                                                                                                                                                                               |
+| `note add <content>`         | `--file <path>`, `--title <title>`, `--type <type>` (`gotcha`/`pattern`/`guideline`/`tip`, default `tip`), `--importance <level>` (`critical`/`high`/`medium`/`low`, default `medium`), `--tags <csv>`; `--file` defaults to `.` |
+| `decision add <description>` | `--rationale <text>`, `--chosen <text>`, `--alternatives <csv>`, `--tags <csv>`                                                                                                                                                  |
 
 The global flag `--project` also applies.
 
@@ -174,6 +174,7 @@ Export session data as text, markdown, or JSON.
 | `--session <id>` | Target a specific session (default: most recent)       |
 | `--list`         | List available sessions and exit                       |
 | `--limit <n>`    | Maximum sessions listed with `--list` (default: 50)    |
+| `--csv`          | With `--list`, print the session table as CSV          |
 
 Global flags `--project` and `--provider` also apply.
 
@@ -292,7 +293,7 @@ Codex quota commands and `sidekick mcp`'s `get_quota_status` always ask the API 
 
 Use `--json` for machine-readable output; it includes `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`, plus `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses. The `failure` descriptor explains an API failure even when fallback data is available. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows).
 
-When multi-account is enabled, `sidekick quota` shows the currently logged-in account email above the quota bars — resolved live from the provider's auth, so it stays correct even after a native `claude login` / `codex login`.
+`sidekick quota` shows the currently logged-in account email above the quota bars — resolved live from the provider's auth, so it stays correct even after a native `claude login` / `codex login`.
 
 Use `sidekick quota --all` to show Claude and Codex quota together in a single run, plus z.ai when API quota is available or z.ai traffic is active. Each provider degrades independently — if one provider's quota can't be fetched, its error is shown inline and the others still render (the command never aborts on a single provider's failure). The combined view uses the same policy as the single-provider view; live values can change between calls. `--all --json` emits a provider-keyed payload for dashboards and automation.
 
@@ -312,7 +313,7 @@ Mon ··▒▒▓█▒░· ·░░·· ·▒▓
 Peak 92%  ·  Avg 38%  ·  Samples 612
 ```
 
-Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex|zai` (default all available, stacked), `--workspace <path>` (default `cwd`), `--window 5h|7d|max` (default `5h`), `--csv`. `--json` emits a `{ workspaceId, weeks, window, providers, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel. Cells are local calendar days.
+Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex|zai` (`claude-code` and `z.ai` are accepted aliases; default all available, stacked), `--workspace <path>` (default `cwd`), `--window 5h|7d|max` (default `5h`), `--csv`. `--json` emits a `{ workspaceId, weeks, window, providers, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel. Cells are local calendar days.
 
 History is stored at `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` (mode `0600`, 60-second debounce, 91-day retention). The workspace id is `sha256(realpath)[0..16]`, so the same folder yields the same store whether sampled from the CLI or VS Code.
 
@@ -324,22 +325,22 @@ sidekick accounts [command]
 
 Keep several Claude Code and Codex logins on one machine and switch between them without `/logout` cycles. Sidekick registers the login you are already using automatically (labelled with its email), verifies every switch by reading the live credential store back, warns about running apps that still hold the previous login, and flags expiring credentials before they fail. Account data is stored in `~/.config/sidekick/accounts/` with strict file permissions and atomic writes with rollback on failure. See the [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/) guide for the per-app reachability table and platform notes.
 
-| Command                                          | Description                                                                                                                              |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `sidekick accounts`                              | Interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo). Prints the list when piped |
-| `accounts list`                                  | Saved accounts with health and expiry                                                                                                    |
-| `accounts add [--label <name>] [--current] [-y]` | Sign in to a new account in an isolated profile; `--current` registers or relabels the live login                                        |
-| `accounts switch <name> \| --next [--force]`     | Make an account active (label, email, id, or unique prefix); `--force` ignores an expired health verdict                                 |
-| `accounts login <name>`                          | Sign in again to an existing (expired) account, keeping its id and label                                                                 |
-| `accounts remove <name> [-y]`                    | Delete a saved account and its credentials (prompts unless `--yes`; required for `--json`/non-TTY)                                       |
-| `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                         |
-| `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                          |
-| `accounts undo`                                  | Revert the last switch                                                                                                                   |
-| `accounts doctor`                                | Credential expiry, running apps, Codex credential store, keep-alive state                                                                |
-| `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold (continuous auto-switching runs in a long-running host such as VS Code)                          |
-| `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                          |
+| Command                                          | Description                                                                                                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sidekick accounts`                              | Interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo, `?` help, `q` quit). Prints the list when piped |
+| `accounts list`                                  | Saved accounts with health and expiry                                                                                                                        |
+| `accounts add [--label <name>] [--current] [-y]` | Sign in to a new account in an isolated profile; `--current` registers or relabels the live login                                                            |
+| `accounts switch <name> \| --next [--force]`     | Make an account active (label, email, id, or unique prefix); `--force` ignores an expired health verdict                                                     |
+| `accounts login <name>`                          | Sign in again to an existing (expired) account, keeping its id and label                                                                                     |
+| `accounts remove <name> [-y]`                    | Delete a saved account and its credentials (prompts unless `--yes`/`--force`; required for `--json`/non-TTY)                                                 |
+| `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                                             |
+| `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                                              |
+| `accounts undo`                                  | Revert the last switch                                                                                                                                       |
+| `accounts doctor`                                | Credential expiry, running apps, Codex credential store, keep-alive state                                                                                    |
+| `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold (continuous auto-switching runs in a long-running host such as VS Code)                                              |
+| `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                                              |
 
-All subcommands accept `--provider claude-code|codex|all` and the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command. A switch to an `expired` or `missing` account is refused with a sign-in hint unless you pass `--force`.
+`sidekick accounts` and `accounts list` accept `--provider claude-code|codex|all`; the per-account subcommands accept `claude-code|codex`; `config` takes no provider. The global `--json` applies everywhere. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command. A switch to an `expired` or `missing` account is refused with a sign-in hint unless you pass `--force`.
 
 ```bash
 sidekick accounts                          # interactive picker
@@ -366,7 +367,7 @@ The dashboard is a two-pane terminal UI. The left side shows a navigable list, t
 | 3   | **Kanban**    | Task board with status columns                                                                         |
 | 4   | **Notes**     | Knowledge notes attached to files                                                                      |
 | 5   | **Decisions** | Architectural decisions from sessions                                                                  |
-| 6   | **Plans**     | Discovered agent plans from `~/.claude/plans/`                                                         |
+| 6   | **Plans**     | Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions              |
 | 7   | **Events**    | Live event stream with type badges, timestamps, and keyword-highlighted summaries                      |
 | 8   | **Charts**    | Tool frequency bars, event distribution, activity heatmap, and pattern analysis                        |
 
@@ -443,6 +444,7 @@ Press `z` to cycle through layout modes:
 | `R`            | Refresh persisted project data (tasks, notes, decisions, plans) from disk                 |
 | `r`            | Generate HTML report for the current session                                              |
 | `V`            | Show version / changelog                                                                  |
+| `Esc`          | Clear the filter, close an overlay, or return focus to the side list                      |
 | `q` / `Ctrl+C` | Quit                                                                                      |
 
 ## Mouse Support
@@ -462,7 +464,7 @@ Auto-detects the most recently active session provider:
 
 - **Claude Code** — `~/.claude/projects/`
 - **OpenCode** — OpenCode's data directory:
-  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%APPDATA%\\opencode\\`
+  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
 - **Codex** — `~/.codex/`
 
 Override with `--provider claude-code`, `--provider opencode`, or `--provider codex`.

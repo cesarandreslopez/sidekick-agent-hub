@@ -10,7 +10,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
    ```
 2. Authenticate:
    ```bash
-   claude auth
+   claude auth login
    ```
 3. Sidekick auto-detects Claude Code when `sidekick.inferenceProvider` is set to `auto`
 

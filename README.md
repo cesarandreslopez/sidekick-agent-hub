@@ -28,8 +28,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 - **0.26.5: cheaper session watching and a calibrated token alert** — observed-session watching reconciles each file event with one stat and re-walks session directories only for unknown paths, catch-up polls, and the initial pass, with bounded discovery and parse-cache limits for hosts over large histories. The VS Code high-token-usage warning fires once per session (default 5,000,000 cache-inclusive tokens), then at most every 30 minutes.
 - **0.26.4: sharper authentication and policy guidance** — inference failures that say a login expired or ask to re-authenticate get credential-aware recovery hints, a rejected refresh token is reported as sign-in required even when the message also mentions an expired conversation, and `Permission denied by policy` (including HTTP 403) points to execution permissions.
 - **0.26.3: provider failure diagnosis and status evidence** — `sidekick-shared` adds `diagnoseProviderFailure()` (pure, browser-safe) and `fetchProviderServiceStatus()` (explicit observed/unavailable evidence). The extension and CLI use them so inference failures name the actual problem with a recovery hint, connection tests separate local readiness from authenticated requests, and `sidekick status`, the dashboards, and Doctor show unavailable or partial public status instead of implying normal operation.
-- **0.26.2: monitoring recovery** — stop/resume keeps dashboard subscriptions and custom session folders; cancelled inline requests stop inference. Empty dashboards offer recovery actions, and tabs and session cards support keyboard navigation.
-- **Reliable replay and search** — complete-line checkpoints preserve Unicode and parser context; live-only CLI runs keep complete-history caches intact. Project search includes database-only OpenCode sessions, and Doctor focuses on the selected provider.
+- **0.26.2: monitoring recovery, replay, and search** — stop/resume keeps dashboard subscriptions and custom session folders; cancelled inline requests stop inference. Empty dashboards offer recovery actions, and tabs and session cards support keyboard navigation. Complete-line checkpoints preserve Unicode and parser context; live-only CLI runs keep complete-history caches intact. Project search includes database-only OpenCode sessions, and Doctor focuses on the selected provider.
 - **Usage straight from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` report tokens and cost for every provider without the extension's history store; `sidekick blocks` shows five-hour billing blocks with burn rate and end-of-block projections; `sidekick import` backfills the history store behind `stats`, `today`, and the History tab.
 - **One token vocabulary with cost provenance** — every total across the CLI, the extension, and reports counts input, output, and both cache buckets, and every cost says whether it was provider-reported or estimated from catalog pricing.
 - **Official quota from the status line** — `sidekick statusline` reads the JSON Claude Code pipes to it and persists the official five-hour and seven-day limits; `resolveQuota()` gives `sidekick quota`, the MCP server, and both dashboards one resolver (fresh sample → session logs → provider API for Claude and z.ai; API first for one-shot Codex queries), and every quota table names its source and age.
@@ -40,16 +39,15 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 - **Prompt history** — `sidekick history` lists your most recent Codex prompts across every workspace, and `--path` jumps straight to a session's transcript file. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound, so huge session directories stay fast.
 - **Non-blocking account operations** — Codex login probes, account switches, and login polling run off the event loop, so the VS Code extension host and other embedders no longer freeze during account operations. Store writes from the extension and CLI are serialized through locked atomic writers.
 - **Fast daily workflow** — `sidekick statusline`, `today`, `doctor`, atomic terminal capture, and generic external handoff keep common checks and updates one command away.
-- **Guided VS Code onboarding** — a four-step first-run walkthrough plus a `Sidekick: Show Menu` command hub generated from the extension manifest.
+- **Guided VS Code onboarding** — a five-step first-run walkthrough (detect a session, open the dashboard, read the status bar, add your accounts, capture a note) plus a `Sidekick: Show Menu` command hub generated from the extension manifest.
 - **Read-only MCP facts** — register `sidekick mcp` with Claude Code or Codex so the running agent can inspect quota, burn rate, context pressure, and project stores.
 - **Shared analytics and observed-session V1** — categorized failure history, beta quality trends, code-impact and compaction ledgers, plus versioned provider-neutral contracts for downstream tools.
-- **Codex reset credits** — when Codex quota is refreshed from the API, `sidekick quota` and the VS Code dashboard "Rate Limits" tile now surface available rate-limit reset credits and their expirations.
+- **Codex reset credits** — `sidekick quota` (which always queries the Codex API) and the VS Code dashboard "Rate Limits" tile surface available rate-limit reset credits and their expirations.
 - **z.ai Coding Plan quota** — when OpenCode routes to a z.ai Coding Plan (GLM), Sidekick shows authoritative 5-Hour / Weekly quota read from z.ai's quota API (with cached-snapshot fallback). z.ai is monitored-only and not yet a selectable inference provider — see [limitations](docs/providers/opencode.md#limitations).
 - **Claude Opus 5, Sonnet 5, Fable 5 & Fable 5.1** — recognized everywhere models are interpreted, with 1M-token context windows, accurate pricing (including Fable 5.1's lower cache-read rate and GPT-6 Astra), and "Fable" display labels. Opus 5 and Sonnet 5 are the `powerful` and `balanced` tier defaults; Codex tiers map to GPT-5.6 Luna, Terra, and Sol.
 - **Richer conversation view** — assistant reasoning, tool calls, and narration now interleave in arrival order (a compact Process + Answer shape) across Claude, Codex, and OpenCode sessions.
 - **Session asset extraction** — pull URLs, file paths, commands, and plans out of recent chats with `sidekick extract` or the `Sidekick: Extract Session Assets` command.
 - **Quota-history heatmap** — `sidekick quota history` renders a 13-week, per-workspace, GitHub-style view of session-limit utilization.
-- **Multi-account management** — save, switch, and remove Claude Code and Codex accounts without manual login/logout cycles.
 - **Always-current pricing and context sizes** — model prices and context window sizes hydrate from the LiteLLM catalog on startup, so new models are costed and gauged correctly without an update. `sidekick-shared` is published to npm for building your own tools.
 
 See the [full changelog](CHANGELOG.md) for everything.
@@ -64,7 +62,7 @@ Inline completions, code transforms, commit messages, session monitoring, sessio
   <img src="https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-agent-hub.gif" alt="Sidekick VS Code Extension" width="800">
 </p>
 
-Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) or [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max). See the [full feature list](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/) in the docs.
+Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) or [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max). See the [feature highlights](https://cesarandreslopez.github.io/sidekick-agent-hub/#feature-highlights) in the docs.
 
 ### Terminal Dashboard (CLI)
 
@@ -109,7 +107,7 @@ sidekick report                                     # HTML report → browser
 sidekick mcp                                        # read-only facts server for Claude Code/Codex
 ```
 
-Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`, `sidekick peak`, `sidekick accounts`.
+Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff` (and `handoff open`), `sidekick context`, plus the capture commands `tasks add` / `tasks done`, `note add`, and `decision add`.
 
 ### Account Management
 
@@ -129,7 +127,7 @@ sidekick accounts config auto-switch 90             # auto-switch when quota cro
 sidekick quota --all                                # Claude + Codex quota side by side
 ```
 
-In VS Code, the **Accounts** view in the Agent Hub sidebar and the status bar badge show every saved account with its health; switch, sign in again, open a terminal as an account, or undo from there. Switching reaches the `claude` and `codex` CLIs and their IDE extensions after a restart, and the Codex desktop app; it does not reach the Claude Desktop app, which keeps its own session — Sidekick warns about each case. See the [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/) guide.
+In VS Code, the **Accounts** view in the Agent Hub sidebar and the status bar badge show every saved account with its health; switch, sign in again, open a terminal as an account, or undo from there. Switching reaches new `claude` and `codex` CLI sessions, their IDE extensions after a reload, and the Codex desktop app after a restart; it does not reach the Claude Desktop app, which keeps its own session — Sidekick warns about each case. See the [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/) guide.
 
 ## Provider Support
 
@@ -157,7 +155,7 @@ Full documentation is available at the [docs site](https://cesarandreslopez.gith
 - [Getting Started](https://cesarandreslopez.github.io/sidekick-agent-hub/getting-started/installation/)
 - [Provider Setup](https://cesarandreslopez.github.io/sidekick-agent-hub/getting-started/provider-setup/)
 - [CLI Dashboard](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/)
-- [Feature Guide](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)
+- [Feature Highlights](https://cesarandreslopez.github.io/sidekick-agent-hub/#feature-highlights)
 - [Configuration Reference](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 - [Architecture](https://cesarandreslopez.github.io/sidekick-agent-hub/architecture/overview/)
 - [Why Am I Building This?](https://cesarandreslopez.github.io/sidekick-agent-hub/#why-am-i-building-this)
