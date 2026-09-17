@@ -116,3 +116,4 @@ A switch to an `expired` or `missing` account is refused with a sign-in hint ins
 - **"Codex keeps its login in the OS keyring"** — set `cli_auth_credentials_store = "file"` in `~/.codex/config.toml`, run `codex login`, then add the account again.
 - **Claude Desktop keeps signing you out** — the desktop app's embedded engine refreshes the shared CLI token. Sidekick warns when it is running; quit it before switching, or sign in again afterwards.
 - **"not verified"** — the store did not read back the written credential. Run `sidekick accounts doctor`; the previous login was restored.
+- **"CLAUDE_CONFIG_DIR points at a sidekick profile home"** (or `CODEX_HOME`) — you are in a shell that ran `eval "$(sidekick accounts env …)"` or a subshell from `sidekick accounts shell`. Switching there would overwrite that profile, so it is refused; run the switch from a normal shell or `exit` the subshell first.

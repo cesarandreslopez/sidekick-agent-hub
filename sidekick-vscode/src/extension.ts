@@ -103,7 +103,7 @@ import {
 import { resolveModel } from './services/ModelResolver';
 import { PROVIDER_DISPLAY_NAMES } from './types/inferenceProvider';
 import { getNonce } from './utils/nonce';
-import type { AccountProviderId } from 'sidekick-shared';
+import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
   AutoSwitchController,
   MultiProviderQuotaService,
@@ -185,11 +185,14 @@ export async function activate(context: vscode.ExtensionContext) {
   // Seed the account registry from live credentials in the background: it
   // can read the keychain, and nothing on the activation path needs the
   // result. Surfaces that show accounts refresh when it settles.
-  const accountsReady: Promise<void> = ensureDefaultAccounts({
+  const accountsReady: Promise<SyncReport | undefined> = ensureDefaultAccounts({
     logger: (message, error) => logError(message, error),
   }).then(
-    () => undefined,
-    (error) => logError('Default account seeding failed', error),
+    (result) => result.sync,
+    (error) => {
+      logError('Default account seeding failed', error);
+      return undefined;
+    },
   );
 
   // Fire-and-forget hydrate the pricing catalog from LiteLLM so Codex/GPT
@@ -1310,15 +1313,14 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   // The registry may have been seeded after these surfaces first rendered:
-  // fold the live logins in, refresh, and tell the user once what was learned.
-  void accountsReady.then(async () => {
+  // refresh them and tell the user once what the startup sync learned.
+  void accountsReady.then(async (report) => {
     if (accountSurfacesDisposed) return;
     try {
-      const report = await accountService.sync();
-      if (accountSurfacesDisposed) return;
+      accountService.notifyUpdated();
       accountStatusBar.refresh();
       quotaService?.fetchQuota();
-      const registered = [report.claude.registered, report.codex.registered]
+      const registered = [report?.claude.registered, report?.codex.registered]
         .filter((entry): entry is { id: string; email?: string } => Boolean(entry))
         .map((entry) => entry.email ?? entry.id);
       if (registered.length > 0) {
@@ -1333,7 +1335,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  const accountKeepAlive = new AccountKeepAliveService(() => accountService.refresh());
+  const accountKeepAlive = new AccountKeepAliveService(() => accountService.refreshInactive());
   context.subscriptions.push(accountKeepAlive);
 
   let autoSwitchQuotaService: MultiProviderQuotaService | null = null;

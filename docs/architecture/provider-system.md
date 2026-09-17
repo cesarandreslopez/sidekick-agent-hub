@@ -101,9 +101,9 @@ The registry auto-migrates from v1 (single-provider) to v2 (multi-provider) on f
 
 ### Default account bootstrap
 
-The VS Code extension bootstraps accounts in the background. CLI commands that need full startup call `ensureDefaultAccounts()` from `sidekick-shared`; help/version and cache-only `statusline`, `today`, and `history` skip it. If an active system Claude Code credential exists and no saved Claude Code account is active yet, it is registered as a **"Default"** account. The same check runs independently for Codex — if `~/.codex/auth.json` exists and no active Codex account is saved yet, a "Default" Codex profile is registered.
+The VS Code extension bootstraps accounts in the background. CLI commands that need full startup call `ensureDefaultAccounts()` from `sidekick-shared`; help/version and cache-only `statusline`, `today`, and `history` skip it. As of 0.26.6 the bootstrap runs the one-time on-disk migrations, removes abandoned isolated logins, and then calls `syncLiveAccountState()`: any live Claude Code or Codex login the registry has never seen is registered under its email, a rotated live token is folded back into its saved profile, and the active pointer is re-pointed to whatever is actually logged in. `onAccountsChanged()` runs the same sync on every filesystem or poll event.
 
-The bootstrap is idempotent (repeated calls do not create duplicates), never overwrites accounts that were saved manually, and swallows per-provider errors so they can never block startup. It ensures that quota, analytics, and dashboard surfaces that read from the registry work out of the box, without requiring users to run **`Save Current Claude Account`** / `sidekick account --add` first.
+The bootstrap is idempotent (repeated calls do not create duplicates), never overwrites accounts that were saved manually, and swallows per-provider errors so they can never block startup. It ensures that quota, analytics, and dashboard surfaces that read from the registry work out of the box, without requiring users to run **Register Current Login** / `sidekick accounts add --current` first.
 
 ## Shared Provider Library
 

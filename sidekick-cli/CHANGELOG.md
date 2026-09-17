@@ -5,7 +5,7 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.6] - 2026-09-16
 
 ### Added
 
@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Every `accounts` command first folds live logins into the registry and prints `Registered <email>` on stderr for logins it had never seen; `list` prints first-run guidance while all accounts were learned automatically.
+
+### Fixed
+
+- The dashboard status-bar account now follows the monitored provider (the Codex provider is displayed as `Codex CLI`, so the badge always showed the Claude account before), and the overlay's `u` undoes the provider that actually has a switch to revert instead of whichever provider has saved accounts.
+- The interactive picker reports the real outcome of `u` and `r`: a failed undo or remove shows the error instead of `Undone.` / `Removed …`, and a successful undo shows the switch headline rather than the trailing hint.
+- `accounts switch --next` with no saved accounts says so instead of claiming two providers have accounts.
 
 ### Deprecated
 

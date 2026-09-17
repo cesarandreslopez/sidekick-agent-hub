@@ -72,6 +72,13 @@ export function forceFileCredentialStore(configToml: string): string {
   if (STORE_MODE_PATTERN.test(configToml)) {
     return configToml.replace(STORE_MODE_PATTERN, 'cli_auth_credentials_store = "file"');
   }
+  const line = 'cli_auth_credentials_store = "file"';
   const trimmed = configToml.replace(/\s*$/, '');
-  return `${trimmed ? `${trimmed}\n` : ''}cli_auth_credentials_store = "file"\n`;
+  if (!trimmed) return `${line}\n`;
+  // A key after a `[table]` header belongs to that table: keep this one at the
+  // top level by inserting it before the first table header.
+  const firstTable = trimmed.search(/^\s*\[/m);
+  if (firstTable === -1) return `${trimmed}\n${line}\n`;
+  const head = trimmed.slice(0, firstTable).replace(/\s*$/, '');
+  return `${head ? `${head}\n` : ''}${line}\n\n${trimmed.slice(firstTable).replace(/^\s*/, '')}\n`;
 }

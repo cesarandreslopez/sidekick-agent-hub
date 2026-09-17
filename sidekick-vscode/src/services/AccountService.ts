@@ -251,6 +251,12 @@ export class AccountService implements vscode.Disposable {
 
   // ── Change detection ───────────────────────────────────────────────────
 
+  /** Re-check the active pointers and tell every account surface to re-render. */
+  notifyUpdated(): void {
+    this.refresh();
+    this._onAccountsUpdated.fire();
+  }
+
   refresh(): void {
     // Reconcile the saved active pointer with the live login before diffing ids,
     // so an external `claude /login` / `codex login` is detected as a change.

@@ -5,7 +5,7 @@
  */
 
 import * as vscode from 'vscode';
-import { refreshInactiveAccounts } from 'sidekick-shared';
+import type { RefreshInactiveAccountsResult } from 'sidekick-shared';
 import { log, logError } from './Logger';
 
 const INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -17,7 +17,8 @@ export class AccountKeepAliveService implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private running = false;
 
-  constructor(private readonly onRefreshed: () => void) {
+  /** `refresh` runs one keep-alive pass and is expected to notify account surfaces itself. */
+  constructor(private readonly refresh: () => Promise<RefreshInactiveAccountsResult>) {
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration('sidekick.accounts.keepAlive')) this.configure();
@@ -42,14 +43,13 @@ export class AccountKeepAliveService implements vscode.Disposable {
     if (this.running) return;
     this.running = true;
     try {
-      const result = await refreshInactiveAccounts();
+      const result = await this.refresh();
       log(
         `AccountKeepAliveService: refreshed ${result.refreshed.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`,
       );
       for (const failed of result.failed) {
         logError(`AccountKeepAliveService: ${failed.providerId} ${failed.id}: ${failed.error}`);
       }
-      if (result.refreshed.length > 0) this.onRefreshed();
     } catch (err) {
       logError('AccountKeepAliveService: keep-alive run failed', err);
     } finally {

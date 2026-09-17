@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.6] - 2026-09-16
+
+### Added
+
+- Verified cross-platform account switching for Claude Code and Codex. `sidekick-shared` gains `syncLiveAccountState()` (registers logins the registry has never seen under their email, folds rotated tokens back into their profile, merges duplicate Codex profiles, re-points the active pointer; runs at startup, on account-change events, and as phase one of every switch), secret-free per-account credential health (`fresh | expiring | expired | unknown | missing` with access and refresh expiry), a two-phase `SwitchAccountResult` that verifies the live store, refuses expired or missing credentials unless forced, names running apps that still hold the previous login (`claude` CLI, Claude Desktop, `codex` CLI, Codex app, extension host) with per-app reachability text, and returns an undo token for `undoLastSwitch()`; plus `detectRunningAccountConsumers()`, `getAccountLaunchEnv()` for isolated `CLAUDE_CONFIG_DIR` / `CODEX_HOME` launches, opt-in `refreshInactiveAccounts()` keep-alive through the official CLIs, and `getCodexCredentialStoreMode()` with keyring refusal.
+- CLI: `sidekick accounts` interactive picker plus `list`, `add`, `switch`, `login`, `remove`, `shell`, `env`, `undo`, `doctor`, and `config` subcommands; verified switch output with per-consumer warnings; bash, zsh, fish, PowerShell, and cmd env exports; a dashboard accounts overlay (`A`) and a health-coloured status bar account.
+- VS Code: an Accounts tree view, an always-visible health-coloured status bar badge with a grouped quick pick (`Ctrl+K Ctrl+Shift+A`), one consolidated switch notification with Undo / Details / Reload Window, **Open Terminal as Account**, **Sign In Again**, **Register Current Login**, a unified terminal login runner, a keep-alive service behind `sidekick.accounts.keepAlive`, and a walkthrough step. Account commands no longer depend on the inference provider setting.
+- Docs: a new Account Switcher guide with the per-app reachability table, platform notes, and troubleshooting.
+
+### Changed
+
+- Claude logins run `claude auth login` instead of `claude /login`; isolated homes are seeded past first-run onboarding and abandoned isolated logins are cleaned up at startup. The Keychain service suffix hashes the NFC-normalised config directory and follows `CLAUDE_CONFIG_DIR`, matching Claude Code 2.1.x; macOS reads fall back to `.credentials.json`; atomic writes retry transient rename errors on Windows.
+- Codex profiles get a `config.toml` forced to `cli_auth_credentials_store = "file"`; re-adding an already saved login folds into the existing profile instead of duplicating it.
+
+### Fixed
+
+- CLI: the dashboard status-bar account follows the monitored provider and the overlay's `u` undoes the provider that has a switch record; the interactive picker reports failed undo/remove actions as errors; `accounts switch --next` with no saved accounts says so.
+- `sidekick-shared`: the forced Codex file credential store lands at the top level of `config.toml` instead of inside the last table (isolated Codex logins on ≥ 0.140 no longer fall back to the keyring); re-finalizing an already-saved Codex login activates it instead of failing; a Codex switch records the truly live account as previous so undo returns to it; switches refuse to run while `CLAUDE_CONFIG_DIR` / `CODEX_HOME` point inside sidekick's profile homes; finished or discarded isolated Claude logins delete their temporary Keychain item; keyring-mode Codex is reported as skipped, not an error; the sync process probe allows a 16 MiB listing; the Claude live-state fingerprint ignores `~/.claude.json` churn so watch syncs and Keychain reads stop running on every prompt.
+- VS Code: the startup "Registered <email>" notice uses the startup sync report instead of a second sync; keep-alive refreshes re-render the Accounts view and badge; the sign-in terminal quotes for the actual Windows default shell (PowerShell, cmd.exe, or Git Bash); in-flight sign-ins settle on deactivate; **Open Terminal as Account** shows one warning toast.
+
+### Deprecated
+
+- `sidekick account --…` flags still work, print the equivalent `sidekick accounts …` command on stderr, and delegate to the same actions.
+
+### Removed
+
+- `sidekick-shared`: `setTerminalActiveProfile`, `installShellHook`, `uninstallShellHook`, and `isShellHookInstalled` (no consumers); use `getAccountLaunchEnv` and `writeLauncher`.
+
 ## [0.26.5] - 2026-09-15
 
 ### Added

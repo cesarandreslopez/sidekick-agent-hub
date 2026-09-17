@@ -532,6 +532,18 @@ function switchToAccountUnlocked(
   }
   const targetName = target.label ?? target.email ?? uuid;
 
+  // Refuse to treat one of our own profile homes as the live home: a shell
+  // that eval'd `sidekick accounts env` would otherwise overwrite that profile.
+  const liveHome = path.resolve(getLiveClaudeHome());
+  const profilesDir = path.resolve(getClaudeProfilesDir());
+  if (liveHome === profilesDir || liveHome.startsWith(profilesDir + path.sep)) {
+    return switchFailure(
+      'claude-code',
+      uuid,
+      `CLAUDE_CONFIG_DIR points at a sidekick profile home (${liveHome}); unset it before switching accounts.`,
+    );
+  }
+
   // Phase 1: capture the outgoing login (rotated refresh token included) and
   // register it if sidekick has never seen it. Only then is the "previous"
   // account known: it is whatever was really live, not the stale pointer.

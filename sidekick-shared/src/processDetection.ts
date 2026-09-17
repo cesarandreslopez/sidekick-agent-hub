@@ -101,6 +101,7 @@ export function findRunningProcessesSync(names: string[]): RunningProcess[] {
     const { command, args } = probeCommand();
     const result = spawnSync(command, args, {
       encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
       timeout: PROBE_TIMEOUT_MS,
       killSignal: 'SIGKILL',
       windowsHide: true,

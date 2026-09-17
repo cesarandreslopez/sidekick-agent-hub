@@ -547,7 +547,15 @@ function finalizeCodexAccountCore(
 ): CodexFinalizeStep {
   const pending = readPendingProfile(profileId);
   if (!pending) {
-    return { result: { success: false, error: `Codex profile ${profileId} was not prepared.` } };
+    // Already finalized: `prepareCodexAccount` folds a live login that is
+    // already saved into its profile and reports `needsLogin: false`, and the
+    // login flow then finalizes that profile id. Activate it if asked.
+    const saved = listCodexAccounts().find((profile) => profile.id === profileId);
+    if (!saved) {
+      return { result: { success: false, error: `Codex profile ${profileId} was not prepared.` } };
+    }
+    if (opts.activate === false) return { result: { success: true, profileId } };
+    return { swap: saved };
   }
 
   const codexHome = getCodexProfileHome(profileId);
@@ -620,7 +628,9 @@ export function finalizeCodexAccount(
   opts: { activate?: boolean } = {},
 ): CodexAccountManagerResult {
   if (!readPendingProfile(profileId)) {
-    return { success: false, error: `Codex profile ${profileId} was not prepared.` };
+    // Already finalized: the core activates a saved profile without probing.
+    const step = finalizeCodexAccountCore(profileId, opts, { authenticated: false, metadata: {} });
+    return 'swap' in step ? performCodexAuthSwap(step.swap, {}) : step.result;
   }
   const codexHome = getCodexProfileHome(profileId);
   const authenticated = isCodexProfileAuthenticated(codexHome);
@@ -637,7 +647,9 @@ export async function finalizeCodexAccountAsync(
   opts: { activate?: boolean } = {},
 ): Promise<CodexAccountManagerResult> {
   if (!readPendingProfile(profileId)) {
-    return { success: false, error: `Codex profile ${profileId} was not prepared.` };
+    // Already finalized: the core activates a saved profile without probing.
+    const step = finalizeCodexAccountCore(profileId, opts, { authenticated: false, metadata: {} });
+    return 'swap' in step ? performCodexAuthSwapAsync(step.swap, {}) : step.result;
   }
   const codexHome = getCodexProfileHome(profileId);
   const authenticated = await isCodexProfileAuthenticatedAsync(codexHome);
@@ -1018,7 +1030,7 @@ function performCodexAuthSwapCore(
   const liveAuthPath = path.join(systemHome, 'auth.json');
   const liveLegacyPath = path.join(systemHome, '.credentials.json');
   const targetName = target.label ?? target.email ?? target.id;
-  const previousAccountId = getActiveSavedAccount('codex')?.id ?? null;
+  let previousAccountId = getActiveSavedAccount('codex')?.id ?? null;
   const base: SwitchAccountResult = {
     success: true,
     provider: 'codex',
@@ -1031,6 +1043,16 @@ function performCodexAuthSwapCore(
     runningConsumers: probes.consumers,
     email: target.email ?? target.metadata?.email,
   };
+
+  const profilesDir = path.resolve(getCodexProfilesDir());
+  const resolvedHome = path.resolve(systemHome);
+  if (resolvedHome === profilesDir || resolvedHome.startsWith(profilesDir + path.sep)) {
+    return finishSwitchResult({
+      ...base,
+      success: false,
+      error: `CODEX_HOME points at a sidekick profile home (${systemHome}); unset it before switching accounts.`,
+    });
+  }
 
   const liveBefore = readFileOrNull(liveAuthPath);
   const liveLegacyBefore = readFileOrNull(liveLegacyPath);
@@ -1048,6 +1070,10 @@ function performCodexAuthSwapCore(
     systemKeyringLoggedIn: probes.systemKeyringLoggedIn,
   });
   base.warnings.push(...sync.warnings);
+  // Only now is the "previous" account known: the sync may have re-pointed or
+  // registered the login that was really live, and undo must return to it.
+  previousAccountId = getActiveSavedAccount('codex')?.id ?? null;
+  base.previousAccountId = previousAccountId;
   if (sync.skipped === 'no-identity' && liveBefore) {
     const stashPath = stashLiveCodexAuth(liveBefore, liveLegacyBefore);
     base.warnings.push(

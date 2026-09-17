@@ -66,8 +66,19 @@ export async function pickerAction(ctx: AccountsContext): Promise<void> {
         break;
       }
       case 'undo': {
-        await undoAction({ ...ctx, out: (line) => (message = line), err: ctx.err });
-        if (!message) message = 'Undone.';
+        // Keep the headline (first stdout line) or the failure (stderr) for the banner.
+        let headline: string | null = null;
+        let failure: string | null = null;
+        await undoAction({
+          ...ctx,
+          out: (line) => {
+            headline ??= line;
+          },
+          err: (line) => {
+            failure = line;
+          },
+        });
+        message = failure ?? headline ?? 'Undone.';
         process.exitCode = 0;
         break;
       }
@@ -80,8 +91,18 @@ export async function pickerAction(ctx: AccountsContext): Promise<void> {
           message = 'Not removed.';
           break;
         }
-        await removeAction({ ...ctx, yes: true }, account.id);
-        message = `Removed ${describe(account)}.`;
+        let failure: string | null = null;
+        await removeAction(
+          {
+            ...ctx,
+            yes: true,
+            err: (line) => {
+              failure = line;
+            },
+          },
+          account.id,
+        );
+        message = failure ?? `Removed ${describe(account)}.`;
         process.exitCode = 0;
         break;
       }

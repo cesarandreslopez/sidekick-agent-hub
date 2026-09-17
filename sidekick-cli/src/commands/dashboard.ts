@@ -33,6 +33,7 @@ import {
   quotaToStateFile,
   refreshInactiveAccounts,
   switchAccountAsync,
+  getLastSwitch,
   undoLastSwitch,
   writeStateFile,
 } from 'sidekick-shared';
@@ -621,10 +622,21 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     });
   };
   const undoAccountSwitch = (): void => {
-    const provider = (['claude-code', 'codex'] as const).find((p) =>
-      accountViews.some((view) => view.providerId === p),
-    );
-    if (!provider) return;
+    const withRecord = (['claude-code', 'codex'] as const).filter((p) => getLastSwitch(p));
+    if (withRecord.length === 0) {
+      pushNotice('There is no account switch to undo.', 'info');
+      scheduleRender();
+      return;
+    }
+    if (withRecord.length > 1) {
+      pushNotice(
+        'Both providers have a switch to undo; run `sidekick accounts undo --provider …`.',
+        'info',
+      );
+      scheduleRender();
+      return;
+    }
+    const provider = withRecord[0];
     void undoLastSwitch(provider).then((result) => {
       const target = accountViews.find((view) => view.id === result.accountId);
       const summary = summarizeSwitch(

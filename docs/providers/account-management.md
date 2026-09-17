@@ -89,7 +89,7 @@ const subscription = onAccountsChanged(
 The library's own quota services (`QuotaPoller`, `MultiProviderQuotaService`, `CodexQuotaWatcher`) subscribe
 to the same signal: they stay dormant while no matching account exists and wake when one appears.
 
-## Sync and Health (0.27.0)
+## Sync and Health (0.26.6)
 
 The live homes (`CLAUDE_CONFIG_DIR` or `~/.claude`; `CODEX_HOME` or `~/.codex`) are the source of truth for
 which account is logged in; saved profiles are backups that `syncLiveAccountState()` keeps fresh. One sync
@@ -118,7 +118,7 @@ credential (a bounded Keychain call on macOS) and rewrites the sidecar. `listAcc
 `probe: 'auto'`, which probes only profiles that have no sidecar yet. Claude refresh tokens expire about three
 weeks after issue; snapshots that predate the CLI recording that expiry are estimated and marked as such.
 
-## Switch Result and Undo (0.27.0)
+## Switch Result and Undo (0.26.6)
 
 `switchAccount[Async]` returns a `SwitchAccountResult` (a superset of `AccountManagerResult`, so existing
 callers compile):
@@ -140,7 +140,7 @@ unknown), then the target is installed, verified by re-reading the store, and on
 pointer move. `detectRunningAccountConsumers()` returns the same consumer list without switching;
 `describeAccountConsumer(kind)` builds an entry for kinds the host detects itself (its own extension host).
 
-## Isolated Launch (0.27.0)
+## Isolated Launch (0.26.6)
 
 ```ts
 import { getAccountLaunchEnv } from 'sidekick-shared';
@@ -152,7 +152,7 @@ The env points a child `claude`/`codex` at the profile home without touching the
 variables the host must remove from the child (`CLAUDE_SECURESTORAGE_CONFIG_DIR` overrides Claude Code's
 keychain naming). The helper refuses `expired`/`missing` profiles and warns when the profile is also live.
 
-## Keep-Alive (0.27.0)
+## Keep-Alive (0.26.6)
 
 `refreshInactiveAccounts()` runs the official CLI (`claude auth status`, `codex login status`) inside each
 inactive profile whose credential is `expiring`, then re-probes the store. It never touches the live account
@@ -251,7 +251,7 @@ Available account-management schemas:
 | `accountEntrySchema`                       | Claude account registry entries                       |
 | `savedAccountProfileSchema`                | provider-neutral saved account profiles               |
 | `listAllAccountsResultSchema`              | provider-neutral account list payloads                |
-| `accountHealthSchema`, `accountViewSchema` | per-account health and list views (0.27.0)            |
+| `accountHealthSchema`, `accountViewSchema` | per-account health and list views (0.26.6)            |
 | `switchAccountResultSchema`                | verified switch results with consumers and undo token |
 | `runningAccountConsumerSchema`             | running apps that hold a login                        |
 | `syncReportSchema`                         | `syncLiveAccountState` reports                        |
@@ -266,8 +266,8 @@ Available account-management schemas:
   `success: true` with a warning for a profile that authenticated into the keyring.
 - Running consumers keep the previous account until they restart; `SwitchAccountResult.runningConsumers`
   names them. The Claude Desktop app is never switched.
-- `claude auth login` is the default login command (0.27.0); override with `opts.loginCommand` or
+- `claude auth login` is the default login command (0.26.6); override with `opts.loginCommand` or
   `SIDEKICK_CLAUDE_LOGIN_ARGS` for older CLIs. `spawnAccountLogin` treats `timeoutMs` as an inactivity budget
   and `maxTimeoutMs` (default 900 s) as the hard ceiling.
 - The shell-hook helpers (`installShellHook`, `uninstallShellHook`, `isShellHookInstalled`,
-  `setTerminalActiveProfile`) were removed in 0.27.0; use `getAccountLaunchEnv` and `writeLauncher`.
+  `setTerminalActiveProfile`) were removed in 0.26.6; use `getAccountLaunchEnv` and `writeLauncher`.

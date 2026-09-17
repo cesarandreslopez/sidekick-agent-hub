@@ -12,7 +12,7 @@ import {
   syncClaudeLiveStateUnlocked,
   withClaudeAuthSwapLock,
 } from './accounts';
-import { getClaudeConfigPath, getLiveClaudeHome, readLiveClaudeIdentity } from './claudeProfiles';
+import { getLiveClaudeHome, readLiveClaudeIdentity } from './claudeProfiles';
 import {
   cleanupAbandonedCodexLogins,
   syncCodexLiveStateUnlocked,
@@ -66,9 +66,12 @@ function statStamp(filePath: string): string {
 function claudeFingerprint(): string {
   const home = getLiveClaudeHome();
   const identity = readLiveClaudeIdentity();
+  // Fingerprint the identity, not the config file: Claude Code rewrites
+  // `~/.claude.json` on nearly every prompt, which would defeat the
+  // `onlyIfChanged` short-circuit and the macOS keychain fold interval.
   return [
     identity?.uuid ?? 'none',
-    statStamp(getClaudeConfigPath(home)),
+    identity?.email ?? '',
     statStamp(path.join(home, '.credentials.json')),
   ].join('|');
 }

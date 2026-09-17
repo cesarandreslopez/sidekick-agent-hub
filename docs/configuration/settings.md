@@ -14,11 +14,12 @@ All settings use the `sidekick.*` prefix. Open VS Code Settings (`Ctrl+,`) and s
 
 ## Accounts
 
-| Setting                                 | Default | Description                                                                                                                     |
-| --------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `sidekick.accounts.autoSwitchThreshold` | `0`     | Quota utilization percentage (`1`–`100`) that triggers automatic switching to a healthier saved account. Set to `0` to disable. |
+| Setting                                 | Default | Description                                                                                                                                                                           |
+| --------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidekick.accounts.autoSwitchThreshold` | `0`     | Quota utilization percentage (`1`–`100`) that triggers automatic switching to a healthier saved account. Set to `0` to disable.                                                       |
+| `sidekick.accounts.keepAlive`           | `false` | Refresh saved-but-inactive accounts through the official `claude` / `codex` CLIs in their isolated profiles after activation and every six hours, so they do not expire while unused. |
 
-When the threshold is greater than `0`, the extension host watches multi-provider quota and switches to another saved account for the active provider once utilization crosses the threshold. Account sign-in and switching are available from the status bar menu and the Command Palette (**Sidekick: Add Account (Sign In)**, **Sidekick: Switch Account (All Providers)**). See [Account Management](../providers/account-management.md).
+When the threshold is greater than `0`, the extension host watches multi-provider quota and switches to another saved account for the active provider once utilization crosses the threshold. Account sign-in and switching are available from the **Accounts** view, the status bar badge, and the Command Palette (**Sidekick: Add Account…**, **Sidekick: Switch Account…**, `Ctrl+K Ctrl+Shift+A`). See the [Account Switcher](../features/account-switcher.md) guide and [Account Management](../providers/account-management.md).
 
 ## z.ai (OpenCode routing)
 

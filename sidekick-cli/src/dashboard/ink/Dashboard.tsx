@@ -601,7 +601,7 @@ export function Dashboard({
       (accountViews ?? []).find(
         (view) =>
           view.isActive &&
-          view.providerId === (metrics.providerName === 'Codex' ? 'codex' : 'claude-code'),
+          view.providerId === (/codex/i.test(metrics.providerName ?? '') ? 'codex' : 'claude-code'),
       ) ?? (accountViews ?? []).find((view) => view.isActive);
     if (!active) return null;
     const color =

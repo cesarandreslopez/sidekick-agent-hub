@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.26.6: verified account switching** — an **Accounts** sidebar view and an always-visible status bar badge show every saved Claude Code and Codex account with credential health; the grouped quick pick (`Ctrl+K Ctrl+Shift+A`) switches, adds, signs in again, opens a terminal as an account, or undoes. Logins made natively are registered automatically, each switch is verified and reported in one notification with **Undo**, **Details**, and **Reload Window**, and the opt-in `sidekick.accounts.keepAlive` refreshes inactive accounts through the official CLIs. Account commands no longer depend on the inference provider setting.
 - **0.26.5: calibrated high-token alert** — the warning fires once when a session's cache-inclusive total first crosses `sidekick.notifications.tokenThreshold` (now 5,000,000 by default), later multiples warn at most every 30 minutes, and a new session starts fresh. Session discovery reconciles each watched-file event with one stat instead of re-walking the session directory.
 - **0.26.4: sharper authentication and policy guidance** — terminal inference failures recognize expired-login and re-authentication messages with guidance matched to the credential kind, distinguish a rejected refresh token from an expired conversation, and treat `Permission denied by policy` (including HTTP 403) as an execution-policy denial.
 - **0.26.3: provider failure guidance and status evidence** — inference failures distinguish credential, session, service, connection, timeout, rate-limit, execution-policy, runtime, and context-limit problems with recovery hints; "Test Connection" separates local CLI readiness from an authenticated request and no longer labels network errors as rejected keys. Public status cards show unavailable or partial evidence, multiple incidents with component associations, and separate check/provider-update timestamps.
@@ -110,6 +111,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Analytics](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/analytics_vscode_extension.png)
 
+- **Accounts** — sidebar view of every saved Claude Code and Codex account grouped by provider with credential health, plus an always-visible status bar badge; switch, sign in again, open a terminal as an account, or undo from there. See [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/)
 - **Event Stream** — live sidebar tree view of session events with color-coded type icons and timestamps
 
 ![Event Stream](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/event_stream_vscode_extension.png)
@@ -176,32 +178,34 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 
 ## Commands
 
-| Command                        | Keybinding         | Description                                                |
-| ------------------------------ | ------------------ | ---------------------------------------------------------- |
-| Toggle Completions             | —                  | Enable/disable inline completions                          |
-| Trigger Completion             | `Ctrl+Shift+Space` | Manually request completion                                |
-| Transform Code                 | `Ctrl+Shift+M`     | Transform selected code                                    |
-| Quick Ask                      | `Ctrl+K Ctrl+A`    | Inline chat                                                |
-| Generate Docs                  | `Ctrl+K Ctrl+G`    | Generate documentation                                     |
-| Explain Code                   | `Ctrl+K Ctrl+E`    | Explain selected code                                      |
-| Generate Commit Message        | SCM sparkle icon   | AI commit message                                          |
-| Review Changes                 | SCM eye icon       | Pre-commit review                                          |
-| Generate PR Description        | SCM PR icon        | Auto-generate PR description                               |
-| Switch Provider                | —                  | Change inference provider                                  |
-| Save Current Account           | —                  | Save the active Claude Code/Codex account                  |
-| Add Account (Sign In)          | —                  | Sign in and save a new account via the integrated terminal |
-| Switch Account                 | —                  | Switch the active provider's account                       |
-| Switch Account (All Providers) | —                  | Pick any saved Claude Code/Codex account                   |
-| Remove Account                 | —                  | Remove a saved account                                     |
-| Open Dashboard                 | —                  | Open session analytics                                     |
-| Dump Session Report            | —                  | Export session data as text/markdown/JSON/HTML             |
-| Generate HTML Report           | —                  | Full transcript report in a webview panel                  |
-| Install Statusline             | —                  | Wire `sidekick statusline` into Claude Code's status line  |
-| Uninstall Statusline           | —                  | Restore the previous Claude Code `statusLine` block        |
-| Run Doctor                     | —                  | Cross-provider health diagnostics; focuses the Health tab  |
-| Open External Session Handoff  | —                  | Open the configured handoff URL for the active session     |
-| Set Session Provider           | —                  | Switch session monitoring provider                         |
-| Browse Session Folders         | —                  | Select session folder to monitor                           |
+| Command                       | Keybinding            | Description                                                                                                   |
+| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Toggle Completions            | —                     | Enable/disable inline completions                                                                             |
+| Trigger Completion            | `Ctrl+Shift+Space`    | Manually request completion                                                                                   |
+| Transform Code                | `Ctrl+Shift+M`        | Transform selected code                                                                                       |
+| Quick Ask                     | `Ctrl+K Ctrl+A`       | Inline chat                                                                                                   |
+| Generate Docs                 | `Ctrl+K Ctrl+G`       | Generate documentation                                                                                        |
+| Explain Code                  | `Ctrl+K Ctrl+E`       | Explain selected code                                                                                         |
+| Generate Commit Message       | SCM sparkle icon      | AI commit message                                                                                             |
+| Review Changes                | SCM eye icon          | Pre-commit review                                                                                             |
+| Generate PR Description       | SCM PR icon           | Auto-generate PR description                                                                                  |
+| Switch Provider               | —                     | Change inference provider                                                                                     |
+| Switch Account…               | `Ctrl+K Ctrl+Shift+A` | Grouped quick pick of every saved account with health; also Add, Open Terminal, Sign In Again, Undo           |
+| Add Account…                  | —                     | Sign in to another account in an isolated profile via the integrated terminal; the current login is untouched |
+| Sign In Again                 | —                     | Re-authenticate an expired saved account in place, keeping its label and id                                   |
+| Open Terminal as Account      | —                     | Start a terminal whose `claude` / `codex` use a saved account without switching the live login                |
+| Undo Last Account Switch      | —                     | Revert the most recent switch                                                                                 |
+| Register Current Login        | —                     | Save (or relabel) the account you are signed in to right now                                                  |
+| Remove Account                | —                     | Remove a saved account and its credentials                                                                    |
+| Open Dashboard                | —                     | Open session analytics                                                                                        |
+| Dump Session Report           | —                     | Export session data as text/markdown/JSON/HTML                                                                |
+| Generate HTML Report          | —                     | Full transcript report in a webview panel                                                                     |
+| Install Statusline            | —                     | Wire `sidekick statusline` into Claude Code's status line                                                     |
+| Uninstall Statusline          | —                     | Restore the previous Claude Code `statusLine` block                                                           |
+| Run Doctor                    | —                     | Cross-provider health diagnostics; focuses the Health tab                                                     |
+| Open External Session Handoff | —                     | Open the configured handoff URL for the active session                                                        |
+| Set Session Provider          | —                     | Switch session monitoring provider                                                                            |
+| Browse Session Folders        | —                     | Select session folder to monitor                                                                              |
 
 ## Troubleshooting
 

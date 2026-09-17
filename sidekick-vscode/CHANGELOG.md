@@ -5,6 +5,27 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.6] - 2026-09-16
+
+### Added
+
+- **Accounts** view in the Agent Hub sidebar: every saved Claude Code and Codex account grouped by provider with label, email, plan, and credential health; inline actions to switch, sign in again, or open a terminal as that account; title actions to add, refresh, and undo.
+- An always-visible status bar account badge coloured by credential health, opening a grouped quick pick (`Ctrl+K Ctrl+Shift+A`) with **Add account…**, **Open terminal as account…**, **Sign in again…**, and **Undo last switch**.
+- One consolidated switch notification (`Switched to <label> ✓`) with **Undo**, **Details**, and, when the Claude Code extension is active, **Reload Window**; warnings about running apps that keep the previous login are folded into it and **Details** writes the full list to the output channel.
+- **Open Terminal as Account** runs `claude` / `codex` in an isolated profile without changing the live login; **Sign In Again** re-authenticates an expired saved account in place; **Register Current Login** saves the account you are signed in to now.
+- `sidekick.accounts.keepAlive` (default off) refreshes inactive saved accounts through the official CLIs after activation and every six hours; a walkthrough step introduces accounts.
+
+### Fixed
+
+- The startup "Registered <email> from your current login" notice uses the report from the startup sync instead of running a second sync (which could never see a newly registered login and cost an extra Keychain read on macOS).
+- Keep-alive refreshes now re-render the Accounts view and status bar badge, so an account refreshed from `expiring` to `fresh` no longer keeps its stale state until an unrelated account event.
+- The sign-in terminal quotes its command for the terminal's actual default shell on Windows (PowerShell, cmd.exe, or Git Bash) instead of always emitting PowerShell syntax; in-flight sign-ins settle as cancelled when the extension deactivates instead of leaving the progress notification open.
+- **Open Terminal as Account** shows one warning toast instead of one per warning.
+
+### Changed
+
+- Logins made natively with `claude auth login` / `codex login` are registered automatically under their email; a switch is verified against the live credential store, refuses expired or missing credentials with a sign-in hint, and is undoable. Account commands no longer depend on the inference provider setting, and the login terminal runner is shared by every provider. The previous account commands remain as legacy aliases.
+
 ## [0.26.5] - 2026-09-15
 
 ### Fixed

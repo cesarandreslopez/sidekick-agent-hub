@@ -859,6 +859,7 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 | `x` | Open context menu for the selected item                                                   |
 | `z` | Cycle layout mode (Normal → Expanded → Wide Side)                                         |
 | `M` | Toggle mouse capture (turn off to restore terminal text selection/copy)                   |
+| `A` | Open the accounts overlay (`Enter` switches, `u` undoes the last switch)                  |
 
 ### General
 

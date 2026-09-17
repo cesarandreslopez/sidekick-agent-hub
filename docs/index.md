@@ -80,7 +80,7 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 - **Cycle Detection** — get alerted when your agent enters repetitive loops
 - **Provider Status** — live API health scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, hidden for OpenCode
 - **Peak Hours Indicator** — subtle orange pill + status-bar glyph when Claude is in a peak window (faster session-limit drain); only appears on Claude Max subscriptions. See [Peak Hours](features/peak-hours.md)
-- **Multi-Account Management** — sign in to, save, and switch between Claude Code and Codex accounts from one picker, with optional quota-based auto-switching. See [Account Management](providers/account-management.md)
+- **Account Switcher** — keep several Claude Code and Codex logins, switch between them with a verified, undoable switch, run two accounts side by side, and see credential health before it fails, with optional quota-based auto-switching. See [Account Switcher](features/account-switcher.md) and the [Account Management](providers/account-management.md) API
 
 ### VS Code + [CLI Dashboard](features/cli.md)
 

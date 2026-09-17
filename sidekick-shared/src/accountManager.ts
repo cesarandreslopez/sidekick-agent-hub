@@ -31,7 +31,7 @@ import {
   isClaudeProfileAuthenticated,
   readClaudeProfileIdentity,
 } from './claudeProfiles';
-import { readActiveCredentials } from './credentialIO';
+import { deleteStoredCredentials, readActiveCredentials } from './credentialIO';
 import {
   finalizeCodexAccount,
   finalizeCodexAccountAsync,
@@ -418,6 +418,8 @@ function finalizeClaudeAccountLogin(
   removePendingClaudeProfile(loginId);
   if (loginId !== identity.uuid) {
     removePendingClaudeProfile(identity.uuid);
+    // The temporary home's keychain item holds live tokens; nothing references it now.
+    deleteStoredCredentials(getClaudeProfileHome(loginId));
     try {
       fs.rmSync(getClaudeProfileDir(loginId), { recursive: true, force: true });
     } catch {
@@ -497,7 +499,9 @@ function discardPendingLogin(provider: AccountProviderId, loginId: string): void
       provider === 'codex'
         ? path.dirname(getCodexProfileHome(loginId))
         : getClaudeProfileDir(loginId);
-    if (dir.startsWith(getAccountsDir())) fs.rmSync(dir, { recursive: true, force: true });
+    if (!dir.startsWith(getAccountsDir())) return;
+    if (provider === 'claude-code') deleteStoredCredentials(getClaudeProfileHome(loginId));
+    fs.rmSync(dir, { recursive: true, force: true });
   } catch {
     /* best effort */
   }

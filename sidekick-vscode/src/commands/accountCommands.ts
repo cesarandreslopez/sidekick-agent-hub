@@ -233,7 +233,7 @@ export function registerAccountCommands(
       if (action) await signInAgain(view.providerId, view.id);
       return;
     }
-    for (const warning of launch.warnings) vscode.window.showWarningMessage(warning);
+    if (launch.warnings.length > 0) vscode.window.showWarningMessage(launch.warnings.join(' '));
     const env: Record<string, string | null> = { ...launch.env };
     for (const name of launch.envUnset) env[name] = null;
     const terminal = vscode.window.createTerminal({

@@ -30,6 +30,8 @@ function logFailure(
 
 function statusFromReport(report: ProviderSyncReport): EnsureDefaultAccountStatus {
   if (report.registered) return 'registered';
+  // A keyring-mode Codex login is a steady state sidekick cannot act on, not a failure.
+  if (report.skipped === 'keyring') return 'skipped';
   if (report.warnings.length > 0) return 'error';
   return 'skipped';
 }
@@ -72,6 +74,7 @@ export async function ensureDefaultAccounts(
     ['Claude', sync.claude],
     ['Codex', sync.codex],
   ] as const) {
+    if (report.skipped === 'keyring') continue;
     for (const warning of report.warnings) {
       logFailure(options, `${provider} account sync: ${warning}`, undefined);
     }

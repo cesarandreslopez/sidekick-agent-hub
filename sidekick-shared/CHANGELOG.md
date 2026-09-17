@@ -5,7 +5,7 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.26.6] - 2026-09-16
 
 ### Added
 
@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Atomic writes retry transient `EPERM`/`EBUSY`/`EACCES` renames on Windows; `credentialIO` file writes go through the atomic writer.
 - `prepareCodexAccount` folds a re-add of an already saved login into the existing profile instead of creating a duplicate; the switch preflight warns on stale Codex backups and refuses dead ones.
 - `addCurrentAccount` / `removeAccount` keep their read-modify-write in one registry lock through new `*Unlocked` registry helpers.
+
+### Fixed
+
+- Codex profile `config.toml` files get `cli_auth_credentials_store = "file"` at the top level; it was appended after the last `[table]`, where Codex ignored it, so isolated logins on Codex ≥ 0.140 still went to the OS keyring.
+- Adding a Codex account whose login is already saved no longer fails with "was not prepared": finalizing an already-finalized profile activates it (or reports success with `activate: false`).
+- A Codex switch records the account that was really live as `previousAccountId` (read after the phase-one sync, as the Claude path already did), so undo and rollback return to it instead of to a stale pointer.
+- Switching refuses to run while `CLAUDE_CONFIG_DIR` / `CODEX_HOME` point inside sidekick's own profile homes (for example a shell that ran `eval "$(sidekick accounts env …)"`), instead of overwriting that profile with the target's credentials.
+- A finished or discarded isolated Claude login deletes its temporary Keychain item instead of orphaning live tokens (macOS).
+- `ensureDefaultAccounts()` reports a keyring-mode Codex login as `skipped` rather than `error` and no longer logs it as a failure at every startup.
+- `findRunningProcessesSync()` allows a 16 MiB process listing like its async twin, so busy hosts do not silently report no running consumers.
+- The Claude live-state fingerprint no longer includes the mtime of `~/.claude.json`, which Claude Code rewrites on nearly every prompt; watch-triggered syncs (and the macOS Keychain read behind them) now run only when the identity or credential file changes, or when the Keychain fold interval elapses.
 
 ### Removed
 

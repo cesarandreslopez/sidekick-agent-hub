@@ -24,6 +24,7 @@ vi.mock('sidekick-shared', () => ({
 
 vi.mock('vscode', () => ({
   ProgressLocation: { Notification: 15 },
+  env: { shell: '/bin/zsh' },
   window: {
     createTerminal: vi.fn((options: { name: string; env: Record<string, string | null> }) => {
       const terminal = {
@@ -138,6 +139,31 @@ describe('AccountLoginRunner', () => {
   it('quotes command lines per shell family and reports begin failures', async () => {
     expect(quoteCommandLine('claude', ['auth', 'login'], 'darwin')).toBe("'claude' 'auth' 'login'");
     expect(quoteCommandLine('codex', ['login'], 'win32')).toBe("& 'codex' 'login'");
+    expect(
+      quoteCommandLine(
+        'codex',
+        ['login'],
+        'win32',
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      ),
+    ).toBe("& 'codex' 'login'");
+    expect(
+      quoteCommandLine('codex', ['login'], 'win32', 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'),
+    ).toBe("& 'codex' 'login'");
+    expect(quoteCommandLine('codex', ['login'], 'win32', 'C:\\Windows\\System32\\cmd.exe')).toBe(
+      '"codex" "login"',
+    );
+    expect(
+      quoteCommandLine(
+        'claude',
+        ['auth', 'login'],
+        'win32',
+        'C:\\Program Files\\Git\\bin\\bash.exe',
+      ),
+    ).toBe("'claude' 'auth' 'login'");
+    expect(quoteCommandLine('claude', ["it's"], 'win32', 'C:\\Windows\\System32\\cmd.exe')).toBe(
+      '"claude" "it\'s"',
+    );
     mockBegin.mockReturnValue({ success: false, error: 'nope' });
     expect(await new AccountLoginRunner().run('codex', 'X')).toEqual({
       outcome: 'failed',

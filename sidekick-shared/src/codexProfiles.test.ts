@@ -206,6 +206,25 @@ describe('codexProfiles', () => {
     expect(resolveSidekickCodexHome()).toBe(systemHome());
   });
 
+  it('finalizing an already-imported profile again activates it instead of failing', () => {
+    // `beginAccountLogin('codex')` reports `alreadyComplete` for an importable
+    // login and the login flows then finalize that profile id a second time.
+    writeSourceCodexAuth('work@example.com');
+    const prepared = prepareCodexAccount('Work');
+    expect(prepared.needsLogin).toBe(false);
+    mockCodexCli({ loggedIn: true });
+
+    const again = finalizeCodexAccount(prepared.profileId!);
+    expect(again.success).toBe(true);
+    expect(again.error).toBeUndefined();
+    expect(getActiveCodexAccount()?.id).toBe(prepared.profileId);
+
+    const inactive = finalizeCodexAccount(prepared.profileId!, { activate: false });
+    expect(inactive).toEqual(
+      expect.objectContaining({ success: true, profileId: prepared.profileId }),
+    );
+  });
+
   it('creates a pending managed profile when current auth is not importable and finalizes after login', () => {
     const prepared = prepareCodexAccount('Personal');
 

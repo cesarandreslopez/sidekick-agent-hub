@@ -42,18 +42,40 @@ function powershellQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+function cmdQuote(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+export type ShellFamily = 'posix' | 'powershell' | 'cmd';
+
+/**
+ * Which quoting the terminal's default shell expects. On Windows the default
+ * profile may be PowerShell, cmd.exe, or a POSIX shell such as Git Bash.
+ */
+export function detectShellFamily(platform: NodeJS.Platform, shellPath?: string): ShellFamily {
+  if (platform !== 'win32') return 'posix';
+  const base = (shellPath ?? '').split(/[\\/]/).pop()?.toLowerCase() ?? '';
+  if (base === 'cmd.exe' || base === 'cmd') return 'cmd';
+  if (/^(bash|sh|zsh|fish)(\.exe)?$/.test(base)) return 'posix';
+  return 'powershell';
+}
+
 /** Quote a command line for the terminal's shell family. */
 export function quoteCommandLine(
   command: string,
   args: string[],
   platform: NodeJS.Platform,
+  shellPath?: string,
 ): string {
-  const quote = platform === 'win32' ? powershellQuote : shellQuote;
+  const family = detectShellFamily(platform, shellPath);
+  const quote =
+    family === 'powershell' ? powershellQuote : family === 'cmd' ? cmdQuote : shellQuote;
   const line = [command, ...args].map(quote).join(' ');
-  return platform === 'win32' ? `& ${line}` : line;
+  return family === 'powershell' ? `& ${line}` : line;
 }
 
 export class AccountLoginRunner implements vscode.Disposable {
+  /** One cancel function per in-flight run; dispose() settles them all. */
   private readonly active = new Set<() => void>();
   private disposed = false;
 
@@ -87,7 +109,10 @@ export class AccountLoginRunner implements vscode.Disposable {
       env,
     });
     terminal.show();
-    terminal.sendText(quoteCommandLine(begin.command, begin.args ?? [], process.platform), true);
+    terminal.sendText(
+      quoteCommandLine(begin.command, begin.args ?? [], process.platform, vscode.env.shell),
+      true,
+    );
 
     const timeoutMs = options.timeoutMs ?? 180_000;
     const pollIntervalMs = options.pollIntervalMs ?? 2_000;
@@ -107,19 +132,20 @@ export class AccountLoginRunner implements vscode.Disposable {
             let tickInFlight = false;
             const listeners: vscode.Disposable[] = [];
 
+            const cancel = (): void => settle({ outcome: 'cancelled' });
             const stop = (): void => {
               if (interval !== undefined) clearInterval(interval);
               interval = undefined;
               for (const listener of listeners) listener.dispose();
-              this.active.delete(stop);
+              this.active.delete(cancel);
             };
-            const settle = (outcome: AccountLoginRunResult): void => {
+            function settle(outcome: AccountLoginRunResult): void {
               if (settled) return;
               settled = true;
               stop();
               resolve(outcome);
-            };
-            this.active.add(stop);
+            }
+            this.active.add(cancel);
 
             listeners.push(
               token.onCancellationRequested(() => settle({ outcome: 'cancelled' })),
@@ -158,6 +184,6 @@ export class AccountLoginRunner implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true;
-    for (const stop of [...this.active]) stop();
+    for (const cancel of [...this.active]) cancel();
   }
 }

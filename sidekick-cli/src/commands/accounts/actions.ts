@@ -184,7 +184,12 @@ export function printSwitchResult(
 function pickNextAccount(ctx: AccountsContext, all: AccountView[]): AccountView | null {
   const provider = ctx.provider ?? inferProviderForNext(all);
   if (!provider) {
-    fail(ctx, 'Two providers have saved accounts; add --provider claude-code or --provider codex.');
+    fail(
+      ctx,
+      all.length === 0
+        ? 'No saved accounts to switch between; run `sidekick accounts add` first.'
+        : 'Two providers have saved accounts; add --provider claude-code or --provider codex.',
+    );
     return null;
   }
   const pool = all.filter((v) => v.providerId === provider);
