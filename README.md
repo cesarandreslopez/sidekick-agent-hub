@@ -108,35 +108,27 @@ sidekick report                                     # HTML report → browser
 sidekick mcp                                        # read-only facts server for Claude Code/Codex
 ```
 
-Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`, `sidekick peak`, `sidekick account`.
+Also available: `sidekick decisions`, `sidekick notes`, `sidekick handoff`, `sidekick context`, `sidekick quota`, `sidekick status`, `sidekick peak`, `sidekick accounts`.
 
 ### Account Management
 
-On first run, Sidekick auto-registers your active system Claude Code and Codex credentials as a **"Default"** account — no setup required. Use the flags below only when you want to add a second account or switch between them.
-
-Manage multiple accounts for Claude Code and Codex — save, switch, and remove without manual login/logout cycles:
+Sidekick registers the Claude Code and Codex logins you already use, and lets you keep several on one machine — switch, sign in to another in an isolated profile, or run two side by side — without `/logout` cycles:
 
 ```bash
-sidekick account                                    # list saved accounts
-sidekick account --provider all                     # list Claude + Codex accounts together
-sidekick account --add --label Work                 # save the current Claude Code account
-sidekick account --login --label Personal           # sign in and save a NEW account (isolated flow)
-sidekick account --switch                           # switch to next account
-sidekick account --switch-to personal@gmail.com     # switch to a specific account
-sidekick account --remove old@example.com           # remove a saved account
-sidekick account --auto-switch 90                   # auto-switch when quota crosses 90% (off to disable)
-sidekick account --launcher work                    # create a per-account terminal launcher
-
-# Codex profiles
-sidekick account --provider codex                   # list Codex accounts
-sidekick account --provider codex --add --label Dev # add a Codex profile (opens login)
-sidekick account --provider codex --switch-to Dev   # switch by label, email, or ID
+sidekick accounts                                   # interactive picker (Enter switch, a add, s shell, u undo)
+sidekick accounts list                              # saved accounts with credential health
+sidekick accounts add --label Work                  # sign in to a second account; current login untouched
+sidekick accounts switch work                       # switch by label, email, or id (verified, undoable)
+eval "$(sidekick accounts env work)"                # this shell only: claude/codex use Work
+sidekick accounts shell work -- claude              # one claude session as Work
+sidekick accounts doctor                            # expiry, running apps, Codex keyring mode
+sidekick accounts config auto-switch 90             # auto-switch when quota crosses 90% (off to disable)
 
 # Combined quota view
 sidekick quota --all                                # Claude + Codex quota side by side
 ```
 
-In VS Code, account actions are available from the status bar menu and the Command Palette — sign in to a new account, switch across all saved Claude Code and Codex accounts from one picker, and opt into quota-based auto-switching via the `sidekick.accounts.autoSwitchThreshold` setting. See the [Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/) and [Codex](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/) provider docs for setup guides.
+In VS Code, the **Accounts** view in the Agent Hub sidebar and the status bar badge show every saved account with its health; switch, sign in again, open a terminal as an account, or undo from there. Switching reaches the `claude` and `codex` CLIs and their IDE extensions after a restart, and the Codex desktop app; it does not reach the Claude Desktop app, which keeps its own session — Sidekick warns about each case. See the [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/) guide.
 
 ## Provider Support
 

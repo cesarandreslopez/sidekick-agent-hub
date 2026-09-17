@@ -24,6 +24,7 @@ const {
 
 vi.mock('vscode', () => ({
   default: {},
+  commands: { executeCommand: vi.fn(async () => undefined) },
   EventEmitter: class<T> {
     private listeners = new Set<(value: T) => void>();
     event = (listener: (value: T) => void) => {
@@ -58,6 +59,19 @@ vi.mock('sidekick-shared', () => ({
   spawnAccountLogin: (...args: unknown[]) => mockSpawnAccountLogin(...args),
   listAllAccounts: (...args: unknown[]) => mockListAllAccounts(...args),
   switchAccountAsync: (...args: unknown[]) => mockSwitchAccountAsync(...args),
+  switchToAccountAsync: vi.fn(),
+  listAccountsWithHealth: vi.fn(() => []),
+  undoLastSwitch: vi.fn(),
+  getLastSwitch: vi.fn(() => null),
+  getAccountLaunchEnv: vi.fn(),
+  syncLiveAccountState: vi.fn(async () => ({
+    claude: { warnings: [] },
+    codex: { warnings: [] },
+    ranAt: 0,
+    reason: 'manual',
+  })),
+  refreshInactiveAccounts: vi.fn(async () => ({ refreshed: [], skipped: [], failed: [] })),
+  onAccountsChanged: vi.fn(() => ({ dispose: vi.fn() })),
 }));
 
 vi.mock('./Logger', () => ({
@@ -117,7 +131,7 @@ describe('AccountService account management 2.0 facade', () => {
       success: true,
       warning: 'restart sessions',
     });
-    expect(mockSwitchAccountAsync).toHaveBeenCalledWith('codex', 'codex-1');
+    expect(mockSwitchAccountAsync).toHaveBeenCalledWith('codex', 'codex-1', {});
     service.dispose();
   });
 

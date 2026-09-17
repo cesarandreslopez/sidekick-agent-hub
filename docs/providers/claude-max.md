@@ -36,38 +36,33 @@ Anthropic drains session limits faster on weekdays 13:00–19:00 UTC (see [Peak 
 
 ## Multiple Accounts
 
-If you have multiple Claude Max subscriptions (e.g., personal and work), Sidekick can switch between their Claude Code CLI credentials natively — no manual `claude login` / logout cycles. This feature manages Claude Code sign-in credentials specifically; it does not apply to Claude API keys. For Codex multi-account management, see the [Codex provider docs](codex.md#account-management).
+If you have multiple Claude subscriptions (for example personal and work), Sidekick switches between their Claude Code CLI credentials natively — no `/logout` cycles. This applies to Claude Code sign-ins, not Claude API keys, and it does not reach the Claude Desktop app, which keeps its own web session. The full guide, including credential health, parallel sessions, and per-platform notes, is [Account Switcher](../features/account-switcher.md).
 
 ### VS Code
 
-!!! tip "First-run default"
+!!! tip "Registered automatically"
 
-    If you were already signed in to Claude Code before installing Sidekick, the extension auto-registers that account as **"Default"** on activation. You only need the steps below to add a _second_ account or to relabel the first one. Manually saved accounts are never overwritten.
+    The account you are signed in to when Sidekick activates is registered under its email, and so is any account you later sign in to with `claude /login`. You only run **Add Account** to sign in to a *second* account without leaving the first.
 
-1. Sign in to Claude Code with your first account
-2. Run **`Sidekick: Save Current Claude Account`** — optionally add a label like "Personal"
-3. Sign in to Claude Code with your second account (`claude login`)
-4. Run **`Sidekick: Save Current Claude Account`** — label it "Work"
-5. Run **`Sidekick: Switch Claude Account`** to switch via QuickPick
+1. Open the **Accounts** view in the Agent Hub sidebar, or click the account badge in the status bar
+2. Run **Sidekick: Add Account…**, choose Claude Code, and complete `claude auth login` in the terminal Sidekick opens
+3. Switch with the arrows icon on an account, the status bar quick pick, or `Ctrl+K Ctrl+Shift+A`
 
-When 2+ accounts are saved, a status bar item shows the currently logged-in account (resolved live, so it stays correct even after a native `claude login`). Click it to switch. Switching automatically resets the auth client and refreshes quota — no restart needed.
-
-You can also reach account actions from the main **Sidekick · Claude** status bar menu — click it and select **Switch Account** (when 2+ accounts are saved) or **Save Current Account** (to start multi-account setup). These entries only appear when the inference provider is Claude Code.
+Each switch is verified against the live credential store, reports which running `claude` sessions (and Claude Desktop, if open) still hold the previous account, and offers **Undo**. Switching resets Sidekick's auth client and refreshes quota when the inference provider is Claude Max.
 
 ### CLI
 
 ```bash
-sidekick account --add --label Personal   # save current account
-sidekick account --add --label Work       # save another account
-sidekick account                          # list all accounts
-sidekick account --switch                 # switch to next account
-sidekick account --switch-to work@co.com  # switch to specific account
-sidekick account --remove work@co.com     # remove an account
+sidekick accounts                          # interactive picker
+sidekick accounts add --label Work         # sign in to a second account
+sidekick accounts switch work              # switch by label, email, or id
+sidekick accounts shell work -- claude     # one claude session as Work, live login untouched
+sidekick accounts doctor                   # expiry and running apps
 ```
 
-Account data is stored in `~/.config/sidekick/accounts/` with `0o700` directory and `0o600` file permissions. Credential swaps use atomic writes with rollback on failure.
+Account data is stored in `~/.config/sidekick/accounts/` with `0o700` directory and `0o600` file permissions. Credential swaps are atomic, verified by reading the store back, and rolled back on mismatch.
 
-**macOS note:** Claude Code stores active credentials in the system Keychain (not a file). Sidekick reads and writes Keychain credentials automatically via the `security` CLI. The displayed active account now follows a native external `claude login` automatically — Sidekick resolves the live logged-in account and re-points the saved pointer to a matching profile. If you log into an account Sidekick hasn't saved yet, run **Save Current Claude Account** to label and manage it.
+**macOS note:** Claude Code stores active credentials in the system Keychain, keyed per `CLAUDE_CONFIG_DIR`; Sidekick reads and writes them with the `security` CLI and falls back to `.credentials.json` when the Keychain is locked. Saved Claude refresh tokens expire about three weeks after last use; the Accounts view and `sidekick accounts list` show the remaining time, and the optional `sidekick.accounts.keepAlive` setting refreshes inactive accounts through the CLI.
 
 ## Best For
 

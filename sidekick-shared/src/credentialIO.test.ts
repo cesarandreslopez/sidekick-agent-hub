@@ -57,6 +57,24 @@ describe('credentialIO', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('falls back to the credentials file on macOS when the Keychain item is missing', () => {
+    setPlatform('darwin');
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('The specified item could not be found in the keychain.');
+    });
+    fs.writeFileSync(
+      path.join(defaultClaudeDir(), '.credentials.json'),
+      JSON.stringify({ claudeAiOauth: { accessToken: 'from-file' } }),
+    );
+
+    expect(readActiveCredentials()).toEqual({ claudeAiOauth: { accessToken: 'from-file' } });
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      expect.anything(),
+    );
+  });
+
   it('round-trips default file-backed credentials without a config dir', () => {
     setPlatform('linux');
     const credentials = { claudeAiOauth: { accessToken: 'default-access' } };

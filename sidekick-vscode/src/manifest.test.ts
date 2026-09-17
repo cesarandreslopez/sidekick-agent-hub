@@ -35,6 +35,13 @@ const views = manifest.contributes.views['sidekick-monitor'];
 /** The only view that stays visible when monitoring is off. */
 const PRIMARY_VIEW = 'sidekick.dashboard';
 
+/**
+ * Views whose provider is registered regardless of monitoring. The accounts
+ * tree is backed by the account service, which activates unconditionally, so
+ * gating it would only hide account switching from users with monitoring off.
+ */
+const ALWAYS_BACKED_VIEWS = new Set([PRIMARY_VIEW, 'sidekick.accounts']);
+
 describe('view contributions', () => {
   it('contributes every view to the single Agent Hub container', () => {
     expect(Object.keys(manifest.contributes.views)).toEqual(['sidekick-monitor']);
@@ -46,7 +53,7 @@ describe('view contributions', () => {
     // this, disabling monitoring left views contributed but unbacked: trees
     // spun forever and webviews stayed blank.
     for (const view of views) {
-      if (view.id === PRIMARY_VIEW) continue;
+      if (ALWAYS_BACKED_VIEWS.has(view.id)) continue;
       expect(view.when, `${view.id} is not gated`).toBe('sidekick.monitoringActive');
     }
   });
@@ -55,6 +62,12 @@ describe('view contributions', () => {
     const primary = views.find((v) => v.id === PRIMARY_VIEW);
     expect(primary).toBeDefined();
     expect(primary!.when).toBeUndefined();
+  });
+
+  it('leaves the accounts view ungated because its provider always activates', () => {
+    const accounts = views.find((v) => v.id === 'sidekick.accounts');
+    expect(accounts).toBeDefined();
+    expect(accounts!.when).toBeUndefined();
   });
 
   it('collapses every secondary view by default', () => {

@@ -608,70 +608,46 @@ sidekick quota history --json
 
 If no history has accumulated yet for the workspace (or `--workspace`), the command prints a hint pointing at how to seed it (run a Claude Max or Codex session, or pass `--workspace <path>`).
 
-### Account
+### Accounts
 
 ```bash
-sidekick account [options]
+sidekick accounts [command]
 ```
 
-Manage accounts across providers — save, list, switch, and remove without manual login/logout cycles. Supports Claude Code and Codex profiles. Account data is stored in `~/.config/sidekick/accounts/`.
+Manage Claude Code and Codex accounts: list, add, switch, and run parallel sessions. Sidekick registers the logins you are already using automatically; `add` signs in to another account in an isolated profile. See the [Account Switcher](account-switcher.md) guide for the full walkthrough, health states, and platform notes.
 
-| Flag                       | Description                                                                                                                                     |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--provider <id>`          | Provider: `claude-code` (default), `codex`, or `all`                                                                                            |
-| `--add`                    | Save the currently signed-in account                                                                                                            |
-| `--login`                  | Sign in and save a **new** account via a provider-isolated login flow that leaves the active account untouched until finalization               |
-| `--label <name>`           | Label for the account (required for Codex and `--login`; optional for Claude `--add`)                                                           |
-| `--switch`                 | Switch to the next saved account in the list                                                                                                    |
-| `--switch-to <id>`         | Switch to a specific account by email, label, or ID                                                                                             |
-| `--remove <id>`            | Remove a saved account by email, label, or ID (prompts for y/N confirmation first)                                                              |
-| `-y`, `--yes` / `--force`  | Skip the `--remove` confirmation prompt (required for `--json` or non-interactive runs)                                                         |
-| `--launcher <name>`        | Create an opt-in per-account terminal launcher for the active account                                                                           |
-| `--auto-switch <pct\|off>` | Persist the auto-switch quota threshold (`1`–`100`), or `off` to disable. Continuous auto-switching runs in a long-running host such as VS Code |
+| Command                                          | Description                                                                                                                              |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidekick accounts`                              | Interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo). Prints the list when piped |
+| `accounts list`                                  | Saved accounts with health and expiry                                                                                                    |
+| `accounts add [--label <name>] [--current] [-y]` | Sign in to a new account in an isolated profile; `--current` registers or relabels the live login                                        |
+| `accounts switch <name> \| --next [--force]`     | Make an account active (label, email, id, or unique prefix); `--force` ignores an expired health verdict                                 |
+| `accounts login <name>`                          | Sign in again to an existing (expired) account, keeping its id and label                                                                 |
+| `accounts remove <name> [-y]`                    | Delete a saved account and its credentials (prompts unless `--yes`; required for `--json`/non-TTY)                                       |
+| `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                         |
+| `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                          |
+| `accounts undo`                                  | Revert the last switch                                                                                                                   |
+| `accounts doctor`                                | Credential expiry, running apps, Codex credential store, keep-alive state                                                                |
+| `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold                                                                                                  |
+| `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                          |
 
-With no flags, lists all saved accounts and marks the active one. `--provider all` lists Claude and Codex accounts together; with `--json` the output is provider-keyed.
-
-`--remove` prints the resolved account and asks for an interactive y/N answer (default No). Pass `-y`/`--yes` (or `--force`) to skip the prompt; `--json` and non-TTY contexts require the flag and exit `1` without it — unattended automation that removes accounts must add `--yes`.
+All subcommands accept `--provider claude-code|codex|all` and the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command.
 
 #### Examples
 
 ```bash
-# List saved accounts (Claude Code, default)
-sidekick account
-
-# List Claude and Codex accounts together
-sidekick account --provider all
-
-# Save the current Claude Code account with a label
-sidekick account --add --label Work
-
-# Sign in and save a NEW account without disturbing the active one
-sidekick account --login --label Personal
-
-# Switch to the next account
-sidekick account --switch
-
-# Switch to a specific account
-sidekick account --switch-to personal@gmail.com
-
-# Remove an account
-sidekick account --remove old@example.com
-
-# Auto-switch to a healthier account when quota crosses 90% (off to disable)
-sidekick account --auto-switch 90
-
-# Create a per-account terminal launcher
-sidekick account --launcher work
-
-# Codex profile management
-sidekick account --provider codex                    # list Codex accounts
-sidekick account --provider codex --add --label Dev  # prepare profile + login
-sidekick account --provider codex --switch-to Dev    # switch by label, email, or ID
-sidekick account --provider codex --remove Dev       # remove a profile
-
-# JSON output for scripting
-sidekick account --json
+sidekick accounts                          # interactive picker
+sidekick accounts list --json              # { accounts, activeByProvider, registeredNow }
+sidekick accounts add --label Work         # sign in a second account; current login untouched
+sidekick accounts switch work              # switch by label, email, or id
+eval "$(sidekick accounts env work)"       # this shell only: claude uses Work
+sidekick accounts shell work -- claude     # one-off claude session as Work
+sidekick accounts doctor                   # what would break a switch right now
 ```
+
+#### Legacy flags
+
+`sidekick account --add | --login | --switch | --switch-to <id> | --remove <id> | --launcher <name> | --auto-switch <pct|off>` still work. Each prints the equivalent `sidekick accounts …` command on stderr; `--launcher` writes a POSIX launcher script (`accounts shell` and `accounts env` are the cross-platform replacements).
 
 ### Handoff
 

@@ -9,7 +9,7 @@
  *   1. Active overlay — owns the whole key namespace (the filter overlay
  *      consumes every printable character, including 'q').
  *   2. Structural globals panels may never shadow: q / Esc / ? / M / R / s /
- *      digits. These also work on the splash screen.
+ *      A / digits. These also work on the splash screen.
  *   3. Focus toggle (Tab) and filter open (/) — require session data.
  *   4. Panel layer — panel-declared keybindings, then action shortcuts,
  *      both honoring their conditions. Reserved keys are ignored here so a
@@ -19,6 +19,7 @@
  */
 
 import type { Key } from 'ink';
+import type { AccountView } from 'sidekick-shared';
 import type { Action, DashboardUIState, LayoutMode } from './dashboardReducer';
 import type { PanelAction, PanelItem, SidePanel } from '../panels/types';
 import { maxDetailScroll } from './detailScroll';
@@ -39,6 +40,7 @@ export const RESERVED_KEYS = new Set([
   'M',
   'R',
   's',
+  'A',
   '1',
   '2',
   '3',
@@ -86,6 +88,10 @@ export interface InputDispatchContext {
   isPinned?: boolean;
   pendingSessionPath?: string | null;
   onSessionSwitch?: (sessionPath: string) => void;
+  /** Saved accounts shown by the accounts overlay (A). */
+  accountViews?: AccountView[];
+  onAccountSwitch?: (account: AccountView) => void;
+  onAccountUndo?: () => void;
 }
 
 export function handleDashboardInput(input: string, key: Key, ctx: InputDispatchContext): void {
@@ -112,6 +118,9 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     isPinned,
     pendingSessionPath,
     onSessionSwitch,
+    accountViews,
+    onAccountSwitch,
+    onAccountUndo,
   } = ctx;
 
   // ── Tier 0: Ctrl+C always exits, even with an overlay open ──
@@ -193,6 +202,39 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     return;
   }
 
+  // Accounts overlay: navigate saved accounts, Enter switches, u undoes.
+  // Login, add, and subshell need the raw terminal, so they point at the CLI.
+  if (state.overlay === 'accounts') {
+    const accounts = accountViews ?? [];
+    if (key.escape || input === 'q' || input === 'A') {
+      dispatch({ type: 'SET_OVERLAY', overlay: null });
+      return;
+    }
+    if (input === 'j' || key.downArrow) {
+      dispatch({ type: 'CONTEXT_MENU_NAV', delta: 1, itemCount: Math.max(1, accounts.length) });
+      return;
+    }
+    if (input === 'k' || key.upArrow) {
+      dispatch({ type: 'CONTEXT_MENU_NAV', delta: -1, itemCount: Math.max(1, accounts.length) });
+      return;
+    }
+    if (key.return) {
+      const account = accounts[state.contextMenuIndex];
+      if (account) onAccountSwitch?.(account);
+      dispatch({ type: 'SET_OVERLAY', overlay: null });
+      return;
+    }
+    if (input === 'u') {
+      onAccountUndo?.();
+      dispatch({ type: 'SET_OVERLAY', overlay: null });
+      return;
+    }
+    if (input === 'a') addToast('Run: sidekick accounts add', 'info');
+    else if (input === 'l') addToast('Run: sidekick accounts login <name>', 'info');
+    else if (input === 's') addToast('Run: sidekick accounts shell <name>', 'info');
+    return;
+  }
+
   // Help overlay
   if (state.overlay === 'help') {
     if (key.escape || input === '?' || input === 'q') {
@@ -241,6 +283,20 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   // Help toggle
   if (input === '?') {
     dispatch({ type: 'SET_OVERLAY', overlay: 'help' });
+    return;
+  }
+
+  // Accounts overlay (works on the splash screen too)
+  if (input === 'A') {
+    dispatch({ type: 'SET_OVERLAY', overlay: 'accounts' });
+    const activeIndex = (accountViews ?? []).findIndex((account) => account.isActive);
+    if (activeIndex > 0) {
+      dispatch({
+        type: 'CONTEXT_MENU_NAV',
+        delta: activeIndex,
+        itemCount: Math.max(1, (accountViews ?? []).length),
+      });
+    }
     return;
   }
 

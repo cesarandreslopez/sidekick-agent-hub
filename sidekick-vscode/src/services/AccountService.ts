@@ -1,23 +1,21 @@
 /**
  * VS Code wrapper around Sidekick account management.
  *
- * Provides provider-aware account operations plus file watching for external
- * registry and Claude credential changes.
+ * Provides provider-aware account operations, health-annotated listings,
+ * verified switching with undo, and change notification driven by the shared
+ * account watcher (which also folds external `claude /login` / `codex login`
+ * runs into the saved profiles).
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import {
   addCurrentAccount as addCurrentClaudeAccount,
-  switchToAccount as switchToClaudeAccount,
+  switchToAccountAsync as switchToClaudeAccountAsync,
   removeAccount as removeClaudeAccount,
   listAccounts as listClaudeAccounts,
   getActiveAccount as getActiveClaudeAccount,
   resolveActiveClaudeAccount,
   readActiveClaudeAccount,
-  getAccountsDir,
   prepareCodexAccountAsync,
   finalizeCodexAccountAsync,
   switchToCodexAccountAsync,
@@ -27,14 +25,27 @@ import {
   resolveActiveCodexAccount,
   spawnAccountLogin,
   listAllAccounts as listAllManagedAccounts,
+  listAccountsWithHealth,
   switchAccountAsync,
+  undoLastSwitch,
+  getLastSwitch,
+  getAccountLaunchEnv,
+  syncLiveAccountState,
+  refreshInactiveAccounts,
+  onAccountsChanged,
 } from 'sidekick-shared';
 import type {
   AccountEntry,
+  AccountLaunchEnv,
   AccountManagerResult,
   AccountProviderId,
+  AccountView,
   ListAllAccountsResult,
+  RefreshInactiveAccountsResult,
   SavedAccountProfile,
+  SwitchAccountOptions,
+  SwitchAccountResult,
+  SyncReport,
 } from 'sidekick-shared';
 import { log } from './Logger';
 
@@ -44,15 +55,25 @@ export function isSavedAccountProfile(account: ManagedAccount): account is Saved
   return 'providerId' in account;
 }
 
+const UNDO_CONTEXT_KEY = 'sidekick.accounts.canUndo';
+
 export class AccountService implements vscode.Disposable {
+  /** Fires when the active account of a provider changes. */
   private readonly _onAccountChange = new vscode.EventEmitter<AccountProviderId>();
   readonly onAccountChange = this._onAccountChange.event;
 
-  private registryWatcher: fs.FSWatcher | null = null;
-  private credentialsWatcher: fs.FSWatcher | null = null;
+  /** Fires on any registry or health change (new accounts, refreshed tokens). */
+  private readonly _onAccountsUpdated = new vscode.EventEmitter<void>();
+  readonly onAccountsUpdated = this._onAccountsUpdated.event;
+
+  private subscription: { dispose(): void } | null = null;
   private lastKnownActiveIds: Record<AccountProviderId, string | null> = {
     'claude-code': null,
     codex: null,
+  };
+  private undoTokens: Record<AccountProviderId, string | undefined> = {
+    'claude-code': undefined,
+    codex: undefined,
   };
 
   constructor() {
@@ -63,79 +84,22 @@ export class AccountService implements vscode.Disposable {
       getActiveClaudeAccount()?.uuid ?? readActiveClaudeAccount()?.uuid ?? null;
     this.lastKnownActiveIds.codex = getActiveCodexAccount()?.id ?? null;
     this.startWatching();
+    void this.updateUndoContext();
   }
 
-  async addCurrentAccount(
-    providerId: AccountProviderId,
-    label?: string,
-  ): Promise<AccountManagerResult> {
-    // The codex path probes the CLI; the async variant keeps those probes
-    // off the extension host's event loop.
-    const result =
-      providerId === 'claude-code'
-        ? addCurrentClaudeAccount(label)
-        : await prepareCodexAccountAsync(label ?? '');
+  // ── Listing ────────────────────────────────────────────────────────────
 
-    if (result.success) {
-      this.refresh();
+  listAccountsWithHealth(providerId?: AccountProviderId): AccountView[] {
+    try {
+      return listAccountsWithHealth(providerId);
+    } catch (err) {
+      log(`AccountService: listAccountsWithHealth failed: ${err}`);
+      return [];
     }
-    return result;
-  }
-
-  async finalizeCodexAccount(profileId: string): Promise<AccountManagerResult> {
-    const result = await finalizeCodexAccountAsync(profileId);
-    if (result.success) {
-      this.refresh();
-    }
-    return result;
-  }
-
-  async signInAccount(providerId: AccountProviderId, label: string): Promise<AccountManagerResult> {
-    const result = await spawnAccountLogin(providerId, label, { stdio: 'inherit' });
-    if (result.success) {
-      this.refresh();
-    }
-    return result;
   }
 
   listAllAccounts(): ListAllAccountsResult {
     return listAllManagedAccounts();
-  }
-
-  async switchManagedAccount(
-    providerId: AccountProviderId,
-    accountId: string,
-  ): Promise<AccountManagerResult> {
-    const result = await switchAccountAsync(providerId, accountId);
-    if (result.success) {
-      this.refresh();
-    }
-    return result;
-  }
-
-  async switchToAccount(
-    providerId: AccountProviderId,
-    accountId: string,
-  ): Promise<AccountManagerResult> {
-    const result =
-      providerId === 'claude-code'
-        ? switchToClaudeAccount(accountId)
-        : await switchToCodexAccountAsync(accountId);
-
-    if (result.success) {
-      this.refresh();
-    }
-    return result;
-  }
-
-  removeAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
-    const result =
-      providerId === 'claude-code' ? removeClaudeAccount(accountId) : removeCodexAccount(accountId);
-
-    if (result.success) {
-      this.refresh();
-    }
-    return result;
   }
 
   listAccounts(providerId: 'claude-code'): AccountEntry[];
@@ -162,6 +126,131 @@ export class AccountService implements vscode.Disposable {
     return this.listAccounts(providerId).length >= 2;
   }
 
+  // ── Sync ───────────────────────────────────────────────────────────────
+
+  /** Fold live logins into the registry; returns what was learned. */
+  async sync(): Promise<SyncReport> {
+    const report = await syncLiveAccountState({ reason: 'manual' });
+    this.refresh();
+    this._onAccountsUpdated.fire();
+    return report;
+  }
+
+  // ── Mutations ──────────────────────────────────────────────────────────
+
+  async addCurrentAccount(
+    providerId: AccountProviderId,
+    label?: string,
+  ): Promise<AccountManagerResult> {
+    // The codex path probes the CLI; the async variant keeps those probes
+    // off the extension host's event loop.
+    const result =
+      providerId === 'claude-code'
+        ? addCurrentClaudeAccount(label)
+        : await prepareCodexAccountAsync(label ?? '');
+
+    if (result.success) this.refresh();
+    return result;
+  }
+
+  async finalizeCodexAccount(profileId: string): Promise<AccountManagerResult> {
+    const result = await finalizeCodexAccountAsync(profileId);
+    if (result.success) this.refresh();
+    return result;
+  }
+
+  async signInAccount(providerId: AccountProviderId, label: string): Promise<AccountManagerResult> {
+    const result = await spawnAccountLogin(providerId, label, { stdio: 'inherit' });
+    if (result.success) this.refresh();
+    return result;
+  }
+
+  /** Verified switch; remembers the undo token for the provider. */
+  async switch(
+    providerId: AccountProviderId,
+    accountId: string,
+    options: SwitchAccountOptions = {},
+  ): Promise<SwitchAccountResult> {
+    const result = await switchAccountAsync(providerId, accountId, options);
+    if (result.success) {
+      if (result.undoToken) this.undoTokens[providerId] = result.undoToken;
+      this.refresh();
+      await this.updateUndoContext();
+    }
+    return result;
+  }
+
+  async switchManagedAccount(
+    providerId: AccountProviderId,
+    accountId: string,
+  ): Promise<SwitchAccountResult> {
+    return this.switch(providerId, accountId);
+  }
+
+  async switchToAccount(
+    providerId: AccountProviderId,
+    accountId: string,
+  ): Promise<SwitchAccountResult> {
+    const result =
+      providerId === 'claude-code'
+        ? await switchToClaudeAccountAsync(accountId)
+        : await switchToCodexAccountAsync(accountId);
+    if (result.success) {
+      if (result.undoToken) this.undoTokens[providerId] = result.undoToken;
+      this.refresh();
+      await this.updateUndoContext();
+    }
+    return result;
+  }
+
+  canUndo(providerId?: AccountProviderId): boolean {
+    const providers: AccountProviderId[] = providerId ? [providerId] : ['claude-code', 'codex'];
+    return providers.some((provider) => getLastSwitch(provider) !== null);
+  }
+
+  /** Provider whose last switch would be undone (the most recent record). */
+  undoProvider(): AccountProviderId | null {
+    const records = (['claude-code', 'codex'] as const)
+      .map((provider) => ({ provider, record: getLastSwitch(provider) }))
+      .filter((entry) => entry.record !== null)
+      .sort((a, b) => Date.parse(b.record!.at) - Date.parse(a.record!.at));
+    return records[0]?.provider ?? null;
+  }
+
+  async undo(providerId?: AccountProviderId): Promise<SwitchAccountResult | null> {
+    const provider = providerId ?? this.undoProvider();
+    if (!provider) return null;
+    const result = await undoLastSwitch(provider, this.undoTokens[provider]);
+    if (result.success) {
+      this.undoTokens[provider] = result.undoToken;
+      this.refresh();
+    }
+    await this.updateUndoContext();
+    return result;
+  }
+
+  removeAccount(providerId: AccountProviderId, accountId: string): AccountManagerResult {
+    const result =
+      providerId === 'claude-code' ? removeClaudeAccount(accountId) : removeCodexAccount(accountId);
+    if (result.success) {
+      this.refresh();
+      this._onAccountsUpdated.fire();
+    }
+    return result;
+  }
+
+  launchEnv(providerId: AccountProviderId, accountId: string): AccountLaunchEnv {
+    return getAccountLaunchEnv(providerId, accountId);
+  }
+
+  async refreshInactive(): Promise<RefreshInactiveAccountsResult> {
+    const result = await refreshInactiveAccounts();
+    if (result.refreshed.length > 0) this._onAccountsUpdated.fire();
+    return result;
+  }
+
+  // ── Change detection ───────────────────────────────────────────────────
+
   refresh(): void {
     // Reconcile the saved active pointer with the live login before diffing ids,
     // so an external `claude /login` / `codex login` is detected as a change.
@@ -183,38 +272,32 @@ export class AccountService implements vscode.Disposable {
     }
   }
 
+  private async updateUndoContext(): Promise<void> {
+    try {
+      await vscode.commands.executeCommand('setContext', UNDO_CONTEXT_KEY, this.canUndo());
+    } catch {
+      /* context keys are cosmetic */
+    }
+  }
+
   private startWatching(): void {
     try {
-      const registryPath = path.join(getAccountsDir(), 'accounts.json');
-      const registryDir = path.dirname(registryPath);
-      if (fs.existsSync(registryDir)) {
-        this.registryWatcher = fs.watch(registryDir, (_event, filename) => {
-          if (filename === 'accounts.json') {
-            this.refresh();
-          }
-        });
-      }
+      // The shared watcher covers the registry, the live Claude home, and the
+      // Codex home, and syncs external logins into the saved profiles before
+      // reporting. Local mutations reach us through the same channel.
+      this.subscription = onAccountsChanged(() => {
+        this.refresh();
+        this._onAccountsUpdated.fire();
+        void this.updateUndoContext();
+      });
     } catch (err) {
-      log(`AccountService: could not watch accounts dir: ${err}`);
-    }
-
-    try {
-      const claudeDir = path.join(os.homedir(), '.claude');
-      if (fs.existsSync(claudeDir)) {
-        this.credentialsWatcher = fs.watch(claudeDir, (_event, filename) => {
-          if (filename === '.credentials.json' || filename === '.claude.json') {
-            setTimeout(() => this.refresh(), 500);
-          }
-        });
-      }
-    } catch (err) {
-      log(`AccountService: could not watch claude dir: ${err}`);
+      log(`AccountService: could not watch account state: ${err}`);
     }
   }
 
   dispose(): void {
-    this.registryWatcher?.close();
-    this.credentialsWatcher?.close();
+    this.subscription?.dispose();
     this._onAccountChange.dispose();
+    this._onAccountsUpdated.dispose();
   }
 }

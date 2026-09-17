@@ -24,6 +24,7 @@ import { detectProvider } from 'sidekick-shared';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { formatCliError } from './cliError';
+import { registerAccountsCommand } from './commands/accounts';
 
 const commandToken = firstCommandToken(process.argv.slice(2));
 
@@ -432,9 +433,12 @@ const peakCmd = new Command('peak')
   });
 program.addCommand(peakCmd);
 
-// Account command — manage Claude Max accounts
+// Accounts command — list, add, switch, and run parallel sessions
+registerAccountsCommand(program);
+
+// Account command — deprecated flag-style alias for `sidekick accounts`
 const accountCmd = new Command('account')
-  .description('Manage saved accounts (list, add, switch, remove)')
+  .description('Deprecated: use `sidekick accounts`')
   .option('--provider <id>', 'Provider: claude-code, codex, all, auto (default: claude-code)')
   .option('--add', 'Save the currently signed-in account')
   .option('--login', 'Sign in and save a new account')

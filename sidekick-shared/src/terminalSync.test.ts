@@ -19,25 +19,10 @@ vi.mock('os', async () => {
   };
 });
 
-import {
-  installShellHook,
-  isShellHookInstalled,
-  removeLauncher,
-  setTerminalActiveProfile,
-  uninstallShellHook,
-  writeLauncher,
-} from './terminalSync';
-
-function activePointer(provider: 'claude' | 'codex'): string {
-  return path.join(tmpDir, '.config', 'sidekick', 'accounts', 'active', `${provider}.profile`);
-}
+import { removeLauncher, writeLauncher } from './terminalSync';
 
 function localBin(name: string): string {
   return path.join(tmpDir, '.local', 'bin', name);
-}
-
-function countHookBlocks(content: string): number {
-  return (content.match(/# >>> sidekick >>>/g) ?? []).length;
 }
 
 describe('terminalSync', () => {
@@ -53,66 +38,6 @@ describe('terminalSync', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('writes and clears active profile pointer files atomically', () => {
-    const claudeHome = path.join(tmpDir, 'accounts', 'claude', 'profiles', 'uuid-a', 'home');
-
-    setTerminalActiveProfile('claude-code', claudeHome);
-
-    expect(fs.readFileSync(activePointer('claude'), 'utf8')).toBe(`${claudeHome}\n`);
-
-    setTerminalActiveProfile('claude-code', null);
-
-    expect(fs.existsSync(activePointer('claude'))).toBe(false);
-  });
-
-  it('installs and uninstalls an idempotent shell hook while preserving unrelated content', () => {
-    fs.writeFileSync(path.join(tmpDir, '.zshrc'), 'export KEEP_ZSH=1\n');
-    fs.writeFileSync(path.join(tmpDir, '.bashrc'), 'export KEEP_BASH=1\n');
-
-    installShellHook();
-    installShellHook();
-
-    const zshrc = fs.readFileSync(path.join(tmpDir, '.zshrc'), 'utf8');
-    const bashrc = fs.readFileSync(path.join(tmpDir, '.bashrc'), 'utf8');
-    expect(countHookBlocks(zshrc)).toBe(1);
-    expect(countHookBlocks(bashrc)).toBe(1);
-    expect(zshrc).toContain('export KEEP_ZSH=1');
-    expect(bashrc).toContain('export KEEP_BASH=1');
-    expect(zshrc).toContain(activePointer('claude'));
-    expect(zshrc).toContain(activePointer('codex'));
-    expect(isShellHookInstalled()).toBe(true);
-
-    uninstallShellHook();
-
-    const cleaned = fs.readFileSync(path.join(tmpDir, '.zshrc'), 'utf8');
-    expect(cleaned).toContain('export KEEP_ZSH=1');
-    expect(cleaned).not.toContain('# >>> sidekick >>>');
-    expect(isShellHookInstalled()).toBe(false);
-  });
-
-  it('preserves an rc symlink and the target file mode', () => {
-    const target = path.join(tmpDir, 'dotfiles', 'zshrc');
-    const link = path.join(tmpDir, '.zshrc');
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, 'export KEEP=1\n', { mode: 0o640 });
-    fs.symlinkSync(target, link);
-
-    installShellHook();
-
-    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
-    expect(fs.readFileSync(target, 'utf8')).toContain('# >>> sidekick >>>');
-    expect(fs.statSync(target).mode & 0o777).toBe(0o640);
-  });
-
-  it('creates only the rc file for the current shell when neither exists', () => {
-    process.env.SHELL = '/bin/bash';
-
-    installShellHook();
-
-    expect(fs.existsSync(path.join(tmpDir, '.bashrc'))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, '.zshrc'))).toBe(false);
-  });
-
   it('writes and removes sidekick-owned launchers', () => {
     const profileHome = path.join(tmpDir, 'accounts', 'claude', 'profiles', 'uuid-a', 'home');
 
@@ -122,6 +47,7 @@ describe('terminalSync', () => {
     const script = fs.readFileSync(launcherPath, 'utf8');
     expect(script).toContain('# sidekick-launcher v1');
     expect(script).toContain(`export CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome)}`);
+    expect(script).toContain('unset CLAUDE_SECURESTORAGE_CONFIG_DIR');
     expect(script).toContain('exec claude "$@"');
     expect(fs.statSync(launcherPath).mode & 0o777).toBe(0o755);
 

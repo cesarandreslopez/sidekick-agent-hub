@@ -8,7 +8,9 @@ import {
 } from './accountChangeSignal';
 import { getActiveAccountStatus, type ActiveAccountStatus } from './accountStatus';
 import { getAccountsDir } from './accountRegistry';
-import { getSystemCodexHome } from './codexProfiles';
+import { syncLiveAccountStateSync } from './accountSync';
+import { getLiveClaudeHome } from './claudeProfiles';
+import { getSystemCodexHome } from './codexPaths';
 import type { Disposable } from './quotaPoller';
 
 export interface AccountsChangedEvent {
@@ -111,7 +113,12 @@ function stopMonitoring(): void {
 
 function watchTargets(): string[] {
   return Array.from(
-    new Set([getAccountsDir(), path.join(os.homedir(), '.claude'), getSystemCodexHome()]),
+    new Set([
+      getAccountsDir(),
+      getLiveClaudeHome(),
+      path.join(os.homedir(), '.claude'),
+      getSystemCodexHome(),
+    ]),
   );
 }
 
@@ -132,6 +139,17 @@ function emitIfChanged(
   force = false,
   singleListener?: (event: AccountsChangedEvent) => void,
 ): void {
+  // External CLIs write the live homes directly: fold their logins into the
+  // saved profiles before reporting status, so a native `claude /login` is
+  // registered and its rotated tokens are backed up without a host round-trip.
+  // `local` signals come from our own registry writes and need no sync.
+  if (reason === 'filesystem' || reason === 'poll') {
+    try {
+      syncLiveAccountStateSync({ reason: reason === 'poll' ? 'poll' : 'watch' });
+    } catch {
+      // Sync problems surface through the health model, never through the watcher.
+    }
+  }
   const status = getActiveAccountStatus();
   const nextFingerprint = fingerprint(status);
   if (!force && nextFingerprint === lastFingerprint) return;

@@ -25,6 +25,7 @@ import {
   ensureClaudeProfileDirs,
   getClaudeProfileHome,
   getClaudeProfilesDir,
+  claudeKeychainAccountName,
   isClaudeProfileAuthenticated,
   readClaudeProfileIdentity,
 } from './claudeProfiles';
@@ -83,6 +84,23 @@ describe('claudeProfiles', () => {
       ),
     ).toBe('e3c60653');
     expect(claudeKeychainSuffix('/Users/hoangphan/.ai-switcher-logintest')).toBe('8244da8e');
+  });
+
+  it('hashes the NFC-normalised path so decomposed macOS paths match the CLI', () => {
+    const composed = '/Users/ren\u00e9/.claude-work';
+    const decomposed = '/Users/rene\u0301/.claude-work';
+    expect(composed).not.toBe(decomposed);
+    expect(claudeKeychainSuffix(decomposed)).toBe(claudeKeychainSuffix(composed));
+  });
+
+  it('sanitises the keychain account name like the CLI does', () => {
+    const original = process.env.USER;
+    process.env.USER = 'cesar.lopez-1';
+    expect(claudeKeychainAccountName()).toBe('cesar.lopez-1');
+    process.env.USER = 'bad user!';
+    expect(claudeKeychainAccountName()).toBe('claude-code-user');
+    if (original === undefined) delete process.env.USER;
+    else process.env.USER = original;
   });
 
   it('derives the default and isolated Claude Code keychain service names', () => {

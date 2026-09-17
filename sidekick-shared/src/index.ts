@@ -713,11 +713,36 @@ export {
 export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from './report';
 
 // Credential I/O (platform-aware: Keychain on macOS, file on Linux/Windows)
-export { readActiveCredentials, writeActiveCredentials } from './credentialIO';
+export {
+  readActiveCredentials,
+  writeActiveCredentials,
+  deleteStoredCredentials,
+} from './credentialIO';
 
 // Credentials
-export { readClaudeMaxCredentials, readClaudeMaxAccessTokenSync } from './credentials';
+export {
+  readClaudeMaxCredentials,
+  readClaudeMaxCredentialsRaw,
+  readClaudeMaxAccessTokenSync,
+} from './credentials';
 export type { ClaudeMaxCredentials } from './credentials';
+export {
+  parseClaudeCredentialBlob,
+  claudeCredentialFreshness,
+  isNewerClaudeCredential,
+  resolveClaudeRefreshExpiry,
+  CLAUDE_ACCESS_TOKEN_LIFETIME_MS,
+  CLAUDE_REFRESH_TOKEN_LIFETIME_ESTIMATE_MS,
+} from './claudeCredentials';
+export type { ClaudeOauthCredentials } from './claudeCredentials';
+export {
+  parseAuthJson as parseCodexAuthJson,
+  readAuthIdentityFromRaw as readCodexAuthIdentity,
+  readLastRefresh as readCodexLastRefresh,
+  readAccessTokenExpiry as readCodexAccessTokenExpiry,
+  identitiesMatch as codexIdentitiesMatch,
+} from './codexAuth';
+export type { CodexAuthIdentity, CodexAuthJsonFile } from './codexAuth';
 
 // Accounts
 export { ensureDefaultAccounts } from './ensureDefaultAccounts';
@@ -732,6 +757,9 @@ export {
   readActiveClaudeAccount,
   addCurrentAccount,
   switchToAccount,
+  switchToAccountAsync,
+  syncClaudeLiveState,
+  cleanupAbandonedClaudeLogins,
   resolveActiveClaudeHome,
   applyActiveClaudeToLiveHome,
   reconcileClaudeAuthState,
@@ -756,6 +784,8 @@ export {
   spawnAccountLogin,
   switchAccount,
   switchAccountAsync,
+  undoLastSwitch,
+  getLastSwitch,
   listAllAccounts,
   resolveClaudeLoginCommand,
 } from './accountManager';
@@ -763,11 +793,62 @@ export type {
   AccountLoginCommand,
   AccountLoginState,
   AccountLoginStatus,
+  BeginAccountLoginOptions,
   BeginAccountLoginResult,
+  BeginAccountLoginSuccess,
   FinalizeAccountLoginOptions,
   ListAllAccountsResult,
   SpawnAccountLoginOptions,
 } from './accountManager';
+export { readLastSwitch, getLastSwitchPath } from './accountSwitch';
+export type {
+  LastSwitchRecord,
+  SwitchAccountOptions,
+  SwitchAccountResult,
+  SwitchVerification,
+} from './accountSwitch';
+export {
+  syncLiveAccountState,
+  syncLiveAccountStateSync,
+  cleanupAbandonedLogins,
+} from './accountSync';
+export type { SyncLiveAccountStateOptions, CleanupAbandonedLoginsResult } from './accountSync';
+export type { ProviderSyncReport, SyncReason, SyncReport } from './accountSyncTypes';
+export {
+  getAccountHealth,
+  listAccountsWithHealth,
+  readHealthSidecar,
+  getHealthSidecarPath,
+} from './accountHealth';
+export type {
+  AccountHealth,
+  AccountHealthOptions,
+  AccountHealthSidecar,
+  AccountHealthSource,
+  AccountHealthState,
+  AccountView,
+} from './accountHealth';
+export { getAccountLaunchEnv } from './accountLaunch';
+export type { AccountLaunchEnv, AccountLaunchOptions } from './accountLaunch';
+export { refreshInactiveAccounts, keepAliveCommand } from './keepAlive';
+export type {
+  KeepAliveRunner,
+  RefreshInactiveAccountsOptions,
+  RefreshInactiveAccountsResult,
+} from './keepAlive';
+export {
+  findRunningProcesses,
+  findRunningProcessesSync,
+  detectRunningAccountConsumers,
+  detectRunningAccountConsumersSync,
+  describeAccountConsumer,
+  ACCOUNT_CONSUMER_REACHABILITY,
+} from './processDetection';
+export type {
+  AccountConsumerKind,
+  RunningAccountConsumer,
+  RunningProcess,
+} from './processDetection';
 export {
   getAccountsDir,
   readSavedAccountRegistry,
@@ -782,6 +863,7 @@ export {
 export type {
   AccountProviderId,
   AccountIdentityMetadata,
+  AccountProfileOrigin,
   ResolvedActiveAccount,
   SavedAccountProfile,
   SavedAccountRegistry,
@@ -798,10 +880,17 @@ export type { AccountsChangedEvent, OnAccountsChangedOptions } from './accountCh
 export {
   getClaudeProfilesDir,
   getClaudeProfileHome,
+  getLiveClaudeHome,
+  getDefaultClaudeHome,
+  getClaudeConfigPath,
   claudeKeychainSuffix,
   claudeKeychainService,
+  claudeKeychainAccountName,
+  buildClaudeChildEnv,
+  CLAUDE_SECURESTORAGE_CONFIG_DIR_ENV,
   isClaudeProfileAuthenticated,
   readClaudeProfileIdentity,
+  readLiveClaudeIdentity,
 } from './claudeProfiles';
 export type { ClaudeProfileIdentity } from './claudeProfiles';
 export {
@@ -821,16 +910,13 @@ export {
   switchToCodexAccount,
   switchToCodexAccountAsync,
   removeCodexAccount,
+  syncCodexLiveState,
+  cleanupAbandonedCodexLogins,
+  getCodexCredentialStoreMode,
+  CODEX_KEYRING_FIX_HINT,
 } from './codexProfiles';
-export type { CodexAccountManagerResult } from './codexProfiles';
-export {
-  setTerminalActiveProfile,
-  installShellHook,
-  uninstallShellHook,
-  isShellHookInstalled,
-  writeLauncher,
-  removeLauncher,
-} from './terminalSync';
+export type { CodexAccountManagerResult, CodexCredentialStoreMode } from './codexProfiles';
+export { writeLauncher, removeLauncher } from './terminalSync';
 export { DEFAULT_AUTO_SWITCH_CONFIG, decideAutoSwitch, AutoSwitchController } from './autoSwitch';
 export type {
   AutoSwitchActiveAccount,

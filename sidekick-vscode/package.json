@@ -92,6 +92,18 @@
             ]
           },
           {
+            "id": "sidekick.addAccounts",
+            "title": "Add your accounts",
+            "description": "Sidekick registered your current Claude Code and Codex logins. Run [Add Account](command:sidekick.accounts.add) to sign in another, then switch from the status bar.",
+            "media": {
+              "markdown": "media/walkthrough/accounts.md"
+            },
+            "completionEvents": [
+              "onCommand:sidekick.accounts.add",
+              "onView:sidekick.accounts"
+            ]
+          },
+          {
             "id": "sidekick.captureNote",
             "title": "Capture your first knowledge note",
             "description": "Open a file and run [Add Knowledge Note](command:sidekick.addKnowledgeNote).",
@@ -145,6 +157,11 @@
             "minimum": 0,
             "maximum": 100,
             "description": "Quota utilization percentage that triggers automatic account switching. Set to 0 to disable."
+          },
+          "sidekick.accounts.keepAlive": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Refresh saved-but-inactive accounts through the official `claude` / `codex` CLIs in their isolated profiles so they do not expire while unused. Off by default."
           },
           "sidekick.zai.tier": {
             "type": "string",
@@ -1051,27 +1068,85 @@
       },
       {
         "command": "sidekick.switchAccount",
-        "title": "Switch Account",
+        "title": "Switch Account (legacy)",
         "category": "Sidekick"
       },
       {
         "command": "sidekick.switchAnyAccount",
-        "title": "Switch Account (All Providers)",
+        "title": "Switch Account (All Providers, legacy)",
         "category": "Sidekick"
       },
       {
         "command": "sidekick.signInAccount",
-        "title": "Add Account (Sign In)",
+        "title": "Add Account (Sign In, legacy)",
         "category": "Sidekick"
       },
       {
         "command": "sidekick.addAccount",
-        "title": "Save Current Account",
+        "title": "Save Current Account (legacy)",
         "category": "Sidekick"
       },
       {
         "command": "sidekick.removeAccount",
+        "title": "Remove Account (legacy)",
+        "category": "Sidekick"
+      },
+      {
+        "command": "sidekick.accounts.add",
+        "title": "Add Account…",
+        "category": "Sidekick",
+        "icon": "$(add)"
+      },
+      {
+        "command": "sidekick.accounts.pick",
+        "title": "Switch Account…",
+        "category": "Sidekick",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "sidekick.accounts.switch",
+        "title": "Switch to This Account",
+        "category": "Sidekick",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "sidekick.accounts.signInAgain",
+        "title": "Sign In Again",
+        "category": "Sidekick",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "sidekick.accounts.openTerminal",
+        "title": "Open Terminal as Account",
+        "category": "Sidekick",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "sidekick.accounts.remove",
         "title": "Remove Account",
+        "category": "Sidekick",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "sidekick.accounts.undo",
+        "title": "Undo Last Account Switch",
+        "category": "Sidekick",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "sidekick.accounts.refresh",
+        "title": "Refresh Accounts",
+        "category": "Sidekick",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "sidekick.accounts.showDetails",
+        "title": "Show Last Account Switch Details",
+        "category": "Sidekick"
+      },
+      {
+        "command": "sidekick.accounts.registerCurrent",
+        "title": "Register Current Login",
         "category": "Sidekick"
       }
     ],
@@ -1119,6 +1194,11 @@
         "key": "ctrl+k ctrl+a",
         "mac": "cmd+k cmd+a",
         "when": "editorTextFocus && !editorReadonly && !suggestWidgetVisible && !inlineChatFocused"
+      },
+      {
+        "command": "sidekick.accounts.pick",
+        "key": "ctrl+k ctrl+shift+a",
+        "mac": "cmd+k cmd+shift+a"
       }
     ],
     "menus": {
@@ -1185,6 +1265,42 @@
         },
         {
           "command": "sidekick.confirmKnowledgeNote",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.accounts.showDetails",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.accounts.switch",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.accounts.signInAgain",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.accounts.openTerminal",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.switchAccount",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.switchAnyAccount",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.signInAccount",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.addAccount",
+          "when": "false"
+        },
+        {
+          "command": "sidekick.removeAccount",
           "when": "false"
         }
       ],
@@ -1308,6 +1424,21 @@
           "command": "sidekick.generateReport",
           "when": "view == sidekick.dashboard",
           "group": "navigation"
+        },
+        {
+          "command": "sidekick.accounts.add",
+          "when": "view == sidekick.accounts",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sidekick.accounts.refresh",
+          "when": "view == sidekick.accounts",
+          "group": "navigation@2"
+        },
+        {
+          "command": "sidekick.accounts.undo",
+          "when": "view == sidekick.accounts && sidekick.accounts.canUndo",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -1324,6 +1455,31 @@
         {
           "command": "sidekick.deleteKnowledgeNote",
           "when": "viewItem =~ /^knowledgeNote\\./",
+          "group": "2_destructive@1"
+        },
+        {
+          "command": "sidekick.accounts.switch",
+          "when": "view == sidekick.accounts && viewItem == account.inactive",
+          "group": "inline@1"
+        },
+        {
+          "command": "sidekick.accounts.signInAgain",
+          "when": "view == sidekick.accounts && viewItem == account.expired",
+          "group": "inline@2"
+        },
+        {
+          "command": "sidekick.accounts.openTerminal",
+          "when": "view == sidekick.accounts && viewItem =~ /^account\\./",
+          "group": "inline@3"
+        },
+        {
+          "command": "sidekick.accounts.signInAgain",
+          "when": "view == sidekick.accounts && viewItem =~ /^account\\./",
+          "group": "1_manage@2"
+        },
+        {
+          "command": "sidekick.accounts.remove",
+          "when": "view == sidekick.accounts && viewItem =~ /^account\\./",
           "group": "2_destructive@1"
         }
       ]
@@ -1344,6 +1500,12 @@
           "id": "sidekick.dashboard",
           "name": "Session Analytics",
           "contextualTitle": "Agent Hub"
+        },
+        {
+          "id": "sidekick.accounts",
+          "name": "Accounts",
+          "contextualTitle": "Agent Hub",
+          "visibility": "collapsed"
         },
         {
           "type": "webview",
@@ -1419,6 +1581,10 @@
       {
         "view": "sidekick.tempFiles",
         "contents": "No files touched yet.\nFiles your agent reads, writes, or edits this session appear here for one-click access.\n[Refresh Session](command:sidekick.refreshSession)"
+      },
+      {
+        "view": "sidekick.accounts",
+        "contents": "Sidekick registers the Claude Code and Codex accounts you are already signed in to.\nAdd a second account to switch between them from the status bar, or open a terminal that uses a specific account.\n[Add Account](command:sidekick.accounts.add)"
       }
     ]
   },

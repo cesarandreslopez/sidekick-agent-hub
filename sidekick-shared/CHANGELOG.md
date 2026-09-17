@@ -5,6 +5,30 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `syncLiveAccountState()` reconciles the live Claude Code and Codex logins with the saved profiles: it registers logins the registry has never seen (label = email, `metadata.origin: 'live-sync'`), folds rotated tokens back into their profile when newer, merges duplicate Codex profiles for one workspace (oldest keeps id and label; losers are stashed), and re-points the active pointer. `ensureDefaultAccounts()` runs it at startup after `cleanupAbandonedLogins()`, and `onAccountsChanged()` runs it on filesystem and poll events.
+- Per-account credential health: `getAccountHealth()` and `listAccountsWithHealth()` report `fresh | expiring | expired | unknown | missing` with access/refresh expiry from a secret-free `health.json` sidecar written by every credential store; `AccountView` and `AccountHealth` types and schemas.
+- `SwitchAccountResult`: switches are two-phase (fold the outgoing login, install, verify by re-reading the store, then move the pointer), refuse targets whose stored credential is `expired`/`missing` (`needsLogin`, `--force` to override), report `runningConsumers` (`claude-cli`, `claude-desktop`, `codex-cli`, `codex-app`, `vscode-extension-host`) with reachability text, and return an `undoToken`; `undoLastSwitch()` and `getLastSwitch()` revert the last switch per provider.
+- `detectRunningAccountConsumers()` / `findRunningProcesses()` detect running CLIs and desktop apps on macOS, Linux (`ps`), and Windows (`tasklist`), including npm-installed `claude` under `node`.
+- `getAccountLaunchEnv()` builds an isolated `CLAUDE_CONFIG_DIR` / `CODEX_HOME` environment for running a CLI as a saved account without switching; `refreshInactiveAccounts()` is an opt-in keep-alive that refreshes inactive profiles through the official CLIs.
+- `getCodexCredentialStoreMode()`; Codex profiles get a `config.toml` forced to `cli_auth_credentials_store = "file"`, and adding an account in keyring mode is refused with the fix.
+- `beginAccountLogin()` accepts `existingAccountId` to re-authenticate a saved profile in place and defaults an empty label to the signed-in email; `readClaudeMaxCredentialsRaw()`, `getLiveClaudeHome()`, `claudeKeychainAccountName()`, `deleteStoredCredentials()`, pure `parseClaudeCredentialBlob()` / Codex auth helpers.
+
+### Changed
+
+- Claude logins run `claude auth login` instead of `claude /login` (override with `SIDEKICK_CLAUDE_LOGIN_ARGS`); the isolated home is seeded past first-run onboarding; `spawnAccountLogin` treats `timeoutMs` as an inactivity budget with a 900 s `maxTimeoutMs` ceiling and removes the pending profile on failure.
+- The Claude Keychain service suffix hashes the NFC-normalised config directory and the no-argument form follows `CLAUDE_CONFIG_DIR`, matching Claude Code 2.1.x; macOS reads fall back to `.credentials.json` when the Keychain item is missing; the Keychain account name is sanitised like the CLI does.
+- Atomic writes retry transient `EPERM`/`EBUSY`/`EACCES` renames on Windows; `credentialIO` file writes go through the atomic writer.
+- `prepareCodexAccount` folds a re-add of an already saved login into the existing profile instead of creating a duplicate; the switch preflight warns on stale Codex backups and refuses dead ones.
+- `addCurrentAccount` / `removeAccount` keep their read-modify-write in one registry lock through new `*Unlocked` registry helpers.
+
+### Removed
+
+- `setTerminalActiveProfile`, `installShellHook`, `uninstallShellHook`, and `isShellHookInstalled` (no consumers; a global export would silently move the live home). `writeLauncher` / `removeLauncher` remain and now unset `CLAUDE_SECURESTORAGE_CONFIG_DIR`.
+
 ## [0.26.5] - 2026-09-15
 
 ### Added

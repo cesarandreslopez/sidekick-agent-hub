@@ -74,6 +74,7 @@ nav:
       - Provider Setup: getting-started/provider-setup.md
   - CLI:
       - Dashboard & Commands: features/cli.md
+      - Account Switcher: features/account-switcher.md
       - MCP Facts Server: features/mcp.md
   - VS Code Features:
       - Inline Completions: features/inline-completions.md

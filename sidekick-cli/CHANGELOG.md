@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `sidekick accounts`: an interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo) plus `list`, `add`, `switch`, `login`, `remove`, `shell`, `env`, `undo`, `doctor`, and `config` subcommands. Lists show credential health and expiry; switches print `✓ verified`, one line per running app that still holds the previous login, and the undo command; `env` renders bash/zsh/fish/PowerShell/cmd exports and `shell` opens a subshell or runs one command as a saved account on every platform.
+- `sidekick accounts doctor` reports per-account expiry, running `claude`/`codex` processes and desktop apps, the Codex credential-store mode, and the keep-alive state; `accounts config keep-alive on` makes the dashboard refresh inactive accounts hourly through the official CLIs.
+- Dashboard: `A` opens an accounts overlay (`Enter` switch, `u` undo) and the status bar shows the active account coloured by health.
+
+### Changed
+
+- Every `accounts` command first folds live logins into the registry and prints `Registered <email>` on stderr for logins it had never seen; `list` prints first-run guidance while all accounts were learned automatically.
+
+### Deprecated
+
+- `sidekick account --…` flags: still work, print the equivalent `sidekick accounts …` command on stderr, and now delegate to the same actions. `--launcher` remains POSIX-only; `accounts shell` / `accounts env` are the cross-platform replacements.
+
 ## [0.26.5] - 2026-09-15
 
 ### Changed

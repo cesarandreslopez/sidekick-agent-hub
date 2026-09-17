@@ -27,6 +27,7 @@ import { StatusBar } from './StatusBar';
 import { SplashOverlay } from './SplashOverlay';
 import { HelpOverlay } from './HelpOverlay';
 import { ContextMenuOverlay } from './ContextMenuOverlay';
+import { AccountsOverlay } from './AccountsOverlay';
 import { FilterOverlay } from './FilterOverlay';
 import { ChangelogOverlay } from './ChangelogOverlay';
 import { TooSmallOverlay } from './TooSmallOverlay';
@@ -35,6 +36,7 @@ import { MouseProvider } from './mouse';
 import type { TerminalMouseEvent } from './mouse';
 import changelogMd from '../../../CHANGELOG.md';
 import { describeQuotaFailure, parseChangelog } from 'sidekick-shared';
+import type { AccountView } from 'sidekick-shared';
 import { initialState, reducer, type SessionFilter } from './dashboardReducer';
 import { handleDashboardInput } from './inputDispatch';
 import { itemTimestampMs, parseDateExpression } from '../dateFilterExpression';
@@ -75,6 +77,10 @@ interface DashboardProps {
   dataStatus?: DataStatus;
   /** One-shot host message to raise as a toast. */
   notice?: DashboardNotice | null;
+  /** Saved accounts for the accounts overlay (A) and the status-bar badge. */
+  accountViews?: AccountView[];
+  onAccountSwitch?: (account: AccountView) => void;
+  onAccountUndo?: () => void;
 }
 
 // ── Component ──
@@ -93,6 +99,9 @@ export function Dashboard({
   onRefresh,
   dataStatus,
   notice,
+  accountViews,
+  onAccountSwitch,
+  onAccountUndo,
 }: DashboardProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, initialState, (base) => ({
     ...base,
@@ -580,9 +589,31 @@ export function Dashboard({
         isPinned,
         pendingSessionPath,
         onSessionSwitch,
+        accountViews,
+        onAccountSwitch,
+        onAccountUndo,
       }),
     { isActive: isRawModeSupported },
   );
+
+  const activeAccountBadge = useMemo(() => {
+    const active =
+      (accountViews ?? []).find(
+        (view) =>
+          view.isActive &&
+          view.providerId === (metrics.providerName === 'Codex' ? 'codex' : 'claude-code'),
+      ) ?? (accountViews ?? []).find((view) => view.isActive);
+    if (!active) return null;
+    const color =
+      active.health.state === 'fresh'
+        ? ('green' as const)
+        : active.health.state === 'expiring'
+          ? ('yellow' as const)
+          : active.health.state === 'expired' || active.health.state === 'missing'
+            ? ('red' as const)
+            : ('gray' as const);
+    return { label: active.label ?? active.email ?? active.id, color };
+  }, [accountViews, metrics.providerName]);
 
   // ── Render ──
 
@@ -605,7 +636,15 @@ export function Dashboard({
             filterString=""
             mouseEnabled={state.mouseEnabled}
             dataBadge={dataStatus ? describeDataStatus(dataStatus, Date.now()) : null}
+            activeAccount={activeAccountBadge}
           />
+          {state.overlay === 'accounts' && (
+            <AccountsOverlay views={accountViews ?? []} selectedIndex={state.contextMenuIndex} />
+          )}
+          {state.toasts.length > 0 &&
+            visibleToasts(state.toasts).map((toast, row) => (
+              <ToastNotification key={toast.id} toast={toast} row={row} />
+            ))}
         </Box>
       </MouseProvider>
     );
@@ -692,11 +731,16 @@ export function Dashboard({
           openaiStatus={metrics.openaiStatus}
           dataBadge={dataStatus ? describeDataStatus(dataStatus, Date.now()) : null}
           mouseEnabled={state.mouseEnabled}
+          activeAccount={activeAccountBadge}
         />
 
         {/* Inline overlays (render on top of content) */}
         {state.overlay === 'context-menu' && (
           <ContextMenuOverlay actions={contextActions} selectedIndex={state.contextMenuIndex} />
+        )}
+
+        {state.overlay === 'accounts' && (
+          <AccountsOverlay views={accountViews ?? []} selectedIndex={state.contextMenuIndex} />
         )}
 
         {state.overlay === 'filter' && (

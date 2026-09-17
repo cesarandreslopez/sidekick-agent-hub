@@ -67,6 +67,11 @@ const contractGroups = {
     'finalizeCodexAccountAsync',
     'switchToCodexAccountAsync',
     'onAccountsChanged',
+    'syncLiveAccountState',
+    'listAccountsWithHealth',
+    'getAccountHealth',
+    'undoLastSwitch',
+    'getAccountLaunchEnv',
   ],
   writers: [
     'atomicWriteJson',

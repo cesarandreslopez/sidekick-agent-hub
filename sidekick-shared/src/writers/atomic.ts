@@ -42,6 +42,50 @@ const SYNC_LOCK_MAX_WAIT_MS = 15_000;
 const LOCK_WAIT_INTERVAL_MS = 15;
 const lockSleepView = new Int32Array(new SharedArrayBuffer(4));
 
+/**
+ * Windows refuses to replace a file another process holds open (antivirus
+ * scanners, an editor extension re-reading `auth.json`) with EPERM/EBUSY/EACCES
+ * even though the rename would succeed a few milliseconds later. Retry with a
+ * short back-off on that platform only; other platforms surface the error.
+ */
+const WIN32_RENAME_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const WIN32_RENAME_MAX_ATTEMPTS = 10;
+
+function renameRetryDelayMs(attempt: number): number {
+  return Math.min(320, 20 * 2 ** attempt);
+}
+
+function shouldRetryRename(error: unknown, attempt: number): boolean {
+  if (process.platform !== 'win32') return false;
+  if (attempt >= WIN32_RENAME_MAX_ATTEMPTS - 1) return false;
+  const code = (error as NodeJS.ErrnoException).code ?? '';
+  return WIN32_RENAME_RETRY_CODES.has(code);
+}
+
+export function renameSyncWithRetry(from: string, to: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(from, to);
+      return;
+    } catch (error) {
+      if (!shouldRetryRename(error, attempt)) throw error;
+      Atomics.wait(lockSleepView, 0, 0, renameRetryDelayMs(attempt));
+    }
+  }
+}
+
+export async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.promises.rename(from, to);
+      return;
+    } catch (error) {
+      if (!shouldRetryRename(error, attempt)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, renameRetryDelayMs(attempt)));
+    }
+  }
+}
+
 async function syncDirectory(directory: string): Promise<void> {
   let handle: fs.promises.FileHandle | undefined;
   try {
@@ -78,7 +122,7 @@ export async function atomicWriteJson(filePath: string, value: unknown): Promise
     await handle.sync();
     await handle.close();
     handle = undefined;
-    await fs.promises.rename(tempPath, filePath);
+    await renameWithRetry(tempPath, filePath);
     await syncDirectory(path.dirname(filePath));
   } catch (error) {
     await handle?.close().catch(() => undefined);
@@ -102,7 +146,7 @@ export function atomicWriteFileSync(filePath: string, content: string, mode = 0o
     fs.fsyncSync(descriptor);
     fs.closeSync(descriptor);
     descriptor = undefined;
-    fs.renameSync(tempPath, filePath);
+    renameSyncWithRetry(tempPath, filePath);
     syncDirectorySync(path.dirname(filePath));
   } catch (error) {
     if (descriptor !== undefined) fs.closeSync(descriptor);

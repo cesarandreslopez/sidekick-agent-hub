@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   getAccountsDir,
+  listSavedAccountProfiles,
   readSavedAccountRegistry,
   upsertSavedAccountProfile,
   type AccountProviderId,
@@ -13,16 +14,24 @@ import { atomicWriteJsonSync as atomicWriteJson } from './writers/atomic';
 import {
   type AccountEntry,
   type AccountManagerResult,
+  applyClaudeProfileToLiveHome,
   listAccounts,
+  readActiveClaudeAccount,
+  storeClaudeProfileCredentials,
+  storeClaudeProfileIdentity,
   switchToAccount,
+  switchToAccountAsync,
 } from './accounts';
 import {
+  buildClaudeChildEnv,
+  CLAUDE_SECURESTORAGE_CONFIG_DIR_ENV,
   ensureClaudeProfileDirs,
+  getClaudeProfileDir,
   getClaudeProfileHome,
   isClaudeProfileAuthenticated,
   readClaudeProfileIdentity,
 } from './claudeProfiles';
-import { readActiveCredentials, writeActiveCredentials } from './credentialIO';
+import { readActiveCredentials } from './credentialIO';
 import {
   finalizeCodexAccount,
   finalizeCodexAccountAsync,
@@ -36,6 +45,13 @@ import {
   switchToCodexAccount,
   switchToCodexAccountAsync,
 } from './codexProfiles';
+import {
+  readLastSwitch,
+  switchFailure,
+  type LastSwitchRecord,
+  type SwitchAccountOptions,
+  type SwitchAccountResult,
+} from './accountSwitch';
 
 export interface BeginAccountLoginSuccess {
   success: true;
@@ -44,7 +60,11 @@ export interface BeginAccountLoginSuccess {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Variables the host must remove from the child's environment. */
+  envUnset?: string[];
   configDir?: string;
+  /** Set when the login re-authenticates an existing saved profile. */
+  existingAccountId?: string;
 }
 
 export interface BeginAccountLoginFailure {
@@ -71,12 +91,24 @@ export interface AccountLoginCommand {
   args: string[];
 }
 
-export interface SpawnAccountLoginOptions extends FinalizeAccountLoginOptions {
+export interface BeginAccountLoginOptions {
+  loginCommand?: AccountLoginCommand;
+  /** Sign in again to this saved profile instead of creating a new one. */
+  existingAccountId?: string;
+}
+
+export interface SpawnAccountLoginOptions
+  extends FinalizeAccountLoginOptions, BeginAccountLoginOptions {
   onStatus?: (status: AccountLoginStatus) => void;
   signal?: AbortSignal;
+  /**
+   * Inactivity budget: the login fails when the isolated home has not changed
+   * for this long. Default 180 s.
+   */
   timeoutMs?: number;
+  /** Hard ceiling while the child is alive. Default 900 s. */
+  maxTimeoutMs?: number;
   stdio?: 'inherit' | 'pipe';
-  loginCommand?: AccountLoginCommand;
 }
 
 export interface ListAllAccountsResult {
@@ -88,10 +120,7 @@ export interface ListAllAccountsResult {
 interface PendingClaudeProfile {
   label: string;
   addedAt: string;
-}
-
-function getClaudeProfileDir(loginId: string): string {
-  return path.dirname(getClaudeProfileHome(loginId));
+  existingAccountId?: string;
 }
 
 function getPendingClaudeProfilePath(loginId: string): string {
@@ -121,12 +150,19 @@ function removePendingClaudeProfile(loginId: string): void {
   }
 }
 
-function getClaudeCredentialsBackupPath(uuid: string): string {
-  return path.join(getAccountsDir(), 'credentials', `${uuid}.credentials.json`);
-}
-
-function getClaudeConfigBackupPath(uuid: string): string {
-  return path.join(getAccountsDir(), 'configs', `${uuid}.config.json`);
+/**
+ * A fresh `CLAUDE_CONFIG_DIR` puts the CLI through first-run onboarding before
+ * the login prompt. Seeding the onboarding flag keeps the isolated login on the
+ * sign-in flow only; `oauthAccount` is written by the CLI itself.
+ */
+function seedClaudeLoginHome(home: string): void {
+  const configPath = path.join(home, '.claude.json');
+  if (fs.existsSync(configPath)) return;
+  try {
+    atomicWriteJson(configPath, { hasCompletedOnboarding: true });
+  } catch {
+    /* the CLI creates the file itself */
+  }
 }
 
 function readClaudeOauthAccount(home: string): unknown | null {
@@ -142,6 +178,7 @@ function copyClaudeProfileToCanonicalHome(
   sourceHome: string,
   accountUuid: string,
   credentials: unknown,
+  oauthAccount: unknown,
 ): void {
   const canonicalHome = getClaudeProfileHome(accountUuid);
   fs.mkdirSync(canonicalHome, { recursive: true, mode: 0o700 });
@@ -154,11 +191,8 @@ function copyClaudeProfileToCanonicalHome(
     }
   }
 
-  const sourceConfig = path.join(sourceHome, '.claude.json');
-  if (fs.existsSync(sourceConfig)) {
-    fs.copyFileSync(sourceConfig, path.join(canonicalHome, '.claude.json'));
-  }
-  writeActiveCredentials(credentials, canonicalHome);
+  storeClaudeProfileIdentity(accountUuid, oauthAccount);
+  storeClaudeProfileCredentials(accountUuid, credentials, 'login');
 }
 
 function parseClaudeLoginArgs(raw: string | undefined): string[] | null {
@@ -166,23 +200,39 @@ function parseClaudeLoginArgs(raw: string | undefined): string[] | null {
   return trimmed ? trimmed.split(/\s+/) : null;
 }
 
+/**
+ * `claude auth login` signs in without the interactive first-run flow the bare
+ * `claude /login` form triggers in a fresh config directory. Override with
+ * `SIDEKICK_CLAUDE_LOGIN_ARGS` (space separated) for older CLIs.
+ */
 export function resolveClaudeLoginCommand(
   opts: { loginCommand?: AccountLoginCommand } = {},
 ): AccountLoginCommand {
   if (opts.loginCommand) return opts.loginCommand;
   return {
     command: 'claude',
-    args: parseClaudeLoginArgs(process.env.SIDEKICK_CLAUDE_LOGIN_ARGS) ?? ['/login'],
+    args: parseClaudeLoginArgs(process.env.SIDEKICK_CLAUDE_LOGIN_ARGS) ?? ['auth', 'login'],
   };
 }
 
 export function beginAccountLogin(
   provider: AccountProviderId,
   label: string,
-  opts: { loginCommand?: AccountLoginCommand } = {},
+  opts: BeginAccountLoginOptions = {},
 ): BeginAccountLoginResult {
   if (provider === 'codex') {
-    const prepared = prepareCodexAccount(label);
+    const existing = opts.existingAccountId
+      ? listCodexAccounts().find((account) => account.id === opts.existingAccountId)
+      : undefined;
+    if (opts.existingAccountId && !existing) {
+      return { success: false, error: `Codex account ${opts.existingAccountId} not found.` };
+    }
+    // A re-login uses a throwaway label: finalize folds the fresh credentials
+    // into the existing profile by identity and keeps its label.
+    const effectiveLabel = existing
+      ? `${existing.label ?? existing.email ?? 'codex'} (re-login ${randomUUID().slice(0, 8)})`
+      : label.trim() || `Codex ${listCodexAccounts().length + 1}`;
+    const prepared = prepareCodexAccount(effectiveLabel);
     if (!prepared.success || !prepared.profileId || !prepared.codexHome) {
       return { success: false, error: prepared.error ?? 'Could not prepare Codex account login.' };
     }
@@ -193,6 +243,7 @@ export function beginAccountLogin(
         loginId: prepared.profileId,
         alreadyComplete: true,
         configDir: prepared.codexHome,
+        existingAccountId: existing?.id,
       };
     }
 
@@ -204,20 +255,27 @@ export function beginAccountLogin(
       args: loginCommand.args,
       env: { CODEX_HOME: prepared.codexHome },
       configDir: prepared.codexHome,
+      existingAccountId: existing?.id,
     };
   }
 
-  const trimmedLabel = label.trim();
-  if (!trimmedLabel) {
-    return { success: false, error: 'Claude accounts require a non-empty label.' };
+  const existing = opts.existingAccountId
+    ? listSavedAccountProfiles('claude-code').find(
+        (account) => account.id === opts.existingAccountId,
+      )
+    : undefined;
+  if (opts.existingAccountId && !existing) {
+    return { success: false, error: `Claude account ${opts.existingAccountId} not found.` };
   }
 
   const loginId = randomUUID();
   const home = getClaudeProfileHome(loginId);
   writePendingClaudeProfile(loginId, {
-    label: trimmedLabel,
-    addedAt: new Date().toISOString(),
+    label: existing?.label ?? label.trim(),
+    addedAt: existing?.addedAt ?? new Date().toISOString(),
+    existingAccountId: existing?.id,
   });
+  seedClaudeLoginHome(home);
   const loginCommand = resolveClaudeLoginCommand(opts);
 
   return {
@@ -226,7 +284,9 @@ export function beginAccountLogin(
     command: loginCommand.command,
     args: loginCommand.args,
     env: { CLAUDE_CONFIG_DIR: home },
+    envUnset: [CLAUDE_SECURESTORAGE_CONFIG_DIR_ENV],
     configDir: home,
+    existingAccountId: existing?.id,
   };
 }
 
@@ -329,32 +389,57 @@ function finalizeClaudeAccountLogin(
   }
 
   const pending = readPendingClaudeProfile(loginId);
-  atomicWriteJson(getClaudeCredentialsBackupPath(identity.uuid), credentials);
-  atomicWriteJson(getClaudeConfigBackupPath(identity.uuid), oauthAccount);
-  copyClaudeProfileToCanonicalHome(home, identity.uuid, credentials);
+  const existing = listSavedAccountProfiles('claude-code').find(
+    (account) => (account.providerAccountId ?? account.id) === identity.uuid,
+  );
+  copyClaudeProfileToCanonicalHome(home, identity.uuid, credentials, oauthAccount);
+
+  const warnings: string[] = [];
+  if (pending?.existingAccountId && pending.existingAccountId !== identity.uuid) {
+    warnings.push(
+      `You signed in as ${identity.email}, which is a different account from the one you chose to re-authenticate; it was saved separately.`,
+    );
+  }
 
   upsertSavedAccountProfile({
-    id: identity.uuid,
+    id: existing?.id ?? identity.uuid,
     providerId: 'claude-code',
     providerAccountId: identity.uuid,
     email: identity.email,
-    label: pending?.label,
-    addedAt: pending?.addedAt ?? new Date().toISOString(),
+    label: existing?.label ?? (pending?.label || identity.email),
+    addedAt: existing?.addedAt ?? pending?.addedAt ?? new Date().toISOString(),
     metadata: {
+      ...existing?.metadata,
       email: identity.email,
+      origin: 'login',
     },
   });
 
   removePendingClaudeProfile(loginId);
   if (loginId !== identity.uuid) {
     removePendingClaudeProfile(identity.uuid);
+    try {
+      fs.rmSync(getClaudeProfileDir(loginId), { recursive: true, force: true });
+    } catch {
+      /* the temporary login home is disposable */
+    }
   }
 
   if (opts.activate === false) {
-    return { success: true };
+    return { success: true, warning: warnings.length ? warnings.join(' ') : undefined };
   }
 
-  return switchToAccount(identity.uuid);
+  if (readActiveClaudeAccount()?.uuid === identity.uuid) {
+    // Re-login of the account that is already live: the new token replaces
+    // the live one (which may be the dead credential that prompted the login).
+    const applied = applyClaudeProfileToLiveHome(identity.uuid);
+    if (!applied.success) return applied;
+  }
+
+  const switched = switchToAccount(identity.uuid);
+  return warnings.length
+    ? { ...switched, warning: [switched.warning, ...warnings].filter(Boolean).join(' ') }
+    : switched;
 }
 
 function emitStatus(
@@ -386,6 +471,38 @@ function waitForNextPoll(ms: number, signal?: AbortSignal): Promise<boolean> {
   });
 }
 
+/** Most recent modification inside an isolated login home (the CLI writes as the user progresses). */
+function latestHomeActivity(home: string | undefined): number {
+  if (!home) return 0;
+  let latest = 0;
+  const candidates = [
+    home,
+    ...['.claude.json', '.credentials.json', 'auth.json', 'config.toml'].map((f) =>
+      path.join(home, f),
+    ),
+  ];
+  for (const candidate of candidates) {
+    try {
+      latest = Math.max(latest, fs.statSync(candidate).mtimeMs);
+    } catch {
+      /* absent */
+    }
+  }
+  return latest;
+}
+
+function discardPendingLogin(provider: AccountProviderId, loginId: string): void {
+  try {
+    const dir =
+      provider === 'codex'
+        ? path.dirname(getCodexProfileHome(loginId))
+        : getClaudeProfileDir(loginId);
+    if (dir.startsWith(getAccountsDir())) fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
+}
+
 export async function spawnAccountLogin(
   provider: AccountProviderId,
   label: string,
@@ -395,7 +512,10 @@ export async function spawnAccountLogin(
     return { success: false, error: 'Account login aborted.' };
   }
 
-  const begin = beginAccountLogin(provider, label, { loginCommand: opts.loginCommand });
+  const begin = beginAccountLogin(provider, label, {
+    loginCommand: opts.loginCommand,
+    existingAccountId: opts.existingAccountId,
+  });
   if (!begin.success) return { success: false, error: begin.error };
 
   if (begin.alreadyComplete) {
@@ -409,16 +529,26 @@ export async function spawnAccountLogin(
   let childExited = false;
   let childExitCode: number | null = null;
   const childState: { spawnError?: Error } = {};
-  const timeoutMs = opts.timeoutMs ?? 180_000;
-  const deadline = Date.now() + timeoutMs;
+  const inactivityMs = opts.timeoutMs ?? 180_000;
+  const maxMs = opts.maxTimeoutMs ?? 900_000;
+  const startedAt = Date.now();
+  let lastActivity = startedAt;
+  let lastSeenMtime = latestHomeActivity(begin.configDir);
+
+  const env: NodeJS.ProcessEnv =
+    provider === 'codex'
+      ? { ...process.env, ...(begin.env ?? {}) }
+      : buildClaudeChildEnv(begin.configDir ?? '', process.env);
+  for (const name of begin.envUnset ?? []) delete env[name];
 
   let child: ReturnType<typeof spawn>;
   try {
     child = spawn(begin.command, begin.args ?? [], {
-      env: { ...process.env, ...(begin.env ?? {}) },
+      env,
       stdio: opts.stdio ?? 'inherit',
     });
   } catch (err) {
+    discardPendingLogin(provider, begin.loginId);
     return { success: false, error: `Could not spawn account login: ${err}` };
   }
 
@@ -431,12 +561,15 @@ export async function spawnAccountLogin(
     childState.spawnError = error;
   });
 
+  const abort = (): AccountManagerResult => {
+    child.kill();
+    discardPendingLogin(provider, begin.loginId);
+    emitStatus(opts, { state: 'failed', error: 'Account login aborted.' });
+    return { success: false, error: 'Account login aborted.' };
+  };
+
   while (true) {
-    if (opts.signal?.aborted) {
-      child.kill();
-      emitStatus(opts, { state: 'failed', error: 'Account login aborted.' });
-      return { success: false, error: 'Account login aborted.' };
-    }
+    if (opts.signal?.aborted) return abort();
 
     const status = emitStatus(opts, await getAccountLoginStatusAsync(provider, begin.loginId));
     if (status.state === 'authenticated') {
@@ -448,6 +581,7 @@ export async function spawnAccountLogin(
     if (childExited) {
       if (childState.spawnError) {
         const error = `Could not spawn account login: ${childState.spawnError.message}`;
+        discardPendingLogin(provider, begin.loginId);
         emitStatus(opts, { state: 'failed', error });
         return { success: false, error };
       }
@@ -460,6 +594,7 @@ export async function spawnAccountLogin(
           activate: opts.activate ?? true,
         });
       }
+      discardPendingLogin(provider, begin.loginId);
       emitStatus(opts, {
         state: 'failed',
         error: `Account login exited before authentication completed${childExitCode === null ? '.' : ` (exit ${childExitCode}).`}`,
@@ -467,34 +602,75 @@ export async function spawnAccountLogin(
       return { success: false, error: 'Account login did not complete.' };
     }
 
-    const remainingMs = deadline - Date.now();
+    const now = Date.now();
+    const mtime = latestHomeActivity(begin.configDir);
+    if (mtime > lastSeenMtime) {
+      lastSeenMtime = mtime;
+      lastActivity = now;
+    }
+    const remainingMs = Math.min(inactivityMs - (now - lastActivity), maxMs - (now - startedAt));
     if (remainingMs <= 0) {
+      child.kill();
+      discardPendingLogin(provider, begin.loginId);
       emitStatus(opts, { state: 'failed', error: 'Account login timed out.' });
       return { success: false, error: 'Account login timed out.' };
     }
 
     const shouldContinue = await waitForNextPoll(Math.min(2_000, remainingMs), opts.signal);
-    if (!shouldContinue) {
-      child.kill();
-      emitStatus(opts, { state: 'failed', error: 'Account login aborted.' });
-      return { success: false, error: 'Account login aborted.' };
-    }
+    if (!shouldContinue) return abort();
   }
 }
 
-export function switchAccount(provider: AccountProviderId, id: string): AccountManagerResult {
-  return provider === 'codex' ? switchToCodexAccount(id) : switchToAccount(id);
+export function switchAccount(
+  provider: AccountProviderId,
+  id: string,
+  options: SwitchAccountOptions = {},
+): SwitchAccountResult {
+  return provider === 'codex' ? switchToCodexAccount(id, options) : switchToAccount(id, options);
 }
 
 /**
- * {@link switchAccount} without blocking the event loop on codex CLI probes.
+ * {@link switchAccount} without blocking the event loop on CLI/process probes.
  * The Claude path still performs bounded synchronous keychain reads on macOS.
  */
 export async function switchAccountAsync(
   provider: AccountProviderId,
   id: string,
-): Promise<AccountManagerResult> {
-  return provider === 'codex' ? switchToCodexAccountAsync(id) : switchToAccount(id);
+  options: SwitchAccountOptions = {},
+): Promise<SwitchAccountResult> {
+  return provider === 'codex'
+    ? switchToCodexAccountAsync(id, options)
+    : switchToAccountAsync(id, options);
+}
+
+export function getLastSwitch(provider: AccountProviderId): LastSwitchRecord | null {
+  return readLastSwitch(provider);
+}
+
+/**
+ * Switch back to the account that was live before the last recorded switch.
+ * With `token`, the record must match (a stale Undo button never reverts a
+ * newer switch).
+ */
+export async function undoLastSwitch(
+  provider: AccountProviderId,
+  token?: string,
+): Promise<SwitchAccountResult> {
+  const record = readLastSwitch(provider);
+  if (!record) {
+    return switchFailure(provider, '', 'There is no account switch to undo.');
+  }
+  if (token && token !== record.token) {
+    return switchFailure(
+      provider,
+      record.from ?? '',
+      'A newer account switch has happened since; nothing was undone.',
+    );
+  }
+  if (!record.from) {
+    return switchFailure(provider, '', 'The previous state had no saved account to return to.');
+  }
+  return switchAccountAsync(provider, record.from);
 }
 
 export function listAllAccounts(): ListAllAccountsResult {

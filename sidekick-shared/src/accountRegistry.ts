@@ -8,11 +8,16 @@ import { _emitAccountsChanged } from './accountChangeSignal';
 export { ACCOUNT_PROVIDER_IDS } from './providerIds';
 export type { AccountProviderId } from './providerIds';
 
+/** How a saved profile came to exist. */
+export type AccountProfileOrigin = 'login' | 'manual' | 'live-sync' | 'migration';
+
 export interface AccountIdentityMetadata {
   email?: string;
   workspaceId?: string;
   planType?: string;
   authMode?: 'chatgpt' | 'api-key' | 'unknown';
+  /** `live-sync` marks accounts sidekick registered from a login it observed. */
+  origin?: AccountProfileOrigin;
 }
 
 export interface SavedAccountProfile {
@@ -167,6 +172,7 @@ function normalizeRegistry(registry: Partial<SavedAccountRegistry>): SavedAccoun
                 workspaceId: account.metadata.workspaceId || undefined,
                 planType: account.metadata.planType || undefined,
                 authMode: account.metadata.authMode || undefined,
+                origin: account.metadata.origin || undefined,
               }
             : undefined,
         }))
@@ -240,7 +246,31 @@ export function getActiveSavedAccount(providerId: AccountProviderId): SavedAccou
 }
 
 export function upsertSavedAccountProfile(profile: SavedAccountProfile): SavedAccountRegistry {
-  return mutateSavedAccountRegistry((registry) => {
+  return mutateSavedAccountRegistry(upsertProfile(profile));
+}
+
+export function setActiveSavedAccount(
+  providerId: AccountProviderId,
+  accountId: string | null,
+  options: RegistryWriteOptions = {},
+): SavedAccountRegistry {
+  return mutateSavedAccountRegistry(setActive(providerId, accountId), options);
+}
+
+function setActive(
+  providerId: AccountProviderId,
+  accountId: string | null,
+): (registry: SavedAccountRegistry) => SavedAccountRegistry {
+  return (registry) => {
+    registry.activeByProvider[providerId] = accountId;
+    return registry;
+  };
+}
+
+function upsertProfile(
+  profile: SavedAccountProfile,
+): (registry: SavedAccountRegistry) => SavedAccountRegistry {
+  return (registry) => {
     const index = registry.accounts.findIndex(
       (account) => account.providerId === profile.providerId && account.id === profile.id,
     );
@@ -250,18 +280,23 @@ export function upsertSavedAccountProfile(profile: SavedAccountProfile): SavedAc
       registry.accounts.push(profile);
     }
     return registry;
-  });
+  };
 }
 
-export function setActiveSavedAccount(
+/** {@link upsertSavedAccountProfile} for callers already inside {@link withSavedAccountRegistryLock}. */
+export function upsertSavedAccountProfileUnlocked(
+  profile: SavedAccountProfile,
+): SavedAccountRegistry {
+  return mutateSavedAccountRegistryUnlocked(upsertProfile(profile));
+}
+
+/** {@link setActiveSavedAccount} for callers already inside {@link withSavedAccountRegistryLock}. */
+export function setActiveSavedAccountUnlocked(
   providerId: AccountProviderId,
   accountId: string | null,
   options: RegistryWriteOptions = {},
 ): SavedAccountRegistry {
-  return mutateSavedAccountRegistry((registry) => {
-    registry.activeByProvider[providerId] = accountId;
-    return registry;
-  }, options);
+  return mutateSavedAccountRegistryUnlocked(setActive(providerId, accountId), options);
 }
 
 function replaceProfiles(
@@ -303,21 +338,29 @@ export function removeSavedAccountProfile(
   accountId: string,
 ): SavedAccountProfile | null {
   ensureAccountsDir();
-  return withFileLockSync(getRegistryLockPath(), () => {
-    const registry = readSavedAccountRegistry();
-    if (!registry) return null;
+  return withFileLockSync(getRegistryLockPath(), () =>
+    removeSavedAccountProfileUnlocked(providerId, accountId),
+  );
+}
 
-    const index = registry.accounts.findIndex(
-      (account) => account.providerId === providerId && account.id === accountId,
-    );
-    if (index === -1) return null;
+/** {@link removeSavedAccountProfile} for callers already inside {@link withSavedAccountRegistryLock}. */
+export function removeSavedAccountProfileUnlocked(
+  providerId: AccountProviderId,
+  accountId: string,
+): SavedAccountProfile | null {
+  const registry = readSavedAccountRegistry();
+  if (!registry) return null;
 
-    const [removed] = registry.accounts.splice(index, 1);
-    if (registry.activeByProvider[providerId] === accountId) {
-      registry.activeByProvider[providerId] =
-        registry.accounts.find((account) => account.providerId === providerId)?.id ?? null;
-    }
-    writeRegistryUnlocked(registry);
-    return removed;
-  });
+  const index = registry.accounts.findIndex(
+    (account) => account.providerId === providerId && account.id === accountId,
+  );
+  if (index === -1) return null;
+
+  const [removed] = registry.accounts.splice(index, 1);
+  if (registry.activeByProvider[providerId] === accountId) {
+    registry.activeByProvider[providerId] =
+      registry.accounts.find((account) => account.providerId === providerId)?.id ?? null;
+  }
+  writeRegistryUnlocked(registry);
+  return removed;
 }

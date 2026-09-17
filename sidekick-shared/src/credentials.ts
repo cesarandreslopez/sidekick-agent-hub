@@ -4,24 +4,25 @@
  * Shared by sidekick-cli, sidekick-vscode, and any external consumer.
  */
 
+import { parseClaudeCredentialBlob } from './claudeCredentials';
 import { readActiveCredentials } from './credentialIO';
 
 export interface ClaudeMaxCredentials {
   accessToken: string;
   refreshToken?: string;
   expiresAt?: number;
+  refreshTokenExpiresAt?: number;
   scopes?: string[];
   subscriptionType?: string;
+  rateLimitTier?: string;
 }
 
-interface CredentialsBlob {
-  claudeAiOauth?: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
-    scopes?: string[];
-    subscriptionType?: string;
-  };
+function readParsed(): ClaudeMaxCredentials | null {
+  try {
+    return parseClaudeCredentialBlob(readActiveCredentials());
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -32,36 +33,27 @@ interface CredentialsBlob {
  * absent, the token is missing, or the token is expired. Never throws.
  */
 export async function readClaudeMaxCredentials(): Promise<ClaudeMaxCredentials | null> {
-  try {
-    const raw = readActiveCredentials() as CredentialsBlob | null;
-    if (!raw) return null;
-    const oauth = raw.claudeAiOauth;
-    if (!oauth?.accessToken) return null;
-    if (oauth.expiresAt && Date.now() > oauth.expiresAt) return null;
-    return {
-      accessToken: oauth.accessToken,
-      refreshToken: oauth.refreshToken,
-      expiresAt: oauth.expiresAt,
-      scopes: oauth.scopes,
-      subscriptionType: oauth.subscriptionType,
-    };
-  } catch {
-    return null;
-  }
+  const parsed = readParsed();
+  if (!parsed) return null;
+  if (parsed.expiresAt && Date.now() > parsed.expiresAt) return null;
+  return parsed;
+}
+
+/**
+ * Like {@link readClaudeMaxCredentials} but returns the stored credential even
+ * when the access token has lapsed: the CLI refreshes it on next use, so an
+ * expired access token is still a valid login (until the refresh token expires).
+ */
+export function readClaudeMaxCredentialsRaw(): ClaudeMaxCredentials | null {
+  return readParsed();
 }
 
 /**
  * Synchronous convenience — returns just the access token or `null`.
  */
 export function readClaudeMaxAccessTokenSync(): string | null {
-  try {
-    const raw = readActiveCredentials() as CredentialsBlob | null;
-    if (!raw) return null;
-    const oauth = raw.claudeAiOauth;
-    if (!oauth?.accessToken) return null;
-    if (oauth.expiresAt && Date.now() > oauth.expiresAt) return null;
-    return oauth.accessToken;
-  } catch {
-    return null;
-  }
+  const parsed = readParsed();
+  if (!parsed) return null;
+  if (parsed.expiresAt && Date.now() > parsed.expiresAt) return null;
+  return parsed.accessToken;
 }

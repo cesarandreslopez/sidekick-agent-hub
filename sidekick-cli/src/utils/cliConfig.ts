@@ -16,7 +16,7 @@ export interface DashboardCliConfig {
 }
 
 export interface CliConfig {
-  accounts?: { autoSwitch?: AutoSwitchConfig } & Record<string, unknown>;
+  accounts?: { autoSwitch?: AutoSwitchConfig; keepAlive?: boolean } & Record<string, unknown>;
   dashboard?: DashboardCliConfig;
   [key: string]: unknown;
 }

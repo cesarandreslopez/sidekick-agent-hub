@@ -1,21 +1,15 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { addCurrentAccount, readActiveClaudeAccount, reconcileClaudeAuthState } from './accounts';
-import { getActiveSavedAccount } from './accountRegistry';
-import {
-  getActiveCodexAccount,
-  getCodexProfilesDir,
-  getSystemCodexHome,
-  prepareCodexAccountAsync,
-  reconcileCodexAuthStateAsync,
-} from './codexProfiles';
-import { readClaudeMaxCredentials } from './credentials';
+import { reconcileClaudeAuthState } from './accounts';
+import { reconcileCodexAuthStateAsync } from './codexProfiles';
+import { cleanupAbandonedLogins, syncLiveAccountState } from './accountSync';
+import type { ProviderSyncReport, SyncReport } from './accountSyncTypes';
 
 export type EnsureDefaultAccountStatus = 'registered' | 'skipped' | 'error';
 
 export interface EnsureDefaultAccountsResult {
   claude: EnsureDefaultAccountStatus;
   codex: EnsureDefaultAccountStatus;
+  /** The full sync report behind the two statuses. */
+  sync?: SyncReport;
 }
 
 export interface EnsureDefaultAccountsOptions {
@@ -34,70 +28,20 @@ function logFailure(
   }
 }
 
-async function ensureDefaultClaudeAccount(
-  options: EnsureDefaultAccountsOptions | undefined,
-): Promise<EnsureDefaultAccountStatus> {
-  try {
-    if (getActiveSavedAccount('claude-code')) return 'skipped';
-
-    const active = readActiveClaudeAccount();
-    if (!active) return 'skipped';
-
-    const credentials = await readClaudeMaxCredentials();
-    if (!credentials) return 'skipped';
-
-    const result = addCurrentAccount('Default');
-    if (result.success) return 'registered';
-
-    logFailure(
-      options,
-      'Claude default account registration failed.',
-      result.error ?? 'unknown error',
-    );
-    return 'error';
-  } catch (error) {
-    logFailure(options, 'Claude default account registration failed.', error);
-    return 'error';
-  }
+function statusFromReport(report: ProviderSyncReport): EnsureDefaultAccountStatus {
+  if (report.registered) return 'registered';
+  if (report.warnings.length > 0) return 'error';
+  return 'skipped';
 }
 
-function cleanupPendingCodexProfile(profileId: string): void {
-  fs.rmSync(path.join(getCodexProfilesDir(), profileId), { recursive: true, force: true });
-}
-
-async function ensureDefaultCodexAccount(
-  options: EnsureDefaultAccountsOptions | undefined,
-): Promise<EnsureDefaultAccountStatus> {
-  try {
-    if (getActiveCodexAccount()) return 'skipped';
-
-    const systemAuthPath = path.join(getSystemCodexHome(), 'auth.json');
-    if (!fs.existsSync(systemAuthPath)) return 'skipped';
-
-    const result = await prepareCodexAccountAsync('Default');
-    if (result.success && !result.needsLogin) return 'registered';
-
-    if (result.profileId) {
-      cleanupPendingCodexProfile(result.profileId);
-    }
-    logFailure(
-      options,
-      'Codex default account registration failed.',
-      result.error ?? 'Codex auth could not be finalized.',
-    );
-    return 'error';
-  } catch (error) {
-    logFailure(options, 'Codex default account registration failed.', error);
-    return 'error';
-  }
-}
-
+/**
+ * Host startup hook: run the one-time on-disk migrations, drop abandoned
+ * isolated logins, then reconcile the live logins with the saved profiles
+ * (registering any login sidekick has never seen).
+ */
 export async function ensureDefaultAccounts(
   options?: EnsureDefaultAccountsOptions,
 ): Promise<EnsureDefaultAccountsResult> {
-  const claude = await ensureDefaultClaudeAccount(options);
-  const codex = await ensureDefaultCodexAccount(options);
-
   try {
     reconcileClaudeAuthState();
   } catch (error) {
@@ -110,5 +54,32 @@ export async function ensureDefaultAccounts(
     logFailure(options, 'Codex auth reconciliation failed.', error);
   }
 
-  return { claude, codex };
+  try {
+    cleanupAbandonedLogins();
+  } catch (error) {
+    logFailure(options, 'Abandoned login cleanup failed.', error);
+  }
+
+  let sync: SyncReport;
+  try {
+    sync = await syncLiveAccountState({ reason: 'startup' });
+  } catch (error) {
+    logFailure(options, 'Account sync failed.', error);
+    return { claude: 'error', codex: 'error' };
+  }
+
+  for (const [provider, report] of [
+    ['Claude', sync.claude],
+    ['Codex', sync.codex],
+  ] as const) {
+    for (const warning of report.warnings) {
+      logFailure(options, `${provider} account sync: ${warning}`, undefined);
+    }
+  }
+
+  return {
+    claude: statusFromReport(sync.claude),
+    codex: statusFromReport(sync.codex),
+    sync,
+  };
 }

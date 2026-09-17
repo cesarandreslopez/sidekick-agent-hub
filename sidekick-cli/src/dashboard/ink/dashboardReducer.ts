@@ -8,7 +8,7 @@ import { parseDateExpression } from '../dateFilterExpression';
 import { maxDetailScroll } from './detailScroll';
 
 export type LayoutMode = 'normal' | 'expanded' | 'wide-side';
-export type OverlayKind = null | 'help' | 'context-menu' | 'filter' | 'changelog';
+export type OverlayKind = null | 'help' | 'context-menu' | 'filter' | 'changelog' | 'accounts';
 export type FocusTarget = 'side' | 'detail';
 
 export interface SessionFilter {

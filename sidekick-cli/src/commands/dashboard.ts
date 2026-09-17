@@ -28,10 +28,16 @@ import {
   findActiveBillingBlock,
   billingBlockToStateFile,
   getActiveAccountStatus,
+  listAccountsWithHealth,
+  onAccountsChanged,
   quotaToStateFile,
+  refreshInactiveAccounts,
+  switchAccountAsync,
+  undoLastSwitch,
   writeStateFile,
 } from 'sidekick-shared';
 import type {
+  AccountView,
   FollowEvent,
   PersistedPlan,
   PersistedPlanStep,
@@ -62,7 +68,8 @@ import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
 import { checkInteractivePreflight, currentTerminalCapabilities } from './interactivePreflight';
-import { readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
+import { readCliConfig, readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
+import { PROVIDER_NAMES, accountDisplayName, summarizeSwitch } from './accounts/format';
 import { staticDataFingerprint } from '../dashboard/staticDataFingerprint';
 import { initialDataStatus, type DataStatus } from '../dashboard/ink/dataStatus';
 import type { DashboardNotice } from '../dashboard/ink/notice';
@@ -589,29 +596,102 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     return lastScopedMetrics;
   }
 
-  const instance = render(
-    React.createElement(Dashboard, {
-      panels,
-      metrics: scopedMetrics(),
-      staticData,
-      isPinned,
-      pendingSessionPath,
-      onSessionSwitch: switchToSession,
-      onTogglePin: () => {
-        isPinned = !isPinned;
+  // Saved accounts feed the A overlay and the status-bar badge; the shared
+  // watcher keeps them current when another host or the CLI switches.
+  let accountViews: AccountView[] = [];
+  const refreshAccountViews = (): void => {
+    try {
+      accountViews = listAccountsWithHealth();
+    } catch {
+      accountViews = [];
+    }
+  };
+  refreshAccountViews();
+  const accountsSubscription = onAccountsChanged(() => {
+    refreshAccountViews();
+    scheduleRender();
+  });
+  const switchAccountFromDashboard = (account: AccountView): void => {
+    void switchAccountAsync(account.providerId, account.id).then((result) => {
+      const summary = summarizeSwitch(result, accountDisplayName(account));
+      pushNotice(summary.headline, summary.ok ? 'info' : 'error');
+      for (const warning of summary.warnings.slice(0, 2)) pushNotice(warning, 'warning');
+      refreshAccountViews();
+      scheduleRender();
+    });
+  };
+  const undoAccountSwitch = (): void => {
+    const provider = (['claude-code', 'codex'] as const).find((p) =>
+      accountViews.some((view) => view.providerId === p),
+    );
+    if (!provider) return;
+    void undoLastSwitch(provider).then((result) => {
+      const target = accountViews.find((view) => view.id === result.accountId);
+      const summary = summarizeSwitch(
+        result,
+        target ? accountDisplayName(target) : result.accountId,
+      );
+      pushNotice(
+        summary.ok ? `Undo: ${summary.headline}` : summary.headline,
+        summary.ok ? 'info' : 'error',
+      );
+      refreshAccountViews();
+      scheduleRender();
+    });
+  };
+  // Opt-in keep-alive: refresh inactive accounts through the official CLIs
+  // on start and hourly while the dashboard runs.
+  let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  if (readCliConfig().accounts?.keepAlive) {
+    const runKeepAlive = (): void => {
+      void refreshInactiveAccounts().then((result) => {
+        if (result.refreshed.length) {
+          pushNotice(
+            `Keep-alive refreshed ${result.refreshed.length} inactive account${result.refreshed.length === 1 ? '' : 's'}.`,
+            'info',
+          );
+        }
+        for (const failed of result.failed) {
+          pushNotice(
+            `Keep-alive: ${PROVIDER_NAMES[failed.providerId]} ${failed.id} — ${failed.error}`,
+            'warning',
+          );
+        }
+        refreshAccountViews();
         scheduleRender();
-      },
-      onGenerateReport: generateReport,
-      onRefresh: () => {
-        void refreshStaticData('manual');
-      },
-      // Snapshot: the mutable status object must not leak into React props.
-      dataStatus: { ...dataStatus },
-      notice,
-      mouseInitiallyEnabled,
-      onMouseSettingChange: persistMouseSetting,
-    }),
-  );
+      });
+    };
+    setTimeout(runKeepAlive, 5_000).unref?.();
+    keepAliveTimer = setInterval(runKeepAlive, 60 * 60 * 1000);
+    keepAliveTimer.unref?.();
+  }
+
+  const dashboardProps = () => ({
+    panels,
+    metrics: scopedMetrics(),
+    staticData,
+    isPinned,
+    pendingSessionPath,
+    onSessionSwitch: switchToSession,
+    onTogglePin: () => {
+      isPinned = !isPinned;
+      scheduleRender();
+    },
+    onGenerateReport: generateReport,
+    onRefresh: () => {
+      void refreshStaticData('manual');
+    },
+    // Snapshot: the mutable status object must not leak into React props.
+    dataStatus: { ...dataStatus },
+    notice,
+    mouseInitiallyEnabled,
+    onMouseSettingChange: persistMouseSetting,
+    accountViews,
+    onAccountSwitch: switchAccountFromDashboard,
+    onAccountUndo: undoAccountSwitch,
+  });
+
+  const instance = render(React.createElement(Dashboard, dashboardProps()));
   renderReady = true;
 
   // Re-render bridge: throttled rerender with new props
@@ -620,28 +700,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     if (!renderReady || renderTimer) return;
     renderTimer = setTimeout(() => {
       renderTimer = null;
-      instance.rerender(
-        React.createElement(Dashboard, {
-          panels,
-          metrics: scopedMetrics(),
-          staticData,
-          isPinned,
-          pendingSessionPath,
-          onSessionSwitch: switchToSession,
-          onTogglePin: () => {
-            isPinned = !isPinned;
-            scheduleRender();
-          },
-          onGenerateReport: generateReport,
-          onRefresh: () => {
-            void refreshStaticData('manual');
-          },
-          dataStatus: { ...dataStatus },
-          notice,
-          mouseInitiallyEnabled,
-          onMouseSettingChange: persistMouseSetting,
-        }),
-      );
+      instance.rerender(React.createElement(Dashboard, dashboardProps()));
     }, 100);
   }
 
@@ -787,6 +846,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     }
     try {
       quotaService.stop();
+    } catch {
+      /* ignore */
+    }
+    try {
+      accountsSubscription.dispose();
+      if (keepAliveTimer) clearInterval(keepAliveTimer);
     } catch {
       /* ignore */
     }

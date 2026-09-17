@@ -108,7 +108,7 @@ describe('accountManager', { timeout: 30_000 }, () => {
     expect(result.success).toBe(true);
     expect(result.loginId).toBeTruthy();
     expect(result.command).toBe('claude');
-    expect(result.args).toEqual(['/login']);
+    expect(result.args).toEqual(['auth', 'login']);
     expect(result.configDir).toBe(getClaudeProfileHome(result.loginId));
     expect(result.env).toEqual({ CLAUDE_CONFIG_DIR: result.configDir });
     expect(fs.existsSync(result.configDir!)).toBe(true);
@@ -145,8 +145,8 @@ describe('accountManager', { timeout: 30_000 }, () => {
 
     const result = finalizeAccountLogin('claude-code', begin.loginId);
 
-    expect(accountManagerResultSchema.parse(result)).toEqual(result);
-    expect(result).toEqual({ success: true });
+    expect(accountManagerResultSchema.parse(result)).toMatchObject({ success: true });
+    expect(result).toMatchObject({ success: true, verified: true });
     expect(getActiveAccount()?.uuid).toBe('uuid-work');
     expect(
       fs.existsSync(
@@ -173,13 +173,13 @@ describe('accountManager', { timeout: 30_000 }, () => {
   it('can finalize Claude and Codex logins without activation', () => {
     const claude = beginAccountLogin('claude-code', 'Work');
     writeClaudeLoginFiles(claude.configDir!);
-    expect(finalizeAccountLogin('claude-code', claude.loginId, { activate: false })).toEqual({
+    expect(finalizeAccountLogin('claude-code', claude.loginId, { activate: false })).toMatchObject({
       success: true,
     });
 
     const codex = beginAccountLogin('codex', 'Personal');
     writeCodexAuth(codex.configDir!);
-    expect(finalizeAccountLogin('codex', codex.loginId, { activate: false })).toEqual({
+    expect(finalizeAccountLogin('codex', codex.loginId, { activate: false })).toMatchObject({
       success: true,
     });
 
@@ -202,7 +202,10 @@ describe('accountManager', { timeout: 30_000 }, () => {
     writeClaudeLoginFiles(begin.configDir!);
     finalizeAccountLogin('claude-code', begin.loginId, { activate: false });
 
-    expect(switchAccount('claude-code', 'uuid-work')).toEqual({ success: true });
+    expect(switchAccount('claude-code', 'uuid-work')).toMatchObject({
+      success: true,
+      verified: true,
+    });
 
     expect(getActiveAccount()?.uuid).toBe('uuid-work');
   });
@@ -222,10 +225,10 @@ describe('accountManager', { timeout: 30_000 }, () => {
       timeoutMs: 100,
     });
 
-    expect(result).toEqual({ success: true });
+    expect(result).toMatchObject({ success: true });
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['/login'],
+      ['auth', 'login'],
       expect.objectContaining({
         stdio: 'pipe',
         env: expect.objectContaining({ CLAUDE_CONFIG_DIR: expect.any(String) }),
@@ -272,6 +275,71 @@ describe('accountManager', { timeout: 30_000 }, () => {
     expect(result).toEqual({
       success: false,
       error: 'Could not spawn account login: spawn claude ENOENT',
+    });
+  });
+});
+
+describe('undoLastSwitch', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-account-undo-'));
+    ensureLiveClaudeDir();
+    setPlatform('linux');
+    mockSpawnSync.mockReset();
+    mockSpawnSync.mockReturnValue({ status: 1, stdout: '', stderr: '' });
+  });
+
+  afterEach(() => {
+    setPlatform(originalPlatform);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('reverts to the previous account, rejects stale tokens, and reports when nothing can be undone', async () => {
+    const { getLastSwitch, undoLastSwitch } = await import('./accountManager');
+    expect((await undoLastSwitch('claude-code')).error).toMatch(/no account switch to undo/i);
+
+    const a = beginAccountLogin('claude-code', 'A');
+    writeClaudeLoginFiles(a.configDir!, 'a@example.com', 'uuid-a');
+    finalizeAccountLogin('claude-code', a.loginId);
+    const b = beginAccountLogin('claude-code', 'B');
+    writeClaudeLoginFiles(b.configDir!, 'b@example.com', 'uuid-b');
+    finalizeAccountLogin('claude-code', b.loginId, { activate: false });
+
+    const switched = switchAccount('claude-code', 'uuid-b');
+    expect(switched).toMatchObject({ success: true, previousAccountId: 'uuid-a' });
+    expect(getLastSwitch('claude-code')?.token).toBe(switched.undoToken);
+
+    expect((await undoLastSwitch('claude-code', 'not-the-token')).error).toMatch(
+      /newer account switch/i,
+    );
+    expect(getActiveAccount()?.uuid).toBe('uuid-b');
+
+    const undone = await undoLastSwitch('claude-code', switched.undoToken);
+    expect(undone).toMatchObject({ success: true, accountId: 'uuid-a', verified: true });
+    expect(getActiveAccount()?.uuid).toBe('uuid-a');
+  });
+
+  it('re-authenticates an existing Claude profile in place and defaults an empty label to the email', () => {
+    const first = beginAccountLogin('claude-code', '');
+    writeClaudeLoginFiles(first.configDir!, 'a@example.com', 'uuid-a');
+    expect(finalizeAccountLogin('claude-code', first.loginId)).toMatchObject({ success: true });
+    expect(getActiveAccount()).toMatchObject({ uuid: 'uuid-a', label: 'a@example.com' });
+
+    const again = beginAccountLogin('claude-code', 'ignored', { existingAccountId: 'uuid-a' });
+    expect(again.success && again.existingAccountId).toBe('uuid-a');
+    writeClaudeLoginFiles(again.configDir!, 'a@example.com', 'uuid-a');
+    fs.writeFileSync(
+      path.join(again.configDir!, '.credentials.json'),
+      JSON.stringify({ claudeAiOauth: { accessToken: 'fresh-token' } }),
+    );
+    expect(finalizeAccountLogin('claude-code', again.loginId)).toMatchObject({ success: true });
+    expect(listAllAccounts().claude).toHaveLength(1);
+    expect(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')),
+    ).toEqual({ claudeAiOauth: { accessToken: 'fresh-token' } });
+    expect(fs.existsSync(again.configDir!)).toBe(false);
+
+    expect(beginAccountLogin('claude-code', 'x', { existingAccountId: 'missing' })).toMatchObject({
+      success: false,
     });
   });
 });

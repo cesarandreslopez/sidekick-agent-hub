@@ -87,6 +87,10 @@ import { EventStreamTreeProvider } from './providers/EventStreamTreeProvider';
 import { StatusBarManager } from './services/StatusBarManager';
 import { AccountService } from './services/AccountService';
 import { AccountStatusBar } from './services/AccountStatusBar';
+import { AccountTreeProvider } from './providers/AccountTreeProvider';
+import { AccountLoginRunner } from './services/AccountLoginRunner';
+import { AccountKeepAliveService } from './services/AccountKeepAliveService';
+import { registerAccountCommands } from './commands/accountCommands';
 import { buildCommandCatalog } from './utils/commandCatalog';
 import { openCliDashboard, disposeDashboardTerminal } from './services/SidekickCliService';
 import { showExtractedSessionAssets } from './services/SessionAssetService';
@@ -103,10 +107,7 @@ import type { AccountProviderId } from 'sidekick-shared';
 import {
   AutoSwitchController,
   MultiProviderQuotaService,
-  beginAccountLogin,
   ensureDefaultAccounts,
-  finalizeAccountLoginAsync,
-  getAccountLoginStatusAsync,
 } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
@@ -1260,12 +1261,15 @@ export async function activate(context: vscode.ExtensionContext) {
   const accountStatusBar = new AccountStatusBar(accountService, authService!);
   context.subscriptions.push(accountStatusBar);
 
-  const getManagedAccountProvider = (): AccountProviderId | null => {
-    const providerId = authService?.getProviderId();
-    if (providerId === 'codex') return 'codex';
-    if (providerId === 'claude-max') return 'claude-code';
-    return null;
-  };
+  const accountTreeProvider = new AccountTreeProvider(accountService);
+  const accountTreeView = vscode.window.createTreeView('sidekick.accounts', {
+    treeDataProvider: accountTreeProvider,
+  });
+  accountTreeProvider.setTreeView(accountTreeView);
+  context.subscriptions.push(accountTreeProvider, accountTreeView);
+
+  const accountLoginRunner = new AccountLoginRunner();
+  context.subscriptions.push(accountLoginRunner);
 
   const restartCodexMonitoring = async (): Promise<void> => {
     if (!sessionMonitor || sessionMonitor.getProvider().id !== 'codex') return;
@@ -1274,7 +1278,12 @@ export async function activate(context: vscode.ExtensionContext) {
   };
 
   const handleAccountChange = async (providerId: AccountProviderId): Promise<void> => {
-    authService?.resetClient();
+    // Only Sidekick's own inference client depends on which provider switched;
+    // account management itself is provider-agnostic.
+    const inference = authService?.getProviderId();
+    const managed =
+      inference === 'codex' ? 'codex' : inference === 'claude-max' ? 'claude-code' : null;
+    if (managed === providerId) authService?.resetClient();
     accountStatusBar.refresh();
 
     if (providerId === 'codex') {
@@ -1293,133 +1302,39 @@ export async function activate(context: vscode.ExtensionContext) {
     void handleAccountChange(providerId);
   });
 
-  const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
-
-  // Live login polls, stopped together on deactivate. One activate-scoped
-  // disposable instead of one per login attempt, so repeated logins don't
-  // accumulate dead closures in context.subscriptions.
-  const activeLoginPolls = new Set<() => void>();
-  let loginSurfacesDisposed = false;
+  let accountSurfacesDisposed = false;
   context.subscriptions.push({
     dispose: () => {
-      loginSurfacesDisposed = true;
-      for (const stop of [...activeLoginPolls]) stop();
+      accountSurfacesDisposed = true;
     },
   });
 
-  // The registry may have been seeded after these surfaces first rendered.
-  void accountsReady.then(() => {
-    if (loginSurfacesDisposed) return;
-    accountService.refresh();
-    accountStatusBar.refresh();
-    quotaService?.fetchQuota();
+  // The registry may have been seeded after these surfaces first rendered:
+  // fold the live logins in, refresh, and tell the user once what was learned.
+  void accountsReady.then(async () => {
+    if (accountSurfacesDisposed) return;
+    try {
+      const report = await accountService.sync();
+      if (accountSurfacesDisposed) return;
+      accountStatusBar.refresh();
+      quotaService?.fetchQuota();
+      const registered = [report.claude.registered, report.codex.registered]
+        .filter((entry): entry is { id: string; email?: string } => Boolean(entry))
+        .map((entry) => entry.email ?? entry.id);
+      if (registered.length > 0) {
+        const action = await vscode.window.showInformationMessage(
+          `Registered ${registered.join(' and ')} from your current login${registered.length > 1 ? 's' : ''}. Add another from the Accounts view.`,
+          'Open Accounts',
+        );
+        if (action) await vscode.commands.executeCommand('sidekick.accounts.focus');
+      }
+    } catch (err) {
+      logError('Account sync after activation failed', err);
+    }
   });
 
-  const runTerminalAccountLogin = async (
-    providerId: AccountProviderId,
-    label: string,
-  ): Promise<void> => {
-    const begin = beginAccountLogin(providerId, label);
-    if (!begin.success) {
-      vscode.window.showErrorMessage(`Account login failed: ${begin.error}`);
-      return;
-    }
-
-    const finalize = async (): Promise<boolean> => {
-      const result = await finalizeAccountLoginAsync(providerId, begin.loginId);
-      if (loginSurfacesDisposed) {
-        // Deactivation raced the finalize: the account save already landed,
-        // but the account service and status bar are disposed — don't touch them.
-        return result.success;
-      }
-      if (!result.success) {
-        vscode.window.showErrorMessage(`Account login finalization failed: ${result.error}`);
-        return false;
-      }
-      accountService.refresh();
-      accountStatusBar.refresh();
-      if (result.warning) {
-        vscode.window.showWarningMessage(result.warning);
-      }
-      vscode.window.showInformationMessage(`Account "${label}" saved.`);
-      return true;
-    };
-
-    if (begin.alreadyComplete) {
-      await finalize();
-      return;
-    }
-
-    if (!begin.command) {
-      vscode.window.showErrorMessage('Account login command was not prepared.');
-      return;
-    }
-
-    const terminal = vscode.window.createTerminal({
-      name: `Sidekick ${providerId === 'codex' ? 'Codex' : 'Claude'} Login (${label})`,
-      env: begin.env,
-    });
-    terminal.show();
-    terminal.sendText([begin.command, ...(begin.args ?? [])].map(shellQuote).join(' '), true);
-    vscode.window.showInformationMessage(
-      'Complete the browser login in the Sidekick terminal. Sidekick will save the account automatically.',
-    );
-
-    const startedAt = Date.now();
-    const timeoutMs = 180_000;
-    let interval: ReturnType<typeof setInterval> | undefined;
-    let closeDisposable: vscode.Disposable | undefined;
-    let stopped = false;
-    let tickInFlight = false;
-    const stopPolling = (): void => {
-      stopped = true;
-      if (interval !== undefined) {
-        clearInterval(interval);
-        interval = undefined;
-      }
-      closeDisposable?.dispose();
-      closeDisposable = undefined;
-      activeLoginPolls.delete(stopPolling);
-    };
-
-    const checkTimeout = (): void => {
-      if (Date.now() - startedAt > timeoutMs) {
-        stopPolling();
-        vscode.window.showErrorMessage('Account login timed out before authentication completed.');
-      }
-    };
-
-    // Stop polling if the user closes the login terminal before authenticating.
-    closeDisposable = vscode.window.onDidCloseTerminal((closed) => {
-      if (closed === terminal) stopPolling();
-    });
-    activeLoginPolls.add(stopPolling);
-
-    interval = setInterval(() => {
-      if (tickInFlight) {
-        // A slow probe is still awaiting; keep the wall clock honest.
-        checkTimeout();
-        return;
-      }
-      void (async () => {
-        tickInFlight = true;
-        try {
-          const status = await getAccountLoginStatusAsync(providerId, begin.loginId);
-          if (stopped) return; // Terminal closed or timed out during the await.
-          if (status.state === 'authenticated') {
-            stopPolling();
-            await finalize();
-            return;
-          }
-        } catch (err) {
-          logError('Failed to poll account login status', err);
-        } finally {
-          tickInFlight = false;
-        }
-        if (!stopped) checkTimeout();
-      })();
-    }, 2_000);
-  };
+  const accountKeepAlive = new AccountKeepAliveService(() => accountService.refresh());
+  context.subscriptions.push(accountKeepAlive);
 
   let autoSwitchQuotaService: MultiProviderQuotaService | null = null;
   let autoSwitchController: AutoSwitchController | null = null;
@@ -1441,8 +1356,7 @@ export async function activate(context: vscode.ExtensionContext) {
     autoSwitchController = new AutoSwitchController({
       quotaService: autoSwitchQuotaService,
       config: { enabled: true, thresholdPct },
-      switchAccount: (providerId, accountId) =>
-        accountService.switchToAccount(providerId, accountId),
+      switchAccount: (providerId, accountId) => accountService.switch(providerId, accountId),
       onTransition: (event) => {
         accountService.refresh();
         vscode.window.showInformationMessage(`Sidekick auto-switched ${event.provider} account.`);
@@ -1462,283 +1376,11 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('sidekick.switchAccount', async () => {
-      const managedProvider = getManagedAccountProvider();
-      if (!managedProvider) {
-        vscode.window.showInformationMessage(
-          'Account switching is available when the inference provider is Claude Max or Codex.',
-        );
-        return;
-      }
-
-      if (managedProvider === 'codex') {
-        const accounts = accountService.listAccounts('codex');
-        if (accounts.length === 0) {
-          const action = await vscode.window.showInformationMessage(
-            'No accounts saved. Save the current account first?',
-            'Save Current Account',
-          );
-          if (action) {
-            vscode.commands.executeCommand('sidekick.addAccount');
-          }
-          return;
-        }
-
-        const active = accountService.getActiveAccount('codex');
-        const items = accounts.map((account) => ({
-          label: `$(account) ${account.label ?? account.id}`,
-          description: account.email ?? undefined,
-          detail: account.id === active?.id ? '$(check) Active' : account.metadata?.authMode,
-          accountId: account.id,
-        }));
-
-        const picked = await vscode.window.showQuickPick(items, {
-          placeHolder: 'Select a Codex account to switch to',
-        });
-        if (!picked) return;
-
-        const result = await accountService.switchToAccount('codex', picked.accountId);
-        if (result.success) {
-          const entry = accounts.find((account) => account.id === picked.accountId);
-          vscode.window.showInformationMessage(
-            `Switched to ${entry?.label ?? entry?.email ?? 'Codex account'}`,
-          );
-          if (result.warning) vscode.window.showWarningMessage(result.warning);
-        } else {
-          vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
-        }
-      } else {
-        const accounts = accountService.listAccounts('claude-code');
-        if (accounts.length === 0) {
-          const action = await vscode.window.showInformationMessage(
-            'No accounts saved. Save the current account first?',
-            'Save Current Account',
-          );
-          if (action) {
-            vscode.commands.executeCommand('sidekick.addAccount');
-          }
-          return;
-        }
-
-        const active = accountService.getActiveAccount('claude-code');
-        const items = accounts.map((account) => ({
-          label: `$(account) ${account.label ?? account.email}`,
-          description: account.label ? account.email : undefined,
-          detail: account.uuid === active?.uuid ? '$(check) Active' : undefined,
-          accountId: account.uuid,
-        }));
-
-        const picked = await vscode.window.showQuickPick(items, {
-          placeHolder: 'Select a Claude account to switch to',
-        });
-        if (!picked) return;
-
-        const result = await accountService.switchToAccount('claude-code', picked.accountId);
-        if (result.success) {
-          const entry = accounts.find((account) => account.uuid === picked.accountId);
-          vscode.window.showInformationMessage(
-            `Switched to ${entry?.label ?? entry?.email ?? 'Claude account'}`,
-          );
-          if (result.warning) vscode.window.showWarningMessage(result.warning);
-        } else {
-          vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
-        }
-      }
-    }),
-
-    vscode.commands.registerCommand('sidekick.switchAnyAccount', async () => {
-      const all = accountService.listAllAccounts();
-      const items = [
-        ...all.claude.map((account) => ({
-          label: `$(account) ${account.label ?? account.email}`,
-          description: 'Claude',
-          detail:
-            account.uuid === all.activeByProvider['claude-code']
-              ? '$(check) Active'
-              : account.email,
-          providerId: 'claude-code' as const,
-          accountId: account.uuid,
-        })),
-        ...all.codex.map((account) => ({
-          label: `$(account) ${account.label ?? account.id}`,
-          description: 'Codex',
-          detail:
-            account.id === all.activeByProvider.codex
-              ? '$(check) Active'
-              : (account.email ?? account.metadata?.authMode),
-          providerId: 'codex' as const,
-          accountId: account.id,
-        })),
-      ];
-      if (items.length === 0) {
-        vscode.window.showInformationMessage('No accounts saved.');
-        return;
-      }
-
-      const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select an account to switch to',
-      });
-      if (!picked) return;
-
-      const result = await accountService.switchManagedAccount(picked.providerId, picked.accountId);
-      if (!result.success) {
-        vscode.window.showErrorMessage(`Account switch failed: ${result.error}`);
-        return;
-      }
-      vscode.window.showInformationMessage(
-        `Switched to ${picked.label.replace('$(account) ', '')}`,
-      );
-      if (result.warning) vscode.window.showWarningMessage(result.warning);
-    }),
-
-    vscode.commands.registerCommand('sidekick.signInAccount', async () => {
-      const providerPick = await vscode.window.showQuickPick(
-        [
-          { label: 'Claude', providerId: 'claude-code' as const },
-          { label: 'Codex', providerId: 'codex' as const },
-        ],
-        { placeHolder: 'Select provider to sign in' },
-      );
-      if (!providerPick) return;
-
-      const label = await vscode.window.showInputBox({
-        prompt: `Label for this ${providerPick.label} account`,
-        placeHolder: 'Work, Personal, Client',
-        ignoreFocusOut: true,
-        validateInput: (value) => (value.trim() ? null : 'A label is required.'),
-      });
-      if (label === undefined) return;
-
-      await runTerminalAccountLogin(providerPick.providerId, label.trim());
-    }),
-
-    vscode.commands.registerCommand('sidekick.addAccount', async () => {
-      const managedProvider = getManagedAccountProvider();
-      if (!managedProvider) {
-        vscode.window.showInformationMessage(
-          'Account saving is available when the inference provider is Claude Max or Codex.',
-        );
-        return;
-      }
-
-      if (managedProvider === 'codex') {
-        const label = await vscode.window.showInputBox({
-          prompt: 'Label for this Codex account (e.g., "Work", "Personal")',
-          placeHolder: 'Required label',
-          ignoreFocusOut: true,
-          validateInput: (value) =>
-            value.trim() ? null : 'A label is required for Codex accounts.',
-        });
-        if (label === undefined) return;
-
-        const result = await accountService.addCurrentAccount('codex', label.trim());
-        if (!result.success) {
-          vscode.window.showErrorMessage(`Failed to save Codex account: ${result.error}`);
-          return;
-        }
-
-        if (result.needsLogin && result.profileId && result.codexHome) {
-          const terminal = vscode.window.createTerminal({
-            name: `Sidekick Codex Login (${label.trim()})`,
-            env: { CODEX_HOME: result.codexHome },
-          });
-
-          const closeDisposable = vscode.window.onDidCloseTerminal(async (closed) => {
-            if (closed !== terminal) return;
-            closeDisposable.dispose();
-
-            const finalized = await accountService.finalizeCodexAccount(result.profileId!);
-            if (!finalized.success) {
-              vscode.window.showErrorMessage(
-                `Failed to finalize Codex account: ${finalized.error}`,
-              );
-              return;
-            }
-
-            try {
-              await restartCodexMonitoring();
-            } catch (err) {
-              logError('Failed to restart Codex monitoring after account setup', err);
-            }
-            dashboardProvider?.refreshSessionView();
-            vscode.window.showInformationMessage(`Codex account "${label.trim()}" saved.`);
-          });
-          context.subscriptions.push(closeDisposable);
-
-          terminal.show();
-          terminal.sendText('codex login', true);
-          vscode.window.showInformationMessage(
-            'Complete the Codex login in the terminal. Sidekick will save the profile when the terminal closes.',
-          );
-          return;
-        }
-
-        vscode.window.showInformationMessage(`Codex account "${label.trim()}" saved.`);
-        return;
-      }
-
-      const label = await vscode.window.showInputBox({
-        prompt: 'Optional label for this account (e.g., "Work", "Personal")',
-        placeHolder: 'Leave empty for no label',
-      });
-      if (label === undefined) return;
-
-      const result = await accountService.addCurrentAccount('claude-code', label || undefined);
-      if (result.success) {
-        vscode.window.showInformationMessage('Current Claude account saved.');
-      } else {
-        vscode.window.showErrorMessage(`Failed to save account: ${result.error}`);
-      }
-    }),
-
-    vscode.commands.registerCommand('sidekick.removeAccount', async () => {
-      const managedProvider = getManagedAccountProvider();
-      if (!managedProvider) {
-        vscode.window.showInformationMessage(
-          'Account removal is available when the inference provider is Claude Max or Codex.',
-        );
-        return;
-      }
-
-      const items =
-        managedProvider === 'codex'
-          ? accountService.listAccounts('codex').map((account) => ({
-              label: account.label ?? account.id,
-              description: account.email ?? undefined,
-              accountId: account.id,
-            }))
-          : accountService.listAccounts('claude-code').map((account) => ({
-              label: account.label ?? account.email,
-              description: account.label ? account.email : undefined,
-              accountId: account.uuid,
-            }));
-
-      if (items.length === 0) {
-        vscode.window.showInformationMessage('No accounts saved.');
-        return;
-      }
-
-      const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select an account to remove',
-      });
-      if (!picked) return;
-
-      const confirm = await vscode.window.showWarningMessage(
-        `Remove account "${picked.label}"? This deletes backed-up credentials.`,
-        { modal: true },
-        'Remove',
-      );
-      if (confirm !== 'Remove') return;
-
-      const result = accountService.removeAccount(managedProvider, picked.accountId);
-      if (result.success) {
-        vscode.window.showInformationMessage('Account removed.');
-      } else {
-        vscode.window.showErrorMessage(`Failed to remove account: ${result.error}`);
-      }
-    }),
-  );
+  registerAccountCommands(context, {
+    accountService,
+    loginRunner: accountLoginRunner,
+    getInferenceProviderId: () => authService?.getProviderId() ?? null,
+  });
   log('Multi-account service initialized');
 
   // Register inline completion provider using CompletionService

@@ -30,6 +30,8 @@ interface StatusBarProps {
   mouseEnabled?: boolean;
   /** Data-source health badge, or null when everything is healthy and fresh. */
   dataBadge?: StatusBadge | null;
+  /** Active account of the monitored provider, coloured by credential health. */
+  activeAccount?: { label: string; color: 'green' | 'yellow' | 'red' | 'gray' } | null;
 }
 
 export function StatusBar({
@@ -47,6 +49,7 @@ export function StatusBar({
   openaiStatus,
   mouseEnabled,
   dataBadge,
+  activeAccount,
 }: StatusBarProps): React.ReactElement {
   const evtLabel = eventCount > 0 ? `${eventCount} events` : 'waiting...';
 
@@ -85,6 +88,14 @@ export function StatusBar({
           <>
             <Text dimColor> {'\u2502'} </Text>
             <Text color="cyan">{providerName}</Text>
+          </>
+        )}
+        {activeAccount && (
+          <>
+            <Text dimColor> {'\u2502'} </Text>
+            <Text color={activeAccount.color}>
+              {'\u2394'} {activeAccount.label}
+            </Text>
           </>
         )}
         {permissionMode && permissionMode !== 'default' && (

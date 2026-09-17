@@ -128,18 +128,20 @@ describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
 
     const result = await ensureDefaultAccounts();
 
-    expect(result).toEqual({ claude: 'registered', codex: 'registered' });
+    expect(result).toMatchObject({ claude: 'registered', codex: 'registered' });
     expect(getActiveSavedAccount('claude-code')).toEqual(
       expect.objectContaining({
         id: 'claude-1',
-        label: 'Default',
+        label: 'claude@example.com',
         email: 'claude@example.com',
+        metadata: expect.objectContaining({ origin: 'live-sync' }),
       }),
     );
     expect(getActiveCodexAccount()).toEqual(
       expect.objectContaining({
-        label: 'Default',
+        label: 'codex@example.com',
         email: 'codex@example.com',
+        metadata: expect.objectContaining({ origin: 'live-sync' }),
       }),
     );
   });
@@ -154,8 +156,8 @@ describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
     const profileDirs = countCodexProfileDirs();
     const second = await ensureDefaultAccounts();
 
-    expect(first).toEqual({ claude: 'registered', codex: 'registered' });
-    expect(second).toEqual({ claude: 'skipped', codex: 'skipped' });
+    expect(first).toMatchObject({ claude: 'registered', codex: 'registered' });
+    expect(second).toMatchObject({ claude: 'skipped', codex: 'skipped' });
     expect(listAccounts()).toHaveLength(1);
     expect(listCodexAccounts()).toHaveLength(1);
     expect(getActiveSavedAccount('claude-code')?.id).toBe(activeClaudeId);
@@ -168,7 +170,7 @@ describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
 
     const result = await ensureDefaultAccounts();
 
-    expect(result).toEqual({ claude: 'registered', codex: 'skipped' });
+    expect(result).toMatchObject({ claude: 'registered', codex: 'skipped' });
     expect(listAccounts()).toHaveLength(1);
     expect(listCodexAccounts()).toHaveLength(0);
   });
@@ -178,12 +180,12 @@ describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
 
     const result = await ensureDefaultAccounts();
 
-    expect(result).toEqual({ claude: 'skipped', codex: 'registered' });
+    expect(result).toMatchObject({ claude: 'skipped', codex: 'registered' });
     expect(listAccounts()).toHaveLength(0);
     expect(listCodexAccounts()).toHaveLength(1);
   });
 
-  it('does not overwrite existing active provider accounts', async () => {
+  it('registers new live logins alongside existing saved accounts and points at them', async () => {
     const existing: SavedAccountRegistry = {
       version: 2,
       activeByProvider: {
@@ -214,12 +216,17 @@ describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
 
     const result = await ensureDefaultAccounts();
 
-    expect(result).toEqual({ claude: 'skipped', codex: 'skipped' });
-    expect(getActiveSavedAccount('claude-code')?.id).toBe('claude-existing');
-    expect(getActiveCodexAccount()?.id).toBe('codex-existing');
+    // The live logins are what the CLIs use right now: sidekick learns them
+    // (so the user can switch back later) and the active pointer follows
+    // reality; the previously saved accounts stay saved.
+    expect(result).toMatchObject({ claude: 'registered', codex: 'registered' });
+    expect(getActiveSavedAccount('claude-code')?.id).toBe('claude-new');
+    expect(getActiveCodexAccount()?.email).toBe('new-codex@example.com');
+    expect(listAccounts()).toHaveLength(2);
+    expect(listCodexAccounts()).toHaveLength(2);
   });
 
-  it('logs and swallows registration failures', async () => {
+  it('keeps an unmatched saved profile and registers the live login beside it', async () => {
     const existing: SavedAccountRegistry = {
       version: 2,
       activeByProvider: {
@@ -241,8 +248,10 @@ describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
 
     const result = await ensureDefaultAccounts({ logger });
 
-    expect(result).toEqual({ claude: 'skipped', codex: 'error' });
-    expect(logger).toHaveBeenCalledWith(expect.stringContaining('Codex'), expect.anything());
+    expect(result).toMatchObject({ claude: 'skipped', codex: 'registered' });
+    expect(listCodexAccounts()).toHaveLength(2);
+    expect(getActiveCodexAccount()?.email).toBe('codex@example.com');
+    expect(logger).not.toHaveBeenCalled();
   });
 
   it('never runs a synchronous child process on the async bootstrap path', async () => {

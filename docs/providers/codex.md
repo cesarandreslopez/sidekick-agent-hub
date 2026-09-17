@@ -45,32 +45,35 @@ Sidekick supports multiple Codex accounts with isolated profiles — each profil
 
 Each Codex profile stores backed-up credentials in `~/.config/sidekick/accounts/codex/profiles/{profileId}/codex-home/`. When you switch profiles, Sidekick first syncs the live (rotated) tokens from `~/.codex/auth.json` back into the matching profile backup, then atomically swaps the target profile's `auth.json` into the system `~/.codex/` home — the same pattern used for Claude Code account switching. The Codex CLI always runs against `~/.codex/`, so every codex terminal picks up the switch, not just the ones Sidekick launches.
 
-Live credentials are never overwritten with a staler copy of the same account — Codex rotates refresh tokens, and resurrecting an old one would permanently invalidate the login. Installs created under the older per-profile-`CODEX_HOME` model are migrated automatically on first start; unrecognized live credentials are stashed as a new profile, never dropped. Account add, switch, and remove surface warnings when something needs attention: a running codex process that should be restarted, stale credentials, or credentials held in the OS keyring that Sidekick cannot swap.
+Live credentials are never overwritten with a staler copy of the same account — Codex rotates refresh tokens, and resurrecting an old one would permanently invalidate the login. Installs created under the older per-profile-`CODEX_HOME` model are migrated automatically on first start; a live login Sidekick has not seen is registered as a profile labelled with its email, and duplicate profiles for one workspace are merged (the older profile keeps its label; the other is stashed, never deleted). Account add, switch, and remove surface warnings when something needs attention: a running codex process that should be restarted, stale credentials, or credentials held in the OS keyring that Sidekick cannot swap.
 
-!!! tip "First-run default"
+!!! tip "Registered automatically"
 
-    If `~/.codex/auth.json` already exists when Sidekick first starts, the extension and CLI auto-register it as a **"Default"** Codex profile — no manual `Sidekick: Add Account` / `sidekick account --provider codex --add --label …` is required to get started. Additional Codex profiles still go through the flows below. Manually saved profiles are never overwritten by the bootstrap.
+    The login in `~/.codex/auth.json` is registered under its email when Sidekick starts, and again whenever a native `codex login` changes it. Additional profiles go through the flows below; the rotated tokens of the live login are folded back into its profile continuously.
 
 ### VS Code
 
-1. Set your inference provider to `codex`
-2. Run **`Sidekick: Add Account`** — enter a label (e.g., "Work")
-3. A terminal opens for `codex login` — complete the login flow
-4. Sidekick auto-finalizes the profile when the terminal closes
-5. Repeat for additional accounts
-6. Run **`Sidekick: Switch Account`** to switch via QuickPick
+1. Open the **Accounts** view in the Agent Hub sidebar (any inference provider)
+2. Run **Sidekick: Add Account…**, choose Codex, and complete `codex login` in the terminal Sidekick opens; the profile is saved as soon as the isolated home authenticates
+3. Switch with the arrows icon on an account or from the status bar quick pick; **Undo** reverts
 
-Account actions are also available from the status bar menu — click the account indicator to switch or add accounts.
+A switch warns when `codex` sessions or the Codex desktop app are running (they share `~/.codex` and pick up the switch after a restart) and refuses accounts whose stored login is known to be dead, pointing at **Sign In Again** instead.
 
 ### CLI
 
 ```bash
-sidekick account --provider codex                    # list Codex accounts
-sidekick account --provider codex --add --label Work # prepare profile + login
-sidekick account --provider codex --switch           # switch to next account
-sidekick account --provider codex --switch-to Work   # switch by label, email, or ID
-sidekick account --provider codex --remove Work      # remove a profile
+sidekick accounts list --provider codex             # Codex accounts with health
+sidekick accounts add --provider codex --label Work # isolated codex login
+sidekick accounts switch Work                       # switch by label, email, or id
+sidekick accounts shell Work -- codex               # one codex session as Work
+sidekick accounts doctor                            # includes the credential-store check
 ```
+
+!!! warning "Keyring mode is not switchable"
+
+    Codex 0.140+ can keep its login in the OS keyring (`cli_auth_credentials_store = "keyring"` or `"auto"`). Sidekick can only switch file-based logins: `sidekick accounts add` refuses up front, `doctor` reports it, and the fix is `cli_auth_credentials_store = "file"` in `~/.codex/config.toml` followed by `codex login`.
+
+The full guide is [Account Switcher](../features/account-switcher.md).
 
 ### Quota Snapshots
 

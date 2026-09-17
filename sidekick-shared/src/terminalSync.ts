@@ -1,16 +1,11 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getAccountsDir, type AccountProviderId } from './accountRegistry';
+import type { AccountProviderId } from './accountRegistry';
+import { atomicWriteFileSync } from './writers/atomic';
 
-const HOOK_START = '# >>> sidekick >>>';
-const HOOK_END = '# <<< sidekick <<<';
 const LAUNCHER_MARKER = '# sidekick-launcher v1';
 const LAUNCHER_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-function providerPointerName(provider: AccountProviderId): 'claude' | 'codex' {
-  return provider === 'claude-code' ? 'claude' : 'codex';
-}
 
 function providerEnvVar(provider: AccountProviderId): 'CLAUDE_CONFIG_DIR' | 'CODEX_HOME' {
   return provider === 'claude-code' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME';
@@ -18,120 +13,6 @@ function providerEnvVar(provider: AccountProviderId): 'CLAUDE_CONFIG_DIR' | 'COD
 
 function providerBinary(provider: AccountProviderId): 'claude' | 'codex' {
   return provider === 'claude-code' ? 'claude' : 'codex';
-}
-
-function getActiveProfilesDir(): string {
-  return path.join(getAccountsDir(), 'active');
-}
-
-function getActiveProfilePath(provider: AccountProviderId): string {
-  return path.join(getActiveProfilesDir(), `${providerPointerName(provider)}.profile`);
-}
-
-function atomicWriteFile(filePath: string, content: string, mode = 0o600): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  const tmp = `${filePath}.tmp`;
-  try {
-    fs.writeFileSync(tmp, content, { encoding: 'utf8', mode });
-    fs.renameSync(tmp, filePath);
-  } catch (err) {
-    try {
-      fs.rmSync(tmp, { force: true });
-    } catch {
-      /* nothing to clean up */
-    }
-    throw err;
-  }
-}
-
-export function setTerminalActiveProfile(provider: AccountProviderId, home: string | null): void {
-  const pointerPath = getActiveProfilePath(provider);
-  if (home === null) {
-    fs.rmSync(pointerPath, { force: true });
-    return;
-  }
-  atomicWriteFile(pointerPath, `${home}\n`);
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function buildShellHookBlock(): string {
-  const claudePointer = getActiveProfilePath('claude-code');
-  const codexPointer = getActiveProfilePath('codex');
-  return [
-    HOOK_START,
-    'sidekick_sync() {',
-    `  if [ -r ${shellQuote(claudePointer)} ]; then export CLAUDE_CONFIG_DIR="$(cat ${shellQuote(claudePointer)})"; else unset CLAUDE_CONFIG_DIR; fi`,
-    `  if [ -r ${shellQuote(codexPointer)} ]; then export CODEX_HOME="$(cat ${shellQuote(codexPointer)})"; else unset CODEX_HOME; fi`,
-    '}',
-    'sidekick_sync >/dev/null 2>&1',
-    HOOK_END,
-    '',
-  ].join('\n');
-}
-
-function getShellRcPaths(): string[] {
-  const zshrc = path.join(os.homedir(), '.zshrc');
-  const bashrc = path.join(os.homedir(), '.bashrc');
-  const existing = [zshrc, bashrc].filter((filePath) => fs.existsSync(filePath));
-  if (existing.length > 0) return existing;
-
-  const shell = path.basename(process.env.SHELL ?? 'zsh');
-  return shell === 'bash' ? [bashrc] : [zshrc];
-}
-
-function resolveShellRcTarget(filePath: string): { filePath: string; mode: number } {
-  if (!fs.existsSync(filePath)) return { filePath, mode: 0o600 };
-  const realPath = fs.realpathSync(filePath);
-  return { filePath: realPath, mode: fs.statSync(realPath).mode & 0o777 };
-}
-
-function stripShellHook(content: string): string {
-  const pattern = new RegExp(`${HOOK_START}[\\s\\S]*?${HOOK_END}\\n?`, 'g');
-  return content.replace(pattern, '').replace(/\n{3,}/g, '\n\n');
-}
-
-function installHookInFile(filePath: string): void {
-  const target = resolveShellRcTarget(filePath);
-  const existing = fs.existsSync(target.filePath) ? fs.readFileSync(target.filePath, 'utf8') : '';
-  const cleaned = stripShellHook(existing).replace(/\s*$/, '');
-  const next = cleaned ? `${cleaned}\n\n${buildShellHookBlock()}` : buildShellHookBlock();
-  atomicWriteFile(target.filePath, next, target.mode);
-}
-
-export function installShellHook(): void {
-  for (const rcPath of getShellRcPaths()) {
-    installHookInFile(rcPath);
-  }
-}
-
-function uninstallHookInFile(filePath: string): void {
-  if (!fs.existsSync(filePath)) return;
-  const target = resolveShellRcTarget(filePath);
-  atomicWriteFile(
-    target.filePath,
-    stripShellHook(fs.readFileSync(target.filePath, 'utf8')),
-    target.mode,
-  );
-}
-
-export function uninstallShellHook(): void {
-  for (const rcPath of getShellRcPaths()) {
-    uninstallHookInFile(rcPath);
-  }
-}
-
-export function isShellHookInstalled(): boolean {
-  return getShellRcPaths().some((rcPath) => {
-    try {
-      const content = fs.readFileSync(rcPath, 'utf8');
-      return content.includes(HOOK_START) && content.includes(HOOK_END);
-    } catch {
-      return false;
-    }
-  });
 }
 
 function getLauncherDir(): string {
@@ -172,6 +53,10 @@ function assertNoLauncherCollision(name: string, targetPath: string): void {
   }
 }
 
+/**
+ * Write a POSIX launcher script that runs the provider CLI against a profile
+ * home. Unix only; on Windows use `sidekick accounts env --shell powershell`.
+ */
 export function writeLauncher(
   name: string,
   provider: AccountProviderId,
@@ -187,11 +72,12 @@ export function writeLauncher(
     '#!/bin/sh',
     LAUNCHER_MARKER,
     `export ${envVar}=${JSON.stringify(profileHome)}`,
+    ...(provider === 'claude-code' ? ['unset CLAUDE_SECURESTORAGE_CONFIG_DIR'] : []),
     `exec ${binary} "$@"`,
     '',
   ].join('\n');
 
-  atomicWriteFile(launcherPath, script, 0o755);
+  atomicWriteFileSync(launcherPath, script, 0o755);
 }
 
 export function removeLauncher(name: string): void {

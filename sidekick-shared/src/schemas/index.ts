@@ -122,6 +122,19 @@ export {
   accountEntrySchema,
   savedAccountProfileSchema,
   listAllAccountsResultSchema,
+  accountHealthStateSchema,
+  accountHealthSourceSchema,
+  accountHealthSidecarSchema,
+  accountHealthSchema,
+  accountViewSchema,
+  runningProcessSchema,
+  accountConsumerKindSchema,
+  runningAccountConsumerSchema,
+  switchAccountResultSchema,
+  lastSwitchRecordSchema,
+  providerSyncReportSchema,
+  syncReportSchema,
+  accountLaunchEnvSchema,
 } from './accountManager';
 export type { AccountEntry, AccountManagerResult } from '../accounts';
 export type { AccountProviderId, SavedAccountProfile } from '../accountRegistry';
@@ -130,6 +143,16 @@ export type {
   BeginAccountLoginResult,
   ListAllAccountsResult,
 } from '../accountManager';
+export type {
+  AccountHealth,
+  AccountHealthSidecar,
+  AccountHealthState,
+  AccountView,
+} from '../accountHealth';
+export type { LastSwitchRecord, SwitchAccountResult } from '../accountSwitch';
+export type { ProviderSyncReport, SyncReport } from '../accountSyncTypes';
+export type { AccountLaunchEnv } from '../accountLaunch';
+export type { RunningAccountConsumer, RunningProcess } from '../processDetection';
 
 export {
   assistantTurnEventSchema,

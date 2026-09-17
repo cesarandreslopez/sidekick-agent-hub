@@ -45,6 +45,7 @@ import {
   resolveActiveCodexAccount,
   reconcileCodexAuthState,
 } from './codexProfiles';
+import { getCodexProfilesDir } from './codexPaths';
 
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -100,6 +101,9 @@ function writeSourceCodexAuth(email = 'codex@example.com'): void {
 
 type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
+const PS_WITHOUT_CODEX = '  100 /bin/zsh -zsh\n  200 /usr/bin/node node server.js\n';
+const PS_WITH_CODEX = `${PS_WITHOUT_CODEX}  300 /opt/homebrew/bin/codex codex\n`;
+
 function mockCodexCli({
   loggedIn,
   pgrepHit = false,
@@ -108,8 +112,13 @@ function mockCodexCli({
   pgrepHit?: boolean;
 }): void {
   mockSpawnSync.mockImplementation((command: unknown) => {
-    if (command === 'pgrep') {
-      return { status: pgrepHit ? 0 : 1, stdout: '', stderr: '', error: undefined };
+    if (command === 'ps') {
+      return {
+        status: 0,
+        stdout: pgrepHit ? PS_WITH_CODEX : PS_WITHOUT_CODEX,
+        stderr: '',
+        error: undefined,
+      };
     }
     return {
       status: loggedIn ? 0 : 1,
@@ -120,9 +129,8 @@ function mockCodexCli({
   });
   mockExecFile.mockImplementation(
     (command: unknown, _args: unknown, _options: unknown, callback: ExecFileCallback) => {
-      if (command === 'pgrep') {
-        if (pgrepHit) callback(null, '', '');
-        else callback(Object.assign(new Error('no match'), { code: 1 }), '', '');
+      if (command === 'ps') {
+        callback(null, pgrepHit ? PS_WITH_CODEX : PS_WITHOUT_CODEX, '');
         return;
       }
       if (loggedIn) callback(null, 'Logged in using ChatGPT\n', '');
@@ -275,8 +283,8 @@ describe('codexProfiles', () => {
       );
       expect(mockSpawnSync).not.toHaveBeenCalled();
       expect(mockExecFile).toHaveBeenCalledWith(
-        'pgrep',
-        ['-x', 'codex'],
+        'ps',
+        ['-axo', 'pid=,comm=,args='],
         expect.objectContaining({ timeout: 4000 }),
         expect.any(Function),
       );
@@ -403,16 +411,26 @@ describe('codexProfiles', () => {
       expect(getActiveCodexAccount()?.id).toBe(work);
     });
 
-    it('stashes live credentials that match no saved account', () => {
+    it('registers live credentials that match no saved account instead of stashing them', () => {
       const { work } = setupTwoAccounts();
       writeSystemAuth(makeAuthJson('stranger@example.com', 'ws-stranger'));
 
       const result = switchToCodexAccount(work);
 
       expect(result.success).toBe(true);
-      expect(result.warning).toMatch(/stashed/i);
-      const stashDir = path.join(tmpDir, 'accounts', 'codex', 'stash');
-      expect(fs.readdirSync(stashDir)).toHaveLength(1);
+      expect(result.warning ?? '').not.toMatch(/stashed/i);
+      // The stranger login is what codex was using: sidekick learns it so the
+      // user can switch back, labelled by email, and keeps its rotated token.
+      const learned = listCodexAccounts().find(
+        (account) => account.email === 'stranger@example.com',
+      );
+      expect(learned).toEqual(
+        expect.objectContaining({
+          label: 'stranger@example.com',
+          metadata: expect.objectContaining({ workspaceId: 'ws-stranger', origin: 'live-sync' }),
+        }),
+      );
+      expect(fs.existsSync(path.join(tmpDir, 'accounts', 'codex', 'stash'))).toBe(false);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
         fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
       );
@@ -507,23 +525,27 @@ describe('codexProfiles', () => {
       const result = switchToCodexAccount(work);
 
       expect(result.success).toBe(true);
-      expect(result.warning).toMatch(/codex process/i);
+      expect(result.warning).toMatch(/running codex sessions/i);
+      expect(result.runningConsumers).toEqual([
+        expect.objectContaining({ kind: 'codex-cli', pids: [300], switched: true }),
+      ]);
     });
 
-    it('bounds pgrep probes and ignores killed running-process checks', () => {
+    it('bounds process probes and ignores killed running-process checks', () => {
       const { work } = setupTwoAccounts();
       mockSpawnSync.mockImplementation((command: unknown) => {
-        if (command === 'pgrep') return timeoutSpawnResult();
+        if (command === 'ps') return timeoutSpawnResult();
         return { status: 1, stdout: '', stderr: '', error: undefined };
       });
 
       const result = switchToCodexAccount(work);
 
       expect(result.success).toBe(true);
-      expect(result.warning ?? '').not.toMatch(/codex process/i);
+      expect(result.warning ?? '').not.toMatch(/running codex/i);
+      expect(result.runningConsumers).toEqual([]);
       expect(mockSpawnSync).toHaveBeenCalledWith(
-        'pgrep',
-        ['-x', 'codex'],
+        'ps',
+        ['-axo', 'pid=,comm=,args='],
         expect.objectContaining({
           encoding: 'utf8',
           timeout: 4000,
@@ -739,5 +761,97 @@ describe('codexProfiles', () => {
 
       expect(resolved).toEqual({ source: 'none' });
     });
+  });
+});
+
+describe('codexProfiles add-time safeguards', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-codex-add-'));
+    mockSpawnSync.mockReset();
+    mockExecFile.mockReset();
+    mockCodexCli({ loggedIn: false });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('refuses to prepare a profile when codex keeps its login in the OS keyring', () => {
+    fs.mkdirSync(systemHome(), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemHome(), 'config.toml'),
+      'cli_auth_credentials_store = "keyring"\n',
+    );
+
+    const result = prepareCodexAccount('Work');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/cli_auth_credentials_store = "file"/);
+    expect(listCodexAccounts()).toHaveLength(0);
+  });
+
+  it('forces file-based credential storage in the isolated profile config', () => {
+    fs.mkdirSync(systemHome(), { recursive: true });
+    fs.writeFileSync(
+      path.join(systemHome(), 'config.toml'),
+      'model = "gpt-5"\ncli_auth_credentials_store = "auto"\n',
+    );
+    writeSystemAuth(makeAuthJson('work@example.com', 'ws-work'));
+
+    const result = prepareCodexAccount('Work');
+
+    expect(result.success).toBe(true);
+    expect(
+      fs.readFileSync(path.join(getCodexProfileHome(result.profileId!), 'config.toml'), 'utf8'),
+    ).toBe('model = "gpt-5"\ncli_auth_credentials_store = "file"\n');
+  });
+
+  it('folds a second add of the same login into the existing profile instead of duplicating it', () => {
+    writeSourceCodexAuth('work@example.com');
+    const first = prepareCodexAccount('Work');
+    expect(first.success).toBe(true);
+
+    const rotated = makeAuthJson('work@example.com', 'ws-123', {
+      last_refresh: '2026-09-01T00:00:00Z',
+    });
+    writeSystemAuth(rotated);
+    const second = prepareCodexAccount('Work again');
+
+    expect(second).toMatchObject({ success: true, profileId: first.profileId, needsLogin: false });
+    expect(second.warning).toMatch(/already saved as "Work"/);
+    expect(listCodexAccounts()).toHaveLength(1);
+    expect(
+      fs.readFileSync(path.join(getCodexProfileHome(first.profileId!), 'auth.json'), 'utf8'),
+    ).toBe(rotated);
+    expect(fs.readdirSync(getCodexProfilesDir())).toHaveLength(1);
+  });
+
+  it('refuses to switch to a stored login whose backup is known to be dead and rolls back on a failed verification', () => {
+    const { work } = setupTwoAccounts();
+    fs.mkdirSync(path.dirname(getCodexProfileHome(work)), { recursive: true });
+    fs.writeFileSync(
+      path.join(path.dirname(getCodexProfileHome(work)), 'health.json'),
+      JSON.stringify({
+        version: 1,
+        capturedAt: Date.now(),
+        accessExpiresAt: 0,
+        refreshExpiresAt: 1,
+        source: 'login',
+      }),
+    );
+    // Codex health is re-derived from the file on a store probe, so seed an
+    // auth file with an expired access token and an ancient last_refresh.
+    fs.writeFileSync(
+      path.join(getCodexProfileHome(work), 'auth.json'),
+      makeAuthJson('work@example.com', 'ws-work', { last_refresh: '2020-01-01T00:00:00Z' }),
+    );
+
+    const result = switchToCodexAccount(work);
+
+    // Stale, not provably dead: codex may still refresh it, so the switch goes
+    // through with a warning rather than a refusal.
+    expect(result).toMatchObject({ success: true, verified: true });
+    expect(result.warning).toMatch(/not been refreshed in over 8 days/);
+    expect(result.health?.state).toBe('expiring');
   });
 });

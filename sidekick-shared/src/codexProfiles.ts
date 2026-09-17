@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { execFile, spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
@@ -25,34 +24,59 @@ import type {
   SavedAccountProfile,
 } from './accountRegistry';
 import type { AccountManagerResult } from './accounts';
+import {
+  identitiesMatch,
+  parseAuthJson,
+  readAuthIdentityFromRaw,
+  readLastRefresh,
+  STALE_AUTH_THRESHOLD_MS,
+  type CodexAuthIdentity,
+} from './codexAuth';
+import {
+  ensureCodexProfileDirs,
+  forceFileCredentialStore,
+  getCodexCredentialStoreMode,
+  getCodexProfileDir,
+  getCodexProfileHome,
+  getCodexProfileStatePath,
+  getCodexProfilesDir,
+  getDefaultSystemCodexHome,
+  getExplicitCodexHome,
+  getSystemCodexHome,
+  readFileOrNull,
+} from './codexPaths';
+import {
+  getAccountHealth,
+  writeCodexHealthSidecar,
+  type AccountHealthSource,
+} from './accountHealth';
+import {
+  finishSwitchResult,
+  switchFailure,
+  writeLastSwitch,
+  type SwitchAccountOptions,
+  type SwitchAccountResult,
+} from './accountSwitch';
+import { emptyProviderSyncReport, type ProviderSyncReport } from './accountSyncTypes';
+import {
+  detectRunningAccountConsumers,
+  detectRunningAccountConsumersSync,
+  type RunningAccountConsumer,
+} from './processDetection';
+import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
+
+export {
+  getCodexProfilesDir,
+  getCodexProfileHome,
+  getSystemCodexHome,
+  getCodexCredentialStoreMode,
+} from './codexPaths';
+export type { CodexCredentialStoreMode } from './codexPaths';
 
 interface PendingCodexProfile {
   label: string;
   addedAt: string;
 }
-
-interface AuthJsonFile {
-  auth_mode?: string;
-  OPENAI_API_KEY?: string;
-  last_refresh?: string;
-  tokens?: {
-    id_token?: string;
-    access_token?: string;
-    refresh_token?: string;
-    account_id?: string;
-  };
-}
-
-interface CodexAuthIdentity {
-  email?: string;
-  workspaceId?: string;
-  planType?: string;
-  authMode: 'chatgpt' | 'api-key';
-}
-
-// Codex refreshes OAuth tokens at most every 8 days; a stored refresh token
-// older than that may already be rejected by the auth server.
-const STALE_AUTH_THRESHOLD_MS = 8 * 24 * 60 * 60 * 1000;
 
 export interface CodexAccountManagerResult extends AccountManagerResult {
   needsLogin?: boolean;
@@ -60,14 +84,8 @@ export interface CodexAccountManagerResult extends AccountManagerResult {
   codexHome?: string;
 }
 
-function getDefaultSystemCodexHome(): string {
-  return path.join(os.homedir(), '.codex');
-}
-
-function getExplicitCodexHome(): string | null {
-  const explicitHome = process.env.CODEX_HOME?.trim();
-  return explicitHome ? explicitHome : null;
-}
+export const CODEX_KEYRING_FIX_HINT =
+  'Set `cli_auth_credentials_store = "file"` in ~/.codex/config.toml and run `codex login` again.';
 
 function dedupePaths(paths: string[]): string[] {
   const seen = new Set<string>();
@@ -81,10 +99,6 @@ function dedupePaths(paths: string[]): string[] {
   }
 
   return unique;
-}
-
-export function getSystemCodexHome(): string {
-  return getExplicitCodexHome() ?? getDefaultSystemCodexHome();
 }
 
 export function getCodexMonitoringHomes(): string[] {
@@ -102,34 +116,6 @@ export function getCodexMonitoringHomes(): string[] {
   }
 
   return dedupePaths(homes);
-}
-
-export function getCodexProfilesDir(): string {
-  return path.join(getAccountsDir(), 'codex', 'profiles');
-}
-
-function getCodexProfileDir(profileId: string): string {
-  return path.join(getCodexProfilesDir(), profileId);
-}
-
-export function getCodexProfileHome(profileId: string): string {
-  return path.join(getCodexProfileDir(profileId), 'codex-home');
-}
-
-function getCodexProfileStatePath(profileId: string): string {
-  return path.join(getCodexProfileDir(profileId), 'profile.json');
-}
-
-function ensureCodexProfileDirs(profileId: string): void {
-  fs.mkdirSync(getCodexProfileHome(profileId), { recursive: true, mode: 0o700 });
-}
-
-function readFileOrNull(filePath: string): string | null {
-  try {
-    return fs.readFileSync(filePath, 'utf8');
-  } catch {
-    return null;
-  }
 }
 
 function readPendingProfile(profileId: string): PendingCodexProfile | null {
@@ -154,8 +140,14 @@ function copyIfExists(source: string, destination: string): boolean {
   return true;
 }
 
+/**
+ * Copy the live `config.toml` into a profile home, forcing file-based
+ * credential storage so an isolated `codex login` writes `auth.json` (a
+ * keyring entry keyed to the profile home could never be swapped).
+ */
 function copySourceCodexConfig(sourceHome: string, targetHome: string): void {
-  copyIfExists(path.join(sourceHome, 'config.toml'), path.join(targetHome, 'config.toml'));
+  const source = readFileOrNull(path.join(sourceHome, 'config.toml')) ?? '';
+  atomicWriteFile(path.join(targetHome, 'config.toml'), forceFileCredentialStore(source));
 }
 
 function importCurrentCodexAuth(sourceHome: string, targetHome: string): boolean {
@@ -170,71 +162,21 @@ function importCurrentCodexAuth(sourceHome: string, targetHome: string): boolean
   return authCopied || legacyCredsCopied;
 }
 
-function parseJwtPayload<T>(jwt: string): T | null {
-  const parts = jwt.split('.');
-  if (parts.length < 2) return null;
-  try {
-    const payload = Buffer.from(parts[1], 'base64url').toString('utf8');
-    return JSON.parse(payload) as T;
-  } catch {
-    return null;
-  }
-}
-
-function parseAuthJson(raw: string | null): AuthJsonFile | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as AuthJsonFile;
-  } catch {
-    return null;
-  }
-}
-
-function readAuthIdentityFromRaw(raw: string | null): CodexAuthIdentity | null {
-  const parsed = parseAuthJson(raw);
-  if (!parsed) return null;
-
-  const idToken = parsed.tokens?.id_token;
-  const claims = idToken ? parseJwtPayload<Record<string, unknown>>(idToken) : null;
-  const profileClaims = claims?.['https://api.openai.com/profile'] as
-    | Record<string, unknown>
-    | undefined;
-  const authClaims = claims?.['https://api.openai.com/auth'] as Record<string, unknown> | undefined;
-
-  const email =
-    typeof claims?.email === 'string'
-      ? claims.email
-      : typeof profileClaims?.email === 'string'
-        ? profileClaims.email
-        : undefined;
-
-  const workspaceId =
-    typeof authClaims?.chatgpt_account_id === 'string'
-      ? authClaims.chatgpt_account_id
-      : parsed.tokens?.account_id;
-
-  const planType =
-    typeof authClaims?.chatgpt_plan_type === 'string' ? authClaims.chatgpt_plan_type : undefined;
-
-  const authMode = parsed.OPENAI_API_KEY || parsed.auth_mode === 'api_key' ? 'api-key' : 'chatgpt';
-
-  return { email, workspaceId, planType, authMode };
-}
-
-function readLastRefresh(raw: string | null, fallbackPath?: string): number | null {
-  const parsed = parseAuthJson(raw);
-  if (parsed?.last_refresh) {
-    const ts = Date.parse(parsed.last_refresh);
-    if (!Number.isNaN(ts)) return ts;
-  }
-  if (fallbackPath) {
-    try {
-      return fs.statSync(fallbackPath).mtimeMs;
-    } catch {
-      /* fall through */
-    }
-  }
-  return null;
+/**
+ * The single chokepoint for storing a Codex credential in a profile: the raw
+ * `auth.json` bytes (never re-serialized), the legacy `.credentials.json`
+ * when present, and the secret-free health sidecar.
+ */
+export function storeCodexProfileAuth(
+  profileId: string,
+  authRaw: string | null,
+  legacyRaw: string | null,
+  source: AccountHealthSource,
+): void {
+  const profileHome = getCodexProfileHome(profileId);
+  if (authRaw) atomicWriteFile(path.join(profileHome, 'auth.json'), authRaw);
+  if (legacyRaw) atomicWriteFile(path.join(profileHome, '.credentials.json'), legacyRaw);
+  if (authRaw) writeCodexHealthSidecar(profileId, authRaw, source);
 }
 
 function readMetadataFromAuthJson(codexHome: string): AccountIdentityMetadata {
@@ -271,7 +213,10 @@ interface CodexLoginStatus {
 
 const PROBE_TIMEOUT_MS = 4000;
 
-function parseCodexLoginStatusOutput(status: number | null, stdout: string): CodexLoginStatus {
+export function parseCodexLoginStatusOutput(
+  status: number | null,
+  stdout: string,
+): CodexLoginStatus {
   const trimmed = stdout.trim();
   if (status === 0 && /^Logged in/i.test(trimmed)) {
     if (/API key/i.test(trimmed)) {
@@ -290,7 +235,7 @@ function parseCodexLoginStatusOutput(status: number | null, stdout: string): Cod
  * paths must use {@link getCodexLoginStatusAsync} instead — external consumers
  * embed this package in processes where a blocked event loop freezes all IPC.
  */
-function getCodexLoginStatus(codexHome: string): CodexLoginStatus {
+export function getCodexLoginStatus(codexHome: string): CodexLoginStatus {
   try {
     const env = { ...process.env, CODEX_HOME: codexHome };
     const result = spawnSync('codex', ['login', 'status'], {
@@ -306,7 +251,7 @@ function getCodexLoginStatus(codexHome: string): CodexLoginStatus {
   return { loggedIn: false };
 }
 
-function getCodexLoginStatusAsync(codexHome: string): Promise<CodexLoginStatus> {
+export function getCodexLoginStatusAsync(codexHome: string): Promise<CodexLoginStatus> {
   return new Promise((resolve) => {
     try {
       const env = { ...process.env, CODEX_HOME: codexHome };
@@ -323,38 +268,6 @@ function getCodexLoginStatusAsync(codexHome: string): Promise<CodexLoginStatus> 
       );
     } catch {
       resolve({ loggedIn: false });
-    }
-  });
-}
-
-/** Sync sibling of {@link detectRunningCodexProcessAsync}; see the event-loop caveat above. */
-function detectRunningCodexProcess(): boolean {
-  if (process.platform === 'win32') return false;
-  try {
-    return (
-      spawnSync('pgrep', ['-x', 'codex'], {
-        encoding: 'utf8',
-        timeout: PROBE_TIMEOUT_MS,
-        killSignal: 'SIGKILL',
-      }).status === 0
-    );
-  } catch {
-    return false;
-  }
-}
-
-function detectRunningCodexProcessAsync(): Promise<boolean> {
-  if (process.platform === 'win32') return Promise.resolve(false);
-  return new Promise((resolve) => {
-    try {
-      execFile(
-        'pgrep',
-        ['-x', 'codex'],
-        { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, killSignal: 'SIGKILL' },
-        (error) => resolve(!error),
-      );
-    } catch {
-      resolve(false);
     }
   });
 }
@@ -434,6 +347,16 @@ export function resolveSidekickCodexHome(): string {
   return getSystemCodexHome();
 }
 
+function profileIdentity(profile: SavedAccountProfile): {
+  email?: string;
+  workspaceId?: string;
+} {
+  return {
+    email: profile.email ?? profile.metadata?.email,
+    workspaceId: profile.metadata?.workspaceId,
+  };
+}
+
 /**
  * Resolves the *currently logged-in* Codex account for display, preferring the
  * live `auth.json` identity over the saved registry pointer (which only sidekick's
@@ -465,7 +388,7 @@ export function resolveActiveCodexAccount(
         // disk) must never break display, extension activation, or the quota
         // watcher's hot path. We still return the correct live identity below.
         try {
-          setActiveSavedAccount('codex', match.id);
+          setActiveSavedAccount('codex', match.id, { silent: true });
         } catch {
           /* keep going with the live identity */
         }
@@ -501,11 +424,21 @@ export function getCodexExecutionEnv(baseEnv: NodeJS.ProcessEnv = process.env): 
   };
 }
 
+// ── Prepare / finalize (add account) ─────────────────────────────────────
+
 type CodexPrepareStep =
   | { result: CodexAccountManagerResult }
   | { finalize: { profileId: string; codexHome: string } };
 
 type CodexFinalizeStep = { result: CodexAccountManagerResult } | { swap: SavedAccountProfile };
+
+function keyringRefusal(mode: string): CodexAccountManagerResult {
+  return {
+    success: false,
+    needsLogin: false,
+    error: `Codex stores credentials in the OS keyring (cli_auth_credentials_store = "${mode}"); sidekick can only switch file-based logins. ${CODEX_KEYRING_FIX_HINT}`,
+  };
+}
 
 function prepareCodexAccountCore(label: string): CodexPrepareStep {
   const trimmedLabel = label.trim();
@@ -518,6 +451,13 @@ function prepareCodexAccountCore(label: string): CodexPrepareStep {
     return { result: { success: false, error: labelError } };
   }
 
+  const sourceHome = getSystemCodexHome();
+  const storeMode = getCodexCredentialStoreMode(sourceHome);
+  const liveAuthPresent = hasCodexCredentialFiles(sourceHome);
+  if (storeMode === 'keyring' || (storeMode === 'auto' && !liveAuthPresent)) {
+    return { result: keyringRefusal(storeMode) };
+  }
+
   const profileId = randomUUID();
   const codexHome = getCodexProfileHome(profileId);
   ensureCodexProfileDirs(profileId);
@@ -526,11 +466,55 @@ function prepareCodexAccountCore(label: string): CodexPrepareStep {
     addedAt: new Date().toISOString(),
   });
 
-  const sourceHome = getSystemCodexHome();
   copySourceCodexConfig(sourceHome, codexHome);
   const imported = importCurrentCodexAuth(sourceHome, codexHome);
 
   if (imported) {
+    // The live login may already be saved under another profile: fold into it
+    // instead of creating a duplicate seat.
+    const identity = readAuthIdentityFromRaw(readFileOrNull(path.join(codexHome, 'auth.json')));
+    const existing = identity
+      ? findProfileForIdentity(identity, { fallbackToActive: false })
+      : null;
+    if (existing) {
+      try {
+        const liveRefresh = readLastRefresh(readFileOrNull(path.join(codexHome, 'auth.json')));
+        const storedRefresh = readLastRefresh(
+          readFileOrNull(path.join(getCodexProfileHome(existing.id), 'auth.json')),
+        );
+        const storedIsNewer =
+          storedRefresh !== null && liveRefresh !== null && storedRefresh > liveRefresh;
+        if (!storedIsNewer) {
+          storeCodexProfileAuth(
+            existing.id,
+            readFileOrNull(path.join(codexHome, 'auth.json')),
+            readFileOrNull(path.join(codexHome, '.credentials.json')),
+            'login',
+          );
+        }
+      } catch {
+        /* the existing backup stays as it was */
+      }
+      fs.rmSync(getCodexProfileDir(profileId), { recursive: true, force: true });
+      const relabel =
+        existing.metadata?.origin === 'live-sync' && existing.label === existing.email
+          ? {
+              ...existing,
+              label: trimmedLabel,
+              metadata: { ...existing.metadata, origin: 'manual' as const },
+            }
+          : existing;
+      if (relabel !== existing) upsertSavedAccountProfile(relabel);
+      return {
+        result: {
+          success: true,
+          profileId: existing.id,
+          codexHome: getCodexProfileHome(existing.id),
+          needsLogin: false,
+          warning: `This Codex login is already saved as "${relabel.label ?? existing.email ?? existing.id}".`,
+        },
+      };
+    }
     return { finalize: { profileId, codexHome } };
   }
 
@@ -571,18 +555,48 @@ function finalizeCodexAccountCore(
     return { result: { success: false, error: 'Codex profile is not authenticated yet.' } };
   }
 
+  // A fresh isolated login for an account that is already saved: fold into the
+  // existing profile rather than registering a second seat.
+  const authRaw = readFileOrNull(path.join(codexHome, 'auth.json'));
+  const identity = readAuthIdentityFromRaw(authRaw);
+  const existing = identity ? findProfileForIdentity(identity, { fallbackToActive: false }) : null;
+  if (existing && existing.id !== profileId) {
+    storeCodexProfileAuth(
+      existing.id,
+      authRaw,
+      readFileOrNull(path.join(codexHome, '.credentials.json')),
+      'login',
+    );
+    fs.rmSync(getCodexProfileDir(profileId), { recursive: true, force: true });
+    const merged: SavedAccountProfile = {
+      ...existing,
+      label: existing.metadata?.origin === 'live-sync' ? pending.label : existing.label,
+      email: probes.metadata.email ?? existing.email,
+      metadata: { ...existing.metadata, ...probes.metadata, origin: 'login' },
+    };
+    upsertSavedAccountProfile(merged);
+    if (opts.activate === false) return { result: { success: true, profileId: existing.id } };
+    return { swap: merged };
+  }
+
   const profile: SavedAccountProfile = {
     id: profileId,
     providerId: 'codex',
     label: pending.label,
     email: probes.metadata.email,
     addedAt: pending.addedAt,
-    metadata: probes.metadata,
+    metadata: { ...probes.metadata, origin: 'login' },
   };
   upsertSavedAccountProfile(profile);
+  if (authRaw) writeCodexHealthSidecar(profileId, authRaw, 'login');
+  try {
+    fs.rmSync(getCodexProfileStatePath(profileId), { force: true });
+  } catch {
+    /* the pending marker is advisory */
+  }
 
   if (opts.activate === false) {
-    return { result: { success: true } };
+    return { result: { success: true, profileId } };
   }
 
   if (!hasCodexCredentialFiles(codexHome)) {
@@ -592,8 +606,8 @@ function finalizeCodexAccountCore(
     return {
       result: {
         success: true,
-        warning:
-          'Codex stores credentials in the OS keyring; sidekick cannot swap them per account, so `codex` keeps using the keyring credentials.',
+        profileId,
+        warning: `Codex stores credentials in the OS keyring; sidekick cannot swap them per account, so \`codex\` keeps using the keyring credentials. ${CODEX_KEYRING_FIX_HINT}`,
       },
     };
   }
@@ -614,7 +628,7 @@ export function finalizeCodexAccount(
     authenticated,
     metadata: authenticated ? readCodexAccountMetadata(codexHome) : {},
   });
-  return 'swap' in step ? performCodexAuthSwap(step.swap) : step.result;
+  return 'swap' in step ? performCodexAuthSwap(step.swap, {}) : step.result;
 }
 
 /** {@link finalizeCodexAccount} without blocking the event loop on CLI probes. */
@@ -631,8 +645,10 @@ export async function finalizeCodexAccountAsync(
     authenticated,
     metadata: authenticated ? await readCodexAccountMetadataAsync(codexHome) : {},
   });
-  return 'swap' in step ? performCodexAuthSwapAsync(step.swap) : step.result;
+  return 'swap' in step ? performCodexAuthSwapAsync(step.swap, {}) : step.result;
 }
+
+// ── Stash / identity matching ────────────────────────────────────────────
 
 function getCodexStashDir(): string {
   return path.join(getAccountsDir(), 'codex', 'stash');
@@ -660,7 +676,10 @@ function stashLiveCodexAuth(
   }
 }
 
-function findProfileForIdentity(identity: CodexAuthIdentity | null): SavedAccountProfile | null {
+function findProfileForIdentity(
+  identity: CodexAuthIdentity | null,
+  options: { fallbackToActive?: boolean } = {},
+): SavedAccountProfile | null {
   const profiles = listCodexAccounts();
   if (identity?.workspaceId) {
     const byWorkspace = profiles.find(
@@ -674,7 +693,7 @@ function findProfileForIdentity(identity: CodexAuthIdentity | null): SavedAccoun
     );
     if (byEmail) return byEmail;
   }
-  if (!identity?.workspaceId && !identity?.email) {
+  if (!identity?.workspaceId && !identity?.email && options.fallbackToActive !== false) {
     // API-key auth or unparseable tokens carry no identity; assume the live
     // file belongs to whichever account the registry says is active.
     return getActiveCodexAccount();
@@ -682,74 +701,243 @@ function findProfileForIdentity(identity: CodexAuthIdentity | null): SavedAccoun
   return null;
 }
 
-interface SyncBackResult {
-  syncedProfileId?: string;
-  stashPath?: string;
-  warning?: string;
-}
-
-// Codex rotates the refresh token whenever it refreshes auth.json, so the
-// live file is always the freshest copy of its account. Before replacing it,
-// preserve it in the matching profile's backup — or stash it if it belongs to
-// no saved account. Best-effort: never throws.
-function syncBackLiveCodexAuth(
-  liveAuthRaw: string | null,
-  liveLegacyRaw: string | null,
-): SyncBackResult {
-  if (!liveAuthRaw && !liveLegacyRaw) return {};
-
-  try {
-    const identity = readAuthIdentityFromRaw(liveAuthRaw);
-    const profile = findProfileForIdentity(identity);
-
-    if (!profile) {
-      const stashPath = stashLiveCodexAuth(liveAuthRaw, liveLegacyRaw);
-      return {
-        stashPath: stashPath ?? undefined,
-        warning: stashPath
-          ? `Live Codex credentials did not match any saved account; stashed at ${stashPath}.`
-          : 'Live Codex credentials did not match any saved account and could not be stashed.',
-      };
-    }
-
-    const profileHome = getCodexProfileHome(profile.id);
-    if (liveAuthRaw) atomicWriteFile(path.join(profileHome, 'auth.json'), liveAuthRaw);
-    if (liveLegacyRaw) atomicWriteFile(path.join(profileHome, '.credentials.json'), liveLegacyRaw);
-
-    try {
-      // File-based metadata only: this runs with auth files just written, and
-      // the CLI-probe fallback must never spawn while the swap lock is held.
-      const metadata = readCodexAccountMetadataFromFiles(profileHome) ?? {};
-      upsertSavedAccountProfile({
-        ...profile,
-        email: metadata.email ?? profile.email,
-        metadata: { ...profile.metadata, ...metadata },
-      });
-    } catch {
-      /* metadata refresh is best-effort */
-    }
-
-    return { syncedProfileId: profile.id };
-  } catch (err) {
-    return { warning: `Could not back up live Codex credentials: ${err}` };
-  }
-}
+// ── Live-state sync ──────────────────────────────────────────────────────
 
 /**
  * Serializes live-auth mutations across processes. Codex rotates refresh
  * tokens, so two interleaved swaps stashing and restoring auth.json can
  * resurrect a stale token and permanently invalidate the login. Lock ordering:
  * this lock is taken first and the registry lock (inside setActiveSavedAccount
- * / upsertSavedAccountProfile) inside it — never the reverse.
+ * / upsertSavedAccountProfile) inside it — never the reverse. Never spawn a
+ * child process while holding it.
  */
-function withCodexAuthSwapLock<T>(operation: () => T): T {
+export function withCodexAuthSwapLock<T>(operation: () => T): T {
   const lockDir = path.join(getAccountsDir(), 'codex');
   fs.mkdirSync(lockDir, { recursive: true, mode: 0o700 });
   return withFileLockSync(path.join(lockDir, 'auth-swap.lock'), operation);
 }
 
+/**
+ * Merge duplicate Codex profiles (same workspace, else same email). The oldest
+ * profile keeps its id and label, receives the freshest `auth.json` and the
+ * quota snapshot, and the active pointer; losers are stashed, never deleted.
+ * Returns the removed ids. Caller holds the swap lock.
+ */
+export function dedupeCodexProfiles(): string[] {
+  const removed: string[] = [];
+  const profiles = listCodexAccounts();
+  const groups = new Map<string, SavedAccountProfile[]>();
+  for (const profile of profiles) {
+    const key = profile.metadata?.workspaceId
+      ? `ws:${profile.metadata.workspaceId}`
+      : (profile.email ?? profile.metadata?.email)
+        ? `email:${profile.email ?? profile.metadata?.email}`
+        : `id:${profile.id}`;
+    groups.set(key, [...(groups.get(key) ?? []), profile]);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((a, b) => Date.parse(a.addedAt) - Date.parse(b.addedAt));
+    const keeper = sorted[0];
+    const keeperAuthPath = path.join(getCodexProfileHome(keeper.id), 'auth.json');
+    let freshestRaw = readFileOrNull(keeperAuthPath);
+    let freshestAt = readLastRefresh(freshestRaw, keeperAuthPath) ?? -1;
+    const activeId = getActiveSavedAccount('codex')?.id;
+
+    for (const loser of sorted.slice(1)) {
+      const loserAuthPath = path.join(getCodexProfileHome(loser.id), 'auth.json');
+      const loserRaw = readFileOrNull(loserAuthPath);
+      const loserAt = readLastRefresh(loserRaw, loserAuthPath) ?? -1;
+      if (loserRaw && loserAt > freshestAt) {
+        freshestRaw = loserRaw;
+        freshestAt = loserAt;
+      }
+      try {
+        if (!readQuotaSnapshot('codex', keeper.id)) {
+          const snapshot = readQuotaSnapshot('codex', loser.id);
+          if (snapshot) writeQuotaSnapshot('codex', keeper.id, snapshot);
+        }
+      } catch {
+        /* quota re-key is best-effort */
+      }
+      try {
+        const stashDir = path.join(
+          getCodexStashDir(),
+          `dup-${loser.id}-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+        );
+        fs.mkdirSync(path.dirname(stashDir), { recursive: true, mode: 0o700 });
+        fs.renameSync(getCodexProfileDir(loser.id), stashDir);
+      } catch {
+        fs.rmSync(getCodexProfileDir(loser.id), { recursive: true, force: true });
+      }
+      removeSavedAccountProfile('codex', loser.id);
+      removed.push(loser.id);
+      if (activeId === loser.id) setActiveSavedAccount('codex', keeper.id, { silent: true });
+    }
+
+    if (freshestRaw && freshestRaw !== readFileOrNull(keeperAuthPath)) {
+      storeCodexProfileAuth(keeper.id, freshestRaw, null, 'migration');
+    }
+    const metadata = readCodexAccountMetadataFromFiles(getCodexProfileHome(keeper.id)) ?? {};
+    upsertSavedAccountProfile({
+      ...keeper,
+      email: metadata.email ?? keeper.email,
+      metadata: { ...keeper.metadata, ...metadata },
+    });
+  }
+  return removed;
+}
+
+/**
+ * Fold the live `auth.json` into the saved profiles: register an unknown login
+ * (label = email), refresh the matching profile's backup when the live file is
+ * newer, and re-point the active pointer at it. Caller holds the swap lock.
+ * Never throws; problems land in `warnings`.
+ */
+export function syncCodexLiveStateUnlocked(
+  source: AccountHealthSource = 'live-sync',
+  probes: { systemKeyringLoggedIn?: boolean } = {},
+): ProviderSyncReport {
+  const report = emptyProviderSyncReport();
+  try {
+    const merged = dedupeCodexProfiles();
+    if (merged.length) report.merged = merged;
+
+    const systemHome = getSystemCodexHome();
+    const liveAuthPath = path.join(systemHome, 'auth.json');
+    const liveAuthRaw = readFileOrNull(liveAuthPath);
+    const liveLegacyRaw = readFileOrNull(path.join(systemHome, '.credentials.json'));
+    if (!liveAuthRaw && !liveLegacyRaw) {
+      const mode = getCodexCredentialStoreMode(systemHome);
+      if (probes.systemKeyringLoggedIn || mode === 'keyring' || mode === 'auto') {
+        report.skipped = 'keyring';
+        report.warnings.push(
+          `Codex keeps its login in the OS keyring; sidekick cannot switch it. ${CODEX_KEYRING_FIX_HINT}`,
+        );
+      } else {
+        report.skipped = 'logged-out';
+      }
+      return report;
+    }
+
+    const identity = readAuthIdentityFromRaw(liveAuthRaw);
+    let profile = findProfileForIdentity(identity, { fallbackToActive: false });
+    if (!profile && identity && (identity.email || identity.workspaceId)) {
+      const profileId = randomUUID();
+      profile = {
+        id: profileId,
+        providerId: 'codex',
+        label: identity.email ?? identity.workspaceId,
+        email: identity.email,
+        addedAt: new Date().toISOString(),
+        metadata: {
+          email: identity.email,
+          workspaceId: identity.workspaceId,
+          planType: identity.planType,
+          authMode: identity.authMode,
+          origin: 'live-sync',
+        },
+      };
+      ensureCodexProfileDirs(profileId);
+      copySourceCodexConfig(systemHome, getCodexProfileHome(profileId));
+      upsertSavedAccountProfile(profile);
+      report.registered = { id: profileId, email: identity.email };
+    } else if (!profile) {
+      // API-key auth or an unparseable token: fold into the active profile
+      // only when it is itself an api-key login; otherwise stash.
+      const active = getActiveCodexAccount();
+      if (active && active.metadata?.authMode === 'api-key') {
+        profile = active;
+      } else {
+        report.skipped = 'no-identity';
+        return report;
+      }
+    }
+
+    // Codex rotates the refresh token in place, so for the same identity the
+    // live file is the freshest copy unless the profile was refreshed on its
+    // own (keep-alive, isolated launch) and both files say when.
+    const profileAuthPath = path.join(getCodexProfileHome(profile.id), 'auth.json');
+    const storedRaw = readFileOrNull(profileAuthPath);
+    const storedRefresh = readLastRefresh(storedRaw);
+    const liveRefresh = readLastRefresh(liveAuthRaw);
+    const storedIsNewer =
+      storedRefresh !== null && liveRefresh !== null && storedRefresh > liveRefresh;
+    const newer = liveAuthRaw !== storedRaw && !storedIsNewer;
+    if (newer) {
+      try {
+        storeCodexProfileAuth(profile.id, liveAuthRaw, liveLegacyRaw, source);
+        const metadata = readCodexAccountMetadataFromFiles(getCodexProfileHome(profile.id)) ?? {};
+        upsertSavedAccountProfile({
+          ...profile,
+          email: metadata.email ?? profile.email,
+          metadata: { ...profile.metadata, ...metadata },
+        });
+        report.folded = profile.id;
+      } catch (err) {
+        report.warnings.push(`Could not back up the live Codex credentials: ${err}`);
+      }
+    }
+
+    const active = getActiveSavedAccount('codex');
+    if (!active || active.id !== profile.id) {
+      setActiveSavedAccount('codex', profile.id, { silent: true });
+      report.repointed = profile.id;
+    }
+  } catch (err) {
+    report.warnings.push(`Codex account sync failed: ${err}`);
+  }
+  return report;
+}
+
+/** {@link syncCodexLiveStateUnlocked} under the swap lock. */
+export function syncCodexLiveState(source: AccountHealthSource = 'live-sync'): ProviderSyncReport {
+  try {
+    return withCodexAuthSwapLock(() => syncCodexLiveStateUnlocked(source));
+  } catch (err) {
+    return { warnings: [`Could not acquire the account-switch lock: ${err}`] };
+  }
+}
+
+/**
+ * Remove isolated login homes that never authenticated once they are older
+ * than `olderThanMs`. Returns the removed profile ids.
+ */
+export function cleanupAbandonedCodexLogins(
+  olderThanMs: number = 6 * 60 * 60 * 1000,
+  now: number = Date.now(),
+): string[] {
+  const removed: string[] = [];
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(getCodexProfilesDir());
+  } catch {
+    return removed;
+  }
+  const registered = new Set(listCodexAccounts().map((p) => p.id));
+  for (const profileId of entries) {
+    if (registered.has(profileId)) continue;
+    const pending = readPendingProfile(profileId);
+    if (!pending) continue;
+    if (hasCodexCredentialFiles(getCodexProfileHome(profileId))) continue;
+    const addedAt = Date.parse(pending.addedAt);
+    const age = Number.isNaN(addedAt) ? Number.POSITIVE_INFINITY : now - addedAt;
+    if (age < olderThanMs) continue;
+    try {
+      fs.rmSync(getCodexProfileDir(profileId), { recursive: true, force: true });
+      removed.push(profileId);
+    } catch {
+      /* best effort */
+    }
+  }
+  return removed;
+}
+
+// ── Switch ───────────────────────────────────────────────────────────────
+
 interface CodexAuthSwapProbes {
-  codexRunning: boolean;
+  consumers: RunningAccountConsumer[];
   /** Resolved only when the system home has no credential files; false otherwise. */
   systemKeyringLoggedIn: boolean;
 }
@@ -763,7 +951,7 @@ interface CodexAuthSwapProbes {
 function resolveCodexSwapProbesSync(): CodexAuthSwapProbes {
   const systemHome = getSystemCodexHome();
   return {
-    codexRunning: detectRunningCodexProcess(),
+    consumers: detectRunningAccountConsumersSync('codex'),
     systemKeyringLoggedIn: hasCodexCredentialFiles(systemHome)
       ? false
       : getCodexLoginStatus(systemHome).loggedIn,
@@ -773,125 +961,168 @@ function resolveCodexSwapProbesSync(): CodexAuthSwapProbes {
 async function resolveCodexSwapProbesAsync(): Promise<CodexAuthSwapProbes> {
   const systemHome = getSystemCodexHome();
   return {
-    codexRunning: await detectRunningCodexProcessAsync(),
+    consumers: await detectRunningAccountConsumers('codex'),
     systemKeyringLoggedIn: hasCodexCredentialFiles(systemHome)
       ? false
       : (await getCodexLoginStatusAsync(systemHome)).loggedIn,
   };
 }
 
-function performCodexAuthSwap(target: SavedAccountProfile): CodexAccountManagerResult {
+function performCodexAuthSwap(
+  target: SavedAccountProfile,
+  options: SwitchAccountOptions,
+): SwitchAccountResult {
   const probes = resolveCodexSwapProbesSync();
   try {
-    return withCodexAuthSwapLock(() => performCodexAuthSwapCore(target, probes));
+    return withCodexAuthSwapLock(() => performCodexAuthSwapCore(target, options, probes));
   } catch (err) {
     // Keep the non-throwing result contract when the lock cannot be acquired.
-    return { success: false, error: `Could not acquire the account-switch lock: ${err}` };
+    return switchFailure('codex', target.id, `Could not acquire the account-switch lock: ${err}`);
   }
 }
 
 async function performCodexAuthSwapAsync(
   target: SavedAccountProfile,
-): Promise<CodexAccountManagerResult> {
+  options: SwitchAccountOptions,
+): Promise<SwitchAccountResult> {
   const probes = await resolveCodexSwapProbesAsync();
+  let result: SwitchAccountResult;
   try {
     // The sync lock is fine here: probes are pre-resolved, so the critical
     // section is only fast local-filesystem work.
-    return withCodexAuthSwapLock(() => performCodexAuthSwapCore(target, probes));
+    result = withCodexAuthSwapLock(() => performCodexAuthSwapCore(target, options, probes));
   } catch (err) {
-    return { success: false, error: `Could not acquire the account-switch lock: ${err}` };
+    return switchFailure('codex', target.id, `Could not acquire the account-switch lock: ${err}`);
   }
+  if (result.success && options.verifyWithCli && !result.alreadyActive) {
+    const status = await getCodexLoginStatusAsync(getSystemCodexHome());
+    result = status.loggedIn
+      ? { ...result, verification: 'cli' }
+      : finishSwitchResult({
+          ...result,
+          warnings: [
+            ...result.warnings,
+            '`codex login status` reports "Not logged in" after the switch; the stored token may have been revoked. Sign in again if codex prompts you.',
+          ],
+        });
+  }
+  return result;
 }
 
 function performCodexAuthSwapCore(
   target: SavedAccountProfile,
+  options: SwitchAccountOptions,
   probes: CodexAuthSwapProbes,
-): CodexAccountManagerResult {
+): SwitchAccountResult {
   const systemHome = getSystemCodexHome();
   const liveAuthPath = path.join(systemHome, 'auth.json');
   const liveLegacyPath = path.join(systemHome, '.credentials.json');
-  const liveAuthRaw = readFileOrNull(liveAuthPath);
-  const liveLegacyRaw = readFileOrNull(liveLegacyPath);
+  const targetName = target.label ?? target.email ?? target.id;
+  const previousAccountId = getActiveSavedAccount('codex')?.id ?? null;
+  const base: SwitchAccountResult = {
+    success: true,
+    provider: 'codex',
+    accountId: target.id,
+    previousAccountId,
+    verified: false,
+    verification: 'none',
+    warnings: [],
+    hints: [],
+    runningConsumers: probes.consumers,
+    email: target.email ?? target.metadata?.email,
+  };
 
-  if (!liveAuthRaw && !liveLegacyRaw && probes.systemKeyringLoggedIn) {
-    return {
+  const liveBefore = readFileOrNull(liveAuthPath);
+  const liveLegacyBefore = readFileOrNull(liveLegacyPath);
+  if (!liveBefore && !liveLegacyBefore && probes.systemKeyringLoggedIn) {
+    return finishSwitchResult({
+      ...base,
       success: false,
-      error:
-        'Codex stores credentials in the OS keyring; file-based account switching is not supported. Set `cli_auth_credentials_store = "file"` in ~/.codex/config.toml and run `codex login` again.',
-    };
+      error: `Codex stores credentials in the OS keyring; file-based account switching is not supported. ${CODEX_KEYRING_FIX_HINT}`,
+    });
   }
 
+  // Phase 1: fold the live (freshest, rotated) credentials back into their
+  // profile, registering the login if sidekick has never seen it.
+  const sync = syncCodexLiveStateUnlocked('switch', {
+    systemKeyringLoggedIn: probes.systemKeyringLoggedIn,
+  });
+  base.warnings.push(...sync.warnings);
+  if (sync.skipped === 'no-identity' && liveBefore) {
+    const stashPath = stashLiveCodexAuth(liveBefore, liveLegacyBefore);
+    base.warnings.push(
+      stashPath
+        ? `Live Codex credentials did not match any saved account; stashed at ${stashPath}.`
+        : 'Live Codex credentials did not match any saved account and could not be stashed.',
+    );
+  }
+
+  // Re-read after the sync: the target may have received the live file.
+  const liveAuthRaw = readFileOrNull(liveAuthPath);
+  const liveLegacyRaw = readFileOrNull(liveLegacyPath);
   const profileHome = getCodexProfileHome(target.id);
   const targetAuthPath = path.join(profileHome, 'auth.json');
   const targetAuthRaw = readFileOrNull(targetAuthPath);
   const targetLegacyRaw = readFileOrNull(path.join(profileHome, '.credentials.json'));
-  const targetName = target.label ?? target.email ?? target.id;
 
   if (!targetAuthRaw && !targetLegacyRaw) {
-    return {
+    return finishSwitchResult({
+      ...base,
       success: false,
-      error: `No stored credentials for "${targetName}". Remove and re-add this account.`,
-    };
+      needsLogin: true,
+      error: `No stored credentials for "${targetName}". Sign in again to this account.`,
+    });
   }
   if (targetAuthRaw && !parseAuthJson(targetAuthRaw)) {
-    return {
+    return finishSwitchResult({
+      ...base,
       success: false,
-      error: `Stored credentials for "${targetName}" are corrupted. Remove and re-add this account.`,
-    };
-  }
-
-  const warnings: string[] = [];
-  if (probes.codexRunning) {
-    warnings.push(
-      'A codex process appears to be running; restart codex sessions so they pick up the switched account.',
-    );
+      needsLogin: true,
+      error: `Stored credentials for "${targetName}" are corrupted. Sign in again to this account.`,
+    });
   }
 
   // If the live file already belongs to the target account it is the freshest
   // copy (rotated refresh token included) — never replace it with a staler
-  // backup, which would permanently invalidate the login. Just refresh the
-  // backup and the registry pointer.
+  // backup, which would permanently invalidate the login.
   const liveIdentity = readAuthIdentityFromRaw(liveAuthRaw);
-  const targetIdentity = readAuthIdentityFromRaw(targetAuthRaw);
-  const targetWorkspaceId = target.metadata?.workspaceId ?? targetIdentity?.workspaceId;
-  const targetEmail = target.email ?? target.metadata?.email ?? targetIdentity?.email;
   const liveMatchesTarget = Boolean(
-    (liveIdentity?.workspaceId &&
-      targetWorkspaceId &&
-      liveIdentity.workspaceId === targetWorkspaceId) ||
-    (liveIdentity?.email && targetEmail && liveIdentity.email === targetEmail) ||
+    identitiesMatch(liveIdentity, {
+      ...profileIdentity(target),
+      ...(readAuthIdentityFromRaw(targetAuthRaw) ?? {}),
+    }) ||
     (liveAuthRaw !== null && liveAuthRaw === targetAuthRaw) ||
     (!liveAuthRaw && !targetAuthRaw && liveLegacyRaw !== null && liveLegacyRaw === targetLegacyRaw),
   );
-
   if (liveMatchesTarget) {
-    try {
-      if (liveAuthRaw) atomicWriteFile(targetAuthPath, liveAuthRaw);
-      if (liveLegacyRaw)
-        atomicWriteFile(path.join(profileHome, '.credentials.json'), liveLegacyRaw);
-      // File-based metadata only — see the swap-lock note above.
-      const metadata = readCodexAccountMetadataFromFiles(profileHome) ?? {};
-      upsertSavedAccountProfile({
-        ...target,
-        email: metadata.email ?? target.email,
-        metadata: { ...target.metadata, ...metadata },
-      });
-    } catch {
-      /* backup refresh is best-effort */
-    }
-    setActiveSavedAccount('codex', target.id);
-    return { success: true, warning: warnings.length ? warnings.join(' ') : undefined };
+    if (previousAccountId !== target.id) setActiveSavedAccount('codex', target.id);
+    return finishSwitchResult({
+      ...base,
+      alreadyActive: true,
+      verified: true,
+      verification: 'store',
+      health: getAccountHealth('codex', target.id),
+      hints: [`${targetName} is already the active Codex account.`],
+    });
   }
 
+  // Preflight: warn about stale backups; refuse ones known to be dead.
+  const health = getAccountHealth('codex', target.id, { probe: 'store' });
+  base.health = health;
+  if ((health.state === 'expired' || health.state === 'missing') && !options.force) {
+    return finishSwitchResult({
+      ...base,
+      success: false,
+      needsLogin: true,
+      error: `Stored credentials for "${targetName}" have expired; sign in again.`,
+    });
+  }
   const targetLastRefresh = readLastRefresh(targetAuthRaw, targetAuthPath);
   if (targetLastRefresh !== null && Date.now() - targetLastRefresh > STALE_AUTH_THRESHOLD_MS) {
-    warnings.push(
+    base.warnings.push(
       `Stored credentials for "${targetName}" have not been refreshed in over 8 days; codex may ask you to log in again.`,
     );
   }
-
-  const syncBack = syncBackLiveCodexAuth(liveAuthRaw, liveLegacyRaw);
-  if (syncBack.warning) warnings.push(syncBack.warning);
 
   const restoreLiveFiles = (): void => {
     try {
@@ -902,8 +1133,14 @@ function performCodexAuthSwapCore(
     } catch {
       /* rollback is best-effort */
     }
+    try {
+      setActiveSavedAccount('codex', previousAccountId, { silent: true });
+    } catch {
+      /* rollback is best-effort */
+    }
   };
 
+  // Install.
   try {
     if (targetAuthRaw) {
       atomicWriteFile(liveAuthPath, targetAuthRaw);
@@ -915,39 +1152,89 @@ function performCodexAuthSwapCore(
     }
   } catch (err) {
     restoreLiveFiles();
-    return { success: false, error: `Failed to write Codex credentials: ${err}` };
+    return finishSwitchResult({
+      ...base,
+      success: false,
+      error: `Failed to write Codex credentials: ${err}`,
+    });
   }
 
+  // Verify by re-reading the live file.
+  const installed = readFileOrNull(targetAuthRaw ? liveAuthPath : liveLegacyPath);
+  const expected = targetAuthRaw ?? targetLegacyRaw;
+  const installedIdentity = targetAuthRaw ? readAuthIdentityFromRaw(installed) : null;
+  const verified =
+    installed === expected &&
+    (!targetAuthRaw ||
+      identitiesMatch(installedIdentity, {
+        ...profileIdentity(target),
+        ...(readAuthIdentityFromRaw(targetAuthRaw) ?? {}),
+      }) ||
+      installedIdentity?.authMode === 'api-key');
+  if (!verified) {
+    restoreLiveFiles();
+    return finishSwitchResult({
+      ...base,
+      success: false,
+      verification: 'failed',
+      error: `The live Codex credential file did not reflect the switch to "${targetName}"; the previous login was restored.`,
+    });
+  }
+
+  // Pointer last.
   try {
     setActiveSavedAccount('codex', target.id);
   } catch (err) {
     restoreLiveFiles();
-    return { success: false, error: `Failed to update account registry: ${err}` };
+    return finishSwitchResult({
+      ...base,
+      success: false,
+      error: `Failed to update account registry: ${err}`,
+    });
   }
 
-  return { success: true, warning: warnings.length ? warnings.join(' ') : undefined };
+  let undoToken: string | undefined;
+  try {
+    undoToken = writeLastSwitch('codex', previousAccountId, target.id).token;
+  } catch {
+    base.warnings.push('The switch succeeded but could not be recorded for undo.');
+  }
+
+  return finishSwitchResult({
+    ...base,
+    verified: true,
+    verification: 'store',
+    undoToken,
+    hints: [`New codex sessions use ${target.email ?? targetName}.`],
+  });
 }
 
-export function switchToCodexAccount(profileId: string): CodexAccountManagerResult {
+export function switchToCodexAccount(
+  profileId: string,
+  options: SwitchAccountOptions = {},
+): SwitchAccountResult {
   const target = listCodexAccounts().find((account) => account.id === profileId);
   if (!target) {
-    return { success: false, error: `Codex account ${profileId} not found.` };
+    return switchFailure('codex', profileId, `Codex account ${profileId} not found.`);
   }
 
-  return performCodexAuthSwap(target);
+  return performCodexAuthSwap(target, options);
 }
 
 /** {@link switchToCodexAccount} without blocking the event loop on CLI probes. */
 export async function switchToCodexAccountAsync(
   profileId: string,
-): Promise<CodexAccountManagerResult> {
+  options: SwitchAccountOptions = {},
+): Promise<SwitchAccountResult> {
   const target = listCodexAccounts().find((account) => account.id === profileId);
   if (!target) {
-    return { success: false, error: `Codex account ${profileId} not found.` };
+    return switchFailure('codex', profileId, `Codex account ${profileId} not found.`);
   }
 
-  return performCodexAuthSwapAsync(target);
+  return performCodexAuthSwapAsync(target, options);
 }
+
+// ── One-time migration ───────────────────────────────────────────────────
 
 /**
  * The reconcile flow consults the keyring probe only when the migration has
@@ -1022,13 +1309,8 @@ function reconcileCodexAuthStateCore(probes: { systemKeyringLoggedIn: boolean })
     }
 
     const liveIdentity = readAuthIdentityFromRaw(liveAuthRaw);
-    const profileIdentity = readAuthIdentityFromRaw(profileAuthRaw);
-    const sameIdentity = Boolean(
-      (liveIdentity?.workspaceId &&
-        profileIdentity?.workspaceId &&
-        liveIdentity.workspaceId === profileIdentity.workspaceId) ||
-      (liveIdentity?.email && liveIdentity.email === profileIdentity?.email),
-    );
+    const profileIdentityValue = readAuthIdentityFromRaw(profileAuthRaw);
+    const sameIdentity = identitiesMatch(liveIdentity, profileIdentityValue);
 
     if (sameIdentity) {
       const liveRefresh = readLastRefresh(liveAuthRaw, liveAuthPath);
@@ -1039,7 +1321,7 @@ function reconcileCodexAuthStateCore(probes: { systemKeyringLoggedIn: boolean })
         stashLiveCodexAuth(liveAuthRaw, null);
         atomicWriteFile(liveAuthPath, profileAuthRaw);
       } else {
-        atomicWriteFile(profileAuthPath, liveAuthRaw);
+        storeCodexProfileAuth(active.id, liveAuthRaw, null, 'migration');
       }
     } else {
       // The live credentials belong to a different account; the live state
@@ -1047,7 +1329,7 @@ function reconcileCodexAuthStateCore(probes: { systemKeyringLoggedIn: boolean })
       // one, and refresh its backup.
       const matching = findProfileForIdentity(liveIdentity);
       if (matching && matching.id !== active.id) {
-        atomicWriteFile(path.join(getCodexProfileHome(matching.id), 'auth.json'), liveAuthRaw);
+        storeCodexProfileAuth(matching.id, liveAuthRaw, null, 'migration');
         setActiveSavedAccount('codex', matching.id);
       }
     }

@@ -302,10 +302,10 @@ describe('switchToAccount', { timeout: 30_000 }, () => {
     writeClaudeProfileAccount('uuid-a', 'a@example.com', 'tok_a_rotated');
     writeClaudeProfileAccount('uuid-b', 'b@example.com', 'tok_b');
 
-    expect(switchToAccount('uuid-b')).toEqual({ success: true });
+    expect(switchToAccount('uuid-b')).toMatchObject({ success: true, verified: true });
     expect(readActiveClaudeAccount()).toEqual({ email: 'b@example.com', uuid: 'uuid-b' });
 
-    expect(switchToAccount('uuid-a')).toEqual({ success: true });
+    expect(switchToAccount('uuid-a')).toMatchObject({ success: true, verified: true });
 
     const liveCreds = JSON.parse(
       fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'),
@@ -326,7 +326,7 @@ describe('switchToAccount', { timeout: 30_000 }, () => {
     writeAccountRegistry(registry);
     writeLegacyBackup('uuid-b', 'b@example.com', 'tok_b');
 
-    expect(switchToAccount('uuid-b')).toEqual({ success: true });
+    expect(switchToAccount('uuid-b')).toMatchObject({ success: true, verified: true });
 
     expect(readActiveClaudeAccount()).toEqual({ email: 'b@example.com', uuid: 'uuid-b' });
     expect(fs.existsSync(path.join(getClaudeProfileHome('uuid-b'), '.credentials.json'))).toBe(
@@ -615,5 +615,118 @@ describe('registry lock scope of the legacy facade', { timeout: 30_000 }, () => 
     } finally {
       off();
     }
+  });
+});
+
+describe('verified switch', () => {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-accounts-switch-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function seedTwo(): void {
+    writeAccountRegistry({
+      version: 1,
+      activeAccountUuid: 'uuid-a',
+      accounts: [
+        { uuid: 'uuid-a', email: 'a@example.com', label: 'A', addedAt: '2026-01-01T00:00:00Z' },
+        { uuid: 'uuid-b', email: 'b@example.com', label: 'B', addedAt: '2026-01-01T00:00:00Z' },
+      ],
+    });
+    writeClaudeConfig('a@example.com', 'uuid-a');
+    writeClaudeCredentials('tok_a');
+    writeClaudeProfileAccount('uuid-b', 'b@example.com', 'tok_b');
+  }
+
+  it('refuses a target whose stored refresh token has expired and reports needsLogin', () => {
+    seedTwo();
+    const now = Date.now();
+    fs.writeFileSync(
+      path.join(getClaudeProfileHome('uuid-b'), '.credentials.json'),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: 'tok_b',
+          refreshToken: 'r',
+          expiresAt: now - 5 * DAY,
+          refreshTokenExpiresAt: now - HOUR,
+        },
+      }),
+    );
+
+    const result = switchToAccount('uuid-b');
+
+    expect(result).toMatchObject({ success: false, needsLogin: true, verified: false });
+    expect(result.error).toMatch(/expired/);
+    expect(readActiveClaudeAccount()?.uuid).toBe('uuid-a');
+    expect(getActiveSavedAccount('claude-code')?.id).toBe('uuid-a');
+
+    expect(switchToAccount('uuid-b', { force: true })).toMatchObject({ success: true });
+  });
+
+  it('captures the outgoing login (registering it if unknown), verifies, records undo, and sets the pointer last', () => {
+    seedTwo();
+    // The live login is an account sidekick never saw.
+    writeClaudeConfig('c@example.com', 'uuid-c');
+    writeClaudeCredentials('tok_c');
+
+    const result = switchToAccount('uuid-b');
+
+    expect(result).toMatchObject({
+      success: true,
+      verified: true,
+      verification: 'store',
+      accountId: 'uuid-b',
+      email: 'b@example.com',
+      hints: ['New claude sessions use b@example.com.'],
+    });
+    expect(result.undoToken).toBeTruthy();
+    expect(result.previousAccountId).toBe('uuid-c');
+    expect(readActiveClaudeAccount()).toEqual({ email: 'b@example.com', uuid: 'uuid-b' });
+    const learned = listAccounts().find((a) => a.uuid === 'uuid-c');
+    expect(learned?.label).toBe('c@example.com');
+    expect(
+      JSON.parse(
+        fs.readFileSync(path.join(getClaudeProfileHome('uuid-c'), '.credentials.json'), 'utf8'),
+      ).claudeAiOauth.accessToken,
+    ).toBe('tok_c');
+  });
+
+  it('returns alreadyActive without writing when the target is the live login', () => {
+    seedTwo();
+    const before = fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8');
+
+    const result = switchToAccount('uuid-a');
+
+    expect(result).toMatchObject({ success: true, alreadyActive: true, verified: true });
+    expect(result.undoToken).toBeUndefined();
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')).toBe(before);
+  });
+
+  it('rolls back and reports a failed verification when the live store does not reflect the write', async () => {
+    seedTwo();
+    const credentialIO = await import('./credentialIO');
+    const spy = vi
+      .spyOn(credentialIO, 'writeActiveCredentials')
+      .mockImplementation((credentials: unknown, configDir?: string) => {
+        // Pretend the live store silently ignored the write (a Keychain that
+        // reports success without updating the item).
+        if (configDir) {
+          fs.mkdirSync(configDir, { recursive: true });
+          fs.writeFileSync(path.join(configDir, '.credentials.json'), JSON.stringify(credentials));
+        }
+      });
+
+    const result = switchToAccount('uuid-b');
+    spy.mockRestore();
+
+    expect(result).toMatchObject({ success: false, verification: 'failed', verified: false });
+    expect(readActiveClaudeAccount()?.uuid).toBe('uuid-a');
+    expect(getActiveSavedAccount('claude-code')?.id).toBe('uuid-a');
   });
 });
