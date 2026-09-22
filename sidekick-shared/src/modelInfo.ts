@@ -128,7 +128,7 @@ export interface ModelDisplayInfo {
  * Sources:
  *   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
  *   - OpenAI: https://developers.openai.com/api/docs/models
- * Current Anthropic and GPT-5.6/6 rates verified: 2026-09-05.
+ * Current Anthropic and GPT-5.6/6 rates verified: 2026-09-22.
  * Runtime LiteLLM hydration refreshes this offline baseline.
  *
  * Anthropic keys appear in both dashed (`claude-opus-4-8`, the real model-ID
@@ -211,6 +211,19 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 15.0,
     cacheWriteCostPerMillion: 3.75,
     cacheReadCostPerMillion: 0.3,
+  },
+  // Opus 5.5 undercuts Opus 5; without its own keys it would prefix-match 'claude-opus-5'.
+  'claude-opus-5-5': {
+    inputCostPerMillion: 4.0,
+    outputCostPerMillion: 20.0,
+    cacheWriteCostPerMillion: 5.0,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'claude-opus-5.5': {
+    inputCostPerMillion: 4.0,
+    outputCostPerMillion: 20.0,
+    cacheWriteCostPerMillion: 5.0,
+    cacheReadCostPerMillion: 0.2,
   },
   'claude-opus-5': {
     inputCostPerMillion: 5.0,
@@ -336,6 +349,18 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 50.0,
     cacheWriteCostPerMillion: 12.5,
     cacheReadCostPerMillion: 1.0,
+  },
+  'gpt-6-sol': {
+    inputCostPerMillion: 2.0,
+    outputCostPerMillion: 10.0,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'gpt-6-luna': {
+    inputCostPerMillion: 0.1,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.01,
   },
   'gpt-5.6-sol': {
     inputCostPerMillion: 4.0,

@@ -24,9 +24,9 @@ describe('ModelResolver', () => {
     });
 
     it('resolves "auto" for codex provider', () => {
-      expect(resolveModel('auto', 'codex', 'inlineModel')).toBe('gpt-5.6-luna');
-      expect(resolveModel('auto', 'codex', 'reviewModel')).toBe('gpt-5.6-terra');
-      expect(resolveModel('auto', 'codex', 'transformModel')).toBe('gpt-5.6-sol');
+      expect(resolveModel('auto', 'codex', 'inlineModel')).toBe('gpt-6-luna');
+      expect(resolveModel('auto', 'codex', 'reviewModel')).toBe('gpt-6-sol');
+      expect(resolveModel('auto', 'codex', 'transformModel')).toBe('gpt-6-astra');
     });
   });
 
@@ -40,7 +40,7 @@ describe('ModelResolver', () => {
     });
 
     it('maps opus -> powerful -> provider model (claude-api)', () => {
-      expect(resolveModel('opus', 'claude-api', 'transformModel')).toBe('claude-opus-5');
+      expect(resolveModel('opus', 'claude-api', 'transformModel')).toBe('claude-opus-5-5');
     });
 
     it('maps haiku -> fast -> provider model (opencode)', () => {
@@ -48,12 +48,12 @@ describe('ModelResolver', () => {
     });
 
     it('maps opus -> powerful -> provider model (codex)', () => {
-      expect(resolveModel('opus', 'codex', 'transformModel')).toBe('gpt-5.6-sol');
+      expect(resolveModel('opus', 'codex', 'transformModel')).toBe('gpt-6-astra');
     });
 
     it('maps legacy fast and balanced names to the corresponding Codex tiers', () => {
-      expect(resolveModel('haiku', 'codex', 'reviewModel')).toBe('gpt-5.6-luna');
-      expect(resolveModel('sonnet', 'codex', 'inlineModel')).toBe('gpt-5.6-terra');
+      expect(resolveModel('haiku', 'codex', 'reviewModel')).toBe('gpt-6-luna');
+      expect(resolveModel('sonnet', 'codex', 'inlineModel')).toBe('gpt-6-sol');
     });
   });
 
@@ -67,12 +67,12 @@ describe('ModelResolver', () => {
     });
 
     it('resolves powerful tier for codex', () => {
-      expect(resolveModel('powerful', 'codex', 'inlineModel')).toBe('gpt-5.6-sol');
+      expect(resolveModel('powerful', 'codex', 'inlineModel')).toBe('gpt-6-astra');
     });
 
     it('honors explicit fast and balanced Codex tiers over the feature default', () => {
-      expect(resolveModel('fast', 'codex', 'transformModel')).toBe('gpt-5.6-luna');
-      expect(resolveModel('balanced', 'codex', 'transformModel')).toBe('gpt-5.6-terra');
+      expect(resolveModel('fast', 'codex', 'transformModel')).toBe('gpt-6-luna');
+      expect(resolveModel('balanced', 'codex', 'transformModel')).toBe('gpt-6-sol');
     });
   });
 

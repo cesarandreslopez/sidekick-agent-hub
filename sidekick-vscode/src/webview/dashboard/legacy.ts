@@ -588,9 +588,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
        * Extracts short model name from full ID.
        */
       function getShortModelName(modelId) {
-        const match = modelId.match(/claude-(haiku|sonnet|opus|fable)-([0-9.]+)/i);
+        // Minor versions are 1–2 digits, so a date suffix is never read as one.
+        const match = modelId.match(/claude-(haiku|sonnet|opus|fable)-(\d+(?:[.-]\d{1,2}(?!\d))?)/i);
         if (match) {
-          return match[1].charAt(0).toUpperCase() + match[1].slice(1) + ' ' + match[2];
+          return (
+            match[1].charAt(0).toUpperCase() + match[1].slice(1) + ' ' + match[2].replace('-', '.')
+          );
         }
         return modelId;
       }

@@ -31,17 +31,17 @@ export const DEFAULT_MODEL_MAPPINGS: Record<InferenceProviderId, ModelMapping> =
   'claude-api': {
     fast: 'claude-haiku-4-5',
     balanced: 'claude-sonnet-5',
-    powerful: 'claude-opus-5',
+    powerful: 'claude-opus-5-5',
   },
   opencode: {
     fast: 'anthropic/claude-haiku-4-5',
     balanced: 'anthropic/claude-sonnet-5',
-    powerful: 'anthropic/claude-opus-5',
+    powerful: 'anthropic/claude-opus-5-5',
   },
   codex: {
-    fast: 'gpt-5.6-luna',
-    balanced: 'gpt-5.6-terra',
-    powerful: 'gpt-5.6-sol',
+    fast: 'gpt-6-luna',
+    balanced: 'gpt-6-sol',
+    powerful: 'gpt-6-astra',
   },
 };
 

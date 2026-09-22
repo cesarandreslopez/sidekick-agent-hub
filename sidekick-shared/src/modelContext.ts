@@ -36,6 +36,8 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'claude-fable-5-1': 1_000_000,
   'claude-fable-5.1': 1_000_000,
   'claude-fable-5': 1_000_000,
+  'claude-opus-5-5': 1_000_000,
+  'claude-opus-5.5': 1_000_000,
   'claude-opus-5': 1_000_000,
   'claude-opus-4-8': 1_000_000,
   'claude-opus-4-7': 1_000_000,
@@ -63,6 +65,8 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   // window per account tier via token_count; that value wins through the
   // observed-override layer.
   'gpt-6-astra': 1_050_000,
+  'gpt-6-sol': 1_050_000,
+  'gpt-6-luna': 1_050_000,
   'gpt-5.6-sol': 1_050_000,
   'gpt-5.6-terra': 1_050_000,
   'gpt-5.6-luna': 1_050_000,

@@ -216,9 +216,40 @@ describe('getModelPricing', () => {
       ['claude-opus-4-7', 'claude-opus-4.7'],
       ['claude-opus-4-8', 'claude-opus-4.8'],
       ['claude-fable-5-1', 'claude-fable-5.1'],
+      ['claude-opus-5-5', 'claude-opus-5.5'],
     ]) {
       expect(getModelPricing(`${dashed}-20260101`)).toEqual(getModelPricing(dotted));
     }
+  });
+
+  it('prices GPT-6 Sol and Luna on their own rates', () => {
+    expect(getModelPricing('gpt-6-sol')).toEqual({
+      inputCostPerMillion: 2.0,
+      outputCostPerMillion: 10.0,
+      cacheWriteCostPerMillion: 2.5,
+      cacheReadCostPerMillion: 0.2,
+    });
+    expect(getModelPricing('gpt-6-luna')).toEqual({
+      inputCostPerMillion: 0.1,
+      outputCostPerMillion: 0.5,
+      cacheWriteCostPerMillion: 0.125,
+      cacheReadCostPerMillion: 0.01,
+    });
+    expect(getModelInfo('gpt-6-sol').contextWindow).toBe(1_050_000);
+    expect(getModelInfo('gpt-6-luna').contextWindow).toBe(1_050_000);
+  });
+
+  it('prices Opus 5.5 on its own rates rather than the Opus 5 prefix', () => {
+    const pricing = getModelPricing('claude-opus-5-5');
+    expect(pricing).toEqual({
+      inputCostPerMillion: 4.0,
+      outputCostPerMillion: 20.0,
+      cacheWriteCostPerMillion: 5.0,
+      cacheReadCostPerMillion: 0.2,
+    });
+    expect(getModelPricing('claude-opus-5')!.inputCostPerMillion).toBe(5.0);
+    expect(getModelInfo('claude-opus-5-5').contextWindow).toBe(1_000_000);
+    expect(shortModelName('claude-opus-5-5')).toBe(shortModelName('claude-opus-5.5'));
   });
 
   it('prices dashed Haiku 4.5 IDs', () => {

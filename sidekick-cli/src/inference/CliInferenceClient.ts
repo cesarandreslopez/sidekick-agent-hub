@@ -22,7 +22,7 @@ export interface InferenceResult {
 type Strategy = 'claude-cli' | 'anthropic-api' | 'openai-api' | 'codex-cli' | 'none';
 
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
-const DEFAULT_OPENAI_MODEL = 'gpt-5.6-luna';
+const DEFAULT_OPENAI_MODEL = 'gpt-6-luna';
 
 const EXEC_OPTS: ExecSyncOptionsWithStringEncoding = {
   encoding: 'utf-8',

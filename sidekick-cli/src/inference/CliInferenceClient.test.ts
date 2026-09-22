@@ -56,7 +56,7 @@ describe('CliInferenceClient', () => {
         headers: { Authorization: 'Bearer test-openai-key' },
       });
       expect(JSON.parse(request!.body as string)).toEqual({
-        model: 'gpt-5.6-luna',
+        model: 'gpt-6-luna',
         max_completion_tokens: 1024,
         reasoning_effort: 'none',
         messages: [{ role: 'user', content: 'Summarize this session' }],
