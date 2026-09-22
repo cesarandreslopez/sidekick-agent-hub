@@ -27,7 +27,11 @@ vi.mock('./providers/codexDatabase', () => ({
   },
 }));
 
-import { collectPromptHistory, type PromptHistoryEntry } from './promptHistory';
+import {
+  collectPromptHistory,
+  type PromptHistoryCursor,
+  type PromptHistoryEntry,
+} from './promptHistory';
 import { encodeWorkspacePath as encodeClaudeWorkspacePath } from './parsers/sessionPathResolver';
 
 type Row = Record<string, unknown>;
@@ -70,7 +74,8 @@ function claudeUser(content: unknown, second: number, extra: Row = {}): Row {
   };
 }
 
-function claudeAssistant(id: string, second: number, extra: Row = {}): Row {
+/** One Claude Code assistant record; `message` fields are merged over the defaults. */
+function claudeAssistant(id: string, second: number, extra: Row = {}, message: Row = {}): Row {
   return {
     type: 'assistant',
     entrypoint: 'cli',
@@ -81,12 +86,14 @@ function claudeAssistant(id: string, second: number, extra: Row = {}): Row {
       role: 'assistant',
       model: 'claude-opus-5',
       content: [{ type: 'text', text: 'ok' }],
+      stop_reason: 'end_turn',
       usage: {
         input_tokens: 10,
         output_tokens: 20,
         cache_read_input_tokens: 30,
         cache_creation_input_tokens: 40,
       },
+      ...message,
     },
     ...extra,
   };
@@ -151,6 +158,34 @@ function codexTokenCount(second: number): Row {
       },
     },
   };
+}
+
+function identity(entry: PromptHistoryEntry): string {
+  return `${entry.provider}:${entry.sessionId}:${entry.ordinal}`;
+}
+
+/** What a consumer does with each result: insert new identities, enrich existing ones. */
+function upsert(
+  rows: Map<string, PromptHistoryEntry>,
+  ...batches: PromptHistoryEntry[][]
+): Map<string, PromptHistoryEntry> {
+  for (const batch of batches) {
+    for (const entry of batch) {
+      const existing = rows.get(identity(entry));
+      if (existing) {
+        expect(entry.text).toBe(existing.text);
+        expect(entry.timestamp).toBe(existing.timestamp);
+      }
+      rows.set(identity(entry), entry);
+    }
+  }
+  return rows;
+}
+
+function byIdentity(left: PromptHistoryEntry, right: PromptHistoryEntry): number {
+  if (left.provider !== right.provider) return left.provider < right.provider ? -1 : 1;
+  if (left.sessionId !== right.sessionId) return left.sessionId < right.sessionId ? -1 : 1;
+  return left.ordinal - right.ordinal;
 }
 
 function texts(entries: PromptHistoryEntry[]): string[] {
@@ -459,31 +494,23 @@ describe('collectPromptHistory — bounds, cursor, and filters', () => {
     appendJsonl(growing, [claudeUser('g1', 3), claudeAssistant('msg_g', 4)]);
     appendJsonl(codex, [codexUser(['c1'], 3), codexTokenCount(4)]);
     const resumed = await collectPromptHistory({ workspacePaths: [repo], cursor: serialized });
-    expect(resumed.entries.map((e) => [e.text, e.ordinal])).toEqual([
-      ['g1', 1],
-      ['c1', 1],
+    // g0 and c0 were returned as pending; the next prompt closes them unanswered, so they
+    // come back once as final with unknown usage, under the same identity.
+    expect(resumed.entries.map((e) => [e.text, e.ordinal, e.metadataStatus])).toEqual([
+      ['g0', 0, 'final'],
+      ['g1', 1, 'final'],
+      ['c0', 0, 'final'],
+      ['c1', 1, 'final'],
     ]);
-    expect(resumed.entries[1].model).toBe('m1');
+    expect(resumed.entries[0].usage).toBeUndefined();
+    expect(resumed.entries[0].timestamp).toBe(first.entries[0].timestamp);
+    expect(resumed.entries[3].model).toBe('m1');
     expect(resumed.stats).toMatchObject({ sessionsScanned: 2, sessionsSkippedUnchanged: 1 });
 
-    // Ordinals are stable across a fresh full run.
+    // Upserting every returned entry by identity reproduces a fresh full run exactly.
     const fresh = await collectPromptHistory({ workspacePaths: [repo] });
-    const key = (e: PromptHistoryEntry) => `${e.sessionId}#${e.ordinal}:${e.text}`;
-    expect(fresh.entries.map(key)).toEqual(
-      [...first.entries, ...resumed.entries]
-        .sort((a, b) =>
-          a.provider === b.provider
-            ? a.sessionId === b.sessionId
-              ? a.ordinal - b.ordinal
-              : a.sessionId < b.sessionId
-                ? -1
-                : 1
-            : a.provider < b.provider
-              ? -1
-              : 1,
-        )
-        .map(key),
-    );
+    const rows = upsert(new Map(), first.entries, resumed.entries);
+    expect([...rows.values()].sort(byIdentity)).toEqual(fresh.entries);
   });
 
   it('ignores an incomplete trailing line until it is finished', async () => {
@@ -497,7 +524,10 @@ describe('collectPromptHistory — bounds, cursor, and filters', () => {
     fs.writeFileSync(file, JSON.stringify(claudeUser('done', 1)) + '\n');
     appendJsonl(file, [claudeUser('half', 2)]);
     const second = await collectPromptHistory({ workspacePaths: [repo], cursor: first.cursor });
-    expect(second.entries.map((e) => [e.text, e.ordinal])).toEqual([['half', 1]]);
+    expect(second.entries.map((e) => [e.text, e.ordinal, e.metadataStatus])).toEqual([
+      ['done', 0, 'final'],
+      ['half', 1, 'pending'],
+    ]);
   });
 
   it('applies the since filter without shifting ordinals', async () => {
@@ -527,5 +557,336 @@ describe('collectPromptHistory — bounds, cursor, and filters', () => {
     });
     expect(result.entries).toEqual([]);
     expect(result.stats.sessionsScanned).toBe(0);
+  });
+});
+
+describe('collectPromptHistory — late answer metadata', () => {
+  function roundTrip<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+
+  function claudeToolResult(second: number): Row {
+    return claudeUser([{ type: 'tool_result', tool_use_id: 't1', content: 'out' }], second);
+  }
+
+  it('Claude: returns the same prompt again when its answer arrives after collection', async () => {
+    const file = claudeFile(repo, 'late');
+    writeJsonl(file, [claudeUser('secret prompt body', 1)]);
+
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(first.entries).toHaveLength(1);
+    expect(first.entries[0]).toMatchObject({ ordinal: 0, metadataStatus: 'pending' });
+    expect(first.entries[0].model).toBeUndefined();
+    expect(first.entries[0].usage).toBeUndefined();
+    expect(first.cursor.version).toBe(2);
+    expect(JSON.stringify(first.cursor)).not.toContain('secret prompt body');
+    const cursor = roundTrip(first.cursor);
+
+    appendJsonl(file, [claudeAssistant('msg_1', 2)]);
+    const second = await collectPromptHistory({ workspacePaths: [repo], cursor });
+    expect(second.entries).toHaveLength(1);
+    expect(second.entries[0]).toEqual({
+      ...first.entries[0],
+      model: 'claude-opus-5',
+      usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, cacheWriteTokens: 40 },
+      metadataStatus: 'final',
+    });
+    expect(Object.values(second.cursor.sessions)[0].pending).toBeUndefined();
+
+    const unchanged = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(second.cursor),
+    });
+    expect(unchanged.entries).toEqual([]);
+
+    appendJsonl(file, [claudeToolResult(3), claudeUser('next prompt', 4)]);
+    const third = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(second.cursor),
+    });
+    expect(third.entries.map((e) => [e.text, e.ordinal])).toEqual([['next prompt', 1]]);
+
+    const fresh = await collectPromptHistory({ workspacePaths: [repo] });
+    const rows = upsert(new Map(), first.entries, second.entries, third.entries);
+    expect([...rows.values()].sort(byIdentity)).toEqual(fresh.entries);
+  });
+
+  it('Codex: returns the same prompt again when its token_count arrives after collection', async () => {
+    const file = codexFile();
+    writeJsonl(file, [
+      codexMeta(repo),
+      { timestamp: ts(1), type: 'turn_context', payload: { cwd: repo, model: 'm1' } },
+      codexUser(['codex secret prompt'], 2),
+    ]);
+
+    const first = await collectPromptHistory({ workspacePaths: [repo], providers: ['codex'] });
+    expect(first.entries).toHaveLength(1);
+    expect(first.entries[0]).toMatchObject({ ordinal: 0, metadataStatus: 'pending' });
+    expect(first.entries[0].model).toBeUndefined();
+    expect(JSON.stringify(first.cursor)).not.toContain('codex secret prompt');
+
+    // A turn_context between prompt and answer applies exactly as in a single pass.
+    appendJsonl(file, [
+      { timestamp: ts(3), type: 'turn_context', payload: { cwd: repo, model: 'm2' } },
+      codexTokenCount(4),
+    ]);
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      providers: ['codex'],
+      cursor: roundTrip(first.cursor),
+    });
+    expect(second.entries).toEqual([
+      {
+        ...first.entries[0],
+        model: 'm2',
+        usage: { inputTokens: 40, outputTokens: 7, cacheReadTokens: 60, cacheWriteTokens: 5 },
+        metadataStatus: 'final',
+      },
+    ]);
+
+    const unchanged = await collectPromptHistory({
+      workspacePaths: [repo],
+      providers: ['codex'],
+      cursor: roundTrip(second.cursor),
+    });
+    expect(unchanged.entries).toEqual([]);
+
+    appendJsonl(file, [codexUser(['codex next'], 5)]);
+    const third = await collectPromptHistory({
+      workspacePaths: [repo],
+      providers: ['codex'],
+      cursor: roundTrip(second.cursor),
+    });
+    expect(third.entries.map((e) => [e.text, e.ordinal, e.metadataStatus])).toEqual([
+      ['codex next', 1, 'pending'],
+    ]);
+
+    const fresh = await collectPromptHistory({ workspacePaths: [repo], providers: ['codex'] });
+    const rows = upsert(new Map(), first.entries, second.entries, third.entries);
+    expect([...rows.values()].sort(byIdentity)).toEqual(fresh.entries);
+  });
+
+  it('Claude: records of one answering call split across scans replace, never add, usage', async () => {
+    const file = claudeFile(repo, 'split');
+    writeJsonl(file, [
+      claudeUser('prompt', 1),
+      claudeAssistant(
+        'msg_1',
+        2,
+        {},
+        {
+          content: [{ type: 'thinking', thinking: '' }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      ),
+    ]);
+
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(first.entries[0]).toMatchObject({
+      metadataStatus: 'provisional',
+      model: 'claude-opus-5',
+      usage: { inputTokens: 10, outputTokens: 5 },
+    });
+
+    appendJsonl(file, [
+      claudeAssistant(
+        'msg_1',
+        3,
+        {},
+        { stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 20 } },
+      ),
+      claudeAssistant(
+        'msg_1',
+        3,
+        {},
+        { stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 20 } },
+      ),
+    ]);
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(first.cursor),
+    });
+    expect(second.entries).toHaveLength(1);
+    expect(second.entries[0]).toMatchObject({
+      ordinal: 0,
+      timestamp: ts(1),
+      metadataStatus: 'final',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+
+    appendJsonl(file, [claudeToolResult(4), claudeAssistant('msg_2', 5)]);
+    const third = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(second.cursor),
+    });
+    expect(third.entries).toEqual([]);
+  });
+
+  it('Claude: a provisional first call keeps its values when a later call closes it', async () => {
+    const file = claudeFile(repo, 'loop');
+    writeJsonl(file, [
+      claudeUser('prompt', 1),
+      claudeAssistant(
+        'msg_1',
+        2,
+        {},
+        { stop_reason: null, usage: { input_tokens: 11, output_tokens: 3 } },
+      ),
+    ]);
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(first.entries[0].metadataStatus).toBe('provisional');
+
+    // Tool-loop calls after the first never replace its attribution.
+    appendJsonl(file, [
+      claudeToolResult(3),
+      claudeAssistant(
+        'msg_2',
+        4,
+        {},
+        { model: 'claude-other', usage: { input_tokens: 999, output_tokens: 999 } },
+      ),
+      claudeAssistant(
+        'msg_3',
+        5,
+        {},
+        { model: 'claude-other', usage: { input_tokens: 888, output_tokens: 888 } },
+      ),
+    ]);
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(first.cursor),
+    });
+    expect(second.entries).toHaveLength(1);
+    expect(second.entries[0]).toMatchObject({
+      ordinal: 0,
+      model: 'claude-opus-5',
+      usage: { inputTokens: 11, outputTokens: 3 },
+      metadataStatus: 'final',
+    });
+  });
+
+  it('keeps first-call attribution within one scan and ignores synthetic records', async () => {
+    writeJsonl(claudeFile(repo, 'one-pass'), [
+      claudeUser('prompt', 1),
+      claudeAssistant(
+        'syn',
+        2,
+        {},
+        { model: '<synthetic>', usage: { input_tokens: 0, output_tokens: 0 } },
+      ),
+      claudeAssistant(
+        'msg_1',
+        3,
+        {},
+        { stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 2 } },
+      ),
+      claudeToolResult(4),
+      claudeAssistant(
+        'msg_2',
+        5,
+        {},
+        { model: 'claude-other', usage: { input_tokens: 50, output_tokens: 60 } },
+      ),
+    ]);
+    const result = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(result.entries[0]).toMatchObject({
+      model: 'claude-opus-5',
+      usage: { inputTokens: 1, outputTokens: 2 },
+      metadataStatus: 'final',
+    });
+  });
+
+  it('leaves missing usage unknown rather than zero', async () => {
+    writeJsonl(claudeFile(repo, 'no-usage'), [
+      claudeUser('prompt', 1),
+      claudeAssistant('msg_1', 2, {}, { usage: undefined }),
+    ]);
+    const codex = codexFile();
+    writeJsonl(codex, [
+      codexMeta(repo),
+      { timestamp: ts(1), type: 'turn_context', payload: { cwd: repo, model: 'm1' } },
+      codexUser(['interrupted'], 2),
+      { timestamp: ts(3), type: 'event_msg', payload: { type: 'token_count', info: null } },
+    ]);
+
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    const claude = first.entries.find((e) => e.provider === 'claude-code');
+    expect(claude).toMatchObject({ model: 'claude-opus-5', metadataStatus: 'final' });
+    expect(claude?.usage).toBeUndefined();
+    // A rate-limit-only token_count is not an answering call.
+    const codexEntry = first.entries.find((e) => e.provider === 'codex');
+    expect(codexEntry?.metadataStatus).toBe('pending');
+
+    appendJsonl(codex, [codexUser(['after interrupt'], 4)]);
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(first.cursor),
+    });
+    expect(second.entries.map((e) => [e.text, e.ordinal, e.metadataStatus])).toEqual([
+      ['interrupted', 0, 'final'],
+      ['after interrupt', 1, 'pending'],
+    ]);
+    expect(second.entries[0].usage).toBeUndefined();
+    expect(second.entries[0].model).toBeUndefined();
+  });
+
+  it('enriches from an answer line that was incomplete during the previous scan', async () => {
+    const file = claudeFile(repo, 'partial-answer');
+    const prompt = JSON.stringify(claudeUser('prompt', 1)) + '\n';
+    const answer = JSON.stringify(claudeAssistant('msg_1', 2));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, prompt + answer.slice(0, 60));
+
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(first.entries[0].metadataStatus).toBe('pending');
+
+    fs.appendFileSync(file, answer.slice(60) + '\n');
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(first.cursor),
+    });
+    expect(second.entries).toHaveLength(1);
+    expect(second.entries[0]).toMatchObject({
+      ordinal: 0,
+      model: 'claude-opus-5',
+      metadataStatus: 'final',
+    });
+  });
+
+  it('accepts a version 1 cursor, writes version 2, and ignores unknown versions', async () => {
+    writeJsonl(claudeFile(repo, 'v1'), [claudeUser('prompt', 1), claudeAssistant('msg_1', 2)]);
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    const v1 = roundTrip({ ...first.cursor, version: 1 }) as unknown as PromptHistoryCursor;
+
+    const fromV1 = await collectPromptHistory({ workspacePaths: [repo], cursor: v1 });
+    expect(fromV1.entries).toEqual([]);
+    expect(fromV1.stats.sessionsSkippedUnchanged).toBe(1);
+    expect(fromV1.cursor.version).toBe(2);
+
+    const unknown = {
+      version: 3,
+      sessions: first.cursor.sessions,
+    } as unknown as PromptHistoryCursor;
+    const fromUnknown = await collectPromptHistory({ workspacePaths: [repo], cursor: unknown });
+    expect(fromUnknown.entries).toHaveLength(1);
+  });
+
+  it('stops waiting on a prompt whose replay window exceeds maxFileBytes', async () => {
+    const file = claudeFile(repo, 'big');
+    writeJsonl(file, [claudeUser('x'.repeat(2000), 1)]);
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(first.entries[0].metadataStatus).toBe('pending');
+
+    appendJsonl(file, [claudeUser('small', 2)]);
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(first.cursor),
+      bounds: { maxFileBytes: 1000 },
+    });
+    expect(second.entries.map((e) => [e.text, e.ordinal])).toEqual([['small', 1]]);
+    expect(second.stats.filesOverSizeLimit).toBe(0);
+    expect(second.boundsHit).toEqual([]);
+    expect(Object.values(second.cursor.sessions)[0].pending?.ordinal).toBe(1);
   });
 });

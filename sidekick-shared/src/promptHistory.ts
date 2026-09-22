@@ -7,6 +7,11 @@
  * for Codex, its session/turn context) realpath-resolves to an allowed root
  * or somewhere inside one. Every bound stops cleanly and is reported in
  * `boundsHit`; nothing is silently truncated and no bound throws.
+ *
+ * A prompt can be written before its answer. The cursor then keeps the byte
+ * offset of that prompt's line (not its text), the next call replays from it,
+ * and the prompt is returned again under the same identity once its first
+ * answering call brings model or usage (`metadataStatus` says how settled).
  */
 
 import { createHash } from 'crypto';
@@ -31,7 +36,10 @@ export type PromptHistoryBound =
 export interface PromptHistoryBounds {
   /** Session files read in one call (unchanged files do not count). Default 1000. */
   maxSessions?: number;
-  /** Bytes a single file may need read in this pass. Default 16 MiB. */
+  /**
+   * Bytes a single file may need read in this pass. Default 16 MiB. A file over
+   * it is skipped, and calling again with the same bounds skips it again.
+   */
   maxFileBytes?: number;
   /** Bytes read across all files in this call. Default 256 MiB. */
   maxTotalBytes?: number;
@@ -50,6 +58,20 @@ export interface PromptHistoryResumeState {
   meta?: boolean;
 }
 
+/**
+ * The last emitted prompt of a file whose answering call is not final yet.
+ * Holds a replay position and a metadata digest, never prompt or answer text.
+ */
+export interface PromptHistoryPendingPrompt {
+  ordinal: number;
+  /** Byte offset where the prompt's log line starts; the next pass replays from here. */
+  offset: number;
+  /** Digest of the model, usage, and status last returned for this prompt. */
+  emitted: string;
+  /** Codex parse state as it was just before the prompt line. */
+  state?: PromptHistoryResumeState;
+}
+
 export interface PromptHistoryCursorSession {
   provider: PromptHistoryProvider;
   sessionId: string;
@@ -60,13 +82,28 @@ export interface PromptHistoryCursorSession {
   /** Byte offset just past the last complete line processed. */
   offset: number;
   state?: PromptHistoryResumeState;
+  pending?: PromptHistoryPendingPrompt;
 }
 
-/** JSON-serializable resume point. Keys are opaque; they never contain paths. */
+/**
+ * JSON-serializable resume point. Keys are opaque and never contain paths, but
+ * values can (Codex `state.cwd`), so treat the cursor as sensitive local state.
+ * Version 1 cursors from 0.27.0 are accepted as input; output is always version 2.
+ */
 export interface PromptHistoryCursor {
-  version: 1;
+  version: 2;
   sessions: Record<string, PromptHistoryCursorSession>;
 }
+
+/**
+ * How settled an entry's `model` / `usage` are:
+ * - `pending`: no answering call seen yet.
+ * - `provisional`: the first answering call is still being written (Claude
+ *   `stop_reason: null`); values may change.
+ * - `final`: the first answering call is complete, or the prompt was closed
+ *   without one. Missing usage is then unknown, not zero.
+ */
+export type PromptHistoryMetadataStatus = 'pending' | 'provisional' | 'final';
 
 export interface PromptHistoryUsage {
   /** Uncached input tokens. */
@@ -92,6 +129,12 @@ export interface PromptHistoryEntry {
   model?: string;
   /** Usage of that first answering model call, when known. */
   usage?: PromptHistoryUsage;
+  /**
+   * Whether `model` / `usage` can still change. A prompt that is not `final`
+   * is returned again, with the same provider, sessionId, ordinal, timestamp,
+   * and text, by a later call once its metadata or status changes.
+   */
+  metadataStatus: PromptHistoryMetadataStatus;
 }
 
 export interface PromptHistoryStats {
@@ -160,6 +203,7 @@ interface ScanOutcome {
   lastOrdinal: number;
   offset: number;
   state?: PromptHistoryResumeState;
+  pending?: PromptHistoryPendingPrompt;
   inScope: number;
   outOfScope: number;
   notInteractive: boolean;
@@ -182,8 +226,8 @@ export async function collectPromptHistory(
     promptsMissingTimestamp: 0,
     promptsOutOfScope: 0,
   };
-  const previous = options.cursor?.version === 1 ? options.cursor.sessions : {};
-  const cursor: PromptHistoryCursor = { version: 1, sessions: { ...previous } };
+  const previous = acceptedCursorSessions(options.cursor);
+  const cursor: PromptHistoryCursor = { version: 2, sessions: { ...previous } };
   const entries: PromptHistoryEntry[] = [];
 
   const shouldStop = (): PromptHistoryBound | null => {
@@ -233,8 +277,9 @@ export async function collectPromptHistory(
     }
     // A file that shrank was rewritten; its old offsets and ordinals are meaningless.
     const resume = prior && prior.offset <= stat.size ? prior : undefined;
-    const offset = resume?.offset ?? 0;
-    const bytesToRead = stat.size - offset;
+    // Replay from the open prompt's line so late answer metadata can reach it.
+    let replay = validPending(resume);
+    let offset = replay?.offset ?? resume?.offset ?? 0;
 
     if (resume?.state?.excluded) {
       cursor.sessions[candidate.key] = {
@@ -246,6 +291,12 @@ export async function collectPromptHistory(
       stats.sessionsNotInteractive++;
       continue;
     }
+    if (replay && resume && stat.size - offset > bounds.maxFileBytes) {
+      // Too far to replay: stop waiting on that prompt rather than stall the file.
+      replay = undefined;
+      offset = resume.offset;
+    }
+    const bytesToRead = stat.size - offset;
     if (bytesToRead > bounds.maxFileBytes) {
       stats.filesOverSizeLimit++;
       boundsHit.add('maxFileBytes');
@@ -269,7 +320,7 @@ export async function collectPromptHistory(
     totalBytes += buffer.length;
     stats.sessionsScanned++;
 
-    const outcome = await scanBuffer(candidate, buffer, offset, resume, context);
+    const outcome = await scanBuffer(candidate, buffer, offset, { resume, replay }, context);
     if (outcome.stoppedBy) {
       // Partially processed file: drop its entries and leave its cursor untouched.
       boundsHit.add(outcome.stoppedBy);
@@ -277,7 +328,13 @@ export async function collectPromptHistory(
     }
     if (outcome.notInteractive) stats.sessionsNotInteractive++;
     else if (outcome.inScope === 0 && outcome.outOfScope > 0) stats.sessionsOutOfScope++;
-    entries.push(...outcome.entries);
+    for (const entry of outcome.entries) {
+      // A replayed prompt is returned again only when its metadata changed.
+      if (replay && entry.ordinal === replay.ordinal && metadataDigest(entry) === replay.emitted) {
+        continue;
+      }
+      entries.push(entry);
+    }
     cursor.sessions[candidate.key] = {
       provider: candidate.provider,
       sessionId: candidate.sessionId,
@@ -286,6 +343,7 @@ export async function collectPromptHistory(
       lastOrdinal: outcome.lastOrdinal,
       offset: outcome.offset,
       ...(outcome.state ? { state: outcome.state } : {}),
+      ...(outcome.pending ? { pending: outcome.pending } : {}),
     };
     await yieldToEventLoop();
   }
@@ -301,6 +359,47 @@ function definedBounds(bounds: PromptHistoryBounds | undefined): PromptHistoryBo
     if (typeof value === 'number' && !Number.isNaN(value)) result[key] = Math.max(0, value);
   }
   return result;
+}
+
+function acceptedCursorSessions(
+  cursor: PromptHistoryCursor | { version: number; sessions?: unknown } | undefined,
+): Record<string, PromptHistoryCursorSession> {
+  if (!cursor || (cursor.version !== 1 && cursor.version !== 2)) return {};
+  const sessions = cursor.sessions;
+  return typeof sessions === 'object' && sessions !== null
+    ? (sessions as Record<string, PromptHistoryCursorSession>)
+    : {};
+}
+
+function validPending(
+  resume: PromptHistoryCursorSession | undefined,
+): PromptHistoryPendingPrompt | undefined {
+  const pending = resume?.pending;
+  if (!resume || !pending) return undefined;
+  const valid =
+    Number.isInteger(pending.ordinal) &&
+    pending.ordinal === resume.lastOrdinal &&
+    Number.isInteger(pending.offset) &&
+    pending.offset >= 0 &&
+    pending.offset <= resume.offset &&
+    typeof pending.emitted === 'string';
+  return valid ? pending : undefined;
+}
+
+/** Digest of what a consumer would store for an entry besides its identity and text. */
+function metadataDigest(entry: PromptHistoryEntry): string {
+  const usage = entry.usage
+    ? [
+        entry.usage.inputTokens ?? null,
+        entry.usage.outputTokens ?? null,
+        entry.usage.cacheReadTokens ?? null,
+        entry.usage.cacheWriteTokens ?? null,
+      ]
+    : null;
+  return createHash('sha256')
+    .update(JSON.stringify([entry.model ?? null, usage, entry.metadataStatus]))
+    .digest('hex')
+    .slice(0, 16);
 }
 
 function compareEntries(left: PromptHistoryEntry, right: PromptHistoryEntry): number {
@@ -436,28 +535,37 @@ function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+interface ScanStart {
+  resume: PromptHistoryCursorSession | undefined;
+  /** When set, the buffer starts at this open prompt's line. */
+  replay: PromptHistoryPendingPrompt | undefined;
+}
+
 async function scanBuffer(
   candidate: Candidate,
   buffer: Buffer,
   startOffset: number,
-  resume: PromptHistoryCursorSession | undefined,
+  start: ScanStart,
   context: ScanContext,
 ): Promise<ScanOutcome> {
   const lastNewline = buffer.lastIndexOf(0x0a);
-  const complete = lastNewline >= 0 ? buffer.subarray(0, lastNewline + 1) : Buffer.alloc(0);
-  const lines = complete.toString('utf8').split('\n');
+  const completeLength = lastNewline + 1;
   const scanner =
     candidate.provider === 'claude-code'
-      ? new ClaudeLineScanner(candidate, resume, context)
-      : new CodexLineScanner(candidate, resume, context);
+      ? new ClaudeLineScanner(candidate, start, context)
+      : new CodexLineScanner(candidate, start, context);
 
-  for (let index = 0; index < lines.length; index++) {
+  let lineStart = 0;
+  for (let index = 0; lineStart < completeLength; index++) {
     if (index > 0 && index % CHECK_EVERY_LINES === 0) {
       await yieldToEventLoop();
       const stop = context.shouldStop();
       if (stop) return { ...scanner.outcome(startOffset), stoppedBy: stop };
     }
-    const line = lines[index];
+    const lineEnd = buffer.indexOf(0x0a, lineStart);
+    const line = buffer.toString('utf8', lineStart, lineEnd);
+    const lineOffset = startOffset + lineStart;
+    lineStart = lineEnd + 1;
     if (!line.trim()) continue;
     let record: unknown;
     try {
@@ -466,17 +574,25 @@ async function scanBuffer(
       continue;
     }
     if (typeof record !== 'object' || record === null) continue;
-    if (scanner.accept(record as Record<string, unknown>) === 'excluded') {
+    if (scanner.accept(record as Record<string, unknown>, lineOffset) === 'excluded') {
       // Non-interactive Codex session: nothing in it will ever count.
       return {
         ...scanner.outcome(startOffset + buffer.length),
         entries: [],
+        pending: undefined,
         notInteractive: true,
         stoppedBy: null,
       };
     }
   }
-  return { ...scanner.outcome(startOffset + complete.length), stoppedBy: null };
+  return { ...scanner.outcome(startOffset + completeLength), stoppedBy: null };
+}
+
+/** An emitted prompt whose first answering call is not final yet. */
+interface OpenPrompt {
+  entry: PromptHistoryEntry;
+  lineOffset: number;
+  stateBefore?: PromptHistoryResumeState;
 }
 
 /** Shared per-file prompt bookkeeping for both providers. */
@@ -485,17 +601,18 @@ abstract class LineScanner {
   protected nextOrdinal: number;
   protected inScope = 0;
   protected outOfScope = 0;
-  protected pending: PromptHistoryEntry | null = null;
+  /** Latest emitted prompt still collecting answer metadata. */
+  protected open: OpenPrompt | null = null;
 
   constructor(
     protected readonly candidate: Candidate,
-    resume: PromptHistoryCursorSession | undefined,
+    start: ScanStart,
     protected readonly context: ScanContext,
   ) {
-    this.nextOrdinal = (resume?.lastOrdinal ?? -1) + 1;
+    this.nextOrdinal = start.replay ? start.replay.ordinal : (start.resume?.lastOrdinal ?? -1) + 1;
   }
 
-  abstract accept(record: Record<string, unknown>): 'ok' | 'excluded';
+  abstract accept(record: Record<string, unknown>, lineOffset: number): 'ok' | 'excluded';
 
   protected state(): PromptHistoryResumeState | undefined {
     return undefined;
@@ -503,15 +620,32 @@ abstract class LineScanner {
 
   outcome(offset: number): Omit<ScanOutcome, 'stoppedBy'> {
     const state = this.state();
+    const open = this.open;
     return {
       entries: this.entries,
       lastOrdinal: this.nextOrdinal - 1,
       offset,
       ...(state ? { state } : {}),
+      ...(open
+        ? {
+            pending: {
+              ordinal: open.entry.ordinal,
+              offset: open.lineOffset,
+              emitted: metadataDigest(open.entry),
+              ...(open.stateBefore ? { state: open.stateBefore } : {}),
+            },
+          }
+        : {}),
       inScope: this.inScope,
       outOfScope: this.outOfScope,
       notInteractive: false,
     };
+  }
+
+  /** The open prompt's answer is complete, or will never arrive. */
+  protected closeOpen(): void {
+    if (this.open) this.open.entry.metadataStatus = 'final';
+    this.open = null;
   }
 
   /** Assign an ordinal to a human prompt and emit it when in scope. */
@@ -520,9 +654,11 @@ abstract class LineScanner {
     timestamp: unknown,
     cwd: unknown,
     gitBranch: string | undefined,
+    lineOffset: number,
+    stateBefore?: PromptHistoryResumeState,
   ): void {
     const ordinal = this.nextOrdinal++;
-    this.pending = null;
+    this.closeOpen();
     if (typeof timestamp !== 'string' || Number.isNaN(Date.parse(timestamp))) {
       this.context.stats.promptsMissingTimestamp++;
       return;
@@ -543,9 +679,10 @@ abstract class LineScanner {
       text,
       cwd: scoped,
       ...(gitBranch ? { gitBranch } : {}),
+      metadataStatus: 'pending',
     };
     this.entries.push(entry);
-    this.pending = entry;
+    this.open = { entry, lineOffset, ...(stateBefore ? { stateBefore } : {}) };
   }
 }
 
@@ -598,18 +735,19 @@ class ClaudeLineScanner extends LineScanner {
   private lineIndex = 0;
   private answerId: string | null = null;
 
-  accept(record: Record<string, unknown>): 'ok' {
+  accept(record: Record<string, unknown>, lineOffset: number): 'ok' {
     const index = this.lineIndex++;
     const message = record.message as Record<string, unknown> | undefined;
     if (typeof message !== 'object' || message === null) return 'ok';
 
     if (record.type === 'user') {
       const origin = record.origin as { kind?: unknown } | undefined;
+      const blocks = claudeBlocks(message.content);
       const canonical = transcriptMessage(
         this.candidate,
         record,
         typeof message.role === 'string' ? message.role : 'user',
-        claudeBlocks(message.content),
+        blocks,
         {
           entrypoint: stringField(record.entrypoint),
           isMeta: record.isMeta === true ? true : undefined,
@@ -622,32 +760,56 @@ class ClaudeLineScanner extends LineScanner {
         index,
       );
       const text = humanPromptText(canonical, 'claude-code');
-      if (text === null) return 'ok';
+      if (text === null) {
+        // A tool result means the first answering call already finished.
+        if (
+          this.answerId !== null &&
+          record.isSidechain !== true &&
+          blocks.some((block) => block.type === 'tool_result')
+        ) {
+          this.closeOpen();
+        }
+        return 'ok';
+      }
       this.answerId = null;
-      this.recordPrompt(text, record.timestamp, record.cwd, stringField(record.gitBranch));
+      this.recordPrompt(
+        text,
+        record.timestamp,
+        record.cwd,
+        stringField(record.gitBranch),
+        lineOffset,
+      );
       return 'ok';
     }
 
-    if (record.type === 'assistant' && this.pending && record.isSidechain !== true) {
-      const id = stringField(message.id) ?? `line:${index}`;
-      if (this.answerId === null) this.answerId = id;
-      if (id !== this.answerId) {
-        this.pending = null;
-        return 'ok';
-      }
-      const model = stringField(message.model);
-      if (model && model !== '<synthetic>') this.pending.model = model;
-      const usage = message.usage as Record<string, unknown> | undefined;
-      if (usage && typeof usage === 'object') {
-        const mapped = compactUsage({
-          inputTokens: tokenCount(usage.input_tokens),
-          outputTokens: tokenCount(usage.output_tokens),
-          cacheReadTokens: tokenCount(usage.cache_read_input_tokens),
-          cacheWriteTokens: tokenCount(usage.cache_creation_input_tokens),
-        });
-        if (mapped) this.pending.usage = mapped;
-      }
+    const open = this.open;
+    if (record.type !== 'assistant' || !open || record.isSidechain === true) return 'ok';
+    // Synthetic records (API errors, interrupts) are not model calls.
+    if (message.model === '<synthetic>') return 'ok';
+    const id = stringField(message.id) ?? `line:${index}`;
+    if (this.answerId === null) this.answerId = id;
+    if (id !== this.answerId) {
+      // A later tool-loop call: the first answering call is over and keeps its attribution.
+      this.closeOpen();
+      return 'ok';
     }
+    const entry = open.entry;
+    const model = stringField(message.model);
+    if (model) entry.model = model;
+    const usage = message.usage as Record<string, unknown> | undefined;
+    if (usage && typeof usage === 'object') {
+      // Split records of one call repeat its usage; the latest replaces, never adds.
+      const mapped = compactUsage({
+        inputTokens: tokenCount(usage.input_tokens),
+        outputTokens: tokenCount(usage.output_tokens),
+        cacheReadTokens: tokenCount(usage.cache_read_input_tokens),
+        cacheWriteTokens: tokenCount(usage.cache_creation_input_tokens),
+      });
+      if (mapped) entry.usage = mapped;
+    }
+    // Claude Code writes the call's final stop_reason and usage on every split record.
+    if (stringField(message.stop_reason)) this.closeOpen();
+    else entry.metadataStatus = 'provisional';
     return 'ok';
   }
 }
@@ -676,20 +838,18 @@ class CodexLineScanner extends LineScanner {
   private lineIndex = 0;
   private readonly resumeState: PromptHistoryResumeState;
 
-  constructor(
-    candidate: Candidate,
-    resume: PromptHistoryCursorSession | undefined,
-    context: ScanContext,
-  ) {
-    super(candidate, resume, context);
-    this.resumeState = { ...(resume?.state ?? {}) };
+  constructor(candidate: Candidate, start: ScanStart, context: ScanContext) {
+    super(candidate, start, context);
+    // A replay restarts at the open prompt's line, so it needs the state from just before it.
+    const initial = start.replay ? start.replay.state : start.resume?.state;
+    this.resumeState = { ...(initial ?? {}) };
   }
 
   protected override state(): PromptHistoryResumeState {
     return { ...this.resumeState };
   }
 
-  accept(record: Record<string, unknown>): 'ok' | 'excluded' {
+  accept(record: Record<string, unknown>, lineOffset: number): 'ok' | 'excluded' {
     const index = this.lineIndex++;
     const payload = record.payload as Record<string, unknown> | undefined;
     if (typeof payload !== 'object' || payload === null) return 'ok';
@@ -734,11 +894,15 @@ class CodexLineScanner extends LineScanner {
       );
       const text = humanPromptText(canonical, 'codex');
       if (text === null) return 'ok';
-      this.recordPrompt(text, record.timestamp, state.cwd, state.gitBranch);
+      this.recordPrompt(text, record.timestamp, state.cwd, state.gitBranch, lineOffset, {
+        ...state,
+      });
       return 'ok';
     }
 
-    if (record.type === 'event_msg' && payload.type === 'token_count' && this.pending) {
+    const open = this.open;
+    if (record.type === 'event_msg' && payload.type === 'token_count' && open) {
+      // The first token_count after the prompt is the first answering call, complete.
       const info = payload.info as { last_token_usage?: Record<string, unknown> } | null;
       const last = info && typeof info === 'object' ? info.last_token_usage : undefined;
       if (!last || typeof last !== 'object') return 'ok';
@@ -750,9 +914,9 @@ class CodexLineScanner extends LineScanner {
         cacheReadTokens: cached,
         cacheWriteTokens: tokenCount(last.cache_write_input_tokens),
       });
-      if (mapped) this.pending.usage = mapped;
-      if (state.model) this.pending.model = state.model;
-      this.pending = null;
+      if (mapped) open.entry.usage = mapped;
+      if (state.model) open.entry.model = state.model;
+      this.closeOpen();
     }
     return 'ok';
   }

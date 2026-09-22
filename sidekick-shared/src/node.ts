@@ -32,6 +32,8 @@ export type {
   PromptHistoryCursor,
   PromptHistoryCursorSession,
   PromptHistoryEntry,
+  PromptHistoryMetadataStatus,
+  PromptHistoryPendingPrompt,
   PromptHistoryProvider,
   PromptHistoryResult,
   PromptHistoryResumeState,
