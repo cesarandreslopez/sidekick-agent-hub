@@ -27,6 +27,7 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     expect(root.diagnoseProviderFailure).toBe(browser.diagnoseProviderFailure);
     expect(root.fetchProviderServiceStatus).toBe(node.fetchProviderServiceStatus);
     expect(browser.fetchProviderServiceStatus).toBeUndefined();
+    expect(browser.collectPromptHistory).toBeUndefined();
     for (const file of [rootDts, browserDts]) {
       const declarations = await fs.readFile(file, 'utf8');
       expect(declarations).toContain('ProviderFailureInput');
@@ -227,6 +228,9 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     expect(typeof m.LITELLM_CATALOG_URL).toBe('string');
     expect(typeof m.listRecentSessions).toBe('function');
     expect(typeof m.readSessionTranscript).toBe('function');
+    expect(typeof m.collectPromptHistory).toBe('function');
+    expect(typeof m.isHumanPrompt).toBe('function');
+    expect(Array.isArray(m.HUMAN_CLAUDE_ENTRYPOINTS)).toBe(true);
     expect(typeof m.listSessionPreviews).toBe('function');
     expect(typeof m.readSessionPreview).toBe('function');
     expect(typeof m.readCodexHistory).toBe('function');

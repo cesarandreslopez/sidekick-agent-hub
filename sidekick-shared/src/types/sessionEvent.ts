@@ -84,6 +84,15 @@ export interface SessionEventBase {
   /** Whether this is a subagent/sidechain event */
   isSidechain?: boolean;
 
+  /** Whether the provider marks this event as a compaction/continuation summary. */
+  isCompactSummary?: boolean;
+
+  /** Provider-reported prompt origin (Claude Code `origin.kind`, e.g. `human`, `task-notification`). */
+  origin?: { kind?: string };
+
+  /** Provider-reported prompt source (Claude Code `promptSource`, e.g. `typed`, `system`). */
+  promptSource?: string;
+
   /** Provider-reported working directory for this event/session. */
   cwd?: string;
 

@@ -104,7 +104,14 @@ const contractGroups = {
     'resolveModelAlias',
   ],
   estimation: ['estimateTextTokens', 'estimateSerializedTokens'],
-  transcripts: ['projectSessionTranscript', 'listRecentSessions', 'readSessionTranscript'],
+  transcripts: [
+    'projectSessionTranscript',
+    'listRecentSessions',
+    'readSessionTranscript',
+    'collectPromptHistory',
+    'isHumanPrompt',
+    'humanPromptText',
+  ],
   turns: ['reasoningSummary', 'segmentAssistantTurn', 'extractTurnSubagents'],
   observedSessions: ['createProviderSessionAdapterV1', 'derivePendingUserRequestV1'],
   collection: [

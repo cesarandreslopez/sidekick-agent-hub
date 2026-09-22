@@ -17,6 +17,12 @@ export interface TranscriptSourceProvenance {
   entrypoint?: string;
   isMeta?: boolean;
   isSidechain?: boolean;
+  /** Claude Code compaction/continuation summary flag. */
+  isCompactSummary?: boolean;
+  /** Claude Code `origin.kind` (e.g. `human`, `task-notification`, `coordinator`). */
+  originKind?: string;
+  /** Claude Code `promptSource` (e.g. `typed`, `queued`, `system`). */
+  promptSource?: string;
   originalRole?: string;
   eventIndex: number;
   eventType: SessionEvent['type'];
@@ -151,6 +157,9 @@ export function projectSessionTranscript(
       entrypoint: event.entrypoint,
       isMeta: event.isMeta,
       isSidechain: event.isSidechain,
+      ...(event.isCompactSummary !== undefined ? { isCompactSummary: event.isCompactSummary } : {}),
+      ...(event.origin?.kind !== undefined ? { originKind: event.origin.kind } : {}),
+      ...(event.promptSource !== undefined ? { promptSource: event.promptSource } : {}),
       originalRole: message?.role,
       eventIndex,
       eventType: event.type,

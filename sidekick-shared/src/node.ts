@@ -24,6 +24,27 @@ export type {
   ObservedContextWindowStore,
 } from './observedContextWindows';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
+export { collectPromptHistory } from './promptHistory';
+export type {
+  CollectPromptHistoryOptions,
+  PromptHistoryBound,
+  PromptHistoryBounds,
+  PromptHistoryCursor,
+  PromptHistoryCursorSession,
+  PromptHistoryEntry,
+  PromptHistoryProvider,
+  PromptHistoryResult,
+  PromptHistoryResumeState,
+  PromptHistoryStats,
+  PromptHistoryUsage,
+} from './promptHistory';
+export {
+  HUMAN_CLAUDE_ENTRYPOINTS,
+  HUMAN_CODEX_SOURCES,
+  humanPromptText,
+  isHumanPrompt,
+} from './humanPrompt';
+export type { HumanPromptProvider } from './humanPrompt';
 export {
   computeSessionFileStats,
   firstUserPrompt,
