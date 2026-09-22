@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-09-22
+
+### Changed
+
+- Dashboard session summaries sent through the OpenAI API use GPT-6 Luna (`gpt-6-luna`) instead of GPT-5.6 Luna; GPT-6 Sol and Luna sessions get pricing and context-window metadata via `sidekick-shared` 0.27.0.
+
+### Fixed
+
+- Cost estimates for Claude Opus 5.5 (`claude-opus-5-5`) sessions use its own rates ($4 / $20 per 1M tokens, $0.20 cache reads) instead of Opus 5's, via `sidekick-shared` 0.27.0.
+
 ## [0.26.6] - 2026-09-16
 
 ### Added

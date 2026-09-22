@@ -5,6 +5,20 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-09-22
+
+### Added
+
+- `collectPromptHistory(options)` (Node-only; exported from `sidekick-shared/node` and the package root, not `sidekick-shared/browser`) returns the prompts a person typed in Claude Code and Codex sessions whose recorded working directory lies inside `workspacePaths` (realpath-normalized; git worktree siblings are added unless `includeWorktrees: false`). Scope fails closed: each prompt's cwd (Claude: the line's `cwd`; Codex: `session_meta` / `turn_context`) must realpath-resolve to a root or inside one. Entries hold `provider`, `sessionId`, a stable per-session `ordinal` (every human prompt consumes one, in or out of scope), the log-line `timestamp` (lines without one are skipped and counted), full `text`, realpath `cwd`, `gitBranch`, and the `model` / `usage` of the first answering model call. Codex subagent sessions and forked sessions (whose replayed parent history cannot be separated) are skipped. `cursor` is JSON-serializable, keyed without paths, and records `size`, `mtimeMs`, `lastOrdinal`, and a byte `offset` per file; unchanged files are skipped, appended files resume after `lastOrdinal`, and rewritten (shrunk) files are rescanned. `bounds` (`maxSessions` 1000, `maxFileBytes` 16 MiB, `maxTotalBytes` 256 MiB, `deadlineMs` 30 000) and `signal` never throw: hits are listed in `boundsHit`, an interrupted file contributes no entries, and the cursor covers only fully processed files. `stats` reports sessions scanned, skipped unchanged, out of scope, non-interactive, and over the size limit, plus prompts dropped for missing timestamps or scope.
+- `isHumanPrompt(message, provider)` and `humanPromptText(message, provider)` classify `CanonicalTranscriptMessage`s. Claude Code: user role, entrypoint in `HUMAN_CLAUDE_ENTRYPOINTS` (`cli`, `claude-desktop`, `sdk-cli`), not meta, sidechain, or compaction summary, `origin.kind` absent or `human`, `promptSource` not `system`, and not tool-result-only, local-command output or caveat, task notification, system reminder, or interrupt marker; slash commands come back as typed (`/review foo`). Codex: user role with injected `AGENTS.md`, `<environment_context>`, `<user_instructions>`, turn-aborted, skill, subagent-notification, and internal-context blocks and `<image>` wrappers dropped. `HUMAN_CODEX_SOURCES` (`cli`, `vscode`, `exec`) is the session-level Codex rule applied by `collectPromptHistory()`.
+- `TranscriptSourceProvenance` gains optional `isCompactSummary`, `originKind`, and `promptSource`, and `SessionEventBase` gains `isCompactSummary`, `origin`, and `promptSource`, all preserved from Claude Code JSONL so `readSessionTranscript()` output can be classified without reparsing.
+
+- GPT-6 Sol (`gpt-6-sol`: $2 input / $10 output / $0.20 cached input per 1M tokens) and GPT-6 Luna (`gpt-6-luna`: $0.10 / $0.50 / $0.01) pricing and 1.05M context-window entries.
+
+### Fixed
+
+- Claude Opus 5.5 (`claude-opus-5-5` / `claude-opus-5.5`) is priced at $4 input / $20 output / $5 cache write / $0.20 cache read per 1M tokens with a 1M context window. It previously prefix-matched `claude-opus-5` ($5 / $25 / $0.50), and the LiteLLM catalog has no entry for it.
+
 ## [0.26.6] - 2026-09-16
 
 ### Added

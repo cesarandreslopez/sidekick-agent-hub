@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-09-22
+
+### Added
+
+- `sidekick-shared`: `collectPromptHistory()` (Node entry point and package root, not the browser entry) extracts the prompts a person typed from Claude Code and Codex session logs for a set of workspace roots, including git worktree siblings by default. Scope fails closed on the working directory recorded in the log (it must realpath-resolve inside a root; missing or unresolvable cwds are excluded, and Codex scope never comes from the rollout's location). Text is untruncated, and each entry carries a stable per-session ordinal, the log-line timestamp, cwd, branch, and the model and usage of the first answering call. A JSON-serializable cursor skips unchanged files and resumes appended ones after `lastOrdinal`; `maxSessions`, `maxFileBytes`, `maxTotalBytes`, deadline, and `AbortSignal` bounds stop cleanly and are reported in `boundsHit`. Parse-only: no redaction, no network I/O, and no session file paths in entries or cursor keys.
+- `sidekick-shared`: GPT-6 Sol (`gpt-6-sol`, $2 / $10 per 1M tokens, $0.20 cached input) and GPT-6 Luna (`gpt-6-luna`, $0.10 / $0.50, $0.01 cached input) pricing and 1.05M context entries.
+- `sidekick-shared`: `isHumanPrompt()` and `humanPromptText()` give consumers one definition of a human prompt, with `HUMAN_CLAUDE_ENTRYPOINTS` (`cli`, `claude-desktop`, `sdk-cli`) and `HUMAN_CODEX_SOURCES` (`cli`, `vscode`, `exec`). Canonical transcript provenance now carries Claude Code's `isCompactSummary`, `originKind` (`origin.kind`), and `promptSource`.
+
+### Changed
+
+- The `powerful` tier now resolves to Claude Opus 5.5 (`claude-opus-5-5`; `anthropic/claude-opus-5-5` on OpenCode), and the Claude API `opus` shorthand maps to Opus 5.5; Claude Max still passes `opus` to the CLI. Codex tiers move to GPT-6: `fast` → `gpt-6-luna`, `balanced` → `gpt-6-sol`, `powerful` → `gpt-6-astra` (a Codex CLI that offers them is required; older CLIs can set `gpt-5.6-*` IDs literally). CLI dashboard summaries through the OpenAI API use `gpt-6-luna`.
+
+### Fixed
+
+- `sidekick-shared`: Claude Opus 5.5 (`claude-opus-5-5` / `claude-opus-5.5`) has its own pricing ($4 input / $20 output / $0.20 cache read per 1M tokens) and 1M context entries; it previously inherited Opus 5 rates through prefix matching, and the LiteLLM catalog has no entry for it.
+- VS Code: dashboard model labels keep the minor version of dashed IDs, so `claude-opus-5-5` shows as "Opus 5.5" and `claude-fable-5-1` as "Fable 5.1" instead of "Opus 5" / "Fable 5".
+
 ## [0.26.6] - 2026-09-16
 
 ### Added

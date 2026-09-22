@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-09-22
+
+### Changed
+
+- The `powerful` tier (code transforms and any setting set to `powerful` or `opus`) now resolves to Claude Opus 5.5 (`claude-opus-5-5`) on the Claude API, `anthropic/claude-opus-5-5` on OpenCode, and GPT-6 Astra (`gpt-6-astra`) on Codex. Claude Max still passes `opus` to the Claude CLI.
+- Codex `fast` and `balanced` tiers resolve to GPT-6 Luna (`gpt-6-luna`) and GPT-6 Sol (`gpt-6-sol`) instead of GPT-5.6 Luna and Terra. They need a Codex CLI that offers the GPT-6 models; with an older CLI, set a literal `gpt-5.6-*` model ID.
+
+### Fixed
+
+- Dashboard model labels keep the minor version of dashed model IDs: `claude-opus-5-5` shows as "Opus 5.5" and `claude-fable-5-1` as "Fable 5.1" instead of "Opus 5" / "Fable 5". Date suffixes are still ignored.
+- Cost estimates for Claude Opus 5.5 sessions use its own rates instead of Opus 5's.
+
 ## [0.26.6] - 2026-09-16
 
 ### Added

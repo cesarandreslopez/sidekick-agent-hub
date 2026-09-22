@@ -22,19 +22,19 @@ flowchart TD
 
 ## Tiers
 
-| Tier       | Use Case                                               | Claude Model | Codex Model     |
-| ---------- | ------------------------------------------------------ | ------------ | --------------- |
-| `fast`     | Low latency, frequent calls (inline completions, docs) | Haiku 4.5    | `gpt-5.6-luna`  |
-| `balanced` | Quality/speed tradeoff (explanations, commits, review) | Sonnet 5     | `gpt-5.6-terra` |
-| `powerful` | Highest quality (code transforms)                      | Opus 5       | `gpt-5.6-sol`   |
+| Tier       | Use Case                                               | Claude Model | Codex Model   |
+| ---------- | ------------------------------------------------------ | ------------ | ------------- |
+| `fast`     | Low latency, frequent calls (inline completions, docs) | Haiku 4.5    | `gpt-6-luna`  |
+| `balanced` | Quality/speed tradeoff (explanations, commits, review) | Sonnet 5     | `gpt-6-sol`   |
+| `powerful` | Highest quality (code transforms)                      | Opus 5.5     | `gpt-6-astra` |
 
 The Claude column resolves per inference provider: `claude-max` passes the short
 names (`haiku` / `sonnet` / `opus`) to the CLI, while `claude-api` and `opencode`
-resolve to versioned IDs such as `claude-sonnet-5` and `claude-opus-5` (with an
+resolve to versioned IDs such as `claude-sonnet-5` and `claude-opus-5-5` (with an
 `anthropic/` prefix for OpenCode). Native Claude aliases follow the installed
 CLI's model mapping.
 
-These defaults were reviewed on September 5, 2026 against the
+These defaults were reviewed on September 22, 2026 against the
 [Anthropic model overview](https://platform.claude.com/docs/en/models/overview)
 and [OpenAI model guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
 
@@ -68,15 +68,18 @@ For backward compatibility, legacy Claude model names are mapped to tiers:
 
 You can bypass the tier system entirely by setting a full model ID (e.g., `claude-sonnet-5` or `gpt-5.6-sol`). This is passed directly to the provider without any mapping.
 
-Use `claude-fable-5-1` or `gpt-6-astra` explicitly for the newest flagships when
-your provider account supports them. The automatic powerful tier uses Opus 5
-or Sol.
+Use `claude-fable-5-1` explicitly for Anthropic's most capable model when your
+provider account supports it, or `claude-opus-5` / `gpt-5.6-sol` to keep the
+previous powerful defaults. The automatic powerful tier uses Opus 5.5 or Astra.
+The GPT-6 Codex tiers need a Codex CLI that offers `gpt-6-luna` and
+`gpt-6-sol`; on an older CLI, set a literal ID such as `gpt-5.6-luna` or
+`gpt-5.6-terra`.
 
 ## CLI Dashboard Summaries
 
 The CLI dashboard has separate inference defaults for its short session
 summaries. Direct Anthropic API calls use `claude-haiku-4-5-20251001`; direct
-OpenAI API calls use `gpt-5.6-luna` with reasoning disabled and a 1,024-token
+OpenAI API calls use `gpt-6-luna` with reasoning disabled and a 1,024-token
 completion limit. Summaries generated through `claude --print` or `codex exec`
 inherit the native CLI's model configuration.
 
@@ -89,9 +92,11 @@ take precedence over published limits when they match the same model, so a
 provider's effective account limit can be smaller than the published maximum.
 Quota utilization comes from separate provider APIs or local samples.
 
-The bundled metadata was refreshed on September 5, 2026 using
+The bundled metadata was refreshed on September 22, 2026 (adding Claude Opus 5.5) using
 [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing)
 and the OpenAI model pages for
+[GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol),
+[GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna),
 [Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol),
 [Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra),
 [Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna),
