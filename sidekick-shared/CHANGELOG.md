@@ -5,6 +5,22 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.1] - 2026-09-22
+
+### Fixed
+
+- `collectPromptHistory()` returns a prompt again when its first answering call is written after the prompt was collected. Previously the cursor moved past the prompt and a resumed scan could never attach the answer's `model` / `usage`. Now, while a file's last emitted prompt is not final, the cursor keeps `pending: { ordinal, offset, emitted, state? }`: the byte offset of the prompt's line, a 16-hex digest of the model, usage, and status last returned, and (Codex) the parse state from just before that line. The next call replays from that offset, so the prompt's `provider`, `sessionId`, `ordinal`, `timestamp`, and `text` come from the log again and are never synthesized or renumbered, and returns it only if its metadata digest changed. No prompt or assistant text is stored in the cursor. A replay that would exceed `maxFileBytes` is dropped in favour of the committed offset, and that prompt is not revisited.
+- First-answer attribution: Claude split records of the first call replace usage rather than adding it, a later assistant message id, a `tool_result`, or a non-null `stop_reason` closes the first call, later tool-loop calls never replace it, and `<synthetic>` records (API errors, interrupts) are ignored instead of contributing zero usage. Codex closes on the first `token_count` with `last_token_usage`; a `token_count` without usage (rate-limit only) does not. Missing usage stays `undefined`.
+- Documentation: cursor keys are path-free, but values are not (Codex `state.cwd` / `gitBranch`), so the cursor is sensitive, local-only state; a file over `maxFileBytes` is skipped and calling again with the same bounds skips it again.
+
+### Added
+
+- `PromptHistoryEntry.metadataStatus`: `pending` (no answering call yet), `provisional` (Claude call seen with `stop_reason: null`), or `final` (complete, or closed without an answer). A prompt closed by the next prompt without an answer is returned once more as `final`. New exported types `PromptHistoryMetadataStatus` and `PromptHistoryPendingPrompt`.
+
+### Changed
+
+- `PromptHistoryCursor.version` is now `2` and sessions may carry `pending`. Version 1 cursors are accepted as input and upgraded; prompts they already returned without metadata cannot be recovered. Unknown versions are ignored (full rescan, same identities).
+
 ## [0.27.0] - 2026-09-22
 
 ### Added

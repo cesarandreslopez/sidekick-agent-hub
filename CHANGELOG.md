@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.1] - 2026-09-22
+
+### Fixed
+
+- `sidekick-shared`: `collectPromptHistory()` no longer loses the model and usage of a prompt collected before its answer was written. While a file's last prompt is not final, the cursor keeps the byte offset of its line and a digest of what was returned (never prompt or answer text); the next call replays from that line and returns the same prompt again (same provider, sessionId, ordinal, timestamp, and text) once its first answering call's metadata changes, so consumers can upsert by identity. Later tool-loop calls still never replace the first answering call, split Claude records replace rather than add usage, Claude `<synthetic>` records no longer count as the answering call, and missing usage stays unknown.
+- `sidekick-shared`: prompt-history documentation now says only cursor keys are path-free (Codex resume state holds the session's cwd, so the cursor is sensitive local state) and that a file over `maxFileBytes` is skipped again on every call with the same bounds.
+
+### Added
+
+- `sidekick-shared`: `PromptHistoryEntry.metadataStatus` (`pending`, `provisional`, `final`), plus the `PromptHistoryMetadataStatus` and `PromptHistoryPendingPrompt` types. The prompt-history cursor is now `version: 2` with an optional per-file `pending` replay point; 0.27.0 cursors are still accepted.
+
 ## [0.27.0] - 2026-09-22
 
 ### Added
