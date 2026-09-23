@@ -22,7 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SessionMonitor } from '../services/SessionMonitor';
 import { TimelineEvent, SubagentStats } from '../types/claudeSession';
-import { scanSubagentTraces, type SubagentTrace } from 'sidekick-shared';
+import { formatTokenCount, scanSubagentTraces, type SubagentTrace } from 'sidekick-shared';
 
 /**
  * Type for subagent classification based on description keywords.
@@ -56,6 +56,9 @@ interface SubagentItem {
 
   /** Total output tokens consumed */
   outputTokens?: number;
+
+  /** Every billed token, cache included (`SubagentStats.totalTokens`) */
+  totalTokens?: number;
 
   /** Duration in milliseconds */
   durationMs?: number;
@@ -316,6 +319,7 @@ export class SubagentTreeProvider
       timestamp: trace.stats.startTime || new Date(),
       inputTokens: trace.stats.inputTokens,
       outputTokens: trace.stats.outputTokens,
+      totalTokens: trace.stats.totalTokens,
       durationMs: trace.stats.durationMs,
       description: trace.description,
       children,
@@ -429,6 +433,7 @@ export class SubagentTreeProvider
             timestamp: stats?.startTime || new Date(),
             inputTokens: stats?.inputTokens,
             outputTokens: stats?.outputTokens,
+            totalTokens: stats?.totalTokens,
             durationMs: stats?.durationMs,
             description: stats?.description,
             children: [],
@@ -454,6 +459,7 @@ export class SubagentTreeProvider
   private enrichFromStats(item: SubagentItem, stats: SubagentStats): void {
     item.inputTokens = stats.inputTokens;
     item.outputTokens = stats.outputTokens;
+    item.totalTokens = stats.totalTokens;
     item.durationMs = stats.durationMs;
     if (stats.description && !item.description) {
       item.description = stats.description;
@@ -538,11 +544,11 @@ export class SubagentTreeProvider
       treeItem.description = 'Running...';
     } else {
       const descParts: string[] = [];
-      if (element.inputTokens || element.outputTokens) {
-        const totalK = Math.round(
-          ((element.inputTokens || 0) + (element.outputTokens || 0)) / 1000,
-        );
-        descParts.push(`${totalK}K tok`);
+      // Cache-inclusive total, the same figure as the session's token totals.
+      const tokens =
+        element.totalTokens ?? (element.inputTokens || 0) + (element.outputTokens || 0);
+      if (tokens > 0) {
+        descParts.push(`${formatTokenCount(tokens, { suffixCase: 'upper' })} tok`);
       }
       if (element.durationMs) {
         const secs = Math.round(element.durationMs / 1000);

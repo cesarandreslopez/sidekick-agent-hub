@@ -4,7 +4,8 @@
  * Unlike OpenCode's stateless converter, this is stateful because:
  * - exec_command_begin/end and mcp_tool_call_begin/end need pairing by call_id
  * - turn_context sets the current model for subsequent events
- * - token_count provides cumulative usage that needs delta computation
+ * - token_count repeats its cumulative total on duplicate events, so each
+ *   call is counted only when `total_token_usage` changes
  *
  * Moved from sidekick-vscode to sidekick-shared for reuse across packages.
  *
@@ -99,6 +100,72 @@ function normalizeRateLimits(
   };
 }
 
+const CODEX_USAGE_FIELDS = [
+  'input_tokens',
+  'cached_input_tokens',
+  'output_tokens',
+  'reasoning_output_tokens',
+  'total_tokens',
+] as const;
+
+function usageField(usage: CodexTokenUsage, field: (typeof CODEX_USAGE_FIELDS)[number]): number {
+  const value = usage[field];
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function codexTotalOf(usage: CodexTokenUsage): number {
+  return (
+    usageField(usage, 'total_tokens') ||
+    usageField(usage, 'input_tokens') + usageField(usage, 'output_tokens')
+  );
+}
+
+/**
+ * Resolve the usage of the single call a Codex `token_count` event reports.
+ *
+ * Codex emits `token_count` repeatedly — rate-limit refreshes and resumes
+ * resend the same `info` — so summing `last_token_usage` per event counts
+ * those calls again. `total_token_usage` is cumulative, which makes an
+ * unchanged total the reliable duplicate signal. When `last_token_usage` is
+ * missing, the call is the growth of the cumulative total (never the total
+ * itself). A total that drops means the counter restarted; re-baseline on it.
+ */
+export function resolveCodexCallUsage(
+  info:
+    | { last_token_usage?: CodexTokenUsage | null; total_token_usage?: CodexTokenUsage | null }
+    | null
+    | undefined,
+  previousTotal: CodexTokenUsage | null,
+): { usage: CodexTokenUsage | null; total: CodexTokenUsage | null } {
+  if (!info) return { usage: null, total: previousTotal };
+  const last = info.last_token_usage ?? null;
+  const total = info.total_token_usage ?? null;
+
+  if (total && previousTotal) {
+    const unchanged = CODEX_USAGE_FIELDS.every(
+      (field) => usageField(total, field) === usageField(previousTotal, field),
+    );
+    if (unchanged) return { usage: null, total };
+    if (codexTotalOf(total) < codexTotalOf(previousTotal)) {
+      return { usage: last ?? total, total };
+    }
+  }
+  if (last) return { usage: last, total: total ?? previousTotal };
+  if (!total) return { usage: null, total: previousTotal };
+
+  const delta = {} as CodexTokenUsage;
+  let any = false;
+  for (const field of CODEX_USAGE_FIELDS) {
+    const value = Math.max(
+      0,
+      usageField(total, field) - (previousTotal ? usageField(previousTotal, field) : 0),
+    );
+    delta[field] = value;
+    if (value > 0) any = true;
+  }
+  return { usage: any ? delta : null, total };
+}
+
 /**
  * Codex-specific tool name normalization.
  * Extends the shared normalizeToolName with Codex-specific mappings.
@@ -182,7 +249,7 @@ export function extractPatchFilePaths(input: string): string[] {
  * - Session metadata (from session_meta)
  * - Current model (from turn_context)
  * - Pending exec commands and MCP tool calls (begin/end pairing)
- * - Previous token counts (for delta computation)
+ * - Previous cumulative token total (to skip duplicate token_count events)
  */
 export class CodexRolloutParser {
   private sessionMeta: CodexSessionMeta | null = null;
@@ -190,6 +257,8 @@ export class CodexRolloutParser {
   private pendingExecCommands = new Map<string, PendingExecCommand>();
   private pendingMcpToolCalls = new Map<string, PendingMcpToolCall>();
   private lastTokenUsage: CodexTokenUsage | null = null;
+  /** Cumulative `total_token_usage` from the previous token_count event. */
+  private prevTotalUsage: CodexTokenUsage | null = null;
   private modelContextWindow: number | null = null;
   private lastRateLimits: CodexRateLimits | null = null;
   private hasAggregateRateLimits = false;
@@ -249,6 +318,7 @@ export class CodexRolloutParser {
     this.pendingExecCommands.clear();
     this.pendingMcpToolCalls.clear();
     this.lastTokenUsage = null;
+    this.prevTotalUsage = null;
     this.modelContextWindow = null;
     this.lastRateLimits = null;
     this.hasAggregateRateLimits = false;
@@ -610,9 +680,11 @@ export class CodexRolloutParser {
             this.lastRateLimits = e.rate_limits;
           }
         }
-        // Usage data is nested under info.last_token_usage (info can be null)
-        const usage = e.info?.last_token_usage || e.info?.total_token_usage;
-        return this.handleTokenCount(timestamp, usage ?? null, e.rate_limits);
+        // Usage data is nested under info (info can be null). Codex repeats an
+        // unchanged cumulative total on duplicate events; count each call once.
+        const resolved = resolveCodexCallUsage(e.info, this.prevTotalUsage);
+        this.prevTotalUsage = resolved.total;
+        return this.handleTokenCount(timestamp, resolved.usage, e.rate_limits);
       }
 
       // agent_message and user_message are suppressed — they duplicate

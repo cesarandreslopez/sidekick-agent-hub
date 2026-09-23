@@ -47,7 +47,13 @@ import { GitDiffCache } from '../GitDiffCache';
 import { CliInferenceClient } from '../../inference/CliInferenceClient';
 import { buildNarrativePrompt } from '../../inference/narrativePrompt';
 import type { ProviderId } from 'sidekick-shared';
-import { describeQuotaFailure, highlightEvent } from 'sidekick-shared';
+import {
+  describeQuotaFailure,
+  highlightEvent,
+  TOKEN_SESSION_TOTAL_LABEL,
+  TOKEN_SUBAGENTS_LABEL,
+  TOKEN_TOTAL_LABEL,
+} from 'sidekick-shared';
 import { localDateOnlyTimestamp } from '../dateFilterExpression';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
@@ -395,16 +401,28 @@ export class SessionsPanel implements SidePanel {
         );
       }
 
-      // ── Tokens section
+      // ── Tokens section (shared vocabulary: the total includes cache reads/writes)
+      const main = m.sessionTokens.mainThread;
       const cacheRate =
-        t.cacheRead + t.input > 0
-          ? `{grey-fg}Cache{/grey-fg} {bold}${((t.cacheRead / (t.cacheRead + t.input)) * 100).toFixed(1)}%{/bold}`
+        main.cacheHitRatio !== null
+          ? `{grey-fg}Cache hit{/grey-fg} {bold}${(main.cacheHitRatio * 100).toFixed(1)}%{/bold}`
           : '';
       lines.push(
         '',
         sectionHeader('Tokens', w),
-        `{grey-fg}In{/grey-fg} {bold}${fmtNum(t.input)}{/bold}  {grey-fg}Out{/grey-fg} {bold}${fmtNum(t.output)}{/bold}  ${cacheRate}  {green-fg}${formatCost(t.cost)}{/green-fg}`,
+        `{grey-fg}${TOKEN_TOTAL_LABEL}{/grey-fg} {bold}${fmtNum(main.total)}{/bold}  {green-fg}${formatCost(t.cost)}{/green-fg}`,
+        `{grey-fg}In{/grey-fg} {bold}${fmtNum(main.input)}{/bold}  {grey-fg}Cache read{/grey-fg} {bold}${fmtNum(main.cacheRead)}{/bold}  {grey-fg}Cache write{/grey-fg} {bold}${fmtNum(main.cacheWrite)}{/bold}  {grey-fg}Out{/grey-fg} {bold}${fmtNum(main.output)}{/bold}${
+          main.billedOutsideBuckets > 0
+            ? `  {grey-fg}Reasoning{/grey-fg} {bold}${fmtNum(main.billedOutsideBuckets)}{/bold}`
+            : ''
+        }  ${cacheRate}`,
       );
+      if (m.sessionTokens.subagents.length > 0) {
+        lines.push(
+          `{grey-fg}${TOKEN_SUBAGENTS_LABEL} (${m.sessionTokens.subagents.length}){/grey-fg} {bold}${fmtNum(m.sessionTokens.subagentTotal.total)}{/bold}`,
+          `{grey-fg}${TOKEN_SESSION_TOTAL_LABEL}{/grey-fg} {bold}${fmtNum(m.sessionTokens.combined.total)}{/bold}`,
+        );
+      }
 
       // ── Context section
       const contextBar = makeColorBar(c.percent, 30, contextColor);
@@ -607,7 +625,12 @@ export class SessionsPanel implements SidePanel {
         // Build suffix first so we know how much space is left for the summary
         let suffix = '';
         if (ev.tokens) {
-          suffix = `  (${fmtNum(ev.tokens.input)} in / ${fmtNum(ev.tokens.output)} out)`;
+          const total =
+            ev.tokens.input +
+            ev.tokens.output +
+            (ev.cacheTokens?.read ?? 0) +
+            (ev.cacheTokens?.write ?? 0);
+          suffix = `  (${fmtNum(total)} tok · ${fmtNum(ev.tokens.output)} out)`;
           if (ev.cost) suffix += ` ${formatCost(ev.cost)}`;
         }
         // Prefix visible width: "[HH:MM:SS] event_type   " = ~23 chars

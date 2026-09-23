@@ -29,6 +29,7 @@ vi.mock('sidekick-shared', () => ({
   }) => ({
     total: t.inputTokens + t.outputTokens + (t.cacheWriteTokens ?? 0) + (t.cacheReadTokens ?? 0),
   }),
+  formatTokenBreakdown: (summary: { total: number }) => `${summary.total} total incl. cache`,
 }));
 vi.mock('sidekick-shared/phrases', () => ({ getRandomPhrase: () => 'phrase' }));
 vi.mock('./SessionMonitor', () => ({ SessionMonitor: class SessionMonitor {} }));

@@ -10,7 +10,15 @@
 import type { AggregatedMetrics } from '../aggregation/types';
 import { describeCostProvenance } from '../aggregation/costProvenance';
 import { formatDurationMs, formatTokenCount } from '../formatting';
-import { summarizeTokens, TOKEN_TOTAL_LABEL } from '../tokenSummary';
+import {
+  formatTokenBreakdown,
+  TOKEN_MAIN_THREAD_LABEL,
+  TOKEN_SESSION_TOTAL_LABEL,
+  TOKEN_SUBAGENTS_LABEL,
+  TOKEN_TOTAL_LABEL,
+} from '../tokenSummary';
+import { combineSessionTokenTotals, type SessionTokenTotals } from '../sessionTokenTotals';
+import type { SubagentStats } from '../types/sessionEvent';
 
 /** Options for text and markdown formatters. */
 export interface SessionDumpOptions {
@@ -20,15 +28,35 @@ export interface SessionDumpOptions {
   expand?: boolean;
   /** Session file name to display in markdown summary table. */
   sessionFileName?: string;
+  /**
+   * The session's subagents (`provider.scanSubagents()`). Their tokens are
+   * reported beside the main thread and added to the session total.
+   */
+  subagents?: readonly SubagentStats[];
+}
+
+/** Main thread (the aggregated transcript) plus the session's subagents. */
+function sessionTokens(
+  metrics: AggregatedMetrics,
+  options: SessionDumpOptions,
+): SessionTokenTotals {
+  return combineSessionTokenTotals(metrics.tokens, options.subagents ?? []);
 }
 
 // ── JSON output ──
 
 /**
- * Serialize aggregated metrics as pretty-printed JSON.
+ * Serialize aggregated metrics as pretty-printed JSON, plus a `tokenSummary`
+ * block in the shared vocabulary: `mainThread`, per-subagent summaries,
+ * `subagentTotal`, and `combined` (main thread plus subagents).
  */
-export function formatSessionJson(metrics: AggregatedMetrics): string {
-  return JSON.stringify(metrics, null, 2) + '\n';
+export function formatSessionJson(
+  metrics: AggregatedMetrics,
+  options: Pick<SessionDumpOptions, 'subagents'> = {},
+): string {
+  return (
+    JSON.stringify({ ...metrics, tokenSummary: sessionTokens(metrics, options) }, null, 2) + '\n'
+  );
 }
 
 // ── Text output ──
@@ -52,7 +80,7 @@ export function formatSessionText(
   lines.push('');
 
   // Token summary
-  lines.push(formatTokenSummary(metrics));
+  lines.push(...formatTokenSummary(metrics, sessionTokens(metrics, options)));
   lines.push('');
 
   // Model stats
@@ -60,7 +88,7 @@ export function formatSessionText(
     lines.push('Models:');
     for (const m of metrics.modelStats) {
       lines.push(
-        `  ${m.model}: ${m.calls} calls, ${fmtTokens(m.tokens)} tokens, ${fmtCost(m.cost)}`,
+        `  ${m.model}: ${m.calls} calls, ${fmtTokens(m.tokens)} total incl. cache, ${fmtCost(m.cost)}`,
       );
     }
     lines.push('');
@@ -87,7 +115,7 @@ export function formatSessionText(
     const parts: string[] = [];
     if (metrics.compactionCount > 0) parts.push(`${metrics.compactionCount} compaction(s)`);
     if (metrics.truncationCount > 0) parts.push(`${metrics.truncationCount} truncation(s)`);
-    lines.push(`Context: ${parts.join(', ')}`);
+    lines.push(`Context management: ${parts.join(', ')}`);
     lines.push('');
   }
 
@@ -158,7 +186,23 @@ export function formatSessionMarkdown(
   lines.push(`| Output | ${fmtTokens(metrics.tokens.outputTokens)} |`);
   lines.push(`| Cache write | ${fmtTokens(metrics.tokens.cacheWriteTokens)} |`);
   lines.push(`| Cache read | ${fmtTokens(metrics.tokens.cacheReadTokens)} |`);
-  lines.push(`| ${TOKEN_TOTAL_LABEL} | ${fmtTokens(summarizeTokens(metrics.tokens).total)} |`);
+  const tokens = sessionTokens(metrics, options);
+  if (tokens.mainThread.billedOutsideBuckets > 0) {
+    lines.push(
+      `| Reasoning (billed separately) | ${fmtTokens(tokens.mainThread.billedOutsideBuckets)} |`,
+    );
+  }
+  if (tokens.subagents.length > 0) {
+    lines.push(
+      `| ${TOKEN_MAIN_THREAD_LABEL} — ${TOKEN_TOTAL_LABEL} | ${fmtTokens(tokens.mainThread.total)} |`,
+    );
+    lines.push(
+      `| ${TOKEN_SUBAGENTS_LABEL} (${tokens.subagents.length}) — ${TOKEN_TOTAL_LABEL} | ${fmtTokens(tokens.subagentTotal.total)} |`,
+    );
+    lines.push(`| **${TOKEN_SESSION_TOTAL_LABEL}** | **${fmtTokens(tokens.combined.total)}** |`);
+  } else {
+    lines.push(`| ${TOKEN_TOTAL_LABEL} | ${fmtTokens(tokens.mainThread.total)} |`);
+  }
   if (metrics.tokens.costUsd > 0) {
     lines.push(
       `| Cost | ${fmtCost(metrics.tokens.costUsd)} (${describeCostProvenance(metrics.tokens)}) |`,
@@ -172,7 +216,7 @@ export function formatSessionMarkdown(
   if (metrics.modelStats.length > 0) {
     lines.push('## Models');
     lines.push('');
-    lines.push(`| Model | Calls | Tokens | Cost |`);
+    lines.push(`| Model | Calls | ${TOKEN_TOTAL_LABEL} | Cost |`);
     lines.push(`|-------|-------|--------|------|`);
     for (const m of metrics.modelStats) {
       lines.push(`| ${m.model} | ${m.calls} | ${fmtTokens(m.tokens)} | ${fmtCost(m.cost)} |`);
@@ -229,6 +273,18 @@ export function formatSessionMarkdown(
     }
     lines.push('');
   }
+  if (tokens.subagents.length > 0) {
+    lines.push('## Subagent Tokens');
+    lines.push('');
+    lines.push(`| Agent | Type | Description | ${TOKEN_TOTAL_LABEL} |`);
+    lines.push(`|-------|------|-------------|--------|`);
+    for (const agent of tokens.subagents) {
+      lines.push(
+        `| ${agent.agentId} | ${agent.agentType ?? '-'} | ${agent.description ?? '-'} | ${fmtTokens(agent.summary.total)} |`,
+      );
+    }
+    lines.push('');
+  }
 
   // Timeline
   lines.push('## Timeline');
@@ -267,21 +323,18 @@ function formatHeader(metrics: AggregatedMetrics): string {
   return parts.join(' | ');
 }
 
-function formatTokenSummary(metrics: AggregatedMetrics): string {
+function formatTokenSummary(metrics: AggregatedMetrics, tokens: SessionTokenTotals): string[] {
   const t = metrics.tokens;
-  const total = summarizeTokens(t).total;
-  const parts = [
-    `Tokens: ${fmtTokens(total)} total incl. cache`,
-    `(${fmtTokens(t.inputTokens)} in`,
-    `${fmtTokens(t.outputTokens)} out`,
-  ];
-  if (t.cacheReadTokens > 0) parts.push(`${fmtTokens(t.cacheReadTokens)} cache-read`);
-  if (t.cacheWriteTokens > 0) parts.push(`${fmtTokens(t.cacheWriteTokens)} cache-write`);
-  const line = parts.join(', ');
-  if (t.costUsd > 0) {
-    return `${line})  Cost: ${fmtCost(t.costUsd)} (${describeCostProvenance(t)})`;
+  let first = `Tokens: ${formatTokenBreakdown(tokens.mainThread, fmtTokens)}`;
+  if (t.costUsd > 0) first += `  Cost: ${fmtCost(t.costUsd)} (${describeCostProvenance(t)})`;
+  const lines = [first];
+  if (tokens.subagents.length > 0) {
+    lines.push(
+      `${TOKEN_SUBAGENTS_LABEL} (${tokens.subagents.length}): ${formatTokenBreakdown(tokens.subagentTotal, fmtTokens)}`,
+    );
+    lines.push(`${TOKEN_SESSION_TOTAL_LABEL}: ${fmtTokens(tokens.combined.total)}`);
   }
-  return line + ')';
+  return lines;
 }
 
 /** @internal Exported for tests. */

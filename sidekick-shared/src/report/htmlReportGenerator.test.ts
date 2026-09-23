@@ -122,7 +122,8 @@ describe('generateHtmlReport', () => {
 
   it('includes stats cards with token data', () => {
     const html = generateHtmlReport(makeMetrics(), transcript);
-    expect(html).toContain('Total Tokens');
+    expect(html).toContain('Total (incl. cache)');
+    expect(html).not.toContain('Total Tokens');
     expect(html).toContain('15.0k'); // 10000 + 5000
     expect(html).toContain('$0.15');
   });

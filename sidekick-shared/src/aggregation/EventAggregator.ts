@@ -74,8 +74,8 @@ const DEFAULT_BURN_WINDOW_MS = 5 * 60_000;
 const DEFAULT_BURN_SAMPLE_MS = 10_000;
 const COMPACTION_DROP_THRESHOLD = 0.8; // >20% drop
 
-/** Schema version for serialized snapshots. */
-export const SNAPSHOT_SCHEMA_VERSION = 5;
+/** Schema version for serialized snapshots. v6: token totals count each Claude response and Codex call once. */
+export const SNAPSHOT_SCHEMA_VERSION = 6;
 
 /**
  * JSON-serializable snapshot of EventAggregator state.
@@ -411,7 +411,12 @@ export class EventAggregator {
     // 5. Token accumulation
     const normalizedUsage = extractNormalizedUsage(event);
     if (normalizedUsage) {
-      const usageCost = this.accumulateUsage(normalizedUsage, event.timestamp, event.message.model);
+      const usageCost = this.accumulateUsage(
+        normalizedUsage,
+        event.timestamp,
+        event.message.model,
+        event.message.usageKind,
+      );
       this.attributePlanUsage(normalizedUsage.totalTokens, usageCost);
     }
 
@@ -484,7 +489,7 @@ export class EventAggregator {
         reasoningIncludedInOutput: false,
         reportedCostUsd: event.cost,
       });
-      const cost = this.accumulateUsage(normalized, event.timestamp, event.model);
+      const cost = this.accumulateUsage(normalized, event.timestamp, event.model, event.usageKind);
       this.attributePlanUsage(normalized.totalTokens, cost);
     } else if (typeof event.cost === 'number' && Number.isFinite(event.cost) && event.cost >= 0) {
       // Compatibility for cost-only follow events (provider-reported by definition).
@@ -913,7 +918,18 @@ export class EventAggregator {
   // Private: Token & Context
   // ═══════════════════════════════════════════════════════════════════════
 
-  private accumulateUsage(usage: NormalizedUsage, timestamp: string, model?: string): number {
+  /**
+   * Add one usage record to the running totals. A `'correction'` tops up a call
+   * already counted (a later split line of the same response grew), so it adds
+   * tokens and cost but no call, context sample, or compaction check.
+   */
+  private accumulateUsage(
+    usage: NormalizedUsage,
+    timestamp: string,
+    model?: string,
+    kind: 'call' | 'correction' = 'call',
+  ): number {
+    const isCall = kind !== 'correction';
     const inputTok = usage.uncachedInputTokens;
     const outputTok = usage.outputTokens;
     const cacheWrite = usage.cacheWriteTokens;
@@ -931,18 +947,25 @@ export class EventAggregator {
     this.reasoningTokens += reasoningTok;
     this.totalTokens += usage.totalTokens;
     this.costUsd += cost;
+    const callIncrement = isCall ? 1 : 0;
     if (pricedUsage.source === 'provider-reported') {
       this.reportedCostUsd += cost;
-      this.reportedCalls += 1;
+      this.reportedCalls += callIncrement;
     } else if (pricedUsage.source === 'unpriced') {
-      this.unpricedCalls += 1;
+      this.unpricedCalls += callIncrement;
     } else {
       this.estimatedCostUsd += cost;
-      this.estimatedCalls += 1;
+      this.estimatedCalls += callIncrement;
     }
 
     // Burn rate sample accumulation
     this.tokensSinceLastSample += usage.totalTokens;
+
+    if (!isCall) {
+      this.accumulateModelUsage(usage, model, cost, priced, false);
+      this.updateBurnRate(timestamp);
+      return cost;
+    }
 
     // Context size computation
     let contextSize: number;
@@ -986,8 +1009,29 @@ export class EventAggregator {
       this.contextTimeline.splice(0, this.contextTimeline.length - this.contextTimelineCap);
     }
 
-    // Per-model usage. Accumulate reasoning tokens and an inverted-sticky
-    // `priced` flag so one unpriced event taints the aggregate (UI renders "—").
+    this.accumulateModelUsage(usage, model, cost, priced, true);
+
+    // Burn rate sampling
+    this.updateBurnRate(timestamp);
+    return cost;
+  }
+
+  /**
+   * Per-model usage. Accumulate reasoning tokens and an inverted-sticky
+   * `priced` flag so one unpriced event taints the aggregate (UI renders "—").
+   */
+  private accumulateModelUsage(
+    usage: NormalizedUsage,
+    model: string | undefined,
+    cost: number,
+    priced: boolean,
+    countCall: boolean,
+  ): void {
+    const inputTok = usage.uncachedInputTokens;
+    const outputTok = usage.outputTokens;
+    const cacheWrite = usage.cacheWriteTokens;
+    const cacheRead = usage.cacheReadTokens;
+    const reasoningTok = usage.reasoningTokens;
     const perModelKey = model ?? this.currentModel ?? 'unknown';
     const acc = this.modelUsage.get(perModelKey) ?? {
       calls: 0,
@@ -1000,7 +1044,7 @@ export class EventAggregator {
       cost: 0,
       priced: true,
     };
-    acc.calls++;
+    if (countCall) acc.calls++;
     acc.tokens += usage.totalTokens;
     acc.inputTokens += inputTok;
     acc.outputTokens += outputTok;
@@ -1010,10 +1054,6 @@ export class EventAggregator {
     acc.cost += cost;
     if (!priced) acc.priced = false;
     this.modelUsage.set(perModelKey, acc);
-
-    // Burn rate sampling
-    this.updateBurnRate(timestamp);
-    return cost;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -2172,9 +2212,10 @@ export class EventAggregator {
         description = this.extractTextContent(event) ?? 'Assistant response';
         noiseLevel = 'ai';
         if (event.message.model) metadata.model = event.message.model;
-        if (event.message.usage) {
-          metadata.tokenCount =
-            event.message.usage.input_tokens + event.message.usage.output_tokens;
+        {
+          // Cache-inclusive, like every other token total (see tokenSummary).
+          const usage = extractNormalizedUsage(event);
+          if (usage) metadata.tokenCount = usage.totalTokens;
         }
         break;
       case 'tool_use': {
@@ -2254,7 +2295,13 @@ export class EventAggregator {
         tlType = 'assistant_response';
         noiseLevel = 'ai';
         if (event.model) metadata.model = event.model;
-        if (event.tokens) metadata.tokenCount = event.tokens.input + event.tokens.output;
+        if (event.tokens) {
+          metadata.tokenCount =
+            event.tokens.input +
+            event.tokens.output +
+            (event.cacheTokens?.read ?? 0) +
+            (event.cacheTokens?.write ?? 0);
+        }
         break;
       case 'tool_use':
         tlType = 'tool_call';

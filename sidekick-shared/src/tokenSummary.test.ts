@@ -4,6 +4,7 @@ import {
   TOKEN_TOTAL_LABEL,
   summarizeTokens,
   sumTokenTotals,
+  formatTokenBreakdown,
 } from './tokenSummary';
 import { normalizeProviderUsage } from './usageNormalization';
 
@@ -95,7 +96,49 @@ describe('sumTokenTotals', () => {
       outputTokens: 22,
       cacheWriteTokens: 3,
       cacheReadTokens: 4,
+      reasoningTokens: 0,
     });
     expect(summarizeTokens(summed).total).toBe(40);
+  });
+
+  it('keeps provider-aware totals only when every record carries one', () => {
+    const all = sumTokenTotals([
+      { inputTokens: 1, outputTokens: 1, totalTokens: 5 },
+      { inputTokens: 1, outputTokens: 1, totalTokens: 7 },
+    ]);
+    expect(all.totalTokens).toBe(12);
+    const partial = sumTokenTotals([
+      { inputTokens: 1, outputTokens: 1, totalTokens: 5 },
+      { inputTokens: 1, outputTokens: 1 },
+    ]);
+    expect(partial.totalTokens).toBeUndefined();
+  });
+});
+
+describe('formatTokenBreakdown', () => {
+  it('lists every bucket so the parts add up to the headline', () => {
+    const summary = summarizeTokens({
+      inputTokens: 10,
+      cacheReadTokens: 1000,
+      cacheWriteTokens: 50,
+      outputTokens: 40,
+    });
+    expect(formatTokenBreakdown(summary)).toBe(
+      '1100 total incl. cache (10 in · 1000 cache read · 50 cache write · 40 out)',
+    );
+  });
+
+  it('shows reasoning billed outside the buckets', () => {
+    const summary = summarizeTokens({
+      inputTokens: 10,
+      outputTokens: 40,
+      reasoningTokens: 25,
+      totalTokens: 75,
+    });
+    expect(summary.billedOutsideBuckets).toBe(25);
+    expect(summary.reasoning).toBe(25);
+    expect(formatTokenBreakdown(summary, (n) => `${n}t`)).toBe(
+      '75t total incl. cache (10t in · 0t cache read · 0t cache write · 40t out · 25t reasoning)',
+    );
   });
 });

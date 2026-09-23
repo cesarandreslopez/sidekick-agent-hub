@@ -6,7 +6,14 @@
 
 import type { AggregatedMetrics } from '../aggregation/types';
 import { describeCostProvenance } from '../aggregation/costProvenance';
-import { summarizeTokens, TOKEN_TOTAL_LABEL } from '../tokenSummary';
+import {
+  summarizeTokens,
+  TOKEN_MAIN_THREAD_LABEL,
+  TOKEN_SESSION_TOTAL_LABEL,
+  TOKEN_SUBAGENTS_LABEL,
+  TOKEN_TOTAL_LABEL,
+} from '../tokenSummary';
+import { combineSessionTokenTotals, type SessionTokenTotals } from '../sessionTokenTotals';
 import type { TranscriptEntry, TranscriptContentBlock, HtmlReportOptions } from './types';
 import {
   escapeHtml,
@@ -35,7 +42,7 @@ export function generateHtmlReport(
   } = options;
 
   const duration = formatDuration(metrics.sessionStartTime, metrics.lastEventTime);
-  const totalTokens = summarizeTokens(metrics.tokens).total;
+  const tokens = combineSessionTokenTotals(metrics.tokens, options.subagents ?? []);
 
   return `<!DOCTYPE html>
 <html lang="en" data-theme="${theme}">
@@ -47,7 +54,7 @@ ${generateStyles()}
 </head>
 <body>
 ${generateHeader(metrics, sessionFileName, duration)}
-${generateStatsCards(metrics, totalTokens, duration)}
+${generateStatsCards(metrics, tokens, duration)}
 ${generateModelBreakdown(metrics)}
 ${generateToolBreakdown(metrics)}
 ${generateTranscriptControls()}
@@ -452,9 +459,11 @@ function generateHeader(
 
 function generateStatsCards(
   metrics: AggregatedMetrics,
-  totalTokens: number,
+  tokens: SessionTokenTotals,
   duration: string,
 ): string {
+  const main = tokens.mainThread;
+  const hasSubagents = tokens.subagents.length > 0;
   const toolCount = metrics.toolStats.reduce((sum, t) => sum + t.successCount + t.failureCount, 0);
 
   const cards = [
@@ -465,14 +474,30 @@ function generateStatsCards(
       sub: metrics.sessionStartTime ? formatTimestamp(metrics.sessionStartTime) + ' start' : '',
     },
     {
-      label: TOKEN_TOTAL_LABEL,
-      value: fmtTokens(totalTokens),
-      sub: `${fmtTokens(metrics.tokens.inputTokens)} in / ${fmtTokens(metrics.tokens.outputTokens)} out`,
+      label: hasSubagents ? `${TOKEN_MAIN_THREAD_LABEL} — ${TOKEN_TOTAL_LABEL}` : TOKEN_TOTAL_LABEL,
+      value: fmtTokens(main.total),
+      sub: `${fmtTokens(main.input)} in · ${fmtTokens(main.cacheRead)} cache read · ${fmtTokens(main.cacheWrite)} cache write · ${fmtTokens(main.output)} out${
+        main.billedOutsideBuckets > 0 ? ` · ${fmtTokens(main.billedOutsideBuckets)} reasoning` : ''
+      }`,
     },
+    ...(hasSubagents
+      ? [
+          {
+            label: `${TOKEN_SUBAGENTS_LABEL} (${tokens.subagents.length})`,
+            value: fmtTokens(tokens.subagentTotal.total),
+            sub: `${fmtTokens(tokens.subagentTotal.cacheRead)} cache read · ${fmtTokens(tokens.subagentTotal.output)} out`,
+          },
+          {
+            label: TOKEN_SESSION_TOTAL_LABEL,
+            value: fmtTokens(tokens.combined.total),
+            sub: 'main thread + subagents',
+          },
+        ]
+      : []),
     {
-      label: 'Cache',
-      value: fmtTokens(metrics.tokens.cacheReadTokens),
-      sub: `${fmtTokens(metrics.tokens.cacheWriteTokens)} written`,
+      label: 'Cache hit',
+      value: main.cacheHitRatio === null ? '—' : `${Math.round(main.cacheHitRatio * 100)}%`,
+      sub: `${fmtTokens(main.cacheRead)} of ${fmtTokens(main.context)} context tokens`,
     },
     {
       label: 'Tool Calls',
@@ -516,7 +541,7 @@ function generateModelBreakdown(metrics: AggregatedMetrics): string {
   return `<div class="section">
 <div class="section-title">Model Breakdown</div>
 <table>
-<thead><tr><th>Model</th><th>Calls</th><th>Total Tokens</th><th>In / Out</th><th>Cost</th></tr></thead>
+<thead><tr><th>Model</th><th>Calls</th><th>${TOKEN_TOTAL_LABEL}</th><th>In / Out</th><th>Cost</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
 </div>`;
@@ -595,7 +620,14 @@ function renderMessage(
     ? `<span class="message-model">${escapeHtml(entry.model)}</span>`
     : '';
   const tokenStr = entry.usage
-    ? `<span class="message-tokens">${fmtTokens(entry.usage.input_tokens + entry.usage.output_tokens)} tokens</span>`
+    ? `<span class="message-tokens">${fmtTokens(
+        summarizeTokens({
+          inputTokens: entry.usage.input_tokens,
+          outputTokens: entry.usage.output_tokens,
+          cacheWriteTokens: entry.usage.cache_creation_input_tokens,
+          cacheReadTokens: entry.usage.cache_read_input_tokens,
+        }).total,
+      )} tokens incl. cache</span>`
     : '';
 
   const bodyParts: string[] = [];

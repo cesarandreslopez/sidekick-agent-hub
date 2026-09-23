@@ -130,4 +130,64 @@ describe('JsonlSessionWatcher', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(events.map((event) => event.summary)).toEqual(['new event']);
   });
+
+  it('counts each Claude response once across its split lines', () => {
+    watchMock.mockReturnValue(Object.assign(new EventEmitter(), { close: vi.fn() }));
+    const split = (output: number, text: string) =>
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-09-01T00:00:00.000Z',
+        message: {
+          id: 'msg_1',
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          content: [{ type: 'text', text }],
+          usage: { input_tokens: 10, output_tokens: output, cache_read_input_tokens: 100 },
+        },
+      }) + '\n';
+    const events: FollowEvent[] = [];
+    const watcher = create(file(split(1, 'a') + split(1, 'b') + split(40, 'c')), events);
+    watcher.start(true);
+    const withTokens = events.filter((e) => e.tokens);
+    expect(withTokens).toHaveLength(2);
+    expect(withTokens[0]).toMatchObject({
+      tokens: { input: 10, output: 1 },
+      cacheTokens: { read: 100 },
+    });
+    expect(withTokens[1]).toMatchObject({
+      tokens: { input: 0, output: 39 },
+      usageKind: 'correction',
+    });
+  });
+
+  it('skips duplicate Codex token_count events and splits cached input', () => {
+    watchMock.mockReturnValue(Object.assign(new EventEmitter(), { close: vi.fn() }));
+    const usage = {
+      input_tokens: 1000,
+      cached_input_tokens: 800,
+      output_tokens: 50,
+      total_tokens: 1050,
+    };
+    const tokenCount =
+      JSON.stringify({
+        type: 'event_msg',
+        timestamp: '2026-09-01T00:00:00.000Z',
+        payload: {
+          type: 'token_count',
+          info: { last_token_usage: usage, total_token_usage: usage },
+        },
+      }) + '\n';
+    const events: FollowEvent[] = [];
+    const watcher = new JsonlSessionWatcher('codex', file(tokenCount + tokenCount), {
+      onEvent: (event) => events.push(event),
+    });
+    watchers.push(watcher);
+    watcher.start(true);
+    const withTokens = events.filter((e) => e.tokens);
+    expect(withTokens).toHaveLength(1);
+    expect(withTokens[0]).toMatchObject({
+      tokens: { input: 200, output: 50 },
+      cacheTokens: { read: 800 },
+    });
+  });
 });

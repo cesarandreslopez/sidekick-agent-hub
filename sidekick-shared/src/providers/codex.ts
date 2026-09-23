@@ -19,7 +19,8 @@ import type {
   SessionContextSnapshot,
 } from '../context/sessionContext';
 import { CodexRolloutParser } from '../parsers/codexParser';
-import { CodexDatabase } from './codexDatabase';
+import { CodexDatabase, spawnParentFromSource } from './codexDatabase';
+import { cachedSubagentStats } from '../parsers/subagentStatsCache';
 import { getCodexMonitoringHomes } from '../codexProfiles';
 import {
   DEFAULT_ROLLOUT_WALK_MAX_DEPTH,
@@ -49,7 +50,8 @@ import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEv
 import type { CodexRolloutLine, CodexRateLimits, CodexSessionMeta } from '../types/codex';
 import { getModelContextWindowSize } from '../modelContext';
 import { recordObservedContextWindow } from '../observedContextWindows';
-import { normalizeProviderUsage } from '../usageNormalization';
+import { extractNormalizedUsage, normalizeProviderUsage } from '../usageNormalization';
+import { addUsageToSubagent } from '../usage/subagentUsage';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -1126,15 +1128,32 @@ export class CodexProvider implements SessionProviderBase {
     // Use DB when available, fall back to filesystem scanning.
     const subagents: SubagentStats[] = [];
 
-    // DB approach: query threads table for forked children
+    // DB approach: spawned subagents (parent recorded in `threads.source`),
+    // plus forked children on older schemas that carry `forked_from_id`.
     const db = this.ensureDb();
     if (db) {
-      const forkedThreads = db.getThreadsByForkedFromId(sessionId);
-      for (const thread of forkedThreads) {
-        const stats = this.buildSubagentStats(thread.id, thread.rollout_path, thread.title);
-        if (stats) subagents.push(stats);
+      const seen = new Set<string>();
+      const children = [
+        ...db.getSpawnedChildThreads(sessionId),
+        ...db.getThreadsByForkedFromId(sessionId),
+      ].filter((thread) => !seen.has(thread.id) && seen.add(thread.id));
+      for (const thread of children) {
+        const built = cachedSubagentStats(thread.rollout_path, () =>
+          this.buildSubagentStats(
+            thread.id,
+            thread.rollout_path,
+            thread.title || thread.agent_nickname,
+          ),
+        );
+        if (built) {
+          subagents.push(
+            thread.agent_role && !built.agentType
+              ? { ...built, agentType: thread.agent_role }
+              : built,
+          );
+        }
       }
-      if (forkedThreads.length > 0) return subagents;
+      if (children.length > 0) return subagents;
     }
 
     // Filesystem fallback: scan recent rollout files for a matching
@@ -1142,9 +1161,17 @@ export class CodexProvider implements SessionProviderBase {
     // of enumerating the whole history and slicing afterwards.
     for (const file of findRolloutFilesInConfiguredHomes({ limit: 50 })) {
       const meta = readSessionMeta(file.path);
-      if (meta?.forked_from_id === sessionId) {
+      if (
+        meta &&
+        (meta.forked_from_id === sessionId || spawnParentFromSource(meta.source) === sessionId)
+      ) {
         const childId = extractSessionId(path.basename(file.path));
-        const stats = this.buildSubagentStats(childId, file.path, meta.source);
+        // `source` is a plain string for top-level sessions but an object
+        // (`{ subagent: { thread_spawn: … } }`) for spawned children.
+        const description = typeof meta.source === 'string' ? meta.source : undefined;
+        const stats = cachedSubagentStats(file.path, () =>
+          this.buildSubagentStats(childId, file.path, description),
+        );
         if (stats) subagents.push(stats);
       }
     }
@@ -1202,11 +1229,10 @@ export class CodexProvider implements SessionProviderBase {
                 }
               }
             }
-            // Accumulate tokens from usage events
-            if (event.message?.usage) {
-              stats.inputTokens += event.message.usage.input_tokens || 0;
-              stats.outputTokens += event.message.usage.output_tokens || 0;
-            }
+            // Accumulate tokens from usage events (duplicate token_count events
+            // are already dropped by the parser).
+            const usage = extractNormalizedUsage(event);
+            if (usage) addUsageToSubagent(stats, usage);
           }
         } catch {
           /* skip malformed lines */

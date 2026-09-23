@@ -1802,7 +1802,10 @@ export async function activate(context: vscode.ExtensionContext) {
       reader.flush();
       const transcript = parseTranscriptFromEvents(events);
       const sessionFileName = path.basename(sessionPath);
-      const html = generateHtmlReport(metrics, transcript, { sessionFileName });
+      const html = generateHtmlReport(metrics, transcript, {
+        sessionFileName,
+        subagents: sessionMonitor.getSubagentStats(),
+      });
 
       const panel = vscode.window.createWebviewPanel(
         'sidekick.htmlReport',

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CodexRolloutParser } from './codexParser';
+import { CodexRolloutParser, resolveCodexCallUsage } from './codexParser';
+import { extractNormalizedUsage } from '../usageNormalization';
 import type { CodexRolloutLine } from '../types/codex';
 
 function line(
@@ -274,5 +275,87 @@ describe('CodexRolloutParser', () => {
         _sidekickMcpServerName: 'contextful-cortex',
       },
     });
+  });
+});
+
+describe('duplicate token_count events', () => {
+  const usage = (input: number, cached: number, output: number) => ({
+    input_tokens: input,
+    cached_input_tokens: cached,
+    output_tokens: output,
+    reasoning_output_tokens: 0,
+    total_tokens: input + output,
+  });
+
+  function totalTokens(parser: CodexRolloutParser, payloads: Record<string, unknown>[]): number {
+    let total = 0;
+    for (const payload of payloads) {
+      for (const event of parser.convertLine(line('event_msg', payload))) {
+        total += extractNormalizedUsage(event)?.totalTokens ?? 0;
+      }
+    }
+    return total;
+  }
+
+  it('counts a call once when Codex resends an unchanged cumulative total', () => {
+    const parser = new CodexRolloutParser();
+    const first = {
+      type: 'token_count',
+      info: { last_token_usage: usage(1000, 800, 50), total_token_usage: usage(1000, 800, 50) },
+    };
+    const second = {
+      type: 'token_count',
+      info: { last_token_usage: usage(1200, 1000, 30), total_token_usage: usage(2200, 1800, 80) },
+    };
+    // Rate-limit refreshes resend the previous info verbatim.
+    const total = totalTokens(parser, [first, first, second, second, second]);
+    expect(total).toBe(2200 + 80);
+  });
+
+  it('still emits rate limits from a duplicate event, without usage', () => {
+    const parser = new CodexRolloutParser();
+    const info = { last_token_usage: usage(10, 0, 1), total_token_usage: usage(10, 0, 1) };
+    parser.convertLine(line('event_msg', { type: 'token_count', info }));
+    const events = parser.convertLine(
+      line('event_msg', {
+        type: 'token_count',
+        info,
+        rate_limits: { primary: { used_percent: 5, window_minutes: 300, resets_at: 1 } },
+      }),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].message?.usage).toBeUndefined();
+    expect(events[0].rateLimits?.primary?.usedPercent).toBe(5);
+  });
+
+  it('uses the growth of the cumulative total when last_token_usage is missing', () => {
+    const parser = new CodexRolloutParser();
+    const total = totalTokens(parser, [
+      { type: 'token_count', info: { total_token_usage: usage(1000, 0, 100) } },
+      { type: 'token_count', info: { total_token_usage: usage(1500, 0, 150) } },
+      { type: 'token_count', info: { total_token_usage: usage(1500, 0, 150) } },
+    ]);
+    // Summing the cumulative values would give 1100 + 1650 + 1650.
+    expect(total).toBe(1650);
+  });
+
+  it('re-baselines when the cumulative total drops', () => {
+    expect(
+      resolveCodexCallUsage(
+        { last_token_usage: usage(10, 0, 5), total_token_usage: usage(10, 0, 5) },
+        usage(5000, 0, 500),
+      ),
+    ).toEqual({ usage: usage(10, 0, 5), total: usage(10, 0, 5) });
+  });
+
+  it('resets its duplicate baseline with the parser', () => {
+    const parser = new CodexRolloutParser();
+    const event = {
+      type: 'token_count',
+      info: { last_token_usage: usage(10, 0, 5), total_token_usage: usage(10, 0, 5) },
+    };
+    expect(totalTokens(parser, [event])).toBe(15);
+    parser.reset();
+    expect(totalTokens(parser, [event])).toBe(15);
   });
 });

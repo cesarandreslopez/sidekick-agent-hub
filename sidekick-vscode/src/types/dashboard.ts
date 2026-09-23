@@ -611,6 +611,14 @@ export interface DashboardState {
   /** Total estimated cost in USD */
   totalCost: number;
 
+  /**
+   * Tokens the session's subagents used in their own transcripts (every
+   * bucket, cache included). The session total is the main-thread total
+   * (`summarizeTokens` of the four buckets above) plus `total`. Refreshed on a
+   * throttle, not per event; null when the session has no subagents.
+   */
+  subagentTokens?: { count: number; total: number } | null;
+
   /** Context window usage percentage (0-100) */
   contextUsagePercent: number;
 

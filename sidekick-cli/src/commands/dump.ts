@@ -16,6 +16,7 @@ import {
   formatSessionMarkdown,
   formatSessionJson,
   listSessionPreviewsAsync,
+  scanSessionSubagents,
 } from 'sidekick-shared';
 import type { FollowEvent, SessionPreview } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -239,17 +240,21 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
 
     const metrics = aggregator.getMetrics();
     const sessionFileName = path.basename(sessionPath);
+    // Subagents run in their own transcripts; their tokens join the session total.
+    const subagents = scanSessionSubagents(provider, sessionPath);
 
     switch (format) {
       case 'json':
-        process.stdout.write(formatSessionJson(metrics));
+        process.stdout.write(formatSessionJson(metrics, { subagents }));
         break;
       case 'markdown':
-        process.stdout.write(formatSessionMarkdown(metrics, { expand, sessionFileName }));
+        process.stdout.write(
+          formatSessionMarkdown(metrics, { expand, sessionFileName, subagents }),
+        );
         break;
       case 'text':
       default:
-        process.stdout.write(formatSessionText(metrics, { width: termWidth, expand }));
+        process.stdout.write(formatSessionText(metrics, { width: termWidth, expand, subagents }));
         break;
     }
   } finally {

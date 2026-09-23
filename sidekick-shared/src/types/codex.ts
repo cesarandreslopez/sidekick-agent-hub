@@ -354,4 +354,8 @@ export interface CodexDbThread {
   git_branch?: string;
   git_commit?: string;
   forked_from_id?: string;
+  /** `cli`, `exec`, … or a JSON object string for spawned subagents. */
+  source?: string;
+  agent_nickname?: string | null;
+  agent_role?: string | null;
 }

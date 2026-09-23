@@ -106,6 +106,14 @@ export type {
   UsageSessionRecord,
 } from './usage/usageEvents';
 export {
+  collectSessionTokenTotals,
+  combineSessionTokenTotals,
+  readMainThreadTokenTotals,
+  scanSessionSubagents,
+  subagentTokenTotals,
+} from './sessionTokenTotals';
+export type { SessionTokenTotals, SubagentTokenSummary } from './sessionTokenTotals';
+export {
   applySessionSummary,
   isFileImported,
   markFileImported,

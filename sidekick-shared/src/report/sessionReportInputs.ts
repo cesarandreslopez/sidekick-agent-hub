@@ -13,7 +13,8 @@ import { EventAggregator } from '../aggregation/EventAggregator';
 import type { AggregatedMetrics } from '../aggregation/types';
 import type { SessionProviderBase } from '../providers/types';
 import { providerContextSizeFn } from '../sessionStats';
-import type { SessionEvent } from '../types/sessionEvent';
+import type { SessionEvent, SubagentStats } from '../types/sessionEvent';
+import { scanSessionSubagents } from '../sessionTokenTotals';
 import { parseTranscriptFromEvents } from './transcriptParser';
 import type { TranscriptEntry } from './types';
 
@@ -23,6 +24,8 @@ export interface SessionReportInputs {
   events: SessionEvent[];
   metrics: AggregatedMetrics;
   transcript: TranscriptEntry[];
+  /** The session's subagents; pass as `HtmlReportOptions.subagents` for the session total. */
+  subagents: SubagentStats[];
 }
 
 /** Read a session once and build the aggregator metrics and report transcript from it. */
@@ -45,5 +48,6 @@ export function readSessionReportInputs(
     events,
     metrics: aggregator.getMetrics(),
     transcript: parseTranscriptFromEvents(events),
+    subagents: scanSessionSubagents(provider, sessionPath),
   };
 }

@@ -32,6 +32,7 @@ import type {
 import { resolveInstructionTarget } from '../types/instructionFile';
 import type { HandoffService } from '../services/HandoffService';
 import {
+  combineSessionTokenTotals,
   createSessionProviders,
   getProjectSlug,
   getTopFailingTools,
@@ -134,6 +135,9 @@ import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
 type DashboardFlushKind = 'stats' | 'timeline' | 'toolAnalytics' | 'plan' | 'burnRate';
 
 /** The stats message without the timeline (sent separately as `updateTimeline`). */
+/** Minimum gap between subagent transcript rescans for the session total. */
+const SUBAGENT_TOKEN_REFRESH_MS = 15_000;
+
 function statsPayload(state: DashboardState): DashboardStatsPayload {
   const payload: Partial<DashboardState> = { ...state };
   delete payload.timeline;
@@ -162,6 +166,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Current context window size from session (actual context, not cumulative) */
   private _currentContextSize: number = 0;
+
+  /** Last subagent transcript rescan (ms epoch); see `_refreshSubagentTokens`. */
+  private _lastSubagentTokenRefresh = 0;
 
   /** Last observed model ID (for dynamic context window limit) */
   private _lastModelId: string | undefined;
@@ -1427,9 +1434,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Per-model tokens use the shared vocabulary (every billed bucket, cache
     // included) so this row agrees with the aggregator's per-model stats.
     const usageTokens = summarizeTokens(usage).total;
+    // A correction tops up a response already counted: tokens and cost, no call.
+    const isCorrection = usage.usageKind === 'correction';
     const existingModel = this._state.modelBreakdown.find((m) => m.model === usage.model);
     if (existingModel) {
-      existingModel.calls += 1;
+      if (!isCorrection) existingModel.calls += 1;
       existingModel.tokens += usageTokens;
       existingModel.cost += cost;
       if (!priced) existingModel.priced = false;
@@ -1451,11 +1460,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // should not zero out the gauge between real updates.
     const provider = this._sessionMonitor.getProvider();
     const hasContextSignal =
-      usage.inputTokens > 0 ||
-      usage.outputTokens > 0 ||
-      usage.cacheWriteTokens > 0 ||
-      usage.cacheReadTokens > 0 ||
-      (usage.reasoningTokens ?? 0) > 0;
+      !isCorrection &&
+      (usage.inputTokens > 0 ||
+        usage.outputTokens > 0 ||
+        usage.cacheWriteTokens > 0 ||
+        usage.cacheReadTokens > 0 ||
+        (usage.reasoningTokens ?? 0) > 0);
 
     if (hasContextSignal) {
       this._currentContextSize = provider.computeContextSize
@@ -1465,10 +1475,35 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Update context usage
     this._updateContextUsage();
+    this._refreshSubagentTokens();
 
     // Send updated state to webview (coalesced)
     this._scheduleFlush('stats', 'burnRate');
     this._scheduleBillingBlockUpdate();
+  }
+
+  /**
+   * Subagents write their own transcripts, which the session watcher never
+   * reads. Rescan them at most every SUBAGENT_TOKEN_REFRESH_MS (unchanged
+   * transcripts cost one stat each) so the session total includes them.
+   */
+  private _refreshSubagentTokens(force = false): void {
+    const now = Date.now();
+    if (!force && now - this._lastSubagentTokenRefresh < SUBAGENT_TOKEN_REFRESH_MS) return;
+    this._lastSubagentTokenRefresh = now;
+    try {
+      const stats = this._sessionMonitor.getSubagentStats();
+      this._state.subagentTokens =
+        stats.length > 0
+          ? {
+              count: stats.length,
+              total: combineSessionTokenTotals({ inputTokens: 0, outputTokens: 0 }, stats)
+                .subagentTotal.total,
+            }
+          : null;
+    } catch (error) {
+      log(`Subagent token refresh failed: ${error}`);
+    }
   }
 
   /** Mark message kinds dirty and arm the trailing flush timer. */
@@ -1594,6 +1629,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.contextAttribution = [];
     this._state.contextTimeline = [];
     this._state.permissionMode = undefined;
+    this._state.subagentTokens = null;
+    this._lastSubagentTokenRefresh = 0;
     this._currentContextSize = 0;
     this._syncFromSessionMonitor();
 
@@ -1693,6 +1730,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             this._state.totalCacheReadTokens +
             this._state.totalCacheWriteTokens,
           totalOutputTokens: this._state.totalOutputTokens,
+          totalTokens:
+            summarizeTokens({
+              inputTokens: this._state.totalInputTokens,
+              outputTokens: this._state.totalOutputTokens,
+              cacheWriteTokens: this._state.totalCacheWriteTokens,
+              cacheReadTokens: this._state.totalCacheReadTokens,
+            }).total + (this._state.subagentTokens?.total ?? 0),
         },
         session: {
           sessionId: this._sessionMonitor.getSessionId(),
@@ -2071,6 +2115,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Sync context size from session BEFORE calculating usage percentage
     this._currentContextSize = stats.currentContextSize;
+    this._refreshSubagentTokens(true);
 
     // Rebuild model breakdown with costs
     this._state.modelBreakdown = [];

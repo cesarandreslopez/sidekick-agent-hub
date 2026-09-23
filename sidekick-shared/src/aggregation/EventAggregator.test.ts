@@ -2359,3 +2359,46 @@ describe('EventAggregator', () => {
     });
   });
 });
+
+describe('usage corrections', () => {
+  it('adds a correction to tokens and cost without another call or context sample', () => {
+    const agg = new EventAggregator();
+    const call = makeAssistantWithUsage({
+      input_tokens: 100,
+      output_tokens: 1,
+      cache_read_input_tokens: 1000,
+    });
+    call.message.id = 'msg_1';
+    agg.processEvent(call);
+    const before = agg.getMetrics();
+
+    const correction = makeAssistantWithUsage({ input_tokens: 0, output_tokens: 99 });
+    correction.message.id = 'msg_1';
+    correction.message.usageKind = 'correction';
+    agg.processEvent(correction);
+    const after = agg.getMetrics();
+
+    expect(after.tokens.outputTokens).toBe(100);
+    expect(after.tokens.totalTokens).toBe(1200);
+    expect(after.tokens.costUsd).toBeGreaterThan(before.tokens.costUsd);
+    expect(after.modelStats[0].calls).toBe(1);
+    expect(after.modelStats[0].tokens).toBe(1200);
+    expect(after.currentContextSize).toBe(before.currentContextSize);
+    expect(after.contextTimeline).toHaveLength(before.contextTimeline.length);
+    expect(after.compactionCount).toBe(0);
+  });
+
+  it('honours correction follow events the same way', () => {
+    const agg = new EventAggregator();
+    agg.processFollowEvent(
+      makeFollowEvent({ tokens: { input: 50, output: 1 }, cacheTokens: { read: 500, write: 0 } }),
+    );
+    agg.processFollowEvent(
+      makeFollowEvent({ tokens: { input: 0, output: 49 }, usageKind: 'correction' }),
+    );
+    const metrics = agg.getMetrics();
+    expect(metrics.tokens.totalTokens).toBe(600);
+    expect(metrics.modelStats[0]?.calls ?? 1).toBe(1);
+    expect(metrics.compactionCount).toBe(0);
+  });
+});

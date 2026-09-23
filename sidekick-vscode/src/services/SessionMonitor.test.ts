@@ -141,6 +141,34 @@ describe('SessionMonitor', () => {
     monitor.dispose();
   });
 
+  it('adds a usage correction to totals without counting another call', () => {
+    const monitor = new SessionMonitor(createProvider() as never);
+    const handle = (monitor as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+      monitor,
+    );
+    const assistant = (output: number, usageKind?: 'correction') => ({
+      type: 'assistant',
+      timestamp: '2026-09-01T00:00:00.000Z',
+      message: {
+        role: 'assistant',
+        id: 'msg_1',
+        model: 'claude-opus-4-6',
+        usage: { input_tokens: usageKind ? 0 : 10, output_tokens: output },
+        ...(usageKind ? { usageKind } : {}),
+        content: [{ type: 'text', text: `part ${output}` }],
+      },
+    });
+
+    handle(assistant(1));
+    handle(assistant(39, 'correction'));
+
+    const stats = monitor.getStats();
+    expect(stats.totalOutputTokens).toBe(40);
+    expect(stats.modelUsage.get('claude-opus-4-6')?.calls).toBe(1);
+    expect(stats.modelUsage.get('claude-opus-4-6')?.tokens).toBe(50);
+    monitor.dispose();
+  });
+
   it('deduplicates ID-less events by content instead of timestamp alone', () => {
     const monitor = new SessionMonitor(createProvider() as never);
     const hash = (

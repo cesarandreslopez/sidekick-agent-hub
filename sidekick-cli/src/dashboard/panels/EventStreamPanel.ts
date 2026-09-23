@@ -87,8 +87,18 @@ export class EventStreamPanel implements SidePanel {
 
     // Tokens
     const tokens = ev.tokens as { input?: number; output?: number } | undefined;
+    const cache = ev.cacheTokens as { read?: number; write?: number } | undefined;
     if (tokens) {
-      lines.push(`{bold}Tokens:{/bold}   in=${tokens.input ?? 0}  out=${tokens.output ?? 0}`);
+      const total =
+        (tokens.input ?? 0) + (tokens.output ?? 0) + (cache?.read ?? 0) + (cache?.write ?? 0);
+      lines.push(
+        `{bold}Tokens:{/bold}   ${total} total incl. cache (in=${tokens.input ?? 0}  cache-read=${cache?.read ?? 0}  cache-write=${cache?.write ?? 0}  out=${tokens.output ?? 0})`,
+      );
+      if (ev.usageKind === 'correction') {
+        lines.push(
+          '{grey-fg}          (top-up: a later line of this response reported more tokens){/grey-fg}',
+        );
+      }
     }
     if (typeof ev.cost === 'number') {
       lines.push(`{bold}Cost:{/bold}     $${(ev.cost as number).toFixed(4)}`);

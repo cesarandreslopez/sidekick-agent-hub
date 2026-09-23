@@ -21,6 +21,11 @@ export interface FollowEvent {
   model?: string;
   tokens?: { input: number; output: number };
   cacheTokens?: { read: number; write: number };
+  /**
+   * `'correction'` marks tokens that top up a response already counted (a later
+   * split line reported more). Absent means a regular call.
+   */
+  usageKind?: 'call' | 'correction';
   cost?: number;
   toolName?: string;
   toolInput?: string;

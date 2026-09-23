@@ -19,6 +19,7 @@ import type {
   SessionContextSnapshot,
 } from '../context/sessionContext';
 import { JsonlParser } from '../parsers/jsonl';
+import { ClaudeUsageDeduper, normalizeClaudeUsage } from '../usage/claudeUsageDedupe';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type {
@@ -51,7 +52,6 @@ import {
 import { scanSubagentDir } from '../parsers/subagentScanner';
 import { getModelContextWindowSize } from '../modelContext';
 import { extractSessionEvents } from '../schemas/sessionEvent';
-import { normalizeProviderUsage } from '../usageNormalization';
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -160,12 +160,18 @@ class ClaudeCodeReader implements SessionReader {
   private events: SessionEvent[] = [];
   private _wasTruncated = false;
   private decoder = new StringDecoder('utf8');
+  /** Split lines of one response repeat its usage; count each response once. */
+  private readonly usageDeduper: ClaudeUsageDeduper;
 
-  constructor(private readonly sessionPath: string) {
+  constructor(
+    private readonly sessionPath: string,
+    usageDeduper?: ClaudeUsageDeduper,
+  ) {
+    this.usageDeduper = usageDeduper ?? new ClaudeUsageDeduper();
     this.parser = new JsonlParser<unknown>({
       onEvent: (raw) => {
         for (const event of extractSessionEvents(raw)) {
-          this.events.push(normalizeClaudeUsage(event));
+          this.events.push(this.usageDeduper.apply(normalizeClaudeUsage(event)));
         }
       },
       onError: (_err, _line) => {
@@ -193,6 +199,7 @@ class ClaudeCodeReader implements SessionReader {
         this.committedPosition = 0;
         this.parser.reset();
         this.decoder = new StringDecoder('utf8');
+        this.usageDeduper.reset();
       }
 
       // No new content
@@ -234,6 +241,7 @@ class ClaudeCodeReader implements SessionReader {
     this.committedPosition = 0;
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
+    this.usageDeduper.reset();
     this._wasTruncated = false;
   }
 
@@ -262,45 +270,6 @@ class ClaudeCodeReader implements SessionReader {
   wasTruncated(): boolean {
     return this._wasTruncated;
   }
-}
-
-function normalizeClaudeUsage(event: SessionEvent): SessionEvent {
-  const message = event.message;
-  const usage = message?.usage;
-  if (!message || !usage) {
-    return {
-      ...event,
-      providerMetadata: {
-        ...event.providerMetadata,
-        providerId: 'claude-code',
-        source: 'claude-code-jsonl',
-      },
-    };
-  }
-  return {
-    ...event,
-    message: {
-      ...message,
-      normalizedUsage: normalizeProviderUsage({
-        semantics: 'anthropic',
-        provider: 'anthropic',
-        source: 'claude-code-jsonl',
-        model: message.model,
-        inputTokens: usage.input_tokens,
-        outputTokens: usage.output_tokens,
-        cacheReadTokens: usage.cache_read_input_tokens,
-        cacheWriteTokens: usage.cache_creation_input_tokens,
-        reasoningTokens: usage.reasoning_tokens,
-        reasoningIncludedInOutput: false,
-        reportedCostUsd: usage.reported_cost,
-      }),
-    },
-    providerMetadata: {
-      ...event.providerMetadata,
-      providerId: 'claude-code',
-      source: 'claude-code-jsonl',
-    },
-  };
 }
 
 /**

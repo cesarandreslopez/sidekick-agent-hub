@@ -32,6 +32,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       ? { read: usage.cache_read_input_tokens || 0, write: usage.cache_creation_input_tokens || 0 }
       : undefined;
   const cost = usage?.reported_cost;
+  const usageKind = usage ? event.message?.usageKind : undefined;
   const model = event.message?.model;
   const rateLimits = event.rateLimits;
 
@@ -100,6 +101,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
           summary: text || '(thinking...)',
           tokens,
           cacheTokens,
+          ...(usageKind ? { usageKind } : {}),
           cost,
           model,
           raw: event,
@@ -109,6 +111,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
         const last = events[events.length - 1];
         last.tokens = tokens;
         last.cacheTokens = cacheTokens;
+        if (usageKind) last.usageKind = usageKind;
         last.cost = cost;
       }
       break;
@@ -168,6 +171,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
         summary: label && text ? `${label}: ${text}` : summary,
         tokens,
         cacheTokens,
+        ...(usageKind ? { usageKind } : {}),
         cost,
         model,
         rateLimits,

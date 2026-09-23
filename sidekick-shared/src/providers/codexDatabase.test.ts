@@ -15,7 +15,7 @@ vi.mock('child_process', async () => {
   };
 });
 
-import { CodexDatabase } from './codexDatabase';
+import { CodexDatabase, spawnParentFromSource } from './codexDatabase';
 
 let tmpDir: string;
 
@@ -157,5 +157,64 @@ describe('CodexDatabase', () => {
     await expect(db.getThreadsByIdsAsync(['one'])).resolves.toEqual([]);
     expect(db.open()).toBe(false);
     expect(mockExecFileSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('spawnParentFromSource', () => {
+  it('reads the parent thread of a spawned subagent', () => {
+    const source = JSON.stringify({
+      subagent: { thread_spawn: { parent_thread_id: '019f5647-c046', depth: 1 } },
+    });
+    expect(spawnParentFromSource(source)).toBe('019f5647-c046');
+    expect(spawnParentFromSource(JSON.parse(source))).toBe('019f5647-c046');
+  });
+
+  it('ignores top-level sources and malformed values', () => {
+    expect(spawnParentFromSource('cli')).toBeUndefined();
+    expect(spawnParentFromSource('{not json')).toBeUndefined();
+    expect(spawnParentFromSource(undefined)).toBeUndefined();
+  });
+});
+
+describe('CodexDatabase child threads', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-codex-db-children-'));
+    mockExecFileSync.mockReset();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function openWith(columns: string[], rows: unknown[]): CodexDatabase {
+    writeStateDatabase();
+    mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === '--version') return '3.45.0';
+      const sql = String(args[args.length - 1]);
+      if (sql.includes('pragma_table_info'))
+        return JSON.stringify(columns.map((name) => ({ name })));
+      if (sql.includes('forked_from_id')) throw new Error('no such column: forked_from_id');
+      if (sql.includes('source LIKE')) return JSON.stringify(rows);
+      return '[]';
+    });
+    const db = new CodexDatabase(tmpDir);
+    db.open();
+    return db;
+  }
+
+  it('finds spawned children through threads.source and skips the missing fork column', () => {
+    const child = {
+      id: 'child-1',
+      rollout_path: '/tmp/child.jsonl',
+      source: JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: 'parent-1' } } }),
+    };
+    const lookalike = {
+      id: 'child-2',
+      rollout_path: '/tmp/other.jsonl',
+      source: JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: 'parent-10' } } }),
+    };
+    const db = openWith(['id', 'rollout_path', 'source'], [child, lookalike]);
+    expect(db.getSpawnedChildThreads('parent-1').map((t) => t.id)).toEqual(['child-1']);
+    expect(db.getThreadsByForkedFromId('parent-1')).toEqual([]);
   });
 });

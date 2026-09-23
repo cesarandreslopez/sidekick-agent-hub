@@ -2442,7 +2442,9 @@ export class SessionMonitor implements vscode.Disposable {
         cacheReadTokens: 0,
         reasoningTokens: 0,
       };
-      modelStats.calls++;
+      // A correction tops up a response already counted; it is not another call.
+      const isCorrection = usage.usageKind === 'correction';
+      if (!isCorrection) modelStats.calls++;
       // Shared vocabulary: every billed bucket, matching the aggregator's per-model rows.
       modelStats.tokens += summarizeTokens(usage).total;
       modelStats.inputTokens += usage.inputTokens;
@@ -2455,11 +2457,12 @@ export class SessionMonitor implements vscode.Disposable {
       // Track context size for waterfall chart
       const newContextSize = this.aggregator.getMetrics().currentContextSize;
       const hasContextSignal =
-        usage.inputTokens > 0 ||
-        usage.outputTokens > 0 ||
-        usage.cacheWriteTokens > 0 ||
-        usage.cacheReadTokens > 0 ||
-        (usage.reasoningTokens ?? 0) > 0;
+        !isCorrection &&
+        (usage.inputTokens > 0 ||
+          usage.outputTokens > 0 ||
+          usage.cacheWriteTokens > 0 ||
+          usage.cacheReadTokens > 0 ||
+          (usage.reasoningTokens ?? 0) > 0);
 
       if (hasContextSignal) {
         this.addContextTimelinePoint(event.timestamp, newContextSize, this.currentTurnIndex);

@@ -154,7 +154,7 @@ describe('formatSessionText', () => {
 
   it('includes compaction/truncation info', () => {
     const result = formatSessionText(mockMetrics({ compactionCount: 2, truncationCount: 1 }));
-    expect(result).toContain('Context: 2 compaction(s), 1 truncation(s)');
+    expect(result).toContain('Context management: 2 compaction(s), 1 truncation(s)');
   });
 
   it('shows timeline events', () => {

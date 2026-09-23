@@ -270,8 +270,9 @@ export class ProjectTimelineDataService {
 
     let startTime = '';
     let endTime = '';
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
+    // Split lines of one response repeat its usage; the last copy per id wins.
+    const usageById = new Map<string, number>();
+    let anonymousUsageTokens = 0;
     let messageCount = 0;
     let taskCount = 0;
     let errorCount = 0;
@@ -299,8 +300,15 @@ export class ProjectTimelineDataService {
           ? (message.usage as Record<string, unknown>)
           : undefined;
       if (usage) {
-        totalInputTokens += typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
-        totalOutputTokens += typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
+        const num = (value: unknown) => (typeof value === 'number' ? value : 0);
+        const usageTokens = summarizeTokens({
+          inputTokens: num(usage.input_tokens),
+          outputTokens: num(usage.output_tokens),
+          cacheWriteTokens: num(usage.cache_creation_input_tokens),
+          cacheReadTokens: num(usage.cache_read_input_tokens),
+        }).total;
+        if (typeof message?.id === 'string') usageById.set(message.id, usageTokens);
+        else anonymousUsageTokens += usageTokens;
       }
 
       if (typeof message?.model === 'string') {
@@ -338,7 +346,7 @@ export class ProjectTimelineDataService {
       endTime: endTime || null,
       durationMs: endMs - startMs,
       label,
-      totalTokens: totalInputTokens + totalOutputTokens,
+      totalTokens: [...usageById.values()].reduce((sum, n) => sum + n, anonymousUsageTokens),
       totalCost: 0,
       messageCount,
       taskCount,

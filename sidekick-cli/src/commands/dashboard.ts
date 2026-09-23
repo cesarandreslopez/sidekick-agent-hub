@@ -13,6 +13,7 @@ import {
   getAllDetectedProviders,
   generateHtmlReport,
   readSessionReportInputs,
+  scanSessionSubagents,
   openInBrowser,
   readPlans,
   writePlans,
@@ -492,6 +493,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     }
 
     lastNotifiedSessionPath = newSessionPath;
+    refreshSubagentTokens();
     scheduleRender();
   }
 
@@ -503,7 +505,16 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   const SESSION_CATCH_UP_POLL_MS = 30_000;
   const staticRefreshInterval = setInterval(() => {
     void refreshStaticData('auto');
+    refreshSubagentTokens();
   }, STATIC_REFRESH_MS);
+
+  // Subagents write their own transcripts, which the session watcher never
+  // sees. Rescan them on the static cadence; unchanged files are a stat each.
+  function refreshSubagentTokens(): void {
+    if (stopped || !sessionPath) return;
+    state.setSubagentStats(scanSessionSubagents(activeProvider, sessionPath));
+    scheduleRender();
+  }
 
   // New-session detection: subscribe to the provider's session root (fs.watch
   // with a 30 s catch-up poll) instead of walking the corpus every 10 s. The
@@ -565,8 +576,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   const generateReport = () => {
     if (!sessionPath) return;
     // One read of the session feeds both the metrics and the transcript.
-    const { metrics, transcript } = readSessionReportInputs(activeProvider, sessionPath);
+    const { metrics, transcript, subagents } = readSessionReportInputs(activeProvider, sessionPath);
     const html = generateHtmlReport(metrics, transcript, {
+      subagents,
       sessionFileName: path.basename(sessionPath),
       includeThinking: true,
       includeToolDetail: true,
@@ -774,6 +786,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           totalInputTokens:
             metrics.tokens.input + metrics.tokens.cacheRead + metrics.tokens.cacheWrite,
           totalOutputTokens: metrics.tokens.output,
+          totalTokens: metrics.sessionTokens.combined.total,
         },
         session: {
           sessionId: metrics.sessionId ?? null,
@@ -996,6 +1009,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         lastSnapshotTime = Date.now();
       }
     }
+    refreshSubagentTokens();
   }
 
   // Wait for exit

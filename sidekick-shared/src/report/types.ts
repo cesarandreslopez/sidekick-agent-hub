@@ -45,4 +45,9 @@ export interface HtmlReportOptions {
   includeToolDetail?: boolean;
   /** Color theme (default: 'dark'). */
   theme?: 'dark' | 'light';
+  /**
+   * The session's subagents (`provider.scanSubagents()`). Their tokens are
+   * reported beside the main thread and added to the session total.
+   */
+  subagents?: readonly import('../types/sessionEvent').SubagentStats[];
 }

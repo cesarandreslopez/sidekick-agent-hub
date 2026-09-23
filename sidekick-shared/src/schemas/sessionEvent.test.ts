@@ -43,6 +43,24 @@ describe('messageUsageSchema', () => {
 });
 
 describe('sessionMessageSchema', () => {
+  it('accepts a null stop_reason from a streaming line and drops it', () => {
+    const [event] = extractSessionEvents({
+      type: 'assistant',
+      timestamp: '2026-09-01T00:00:00.000Z',
+      message: {
+        role: 'assistant',
+        id: 'msg_1',
+        stop_reason: null,
+        usage: { input_tokens: 2, output_tokens: 3 },
+        content: [{ type: 'text', text: 'partial' }],
+      },
+    });
+    expect(event?.message?.usage?.output_tokens).toBe(3);
+    expect(
+      event?.message && 'stop_reason' in event.message ? event.message.stop_reason : undefined,
+    ).toBeUndefined();
+  });
+
   it('validates assistant message with usage', () => {
     const result = sessionMessageSchema.safeParse({
       role: 'assistant',

@@ -15,6 +15,23 @@ import type { ProviderRuntimeStatus } from './types';
  */
 const SQL_ID_CHUNK_SIZE = 400;
 
+/** Parent thread id recorded in a Codex `threads.source` JSON value, if any. */
+export function spawnParentFromSource(source: unknown): string | undefined {
+  let parsed: unknown = source;
+  if (typeof source === 'string') {
+    if (!source.startsWith('{')) return undefined;
+    try {
+      parsed = JSON.parse(source);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return undefined;
+  const parent = (parsed as { subagent?: { thread_spawn?: { parent_thread_id?: unknown } } })
+    .subagent?.thread_spawn?.parent_thread_id;
+  return typeof parent === 'string' ? parent : undefined;
+}
+
 export class CodexDatabase {
   private readonly dbPath: string;
   private sqlite3Available: boolean | null = null;
@@ -178,12 +195,43 @@ export class CodexDatabase {
     return results;
   }
 
-  /** Get all threads forked from a given session ID. */
+  private threadColumns: Set<string> | null = null;
+
+  /** Column names of the `threads` table (cached; the schema varies across Codex versions). */
+  private getThreadColumns(): Set<string> {
+    if (!this.threadColumns) {
+      const rows = this.query<{ name: string }>("SELECT name FROM pragma_table_info('threads')");
+      if (rows.length === 0) return new Set();
+      this.threadColumns = new Set(rows.map((row) => row.name));
+    }
+    return this.threadColumns;
+  }
+
+  /**
+   * Get all threads forked from a given session ID. Older Codex schemas carry
+   * a `forked_from_id` column; newer ones drop it, so the query only runs
+   * when the column exists (otherwise it fails and reports a diagnostic).
+   */
   getThreadsByForkedFromId(parentId: string): CodexDbThread[] {
+    if (!this.getThreadColumns().has('forked_from_id')) return [];
     return this.query<CodexDbThread>(
       'SELECT * FROM threads WHERE forked_from_id = ? ORDER BY created_at ASC',
       [parentId],
     );
+  }
+
+  /**
+   * Get the subagent threads a session spawned. Codex records the parent in
+   * the `source` JSON (`{"subagent":{"thread_spawn":{"parent_thread_id":…}}}`);
+   * the LIKE narrows the scan and the JSON parse confirms the match.
+   */
+  getSpawnedChildThreads(parentId: string): CodexDbThread[] {
+    if (!this.getThreadColumns().has('source')) return [];
+    const rows = this.query<CodexDbThread>(
+      'SELECT * FROM threads WHERE source LIKE ? ORDER BY created_at ASC',
+      [`%${parentId}%`],
+    );
+    return rows.filter((row) => spawnParentFromSource(row.source) === parentId);
   }
 
   /** Get the database file's mtime (ms epoch). Returns 0 if unavailable. */

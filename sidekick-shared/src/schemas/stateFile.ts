@@ -52,6 +52,7 @@ export const stateFileContextSchema = z.object({
   contextWindowSize: z.number().nullable(),
   totalInputTokens: z.number().nullable(),
   totalOutputTokens: z.number().nullable(),
+  totalTokens: z.number().nullable().optional(),
 }) satisfies z.ZodType<StateFileContext>;
 
 export const stateFileSessionSchema = z.object({

@@ -18,7 +18,7 @@
 
 import * as vscode from 'vscode';
 import { SessionMonitor } from './SessionMonitor';
-import { formatTokenCount, summarizeTokens } from 'sidekick-shared';
+import { formatTokenBreakdown, formatTokenCount, summarizeTokens } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import type { TokenUsage } from '../types/claudeSession';
 import type { PermissionMode } from 'sidekick-shared';
@@ -270,7 +270,15 @@ export class MonitorStatusBar implements vscode.Disposable {
       provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
     const tooltipLines = [
       `${provider.displayName} Session`,
-      `Tokens: ${this.totalTokens.toLocaleString()} (${stats.totalInputTokens.toLocaleString()} in + ${stats.totalOutputTokens.toLocaleString()} out)`,
+      `Tokens: ${formatTokenBreakdown(
+        summarizeTokens({
+          inputTokens: stats.totalInputTokens,
+          outputTokens: stats.totalOutputTokens,
+          cacheWriteTokens: stats.totalCacheWriteTokens,
+          cacheReadTokens: stats.totalCacheReadTokens,
+        }),
+        (n) => n.toLocaleString(),
+      )}`,
       `Context: ${this.contextPercent}% of ${formatTokenCount(contextLimit, { suffixCase: 'upper' })}`,
     ];
 

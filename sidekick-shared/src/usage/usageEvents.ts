@@ -10,6 +10,11 @@
  * catalog refresh never leaves stale costs behind. Cache files are touched on
  * every hit and pruned least-recently-used, once per collection.
  *
+ * A Claude Code session's subagents write their own transcripts under
+ * `<sessionId>/subagents/`; their usage is attributed to the parent session
+ * and their sizes and mtimes join the fingerprint. (Codex spawned subagents
+ * are top-level rollouts, already listed as sessions of their own.)
+ *
  * Node-only: reads session files and the cache directory.
  *
  * @module usage/usageEvents
@@ -30,8 +35,12 @@ import { calculateNormalizedUsageCost, extractNormalizedUsage } from '../usageNo
 import type { NormalizedUsage, PricingProvenance } from '../usageNormalization';
 import { atomicWriteJson } from '../writers/atomic';
 
-/** Bump when the cached record shape changes; older files are re-read. */
-export const USAGE_CACHE_VERSION = 1;
+/**
+ * Bump when the cached record shape or the counting rules change; older files
+ * are re-read. v2: Claude split lines and duplicate Codex `token_count` events
+ * are counted once, and Claude subagent transcripts are included.
+ */
+export const USAGE_CACHE_VERSION = 2;
 /**
  * Most-recently-used cache files kept on disk. Sized for a busy month of
  * sessions (files are a few KB each); a collection larger than this still
@@ -240,20 +249,97 @@ function priceCachedEvent(
   };
 }
 
-function readSessionUsage(provider: SessionProviderBase, preview: SessionPreview) {
-  const reader = provider.createReader(preview.filePath);
+interface SubagentFile {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  modifiedAt: number;
+}
+
+const CLAUDE_AGENT_FILE = /^agent-.+\.jsonl$/;
+
+/** Claude Code subagent transcripts of a session, sorted by name. */
+function claudeSubagentFiles(preview: SessionPreview): SubagentFile[] {
+  if (preview.provider !== 'claude-code') return [];
+  const dir = path.join(path.dirname(preview.filePath), preview.sessionId, 'subagents');
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir).filter((name) => CLAUDE_AGENT_FILE.test(name));
+  } catch {
+    return [];
+  }
+  const files: SubagentFile[] = [];
+  for (const name of names.sort()) {
+    try {
+      const stat = fs.statSync(path.join(dir, name));
+      files.push({
+        path: path.join(dir, name),
+        name,
+        sizeBytes: stat.size,
+        modifiedAt: stat.mtimeMs,
+      });
+    } catch {
+      // Removed between listing and stat; the next collection re-reads.
+    }
+  }
+  return files;
+}
+
+function sessionFingerprint(preview: SessionPreview, subagents: readonly SubagentFile[]): string {
+  const base = `${preview.sizeBytes}:${preview.modifiedAt}`;
+  if (subagents.length === 0) return base;
+  return `${base}|${subagents.map((f) => `${f.name}:${f.sizeBytes}:${f.modifiedAt}`).join(',')}`;
+}
+
+function readTranscriptUsage(
+  provider: SessionProviderBase,
+  filePath: string,
+  cached: CachedUsageEvent[],
+): void {
+  const reader = provider.createReader(filePath);
   const events = reader.readAll();
   reader.flush();
-  const cached: CachedUsageEvent[] = [];
+  // A correction tops up the call its message already recorded, so it merges
+  // into that record instead of counting as another call.
+  const byMessageId = new Map<string, CachedUsageEvent>();
   for (const event of events) {
     const usage = extractNormalizedUsage(event);
     if (!usage) continue;
+    const messageId = event.message?.id;
+    const target =
+      event.message?.usageKind === 'correction' && messageId
+        ? byMessageId.get(messageId)
+        : undefined;
+    if (target) {
+      target.i += usage.uncachedInputTokens;
+      target.o += usage.outputTokens;
+      target.cw += usage.cacheWriteTokens;
+      target.cr += usage.cacheReadTokens;
+      target.bo += usage.billableOutputTokens;
+      target.tt += usage.totalTokens;
+      continue;
+    }
     const timestamp = Date.parse(event.timestamp);
     if (!Number.isFinite(timestamp)) continue;
-    cached.push(
-      cachedEventFromUsage(usage, timestamp, event.message?.model ?? usage.model ?? 'unknown'),
+    const record = cachedEventFromUsage(
+      usage,
+      timestamp,
+      event.message?.model ?? usage.model ?? 'unknown',
     );
+    cached.push(record);
+    if (messageId) byMessageId.set(messageId, record);
   }
+}
+
+function readSessionUsage(
+  provider: SessionProviderBase,
+  preview: SessionPreview,
+  subagents: readonly SubagentFile[],
+): CachedUsageEvent[] {
+  const cached: CachedUsageEvent[] = [];
+  readTranscriptUsage(provider, preview.filePath, cached);
+  for (const file of subagents) readTranscriptUsage(provider, file.path, cached);
+  cached.sort((a, b) => a.t - b.t);
   return cached;
 }
 
@@ -296,7 +382,8 @@ export async function collectUsageEvents(
   for (const preview of listed.previews) {
     const provider = providerById.get(preview.provider);
     if (!provider) continue;
-    const fingerprint = `${preview.sizeBytes}:${preview.modifiedAt}`;
+    const subagentFiles = claudeSubagentFiles(preview);
+    const fingerprint = sessionFingerprint(preview, subagentFiles);
     const filePath = cacheFilePath(cacheDir, preview.provider, preview.sessionId);
 
     let cachedEvents: CachedUsageEvent[] | null = null;
@@ -316,7 +403,7 @@ export async function collectUsageEvents(
     if (!cachedEvents) {
       cacheMisses += 1;
       try {
-        cachedEvents = readSessionUsage(provider, preview);
+        cachedEvents = readSessionUsage(provider, preview, subagentFiles);
       } catch (error) {
         const diagnostic: SessionProviderDiagnostic = {
           providerId: preview.provider,

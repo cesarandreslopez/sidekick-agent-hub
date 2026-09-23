@@ -38,8 +38,14 @@ export const sessionMessageSchema = z.object({
   model: z.string().optional(),
   usage: messageUsageSchema.optional(),
   normalizedUsage: normalizedUsageSchema.optional(),
+  usageKind: z.enum(['call', 'correction']).optional(),
   content: z.unknown().optional(),
-  stop_reason: z.string().optional(),
+  // Streaming lines can carry `stop_reason: null`; rejecting it dropped the
+  // whole event (text, tools, and usage), so normalize it to absent.
+  stop_reason: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined),
 }) satisfies z.ZodType<SessionMessage>;
 
 // ── PermissionMode ──

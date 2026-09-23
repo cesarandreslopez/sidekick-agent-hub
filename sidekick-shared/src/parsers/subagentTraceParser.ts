@@ -19,6 +19,9 @@ import type { SessionEvent, SubagentStats, ToolCall } from '../types/sessionEven
 import { formatToolSummary } from '../formatters/toolSummary';
 import { isHardNoise, classifyMessage, getSoftNoiseReason } from '../formatters/noiseClassifier';
 import type { MessageClassification } from '../formatters/noiseClassifier';
+import { ClaudeUsageDeduper, dedupedRawClaudeUsage } from '../usage/claudeUsageDedupe';
+import { addUsageToSubagent } from '../usage/subagentUsage';
+import { readAgentMeta } from './subagentScanner';
 
 // ── Types ──
 
@@ -111,8 +114,8 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
     const toolCalls: ToolCall[] = [];
     let agentType: string | undefined;
     let description: string | undefined;
-    let inputTokens = 0;
-    let outputTokens = 0;
+    const tokens: SubagentStats = { agentId, toolCalls: [], inputTokens: 0, outputTokens: 0 };
+    const usageDeduper = new ClaudeUsageDeduper();
     let startTime: Date | undefined;
     let endTime: Date | undefined;
 
@@ -168,11 +171,9 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
         });
 
         // Extract token usage
-        if (raw.type === 'assistant' && raw.message?.usage) {
-          const usage = raw.message.usage;
-          inputTokens += usage.input_tokens || 0;
-          outputTokens += usage.output_tokens || 0;
-        }
+        // Split lines of one response repeat its usage; count each response once.
+        const usage = dedupedRawClaudeUsage(raw, usageDeduper);
+        if (usage) addUsageToSubagent(tokens, usage);
 
         // Extract tool calls
         if (raw.type === 'assistant' && Array.isArray(raw.message?.content)) {
@@ -213,7 +214,11 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
       }
     }
 
-    if (events.length === 0 && !agentType && !description && inputTokens === 0) {
+    const meta = readAgentMeta(filePath);
+    agentType = meta.agentType ?? agentType;
+    description = meta.description ?? description;
+
+    if (events.length === 0 && !agentType && !description && !tokens.totalTokens) {
       return null;
     }
 
@@ -230,8 +235,12 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
         agentType,
         description,
         toolCalls,
-        inputTokens,
-        outputTokens,
+        inputTokens: tokens.inputTokens,
+        outputTokens: tokens.outputTokens,
+        cacheReadTokens: tokens.cacheReadTokens ?? 0,
+        cacheWriteTokens: tokens.cacheWriteTokens ?? 0,
+        reasoningTokens: tokens.reasoningTokens ?? 0,
+        totalTokens: tokens.totalTokens ?? 0,
         startTime,
         endTime,
         durationMs,

@@ -11,6 +11,7 @@
  * loaded before this bundle).
  */
 import { renderProviderStatus as renderPublicStatus } from './providerStatus';
+import { tokenMetricDisplay } from './tokens';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
 
@@ -35,10 +36,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       const statusEl = document.getElementById('status');
       const contentEl = document.getElementById('content');
       const dashboardEl = document.getElementById('dashboard');
-      const inputTokensEl = document.getElementById('input-tokens');
-      const outputTokensEl = document.getElementById('output-tokens');
-      const cacheWriteTokensEl = document.getElementById('cache-write-tokens');
-      const cacheReadTokensEl = document.getElementById('cache-read-tokens');
       const contextPercentEl = document.getElementById('context-percent');
       const modelListEl = document.getElementById('model-list');
       const lastUpdatedEl = document.getElementById('last-updated');
@@ -101,6 +98,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         totalOutputTokens: 0,
         totalCacheWriteTokens: 0,
         totalCacheReadTokens: 0,
+        subagentTokens: null,
         totalCost: 0,
         messageCount: 0,
         burnRate: 0,
@@ -362,6 +360,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           gaugeRow.style.display = 'none';
           primaryMetricDisplay.style.display = 'block';
           primaryMetricDisplay.setAttribute('data-metric', currentMetric);
+          primaryMetricSubtitle.title = '';
 
           switch (currentMetric) {
             case 'cost':
@@ -369,10 +368,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               primaryMetricSubtitle.textContent = 'Estimated session cost';
               break;
             case 'tokens':
-              // Shared vocabulary (summarizeTokens().total): every billed bucket, cache included.
-              const totalTokens = sessionState.totalInputTokens + sessionState.totalOutputTokens + (sessionState.totalCacheWriteTokens || 0) + (sessionState.totalCacheReadTokens || 0);
-              primaryMetricValue.textContent = formatNumber(totalTokens);
-              primaryMetricSubtitle.textContent = formatNumber(sessionState.totalInputTokens) + ' in / ' + formatNumber(sessionState.totalOutputTokens) + ' out / ' + formatNumber((sessionState.totalCacheWriteTokens || 0) + (sessionState.totalCacheReadTokens || 0)) + ' cache';
+              // Shared vocabulary via the typed tokens module: every billed
+              // bucket, cache included, plus the session's subagents.
+              const tokenDisplay = tokenMetricDisplay(sessionState, formatNumber);
+              primaryMetricValue.textContent = formatNumber(tokenDisplay.value);
+              primaryMetricSubtitle.textContent = tokenDisplay.lines.join(' — ');
+              primaryMetricSubtitle.title = tokenDisplay.lines.join('\n');
               break;
             case 'cache':
               const totalCache = sessionState.totalCacheWriteTokens + sessionState.totalCacheReadTokens;
@@ -1779,6 +1780,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         sessionState.totalOutputTokens = state.totalOutputTokens;
         sessionState.totalCacheWriteTokens = state.totalCacheWriteTokens;
         sessionState.totalCacheReadTokens = state.totalCacheReadTokens;
+        sessionState.subagentTokens = state.subagentTokens || null;
         sessionState.totalCost = state.totalCost;
         sessionState.messageCount = state.modelBreakdown.reduce(function(sum, m) { return sum + m.calls; }, 0);
 
@@ -1799,12 +1801,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           statusEl.textContent = 'No Session';
           statusEl.className = 'status inactive';
         }
-
-        // Update tokens (in details section)
-        if (inputTokensEl) inputTokensEl.textContent = formatNumber(state.totalInputTokens);
-        if (outputTokensEl) outputTokensEl.textContent = formatNumber(state.totalOutputTokens);
-        if (cacheWriteTokensEl) cacheWriteTokensEl.textContent = formatNumber(state.totalCacheWriteTokens);
-        if (cacheReadTokensEl) cacheReadTokensEl.textContent = formatNumber(state.totalCacheReadTokens);
 
         // Update primary metric display
         updatePrimaryMetric();

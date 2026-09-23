@@ -29,6 +29,8 @@ export interface TokenTotalsLike {
   outputTokens: number;
   cacheWriteTokens?: number;
   cacheReadTokens?: number;
+  /** Reasoning tokens, when the source tracks them (display only). */
+  reasoningTokens?: number;
   /**
    * A provider-semantics-aware total, when the source already computed one
    * (for example `AggregatedTokens.totalTokens`). Preferred over the
@@ -53,12 +55,26 @@ export interface TokenSummary {
   cacheWrite: number;
   /** Fraction of context tokens that came from cache reads (0..1), or null with no input. */
   cacheHitRatio: number | null;
+  /** Reasoning tokens reported by the provider (display only; may be inside `output`). */
+  reasoning: number;
+  /**
+   * Tokens in `total` beyond the four buckets — reasoning billed outside
+   * `output` by providers that report it separately. Zero when the buckets
+   * already add up to `total`.
+   */
+  billedOutsideBuckets: number;
 }
 
 /** Column label for `TokenSummary.total` on any surface. */
 export const TOKEN_TOTAL_LABEL = 'Total (incl. cache)';
 /** Column label for `TokenSummary.context` on any surface. */
 export const TOKEN_CONTEXT_LABEL = 'Context';
+/** Label for a session's own (main-thread) tokens when subagents are shown beside it. */
+export const TOKEN_MAIN_THREAD_LABEL = 'Main thread';
+/** Label for the tokens a session's subagents used. */
+export const TOKEN_SUBAGENTS_LABEL = 'Subagents';
+/** Label for main thread plus subagents. */
+export const TOKEN_SESSION_TOTAL_LABEL = 'Session total (incl. subagents)';
 
 function count(value: number | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
@@ -85,20 +101,63 @@ export function summarizeTokens(totals: TokenTotalsLike): TokenSummary {
     cacheRead,
     cacheWrite,
     cacheHitRatio: context > 0 ? cacheRead / context : null,
+    reasoning: count(totals.reasoningTokens),
+    billedOutsideBuckets: Math.max(0, total - fourBucket),
   };
 }
 
-/** Sum several token records bucket-by-bucket before summarizing. */
+/**
+ * One-line breakdown whose parts add up to the headline:
+ * `1.2M total incl. cache (12k in · 1.1M cache read · 40k cache write · 30k out)`.
+ * Pass the surface's own number formatter; the default prints plain integers.
+ */
+export function formatTokenBreakdown(
+  summary: TokenSummary,
+  fmt: (n: number) => string = (n) => String(n),
+): string {
+  const parts = [
+    `${fmt(summary.input)} in`,
+    `${fmt(summary.cacheRead)} cache read`,
+    `${fmt(summary.cacheWrite)} cache write`,
+    `${fmt(summary.output)} out`,
+  ];
+  if (summary.billedOutsideBuckets > 0) {
+    parts.push(`${fmt(summary.billedOutsideBuckets)} reasoning`);
+  }
+  return `${fmt(summary.total)} total incl. cache (${parts.join(' · ')})`;
+}
+
+/**
+ * Sum several token records bucket-by-bucket before summarizing. `totalTokens`
+ * is summed only when every record carries one, so provider-aware totals
+ * survive the sum instead of falling back to the four-bucket arithmetic.
+ */
 export function sumTokenTotals(records: readonly TokenTotalsLike[]): TokenTotalsLike {
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheWriteTokens = 0;
   let cacheReadTokens = 0;
+  let reasoningTokens = 0;
+  let totalTokens = 0;
+  let allHaveTotal = records.length > 0;
   for (const record of records) {
     inputTokens += count(record.inputTokens);
     outputTokens += count(record.outputTokens);
     cacheWriteTokens += count(record.cacheWriteTokens);
     cacheReadTokens += count(record.cacheReadTokens);
+    reasoningTokens += count(record.reasoningTokens);
+    if (typeof record.totalTokens === 'number' && Number.isFinite(record.totalTokens)) {
+      totalTokens += count(record.totalTokens);
+    } else {
+      allHaveTotal = false;
+    }
   }
-  return { inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens };
+  return {
+    inputTokens,
+    outputTokens,
+    cacheWriteTokens,
+    cacheReadTokens,
+    reasoningTokens,
+    ...(allHaveTotal ? { totalTokens } : {}),
+  };
 }

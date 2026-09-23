@@ -7,8 +7,8 @@
  */
 
 import * as fs from 'fs';
-import type { BillingBlock, FollowEvent } from 'sidekick-shared';
-import { EventAggregator } from 'sidekick-shared';
+import type { BillingBlock, FollowEvent, SessionTokenTotals, SubagentStats } from 'sidekick-shared';
+import { EventAggregator, combineSessionTokenTotals, summarizeTokens } from 'sidekick-shared';
 import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared';
 import type { SessionSnapshot } from 'sidekick-shared';
 import { quotaFromCodexRateLimits } from 'sidekick-shared';
@@ -24,6 +24,11 @@ export interface TokenStats {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** Reasoning tokens reported by the provider (display only). */
+  reasoning: number;
+  /** Every billed token, cache included — `summarizeTokens().total` for the main thread. */
+  total: number;
+  /** Session cost in USD (`AggregatedTokens.costUsd`). */
   cost: number;
 }
 
@@ -151,6 +156,11 @@ export interface ContextAttribution {
 
 export interface DashboardMetrics {
   tokens: TokenStats;
+  /**
+   * Main thread plus the session's subagents (their transcripts are scanned on
+   * the static-data refresh cadence, not per event).
+   */
+  sessionTokens: SessionTokenTotals;
   context: ContextGauge;
   burnRate: number[];
   toolStats: ToolStats[];
@@ -245,6 +255,7 @@ export class DashboardState {
 
   // Active billing block (external state from the usage collector)
   private _billingBlock: BillingBlock | null = null;
+  private _subagentStats: SubagentStats[] = [];
 
   // Provider status (external state from status.claude.com / status.openai.com)
   private _providerStatus: ProviderStatusState | null = null;
@@ -307,6 +318,7 @@ export class DashboardState {
     this._checkpointProviderId = undefined;
     this._lastKnownCompactionCount = 0;
     this._taskToolCallCounts.clear();
+    this._subagentStats = [];
   }
 
   /** Set the session ID for plan persistence. */
@@ -535,6 +547,12 @@ export class DashboardState {
     this._quota = quota;
   }
 
+  /** Update the followed session's subagent stats (from `scanSessionSubagents`). */
+  setSubagentStats(stats: SubagentStats[]): void {
+    this.touch();
+    this._subagentStats = stats;
+  }
+
   /** Update the active billing block computed from session logs. */
   setBillingBlock(block: BillingBlock | null): void {
     this.touch();
@@ -684,8 +702,11 @@ export class DashboardState {
         output: m.tokens.outputTokens,
         cacheRead: m.tokens.cacheReadTokens,
         cacheWrite: m.tokens.cacheWriteTokens,
-        cost: m.tokens.reportedCost,
+        reasoning: m.tokens.reasoningTokens,
+        total: summarizeTokens(m.tokens).total,
+        cost: m.tokens.costUsd,
       },
+      sessionTokens: combineSessionTokenTotals(m.tokens, this._subagentStats),
       context: this.computeContextGauge(m.currentContextSize, m.currentModel),
       burnRate: m.burnRate.points,
       toolStats,

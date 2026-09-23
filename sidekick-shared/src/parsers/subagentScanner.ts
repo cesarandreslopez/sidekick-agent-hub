@@ -17,12 +17,37 @@ import type {
   TrackedTask,
   TaskStatus,
 } from '../types/sessionEvent';
+import { ClaudeUsageDeduper, dedupedRawClaudeUsage } from '../usage/claudeUsageDedupe';
+import { addUsageToSubagent } from '../usage/subagentUsage';
+import { cachedSubagentStats } from './subagentStatsCache';
 
 /**
  * Pattern for matching subagent JSONL files.
  * Files are named like: agent-<hash>.jsonl
  */
 const AGENT_FILE_PATTERN = /^agent-(.+)\.jsonl$/;
+
+/**
+ * Reads `agent-<id>.meta.json` (written by Claude Code next to the transcript)
+ * for the spawn's agent type and description. Missing or malformed files
+ * yield an empty object.
+ */
+export function readAgentMeta(agentFilePath: string): { agentType?: string; description?: string } {
+  try {
+    const metaPath = agentFilePath.replace(/\.jsonl$/, '.meta.json');
+    const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Record<string, unknown>;
+    return {
+      ...(typeof parsed.agentType === 'string' && parsed.agentType
+        ? { agentType: parsed.agentType }
+        : {}),
+      ...(typeof parsed.description === 'string' && parsed.description
+        ? { description: parsed.description }
+        : {}),
+    };
+  } catch {
+    return {};
+  }
+}
 
 /** Task-related tool names */
 const TASK_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'];
@@ -105,7 +130,9 @@ export function scanSubagentDir(
 
       const agentId = match[1];
       const filePath = path.join(subagentsDir, file);
-      const agentStats = parseAgentFile(filePath, agentId, log);
+      const agentStats = cachedSubagentStats(filePath, () =>
+        parseAgentFile(filePath, agentId, log),
+      );
 
       if (agentStats) {
         log(`[SubagentScanner] Agent ${agentId}: ${agentStats.toolCalls.length} tool calls`);
@@ -143,8 +170,8 @@ function parseAgentFile(
     const toolCalls: ToolCall[] = [];
     let agentType: string | undefined;
     let description: string | undefined;
-    let inputTokens = 0;
-    let outputTokens = 0;
+    const tokens: SubagentStats = { agentId, toolCalls: [], inputTokens: 0, outputTokens: 0 };
+    const usageDeduper = new ClaudeUsageDeduper();
     let startTime: Date | undefined;
     let endTime: Date | undefined;
 
@@ -172,12 +199,10 @@ function parseAgentFile(
         if (!startTime) startTime = eventTimestamp;
         endTime = eventTimestamp;
 
-        // Extract token usage from assistant messages
-        if (event.type === 'assistant' && event.message?.usage) {
-          const usage = event.message.usage;
-          inputTokens += usage.input_tokens || 0;
-          outputTokens += usage.output_tokens || 0;
-        }
+        // Extract token usage from assistant messages. Split lines of one
+        // response repeat its usage, so count each response once.
+        const usage = dedupedRawClaudeUsage(event, usageDeduper);
+        if (usage) addUsageToSubagent(tokens, usage);
 
         // Extract agent type and description from Task tool invocation
         // This appears in the parent session, but we can also look for it
@@ -295,8 +320,13 @@ function parseAgentFile(
       }
     }
 
+    // Claude Code writes the spawn's type and description beside the transcript.
+    const meta = readAgentMeta(filePath);
+    agentType = meta.agentType ?? agentType;
+    description = meta.description ?? description;
+
     // If we found any tool calls, return the stats
-    if (toolCalls.length > 0 || agentType || description || inputTokens > 0) {
+    if (toolCalls.length > 0 || agentType || description || (tokens.totalTokens ?? 0) > 0) {
       const durationMs = startTime && endTime ? endTime.getTime() - startTime.getTime() : undefined;
       return {
         agentId,
@@ -304,8 +334,12 @@ function parseAgentFile(
         description,
         toolCalls,
         taskState: taskState.tasks.size > 0 ? taskState : undefined,
-        inputTokens,
-        outputTokens,
+        inputTokens: tokens.inputTokens,
+        outputTokens: tokens.outputTokens,
+        cacheReadTokens: tokens.cacheReadTokens ?? 0,
+        cacheWriteTokens: tokens.cacheWriteTokens ?? 0,
+        reasoningTokens: tokens.reasoningTokens ?? 0,
+        totalTokens: tokens.totalTokens ?? 0,
         startTime,
         endTime,
         durationMs,

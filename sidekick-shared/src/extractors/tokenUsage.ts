@@ -39,5 +39,6 @@ export function extractTokenUsage(event: SessionEvent): TokenUsage | null {
     timestamp: new Date(event.timestamp),
     reportedCost: usage.reported_cost,
     reasoningTokens: usage.reasoning_tokens,
+    ...(event.message?.usageKind ? { usageKind: event.message.usageKind } : {}),
   };
 }

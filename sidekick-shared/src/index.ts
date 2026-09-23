@@ -21,9 +21,13 @@ export type {
   NormalizedUsageCost,
 } from './usageNormalization';
 export {
+  formatTokenBreakdown,
   summarizeTokens,
   sumTokenTotals,
   TOKEN_CONTEXT_LABEL,
+  TOKEN_MAIN_THREAD_LABEL,
+  TOKEN_SESSION_TOTAL_LABEL,
+  TOKEN_SUBAGENTS_LABEL,
   TOKEN_TOTAL_LABEL,
 } from './tokenSummary';
 export type { TokenSummary, TokenTotalsLike } from './tokenSummary';
@@ -472,10 +476,28 @@ export {
   extractPatchFilePaths,
   normalizeCodexToolName,
   normalizeCodexToolInput,
+  resolveCodexCallUsage,
 } from './parsers/codexParser';
 
 // Parsers — Subagent scanning
-export { scanSubagentDir, extractTaskInfo } from './parsers/subagentScanner';
+export { scanSubagentDir, extractTaskInfo, readAgentMeta } from './parsers/subagentScanner';
+
+// Usage — split-line dedupe, subagent tokens, session totals
+export {
+  ClaudeUsageDeduper,
+  SYNTHETIC_MODEL,
+  dedupedRawClaudeUsage,
+  normalizeClaudeUsage,
+} from './usage/claudeUsageDedupe';
+export { addUsageToSubagent } from './usage/subagentUsage';
+export {
+  collectSessionTokenTotals,
+  combineSessionTokenTotals,
+  readMainThreadTokenTotals,
+  scanSessionSubagents,
+  subagentTokenTotals,
+} from './sessionTokenTotals';
+export type { SessionTokenTotals, SubagentTokenSummary } from './sessionTokenTotals';
 
 // Parsers — Session activity detection
 export {

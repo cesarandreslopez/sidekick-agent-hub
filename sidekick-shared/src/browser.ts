@@ -38,12 +38,17 @@ export type {
   NormalizedUsageCost,
 } from './usageNormalization';
 export {
+  formatTokenBreakdown,
   summarizeTokens,
   sumTokenTotals,
   TOKEN_CONTEXT_LABEL,
+  TOKEN_MAIN_THREAD_LABEL,
+  TOKEN_SESSION_TOTAL_LABEL,
+  TOKEN_SUBAGENTS_LABEL,
   TOKEN_TOTAL_LABEL,
 } from './tokenSummary';
 export type { TokenSummary, TokenTotalsLike } from './tokenSummary';
+export { ClaudeUsageDeduper, SYNTHETIC_MODEL } from './usage/claudeUsageDedupe';
 export { estimateTextTokens, estimateSerializedTokens } from './tokenEstimation';
 export type {
   ExactTokenCounterContext,

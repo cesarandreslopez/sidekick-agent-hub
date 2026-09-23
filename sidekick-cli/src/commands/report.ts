@@ -52,7 +52,7 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
     }
 
     // One read of the session feeds both the metrics and the transcript.
-    const { metrics, transcript } = readSessionReportInputs(provider, sessionPath);
+    const { metrics, transcript, subagents } = readSessionReportInputs(provider, sessionPath);
 
     // Generate HTML report
     const sessionFileName = path.basename(sessionPath);
@@ -61,6 +61,7 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
       includeThinking: !noThinking,
       includeToolDetail: true,
       theme,
+      subagents,
     };
     const html = generateHtmlReport(metrics, transcript, reportOptions);
 

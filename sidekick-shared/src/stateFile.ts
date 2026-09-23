@@ -55,8 +55,15 @@ export interface StateFileAccount {
 export interface StateFileContext {
   usedPercentage: number | null;
   contextWindowSize: number | null;
+  /** Input tokens including cache reads and writes (Claude Code status-line semantics). */
   totalInputTokens: number | null;
   totalOutputTokens: number | null;
+  /**
+   * Every token the session billed, cache included — the `summarizeTokens().total`
+   * figure the dashboards show. Absent or null when the writer does not know it
+   * (the status line only sees the current context).
+   */
+  totalTokens?: number | null;
 }
 
 export interface StateFileSession {

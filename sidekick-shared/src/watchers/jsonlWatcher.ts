@@ -6,19 +6,44 @@
 import { createJsonlTail, type JsonlTail } from './jsonlTail';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { ProviderId } from '../providers/types';
-import { normalizeCodexToolName } from '../parsers/codexParser';
+import { normalizeCodexToolName, resolveCodexCallUsage } from '../parsers/codexParser';
+import type { CodexTokenUsage } from '../types/codex';
 import { formatToolSummary } from '../formatters/toolSummary';
+import { ClaudeUsageDeduper, normalizeClaudeUsage } from '../usage/claudeUsageDedupe';
+import type { SessionEvent } from '../types/sessionEvent';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
 
 // ── Normalizers ──
 
-function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
+/**
+ * Split lines of one Claude response repeat its usage; run the raw usage
+ * through the shared deduper so each response is counted once (last copy wins).
+ */
+function dedupedClaudeUsage(raw: RawSessionEvent, deduper: ClaudeUsageDeduper) {
+  if (!raw.message?.usage) return { usage: undefined, usageKind: undefined };
+  const event = deduper.apply(
+    normalizeClaudeUsage({
+      type: 'assistant',
+      timestamp: raw.timestamp || '',
+      message: raw.message,
+    } as SessionEvent),
+  );
+  return { usage: event.message?.usage, usageKind: event.message?.usageKind };
+}
+
+function normalizeClaudeCodeEvent(
+  raw: RawSessionEvent,
+  deduper: ClaudeUsageDeduper,
+): FollowEvent[] {
   const events: FollowEvent[] = [];
   const ts = raw.timestamp || new Date().toISOString();
   const permissionMode = (raw as unknown as Record<string, unknown>).permissionMode as
     | string
     | undefined;
-  const usage = raw.message?.usage;
+  const { usage, usageKind } =
+    raw.type === 'assistant'
+      ? dedupedClaudeUsage(raw, deduper)
+      : { usage: undefined, usageKind: undefined };
   const tokens = usage
     ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 }
     : undefined;
@@ -89,6 +114,7 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
         summary: text || '(thinking...)',
         tokens,
         cacheTokens,
+        ...(usageKind ? { usageKind } : {}),
         cost,
         model,
         raw,
@@ -98,6 +124,7 @@ function normalizeClaudeCodeEvent(raw: RawSessionEvent): FollowEvent[] {
       const last = events[events.length - 1];
       last.tokens = tokens;
       last.cacheTokens = cacheTokens;
+      if (usageKind) last.usageKind = usageKind;
       last.cost = cost;
     }
   } else if (raw.type === 'summary') {
@@ -196,6 +223,9 @@ export class JsonlSessionWatcher implements SessionWatcher {
   private tail: JsonlTail | undefined;
   private startOffset: number | undefined;
   private codexInPlanMode = false;
+  private readonly claudeUsageDeduper = new ClaudeUsageDeduper();
+  /** Last Codex cumulative usage seen; repeated `token_count` events carry the same value. */
+  private codexPrevTotal: CodexTokenUsage | undefined;
 
   constructor(
     private readonly providerId: ProviderId,
@@ -234,6 +264,8 @@ export class JsonlSessionWatcher implements SessionWatcher {
   stop(): void {
     this.tail?.stop();
     this.codexInPlanMode = false;
+    this.claudeUsageDeduper.reset();
+    this.codexPrevTotal = undefined;
   }
 
   private handleRawEvent(event: RawSessionEvent): void {
@@ -242,10 +274,20 @@ export class JsonlSessionWatcher implements SessionWatcher {
     const followEvents =
       this.providerId === 'codex'
         ? this.normalizeCodexEvent(event as unknown as Record<string, unknown>)
-        : normalizeClaudeCodeEvent(event);
+        : normalizeClaudeCodeEvent(event, this.claudeUsageDeduper);
     for (const fe of followEvents) {
       this.callbacks.onEvent(fe);
     }
+  }
+
+  /** One call's usage from a token_count `info`, skipping duplicate events. */
+  private codexCallUsage(info: Record<string, unknown> | undefined): CodexTokenUsage | null {
+    const resolved = resolveCodexCallUsage(
+      info as Parameters<typeof resolveCodexCallUsage>[0],
+      this.codexPrevTotal ?? null,
+    );
+    this.codexPrevTotal = resolved.total ?? undefined;
+    return resolved.usage;
   }
 
   private normalizeCodexEvent(raw: Record<string, unknown>): FollowEvent[] {
@@ -338,9 +380,7 @@ export class JsonlSessionWatcher implements SessionWatcher {
       const evtType = payload?.type as string | undefined;
       if (evtType === 'token_count') {
         const info = payload?.info as Record<string, unknown> | undefined;
-        const usage = (info?.last_token_usage || info?.total_token_usage) as
-          | Record<string, unknown>
-          | undefined;
+        const usage = this.codexCallUsage(info);
         const rl = payload?.rate_limits as Record<string, unknown> | undefined;
         const rateLimits = rl ? extractRateLimits(rl) : undefined;
         if (usage || rateLimits) {
@@ -351,11 +391,15 @@ export class JsonlSessionWatcher implements SessionWatcher {
             summary: usage
               ? `Tokens: ${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out`
               : 'Rate limits updated',
+            // Codex input includes cached input; FollowEvent buckets are disjoint.
             tokens: usage
               ? {
-                  input: (usage.input_tokens as number) || 0,
-                  output: (usage.output_tokens as number) || 0,
+                  input: Math.max(0, (usage.input_tokens || 0) - (usage.cached_input_tokens || 0)),
+                  output: usage.output_tokens || 0,
                 }
+              : undefined,
+            cacheTokens: usage?.cached_input_tokens
+              ? { read: usage.cached_input_tokens, write: 0 }
               : undefined,
             rateLimits,
             raw,

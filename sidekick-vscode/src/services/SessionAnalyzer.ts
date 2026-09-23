@@ -10,6 +10,7 @@
 import * as path from 'path';
 import type { SessionMonitor } from './SessionMonitor';
 import type { ToolCall, ToolAnalytics, TimelineEvent } from '../types/claudeSession';
+import { summarizeTokens } from 'sidekick-shared';
 import { detectCycle } from '../utils/cycleDetector';
 
 // Re-export analysis types so existing consumers don't break
@@ -88,7 +89,13 @@ export class SessionAnalyzer {
       ? Date.now() - stats.sessionStartTime.getTime()
       : 0;
 
-    const totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
+    // Shared vocabulary: every billed bucket, cache included.
+    const totalTokens = summarizeTokens({
+      inputTokens: stats.totalInputTokens,
+      outputTokens: stats.totalOutputTokens,
+      cacheWriteTokens: stats.totalCacheWriteTokens,
+      cacheReadTokens: stats.totalCacheReadTokens,
+    }).total;
 
     // Get project path from session monitor
     const sessionPath = this.sessionMonitor.getSessionPath();

@@ -34,6 +34,8 @@ import {
   normalizeToolInput,
 } from '../parsers/openCodeParser';
 import { OpenCodeDatabase } from './openCodeDatabase';
+import { normalizeProviderUsage } from '../usageNormalization';
+import { addUsageToSubagent } from '../usage/subagentUsage';
 import type { DbPart } from '../types/opencode';
 import {
   accumulateZaiUsage,
@@ -1653,21 +1655,52 @@ export class OpenCodeProvider implements SessionProviderBase {
 
           // Aggregate tokens from child session messages
           const childMessages = db.getMessagesForSession(child.id);
-          let inputTokens = 0;
-          let outputTokens = 0;
+          const tokenTotals: SubagentStats = {
+            agentId: '',
+            toolCalls: [],
+            inputTokens: 0,
+            outputTokens: 0,
+          };
 
           for (const msgRow of childMessages) {
             try {
               const msgData = JSON.parse(msgRow.data) as Record<string, unknown>;
               const tokens = msgData.tokens as Record<string, unknown> | undefined;
               if (tokens) {
-                inputTokens += (tokens.input as number) || 0;
-                outputTokens += (tokens.output as number) || 0;
+                // Same semantics as the main-session parser (openCodeParser).
+                const cache = tokens.cache as Record<string, unknown> | undefined;
+                const providerID = msgData.providerID as string | undefined;
+                addUsageToSubagent(
+                  tokenTotals,
+                  normalizeProviderUsage({
+                    semantics:
+                      providerID === 'openai'
+                        ? 'openai'
+                        : providerID === 'anthropic'
+                          ? 'anthropic'
+                          : 'sidekick',
+                    provider: providerID ?? 'opencode',
+                    inputTokens: tokens.input as number,
+                    outputTokens: tokens.output as number,
+                    cacheReadTokens: cache?.read as number,
+                    cacheWriteTokens: cache?.write as number,
+                    reasoningTokens: tokens.reasoning as number,
+                    reasoningIncludedInOutput: providerID === 'openai',
+                  }),
+                );
               }
             } catch {
               // Skip malformed messages
             }
           }
+          const {
+            inputTokens,
+            outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens,
+            reasoningTokens,
+            totalTokens,
+          } = tokenTotals;
 
           // Extract tool calls from child session parts
           const childParts = db.getPartsForSession(child.id);
@@ -1727,6 +1760,10 @@ export class OpenCodeProvider implements SessionProviderBase {
             toolCalls,
             inputTokens,
             outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens,
+            reasoningTokens,
+            totalTokens,
             startTime,
             endTime,
             durationMs,
