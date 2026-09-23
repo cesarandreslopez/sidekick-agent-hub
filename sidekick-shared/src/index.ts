@@ -51,11 +51,13 @@ export { listRecentSessions, readSessionTranscript } from './sessionTranscripts'
 export { collectPromptHistory } from './promptHistory';
 export type {
   CollectPromptHistoryOptions,
+  PromptHistoryAnswerState,
   PromptHistoryBound,
   PromptHistoryBounds,
   PromptHistoryCursor,
   PromptHistoryCursorSession,
   PromptHistoryEntry,
+  PromptHistoryExclusion,
   PromptHistoryMetadataStatus,
   PromptHistoryPendingPrompt,
   PromptHistoryProvider,
