@@ -88,7 +88,7 @@ Dump session data as a text timeline, JSON metrics, or markdown report for shari
 | `--expand`       | Show all events including noise                        |
 | `--session <id>` | Target a specific session (default: most recent)       |
 
-Global flags `--project`, `--provider`, and `--json` also apply (see above); `--json` on a non-list dump is the same as `--format json`. Token totals count every billed bucket (input, output, cache writes, and cache reads) and cost figures name their provenance (provider-reported or estimated from catalog pricing).
+Global flags `--project`, `--provider`, and `--json` also apply (see above); `--json` on a non-list dump is the same as `--format json`. Token totals count every billed bucket (input, output, cache writes, and cache reads), each API response or call once, and cost figures name their provenance (provider-reported or estimated from catalog pricing). When the session spawned subagents, text and markdown output add a **Subagents (n)** line (markdown also gets a per-agent **Subagent Tokens** table) and a **Session total (incl. subagents)**. JSON output adds a `tokenSummary` block with `mainThread`, `subagents`, `subagentTotal`, and `combined` (main thread plus subagents).
 
 ### Examples
 
@@ -139,7 +139,7 @@ sidekick history --json | jq '.[0]'
 sidekick report [options]
 ```
 
-Generate a self-contained HTML session report and open it in the default browser. Includes full transcript with collapsible thinking blocks and tool detail, token/cost stats, model breakdown, and tool-use summary — zero external dependencies.
+Generate a self-contained HTML session report and open it in the default browser. Includes full transcript with collapsible thinking blocks and tool detail, token/cost stats, model breakdown, and tool-use summary — zero external dependencies. The stats cards show "Total (incl. cache)" and the cache hit rate. When the session spawned subagents, the total card becomes the main thread's total and **Subagents (n)** and **Session total (incl. subagents)** cards are added.
 
 ![HTML Session Report](../images/session_html_report.png)
 
@@ -237,16 +237,16 @@ acct:work · 5h 42% resets 14:00 · ~1h20m left · 7d 61% · ctx 37% · $0.42 ·
 
 Every status-line run, and both dashboards on their refresh ticks, also write `~/.config/sidekick/state.json` (honouring `SIDEKICK_CONFIG_DIR`) for external tools such as tmux status bars, menu-bar apps, and scripts. It is a **public, versioned contract**: `schemaVersion` is `1`, fields are only ever added, and `sidekick-shared/schemas` exports the matching zod schema (`sidekickStateFileSchema`). The file is rewritten atomically only when its content changed, so an idle prompt costs one small read.
 
-| Field                          | Contents                                                                                                                                                                                                          |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schemaVersion`                | `1`                                                                                                                                                                                                               |
-| `writtenAt`                    | ISO timestamp of the write                                                                                                                                                                                        |
-| `writer`                       | `statusline`, `cli-dashboard`, or `vscode-dashboard`                                                                                                                                                              |
-| `account`                      | `{ providerId, id, label }` for the active Claude Code or Codex account, or `null`                                                                                                                                |
-| `quota.claude` / `quota.codex` | `{ fiveHour, sevenDay, source, capturedSource, capturedAt, ageMs, freshness }` per provider, or `null` when unavailable                                                                                           |
-| `context`                      | `{ usedPercentage, contextWindowSize, totalInputTokens, totalOutputTokens }` of the live session, or `null`                                                                                                       |
-| `session`                      | `{ sessionId, cwd, model, costUsd, durationMs, linesAdded, linesRemoved, promptCacheHitRatio }`, or `null`                                                                                                        |
-| `billingBlock`                 | The open five-hour block (`start`, `end`, `isActive`, `tokens`, `costUsd`, `costProvenance`, `burnRatePerMinute`, `projectedTokens`, `projectedCostUsd`, `remainingMs`) when a dashboard computed it, else `null` |
+| Field                          | Contents                                                                                                                                                                                                                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`                | `1`                                                                                                                                                                                                                                                                          |
+| `writtenAt`                    | ISO timestamp of the write                                                                                                                                                                                                                                                   |
+| `writer`                       | `statusline`, `cli-dashboard`, or `vscode-dashboard`                                                                                                                                                                                                                         |
+| `account`                      | `{ providerId, id, label }` for the active Claude Code or Codex account, or `null`                                                                                                                                                                                           |
+| `quota.claude` / `quota.codex` | `{ fiveHour, sevenDay, source, capturedSource, capturedAt, ageMs, freshness }` per provider, or `null` when unavailable                                                                                                                                                      |
+| `context`                      | `{ usedPercentage, contextWindowSize, totalInputTokens, totalOutputTokens, totalTokens? }` of the live session, or `null`. `totalTokens` (0.27.3+, optional) is the session total — cache and subagents included — written by both dashboards; the status line leaves it out |
+| `session`                      | `{ sessionId, cwd, model, costUsd, durationMs, linesAdded, linesRemoved, promptCacheHitRatio }`, or `null`                                                                                                                                                                   |
+| `billingBlock`                 | The open five-hour block (`start`, `end`, `isActive`, `tokens`, `costUsd`, `costProvenance`, `burnRatePerMinute`, `projectedTokens`, `projectedCostUsd`, `remainingMs`) when a dashboard computed it, else `null`                                                            |
 
 Values that a writer cannot know are `null` rather than omitted — the status line never computes the billing block, and the dashboards do not see prompt-cache statistics.
 
@@ -367,7 +367,7 @@ sidekick notes --type tip --status active --json
 sidekick stats [options]
 ```
 
-Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`, which the VS Code extension writes as sessions end and `sidekick import` backfills from session logs (see below); for reports computed straight from the logs, use `sidekick daily` and friends. Unknown-model rows render as `—`; any unpriced models encountered are listed in the footer so missing pricing coverage is visible. "Total (incl. cache)" counts input, output, cache writes, and cache reads — the same total every other Sidekick surface shows.
+Show historical usage statistics — tokens, costs, model breakdown, tool usage, and recent daily activity. Reads from `~/.config/sidekick/historical-data.json`, which the VS Code extension writes as sessions end and `sidekick import` backfills from session logs (see below); for reports computed straight from the logs, use `sidekick daily` and friends. Unknown-model rows render as `—`; any unpriced models encountered are listed in the footer so missing pricing coverage is visible. "Total (incl. cache)" counts input, output, cache writes, and cache reads — the same total every other Sidekick surface shows. Sessions recorded before 0.27.3 are not rewritten and keep their old, inflated Claude Code and Codex totals (split JSONL lines and repeated `token_count` events were counted more than once).
 
 | Flag    | Description                                                                                            |
 | ------- | ------------------------------------------------------------------------------------------------------ |
@@ -406,7 +406,7 @@ sidekick blocks [--active | --recent | --since <time>] [--csv]
 
 Five-hour billing blocks computed straight from session logs, for the auto-detected or `--provider` session provider. A block opens at the first usage event (aligned down to the UTC hour, as ccusage does), lasts five hours, and a gap longer than five hours or an event past the block's end opens a new one. Each row shows the block's cache-inclusive token total, cost, burn rate (tokens per minute over the block so far), and — for the block that is still open — the projected end-of-block tokens and cost and the time remaining.
 
-Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time, so repeat runs only re-read sessions that changed; `--no-cache` forces a full re-read. The table is a **local estimate**. When `sidekick statusline` has persisted an official rate-limit sample from Claude Code, it is printed beneath the table as `Official (status line)` with its age so the two can be compared.
+Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time, so repeat runs only re-read sessions that changed; `--no-cache` forces a full re-read. Caches written before 0.27.3 (cache version 2) rebuild automatically. The table is a **local estimate**. When `sidekick statusline` has persisted an official rate-limit sample from Claude Code, it is printed beneath the table as `Official (status line)` with its age so the two can be compared.
 
 | Flag             | Description                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------------ |
@@ -442,7 +442,7 @@ sidekick sessions [...]
 
 Usage computed straight from session logs, so they work for CLI-only users who never ran the VS Code extension (the store-backed `sidekick stats` still needs the extension's history). By default every provider with session data is read and shown side by side — Claude Code, Codex, and OpenCode in one table — and the global `--provider` restricts the report to one.
 
-Rows are bucketed by the **time of each usage event**, on the local calendar unless `--utc`, so a session that crosses midnight is split across the days it actually ran in (the history store behind `stats` buckets by session start instead). Weeks start on Monday. `sessions` prints one row per session with its first event, project, calls, cache-inclusive total, cost, and models. Sessions are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time.
+Rows are bucketed by the **time of each usage event**, on the local calendar unless `--utc`, so a session that crosses midnight is split across the days it actually ran in (the history store behind `stats` buckets by session start instead). Weeks start on Monday. `sessions` prints one row per session with its first event, project, calls, cache-inclusive total, cost, and models. Sessions are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time. Claude Code subagent transcripts (`<session>/subagents/agent-*.jsonl`) count toward their parent session. Each API response or call is counted once.
 
 | Flag             | Description                                                                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -743,15 +743,15 @@ Switch panels with number keys `1`–`8`.
 
 Browse and select from recent agent sessions. The detail pane has seven tabs:
 
-| Tab            | Description                                                                                                                                                      |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Summary**    | Token usage, cost, duration, model, session metadata, quota, and the active five-hour billing block (a local estimate from session logs, refreshed every minute) |
-| **Timeline**   | Chronological activity feed with tool calls, messages, and events                                                                                                |
-| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `F` to filter node types      |
-| **Tools**      | Breakdown of tool usage with counts and categories                                                                                                               |
-| **Files**      | Files touched during the session                                                                                                                                 |
-| **Agents**     | Subagent activity and delegation chain                                                                                                                           |
-| **AI Summary** | AI-generated narrative of the session. Press `n` to generate                                                                                                     |
+| Tab            | Description                                                                                                                                                                                                                                                                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Summary**    | Token usage ("Total (incl. cache)" with input, cache read, cache write, and output; cache hit rate; and, when subagents ran, **Subagents (n)** and **Session total (incl. subagents)**), cost, duration, model, session metadata, quota, and the active five-hour billing block (a local estimate from session logs, refreshed every minute) |
+| **Timeline**   | Chronological activity feed with tool calls, messages, and events                                                                                                                                                                                                                                                                            |
+| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `F` to filter node types                                                                                                                                                                                  |
+| **Tools**      | Breakdown of tool usage with counts and categories                                                                                                                                                                                                                                                                                           |
+| **Files**      | Files touched during the session                                                                                                                                                                                                                                                                                                             |
+| **Agents**     | Subagent activity and delegation chain                                                                                                                                                                                                                                                                                                       |
+| **AI Summary** | AI-generated narrative of the session. Press `n` to generate                                                                                                                                                                                                                                                                                 |
 
 ### Tasks (2)
 

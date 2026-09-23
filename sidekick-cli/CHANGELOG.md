@@ -5,6 +5,21 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] - 2026-09-23
+
+### Fixed
+
+- Token totals no longer double-count Claude Code split lines or repeated Codex `token_count` events (via `sidekick-shared` 0.27.3). This corrects `dump`, `report`, the dashboard, `daily`/`weekly`/`monthly`/`sessions`, and `blocks`; the usage cache rebuilds itself on first run.
+
+### Added
+
+- `sidekick dump` shows the session's subagents: text and markdown add "Subagents (n)" and "Session total (incl. subagents)", and `--format json` adds a `tokenSummary` block (`mainThread`, `subagents`, `subagentTotal`, `combined`). `sidekick report` adds the same cards.
+- The dashboard's Sessions panel leads its Tokens section with "Total (incl. cache)" and lists every bucket, then subagent and session totals (subagent transcripts are rescanned every 15 s). Its state file writes `context.totalTokens`.
+
+### Changed
+
+- Cache hit rate counts cache writes, per-event token suffixes and the event detail show cache-inclusive totals, and the dashboard's cost comes from `costUsd`. Claude subagent transcripts now count toward the usage reports under their parent session.
+
 ## [0.27.2] - 2026-09-22
 
 ### Changed

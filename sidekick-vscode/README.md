@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.27.3: accurate session tokens with subagents** — token totals and costs no longer double-count Claude Code split lines or repeated Codex `token_count` events, and model rows count one call per response. The dashboard's Tokens metric shows "Session total (incl. subagents)" with the main thread's breakdown (in · cache read · cache write · out) and the subagents' total. The Subagents tree shows cache-inclusive totals and finds Codex spawned subagents again, the status-bar tooltip lists every token bucket, the HTML session report includes subagents, and `state.json` gains `context.totalTokens`. History recorded before 0.27.3 keeps its stored totals.
 - **0.27.0: Opus 5.5 and GPT-6 Astra** — the `powerful` tier now resolves to Claude Opus 5.5 (`claude-opus-5-5`; `anthropic/claude-opus-5-5` on OpenCode) and the Codex tiers move to GPT-6 (`gpt-6-luna` / `gpt-6-sol` / `gpt-6-astra`), while Claude Max still passes `opus`. Opus 5.5 costs use its own rates, and dashboard labels show `Opus 5.5` / `Fable 5.1` instead of dropping the minor version.
 - **0.26.6: verified account switching** — an **Accounts** sidebar view and an always-visible status bar badge show every saved Claude Code and Codex account with credential health; the grouped quick pick (`Ctrl+K Ctrl+Shift+A`) switches, adds, signs in again, opens a terminal as an account, or undoes. Logins made natively are registered automatically, each switch is verified and reported in one notification with **Undo**, **Details**, and **Reload Window**, and the opt-in `sidekick.accounts.keepAlive` refreshes inactive accounts through the official CLIs. Account commands no longer depend on the inference provider setting.
 - **0.26.5: calibrated high-token alert** — the warning fires once when a session's cache-inclusive total first crosses `sidekick.notifications.tokenThreshold` (now 5,000,000 by default), later multiples warn at most every 30 minutes, and a new session starts fresh. Session discovery reconciles each watched-file event with one stat instead of re-walking the session directory.
@@ -104,7 +105,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Project Timeline](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/project-timeline.png)
 
-- **[HTML Session Report](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/)** — self-contained HTML report with full transcript, token/cost stats, model breakdown, and tool-use summary — opens in a webview panel
+- **[HTML Session Report](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/)** — self-contained HTML report with full transcript, token/cost stats (including subagents), model breakdown, and tool-use summary — opens in a webview panel
 
 ![HTML Session Report](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session_html_report.png)
 
@@ -119,7 +120,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 - **Conversation Viewer** — full session transcript that interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode; tool calls render as concise rows with expandable outputs, with search across the conversation
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.) with paired tool outputs (file content, stdout, search results)
-- **Subagent Tree** — hierarchical view of subagent spawns with nested parent/child relationships
+- **Subagents Tree** — hierarchical view of subagent spawns (Claude Code and Codex) with nested parent/child relationships and each subagent's cache-inclusive token total
 - **Plans Board** — agent plans discovered for the project, surfaced as a dedicated sidebar view
 - **Latest Files Touched** — sidebar tree of files the current session has read or modified
 - **Cross-Session Search** — search across all sessions

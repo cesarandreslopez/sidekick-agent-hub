@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] - 2026-09-23
+
+### Fixed
+
+- Token totals for Claude Code sessions were roughly doubled. Claude Code writes one API response as several JSONL lines that each repeat the response's usage, and every line was counted. Each response now counts once, and when a later line reports more output tokens (streaming), the later value wins. On 40 real sessions the corrected totals match an independent last-copy-per-`message.id` sum exactly; the old figures were 2.2× too high. This affects session totals, cost, per-model rows, the usage reports (`sidekick daily`/`weekly`/`monthly`/`sessions`, `sidekick blocks`), `sidekick dump`/`report`, and both dashboards.
+- Codex totals counted repeated `token_count` events. Codex resends an unchanged cumulative total (for example with rate-limit refreshes), and each resend added the last call again. A call now counts only when `total_token_usage` changes, and when `last_token_usage` is missing only the growth of the cumulative total is used, never the total itself. On 60 real rollouts the totals now equal Codex's own final `total_token_usage`.
+- Claude assistant lines with `"stop_reason": null` failed validation and were dropped whole (text, tools, and usage).
+- Claude `<synthetic>` placeholder messages no longer add a call, an unpriced model row, or a false compaction.
+- Codex subagent discovery found no spawned subagents on current Codex versions (the `threads` table no longer has `forked_from_id`, and the file fallback only looked at the 50 newest rollouts). Spawned subagents are now found through `threads.source`.
+- Subagent token counts (VS Code Subagents tree, `scanSubagents()`) counted every split line and left out cache tokens. They now use all four buckets, counted once, and read Claude's `agent-*.meta.json` for the agent type and description.
+
+### Added
+
+- Session totals now include subagents. `sidekick dump` (text, markdown, JSON `tokenSummary`), `sidekick report`, the CLI dashboard's Sessions panel, and the VS Code dashboard's Tokens metric show the main thread, the subagents, and "Session total (incl. subagents)". Claude Code subagent transcripts (`<session>/subagents/agent-*.jsonl`) also count toward the usage reports under their parent session.
+- `state.json` gains an optional `context.totalTokens`: the session total, cache and subagents included, written by both dashboards.
+
+### Changed
+
+- One token vocabulary everywhere: "Total (incl. cache)" is every billed token (input, cache reads, cache writes, output), and every breakdown lists all four buckets so the parts add up to the headline. Surfaces that still showed input + output (VS Code status-bar tooltip, HTML report per-message counts, timeline token counts, session analysis, project timeline) now use the total, and the CLI dashboard's cache-hit rate counts cache writes.
+- The usage cache (`usage-cache/`, version 2) and session snapshots rebuild automatically. Stored history in `historical-data.json` (`sidekick stats`, the dashboard History tab) is not rewritten: sessions recorded before 0.27.3 keep their old, inflated totals.
+
 ## [0.27.2] - 2026-09-22
 
 ### Fixed

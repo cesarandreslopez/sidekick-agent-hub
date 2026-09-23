@@ -5,6 +5,32 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] - 2026-09-23
+
+### Fixed
+
+- Claude Code split lines are counted once. `ClaudeCodeReader` runs every event through the new `ClaudeUsageDeduper`: the first line of a `message.id` carries its usage, identical repeats lose `usage`/`normalizedUsage`, and a repeat that grew (streamed `output_tokens`) carries only the growth with `message.usageKind: 'correction'`. `EventAggregator` adds corrections to tokens, cost, and per-model tokens without counting a call, context sample, or compaction; the usage cache merges them into their message's record. The CLI follow watcher (`JsonlSessionWatcher`) and `eventBridge` apply the same rule and carry `FollowEvent.usageKind`.
+- Codex duplicate `token_count` events are counted once. New `resolveCodexCallUsage(info, previousTotal)`: an unchanged `total_token_usage` yields no usage (rate limits still pass through), a missing `last_token_usage` yields the growth of the cumulative total instead of the total, and a total that drops re-baselines. Used by `CodexRolloutParser` and the Codex branch of `JsonlSessionWatcher`, which also splits cached input into `cacheTokens` now.
+- `sessionMessageSchema` accepts `stop_reason: null` (normalized to absent); such lines used to fail validation and drop the whole event.
+- `<synthetic>` Claude messages carry no usage, so they add no call, unpriced model row, or heuristic compaction.
+- Codex `scanSubagents()` finds spawned subagents through the new `CodexDatabase.getSpawnedChildThreads()` (`threads.source`), and `getThreadsByForkedFromId()` only queries when the column exists. The filesystem fallback also matches `source.subagent.thread_spawn.parent_thread_id`.
+- `SubagentStats` from every provider (Claude scanners, Codex, OpenCode) now fill `cacheReadTokens`, `cacheWriteTokens`, `reasoningTokens`, and `totalTokens` from normalized, deduplicated usage. Claude scanners read `agent-*.meta.json` (`readAgentMeta()`). Parsed subagent transcripts are cached by size and mtime.
+- Timeline `metadata.tokenCount` and the HTML report's per-message tokens are cache-inclusive totals instead of input + output.
+
+### Added
+
+- `sessionTokenTotals`: `collectSessionTokenTotals(provider, sessionPath, { mainThread? })`, `combineSessionTokenTotals()`, `readMainThreadTokenTotals()`, `scanSessionSubagents()`, `subagentTokenTotals()`, and the `SessionTokenTotals` / `SubagentTokenSummary` types: main thread, per-subagent, subagent total, and combined, in the `summarizeTokens` vocabulary.
+- `formatTokenBreakdown(summary, fmt?)`; `TokenSummary.reasoning` and `billedOutsideBuckets`; `TokenTotalsLike.reasoningTokens`; labels `TOKEN_MAIN_THREAD_LABEL`, `TOKEN_SUBAGENTS_LABEL`, `TOKEN_SESSION_TOTAL_LABEL`. `sumTokenTotals()` sums `reasoningTokens`, and `totalTokens` when every record has one.
+- `formatSessionText`/`formatSessionMarkdown`/`formatSessionJson` and `HtmlReportOptions` accept `subagents`; the JSON dump adds `tokenSummary` (`mainThread`, `subagents`, `subagentTotal`, `combined`). `readSessionReportInputs()` returns `subagents`.
+- `usageKind` on `SessionMessage`, `TokenUsage` (from `extractTokenUsage`), and `FollowEvent`; `StateFileContext.totalTokens` (optional); `CodexDbThread.source`, `agent_nickname`, `agent_role`.
+- Exports: `ClaudeUsageDeduper`, `SYNTHETIC_MODEL`, `dedupedRawClaudeUsage`, `normalizeClaudeUsage`, `addUsageToSubagent`, `resolveCodexCallUsage`, `readAgentMeta` (root); the session-total helpers also from `sidekick-shared/node`; `ClaudeUsageDeduper` and `SYNTHETIC_MODEL` from `sidekick-shared/browser`.
+
+### Changed
+
+- `collectUsageEvents()` reads Claude Code subagent transcripts (`<sessionId>/subagents/agent-*.jsonl`) with their parent session, and their sizes and mtimes join the fingerprint. Codex subagents are separate rollouts and are not added twice.
+- `USAGE_CACHE_VERSION` is 2 and `SNAPSHOT_SCHEMA_VERSION` is 6, so caches built with the old counting are re-read.
+- The text dump's compaction line reads "Context management:" and per-model token columns use "Total (incl. cache)"; the HTML report's "Cache" card is now "Cache hit".
+
 ## [0.27.2] - 2026-09-22
 
 ### Fixed

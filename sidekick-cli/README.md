@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.27.3: accurate token totals and subagent totals** — Claude Code split lines and repeated Codex `token_count` events are no longer double-counted, which fixes `dump`, `report`, the dashboard, `daily`/`weekly`/`monthly`/`sessions`, and `blocks` (the usage cache rebuilds itself). `sidekick dump` and `sidekick report` show the session's subagents and "Session total (incl. subagents)", and `dump --format json` adds a `tokenSummary` block. The dashboard's Tokens section leads with "Total (incl. cache)", lists all four buckets, then subagent and session totals, and its cache-hit rate counts cache writes. Claude subagent transcripts count toward the usage reports under their parent session, and `state.json` gains `context.totalTokens`.
 - **0.27.0: Opus 5.5 pricing and GPT-6 summaries** — cost estimates for Claude Opus 5.5 (`claude-opus-5-5`) sessions use its own rates ($4 / $20 per 1M tokens, $0.20 cache reads) instead of Opus 5's, GPT-6 Sol and Luna sessions are priced, and OpenAI API dashboard summaries use `gpt-6-luna`.
 - **0.26.6: `sidekick accounts`** — an interactive picker plus `list`, `add`, `switch`, `login`, `remove`, `shell`, `env`, `undo`, `doctor`, and `config` subcommands. Logins you already use are registered automatically, every switch is verified against the live credential store and undoable, expired credentials are refused with a sign-in hint, running apps that keep the previous login are named, and `env` / `shell` run a second account side by side on bash, zsh, fish, PowerShell, and cmd. The dashboard gains an accounts overlay (`A`) and a health-coloured status bar account. `sidekick account --…` flags remain as a deprecated alias.
 - **0.26.5: cheaper dashboard watching** — newer-session detection reconciles each watched-file event with one stat, and catch-up polls cost one stat per unchanged directory instead of walking every session file.
@@ -18,7 +19,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 - **Usage reports from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` compute tokens and cost for every provider straight from session logs (local calendar days, `--breakdown`, `--by-project`, `--csv`, `--json`), so CLI-only users no longer need the extension's history store; `sidekick import` backfills that store when you want `stats` and `today` to see older sessions.
 - **`sidekick blocks`** — five-hour billing blocks with cache-inclusive totals, cost provenance, burn rate, and end-of-block projections, with the official status-line sample beside the local estimate.
 - **Official quota through the status line** — `sidekick statusline` reads the JSON Claude Code pipes on stdin, appends context %, session cost, and cache hit rate, and persists the official limits; `quota`, `quota --all`, and `mcp get_quota_status` share one resolution order and print a `Source` row naming where the numbers came from.
-- **`state.json`** — a public, versioned snapshot (account, quota with freshness, context, session cost, active billing block) written by `statusline` and the dashboard for tmux status bars and scripts.
+- **`state.json`** — a public, versioned snapshot (account, quota with freshness, context including `context.totalTokens`, session cost, active billing block) written by `statusline` and the dashboard for tmux status bars and scripts.
 - **Scripting flags** — global `--offline` and `--output-file`, `--csv` on `stats`, `dump --list`, and `quota history`, `quota history --window 5h|7d|max`, and `--json` on the quick-capture commands and `report`; every token total is cache-inclusive and every cost carries its provenance.
 - **`sidekick history`** — list your most recent Codex prompts across every workspace, newest first; `--path <id-or-prefix>` resolves a session to its transcript file for `less`/`jq`, and `--json` emits full ids and timestamps. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound (default 50), so huge session histories list quickly.
 - **`sidekick statusline`, `today` & `doctor`** — a cache-only one-line account/quota/burn footer, a cache-only daily brief, and cross-provider health diagnostics.
@@ -114,7 +115,7 @@ Five-hour billing blocks computed from session logs (ccusage-style: a block open
 sidekick import [--since <time>]
 ```
 
-Fold finished sessions from every provider into the history store that `sidekick stats`, `sidekick today`, and the VS Code History tab read — the same importer and store mutation the extension runs on first activation, so both hosts credit sessions identically. Idempotent: already-imported files, sessions the live monitor persisted, and files modified in the last minute are skipped. `--since` limits the scan; `--json` prints the result.
+Fold finished sessions from every provider into the history store that `sidekick stats`, `sidekick today`, and the VS Code History tab read — the same importer and store mutation the extension runs on first activation, so both hosts credit sessions identically. Idempotent: already-imported files, sessions the live monitor persisted, and files modified in the last minute are skipped. `--since` limits the scan; `--json` prints the result. Sessions stored before 0.27.3 keep their older, inflated token totals in `stats` and `today`; the log-based reports (`daily`, `blocks`, …) are recomputed.
 
 ## Usage Reports
 
@@ -122,7 +123,7 @@ Fold finished sessions from every provider into the history store that `sidekick
 sidekick daily|weekly|monthly|sessions [--since <time>] [--until <time>] [--breakdown] [--by-project] [--utc] [--csv] [--no-cache]
 ```
 
-Usage computed straight from session logs — no VS Code extension or history store required — for every provider with session data side by side (`--provider` narrows to one). Rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session that crosses midnight is split across both days; weeks start on Monday. `--breakdown` adds per-model sub-rows, `--by-project` groups by project, `sessions` prints one row per session, and `--json` / `--csv` feed scripts. Defaults: 30 days, 12 weeks, 12 calendar months, 30 days.
+Usage computed straight from session logs — no VS Code extension or history store required — for every provider with session data side by side (`--provider` narrows to one). Rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session that crosses midnight is split across both days; Claude Code subagent transcripts count toward their parent session; weeks start on Monday. `--breakdown` adds per-model sub-rows, `--by-project` groups by project, `sessions` prints one row per session, and `--json` / `--csv` feed scripts. Defaults: 30 days, 12 weeks, 12 calendar months, 30 days.
 
 ## Quick Capture
 
@@ -165,7 +166,7 @@ Seven tools: `get_quota_status`, `get_burn_rate`, `get_context_pressure`, `get_t
 sidekick dump [options]
 ```
 
-Export session data as text, markdown, or JSON.
+Export session data as text, markdown, or JSON. Token lines use "Total (incl. cache)" with all four buckets (input, cache read, cache write, output). When the session spawned subagents, text and markdown add "Subagents (n)" and "Session total (incl. subagents)", and markdown adds a Subagent Tokens table. `--format json` adds a `tokenSummary` block with `mainThread`, `subagents` (one entry per subagent), `subagentTotal`, and `combined` (main thread plus subagents).
 
 | Flag             | Description                                            |
 | ---------------- | ------------------------------------------------------ |
@@ -200,7 +201,7 @@ Codex-only for now (reads the global `~/.codex/history.jsonl`); Claude Code and 
 sidekick report [options]
 ```
 
-Generate a self-contained HTML session report and open it in the default browser. Includes full transcript, token/cost stats, model breakdown, and tool-use summary.
+Generate a self-contained HTML session report and open it in the default browser. Includes full transcript, token/cost stats, model breakdown, and tool-use summary. Token cards show "Total (incl. cache)" with all four buckets and a "Cache hit" rate; when the session spawned subagents, "Subagents (n)" and "Session total (incl. subagents)" appear beside the main thread. Per-message token counts include cache.
 
 | Flag              | Description                                      |
 | ----------------- | ------------------------------------------------ |

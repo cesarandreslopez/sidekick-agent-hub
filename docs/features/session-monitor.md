@@ -14,7 +14,7 @@ Click the **Agent Hub** icon in the activity bar (left sidebar) to access all mo
 
 The main dashboard panel provides:
 
-- **Token Usage** — real-time input/output token tracking with model-specific pricing
+- **Token Usage** — real-time "Total (incl. cache)" with an input, cache read, cache write, and output breakdown and model-specific pricing; when subagents ran, the Tokens metric shows the **Session total (incl. subagents)** with the main thread and **Subagents (n)** beneath it
 - **Cost Tracking** — per-model cost breakdown with accurate pricing; unknown models render as `—` with a dashboard footer warning (hydrated on startup from LiteLLM, cached to `~/.config/sidekick/pricing-catalog.json`)
 - **Context Token Attribution** — stacked bar chart showing where your context budget goes (system prompt, CLAUDE.md, user messages, assistant responses, tool I/O, thinking)
 - **Token Usage Tooltips** — hover for quota projections and estimated time to exhaustion
@@ -53,7 +53,7 @@ The dashboard organizes information into three collapsible groups:
 
 ### History Tab
 
-The History tab charts the persisted usage store (`historical-data.json`) over **Today** (hourly buckets), **This Week** and **This Month** (daily), and **All Time** (monthly), with drill-down from months to days and days to hours. Three controls shape the chart:
+The History tab charts the persisted usage store (`historical-data.json`) over **Today** (hourly buckets), **This Week** and **This Month** (daily), and **All Time** (monthly), with drill-down from months to days and days to hours. Sessions recorded before 0.27.3 keep their old, inflated Claude Code and Codex totals; the store is not rewritten. Three controls shape the chart:
 
 - **Metric** — tokens (cache-inclusive), cost, or messages.
 - **Series** — _Total_, _By model_ (stacked bars per model from the daily and monthly records), or _By tool_ (stacked tool calls; the metric select is disabled because tools carry no token attribution). Hourly buckets record no breakdown, so _Today_ shows totals.
@@ -83,7 +83,7 @@ Generate a self-contained HTML report for any session — full transcript with c
 
 ## Subagent Tree
 
-The subagent tree view displays spawned subagents in a hierarchical parent/child structure. When an agent spawns other agents, they appear as nested children in the tree, with collapsible nodes showing the agent count. The tree uses trace-based parsing from session logs to reconstruct the spawn hierarchy, falling back to a flat list for providers that use different directory structures. Running agents are tracked in real-time and merged into the tree as they complete.
+The subagent tree view displays spawned subagents in a hierarchical parent/child structure. When an agent spawns other agents, they appear as nested children in the tree, with collapsible nodes showing the agent count. The tree uses trace-based parsing from session logs to reconstruct the spawn hierarchy, falling back to a flat list for providers that use different directory structures. Running agents are tracked in real-time and merged into the tree as they complete. Each agent shows its cache-inclusive token total, counted once per response, with the agent type and description read from Claude Code's `agent-*.meta.json`. Codex spawned subagents are discovered through the Codex state database's `threads.source`.
 
 ## Event Stream
 

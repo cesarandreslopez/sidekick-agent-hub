@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] - 2026-09-23
+
+### Fixed
+
+- Session token totals and cost no longer double-count Claude Code split lines or repeated Codex `token_count` events (via `sidekick-shared` 0.27.3). Model rows count one call per response.
+- The Subagents tree shows each subagent's cache-inclusive total instead of input + output counted per split line, and Codex spawned subagents are found again.
+- The status-bar tooltip lists every token bucket so the parts add up to the total, and session analysis and the project timeline use cache-inclusive totals.
+
+### Added
+
+- The dashboard's Tokens metric shows "Session total (incl. subagents)" with the main thread's breakdown and the subagents' total; subagent transcripts are rescanned at most every 15 s. The HTML session report includes subagents too, and `state.json` gets `context.totalTokens`.
+
+### Changed
+
+- History recorded before 0.27.3 keeps its stored totals; new sessions are counted with the corrected rules.
+
 ## [0.27.2] - 2026-09-22
 
 ### Changed
