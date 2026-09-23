@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] - 2026-09-22
+
+### Fixed
+
+- `sidekick-shared`: `collectPromptHistory()` no longer skips session logs whose unread part exceeds `maxFileBytes` (16 MiB by default). Files are now streamed in 1 MiB chunks and every pass stops after a complete line, so long Claude Code and Codex sessions return all their prompts across repeated calls with bounded memory, even when a file's size and mtime have not changed between calls. A deadline, abort, or byte budget no longer throws away a partly read file: its entries are returned and its cursor continues from the last complete line.
+- `sidekick-shared`: a prompt collected before its answer no longer loses its model and usage when the answer is far away. The cursor keeps the prompt's answer state (first-answer message id, model, usage, status; never text) instead of a replay window, and only the prompt's own line is re-read when it has to be returned again. 0.27.1 cursors with a pending prompt are migrated by a resumable replay.
+
+### Added
+
+- `sidekick-shared`: `maxRecordBytes` (default 16 MiB) and `maxEntries` (default 10 000) prompt-history bounds; `PromptHistoryResult.hasMore` and `exclusions` (records over `maxRecordBytes` and malformed lines, the only permanent exclusions); new stats `sessionsWithBacklog`, `sessionsRewritten`, `recordsOverSizeLimit`, `recordsMalformed`; new types `PromptHistoryAnswerState` and `PromptHistoryExclusion`. Truncated or rewritten files are detected by a digest of their first 4 KiB and read again from the start.
+
+### Changed
+
+- `sidekick-shared`: the prompt-history cursor is now `version: 3` (versions 1 and 2 are still accepted). It adds per-file `backlog`, `skipping`, and `head`, a `pending.answer` / `lineBytes` / `timestamp`, and a top-level `next` that makes the next call start with the file a call-wide bound stopped, so no session is starved. `maxFileBytes` now limits what one file reads in one call instead of skipping the file, and `stats.filesOverSizeLimit` counts files that ran out of that budget and continue next call.
+
 ## [0.27.1] - 2026-09-22
 
 ### Fixed

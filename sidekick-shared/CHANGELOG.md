@@ -5,6 +5,26 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] - 2026-09-22
+
+### Fixed
+
+- `collectPromptHistory()` streams session files instead of reading each unread range into one buffer. A file whose unread part exceeded `maxFileBytes` used to be skipped on every call; now it is read in 1 MiB chunks up to `maxFileBytes` per call, stops after a complete line, keeps what it returned, and continues on the next call (cursor `backlog: true`), even if its size and mtime are unchanged. Memory stays near one chunk plus one record. Deadline, abort, `maxSessions`, `maxTotalBytes`, and the new `maxEntries` stop at the last complete line the same way instead of discarding the partly read file. The first file of a call always finishes its first record, so a record larger than the budget cannot stall. Lines split only at `\n`, so UTF-8 characters across chunk edges decode exactly; half-written final lines and bytes appended during a call wait for the next call.
+- Late answer metadata no longer depends on a replay window. `pending` now keeps `lineBytes`, `timestamp`, and `answer: { status, id?, model?, usage? }` (answer state, never text), the scan continues from the file's offset however far the answer is, and only the prompt's own line is re-read (and verified against its length and timestamp) when the prompt must be returned again. Replays that 0.27.1 dropped for exceeding `maxFileBytes` no longer happen.
+
+### Added
+
+- Bounds `maxRecordBytes` (default 16 MiB; a longer record is skipped as it streams past, without buffering, even across calls while it is still being written) and `maxEntries` (default 10 000), and bound name `'maxEntries'`.
+- `PromptHistoryResult.hasMore` (a bound left bytes or files unread) and `exclusions: PromptHistoryExclusion[]` (`{ provider, sessionId, reason: 'oversizedRecord' | 'malformedRecord', offset }`, up to 1000 per call). These are the only permanent exclusions; a prompt inside such a record is lost and consumes no ordinal.
+- Stats `sessionsWithBacklog`, `sessionsRewritten`, `recordsOverSizeLimit`, and `recordsMalformed`; types `PromptHistoryAnswerState` and `PromptHistoryExclusion`.
+- Rewrite detection: a file that shrank below its offset, whose first 4 KiB digest (`head`) changed, whose resume point no longer follows a newline, or whose pending prompt line no longer matches is read again from the start with fresh ordinals.
+
+### Changed
+
+- The cursor is `version: 3`: sessions gain optional `backlog`, `skipping`, and `head`; `pending` gains `lineBytes`, `timestamp`, and `answer`; the cursor gains `next`, the key of the file a call-wide stop left off at, where the next call starts. Version 1 and 2 cursors are accepted: each file is re-verified once, and a version 2 `pending` prompt is replayed from its line in resumable passes. Files 0.27.1 skipped for size were never in its cursor and are read in full; metadata 0.27.1 already abandoned is not recoverable. A session carried unchanged from an older cursor and not visited keeps its old shape (for example `pending` without `answer`).
+- `maxFileBytes` is now a per-file, per-call read budget instead of a skip threshold, and `stats.filesOverSizeLimit` counts files that used it up and continue on the next call.
+- The Claude first-answer fallback id for assistant records without `message.id` is the line's byte offset instead of a per-scan line index, so it stays stable across calls.
+
 ## [0.27.1] - 2026-09-22
 
 ### Fixed
