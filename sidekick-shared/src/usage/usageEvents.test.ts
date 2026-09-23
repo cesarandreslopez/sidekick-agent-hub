@@ -210,6 +210,36 @@ describe('collectUsageEvents', () => {
     expect(third.events).toHaveLength(4);
   });
 
+  it('rejects with AbortError before reading when the signal is already aborted', async () => {
+    writeSession(BASE_ROWS);
+    const createReader = vi.spyOn(provider, 'createReader');
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      collectUsageEvents({ providers: [provider], signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(createReader).not.toHaveBeenCalled();
+    expect(fs.existsSync(getUsageCacheDir())).toBe(false);
+  });
+
+  it('stops between sessions on abort and caches only the sessions it finished', async () => {
+    const sessionPath = writeSession(BASE_ROWS);
+    fs.copyFileSync(sessionPath, path.join(path.dirname(sessionPath), 'session-other.jsonl'));
+    const controller = new AbortController();
+    const createReader = provider.createReader.bind(provider);
+    const spy = vi.spyOn(provider, 'createReader').mockImplementation((filePath) => {
+      controller.abort();
+      return createReader(filePath);
+    });
+
+    await expect(
+      collectUsageEvents({ providers: [provider], signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(fs.readdirSync(getUsageCacheDir())).toHaveLength(1);
+  });
+
   it('re-reads cache files written by an older cache version', async () => {
     writeSession(BASE_ROWS);
     await collectUsageEvents({ providers: [provider] });

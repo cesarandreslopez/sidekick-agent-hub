@@ -92,6 +92,13 @@ export interface CollectUsageEventsOptions {
   /** Skip the on-disk cache entirely. */
   noCache?: boolean;
   onDiagnostic?: (diagnostic: SessionProviderDiagnostic) => void;
+  /**
+   * Stops the collection before listing and between sessions; the promise
+   * rejects with the signal's reason (an `AbortError` by default). Sessions
+   * read before the abort keep their cache entries; no partial session is
+   * cached.
+   */
+  signal?: AbortSignal;
 }
 
 export interface CollectUsageEventsResult {
@@ -362,13 +369,16 @@ export async function collectUsageEvents(
   const untilMs = toMs(options.until, 'until');
   const cacheDir = options.cacheDir ?? getUsageCacheDir();
   const useCache = !options.noCache;
+  const signal = options.signal;
 
+  signal?.throwIfAborted();
   const listed = await listSessionPreviewsAsync(options.providers, {
     since: options.since,
     workspacePath: options.workspacePath,
     limit: Number.MAX_SAFE_INTEGER,
     concurrency: options.concurrency,
   });
+  signal?.throwIfAborted();
   const diagnostics = [...listed.diagnostics];
   for (const diagnostic of listed.diagnostics) options.onDiagnostic?.(diagnostic);
   const providerById = new Map(options.providers.map((provider) => [provider.id, provider]));
@@ -380,6 +390,7 @@ export async function collectUsageEvents(
   let wroteCache = false;
 
   for (const preview of listed.previews) {
+    signal?.throwIfAborted();
     const provider = providerById.get(preview.provider);
     if (!provider) continue;
     const subagentFiles = claudeSubagentFiles(preview);

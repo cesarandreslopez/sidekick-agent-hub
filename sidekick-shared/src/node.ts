@@ -201,9 +201,18 @@ export type {
 } from './providers/directoryListingCache';
 export type {
   ListSessionFilesOptions,
+  ProviderId,
   SessionEnumerationCounters,
+  SessionProviderBase,
+  SessionProviderDiagnostic,
   WatchedSessionFile,
 } from './providers/types';
+export { createSessionProviders } from './providers/factory';
+export type {
+  CreateSessionProvidersOptions,
+  CreateSessionProvidersResult,
+} from './providers/factory';
+export { SYNTHETIC_MODEL } from './usage/claudeUsageDedupe';
 
 export type {
   ProviderServiceSeverity,

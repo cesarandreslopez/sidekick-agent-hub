@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.4] - 2026-09-23
+
+### Added
+
+- `sidekick-shared/node` exports `createSessionProviders()`, `SYNTHETIC_MODEL`, and the provider types (`ProviderId`, `SessionProviderBase`, `SessionProviderDiagnostic`, `CreateSessionProvidersOptions`, `CreateSessionProvidersResult`), so Node consumers can call `collectUsageEvents()` without importing the package root. The root is a CommonJS barrel that bundlers cannot tree-shake; skipping it saves about 420 KB minified in an esbuild bundle. A packaging test keeps `dist/node.js` from ever reaching `dist/index.js`.
+- `collectUsageEvents()` accepts an optional `signal` (`AbortSignal`). It is checked before listing sessions and between sessions; an abort rejects with `AbortError` and caches only the sessions that were fully read. Counting, pricing, and the usage cache format are unchanged.
+
 ## [0.27.3] - 2026-09-23
 
 ### Fixed

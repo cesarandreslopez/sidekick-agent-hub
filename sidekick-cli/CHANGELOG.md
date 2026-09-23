@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.4] - 2026-09-23
+
+### Changed
+
+- Bundles `sidekick-shared` 0.27.4 (new `sidekick-shared/node` exports and an optional abort signal for `collectUsageEvents()`); no CLI-visible changes.
+
 ## [0.27.3] - 2026-09-23
 
 ### Fixed

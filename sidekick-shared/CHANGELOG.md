@@ -5,6 +5,14 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.4] - 2026-09-23
+
+### Added
+
+- `sidekick-shared/node` exports `createSessionProviders()`, the `CreateSessionProvidersOptions` / `CreateSessionProvidersResult` types, `SYNTHETIC_MODEL`, and the `ProviderId` / `SessionProviderBase` / `SessionProviderDiagnostic` types, re-exported from their own modules. `collectUsageEvents()` callers no longer need the package root, a CommonJS barrel that bundlers cannot tree-shake (about 420 KB minified saved in one esbuild consumer). Root exports are unchanged.
+- `CollectUsageEventsOptions.signal` (optional `AbortSignal`): `collectUsageEvents()` checks it before listing sessions and between sessions, and rejects with the signal's reason (`AbortError` by default). Only fully read sessions are cached. Without a signal nothing changes; counting, pricing, and the cache format (`USAGE_CACHE_VERSION` 2) are the same.
+- A packaging test walks every relative `require` reachable from `dist/node.js` and fails if it reaches `dist/index.js`.
+
 ## [0.27.3] - 2026-09-23
 
 ### Fixed

@@ -220,6 +220,52 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     }
   });
 
+  it('dist/node.js exposes what collectUsageEvents callers need', async () => {
+    const m = require(nodeJs);
+    expect(typeof m.collectUsageEvents).toBe('function');
+    expect(typeof m.createSessionProviders).toBe('function');
+    expect(m.SYNTHETIC_MODEL).toBe('<synthetic>');
+    const dts = await fs.readFile(nodeDts, 'utf8');
+    for (const name of [
+      'ProviderId',
+      'SessionProviderBase',
+      'SessionProviderDiagnostic',
+      'CreateSessionProvidersOptions',
+      'CreateSessionProvidersResult',
+      'CollectUsageEventsOptions',
+      'CollectUsageEventsResult',
+      'UsageEventRecord',
+      'UsageSessionRecord',
+    ]) {
+      expect(dts).toContain(name);
+    }
+  });
+
+  // The root barrel is CommonJS, which bundlers cannot tree-shake; if any
+  // module reachable from dist/node.js required it, /node consumers would
+  // bundle the whole package.
+  it('dist/node.js never reaches dist/index.js through relative requires', async () => {
+    const rootIndex = path.join(distDir, 'index.js');
+    const seen = new Set<string>();
+    const queue = [nodeJs];
+    while (queue.length > 0) {
+      const file = queue.pop()!;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const src = await fs.readFile(file, 'utf8');
+      for (const match of src.matchAll(/require\(["'](\.{1,2}\/[^"']*)["']\)/g)) {
+        const base = path.resolve(path.dirname(file), match[1]);
+        const resolved = [base, `${base}.js`, path.join(base, 'index.js')].find(
+          (candidate) => candidate.endsWith('.js') && existsSync(candidate),
+        );
+        expect(resolved, `${file} requires ${match[1]}`).toBeDefined();
+        queue.push(resolved!);
+      }
+    }
+    expect(seen.size).toBeGreaterThan(10);
+    expect(seen.has(rootIndex)).toBe(false);
+  });
+
   it('dist/node.js exposes pricing hydration', () => {
     expect(existsSync(nodeJs)).toBe(true);
     const m = require(nodeJs);
