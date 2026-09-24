@@ -59,7 +59,7 @@ That bothers me. I want to see what my agent is doing. I want to review every to
 | **Claude Max** | :white_check_mark: | :white_check_mark: | Included in subscription       |
 | **Claude API** | :white_check_mark: | :x:                | Per-token billing              |
 | **OpenCode**   | :white_check_mark: | :white_check_mark: | Depends on configured provider |
-| **Codex CLI**  | :white_check_mark: | :white_check_mark: | OpenAI API billing             |
+| **Codex CLI**  | :white_check_mark: | :white_check_mark: | ChatGPT plan or API billing    |
 
 ## Feature Highlights
 

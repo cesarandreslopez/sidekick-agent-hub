@@ -20,7 +20,7 @@ OpenCode sessions are monitored from OpenCode's platform-specific data directory
 
 - Linux: `~/.local/share/opencode/`
 - macOS: `~/Library/Application Support/opencode/`
-- Windows: `%APPDATA%\\opencode\\`
+- Windows: `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%\opencode\`)
 
 Set `sidekick.sessionProvider` to `opencode` or leave as `auto`.
 

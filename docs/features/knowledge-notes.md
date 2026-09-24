@@ -22,7 +22,7 @@ Knowledge notes let you capture these insights once and surface them automatical
 ## Creating a Note
 
 1. Select code in the editor (the lines the note should be attached to)
-2. Right-click and choose **Add Knowledge Note**
+2. Right-click and choose **Sidekick → Add Knowledge Note**
 3. Pick a note type (gotcha, pattern, guideline, or tip)
 4. Enter the note content
 
@@ -67,7 +67,7 @@ Importance level affects how quickly a note ages — critical notes decay slower
 
 ## Injecting Notes into Your Agent
 
-Run **Sidekick: Inject Knowledge Notes** from the Command Palette to append all active notes to your instruction file (CLAUDE.md or AGENTS.md, depending on your agent provider). This generates a `## File-Specific Knowledge` section that your agent reads at the start of every session.
+Run **Sidekick: Inject Knowledge Notes into CLAUDE.md** from the Command Palette to append all active notes to your instruction file (CLAUDE.md or AGENTS.md, depending on your agent provider). This generates a `## File-Specific Knowledge` section that your agent reads at the start of every session.
 
 ## Auto-Extraction
 

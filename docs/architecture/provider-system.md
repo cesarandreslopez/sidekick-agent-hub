@@ -53,11 +53,11 @@ interface ClaudeClient {
 
 Defined as `ProviderId` and `SessionProviderBase` in `sidekick-shared/src/providers/types.ts`, extended by the VS Code `SessionProvider` in `sidekick-vscode/src/types/sessionProvider.ts`:
 
-| ID            | Description          | Data Source                                                                                                        |
-| ------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `claude-code` | Claude Code sessions | `~/.claude/projects/`                                                                                              |
-| `opencode`    | OpenCode sessions    | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%APPDATA%\\opencode\\`) |
-| `codex`       | Codex CLI sessions   | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model)              |
+| ID            | Description          | Data Source                                                                                                                                    |
+| ------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude-code` | Claude Code sessions | `~/.claude/projects/`                                                                                                                          |
+| `opencode`    | OpenCode sessions    | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%LOCALAPPDATA%\opencode\` or `%APPDATA%\opencode\`) |
+| `codex`       | Codex CLI sessions   | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model)                                          |
 
 Each session provider normalizes raw data into the canonical `SessionEvent` format (`ClaudeSessionEvent` is a compatibility alias).
 

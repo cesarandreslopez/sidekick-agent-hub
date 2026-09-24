@@ -26,7 +26,7 @@ Direct Anthropic API access with per-token billing.
 2. Enter your Anthropic API key
 3. Switch provider in settings:
    - Open Settings (`Ctrl+,`) → search `sidekick.inferenceProvider` → select `claude-api`
-   - Or: status bar → "Switch Inference Provider" → Claude API
+   - Or: status bar → "Switch Inference Provider" → Claude (API Key)
 
 ## OpenCode
 
@@ -66,7 +66,7 @@ Session monitoring uses a separate `sidekick.sessionProvider` setting. It also d
 
 - **Claude Code** — monitors `~/.claude/projects/`
 - **OpenCode** — monitors OpenCode's data directory:
-  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%APPDATA%\\opencode\\`
+  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
 - **Codex CLI** — monitors `~/.codex/sessions/`
 
 For OpenCode session monitoring, Sidekick reads `opencode.db` via `sqlite3`. If `sqlite3` is unavailable, the extension and CLI show an actionable OpenCode-specific notice.

@@ -53,6 +53,7 @@ sidekick dashboard [options]
 | `--no-color`           | Disable colored output for any command (also honors `NO_COLOR`)                                              |
 | `--offline`            | Price from the cached catalog only; never refresh it over the network (also `SIDEKICK_OFFLINE=1`)            |
 | `--output-file <path>` | Write everything a command prints to stdout into a file, without colour codes (not for `dashboard` or `mcp`) |
+| `--json`               | Output as JSON; a global flag honoured by the one-shot commands below                                        |
 
 ### Examples
 
@@ -108,15 +109,15 @@ sidekick dump --format json > session.json
 
 `sidekick dump --prompts` prints every prompt a person typed in a Claude Code or Codex session, grouped by session, so a whole session can be read or classified (intent, conflict, issues) at once. It uses the same human-prompt rule and fail-closed working-directory scope as `collectPromptHistory()` in `sidekick-shared`: prompts are untruncated, and slash commands appear as typed. Harness output, subagents, and SDK programs are left out.
 
-| Flag             | Description                                                                                         |
-| ---------------- | --------------------------------------------------------------------------------------------------- |
-| `--session <id>` | One session by id or unique prefix (default: the most recent session with prompts)                  |
-| `--all`          | Every session of this project and its git worktrees, most recent first                              |
-| `--since <time>` | Only sessions active since an ISO date, `YYYY-MM-DD`, or `7d` / `24h`; each is still returned whole |
-| `--limit <n>`    | At most this many sessions                                                                          |
-| `--signals`      | Add interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks              |
-| `--replies`      | Add the agent's final reply to each prompt                                                          |
-| `--format <fmt>` | `text` (default), `markdown`, `json` (with bounds and stats), or `jsonl` (one session per line)     |
+| Flag             | Description                                                                                                 |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| `--session <id>` | One session by id or unique prefix (default: the most recent session with prompts)                          |
+| `--all`          | Every session of this project and its git worktrees, most recent first; cannot be combined with `--session` |
+| `--since <time>` | Only sessions active since an ISO date, `YYYY-MM-DD`, or `7d` / `24h`; each is still returned whole         |
+| `--limit <n>`    | At most this many sessions (default: 1, or no limit with `--all`; ignored with `--session`)                 |
+| `--signals`      | Add interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks                      |
+| `--replies`      | Add the agent's final reply to each prompt                                                                  |
+| `--format <fmt>` | `text` (default), `markdown`, `json` (with bounds and stats), or `jsonl` (one session per line)             |
 
 Both providers are read unless `--provider claude-code` or `--provider codex` is given; OpenCode is not supported. Each session carries its time span, working directories, branches, and models, and a `complete` flag that is false when prompts were out of scope, a record was unreadable, or the session was cut at 256 MiB. Signals note the prompt they followed (`afterOrdinal`). A Claude tool rejection keeps the reason the person typed, in full, while tool and API error text is cut to 1024 characters. Codex logs do not mark rejections.
 
@@ -146,7 +147,7 @@ Show recent user prompts across Codex sessions, newest first — a quick answer 
 
 The global `--json` flag emits machine-readable entries with full session IDs and ISO timestamps. The global `--project` and `--provider` filters do not apply: history is cross-workspace and Codex-only.
 
-Codex-only for now: Codex records every prompt in a global `~/.codex/history.jsonl`, which is what this command reads. Claude Code and OpenCode keep prompts inside per-session files and are not yet supported.
+Codex-only for now: Codex records every prompt in a global `~/.codex/history.jsonl`, which is what this command reads. Claude Code and OpenCode keep prompts inside per-session files and are not yet supported; for Claude Code and Codex prompts grouped by session, use [`sidekick dump --prompts`](#prompts-by-session).
 
 ### Examples
 
@@ -434,7 +435,7 @@ sidekick blocks [--active | --recent | --since <time>] [--csv]
 
 Five-hour billing blocks computed straight from session logs, for the auto-detected or `--provider` session provider. A block opens at the first usage event (aligned down to the UTC hour, as ccusage does), lasts five hours, and a gap longer than five hours or an event past the block's end opens a new one. Each row shows the block's cache-inclusive token total, cost, burn rate (tokens per minute over the block so far), and — for the block that is still open — the projected end-of-block tokens and cost and the time remaining.
 
-Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time, so repeat runs only re-read sessions that changed; `--no-cache` forces a full re-read. Caches written before 0.27.3 (cache version 2) rebuild automatically. The table is a **local estimate**. When `sidekick statusline` has persisted an official rate-limit sample from Claude Code, it is printed beneath the table as `Official (status line)` with its age so the two can be compared.
+Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time, so repeat runs only re-read sessions that changed; `--no-cache` forces a full re-read. The cache format moved to version 2 in 0.27.3; caches written by earlier versions rebuild automatically. The table is a **local estimate**. When `sidekick statusline` has persisted an official rate-limit sample from Claude Code, it is printed beneath the table as `Official (status line)` with its age so the two can be compared.
 
 | Flag             | Description                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------------ |
@@ -612,19 +613,19 @@ sidekick quota history
 
 Renders a 13-week, GitHub-contributions-style heatmap of quota utilization for the current workspace. Each cell is one local calendar day; brightness encodes the peak utilization of the selected window observed that day (≤0% empty, <25% low, <50% mid, <75% high, ≥75% peak). Days that had at least one `available: false` sample render as a red `×`.
 
-| Flag                 | Description                                                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--weeks <n>`        | Weeks of history to render (default `13`, clamped 1-26)                                                                                     |
-| `--provider <id>`    | Limit to a single runtime provider: `claude`, `codex`, or `zai`. Default: all available, in stacked grids                                   |
-| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()`                                                                   |
-| `--window <window>`  | Which limit the cells show: `5h` (default), `7d`, or `max` (the higher of the two, the previous behaviour)                                  |
-| `--csv`              | Print the daily buckets (date, provider, samples, max/avg for both windows, unavailable) as CSV                                             |
-| `--json`             | Emit a `{ workspaceId, weeks, window, providers: { claude?, codex? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
+| Flag                 | Description                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--weeks <n>`        | Weeks of history to render (default `13`, clamped 1-26)                                                                                           |
+| `--provider <id>`    | Limit to a single runtime provider: `claude`, `codex`, or `zai`. Default: all available, in stacked grids                                         |
+| `--workspace <path>` | Workspace path used to derive the history scope. Default: `process.cwd()`                                                                         |
+| `--window <window>`  | Which limit the cells show: `5h` (default), `7d`, or `max` (the higher of the two, the previous behaviour)                                        |
+| `--csv`              | Print the daily buckets (date, provider, samples, max/avg for both windows, unavailable) as CSV                                                   |
+| `--json`             | Emit a `{ workspaceId, weeks, window, providers: { claude?, codex?, zai? }, generatedAt }` payload (same shape consumed by the VS Code dashboard) |
 
 History is sourced from per-workspace JSONL written by both the CLI's quota path and the VS Code extension (Claude via `QuotaService`, Codex via the session provider and `CodexQuotaWatcher`), stored under `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` with `0600` file permissions, a 60-second per-sample debounce, and a 91-day retention window. The workspace id is `sha256(realpath(workspace))[0..16]` — stable across CLI invocations and VS Code sessions for the same folder.
 
 ```bash
-# Default — last 13 weeks, both providers
+# Default — last 13 weeks, every provider with history
 sidekick quota history
 
 # Last 8 weeks, Codex only
@@ -634,7 +635,7 @@ sidekick quota history --weeks 8 --provider codex
 sidekick quota history --json
 ```
 
-If no history has accumulated yet for the workspace (or `--workspace`), the command prints a hint pointing at how to seed it (run a Claude Max or Codex session, or pass `--workspace <path>`).
+If no history has accumulated yet for the workspace (or `--workspace`), the command prints a hint pointing at how to seed it (run a Claude Max, Codex, or z.ai/OpenCode session in the workspace, or pass `--workspace <path>`).
 
 ### Accounts
 
@@ -917,7 +918,7 @@ The CLI auto-detects which session provider is most recently active by checking 
 
 - **Claude Code** — `~/.claude/projects/`
 - **OpenCode** — OpenCode's data directory:
-  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%APPDATA%\\opencode\\`
+  Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
 - **Codex** — `~/.codex/`
 
 Override with `--provider claude-code`, `--provider opencode`, or `--provider codex`.

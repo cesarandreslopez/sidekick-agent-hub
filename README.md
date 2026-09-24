@@ -24,6 +24,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **0.27.5: prompts grouped by session** — `sidekick dump --prompts` prints every prompt you typed in Claude Code and Codex sessions, grouped by session: the most recent session with prompts by default, one session with `--session <id-or-prefix>`, or every session of the project and its git worktrees with `--all` (narrowed by `--since` and `--limit`). `--replies` adds the agent's final reply to each prompt, `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and output is text, markdown, JSON, or JSONL. `sidekick-shared` returns the same sessions from `collectSessionPromptHistory()`.
 - **0.27.3: accurate token totals, subagents included** — Claude Code totals no longer count each split JSONL line (they were about 2× too high), and Codex no longer re-counts repeated `token_count` events. Session totals now include subagents ("Session total (incl. subagents)") in `sidekick dump`, `sidekick report`, the CLI Sessions panel, and the VS Code Tokens metric; "Total (incl. cache)" means input + cache read + cache write + output everywhere, and `state.json` gains an optional `context.totalTokens`. History recorded before 0.27.3 keeps its old totals.
 - **0.27.2: prompt history reads large sessions** — `collectPromptHistory()` streams session logs of any size in bounded, resumable passes instead of skipping files over 16 MiB, so long Claude Code and Codex sessions return all their prompts across calls, and an answer written far after its prompt still settles it.
 - **0.27.1: prompt history catches late answers** — `collectPromptHistory()` returns a prompt again, with the same identity, when its answer's model and usage are written after an earlier collection, and marks each entry `pending`, `provisional`, or `final`.
@@ -136,12 +137,12 @@ In VS Code, the **Accounts** view in the Agent Hub sidebar and the status bar ba
 
 ## Provider Support
 
-| Provider                                                                                      | Inference | Session Monitoring | Cost                     |
-| --------------------------------------------------------------------------------------------- | --------- | ------------------ | ------------------------ |
-| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes       | Yes                | Included in subscription |
-| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes       | —                  | Per-token billing        |
-| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)**     | Yes       | Yes                | Depends on provider      |
-| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)**       | Yes       | Yes                | OpenAI API billing       |
+| Provider                                                                                      | Inference | Session Monitoring | Cost                        |
+| --------------------------------------------------------------------------------------------- | --------- | ------------------ | --------------------------- |
+| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes       | Yes                | Included in subscription    |
+| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes       | —                  | Per-token billing           |
+| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)**     | Yes       | Yes                | Depends on provider         |
+| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)**       | Yes       | Yes                | ChatGPT plan or API billing |
 
 > **OpenCode note:** DB-backed OpenCode session monitoring reads `opencode.db` and currently expects an executable `sqlite3` runtime in the host environment.
 

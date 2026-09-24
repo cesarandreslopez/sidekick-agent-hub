@@ -219,7 +219,7 @@ const res = await spawnAccountLogin('codex', 'Work', {
 
 ## Runtime Schemas
 
-`sidekick-shared` exports Zod schemas from both the package root and `sidekick-shared/schemas`:
+`sidekick-shared` exports Zod schemas from `sidekick-shared/schemas`; the package root re-exports only the pre-0.26.6 ones (`accountProviderIdSchema` through `listAllAccountsResultSchema`):
 
 ```ts
 import {

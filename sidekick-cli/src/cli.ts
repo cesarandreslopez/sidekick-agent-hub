@@ -128,7 +128,7 @@ const dumpCmd = new Command('dump')
   )
   .option(
     '--signals',
-    'With --prompts, add interrupts, rejected/failed tools, compactions, API errors',
+    'With --prompts, add interrupts, rejected/failed tools, compactions, API errors, rollbacks',
   )
   .option('--replies', "With --prompts, add the agent's final reply to each prompt")
   .addHelpText('after', DUMP_EXAMPLES)

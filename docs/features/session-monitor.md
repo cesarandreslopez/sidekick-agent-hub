@@ -6,7 +6,7 @@ Monitor your coding agent sessions in real-time with a comprehensive analytics d
 
 ## Accessing the Dashboard
 
-Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views. Session Analytics is expanded on first run; Mind Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream start collapsed — click a section header to expand one, and VS Code remembers your layout from then on. With `sidekick.enableSessionMonitoring` set to `false`, those eight views are hidden entirely and Session Analytics shows a placeholder that can turn monitoring back on.
+Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views. Session Analytics is expanded on first run; Accounts, Mind Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream start collapsed — click a section header to expand one, and VS Code remembers your layout from then on. With `sidekick.enableSessionMonitoring` set to `false`, the eight monitoring views from Mind Map to Event Stream are hidden entirely, Accounts stays available, and Session Analytics shows a placeholder that can turn monitoring back on.
 
 ## Session Analytics Dashboard
 
@@ -18,7 +18,7 @@ The main dashboard panel provides:
 - **Cost Tracking** — per-model cost breakdown with accurate pricing; unknown models render as `—` with a dashboard footer warning (hydrated on startup from LiteLLM, cached to `~/.config/sidekick/pricing-catalog.json`)
 - **Context Token Attribution** — stacked bar chart showing where your context budget goes (system prompt, CLAUDE.md, user messages, assistant responses, tool I/O, thinking)
 - **Token Usage Tooltips** — hover for quota projections and estimated time to exhaustion
-- **Context Window Gauge** — input/output token usage vs. limits, with theme-aware colors that adapt to light, dark, and high-contrast themes. The window size comes from the LiteLLM catalog, or from the window your provider reports for itself when it offers one (Codex does), so it reflects your account tier rather than a published maximum
+- **Context Window Gauge** — the latest request's context size (input plus cache read and cache write tokens) vs. the model's context window, with theme-aware colors that adapt to light, dark, and high-contrast themes. The window size comes from the LiteLLM catalog, or from the window your provider reports for itself when it offers one (Codex does), so it reflects your account tier rather than a published maximum
 - **Compaction Detection** — timeline markers showing when context was compressed and how much was lost
 - **Context Health** — real-time fidelity score showing how much context degradation has occurred from compactions, with a color-coded gauge (green/yellow/red)
 - **Truncation Tracking** — detects when tool outputs are truncated by the agent, with per-tool breakdown and total count
@@ -34,7 +34,7 @@ The main dashboard panel provides:
 
 ### Dashboard Sections
 
-The dashboard organizes information into three collapsible groups:
+The dashboard organizes information into five collapsible groups:
 
 ![Session Activity — Context Attribution, Compactions, and Activity Timeline](../images/session-activity-timeline.png)
 
@@ -48,6 +48,7 @@ The dashboard organizes information into three collapsible groups:
 ![Analytics — Tool Frequency, Event Distribution, Activity Heatmap, Event Patterns](../images/analytics_vscode_extension.png)
 
 - **Tasks & Recovery** — Task Performance, Recovery Patterns
+- **Decisions** — searchable list of decisions extracted from the session
 
 ![Tasks & Recovery — Task Performance and Completion Tracking](../images/tasks-and-recovery.png)
 
@@ -63,7 +64,7 @@ A dashed line overlays the previous period (yesterday, the seven days before, or
 
 ### Health Tab
 
-The Health tab runs the same checks as **Sidekick: Doctor** (which now also focuses this tab) and shows them in place:
+The Health tab runs the same checks as **Sidekick: Run Doctor** (which now also focuses this tab) and shows them in place:
 
 - a status banner (healthy, attention, unhealthy) with the number of items needing attention;
 - the check list — project slug, session discovery, OpenCode sqlite, accounts, public provider service status, deprecated settings — each with a repair hint when there is one. The service-status check reports degraded, unavailable, and partial (incidents omitted) evidence separately and notes that public status does not establish request connectivity or authentication;
@@ -132,7 +133,7 @@ The relevant status page is shown based on the monitored provider — Claude sta
 
 ## Historical Import
 
-On first activation with an empty history store, the extension imports every finished session it can find — Claude Code, Codex, and OpenCode — through the shared importer that `sidekick import` also uses, with a status-bar spinner and no toast. Run **Sidekick: Import Historical Data** to import again later; files already imported, sessions the live monitor persisted, and files modified in the last minute are skipped, so re-running never double counts.
+On first activation with an empty history store, the extension imports every finished session it can find — Claude Code, Codex, and OpenCode — through the shared importer that `sidekick import` also uses, with a status-bar spinner and no toast. Run **Sidekick: Import Historical Session Data** to import again later; files already imported, sessions the live monitor persisted, and files modified in the last minute are skipped, so re-running never double counts.
 
 ## Quota & Rate Limits Display
 

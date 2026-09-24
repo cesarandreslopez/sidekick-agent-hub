@@ -6,12 +6,12 @@ Multi-provider AI coding assistant for VS Code — inline completions, code tran
 
 AI coding agents are powerful, but they run autonomously — tokens burn silently, context fills up without warning, and everything is lost when a session ends. Sidekick gives you real-time visibility into what your agent is doing, AI-powered coding features that eliminate mechanical work, and session intelligence that preserves context across sessions.
 
-| Provider                                                                                      | Inference | Session Monitoring | Cost                     |
-| --------------------------------------------------------------------------------------------- | --------- | ------------------ | ------------------------ |
-| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes       | Yes                | Included in subscription |
-| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes       | —                  | Per-token billing        |
-| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)**     | Yes       | Yes                | Depends on provider      |
-| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)**       | Yes       | Yes                | OpenAI API billing       |
+| Provider                                                                                      | Inference | Session Monitoring | Cost                        |
+| --------------------------------------------------------------------------------------------- | --------- | ------------------ | --------------------------- |
+| **[Claude Max](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-max/)** | Yes       | Yes                | Included in subscription    |
+| **[Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)** | Yes       | —                  | Per-token billing           |
+| **[OpenCode](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/opencode/)**     | Yes       | Yes                | Depends on provider         |
+| **[Codex CLI](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/codex/)**       | Yes       | Yes                | ChatGPT plan or API billing |
 
 ## What's New
 
@@ -28,7 +28,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 - **Consistent totals and costs** — the status bar, the dashboard, the timeline, imported history, and the `tokenThreshold` notification all count input, output, and both cache buckets through one shared vocabulary, and costs carry their provenance.
 - **Faster activation and dashboard** — account seeding and git initialisation run in the background, the mind map, plan board, and timeline views are built on first show, dashboard messages are coalesced, and the dashboard webview is an esbuild bundle instead of an inline script.
 - **Responsive account operations** — Codex login probes, account switches, login polling, and the shutdown data flush no longer block the extension host, so the editor stays responsive during account setup and exit.
-- **First-run walkthrough & command hub** — a four-step Get Started walkthrough (detect a live session, open the dashboard, read the status bar, capture a note), plus a `Sidekick: Show Menu` command hub generated from the extension manifest so it never drifts.
+- **First-run walkthrough & command hub** — a five-step Get Started walkthrough (detect a live session, open the dashboard, read the status bar, add your accounts, capture a note), plus a `Sidekick: Show Menu` command hub generated from the extension manifest so it never drifts.
 - **Claude Code statusline** — `Sidekick: Install Statusline` wires `sidekick statusline` into Claude Code's `statusLine` setting with safe merges; `Uninstall Statusline` restores the prior block.
 - **Sidekick Doctor** — `Sidekick: Run Doctor` diagnoses project identity, sessions, accounts, providers, and dependencies with the same typed report as the CLI.
 - **External handoff** — `Sidekick: Open External Session Handoff` opens a URL built from the `sidekick.handoffUrlTemplate` setting with identifier-only placeholders.
@@ -155,7 +155,7 @@ sidekick dashboard
 
 ![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
-Browse sessions, tasks, decisions, knowledge notes, live event streams, and charts in a full-screen TUI. Eight panels including an Events panel for real-time session activity and a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick history`, `sidekick context`, `sidekick extract`, `sidekick quota`, `sidekick accounts`, `sidekick status`, `sidekick peak`, `sidekick today`, `sidekick doctor`, `sidekick statusline`, `sidekick blocks`, `sidekick daily`/`weekly`/`monthly`, `sidekick import`, `sidekick report`, `sidekick dump`, `sidekick mcp`) run one-shot queries without the TUI. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
+Browse sessions, tasks, decisions, knowledge notes, live event streams, and charts in a full-screen TUI. Eight panels including an Events panel for real-time session activity and a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick history`, `sidekick context`, `sidekick extract`, `sidekick quota`, `sidekick accounts`, `sidekick status`, `sidekick peak`, `sidekick today`, `sidekick doctor`, `sidekick statusline`, `sidekick blocks`, `sidekick daily`/`weekly`/`monthly`/`sessions`, `sidekick import`, `sidekick report`, `sidekick dump`, `sidekick mcp`) run one-shot queries without the TUI. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 

@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.27.5: prompts grouped by session** — `sidekick dump --prompts` prints every prompt you typed in Claude Code and Codex sessions, grouped by session: the most recent session with prompts by default, one session with `--session <id-or-prefix>`, or every session of the project and its git worktrees with `--all` (narrowed by `--since` and `--limit`). `--replies` adds the agent's final reply to each prompt, `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and `--format` writes text, markdown, JSON, or JSONL (one session per line). OpenCode is not supported.
 - **0.27.3: accurate token totals and subagent totals** — Claude Code split lines and repeated Codex `token_count` events are no longer double-counted, which fixes `dump`, `report`, the dashboard, `daily`/`weekly`/`monthly`/`sessions`, and `blocks` (the usage cache rebuilds itself). `sidekick dump` and `sidekick report` show the session's subagents and "Session total (incl. subagents)", and `dump --format json` adds a `tokenSummary` block. The dashboard's Tokens section leads with "Total (incl. cache)", lists all four buckets, then subagent and session totals, and its cache-hit rate counts cache writes. Claude subagent transcripts count toward the usage reports under their parent session, and `state.json` gains `context.totalTokens`.
 - **0.27.0: Opus 5.5 pricing and GPT-6 summaries** — cost estimates for Claude Opus 5.5 (`claude-opus-5-5`) sessions use its own rates ($4 / $20 per 1M tokens, $0.20 cache reads) instead of Opus 5's, GPT-6 Sol and Luna sessions are priced, and OpenAI API dashboard summaries use `gpt-6-luna`.
 - **0.26.6: `sidekick accounts`** — an interactive picker plus `list`, `add`, `switch`, `login`, `remove`, `shell`, `env`, `undo`, `doctor`, and `config` subcommands. Logins you already use are registered automatically, every switch is verified against the live credential store and undoable, expired credentials are refused with a sign-in hint, running apps that keep the previous login are named, and `env` / `shell` run a second account side by side on bash, zsh, fish, PowerShell, and cmd. The dashboard gains an accounts overlay (`A`) and a health-coloured status bar account. `sidekick account --…` flags remain as a deprecated alias.
@@ -72,10 +73,11 @@ sidekick dump|history|report|peak|today|doctor|statusline|mcp [options]
 sidekick tasks add|tasks done|note add|decision add [args]
 ```
 
-The standalone commands run one-shot queries and print to stdout; only `dashboard` opens the TUI. All accept the global `--project` and `--provider` flags.
+Most commands run one-shot queries and print to stdout; `dashboard` opens the full-screen TUI, `accounts` and `extract -i` open interactive pickers, and `mcp` serves stdio until closed. Every command except `statusline` accepts the global flags below.
 
 | Flag                   | Description                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------- |
+| `--json`               | Machine-readable JSON output (commands that support it)                            |
 | `--project <path>`     | Override project path (default: current working directory)                         |
 | `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)          |
 | `--no-color`           | Disable colored output (also honors `NO_COLOR`)                                    |
@@ -168,22 +170,26 @@ sidekick dump [options]
 
 Export session data as text, markdown, or JSON. Token lines use "Total (incl. cache)" with all four buckets (input, cache read, cache write, output). When the session spawned subagents, text and markdown add "Subagents (n)" and "Session total (incl. subagents)", and markdown adds a Subagent Tokens table. `--format json` adds a `tokenSummary` block with `mainThread`, `subagents` (one entry per subagent), `subagentTotal`, and `combined` (main thread plus subagents).
 
-| Flag             | Description                                            |
-| ---------------- | ------------------------------------------------------ |
-| `--format <fmt>` | Output format: `text` (default), `json`, or `markdown` |
-| `--width <cols>` | Terminal width for text output (default: auto-detect)  |
-| `--expand`       | Show all events including noise                        |
-| `--session <id>` | Target a specific session (default: most recent)       |
-| `--list`         | List available sessions and exit                       |
-| `--limit <n>`    | Maximum sessions listed with `--list` (default: 50)    |
-| `--csv`          | With `--list`, print the session table as CSV          |
-| `--prompts`      | Dump human prompts grouped by session (see below)      |
+| Flag             | Description                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `--format <fmt>` | Output format: `text` (default), `json`, or `markdown`; also `jsonl` with `--prompts`                    |
+| `--width <cols>` | Terminal width for text output (default: auto-detect)                                                    |
+| `--expand`       | Show all events including noise                                                                          |
+| `--session <id>` | Target a specific session (default: most recent)                                                         |
+| `--list`         | List available sessions and exit                                                                         |
+| `--limit <n>`    | Maximum sessions listed with `--list` (default: 50), or dumped with `--prompts`                          |
+| `--csv`          | With `--list`, print the session table as CSV                                                            |
+| `--prompts`      | Dump human prompts grouped by session (see below)                                                        |
+| `--all`          | With `--prompts`, every session of the project and its git worktrees                                     |
+| `--since <time>` | With `--prompts`, sessions active since an ISO date, `YYYY-MM-DD`, or `7d`/`24h` (returned whole)        |
+| `--signals`      | With `--prompts`, add interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks |
+| `--replies`      | With `--prompts`, add the agent's final reply to each prompt                                             |
 
-Global flags `--project` and `--provider` also apply.
+Global flags `--project`, `--provider`, and `--json` (the same as `--format json`) also apply.
 
 ### Prompts by session
 
-`sidekick dump --prompts` prints every prompt typed in Claude Code and Codex sessions, grouped by session, for reading or classifying a whole session. The default is the most recent session; `--session <id-or-prefix>` picks one, and `--all` takes every session of the project and its worktrees, optionally narrowed by `--since 7d` (sessions active since then, returned whole) and `--limit <n>`. `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and `--replies` adds the agent's final reply to each prompt. `--format` accepts `text`, `markdown`, `json` (full result with bounds and stats), or `jsonl` (one session per line). Both providers are read unless `--provider` names one; OpenCode is not supported.
+`sidekick dump --prompts` prints every prompt typed in Claude Code and Codex sessions, grouped by session, for reading or classifying a whole session. The default is the most recent session with prompts, and `--limit <n>` takes the n most recent instead. `--session <id-or-prefix>` picks one session, and `--all` takes every session of the project and its git worktrees (it cannot be combined with `--session`), optionally narrowed by `--since 7d` (sessions active since then, returned whole) and `--limit <n>`. `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and `--replies` adds the agent's final reply to each prompt. `--format` accepts `text`, `markdown`, `json` (full result with bounds and stats), or `jsonl` (one session per line). Both providers are read unless `--provider` names one; `--provider opencode` exits with an error.
 
 ```bash
 sidekick dump --prompts --all --since 7d --signals --replies --format jsonl > sessions.jsonl
@@ -202,7 +208,7 @@ Show recent user prompts across Codex sessions, newest first — across every wo
 | `--limit <n>`        | Maximum prompts to show (default: 20)                        |
 | `--path <sessionId>` | Print the rollout transcript path for a session ID or prefix |
 
-Codex-only for now (reads the global `~/.codex/history.jsonl`); Claude Code and OpenCode are not yet supported. Not to be confused with `sidekick quota history`, the quota utilization heatmap.
+Codex-only for now (reads the global `~/.codex/history.jsonl`); Claude Code and OpenCode are not yet supported (for Claude Code and Codex prompts grouped by session, use [`sidekick dump --prompts`](#prompts-by-session)). Not to be confused with `sidekick quota history`, the quota utilization heatmap.
 
 ## HTML Report
 
@@ -220,7 +226,7 @@ Generate a self-contained HTML session report and open it in the default browser
 | `--no-open`       | Write the file without opening the browser       |
 | `--no-thinking`   | Omit thinking blocks from the transcript         |
 
-Global flags `--project` and `--provider` also apply.
+Global flags `--project`, `--provider`, and `--json` (prints the report path as `{"path": …}`) also apply.
 
 You can also press `r` in the TUI dashboard to generate a report for the current session.
 

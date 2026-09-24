@@ -143,7 +143,10 @@ export interface SessionPromptHistoryStats {
 export interface SessionPromptHistoryResult {
   /** Most recent activity first. */
   sessions: PromptHistorySession[];
-  /** Sessions a bound kept this call from reading; pass them as `sessionIds` to continue. */
+  /**
+   * Sessions this call did not read, because a bound stopped it or the file
+   * changed while it was read; pass them as `sessionIds` to continue.
+   */
   unread: PromptHistorySessionRef[];
   boundsHit: SessionPromptHistoryBound[];
   /** Permanent exclusions found in this call (at most 1000; stats count all). */

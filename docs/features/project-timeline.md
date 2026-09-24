@@ -47,4 +47,4 @@ The timeline scans all session files for the current project directory and extra
 
 ## Accessing the Timeline
 
-The Project Timeline panel appears in the **Agent Hub** sidebar, below the Kanban Board. It's visible whenever session monitoring is active.
+The Project Timeline panel appears in the **Agent Hub** sidebar, below the Plans view. It's visible whenever session monitoring is active.

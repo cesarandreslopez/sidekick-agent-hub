@@ -20,7 +20,7 @@ Sidekick never calls Anthropic's or OpenAI's OAuth endpoints itself. Sign-ins an
 
 ## How accounts get registered
 
-You rarely have to "add" the account you are already using. Sidekick watches the live credential stores and registers any login it has not seen, labelled with its email, so you can switch back to it later. The status bar, the Accounts view, and `sidekick accounts list` all say **Registered <email>** the first time this happens.
+You rarely have to "add" the account you are already using. Sidekick watches the live credential stores and registers any login it has not seen, labelled with its email, so you can switch back to it later. The status bar, the Accounts view, and `sidekick accounts list` all say **Registered &lt;email&gt;** the first time this happens.
 
 To sign in to a _second_ account without disturbing the current one, use **Add Account**. Sidekick opens `claude auth login` or `codex login` in an isolated profile directory (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`), waits for the browser sign-in to finish, and saves the result. Your current login stays untouched until you choose to switch.
 
