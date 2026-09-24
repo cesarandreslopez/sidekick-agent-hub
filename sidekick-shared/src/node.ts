@@ -42,6 +42,23 @@ export type {
   PromptHistoryStats,
   PromptHistoryUsage,
 } from './promptHistory';
+export { collectSessionPromptHistory } from './sessionPromptHistory';
+export type {
+  CollectSessionPromptHistoryOptions,
+  PromptHistorySession,
+  PromptHistorySessionPrompt,
+  PromptHistorySessionRef,
+  SessionPromptHistoryBound,
+  SessionPromptHistoryBounds,
+  SessionPromptHistoryInclude,
+  SessionPromptHistoryResult,
+  SessionPromptHistoryStats,
+} from './sessionPromptHistory';
+export type {
+  PromptHistoryReply,
+  PromptHistorySignal,
+  PromptHistorySignalKind,
+} from './sessionPromptSignals';
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,
   HUMAN_CODEX_SOURCES,

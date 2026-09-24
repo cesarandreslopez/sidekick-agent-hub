@@ -5,6 +5,19 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `collectSessionPromptHistory()` (`sidekick-shared/node` and the package root, not the browser entry) returns every human prompt of each matching Claude Code or Codex session, grouped by session.
+  - **Consistency.** Sessions are read from the start with the scanners of `collectPromptHistory()`, so text, fail-closed scope, first-call model and usage, and ordinals are identical.
+  - **Selection.** `sessionIds`, `since` (file modification time only; returned sessions are whole), and `limit` (most recent sessions with prompts).
+  - **Session fields.** `startedAt`, `lastActivityAt`, `cwds`, `gitBranches`, `models`, and completeness (`complete`, `truncated`, `droppedPrompts`, `excludedRecords`).
+  - **Opt-in content.** `include.replies` adds the agent's last text for each prompt's turn (for Codex, `task_complete.last_agent_message` first). `include.signals` adds `interrupt`, `toolRejected` (Claude only, with the typed rejection reason in full), `toolError` (tool name plus error text cut to 1024 characters), `compaction`, `apiError`, and `rollback`, each with the ordinal of the prompt it followed.
+  - **Scope.** Replies and signals that follow an out-of-scope prompt are dropped.
+  - **Bounds.** `maxSessions`, `maxSessionBytes` (default 256 MiB), `maxTotalBytes` (default 256 MiB), `maxRecordBytes`, `deadlineMs`, and `signal`. A session a bound interrupts is listed in `unread`, never returned partially.
+- New exported types: `CollectSessionPromptHistoryOptions`, `PromptHistorySession`, `PromptHistorySessionPrompt`, `PromptHistorySessionRef`, `PromptHistoryReply`, `PromptHistorySignal`, `PromptHistorySignalKind`, `SessionPromptHistoryBound`, `SessionPromptHistoryBounds`, `SessionPromptHistoryInclude`, `SessionPromptHistoryResult`, and `SessionPromptHistoryStats`.
+
 ## [0.27.4] - 2026-09-23
 
 ### Added

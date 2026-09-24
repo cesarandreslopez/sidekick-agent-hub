@@ -87,6 +87,7 @@ Dump session data as a text timeline, JSON metrics, or markdown report for shari
 | `--width <cols>` | Terminal width for text output (default: auto-detect)  |
 | `--expand`       | Show all events including noise                        |
 | `--session <id>` | Target a specific session (default: most recent)       |
+| `--prompts`      | Dump human prompts grouped by session (see below)      |
 
 Global flags `--project`, `--provider`, and `--json` also apply (see above); `--json` on a non-list dump is the same as `--format json`. Token totals count every billed bucket (input, output, cache writes, and cache reads), each API response or call once, and cost figures name their provenance (provider-reported or estimated from catalog pricing). When the session spawned subagents, text and markdown output add a **Subagents (n)** line (markdown also gets a per-agent **Subagent Tokens** table) and a **Session total (incl. subagents)**. JSON output adds a `tokenSummary` block with `mainThread`, `subagents`, `subagentTotal`, and `combined` (main thread plus subagents).
 
@@ -101,6 +102,33 @@ sidekick dump --format markdown > session-report.md
 
 # Full JSON export for tooling
 sidekick dump --format json > session.json
+```
+
+### Prompts by session
+
+`sidekick dump --prompts` prints every prompt a person typed in a Claude Code or Codex session, grouped by session, so a whole session can be read or classified (intent, conflict, issues) at once. It uses the same human-prompt rule and fail-closed working-directory scope as `collectPromptHistory()` in `sidekick-shared`: prompts are untruncated, and slash commands appear as typed. Harness output, subagents, and SDK programs are left out.
+
+| Flag             | Description                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------- |
+| `--session <id>` | One session by id or unique prefix (default: the most recent session with prompts)                  |
+| `--all`          | Every session of this project and its git worktrees, most recent first                              |
+| `--since <time>` | Only sessions active since an ISO date, `YYYY-MM-DD`, or `7d` / `24h`; each is still returned whole |
+| `--limit <n>`    | At most this many sessions                                                                          |
+| `--signals`      | Add interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks              |
+| `--replies`      | Add the agent's final reply to each prompt                                                          |
+| `--format <fmt>` | `text` (default), `markdown`, `json` (with bounds and stats), or `jsonl` (one session per line)     |
+
+Both providers are read unless `--provider claude-code` or `--provider codex` is given; OpenCode is not supported. Each session carries its time span, working directories, branches, and models, and a `complete` flag that is false when prompts were out of scope, a record was unreadable, or the session was cut at 256 MiB. Signals note the prompt they followed (`afterOrdinal`). A Claude tool rejection keeps the reason the person typed, in full, while tool and API error text is cut to 1024 characters. Codex logs do not mark rejections.
+
+```bash
+# Every prompt of the latest session
+sidekick dump --prompts
+
+# One JSON line per session active this week, with replies and signals, for a classifier
+sidekick dump --prompts --all --since 7d --signals --replies --format jsonl > sessions.jsonl
+
+# A readable markdown transcript of one session's prompts
+sidekick dump --prompts --session 2420ca --replies --format markdown
 ```
 
 ## Prompt History

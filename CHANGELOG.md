@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `sidekick dump --prompts` prints every human prompt of Claude Code and Codex sessions grouped by session, so a whole session can be read or classified (intent, conflict, issues). The default is the most recent session with prompts. `--session <id-or-prefix>` picks one session, and `--all` takes every session of the project and its worktrees, optionally narrowed by `--since` (sessions active since then, returned whole) and `--limit`. `--replies` adds the agent's final reply to each prompt, and `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks. Output is text, markdown, JSON, or JSONL (one session per line). Both providers are read unless `--provider` names one.
+- `collectSessionPromptHistory()` (`sidekick-shared/node` and the package root) returns whole sessions of human prompts. Text, scope, model and usage, and ordinals are the same as `collectPromptHistory()`. Each session carries its time span, working directories, branches, models, and a `complete` flag, and `include: { replies, signals }` is opt-in. A bound that stops a call lists the sessions it did not read in `unread`, and passing them back as `sessionIds` continues. A Claude tool rejection keeps the reason the person typed, and a rejection plus the interrupt Claude Code writes after it count as one signal.
+
 ## [0.27.4] - 2026-09-23
 
 ### Added

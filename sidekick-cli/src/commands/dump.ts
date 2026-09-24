@@ -5,6 +5,7 @@
  * and outputs in the requested format.
  *
  * With `--list`, enumerates available session IDs for the current project.
+ * With `--prompts`, dumps human prompts grouped by session (see dumpPrompts.ts).
  */
 
 import * as path from 'path';
@@ -167,6 +168,13 @@ async function listSessions(
 export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
   const opts = cmd.opts();
+
+  // --prompts reads Claude Code and Codex prompt history, grouped by session
+  if (opts.prompts) {
+    const { dumpPromptsAction } = await import('./dumpPrompts');
+    return dumpPromptsAction(opts, globalOpts);
+  }
+
   const provider = resolveProvider(globalOpts);
   const workspacePath = globalOpts.project || process.cwd();
 

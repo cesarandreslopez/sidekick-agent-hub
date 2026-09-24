@@ -104,14 +104,33 @@ program.addCommand(dashCmd);
 
 // Dump command — static session dump in text, JSON, or markdown format
 const dumpCmd = new Command('dump')
-  .description('Dump session data as text timeline, JSON metrics, or markdown report')
+  .description(
+    'Dump session data as text timeline, JSON metrics, or markdown report; --prompts dumps prompts by session',
+  )
   .option('--list', 'List available session IDs for the current project')
   .option('--csv', 'With --list, print the session table as CSV')
-  .option('--limit <n>', 'Maximum sessions listed with --list (default: 50)')
+  .option(
+    '--limit <n>',
+    'Maximum sessions listed with --list (default: 50), or dumped with --prompts',
+  )
   .option('--session <id>', 'Target a specific session (default: most recent)')
   .option('--width <cols>', 'Terminal width for text output (default: auto-detect)')
   .option('--expand', 'Show all events including noise')
-  .option('--format <fmt>', 'Output format: text, json, markdown (default: text)')
+  .option(
+    '--format <fmt>',
+    'Output format: text, json, markdown (default: text); jsonl too with --prompts',
+  )
+  .option('--prompts', 'Dump every human prompt grouped by session (Claude Code and Codex)')
+  .option('--all', 'With --prompts, every session of this project and its worktrees')
+  .option(
+    '--since <time>',
+    'With --prompts, sessions active since an ISO date, YYYY-MM-DD, or 7d/24h (returned whole)',
+  )
+  .option(
+    '--signals',
+    'With --prompts, add interrupts, rejected/failed tools, compactions, API errors',
+  )
+  .option('--replies', "With --prompts, add the agent's final reply to each prompt")
   .addHelpText('after', DUMP_EXAMPLES)
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { dumpAction } = await import('./commands/dump');

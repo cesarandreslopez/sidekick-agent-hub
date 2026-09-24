@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `sidekick dump --prompts` prints every human prompt of Claude Code and Codex sessions grouped by session, for reading or classifying a whole session. The default is the most recent session with prompts.
+  - **Selecting sessions.** `--session <id-or-prefix>` picks one session. `--all` takes every session of the project and its git worktrees, optionally narrowed by `--since <time>` (sessions active since then, returned whole) and `--limit <n>`.
+  - **Extra content.** `--replies` adds the agent's final reply to each prompt, and `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks.
+  - **Output.** `--format` accepts `text`, `markdown`, `json` (the full result, with bounds and stats), or `jsonl` (one session per line). Bounded calls continue automatically until every session is read, and a reader that stops early (`| head`) ends the dump quietly.
+  - **Providers.** Both are read unless `--provider claude-code` or `--provider codex` is given; OpenCode exits with an error.
+
 ## [0.27.4] - 2026-09-23
 
 ### Changed

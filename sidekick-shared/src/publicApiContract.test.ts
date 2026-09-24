@@ -109,6 +109,7 @@ const contractGroups = {
     'listRecentSessions',
     'readSessionTranscript',
     'collectPromptHistory',
+    'collectSessionPromptHistory',
     'isHumanPrompt',
     'humanPromptText',
   ],

@@ -241,7 +241,8 @@ export interface PromptHistoryResult {
   hasMore: boolean;
 }
 
-const DEFAULT_BOUNDS: Required<PromptHistoryBounds> = {
+/** @internal */
+export const DEFAULT_BOUNDS: Required<PromptHistoryBounds> = {
   maxSessions: 1000,
   maxFileBytes: 16 * 1024 * 1024,
   maxTotalBytes: 256 * 1024 * 1024,
@@ -265,14 +266,26 @@ export const __promptHistoryTesting = {
   },
 };
 
-interface Candidate {
+/** @internal */
+export interface Candidate {
   provider: PromptHistoryProvider;
   sessionId: string;
   filePath: string;
   key: string;
 }
 
-interface ScanContext {
+/**
+ * Sees every parsed record of a file after the scanner, with the ordinal of the
+ * latest human prompt so far (-1 before the first). Used for whole-session reads.
+ * @internal
+ */
+export type RecordObserver = (
+  record: Record<string, unknown>,
+  info: { ordinal: number; lineOffset: number },
+) => void;
+
+/** @internal */
+export interface ScanContext {
   roots: string[];
   sinceMs: number | null;
   stats: PromptHistoryStats;
@@ -282,9 +295,11 @@ interface ScanContext {
   /** Entries already collected from earlier files in this call. */
   entriesSoFar: () => number;
   exclude: (exclusion: PromptHistoryExclusion) => void;
+  observe?: RecordObserver;
 }
 
-interface FileBudget {
+/** @internal */
+export interface FileBudget {
   bytes: number;
   /** Which bound `bytes` came from. */
   bound: 'maxFileBytes' | 'maxTotalBytes';
@@ -292,7 +307,8 @@ interface FileBudget {
   forceProgress: boolean;
 }
 
-interface FileOutcome {
+/** @internal */
+export interface FileOutcome {
   entries: PromptHistoryEntry[];
   /** The pass moved the file's offset forward. */
   progressed: boolean;
@@ -312,19 +328,7 @@ export async function collectPromptHistory(
   const bounds = { ...DEFAULT_BOUNDS, ...definedBounds(options.bounds) };
   const startedAt = Date.now();
   const boundsHit = new Set<PromptHistoryBound>();
-  const stats: PromptHistoryStats = {
-    sessionsScanned: 0,
-    sessionsSkippedUnchanged: 0,
-    sessionsOutOfScope: 0,
-    filesOverSizeLimit: 0,
-    sessionsWithBacklog: 0,
-    sessionsRewritten: 0,
-    sessionsNotInteractive: 0,
-    recordsOverSizeLimit: 0,
-    recordsMalformed: 0,
-    promptsMissingTimestamp: 0,
-    promptsOutOfScope: 0,
-  };
+  const stats = emptyStats();
   const { sessions: previous, next: previousNext } = acceptedCursor(options.cursor);
   const cursor: PromptHistoryCursor = { version: 3, sessions: { ...previous } };
   const entries: PromptHistoryEntry[] = [];
@@ -460,6 +464,23 @@ export async function collectPromptHistory(
   return finish();
 }
 
+/** @internal */
+export function emptyStats(): PromptHistoryStats {
+  return {
+    sessionsScanned: 0,
+    sessionsSkippedUnchanged: 0,
+    sessionsOutOfScope: 0,
+    filesOverSizeLimit: 0,
+    sessionsWithBacklog: 0,
+    sessionsRewritten: 0,
+    sessionsNotInteractive: 0,
+    recordsOverSizeLimit: 0,
+    recordsMalformed: 0,
+    promptsMissingTimestamp: 0,
+    promptsOutOfScope: 0,
+  };
+}
+
 function definedBounds(bounds: PromptHistoryBounds | undefined): PromptHistoryBounds {
   const result: PromptHistoryBounds = {};
   if (!bounds) return result;
@@ -566,7 +587,8 @@ function compareEntries(left: PromptHistoryEntry, right: PromptHistoryEntry): nu
   );
 }
 
-function compareStrings(left: string, right: string): number {
+/** @internal */
+export function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
@@ -588,7 +610,8 @@ function realpathOrNull(input: string, cache: Map<string, string | null>): strin
   return resolved;
 }
 
-function resolveRoots(
+/** @internal */
+export function resolveRoots(
   workspacePaths: string[],
   includeWorktrees: boolean,
   realpaths: Map<string, string | null>,
@@ -632,7 +655,8 @@ function scopedCwd(
   return null;
 }
 
-async function listCandidates(
+/** @internal */
+export async function listCandidates(
   providers: PromptHistoryProvider[],
   listingRoots: string[],
   sinceMs: number | null,
@@ -727,7 +751,8 @@ async function verifyFile(
   return { head: { bytes: head.length, hash: hashBytes(head) }, bytesRead };
 }
 
-async function scanFile(
+/** @internal */
+export async function scanFile(
   candidate: Candidate,
   stat: fs.Stats,
   prior: PromptHistoryCursorSession | undefined,
@@ -1029,7 +1054,12 @@ function acceptLine(
     return 'ok';
   }
   if (typeof record !== 'object' || record === null) return 'ok';
-  return scanner.accept(record as Record<string, unknown>, lineOffset, lineBytes);
+  const row = record as Record<string, unknown>;
+  const accepted = scanner.accept(row, lineOffset, lineBytes);
+  if (accepted === 'ok' && context.observe) {
+    context.observe(row, { ordinal: scanner.lastOrdinal(), lineOffset });
+  }
+  return accepted;
 }
 
 /** An emitted prompt whose first answering call is not final yet. */

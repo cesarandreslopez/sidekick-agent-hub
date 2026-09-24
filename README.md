@@ -40,7 +40,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 - **Deeper dashboard** — the VS Code History tab gains hourly today, by-model and by-tool series, a project filter, and a previous-period overlay; a new Health tab shows doctor checks, provider diagnostics, and failing-tool trends; quota threshold alerts fire once per reset window; a Billing block card sits beneath the quota gauges.
 - **Faster hosts** — observed sessions are parsed once and re-read only when they change, Codex discovery uses one capped walker, extension activation defers account seeding and git initialisation, and dashboard messages are coalesced.
 - **Host-safe shared APIs** — `sidekick-shared` 0.25.0 adds async session previews, push-based collector/monitor/account subscriptions, an I/O-free provider factory with structured diagnostics (missing `sqlite3` is now a diagnostic, not an empty result), `findSessionById()`, and cross-realm model-catalog transfer with registerable aliases — built for long-lived embedders like desktop apps and extension hosts.
-- **Prompt history** — `sidekick history` lists your most recent Codex prompts across every workspace, and `--path` jumps straight to a session's transcript file. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound, so huge session directories stay fast.
+- **Prompt history** — `sidekick history` lists your most recent Codex prompts across every workspace, and `--path` jumps straight to a session's transcript file. `sidekick dump --prompts` dumps every prompt you typed in Claude Code and Codex grouped by session (text, markdown, JSON, or JSONL), optionally with the agent's replies and interaction signals (interrupts, rejected or failed tools, compactions), for classifying whole sessions. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound, so huge session directories stay fast.
 - **Non-blocking account operations** — Codex login probes, account switches, and login polling run off the event loop, so the VS Code extension host and other embedders no longer freeze during account operations. Store writes from the extension and CLI are serialized through locked atomic writers.
 - **Fast daily workflow** — `sidekick statusline`, `today`, `doctor`, atomic terminal capture, and generic external handoff keep common checks and updates one command away.
 - **Guided VS Code onboarding** — a five-step first-run walkthrough (detect a session, open the dashboard, read the status bar, add your accounts, capture a note) plus a `Sidekick: Show Menu` command hub generated from the extension manifest.
@@ -107,6 +107,7 @@ sidekick quota history                              # 13-week quota-utilization 
 sidekick status                                     # API status check (Claude + OpenAI)
 sidekick peak                                       # Claude peak-hours check (faster session-limit drain)
 sidekick dump --format markdown > session-report.md
+sidekick dump --prompts --all --format jsonl        # every typed prompt, one JSON line per session
 sidekick report                                     # HTML report → browser
 sidekick mcp                                        # read-only facts server for Claude Code/Codex
 ```

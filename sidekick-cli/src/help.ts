@@ -62,6 +62,9 @@ Examples:
   $ sidekick dump --list --limit 10         Only the ten most recent sessions
   $ sidekick dump --session <id>            Text timeline for a specific session
   $ sidekick dump --format markdown         Markdown report of the latest session
+  $ sidekick dump --prompts                 Every prompt of the latest session
+  $ sidekick dump --prompts --all --since 7d --format jsonl  One JSON line per session this week
+  $ sidekick dump --prompts --signals --replies  Add replies, interrupts, and tool errors
 `;
 
 export const HISTORY_EXAMPLES = `

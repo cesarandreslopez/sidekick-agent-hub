@@ -177,8 +177,17 @@ Export session data as text, markdown, or JSON. Token lines use "Total (incl. ca
 | `--list`         | List available sessions and exit                       |
 | `--limit <n>`    | Maximum sessions listed with `--list` (default: 50)    |
 | `--csv`          | With `--list`, print the session table as CSV          |
+| `--prompts`      | Dump human prompts grouped by session (see below)      |
 
 Global flags `--project` and `--provider` also apply.
+
+### Prompts by session
+
+`sidekick dump --prompts` prints every prompt typed in Claude Code and Codex sessions, grouped by session, for reading or classifying a whole session. The default is the most recent session; `--session <id-or-prefix>` picks one, and `--all` takes every session of the project and its worktrees, optionally narrowed by `--since 7d` (sessions active since then, returned whole) and `--limit <n>`. `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and `--replies` adds the agent's final reply to each prompt. `--format` accepts `text`, `markdown`, `json` (full result with bounds and stats), or `jsonl` (one session per line). Both providers are read unless `--provider` names one; OpenCode is not supported.
+
+```bash
+sidekick dump --prompts --all --since 7d --signals --replies --format jsonl > sessions.jsonl
+```
 
 ## Prompt History
 
