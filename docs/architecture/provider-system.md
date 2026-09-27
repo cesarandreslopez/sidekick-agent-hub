@@ -95,13 +95,13 @@ Inference and session providers are independent — you can use Claude Max for i
 Account management is provider-aware via a v2 registry format (`~/.config/sidekick/accounts/accounts.json`). Each provider (Claude Code, Codex) maintains its own active account independently — switching Claude accounts does not affect Codex, and vice versa.
 
 - **Claude Code accounts** store backed-up OAuth credentials and identity metadata
-- **Codex accounts** store backed-up credentials in isolated profile directories; switching accounts atomically swaps the target profile's credentials into the system `~/.codex/auth.json`, mirroring the Claude switch pattern
+- **Codex accounts** keep a private byte-preserved backup per account (`accounts/codex/backups/<id>.auth.json`, never used by `codex`) and, while inactive, a usable copy in an isolated profile home. A switch saves the outgoing login, journals itself, removes the target's profile copy, and installs it into the system `~/.codex/auth.json`, mirroring the Claude switch pattern; as of 0.27.6 the live account keeps no profile copy
 
 The registry auto-migrates from v1 (single-provider) to v2 (multi-provider) on first read. Quota snapshots are cached per provider/account for offline fallback.
 
 ### Default account bootstrap
 
-The VS Code extension bootstraps accounts in the background. CLI commands that need full startup call `ensureDefaultAccounts()` from `sidekick-shared`; help/version and cache-only `statusline`, `today`, and `history` skip it. As of 0.26.6 the bootstrap runs the one-time on-disk migrations, removes abandoned isolated logins, and then calls `syncLiveAccountState()`: any live Claude Code or Codex login the registry has never seen is registered under its email, a rotated live token is folded back into its saved profile, and the active pointer is re-pointed to whatever is actually logged in. `onAccountsChanged()` runs the same sync on every filesystem or poll event.
+The VS Code extension bootstraps accounts in the background. CLI commands that need full startup call `ensureDefaultAccounts()` from `sidekick-shared`; help/version, cache-only `statusline`, `today`, and `history`, and the read-only `accounts doctor` skip it. As of 0.26.6 the bootstrap runs the one-time on-disk migrations, removes abandoned isolated logins, and then calls `syncLiveAccountState()`: any live Claude Code or Codex login the registry has never seen is registered under its email, a rotated live token is folded into the account's private backup (as of 0.27.6 the live account keeps no profile-home copy), and the active pointer is re-pointed to whatever is actually logged in. `onAccountsChanged()` runs the same sync on every filesystem or poll event.
 
 The bootstrap is idempotent (repeated calls do not create duplicates), never overwrites accounts that were saved manually, and swallows per-provider errors so they can never block startup. It ensures that quota, analytics, and dashboard surfaces that read from the registry work out of the box, without requiring users to run **Register Current Login** / `sidekick accounts add --current` first.
 

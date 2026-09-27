@@ -89,7 +89,7 @@ sidekick accounts doctor                            # includes the credential-st
 
 !!! warning "Keyring mode is not switchable"
 
-    Codex 0.140+ can keep its login in the OS keyring (`cli_auth_credentials_store = "keyring"` or `"auto"`). Sidekick can only switch file-based logins: `sidekick accounts add` refuses up front, `doctor` reports it, and the fix is `cli_auth_credentials_store = "file"` in `~/.codex/config.toml` followed by `codex login`.
+    Codex 0.140+ can keep its login in the OS keyring (`cli_auth_credentials_store = "keyring"` or `"auto"`) or in memory only (`"ephemeral"`). Sidekick can only switch file-based logins, and treats an unreadable setting the same way: `sidekick accounts add` refuses up front, `doctor` reports it, and the fix is `cli_auth_credentials_store = "file"` in `~/.codex/config.toml` followed by `codex login`.
 
 The full guide is [Account Switcher](../features/account-switcher.md).
 

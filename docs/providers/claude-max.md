@@ -62,7 +62,7 @@ sidekick accounts doctor                   # expiry, stored copies, and running 
 
 Account data is stored in `~/.config/sidekick/accounts/` with `0o700` directory and `0o600` file permissions. Credential swaps are atomic, verified by reading the store back, and rolled back on mismatch.
 
-**macOS note:** Claude Code stores active credentials in the system Keychain, keyed per `CLAUDE_CONFIG_DIR`; Sidekick reads and writes them with the `security` CLI and falls back to `.credentials.json` when the Keychain is locked. Only inactive accounts keep a Keychain copy of their own; the account that is live has exactly one usable copy, the live item (see [One copy per Claude login](../features/account-switcher.md#one-copy-per-claude-login)). Saved Claude refresh tokens expire about three weeks after last use; the Accounts view and `sidekick accounts list` show the remaining time, and the optional `sidekick.accounts.keepAlive` setting refreshes inactive accounts through the CLI.
+**macOS note:** Claude Code stores active credentials in the system Keychain, keyed per `CLAUDE_CONFIG_DIR`; Sidekick reads and writes them with the `security` CLI and falls back to `.credentials.json` when the Keychain is locked. Only inactive accounts keep a Keychain copy of their own; the account that is live has exactly one usable copy, the live item (see [One usable copy per login](../features/account-switcher.md#one-usable-copy-per-login)). Saved Claude refresh tokens expire about three weeks after last use; the Accounts view and `sidekick accounts list` show the remaining time, and the optional `sidekick.accounts.keepAlive` setting refreshes inactive accounts through the CLI.
 
 ## Best For
 

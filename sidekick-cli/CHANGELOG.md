@@ -5,7 +5,7 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.27.6] - 2026-09-26
 
 ### Added
 
@@ -13,12 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Codex account switching now requires stopped Codex consumers and protects live credentials with verified private backups and journal recovery. Keep-alive performs a real app-server refresh. `accounts doctor` inspects without syncing or rewriting health metadata and supports Codex duplicate/stash repairs through `--fix`, preserving provider filters and confirmation.
 - **Claude logins are no longer invalidated by Sidekick** (bundled `sidekick-shared`). Claude Code rotates the refresh token on every refresh, so every usable copy of a login but one dies with "Not logged in · Please run /login"; Sidekick now keeps exactly one.
   - Keychain writes larger than about 4 KB are no longer truncated into an unreadable credential, and every write is read back before it counts.
   - The live account no longer keeps a second usable copy in its profile directory; `accounts switch` saves the outgoing login first (even with `--force`), holds Claude Code's refresh lock, never overwrites a newer login, and keeps the live MCP server tokens.
   - Keep-alive never refreshes a copy of a live login. `accounts shell` / `env` for the live account use the normal Claude home.
   - `sidekick account --launcher` scripts resolve the account's home when they run instead of pinning a profile directory.
+  - In a shell from `sidekick accounts env` or `shell`, commands no longer remove that account's login as a supposed second copy of the live login.
+- **Codex logins get the same protection** (bundled `sidekick-shared`): verified private backups replace runnable profile copies and timestamped stashes, `accounts switch` is refused while Codex CLI, app, or IDE sessions run (`--force` does not bypass it) and is journaled so an interrupted switch finishes or rolls back, and keep-alive refreshes through `codex app-server`.
+- `accounts doctor` no longer syncs accounts or rewrites health metadata while inspecting, and `--fix` also repairs Codex duplicates, stale stashes, orphaned copies, and interrupted switches, honouring `--provider` and the confirmation prompt.
 
 ## [0.27.5] - 2026-09-23
 

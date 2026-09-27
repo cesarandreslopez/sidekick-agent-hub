@@ -5,11 +5,10 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.27.6] - 2026-09-26
 
 ### Fixed
 
-- **Codex OAuth credential safety:** private byte-preserved backups, shared live-write guard policy, verified outgoing capture, journal recovery, and non-bypassable consumer/lease checks replace duplicate profile credentials and timestamped stashes. Live launches use the live home. Codex keep-alive uses the official app-server refresh request and requires a verified credential advance. Sign-in homes are separate and cleaned up after use. Added `inspectCodexCredentialStores`, `repairCodexCredentialStores`, `readStoredCodexAccount`, `syncCodexLiveStateAsync`, and non-persisting health inspection (`persist: false`). File storage is required, and unrelated MCP data is preserved.
 - **One usable copy per Claude refresh-token chain.** Claude Code rotates the refresh token on every refresh, so a second usable copy of a login invalidates the first ("Not logged in · Please run /login").
   - **Keychain writes** use Claude Code's method: `-X <hex>` through `security -i` up to 4032 bytes, argv beyond. The old `-w '<json>'` line was silently truncated at 4095 bytes once `mcpOAuth` grew. Every write is read back; a mismatch or an unverifiable read-back throws `ClaudeCredentialWriteError`. Reads and deletes pass the account name like Claude Code, and profile items carry a `sidekick-agent-hub:<dir>` comment.
   - **The live account keeps no profile-home credential.** `storeClaudeProfileCredentials()` is the chokepoint: for the live account it writes only the private backup and the sidecar. `syncLiveAccountState()` removes a leftover copy (`report.claude.demoted`) and installs it first when it is strictly newer than live (`repaired`). It also refuses to fold when the live credential's fingerprint belongs to another profile.
@@ -20,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Login homes** are recorded in the ledger before the CLI runs, and `finalizeAccountLogin`, `spawnAccountLogin`, and `cleanupAbandonedClaudeLogins` (authenticated logins after 24 h) delete their Keychain item on every exit.
   - **`getAccountLaunchEnv()`** points the live Claude account at the live home and restores an inactive profile from its backup (skip with `restoreBackup: false`).
   - **Leftover Keychain items.** Running against a throwaway `SIDEKICK_CONFIG_DIR` with the real `HOME` no longer creates a Keychain item for the live login.
+  - **Profile-home shells.** When `CLAUDE_CONFIG_DIR` points at a Sidekick profile home (a shell from `sidekick accounts env` or `shell`), `syncLiveAccountState()` reports `claude.skipped: 'managed-home'` as it does for Codex, `applyClaudeProfileToLiveHome()` refuses, and `inspectClaudeCredentialStores()` reports no live duplicate, so that profile's only usable copy is never demoted.
+- **Codex OAuth credential safety:** private byte-preserved backups, shared live-write guard policy, verified outgoing capture, journal recovery, and non-bypassable consumer/lease checks replace duplicate profile credentials and timestamped stashes. Live launches use the live home. Codex keep-alive uses the official app-server refresh request and requires a verified credential advance. Sign-in homes are separate and cleaned up after use. Added `inspectCodexCredentialStores`, `repairCodexCredentialStores`, `readStoredCodexAccount`, `syncCodexLiveStateAsync`, and non-persisting health inspection (`persist: false`). File storage is required, and unrelated MCP data is preserved.
 
 ### Added
 

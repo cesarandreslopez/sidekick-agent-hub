@@ -24,6 +24,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **0.27.6: one usable copy of every login** — Sidekick no longer causes Claude Code's "Not logged in · Please run /login". Claude Code and Codex rotate refresh tokens, so a second usable copy of a login kills the first; Sidekick now keeps exactly one and holds the rest in private backups neither CLI reads. Keychain writes over about 4 KB are no longer truncated, switches save the outgoing login first and are journaled so an interrupted one finishes or rolls back, keep-alive never refreshes a live copy, and Codex switches wait until running Codex sessions close. `sidekick accounts doctor` is read-only and now reports Claude and Codex credential stores; `--fix` repairs them after asking.
 - **0.27.5: prompts grouped by session** — `sidekick dump --prompts` prints every prompt you typed in Claude Code and Codex sessions, grouped by session: the most recent session with prompts by default, one session with `--session <id-or-prefix>`, or every session of the project and its git worktrees with `--all` (narrowed by `--since` and `--limit`). `--replies` adds the agent's final reply to each prompt, `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and output is text, markdown, JSON, or JSONL. `sidekick-shared` returns the same sessions from `collectSessionPromptHistory()`.
 - **0.27.3: accurate token totals, subagents included** — Claude Code totals no longer count each split JSONL line (they were about 2× too high), and Codex no longer re-counts repeated `token_count` events. Session totals now include subagents ("Session total (incl. subagents)") in `sidekick dump`, `sidekick report`, the CLI Sessions panel, and the VS Code Tokens metric; "Total (incl. cache)" means input + cache read + cache write + output everywhere, and `state.json` gains an optional `context.totalTokens`. History recorded before 0.27.3 keeps its old totals.
 - **0.27.2: prompt history reads large sessions** — `collectPromptHistory()` streams session logs of any size in bounded, resumable passes instead of skipping files over 16 MiB, so long Claude Code and Codex sessions return all their prompts across calls, and an answer written far after its prompt still settles it.
@@ -88,10 +89,10 @@ Browse sessions, tasks, decisions, knowledge notes, charts, and live event strea
 
 Eight panels: Sessions, Tasks, Kanban, Notes, Decisions, Plans, Events, and Charts. The Events panel streams live session activity with colored type badges. The Charts panel shows tool frequency bars, event distribution, a 60-minute activity heatmap, and pattern analysis. Press `/` to filter with substring, fuzzy, regex, or date modes.
 
-Standalone commands jump directly to a specific panel or run one-shot queries, including extracting actionable links, files, commands, and plans from recent Claude Code and Codex chats. VS Code users can run `Sidekick: Extract Session Assets` for the same asset model in a native QuickPick.
+Standalone commands run one-shot queries, including extracting actionable links, files, commands, and plans from recent Claude Code and Codex chats. VS Code users can run `Sidekick: Extract Session Assets` for the same asset model in a native QuickPick.
 
 ```bash
-sidekick tasks                                      # open tasks panel
+sidekick tasks                                      # list persisted tasks (--status pending)
 sidekick search "migration"                         # cross-session search
 sidekick stats                                      # session statistics
 sidekick today                                      # cache-only daily brief
@@ -126,14 +127,15 @@ sidekick accounts add --label Work                  # sign in to a second accoun
 sidekick accounts switch work                       # switch by label, email, or id (verified, undoable)
 eval "$(sidekick accounts env work)"                # this shell only: claude/codex use Work
 sidekick accounts shell work -- claude              # one claude session as Work
-sidekick accounts doctor                            # expiry, running apps, Codex keyring mode
+sidekick accounts doctor                            # read-only: expiry, stored credentials, running apps
+sidekick accounts doctor --fix                      # repair stored credentials Sidekick owns (asks first)
 sidekick accounts config auto-switch 90             # auto-switch when quota crosses 90% (off to disable)
 
 # Combined quota view
 sidekick quota --all                                # Claude + Codex quota side by side
 ```
 
-In VS Code, the **Accounts** view in the Agent Hub sidebar and the status bar badge show every saved account with its health; switch, sign in again, open a terminal as an account, or undo from there. Switching reaches new `claude` and `codex` CLI sessions, their IDE extensions after a reload, and the Codex desktop app after a restart; it does not reach the Claude Desktop app, which keeps its own session — Sidekick warns about each case. See the [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/) guide.
+In VS Code, the **Accounts** view in the Agent Hub sidebar and the status bar badge show every saved account with its health; switch, sign in again, open a terminal as an account, or undo from there. Switching reaches new `claude` sessions and the Claude Code extension after a window reload; it does not reach the Claude Desktop app, which keeps its own session, and Sidekick warns about running Claude apps. A Codex switch waits until every Codex CLI, app, and IDE session is closed (`--force` does not override this); they pick up the new login when they start again. Every login has exactly one usable copy — the rest are private backups neither CLI reads. See the [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/) guide.
 
 ## Provider Support
 

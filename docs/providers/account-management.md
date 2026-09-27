@@ -151,6 +151,47 @@ Every directory Sidekick writes a Claude credential into, or points a login at, 
 stores whose ownership is proven that way, never by name pattern; `repairClaudeCredentialStores({ dryRun: false })`
 fixes them (dry run by default). `sidekick accounts doctor [--fix]` is the CLI front end.
 
+## One Copy per Codex Login (0.27.6)
+
+The live account has no account credential in its profile home. Private backups are byte-preserved, verified,
+mode `0600`, and stored under `accounts/codex/backups/<id>.auth.json` (recognized legacy account credentials
+use `<id>.credentials.json`). No CLI runs in this backup directory. `readStoredCodexAccount(id)` reads the
+freshest saved credential without materializing it. `getAccountLaunchEnv` uses the live home for the live
+account, and can restore an inactive account's backup for an explicit launch.
+
+Every live write uses the shared guard policy and one Codex installer. Switches capture and verify the outgoing
+login, verify the target backup, journal the transfer, recheck the live snapshot, remove the target's usable
+copy, install and verify live, and commit the registry. Only then does the outgoing account get its inactive
+copy. `report.codex.demoted`, `repaired`, and `journal` describe migration and recovery, just as for Claude.
+Codex freshness uses `last_refresh`, then access-token expiry; filesystem mtime never authorizes a live write.
+Unknown or tied evidence cannot authorize replacing the same login. Rollback requires an exact snapshot match.
+
+Codex's refresh semaphore is process-local. Live writes are blocked while Codex CLI/app/IDE consumers are
+detected or process discovery fails. `force` bypasses only credential health. No process probe can exclude a
+new external writer starting after the probe; callers must close Codex consumers before changing live auth.
+
+`getCodexCredentialStoreMode()` rejects `keyring`, `auto` (even with an old auth file), `ephemeral`, and unreadable
+configuration for account operations. An absent setting follows Codex's file default. Profile homes force file
+mode. Modern `.credentials.json` may hold MCP credentials; Sidekick preserves those and handles only recognized
+legacy account payloads. A legacy install that would overwrite unrelated data is refused.
+
+Explicit `beginAccountLogin('codex', ...)` never imports live credentials. Temporary login homes live under
+`accounts/codex/logins/<loginId>/`; the returned `configDir`/`codexHome` is the path the host should use. Stop the
+login process before calling finalize or discard. The shared spawn helper and VS Code runner do this themselves.
+Finalization transfers the login into private/canonical storage and removes its temporary home. If activation
+is blocked (for example while Codex apps run), the result has `success: false`, `profileId` set, and an error
+starting "The login was saved, but could not be activated"; the login is saved and the live account is
+unchanged. Hosts that must not fail there can finalize with `activate: false` and switch later.
+`prepareCodexAccount(label)` retains current-login import behavior; pass `{ importCurrent: false }` for a fresh
+isolated sign-in. Authenticated abandoned homes with unknown identities are reported for manual review.
+
+### Doctor
+
+`inspectCodexCredentialStores()` reports live duplicates, old stash credentials, abandoned homes, unreadable
+stores, and interrupted switches. `repairCodexCredentialStores()` is a dry run by default; pass `{ dryRun: false }`
+to repair proven Sidekick-owned stores after stopping Codex. Unknown or unreadable credentials are preserved.
+`sidekick accounts doctor [--provider codex]` is read-only; `--fix` uses the existing confirmation/`--yes` flow.
+
 ## Switch Result and Undo (0.26.6)
 
 `switchAccount[Async]` returns a `SwitchAccountResult` (a superset of `AccountManagerResult`, so existing
@@ -183,14 +224,18 @@ const launch = getAccountLaunchEnv('codex', id); // { env: { CODEX_HOME }, envUn
 
 The env points a child `claude`/`codex` at the profile home without touching the live login. `envUnset` lists
 variables the host must remove from the child (`CLAUDE_SECURESTORAGE_CONFIG_DIR` overrides Claude Code's
-keychain naming). The helper refuses `expired`/`missing` profiles. For either provider account that is live it
-returns the live home instead (`envUnset` includes `CLAUDE_CONFIG_DIR`), because a session in its profile home
-would be a second copy of the live login. An inactive profile whose home has no credential is restored from its
-backup first, with a warning; pass `restoreBackup: false` to skip that (keep-alive does).
+keychain naming). The helper refuses `expired`/`missing` profiles. For the live account it returns the live home instead, because
+a session in its profile home would be a second copy of the live login: Codex gets `CODEX_HOME` set to the live
+home, and Claude drops `CLAUDE_CONFIG_DIR` (listed in `envUnset`) when the live home is the default one. An
+inactive Claude profile whose home has no credential is restored from its backup first, with a warning; an
+inactive Codex profile is restored silently, and the launch is refused when its profile copy is older than its
+backup or no safe credential exists. Pass `restoreBackup: false` to skip restoring (keep-alive does). Codex
+launches require file-mode credential storage.
 
-## Keep-Alive
+## Keep-Alive (0.26.6)
 
-`refreshInactiveAccounts()` refreshes eligible inactive accounts through the official CLI. Claude uses
+`refreshInactiveAccounts()` refreshes eligible inactive accounts through the official CLI. As of 0.27.6 the
+Codex refresh goes through `codex app-server` and both providers take a lease, as described below. Claude uses
 `claude auth status`. Codex uses a bounded stdio `codex app-server` session: `initialize`, `initialized`,
 then `account/read` with `refreshToken: true`. It starts no inference turn. `codex login status` only reads
 ChatGPT login state and cannot serve as keep-alive.
@@ -204,43 +249,6 @@ an RPC response or exit code alone is insufficient. Unsupported CLI versions rec
 Hosts continue to use the existing `runner` injection signature. `keepAliveCommand('codex')` now describes
 an app-server process; the default runner implements its stdio protocol. Custom runners must implement that
 protocol or provide an equivalent test double, rather than merely spawn the command and wait.
-
-## Codex Credential Storage and Recovery
-
-The live account has no account credential in its profile home. Private backups are byte-preserved, verified,
-mode `0600`, and stored under `accounts/codex/backups/<id>.auth.json` (recognized legacy account credentials
-use `<id>.credentials.json`). No CLI runs in this backup directory. `readStoredCodexAccount(id)` reads the
-freshest saved credential without materializing it. `getAccountLaunchEnv` uses the live home for the live
-account, and can restore an inactive account's backup for an explicit launch.
-
-Every live write uses the shared guard policy and one Codex installer. Switches capture and verify the outgoing
-login, verify the target backup, journal the transfer, recheck the live snapshot, remove the target's usable
-copy, install and verify live, and commit the registry. Only then does the outgoing account get its inactive
-copy. `report.codex.demoted`, `repaired`, and `journal` describe migration and recovery, just as for Claude.
-Codex freshness uses `last_refresh`, then access-token expiry; filesystem mtime never authorizes a live write.
-Unknown or tied evidence cannot authorize replacing the same login. Rollback requires an exact snapshot match.
-
-Codex's refresh semaphore is process-local. Live writes are blocked while Codex CLI/app/IDE consumers are
-detected or process discovery fails. `force` bypasses only credential health. No process probe can exclude a
-new external writer starting after the probe; callers must close Codex consumers before changing live auth.
-
-`getCodexCredentialStoreMode()` rejects `keyring`, `auto` (even with an old auth file), `ephemeral`, and unreadable
-configuration for account operations. An absent setting follows Codex's file default. Profile homes force file
-mode. Modern `.credentials.json` may hold MCP credentials; Sidekick preserves those and handles only recognized
-legacy account payloads. A legacy install that would overwrite unrelated data is refused.
-
-Explicit `beginAccountLogin('codex', ...)` never imports live credentials. Temporary login homes live under
-`accounts/codex/logins/<loginId>/`; the returned `configDir`/`codexHome` is the path the host should use. Stop the
-login process before calling finalize or discard. The shared spawn helper and VS Code runner do this themselves.
-Finalization transfers the login into private/canonical storage and removes its temporary home. If activation
-is blocked, the result reports that the login was saved and the live account remains unchanged.
-`prepareCodexAccount(label)` retains current-login import behavior; pass `{ importCurrent: false }` for a fresh
-isolated sign-in. Authenticated abandoned homes with unknown identities are reported for manual review.
-
-`inspectCodexCredentialStores()` reports live duplicates, old stash credentials, abandoned homes, unreadable
-stores, and interrupted switches. `repairCodexCredentialStores()` is a dry run by default; pass `{ dryRun: false }`
-to repair proven Sidekick-owned stores after stopping Codex. Unknown or unreadable credentials are preserved.
-`sidekick accounts doctor [--provider codex]` is read-only; `--fix` uses the existing confirmation/`--yes` flow.
 
 ## Windows Notes
 

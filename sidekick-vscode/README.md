@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.27.6: one usable copy of every login** — Sidekick no longer causes Claude Code's "Not logged in · Please run /login". Keychain writes over about 4 KB are no longer truncated and every write is read back, the live account keeps no second copy in its profile, switches save the outgoing login first and never overwrite a newer one, and keep-alive never refreshes a live login. Codex gets the same protection: verified private backups, switches (including automatic ones) that wait until Codex sessions are closed, and keep-alive through `codex app-server`. **Open Terminal as Account** on the live account uses the normal home, and a cancelled, timed-out, or interrupted sign-in closes its terminal and removes the temporary login home.
 - **0.27.3: accurate session tokens with subagents** — token totals and costs no longer double-count Claude Code split lines or repeated Codex `token_count` events, and model rows count one call per response. The dashboard's Tokens metric shows "Session total (incl. subagents)" with the main thread's breakdown (in · cache read · cache write · out) and the subagents' total. The Subagents tree shows cache-inclusive totals and finds Codex spawned subagents again, the status-bar tooltip lists every token bucket, the HTML session report includes subagents, and `state.json` gains `context.totalTokens`. History recorded before 0.27.3 keeps its stored totals.
 - **0.27.0: Opus 5.5 and GPT-6 Astra** — the `powerful` tier now resolves to Claude Opus 5.5 (`claude-opus-5-5`; `anthropic/claude-opus-5-5` on OpenCode) and the Codex tiers move to GPT-6 (`gpt-6-luna` / `gpt-6-sol` / `gpt-6-astra`), while Claude Max still passes `opus`. Opus 5.5 costs use its own rates, and dashboard labels show `Opus 5.5` / `Fable 5.1` instead of dropping the minor version.
 - **0.26.6: verified account switching** — an **Accounts** sidebar view and an always-visible status bar badge show every saved Claude Code and Codex account with credential health; the grouped quick pick (`Ctrl+K Ctrl+Shift+A`) switches, adds, signs in again, opens a terminal as an account, or undoes. Logins made natively are registered automatically, each switch is verified and reported in one notification with **Undo**, **Details**, and **Reload Window**, and the opt-in `sidekick.accounts.keepAlive` refreshes inactive accounts through the official CLIs. Account commands no longer depend on the inference provider setting.
@@ -159,64 +160,64 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 
-| Setting                                           | Default        | Description                                                                                                                  |
-| ------------------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `sidekick.inferenceProvider`                      | `auto`         | Provider: `auto`, `claude-max`, `claude-api`, `opencode`, `codex`                                                            |
-| `sidekick.sessionProvider`                        | `auto`         | Session monitor: `auto`, `claude-code`, `opencode`, `codex`                                                                  |
-| `sidekick.inlineModel`                            | `auto`         | Model for completions (fast tier)                                                                                            |
-| `sidekick.transformModel`                         | `auto`         | Model for transforms (powerful tier)                                                                                         |
-| `sidekick.debounceMs`                             | `1000`         | Completion delay (ms)                                                                                                        |
-| `sidekick.commitMessageStyle`                     | `conventional` | Commit format: `conventional` or `simple`                                                                                    |
-| `sidekick.enableSessionMonitoring`                | `true`         | Enable agent session monitoring                                                                                              |
-| `sidekick.accounts.keepAlive`                     | `false`        | Refresh saved-but-inactive accounts through the official CLIs after activation and every six hours                           |
-| `sidekick.accounts.autoSwitchThreshold`           | `0`            | Quota utilization percentage that triggers an automatic switch to a healthier saved account (`0` disables)                   |
-| `sidekick.notifications.tokenThreshold`           | `5000000`      | Cache-inclusive session token total that triggers the high-usage warning                                                     |
-| `sidekick.notifications.triggers.quota-threshold` | `true`         | Alert when quota crosses `quotaFiveHourThresholds` (`[80, 95]`) or `quotaSevenDayThresholds` (`[90]`)                        |
-| `sidekick.claudePath`                             | `""`           | Full path to the `claude` CLI when it is not on PATH                                                                         |
-| `sidekick.autoHandoff`                            | `off`          | Session handoff: `off`, `generate-only`, `generate-and-notify`                                                               |
-| `sidekick.handoffUrlTemplate`                     | `""`           | External handoff URL template; placeholders `{sessionId}`, `{provider}`, `{projectPath}` — no transcript content is included |
-| `sidekick.pricing.hydrateFromLiteLLM`             | `true`         | Fetch model prices and context window sizes from LiteLLM on activation                                                       |
-| `sidekick.pricing.cacheTtlHours`                  | `24`           | LiteLLM catalog cache lifetime (hours)                                                                                       |
-| `sidekick.peakHours.enabled`                      | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only)                                           |
-| `sidekick.peakHours.notifyOnTransition`           | `false`        | One-time toast when peak hours start or end (opt-in)                                                                         |
+| Setting                                           | Default        | Description                                                                                                                                                     |
+| ------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidekick.inferenceProvider`                      | `auto`         | Provider: `auto`, `claude-max`, `claude-api`, `opencode`, `codex`                                                                                               |
+| `sidekick.sessionProvider`                        | `auto`         | Session monitor: `auto`, `claude-code`, `opencode`, `codex`                                                                                                     |
+| `sidekick.inlineModel`                            | `auto`         | Model for completions (fast tier)                                                                                                                               |
+| `sidekick.transformModel`                         | `auto`         | Model for transforms (powerful tier)                                                                                                                            |
+| `sidekick.debounceMs`                             | `1000`         | Completion delay (ms)                                                                                                                                           |
+| `sidekick.commitMessageStyle`                     | `conventional` | Commit format: `conventional` or `simple`                                                                                                                       |
+| `sidekick.enableSessionMonitoring`                | `true`         | Enable agent session monitoring                                                                                                                                 |
+| `sidekick.accounts.keepAlive`                     | `false`        | Refresh saved-but-inactive accounts through the official CLIs after activation and every six hours                                                              |
+| `sidekick.accounts.autoSwitchThreshold`           | `0`            | Quota utilization percentage that triggers an automatic switch to a healthier saved account (`0` disables); Codex switches wait until Codex sessions are closed |
+| `sidekick.notifications.tokenThreshold`           | `5000000`      | Cache-inclusive session token total that triggers the high-usage warning                                                                                        |
+| `sidekick.notifications.triggers.quota-threshold` | `true`         | Alert when quota crosses `quotaFiveHourThresholds` (`[80, 95]`) or `quotaSevenDayThresholds` (`[90]`)                                                           |
+| `sidekick.claudePath`                             | `""`           | Full path to the `claude` CLI when it is not on PATH                                                                                                            |
+| `sidekick.autoHandoff`                            | `off`          | Session handoff: `off`, `generate-only`, `generate-and-notify`                                                                                                  |
+| `sidekick.handoffUrlTemplate`                     | `""`           | External handoff URL template; placeholders `{sessionId}`, `{provider}`, `{projectPath}` — no transcript content is included                                    |
+| `sidekick.pricing.hydrateFromLiteLLM`             | `true`         | Fetch model prices and context window sizes from LiteLLM on activation                                                                                          |
+| `sidekick.pricing.cacheTtlHours`                  | `24`           | LiteLLM catalog cache lifetime (hours)                                                                                                                          |
+| `sidekick.peakHours.enabled`                      | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (Claude Max only)                                                                              |
+| `sidekick.peakHours.notifyOnTransition`           | `false`        | One-time toast when peak hours start or end (opt-in)                                                                                                            |
 
 Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — **Claude Opus 5.5** (`powerful`), **Sonnet 5** (`balanced`), and **Haiku 4.5** (`fast`) on Anthropic providers, and **GPT-6 Astra** (`powerful`), **GPT-6 Sol** (`balanced`), and **GPT-6 Luna** (`fast`) on Codex — with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
 ## Commands
 
-| Command                       | Keybinding            | Description                                                                                                   |
-| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Toggle Inline Completions     | —                     | Enable/disable inline completions                                                                             |
-| Trigger Completion            | `Ctrl+Shift+Space`    | Manually request completion                                                                                   |
-| Transform Selected Code       | `Ctrl+Shift+M`        | Transform selected code                                                                                       |
-| Quick Ask (Inline Chat)       | `Ctrl+K Ctrl+A`       | Inline chat                                                                                                   |
-| Generate Documentation        | `Ctrl+K Ctrl+G`       | Generate documentation                                                                                        |
-| Explain Selected Code         | `Ctrl+K Ctrl+E`       | Explain selected code (five detail levels in the editor context menu)                                         |
-| Generate Commit Message       | SCM sparkle icon      | AI commit message                                                                                             |
-| Review My Changes             | SCM eye icon          | Pre-commit review                                                                                             |
-| Generate PR Description       | SCM PR icon           | Auto-generate PR description                                                                                  |
-| Set API Key                   | —                     | Store the Claude API key for the `claude-api` provider                                                        |
-| Test Connection               | —                     | Check local CLI readiness or an authenticated request for the current provider                                |
-| Switch Inference Provider     | —                     | Change inference provider                                                                                     |
-| Show Menu                     | Status bar item       | Quick pick of every Sidekick command                                                                          |
-| Switch Account…               | `Ctrl+K Ctrl+Shift+A` | Grouped quick pick of every saved account with health; also Add, Open Terminal, Sign In Again, Undo           |
-| Add Account…                  | —                     | Sign in to another account in an isolated profile via the integrated terminal; the current login is untouched |
-| Sign In Again                 | Accounts view         | Re-authenticate an expired saved account in place, keeping its label and id                                   |
-| Open Terminal as Account      | Accounts view         | Start a terminal whose `claude` / `codex` use a saved account without switching the live login                |
-| Undo Last Account Switch      | —                     | Revert the most recent switch                                                                                 |
-| Register Current Login        | —                     | Save (or relabel) the account you are signed in to right now                                                  |
-| Remove Account                | —                     | Remove a saved account and its credentials                                                                    |
-| Open Session Dashboard        | —                     | Open session analytics                                                                                        |
-| Extract Session Assets        | —                     | Pick URLs, file paths, commands, or plans from recent sessions                                                |
-| Search Across Sessions        | —                     | Full-text search over every session                                                                           |
-| View Session Conversation     | —                     | Read the current session's transcript with search                                                             |
-| Dump Session Report           | —                     | Export session data as text/markdown/JSON/HTML                                                                |
-| Generate HTML Report          | —                     | Full transcript report in a webview panel                                                                     |
-| Install Statusline            | —                     | Wire `sidekick statusline` into Claude Code's status line                                                     |
-| Uninstall Statusline          | —                     | Restore the previous Claude Code `statusLine` block                                                           |
-| Run Doctor                    | —                     | Cross-provider health diagnostics; focuses the Health tab                                                     |
-| Open External Session Handoff | —                     | Open the configured handoff URL for the active session                                                        |
-| Browse Session Folders...     | —                     | Select session folder to monitor                                                                              |
+| Command                       | Keybinding            | Description                                                                                                                                |
+| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Toggle Inline Completions     | —                     | Enable/disable inline completions                                                                                                          |
+| Trigger Completion            | `Ctrl+Shift+Space`    | Manually request completion                                                                                                                |
+| Transform Selected Code       | `Ctrl+Shift+M`        | Transform selected code                                                                                                                    |
+| Quick Ask (Inline Chat)       | `Ctrl+K Ctrl+A`       | Inline chat                                                                                                                                |
+| Generate Documentation        | `Ctrl+K Ctrl+G`       | Generate documentation                                                                                                                     |
+| Explain Selected Code         | `Ctrl+K Ctrl+E`       | Explain selected code (five detail levels in the editor context menu)                                                                      |
+| Generate Commit Message       | SCM sparkle icon      | AI commit message                                                                                                                          |
+| Review My Changes             | SCM eye icon          | Pre-commit review                                                                                                                          |
+| Generate PR Description       | SCM PR icon           | Auto-generate PR description                                                                                                               |
+| Set API Key                   | —                     | Store the Claude API key for the `claude-api` provider                                                                                     |
+| Test Connection               | —                     | Check local CLI readiness or an authenticated request for the current provider                                                             |
+| Switch Inference Provider     | —                     | Change inference provider                                                                                                                  |
+| Show Menu                     | Status bar item       | Quick pick of every Sidekick command                                                                                                       |
+| Switch Account…               | `Ctrl+K Ctrl+Shift+A` | Grouped quick pick of every saved account with health; also Add, Open Terminal, Sign In Again, Undo                                        |
+| Add Account…                  | —                     | Sign in to another account in an isolated profile via the integrated terminal; the current login is untouched                              |
+| Sign In Again                 | Accounts view         | Re-authenticate an expired saved account in place, keeping its label and id                                                                |
+| Open Terminal as Account      | Accounts view         | Start a terminal whose `claude` / `codex` use a saved account without switching the live login (the live account opens in the normal home) |
+| Undo Last Account Switch      | —                     | Revert the most recent switch                                                                                                              |
+| Register Current Login        | —                     | Save the account you are signed in to right now                                                                                            |
+| Remove Account                | —                     | Remove a saved account and its credentials                                                                                                 |
+| Open Session Dashboard        | —                     | Open session analytics                                                                                                                     |
+| Extract Session Assets        | —                     | Pick URLs, file paths, commands, or plans from recent sessions                                                                             |
+| Search Across Sessions        | —                     | Full-text search over every session                                                                                                        |
+| View Session Conversation     | —                     | Read the current session's transcript with search                                                                                          |
+| Dump Session Report           | —                     | Export session data as text/markdown/JSON/HTML                                                                                             |
+| Generate HTML Report          | —                     | Full transcript report in a webview panel                                                                                                  |
+| Install Statusline            | —                     | Wire `sidekick statusline` into Claude Code's status line                                                                                  |
+| Uninstall Statusline          | —                     | Restore the previous Claude Code `statusLine` block                                                                                        |
+| Run Doctor                    | —                     | Cross-provider health diagnostics; focuses the Health tab                                                                                  |
+| Open External Session Handoff | —                     | Open the configured handoff URL for the active session                                                                                     |
+| Browse Session Folders...     | —                     | Select session folder to monitor                                                                                                           |
 
 Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS. Transform and Explain require a selection. Requires VS Code 1.85 or later.
 

@@ -227,7 +227,7 @@ export function registerAccountsCommand(program: Command): void {
     .option('--provider <id>', 'claude-code or codex')
     .option(
       '--fix',
-      'Delete stored credentials Sidekick owns that no account uses (asks first; dry run without it)',
+      'Repair stored credentials Sidekick owns: unused, duplicate, or unreadable copies and interrupted switches (asks first; read-only without it)',
     )
     .option('-y, --yes', 'With --fix: skip the confirmation prompt')
     .action(async (opts: Record<string, unknown>, cmd: Command) =>

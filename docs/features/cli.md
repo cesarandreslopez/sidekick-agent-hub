@@ -645,20 +645,20 @@ sidekick accounts [command]
 
 Manage Claude Code and Codex accounts: list, add, switch, and run parallel sessions. Sidekick registers the logins you are already using automatically; `add` signs in to another account in an isolated profile. See the [Account Switcher](account-switcher.md) guide for the full walkthrough, health states, and platform notes.
 
-| Command                                          | Description                                                                                                                               |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `sidekick accounts`                              | Interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo). Prints the list when piped  |
-| `accounts list`                                  | Saved accounts with health and expiry                                                                                                     |
-| `accounts add [--label <name>] [--current] [-y]` | Sign in to a new account in an isolated profile; `--current` registers or relabels the live login                                         |
-| `accounts switch <name> \| --next [--force]`     | Make an account active (label, email, id, or unique prefix); `--force` ignores an expired health verdict                                  |
-| `accounts login <name>`                          | Sign in again to an existing (expired) account, keeping its id and label                                                                  |
-| `accounts remove <name> [-y]`                    | Delete a saved account and its credentials (prompts unless `--yes`; required for `--json`/non-TTY)                                        |
-| `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                          |
-| `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                           |
-| `accounts undo`                                  | Revert the last switch                                                                                                                    |
-| `accounts doctor [--fix [-y]]`                   | Credential expiry, stored credential copies, running apps, Codex credential store, keep-alive; `--fix` deletes owned unused copies (asks) |
-| `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold                                                                                                   |
-| `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                           |
+| Command                                          | Description                                                                                                                                                                                                                |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidekick accounts`                              | Interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo). Prints the list when piped                                                                                   |
+| `accounts list`                                  | Saved accounts with health and expiry                                                                                                                                                                                      |
+| `accounts add [--label <name>] [--current] [-y]` | Sign in to a new account in an isolated profile; `--current` registers or relabels the live login                                                                                                                          |
+| `accounts switch <name> \| --next [--force]`     | Make an account active (label, email, id, or unique prefix); `--force` ignores an expired health verdict                                                                                                                   |
+| `accounts login <name>`                          | Sign in again to an existing (expired) account, keeping its id and label                                                                                                                                                   |
+| `accounts remove <name> [-y]`                    | Delete a saved account and its credentials (prompts unless `--yes`; required for `--json`/non-TTY)                                                                                                                         |
+| `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                                                                                                           |
+| `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                                                                                                            |
+| `accounts undo`                                  | Revert the last switch                                                                                                                                                                                                     |
+| `accounts doctor [--fix [-y]]`                   | Read-only check of credential expiry, stored Claude and Codex credentials, running apps, the Codex credential store, and keep-alive; `--fix` repairs owned copies after asking (`-y` skips; required for `--json`/non-TTY) |
+| `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold                                                                                                                                                                                    |
+| `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                                                                                                            |
 
 All subcommands accept `--provider claude-code|codex|all` and the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command.
 
@@ -937,17 +937,20 @@ Press `f` to toggle session filtering, which limits the side list to items from 
 
 The CLI reads from the same `~/.config/sidekick/` directory as the VS Code extension. `SIDEKICK_CONFIG_DIR` overrides that root for both the CLI and the extension (extension support since 0.24.5), so the paths below are defaults rather than fixed locations:
 
-| File                                      | Contents                                                                              |
-| ----------------------------------------- | ------------------------------------------------------------------------------------- |
-| `historical-data.json`                    | Token/cost/tool usage statistics                                                      |
-| `tasks/{projectSlug}.json`                | Kanban board task data                                                                |
-| `decisions/{projectSlug}.json`            | Decision log entries                                                                  |
-| `accounts/accounts.json`                  | Multi-provider account registry (v2)                                                  |
-| `accounts/credentials/*.credentials.json` | Backed-up OAuth credentials per Claude account                                        |
-| `accounts/configs/*.config.json`          | Backed-up account identity per Claude account                                         |
-| `accounts/codex/profiles/*/codex-home/`   | Backed-up credentials per Codex profile (swapped into `~/.codex/auth.json` on switch) |
-| `quota-snapshots.json`                    | Cached rate-limit snapshots per provider/account                                      |
-| `error-history.json`                      | Categorized per-session error rollups for post-mortem forensics                       |
+| File                                          | Contents                                                                                  |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `historical-data.json`                        | Token/cost/tool usage statistics                                                          |
+| `tasks/{projectSlug}.json`                    | Kanban board task data                                                                    |
+| `decisions/{projectSlug}.json`                | Decision log entries                                                                      |
+| `accounts/accounts.json`                      | Multi-provider account registry (v2)                                                      |
+| `accounts/credentials/*.credentials.json`     | Backed-up OAuth credentials per Claude account                                            |
+| `accounts/configs/*.config.json`              | Backed-up account identity per Claude account                                             |
+| `accounts/codex/profiles/*/codex-home/`       | Usable credentials of inactive Codex accounts (the live account keeps none)               |
+| `accounts/codex/backups/<id>.auth.json`       | Private byte-preserved backup per Codex account (never used by `codex`)                   |
+| `accounts/claude/credential-homes.json`       | Ledger of every directory Sidekick put a Claude credential in (read by `accounts doctor`) |
+| `accounts/{claude,codex}/switch-journal.json` | Present only while a switch is in flight; the next sync finishes or rolls it back         |
+| `quota-snapshots.json`                        | Cached rate-limit snapshots per provider/account                                          |
+| `error-history.json`                          | Categorized per-session error rollups for post-mortem forensics                           |
 
 Any data written by the VS Code extension is visible in the CLI, and vice versa. One-shot commands read the files fresh on every run; the dashboard re-reads persisted project data every 15 seconds, or immediately when you press `R`.
 

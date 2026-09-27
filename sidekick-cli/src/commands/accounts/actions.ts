@@ -809,9 +809,10 @@ const STATUS_GLYPH: Record<AccountCheck['status'], string> = {
 };
 
 /**
- * `--fix`: delete the stored credentials Sidekick owns that no account uses
- * (and remove a second copy of the live login). Ownership is proven by the
- * ledger, the item's Sidekick tag, or the profile directory, never by name.
+ * `--fix`: repair the Claude and Codex credential stores Sidekick owns —
+ * unused copies, a second copy of the live login, unreadable credentials, and
+ * interrupted Codex switches. Claude ownership is proven by the ledger, the
+ * item's Sidekick tag, or the profile directory, never by name.
  * Returns false when the user declined or confirmation was impossible.
  */
 type CredentialRepairOutcome =
