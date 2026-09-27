@@ -55,6 +55,8 @@ import { getCodexProfileHome, getCodexProfilesDir, getCodexBackupPath } from './
 import { readHealthSidecar } from './accountHealth';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import { claudeRefreshFingerprint } from './claudeCredentials';
+import { applyClaudeProfileToLiveHome } from './accounts';
+import { inspectClaudeCredentialStores } from './claudeCredentialDoctor';
 import { syncReportSchema } from './schemas/accountManager';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -240,6 +242,38 @@ describe('accountSync', () => {
     expect(report.claude.folded).toBe('uuid-a');
     expect(readBackupClaudeCreds('uuid-a')?.claudeAiOauth.accessToken).toBe('tok-rotated');
     expect(readProfileClaudeCreds('uuid-a')).toBeNull();
+  });
+
+  it('leaves a profile home alone when CLAUDE_CONFIG_DIR points at it (accounts env / shell)', () => {
+    registerClaude(['uuid-a', 'uuid-w'], 'uuid-a');
+    writeLiveClaude('uuid-a', 'a@example.com', 'tok-live', NOW + 5 * HOUR);
+    writeProfileClaude('uuid-w', 'uuid-w@example.com', {
+      accessToken: 'tok-work',
+      refreshToken: 'r-tok-work',
+      expiresAt: NOW + 5 * HOUR,
+    });
+    const previous = process.env.CLAUDE_CONFIG_DIR;
+    // A shell that eval'd `sidekick accounts env work`: work's profile home
+    // reads as the live home, but it is work's only usable copy.
+    process.env.CLAUDE_CONFIG_DIR = getClaudeProfileHome('uuid-w');
+    try {
+      const report = syncLiveAccountStateSync({ reason: 'manual', now: NOW });
+      expect(report.claude.skipped).toBe('managed-home');
+      expect(report.claude.demoted).toBeUndefined();
+      expect(report.claude.repointed).toBeUndefined();
+
+      const relogin = applyClaudeProfileToLiveHome('uuid-w');
+      expect(relogin.success).toBe(false);
+
+      const { findings } = inspectClaudeCredentialStores({ listKeychainItems: () => [] });
+      expect(findings.filter((f) => f.kind === 'live-duplicate')).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = previous;
+    }
+    expect(readProfileClaudeCreds('uuid-w')?.claudeAiOauth.accessToken).toBe('tok-work');
+    expect(readLiveClaudeCreds()?.claudeAiOauth.accessToken).toBe('tok-live');
+    expect(getActiveSavedAccount('claude-code')?.id).toBe('uuid-a');
   });
 
   it('demotes an older or same-link copy of the live login without touching live', () => {

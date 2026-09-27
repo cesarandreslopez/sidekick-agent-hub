@@ -29,6 +29,7 @@ import {
   getClaudeProfileDir,
   getClaudeProfileHome,
   getClaudeProfilesDir,
+  isLiveClaudeHomeSidekickProfile,
   readLiveClaudeIdentity,
 } from './claudeProfiles';
 import { forgetClaudeCredentialHome, readClaudeCredentialLedger } from './claudeCredentialLedger';
@@ -210,7 +211,11 @@ export function inspectClaudeCredentialStores(
       profile,
     );
   }
-  const liveUuid = readLiveClaudeIdentity()?.uuid ?? null;
+  // Inside a profile-home shell the "live" identity is that profile's own; its
+  // store is not a duplicate of anything.
+  const liveUuid = isLiveClaudeHomeSidekickProfile()
+    ? null
+    : (readLiveClaudeIdentity()?.uuid ?? null);
   const findings: ClaudeCredentialFinding[] = [];
   const homes = collectOwnedHomes(keychainItems);
 

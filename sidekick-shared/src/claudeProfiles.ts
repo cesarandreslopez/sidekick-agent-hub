@@ -44,6 +44,19 @@ export function getClaudeProfilesDir(): string {
   return path.join(getAccountsDir(), 'claude', 'profiles');
 }
 
+/**
+ * True when the live home is one of sidekick's own profile homes: a shell
+ * that eval'd `sidekick accounts env` or runs inside `sidekick accounts shell`.
+ * That profile's store then reads as the live store, so sync, re-login, and
+ * switching must not treat it as live: they would delete the shell's only
+ * usable copy and re-point the active account at it.
+ */
+export function isLiveClaudeHomeSidekickProfile(): boolean {
+  const liveHome = path.resolve(getLiveClaudeHome());
+  const profilesDir = path.resolve(getClaudeProfilesDir());
+  return liveHome === profilesDir || liveHome.startsWith(profilesDir + path.sep);
+}
+
 export function getClaudeProfileDir(uuid: string): string {
   return path.join(getClaudeProfilesDir(), uuid);
 }

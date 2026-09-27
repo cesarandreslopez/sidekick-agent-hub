@@ -51,6 +51,7 @@ import {
   getClaudeProfilesDir,
   getLiveClaudeHome,
   isClaudeProfileAuthenticated,
+  isLiveClaudeHomeSidekickProfile,
   readLiveClaudeIdentity,
 } from './claudeProfiles';
 import {
@@ -659,6 +660,13 @@ export function syncClaudeLiveStateUnlocked(
   source: AccountHealthSource = 'live-sync',
 ): ProviderSyncReport {
   const report = emptyProviderSyncReport();
+  if (isLiveClaudeHomeSidekickProfile()) {
+    report.skipped = 'managed-home';
+    report.warnings.push(
+      'Unset CLAUDE_CONFIG_DIR before syncing; it points at a sidekick profile home.',
+    );
+    return report;
+  }
   try {
     resolveSwitchJournalUnlocked(report);
 
@@ -977,13 +985,11 @@ function switchToAccountUnlocked(
 
   // Refuse to treat one of our own profile homes as the live home: a shell
   // that eval'd `sidekick accounts env` would otherwise overwrite that profile.
-  const liveHome = path.resolve(getLiveClaudeHome());
-  const profilesDir = path.resolve(getClaudeProfilesDir());
-  if (liveHome === profilesDir || liveHome.startsWith(profilesDir + path.sep)) {
+  if (isLiveClaudeHomeSidekickProfile()) {
     return switchFailure(
       'claude-code',
       uuid,
-      `CLAUDE_CONFIG_DIR points at a sidekick profile home (${liveHome}); unset it before switching accounts.`,
+      `CLAUDE_CONFIG_DIR points at a sidekick profile home (${path.resolve(getLiveClaudeHome())}); unset it before switching accounts.`,
     );
   }
 
@@ -1322,6 +1328,12 @@ function installSwitchTargetUnlocked(
  * when live is already at least as new, nothing is written.
  */
 export function applyClaudeProfileToLiveHome(uuid: string): AccountManagerResult {
+  if (isLiveClaudeHomeSidekickProfile()) {
+    return {
+      success: false,
+      error: `CLAUDE_CONFIG_DIR points at a sidekick profile home (${path.resolve(getLiveClaudeHome())}); the login was saved, but unset it before making the account live.`,
+    };
+  }
   try {
     return withClaudeAuthSwapLock(() => {
       const stored = readStoredClaudeAccount(uuid);
