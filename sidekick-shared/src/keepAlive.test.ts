@@ -160,7 +160,10 @@ describe('refreshInactiveAccounts', () => {
     expect(dry.skipped.find((s) => s.id === 'stale')?.reason).toMatch(
       /dry run: would run claude auth status/,
     );
-    expect(keepAliveCommand('codex')).toEqual({ command: 'codex', args: ['login', 'status'] });
+    expect(keepAliveCommand('codex')).toEqual({
+      command: 'codex',
+      args: ['app-server', '-c', 'cli_auth_credentials_store="file"'],
+    });
   });
 
   describe('never refreshes a copy of the live chain (I3)', () => {

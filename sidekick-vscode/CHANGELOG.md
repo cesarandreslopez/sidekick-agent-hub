@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Codex account switching uses verified private backups and refuses while Codex consumers are running. Live-account terminals use the live home; keep-alive uses guarded app-server refresh. Codex sign-in terminals close before finalization, and temporary homes are discarded on success, failure, cancellation, and timeout.
 - **Claude logins are no longer invalidated by Sidekick** (bundled `sidekick-shared`). Claude Code rotates the refresh token on every refresh, so every usable copy of a login but one dies with "Not logged in · Please run /login"; Sidekick now keeps exactly one.
   - Keychain writes larger than about 4 KB (several MCP servers with OAuth tokens) are no longer truncated into an unreadable credential, and every write is read back before it counts.
   - The live account no longer keeps a second usable copy in its profile directory; a leftover copy is removed on the next sync (and installed first when it is newer than live).

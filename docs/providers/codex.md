@@ -39,17 +39,35 @@ Codex reports several rate-limit families per session, keyed by `limit_id`: the 
 
 ## Account Management
 
-Sidekick supports multiple Codex accounts with isolated profiles — each profile keeps a backup of its credentials, and switching accounts swaps the active profile's credentials into `~/.codex/auth.json`.
+Sidekick saves multiple Codex logins while keeping the live account's only usable credential in the resolved
+live home (`CODEX_HOME` or `~/.codex`). Its profile contains metadata; a verified private backup lives under
+Sidekick's config root at `accounts/codex/backups/<id>.auth.json`. Inactive accounts can use their own profile homes.
 
 ### How It Works
 
-Each Codex profile stores backed-up credentials in `~/.config/sidekick/accounts/codex/profiles/{profileId}/codex-home/`. When you switch profiles, Sidekick first syncs the live (rotated) tokens from `~/.codex/auth.json` back into the matching profile backup, then atomically swaps the target profile's `auth.json` into the system `~/.codex/` home — the same pattern used for Claude Code account switching. The Codex CLI always runs against `~/.codex/`, so every codex terminal picks up the switch, not just the ones Sidekick launches.
+A switch verifies outgoing and target backups, journals the transfer, removes the target's profile credential,
+installs and verifies the target in the live home, then gives the outgoing account its inactive copy. A rollback
+never overwrites a changed live snapshot. Sync repairs older duplicate layouts through the same guarded writer;
+newer copies are preserved privately while repair is blocked. Session history remains available when duplicate
+profiles are merged, but archived homes no longer retain account credentials.
 
-Live credentials are never overwritten with a staler copy of the same account — Codex rotates refresh tokens, and resurrecting an old one would permanently invalidate the login. Installs created under the older per-profile-`CODEX_HOME` model are migrated automatically on first start; a live login Sidekick has not seen is registered as a profile labelled with its email, and duplicate profiles for one workspace are merged (the older profile keeps its label; the other is stashed, never deleted). Account add, switch, and remove surface warnings when something needs attention: a running codex process that should be restarted, stale credentials, or credentials held in the OS keyring that Sidekick cannot swap.
+Close Codex CLI, desktop, and IDE consumers before switching. Codex live writes are refused while consumers
+are detected, when process discovery fails, or while keep-alive leases the target, even with `--force`.
+Process discovery cannot exclude an external process starting after the check; it is not a shared refresh lock.
 
-!!! tip "Registered automatically"
+Explicit sign-in starts in an empty temporary home and cleans up after completion or cancellation. Opening a
+terminal as the live account uses the live home. Opt-in keep-alive uses Codex's app-server refresh request for
+eligible inactive accounts without starting inference. `codex login status` does not refresh ChatGPT tokens.
+Plain `sidekick accounts doctor --provider codex` is read-only; `--fix` repairs known owned duplicates after confirmation.
 
-    The login in `~/.codex/auth.json` is registered under its email when Sidekick starts, and again whenever a native `codex login` changes it. Additional profiles go through the flows below; the rotated tokens of the live login are folded back into its profile continuously.
+### Verified upstream behavior
+
+These decisions were checked against OpenAI Codex commit `985cf47a4eb6084b2ff6b30ebdb1216acda85bb4`:
+
+- [login/src/auth/manager.rs:1598–1620](https://github.com/openai/codex/blob/985cf47a4eb6084b2ff6b30ebdb1216acda85bb4/codex-rs/login/src/auth/manager.rs#L1598-L1620) persists replacement refresh tokens and `last_refresh`; [lines 1679–1706](https://github.com/openai/codex/blob/985cf47a4eb6084b2ff6b30ebdb1216acda85bb4/codex-rs/login/src/auth/manager.rs#L1679-L1706) classify token reuse as permanent failure. Client code does not prove every server response rotates the token.
+- [login/src/auth/storage.rs:206–222](https://github.com/openai/codex/blob/985cf47a4eb6084b2ff6b30ebdb1216acda85bb4/codex-rs/login/src/auth/storage.rs#L206-L222) truncates and rewrites `auth.json`; Sidekick uses its own atomic writer.
+- [login/src/auth/manager.rs:2848–2881](https://github.com/openai/codex/blob/985cf47a4eb6084b2ff6b30ebdb1216acda85bb4/codex-rs/login/src/auth/manager.rs#L2848-L2881) uses a process-local semaphore, not a filesystem refresh lock.
+- [cli/src/login.rs:443–478](https://github.com/openai/codex/blob/985cf47a4eb6084b2ff6b30ebdb1216acda85bb4/codex-rs/cli/src/login.rs#L443-L478) reads ChatGPT login status without refresh and prints it to stderr. The [app-server protocol](https://learn.chatgpt.com/docs/app-server) supports `account/read` with `refreshToken: true`.
 
 ### VS Code
 
@@ -57,7 +75,7 @@ Live credentials are never overwritten with a staler copy of the same account �
 2. Run **Sidekick: Add Account…**, choose Codex, and complete `codex login` in the terminal Sidekick opens; the profile is saved as soon as the isolated home authenticates
 3. Switch with the arrows icon on an account or from the status bar quick pick; **Undo** reverts
 
-A switch warns when `codex` sessions or the Codex desktop app are running (they share `~/.codex` and pick up the switch after a restart) and refuses accounts whose stored login is known to be dead, pointing at **Sign In Again** instead.
+A switch refuses while Codex consumers are running and refuses accounts whose stored login is known to be dead, pointing at **Sign In Again** instead.
 
 ### CLI
 

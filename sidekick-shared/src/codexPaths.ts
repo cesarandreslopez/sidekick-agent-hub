@@ -21,7 +21,12 @@ export function getCodexProfilesDir(): string {
   return path.join(getAccountsDir(), 'codex', 'profiles');
 }
 
+function assertCodexAccountId(id: string): void {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id)) throw new Error('Invalid Codex account id.');
+}
+
 export function getCodexProfileDir(profileId: string): string {
+  assertCodexAccountId(profileId);
   return path.join(getCodexProfilesDir(), profileId);
 }
 
@@ -45,23 +50,38 @@ export function readFileOrNull(filePath: string): string | null {
   }
 }
 
-export type CodexCredentialStoreMode = 'file' | 'keyring' | 'auto' | 'ephemeral' | 'unknown';
+export type CodexCredentialStoreMode =
+  | 'file'
+  | 'keyring'
+  | 'auto'
+  | 'ephemeral'
+  | 'unknown'
+  | 'unreadable';
 
-const STORE_MODE_PATTERN = /^\s*cli_auth_credentials_store\s*=\s*"([a-z]+)"/m;
+const STORE_MODE_PATTERN = /^[ \t]*cli_auth_credentials_store[ \t]*=[ \t]*["']([a-z]+)["']/m;
 
 /**
  * How the `codex` CLI persists credentials for a home, from its `config.toml`.
- * `unknown` means the key is absent (older CLIs: file; newer CLIs: auto).
+ * `unknown` means the key is absent (Codex defaults to file storage).
  */
 export function getCodexCredentialStoreMode(
   codexHome: string = getSystemCodexHome(),
 ): CodexCredentialStoreMode {
-  const config = readFileOrNull(path.join(codexHome, 'config.toml'));
-  const match = config?.match(STORE_MODE_PATTERN);
+  let config: string;
+  try {
+    config = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'unknown' : 'unreadable';
+  }
+  const topLevel = config.split(/^[ \t]*\[/m, 1)[0];
+  const match = topLevel.match(STORE_MODE_PATTERN);
+  if (!match && /^[ \t]*cli_auth_credentials_store\s*=/m.test(topLevel)) return 'unreadable';
   const value = match?.[1];
   return value === 'file' || value === 'keyring' || value === 'auto' || value === 'ephemeral'
     ? value
-    : 'unknown';
+    : value === undefined
+      ? 'unknown'
+      : 'unreadable';
 }
 
 /**
@@ -69,8 +89,13 @@ export function getCodexCredentialStoreMode(
  * keyring entry sidekick could never swap. Adds the key when absent.
  */
 export function forceFileCredentialStore(configToml: string): string {
-  if (STORE_MODE_PATTERN.test(configToml)) {
-    return configToml.replace(STORE_MODE_PATTERN, 'cli_auth_credentials_store = "file"');
+  const firstHeader = configToml.search(/^[ \t]*\[/m);
+  const header = firstHeader < 0 ? configToml : configToml.slice(0, firstHeader);
+  if (STORE_MODE_PATTERN.test(header)) {
+    return (
+      header.replace(STORE_MODE_PATTERN, 'cli_auth_credentials_store = "file"') +
+      (firstHeader < 0 ? '' : configToml.slice(firstHeader))
+    );
   }
   const line = 'cli_auth_credentials_store = "file"';
   const trimmed = configToml.replace(/\s*$/, '');
@@ -81,4 +106,30 @@ export function forceFileCredentialStore(configToml: string): string {
   if (firstTable === -1) return `${trimmed}\n${line}\n`;
   const head = trimmed.slice(0, firstTable).replace(/\s*$/, '');
   return `${head ? `${head}\n` : ''}${line}\n\n${trimmed.slice(firstTable).replace(/^\s*/, '')}\n`;
+}
+
+export function getCodexBackupPath(id: string, legacy = false): string {
+  assertCodexAccountId(id);
+  return path.join(
+    getAccountsDir(),
+    'codex',
+    'backups',
+    `${id}.${legacy ? 'credentials' : 'auth'}.json`,
+  );
+}
+export function getCodexLoginsDir(): string {
+  return path.join(getAccountsDir(), 'codex', 'logins');
+}
+export function getCodexLoginDir(id: string): string {
+  assertCodexAccountId(id);
+  return path.join(getCodexLoginsDir(), id);
+}
+/** Legacy pending profiles remain readable until finalized or discarded. */
+export function getCodexLoginHome(id: string): string {
+  const dir = getCodexLoginDir(id);
+  return fs.existsSync(dir) ? path.join(dir, 'codex-home') : getCodexProfileHome(id);
+}
+export function getCodexLoginStatePath(id: string): string {
+  const dir = getCodexLoginDir(id);
+  return fs.existsSync(dir) ? path.join(dir, 'profile.json') : getCodexProfileStatePath(id);
 }

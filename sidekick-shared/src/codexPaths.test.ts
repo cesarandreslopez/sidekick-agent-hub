@@ -35,4 +35,13 @@ describe('forceFileCredentialStore', () => {
       'cli_auth_credentials_store = "file"\n[a]\nb = 1\n',
     );
   });
+  it('forces a single-quoted store setting and ignores similarly named nested settings', () => {
+    expect(forceFileCredentialStore("cli_auth_credentials_store = 'auto'\n")).toBe(
+      'cli_auth_credentials_store = "file"\n',
+    );
+    const nested = '[other]\ncli_auth_credentials_store = "keyring"\n';
+    expect(forceFileCredentialStore(nested)).toBe(
+      'cli_auth_credentials_store = "file"\n\n' + nested,
+    );
+  });
 });

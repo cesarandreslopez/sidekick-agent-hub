@@ -94,8 +94,8 @@ to the same signal: they stay dormant while no matching account exists and wake 
 The live homes (`CLAUDE_CONFIG_DIR` or `~/.claude`; `CODEX_HOME` or `~/.codex`) are the source of truth for
 which account is logged in; saved profiles are backups that `syncLiveAccountState()` keeps fresh. One sync
 registers logins the registry has never seen (label = email, `metadata.origin: 'live-sync'`), folds the live
-credential into its profile when it is newer (Claude: `expiresAt`; Codex: `last_refresh`), merges duplicate
-Codex profiles for one workspace (oldest keeps id and label; losers are stashed under `accounts/codex/stash/`),
+credential into a private backup when it is newer (Claude: `expiresAt`; Codex: `last_refresh`, then access-token expiry), merges duplicate
+Codex profiles for one workspace (oldest keeps id and label; archived homes have their account credentials removed after verified backup),
 and re-points the active pointer silently. `ensureDefaultAccounts()` runs it at startup after removing
 abandoned isolated logins; `onAccountsChanged()` runs it on every filesystem or poll event before reporting.
 
@@ -115,7 +115,7 @@ for (const view of listAccountsWithHealth()) {
 Health comes from a secret-free `health.json` sidecar next to each profile, written by every credential
 store. `getAccountHealth(provider, id, { probe: 'cache' })` never spawns; `probe: 'store'` re-reads the stored
 credential (a bounded Keychain call on macOS) and rewrites the sidecar. `listAccountsWithHealth` defaults to
-`probe: 'auto'`, which probes only profiles that have no sidecar yet. Claude refresh tokens expire about three
+`probe: 'auto'`, which probes only profiles that have no sidecar yet. Use `persist: false` for inspection without sidecar writes. Claude refresh tokens expire about three
 weeks after issue; snapshots that predate the CLI recording that expiry are estimated and marked as such.
 
 ## One Copy per Claude Login (0.27.6)
@@ -159,7 +159,7 @@ callers compile):
 ```ts
 const result = await switchAccountAsync('claude-code', id, { force: false, verifyWithCli: false });
 result.verified; // the live store read back the written credential
-result.verification; // 'store' | 'cli' | 'none' | 'failed' (failed → rolled back)
+result.verification; // 'store' | 'cli' | 'none' | 'failed'; the result explains recovery
 result.needsLogin; // the target's stored credential is expired or missing; nothing was written
 result.runningConsumers; // [{ kind: 'claude-cli' | 'claude-desktop' | 'codex-cli' | 'codex-app' | 'vscode-extension-host', pids, switched, reachability }]
 result.warnings; // per-consumer reachability sentences + health warnings (also joined into `warning`)
@@ -170,8 +170,7 @@ result.alreadyActive; // the target was already live; nothing was written
 
 The switch is two-phase: the outgoing live credential is captured first (registering the account if unknown;
 the switch refuses when it cannot be saved, even with `force`), then the target is installed, verified by
-re-reading the store, and only then does the active pointer move. `force` bypasses the health and keep-alive
-checks only. `detectRunningAccountConsumers()` returns the same consumer list without switching;
+re-reading the store, and only then does the active pointer move. `force` bypasses Claude health and keep-alive checks. For Codex it bypasses only health; consumer and lease checks remain mandatory. `detectRunningAccountConsumers()` returns the same consumer list without switching;
 `describeAccountConsumer(kind)` builds an entry for kinds the host detects itself (its own extension host).
 
 ## Isolated Launch (0.26.6)
@@ -184,26 +183,64 @@ const launch = getAccountLaunchEnv('codex', id); // { env: { CODEX_HOME }, envUn
 
 The env points a child `claude`/`codex` at the profile home without touching the live login. `envUnset` lists
 variables the host must remove from the child (`CLAUDE_SECURESTORAGE_CONFIG_DIR` overrides Claude Code's
-keychain naming). The helper refuses `expired`/`missing` profiles. For the Claude account that is live it
+keychain naming). The helper refuses `expired`/`missing` profiles. For either provider account that is live it
 returns the live home instead (`envUnset` includes `CLAUDE_CONFIG_DIR`), because a session in its profile home
 would be a second copy of the live login. An inactive profile whose home has no credential is restored from its
 backup first, with a warning; pass `restoreBackup: false` to skip that (keep-alive does).
 
-## Keep-Alive (0.26.6)
+## Keep-Alive
 
-`refreshInactiveAccounts()` runs the official CLI (`claude auth status`, `codex login status`) inside each
-inactive profile whose credential is `expiring`, then re-probes the store. It never calls OAuth endpoints, and for
-Claude it never runs where the copy could belong to a live chain: the live account, a copy whose refresh token
-equals live's, a copy whose provenance is `live-sync`, a profile without its own copy (it never restores backups),
-or a copy older than its backup. The check and a lease (`profiles/<id>/keepalive.lease`) are taken under the swap
-lock, and a switch to a leased account refuses until it is done. Hosts schedule it behind an opt-in setting.
+`refreshInactiveAccounts()` refreshes eligible inactive accounts through the official CLI. Claude uses
+`claude auth status`. Codex uses a bounded stdio `codex app-server` session: `initialize`, `initialized`,
+then `account/read` with `refreshToken: true`. It starts no inference turn. `codex login status` only reads
+ChatGPT login state and cannot serve as keep-alive.
 
-## Codex Credential Store Requirement
+Both providers skip the live account, a matching live refresh fingerprint, `live-sync` provenance, missing
+profile credentials, and copies older than their private backup. Eligibility and a lease are acquired under
+the provider swap lock. Codex switches cannot bypass that lease with `force`. The refresh process is stopped
+before the lease is released. Codex success requires a persisted credential advance for the expected account;
+an RPC response or exit code alone is insufficient. Unsupported CLI versions receive an update hint.
 
-`getCodexCredentialStoreMode()` reads `cli_auth_credentials_store` from `config.toml`. `keyring` (and `auto`
-without an `auth.json`) cannot be switched: `prepareCodexAccount` refuses up front and `syncLiveAccountState`
-reports `skipped: 'keyring'` with the fix (`cli_auth_credentials_store = "file"` followed by `codex login`).
-Profile homes always get a `config.toml` forced to `"file"` so isolated logins write `auth.json`.
+Hosts continue to use the existing `runner` injection signature. `keepAliveCommand('codex')` now describes
+an app-server process; the default runner implements its stdio protocol. Custom runners must implement that
+protocol or provide an equivalent test double, rather than merely spawn the command and wait.
+
+## Codex Credential Storage and Recovery
+
+The live account has no account credential in its profile home. Private backups are byte-preserved, verified,
+mode `0600`, and stored under `accounts/codex/backups/<id>.auth.json` (recognized legacy account credentials
+use `<id>.credentials.json`). No CLI runs in this backup directory. `readStoredCodexAccount(id)` reads the
+freshest saved credential without materializing it. `getAccountLaunchEnv` uses the live home for the live
+account, and can restore an inactive account's backup for an explicit launch.
+
+Every live write uses the shared guard policy and one Codex installer. Switches capture and verify the outgoing
+login, verify the target backup, journal the transfer, recheck the live snapshot, remove the target's usable
+copy, install and verify live, and commit the registry. Only then does the outgoing account get its inactive
+copy. `report.codex.demoted`, `repaired`, and `journal` describe migration and recovery, just as for Claude.
+Codex freshness uses `last_refresh`, then access-token expiry; filesystem mtime never authorizes a live write.
+Unknown or tied evidence cannot authorize replacing the same login. Rollback requires an exact snapshot match.
+
+Codex's refresh semaphore is process-local. Live writes are blocked while Codex CLI/app/IDE consumers are
+detected or process discovery fails. `force` bypasses only credential health. No process probe can exclude a
+new external writer starting after the probe; callers must close Codex consumers before changing live auth.
+
+`getCodexCredentialStoreMode()` rejects `keyring`, `auto` (even with an old auth file), `ephemeral`, and unreadable
+configuration for account operations. An absent setting follows Codex's file default. Profile homes force file
+mode. Modern `.credentials.json` may hold MCP credentials; Sidekick preserves those and handles only recognized
+legacy account payloads. A legacy install that would overwrite unrelated data is refused.
+
+Explicit `beginAccountLogin('codex', ...)` never imports live credentials. Temporary login homes live under
+`accounts/codex/logins/<loginId>/`; the returned `configDir`/`codexHome` is the path the host should use. Stop the
+login process before calling finalize or discard. The shared spawn helper and VS Code runner do this themselves.
+Finalization transfers the login into private/canonical storage and removes its temporary home. If activation
+is blocked, the result reports that the login was saved and the live account remains unchanged.
+`prepareCodexAccount(label)` retains current-login import behavior; pass `{ importCurrent: false }` for a fresh
+isolated sign-in. Authenticated abandoned homes with unknown identities are reported for manual review.
+
+`inspectCodexCredentialStores()` reports live duplicates, old stash credentials, abandoned homes, unreadable
+stores, and interrupted switches. `repairCodexCredentialStores()` is a dry run by default; pass `{ dryRun: false }`
+to repair proven Sidekick-owned stores after stopping Codex. Unknown or unreadable credentials are preserved.
+`sidekick accounts doctor [--provider codex]` is read-only; `--fix` uses the existing confirmation/`--yes` flow.
 
 ## Windows Notes
 
@@ -307,8 +344,7 @@ Available account-management schemas:
 
 - Browser OAuth is interactive; the host must present the spawned Claude or Codex login terminal.
 - macOS may show a keychain prompt the first time `security` reads Claude Code's item.
-- Codex OS-keyring logins are refused at add and switch time (see above); `finalizeCodexAccount` still returns
-  `success: true` with a warning for a profile that authenticated into the keyring.
+- Codex OS-keyring logins are refused at add and switch time (see above); file credentials are required to finalize.
 - Running consumers keep the previous account until they restart; `SwitchAccountResult.runningConsumers`
   names them. The Claude Desktop app is never switched.
 - `claude auth login` is the default login command (0.26.6); override with `opts.loginCommand` or

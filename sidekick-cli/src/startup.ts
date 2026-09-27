@@ -59,7 +59,12 @@ export function _resetStartupForTests(): void {
  * while the next run priced from LiteLLM rates, so the same session reported
  * two different costs.
  */
-export function runStartupSideEffects(commandToken: string | undefined): Promise<void> {
+export function runStartupSideEffects(
+  commandToken: string | undefined,
+  options: { accountDoctor?: boolean } = {},
+): Promise<void> {
+  // Doctor must inspect the original stores, and --fix must ask before any repair.
+  if (options.accountDoctor) return Promise.resolve();
   if (started) return started;
   started = (async () => {
     // Context windows a provider reported on an earlier run. Cheap local read,

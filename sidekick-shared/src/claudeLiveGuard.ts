@@ -18,6 +18,7 @@
  *   unparseable); a write Claude Code made in between is never clobbered.
  * - An unreadable live store (`error`: timeout, locked Keychain) refuses all.
  */
+import { decideLiveCredentialWrite } from './liveCredentialGuard';
 import {
   claudeCredentialFreshness,
   claudeRefreshFingerprint,
@@ -60,76 +61,25 @@ export type LiveClaudeWriteDecision =
   | { allow: true }
   | { allow: false; code: LiveClaudeWriteRefusal; reason: string };
 
-function refuse(code: LiveClaudeWriteRefusal, reason: string): LiveClaudeWriteDecision {
-  return { allow: false, code, reason };
-}
-
 export function decideLiveClaudeWrite(request: LiveClaudeWriteRequest): LiveClaudeWriteDecision {
-  const { intent, live } = request;
-  if (live.status === 'error') {
-    return refuse(
-      'live-unreadable',
-      'The live Claude login could not be read, so it was left untouched.',
-    );
-  }
-
-  if (intent === 'rollback') {
-    if (live.status !== 'ok') return { allow: true };
-    return JSON.stringify(live.blob) === JSON.stringify(request.written)
-      ? { allow: true }
-      : refuse(
-          'live-changed',
-          'The live Claude login changed after the switch wrote it; it was kept.',
-        );
-  }
-
   const candidate = parseClaudeCredentialBlob(request.candidate);
-  if (!candidate) {
-    return refuse('invalid-candidate', 'The saved credential is not a Claude login.');
-  }
-  const liveCredentials = live.status === 'ok' ? parseClaudeCredentialBlob(live.blob) : null;
-  const liveFingerprint = claudeRefreshFingerprint(liveCredentials);
-  const sameLink =
-    liveFingerprint !== null && liveFingerprint === claudeRefreshFingerprint(candidate);
-
-  if (intent === 'switch') {
-    if (
-      request.liveAccountUuid !== null &&
-      request.liveAccountUuid === request.candidateAccountUuid
-    ) {
-      return refuse('same-account', 'That account is already the live login.');
-    }
-    if (sameLink) {
-      return refuse(
-        'same-link',
-        'The saved login is the same refresh token the live login holds; sign in to that account again.',
-      );
-    }
-    if (liveCredentials && !request.capturedOutgoing) {
-      return refuse(
-        'not-captured',
-        'The outgoing live login was not saved first, so it was left untouched.',
-      );
-    }
-    return { allow: true };
-  }
-
-  // relogin / repair: the same account, and only forward in time.
-  if (
-    request.liveAccountUuid !== null &&
-    request.liveAccountUuid !== request.candidateAccountUuid
-  ) {
-    return refuse(
-      'different-account',
-      'The live Claude login belongs to another account; switch accounts instead.',
-    );
-  }
-  if (!liveCredentials) return { allow: true };
-  if (
-    sameLink ||
-    claudeCredentialFreshness(candidate) <= claudeCredentialFreshness(liveCredentials)
-  ) {
-    return refuse('not-newer', 'The live Claude login is already at least as new; it was kept.');
-  }
-  return { allow: true };
+  const live = request.live.status === 'ok' ? parseClaudeCredentialBlob(request.live.blob) : null;
+  const liveFp = claudeRefreshFingerprint(live);
+  return decideLiveCredentialWrite({
+    provider: 'Claude',
+    intent: request.intent,
+    liveStatus: request.live.status,
+    candidateValid: candidate !== null,
+    liveHasCredential: live !== null,
+    liveAccountId: request.liveAccountUuid,
+    candidateAccountId: request.candidateAccountUuid,
+    sameLink: liveFp !== null && liveFp === claudeRefreshFingerprint(candidate),
+    strictlyNewer: claudeCredentialFreshness(candidate) > claudeCredentialFreshness(live),
+    capturedOutgoing: request.capturedOutgoing,
+    matchesWritten:
+      request.live.status === 'ok' &&
+      JSON.stringify(request.live.blob) === JSON.stringify(request.written),
+    allowNonOkRollback: true,
+    requireDifferentLinkForAdvance: true,
+  });
 }

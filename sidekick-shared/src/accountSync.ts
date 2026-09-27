@@ -15,10 +15,17 @@ import {
 import { getLiveClaudeHome, readLiveClaudeIdentity } from './claudeProfiles';
 import {
   cleanupAbandonedCodexLogins,
+  cleanupAbandonedCodexLoginsAsync,
+  hasPendingCodexRepair,
   syncCodexLiveStateUnlocked,
   withCodexAuthSwapLock,
 } from './codexProfiles';
 import { getSystemCodexHome } from './codexPaths';
+import {
+  inspectRunningAccountConsumers,
+  inspectRunningAccountConsumersSync,
+  type AccountConsumerScan,
+} from './processDetection';
 import type { AccountProviderId } from './accountRegistry';
 import type { AccountHealthSource } from './accountHealth';
 import {
@@ -95,7 +102,7 @@ function shouldSync(
     Pick<SyncLiveAccountStateOptions, 'onlyIfChanged' | 'keychainFoldIntervalMs' | 'now'>
   >,
 ): boolean {
-  if (!options.onlyIfChanged) return true;
+  if (!options.onlyIfChanged || (provider === 'codex' && hasPendingCodexRepair())) return true;
   const state = fingerprints[provider];
   if (state.fingerprint !== fingerprint) return true;
   if (provider === 'claude-code' && process.platform === 'darwin') {
@@ -112,6 +119,7 @@ function syncProvider(
   options: Required<
     Pick<SyncLiveAccountStateOptions, 'onlyIfChanged' | 'keychainFoldIntervalMs' | 'now'>
   >,
+  scan?: AccountConsumerScan,
 ): ProviderSyncReport {
   const fingerprint = provider === 'codex' ? codexFingerprint() : claudeFingerprint();
   if (!shouldSync(provider, fingerprint, options)) {
@@ -120,9 +128,10 @@ function syncProvider(
   const source = sourceForReason(reason);
   let report: ProviderSyncReport;
   try {
+    if (provider === 'codex') scan ??= inspectRunningAccountConsumersSync('codex');
     report =
       provider === 'codex'
-        ? withCodexAuthSwapLock(() => syncCodexLiveStateUnlocked(source))
+        ? withCodexAuthSwapLock(() => syncCodexLiveStateUnlocked(source, { scan }))
         : withClaudeAuthSwapLock(() => syncClaudeLiveStateUnlocked(source));
   } catch (err) {
     return { warnings: [`Could not acquire the ${provider} account-switch lock: ${err}`] };
@@ -141,7 +150,10 @@ function syncProvider(
  * Safe to call from watchers: re-entrant calls return an empty report, and
  * `onlyIfChanged` short-circuits when the live files are unchanged.
  */
-export function syncLiveAccountStateSync(options: SyncLiveAccountStateOptions = {}): SyncReport {
+function syncLiveAccountStateCore(
+  options: SyncLiveAccountStateOptions = {},
+  scan?: AccountConsumerScan,
+): SyncReport {
   const reason = options.reason ?? 'manual';
   const now = options.now ?? Date.now();
   const resolved = {
@@ -165,18 +177,26 @@ export function syncLiveAccountStateSync(options: SyncLiveAccountStateOptions = 
   try {
     if (providers.includes('claude-code'))
       report.claude = syncProvider('claude-code', reason, resolved);
-    if (providers.includes('codex')) report.codex = syncProvider('codex', reason, resolved);
+    if (providers.includes('codex')) report.codex = syncProvider('codex', reason, resolved, scan);
   } finally {
     syncInProgress = false;
   }
   return report;
 }
 
+export function syncLiveAccountStateSync(options: SyncLiveAccountStateOptions = {}): SyncReport {
+  return syncLiveAccountStateCore(options);
+}
+
 /** Promise-returning twin of {@link syncLiveAccountStateSync} for async hosts. */
 export async function syncLiveAccountState(
   options: SyncLiveAccountStateOptions = {},
 ): Promise<SyncReport> {
-  return syncLiveAccountStateSync(options);
+  const scan =
+    !options.providers || options.providers.includes('codex')
+      ? await inspectRunningAccountConsumers('codex')
+      : undefined;
+  return syncLiveAccountStateCore(options, scan);
 }
 
 /** Forget the change fingerprints (tests, or after an external reset). */
@@ -198,5 +218,15 @@ export function cleanupAbandonedLogins(
   return {
     claude: cleanupAbandonedClaudeLogins(olderThanMs, now),
     codex: cleanupAbandonedCodexLogins(olderThanMs, now),
+  };
+}
+
+export async function cleanupAbandonedLoginsAsync(
+  olderThanMs = 24 * 60 * 60 * 1000,
+  now = Date.now(),
+): Promise<CleanupAbandonedLoginsResult> {
+  return {
+    claude: cleanupAbandonedClaudeLogins(olderThanMs, now),
+    codex: await cleanupAbandonedCodexLoginsAsync(olderThanMs, now),
   };
 }

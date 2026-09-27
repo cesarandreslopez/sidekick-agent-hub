@@ -4,13 +4,22 @@
  * profile's isolated home and lets the CLI refresh (and rotate) the token
  * where it belongs, then re-reads the store to record the new expiry.
  *
- * A refresh rotates the refresh token, so for Claude it only runs where the
+ * A refresh rotates the refresh token, so keep-alive only runs where the
  * profile home holds the one live copy of its chain: never the live account,
  * never a copy whose refresh token equals live's, never a copy taken from the
  * live store that no switch has handed back yet, and never a stale copy when
  * the backup is newer. The check and a lease are taken under the swap lock, so
  * no switch can install that account while its CLI is refreshing.
  */
+import { runCodexKeepAlive } from './codexKeepAlive';
+import {
+  beginCodexKeepAlive,
+  finishCodexKeepAlive,
+  getCodexKeepAliveBlocker,
+} from './codexProfiles';
+import { getSystemCodexHome } from './codexPaths';
+import { canonicalCodexPath, readCodexCredentialStore } from './codexCredentialStore';
+import { compareCodexAuthFreshness, identitiesMatch, readAuthIdentityFromRaw } from './codexAuth';
 import { execFile } from 'child_process';
 import { getAccountHealth, listAccountsWithHealth, type AccountView } from './accountHealth';
 import { getAccountLaunchEnv } from './accountLaunch';
@@ -49,7 +58,8 @@ export interface RefreshInactiveAccountsResult {
 
 /** The command each CLI runs to load (and refresh) its stored login. */
 export function keepAliveCommand(provider: AccountProviderId): { command: string; args: string[] } {
-  if (provider === 'codex') return { command: 'codex', args: ['login', 'status'] };
+  if (provider === 'codex')
+    return { command: 'codex', args: ['app-server', '-c', 'cli_auth_credentials_store="file"'] };
   const override = process.env.SIDEKICK_CLAUDE_KEEPALIVE_ARGS?.trim();
   return { command: 'claude', args: override ? override.split(/\s+/) : ['auth', 'status'] };
 }
@@ -58,26 +68,28 @@ export function keepAliveCommand(provider: AccountProviderId): { command: string
 const LEASE_GRACE_MS = 30_000;
 
 const defaultRunner: KeepAliveRunner = (command, args, env, timeoutMs) =>
-  new Promise((resolve) => {
-    try {
-      execFile(
-        command,
-        args,
-        { encoding: 'utf8', env, timeout: timeoutMs, killSignal: 'SIGKILL', windowsHide: true },
-        (error, stdout) => {
-          const status = error
-            ? (((error as { code?: unknown }).code as number | null) ?? null)
-            : 0;
-          resolve({
-            status: typeof status === 'number' ? status : null,
-            stdout: String(stdout ?? ''),
-          });
-        },
-      );
-    } catch {
-      resolve({ status: null, stdout: '' });
-    }
-  });
+  command === 'codex'
+    ? runCodexKeepAlive(command, args, env, timeoutMs)
+    : new Promise((resolve) => {
+        try {
+          execFile(
+            command,
+            args,
+            { encoding: 'utf8', env, timeout: timeoutMs, killSignal: 'SIGKILL', windowsHide: true },
+            (error, stdout) => {
+              const status = error
+                ? (((error as { code?: unknown }).code as number | null) ?? null)
+                : 0;
+              resolve({
+                status: typeof status === 'number' ? status : null,
+                stdout: String(stdout ?? ''),
+              });
+            },
+          );
+        } catch {
+          resolve({ status: null, stdout: '' });
+        }
+      });
 
 function eligible(view: AccountView, includeFresh: boolean): string | null {
   if (view.health.isLive) return 'live account; the CLI refreshes it in normal use';
@@ -110,8 +122,10 @@ export async function refreshInactiveAccounts(
       continue;
     }
     const isClaude = view.providerId === 'claude-code';
-    if (isClaude && options.dryRun) {
-      const blocker = getClaudeKeepAliveBlocker(view.id);
+    const beginLease = isClaude ? beginClaudeKeepAlive : beginCodexKeepAlive;
+    const finishLease = isClaude ? finishClaudeKeepAlive : finishCodexKeepAlive;
+    if (options.dryRun) {
+      const blocker = (isClaude ? getClaudeKeepAliveBlocker : getCodexKeepAliveBlocker)(view.id);
       if (blocker) {
         result.skipped.push({ id: view.id, providerId: view.providerId, reason: blocker });
         continue;
@@ -126,36 +140,75 @@ export async function refreshInactiveAccounts(
       });
       continue;
     }
-    if (isClaude) {
-      const begin = beginClaudeKeepAlive(view.id, timeoutMs + LEASE_GRACE_MS);
+    {
+      const begin = beginLease(view.id, timeoutMs + LEASE_GRACE_MS);
       if (!begin.ok) {
         result.skipped.push({ id: view.id, providerId: view.providerId, reason: begin.reason });
         continue;
       }
     }
-    const launch = getAccountLaunchEnv(view.providerId, view.id, {
-      materialize: true,
-      restoreBackup: false,
-    });
-    if (launch.error) {
-      if (isClaude) finishClaudeKeepAlive(view.id);
-      result.skipped.push({ id: view.id, providerId: view.providerId, reason: launch.error });
-      continue;
-    }
-    const env: NodeJS.ProcessEnv = { ...process.env, ...launch.env };
-    for (const name of launch.envUnset) delete env[name];
+    let released = false;
+    const release = (): void => {
+      if (!released) {
+        released = true;
+        finishLease(view.id);
+      }
+    };
     try {
+      const launch = getAccountLaunchEnv(view.providerId, view.id, {
+        materialize: true,
+        restoreBackup: false,
+      });
+      if (launch.error) {
+        release();
+        result.skipped.push({ id: view.id, providerId: view.providerId, reason: launch.error });
+        continue;
+      }
+      if (
+        !isClaude &&
+        canonicalCodexPath(launch.home) === canonicalCodexPath(getSystemCodexHome())
+      ) {
+        result.skipped.push({
+          id: view.id,
+          providerId: view.providerId,
+          reason: 'the account became live before refresh',
+        });
+        continue;
+      }
+      const before = isClaude ? null : readCodexCredentialStore(launch.home);
+      const env: NodeJS.ProcessEnv = { ...process.env, ...launch.env };
+      for (const name of launch.envUnset) delete env[name];
+      if (!isClaude)
+        for (const name of [
+          'OPENAI_API_KEY',
+          'CODEX_API_KEY',
+          'CODEX_ACCESS_TOKEN',
+          'OPENAI_FEDERATION_RULE_ID',
+          'OPENAI_IDENTITY_TOKEN_FILE',
+          'OPENAI_WORKLOAD_IDENTITY_CONTEXT',
+        ])
+          delete env[name];
       let run: Awaited<ReturnType<KeepAliveRunner>>;
       try {
         run = await runner(command, args, env, timeoutMs);
       } finally {
-        if (isClaude) finishClaudeKeepAlive(view.id);
+        release();
       }
       const after = getAccountHealth(view.providerId, view.id, {
         probe: 'store',
         now: options.now,
       });
-      if (after.state === 'fresh') {
+      const codexAfter = isClaude ? null : readCodexCredentialStore(launch.home);
+      const advanced =
+        isClaude ||
+        (before?.status === 'ok' &&
+          codexAfter?.status === 'ok' &&
+          identitiesMatch(
+            readAuthIdentityFromRaw(before.snapshot.authRaw),
+            readAuthIdentityFromRaw(codexAfter.snapshot.authRaw),
+          ) &&
+          compareCodexAuthFreshness(codexAfter.snapshot.authRaw, before.snapshot.authRaw) > 0);
+      if (after.state === 'fresh' && advanced && (isClaude || run.status === 0)) {
         result.refreshed.push({ id: view.id, providerId: view.providerId });
       } else {
         result.failed.push({
@@ -163,12 +216,20 @@ export async function refreshInactiveAccounts(
           providerId: view.providerId,
           error:
             run.status === 0
-              ? `${command} ran but the stored credential is still ${after.state}.`
-              : `${command} exited with status ${run.status ?? 'unknown'}.`,
+              ? isClaude
+                ? `${command} ran but the stored credential is still ${after.state}.`
+                : `${command} ran but no verified credential advance was observed (health: ${after.state}).`
+              : `${command} exited with status ${run.status ?? 'unknown'}.${isClaude ? '' : ' Codex app-server refresh requires a compatible Codex CLI; update it and retry.'}`,
         });
       }
     } catch (err) {
-      result.failed.push({ id: view.id, providerId: view.providerId, error: String(err) });
+      result.failed.push({
+        id: view.id,
+        providerId: view.providerId,
+        error: isClaude ? String(err) : 'Codex keep-alive could not complete safely.',
+      });
+    } finally {
+      release();
     }
   }
   return result;

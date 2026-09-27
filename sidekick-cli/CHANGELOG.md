@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Codex account switching now requires stopped Codex consumers and protects live credentials with verified private backups and journal recovery. Keep-alive performs a real app-server refresh. `accounts doctor` inspects without syncing or rewriting health metadata and supports Codex duplicate/stash repairs through `--fix`, preserving provider filters and confirmation.
 - **Claude logins are no longer invalidated by Sidekick** (bundled `sidekick-shared`). Claude Code rotates the refresh token on every refresh, so every usable copy of a login but one dies with "Not logged in · Please run /login"; Sidekick now keeps exactly one.
   - Keychain writes larger than about 4 KB are no longer truncated into an unreadable credential, and every write is read back before it counts.
   - The live account no longer keeps a second usable copy in its profile directory; `accounts switch` saves the outgoing login first (even with `--force`), holds Claude Code's refresh lock, never overwrites a newer login, and keeps the live MCP server tokens.

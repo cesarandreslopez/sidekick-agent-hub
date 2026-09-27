@@ -1,6 +1,5 @@
 import { reconcileClaudeAuthState } from './accounts';
-import { reconcileCodexAuthStateAsync } from './codexProfiles';
-import { cleanupAbandonedLogins, syncLiveAccountState } from './accountSync';
+import { cleanupAbandonedLoginsAsync, syncLiveAccountState } from './accountSync';
 import type { ProviderSyncReport, SyncReport } from './accountSyncTypes';
 
 export type EnsureDefaultAccountStatus = 'registered' | 'skipped' | 'error';
@@ -51,13 +50,7 @@ export async function ensureDefaultAccounts(
   }
 
   try {
-    await reconcileCodexAuthStateAsync();
-  } catch (error) {
-    logFailure(options, 'Codex auth reconciliation failed.', error);
-  }
-
-  try {
-    cleanupAbandonedLogins();
+    await cleanupAbandonedLoginsAsync();
   } catch (error) {
     logFailure(options, 'Abandoned login cleanup failed.', error);
   }

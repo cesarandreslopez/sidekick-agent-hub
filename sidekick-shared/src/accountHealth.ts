@@ -21,12 +21,15 @@ import {
 import { readActiveCredentials, readClaudeCredentialStore } from './credentialIO';
 import {
   identitiesMatch,
+  codexRefreshFingerprint,
+  compareCodexAuthFreshness,
   readAccessTokenExpiry,
   readAuthIdentityFromRaw,
   readLastRefresh,
   STALE_AUTH_THRESHOLD_MS,
 } from './codexAuth';
 import {
+  getCodexBackupPath,
   getCodexProfileDir,
   getCodexProfileHome,
   getSystemCodexHome,
@@ -38,6 +41,7 @@ import {
   type AccountProviderId,
   type SavedAccountProfile,
 } from './accountRegistry';
+import { readCodexBackup, readCodexCredentialStore } from './codexCredentialStore';
 import { atomicWriteJsonSync } from './writers/atomic';
 
 export type AccountHealthState = 'fresh' | 'expiring' | 'expired' | 'unknown' | 'missing';
@@ -55,7 +59,7 @@ export interface AccountHealthSidecar {
   hasRefreshToken?: boolean;
   authMode?: 'chatgpt' | 'api-key' | 'oauth';
   /**
-   * sha256(refreshToken)[:16] of the stored Claude credential: lets sync tell
+   * sha256(refreshToken)[:16] of the stored provider credential: lets sync tell
    * whose chain the live store holds without keeping another token copy.
    */
   refreshFp?: string;
@@ -99,6 +103,8 @@ export interface AccountHealthOptions {
    * is paid once per profile and never on a hot path that opts into `cache`.
    */
   probe?: 'cache' | 'store' | 'auto';
+  /** Inspection-only callers must not persist health metadata. Default true. */
+  persist?: boolean;
   now?: number;
 }
 
@@ -185,7 +191,8 @@ export function codexHealthSidecarFromAuth(
     capturedAt: now,
     accessExpiresAt: readAccessTokenExpiry(authRaw) ?? undefined,
     lastRefreshAt,
-    hasRefreshToken: identity.authMode === 'chatgpt',
+    hasRefreshToken: codexRefreshFingerprint(authRaw) !== null,
+    refreshFp: codexRefreshFingerprint(authRaw) ?? undefined,
     authMode: identity.authMode,
     source,
   };
@@ -299,22 +306,43 @@ export function readEffectiveClaudeCredential(accountId: string): unknown {
   return parseClaudeCredentialBlob(fromStore) ? fromStore : null;
 }
 
-function probeClaudeStore(accountId: string, now: number): AccountHealthSidecar | null {
+function probeClaudeStore(
+  accountId: string,
+  now: number,
+  persist = true,
+): AccountHealthSidecar | null {
   const blob = readEffectiveClaudeCredential(accountId);
   if (!blob) return null;
   // A probe reads; it must not rewrite provenance (keep-alive relies on it).
   const source =
     readHealthSidecar('claude-code', accountId)?.source ??
     (isLiveClaudeAccount(accountId) ? 'live-sync' : 'migration');
-  return writeClaudeHealthSidecar(accountId, blob, source, now);
+  return persist
+    ? writeClaudeHealthSidecar(accountId, blob, source, now)
+    : claudeHealthSidecarFromBlob(blob, source, now);
 }
 
-function probeCodexStore(accountId: string, now: number): AccountHealthSidecar | null {
-  const authPath = path.join(getCodexProfileHome(accountId), 'auth.json');
-  const raw = readFileOrNull(authPath);
-  const source = readHealthSidecar('codex', accountId)?.source ?? 'switch';
-  const sidecar = codexHealthSidecarFromAuth(raw, source, now, authPath);
-  if (sidecar) writeSidecar('codex', accountId, sidecar);
+function probeCodexStore(
+  accountId: string,
+  now: number,
+  persist = true,
+): AccountHealthSidecar | null {
+  const profile = listSavedAccountProfiles('codex').find((p) => p.id === accountId);
+  const live = profile !== undefined && isLiveCodexAccount(profile);
+  const home = readCodexCredentialStore(
+    live ? getSystemCodexHome() : getCodexProfileHome(accountId),
+  );
+  const backup = live ? null : readCodexBackup(accountId);
+  let raw = home.status === 'ok' ? home.snapshot.authRaw : null;
+  if (
+    backup?.status === 'ok' &&
+    (!raw || compareCodexAuthFreshness(backup.snapshot.authRaw, raw) > 0)
+  )
+    raw = backup.snapshot.authRaw;
+  const source =
+    readHealthSidecar('codex', accountId)?.source ?? (live ? 'live-sync' : 'migration');
+  const sidecar = codexHealthSidecarFromAuth(raw, source, now);
+  if (sidecar && persist) writeSidecar('codex', accountId, sidecar);
   return sidecar;
 }
 
@@ -331,6 +359,8 @@ function hasStoredClaudeCredential(accountId: string): boolean {
 function hasStoredCodexCredential(accountId: string): boolean {
   const home = getCodexProfileHome(accountId);
   return (
+    fs.existsSync(getCodexBackupPath(accountId)) ||
+    fs.existsSync(getCodexBackupPath(accountId, true)) ||
     fs.existsSync(path.join(home, 'auth.json')) ||
     fs.existsSync(path.join(home, '.credentials.json'))
   );
@@ -357,17 +387,19 @@ export function getAccountHealth(
   let sidecar: AccountHealthSidecar | null = null;
   if (probe === 'store') {
     sidecar =
-      provider === 'codex' ? probeCodexStore(accountId, now) : probeClaudeStore(accountId, now);
+      provider === 'codex'
+        ? probeCodexStore(accountId, now, options.persist)
+        : probeClaudeStore(accountId, now, options.persist);
   }
   sidecar ??= readHealthSidecar(provider, accountId);
   if (!sidecar && provider === 'codex') {
     // Codex sidecars are cheap to derive from the plaintext file.
-    sidecar = probeCodexStore(accountId, now);
+    sidecar = probeCodexStore(accountId, now, options.persist);
   }
   if (!sidecar && probe === 'auto' && hasStoredClaudeCredential(accountId)) {
     // First look at a profile that predates the health model: read its store
     // once and record the sidecar so later reads are cache hits.
-    sidecar = probeClaudeStore(accountId, now);
+    sidecar = probeClaudeStore(accountId, now, options.persist);
   }
 
   const base = { providerId: provider, accountId, checkedAt: now, isLive };

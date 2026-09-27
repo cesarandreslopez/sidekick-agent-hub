@@ -11,23 +11,25 @@ Both CLIs read one live credential store: the `Claude Code-credentials` macOS Ke
 | `claude` CLI                                                    | Yes, for new sessions                        | A warning when a session is running: it keeps the previous account and can rotate that account's refresh token |
 | Claude Code VS Code / JetBrains extension, Agent SDK            | Yes, after the extension host reloads        | A **Reload Window** action on the switch toast                                                                 |
 | Claude Desktop app                                              | **No** — it keeps its own web session        | A warning when it is running: its embedded engine can rotate the shared CLI token behind Sidekick's back       |
-| `codex` CLI                                                     | Yes, for new sessions                        | A warning when a session is running                                                                            |
-| Codex desktop app / Codex IDE extension                         | Yes, after a restart — they share `~/.codex` | A warning when the app is running; it can refresh the live token while open                                    |
+| `codex` CLI                                                     | Yes, for new sessions                        | Close running Codex sessions before switching                                                                  |
+| Codex desktop app / Codex IDE extension                         | Yes, after a restart — they share `~/.codex` | Switching is blocked while Codex consumers run; close them first                                               |
 | Codex with `cli_auth_credentials_store = "keyring"` or `"auto"` | **No** — the login lives in the OS keyring   | Refused at add time and at switch time, with the `config.toml` change to make it switchable                    |
 | OpenCode, z.ai                                                  | Not supported                                | —                                                                                                              |
 
 Sidekick never calls Anthropic's or OpenAI's OAuth endpoints itself. Sign-ins and token refreshes always go through the official `claude` and `codex` CLIs.
 
-### One copy per Claude login
+### One usable copy per login
 
-Claude Code rotates the refresh token every time it refreshes, and the previous token stops working at that moment. Two usable copies of one login are therefore a trap: whichever refreshes first invalidates the other, and the loser reports **Not logged in · Please run /login**. Sidekick keeps exactly one usable copy of every Claude login:
+Claude Code and Codex can rotate refresh tokens. A second usable copy can consume the token the first copy still needs. Sidekick keeps the live account in its live home and stores its backup privately, where neither CLI runs.
 
-- **The live account** (the one `claude` uses right now) lives only in the live store. Its saved profile keeps identity and health metadata plus a private backup that Claude Code never reads.
-- **Every other account** keeps its single usable copy in its profile directory, where keep-alive or **Open Terminal as Account** can use it.
-- **A switch** saves the outgoing login first (verified), installs the target, and only then gives the outgoing account its profile copy and removes the target's. The switch holds Claude Code's own refresh lock throughout, so a refresh cannot slip in between. A journal lets the next sync finish or roll back a switch that was interrupted.
-- **Nothing overwrites a newer login.** Every write into the live store is refused when the live login is the same account and at least as new. MCP server tokens stay with the live store on a switch; only the Claude login changes.
+- **The live account** keeps identity and health metadata in its profile, plus a private backup. Opening a terminal as that account uses its normal live home.
+- **An inactive account** can use its own profile home. Keep-alive never recreates missing profile credentials from a backup.
+- **A switch** requires a verified outgoing backup, even with `--force`. Codex also verifies the target backup and removes its profile credential before installing it live. The outgoing account receives a usable profile copy only after it is inactive. A journal supports interrupted-switch recovery.
+- **Repairs and re-logins** advance the same account only when the saved credential is demonstrably newer. Rollback preserves any external change. Unrelated MCP credentials remain in place.
 
-If an older build left a second copy of the live login in its profile directory, the next sync removes it. When that copy turns out to be newer than live (live is the dying one), it is installed first.
+Claude switching borrows Claude Code's refresh locks. Codex has no shared filesystem refresh lock: Sidekick blocks live writes while Codex consumers are detected, or when process detection fails. `--force` does not override that check or an active keep-alive lease. Process checks and snapshot comparisons cannot exclude a new external process starting immediately afterward; close Codex consumers before switching.
+
+Sync removes duplicates left by older builds after preserving the freshest credential. A newer copy is installed first when safe. Busy or unreadable stores produce a pending-repair warning and are retried. `sidekick accounts doctor` inspects without changing credentials; `--fix` performs repairs after confirmation.
 
 ## How accounts get registered
 
@@ -111,9 +113,9 @@ Claude Code refresh tokens expire about three weeks after they were last used, a
 | `missing`  | No stored credentials                                                                       | sign in                                              |
 | `unknown`  | The stored credential carries no expiry (API-key logins)                                    | none                                                 |
 
-A switch to an `expired` or `missing` account is refused with a sign-in hint instead of installing a dead credential; pass `--force` on the CLI to override.
+A switch to an `expired` or `missing` account is refused with a sign-in hint instead of installing a dead credential; pass `--force` on the CLI to override the health check. Codex consumer checks, leases, backup verification, and freshness rules remain mandatory.
 
-**Keep-alive** (opt-in) runs `claude auth status` / `codex login status` inside each inactive profile so the CLI refreshes its own token where it belongs. For Claude it skips any profile whose copy could be a second copy of a live chain: the live account, a copy with the same refresh token as live, a copy taken from the live store that no switch has handed back yet, and a stale copy whose backup is newer. While it runs, a switch to that account waits.
+**Keep-alive** (opt-in) uses `claude auth status` or Codex's app-server refresh protocol inside an eligible inactive profile. Codex performs no inference turn, and `codex login status` is not used for refresh. Both providers skip the live identity, a matching live refresh token, copies taken from live that have not been handed back by a switch, missing profile credentials, and copies older than their private backup. A lease prevents a concurrent switch to the account; Codex does not allow `--force` to bypass it.
 
 ## Platform notes
 
@@ -124,7 +126,7 @@ A switch to an `expired` or `missing` account is refused with a sign-in hint ins
 ## Troubleshooting
 
 - **"expired; sign in again"** — the saved refresh token is dead. Use **Sign In Again** or `sidekick accounts login <name>`; the account keeps its label and id.
-- **Codex says it is not logged in after a switch** — the stored token was revoked upstream (for example a fresh `codex login` on the same workspace elsewhere). Sign in again to that profile.
+- **Codex reports a reused refresh token** — close Codex consumers, inspect with `sidekick accounts doctor --provider codex`, and sign in again if the token is already invalid. A private backup is recovery data, not proof that an upstream token is still valid.
 - **"Codex keeps its login in the OS keyring"** — set `cli_auth_credentials_store = "file"` in `~/.codex/config.toml`, run `codex login`, then add the account again.
 - **Claude Desktop keeps signing you out** — the desktop app's embedded engine refreshes the shared CLI token. Sidekick warns when it is running; quit it before switching, or sign in again afterwards.
 - **"not verified"** — the store did not read back the written credential. The message says whether the previous login was restored; if it could not be, it is still saved, and `sidekick accounts doctor` shows what to do.

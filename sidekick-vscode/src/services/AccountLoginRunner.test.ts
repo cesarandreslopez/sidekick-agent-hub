@@ -41,7 +41,9 @@ vi.mock('vscode', () => ({
         env: options.env,
         sent: [] as string[],
         show: vi.fn(),
-        dispose: vi.fn(),
+        dispose: vi.fn(() => {
+          for (const listener of [...closeListeners]) listener(terminal);
+        }),
         sendText: (text: string) => terminal.sent.push(text),
       };
       terminals.push(terminal);
@@ -150,7 +152,8 @@ describe('AccountLoginRunner', () => {
     expect(mockFinalize).not.toHaveBeenCalled();
     // Every abandoned run closed its terminal and discarded its login home (I4).
     expect(mockDiscard).toHaveBeenCalledTimes(3);
-    expect(terminals.every((terminal) => terminal.dispose.mock.calls.length === 1)).toBe(true);
+    expect(terminals[0].dispose).toHaveBeenCalledTimes(1);
+    expect(terminals[2].dispose).toHaveBeenCalledTimes(1);
   });
 
   it('discards the Claude login home when the window closes mid-login (I4)', async () => {
@@ -165,6 +168,25 @@ describe('AccountLoginRunner', () => {
     expect(mockDiscard).toHaveBeenCalledWith('claude-code', 'login-1');
     expect(terminals[0].dispose).toHaveBeenCalled();
   });
+
+  it.each(['success', 'failure', 'throw'] as const)(
+    'stops Codex before finalize and cleans up after %s (I4)',
+    async (mode) => {
+      mockStatus.mockResolvedValue({ state: 'authenticated' });
+      mockFinalize.mockImplementation(async () => {
+        expect(terminals[0].dispose).toHaveBeenCalled();
+        if (mode === 'throw') throw new Error('finalize failed');
+        return {
+          success: mode === 'success',
+          error: mode === 'failure' ? 'activation blocked' : undefined,
+        };
+      });
+      const pending = new AccountLoginRunner().run('codex', 'Work', { pollIntervalMs: 10 });
+      await vi.advanceTimersByTimeAsync(50);
+      expect((await pending).outcome).toBe(mode === 'success' ? 'saved' : 'failed');
+      expect(mockDiscard).toHaveBeenCalledWith('codex', 'login-1');
+    },
+  );
 
   it('quotes command lines per shell family and reports begin failures', async () => {
     expect(quoteCommandLine('claude', ['auth', 'login'], 'darwin')).toBe("'claude' 'auth' 'login'");

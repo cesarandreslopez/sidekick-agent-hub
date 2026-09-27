@@ -50,7 +50,7 @@ program
 // preAction fires for real action handlers and not for --help, --version, or a
 // bare invocation, so the network fetch and account bootstrap stay off those
 // paths entirely.
-program.hook('preAction', async () => {
+program.hook('preAction', async (_program, actionCommand) => {
   const outputFile = program.opts().outputFile as string | undefined;
   if (outputFile) {
     const { installOutputRedirect, REDIRECT_UNSUPPORTED_COMMANDS } =
@@ -61,7 +61,10 @@ program.hook('preAction', async () => {
       installOutputRedirect(outputFile);
     }
   }
-  return runStartupSideEffects(commandToken);
+  const accountDoctor =
+    actionCommand.name() === 'doctor' &&
+    ['accounts', 'account'].includes(actionCommand.parent?.name() ?? '');
+  return runStartupSideEffects(commandToken, { accountDoctor });
 });
 
 export function resolveProviderId(

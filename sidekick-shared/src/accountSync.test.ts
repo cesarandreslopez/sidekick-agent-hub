@@ -17,6 +17,11 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => tmpDir };
 });
 
+vi.mock('./processDetection', () => ({
+  inspectRunningAccountConsumersSync: () => ({ ok: true, consumers: [] }),
+  inspectRunningAccountConsumers: async () => ({ ok: true, consumers: [] }),
+}));
+
 const lockEvents = vi.hoisted(() => [] as string[]);
 vi.mock('./writers/atomic', async () => {
   const actual = await vi.importActual<typeof import('./writers/atomic')>('./writers/atomic');
@@ -46,7 +51,7 @@ import {
   writeSavedAccountRegistry,
 } from './accountRegistry';
 import { getClaudeProfileHome } from './claudeProfiles';
-import { getCodexProfileHome, getCodexProfilesDir } from './codexPaths';
+import { getCodexProfileHome, getCodexProfilesDir, getCodexBackupPath } from './codexPaths';
 import { readHealthSidecar } from './accountHealth';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import { claudeRefreshFingerprint } from './claudeCredentials';
@@ -413,18 +418,14 @@ describe('accountSync', () => {
     writeLiveCodex(rotated);
     report = syncLiveAccountStateSync({ reason: 'manual', now: NOW });
     expect(report.codex.folded).toBe(registered.id);
-    expect(
-      fs.readFileSync(path.join(getCodexProfileHome(registered.id), 'auth.json'), 'utf8'),
-    ).toBe(rotated);
+    expect(fs.readFileSync(getCodexBackupPath(registered.id), 'utf8')).toBe(rotated);
 
     // A saved copy that says it is newer than the live file is kept.
     const newer = codexAuth('c@example.com', 'ws-c', '2026-09-15T00:00:00Z');
     writeProfileCodex(registered.id, newer);
     report = syncLiveAccountStateSync({ reason: 'manual', now: NOW });
-    expect(report.codex.folded).toBeUndefined();
-    expect(
-      fs.readFileSync(path.join(getCodexProfileHome(registered.id), 'auth.json'), 'utf8'),
-    ).toBe(newer);
+    expect(report.codex.repaired).toBe(registered.id);
+    expect(fs.readFileSync(getCodexBackupPath(registered.id), 'utf8')).toBe(newer);
   });
 
   it('merges duplicate Codex profiles: oldest keeps id and label, freshest auth wins, quota is re-keyed, losers are stashed', () => {
@@ -483,13 +484,16 @@ describe('accountSync', () => {
       expect.objectContaining({ id: 'dup-old', label: 'cal' }),
     );
     // The live file is the freshest of all and lands in the keeper.
-    expect(fs.readFileSync(path.join(getCodexProfileHome('dup-old'), 'auth.json'), 'utf8')).toBe(
-      live,
-    );
+    expect(fs.readFileSync(getCodexBackupPath('dup-old'), 'utf8')).toBe(live);
     expect(readQuotaSnapshot('codex', 'dup-old')?.fiveHour.utilization).toBe(42);
     const stash = fs.readdirSync(path.join(tmpDir, 'accounts', 'codex', 'stash'));
     expect(stash).toHaveLength(1);
-    expect(stash[0]).toMatch(/^dup-dup-new-/);
+    expect(stash[0]).toBe('dup-dup-new');
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, 'accounts', 'codex', 'stash', stash[0], 'codex-home', 'auth.json'),
+      ),
+    ).toBe(false);
     expect(fs.existsSync(getCodexProfileHome('dup-new'))).toBe(false);
   });
 

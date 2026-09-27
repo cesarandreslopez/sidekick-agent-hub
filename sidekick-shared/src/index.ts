@@ -1364,3 +1364,11 @@ export type {
 } from './providerServiceStatusTypes';
 
 export { fetchProviderServiceStatus } from './providerServiceStatus';
+
+export { inspectCodexCredentialStores, repairCodexCredentialStores } from './codexCredentialDoctor';
+export type {
+  CodexCredentialFinding,
+  CodexCredentialInspection,
+  CodexCredentialRepairResult,
+} from './codexCredentialDoctor';
+export { readStoredCodexAccount, syncCodexLiveStateAsync } from './codexProfiles';

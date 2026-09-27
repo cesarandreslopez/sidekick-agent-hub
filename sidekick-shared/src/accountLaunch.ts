@@ -15,8 +15,11 @@ import {
   isDefaultClaudeHome,
 } from './claudeProfiles';
 import { restoreClaudeProfileFromBackup } from './accounts';
+import { isSidekickCodexHome } from './codexCredentialStore';
+import { restoreCodexProfileFromBackup, isLiveCodexProfile } from './codexProfiles';
 import {
   forceFileCredentialStore,
+  getCodexCredentialStoreMode,
   getCodexProfileHome,
   getSystemCodexHome,
   readFileOrNull,
@@ -81,10 +84,10 @@ function materializeClaudeHome(home: string): void {
 function materializeCodexHome(home: string): void {
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
   const configTarget = path.join(home, 'config.toml');
-  if (!fs.existsSync(configTarget)) {
-    const source = readFileOrNull(path.join(getSystemCodexHome(), 'config.toml')) ?? '';
-    atomicWriteFileSync(configTarget, forceFileCredentialStore(source));
-  }
+  const current = readFileOrNull(configTarget);
+  const source = current ?? readFileOrNull(path.join(getSystemCodexHome(), 'config.toml')) ?? '';
+  const fileMode = forceFileCredentialStore(source);
+  if (fileMode !== current) atomicWriteFileSync(configTarget, fileMode);
 }
 
 export function getAccountLaunchEnv(
@@ -114,6 +117,24 @@ export function getAccountLaunchEnv(
   };
   if (!profile) {
     return { ...base, error: `${provider} account ${accountId} not found.` };
+  }
+  if (provider === 'codex' && isSidekickCodexHome(getSystemCodexHome())) {
+    return {
+      ...base,
+      error: 'Unset CODEX_HOME before managing accounts; it names a Sidekick-owned home.',
+    };
+  }
+  if (provider === 'codex' && !['file', 'unknown'].includes(getCodexCredentialStoreMode())) {
+    return { ...base, error: 'Codex account launches require readable file-mode credentials.' };
+  }
+  if (provider === 'codex' && isLiveCodexProfile(profile)) {
+    const liveHome = getSystemCodexHome();
+    return {
+      ...base,
+      home: liveHome,
+      env: { CODEX_HOME: liveHome },
+      warnings: ['This account is the live login, so the session uses the normal Codex home.'],
+    };
   }
   if (provider === 'claude-code' && health.isLive) {
     // The live account's only CLI-usable copy is the live store; a session in
@@ -149,6 +170,22 @@ export function getAccountLaunchEnv(
         "Restored this account's saved login into its profile home. If a session elsewhere still uses this login, close it first: two copies of one login invalidate each other.",
       );
     }
+  }
+  if (provider === 'codex') {
+    const restored = restoreCodexProfileFromBackup(accountId, {
+      restore: options.restoreBackup !== false,
+    });
+    if (restored === 'none')
+      return { ...base, error: 'No safe inactive Codex credential is available; sign in again.' };
+    if (restored === 'live')
+      return { ...base, home: getSystemCodexHome(), env: { CODEX_HOME: getSystemCodexHome() } };
+  }
+  if (
+    provider === 'codex' &&
+    options.materialize === false &&
+    !['file', 'unknown'].includes(getCodexCredentialStoreMode(home))
+  ) {
+    return { ...base, error: 'The isolated Codex home must use file credential storage.' };
   }
   if (options.materialize !== false) {
     try {

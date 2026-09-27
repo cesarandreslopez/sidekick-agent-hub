@@ -103,90 +103,140 @@ export class AccountLoginRunner implements vscode.Disposable {
     };
 
     if (begin.alreadyComplete) return finalize();
-    if (!begin.command)
+    if (!begin.command) {
+      discardAccountLogin(providerId, begin.loginId);
       return { outcome: 'failed', error: 'Account login command was not prepared.' };
+    }
 
     const env: Record<string, string | null> = { ...(begin.env ?? {}) };
     for (const name of begin.envUnset ?? []) env[name] = null;
-    const terminal = vscode.window.createTerminal({
-      name: `Sidekick ${PROVIDER_LABELS[providerId]} Login${label ? ` (${label})` : ''}`,
-      env,
-    });
-    terminal.show();
-    terminal.sendText(
-      quoteCommandLine(begin.command, begin.args ?? [], process.platform, vscode.env.shell),
-      true,
-    );
+    let terminal: vscode.Terminal;
+    try {
+      terminal = vscode.window.createTerminal({
+        name: `Sidekick ${PROVIDER_LABELS[providerId]} Login${label ? ` (${label})` : ''}`,
+        env,
+      });
+    } catch {
+      discardAccountLogin(providerId, begin.loginId);
+      return { outcome: 'failed', error: 'Could not create the account login terminal.' };
+    }
+
+    let terminalClosed = false;
+    let finalizing = false;
+    const stopTerminal = async (): Promise<void> => {
+      if (terminalClosed) return;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          listener.dispose();
+          reject(new Error('The login terminal did not close.'));
+        }, 5000);
+        const listener = vscode.window.onDidCloseTerminal((closed) => {
+          if (closed !== terminal) return;
+          terminalClosed = true;
+          clearTimeout(timer);
+          listener.dispose();
+          resolve();
+        });
+        terminal.dispose();
+      });
+    };
+
+    try {
+      terminal.show();
+      terminal.sendText(
+        quoteCommandLine(begin.command, begin.args ?? [], process.platform, vscode.env.shell),
+        true,
+      );
+    } catch {
+      try {
+        await stopTerminal();
+        discardAccountLogin(providerId, begin.loginId);
+      } catch {
+        /* preserve while a writer may still run */
+      }
+      return { outcome: 'failed', error: 'Could not start the account login command.' };
+    }
 
     const timeoutMs = options.timeoutMs ?? 180_000;
     const pollIntervalMs = options.pollIntervalMs ?? 2_000;
 
-    return vscode.window
-      .withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Waiting for the ${PROVIDER_LABELS[providerId]} sign-in in the Sidekick terminal…`,
-          cancellable: true,
-        },
-        (progress, token) =>
-          new Promise<AccountLoginRunResult>((resolve) => {
-            const startedAt = Date.now();
-            let settled = false;
-            let interval: ReturnType<typeof setInterval> | undefined;
-            let tickInFlight = false;
-            const listeners: vscode.Disposable[] = [];
+    return Promise.resolve()
+      .then(() =>
+        vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Waiting for the ${PROVIDER_LABELS[providerId]} sign-in in the Sidekick terminal…`,
+            cancellable: true,
+          },
+          (progress, token) =>
+            new Promise<AccountLoginRunResult>((resolve) => {
+              const startedAt = Date.now();
+              let settled = false;
+              let interval: ReturnType<typeof setInterval> | undefined;
+              let tickInFlight = false;
+              const listeners: vscode.Disposable[] = [];
 
-            const cancel = (): void => settle({ outcome: 'cancelled' });
-            const stop = (): void => {
-              if (interval !== undefined) clearInterval(interval);
-              interval = undefined;
-              for (const listener of listeners) listener.dispose();
-              this.active.delete(cancel);
-            };
-            function settle(outcome: AccountLoginRunResult): void {
-              if (settled) return;
-              settled = true;
-              stop();
-              resolve(outcome);
-            }
-            this.active.add(cancel);
-
-            listeners.push(
-              token.onCancellationRequested(() => settle({ outcome: 'cancelled' })),
-              vscode.window.onDidCloseTerminal((closed) => {
-                if (closed === terminal) settle({ outcome: 'cancelled' });
-              }),
-            );
-
-            const tick = async (): Promise<void> => {
-              if (settled || tickInFlight) return;
-              tickInFlight = true;
-              try {
-                const status = await getAccountLoginStatusAsync(providerId, begin.loginId);
+              const cancel = (): void => settle({ outcome: 'cancelled' });
+              const stop = (): void => {
+                if (interval !== undefined) clearInterval(interval);
+                interval = undefined;
+                for (const listener of listeners) listener.dispose();
+                this.active.delete(cancel);
+              };
+              function settle(outcome: AccountLoginRunResult): void {
                 if (settled) return;
-                if (status.state === 'authenticated') {
-                  settle(await finalize());
-                  return;
-                }
-                const elapsed = Date.now() - startedAt;
-                progress.report({
-                  message: `${Math.max(0, Math.ceil((timeoutMs - elapsed) / 1000))}s left`,
-                });
-                if (elapsed > timeoutMs) settle({ outcome: 'timeout' });
-              } catch (err) {
-                logError('Failed to poll account login status', err);
-              } finally {
-                tickInFlight = false;
+                settled = true;
+                stop();
+                resolve(outcome);
               }
-            };
-            interval = setInterval(() => void tick(), pollIntervalMs);
-            void tick();
-          }),
+              this.active.add(cancel);
+
+              listeners.push(
+                token.onCancellationRequested(() => settle({ outcome: 'cancelled' })),
+                vscode.window.onDidCloseTerminal((closed) => {
+                  if (closed === terminal) {
+                    terminalClosed = true;
+                    if (!finalizing) settle({ outcome: 'cancelled' });
+                  }
+                }),
+              );
+
+              const tick = async (): Promise<void> => {
+                if (settled || tickInFlight) return;
+                tickInFlight = true;
+                try {
+                  const status = await getAccountLoginStatusAsync(providerId, begin.loginId);
+                  if (settled) return;
+                  if (status.state === 'authenticated') {
+                    finalizing = true;
+                    if (providerId === 'codex') await stopTerminal();
+                    if (settled) return;
+                    settle(await finalize());
+                    return;
+                  }
+                  const elapsed = Date.now() - startedAt;
+                  progress.report({
+                    message: `${Math.max(0, Math.ceil((timeoutMs - elapsed) / 1000))}s left`,
+                  });
+                  if (elapsed > timeoutMs) settle({ outcome: 'timeout' });
+                } catch (err) {
+                  logError('Failed to poll account login status', err);
+                  if (finalizing)
+                    settle({ outcome: 'failed', error: 'Could not safely finalize the login.' });
+                } finally {
+                  tickInFlight = false;
+                }
+              };
+              interval = setInterval(() => void tick(), pollIntervalMs);
+              void tick();
+            }),
+        ),
       )
-      .then((outcome) => {
+      .then(async (outcome) => {
         const final = this.disposed ? { outcome: 'cancelled' as const } : outcome;
-        if (final.outcome === 'cancelled' || final.outcome === 'timeout') {
-          terminal.dispose();
+        if (providerId === 'codex' || final.outcome !== 'saved') {
+          if (providerId === 'codex') await stopTerminal();
+          else terminal.dispose();
           try {
             discardAccountLogin(providerId, begin.loginId);
           } catch (err) {
@@ -194,6 +244,15 @@ export class AccountLoginRunner implements vscode.Disposable {
           }
         }
         return final;
+      })
+      .catch(async () => {
+        try {
+          await stopTerminal();
+          discardAccountLogin(providerId, begin.loginId);
+        } catch {
+          /* An unconfirmed terminal shutdown must not race credential cleanup. */
+        }
+        return { outcome: 'failed' as const, error: 'The account login could not finish safely.' };
       });
   }
 

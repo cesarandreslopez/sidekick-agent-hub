@@ -57,7 +57,7 @@ describe('getAccountLaunchEnv', () => {
     fs.mkdirSync(path.join(tmpDir, '.codex'), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, '.codex', 'config.toml'),
-      'model = "gpt-5"\ncli_auth_credentials_store = "auto"\n',
+      'model = "gpt-5"\ncli_auth_credentials_store = "file"\n',
     );
   });
 
@@ -193,7 +193,14 @@ describe('getAccountLaunchEnv', () => {
     fs.mkdirSync(home, { recursive: true });
     fs.writeFileSync(
       path.join(home, 'auth.json'),
-      JSON.stringify({ auth_mode: 'chatgpt', tokens: { id_token: 'x.y.z' } }),
+      JSON.stringify({
+        auth_mode: 'chatgpt',
+        tokens: {
+          id_token: `e30.${Buffer.from(JSON.stringify({ email: 'c@example.com' })).toString('base64url')}.test`,
+          access_token: 'synthetic-access',
+          refresh_token: 'synthetic-refresh',
+        },
+      }),
     );
 
     const launch = getAccountLaunchEnv('codex', 'codex-a');

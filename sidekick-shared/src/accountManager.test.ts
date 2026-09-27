@@ -31,6 +31,14 @@ vi.mock('child_process', async () => {
     ...actual,
     spawn: (...args: unknown[]) => mockSpawn(...args),
     spawnSync: (...args: unknown[]) => mockSpawnSync(...args),
+    execFile: (
+      _command: unknown,
+      _args: unknown,
+      _options: unknown,
+      callback: (error: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      queueMicrotask(() => callback(null, '', ''));
+    },
   };
 });
 
@@ -47,7 +55,7 @@ import {
   switchAccount,
 } from './accountManager';
 import { getClaudeProfileHome } from './claudeProfiles';
-import { getCodexProfileHome } from './codexProfiles';
+import { getCodexLoginHome } from './codexPaths';
 import { readSavedAccountRegistry } from './accountRegistry';
 import {
   accountLoginStatusSchema,
@@ -81,7 +89,17 @@ function writeClaudeLoginFiles(home: string, email = 'work@example.com', uuid = 
 
 function writeCodexAuth(home: string): void {
   fs.mkdirSync(home, { recursive: true });
-  fs.writeFileSync(path.join(home, 'auth.json'), JSON.stringify({ auth_mode: 'chatgpt' }));
+  fs.writeFileSync(
+    path.join(home, 'auth.json'),
+    JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: {
+        access_token: 'synthetic-access',
+        refresh_token: 'synthetic-refresh',
+        account_id: 'test-account',
+      },
+    }),
+  );
 }
 
 function makeChildProcess(): EventEmitter & { kill: ReturnType<typeof vi.fn> } {
@@ -129,7 +147,7 @@ describe('accountManager', { timeout: 30_000 }, () => {
     expect(result.loginId).toBeTruthy();
     expect(result.command).toBe('codex');
     expect(result.args).toEqual(['login']);
-    expect(result.configDir).toBe(getCodexProfileHome(result.loginId));
+    expect(result.configDir).toBe(getCodexLoginHome(result.loginId));
     expect(result.env).toEqual({ CODEX_HOME: result.configDir });
   });
 
@@ -196,6 +214,60 @@ describe('accountManager', { timeout: 30_000 }, () => {
     expect(listAllAccountsResultSchema.parse(accounts)).toEqual(accounts);
     expect(accounts.claude).toHaveLength(1);
     expect(accounts.codex).toHaveLength(1);
+  });
+
+  describe('Codex login home cleanup (I4)', () => {
+    it.each([
+      'success',
+      'early-exit',
+      'spawn-error',
+      'abort',
+      'timeout',
+      'finalize-error',
+    ] as const)('removes the temporary home after %s and stops its writer first', async (mode) => {
+      const controller = new AbortController();
+      let home = '';
+      let child: ReturnType<typeof makeChildProcess> | undefined;
+      mockSpawn.mockImplementation(
+        (_command: unknown, _args: unknown, options: { env: NodeJS.ProcessEnv }) => {
+          home = options.env.CODEX_HOME!;
+          child = makeChildProcess();
+          if (mode === 'success' || mode === 'finalize-error') {
+            writeCodexAuth(home);
+            if (mode === 'finalize-error')
+              fs.mkdirSync(
+                path.join(tmpDir, '.config', 'sidekick', 'accounts', 'codex', 'backups'),
+                { recursive: true },
+              );
+            queueMicrotask(() => child!.emit('exit', 0));
+          } else if (mode === 'early-exit') queueMicrotask(() => child!.emit('exit', 1));
+          else if (mode === 'spawn-error')
+            queueMicrotask(() => child!.emit('error', new Error('unavailable')));
+          else if (mode === 'abort') queueMicrotask(() => controller.abort());
+          return child;
+        },
+      );
+      let spy: ReturnType<typeof vi.spyOn> | undefined;
+      if (mode === 'finalize-error') {
+        const io = await import('./codexCredentialStore');
+        spy = vi.spyOn(io, 'writeCodexBackup').mockImplementation(() => {
+          throw new Error('disk unavailable');
+        });
+      }
+      try {
+        const result = await spawnAccountLogin('codex', 'Temporary', {
+          activate: false,
+          timeoutMs: 20,
+          signal: controller.signal,
+        });
+        expect(result.success).toBe(mode === 'success');
+        expect(home).toContain(`${path.sep}logins${path.sep}`);
+        expect(fs.existsSync(home)).toBe(false);
+        if (mode === 'abort' || mode === 'timeout') expect(child?.kill).toHaveBeenCalled();
+      } finally {
+        spy?.mockRestore();
+      }
+    });
   });
 
   it('returns schema-valid login polling results', () => {

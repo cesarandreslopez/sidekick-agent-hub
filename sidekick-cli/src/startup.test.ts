@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { needsFullStartup } from './startup';
+import { describe, expect, it, vi } from 'vitest';
+const calls = vi.hoisted(() => ({
+  bootstrap: vi.fn(async () => ({})),
+  hydrate: vi.fn(async () => ({})),
+  observed: vi.fn(async () => ({})),
+}));
+vi.mock('sidekick-shared', () => ({ ensureDefaultAccounts: calls.bootstrap }));
+vi.mock('sidekick-shared/node', () => ({
+  hydratePricingCatalog: calls.hydrate,
+  loadObservedContextWindows: calls.observed,
+}));
+import { needsFullStartup, runStartupSideEffects, _resetStartupForTests } from './startup';
 
 describe('needsFullStartup', () => {
   it('skips the network fetch and account bootstrap for a bare invocation', () => {
@@ -21,6 +31,20 @@ describe('needsFullStartup', () => {
     'runs full startup for %s',
     (command) => {
       expect(needsFullStartup(command)).toBe(true);
+    },
+  );
+});
+
+describe('account doctor startup (I4)', () => {
+  it.each(['accounts', 'account'])(
+    'does not bootstrap or hydrate before %s doctor, including --fix confirmation',
+    async (command) => {
+      _resetStartupForTests();
+      for (const fn of Object.values(calls)) fn.mockClear();
+      await runStartupSideEffects(command, { accountDoctor: true });
+      expect(calls.bootstrap).not.toHaveBeenCalled();
+      expect(calls.hydrate).not.toHaveBeenCalled();
+      expect(calls.observed).not.toHaveBeenCalled();
     },
   );
 });

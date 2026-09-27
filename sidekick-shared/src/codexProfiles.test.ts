@@ -45,7 +45,7 @@ import {
   resolveActiveCodexAccount,
   reconcileCodexAuthState,
 } from './codexProfiles';
-import { getCodexProfilesDir } from './codexPaths';
+import { getCodexProfilesDir, getCodexBackupPath } from './codexPaths';
 
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -187,7 +187,8 @@ describe('codexProfiles', () => {
     expect(result.profileId).toBeTruthy();
 
     const profileHome = getCodexProfileHome(result.profileId!);
-    expect(fs.existsSync(path.join(profileHome, 'auth.json'))).toBe(true);
+    expect(fs.existsSync(path.join(profileHome, 'auth.json'))).toBe(false);
+    expect(fs.existsSync(getCodexBackupPath(result.profileId!))).toBe(true);
     expect(fs.existsSync(path.join(profileHome, 'config.toml'))).toBe(true);
     expect(getActiveCodexAccount()).toEqual(
       expect.objectContaining({
@@ -234,9 +235,13 @@ describe('codexProfiles', () => {
 
     mockCodexCli({ loggedIn: true });
 
+    fs.writeFileSync(
+      path.join(prepared.codexHome!, 'auth.json'),
+      makeAuthJson('personal@example.com', 'personal'),
+    );
     const finalized = finalizeCodexAccount(prepared.profileId!);
     expect(finalized.success).toBe(true);
-    expect(finalized.warning).toMatch(/keyring/i);
+    expect(fs.existsSync(prepared.codexHome!)).toBe(false);
     expect(getActiveCodexAccount()).toEqual(
       expect.objectContaining({
         id: prepared.profileId,
@@ -250,7 +255,7 @@ describe('codexProfiles', () => {
   });
 
   describe('async variants (event-loop safety)', () => {
-    it('finalizes a keyring login via the async CLI probe without spawnSync', async () => {
+    it('refuses a keyring-only login without probing or blocking the event loop', async () => {
       const prepared = prepareCodexAccount('Personal');
       expect(prepared.needsLogin).toBe(true);
 
@@ -259,16 +264,10 @@ describe('codexProfiles', () => {
 
       const finalized = await finalizeCodexAccountAsync(prepared.profileId!);
 
-      expect(finalized.success).toBe(true);
-      expect(finalized.warning).toMatch(/keyring/i);
-      expect(getActiveCodexAccount()?.id).toBe(prepared.profileId);
+      expect(finalized.success).toBe(false);
+      expect(finalized.error).toMatch(/readable file credentials/);
       expect(mockSpawnSync).not.toHaveBeenCalled();
-      expect(mockExecFile).toHaveBeenCalledWith(
-        'codex',
-        ['login', 'status'],
-        expect.objectContaining({ timeout: 4000, killSignal: 'SIGKILL' }),
-        expect.any(Function),
-      );
+      expect(mockExecFile.mock.calls.some((call) => call[0] === 'codex')).toBe(false);
     });
 
     it('treats a timed-out async probe as not authenticated', async () => {
@@ -285,7 +284,7 @@ describe('codexProfiles', () => {
 
       expect(finalized).toEqual({
         success: false,
-        error: 'Codex profile is not authenticated yet.',
+        error: 'Codex profile is not authenticated with readable file credentials yet.',
       });
     });
 
@@ -298,7 +297,7 @@ describe('codexProfiles', () => {
       expect(result.success).toBe(true);
       expect(getActiveCodexAccount()?.id).toBe(work);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
-        fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+        fs.readFileSync(getCodexBackupPath(work), 'utf8'),
       );
       expect(mockSpawnSync).not.toHaveBeenCalled();
       expect(mockExecFile).toHaveBeenCalledWith(
@@ -337,7 +336,7 @@ describe('codexProfiles', () => {
     expect(getActiveCodexAccount()?.id).toBe(work);
     expect(resolveSidekickCodexHome()).toBe(systemHome());
     expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
-      fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+      fs.readFileSync(getCodexBackupPath(work), 'utf8'),
     );
 
     const removed = removeCodexAccount(work);
@@ -360,7 +359,7 @@ describe('codexProfiles', () => {
       const started = Date.now();
       const blocked = switchToCodexAccount(work);
       expect(blocked.success).toBe(false);
-      expect(blocked.error).toMatch(/no progress/);
+      expect(blocked.error).toMatch(/could not finish/);
       expect(Date.now() - started).toBeGreaterThanOrEqual(2_000);
 
       fs.rmSync(lockPath, { force: true });
@@ -382,11 +381,9 @@ describe('codexProfiles', () => {
       const result = switchToCodexAccount(work);
 
       expect(result.success).toBe(true);
-      const workStored = fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8');
+      const workStored = fs.readFileSync(getCodexBackupPath(work), 'utf8');
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(workStored);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(personal), 'auth.json'), 'utf8')).toBe(
-        rotated,
-      );
+      expect(fs.readFileSync(getCodexBackupPath(personal), 'utf8')).toBe(rotated);
       expect(getActiveCodexAccount()?.id).toBe(work);
       expect(fs.statSync(systemAuthPath()).mode & 0o777).toBe(0o600);
     });
@@ -403,11 +400,9 @@ describe('codexProfiles', () => {
       const result = switchToCodexAccount(personal);
 
       expect(result.success).toBe(true);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(
-        externalWork,
-      );
+      expect(fs.readFileSync(getCodexBackupPath(work), 'utf8')).toBe(externalWork);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
-        fs.readFileSync(path.join(getCodexProfileHome(personal), 'auth.json'), 'utf8'),
+        fs.readFileSync(getCodexBackupPath(personal), 'utf8'),
       );
       expect(getActiveCodexAccount()?.id).toBe(personal);
     });
@@ -424,9 +419,7 @@ describe('codexProfiles', () => {
 
       expect(result.success).toBe(true);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(rotatedWork);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(
-        rotatedWork,
-      );
+      expect(fs.readFileSync(getCodexBackupPath(work), 'utf8')).toBe(rotatedWork);
       expect(getActiveCodexAccount()?.id).toBe(work);
     });
 
@@ -451,7 +444,7 @@ describe('codexProfiles', () => {
       );
       expect(fs.existsSync(path.join(tmpDir, 'accounts', 'codex', 'stash'))).toBe(false);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
-        fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+        fs.readFileSync(getCodexBackupPath(work), 'utf8'),
       );
     });
 
@@ -463,7 +456,7 @@ describe('codexProfiles', () => {
       try {
         const result = switchToCodexAccount(work);
         expect(result.success).toBe(false);
-        expect(result.error).toMatch(/Failed to write Codex credentials/);
+        expect(result.error).toMatch(/write did not verify/);
       } finally {
         fs.chmodSync(systemHome(), 0o700);
       }
@@ -475,12 +468,16 @@ describe('codexProfiles', () => {
     it('refuses to switch when codex stores credentials in the OS keyring', () => {
       const { work } = setupTwoAccounts();
       fs.rmSync(systemAuthPath());
+      fs.writeFileSync(
+        path.join(systemHome(), 'config.toml'),
+        'cli_auth_credentials_store = "keyring"\n',
+      );
       mockCodexCli({ loggedIn: true });
 
       const result = switchToCodexAccount(work);
 
       expect(result.success).toBe(false);
-      expect(result.error).toMatch(/keyring/i);
+      expect(result.error).toMatch(/cli_auth_credentials_store/i);
       expect(fs.existsSync(systemAuthPath())).toBe(false);
     });
 
@@ -492,7 +489,7 @@ describe('codexProfiles', () => {
 
       expect(result.success).toBe(true);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
-        fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8'),
+        fs.readFileSync(getCodexBackupPath(work), 'utf8'),
       );
     });
 
@@ -519,7 +516,7 @@ describe('codexProfiles', () => {
       expect(toWork.success).toBe(true);
       expect(fs.existsSync(path.join(systemHome(), '.credentials.json'))).toBe(false);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(
-        fs.readFileSync(path.join(getCodexProfileHome(work.profileId!), 'auth.json'), 'utf8'),
+        fs.readFileSync(getCodexBackupPath(work.profileId!), 'utf8'),
       );
     });
 
@@ -537,20 +534,20 @@ describe('codexProfiles', () => {
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(freshAuth);
     });
 
-    it('warns when a codex process is running during the switch', () => {
+    it('blocks a switch when a Codex process is running (I5)', () => {
       const { work } = setupTwoAccounts();
       mockCodexCli({ loggedIn: false, pgrepHit: true });
 
       const result = switchToCodexAccount(work);
 
-      expect(result.success).toBe(true);
-      expect(result.warning).toMatch(/running codex sessions/i);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Close running Codex/);
       expect(result.runningConsumers).toEqual([
         expect.objectContaining({ kind: 'codex-cli', pids: [300], switched: true }),
       ]);
     });
 
-    it('bounds process probes and ignores killed running-process checks', () => {
+    it('bounds process probes and refuses when process discovery fails (I5)', () => {
       const { work } = setupTwoAccounts();
       mockSpawnSync.mockImplementation((command: unknown) => {
         if (command === 'ps') return timeoutSpawnResult();
@@ -559,7 +556,7 @@ describe('codexProfiles', () => {
 
       const result = switchToCodexAccount(work);
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
       expect(result.warning ?? '').not.toMatch(/running codex/i);
       expect(result.runningConsumers).toEqual([]);
       expect(mockSpawnSync).toHaveBeenCalledWith(
@@ -603,12 +600,12 @@ describe('codexProfiles', () => {
 
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(fresher);
       const stashDir = path.join(tmpDir, 'accounts', 'codex', 'stash');
-      expect(fs.readdirSync(stashDir)).toHaveLength(1);
+      expect(fs.existsSync(stashDir)).toBe(false);
 
-      // The marker prevents a second run from touching anything.
+      // Continuous reconciliation repairs a later downgrade from the private backup too.
       writeSystemAuth(oldLive);
       reconcileCodexAuthState();
-      expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(oldLive);
+      expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(fresher);
     });
 
     it('repoints the registry when the live credentials belong to a different saved account', () => {
@@ -623,9 +620,7 @@ describe('codexProfiles', () => {
 
       expect(getActiveCodexAccount()?.id).toBe(work);
       expect(fs.readFileSync(systemAuthPath(), 'utf8')).toBe(externalWork);
-      expect(fs.readFileSync(path.join(getCodexProfileHome(work), 'auth.json'), 'utf8')).toBe(
-        externalWork,
-      );
+      expect(fs.readFileSync(getCodexBackupPath(work), 'utf8')).toBe(externalWork);
     });
   });
 
@@ -811,10 +806,7 @@ describe('codexProfiles add-time safeguards', () => {
 
   it('forces file-based credential storage in the isolated profile config', () => {
     fs.mkdirSync(systemHome(), { recursive: true });
-    fs.writeFileSync(
-      path.join(systemHome(), 'config.toml'),
-      'model = "gpt-5"\ncli_auth_credentials_store = "auto"\n',
-    );
+    fs.writeFileSync(path.join(systemHome(), 'config.toml'), 'model = "gpt-5"\n');
     writeSystemAuth(makeAuthJson('work@example.com', 'ws-work'));
 
     const result = prepareCodexAccount('Work');
@@ -837,11 +829,9 @@ describe('codexProfiles add-time safeguards', () => {
     const second = prepareCodexAccount('Work again');
 
     expect(second).toMatchObject({ success: true, profileId: first.profileId, needsLogin: false });
-    expect(second.warning).toMatch(/already saved as "Work"/);
+    expect(second.warning).toMatch(/already saved as Work/);
     expect(listCodexAccounts()).toHaveLength(1);
-    expect(
-      fs.readFileSync(path.join(getCodexProfileHome(first.profileId!), 'auth.json'), 'utf8'),
-    ).toBe(rotated);
+    expect(fs.readFileSync(getCodexBackupPath(first.profileId!), 'utf8')).toBe(rotated);
     expect(fs.readdirSync(getCodexProfilesDir())).toHaveLength(1);
   });
 

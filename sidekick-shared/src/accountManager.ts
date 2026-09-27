@@ -36,7 +36,7 @@ import { recordClaudeCredentialHome } from './claudeCredentialLedger';
 import {
   finalizeCodexAccount,
   finalizeCodexAccountAsync,
-  getCodexProfileHome,
+  discardCodexLogin,
   isCodexProfileAuthenticated,
   isCodexProfileAuthenticatedAsync,
   listCodexAccounts,
@@ -46,6 +46,7 @@ import {
   switchToCodexAccount,
   switchToCodexAccountAsync,
 } from './codexProfiles';
+import { getCodexLoginHome } from './codexPaths';
 import {
   readLastSwitch,
   switchFailure,
@@ -242,7 +243,7 @@ export function beginAccountLogin(
     const effectiveLabel = existing
       ? `${existing.label ?? existing.email ?? 'codex'} (re-login ${randomUUID().slice(0, 8)})`
       : label.trim() || `Codex ${listCodexAccounts().length + 1}`;
-    const prepared = prepareCodexAccount(effectiveLabel);
+    const prepared = prepareCodexAccount(effectiveLabel, { importCurrent: false });
     if (!prepared.success || !prepared.profileId || !prepared.codexHome) {
       return { success: false, error: prepared.error ?? 'Could not prepare Codex account login.' };
     }
@@ -316,7 +317,7 @@ export function getAccountLoginStatus(
   loginId: string,
 ): AccountLoginStatus {
   if (provider === 'codex') {
-    const codexHome = getCodexProfileHome(loginId);
+    const codexHome = getCodexLoginHome(loginId);
     if (!isCodexProfileAuthenticated(codexHome)) {
       return { state: 'pending' };
     }
@@ -341,7 +342,7 @@ export async function getAccountLoginStatusAsync(
   loginId: string,
 ): Promise<AccountLoginStatus> {
   if (provider === 'codex') {
-    const codexHome = getCodexProfileHome(loginId);
+    const codexHome = getCodexLoginHome(loginId);
     if (!(await isCodexProfileAuthenticatedAsync(codexHome))) {
       return { state: 'pending' };
     }
@@ -534,9 +535,7 @@ function discardPendingLogin(provider: AccountProviderId, loginId: string): void
       discardClaudeLoginHome(loginId);
       return;
     }
-    const dir = path.dirname(getCodexProfileHome(loginId));
-    if (!dir.startsWith(getAccountsDir())) return;
-    fs.rmSync(dir, { recursive: true, force: true });
+    discardCodexLogin(loginId);
   } catch {
     /* best effort */
   }
@@ -565,6 +564,8 @@ export function discardAccountLogin(provider: AccountProviderId, loginId: string
   return true;
 }
 
+class AccountLoginWriterActiveError extends Error {}
+
 export async function spawnAccountLogin(
   provider: AccountProviderId,
   label: string,
@@ -572,15 +573,26 @@ export async function spawnAccountLogin(
 ): Promise<AccountManagerResult> {
   let loginId: string | undefined;
   let result: AccountManagerResult | undefined;
+  let writerActive = false;
   try {
     result = await runAccountLogin(provider, label, opts, (id) => {
       loginId = id;
     });
     return result;
+  } catch (error) {
+    if (error instanceof AccountLoginWriterActiveError) {
+      writerActive = true;
+      return {
+        success: false,
+        error:
+          'The Codex login process could not be stopped. Its temporary home was preserved; close that process before retrying.',
+      };
+    }
+    throw error;
   } finally {
     // Every exit that did not end in a saved login (spawn error, early exit,
     // abort, timeout, a throw) removes the temporary home and its Keychain item.
-    if (provider === 'claude-code' && loginId && !result?.success) {
+    if (!writerActive && loginId && (provider === 'codex' || !result?.success)) {
       discardPendingLogin(provider, loginId);
     }
   }
@@ -646,63 +658,105 @@ async function runAccountLogin(
     childState.spawnError = error;
   });
 
-  const abort = (): AccountManagerResult => {
-    child.kill();
+  const stopCodexChild = async (): Promise<void> => {
+    if (provider !== 'codex' || childExited) return;
+    const waitForExit = (ms: number): Promise<void> =>
+      new Promise((resolve) => {
+        if (childExited) {
+          resolve();
+          return;
+        }
+        const done = (): void => {
+          clearTimeout(timer);
+          child.off('exit', done);
+          child.off('error', done);
+          resolve();
+        };
+        const timer = setTimeout(done, ms);
+        child.once('exit', done);
+        child.once('error', done);
+      });
+    await waitForExit(100);
+    try {
+      if (!childExited) {
+        child.kill();
+        await waitForExit(1000);
+      }
+      if (!childExited) {
+        child.kill('SIGKILL');
+        await waitForExit(1000);
+      }
+    } catch {
+      throw new AccountLoginWriterActiveError();
+    }
+    if (!childExited) throw new AccountLoginWriterActiveError();
+  };
+
+  const abort = async (): Promise<AccountManagerResult> => {
+    if (provider === 'codex') await stopCodexChild();
+    else child.kill();
     discardPendingLogin(provider, begin.loginId);
     emitStatus(opts, { state: 'failed', error: 'Account login aborted.' });
     return { success: false, error: 'Account login aborted.' };
   };
 
-  while (true) {
-    if (opts.signal?.aborted) return abort();
+  try {
+    while (true) {
+      if (opts.signal?.aborted) return await abort();
 
-    const status = emitStatus(opts, await getAccountLoginStatusAsync(provider, begin.loginId));
-    if (status.state === 'authenticated') {
-      return finalizeAccountLoginAsync(provider, begin.loginId, {
-        activate: opts.activate ?? true,
-      });
-    }
-
-    if (childExited) {
-      if (childState.spawnError) {
-        const error = `Could not spawn account login: ${childState.spawnError.message}`;
-        discardPendingLogin(provider, begin.loginId);
-        emitStatus(opts, { state: 'failed', error });
-        return { success: false, error };
-      }
-      const finalStatus = emitStatus(
-        opts,
-        await getAccountLoginStatusAsync(provider, begin.loginId),
-      );
-      if (finalStatus.state === 'authenticated') {
-        return finalizeAccountLoginAsync(provider, begin.loginId, {
+      const status = emitStatus(opts, await getAccountLoginStatusAsync(provider, begin.loginId));
+      if (status.state === 'authenticated') {
+        await stopCodexChild();
+        return await finalizeAccountLoginAsync(provider, begin.loginId, {
           activate: opts.activate ?? true,
         });
       }
-      discardPendingLogin(provider, begin.loginId);
-      emitStatus(opts, {
-        state: 'failed',
-        error: `Account login exited before authentication completed${childExitCode === null ? '.' : ` (exit ${childExitCode}).`}`,
-      });
-      return { success: false, error: 'Account login did not complete.' };
-    }
 
-    const now = Date.now();
-    const mtime = latestHomeActivity(begin.configDir);
-    if (mtime > lastSeenMtime) {
-      lastSeenMtime = mtime;
-      lastActivity = now;
-    }
-    const remainingMs = Math.min(inactivityMs - (now - lastActivity), maxMs - (now - startedAt));
-    if (remainingMs <= 0) {
-      child.kill();
-      discardPendingLogin(provider, begin.loginId);
-      emitStatus(opts, { state: 'failed', error: 'Account login timed out.' });
-      return { success: false, error: 'Account login timed out.' };
-    }
+      if (childExited) {
+        if (childState.spawnError) {
+          const error = `Could not spawn account login: ${childState.spawnError.message}`;
+          discardPendingLogin(provider, begin.loginId);
+          emitStatus(opts, { state: 'failed', error });
+          return { success: false, error };
+        }
+        const finalStatus = emitStatus(
+          opts,
+          await getAccountLoginStatusAsync(provider, begin.loginId),
+        );
+        if (finalStatus.state === 'authenticated') {
+          await stopCodexChild();
+          return await finalizeAccountLoginAsync(provider, begin.loginId, {
+            activate: opts.activate ?? true,
+          });
+        }
+        discardPendingLogin(provider, begin.loginId);
+        emitStatus(opts, {
+          state: 'failed',
+          error: `Account login exited before authentication completed${childExitCode === null ? '.' : ` (exit ${childExitCode}).`}`,
+        });
+        return { success: false, error: 'Account login did not complete.' };
+      }
 
-    const shouldContinue = await waitForNextPoll(Math.min(2_000, remainingMs), opts.signal);
-    if (!shouldContinue) return abort();
+      const now = Date.now();
+      const mtime = latestHomeActivity(begin.configDir);
+      if (mtime > lastSeenMtime) {
+        lastSeenMtime = mtime;
+        lastActivity = now;
+      }
+      const remainingMs = Math.min(inactivityMs - (now - lastActivity), maxMs - (now - startedAt));
+      if (remainingMs <= 0) {
+        if (provider === 'codex') await stopCodexChild();
+        else child.kill();
+        discardPendingLogin(provider, begin.loginId);
+        emitStatus(opts, { state: 'failed', error: 'Account login timed out.' });
+        return { success: false, error: 'Account login timed out.' };
+      }
+
+      const shouldContinue = await waitForNextPoll(Math.min(2_000, remainingMs), opts.signal);
+      if (!shouldContinue) return await abort();
+    }
+  } finally {
+    await stopCodexChild();
   }
 }
 

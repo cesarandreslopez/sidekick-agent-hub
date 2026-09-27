@@ -21,6 +21,8 @@ const shared = vi.hoisted(() => ({
   writeAccountLauncher: vi.fn(),
   inspectClaudeCredentialStores: vi.fn(),
   repairClaudeCredentialStores: vi.fn(),
+  inspectCodexCredentialStores: vi.fn(),
+  repairCodexCredentialStores: vi.fn(),
   getClaudeProfileHome: vi.fn(() => '/profiles/claude'),
   getCodexProfileHome: vi.fn(() => '/profiles/codex'),
 }));
@@ -132,6 +134,7 @@ describe('accounts actions', () => {
       homesChecked: 0,
       keychainScanned: false,
     });
+    shared.inspectCodexCredentialStores.mockReturnValue({ findings: [], homesChecked: 0 });
     config.value = {};
     mockConfirm.mockReset();
     process.exitCode = undefined;
@@ -427,12 +430,15 @@ describe('accounts actions', () => {
       ['running-apps', 'info'],
       ['codex-credential-store', 'warning'],
       ['credential-stores', 'ok'],
+      ['codex-credential-stores', 'ok'],
       ['keep-alive', 'info'],
     ]);
     expect(checks[1].repair).toBe('sidekick accounts login "old"');
     expect(checks[2].message).toContain('Claude Desktop is not switched');
     expect(checks[3].repair).toContain('cli_auth_credentials_store = "file"');
-    expect(checks[5].repair).toBe('sidekick accounts config keep-alive on');
+    expect(checks.find((c) => c.id === 'keep-alive')?.repair).toBe(
+      'sidekick accounts config keep-alive on',
+    );
   });
 
   describe('doctor credential stores', () => {
@@ -474,6 +480,11 @@ describe('accounts actions', () => {
       });
 
       await doctorAction(makeCtx());
+      expect(shared.syncLiveAccountState).not.toHaveBeenCalled();
+      expect(shared.listAccountsWithHealth).toHaveBeenCalledWith(
+        undefined,
+        expect.objectContaining({ persist: false }),
+      );
       expect(shared.repairClaudeCredentialStores).not.toHaveBeenCalled();
 
       const ctx = makeCtx();
@@ -508,6 +519,26 @@ describe('accounts actions', () => {
       expect(shared.repairClaudeCredentialStores).toHaveBeenCalledWith({ dryRun: false });
       expect(JSON.parse(ctx.stdout.join('\n')).repaired).toEqual([{ finding: orphan, ok: true }]);
     });
+  });
+
+  it('repairs only Codex findings with the provider filter and explicit confirmation (I4)', async () => {
+    shared.detectRunningAccountConsumers.mockResolvedValue([]);
+    shared.getCodexCredentialStoreMode.mockReturnValue('file');
+    const finding = {
+      kind: 'live-duplicate',
+      configDir: '/cfg/accounts/codex/profiles/a/codex-home',
+      ownership: 'profile-home',
+      detail: 'Duplicate login.',
+      action: 'Remove after backup verification.',
+    };
+    shared.inspectCodexCredentialStores.mockReturnValue({ findings: [finding], homesChecked: 1 });
+    shared.repairCodexCredentialStores.mockReturnValue({ repaired: [{ finding, ok: true }] });
+    const ctx = makeCtx({ provider: 'codex', yes: true, json: true });
+    await doctorAction(ctx, { fix: true });
+    expect(shared.inspectClaudeCredentialStores).not.toHaveBeenCalled();
+    expect(shared.repairClaudeCredentialStores).not.toHaveBeenCalled();
+    expect(shared.repairCodexCredentialStores).toHaveBeenCalledWith({ dryRun: false });
+    expect(JSON.parse(ctx.stdout.join('')).repaired[0].ok).toBe(true);
   });
 
   it('persists auto-switch and keep-alive settings with validation', () => {

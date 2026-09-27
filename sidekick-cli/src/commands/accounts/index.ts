@@ -34,7 +34,7 @@ Examples:
   $ sidekick accounts switch work            Switch by label, email, or id
   $ eval "$(sidekick accounts env work)"     This shell only: claude/codex use Work
   $ sidekick accounts shell work -- claude   One-off claude session as Work
-  $ sidekick accounts doctor                 Expiry, running apps, and Codex keyring mode
+  $ sidekick accounts doctor                 Read-only credential, expiry, and running-app inspection
 `;
 
 /** Interactive picker loop; falls back to the list when not on a terminal. */

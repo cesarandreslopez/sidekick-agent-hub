@@ -31,6 +31,7 @@ export interface RunningAccountConsumer {
 
 const PROBE_TIMEOUT_MS = 4000;
 const CLAUDE_NPM_ENTRY = /claude-code[\\/]cli\.js/;
+const CODEX_NPM_ENTRY = /(?:@openai[\\/]codex|codex[\\/]bin)[\\/].*codex\.js/;
 
 interface ProcessRow {
   pid: number;
@@ -79,6 +80,19 @@ function matchRows(rows: ProcessRow[], names: string[]): RunningProcess[] {
     ) {
       name = 'claude';
     }
+    if (
+      !name &&
+      wanted.has('codex') &&
+      /^node(\.exe)?$/i.test(base) &&
+      CODEX_NPM_ENTRY.test(row.args)
+    )
+      name = 'codex';
+    if (
+      !name &&
+      wanted.has('Codex') &&
+      /(?:^|[\\/])Codex\.app[\\/]/.test(row.command + ' ' + row.args)
+    )
+      name = 'Codex';
     if (name) found.push({ pid: row.pid, name, command: row.command });
   }
   return found;
@@ -95,8 +109,8 @@ function parseOutput(stdout: string): ProcessRow[] {
 }
 
 /** Sync sibling of {@link findRunningProcesses}; blocks up to 4 s. */
-export function findRunningProcessesSync(names: string[]): RunningProcess[] {
-  if (names.length === 0) return [];
+function inspectProcessesSync(names: string[]): { ok: boolean; processes: RunningProcess[] } {
+  if (names.length === 0) return { ok: true, processes: [] };
   try {
     const { command, args } = probeCommand();
     const result = spawnSync(command, args, {
@@ -106,15 +120,15 @@ export function findRunningProcessesSync(names: string[]): RunningProcess[] {
       killSignal: 'SIGKILL',
       windowsHide: true,
     });
-    if (result.error || result.status !== 0) return [];
-    return matchRows(parseOutput(String(result.stdout ?? '')), names);
+    if (result.error || result.status !== 0) return { ok: false, processes: [] };
+    return { ok: true, processes: matchRows(parseOutput(String(result.stdout ?? '')), names) };
   } catch {
-    return [];
+    return { ok: false, processes: [] };
   }
 }
 
-export function findRunningProcesses(names: string[]): Promise<RunningProcess[]> {
-  if (names.length === 0) return Promise.resolve([]);
+function inspectProcesses(names: string[]): Promise<{ ok: boolean; processes: RunningProcess[] }> {
+  if (names.length === 0) return Promise.resolve({ ok: true, processes: [] });
   return new Promise((resolve) => {
     try {
       const { command, args } = probeCommand();
@@ -129,11 +143,14 @@ export function findRunningProcesses(names: string[]): Promise<RunningProcess[]>
           maxBuffer: 16 * 1024 * 1024,
         },
         (error, stdout) => {
-          resolve(error ? [] : matchRows(parseOutput(String(stdout ?? '')), names));
+          resolve({
+            ok: !error,
+            processes: error ? [] : matchRows(parseOutput(String(stdout ?? '')), names),
+          });
         },
       );
     } catch {
-      resolve([]);
+      resolve({ ok: false, processes: [] });
     }
   });
 }
@@ -229,4 +246,31 @@ export function describeAccountConsumer(
   pids: number[] = [],
 ): RunningAccountConsumer {
   return toConsumer(kind, pids);
+}
+
+/** Compatibility wrappers keep the established best-effort list API. */
+export function findRunningProcessesSync(names: string[]): RunningProcess[] {
+  return inspectProcessesSync(names).processes;
+}
+export async function findRunningProcesses(names: string[]): Promise<RunningProcess[]> {
+  return (await inspectProcesses(names)).processes;
+}
+export interface AccountConsumerScan {
+  ok: boolean;
+  consumers: RunningAccountConsumer[];
+}
+/** Safety decisions must distinguish a failed process scan from an empty one. */
+export function inspectRunningAccountConsumersSync(
+  provider: 'claude-code' | 'codex',
+): AccountConsumerScan {
+  const kinds = kindsForProvider(provider);
+  const result = inspectProcessesSync(kinds.map((kind) => CONSUMER_PROCESS_NAMES[kind]));
+  return { ok: result.ok, consumers: groupConsumers(result.processes, kinds) };
+}
+export async function inspectRunningAccountConsumers(
+  provider: 'claude-code' | 'codex',
+): Promise<AccountConsumerScan> {
+  const kinds = kindsForProvider(provider);
+  const result = await inspectProcesses(kinds.map((kind) => CONSUMER_PROCESS_NAMES[kind]));
+  return { ok: result.ok, consumers: groupConsumers(result.processes, kinds) };
 }

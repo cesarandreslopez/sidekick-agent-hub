@@ -3,6 +3,7 @@
  * beyond an optional mtime fallback, no child processes.
  */
 import * as fs from 'fs';
+import { createHash } from 'crypto';
 
 export interface CodexAuthJsonFile {
   auth_mode?: string;
@@ -112,4 +113,22 @@ export function identitiesMatch(
   if (!a || !b) return false;
   if (a.workspaceId && b.workspaceId) return a.workspaceId === b.workspaceId;
   return Boolean(a.email && b.email && a.email === b.email);
+}
+
+/** Non-secret chain-link identifier; raw token values never belong in diagnostics. */
+export function codexRefreshFingerprint(raw: string | null): string | null {
+  const token = parseAuthJson(raw)?.tokens?.refresh_token;
+  return typeof token === 'string' && token
+    ? createHash('sha256').update(token).digest('hex').slice(0, 16)
+    : null;
+}
+
+/** Compare evidence, never filesystem timestamps. Incomparable credentials tie. */
+export function compareCodexAuthFreshness(a: string | null, b: string | null): number {
+  const ar = readLastRefresh(a),
+    br = readLastRefresh(b);
+  if (ar !== null && br !== null && ar !== br) return ar > br ? 1 : -1;
+  const ae = readAccessTokenExpiry(a),
+    be = readAccessTokenExpiry(b);
+  return ae !== null && be !== null && ae !== be ? (ae > be ? 1 : -1) : 0;
 }

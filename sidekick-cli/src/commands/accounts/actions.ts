@@ -18,6 +18,8 @@ import {
   getCodexCredentialStoreMode,
   getLastSwitch,
   inspectClaudeCredentialStores,
+  inspectCodexCredentialStores,
+  repairCodexCredentialStores,
   listAccountsWithHealth,
   listSavedAccountProfiles,
   refreshInactiveAccounts,
@@ -37,6 +39,7 @@ import type {
   AccountView,
   AutoSwitchConfig,
   ClaudeCredentialFinding,
+  CodexCredentialFinding,
   SwitchAccountResult,
   SyncReport,
 } from 'sidekick-shared';
@@ -661,7 +664,7 @@ export interface AccountCheck {
 
 export async function collectAccountChecks(ctx: AccountsContext): Promise<AccountCheck[]> {
   const checks: AccountCheck[] = [];
-  const all = views(ctx);
+  const all = listAccountsWithHealth(ctx.provider, { now: now(ctx), persist: false });
   if (all.length === 0) {
     checks.push({
       id: 'accounts',
@@ -704,13 +707,13 @@ export async function collectAccountChecks(ctx: AccountsContext): Promise<Accoun
 
   if (!ctx.provider || ctx.provider === 'codex') {
     const mode = getCodexCredentialStoreMode();
-    const keyring = mode === 'keyring' || mode === 'auto';
+    const keyring = mode !== 'file' && mode !== 'unknown';
     checks.push({
       id: 'codex-credential-store',
       status: keyring ? 'warning' : 'ok',
       title: 'Codex credential store',
       message: keyring
-        ? `cli_auth_credentials_store = "${mode}": codex keeps its login in the OS keyring, which sidekick cannot switch.`
+        ? `cli_auth_credentials_store = "${mode}": Sidekick requires a readable file-mode credential configuration.`
         : `cli_auth_credentials_store = "${mode === 'unknown' ? 'file (default)' : mode}": switchable.`,
       ...(keyring
         ? {
@@ -723,6 +726,11 @@ export async function collectAccountChecks(ctx: AccountsContext): Promise<Accoun
 
   if (!ctx.provider || ctx.provider === 'claude-code') {
     checks.push(...credentialStoreChecks(inspectClaudeCredentialStores().findings));
+  }
+
+  if (!ctx.provider || ctx.provider === 'codex') {
+    const findings = inspectCodexCredentialStores().findings;
+    checks.push(...codexCredentialStoreChecks(findings));
   }
 
   const keepAlive = Boolean(readCliConfig().accounts?.keepAlive);
@@ -774,6 +782,25 @@ export function credentialStoreChecks(findings: ClaudeCredentialFinding[]): Acco
   }));
 }
 
+export function codexCredentialStoreChecks(findings: CodexCredentialFinding[]): AccountCheck[] {
+  if (!findings.length)
+    return [
+      {
+        id: 'codex-credential-stores',
+        status: 'ok',
+        title: 'Codex credential stores',
+        message: 'No duplicate or unreadable Codex credential stores found.',
+      },
+    ];
+  return findings.map((f) => ({
+    id: `codex-credential-store:${f.kind}:${f.file ?? f.configDir}`,
+    status: f.kind === 'corrupt' || f.kind === 'unreadable' ? 'error' : 'warning',
+    title: `Codex credential store · ${f.kind}`,
+    message: `${f.detail}\n${f.file ?? f.configDir}`,
+    repair: `sidekick accounts doctor --provider codex --fix (${f.action})`,
+  }));
+}
+
 const STATUS_GLYPH: Record<AccountCheck['status'], string> = {
   ok: chalk.green('✓'),
   info: chalk.cyan('i'),
@@ -787,11 +814,18 @@ const STATUS_GLYPH: Record<AccountCheck['status'], string> = {
  * ledger, the item's Sidekick tag, or the profile directory, never by name.
  * Returns false when the user declined or confirmation was impossible.
  */
+type CredentialRepairOutcome =
+  | ReturnType<typeof repairClaudeCredentialStores>['repaired'][number]
+  | ReturnType<typeof repairCodexCredentialStores>['repaired'][number];
+
 async function fixCredentialStores(
   ctx: AccountsContext,
-): Promise<ReturnType<typeof repairClaudeCredentialStores> | null | false> {
-  const pending = inspectClaudeCredentialStores().findings;
-  if (pending.length === 0) return null;
+): Promise<{ repaired: CredentialRepairOutcome[] } | null | false> {
+  const claude =
+    !ctx.provider || ctx.provider === 'claude-code' ? inspectClaudeCredentialStores().findings : [];
+  const codex =
+    !ctx.provider || ctx.provider === 'codex' ? inspectCodexCredentialStores().findings : [];
+  if (!claude.length && !codex.length) return null;
   if (!ctx.yes) {
     if (ctx.json || !ctx.interactive) {
       fail(
@@ -800,36 +834,37 @@ async function fixCredentialStores(
       );
       return false;
     }
-    const confirmed = await confirmDestructive(
-      `Delete or repair ${pending.length} stored Claude credential${pending.length === 1 ? '' : 's'} that Sidekick owns (listed by \`sidekick accounts doctor\`)?`,
-    );
-    if (!confirmed) {
+    if (
+      !(await confirmDestructive(
+        `Delete or repair ${claude.length + codex.length} stored credentials Sidekick owns (listed by accounts doctor)?`,
+      ))
+    ) {
       ctx.err(chalk.dim('Aborted — nothing was changed.'));
       process.exitCode = 1;
       return false;
     }
   }
-  const result = repairClaudeCredentialStores({ dryRun: false });
-  if (!ctx.json) {
-    for (const outcome of result.repaired) {
-      const label = `${FINDING_LABEL[outcome.finding.kind]} ${outcome.finding.service}`;
+  const repaired: CredentialRepairOutcome[] = [];
+  if (claude.length) repaired.push(...repairClaudeCredentialStores({ dryRun: false }).repaired);
+  if (codex.length) repaired.push(...repairCodexCredentialStores({ dryRun: false }).repaired);
+  if (!ctx.json)
+    for (const outcome of repaired) {
+      const label = `${outcome.finding.kind} ${outcome.finding.configDir}`;
       ctx.err(
         outcome.ok
           ? chalk.green(`✓ fixed ${label}`)
           : chalk.red(`✗ could not fix ${label}: ${outcome.error ?? 'unknown error'}`),
       );
     }
-  }
-  return result;
+  return { repaired };
 }
 
 export async function doctorAction(
   ctx: AccountsContext,
   options: { fix?: boolean } = {},
 ): Promise<void> {
-  await syncAndReport(ctx);
-  let repaired: ReturnType<typeof repairClaudeCredentialStores> | null = null;
-  if (options.fix && (!ctx.provider || ctx.provider === 'claude-code')) {
+  let repaired: { repaired: CredentialRepairOutcome[] } | null = null;
+  if (options.fix) {
     const outcome = await fixCredentialStores(ctx);
     if (outcome === false) return;
     repaired = outcome;
@@ -908,7 +943,7 @@ export function configAction(ctx: AccountsContext, key: string, value: string): 
         if (keepAlive)
           ctx.out(
             chalk.dim(
-              'The dashboard refreshes inactive accounts through `claude auth status` / `codex login status` in their isolated profiles.',
+              'The dashboard refreshes inactive accounts through `claude auth status` / the Codex app-server refresh protocol in their isolated profiles.',
             ),
           );
       }
