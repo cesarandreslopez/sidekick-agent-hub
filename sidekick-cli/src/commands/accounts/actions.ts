@@ -15,27 +15,28 @@ import {
   addCurrentAccount,
   detectRunningAccountConsumers,
   getAccountLaunchEnv,
-  getClaudeProfileHome,
   getCodexCredentialStoreMode,
-  getCodexProfileHome,
   getLastSwitch,
+  inspectClaudeCredentialStores,
   listAccountsWithHealth,
   listSavedAccountProfiles,
   refreshInactiveAccounts,
   removeAccount,
   removeCodexAccount,
+  repairClaudeCredentialStores,
   spawnAccountLogin,
   switchAccountAsync,
   syncLiveAccountState,
   undoLastSwitch,
   upsertSavedAccountProfile,
-  writeLauncher,
+  writeAccountLauncher,
 } from 'sidekick-shared';
 import type {
   AccountManagerResult,
   AccountProviderId,
   AccountView,
   AutoSwitchConfig,
+  ClaudeCredentialFinding,
   SwitchAccountResult,
   SyncReport,
 } from 'sidekick-shared';
@@ -621,10 +622,8 @@ export function launcherAction(
     fail(ctx, `No active ${PROVIDER_NAMES[provider]} account found for launcher creation.`);
     return;
   }
-  const profileHome =
-    provider === 'codex' ? getCodexProfileHome(active.id) : getClaudeProfileHome(active.id);
   try {
-    writeLauncher(name, provider, profileHome);
+    writeAccountLauncher(name, provider, active.id);
   } catch (error) {
     fail(ctx, error instanceof Error ? error.message : String(error));
     return;
@@ -632,7 +631,13 @@ export function launcherAction(
   const launcherPath = path.join(os.homedir(), '.local', 'bin', name);
   if (ctx.json) {
     ctx.out(
-      JSON.stringify({ action: 'launcher', provider, name, path: launcherPath, profileHome }),
+      JSON.stringify({
+        action: 'launcher',
+        provider,
+        name,
+        path: launcherPath,
+        accountId: active.id,
+      }),
     );
   } else {
     ctx.out(chalk.green('Launcher created: ') + launcherPath);
@@ -716,6 +721,10 @@ export async function collectAccountChecks(ctx: AccountsContext): Promise<Accoun
     });
   }
 
+  if (!ctx.provider || ctx.provider === 'claude-code') {
+    checks.push(...credentialStoreChecks(inspectClaudeCredentialStores().findings));
+  }
+
   const keepAlive = Boolean(readCliConfig().accounts?.keepAlive);
   checks.push({
     id: 'keep-alive',
@@ -729,6 +738,42 @@ export async function collectAccountChecks(ctx: AccountsContext): Promise<Accoun
   return checks;
 }
 
+const FINDING_STATUS: Record<ClaudeCredentialFinding['kind'], AccountCheck['status']> = {
+  orphan: 'warning',
+  'live-duplicate': 'warning',
+  corrupt: 'error',
+  'stale-entry': 'info',
+};
+
+const FINDING_LABEL: Record<ClaudeCredentialFinding['kind'], string> = {
+  orphan: 'unused copy of a login',
+  'live-duplicate': 'second copy of the live login',
+  corrupt: 'unreadable credential',
+  'stale-entry': 'stale ledger entry',
+};
+
+/** Checks for the Claude credential stores Sidekick owns (Keychain items / files). */
+export function credentialStoreChecks(findings: ClaudeCredentialFinding[]): AccountCheck[] {
+  if (findings.length === 0) {
+    return [
+      {
+        id: 'credential-stores',
+        status: 'ok',
+        title: 'Claude credential stores',
+        message:
+          'Every stored copy belongs to a saved, inactive account; the live login has exactly one copy.',
+      },
+    ];
+  }
+  return findings.map((finding) => ({
+    id: `credential-store:${finding.kind}:${finding.service}`,
+    status: FINDING_STATUS[finding.kind],
+    title: `Claude credential store · ${FINDING_LABEL[finding.kind]}${finding.email ? ` (${finding.email})` : ''}`,
+    message: `${finding.detail}\n${finding.service} — ${finding.configDir}`,
+    repair: `sidekick accounts doctor --fix  (${finding.action})`,
+  }));
+}
+
 const STATUS_GLYPH: Record<AccountCheck['status'], string> = {
   ok: chalk.green('✓'),
   info: chalk.cyan('i'),
@@ -736,8 +781,59 @@ const STATUS_GLYPH: Record<AccountCheck['status'], string> = {
   error: chalk.red('✗'),
 };
 
-export async function doctorAction(ctx: AccountsContext): Promise<void> {
+/**
+ * `--fix`: delete the stored credentials Sidekick owns that no account uses
+ * (and remove a second copy of the live login). Ownership is proven by the
+ * ledger, the item's Sidekick tag, or the profile directory, never by name.
+ * Returns false when the user declined or confirmation was impossible.
+ */
+async function fixCredentialStores(
+  ctx: AccountsContext,
+): Promise<ReturnType<typeof repairClaudeCredentialStores> | null | false> {
+  const pending = inspectClaudeCredentialStores().findings;
+  if (pending.length === 0) return null;
+  if (!ctx.yes) {
+    if (ctx.json || !ctx.interactive) {
+      fail(
+        ctx,
+        'Refusing to delete stored credentials without confirmation. Re-run with --fix --yes.',
+      );
+      return false;
+    }
+    const confirmed = await confirmDestructive(
+      `Delete or repair ${pending.length} stored Claude credential${pending.length === 1 ? '' : 's'} that Sidekick owns (listed by \`sidekick accounts doctor\`)?`,
+    );
+    if (!confirmed) {
+      ctx.err(chalk.dim('Aborted — nothing was changed.'));
+      process.exitCode = 1;
+      return false;
+    }
+  }
+  const result = repairClaudeCredentialStores({ dryRun: false });
+  if (!ctx.json) {
+    for (const outcome of result.repaired) {
+      const label = `${FINDING_LABEL[outcome.finding.kind]} ${outcome.finding.service}`;
+      ctx.err(
+        outcome.ok
+          ? chalk.green(`✓ fixed ${label}`)
+          : chalk.red(`✗ could not fix ${label}: ${outcome.error ?? 'unknown error'}`),
+      );
+    }
+  }
+  return result;
+}
+
+export async function doctorAction(
+  ctx: AccountsContext,
+  options: { fix?: boolean } = {},
+): Promise<void> {
   await syncAndReport(ctx);
+  let repaired: ReturnType<typeof repairClaudeCredentialStores> | null = null;
+  if (options.fix && (!ctx.provider || ctx.provider === 'claude-code')) {
+    const outcome = await fixCredentialStores(ctx);
+    if (outcome === false) return;
+    repaired = outcome;
+  }
   const checks = await collectAccountChecks(ctx);
   const worst = checks.some((c) => c.status === 'error')
     ? 'error'
@@ -745,7 +841,13 @@ export async function doctorAction(ctx: AccountsContext): Promise<void> {
       ? 'warning'
       : 'ok';
   if (ctx.json) {
-    ctx.out(JSON.stringify({ status: worst, checks }, null, 2));
+    ctx.out(
+      JSON.stringify(
+        { status: worst, checks, ...(repaired ? { repaired: repaired.repaired } : {}) },
+        null,
+        2,
+      ),
+    );
     return;
   }
   ctx.out(chalk.bold('Account health'));

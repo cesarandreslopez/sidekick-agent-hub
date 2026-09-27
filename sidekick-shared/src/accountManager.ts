@@ -31,7 +31,8 @@ import {
   isClaudeProfileAuthenticated,
   readClaudeProfileIdentity,
 } from './claudeProfiles';
-import { deleteStoredCredentials, readActiveCredentials } from './credentialIO';
+import { deleteStoredCredentials, readClaudeCredentialStore } from './credentialIO';
+import { recordClaudeCredentialHome } from './claudeCredentialLedger';
 import {
   finalizeCodexAccount,
   finalizeCodexAccountAsync,
@@ -185,7 +186,16 @@ function copyClaudeProfileToCanonicalHome(
 
   if (path.resolve(sourceHome) !== path.resolve(canonicalHome)) {
     try {
-      fs.cpSync(sourceHome, canonicalHome, { recursive: true, force: true });
+      // Credentials go only through the chokepoint below: when this account is
+      // the live one its profile home must not receive a CLI-usable copy.
+      fs.cpSync(sourceHome, canonicalHome, {
+        recursive: true,
+        force: true,
+        filter: (src) => {
+          const base = path.basename(src);
+          return base !== '.credentials.json' && !base.startsWith('.oauth_refresh.lock');
+        },
+      });
     } catch {
       // The credential and identity files are re-written below when possible.
     }
@@ -276,6 +286,9 @@ export function beginAccountLogin(
     existingAccountId: existing?.id,
   });
   seedClaudeLoginHome(home);
+  // Claude Code creates this home's Keychain item itself; record the home
+  // first so the item is provably Sidekick's even if everything else fails.
+  recordClaudeCredentialHome(home, 'login');
   const loginCommand = resolveClaudeLoginCommand(opts);
 
   return {
@@ -378,52 +391,61 @@ function finalizeClaudeAccountLogin(
     return { success: false, error: 'Claude profile is not authenticated yet.' };
   }
 
-  const credentials = readActiveCredentials(home);
-  if (!credentials) {
-    return { success: false, error: 'Could not read Claude profile credentials.' };
+  const read = readClaudeCredentialStore(home);
+  if (read.status === 'error') {
+    // Transient (locked Keychain, timeout): keep the login home for a retry.
+    return { success: false, error: 'Could not read the new Claude login yet; try again.' };
   }
-
-  const oauthAccount = readClaudeOauthAccount(home);
-  if (!oauthAccount) {
-    return { success: false, error: 'Could not read Claude profile config.' };
-  }
-
-  const pending = readPendingClaudeProfile(loginId);
-  const existing = listSavedAccountProfiles('claude-code').find(
-    (account) => (account.providerAccountId ?? account.id) === identity.uuid,
-  );
-  copyClaudeProfileToCanonicalHome(home, identity.uuid, credentials, oauthAccount);
 
   const warnings: string[] = [];
-  if (pending?.existingAccountId && pending.existingAccountId !== identity.uuid) {
-    warnings.push(
-      `You signed in as ${identity.email}, which is a different account from the one you chose to re-authenticate; it was saved separately.`,
+  try {
+    if (read.status !== 'ok') {
+      return {
+        success: false,
+        error: 'The sign-in finished without a readable credential; sign in again.',
+      };
+    }
+    const oauthAccount = readClaudeOauthAccount(home);
+    if (!oauthAccount) {
+      return { success: false, error: 'Could not read Claude profile config.' };
+    }
+
+    const pending = readPendingClaudeProfile(loginId);
+    const existing = listSavedAccountProfiles('claude-code').find(
+      (account) => (account.providerAccountId ?? account.id) === identity.uuid,
     );
-  }
+    // The chokepoint writes the private backup first, so a failure below
+    // still leaves the new login saved.
+    copyClaudeProfileToCanonicalHome(home, identity.uuid, read.blob, oauthAccount);
 
-  upsertSavedAccountProfile({
-    id: existing?.id ?? identity.uuid,
-    providerId: 'claude-code',
-    providerAccountId: identity.uuid,
-    email: identity.email,
-    label: existing?.label ?? (pending?.label || identity.email),
-    addedAt: existing?.addedAt ?? pending?.addedAt ?? new Date().toISOString(),
-    metadata: {
-      ...existing?.metadata,
+    if (pending?.existingAccountId && pending.existingAccountId !== identity.uuid) {
+      warnings.push(
+        `You signed in as ${identity.email}, which is a different account from the one you chose to re-authenticate; it was saved separately.`,
+      );
+    }
+
+    upsertSavedAccountProfile({
+      id: existing?.id ?? identity.uuid,
+      providerId: 'claude-code',
+      providerAccountId: identity.uuid,
       email: identity.email,
-      origin: 'login',
-    },
-  });
-
-  removePendingClaudeProfile(loginId);
-  if (loginId !== identity.uuid) {
-    removePendingClaudeProfile(identity.uuid);
-    // The temporary home's keychain item holds live tokens; nothing references it now.
-    deleteStoredCredentials(getClaudeProfileHome(loginId));
-    try {
-      fs.rmSync(getClaudeProfileDir(loginId), { recursive: true, force: true });
-    } catch {
-      /* the temporary login home is disposable */
+      label: existing?.label ?? (pending?.label || identity.email),
+      addedAt: existing?.addedAt ?? pending?.addedAt ?? new Date().toISOString(),
+      metadata: {
+        ...existing?.metadata,
+        email: identity.email,
+        origin: 'login',
+      },
+    });
+  } catch (err) {
+    return { success: false, error: `Could not save the new Claude login: ${err}` };
+  } finally {
+    // Every exit after authentication: the temporary home's Keychain item
+    // holds a live refresh token that nothing will ever reference again.
+    removePendingClaudeProfile(loginId);
+    if (loginId !== identity.uuid) {
+      removePendingClaudeProfile(identity.uuid);
+      discardClaudeLoginHome(loginId);
     }
   }
 
@@ -436,6 +458,7 @@ function finalizeClaudeAccountLogin(
     // the live one (which may be the dead credential that prompted the login).
     const applied = applyClaudeProfileToLiveHome(identity.uuid);
     if (!applied.success) return applied;
+    if (applied.warning) warnings.push(applied.warning);
   }
 
   const switched = switchToAccount(identity.uuid);
@@ -493,24 +516,81 @@ function latestHomeActivity(home: string | undefined): number {
   return latest;
 }
 
+/** Delete a temporary Claude login home: its Keychain item first, then the directory. */
+function discardClaudeLoginHome(loginId: string): void {
+  const dir = getClaudeProfileDir(loginId);
+  if (!path.resolve(dir).startsWith(path.resolve(getAccountsDir()) + path.sep)) return;
+  deleteStoredCredentials(getClaudeProfileHome(loginId));
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* the temporary login home is disposable */
+  }
+}
+
 function discardPendingLogin(provider: AccountProviderId, loginId: string): void {
   try {
-    const dir =
-      provider === 'codex'
-        ? path.dirname(getCodexProfileHome(loginId))
-        : getClaudeProfileDir(loginId);
+    if (provider === 'claude-code') {
+      discardClaudeLoginHome(loginId);
+      return;
+    }
+    const dir = path.dirname(getCodexProfileHome(loginId));
     if (!dir.startsWith(getAccountsDir())) return;
-    if (provider === 'claude-code') deleteStoredCredentials(getClaudeProfileHome(loginId));
     fs.rmSync(dir, { recursive: true, force: true });
   } catch {
     /* best effort */
   }
 }
 
+/**
+ * Abandon a login started with {@link beginAccountLogin} (cancelled, timed
+ * out, or failed): removes the temporary home and, for Claude, its Keychain
+ * item. Refuses ids that belong to a saved profile. Returns true when
+ * something was discarded.
+ */
+export function discardAccountLogin(provider: AccountProviderId, loginId: string): boolean {
+  const registered =
+    provider === 'codex'
+      ? listCodexAccounts().some((account) => account.id === loginId)
+      : listSavedAccountProfiles('claude-code').some(
+          (account) => account.id === loginId || account.providerAccountId === loginId,
+        );
+  if (registered) return false;
+  if (provider === 'claude-code' && !readPendingClaudeProfile(loginId)) {
+    // Not a pending login; still drop a stray item for a home we created.
+    deleteStoredCredentials(getClaudeProfileHome(loginId));
+    return false;
+  }
+  discardPendingLogin(provider, loginId);
+  return true;
+}
+
 export async function spawnAccountLogin(
   provider: AccountProviderId,
   label: string,
   opts: SpawnAccountLoginOptions = {},
+): Promise<AccountManagerResult> {
+  let loginId: string | undefined;
+  let result: AccountManagerResult | undefined;
+  try {
+    result = await runAccountLogin(provider, label, opts, (id) => {
+      loginId = id;
+    });
+    return result;
+  } finally {
+    // Every exit that did not end in a saved login (spawn error, early exit,
+    // abort, timeout, a throw) removes the temporary home and its Keychain item.
+    if (provider === 'claude-code' && loginId && !result?.success) {
+      discardPendingLogin(provider, loginId);
+    }
+  }
+}
+
+async function runAccountLogin(
+  provider: AccountProviderId,
+  label: string,
+  opts: SpawnAccountLoginOptions,
+  onBegin: (loginId: string) => void,
 ): Promise<AccountManagerResult> {
   if (opts.signal?.aborted) {
     return { success: false, error: 'Account login aborted.' };
@@ -521,6 +601,7 @@ export async function spawnAccountLogin(
     existingAccountId: opts.existingAccountId,
   });
   if (!begin.success) return { success: false, error: begin.error };
+  onBegin(begin.loginId);
 
   if (begin.alreadyComplete) {
     return finalizeAccountLoginAsync(provider, begin.loginId, { activate: opts.activate ?? true });

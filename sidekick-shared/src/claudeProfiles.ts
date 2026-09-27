@@ -52,6 +52,15 @@ export function getClaudeProfileHome(uuid: string): string {
   return path.join(getClaudeProfileDir(uuid), 'home');
 }
 
+/**
+ * Sidekick's private backup of a profile's credential. Claude Code never reads
+ * it, so it is not a CLI-usable copy: this is where the live account's
+ * credential is mirrored while its profile home stays empty.
+ */
+export function getClaudeCredentialBackupPath(uuid: string): string {
+  return path.join(getAccountsDir(), 'credentials', `${uuid}.credentials.json`);
+}
+
 export function ensureClaudeProfileDirs(uuid: string): void {
   fs.mkdirSync(getClaudeProfileHome(uuid), { recursive: true, mode: 0o700 });
 }

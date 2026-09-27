@@ -24,10 +24,13 @@ import { accountLaunchEnvSchema } from './schemas/accountManager';
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const NOW = Date.now();
+const originalPlatform = process.platform;
 
 describe('getAccountLaunchEnv', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-account-launch-'));
+    // File-mode credential stores: the launch path reads the profile store.
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     writeSavedAccountRegistry({
       version: 2,
       activeByProvider: { 'claude-code': 'uuid-a', codex: 'codex-a' },
@@ -59,6 +62,7 @@ describe('getAccountLaunchEnv', () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -103,7 +107,7 @@ describe('getAccountLaunchEnv', () => {
     });
   });
 
-  it('refuses expired or unknown accounts and warns when launching the live account', () => {
+  it('refuses expired or unknown accounts and points the live account at the live home', () => {
     const home = getClaudeProfileHome('uuid-a');
     fs.mkdirSync(home, { recursive: true });
     fs.writeFileSync(path.join(home, '.credentials.json'), '{}');
@@ -143,7 +147,45 @@ describe('getAccountLaunchEnv', () => {
     );
     const live = getAccountLaunchEnv('claude-code', 'uuid-a');
     expect(live.error).toBeUndefined();
-    expect(live.warnings[0]).toMatch(/also the live login/);
+    // I1: a session for the live account uses the live home, never a second copy.
+    expect(live).toMatchObject({
+      home: path.join(tmpDir, '.claude'),
+      env: {},
+      envUnset: ['CLAUDE_CONFIG_DIR', 'CLAUDE_SECURESTORAGE_CONFIG_DIR'],
+    });
+    expect(live.warnings[0]).toMatch(/normal Claude home/);
+    expect(accountLaunchEnvSchema.parse(live)).toEqual(live);
+  });
+
+  it('restores an inactive profile from its backup for a user launch, never for keep-alive', () => {
+    const home = getClaudeProfileHome('uuid-a');
+    fs.mkdirSync(home, { recursive: true });
+    const blob = {
+      claudeAiOauth: {
+        accessToken: 'a',
+        refreshToken: 'r',
+        expiresAt: NOW + HOUR,
+        refreshTokenExpiresAt: NOW + 10 * DAY,
+      },
+      mcpOAuth: { s: { accessToken: 'm' } },
+    };
+    fs.mkdirSync(path.join(tmpDir, 'accounts', 'credentials'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, 'accounts', 'credentials', 'uuid-a.credentials.json'),
+      JSON.stringify(blob),
+    );
+    writeClaudeHealthSidecar('uuid-a', blob, 'live-sync', NOW);
+
+    const keepAlive = getAccountLaunchEnv('claude-code', 'uuid-a', { restoreBackup: false });
+    expect(keepAlive.error).toBeUndefined();
+    expect(fs.existsSync(path.join(home, '.credentials.json'))).toBe(false);
+
+    const user = getAccountLaunchEnv('claude-code', 'uuid-a');
+    expect(user.warnings.join(' ')).toMatch(/Restored this account's saved login/);
+    // The Claude login only: MCP chains stay with the live store.
+    expect(JSON.parse(fs.readFileSync(path.join(home, '.credentials.json'), 'utf8'))).toEqual({
+      claudeAiOauth: blob.claudeAiOauth,
+    });
   });
 
   it('builds an isolated Codex env with a file-mode config', () => {

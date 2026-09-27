@@ -15,7 +15,8 @@ vi.mock('os', async () => {
 });
 
 import { keepAliveCommand, refreshInactiveAccounts, type KeepAliveRunner } from './keepAlive';
-import { writeClaudeHealthSidecar } from './accountHealth';
+import { getAccountHealth, readHealthSidecar, writeClaudeHealthSidecar } from './accountHealth';
+import { switchToAccount } from './accounts';
 import { writeSavedAccountRegistry } from './accountRegistry';
 import { getClaudeProfileHome } from './claudeProfiles';
 
@@ -160,5 +161,122 @@ describe('refreshInactiveAccounts', () => {
       /dry run: would run claude auth status/,
     );
     expect(keepAliveCommand('codex')).toEqual({ command: 'codex', args: ['login', 'status'] });
+  });
+
+  describe('never refreshes a copy of the live chain (I3)', () => {
+    const stale = {
+      accessToken: 'a',
+      refreshToken: 'r-stale',
+      expiresAt: NOW - HOUR,
+      refreshTokenExpiresAt: NOW + 10 * DAY,
+    };
+    const neverRun: KeepAliveRunner = async () => {
+      throw new Error('keep-alive must not run the CLI here');
+    };
+    const reasonFor = (result: Awaited<ReturnType<typeof refreshInactiveAccounts>>): string =>
+      result.skipped.find((s) => s.id === 'stale')?.reason ?? '';
+
+    it('skips a profile whose refresh token equals the live one', async () => {
+      seedClaude('stale', stale);
+      fs.writeFileSync(
+        path.join(tmpDir, '.claude', '.credentials.json'),
+        JSON.stringify({ claudeAiOauth: { ...stale, accessToken: 'live-access' } }),
+      );
+      const result = await refreshInactiveAccounts({ runner: neverRun, now: NOW });
+      expect(reasonFor(result)).toBe('same refresh token as the live login');
+    });
+
+    it('skips a copy taken from the live store until a switch hands it back', async () => {
+      seedClaude('stale', stale);
+      writeClaudeHealthSidecar('stale', { claudeAiOauth: stale }, 'live-sync', NOW);
+      const result = await refreshInactiveAccounts({ runner: neverRun, now: NOW });
+      expect(reasonFor(result)).toMatch(/copied from the live login/);
+    });
+
+    it('never restores a backup into the profile home to refresh it', async () => {
+      seedClaude('stale', stale);
+      fs.rmSync(path.join(getClaudeProfileHome('stale'), '.credentials.json'));
+      fs.mkdirSync(path.join(tmpDir, 'accounts', 'credentials'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, 'accounts', 'credentials', 'stale.credentials.json'),
+        JSON.stringify({ claudeAiOauth: stale }),
+      );
+      const result = await refreshInactiveAccounts({ runner: neverRun, now: NOW });
+      expect(reasonFor(result)).toMatch(/no profile copy/);
+      expect(fs.existsSync(path.join(getClaudeProfileHome('stale'), '.credentials.json'))).toBe(
+        false,
+      );
+    });
+
+    it('skips a stale profile copy when the backup is newer', async () => {
+      seedClaude('stale', stale);
+      fs.mkdirSync(path.join(tmpDir, 'accounts', 'credentials'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, 'accounts', 'credentials', 'stale.credentials.json'),
+        JSON.stringify({
+          claudeAiOauth: { ...stale, refreshToken: 'r-newer', expiresAt: NOW + HOUR },
+        }),
+      );
+      const result = await refreshInactiveAccounts({ runner: neverRun, now: NOW });
+      expect(reasonFor(result)).toMatch(/backup is newer/);
+    });
+
+    it('reports the reason in dry runs too', async () => {
+      seedClaude('stale', stale);
+      writeClaudeHealthSidecar('stale', { claudeAiOauth: stale }, 'live-sync', NOW);
+      const dry = await refreshInactiveAccounts({ runner: neverRun, now: NOW, dryRun: true });
+      expect(reasonFor(dry)).toMatch(/copied from the live login/);
+    });
+
+    it('holds a lease that makes a concurrent switch to that account refuse', async () => {
+      seedClaude('stale', stale);
+      let during: ReturnType<typeof switchToAccount> | undefined;
+      const runner: KeepAliveRunner = async () => {
+        during = switchToAccount('stale');
+        return { status: 0, stdout: '' };
+      };
+
+      await refreshInactiveAccounts({ runner, now: NOW });
+
+      expect(during).toMatchObject({ success: false });
+      expect(during?.error).toMatch(/Keep-alive is refreshing/);
+      // Released afterwards.
+      expect(
+        fs.existsSync(path.join(path.dirname(getClaudeProfileHome('stale')), 'keepalive.lease')),
+      ).toBe(false);
+    });
+
+    it('records a refresh in the backup with keepalive provenance', async () => {
+      seedClaude('stale', stale);
+      const runner: KeepAliveRunner = async (_command, _args, env) => {
+        fs.writeFileSync(
+          path.join(env.CLAUDE_CONFIG_DIR!, '.credentials.json'),
+          JSON.stringify({
+            claudeAiOauth: { ...stale, refreshToken: 'r-rotated', expiresAt: NOW + 8 * HOUR },
+          }),
+        );
+        return { status: 0, stdout: '' };
+      };
+
+      const result = await refreshInactiveAccounts({ runner, now: NOW });
+
+      expect(result.refreshed).toEqual([{ id: 'stale', providerId: 'claude-code' }]);
+      expect(readHealthSidecar('claude-code', 'stale')?.source).toBe('keepalive');
+      expect(
+        JSON.parse(
+          fs.readFileSync(
+            path.join(tmpDir, 'accounts', 'credentials', 'stale.credentials.json'),
+            'utf8',
+          ),
+        ).claudeAiOauth.refreshToken,
+      ).toBe('r-rotated');
+    });
+
+    it('read-only health probes keep the provenance keep-alive relies on', () => {
+      seedClaude('stale', stale);
+      writeClaudeHealthSidecar('stale', { claudeAiOauth: stale }, 'live-sync', NOW);
+      getAccountHealth('claude-code', 'stale', { probe: 'store', now: NOW });
+      expect(readHealthSidecar('claude-code', 'stale')?.source).toBe('live-sync');
+    });
   });
 });

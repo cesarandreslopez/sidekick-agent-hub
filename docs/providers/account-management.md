@@ -118,6 +118,39 @@ credential (a bounded Keychain call on macOS) and rewrites the sidecar. `listAcc
 `probe: 'auto'`, which probes only profiles that have no sidecar yet. Claude refresh tokens expire about three
 weeks after issue; snapshots that predate the CLI recording that expiry are estimated and marked as such.
 
+## One Copy per Claude Login (0.27.6)
+
+Claude Code rotates the refresh token on every refresh, so every refresh-token chain may have exactly one copy a
+`claude` process can use. The library enforces that:
+
+| Account  | Profile-home store (suffixed Keychain item / `<home>/.credentials.json`) | Private backup `accounts/credentials/<uuid>.credentials.json` |
+| -------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| live     | empty (identity and `health.json` only)                                  | mirrors the live credential; Claude Code never reads it       |
+| inactive | the single usable copy, `claudeAiOauth` only (MCP tokens follow live)    | last known credential                                         |
+
+- `storeClaudeProfileCredentials()` is the chokepoint: for the live account it writes the backup and sidecar only.
+  `syncLiveAccountState()` removes a copy of the live login left in its profile home (`report.claude.demoted`), and
+  when that copy is strictly newer than live it installs it first (`report.claude.repaired`).
+- Every write into the live store passes `decideLiveClaudeWrite()`: a switch needs the outgoing login captured
+  first; a re-login (`applyClaudeProfileToLiveHome`) only replaces live with a strictly fresher credential of the
+  same account; a rollback never clobbers a store that changed. `writeActiveCredentials()` now requires a config
+  directory — the live store is only written through a guarded switch.
+- A switch holds the swap lock and Claude Code's refresh locks (`<home>/.oauth_refresh.lock`), writes a journal
+  (`accounts/claude/switch-journal.json`), and the next sync finishes or rolls back an interrupted one from the
+  live refresh-token fingerprint. Sidecars record `refreshFp` (sha256 prefix, never the token).
+- Keychain writes use `-X <hex>` through `security -i` up to 4032 bytes and argv beyond (Claude Code's own
+  behaviour), then read back; `ClaudeCredentialWriteError` reports a write that did not land intact.
+  `readClaudeCredentialStore()` tells `ok`, `absent`, `corrupt`, and `error` apart.
+
+### Ledger and doctor
+
+Every directory Sidekick writes a Claude credential into, or points a login at, is recorded in
+`accounts/claude/credential-homes.json` (`readClaudeCredentialLedger()`), and its Keychain item carries a
+`sidekick-agent-hub:<directory>` comment (`SIDEKICK_KEYCHAIN_COMMENT_PREFIX`).
+`inspectClaudeCredentialStores()` reports `orphan`, `live-duplicate`, `corrupt`, and `stale-entry` findings for
+stores whose ownership is proven that way, never by name pattern; `repairClaudeCredentialStores({ dryRun: false })`
+fixes them (dry run by default). `sidekick accounts doctor [--fix]` is the CLI front end.
+
 ## Switch Result and Undo (0.26.6)
 
 `switchAccount[Async]` returns a `SwitchAccountResult` (a superset of `AccountManagerResult`, so existing
@@ -135,9 +168,10 @@ result.undoToken; // pass to undoLastSwitch(provider, token) to revert; a newer 
 result.alreadyActive; // the target was already live; nothing was written
 ```
 
-The switch is two-phase: the live credential is folded into the outgoing profile first (registering it if
-unknown), then the target is installed, verified by re-reading the store, and only then does the active
-pointer move. `detectRunningAccountConsumers()` returns the same consumer list without switching;
+The switch is two-phase: the outgoing live credential is captured first (registering the account if unknown;
+the switch refuses when it cannot be saved, even with `force`), then the target is installed, verified by
+re-reading the store, and only then does the active pointer move. `force` bypasses the health and keep-alive
+checks only. `detectRunningAccountConsumers()` returns the same consumer list without switching;
 `describeAccountConsumer(kind)` builds an entry for kinds the host detects itself (its own extension host).
 
 ## Isolated Launch (0.26.6)
@@ -150,13 +184,19 @@ const launch = getAccountLaunchEnv('codex', id); // { env: { CODEX_HOME }, envUn
 
 The env points a child `claude`/`codex` at the profile home without touching the live login. `envUnset` lists
 variables the host must remove from the child (`CLAUDE_SECURESTORAGE_CONFIG_DIR` overrides Claude Code's
-keychain naming). The helper refuses `expired`/`missing` profiles and warns when the profile is also live.
+keychain naming). The helper refuses `expired`/`missing` profiles. For the Claude account that is live it
+returns the live home instead (`envUnset` includes `CLAUDE_CONFIG_DIR`), because a session in its profile home
+would be a second copy of the live login. An inactive profile whose home has no credential is restored from its
+backup first, with a warning; pass `restoreBackup: false` to skip that (keep-alive does).
 
 ## Keep-Alive (0.26.6)
 
 `refreshInactiveAccounts()` runs the official CLI (`claude auth status`, `codex login status`) inside each
-inactive profile whose credential is `expiring`, then re-probes the store. It never touches the live account
-and never calls OAuth endpoints. Hosts schedule it behind an opt-in setting.
+inactive profile whose credential is `expiring`, then re-probes the store. It never calls OAuth endpoints, and for
+Claude it never runs where the copy could belong to a live chain: the live account, a copy whose refresh token
+equals live's, a copy whose provenance is `live-sync`, a profile without its own copy (it never restores backups),
+or a copy older than its backup. The check and a lease (`profiles/<id>/keepalive.lease`) are taken under the swap
+lock, and a switch to a leased account refuses until it is done. Hosts schedule it behind an opt-in setting.
 
 ## Codex Credential Store Requirement
 
@@ -205,7 +245,12 @@ if (begin.alreadyComplete) {
 }
 ```
 
-For hosts that can let Sidekick spawn the child process, use the convenience wrapper:
+A host that gives up on a login (cancelled, timed out, closing) calls `discardAccountLogin(provider, loginId)`,
+which removes the temporary home and its Keychain item and refuses ids of saved accounts. `finalizeAccountLogin`
+removes the temporary home on every exit once the sign-in is seen.
+
+For hosts that can let Sidekick spawn the child process, use the convenience wrapper (it discards the pending
+login on every exit that does not end in a saved account):
 
 ```ts
 import { spawnAccountLogin } from 'sidekick-shared';
@@ -270,4 +315,9 @@ Available account-management schemas:
   `SIDEKICK_CLAUDE_LOGIN_ARGS` for older CLIs. `spawnAccountLogin` treats `timeoutMs` as an inactivity budget
   and `maxTimeoutMs` (default 900 s) as the hard ceiling.
 - The shell-hook helpers (`installShellHook`, `uninstallShellHook`, `isShellHookInstalled`,
-  `setTerminalActiveProfile`) were removed in 0.26.6; use `getAccountLaunchEnv` and `writeLauncher`.
+  `setTerminalActiveProfile`) were removed in 0.26.6; use `getAccountLaunchEnv` and `writeAccountLauncher`.
+- Deprecated in 0.27.6: `writeLauncher` (pins one profile home; `writeAccountLauncher` resolves the home at run
+  time), `applyActiveClaudeToLiveHome` (now a guarded re-login that refuses to follow the pointer to another
+  account), and `resolveActiveClaudeHome` (returns the live home for the live account).
+- A host that runs Sidekick against a throwaway `SIDEKICK_CONFIG_DIR` should also give it a throwaway `HOME`;
+  since 0.27.6 no Keychain item is created for the live login either way.

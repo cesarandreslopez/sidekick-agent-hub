@@ -25,7 +25,21 @@ vi.mock('os', async () => {
   };
 });
 
-import { readActiveCredentials, writeActiveCredentials } from './credentialIO';
+vi.mock('./paths', () => ({
+  getConfigDir: () => path.join(tmpDir, 'sidekick'),
+}));
+
+import {
+  ClaudeCredentialWriteError,
+  deleteStoredCredentials,
+  readActiveCredentials,
+  readClaudeCredentialStore,
+  SECURITY_INTERACTIVE_LINE_LIMIT,
+  SIDEKICK_KEYCHAIN_COMMENT_PREFIX,
+  writeActiveCredentials,
+  writeLiveClaudeCredentialStoreUnguarded,
+} from './credentialIO';
+import { readClaudeCredentialLedger } from './claudeCredentialLedger';
 
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, 'platform', {
@@ -36,6 +50,73 @@ function setPlatform(platform: NodeJS.Platform): void {
 
 function defaultClaudeDir(): string {
   return path.join(tmpDir, '.claude');
+}
+
+function notFound(): Error {
+  return Object.assign(new Error('The specified item could not be found in the keychain.'), {
+    status: 44,
+  });
+}
+
+/** Tokenize one `security -i` line: single-quoted tokens with backslash escapes. */
+function tokenizeInteractive(line: string): string[] {
+  const tokens: string[] = [];
+  const pattern = /'((?:\\.|[^'\\])*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(line)) !== null) {
+    tokens.push(match[1] !== undefined ? match[1].replace(/\\(.)/g, '$1') : match[2]);
+  }
+  return tokens;
+}
+
+interface FakeItem {
+  account: string;
+  comment?: string;
+  data: string;
+}
+
+/** An in-memory stand-in for the macOS `security` tool. */
+function installFakeKeychain(options: { corruptWrites?: boolean } = {}): Map<string, FakeItem> {
+  const items = new Map<string, FakeItem>();
+  const add = (argv: string[]): void => {
+    const value = (flag: string): string | undefined => {
+      const index = argv.indexOf(flag);
+      return index >= 0 ? argv[index + 1] : undefined;
+    };
+    const hex = value('-X')!;
+    let data = Buffer.from(hex, 'hex').toString('utf8');
+    if (options.corruptWrites) data = data.slice(0, 20);
+    items.set(value('-s')!, { account: value('-a')!, comment: value('-j'), data });
+  };
+  mockExecFileSync.mockImplementation(
+    (command: string, argv: string[], opts?: { input?: string }) => {
+      expect(command).toBe('security');
+      if (argv[0] === '-i') {
+        add(tokenizeInteractive(opts!.input!.trim()));
+        return '';
+      }
+      if (argv[0] === 'add-generic-password') {
+        add(argv);
+        return '';
+      }
+      const service = argv[argv.indexOf('-s') + 1];
+      const accountIndex = argv.indexOf('-a');
+      const item = items.get(service);
+      if (argv[0] === 'find-generic-password') {
+        if (!item || (accountIndex >= 0 && item.account !== argv[accountIndex + 1]))
+          throw notFound();
+        return item.data + '\n';
+      }
+      if (argv[0] === 'delete-generic-password') {
+        if (!item || (accountIndex >= 0 && item.account !== argv[accountIndex + 1]))
+          throw notFound();
+        items.delete(service);
+        return '';
+      }
+      throw new Error(`unexpected security ${argv.join(' ')}`);
+    },
+  );
+  return items;
 }
 
 describe('credentialIO', () => {
@@ -57,132 +138,226 @@ describe('credentialIO', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('falls back to the credentials file on macOS when the Keychain item is missing', () => {
-    setPlatform('darwin');
-    mockExecFileSync.mockImplementation(() => {
-      throw new Error('The specified item could not be found in the keychain.');
-    });
-    fs.writeFileSync(
-      path.join(defaultClaudeDir(), '.credentials.json'),
-      JSON.stringify({ claudeAiOauth: { accessToken: 'from-file' } }),
-    );
-
-    expect(readActiveCredentials()).toEqual({ claudeAiOauth: { accessToken: 'from-file' } });
-    expect(mockExecFileSync).toHaveBeenCalledWith(
-      'security',
-      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      expect.anything(),
-    );
-  });
-
-  it('round-trips default file-backed credentials without a config dir', () => {
-    setPlatform('linux');
-    const credentials = { claudeAiOauth: { accessToken: 'default-access' } };
-
-    writeActiveCredentials(credentials);
-
-    expect(readActiveCredentials()).toEqual(credentials);
-    expect(fs.existsSync(path.join(defaultClaudeDir(), '.credentials.json'))).toBe(true);
-  });
-
-  it('round-trips file-backed credentials in the provided config dir', () => {
-    setPlatform('linux');
-    const defaultCredentials = { claudeAiOauth: { accessToken: 'default-access' } };
-    const profileCredentials = { claudeAiOauth: { accessToken: 'profile-access' } };
-    const profileHome = path.join(tmpDir, 'accounts', 'claude', 'profiles', 'uuid-work', 'home');
-    fs.mkdirSync(profileHome, { recursive: true });
-
-    writeActiveCredentials(defaultCredentials);
-    writeActiveCredentials(profileCredentials, profileHome);
-
-    expect(readActiveCredentials()).toEqual(defaultCredentials);
-    expect(readActiveCredentials(profileHome)).toEqual(profileCredentials);
-    expect(
-      JSON.parse(fs.readFileSync(path.join(profileHome, '.credentials.json'), 'utf8')),
-    ).toEqual(profileCredentials);
-  });
-
-  it('reads macOS credentials from the default keychain service without a config dir', () => {
-    setPlatform('darwin');
-    mockExecFileSync.mockReturnValue(
-      JSON.stringify({ claudeAiOauth: { accessToken: 'default-access' } }),
-    );
-
-    expect(readActiveCredentials()).toEqual({ claudeAiOauth: { accessToken: 'default-access' } });
-
-    expect(mockExecFileSync).toHaveBeenCalledWith(
-      'security',
-      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
-    );
-  });
-
-  it('returns null when a macOS keychain read probe is killed', () => {
-    setPlatform('darwin');
-    mockExecFileSync.mockImplementation(() => {
-      throw Object.assign(new Error('spawnSync timed out'), {
-        code: 'ETIMEDOUT',
-        signal: 'SIGKILL',
+  describe('reads', () => {
+    it('falls back to the credentials file on macOS when the Keychain item is missing', () => {
+      setPlatform('darwin');
+      mockExecFileSync.mockImplementation(() => {
+        throw notFound();
       });
+      fs.writeFileSync(
+        path.join(defaultClaudeDir(), '.credentials.json'),
+        JSON.stringify({ claudeAiOauth: { accessToken: 'from-file' } }),
+      );
+
+      expect(readActiveCredentials()).toEqual({ claudeAiOauth: { accessToken: 'from-file' } });
+      // Same lookup Claude Code makes: account and service.
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'security',
+        [
+          'find-generic-password',
+          '-a',
+          'sidekick-test-user',
+          '-s',
+          'Claude Code-credentials',
+          '-w',
+        ],
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
+      );
     });
 
-    expect(readActiveCredentials()).toBeNull();
-    expect(mockExecFileSync).toHaveBeenCalledWith(
-      'security',
-      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      expect.objectContaining({
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: 4000,
-        killSignal: 'SIGKILL',
-      }),
-    );
+    it('tells absent, corrupt, and unreadable apart', () => {
+      setPlatform('darwin');
+      mockExecFileSync.mockImplementationOnce(() => {
+        throw notFound();
+      });
+      expect(readClaudeCredentialStore(undefined, { keychainOnly: true })).toEqual({
+        status: 'absent',
+      });
+
+      mockExecFileSync.mockImplementationOnce(() => {
+        throw Object.assign(new Error('spawnSync timed out'), {
+          code: 'ETIMEDOUT',
+          signal: 'SIGKILL',
+        });
+      });
+      expect(readClaudeCredentialStore().status).toBe('error');
+      // A timeout is never mistaken for "no credential": no file fallback.
+      expect(readActiveCredentials()).toBeNull();
+
+      mockExecFileSync.mockReturnValueOnce('{"mcpOAuth":{"a":1},"claudeAiOauth":{"acc');
+      expect(readClaudeCredentialStore()).toMatchObject({ status: 'corrupt', source: 'keychain' });
+    });
+
+    it('decodes hex output for items whose bytes security prints as hex', () => {
+      setPlatform('darwin');
+      const blob = { claudeAiOauth: { accessToken: 'hex-access' } };
+      mockExecFileSync.mockReturnValue(Buffer.from(JSON.stringify(blob)).toString('hex'));
+
+      expect(readClaudeCredentialStore()).toEqual({ status: 'ok', blob, source: 'keychain' });
+    });
+
+    it('reports a corrupt credentials file instead of treating it as absent', () => {
+      setPlatform('linux');
+      fs.writeFileSync(path.join(defaultClaudeDir(), '.credentials.json'), '{"claudeAiOauth":');
+
+      expect(readClaudeCredentialStore()).toMatchObject({ status: 'corrupt', source: 'file' });
+      expect(readActiveCredentials()).toBeNull();
+    });
   });
 
-  it('uses the suffixed macOS keychain service for a provided config dir', () => {
-    setPlatform('darwin');
-    const profileHome = '/Users/hoangphan/.ai-switcher-logintest';
-    const service = claudeKeychainService(profileHome);
-    const credentials = { claudeAiOauth: { accessToken: 'profile-access' } };
-    mockExecFileSync.mockReturnValue(JSON.stringify(credentials));
+  describe('writes', () => {
+    it('refuses to write the live store without a config directory', () => {
+      setPlatform('linux');
+      const before = readActiveCredentials();
 
-    expect(readActiveCredentials(profileHome)).toEqual(credentials);
-    writeActiveCredentials(credentials, profileHome);
+      expect(() => writeActiveCredentials({ claudeAiOauth: { accessToken: 'x' } })).toThrow(
+        ClaudeCredentialWriteError,
+      );
+      expect(readActiveCredentials()).toEqual(before);
+    });
 
-    expect(mockExecFileSync).toHaveBeenNthCalledWith(
-      1,
-      'security',
-      ['find-generic-password', '-s', service, '-w'],
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 4000, killSignal: 'SIGKILL' },
-    );
-    expect(mockExecFileSync).toHaveBeenNthCalledWith(
-      2,
-      'security',
-      ['-i'],
-      expect.objectContaining({
-        input: expect.stringContaining('add-generic-password -U'),
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: 4000,
-        killSignal: 'SIGKILL',
-      }),
-    );
-    const writeCall = mockExecFileSync.mock.calls[1];
-    expect(writeCall[1]).not.toContain(JSON.stringify(credentials));
-    expect(writeCall[2].input).toContain(JSON.stringify(credentials));
+    it('round-trips file-backed credentials in the provided config dir and the live store', () => {
+      setPlatform('linux');
+      const liveCredentials = { claudeAiOauth: { accessToken: 'default-access' } };
+      const profileCredentials = { claudeAiOauth: { accessToken: 'profile-access' } };
+      const profileHome = path.join(tmpDir, 'accounts', 'claude', 'profiles', 'uuid-work', 'home');
+      fs.mkdirSync(profileHome, { recursive: true });
+
+      writeLiveClaudeCredentialStoreUnguarded(liveCredentials);
+      writeActiveCredentials(profileCredentials, profileHome);
+
+      expect(readActiveCredentials()).toEqual(liveCredentials);
+      expect(readActiveCredentials(profileHome)).toEqual(profileCredentials);
+      expect(
+        JSON.parse(fs.readFileSync(path.join(profileHome, '.credentials.json'), 'utf8')),
+      ).toEqual(profileCredentials);
+    });
+
+    it('writes hex through security -i with the account, service, and ownership tag, then verifies', () => {
+      setPlatform('darwin');
+      const items = installFakeKeychain();
+      const profileHome = '/Users/someone/.config/sidekick/accounts/claude/profiles/p1/home';
+      const credentials = { claudeAiOauth: { accessToken: 'profile-access' } };
+
+      writeActiveCredentials(credentials, profileHome);
+
+      const service = claudeKeychainService(profileHome);
+      expect(items.get(service)).toEqual({
+        account: 'sidekick-test-user',
+        comment: `${SIDEKICK_KEYCHAIN_COMMENT_PREFIX}${profileHome}`,
+        data: JSON.stringify(credentials),
+      });
+      const writeCall = mockExecFileSync.mock.calls.find((call) => call[1][0] === '-i')!;
+      const input = writeCall[2].input as string;
+      expect(input.startsWith('add-generic-password -U -a ')).toBe(true);
+      expect(input).toContain(`-X '${Buffer.from(JSON.stringify(credentials)).toString('hex')}'`);
+      // The secret never appears in plain text on argv or in the line.
+      expect(JSON.stringify(writeCall[1])).not.toContain('profile-access');
+      expect(input).not.toContain('profile-access');
+      // Read back with the same lookup Claude Code makes.
+      expect(mockExecFileSync).toHaveBeenLastCalledWith(
+        'security',
+        ['find-generic-password', '-a', 'sidekick-test-user', '-s', service, '-w'],
+        expect.anything(),
+      );
+    });
+
+    it('falls back to argv above the security -i line limit instead of truncating', () => {
+      setPlatform('darwin');
+      const items = installFakeKeychain();
+      const profileHome = path.join(tmpDir, 'profile-home');
+      const mcpOAuth: Record<string, unknown> = {};
+      for (let i = 0; i < 8; i++) mcpOAuth[`server-${i}`] = { accessToken: 'x'.repeat(400) };
+      const credentials = { mcpOAuth, claudeAiOauth: { accessToken: 'big-access' } };
+      expect(JSON.stringify(credentials).length * 2).toBeGreaterThan(
+        SECURITY_INTERACTIVE_LINE_LIMIT,
+      );
+
+      writeActiveCredentials(credentials, profileHome);
+
+      expect(mockExecFileSync.mock.calls.some((call) => call[1][0] === '-i')).toBe(false);
+      const argvCall = mockExecFileSync.mock.calls.find(
+        (call) => call[1][0] === 'add-generic-password',
+      )!;
+      expect(argvCall[1]).toEqual(expect.arrayContaining(['-U', '-a', 'sidekick-test-user', '-X']));
+      expect(JSON.parse(items.get(claudeKeychainService(profileHome))!.data)).toEqual(credentials);
+    });
+
+    it('throws when the item does not hold the credential after writing (a truncated write)', () => {
+      setPlatform('darwin');
+      installFakeKeychain({ corruptWrites: true });
+
+      expect(() =>
+        writeActiveCredentials({ claudeAiOauth: { accessToken: 'lost' } }, path.join(tmpDir, 'h')),
+      ).toThrow(/did not hold the credential/);
+    });
+
+    it('treats an unverifiable write (read-back timeout) as not written', () => {
+      setPlatform('darwin');
+      mockExecFileSync.mockImplementation((_command: string, argv: string[]) => {
+        if (argv[0] === 'find-generic-password') {
+          throw Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' });
+        }
+        return '';
+      });
+
+      expect(() =>
+        writeActiveCredentials({ claudeAiOauth: { accessToken: 'x' } }, path.join(tmpDir, 'h')),
+      ).toThrow(/could not be verified/);
+    });
+
+    it('escapes single quotes and backslashes for the security -i tokenizer', () => {
+      setPlatform('darwin');
+      const items = installFakeKeychain();
+      const profileHome = path.join(tmpDir, String.raw`it's a \dir`);
+
+      writeActiveCredentials({ claudeAiOauth: { accessToken: 'a' } }, profileHome);
+
+      const input = mockExecFileSync.mock.calls.find((call) => call[1][0] === '-i')![2]
+        .input as string;
+      // security -i does not concatenate adjacent quoted segments, so the
+      // shell-style '\'' splice must never appear.
+      expect(input).not.toContain(`'\\''`);
+      expect(items.get(claudeKeychainService(profileHome))?.comment).toBe(
+        `${SIDEKICK_KEYCHAIN_COMMENT_PREFIX}${profileHome}`,
+      );
+    });
   });
 
-  it('escapes single quotes and backslashes for the security -i tokenizer', () => {
-    setPlatform('darwin');
-    mockExecFileSync.mockReturnValue('');
-    const credentials = { claudeAiOauth: { accessToken: String.raw`pa'ss\word` } };
+  describe('ledger and deletes', () => {
+    it('records every profile home it writes and forgets it once deleted', () => {
+      setPlatform('darwin');
+      const items = installFakeKeychain();
+      const profileHome = path.join(tmpDir, 'profile-home');
 
-    writeActiveCredentials(credentials);
+      writeActiveCredentials({ claudeAiOauth: { accessToken: 'a' } }, profileHome);
+      expect(readClaudeCredentialLedger()).toEqual([
+        expect.objectContaining({
+          configDir: profileHome,
+          service: claudeKeychainService(profileHome),
+          purpose: 'profile',
+        }),
+      ]);
 
-    const input = mockExecFileSync.mock.calls[0][2].input as string;
-    // security -i does not concatenate adjacent quoted segments, so the
-    // shell-style '\'' splice must never appear; quotes and backslashes are
-    // backslash-escaped inside the single-quoted token instead.
-    expect(input).not.toContain(`'\\''`);
-    expect(input).toContain(String.raw`pa\'ss\\\\word`);
+      expect(deleteStoredCredentials(profileHome)).toBe(true);
+      expect(items.has(claudeKeychainService(profileHome))).toBe(false);
+      expect(readClaudeCredentialLedger()).toEqual([]);
+    });
+
+    it('deletes by account first and falls back to the service alone for older items', () => {
+      setPlatform('darwin');
+      const items = installFakeKeychain();
+      const profileHome = path.join(tmpDir, 'old-home');
+      items.set(claudeKeychainService(profileHome), { account: 'user', data: '{}' });
+
+      expect(deleteStoredCredentials(profileHome)).toBe(true);
+
+      const deletes = mockExecFileSync.mock.calls.filter(
+        (call) => call[1][0] === 'delete-generic-password',
+      );
+      expect(deletes[0][1]).toContain('-a');
+      expect(deletes[1][1]).not.toContain('-a');
+      expect(items.size).toBe(0);
+    });
   });
 });

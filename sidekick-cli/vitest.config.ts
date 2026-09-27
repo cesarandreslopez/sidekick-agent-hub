@@ -25,6 +25,8 @@ export default defineConfig({
     // .tsx must be listed explicitly — "*.test.ts" does not match "*.test.tsx",
     // which silently excluded every component-level test from the run.
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // Fails any test that reaches the real `security` binary or real homes.
+    setupFiles: ['../sidekick-shared/src/testing/credentialGuard.setup.ts'],
     coverage: {
       reporter: ['text', 'json', 'html'],
       exclude: ['node_modules', 'dist'],

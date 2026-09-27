@@ -5,6 +5,34 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **One usable copy per Claude refresh-token chain.** Claude Code rotates the refresh token on every refresh, so a second usable copy of a login invalidates the first ("Not logged in · Please run /login").
+  - **Keychain writes** use Claude Code's method: `-X <hex>` through `security -i` up to 4032 bytes, argv beyond. The old `-w '<json>'` line was silently truncated at 4095 bytes once `mcpOAuth` grew. Every write is read back; a mismatch or an unverifiable read-back throws `ClaudeCredentialWriteError`. Reads and deletes pass the account name like Claude Code, and profile items carry a `sidekick-agent-hub:<dir>` comment.
+  - **The live account keeps no profile-home credential.** `storeClaudeProfileCredentials()` is the chokepoint: for the live account it writes only the private backup and the sidecar. `syncLiveAccountState()` removes a leftover copy (`report.claude.demoted`) and installs it first when it is strictly newer than live (`repaired`). It also refuses to fold when the live credential's fingerprint belongs to another profile.
+  - **Guarded live writes.** Only `installIntoLiveClaudeStore` writes the live store, after `decideLiveClaudeWrite()`: a switch requires the outgoing login captured (mandatory even with `force`), a re-login requires a strictly fresher credential of the same account, and a rollback never clobbers a store that changed. The installed blob keeps live's `mcpOAuth` and swaps `claudeAiOauth`; profile copies hold `claudeAiOauth` only.
+  - **Switch.** Holds Claude Code's refresh locks (`<home>/.oauth_refresh.lock` plus the legacy lock), re-checks the live fingerprint before installing, and writes `accounts/claude/switch-journal.json`. The next sync finishes or rolls back an interrupted switch from the live fingerprint (`report.claude.journal`). Sidecars record `refreshFp`, and read-only probes keep the recorded `source`.
+  - **`readStoredClaudeAccount()`** is read-only and returns the fresher of the profile store and the backup. `reconcileClaudeAuthState()` skips the live account.
+  - **Keep-alive** skips the live account, a copy with the live refresh token, `live-sync` provenance, a profile without its own copy, and a copy older than its backup. It takes a lease under the swap lock that makes a switch to that account refuse until it is done.
+  - **Login homes** are recorded in the ledger before the CLI runs, and `finalizeAccountLogin`, `spawnAccountLogin`, and `cleanupAbandonedClaudeLogins` (authenticated logins after 24 h) delete their Keychain item on every exit.
+  - **`getAccountLaunchEnv()`** points the live Claude account at the live home and restores an inactive profile from its backup (skip with `restoreBackup: false`).
+  - **Leftover Keychain items.** Running against a throwaway `SIDEKICK_CONFIG_DIR` with the real `HOME` no longer creates a Keychain item for the live login.
+
+### Added
+
+- `readClaudeCredentialStore()` (`ok` / `absent` / `corrupt` / `error`), `decideLiveClaudeWrite()`, `claudeRefreshFingerprint()`, `claudeLoginOnly()`, `mergeClaudeLoginIntoLive()`, and `ClaudeCredentialWriteError`.
+- A ledger of credential homes (`accounts/claude/credential-homes.json`, `readClaudeCredentialLedger()`), plus `inspectClaudeCredentialStores()` and `repairClaudeCredentialStores({ dryRun })`: `orphan`, `live-duplicate`, `corrupt`, and `stale-entry` findings. Ownership is proven by the ledger, the comment tag, or the profile directory, never by name.
+- `discardAccountLogin(provider, loginId)` and `writeAccountLauncher(name, provider, accountId)`.
+- `ProviderSyncReport` gains `demoted`, `repaired`, and `journal`, and the sidecar gains `refreshFp`; the schemas are updated.
+
+### Changed
+
+- `writeActiveCredentials()` throws without a config directory. `deleteStoredCredentials()` returns whether the store is gone.
+- Deprecated: `writeLauncher()`, `applyActiveClaudeToLiveHome()` (now a guarded re-login that refuses another account), and `resolveActiveClaudeHome()` (the live home for the live account).
+- A global test guard (`src/testing/credentialGuard.setup.ts`, also used by the CLI and extension suites) fails any test that reaches the real `security`, `claude`, or `codex` binaries or real homes.
+
 ## [0.27.5] - 2026-09-23
 
 ### Added

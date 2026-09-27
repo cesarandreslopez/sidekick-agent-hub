@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Claude logins are no longer invalidated by Sidekick** (bundled `sidekick-shared`). Claude Code rotates the refresh token on every refresh, so every usable copy of a login but one dies with "Not logged in · Please run /login"; Sidekick now keeps exactly one.
+  - Keychain writes larger than about 4 KB (several MCP servers with OAuth tokens) are no longer truncated into an unreadable credential, and every write is read back before it counts.
+  - The live account no longer keeps a second usable copy in its profile directory; a leftover copy is removed on the next sync (and installed first when it is newer than live).
+  - Switches save the outgoing login first, hold Claude Code's refresh lock, never overwrite a newer login, and keep the live MCP server tokens. Keep-alive never refreshes a copy of a live login.
+  - **Open Terminal as Account** for the live account uses the normal Claude home.
+  - An account sign-in that is cancelled, times out, or is interrupted by closing the window now closes its terminal and removes the temporary login home and its Keychain item.
+
 ## [0.27.5] - 2026-09-23
 
 ### Changed

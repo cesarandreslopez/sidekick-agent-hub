@@ -9,30 +9,8 @@ vi.mock('./paths', () => ({
   getConfigDir: () => tmpDir,
 }));
 
-vi.mock('credentialIO-placeholder', () => ({}));
-
-vi.mock('./credentialIO', () => ({
-  readActiveCredentials: (configDir?: string) => {
-    try {
-      return JSON.parse(
-        fs.readFileSync(
-          path.join(configDir ?? path.join(tmpDir, '.claude'), '.credentials.json'),
-          'utf8',
-        ),
-      );
-    } catch {
-      return null;
-    }
-  },
-  writeActiveCredentials: (credentials: unknown, configDir?: string) => {
-    const claudeDir = configDir ?? path.join(tmpDir, '.claude');
-    fs.mkdirSync(claudeDir, { recursive: true });
-    fs.writeFileSync(path.join(claudeDir, '.credentials.json'), JSON.stringify(credentials));
-  },
-  deleteStoredCredentials: (configDir: string) => {
-    fs.rmSync(path.join(configDir, '.credentials.json'), { force: true });
-  },
-}));
+// The real credentialIO runs in file mode (platform forced to linux below), so
+// these tests exercise the real write verification and never reach `security`.
 
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
@@ -71,6 +49,7 @@ import { getClaudeProfileHome } from './claudeProfiles';
 import { getCodexProfileHome, getCodexProfilesDir } from './codexPaths';
 import { readHealthSidecar } from './accountHealth';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
+import { claudeRefreshFingerprint } from './claudeCredentials';
 import { syncReportSchema } from './schemas/accountManager';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -126,6 +105,51 @@ function writeProfileCodex(id: string, raw: string): void {
   fs.writeFileSync(path.join(home, 'auth.json'), raw);
 }
 
+function readBackupClaudeCreds(uuid: string): { claudeAiOauth: { accessToken: string } } | null {
+  try {
+    return JSON.parse(
+      fs.readFileSync(
+        path.join(tmpDir, 'accounts', 'credentials', `${uuid}.credentials.json`),
+        'utf8',
+      ),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function readLiveClaudeCreds(): { claudeAiOauth: { accessToken: string } } | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeProfileClaude(uuid: string, email: string, oauth: Record<string, unknown>): void {
+  const home = getClaudeProfileHome(uuid);
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(path.join(home, '.credentials.json'), JSON.stringify({ claudeAiOauth: oauth }));
+  fs.writeFileSync(
+    path.join(home, '.claude.json'),
+    JSON.stringify({ oauthAccount: { emailAddress: email, accountUuid: uuid } }),
+  );
+}
+
+function registerClaude(ids: string[], active: string | null): void {
+  writeSavedAccountRegistry({
+    version: 2,
+    activeByProvider: { 'claude-code': active, codex: null },
+    accounts: ids.map((id) => ({
+      id,
+      providerId: 'claude-code' as const,
+      providerAccountId: id,
+      email: `${id}@example.com`,
+      addedAt: '2026-01-01T00:00:00Z',
+    })),
+  });
+}
+
 function readProfileClaudeCreds(uuid: string): { claudeAiOauth: { accessToken: string } } | null {
   try {
     return JSON.parse(
@@ -136,14 +160,18 @@ function readProfileClaudeCreds(uuid: string): { claudeAiOauth: { accessToken: s
   }
 }
 
+const originalPlatform = process.platform;
+
 describe('accountSync', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-account-sync-'));
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     _resetSyncFingerprints();
     lockEvents.length = 0;
   });
 
   afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -167,9 +195,13 @@ describe('accountSync', () => {
         metadata: expect.objectContaining({ origin: 'live-sync' }),
       }),
     );
-    expect(readProfileClaudeCreds('uuid-live')?.claudeAiOauth.accessToken).toBe('tok-live');
+    // I1: the live account keeps no CLI-usable copy in its profile home; the
+    // private backup (never read by Claude Code) mirrors it instead.
+    expect(readProfileClaudeCreds('uuid-live')).toBeNull();
+    expect(readBackupClaudeCreds('uuid-live')?.claudeAiOauth.accessToken).toBe('tok-live');
     expect(readHealthSidecar('claude-code', 'uuid-live')).toMatchObject({
       accessExpiresAt: NOW + HOUR,
+      refreshFp: expect.stringMatching(/^[0-9a-f]{16}$/),
       source: 'live-sync',
     });
     // The identity file in the profile keeps only oauthAccount.
@@ -180,52 +212,145 @@ describe('accountSync', () => {
     ).toEqual({ oauthAccount: { emailAddress: 'live@example.com', accountUuid: 'uuid-live' } });
   });
 
-  it('never downgrades a newer saved snapshot and folds when the live credential is newer', () => {
-    writeSavedAccountRegistry({
-      version: 2,
-      activeByProvider: { 'claude-code': 'uuid-a', codex: null },
-      accounts: [
-        {
-          id: 'uuid-a',
-          providerId: 'claude-code',
-          providerAccountId: 'uuid-a',
-          email: 'a@example.com',
-          addedAt: '2026-01-01T00:00:00Z',
-        },
-      ],
-    });
-    // Saved snapshot newer than live (e.g. refreshed by keep-alive).
+  it('repairs a dying live login from a strictly newer profile copy, then removes the copy', () => {
+    registerClaude(['uuid-a'], 'uuid-a');
+    // The profile copy is newer than live (an older build mirrored the chain
+    // there and a CLI refreshed it): live is the dead link.
     writeLiveClaude('uuid-a', 'a@example.com', 'tok-old', NOW + HOUR);
-    const home = getClaudeProfileHome('uuid-a');
-    fs.mkdirSync(home, { recursive: true });
-    fs.writeFileSync(
-      path.join(home, '.credentials.json'),
-      JSON.stringify({ claudeAiOauth: { accessToken: 'tok-newer', expiresAt: NOW + 5 * HOUR } }),
-    );
-    fs.writeFileSync(
-      path.join(home, '.claude.json'),
-      JSON.stringify({ oauthAccount: { emailAddress: 'a@example.com', accountUuid: 'uuid-a' } }),
-    );
-    fs.mkdirSync(path.dirname(home), { recursive: true });
-    fs.writeFileSync(
-      path.join(path.dirname(home), 'health.json'),
-      JSON.stringify({
-        version: 1,
-        capturedAt: NOW,
-        accessExpiresAt: NOW + 5 * HOUR,
-        source: 'keepalive',
-      }),
-    );
+    writeProfileClaude('uuid-a', 'uuid-a@example.com', {
+      accessToken: 'tok-newer',
+      refreshToken: 'r-tok-newer',
+      expiresAt: NOW + 5 * HOUR,
+    });
 
     let report = syncLiveAccountStateSync({ reason: 'manual', now: NOW });
-    expect(report.claude.folded).toBeUndefined();
-    expect(readProfileClaudeCreds('uuid-a')?.claudeAiOauth.accessToken).toBe('tok-newer');
+    expect(report.claude).toMatchObject({ repaired: 'uuid-a', demoted: 'uuid-a' });
+    expect(readLiveClaudeCreds()?.claudeAiOauth.accessToken).toBe('tok-newer');
+    expect(readProfileClaudeCreds('uuid-a')).toBeNull();
+    expect(readBackupClaudeCreds('uuid-a')?.claudeAiOauth.accessToken).toBe('tok-newer');
 
-    // Live rotates past the snapshot: fold.
+    // Live rotates past the backup: fold into the backup, still no profile copy.
     writeLiveClaude('uuid-a', 'a@example.com', 'tok-rotated', NOW + 9 * HOUR);
     report = syncLiveAccountStateSync({ reason: 'manual', now: NOW });
     expect(report.claude.folded).toBe('uuid-a');
-    expect(readProfileClaudeCreds('uuid-a')?.claudeAiOauth.accessToken).toBe('tok-rotated');
+    expect(readBackupClaudeCreds('uuid-a')?.claudeAiOauth.accessToken).toBe('tok-rotated');
+    expect(readProfileClaudeCreds('uuid-a')).toBeNull();
+  });
+
+  it('demotes an older or same-link copy of the live login without touching live', () => {
+    registerClaude(['uuid-a'], 'uuid-a');
+    writeLiveClaude('uuid-a', 'a@example.com', 'tok-live', NOW + 5 * HOUR);
+    writeProfileClaude('uuid-a', 'uuid-a@example.com', {
+      accessToken: 'tok-stale',
+      refreshToken: 'r-tok-stale',
+      expiresAt: NOW + HOUR,
+    });
+    const liveBefore = fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8');
+
+    const report = syncLiveAccountStateSync({ reason: 'manual', now: NOW });
+
+    expect(report.claude.demoted).toBe('uuid-a');
+    expect(report.claude.repaired).toBeUndefined();
+    expect(readProfileClaudeCreds('uuid-a')).toBeNull();
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')).toBe(
+      liveBefore,
+    );
+    expect(readBackupClaudeCreds('uuid-a')?.claudeAiOauth.accessToken).toBe('tok-live');
+  });
+
+  it("refuses to fold when the live credential is another profile's chain", () => {
+    registerClaude(['uuid-a', 'uuid-b'], 'uuid-a');
+    // `.claude.json` says A, but the credential is B's (a switch died mid-way).
+    writeLiveClaude('uuid-a', 'a@example.com', 'tok-b', NOW + HOUR);
+    const bDir = path.dirname(getClaudeProfileHome('uuid-b'));
+    fs.mkdirSync(bDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(bDir, 'health.json'),
+      JSON.stringify({
+        version: 1,
+        capturedAt: NOW,
+        refreshFp: claudeRefreshFingerprint({ accessToken: 'x', refreshToken: 'r-tok-b' }),
+        source: 'switch',
+      }),
+    );
+
+    const report = syncLiveAccountStateSync({ reason: 'manual', now: NOW });
+
+    expect(report.claude.folded).toBeUndefined();
+    expect(report.claude.warnings.join(' ')).toMatch(/belongs to uuid-b@example.com/);
+    expect(readBackupClaudeCreds('uuid-a')).toBeNull();
+  });
+
+  describe('interrupted switch journal', () => {
+    const journalPath = (): string =>
+      path.join(tmpDir, 'accounts', 'claude', 'switch-journal.json');
+    const fp = (token: string): string | null =>
+      claudeRefreshFingerprint({ accessToken: token, refreshToken: `r-${token}` });
+
+    function seedJournal(): void {
+      registerClaude(['uuid-a', 'uuid-b'], 'uuid-a');
+      // A was captured into its backup before the install.
+      fs.mkdirSync(path.join(tmpDir, 'accounts', 'credentials'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, 'accounts', 'credentials', 'uuid-a.credentials.json'),
+        JSON.stringify({
+          claudeAiOauth: { accessToken: 'tok-a', refreshToken: 'r-tok-a', expiresAt: NOW + HOUR },
+        }),
+      );
+      writeProfileClaude('uuid-b', 'uuid-b@example.com', {
+        accessToken: 'tok-b',
+        refreshToken: 'r-tok-b',
+        expiresAt: NOW + 2 * HOUR,
+      });
+      fs.writeFileSync(
+        journalPath(),
+        JSON.stringify({
+          from: 'uuid-a',
+          to: 'uuid-b',
+          fromFp: fp('tok-a'),
+          toFp: fp('tok-b'),
+          at: '',
+        }),
+      );
+    }
+
+    it('finishes a switch that crashed after installing the target', () => {
+      seedJournal();
+      // Crash after the credential write, before the identity merge.
+      writeLiveClaude('uuid-a', 'a@example.com', 'tok-b', NOW + 2 * HOUR);
+
+      const report = syncLiveAccountStateSync({ reason: 'startup', now: NOW });
+
+      expect(report.claude.journal).toBe('finished');
+      expect(fs.existsSync(journalPath())).toBe(false);
+      expect(getActiveSavedAccount('claude-code')?.id).toBe('uuid-b');
+      // A (now inactive) got its single CLI copy back, login only; B's copy is gone.
+      expect(readProfileClaudeCreds('uuid-a')).toEqual({
+        claudeAiOauth: { accessToken: 'tok-a', refreshToken: 'r-tok-a', expiresAt: NOW + HOUR },
+      });
+      expect(readProfileClaudeCreds('uuid-b')).toBeNull();
+    });
+
+    it('rolls back a switch that crashed before installing', () => {
+      seedJournal();
+      writeLiveClaude('uuid-a', 'a@example.com', 'tok-a', NOW + HOUR);
+
+      const report = syncLiveAccountStateSync({ reason: 'startup', now: NOW });
+
+      expect(report.claude.journal).toBe('rolled-back');
+      expect(fs.existsSync(journalPath())).toBe(false);
+      expect(readProfileClaudeCreds('uuid-b')?.claudeAiOauth.accessToken).toBe('tok-b');
+    });
+
+    it('leaves the stores alone when live matches neither side', () => {
+      seedJournal();
+      writeLiveClaude('uuid-a', 'a@example.com', 'tok-elsewhere', NOW + HOUR);
+
+      const report = syncLiveAccountStateSync({ reason: 'startup', now: NOW });
+
+      expect(report.claude.journal).toBe('cleared');
+      expect(readProfileClaudeCreds('uuid-b')?.claudeAiOauth.accessToken).toBe('tok-b');
+    });
   });
 
   it('re-points the active pointer silently and takes the swap lock before the registry lock', () => {
@@ -431,5 +556,31 @@ describe('accountSync', () => {
     expect(fs.existsSync(freshClaude)).toBe(true);
     expect(fs.existsSync(oldCodex)).toBe(false);
     expect(fs.existsSync(authedCodex)).toBe(true);
+  });
+
+  it('removes an authenticated login that was never finalized after a day (I4)', () => {
+    const stale = path.join(tmpDir, 'accounts', 'claude', 'profiles', 'login-authed-stale');
+    const recent = path.join(tmpDir, 'accounts', 'claude', 'profiles', 'login-authed-recent');
+    for (const [dir, age] of [
+      [stale, 2 * DAY],
+      [recent, 8 * HOUR],
+    ] as const) {
+      fs.mkdirSync(path.join(dir, 'home'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, 'profile.json'),
+        JSON.stringify({ label: 'x', addedAt: new Date(NOW - age).toISOString() }),
+      );
+      fs.writeFileSync(
+        path.join(dir, 'home', '.claude.json'),
+        JSON.stringify({ oauthAccount: { emailAddress: 'x@example.com', accountUuid: 'uuid-x' } }),
+      );
+      fs.writeFileSync(path.join(dir, 'home', '.credentials.json'), '{"claudeAiOauth":{}}');
+    }
+
+    const removed = cleanupAbandonedLogins(6 * HOUR, NOW);
+
+    expect(removed.claude).toEqual(['login-authed-stale']);
+    expect(fs.existsSync(stale)).toBe(false);
+    expect(fs.existsSync(recent)).toBe(true);
   });
 });

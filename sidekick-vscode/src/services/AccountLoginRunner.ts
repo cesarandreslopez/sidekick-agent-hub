@@ -2,12 +2,16 @@
  * Runs a provider sign-in inside a VS Code terminal and finalizes the saved
  * profile once the isolated home authenticates. One code path for both
  * providers: begin → poll status → finalize, cancellable from the progress
- * notification or by closing the terminal.
+ * notification or by closing the terminal. A run that ends without a saved
+ * login (cancelled, timed out, window closing) closes its terminal and
+ * discards the temporary home, so the CLI cannot finish a login nobody will
+ * finalize and its Keychain item never outlives the run.
  */
 
 import * as vscode from 'vscode';
 import {
   beginAccountLogin,
+  discardAccountLogin,
   finalizeAccountLoginAsync,
   getAccountLoginStatusAsync,
 } from 'sidekick-shared';
@@ -179,7 +183,18 @@ export class AccountLoginRunner implements vscode.Disposable {
             void tick();
           }),
       )
-      .then((outcome) => (this.disposed ? { outcome: 'cancelled' as const } : outcome));
+      .then((outcome) => {
+        const final = this.disposed ? { outcome: 'cancelled' as const } : outcome;
+        if (final.outcome === 'cancelled' || final.outcome === 'timeout') {
+          terminal.dispose();
+          try {
+            discardAccountLogin(providerId, begin.loginId);
+          } catch (err) {
+            logError('Failed to discard an abandoned account login', err);
+          }
+        }
+        return final;
+      });
   }
 
   dispose(): void {

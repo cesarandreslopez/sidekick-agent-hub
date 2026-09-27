@@ -3,11 +3,19 @@
  * providers' OAuth endpoints itself: it runs the official CLI inside the
  * profile's isolated home and lets the CLI refresh (and rotate) the token
  * where it belongs, then re-reads the store to record the new expiry.
+ *
+ * A refresh rotates the refresh token, so for Claude it only runs where the
+ * profile home holds the one live copy of its chain: never the live account,
+ * never a copy whose refresh token equals live's, never a copy taken from the
+ * live store that no switch has handed back yet, and never a stale copy when
+ * the backup is newer. The check and a lease are taken under the swap lock, so
+ * no switch can install that account while its CLI is refreshing.
  */
 import { execFile } from 'child_process';
 import { getAccountHealth, listAccountsWithHealth, type AccountView } from './accountHealth';
 import { getAccountLaunchEnv } from './accountLaunch';
 import type { AccountProviderId } from './accountRegistry';
+import { beginClaudeKeepAlive, finishClaudeKeepAlive, getClaudeKeepAliveBlocker } from './accounts';
 
 export interface KeepAliveRunner {
   (
@@ -46,6 +54,9 @@ export function keepAliveCommand(provider: AccountProviderId): { command: string
   return { command: 'claude', args: override ? override.split(/\s+/) : ['auth', 'status'] };
 }
 
+/** How long a keep-alive lease outlives the CLI timeout before it lapses on its own. */
+const LEASE_GRACE_MS = 30_000;
+
 const defaultRunner: KeepAliveRunner = (command, args, env, timeoutMs) =>
   new Promise((resolve) => {
     try {
@@ -79,7 +90,8 @@ function eligible(view: AccountView, includeFresh: boolean): string | null {
 
 /**
  * Serialised, bounded refresh of every inactive account that is `expiring`
- * (or `unknown` for Claude). Never touches the live account.
+ * (or `unknown` for Claude). Never touches the live account or any copy of
+ * its chain.
  */
 export async function refreshInactiveAccounts(
   options: RefreshInactiveAccountsOptions = {},
@@ -97,10 +109,13 @@ export async function refreshInactiveAccounts(
       result.skipped.push({ id: view.id, providerId: view.providerId, reason });
       continue;
     }
-    const launch = getAccountLaunchEnv(view.providerId, view.id, { materialize: true });
-    if (launch.error) {
-      result.skipped.push({ id: view.id, providerId: view.providerId, reason: launch.error });
-      continue;
+    const isClaude = view.providerId === 'claude-code';
+    if (isClaude && options.dryRun) {
+      const blocker = getClaudeKeepAliveBlocker(view.id);
+      if (blocker) {
+        result.skipped.push({ id: view.id, providerId: view.providerId, reason: blocker });
+        continue;
+      }
     }
     const { command, args } = keepAliveCommand(view.providerId);
     if (options.dryRun) {
@@ -111,10 +126,31 @@ export async function refreshInactiveAccounts(
       });
       continue;
     }
+    if (isClaude) {
+      const begin = beginClaudeKeepAlive(view.id, timeoutMs + LEASE_GRACE_MS);
+      if (!begin.ok) {
+        result.skipped.push({ id: view.id, providerId: view.providerId, reason: begin.reason });
+        continue;
+      }
+    }
+    const launch = getAccountLaunchEnv(view.providerId, view.id, {
+      materialize: true,
+      restoreBackup: false,
+    });
+    if (launch.error) {
+      if (isClaude) finishClaudeKeepAlive(view.id);
+      result.skipped.push({ id: view.id, providerId: view.providerId, reason: launch.error });
+      continue;
+    }
     const env: NodeJS.ProcessEnv = { ...process.env, ...launch.env };
     for (const name of launch.envUnset) delete env[name];
     try {
-      const run = await runner(command, args, env, timeoutMs);
+      let run: Awaited<ReturnType<KeepAliveRunner>>;
+      try {
+        run = await runner(command, args, env, timeoutMs);
+      } finally {
+        if (isClaude) finishClaudeKeepAlive(view.id);
+      }
       const after = getAccountHealth(view.providerId, view.id, {
         probe: 'store',
         now: options.now,

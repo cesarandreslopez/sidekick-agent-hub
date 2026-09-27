@@ -5,6 +5,20 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `sidekick accounts doctor` adds a "Claude credential stores" section: stored credentials Sidekick owns that no account uses, a second copy of the live login, and unreadable (truncated) credentials. `--fix` repairs them after asking; `--yes` skips the prompt, and `--json` output lists what was repaired. Ownership is proven by a ledger and a Keychain comment tag, never by the item name.
+
+### Fixed
+
+- **Claude logins are no longer invalidated by Sidekick** (bundled `sidekick-shared`). Claude Code rotates the refresh token on every refresh, so every usable copy of a login but one dies with "Not logged in · Please run /login"; Sidekick now keeps exactly one.
+  - Keychain writes larger than about 4 KB are no longer truncated into an unreadable credential, and every write is read back before it counts.
+  - The live account no longer keeps a second usable copy in its profile directory; `accounts switch` saves the outgoing login first (even with `--force`), holds Claude Code's refresh lock, never overwrites a newer login, and keeps the live MCP server tokens.
+  - Keep-alive never refreshes a copy of a live login. `accounts shell` / `env` for the live account use the normal Claude home.
+  - `sidekick account --launcher` scripts resolve the account's home when they run instead of pinning a profile directory.
+
 ## [0.27.5] - 2026-09-23
 
 ### Added

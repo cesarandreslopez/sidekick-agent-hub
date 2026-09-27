@@ -21,6 +21,10 @@ vi.mock('os', async () => {
   };
 });
 
+// Real credential I/O (file mode on the forced linux platform), spy-able so
+// the cleanup of every temporary login home can be asserted.
+vi.mock('./credentialIO', { spy: true });
+
 vi.mock('child_process', async () => {
   const actual = await vi.importActual<typeof import('child_process')>('child_process');
   return {
@@ -31,8 +35,11 @@ vi.mock('child_process', async () => {
 });
 
 import { getActiveAccount } from './accounts';
+import * as credentialIO from './credentialIO';
+import { readClaudeCredentialLedger } from './claudeCredentialLedger';
 import {
   beginAccountLogin,
+  discardAccountLogin,
   finalizeAccountLogin,
   getAccountLoginStatus,
   listAllAccounts,
@@ -327,19 +334,182 @@ describe('undoLastSwitch', () => {
     const again = beginAccountLogin('claude-code', 'ignored', { existingAccountId: 'uuid-a' });
     expect(again.success && again.existingAccountId).toBe('uuid-a');
     writeClaudeLoginFiles(again.configDir!, 'a@example.com', 'uuid-a');
+    // A fresh sign-in mints a new chain whose access token expires later.
     fs.writeFileSync(
       path.join(again.configDir!, '.credentials.json'),
-      JSON.stringify({ claudeAiOauth: { accessToken: 'fresh-token' } }),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: 'fresh-token',
+          refreshToken: 'fresh-refresh',
+          expiresAt: Date.now() + 8 * 60 * 60 * 1000,
+        },
+      }),
     );
     expect(finalizeAccountLogin('claude-code', again.loginId)).toMatchObject({ success: true });
     expect(listAllAccounts().claude).toHaveLength(1);
     expect(
       JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8')),
-    ).toEqual({ claudeAiOauth: { accessToken: 'fresh-token' } });
+    ).toMatchObject({ claudeAiOauth: { accessToken: 'fresh-token' } });
     expect(fs.existsSync(again.configDir!)).toBe(false);
+    // I1: the live account's profile home never receives the new login.
+    expect(fs.existsSync(path.join(getClaudeProfileHome('uuid-a'), '.credentials.json'))).toBe(
+      false,
+    );
 
     expect(beginAccountLogin('claude-code', 'x', { existingAccountId: 'missing' })).toMatchObject({
       success: false,
     });
   });
 });
+
+describe(
+  'temporary Claude login homes are released on every exit (I4)',
+  { timeout: 30_000 },
+  () => {
+    let spawnedHome: string | undefined;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-account-login-cleanup-'));
+      ensureLiveClaudeDir();
+      setPlatform('linux');
+      spawnedHome = undefined;
+      mockSpawn.mockReset();
+      mockSpawnSync.mockReset();
+      mockSpawnSync.mockReturnValue({ status: 1, stdout: '', stderr: '' });
+      vi.mocked(credentialIO.deleteStoredCredentials).mockClear();
+    });
+
+    afterEach(() => {
+      setPlatform(originalPlatform);
+      vi.restoreAllMocks();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    /** Spawn stub: records the login home; `onSpawn` scripts the child. */
+    function stubSpawn(
+      onSpawn: (child: ReturnType<typeof makeChildProcess>, home: string) => void,
+    ): void {
+      mockSpawn.mockImplementation(
+        (_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
+          spawnedHome = options.env!.CLAUDE_CONFIG_DIR!;
+          const child = makeChildProcess();
+          onSpawn(child, spawnedHome);
+          return child;
+        },
+      );
+    }
+
+    function expectReleased(): void {
+      expect(spawnedHome).toBeDefined();
+      expect(credentialIO.deleteStoredCredentials).toHaveBeenCalledWith(spawnedHome);
+      expect(fs.existsSync(path.dirname(spawnedHome!))).toBe(false);
+      // The ledger no longer lists the home once its store is gone.
+      expect(readClaudeCredentialLedger().map((entry) => entry.configDir)).not.toContain(
+        path.resolve(spawnedHome!),
+      );
+    }
+
+    it('records the login home in the ledger before the CLI can create its item', () => {
+      const begin = beginAccountLogin('claude-code', 'Work');
+      expect(readClaudeCredentialLedger()).toEqual([
+        expect.objectContaining({ configDir: path.resolve(begin.configDir!), purpose: 'login' }),
+      ]);
+    });
+
+    it('on success', async () => {
+      stubSpawn((child, home) => {
+        writeClaudeLoginFiles(home);
+        queueMicrotask(() => child.emit('exit', 0, null));
+      });
+      expect(
+        await spawnAccountLogin('claude-code', 'Work', { stdio: 'pipe', timeoutMs: 100 }),
+      ).toMatchObject({
+        success: true,
+      });
+      expectReleased();
+    });
+
+    it('when the CLI exits before authenticating', async () => {
+      stubSpawn((child) => queueMicrotask(() => child.emit('exit', 1, null)));
+      expect(
+        (await spawnAccountLogin('claude-code', 'Work', { stdio: 'pipe', timeoutMs: 100 })).success,
+      ).toBe(false);
+      expectReleased();
+    });
+
+    it('when spawning fails', async () => {
+      stubSpawn((child) =>
+        queueMicrotask(() => child.emit('error', new Error('spawn claude ENOENT'))),
+      );
+      expect(
+        (await spawnAccountLogin('claude-code', 'Work', { stdio: 'pipe', timeoutMs: 100 })).success,
+      ).toBe(false);
+      expectReleased();
+    });
+
+    it('when aborted mid-login', async () => {
+      const controller = new AbortController();
+      stubSpawn(() => setTimeout(() => controller.abort(), 10));
+      const result = await spawnAccountLogin('claude-code', 'Work', {
+        stdio: 'pipe',
+        timeoutMs: 5_000,
+        signal: controller.signal,
+      });
+      expect(result.error).toMatch(/aborted/i);
+      expectReleased();
+    });
+
+    it('on timeout', async () => {
+      stubSpawn(() => undefined);
+      expect(
+        (await spawnAccountLogin('claude-code', 'Work', { stdio: 'pipe', timeoutMs: 0 })).error,
+      ).toMatch(/timed out/i);
+      expectReleased();
+    });
+
+    it('when finalize fails after authentication', async () => {
+      stubSpawn((child, home) => {
+        writeClaudeLoginFiles(home);
+        queueMicrotask(() => child.emit('exit', 0, null));
+      });
+      vi.mocked(credentialIO.writeActiveCredentials).mockImplementationOnce(() => {
+        throw new credentialIO.ClaudeCredentialWriteError('simulated Keychain failure');
+      });
+      const result = await spawnAccountLogin('claude-code', 'Work', {
+        stdio: 'pipe',
+        timeoutMs: 100,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/simulated Keychain failure/);
+      expectReleased();
+      // The sign-in itself is not lost: the private backup was written first.
+      expect(
+        fs.existsSync(
+          path.join(
+            tmpDir,
+            '.config',
+            'sidekick',
+            'accounts',
+            'credentials',
+            'uuid-work.credentials.json',
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    it('when a host abandons a login through discardAccountLogin, but never for a saved account', () => {
+      const begin = beginAccountLogin('claude-code', 'Work');
+      writeClaudeLoginFiles(begin.configDir!);
+      spawnedHome = begin.configDir!;
+
+      expect(discardAccountLogin('claude-code', begin.loginId)).toBe(true);
+      expectReleased();
+
+      const saved = beginAccountLogin('claude-code', 'Saved');
+      writeClaudeLoginFiles(saved.configDir!, 's@example.com', 'uuid-saved');
+      finalizeAccountLogin('claude-code', saved.loginId, { activate: false });
+      expect(discardAccountLogin('claude-code', 'uuid-saved')).toBe(false);
+      expect(fs.existsSync(getClaudeProfileHome('uuid-saved'))).toBe(true);
+    });
+  },
+);

@@ -779,9 +779,43 @@ export type { TranscriptContentBlock, TranscriptEntry, HtmlReportOptions } from 
 // Credential I/O (platform-aware: Keychain on macOS, file on Linux/Windows)
 export {
   readActiveCredentials,
+  readClaudeCredentialStore,
   writeActiveCredentials,
   deleteStoredCredentials,
+  ClaudeCredentialWriteError,
+  SIDEKICK_KEYCHAIN_COMMENT_PREFIX,
 } from './credentialIO';
+export type { ClaudeCredentialStoreRead, ClaudeCredentialStoreSource } from './credentialIO';
+export { decideLiveClaudeWrite } from './claudeLiveGuard';
+export type {
+  LiveClaudeStoreState,
+  LiveClaudeWriteDecision,
+  LiveClaudeWriteIntent,
+  LiveClaudeWriteRefusal,
+  LiveClaudeWriteRequest,
+} from './claudeLiveGuard';
+export {
+  readClaudeCredentialLedger,
+  getClaudeCredentialLedgerPath,
+} from './claudeCredentialLedger';
+export type {
+  ClaudeCredentialLedgerEntry,
+  ClaudeCredentialHomePurpose,
+} from './claudeCredentialLedger';
+export {
+  inspectClaudeCredentialStores,
+  repairClaudeCredentialStores,
+  parseKeychainDump,
+} from './claudeCredentialDoctor';
+export type {
+  ClaudeCredentialFinding,
+  ClaudeCredentialFindingKind,
+  ClaudeCredentialInspection,
+  ClaudeCredentialRepairOutcome,
+  ClaudeCredentialRepairResult,
+  InspectClaudeCredentialStoresOptions,
+  KeychainItemSummary,
+} from './claudeCredentialDoctor';
 
 // Credentials
 export {
@@ -795,6 +829,9 @@ export {
   claudeCredentialFreshness,
   isNewerClaudeCredential,
   resolveClaudeRefreshExpiry,
+  claudeRefreshFingerprint,
+  claudeLoginOnly,
+  mergeClaudeLoginIntoLive,
   CLAUDE_ACCESS_TOKEN_LIFETIME_MS,
   CLAUDE_REFRESH_TOKEN_LIFETIME_ESTIMATE_MS,
 } from './claudeCredentials';
@@ -852,6 +889,7 @@ export {
   getLastSwitch,
   listAllAccounts,
   resolveClaudeLoginCommand,
+  discardAccountLogin,
 } from './accountManager';
 export type {
   AccountLoginCommand,
@@ -980,7 +1018,7 @@ export {
   CODEX_KEYRING_FIX_HINT,
 } from './codexProfiles';
 export type { CodexAccountManagerResult, CodexCredentialStoreMode } from './codexProfiles';
-export { writeLauncher, removeLauncher } from './terminalSync';
+export { writeAccountLauncher, writeLauncher, removeLauncher } from './terminalSync';
 export { DEFAULT_AUTO_SWITCH_CONFIG, decideAutoSwitch, AutoSwitchController } from './autoSwitch';
 export type {
   AutoSwitchActiveAccount,

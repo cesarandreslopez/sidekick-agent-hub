@@ -18,6 +18,9 @@ const shared = vi.hoisted(() => ({
   listSavedAccountProfiles: vi.fn(),
   upsertSavedAccountProfile: vi.fn(),
   writeLauncher: vi.fn(),
+  writeAccountLauncher: vi.fn(),
+  inspectClaudeCredentialStores: vi.fn(),
+  repairClaudeCredentialStores: vi.fn(),
   getClaudeProfileHome: vi.fn(() => '/profiles/claude'),
   getCodexProfileHome: vi.fn(() => '/profiles/codex'),
 }));
@@ -42,6 +45,7 @@ import {
   addAction,
   collectAccountChecks,
   configAction,
+  doctorAction,
   envAction,
   listAction,
   removeAction,
@@ -123,6 +127,11 @@ describe('accounts actions', () => {
     shared.getCodexProfileHome.mockReturnValue('/profiles/codex');
     shared.syncLiveAccountState.mockResolvedValue(emptySync);
     shared.listAccountsWithHealth.mockReturnValue([]);
+    shared.inspectClaudeCredentialStores.mockReturnValue({
+      findings: [],
+      homesChecked: 0,
+      keychainScanned: false,
+    });
     config.value = {};
     mockConfirm.mockReset();
     process.exitCode = undefined;
@@ -417,12 +426,88 @@ describe('accounts actions', () => {
       ['account:claude-code:old', 'error'],
       ['running-apps', 'info'],
       ['codex-credential-store', 'warning'],
+      ['credential-stores', 'ok'],
       ['keep-alive', 'info'],
     ]);
     expect(checks[1].repair).toBe('sidekick accounts login "old"');
     expect(checks[2].message).toContain('Claude Desktop is not switched');
     expect(checks[3].repair).toContain('cli_auth_credentials_store = "file"');
-    expect(checks[4].repair).toBe('sidekick accounts config keep-alive on');
+    expect(checks[5].repair).toBe('sidekick accounts config keep-alive on');
+  });
+
+  describe('doctor credential stores', () => {
+    beforeEach(() => {
+      shared.detectRunningAccountConsumers.mockResolvedValue([]);
+      shared.getCodexCredentialStoreMode.mockReturnValue('file');
+    });
+
+    const orphan = {
+      kind: 'orphan' as const,
+      configDir: '/cfg/accounts/claude/profiles/x/home',
+      service: 'Claude Code-credentials-0123abcd',
+      ownership: 'ledger' as const,
+      detail: 'Holds a login but belongs to no saved account.',
+      action: 'Delete the stored credential.',
+    };
+
+    it('reports owned findings with the --fix repair', async () => {
+      shared.inspectClaudeCredentialStores.mockReturnValue({
+        findings: [orphan, { ...orphan, kind: 'corrupt', email: 'b@example.com' }],
+        homesChecked: 2,
+        keychainScanned: true,
+      });
+
+      const checks = await collectAccountChecks(makeCtx());
+      const stores = checks.filter((c) => c.id.startsWith('credential-store:'));
+
+      expect(stores.map((c) => c.status)).toEqual(['warning', 'error']);
+      expect(stores[0].message).toContain('Claude Code-credentials-0123abcd');
+      expect(stores[1].title).toContain('b@example.com');
+      expect(stores[0].repair).toMatch(/sidekick accounts doctor --fix/);
+    });
+
+    it('never repairs without --fix, and --fix refuses without confirmation when non-interactive', async () => {
+      shared.inspectClaudeCredentialStores.mockReturnValue({
+        findings: [orphan],
+        homesChecked: 1,
+        keychainScanned: true,
+      });
+
+      await doctorAction(makeCtx());
+      expect(shared.repairClaudeCredentialStores).not.toHaveBeenCalled();
+
+      const ctx = makeCtx();
+      await doctorAction(ctx, { fix: true });
+      expect(shared.repairClaudeCredentialStores).not.toHaveBeenCalled();
+      expect(ctx.stderr.join('\n')).toMatch(/Re-run with --fix --yes/);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('--fix asks first when interactive, and --yes repairs directly', async () => {
+      shared.inspectClaudeCredentialStores.mockReturnValue({
+        findings: [orphan],
+        homesChecked: 1,
+        keychainScanned: true,
+      });
+      shared.repairClaudeCredentialStores.mockReturnValue({
+        findings: [orphan],
+        homesChecked: 1,
+        keychainScanned: true,
+        dryRun: false,
+        repaired: [{ finding: orphan, ok: true }],
+      });
+
+      mockConfirm.mockResolvedValue(false);
+      await doctorAction(makeCtx({ interactive: true }), { fix: true });
+      expect(mockConfirm).toHaveBeenCalled();
+      expect(shared.repairClaudeCredentialStores).not.toHaveBeenCalled();
+
+      process.exitCode = undefined;
+      const ctx = makeCtx({ yes: true, json: true });
+      await doctorAction(ctx, { fix: true });
+      expect(shared.repairClaudeCredentialStores).toHaveBeenCalledWith({ dryRun: false });
+      expect(JSON.parse(ctx.stdout.join('\n')).repaired).toEqual([{ finding: orphan, ok: true }]);
+    });
   });
 
   it('persists auto-switch and keep-alive settings with validation', () => {

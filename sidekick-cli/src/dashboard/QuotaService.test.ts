@@ -9,6 +9,8 @@ vi.mock('sidekick-shared', async () => {
   return {
     ...actual,
     resolveQuota: (...args: unknown[]) => mockResolveQuota(...args),
+    // The poller reads the live login on start; never reach the real Keychain.
+    readClaudeMaxCredentials: async () => null,
   };
 });
 

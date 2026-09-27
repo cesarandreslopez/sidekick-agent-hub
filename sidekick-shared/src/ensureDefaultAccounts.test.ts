@@ -10,20 +10,8 @@ vi.mock('./paths', () => ({
   getConfigDir: () => tmpDir,
 }));
 
-vi.mock('./credentialIO', () => ({
-  readActiveCredentials: () => {
-    try {
-      return JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', '.credentials.json'), 'utf8'));
-    } catch {
-      return null;
-    }
-  },
-  writeActiveCredentials: (credentials: unknown) => {
-    const claudeDir = path.join(tmpDir, '.claude');
-    fs.mkdirSync(claudeDir, { recursive: true });
-    fs.writeFileSync(path.join(claudeDir, '.credentials.json'), JSON.stringify(credentials));
-  },
-}));
+// The real credentialIO: file mode by default (platform forced to linux), and
+// Keychain mode with a scripted `security` in the orphan regression test.
 
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
@@ -35,6 +23,10 @@ vi.mock('os', async () => {
 
 const spawnSyncSpy = vi.hoisted(() => vi.fn());
 const execFileSyncSpy = vi.hoisted(() => vi.fn());
+/** When set, replaces the real execFileSync (a scripted `security`). */
+const execFileSyncImpl = vi.hoisted(() => ({
+  fn: null as null | ((...args: unknown[]) => unknown),
+}));
 
 vi.mock('child_process', async () => {
   const actual = await vi.importActual<typeof import('child_process')>('child_process');
@@ -46,6 +38,7 @@ vi.mock('child_process', async () => {
     },
     execFileSync: (...args: unknown[]) => {
       execFileSyncSpy(...args);
+      if (execFileSyncImpl.fn) return execFileSyncImpl.fn(...args);
       return (actual.execFileSync as (...spawnArgs: unknown[]) => unknown)(...args);
     },
     // Deterministic async probes: report the binary as absent instead of
@@ -111,15 +104,62 @@ function countCodexProfileDirs(): number {
   }
 }
 
+const originalPlatform = process.platform;
+
 describe('ensureDefaultAccounts', { timeout: 30_000 }, () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-ensure-default-accounts-test-'));
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     spawnSyncSpy.mockClear();
     execFileSyncSpy.mockClear();
+    execFileSyncImpl.fn = null;
   });
 
   afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    execFileSyncImpl.fn = null;
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('never writes a Keychain item for the live login in a fresh config root (orphan regression)', async () => {
+    // A host that points SIDEKICK_CONFIG_DIR at a throwaway directory per run
+    // (with the real HOME) used to mint one "Claude Code-credentials-<hash>"
+    // item per run: the live login mirrored into a profile home that was then
+    // deleted with the directory.
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+    const live = JSON.stringify({
+      claudeAiOauth: { accessToken: 'access-token', refreshToken: 'refresh-token' },
+    });
+    const securityCalls: string[][] = [];
+    execFileSyncImpl.fn = (command: unknown, args: unknown) => {
+      if (command !== 'security') throw new Error(`unexpected ${String(command)}`);
+      const argv = args as string[];
+      securityCalls.push(argv);
+      const service = argv[argv.indexOf('-s') + 1];
+      if (argv[0] === 'find-generic-password' && service === 'Claude Code-credentials') {
+        return live;
+      }
+      throw Object.assign(new Error('The specified item could not be found.'), { status: 44 });
+    };
+    const claudeDir = path.join(tmpDir, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(claudeDir, '.claude.json'),
+      JSON.stringify({ oauthAccount: { emailAddress: 'c@example.com', accountUuid: 'claude-1' } }),
+    );
+
+    const result = await ensureDefaultAccounts();
+
+    expect(result.claude).toBe('registered');
+    // Reads only: no add-generic-password (argv or `security -i`), no ledger entry.
+    expect(securityCalls.every((argv) => argv[0] === 'find-generic-password')).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'accounts', 'claude', 'credential-homes.json'))).toBe(
+      false,
+    );
+    // The live login is mirrored only into the private backup.
+    expect(
+      fs.existsSync(path.join(tmpDir, 'accounts', 'credentials', 'claude-1.credentials.json')),
+    ).toBe(true);
   });
 
   it('registers default Claude and Codex accounts from system credentials', async () => {

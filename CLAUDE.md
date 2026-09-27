@@ -183,6 +183,7 @@ Important stores include:
 - `handoffs/` — latest and timestamped session handoff documents
 - `event-logs/` and `error-history.json` — optional session audit logs and categorized error history
 - `accounts/accounts.json`, `quota-snapshots.json`, `quota-history/` — provider-aware accounts and quota state/history
+- `accounts/credentials/<uuid>.credentials.json` (private Claude backups Claude Code never reads), `accounts/claude/credential-homes.json` (ledger of every directory Sidekick put a Claude credential in, for `accounts doctor`), `accounts/claude/switch-journal.json` (present only while a switch is in flight)
 - `snapshots/` — cached session aggregation snapshots
 - `pricing-catalog.json` — cached LiteLLM prices and context windows (24h TTL)
 - `observed-context-windows.json` — context windows actually reported by providers, per model
@@ -191,6 +192,8 @@ Important stores include:
 - `cli-config.json` and `update-check.json` — CLI preferences and update-check cache
 
 Use the shared path helpers and atomic writers for cross-process stores. `resolveProjectIdentity()` resolves symlinks and exposes canonical plus legacy slugs for migration. Do not confuse Sidekick's config-store `encodeWorkspacePath()` with Claude Code's directory encoder; use `encodeClaudeWorkspacePath()` / `getClaudeSessionDirectory()` for `~/.claude/projects/` paths.
+
+Claude credentials follow one rule: every refresh-token chain has exactly one copy a `claude` process can use (Claude Code rotates the refresh token on every refresh, so a second copy kills the first). The live account's profile home never holds a credential; only `installIntoLiveClaudeStore` in `accounts.ts` writes the live store, through `decideLiveClaudeWrite()`; profile writes go through the `storeClaudeProfileCredentials` chokepoint. Tests never reach the real `security` binary or real homes: `sidekick-shared/src/testing/credentialGuard.setup.ts` is a `setupFiles` entry in all three vitest configs and fails any test that does.
 
 ## Sidekick CLI and Shared Library
 

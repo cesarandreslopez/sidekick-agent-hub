@@ -221,10 +221,17 @@ export function registerAccountsCommand(program: Command): void {
 
   accounts
     .command('doctor')
-    .description('Check credential expiry, running apps, and the Codex credential store')
+    .description(
+      'Check credential expiry, stored credential copies, running apps, and the Codex credential store',
+    )
     .option('--provider <id>', 'claude-code or codex')
+    .option(
+      '--fix',
+      'Delete stored credentials Sidekick owns that no account uses (asks first; dry run without it)',
+    )
+    .option('-y, --yes', 'With --fix: skip the confirmation prompt')
     .action(async (opts: Record<string, unknown>, cmd: Command) =>
-      doctorAction(contextFromCommand(cmd, opts)),
+      doctorAction(contextFromCommand(cmd, opts), { fix: Boolean(opts.fix) }),
     );
 
   const config = accounts

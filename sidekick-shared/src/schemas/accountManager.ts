@@ -144,6 +144,7 @@ export const accountHealthSidecarSchema = z.object({
   lastRefreshAt: z.number().optional(),
   hasRefreshToken: z.boolean().optional(),
   authMode: z.enum(['chatgpt', 'api-key', 'oauth']).optional(),
+  refreshFp: z.string().optional(),
   source: accountHealthSourceSchema,
 }) satisfies z.ZodType<AccountHealthSidecar>;
 
@@ -225,6 +226,9 @@ export const providerSyncReportSchema = z.object({
   folded: z.string().optional(),
   repointed: z.string().optional(),
   merged: z.array(z.string()).optional(),
+  demoted: z.string().optional(),
+  repaired: z.string().optional(),
+  journal: z.enum(['finished', 'rolled-back', 'cleared']).optional(),
   skipped: z.string().optional(),
   warnings: z.array(z.string()),
 }) satisfies z.ZodType<ProviderSyncReport>;

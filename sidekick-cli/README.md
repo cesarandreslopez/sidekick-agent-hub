@@ -353,7 +353,7 @@ Keep several Claude Code and Codex logins on one machine and switch between them
 | `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                                             |
 | `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                                              |
 | `accounts undo`                                  | Revert the last switch                                                                                                                                       |
-| `accounts doctor`                                | Credential expiry, running apps, Codex credential store, keep-alive state                                                                                    |
+| `accounts doctor [--fix [-y]]`                   | Credential expiry, stored credential copies, running apps, Codex credential store, keep-alive; `--fix` deletes unused copies Sidekick owns (asks first)      |
 | `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold (continuous auto-switching runs in a long-running host such as VS Code)                                              |
 | `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                                              |
 

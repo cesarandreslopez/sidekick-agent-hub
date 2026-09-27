@@ -1,25 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockBegin, mockStatus, mockFinalize, terminals, closeListeners, progressRuns } = vi.hoisted(
-  () => ({
-    mockBegin: vi.fn(),
-    mockStatus: vi.fn(),
-    mockFinalize: vi.fn(),
-    terminals: [] as Array<{
-      name: string;
-      env: Record<string, string | null>;
-      sent: string[];
-      show: () => void;
-    }>,
-    closeListeners: [] as Array<(terminal: unknown) => void>,
-    progressRuns: [] as Array<{ cancel: () => void }>,
-  }),
-);
+const {
+  mockBegin,
+  mockStatus,
+  mockFinalize,
+  mockDiscard,
+  terminals,
+  closeListeners,
+  progressRuns,
+} = vi.hoisted(() => ({
+  mockBegin: vi.fn(),
+  mockStatus: vi.fn(),
+  mockFinalize: vi.fn(),
+  mockDiscard: vi.fn(),
+  terminals: [] as Array<{
+    name: string;
+    env: Record<string, string | null>;
+    sent: string[];
+    show: () => void;
+    dispose: ReturnType<typeof vi.fn>;
+  }>,
+  closeListeners: [] as Array<(terminal: unknown) => void>,
+  progressRuns: [] as Array<{ cancel: () => void }>,
+}));
 
 vi.mock('sidekick-shared', () => ({
   beginAccountLogin: (...args: unknown[]) => mockBegin(...args),
   getAccountLoginStatusAsync: (...args: unknown[]) => mockStatus(...args),
   finalizeAccountLoginAsync: (...args: unknown[]) => mockFinalize(...args),
+  discardAccountLogin: (...args: unknown[]) => mockDiscard(...args),
 }));
 
 vi.mock('vscode', () => ({
@@ -32,6 +41,7 @@ vi.mock('vscode', () => ({
         env: options.env,
         sent: [] as string[],
         show: vi.fn(),
+        dispose: vi.fn(),
         sendText: (text: string) => terminal.sent.push(text),
       };
       terminals.push(terminal);
@@ -75,6 +85,7 @@ describe('AccountLoginRunner', () => {
     mockBegin.mockReset();
     mockStatus.mockReset();
     mockFinalize.mockReset();
+    mockDiscard.mockReset();
     mockBegin.mockReturnValue({
       success: true,
       loginId: 'login-1',
@@ -114,6 +125,9 @@ describe('AccountLoginRunner', () => {
     });
     expect(terminals[0].sent[0]).toContain("'claude' 'auth' 'login'");
     expect(mockFinalize).toHaveBeenCalledWith('claude-code', 'login-1', { activate: false });
+    // A saved login keeps nothing to discard.
+    expect(mockDiscard).not.toHaveBeenCalled();
+    expect(terminals[0].dispose).not.toHaveBeenCalled();
   });
 
   it('reports cancellation from the progress notification or a closed terminal, and timeouts', async () => {
@@ -134,6 +148,22 @@ describe('AccountLoginRunner', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(await timedOut).toEqual({ outcome: 'timeout' });
     expect(mockFinalize).not.toHaveBeenCalled();
+    // Every abandoned run closed its terminal and discarded its login home (I4).
+    expect(mockDiscard).toHaveBeenCalledTimes(3);
+    expect(terminals.every((terminal) => terminal.dispose.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('discards the Claude login home when the window closes mid-login (I4)', async () => {
+    mockStatus.mockResolvedValue({ state: 'pending' });
+    const runner = new AccountLoginRunner();
+
+    const run = runner.run('claude-code', 'Work', { pollIntervalMs: 10 });
+    await vi.advanceTimersByTimeAsync(15);
+    runner.dispose();
+
+    expect(await run).toEqual({ outcome: 'cancelled' });
+    expect(mockDiscard).toHaveBeenCalledWith('claude-code', 'login-1');
+    expect(terminals[0].dispose).toHaveBeenCalled();
   });
 
   it('quotes command lines per shell family and reports begin failures', async () => {

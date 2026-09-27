@@ -645,20 +645,20 @@ sidekick accounts [command]
 
 Manage Claude Code and Codex accounts: list, add, switch, and run parallel sessions. Sidekick registers the logins you are already using automatically; `add` signs in to another account in an isolated profile. See the [Account Switcher](account-switcher.md) guide for the full walkthrough, health states, and platform notes.
 
-| Command                                          | Description                                                                                                                              |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `sidekick accounts`                              | Interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo). Prints the list when piped |
-| `accounts list`                                  | Saved accounts with health and expiry                                                                                                    |
-| `accounts add [--label <name>] [--current] [-y]` | Sign in to a new account in an isolated profile; `--current` registers or relabels the live login                                        |
-| `accounts switch <name> \| --next [--force]`     | Make an account active (label, email, id, or unique prefix); `--force` ignores an expired health verdict                                 |
-| `accounts login <name>`                          | Sign in again to an existing (expired) account, keeping its id and label                                                                 |
-| `accounts remove <name> [-y]`                    | Delete a saved account and its credentials (prompts unless `--yes`; required for `--json`/non-TTY)                                       |
-| `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                         |
-| `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                          |
-| `accounts undo`                                  | Revert the last switch                                                                                                                   |
-| `accounts doctor`                                | Credential expiry, running apps, Codex credential store, keep-alive state                                                                |
-| `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold                                                                                                  |
-| `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                          |
+| Command                                          | Description                                                                                                                               |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidekick accounts`                              | Interactive picker (arrow keys, `Enter` switch, `a` add, `l` sign in again, `r` remove, `s` shell, `u` undo). Prints the list when piped  |
+| `accounts list`                                  | Saved accounts with health and expiry                                                                                                     |
+| `accounts add [--label <name>] [--current] [-y]` | Sign in to a new account in an isolated profile; `--current` registers or relabels the live login                                         |
+| `accounts switch <name> \| --next [--force]`     | Make an account active (label, email, id, or unique prefix); `--force` ignores an expired health verdict                                  |
+| `accounts login <name>`                          | Sign in again to an existing (expired) account, keeping its id and label                                                                  |
+| `accounts remove <name> [-y]`                    | Delete a saved account and its credentials (prompts unless `--yes`; required for `--json`/non-TTY)                                        |
+| `accounts shell <name> [-- <cmd…>]`              | Subshell, or one command, where `claude`/`codex` use the account                                                                          |
+| `accounts env <name> [--shell <kind>]`           | Print the environment for `eval` (`bash`, `zsh`, `fish`, `powershell`, `cmd`; default detected)                                           |
+| `accounts undo`                                  | Revert the last switch                                                                                                                    |
+| `accounts doctor [--fix [-y]]`                   | Credential expiry, stored credential copies, running apps, Codex credential store, keep-alive; `--fix` deletes owned unused copies (asks) |
+| `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold                                                                                                   |
+| `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                           |
 
 All subcommands accept `--provider claude-code|codex|all` and the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command.
 

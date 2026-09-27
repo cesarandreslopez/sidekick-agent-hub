@@ -12,7 +12,9 @@ import {
   CLAUDE_SECURESTORAGE_CONFIG_DIR_ENV,
   getClaudeProfileHome,
   getLiveClaudeHome,
+  isDefaultClaudeHome,
 } from './claudeProfiles';
+import { restoreClaudeProfileFromBackup } from './accounts';
 import {
   forceFileCredentialStore,
   getCodexProfileHome,
@@ -48,6 +50,12 @@ export interface AccountLaunchOptions {
   materialize?: boolean;
   /** Launch even when the stored credential is reported expired. */
   force?: boolean;
+  /**
+   * Claude: when the profile home has no credential but its backup does,
+   * restore it there first (default true). Keep-alive passes false: it never
+   * restores backups.
+   */
+  restoreBackup?: boolean;
 }
 
 function materializeClaudeHome(home: string): void {
@@ -107,6 +115,22 @@ export function getAccountLaunchEnv(
   if (!profile) {
     return { ...base, error: `${provider} account ${accountId} not found.` };
   }
+  if (provider === 'claude-code' && health.isLive) {
+    // The live account's only CLI-usable copy is the live store; a session in
+    // its profile home would be a second copy racing it over the refresh
+    // token. Point the session at the live home instead.
+    const liveHome = getLiveClaudeHome();
+    const customHome = !isDefaultClaudeHome();
+    return {
+      ...base,
+      home: liveHome,
+      env: customHome ? { CLAUDE_CONFIG_DIR: liveHome } : {},
+      envUnset: customHome
+        ? [CLAUDE_SECURESTORAGE_CONFIG_DIR_ENV]
+        : ['CLAUDE_CONFIG_DIR', CLAUDE_SECURESTORAGE_CONFIG_DIR_ENV],
+      warnings: ['This account is the live login, so the session uses the normal Claude home.'],
+    };
+  }
   if ((health.state === 'expired' || health.state === 'missing') && !options.force) {
     return {
       ...base,
@@ -119,6 +143,13 @@ export function getAccountLaunchEnv(
     );
   }
   if (health.state === 'expiring' && health.reason) warnings.push(health.reason);
+  if (provider === 'claude-code' && options.restoreBackup !== false) {
+    if (restoreClaudeProfileFromBackup(accountId) === 'restored') {
+      warnings.push(
+        "Restored this account's saved login into its profile home. If a session elsewhere still uses this login, close it first: two copies of one login invalidate each other.",
+      );
+    }
+  }
   if (options.materialize !== false) {
     try {
       if (provider === 'codex') materializeCodexHome(home);

@@ -9,6 +9,15 @@ export interface ProviderSyncReport {
   repointed?: string;
   /** Duplicate profiles merged away (ids of the removed losers). */
   merged?: string[];
+  /**
+   * The live account's profile home held a CLI-usable copy of its login; it
+   * was removed (the account that is live keeps exactly one copy: live).
+   */
+  demoted?: string;
+  /** That copy was strictly newer than live, so it replaced the dying live login first. */
+  repaired?: string;
+  /** A switch that crashed mid-way was finished or rolled back from its journal. */
+  journal?: 'finished' | 'rolled-back' | 'cleared';
   /** Why nothing was synced (`logged-out`, `keyring`, `no-identity`, `unchanged`). */
   skipped?: string;
   warnings: string[];

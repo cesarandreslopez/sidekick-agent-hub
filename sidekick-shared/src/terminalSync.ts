@@ -53,9 +53,41 @@ function assertNoLauncherCollision(name: string, targetPath: string): void {
   }
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 /**
- * Write a POSIX launcher script that runs the provider CLI against a profile
- * home. Unix only; on Windows use `sidekick accounts env --shell powershell`.
+ * Write a POSIX launcher script that runs the provider CLI as a saved account.
+ * The script defers to `sidekick accounts shell` at run time, which resolves
+ * the right home then: the account's profile home while it is inactive, the
+ * live home while it is the live login (a session pinned to the profile home
+ * would otherwise be a second copy of the live login). Unix only; on Windows
+ * use `sidekick accounts env --shell powershell`.
+ */
+export function writeAccountLauncher(
+  name: string,
+  provider: AccountProviderId,
+  accountId: string,
+): void {
+  assertValidLauncherName(name);
+  const launcherPath = getLauncherPath(name);
+  assertNoLauncherCollision(name, launcherPath);
+
+  const script = [
+    '#!/bin/sh',
+    LAUNCHER_MARKER,
+    `exec sidekick accounts shell --provider ${provider} ${shellSingleQuote(accountId)} -- ${providerBinary(provider)} "$@"`,
+    '',
+  ].join('\n');
+
+  atomicWriteFileSync(launcherPath, script, 0o755);
+}
+
+/**
+ * @deprecated Pins a launcher to one profile home; when that account becomes
+ * the live login the launcher runs a second copy of it. Use
+ * {@link writeAccountLauncher}.
  */
 export function writeLauncher(
   name: string,

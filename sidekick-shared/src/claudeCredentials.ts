@@ -1,6 +1,7 @@
 /**
  * Pure helpers over the Claude Code credential blob (`claudeAiOauth`). No I/O.
  */
+import { createHash } from 'crypto';
 
 export interface ClaudeOauthCredentials {
   accessToken: string;
@@ -83,4 +84,55 @@ export function resolveClaudeRefreshExpiry(
     };
   }
   return null;
+}
+
+/**
+ * Short, non-reversible fingerprint of the refresh token. Claude Code rotates
+ * the refresh token on every refresh, so equal fingerprints mean two stores
+ * hold the same link of one chain. Safe to persist and log; tokens never are.
+ */
+export function claudeRefreshFingerprint(
+  credentials: ClaudeOauthCredentials | null,
+): string | null {
+  const token = credentials?.refreshToken;
+  return token ? createHash('sha256').update(token).digest('hex').slice(0, 16) : null;
+}
+
+function recordOrUndefined(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/**
+ * The part of a blob a profile home keeps: the Claude login only. MCP OAuth
+ * tokens (`mcpOAuth`) rotate too and follow the live store, so a profile copy
+ * never duplicates one of their chains (and stays far below the Keychain
+ * line limit).
+ */
+export function claudeLoginOnly(blob: unknown): Record<string, unknown> | null {
+  const oauth = recordOrUndefined(recordOrUndefined(blob)?.claudeAiOauth);
+  return oauth ? { claudeAiOauth: oauth } : null;
+}
+
+/**
+ * The blob to install into the live store when `candidate`'s login replaces
+ * the live one: everything live holds (its MCP tokens are the freshest links
+ * of their chains) with the candidate's `claudeAiOauth`, plus any MCP server
+ * only the candidate knows. Mirrors what Claude Code's own `/login` keeps.
+ */
+export function mergeClaudeLoginIntoLive(
+  live: unknown,
+  candidate: unknown,
+): Record<string, unknown> {
+  const liveRecord = recordOrUndefined(live) ?? {};
+  const candidateRecord = recordOrUndefined(candidate) ?? {};
+  const merged: Record<string, unknown> = {
+    ...liveRecord,
+    claudeAiOauth: candidateRecord.claudeAiOauth,
+  };
+  const liveMcp = recordOrUndefined(liveRecord.mcpOAuth);
+  const candidateMcp = recordOrUndefined(candidateRecord.mcpOAuth);
+  if (liveMcp || candidateMcp) merged.mcpOAuth = { ...candidateMcp, ...liveMcp };
+  return merged;
 }

@@ -6,16 +6,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  getClaudeCredentialBackupPath,
   getClaudeProfileDir,
   getClaudeProfileHome,
   readLiveClaudeIdentity,
 } from './claudeProfiles';
 import {
+  claudeCredentialFreshness,
+  claudeRefreshFingerprint,
   parseClaudeCredentialBlob,
   resolveClaudeRefreshExpiry,
   type ClaudeOauthCredentials,
 } from './claudeCredentials';
-import { readActiveCredentials } from './credentialIO';
+import { readActiveCredentials, readClaudeCredentialStore } from './credentialIO';
 import {
   identitiesMatch,
   readAccessTokenExpiry,
@@ -30,7 +33,6 @@ import {
   readFileOrNull,
 } from './codexPaths';
 import {
-  getAccountsDir,
   getActiveSavedAccount,
   listSavedAccountProfiles,
   type AccountProviderId,
@@ -52,6 +54,12 @@ export interface AccountHealthSidecar {
   lastRefreshAt?: number;
   hasRefreshToken?: boolean;
   authMode?: 'chatgpt' | 'api-key' | 'oauth';
+  /**
+   * sha256(refreshToken)[:16] of the stored Claude credential: lets sync tell
+   * whose chain the live store holds without keeping another token copy.
+   */
+  refreshFp?: string;
+  /** Provenance of the stored credential; read-only probes preserve it. */
   source: AccountHealthSource;
 }
 
@@ -145,6 +153,7 @@ export function claudeHealthSidecarFromBlob(
     refreshExpiryEstimated: refresh?.estimated,
     hasRefreshToken: Boolean(credentials.refreshToken),
     authMode: 'oauth',
+    refreshFp: claudeRefreshFingerprint(credentials) ?? undefined,
     source,
   };
 }
@@ -266,15 +275,45 @@ function isLiveCodexAccount(profile: SavedAccountProfile): boolean {
   });
 }
 
+function readClaudeBackupBlob(accountId: string): unknown {
+  try {
+    return JSON.parse(fs.readFileSync(getClaudeCredentialBackupPath(accountId), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The credential a Claude profile would use right now: the live store for the
+ * live account (its profile home is empty by design), otherwise the fresher of
+ * the profile-home store and Sidekick's backup.
+ */
+export function readEffectiveClaudeCredential(accountId: string): unknown {
+  if (isLiveClaudeAccount(accountId)) return readActiveCredentials();
+  const store = readClaudeCredentialStore(getClaudeProfileHome(accountId));
+  const fromStore = store.status === 'ok' ? store.blob : null;
+  const backup = readClaudeBackupBlob(accountId);
+  const storeFreshness = claudeCredentialFreshness(parseClaudeCredentialBlob(fromStore));
+  const backupFreshness = claudeCredentialFreshness(parseClaudeCredentialBlob(backup));
+  if (parseClaudeCredentialBlob(backup) && backupFreshness > storeFreshness) return backup;
+  return parseClaudeCredentialBlob(fromStore) ? fromStore : null;
+}
+
 function probeClaudeStore(accountId: string, now: number): AccountHealthSidecar | null {
-  const blob = readActiveCredentials(getClaudeProfileHome(accountId));
-  return blob ? writeClaudeHealthSidecar(accountId, blob, 'switch', now) : null;
+  const blob = readEffectiveClaudeCredential(accountId);
+  if (!blob) return null;
+  // A probe reads; it must not rewrite provenance (keep-alive relies on it).
+  const source =
+    readHealthSidecar('claude-code', accountId)?.source ??
+    (isLiveClaudeAccount(accountId) ? 'live-sync' : 'migration');
+  return writeClaudeHealthSidecar(accountId, blob, source, now);
 }
 
 function probeCodexStore(accountId: string, now: number): AccountHealthSidecar | null {
   const authPath = path.join(getCodexProfileHome(accountId), 'auth.json');
   const raw = readFileOrNull(authPath);
-  const sidecar = codexHealthSidecarFromAuth(raw, 'switch', now, authPath);
+  const source = readHealthSidecar('codex', accountId)?.source ?? 'switch';
+  const sidecar = codexHealthSidecarFromAuth(raw, source, now, authPath);
   if (sidecar) writeSidecar('codex', accountId, sidecar);
   return sidecar;
 }
@@ -284,7 +323,7 @@ function hasStoredClaudeCredential(accountId: string): boolean {
   return (
     fs.existsSync(path.join(home, '.credentials.json')) ||
     fs.existsSync(path.join(getClaudeProfileDir(accountId), 'health.json')) ||
-    fs.existsSync(path.join(getAccountsDir(), 'credentials', `${accountId}.credentials.json`)) ||
+    fs.existsSync(getClaudeCredentialBackupPath(accountId)) ||
     (process.platform === 'darwin' && fs.existsSync(path.join(home, '.claude.json')))
   );
 }

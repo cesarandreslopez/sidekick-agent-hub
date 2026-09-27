@@ -18,6 +18,17 @@ Both CLIs read one live credential store: the `Claude Code-credentials` macOS Ke
 
 Sidekick never calls Anthropic's or OpenAI's OAuth endpoints itself. Sign-ins and token refreshes always go through the official `claude` and `codex` CLIs.
 
+### One copy per Claude login
+
+Claude Code rotates the refresh token every time it refreshes, and the previous token stops working at that moment. Two usable copies of one login are therefore a trap: whichever refreshes first invalidates the other, and the loser reports **Not logged in · Please run /login**. Sidekick keeps exactly one usable copy of every Claude login:
+
+- **The live account** (the one `claude` uses right now) lives only in the live store. Its saved profile keeps identity and health metadata plus a private backup that Claude Code never reads.
+- **Every other account** keeps its single usable copy in its profile directory, where keep-alive or **Open Terminal as Account** can use it.
+- **A switch** saves the outgoing login first (verified), installs the target, and only then gives the outgoing account its profile copy and removes the target's. The switch holds Claude Code's own refresh lock throughout, so a refresh cannot slip in between. A journal lets the next sync finish or roll back a switch that was interrupted.
+- **Nothing overwrites a newer login.** Every write into the live store is refused when the live login is the same account and at least as new. MCP server tokens stay with the live store on a switch; only the Claude login changes.
+
+If an older build left a second copy of the live login in its profile directory, the next sync removes it. When that copy turns out to be newer than live (live is the dying one), it is installed first.
+
 ## How accounts get registered
 
 You rarely have to "add" the account you are already using. Sidekick watches the live credential stores and registers any login it has not seen, labelled with its email, so you can switch back to it later. The status bar, the Accounts view, and `sidekick accounts list` all say **Registered &lt;email&gt;** the first time this happens.
@@ -32,7 +43,7 @@ To sign in to a _second_ account without disturbing the current one, use **Add A
 
 **After a switch** you get one notification: `Switched to Work (work@example.com) ✓` with **Undo**, **Details**, and, when the Claude Code extension is active, **Reload Window**. Warnings about running apps are folded into that message; **Details** writes the full list, including process ids, to the Sidekick output channel.
 
-**Open Terminal as Account** starts a VS Code terminal whose `claude` or `codex` use the chosen profile without changing the live login, so two accounts can run side by side. Sidekick warns when you pick the account that is also live, because two sessions refreshing one login can invalidate each other.
+**Open Terminal as Account** starts a VS Code terminal whose `claude` or `codex` use the chosen profile without changing the live login, so two accounts can run side by side. For the Claude account that is already live, the terminal simply uses the normal Claude home: a session in its profile directory would be a second copy of the live login.
 
 Settings:
 
@@ -53,7 +64,8 @@ sidekick accounts switch --next            # cycle within one provider (add --pr
 sidekick accounts login work               # sign in again to an existing (expired) account
 sidekick accounts undo                     # revert the last switch
 sidekick accounts remove old --yes         # delete a saved account and its credentials
-sidekick accounts doctor                   # expiry, running apps, Codex credential store, keep-alive
+sidekick accounts doctor                   # expiry, stored credential copies, running apps, Codex store, keep-alive
+sidekick accounts doctor --fix             # delete stored credentials Sidekick owns that no account uses (asks first)
 sidekick accounts config auto-switch 90    # or: off
 sidekick accounts config keep-alive on     # or: off, run
 ```
@@ -101,11 +113,11 @@ Claude Code refresh tokens expire about three weeks after they were last used, a
 
 A switch to an `expired` or `missing` account is refused with a sign-in hint instead of installing a dead credential; pass `--force` on the CLI to override.
 
-**Keep-alive** (opt-in) runs `claude auth status` / `codex login status` inside each inactive profile so the CLI refreshes its own token where it belongs. The live account is never touched by keep-alive.
+**Keep-alive** (opt-in) runs `claude auth status` / `codex login status` inside each inactive profile so the CLI refreshes its own token where it belongs. For Claude it skips any profile whose copy could be a second copy of a live chain: the live account, a copy with the same refresh token as live, a copy taken from the live store that no switch has handed back yet, and a stale copy whose backup is newer. While it runs, a switch to that account waits.
 
 ## Platform notes
 
-- **macOS:** Claude credentials live in the Keychain. Sidekick reads and writes them with `/usr/bin/security`; the first read may prompt for access once. Profiles get their own Keychain items, keyed the same way Claude Code keys `CLAUDE_CONFIG_DIR` logins. If the Keychain is locked (SSH sessions), Sidekick reads the `.credentials.json` fallback Claude Code writes.
+- **macOS:** Claude credentials live in the Keychain. Sidekick reads and writes them with `/usr/bin/security` exactly as Claude Code does (hex payload, the same account name), reads every write back before trusting it, and never logs a token. The first read may prompt for access once. Inactive profiles get their own Keychain items, keyed the same way Claude Code keys `CLAUDE_CONFIG_DIR` logins, and tagged with a `sidekick-agent-hub:<directory>` comment; Sidekick also records every such directory in `accounts/claude/credential-homes.json`, so `accounts doctor` can prove which items are its own. If the Keychain is locked (SSH sessions), Sidekick reads the `.credentials.json` fallback Claude Code writes.
 - **Linux:** credentials are plain files with `0600` permissions.
 - **Windows:** credentials are plain files under `%USERPROFILE%\.claude` and `%USERPROFILE%\.codex`. Use `sidekick accounts env --shell powershell|cmd` instead of launcher scripts; running apps are detected with `tasklist`.
 
@@ -115,5 +127,17 @@ A switch to an `expired` or `missing` account is refused with a sign-in hint ins
 - **Codex says it is not logged in after a switch** — the stored token was revoked upstream (for example a fresh `codex login` on the same workspace elsewhere). Sign in again to that profile.
 - **"Codex keeps its login in the OS keyring"** — set `cli_auth_credentials_store = "file"` in `~/.codex/config.toml`, run `codex login`, then add the account again.
 - **Claude Desktop keeps signing you out** — the desktop app's embedded engine refreshes the shared CLI token. Sidekick warns when it is running; quit it before switching, or sign in again afterwards.
-- **"not verified"** — the store did not read back the written credential. Run `sidekick accounts doctor`; the previous login was restored.
+- **"not verified"** — the store did not read back the written credential. The message says whether the previous login was restored; if it could not be, it is still saved, and `sidekick accounts doctor` shows what to do.
+- **Claude Code says "Not logged in · Please run /login"** — the live login's refresh token was used up by another copy of the same login, or the stored credential could not be read. Run `/login` (or **Sign In Again**), then `sidekick accounts doctor`: it lists any second copy of the live login and unreadable stored credentials, and `--fix` removes them. Claude Desktop and any other tool that runs `claude` against its own copy of your login can still cause this; quit them before switching.
+- **Doctor reports an "unreadable credential"** — an older Sidekick build could store a credential cut off at about 4 KB (the limit of the `security` tool's interactive mode) once several MCP servers had OAuth tokens. That copy cannot be used. `sidekick accounts doctor --fix` deletes it; sign in again to that account if its backup has expired.
+- **Hundreds of `Claude Code-credentials-<hash>` items in Keychain Access** — Sidekick builds before 0.27.6 left one behind each time they ran against a throwaway `SIDEKICK_CONFIG_DIR` with your real home (for example inside another project's test suite). They are copies of old logins that nothing uses. Other tools also create these items for their own `CLAUDE_CONFIG_DIR`, so Sidekick never deletes them by name. List them with the one-off script in the repository and delete them yourself once the list looks right:
+
+  ```bash
+  scripts/claude-keychain-orphans.sh                          # dry run: service and creation time
+  scripts/claude-keychain-orphans.sh --keep ~/work/claude-dir # keep a directory another tool still uses
+  scripts/claude-keychain-orphans.sh --delete                 # asks before deleting
+  ```
+
+  The script reads attributes only (never a secret) and always keeps Sidekick's profile directories, `~/.claude`, and `$CLAUDE_CONFIG_DIR`.
+
 - **"CLAUDE_CONFIG_DIR points at a sidekick profile home"** (or `CODEX_HOME`) — you are in a shell that ran `eval "$(sidekick accounts env …)"` or a subshell from `sidekick accounts shell`. Switching there would overwrite that profile, so it is refused; run the switch from a normal shell or `exit` the subshell first.

@@ -5,6 +5,28 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Claude logins are no longer invalidated by Sidekick.** Claude Code rotates the refresh token on every refresh, so of several usable copies of one login only the first to refresh survives; the others report "Not logged in · Please run /login". Sidekick now keeps exactly one usable copy of every Claude login.
+  - **Truncated Keychain writes.** Credentials larger than about 4 KB (several MCP servers with OAuth tokens) were cut off by `security -i` and stored as unreadable JSON, which in the live store is an immediate "Not logged in". Writes now use Claude Code's own method (hex payload, argv above 4032 bytes) and are read back before they count. A switch that cannot verify says whether the previous login was really restored.
+  - **Second copy of the live login.** Sync mirrored the live login into its profile directory every fold. The live account now keeps only a private backup Claude Code never reads; the next sync removes a leftover copy, installing it first when it is newer than live.
+  - **Guarded live writes.** A switch saves the outgoing login first (required even with `--force`), holds Claude Code's refresh lock, and journals itself so the next sync finishes or rolls back an interrupted switch. A re-login replaces live only with a fresher credential, and a rollback never overwrites a login that changed. MCP server tokens stay with the live store on a switch.
+  - **Keep-alive** never refreshes a copy that could belong to a live chain, and a switch to an account waits while keep-alive refreshes it.
+  - **Leftover Keychain items.** Running Sidekick against a throwaway `SIDEKICK_CONFIG_DIR` with the real home left one `Claude Code-credentials-<hash>` item per run; the live login no longer gets a Keychain copy at all. Temporary login homes release their item on every exit (cancel, timeout, spawn failure, failed finalize, VS Code closing mid-login), and authenticated logins nobody finalized are removed after a day.
+  - **Launching the live account** in a terminal uses the normal Claude home, and launcher scripts resolve the account's home when they run.
+
+### Added
+
+- `sidekick accounts doctor` reports stored Claude credentials Sidekick owns that no account uses, second copies of the live login, and unreadable ones; `--fix` repairs them after asking (`--yes` skips the prompt). Ownership is proven by a ledger and a Keychain comment tag, never by the item name. `scripts/claude-keychain-orphans.sh` lists leftover items from older builds and deletes them only on request.
+- `sidekick-shared`: `inspectClaudeCredentialStores()`, `repairClaudeCredentialStores()`, `readClaudeCredentialStore()`, `decideLiveClaudeWrite()`, `discardAccountLogin()`, `writeAccountLauncher()`, `readClaudeCredentialLedger()`, `claudeRefreshFingerprint()`, `claudeLoginOnly()`, `mergeClaudeLoginIntoLive()`, and `ClaudeCredentialWriteError`.
+
+### Changed
+
+- `writeActiveCredentials()` requires a config directory. `writeLauncher()`, `applyActiveClaudeToLiveHome()`, and `resolveActiveClaudeHome()` are deprecated.
+- Tests in all three packages fail when they reach the real `security` binary or the developer's real Claude, Codex, or Sidekick homes.
+
 ## [0.27.5] - 2026-09-23
 
 ### Added
