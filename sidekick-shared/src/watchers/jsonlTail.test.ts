@@ -1,9 +1,22 @@
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync, truncateSync } from 'node:fs';
+import {
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+  appendFileSync,
+  truncateSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { createJsonlTail, type JsonlTailBatch } from './jsonlTail';
+import {
+  createJsonlTail,
+  type JsonlTailBatch,
+  type JsonlTailLine,
+  type JsonlTailReset,
+} from './jsonlTail';
 
 const tempDirs: string[] = [];
 
@@ -138,5 +151,89 @@ describe('createJsonlTail', () => {
 
     expect(events.map((e) => e.type)).toEqual(['one', '2']);
     expect(tail.getOffset()).toBe(Buffer.byteLength('{"type":"2"}\n'));
+  });
+
+  it('reads a large backlog in bounded chunks and reports each line position', () => {
+    const file = makeJsonlFile();
+    const lines = Array.from({ length: 200 }, (_, index) => JSON.stringify({ type: `e${index}` }));
+    writeFileSync(file, lines.join('\n') + '\n');
+    const events: string[] = [];
+    const positions: JsonlTailLine[] = [];
+    const batches: JsonlTailBatch[] = [];
+    const tail = createJsonlTail<{ type: string }>({
+      path: file,
+      maxReadBytes: 64,
+      onEvent: (event, line) => {
+        events.push(event.type);
+        positions.push(line);
+      },
+      onBatchComplete: (batch) => batches.push(batch),
+    });
+
+    tail.readNow();
+
+    expect(events).toEqual(lines.map((line) => JSON.parse(line).type));
+    expect(batches).toHaveLength(1);
+    let offset = 0;
+    for (const [index, line] of lines.entries()) {
+      expect(positions[index]).toEqual({ offset, length: Buffer.byteLength(line) });
+      offset += Buffer.byteLength(line) + 1;
+    }
+    expect(tail.getOffset()).toBe(offset);
+  });
+
+  it('skips a line over maxLineBytes, even while it is still being written', () => {
+    const file = makeJsonlFile();
+    const events: string[] = [];
+    const errors: string[] = [];
+    const tail = createJsonlTail<{ type: string }>({
+      path: file,
+      maxReadBytes: 16,
+      maxLineBytes: 40,
+      onEvent: (event) => events.push(event.type),
+      onError: (error) => errors.push(error.message),
+    });
+
+    const big = JSON.stringify({ type: 'big', pad: 'x'.repeat(100) });
+    appendFileSync(file, '{"type":"a"}\n' + big.slice(0, 60));
+    tail.readNow();
+    expect(events).toEqual(['a']);
+    expect(errors).toEqual([expect.stringContaining('JSONL line at byte 13')]);
+
+    appendFileSync(file, big.slice(60) + '\n{"type":"b"}\n');
+    tail.readNow();
+    expect(events).toEqual(['a', 'b']);
+    expect(errors).toHaveLength(1);
+    expect(tail.getOffset()).toBe(13 + Buffer.byteLength(big) + 1 + 13);
+  });
+
+  it('resets and says why when the file is rewritten at the same size or replaced', () => {
+    const file = makeJsonlFile();
+    const events: string[] = [];
+    const resets: JsonlTailReset[] = [];
+    const tail = createJsonlTail<{ type: string }>({
+      path: file,
+      onEvent: (event) => events.push(event.type),
+      onReset: (reset) => resets.push(reset),
+    });
+
+    appendFileSync(file, '{"type":"one"}\n');
+    tail.readNow();
+    writeFileSync(file, '{"type":"two"}\n');
+    utimesSync(file, new Date(), new Date(Date.now() + 5_000));
+    tail.readNow();
+    expect(events).toEqual(['one', 'two']);
+    expect(resets).toEqual([{ reason: 'rewritten', previousOffset: 15 }]);
+
+    const replacement = `${file}.next`;
+    writeFileSync(replacement, '{"type":"three"}\n{"type":"four"}\n');
+    renameSync(replacement, file);
+    tail.readNow();
+    expect(events).toEqual(['one', 'two', 'three', 'four']);
+    expect(resets[1]).toEqual({ reason: 'replaced', previousOffset: 15 });
+
+    truncateSync(file, 0);
+    tail.readNow();
+    expect(resets[2]).toMatchObject({ reason: 'truncated' });
   });
 });

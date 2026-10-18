@@ -288,3 +288,18 @@ export type { ClassifyToolOptions, ToolCategory } from './toolCategory';
 export { resolveWorkspaceRoots } from './workspaceRoots';
 export type { ResolveWorkspaceRootsOptions, ResolvedWorkspaceRoots } from './workspaceRoots';
 export { discoverWorktreeSiblings, resolveWorktreeMainRepo } from './parsers/sessionPathResolver';
+
+// Bounded JSONL tail reader
+export {
+  createJsonlTail,
+  DEFAULT_JSONL_TAIL_MAX_LINE_BYTES,
+  DEFAULT_JSONL_TAIL_READ_BYTES,
+} from './watchers/jsonlTail';
+export type {
+  JsonlTail,
+  JsonlTailBatch,
+  JsonlTailLine,
+  JsonlTailOptions,
+  JsonlTailReset,
+  JsonlTailResetReason,
+} from './watchers/jsonlTail';

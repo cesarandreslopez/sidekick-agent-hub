@@ -677,8 +677,19 @@ export type {
 export { createWatcher, resolveSessionPath } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
 export { toFollowEvents } from './watchers/eventBridge';
-export { createJsonlTail } from './watchers/jsonlTail';
-export type { JsonlTail, JsonlTailBatch, JsonlTailOptions } from './watchers/jsonlTail';
+export {
+  createJsonlTail,
+  DEFAULT_JSONL_TAIL_MAX_LINE_BYTES,
+  DEFAULT_JSONL_TAIL_READ_BYTES,
+} from './watchers/jsonlTail';
+export type {
+  JsonlTail,
+  JsonlTailBatch,
+  JsonlTailLine,
+  JsonlTailOptions,
+  JsonlTailReset,
+  JsonlTailResetReason,
+} from './watchers/jsonlTail';
 
 // Formatters
 export {

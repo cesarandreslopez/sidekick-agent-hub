@@ -355,6 +355,9 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'getDefaultConfigDir',
       'encodeClaudeWorkspacePath',
       'getClaudeSessionDirectory',
+      'createJsonlTail',
+      'resolveWorkspaceRoots',
+      'getCodexSessionsDirs',
     ]) {
       expect(typeof m[name]).toBe('function');
     }

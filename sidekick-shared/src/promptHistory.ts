@@ -30,6 +30,7 @@ import { DirectoryListingCache } from './providers/directoryListingCache';
 import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
 import { realpathOrNull, resolveWorkspaceRoots } from './workspaceRoots';
+import { fileHeadOf, HEAD_BYTES, headMatches } from './fileHead';
 
 export type PromptHistoryProvider = HumanPromptProvider;
 
@@ -275,7 +276,6 @@ export const DEFAULT_BOUNDS: Required<PromptHistoryBounds> = {
 };
 
 const DEFAULT_READ_CHUNK_BYTES = 1024 * 1024;
-const HEAD_BYTES = 4096;
 const MAX_EXCLUSIONS = 1000;
 const CHECK_EVERY_LINES = 500;
 const ALL_PROVIDERS: PromptHistoryProvider[] = ['claude-code', 'codex'];
@@ -775,10 +775,6 @@ function hashPath(filePath: string): string {
   return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
 }
 
-function hashBytes(buffer: Buffer): string {
-  return createHash('sha256').update(buffer).digest('hex').slice(0, 32);
-}
-
 async function readAt(
   handle: fs.promises.FileHandle,
   offset: number,
@@ -814,17 +810,14 @@ async function verifyFile(
   if (session) {
     if (session.offset > size) return null;
     const known = session.head;
-    if (known) {
-      if (!isOffset(known.bytes) || known.bytes > head.length) return null;
-      if (hashBytes(head.subarray(0, known.bytes)) !== known.hash) return null;
-    }
+    if (known && !headMatches(known, head)) return null;
     if (session.offset > 0 && !session.skipping) {
       const before = await readAt(handle, session.offset - 1, 1);
       bytesRead += before.length;
       if (before.length !== 1 || before[0] !== 0x0a) return null;
     }
   }
-  return { head: { bytes: head.length, hash: hashBytes(head) }, bytesRead };
+  return { head: fileHeadOf(head), bytesRead };
 }
 
 /** @internal */

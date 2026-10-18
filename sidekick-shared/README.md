@@ -882,7 +882,8 @@ The boundary schemas — `sessionEventSchema` plus the quota, account-status, ac
 Use `createJsonlTail()` when a consumer needs raw parsed events and owns its own aggregation lifecycle. `onBatchComplete` fires once after each drained byte chunk, which lets callers defer expensive UI or metrics updates until parsing for that chunk is complete.
 
 ```typescript
-import { createJsonlTail, sessionEventSchema } from 'sidekick-shared';
+import { createJsonlTail } from 'sidekick-shared/node';
+import { sessionEventSchema } from 'sidekick-shared/schemas';
 
 const tail = createJsonlTail({
   path: '/path/to/session.jsonl',
@@ -894,6 +895,8 @@ const tail = createJsonlTail({
 
 tail.start();
 ```
+
+A poll reads from the last position to the end of the file in chunks of `maxReadBytes` (default 1 MiB), so a cold start on a large file never allocates more than one chunk plus one line. `onEvent` receives each line's `{ offset, length }` as its second argument. A line longer than `maxLineBytes` (default 16 MiB) is skipped as it streams past, even while it is still being written, and reported to `onError`. The tail also checks that it is still reading the same content. When the path now names another file (`replaced`), the file shrank (`truncated`), or its first 4 KiB or the byte before the resume point changed (`rewritten`), it starts over from offset 0 and calls `onReset({ reason, previousOffset })` before the events from the start arrive. `createJsonlTail()` is also exported from `sidekick-shared/node`.
 
 `SessionWatcherCallbacks.onBatchComplete` is also available through `createWatcher()`. Save aggregation state only after a complete event batch and only when the state includes the full history (a completed replay or a compatible restored checkpoint). Live-only state is incomplete and must not replace a full-history checkpoint. JSONL positions end at complete lines; Codex readers reconstruct parser context when seeking. OpenCode's SQLite timestamp cursor does not persist row-version deduplication, so the dashboards replay OpenCode history instead of restoring a snapshot.
 

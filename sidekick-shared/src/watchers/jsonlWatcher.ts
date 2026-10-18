@@ -257,6 +257,12 @@ export class JsonlSessionWatcher implements SessionWatcher {
       onEvent: (event) => this.handleRawEvent(event),
       onBatchComplete: () => this.callbacks.onBatchComplete?.(),
       onError: (error) => this.callbacks.onError?.(error),
+      // The file starts over, so per-file state from the old content must go too.
+      onReset: () => {
+        this.codexInPlanMode = false;
+        this.claudeUsageDeduper.reset();
+        this.codexPrevTotal = undefined;
+      },
     });
     this.tail.start();
   }
