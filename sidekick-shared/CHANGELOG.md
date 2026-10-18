@@ -5,6 +5,12 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.1] - 2026-10-18
+
+### Fixed
+
+- **`installCredentialGuard()` keeps `promisify(execFile)` working.** The guard replaced `child_process.execFile` and `exec` without Node's `util.promisify.custom`, so `promisify(execFile)(...)` resolved to the bare stdout string and `const { stdout } = await promisify(execFile)(...)` read `undefined`. The guarded functions now carry a guarded `promisify.custom` that delegates to Node's own, so it resolves to `{ stdout, stderr }` again, rejects with an error carrying `stdout` / `stderr`, and keeps `.child`; a blocked binary on the promisified path is recorded and rejects.
+
 ## [0.28.0] - 2026-10-18
 
 ### Added
