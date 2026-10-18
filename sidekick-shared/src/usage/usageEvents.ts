@@ -34,6 +34,7 @@ import type { TokenTotals } from '../types/historicalData';
 import { calculateNormalizedUsageCost, extractNormalizedUsage } from '../usageNormalization';
 import type { NormalizedUsage, PricingProvenance } from '../usageNormalization';
 import { atomicWriteJson } from '../writers/atomic';
+import { resolveWorkspaceRoots, type ResolvedWorkspaceRoots } from '../workspaceRoots';
 
 /**
  * Bump when the cached record shape or the counting rules change; older files
@@ -62,6 +63,8 @@ export interface UsageEventRecord {
   tokens: TokenTotals & { totalTokens: number };
   costUsd: number | null;
   costProvenance: PricingProvenance;
+  /** Session file the event came from; tells apart two files with one session id. */
+  filePath?: string;
 }
 
 /** One session that contributed events. */
@@ -85,6 +88,18 @@ export interface CollectUsageEventsOptions {
   until?: Date | string;
   /** Restrict to one workspace's sessions. */
   workspacePath?: string;
+  /**
+   * Restrict to the sessions of several workspaces, listed once each and
+   * counted once even when roots overlap. Takes precedence over
+   * `workspacePath`. Roots that do not resolve are dropped; when none
+   * resolves, no session is read.
+   */
+  workspacePaths?: string[];
+  /**
+   * Also list each root's main checkout and git worktree siblings. Default
+   * true with `workspacePaths`, false with `workspacePath`.
+   */
+  includeWorktrees?: boolean;
   /** Preview-read concurrency (see `listSessionPreviewsAsync`). */
   concurrency?: number;
   /** Cache directory (default `<configDir>/usage-cache`). */
@@ -108,6 +123,8 @@ export interface CollectUsageEventsResult {
   diagnostics: SessionProviderDiagnostic[];
   cacheHits: number;
   cacheMisses: number;
+  /** Realpaths of the roots listed, after worktree expansion, when the call was scoped. */
+  roots?: string[];
 }
 
 /** Compact on-disk event: raw counts only, priced when loaded. */
@@ -220,6 +237,7 @@ function priceCachedEvent(
   provider: ProviderId,
   sessionId: string,
   project: string | null,
+  sessionFile: string,
 ): UsageEventRecord {
   const usage: NormalizedUsage = {
     uncachedInputTokens: cached.i,
@@ -253,6 +271,7 @@ function priceCachedEvent(
     },
     costUsd: priced.costUsd,
     costProvenance: priced.source,
+    filePath: sessionFile,
   };
 }
 
@@ -372,12 +391,8 @@ export async function collectUsageEvents(
   const signal = options.signal;
 
   signal?.throwIfAborted();
-  const listed = await listSessionPreviewsAsync(options.providers, {
-    since: options.since,
-    workspacePath: options.workspacePath,
-    limit: Number.MAX_SAFE_INTEGER,
-    concurrency: options.concurrency,
-  });
+  const scope = usageScope(options);
+  const listed = await listScopedPreviews(options, scope?.listingRoots);
   signal?.throwIfAborted();
   const diagnostics = [...listed.diagnostics];
   for (const diagnostic of listed.diagnostics) options.onDiagnostic?.(diagnostic);
@@ -454,7 +469,9 @@ export async function collectUsageEvents(
     for (const cached of cachedEvents) {
       if (sinceMs !== null && cached.t < sinceMs) continue;
       if (untilMs !== null && cached.t > untilMs) continue;
-      events.push(priceCachedEvent(cached, preview.provider, preview.sessionId, project));
+      events.push(
+        priceCachedEvent(cached, preview.provider, preview.sessionId, project, preview.filePath),
+      );
       first = first === null ? cached.t : Math.min(first, cached.t);
       last = last === null ? cached.t : Math.max(last, cached.t);
       count += 1;
@@ -475,5 +492,54 @@ export async function collectUsageEvents(
   if (wroteCache) pruneUsageCache(MAX_USAGE_CACHE_FILES, cacheDir);
 
   events.sort((a, b) => a.timestamp - b.timestamp);
-  return { events, sessions, diagnostics, cacheHits, cacheMisses };
+  return {
+    events,
+    sessions,
+    diagnostics,
+    cacheHits,
+    cacheMisses,
+    ...(scope ? { roots: scope.roots } : {}),
+  };
+}
+
+/** The roots to list, or undefined for an unscoped (or legacy single-root) call. */
+function usageScope(options: CollectUsageEventsOptions): ResolvedWorkspaceRoots | undefined {
+  if (options.workspacePaths) {
+    return resolveWorkspaceRoots(options.workspacePaths, {
+      includeWorktrees: options.includeWorktrees !== false,
+    });
+  }
+  if (options.workspacePath && options.includeWorktrees === true) {
+    return resolveWorkspaceRoots([options.workspacePath], { includeWorktrees: true });
+  }
+  return undefined;
+}
+
+/** Lists previews once per root and keeps each session file once. */
+async function listScopedPreviews(
+  options: CollectUsageEventsOptions,
+  listingRoots: string[] | undefined,
+): Promise<{ previews: SessionPreview[]; diagnostics: SessionProviderDiagnostic[] }> {
+  const list = (workspacePath: string | undefined) =>
+    listSessionPreviewsAsync(options.providers, {
+      since: options.since,
+      workspacePath,
+      limit: Number.MAX_SAFE_INTEGER,
+      concurrency: options.concurrency,
+    });
+  if (!listingRoots) return list(options.workspacePath);
+  const byFile = new Map<string, SessionPreview>();
+  const diagnostics: SessionProviderDiagnostic[] = [];
+  for (const root of listingRoots) {
+    options.signal?.throwIfAborted();
+    const listed = await list(root);
+    diagnostics.push(...listed.diagnostics);
+    for (const preview of listed.previews) {
+      if (!byFile.has(preview.filePath)) byFile.set(preview.filePath, preview);
+    }
+  }
+  const previews = [...byFile.values()].sort(
+    (left, right) => Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt),
+  );
+  return { previews, diagnostics };
 }

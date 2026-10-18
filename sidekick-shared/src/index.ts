@@ -1414,3 +1414,7 @@ export type { CodexSessionsDirsOptions } from './codexPaths';
 // Tool categories across providers
 export { classifyTool, TOOL_CATEGORIES } from './toolCategory';
 export type { ClassifyToolOptions, ToolCategory } from './toolCategory';
+
+// Workspace roots (realpath plus git worktree expansion)
+export { resolveWorkspaceRoots } from './workspaceRoots';
+export type { ResolveWorkspaceRootsOptions, ResolvedWorkspaceRoots } from './workspaceRoots';

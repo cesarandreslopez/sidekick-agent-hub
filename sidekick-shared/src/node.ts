@@ -283,3 +283,8 @@ export { fetchProviderServiceStatus } from './providerServiceStatus';
 // Tool categories across providers
 export { classifyTool, TOOL_CATEGORIES } from './toolCategory';
 export type { ClassifyToolOptions, ToolCategory } from './toolCategory';
+
+// Workspace roots and git worktrees
+export { resolveWorkspaceRoots } from './workspaceRoots';
+export type { ResolveWorkspaceRootsOptions, ResolvedWorkspaceRoots } from './workspaceRoots';
+export { discoverWorktreeSiblings, resolveWorktreeMainRepo } from './parsers/sessionPathResolver';

@@ -560,6 +560,15 @@ const priced = events.filter((event) => event.model !== SYNTHETIC_MODEL);
 On abort the promise rejects with the signal's reason (an `AbortError` by
 default); sessions read before the abort keep their cache entries.
 
+To cover several workspaces in one call, pass `workspacePaths` instead of
+`workspacePath`. Each root is realpath-resolved and, unless
+`includeWorktrees: false`, expanded with its main checkout and git
+worktrees (`resolveWorkspaceRoots()`, also on `sidekick-shared/node`). Each
+root is listed, and a session file found under several overlapping roots
+is read and counted once. The result's `roots` names what was listed, and
+every event carries the `filePath` of its session. When no root resolves,
+no session is read.
+
 ### Detect the active session provider
 
 For a single-provider surface, auto-detect and construct just one:

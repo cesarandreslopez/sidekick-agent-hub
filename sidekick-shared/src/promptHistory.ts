@@ -24,12 +24,12 @@ import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { HUMAN_CODEX_SOURCES, humanPromptText, type HumanPromptProvider } from './humanPrompt';
-import { discoverWorktreeSiblings, resolveWorktreeMainRepo } from './parsers/sessionPathResolver';
 import { listClaudeSessionFilesAsync } from './providers/claudeListing';
 import { listCodexSessionFilesAsync } from './providers/codexRollouts';
 import { DirectoryListingCache } from './providers/directoryListingCache';
 import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
+import { realpathOrNull, resolveWorkspaceRoots } from './workspaceRoots';
 
 export type PromptHistoryProvider = HumanPromptProvider;
 
@@ -681,45 +681,13 @@ function rotate(candidates: Candidate[], nextKey: string | undefined): Candidate
   return index <= 0 ? candidates : [...candidates.slice(index), ...candidates.slice(0, index)];
 }
 
-function realpathOrNull(input: string, cache: Map<string, string | null>): string | null {
-  const cached = cache.get(input);
-  if (cached !== undefined) return cached;
-  let resolved: string | null = null;
-  try {
-    resolved = path.isAbsolute(input) ? fs.realpathSync.native(input) : null;
-  } catch {
-    resolved = null;
-  }
-  cache.set(input, resolved);
-  return resolved;
-}
-
 /** @internal */
 export function resolveRoots(
   workspacePaths: string[],
   includeWorktrees: boolean,
   realpaths: Map<string, string | null>,
 ): { roots: string[]; listingRoots: string[] } {
-  const roots = new Set<string>();
-  const listingRoots = new Set<string>();
-  const add = (candidate: string): void => {
-    const real = realpathOrNull(candidate, realpaths);
-    if (!real) return;
-    roots.add(real);
-    listingRoots.add(real);
-    listingRoots.add(path.resolve(candidate));
-  };
-  for (const workspacePath of workspacePaths) {
-    if (typeof workspacePath !== 'string' || !path.isAbsolute(workspacePath)) continue;
-    add(workspacePath);
-    if (!includeWorktrees) continue;
-    const real = realpathOrNull(workspacePath, realpaths);
-    if (!real) continue;
-    const mainRepo = resolveWorktreeMainRepo(real) ?? real;
-    add(mainRepo);
-    for (const sibling of discoverWorktreeSiblings(mainRepo)) add(sibling);
-  }
-  return { roots: [...roots], listingRoots: [...listingRoots] };
+  return resolveWorkspaceRoots(workspacePaths, { includeWorktrees }, realpaths);
 }
 
 /** Fail-closed scope check on a recorded working directory. */

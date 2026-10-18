@@ -15,6 +15,7 @@ vi.mock('os', async () => {
 });
 
 import { ClaudeCodeProvider } from '../providers/claudeCode';
+import { encodeWorkspacePath } from '../parsers/sessionPathResolver';
 import {
   USAGE_CACHE_VERSION,
   collectUsageEvents,
@@ -108,6 +109,46 @@ describe('collectUsageEvents', () => {
     expect(second.cacheMisses).toBe(0);
     expect(second.events).toEqual(first.events);
     expect(second.sessions[0].fromCache).toBe(true);
+  });
+
+  it('counts each session once across overlapping workspace roots', async () => {
+    const app = path.join(tmpDir, 'work', 'app');
+    const pkg = path.join(app, 'pkg');
+    fs.mkdirSync(pkg, { recursive: true });
+    const realApp = fs.realpathSync(app);
+    const realPkg = fs.realpathSync(pkg);
+    for (const [cwd, id] of [
+      [realApp, 'app-session'],
+      [realPkg, 'pkg-session'],
+    ]) {
+      const dir = path.join(tmpDir, '.claude', 'projects', encodeWorkspacePath(cwd));
+      fs.mkdirSync(dir, { recursive: true });
+      const rows = BASE_ROWS.map((row) => (row.type === 'user' ? { ...row, cwd } : row));
+      fs.writeFileSync(
+        path.join(dir, `${id}.jsonl`),
+        rows.map((row) => JSON.stringify(row)).join('\n') + '\n',
+      );
+    }
+
+    const result = await collectUsageEvents({
+      providers: [provider],
+      workspacePaths: [app, pkg],
+      noCache: true,
+    });
+    expect(result.roots).toEqual([realApp, realPkg]);
+    expect(result.sessions.map((session) => session.sessionId).sort()).toEqual([
+      'app-session',
+      'pkg-session',
+    ]);
+    expect(result.events).toHaveLength(4);
+    expect(new Set(result.events.map((event) => event.filePath)).size).toBe(2);
+
+    const none = await collectUsageEvents({
+      providers: [provider],
+      workspacePaths: [path.join(tmpDir, 'missing')],
+      noCache: true,
+    });
+    expect(none).toMatchObject({ roots: [], sessions: [], events: [] });
   });
 
   it('re-reads a session whose size or mtime changed', async () => {
