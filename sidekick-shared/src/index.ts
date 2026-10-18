@@ -1410,3 +1410,7 @@ export {
   CODEX_ARCHIVED_SESSIONS_SUBDIR,
 } from './codexPaths';
 export type { CodexSessionsDirsOptions } from './codexPaths';
+
+// Tool categories across providers
+export { classifyTool, TOOL_CATEGORIES } from './toolCategory';
+export type { ClassifyToolOptions, ToolCategory } from './toolCategory';

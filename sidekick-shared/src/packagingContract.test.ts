@@ -135,6 +135,7 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'isHumanPrompt',
       'humanPromptText',
       'renderHandoffUrlTemplate',
+      'classifyTool',
     ]) {
       expect(typeof m[k]).toBe('function');
     }

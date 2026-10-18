@@ -396,7 +396,7 @@ const result = await collectSessionPromptHistory({
 for (const session of result.sessions) {
   // { provider, sessionId, sessionKey, startedAt, lastActivityAt, cwds, gitBranches, models,
   //   prompts: [{ ordinal, timestamp, text, cwd, gitBranch?, model?, usage?, metadataStatus, reply? }],
-  //   signals?: [{ kind, timestamp, afterOrdinal, tool?, text?, textTruncated? }],
+  //   signals?: [{ kind, timestamp, afterOrdinal, tool?, toolCategory?, mcpServer?, text?, textTruncated? }],
   //   complete, truncated, droppedPrompts, excludedRecords }
 }
 if (result.unread.length > 0) {
@@ -413,6 +413,7 @@ if (result.unread.length > 0) {
   - `interrupt`: Claude `[Request interrupted by user…]`, or Codex `turn_aborted`.
   - `toolRejected`: Claude only. Carries the rejection reason the person typed, in full. A rejection without a reason and the interrupt Claude Code writes after it count as one signal.
   - `toolError`: a failed tool call, with the tool name and the error text cut to 1024 characters (`textTruncated`).
+  - Signals that name a tool also carry `toolCategory` (`shell`, `file_read`, `file_edit`, `search`, `web`, `subagent`, `planning`, `mcp`, or `other`, from `classifyTool()`) and, for MCP calls, `mcpServer`. Claude Code names MCP tools `mcp__<server>__<tool>`; Codex names the bare tool and records the server separately, so `mcpServer` is the only way to tell a Codex MCP tool from a built-in one. `classifyTool(name, { mcpServer })` is exported from the root, `/browser`, and `/node`.
   - `compaction`, `apiError` (including Codex usage-limit errors), and `rollback` (Codex `thread_rolled_back`).
 - **Scope fails closed.** Sessions with no prompt inside the roots are omitted. Replies and signals that follow an out-of-scope prompt are dropped.
 

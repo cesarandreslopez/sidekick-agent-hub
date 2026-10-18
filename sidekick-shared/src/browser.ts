@@ -346,3 +346,7 @@ export type { HumanPromptProvider } from './humanPrompt';
 
 export { renderHandoffUrlTemplate } from './handoffUrl';
 export type { HandoffUrlIdentifiers } from './handoffUrl';
+
+// Tool categories across providers
+export { classifyTool, TOOL_CATEGORIES } from './toolCategory';
+export type { ClassifyToolOptions, ToolCategory } from './toolCategory';

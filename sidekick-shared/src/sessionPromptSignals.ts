@@ -9,7 +9,9 @@
  * ordinals of `collectPromptHistory()`.
  */
 
+import { parseMcpToolName } from './parsers/mcpToolName';
 import type { PromptHistoryProvider } from './promptHistory';
+import { classifyTool, type ToolCategory } from './toolCategory';
 
 export type PromptHistorySignalKind =
   | 'interrupt'
@@ -27,6 +29,14 @@ export interface PromptHistorySignal {
   afterOrdinal: number;
   /** The tool involved, for `toolRejected` and `toolError`, when the log names it. */
   tool?: string;
+  /** What `tool` does (`shell`, `file_edit`, `mcp`, …), from `classifyTool()`. */
+  toolCategory?: ToolCategory;
+  /**
+   * The MCP server of an MCP tool call: from `mcp__<server>__<tool>` names
+   * (Claude Code) or the call's own server field (Codex, whose `tool` is the
+   * bare tool name).
+   */
+  mcpServer?: string;
   /**
    * `toolRejected`: the reason the person typed, untruncated. `toolError` and
    * `apiError`: the error text, cut to 1024 characters (`textTruncated`).
@@ -126,11 +136,23 @@ abstract class RecordExtractor implements SessionRecordExtractor {
     kind: PromptHistorySignalKind,
     timestamp: string | undefined,
     ordinal: number,
-    detail: { tool?: string; text?: string; fullText?: string } = {},
+    detail: {
+      tool?: string;
+      /** The log records this as an MCP call, with or without a server name. */
+      mcp?: boolean;
+      mcpServer?: string;
+      text?: string;
+      fullText?: string;
+    } = {},
   ): void {
     if (!this.include.signals || !timestamp) return;
     const signal: PromptHistorySignal = { kind, timestamp, afterOrdinal: ordinal };
-    if (detail.tool) signal.tool = detail.tool;
+    if (detail.tool) {
+      signal.tool = detail.tool;
+      const mcpServer = detail.mcpServer || parseMcpToolName(detail.tool)?.serverName;
+      signal.toolCategory = detail.mcp ? 'mcp' : classifyTool(detail.tool, { mcpServer });
+      if (mcpServer) signal.mcpServer = mcpServer;
+    }
     if (detail.fullText) {
       signal.text = detail.fullText;
     } else if (detail.text?.trim()) {
@@ -309,6 +331,8 @@ class CodexRecordExtractor extends RecordExtractor {
         if (failure !== null) {
           this.signal('toolError', timestamp, ordinal, {
             tool: invocation ? stringValue(invocation.tool) : undefined,
+            mcp: true,
+            mcpServer: invocation ? stringValue(invocation.server) : undefined,
             text: failure,
           });
         }
@@ -348,6 +372,8 @@ class CodexRecordExtractor extends RecordExtractor {
         if (failed) {
           this.signal('toolError', timestamp, ordinal, {
             tool: stringValue(row.tool),
+            mcp: true,
+            mcpServer: stringValue(row.server),
             text:
               row.error !== undefined && row.error !== null
                 ? errorText(row.error)

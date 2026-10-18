@@ -342,6 +342,7 @@ describe('collectSessionPromptHistory — replies and signals', () => {
       codexItem(4, {
         type: 'McpToolCall',
         status: 'failed',
+        server: 'browser',
         tool: 'js',
         error: { message: 'No browser' },
       }),
@@ -407,11 +408,29 @@ describe('collectSessionPromptHistory — replies and signals', () => {
       ['toolError', 1],
     ]);
     expect(grouped.signals!.filter((signal) => signal.kind === 'toolError')).toEqual([
-      expect.objectContaining({ tool: 'exec_command', text: '$ npm test\nFAIL' }),
-      expect.objectContaining({ tool: 'js', text: 'No browser' }),
+      expect.objectContaining({
+        tool: 'exec_command',
+        toolCategory: 'shell',
+        text: '$ npm test\nFAIL',
+      }),
+      expect.objectContaining({
+        tool: 'js',
+        toolCategory: 'mcp',
+        mcpServer: 'browser',
+        text: 'No browser',
+      }),
       expect.objectContaining({ tool: 'exec_command', text: '$ rg foo' }),
-      expect.objectContaining({ tool: 'apply_patch', text: 'patch failed' }),
-      expect.objectContaining({ tool: 'list', text: 'tool crashed' }),
+      expect.objectContaining({
+        tool: 'apply_patch',
+        toolCategory: 'file_edit',
+        text: 'patch failed',
+      }),
+      expect.objectContaining({
+        tool: 'list',
+        toolCategory: 'mcp',
+        mcpServer: 's',
+        text: 'tool crashed',
+      }),
     ]);
     expect(grouped.signals!.find((signal) => signal.kind === 'apiError')!.text).toBe('usage limit');
   });
@@ -430,7 +449,12 @@ describe('collectSessionPromptHistory — replies and signals', () => {
     });
 
     const [signal] = result.sessions[0].signals!;
-    expect(signal).toMatchObject({ kind: 'toolError', tool: 'Bash', textTruncated: true });
+    expect(signal).toMatchObject({
+      kind: 'toolError',
+      tool: 'Bash',
+      toolCategory: 'shell',
+      textTruncated: true,
+    });
     expect(signal.text).toBe('x'.repeat(SIGNAL_TEXT_CHARS - 1));
   });
 

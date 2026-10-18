@@ -279,3 +279,7 @@ export type {
 } from './providerServiceStatusTypes';
 
 export { fetchProviderServiceStatus } from './providerServiceStatus';
+
+// Tool categories across providers
+export { classifyTool, TOOL_CATEGORIES } from './toolCategory';
+export type { ClassifyToolOptions, ToolCategory } from './toolCategory';
