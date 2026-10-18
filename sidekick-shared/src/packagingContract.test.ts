@@ -244,8 +244,9 @@ describe('packaging contract', { timeout: 30_000 }, () => {
 
   // The root barrel is CommonJS, which bundlers cannot tree-shake; if any
   // module reachable from dist/node.js required it, /node consumers would
-  // bundle the whole package.
-  it('dist/node.js never reaches dist/index.js through relative requires', async () => {
+  // bundle the whole package. Session reading resolves provider homes through
+  // claudePaths/codexPaths, so the account-switching graph stays out too.
+  it('dist/node.js never reaches dist/index.js or account management', async () => {
     const rootIndex = path.join(distDir, 'index.js');
     const seen = new Set<string>();
     const queue = [nodeJs];
@@ -265,6 +266,15 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     }
     expect(seen.size).toBeGreaterThan(10);
     expect(seen.has(rootIndex)).toBe(false);
+    for (const accountModule of [
+      'codexProfiles',
+      'claudeProfiles',
+      'accounts',
+      'accountSwitch',
+      'accountManager',
+    ]) {
+      expect(seen.has(path.join(distDir, `${accountModule}.js`)), accountModule).toBe(false);
+    }
   });
 
   it('dist/node.js exposes pricing hydration', () => {
@@ -298,6 +308,10 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'getDefaultClaudeHome',
       'isDefaultClaudeHome',
       'getClaudeProjectsDir',
+      'getSystemCodexHome',
+      'getCodexMonitoringHomes',
+      'resolveSidekickCodexHome',
+      'getCodexExecutionEnv',
     ]) {
       expect(typeof m[name]).toBe('function');
     }

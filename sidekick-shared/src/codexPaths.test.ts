@@ -1,5 +1,33 @@
-import { describe, expect, it } from 'vitest';
-import { forceFileCredentialStore } from './codexPaths';
+import { afterEach, describe, expect, it } from 'vitest';
+import { forceFileCredentialStore, getCodexExecutionEnv, getSystemCodexHome } from './codexPaths';
+
+describe('getCodexExecutionEnv', () => {
+  afterEach(() => {
+    delete process.env.CODEX_HOME;
+  });
+
+  it('sets CODEX_HOME to the live home when the base env has none', () => {
+    const env = getCodexExecutionEnv({ PATH: '/bin' });
+    expect(env).toEqual({ PATH: '/bin', CODEX_HOME: getSystemCodexHome() });
+  });
+
+  it("keeps a caller's own CODEX_HOME", () => {
+    process.env.CODEX_HOME = '/tmp/live-codex';
+    expect(getCodexExecutionEnv({ CODEX_HOME: '/tmp/isolated-codex' }).CODEX_HOME).toBe(
+      '/tmp/isolated-codex',
+    );
+  });
+
+  it('treats a blank CODEX_HOME in the base env as unset', () => {
+    process.env.CODEX_HOME = '/tmp/live-codex';
+    expect(getCodexExecutionEnv({ CODEX_HOME: '  ' }).CODEX_HOME).toBe('/tmp/live-codex');
+  });
+
+  it('defaults to process.env', () => {
+    process.env.CODEX_HOME = '/tmp/live-codex';
+    expect(getCodexExecutionEnv().CODEX_HOME).toBe('/tmp/live-codex');
+  });
+});
 
 describe('forceFileCredentialStore', () => {
   it('adds the key to an empty config', () => {

@@ -12,7 +12,8 @@ vi.mock('fs', () => ({
   readdirSync: vi.fn(),
 }));
 
-vi.mock('../codexProfiles', () => ({
+vi.mock('../codexPaths', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../codexPaths')>()),
   resolveSidekickCodexHome: mockResolveSidekickCodexHome,
   getCodexMonitoringHomes: mockGetCodexMonitoringHomes,
 }));

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getAccountsDir } from './accountRegistry';
+import { getAccountsDir, listSavedAccountProfiles } from './accountRegistry';
 
 export function getDefaultSystemCodexHome(): string {
   return path.join(os.homedir(), '.codex');
@@ -15,6 +15,25 @@ export function getExplicitCodexHome(): string | null {
 /** The home the `codex` CLI reads for this process: `CODEX_HOME` or `~/.codex`. */
 export function getSystemCodexHome(): string {
   return getExplicitCodexHome() ?? getDefaultSystemCodexHome();
+}
+
+export function resolveSidekickCodexHome(): string {
+  // Account switching swaps auth.json inside the system home, so the system
+  // home (or an explicit CODEX_HOME) is always the single live home.
+  return getSystemCodexHome();
+}
+
+/**
+ * The environment for spawning `codex`: `baseEnv` with `CODEX_HOME` set to the
+ * live home. A non-blank `CODEX_HOME` already in `baseEnv` is kept, so a caller
+ * that points one child at its own home does not have it overwritten.
+ */
+export function getCodexExecutionEnv(baseEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const requested = baseEnv.CODEX_HOME?.trim();
+  return {
+    ...baseEnv,
+    CODEX_HOME: requested ? requested : resolveSidekickCodexHome(),
+  };
 }
 
 export function getCodexProfilesDir(): string {
@@ -132,4 +151,35 @@ export function getCodexLoginHome(id: string): string {
 export function getCodexLoginStatePath(id: string): string {
   const dir = getCodexLoginDir(id);
   return fs.existsSync(dir) ? path.join(dir, 'profile.json') : getCodexProfileStatePath(id);
+}
+
+function dedupePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const candidate of paths) {
+    const normalized = path.resolve(candidate);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(candidate);
+  }
+
+  return unique;
+}
+
+export function getCodexMonitoringHomes(): string[] {
+  const explicitHome = getExplicitCodexHome();
+  if (explicitHome) return [explicitHome];
+
+  // The system home is the single live home; profile homes only matter for
+  // sessions recorded back when they doubled as live CODEX_HOMEs.
+  const homes: string[] = [getDefaultSystemCodexHome()];
+  for (const profile of listSavedAccountProfiles('codex')) {
+    const profileHome = getCodexProfileHome(profile.id);
+    if (fs.existsSync(path.join(profileHome, 'sessions'))) {
+      homes.push(profileHome);
+    }
+  }
+
+  return dedupePaths(homes);
 }

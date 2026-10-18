@@ -12,7 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getSystemCodexHome } from '../codexProfiles';
+import { getSystemCodexHome } from '../codexPaths';
 
 export interface CodexHistoryEntry {
   sessionId: string;

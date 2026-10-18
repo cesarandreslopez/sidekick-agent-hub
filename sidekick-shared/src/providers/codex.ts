@@ -21,7 +21,7 @@ import type {
 import { CodexRolloutParser } from '../parsers/codexParser';
 import { CodexDatabase, spawnParentFromSource } from './codexDatabase';
 import { cachedSubagentStats } from '../parsers/subagentStatsCache';
-import { getCodexMonitoringHomes } from '../codexProfiles';
+import { getCodexMonitoringHomes } from '../codexPaths';
 import {
   DEFAULT_ROLLOUT_WALK_MAX_DEPTH,
   extractRolloutSessionId as extractSessionId,

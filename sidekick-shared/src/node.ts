@@ -238,6 +238,12 @@ export {
   isDefaultClaudeHome,
   getClaudeProjectsDir,
 } from './claudePaths';
+export {
+  getSystemCodexHome,
+  getCodexMonitoringHomes,
+  resolveSidekickCodexHome,
+  getCodexExecutionEnv,
+} from './codexPaths';
 
 export type {
   ProviderServiceSeverity,

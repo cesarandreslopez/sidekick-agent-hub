@@ -7,7 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProviderId } from './types';
-import { getCodexMonitoringHomes } from '../codexProfiles';
+import { getCodexMonitoringHomes } from '../codexPaths';
 import { getOpenCodeDataDir } from './openCode';
 import { getClaudeProjectsDir } from '../claudePaths';
 

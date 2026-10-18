@@ -46,10 +46,9 @@ import {
   getCodexLoginHome,
   getCodexLoginStatePath,
   getCodexProfilesDir,
-  getDefaultSystemCodexHome,
-  getExplicitCodexHome,
   getSystemCodexHome,
   readFileOrNull,
+  resolveSidekickCodexHome,
 } from './codexPaths';
 import {
   getAccountHealth,
@@ -96,6 +95,9 @@ export {
   getCodexProfileHome,
   getSystemCodexHome,
   getCodexCredentialStoreMode,
+  getCodexMonitoringHomes,
+  resolveSidekickCodexHome,
+  getCodexExecutionEnv,
 } from './codexPaths';
 export type { CodexCredentialStoreMode } from './codexPaths';
 
@@ -112,37 +114,6 @@ export interface CodexAccountManagerResult extends AccountManagerResult {
 
 export const CODEX_KEYRING_FIX_HINT =
   'Set `cli_auth_credentials_store = "file"` in ~/.codex/config.toml and run `codex login` again.';
-
-function dedupePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-
-  for (const candidate of paths) {
-    const normalized = path.resolve(candidate);
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    unique.push(candidate);
-  }
-
-  return unique;
-}
-
-export function getCodexMonitoringHomes(): string[] {
-  const explicitHome = getExplicitCodexHome();
-  if (explicitHome) return [explicitHome];
-
-  // The system home is the single live home; profile homes only matter for
-  // sessions recorded back when they doubled as live CODEX_HOMEs.
-  const homes: string[] = [getDefaultSystemCodexHome()];
-  for (const profile of listCodexAccounts()) {
-    const profileHome = getCodexProfileHome(profile.id);
-    if (fs.existsSync(path.join(profileHome, 'sessions'))) {
-      homes.push(profileHome);
-    }
-  }
-
-  return dedupePaths(homes);
-}
 
 function readPendingProfile(profileId: string): PendingCodexProfile | null {
   try {
@@ -513,12 +484,6 @@ export function getActiveCodexAccount(): SavedAccountProfile | null {
   return getActiveSavedAccount('codex');
 }
 
-export function resolveSidekickCodexHome(): string {
-  // Account switching swaps auth.json inside the system home, so the system
-  // home (or an explicit CODEX_HOME) is always the single live home.
-  return getSystemCodexHome();
-}
-
 function profileIdentity(profile: SavedAccountProfile): {
   email?: string;
   workspaceId?: string;
@@ -587,13 +552,6 @@ export function resolveActiveCodexAccount(
     };
   }
   return { source: 'none' };
-}
-
-export function getCodexExecutionEnv(baseEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return {
-    ...baseEnv,
-    CODEX_HOME: resolveSidekickCodexHome(),
-  };
 }
 
 // ── Prepare / finalize (add account) ─────────────────────────────────────
