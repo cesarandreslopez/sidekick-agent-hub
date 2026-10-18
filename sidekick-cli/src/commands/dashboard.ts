@@ -453,6 +453,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           },
           onError: (err: Error) => reportWatcherError(err),
           onBatchComplete: checkpointBatch,
+          onReset: () => {
+            if (stopped) return;
+            state.resetSessionEvents();
+            scheduleRender();
+          },
         },
       });
       watcher = result.watcher;
@@ -940,6 +945,11 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         },
         onError: (err: Error) => reportWatcherError(err),
         onBatchComplete: checkpointBatch,
+        onReset: () => {
+          if (stopped) return;
+          state.resetSessionEvents();
+          scheduleRender();
+        },
       },
     });
     watcher = result.watcher;

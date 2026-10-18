@@ -224,6 +224,10 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
           onError: (_err: Error) => {
             /* ignore */
           },
+          // Rewritten mid-replay: keep only the events read from the start.
+          onReset: () => {
+            events.length = 0;
+          },
         },
       });
       sessionPath = result.sessionPath;

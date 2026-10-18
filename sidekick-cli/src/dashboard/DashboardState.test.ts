@@ -13,6 +13,18 @@ function makeEvent(overrides: Partial<FollowEvent> = {}): FollowEvent {
 }
 
 describe('DashboardState', () => {
+  describe('resetSessionEvents', () => {
+    it('drops event-derived metrics so a replayed file is not counted twice', () => {
+      const state = new DashboardState();
+      state.processEvent(makeEvent({ tokens: { input: 100, output: 50 }, cost: 0.01 }));
+      state.resetSessionEvents();
+      state.processEvent(makeEvent({ tokens: { input: 100, output: 50 }, cost: 0.01 }));
+      const m = state.getMetrics();
+      expect(m.tokens.input).toBe(100);
+      expect(m.tokens.output).toBe(50);
+    });
+  });
+
   describe('token aggregation', () => {
     it('accumulates input and output tokens', () => {
       const state = new DashboardState();

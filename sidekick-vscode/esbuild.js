@@ -15,8 +15,8 @@ async function main() {
     platform: 'node',
     outfile: 'out/extension.js',
     external: ['vscode'],
-    // `module` first: sidekick-shared ships an ES-module build there that
-    // esbuild can tree-shake; its `import`/`require` targets are CommonJS.
+    // `module` selects sidekick-shared's ES-module build, which esbuild can
+    // tree-shake; its `import`/`require` targets are CommonJS.
     conditions: ['module', 'import'],
     // Polyfill import.meta.url for ESM deps bundled into CJS.
     // Needed so createRequire(import.meta.url) inside bundled SDKs

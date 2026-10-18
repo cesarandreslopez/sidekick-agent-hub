@@ -76,7 +76,7 @@ import { calculateLineChanges } from '../utils/lineChangeCalculator';
  * `plans/` (which follows `CLAUDE_CONFIG_DIR`), or any `.claude/plans/` path.
  */
 export function isClaudePlanFile(filePath: string): boolean {
-  const plansDir = path.join(getLiveClaudeHome(), 'plans') + path.sep;
+  const plansDir = path.resolve(getLiveClaudeHome(), 'plans') + path.sep;
   return filePath.includes('.claude/plans/') || path.resolve(filePath).startsWith(plansDir);
 }
 

@@ -299,6 +299,20 @@ export class DashboardState {
 
   /** Reset all accumulated metrics to prepare for a new session. */
   reset(): void {
+    this.resetSessionEvents();
+    this._providerName = undefined;
+    this._quota = null;
+    this._providerStatus = null;
+    this._openaiStatus = null;
+    this._updateInfo = null;
+    this._sessionId = undefined;
+  }
+
+  /**
+   * Forget everything built from the current session's events, keeping the
+   * session, provider, and quota: its file is being replayed from the start.
+   */
+  resetSessionEvents(): void {
     this.touch();
     this._aggregator.reset();
     this._timeline = [];
@@ -309,12 +323,6 @@ export class DashboardState {
     this._cmdMap.clear();
     this._todos = [];
     this._todoSeen.clear();
-    this._providerName = undefined;
-    this._quota = null;
-    this._providerStatus = null;
-    this._openaiStatus = null;
-    this._updateInfo = null;
-    this._sessionId = undefined;
     this._checkpointProviderId = undefined;
     this._lastKnownCompactionCount = 0;
     this._taskToolCallCounts.clear();
