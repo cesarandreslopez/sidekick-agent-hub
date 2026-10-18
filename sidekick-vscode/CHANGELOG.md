@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-10-18
+
+### Fixed
+
+- **Sessions under a custom Claude home are monitored** (bundled `sidekick-shared`). With `CLAUDE_CONFIG_DIR` set, the session monitor, dashboard, usage, and plan board read the sessions and plans Claude Code writes under that home instead of only `~/.claude`. Plan-mode Write and Edit calls to plan files there are recognized, and the discovery-mode tip names the directory actually searched.
+- **Archived Codex sessions stay visible** (bundled `sidekick-shared`): sessions Codex moved to `archived_sessions/` are listed, found, and counted in usage.
+- **Long-running session watching stays bounded** (bundled `sidekick-shared`): a large session backlog is read in chunks, a pathological line over 16 MiB is skipped, and a session file that is truncated, rewritten, or replaced is re-read from the start with its token de-duplication reset.
+
+### Changed
+
+- The extension bundle is about 230 KB smaller: it now bundles `sidekick-shared` from its tree-shakable ES-module build.
+
 ## [0.27.6] - 2026-09-26
 
 ### Fixed

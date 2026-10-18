@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-10-18
+
+### Fixed
+
+- **Sessions under a custom Claude home are read** (bundled `sidekick-shared`). With `CLAUDE_CONFIG_DIR` set, `dashboard`, `dump`, `report`, `daily` / `weekly` / `monthly` / `sessions`, `blocks`, `search`, `doctor`, and plan reading follow the home Claude Code writes to instead of only `~/.claude`.
+- **Archived Codex sessions stay visible** (bundled `sidekick-shared`): sessions Codex moved to `archived_sessions/` are listed, found by id, and counted in usage reports.
+- **Long-running session watching stays bounded** (bundled `sidekick-shared`): `dashboard` and `dump` read a large backlog in chunks, skip a line over 16 MiB, and re-read a session file that is truncated, rewritten, or replaced from the start; the dashboard then drops the metrics built from the old content instead of counting the session twice.
+
+### Changed
+
+- The CLI's main bundle shrinks from 2.85 MB to 2.47 MB: it now bundles `sidekick-shared` from its tree-shakable ES-module build.
+
 ## [0.27.6] - 2026-09-26
 
 ### Added

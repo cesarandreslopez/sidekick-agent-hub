@@ -55,9 +55,9 @@ Defined as `ProviderId` and `SessionProviderBase` in `sidekick-shared/src/provid
 
 | ID            | Description          | Data Source                                                                                                                                    |
 | ------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude-code` | Claude Code sessions | `~/.claude/projects/`                                                                                                                          |
+| `claude-code` | Claude Code sessions | `~/.claude/projects/` (`$CLAUDE_CONFIG_DIR/projects/` when set)                                                                                |
 | `opencode`    | OpenCode sessions    | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%LOCALAPPDATA%\opencode\` or `%APPDATA%\opencode\`) |
-| `codex`       | Codex CLI sessions   | `~/.codex/sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model)                                          |
+| `codex`       | Codex CLI sessions   | `~/.codex/sessions/` and `~/.codex/archived_sessions/` (plus legacy profile session dirs recorded under the old per-profile-home model)        |
 
 Each session provider normalizes raw data into the canonical `SessionEvent` format (`ClaudeSessionEvent` is a compatibility alias).
 

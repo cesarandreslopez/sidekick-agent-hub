@@ -5,6 +5,34 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-10-18
+
+### Added
+
+- **Tree-shakable ES modules for bundlers.** Every exports subpath gains a `module` condition pointing at an ES-module build in `dist/esm/` (esbuild, Vite, Rollup, and webpack read it ahead of `import`/`require`). Node never reads `module` and keeps loading CommonJS, so a process cannot hold two copies of module state; `./dist/esm/*` is blocked from the `dist/*` wildcard. One helper from `/node` now bundles in hundreds of bytes instead of about 366 KB.
+- **Narrow-entry exports.** `sidekick-shared/browser`: `CodexRolloutParser` (with `DEFAULT_MAX_TRACKED_TOOL_CALLS` and `CodexRolloutParserOptions`), the Codex tool-name helpers, the session-event and Codex rollout types (including `CompactionEvent` and `ContextAttribution`), `isAggregateCodexLimit()`, `isHumanPrompt()` / `humanPromptText()` and the human entrypoint lists, `renderHandoffUrlTemplate()`, the provider-failure identifier arrays, `ASCII_CHARS_PER_TOKEN`, and `classifyTool()`. `sidekick-shared/node`: `getLiveClaudeHome()`, `getDefaultClaudeHome()`, `isDefaultClaudeHome()`, `getClaudeProjectsDir()`, `getSystemCodexHome()`, `getCodexMonitoringHomes()`, `resolveSidekickCodexHome()`, `getCodexExecutionEnv()`, `getCodexSessionsDirs()`, `getConfigDir()` / `CONFIG_DIR_ENV_VAR`, `encodeClaudeWorkspacePath()` / `getClaudeSessionDirectory()`, `resolveWorkspaceRoots()`, `resolveWorktreeMainRepo()` / `discoverWorktreeSiblings()`, and `createJsonlTail()`.
+- **`sidekick-shared/testing`.** `installCredentialGuard()` keeps a test process away from the real `security` / `claude` / `codex` binaries and the real Claude, Codex, and Sidekick homes (framework-free; Node 20.16+, or CommonJS on older Node; temp home removed on exit; `SIDEKICK_CONFIG_DIR` cleared), plus the Claude Code and Codex session-log builders. The internal vitest setup is now a thin shim over it.
+- **Provider-failure schema.** `PROVIDER_FAILURE_CODES`, `PROVIDER_RECOVERY_ACTIONS`, `PROVIDER_CREDENTIAL_KINDS`, `PROVIDER_AUTHENTICATION_STATES`, `PROVIDER_AUTHENTICATION_SOURCES`, and `PROVIDER_FAILURE_EVIDENCE_SOURCES` define the existing union types, and `providerFailureDiagnosisSchema` (plus the evidence, authentication, and retry-after schemas) on `sidekick-shared/schemas` is built from them.
+- **Prompt-history change reporting.** `collectPromptHistory()` results add `changed`, `progressed`, and `roots`; entries, whole sessions, `unread`, and `changed` carry an opaque `sessionKey`; `collectSessionPromptHistory()` accepts `sessionRefs` matched on (provider, sessionId) or one file; `isPromptHistorySessionSettled()` and `parsePromptHistoryCursor()` are exported.
+- **Tool categories on signals.** `classifyTool(name, { mcpServer })` and `TOOL_CATEGORIES`; prompt-history signals that name a tool carry `toolCategory` and, for MCP calls, `mcpServer` (Codex's `invocation.server` / `server` was dropped before).
+- **Multi-root usage.** `collectUsageEvents({ workspacePaths, includeWorktrees })` lists several roots in one call and counts each session file once; results add `roots`, and events add `filePath`.
+- **Bounded JSONL tail.** `createJsonlTail()` gains `maxReadBytes` (1 MiB chunks), `maxLineBytes` (16 MiB, longer lines skipped and reported), each line's `{ offset, length }` as `onEvent`'s second argument, and `onReset({ reason, previousOffset })` for `truncated`, `rewritten` (first 4 KiB or the byte before the resume point changed), and `replaced` (another inode) files.
+- `SessionWatcherCallbacks.onReset`: the JSONL and provider-reader watchers call it when the session file is truncated, rewritten, or replaced and its events are delivered again from the start.
+- `getCodexSessionsDirs()`, `CODEX_SESSIONS_SUBDIR`, `CODEX_ARCHIVED_SESSIONS_SUBDIR`, and `CodexDbThread.archived` / `archived_at`.
+
+### Fixed
+
+- **`CLAUDE_CONFIG_DIR`.** Claude session discovery, path resolution, provider detection, doctor, plans, and debug logs hard-coded `~/.claude`; they now use the live Claude home, as every credential and identity read already did.
+- **Archived Codex rollouts.** Rollout lookup, listings, and watch roots include each home's `archived_sessions/`, and a prompt-history cursor entry follows a session whose file moved there (when the new file starts with the recorded head) instead of re-reading it as new. An `archived_sessions/` directory created after a watcher starts is picked up by its catch-up poll.
+- `getCodexExecutionEnv(baseEnv)` keeps a non-blank `CODEX_HOME` from `baseEnv`.
+- `CodexRolloutParser` bounds its emitted-tool, expanded-patch, and pending exec/MCP tables (`maxTrackedToolCalls`, default 4096).
+- The session watcher resets its Claude usage de-duplication and Codex state when its tail starts over.
+
+### Changed
+
+- `sidekick-shared/node` no longer reaches the account-switching modules: Codex home resolution moved to `codexPaths` (re-exported from `codexProfiles`), and prompt history lists files through standalone `listClaudeSessionFilesAsync()` / `listCodexSessionFilesAsync()` instead of constructing providers (`collectPromptHistory` bundles in 30 KB instead of 170 KB).
+- `estimateTextTokens()` counts a leading ASCII run without regex tests (about 15× faster, identical results).
+
 ## [0.27.6] - 2026-09-26
 
 ### Fixed

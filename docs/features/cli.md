@@ -916,7 +916,7 @@ While capture is on, the terminal's native click-drag text selection and copy ar
 
 The CLI auto-detects which session provider is most recently active by checking filesystem presence and modification times:
 
-- **Claude Code** — `~/.claude/projects/`
+- **Claude Code** — `~/.claude/projects/` (`$CLAUDE_CONFIG_DIR/projects/` when `CLAUDE_CONFIG_DIR` is set)
 - **OpenCode** — OpenCode's data directory:
   Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
 - **Codex** — `~/.codex/`

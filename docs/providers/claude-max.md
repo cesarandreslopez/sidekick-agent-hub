@@ -22,7 +22,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 
 ## Session Monitoring
 
-Claude Code sessions are monitored from `~/.claude/projects/`. The dashboard shows:
+Claude Code sessions are monitored from `~/.claude/projects/`, or from `$CLAUDE_CONFIG_DIR/projects/` when `CLAUDE_CONFIG_DIR` is set, the same home the `claude` CLI writes to. The dashboard shows:
 
 - Token usage with elapsed-time quota projections
 - 5-hour and 7-day subscription quota gauges with projected end-of-window utilization

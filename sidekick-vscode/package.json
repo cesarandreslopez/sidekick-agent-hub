@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.27.6",
+  "version": "0.28.0",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -461,7 +461,7 @@
               "Auto-detect based on installed CLI agents",
               "Monitor Claude Code sessions (~/.claude/projects/, or $CLAUDE_CONFIG_DIR/projects/ when set)",
               "Monitor OpenCode sessions (~/.local/share/opencode/)",
-              "Monitor Codex CLI sessions (~/.codex/sessions/)"
+              "Monitor Codex CLI sessions (~/.codex/sessions/ and archived_sessions/)"
             ],
             "description": "Which CLI coding agent to monitor. 'auto' detects based on installed tools and recent activity."
           },

@@ -5,6 +5,24 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-10-18
+
+### Fixed
+
+- **Sessions under a custom Claude home are found.** With `CLAUDE_CONFIG_DIR` set, including a shell from `sidekick accounts env` or `shell`, Claude Code writes sessions, plans, and debug logs under that home, but Sidekick looked only in `~/.claude`. Session monitoring, both dashboards, usage reports, prompt history, plans, debug logs, and `doctor` now follow the same home the CLI does, and the VS Code extension recognizes plan files written there.
+- **Archived Codex sessions no longer vanish.** Codex moves an archived thread's rollout from `sessions/` to `archived_sessions/`. Sidekick now reads both, so archived sessions stay in session lists, usage reports, prompt history, and session lookups, and archiving a session no longer makes prompt history read it again as a new one.
+- **Live session tails stay bounded.** The JSONL tail behind live session watching reads a large backlog in 1 MiB chunks instead of one buffer, skips lines over 16 MiB, and starts over cleanly when a session file is truncated, rewritten, or replaced, resetting its usage de-duplication; the CLI dashboard drops the metrics it built from the old content instead of counting the session twice. The Codex rollout parser keeps a bounded amount of per-call state on long sessions.
+- `getCodexExecutionEnv()` keeps a `CODEX_HOME` the caller passes instead of replacing it with the live home.
+
+### Changed
+
+- **Smaller bundles.** `sidekick-shared` ships an ES-module build behind the `module` export condition that bundlers read, while Node keeps loading the CommonJS build. Session-file listing no longer pulls in the providers' stats code or the account-switching modules. The VS Code extension bundle shrinks from 2.38 MB to 2.15 MB and the CLI's main bundle from 2.85 MB to 2.47 MB.
+- Token estimates for ASCII text are about 15× faster, with identical counts.
+
+### Added
+
+- `sidekick-shared`: `getClaudeProjectsDir()`, `getLiveClaudeHome()`, `getCodexSessionsDirs()`, and the Codex home helpers on `sidekick-shared/node`; `CodexRolloutParser`, the session-event and Codex rollout types, `isHumanPrompt()`, `renderHandoffUrlTemplate()`, and `classifyTool()` on `sidekick-shared/browser`; `providerFailureDiagnosisSchema` on `sidekick-shared/schemas`; prompt-history `changed` / `progressed` / `roots`, `sessionKey`, `sessionRefs`, `isPromptHistorySessionSettled()`, and `parsePromptHistoryCursor()`; tool-signal `toolCategory` and `mcpServer`; multi-root `collectUsageEvents({ workspacePaths })` with `resolveWorkspaceRoots()`; `createJsonlTail()` read and line bounds, line positions, and `onReset`; and a `sidekick-shared/testing` entry with the credential guard and session-log builders.
+
 ## [0.27.6] - 2026-09-26
 
 ### Fixed

@@ -64,9 +64,9 @@ When `sidekick.inferenceProvider` is set to `auto` (the default), Sidekick detec
 
 Session monitoring uses a separate `sidekick.sessionProvider` setting. It also defaults to `auto` and supports:
 
-- **Claude Code** — monitors `~/.claude/projects/`
+- **Claude Code** — monitors `~/.claude/projects/` (`$CLAUDE_CONFIG_DIR/projects/` when set)
 - **OpenCode** — monitors OpenCode's data directory:
   Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
-- **Codex CLI** — monitors `~/.codex/sessions/`
+- **Codex CLI** — monitors `~/.codex/sessions/` and `~/.codex/archived_sessions/`
 
 For OpenCode session monitoring, Sidekick reads `opencode.db` via `sqlite3`. If `sqlite3` is unavailable, the extension and CLI show an actionable OpenCode-specific notice.

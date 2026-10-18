@@ -29,9 +29,9 @@ Each CLI agent stores session data differently. Canonical implementations in `si
 
 | Provider    | Data Source                                                                                                                                    | Format                          |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Claude Code | `~/.claude/projects/`                                                                                                                          | JSONL files                     |
+| Claude Code | `~/.claude/projects/` (`$CLAUDE_CONFIG_DIR/projects/` when set)                                                                                | JSONL files                     |
 | OpenCode    | OpenCode data dir (`~/.local/share/opencode/`, `~/Library/Application Support/opencode/`, `%LOCALAPPDATA%\opencode\` or `%APPDATA%\opencode\`) | `opencode.db` plus legacy files |
-| Codex CLI   | `~/.codex/sessions/`                                                                                                                           | Session files                   |
+| Codex CLI   | `~/.codex/sessions/` and `~/.codex/archived_sessions/`                                                                                         | Session files                   |
 
 ## SessionMonitor
 
