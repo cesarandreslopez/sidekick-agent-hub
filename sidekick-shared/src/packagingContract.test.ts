@@ -623,6 +623,43 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     expect(pkgRequire.resolve('sidekick-shared/node')).toBe(nodeJs);
   });
 
+  it('publishes a framework-free credential guard on sidekick-shared/testing', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const testingJs = path.join(distDir, 'testing', 'index.js');
+    const script = `
+      const fs = require('node:fs');
+      const os = require('node:os');
+      const { installCredentialGuard, createSessionLogFixtures } = require(${JSON.stringify(testingJs)});
+      process.env.SIDEKICK_CONFIG_DIR = '/tmp/should-be-cleared';
+      const guard = installCredentialGuard();
+      let blocked = false;
+      try { require('node:child_process').spawnSync('security', ['help']); } catch { blocked = true; }
+      process.stdout.write(JSON.stringify({
+        blocked,
+        recorded: guard.take().length,
+        homeMoved: os.homedir() === guard.testHome && guard.testHome !== guard.realHome,
+        configCleared: process.env.SIDEKICK_CONFIG_DIR === undefined,
+        same: installCredentialGuard() === guard,
+        fixtures: typeof createSessionLogFixtures,
+        testHome: guard.testHome,
+      }));
+    `;
+    // A child process: installing the guard patches the process it runs in.
+    const result = JSON.parse(
+      String(execFileSync(process.execPath, ['-e', script], { env: { ...process.env } })),
+    );
+    expect(result).toMatchObject({
+      blocked: true,
+      recorded: 1,
+      homeMoved: true,
+      configCleared: true,
+      same: true,
+      fixtures: 'function',
+    });
+    // The temp home is removed when that process exits.
+    expect(existsSync(result.testHome)).toBe(false);
+  });
+
   it('lets a bundler tree-shake a single /node import', async () => {
     const { build } = await import('vite');
     const { builtinModules } = await import('node:module');
@@ -675,6 +712,7 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'sidekick-shared/modelInfo',
       'sidekick-shared/formatting',
       'sidekick-shared/statusline',
+      'sidekick-shared/testing',
     ];
     try {
       scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-shared-node-resolution-'));
@@ -720,6 +758,7 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'sidekick-shared/modelInfo',
       'sidekick-shared/formatting',
       'sidekick-shared/statusline',
+      'sidekick-shared/testing',
     ];
     let server: Awaited<ReturnType<typeof createServer>> | undefined;
     try {

@@ -1,6 +1,6 @@
 /**
  * Claude Code and Codex session-log builders shared by the prompt-history
- * tests. Test-only: excluded from the package build.
+ * tests, published through `sidekick-shared/testing`.
  */
 
 import * as fs from 'fs';

@@ -96,6 +96,13 @@
       "require": "./dist/statusline/index.js",
       "default": "./dist/statusline/index.js"
     },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "module": "./dist/esm/testing/index.js",
+      "import": "./dist/testing/index.js",
+      "require": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -130,6 +137,9 @@
       ],
       "statusline": [
         "dist/statusline/index.d.ts"
+      ],
+      "testing": [
+        "dist/testing/index.d.ts"
       ]
     }
   },
