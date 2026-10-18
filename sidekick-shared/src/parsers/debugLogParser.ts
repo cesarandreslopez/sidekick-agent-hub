@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { getLiveClaudeHome } from '../claudePaths';
 
 // ── Types ──
 
@@ -137,7 +137,7 @@ export function collapseDuplicates(entries: DebugLogEntry[]): DebugLogEntry[] {
  * @returns Array of debug log file info, sorted by mtime (most recent first)
  */
 export function discoverDebugLogs(): DebugLogFile[] {
-  const debugDir = path.join(os.homedir(), '.claude', 'debug');
+  const debugDir = path.join(getLiveClaudeHome(), 'debug');
 
   try {
     if (!fs.existsSync(debugDir)) return [];

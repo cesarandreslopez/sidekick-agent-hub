@@ -982,8 +982,6 @@ export type { AccountsChangedEvent, OnAccountsChangedOptions } from './accountCh
 export {
   getClaudeProfilesDir,
   getClaudeProfileHome,
-  getLiveClaudeHome,
-  getDefaultClaudeHome,
   getClaudeConfigPath,
   claudeKeychainSuffix,
   claudeKeychainService,
@@ -995,6 +993,12 @@ export {
   readLiveClaudeIdentity,
 } from './claudeProfiles';
 export type { ClaudeProfileIdentity } from './claudeProfiles';
+export {
+  getLiveClaudeHome,
+  getDefaultClaudeHome,
+  isDefaultClaudeHome,
+  getClaudeProjectsDir,
+} from './claudePaths';
 export {
   getCodexProfilesDir,
   getCodexProfileHome,

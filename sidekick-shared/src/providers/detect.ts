@@ -5,11 +5,11 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import type { ProviderId } from './types';
 import { getCodexMonitoringHomes } from '../codexProfiles';
 import { getOpenCodeDataDir } from './openCode';
+import { getClaudeProjectsDir } from '../claudePaths';
 
 function getCodexHomes(): string[] {
   return getCodexMonitoringHomes();
@@ -128,7 +128,7 @@ function getCodexActivityMtime(): number {
 }
 
 function getProviderPaths() {
-  const claudeBase = path.join(os.homedir(), '.claude', 'projects');
+  const claudeBase = getClaudeProjectsDir();
   const openCodeDataDir = getOpenCodeDataDir();
   const codexHomes = getCodexHomes();
   return {

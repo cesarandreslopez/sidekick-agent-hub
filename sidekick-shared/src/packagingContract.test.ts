@@ -291,6 +291,18 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     expect(typeof m.readSessionPreviewAsync).toBe('function');
   });
 
+  it('dist/node.js exposes the provider homes the CLIs read', () => {
+    const m = require(nodeJs);
+    for (const name of [
+      'getLiveClaudeHome',
+      'getDefaultClaudeHome',
+      'isDefaultClaudeHome',
+      'getClaudeProjectsDir',
+    ]) {
+      expect(typeof m[name]).toBe('function');
+    }
+  });
+
   it('dist/index.js exposes the locked store writers', () => {
     const m = require(path.join(distDir, 'index.js'));
     for (const k of [

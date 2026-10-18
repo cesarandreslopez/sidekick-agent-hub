@@ -9,7 +9,6 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { StringDecoder } from 'string_decoder';
 import { readSessionContextSnapshot } from '../context/sessionContext';
@@ -52,6 +51,7 @@ import {
 import { scanSubagentDir } from '../parsers/subagentScanner';
 import { getModelContextWindowSize } from '../modelContext';
 import { extractSessionEvents } from '../schemas/sessionEvent';
+import { getClaudeProjectsDir } from '../claudePaths';
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -640,7 +640,7 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   }
 
   getProjectsBaseDir(): string {
-    return path.join(os.homedir(), '.claude', 'projects');
+    return getClaudeProjectsDir();
   }
 
   getWatchRoots(): string[] {

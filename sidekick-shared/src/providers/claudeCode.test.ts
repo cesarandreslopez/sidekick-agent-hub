@@ -122,3 +122,16 @@ it('resumes at a complete line when a UTF-8 character spans writes', () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+describe('ClaudeCodeProvider projects root', () => {
+  it('watches the projects directory of CLAUDE_CONFIG_DIR when it is set', () => {
+    const provider = new ClaudeCodeProvider();
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/custom-claude-home';
+    try {
+      expect(provider.getProjectsBaseDir()).toBe(path.join('/tmp/custom-claude-home', 'projects'));
+      expect(provider.getWatchRoots()).toEqual([path.join('/tmp/custom-claude-home', 'projects')]);
+    } finally {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    }
+  });
+});

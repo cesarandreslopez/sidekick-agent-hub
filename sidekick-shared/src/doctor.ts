@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { getActiveAccountStatus, type ActiveAccountStatus } from './accountStatus';
 import { resolveProjectIdentity, type ProjectIdentity } from './paths';
@@ -18,6 +17,7 @@ import { createSessionProviders } from './providers/factory';
 import { detectProvider } from './providers/detect';
 import type { ProviderId } from './providers/types';
 import { OpenCodeDatabase, type OpenCodeDbRuntimeStatus } from './providers/openCodeDatabase';
+import { getClaudeProjectsDir } from './claudePaths';
 
 export type HealthCheckStatus = 'ok' | 'warning' | 'error' | 'info';
 
@@ -86,7 +86,7 @@ export interface DoctorOptions {
 export function getSessionDiagnostics(workspacePath: string): SessionDiagnostics {
   const encodedPath = encodeWorkspacePath(workspacePath);
   const expectedSessionDir = getSessionDirectory(workspacePath);
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  const projectsDir = getClaudeProjectsDir();
   let existingProjectDirs: string[] = [];
   let expectedDirExists = false;
 

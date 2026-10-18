@@ -32,12 +32,30 @@ import {
 } from './sessionPathResolver';
 
 afterEach(() => {
+  delete process.env.CLAUDE_CONFIG_DIR;
   if (mocks.home) fs.rmSync(mocks.home, { recursive: true, force: true });
   mocks.home = '';
   mocks.vanishingBasename = '';
 });
 
 describe('findAllSessions', () => {
+  it('reads sessions from CLAUDE_CONFIG_DIR instead of ~/.claude', () => {
+    mocks.home = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-session-paths-'));
+    process.env.CLAUDE_CONFIG_DIR = path.join(mocks.home, 'custom-claude');
+    const workspace = '/workspace/project';
+    const sessionDir = getSessionDirectory(workspace);
+    expect(sessionDir).toBe(
+      path.join(mocks.home, 'custom-claude', 'projects', encodeWorkspacePath(workspace)),
+    );
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(path.join(sessionDir, 'custom.jsonl'), '{}\n');
+    const defaultDir = path.join(mocks.home, '.claude', 'projects', encodeWorkspacePath(workspace));
+    fs.mkdirSync(defaultDir, { recursive: true });
+    fs.writeFileSync(path.join(defaultDir, 'default.jsonl'), '{}\n');
+
+    expect(findAllSessions(workspace)).toEqual([path.join(sessionDir, 'custom.jsonl')]);
+  });
+
   it('keeps readable sessions when another file vanishes during stat', () => {
     mocks.home = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-session-paths-'));
     const workspace = '/workspace/project';

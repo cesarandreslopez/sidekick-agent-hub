@@ -231,6 +231,14 @@ export type {
 } from './providers/factory';
 export { SYNTHETIC_MODEL } from './usage/claudeUsageDedupe';
 
+// Provider homes the CLIs read for this process
+export {
+  getLiveClaudeHome,
+  getDefaultClaudeHome,
+  isDefaultClaudeHome,
+  getClaudeProjectsDir,
+} from './claudePaths';
+
 export type {
   ProviderServiceSeverity,
   ProviderServiceComponent,

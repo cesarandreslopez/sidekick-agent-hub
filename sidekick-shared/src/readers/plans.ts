@@ -4,13 +4,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import type { PersistedPlan, PersistedPlanStep, PlanHistoryStore } from '../types/plan';
 import { PLAN_SCHEMA_VERSION, MAX_PLANS_PER_PROJECT } from '../types/plan';
 import { getProjectDataPath, encodeWorkspacePath } from '../paths';
 import { readJsonStore } from './helpers';
 import { parsePlanMarkdown } from '../parsers/planExtractor';
 import { atomicWriteJson } from '../writers/atomic';
+import { getClaudeProjectsDir, getLiveClaudeHome } from '../claudePaths';
 
 export interface ReadPlansOptions {
   status?: 'in_progress' | 'completed' | 'failed' | 'abandoned' | 'all';
@@ -189,8 +189,8 @@ export async function writePlans(slug: string, plans: PersistedPlan[]): Promise<
  * sessions in the given workspace. Maps session JSONL slugs to plan filenames.
  */
 export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<PersistedPlan[]> {
-  const claudePlansDir = path.join(os.homedir(), '.claude', 'plans');
-  const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
+  const claudePlansDir = path.join(getLiveClaudeHome(), 'plans');
+  const claudeProjectsDir = getClaudeProjectsDir();
 
   // Find the project directory in ~/.claude/projects/
   const cwd = workspacePath || process.cwd();

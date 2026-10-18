@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 import type { ProjectFolderInfo } from '../providers/types';
+import { getClaudeProjectsDir } from '../claudePaths';
 
 /**
  * Encodes a workspace path to Claude Code's on-disk directory naming scheme
@@ -67,7 +68,7 @@ export function encodeWorkspacePath(workspacePath: string): string {
  */
 export function getSessionDirectory(workspacePath: string): string {
   const encoded = encodeWorkspacePath(workspacePath);
-  return path.join(os.homedir(), '.claude', 'projects', encoded);
+  return path.join(getClaudeProjectsDir(), encoded);
 }
 
 /** How recently a file must be modified to be considered "active" (5 minutes) */
@@ -93,7 +94,7 @@ const ACTIVE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
  * ```
  */
 export function findSubdirectorySessionDirs(workspacePath: string): string[] {
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  const projectsDir = getClaudeProjectsDir();
 
   try {
     if (!fs.existsSync(projectsDir)) {
@@ -190,7 +191,7 @@ export function getMostRecentlyActiveSessionDir(sessionDirs: string[]): string |
  * @returns Absolute path to session directory, or null if not found
  */
 export function discoverSessionDirectory(workspacePath: string): string | null {
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  const projectsDir = getClaudeProjectsDir();
 
   // Strategy 1: Try computed encoded path (exact match)
   const computedDir = getSessionDirectory(workspacePath);
@@ -480,7 +481,7 @@ export function decodeEncodedPath(encoded: string): string {
  * ```
  */
 export function getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  const projectsDir = getClaudeProjectsDir();
   const folders: ProjectFolderInfo[] = [];
 
   try {
