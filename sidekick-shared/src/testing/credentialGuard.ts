@@ -98,6 +98,7 @@ export function installCredentialGuard(options: CredentialGuardOptions = {}): Cr
   const realFs = builtin<typeof import('node:fs')>('node:fs');
   const fs = realFs as unknown as Record<string, AnyFn>;
   const { syncBuiltinESMExports } = builtin<typeof import('node:module')>('node:module');
+  const { promisify } = builtin<typeof import('node:util')>('node:util');
   const blockedBinaries = new Set(
     (options.blockedBinaries ?? DEFAULT_BLOCKED_BINARIES).map((name) => name.toLowerCase()),
   );
@@ -181,15 +182,38 @@ export function installCredentialGuard(options: CredentialGuardOptions = {}): Cr
   for (const name of CHILD_PROCESS_FUNCTIONS) {
     const original = childProcess[name];
     if (typeof original !== 'function') continue;
-    childProcess[name] = function guarded(this: unknown, ...args: unknown[]) {
+    const check = (args: unknown[]): void => {
       const binary = binaryName(args[0]);
       if (blockedBinaries.has(binary)) {
         record(
           `child_process.${name}('${binary}') reached the real binary; mock child_process or inject a runner`,
         );
       }
+    };
+    const guarded = function guarded(this: unknown, ...args: unknown[]) {
+      check(args);
       return original.apply(this, args);
     } as AnyFn;
+    // execFile and exec carry Node's promisify.custom, which resolves to
+    // { stdout, stderr }; without it promisify() falls back to the first
+    // callback value. Guard it too and delegate, so .child, the error's
+    // stdout/stderr, encoding, and maxBuffer stay Node's own.
+    const custom = (original as unknown as Record<symbol, unknown>)[promisify.custom];
+    if (typeof custom === 'function') {
+      Object.defineProperty(guarded, promisify.custom, {
+        configurable: true,
+        writable: true,
+        value: function guardedPromisified(this: unknown, ...args: unknown[]) {
+          try {
+            check(args);
+          } catch (error) {
+            return Promise.reject(error);
+          }
+          return custom.apply(this, args);
+        },
+      });
+    }
+    childProcess[name] = guarded;
   }
 
   for (const name of FS_WRITE_FUNCTIONS) {

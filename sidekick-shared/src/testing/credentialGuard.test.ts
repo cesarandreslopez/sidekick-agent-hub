@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { exec, execFileSync } from 'child_process';
+import { exec, execFile, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
+import { promisify } from 'util';
 import { keychainServiceExists } from '../claudeProfiles';
 
 interface GuardState {
@@ -71,5 +72,42 @@ describe('credential guard (self-test)', () => {
   it('lets ordinary binaries through', () => {
     expect(String(execFileSync(process.execPath, ['-e', 'process.stdout.write("ok")']))).toBe('ok');
     expect(guard.take()).toEqual([]);
+  });
+
+  it('keeps the promisified { stdout, stderr } contract of execFile and exec', async () => {
+    const fromExecFile = promisify(execFile)(process.execPath, [
+      '-e',
+      'process.stdout.write("ok")',
+    ]);
+    expect(fromExecFile.child.pid).toEqual(expect.any(Number));
+    expect(await fromExecFile).toEqual({ stdout: 'ok', stderr: '' });
+
+    const fromExec = await promisify(exec)(`"${process.execPath}" -e "process.stdout.write('ok')"`);
+    expect(fromExec).toEqual({ stdout: 'ok', stderr: '' });
+    expect(guard.take()).toEqual([]);
+  });
+
+  it('rejects a failing promisified call with stdout and stderr on the error', async () => {
+    await expect(
+      promisify(execFile)(process.execPath, [
+        '-e',
+        'process.stdout.write("x"); process.stderr.write("y"); process.exit(3)',
+      ]),
+    ).rejects.toMatchObject({ code: 3, stdout: 'x', stderr: 'y' });
+    expect(guard.take()).toEqual([]);
+  });
+
+  it('blocks claude and codex through the promisified calls', async () => {
+    await expect(promisify(execFile)('codex', ['login', 'status'])).rejects.toThrow(
+      /credential guard/,
+    );
+    await expect(promisify(exec)('claude auth status')).rejects.toThrow(/credential guard/);
+    const childProcess = createRequire(import.meta.url)(
+      'child_process',
+    ) as typeof import('child_process');
+    await expect(promisify(childProcess.execFile)('security', ['help'])).rejects.toThrow(
+      /credential guard/,
+    );
+    expect(guard.take()).toHaveLength(3);
   });
 });
