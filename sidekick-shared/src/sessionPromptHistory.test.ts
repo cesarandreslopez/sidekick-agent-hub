@@ -346,6 +346,12 @@ describe('collectSessionPromptHistory — replies and signals', () => {
         tool: 'js',
         error: { message: 'No browser' },
       }),
+      codexItem(4, {
+        type: 'McpToolCall',
+        status: 'failed',
+        server: 'nameless',
+        error: { message: 'No tool name' },
+      }),
       codexItem(4, { type: 'CommandExecution', status: 'completed', exit_code: 0 }),
       codexEvent(5, { type: 'task_complete', last_agent_message: 'All done' }),
       {
@@ -399,6 +405,7 @@ describe('collectSessionPromptHistory — replies and signals', () => {
     expect(grouped.signals!.map((signal) => [signal.kind, signal.afterOrdinal])).toEqual([
       ['toolError', 0],
       ['toolError', 0],
+      ['toolError', 0],
       ['toolError', 1],
       ['toolError', 1],
       ['interrupt', 1],
@@ -419,6 +426,7 @@ describe('collectSessionPromptHistory — replies and signals', () => {
         mcpServer: 'browser',
         text: 'No browser',
       }),
+      expect.objectContaining({ toolCategory: 'mcp', mcpServer: 'nameless', text: 'No tool name' }),
       expect.objectContaining({ tool: 'exec_command', text: '$ rg foo' }),
       expect.objectContaining({
         tool: 'apply_patch',

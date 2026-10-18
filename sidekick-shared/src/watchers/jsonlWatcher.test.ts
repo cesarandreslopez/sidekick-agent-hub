@@ -119,6 +119,27 @@ describe('JsonlSessionWatcher', () => {
     expect(checkpoints).toEqual([2]);
   });
 
+  it('tells consumers when the file starts over, so they can drop earlier state', () => {
+    const filename = file(Buffer.concat([event('one'), event('two')]));
+    const events: FollowEvent[] = [];
+    let resets = 0;
+    const watcher = new JsonlSessionWatcher('claude-code', filename, {
+      onEvent: (followEvent) => events.push(followEvent),
+      onReset: () => {
+        resets += 1;
+        events.length = 0;
+      },
+    });
+    watchers.push(watcher);
+    watcher.start(true);
+    expect(events).toHaveLength(2);
+
+    writeFileSync(filename, event('three'));
+    (watcher as unknown as { tail: { readNow(): void } }).tail.readNow();
+    expect(resets).toBe(1);
+    expect(events.map((followEvent) => followEvent.summary)).toEqual(['three']);
+  });
+
   it('follows a partial final line when starting without replay', async () => {
     vi.useFakeTimers();
     const pending = event('new event');

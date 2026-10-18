@@ -109,6 +109,7 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
     try {
       if (this.reader.wasTruncated()) {
         this.reader.reset();
+        this.callbacks.onReset?.();
       }
       const events = this.reader.readNew();
       for (const event of events) {

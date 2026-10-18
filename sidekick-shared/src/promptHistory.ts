@@ -30,7 +30,7 @@ import { DirectoryListingCache } from './providers/directoryListingCache';
 import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
 import { realpathOrNull, resolveWorkspaceRoots } from './workspaceRoots';
-import { fileHeadOf, HEAD_BYTES, headMatches } from './fileHead';
+import { fileHeadOf, HEAD_BYTES, headMatches, type FileHead } from './fileHead';
 
 export type PromptHistoryProvider = HumanPromptProvider;
 
@@ -439,15 +439,18 @@ export async function collectPromptHistory(
       continue;
     }
     let prior = validSession(previous[candidate.key]);
-    const movedFrom = prior ? undefined : moved.get(`${candidate.provider}:${candidate.sessionId}`);
-    if (movedFrom) {
-      // The same session under a new path (Codex archives a thread by moving its
-      // rollout): carry the entry over. scanFile re-verifies the head, so a
-      // different file under the same id still reads as a rewrite.
-      moved.delete(`${candidate.provider}:${candidate.sessionId}`);
-      prior = validSession(previous[movedFrom]);
+    const sessionRef = `${candidate.provider}:${candidate.sessionId}`;
+    const movedFrom = prior ? undefined : moved.get(sessionRef);
+    const carried = movedFrom ? validSession(previous[movedFrom]) : undefined;
+    // The same session under a new path (Codex archives a thread by moving its
+    // rollout): carry the entry over, but only when the new file starts with
+    // the recorded head. Another file that merely shares the id (an unlisted
+    // file is not necessarily gone) keeps its own entry and is read as new.
+    if (movedFrom && carried?.head && (await fileStartsWith(candidate.filePath, carried.head))) {
+      moved.delete(sessionRef);
+      prior = carried;
       delete cursor.sessions[movedFrom];
-      if (prior) cursor.sessions[candidate.key] = prior;
+      cursor.sessions[candidate.key] = carried;
       markChanged(candidate);
     }
     if (prior && isSettled(prior) && prior.size === stat.size && prior.mtimeMs === stat.mtimeMs) {
@@ -746,6 +749,19 @@ export async function listCandidates(
       compareStrings(left.sessionId, right.sessionId) ||
       compareStrings(left.key, right.key),
   );
+}
+
+/** True when the file's first bytes still match a recorded head. */
+async function fileStartsWith(filePath: string, head: FileHead): Promise<boolean> {
+  let handle: fs.promises.FileHandle | undefined;
+  try {
+    handle = await fs.promises.open(filePath, 'r');
+    return headMatches(head, await readAt(handle, 0, Math.min(HEAD_BYTES, head.bytes)));
+  } catch {
+    return false;
+  } finally {
+    await handle?.close();
+  }
 }
 
 /**

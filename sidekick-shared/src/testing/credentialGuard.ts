@@ -20,7 +20,7 @@
  * Production code swallows most errors, so violations are also recorded;
  * call `assertNoViolations()` after each test (see `credentialGuard.setup.ts`
  * for a vitest wiring). Framework-free; the real modules come from
- * `process.getBuiltinModule` (Node 20.16+).
+ * `process.getBuiltinModule` (Node 20.16+), or `require` in CommonJS.
  *
  * @module testing/credentialGuard
  */
@@ -92,13 +92,12 @@ export function installCredentialGuard(options: CredentialGuardOptions = {}): Cr
     | undefined;
   if (existing) return existing;
 
-  const childProcess = process.getBuiltinModule('node:child_process') as unknown as Record<
-    string,
-    AnyFn
-  >;
-  const realFs = process.getBuiltinModule('node:fs');
+  const childProcess = builtin<typeof import('node:child_process')>(
+    'node:child_process',
+  ) as unknown as Record<string, AnyFn>;
+  const realFs = builtin<typeof import('node:fs')>('node:fs');
   const fs = realFs as unknown as Record<string, AnyFn>;
-  const { syncBuiltinESMExports } = process.getBuiltinModule('node:module');
+  const { syncBuiltinESMExports } = builtin<typeof import('node:module')>('node:module');
   const blockedBinaries = new Set(
     (options.blockedBinaries ?? DEFAULT_BLOCKED_BINARIES).map((name) => name.toLowerCase()),
   );
@@ -220,4 +219,15 @@ export function installCredentialGuard(options: CredentialGuardOptions = {}): Cr
   syncBuiltinESMExports();
   (globalThis as Record<string, unknown>)[GUARD_KEY] = state;
   return state;
+}
+
+/**
+ * The real module object of a Node built-in: `process.getBuiltinModule`
+ * (Node 20.16+), or `require` in CommonJS on older Node.
+ */
+function builtin<T>(id: string): T {
+  if (typeof process.getBuiltinModule === 'function') return process.getBuiltinModule(id) as T;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- CommonJS fallback for Node < 20.16
+  if (typeof require === 'function') return require(id) as T;
+  throw new Error('installCredentialGuard() needs Node 20.16+ outside CommonJS.');
 }

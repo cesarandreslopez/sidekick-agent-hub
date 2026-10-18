@@ -147,10 +147,12 @@ abstract class RecordExtractor implements SessionRecordExtractor {
   ): void {
     if (!this.include.signals || !timestamp) return;
     const signal: PromptHistorySignal = { kind, timestamp, afterOrdinal: ordinal };
-    if (detail.tool) {
-      signal.tool = detail.tool;
-      const mcpServer = detail.mcpServer || parseMcpToolName(detail.tool)?.serverName;
-      signal.toolCategory = detail.mcp ? 'mcp' : classifyTool(detail.tool, { mcpServer });
+    if (detail.tool) signal.tool = detail.tool;
+    if (detail.tool || detail.mcp) {
+      const mcpServer =
+        detail.mcpServer || (detail.tool ? parseMcpToolName(detail.tool)?.serverName : undefined);
+      signal.toolCategory =
+        detail.mcp || !detail.tool ? 'mcp' : classifyTool(detail.tool, { mcpServer });
       if (mcpServer) signal.mcpServer = mcpServer;
     }
     if (detail.fullText) {

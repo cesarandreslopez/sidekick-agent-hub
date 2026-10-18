@@ -262,6 +262,7 @@ export class JsonlSessionWatcher implements SessionWatcher {
         this.codexInPlanMode = false;
         this.claudeUsageDeduper.reset();
         this.codexPrevTotal = undefined;
+        this.callbacks.onReset?.();
       },
     });
     this.tail.start();

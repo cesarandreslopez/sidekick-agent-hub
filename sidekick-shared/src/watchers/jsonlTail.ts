@@ -251,6 +251,12 @@ class JsonlTailReader<T> implements JsonlTail {
     this.skippingLine = false;
     this.head = null;
     this.parser.reset();
+    if (reason === 'replaced' && this.active) {
+      // fs.watch follows the old inode; watch the file now at the path.
+      this.fsWatcher?.close();
+      this.fsWatcher = null;
+      this.watchFile();
+    }
     this.options.onReset?.({ reason, previousOffset });
   }
 

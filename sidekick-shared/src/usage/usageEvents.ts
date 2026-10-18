@@ -529,11 +529,14 @@ async function listScopedPreviews(
     });
   if (!listingRoots) return list(options.workspacePath);
   const byFile = new Map<string, SessionPreview>();
-  const diagnostics: SessionProviderDiagnostic[] = [];
+  const diagnostics = new Map<string, SessionProviderDiagnostic>();
   for (const root of listingRoots) {
     options.signal?.throwIfAborted();
     const listed = await list(root);
-    diagnostics.push(...listed.diagnostics);
+    // Each root lists every provider again; report each problem once.
+    for (const diagnostic of listed.diagnostics) {
+      diagnostics.set(JSON.stringify(diagnostic), diagnostic);
+    }
     for (const preview of listed.previews) {
       if (!byFile.has(preview.filePath)) byFile.set(preview.filePath, preview);
     }
@@ -541,5 +544,5 @@ async function listScopedPreviews(
   const previews = [...byFile.values()].sort(
     (left, right) => Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt),
   );
-  return { previews, diagnostics };
+  return { previews, diagnostics: [...diagnostics.values()] };
 }

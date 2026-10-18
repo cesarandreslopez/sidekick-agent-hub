@@ -47,6 +47,12 @@ export interface SessionWatcherCallbacks {
   /** All events in this read have been delivered; the cursor can now be checkpointed. */
   onBatchComplete?: () => void;
   onError?: (error: Error) => void;
+  /**
+   * The session file was truncated, rewritten, or replaced, and its events
+   * are being delivered again from the beginning: discard anything built
+   * from earlier events.
+   */
+  onReset?: () => void;
 }
 
 export interface SessionWatcher {

@@ -337,6 +337,31 @@ describe('collectPromptHistory — Codex', () => {
     expect(resumed.entries.some((entry) => entry.text === 'first')).toBe(false);
   });
 
+  it('keeps the entry of an unlisted file that shares its session id with another file', async () => {
+    const original = claudeFile(repo, 'dup');
+    writeJsonl(original, [claudeUser('a0', 1), claudeAssistant('m1', 2)]);
+    const old = new Date('2020-01-01');
+    fs.utimesSync(original, old, old);
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(texts(first.entries)).toEqual(['a0']);
+
+    // A different file with the same id, while `since` leaves the first one unlisted.
+    writeJsonl(claudeFile(`${repo}-wt`, 'dup'), [
+      claudeUser('b0', 3, { cwd: repo }),
+      claudeAssistant('m2', 4, { cwd: repo }),
+    ]);
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: first.cursor,
+      since: new Date('2025-01-01'),
+    });
+    expect(texts(second.entries)).toEqual(['b0']);
+    expect(Object.keys(second.cursor.sessions)).toHaveLength(2);
+
+    const third = await collectPromptHistory({ workspacePaths: [repo], cursor: second.cursor });
+    expect(third.entries).toEqual([]);
+  });
+
   it('skips subagent, forked, and out-of-scope sessions; includes exec sessions', async () => {
     writeJsonl(codexFile(), [
       codexMeta(repo, { subagent: { thread_spawn: { parent_thread_id: 'p' } } }),
