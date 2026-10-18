@@ -35,58 +35,68 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "module": "./dist/esm/index.js",
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./browser": {
       "types": "./dist/browser.d.ts",
+      "module": "./dist/esm/browser.js",
       "import": "./dist/browser.js",
       "require": "./dist/browser.js",
       "default": "./dist/browser.js"
     },
     "./node": {
       "types": "./dist/node.d.ts",
+      "module": "./dist/esm/node.js",
       "import": "./dist/node.js",
       "require": "./dist/node.js",
       "default": "./dist/node.js"
     },
     "./schemas": {
       "types": "./dist/schemas/index.d.ts",
+      "module": "./dist/esm/schemas/index.js",
       "import": "./dist/schemas/index.js",
       "require": "./dist/schemas/index.js",
       "default": "./dist/schemas/index.js"
     },
     "./phrases": {
       "types": "./dist/phrases.d.ts",
+      "module": "./dist/esm/phrases.js",
       "import": "./dist/phrases.js",
       "require": "./dist/phrases.js",
       "default": "./dist/phrases.js"
     },
     "./modelContext": {
       "types": "./dist/modelContext.d.ts",
+      "module": "./dist/esm/modelContext.js",
       "import": "./dist/modelContext.js",
       "require": "./dist/modelContext.js",
       "default": "./dist/modelContext.js"
     },
     "./modelInfo": {
       "types": "./dist/modelInfo.d.ts",
+      "module": "./dist/esm/modelInfo.js",
       "import": "./dist/modelInfo.js",
       "require": "./dist/modelInfo.js",
       "default": "./dist/modelInfo.js"
     },
     "./formatting": {
       "types": "./dist/formatting.d.ts",
+      "module": "./dist/esm/formatting.js",
       "import": "./dist/formatting.js",
       "require": "./dist/formatting.js",
       "default": "./dist/formatting.js"
     },
     "./statusline": {
       "types": "./dist/statusline/index.d.ts",
+      "module": "./dist/esm/statusline/index.js",
       "import": "./dist/statusline/index.js",
       "require": "./dist/statusline/index.js",
       "default": "./dist/statusline/index.js"
     },
+    "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
@@ -133,7 +143,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json",
     "clean": "rm -rf dist",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",

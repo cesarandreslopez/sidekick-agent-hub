@@ -590,12 +590,69 @@ describe('packaging contract', { timeout: 30_000 }, () => {
   it('puts per-subpath types, import, and require conditions on every documented export', () => {
     const pkg = require(path.join(pkgRoot, 'package.json'));
     for (const [subpath, value] of Object.entries(pkg.exports)) {
-      if (subpath === './package.json' || typeof value === 'string') continue;
+      if (subpath === './package.json' || typeof value === 'string' || value === null) continue;
       const conditions = value as Record<string, string>;
       expect(Object.keys(conditions)[0], `${subpath} must resolve types first`).toBe('types');
       for (const condition of ['types', 'import', 'require', 'default']) {
         expect(conditions[condition], `${subpath} is missing ${condition}`).toBeTruthy();
       }
+      if (subpath.includes('*')) continue;
+      // Bundlers read `module` ahead of `import`/`require`; Node never does.
+      expect(Object.keys(conditions)[1], `${subpath} must offer bundlers ESM`).toBe('module');
+    }
+  });
+
+  it('ships an ESM build behind the bundler-only `module` condition', async () => {
+    const pkg = require(path.join(pkgRoot, 'package.json'));
+    for (const [subpath, value] of Object.entries(pkg.exports)) {
+      if (typeof value !== 'object' || value === null || subpath.includes('*')) continue;
+      const { module: esm, require: cjs } = value as Record<string, string>;
+      expect(esm, subpath).toBe(cjs.replace('./dist/', './dist/esm/'));
+      const code = await fs.readFile(path.join(pkgRoot, esm), 'utf8');
+      expect(code, `${esm} must be ESM`).toMatch(/^export /m);
+      expect(code, `${esm} must not be CommonJS`).not.toMatch(/\brequire\(|exports\./);
+    }
+    // The CJS deep-import wildcard must not hand out the ESM files.
+    expect(pkg.exports['./dist/esm/*']).toBeNull();
+    expect(() => pkgRequire.resolve('sidekick-shared/dist/esm/node')).toThrow();
+    // Node keeps resolving CommonJS for both require and import.
+    expect(pkgRequire.resolve('sidekick-shared/node')).toBe(nodeJs);
+  });
+
+  it('lets a bundler tree-shake a single /node import', async () => {
+    const { build } = await import('vite');
+    const { builtinModules } = await import('node:module');
+    let scratch: string | undefined;
+    try {
+      scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-shared-tree-shake-'));
+      const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
+      await fs.mkdir(path.dirname(packageLink), { recursive: true });
+      await fs.symlink(pkgRoot, packageLink, process.platform === 'win32' ? 'junction' : 'dir');
+      const entry = path.join(scratch, 'entry.js');
+      await fs.writeFile(entry, "export { listRecentSessions } from 'sidekick-shared/node';\n");
+      const result = await build({
+        configFile: false,
+        root: scratch,
+        logLevel: 'silent',
+        build: {
+          ssr: entry,
+          write: false,
+          minify: true,
+          rollupOptions: {
+            external: [...builtinModules, ...builtinModules.map((m) => `node:${m}`), /^zod/],
+          },
+        },
+      });
+      const code = (Array.isArray(result) ? result : [result])
+        .flatMap((bundle) => ('output' in bundle ? bundle.output : []))
+        .filter((chunk) => chunk.type === 'chunk')
+        .map((chunk) => chunk.code)
+        .join('\n');
+      expect(code).toContain('findAllSessions');
+      expect(code).not.toContain('EventAggregator');
+      expect(code.length).toBeLessThan(10_000);
+    } finally {
+      if (scratch) await fs.rm(scratch, { recursive: true, force: true });
     }
   });
 
