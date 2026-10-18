@@ -233,3 +233,102 @@ export type {
   ProviderServiceStatus,
   FetchProviderServiceStatusOptions,
 } from './providerServiceStatusTypes';
+
+// Session event and Codex rollout shapes (types only)
+export type {
+  SessionEvent,
+  ClaudeSessionEvent,
+  MessageUsage,
+  SessionMessage,
+  SessionEventBase,
+  MessageSessionEvent,
+  UserSessionEvent,
+  AssistantSessionEvent,
+  SummarySessionEvent,
+  SystemSessionEvent,
+  ToolUseSessionEvent,
+  ToolResultSessionEvent,
+  TokenUsage,
+  ToolCall,
+  ToolAnalytics,
+  TimelineEvent,
+  PendingToolCall,
+  TaskStatus as SessionTaskStatus,
+  TrackedTask,
+  TaskState,
+  SubagentStats,
+  PendingUserRequest,
+  ResponseLatency,
+  LatencyStats,
+  PlanStep,
+  PlanState,
+  SessionStats,
+  CompactionEvent,
+  TruncationEvent,
+  ContextAttribution,
+  TurnAttribution,
+  ContextSizePoint,
+  PermissionMode,
+  PermissionModeChange,
+} from './types/sessionEvent';
+export type {
+  CodexRolloutLine,
+  CodexSessionMeta,
+  CodexResponseItem,
+  CodexMessageItem,
+  CodexContentPart,
+  CodexReasoningItem,
+  CodexFunctionCallItem,
+  CodexFunctionCallOutputItem,
+  CodexLocalShellCallItem,
+  CodexWebSearchCallItem,
+  CodexCustomToolCallItem,
+  CodexCustomToolCallOutputItem,
+  CodexCompacted,
+  CodexTurnContext,
+  CodexEventMsg,
+  CodexEvent,
+  CodexTurnStartedEvent,
+  CodexTurnCompleteEvent,
+  CodexTaskStartedEvent,
+  CodexTaskCompleteEvent,
+  CodexTurnAbortedEvent,
+  CodexTokenCountEvent,
+  CodexTokenUsage,
+  CodexRateLimits,
+  CodexAgentMessageEvent,
+  CodexAgentReasoningEvent,
+  CodexUserMessageEvent,
+  CodexExecCommandBeginEvent,
+  CodexExecCommandEndEvent,
+  CodexMcpToolCallBeginEvent,
+  CodexMcpToolCallEndEvent,
+  CodexErrorEvent,
+  CodexContextCompactedEvent,
+  CodexPatchAppliedEvent,
+  CodexBackgroundEvent,
+  CodexGenericEvent,
+  CodexDbThread,
+  CodexReasoningSummary,
+} from './types/codex';
+export { isAggregateCodexLimit } from './types/codex';
+
+// Codex rollout parsing (pure: no filesystem access)
+export {
+  CodexRolloutParser,
+  extractPatchFilePaths,
+  normalizeCodexToolName,
+  normalizeCodexToolInput,
+  resolveCodexCallUsage,
+} from './parsers/codexParser';
+
+export {
+  HUMAN_CLAUDE_ENTRYPOINTS,
+  HUMAN_CODEX_SOURCES,
+  humanPromptText,
+  isHumanPrompt,
+} from './humanPrompt';
+export type { HumanPromptProvider } from './humanPrompt';
+
+export { renderHandoffUrlTemplate } from './handoffUrl';
+export type { HandoffUrlIdentifiers } from './handoffUrl';

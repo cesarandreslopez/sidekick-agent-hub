@@ -231,6 +231,20 @@ export type {
 } from './providers/factory';
 export { SYNTHETIC_MODEL } from './usage/claudeUsageDedupe';
 
+// Sidekick's config root
+export {
+  CONFIG_DIR_ENV_VAR,
+  getConfigDir,
+  getConfigDirOverride,
+  getDefaultConfigDir,
+} from './paths';
+
+// Claude Code session directories (Claude's own path encoding)
+export {
+  encodeWorkspacePath as encodeClaudeWorkspacePath,
+  getSessionDirectory as getClaudeSessionDirectory,
+} from './parsers/sessionPathResolver';
+
 // Provider homes the CLIs read for this process
 export {
   getLiveClaudeHome,

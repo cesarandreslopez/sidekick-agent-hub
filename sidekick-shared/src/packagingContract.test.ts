@@ -37,6 +37,20 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     for (const file of [rootDts, browserDts, nodeDts]) {
       expect(await fs.readFile(file, 'utf8')).toContain('ProviderServiceStatus');
     }
+    const browserDeclarations = await fs.readFile(browserDts, 'utf8');
+    for (const name of [
+      'CodexRolloutLine',
+      'CompactionEvent',
+      'ContextAttribution',
+      'HandoffUrlIdentifiers',
+    ]) {
+      expect(browserDeclarations).toContain(name);
+    }
+    expect(root.CodexRolloutParser).toBe(browser.CodexRolloutParser);
+    expect(root.isHumanPrompt).toBe(browser.isHumanPrompt);
+    expect(node.isHumanPrompt).toBe(browser.isHumanPrompt);
+    expect(root.getConfigDir).toBe(node.getConfigDir);
+    expect(root.encodeClaudeWorkspacePath).toBe(node.encodeClaudeWorkspacePath);
   });
 
   it('bundles the complete browser surface without filesystem or network fetcher modules', async () => {
@@ -73,6 +87,7 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       .map((entry) => entry.code)
       .join('\n');
     expect(code).toContain('diagnoseProviderFailure');
+    expect(code).toContain('CodexRolloutParser');
     expect(code).not.toMatch(/require\(["'](?:node:)?(?:fs|path|http|https)["']\)/);
   });
   it('dist/browser.js exposes the browser-safe surface', () => {
@@ -114,9 +129,16 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'extractTurnSubagents',
       'reasoningSummary',
       'segmentAssistantTurn',
+      'CodexRolloutParser',
+      'normalizeCodexToolName',
+      'isAggregateCodexLimit',
+      'isHumanPrompt',
+      'humanPromptText',
+      'renderHandoffUrlTemplate',
     ]) {
       expect(typeof m[k]).toBe('function');
     }
+    expect(Array.isArray(m.HUMAN_CLAUDE_ENTRYPOINTS)).toBe(true);
     expect(typeof m.DEFAULT_CONTEXT_WINDOW).toBe('number');
     expect(typeof m.RESOLVED_MODEL_CATALOG_SCHEMA_VERSION).toBe('number');
     for (const name of [
@@ -312,9 +334,15 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'getCodexMonitoringHomes',
       'resolveSidekickCodexHome',
       'getCodexExecutionEnv',
+      'getConfigDir',
+      'getConfigDirOverride',
+      'getDefaultConfigDir',
+      'encodeClaudeWorkspacePath',
+      'getClaudeSessionDirectory',
     ]) {
       expect(typeof m[name]).toBe('function');
     }
+    expect(m.CONFIG_DIR_ENV_VAR).toBe('SIDEKICK_CONFIG_DIR');
   });
 
   it('dist/index.js exposes the locked store writers', () => {
