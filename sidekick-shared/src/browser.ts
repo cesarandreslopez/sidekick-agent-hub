@@ -324,11 +324,13 @@ export { isAggregateCodexLimit } from './types/codex';
 // Codex rollout parsing (pure: no filesystem access)
 export {
   CodexRolloutParser,
+  DEFAULT_MAX_TRACKED_TOOL_CALLS,
   extractPatchFilePaths,
   normalizeCodexToolName,
   normalizeCodexToolInput,
   resolveCodexCallUsage,
 } from './parsers/codexParser';
+export type { CodexRolloutParserOptions } from './parsers/codexParser';
 
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CodexRolloutParser, resolveCodexCallUsage } from './codexParser';
+import {
+  CodexRolloutParser,
+  DEFAULT_MAX_TRACKED_TOOL_CALLS,
+  resolveCodexCallUsage,
+} from './codexParser';
 import { extractNormalizedUsage } from '../usageNormalization';
 import type { CodexRolloutLine } from '../types/codex';
 
@@ -357,5 +361,82 @@ describe('duplicate token_count events', () => {
     expect(totalTokens(parser, [event])).toBe(15);
     parser.reset();
     expect(totalTokens(parser, [event])).toBe(15);
+  });
+
+  describe('bounded correlation state', () => {
+    function toolUseCount(events: ReturnType<CodexRolloutParser['convertLine']>): number {
+      return events.filter(
+        (event) =>
+          event.type === 'assistant' &&
+          Array.isArray(event.message.content) &&
+          event.message.content.some((block) => (block as { type?: string }).type === 'tool_use'),
+      ).length;
+    }
+
+    function exec(parser: CodexRolloutParser, callId: string): number {
+      parser.convertLine(
+        line('event_msg', { type: 'exec_command_begin', call_id: callId, command: ['ls'] }),
+      );
+      return toolUseCount(
+        parser.convertLine(
+          line('event_msg', { type: 'exec_command_end', call_id: callId, exit_code: 0 }),
+        ),
+      );
+    }
+
+    function call(parser: CodexRolloutParser, callId: string): number {
+      return toolUseCount(
+        parser.convertLine(
+          line('response_item', {
+            type: 'function_call',
+            call_id: callId,
+            name: 'exec_command',
+            arguments: '{"cmd":"ls"}',
+          }),
+        ),
+      );
+    }
+
+    function tracked(parser: CodexRolloutParser): { emitted: number; pending: number } {
+      const state = parser as unknown as {
+        emittedToolUseIds: Set<string>;
+        pendingExecCommands: Map<string, unknown>;
+      };
+      return { emitted: state.emittedToolUseIds.size, pending: state.pendingExecCommands.size };
+    }
+
+    it('caps remembered call ids and still dedupes recent calls', () => {
+      const parser = new CodexRolloutParser({ maxTrackedToolCalls: 8 });
+      for (let i = 0; i < 100; i++) expect(call(parser, `call-${i}`)).toBe(1);
+      expect(tracked(parser).emitted).toBe(8);
+
+      // A recent function_call is not re-emitted from its exec end event.
+      expect(exec(parser, 'call-99')).toBe(0);
+      // One evicted long ago is treated as unseen.
+      expect(exec(parser, 'call-0')).toBe(1);
+      expect(tracked(parser).emitted).toBe(8);
+    });
+
+    it('caps exec begin events that never see an end', () => {
+      const parser = new CodexRolloutParser({ maxTrackedToolCalls: 4 });
+      for (let i = 0; i < 50; i++) {
+        parser.convertLine(
+          line('event_msg', {
+            type: 'exec_command_begin',
+            call_id: `open-${i}`,
+            command: ['sleep'],
+          }),
+        );
+      }
+      expect(tracked(parser).pending).toBe(4);
+    });
+
+    it('defaults to DEFAULT_MAX_TRACKED_TOOL_CALLS and ignores invalid caps', () => {
+      for (const options of [undefined, { maxTrackedToolCalls: 0 }, { maxTrackedToolCalls: NaN }]) {
+        const parser = new CodexRolloutParser(options);
+        for (let i = 0; i < DEFAULT_MAX_TRACKED_TOOL_CALLS + 10; i++) call(parser, `call-${i}`);
+        expect(tracked(parser).emitted).toBe(DEFAULT_MAX_TRACKED_TOOL_CALLS);
+      }
+    });
   });
 });

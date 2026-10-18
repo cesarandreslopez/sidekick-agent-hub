@@ -490,11 +490,13 @@ export {
 // Parsers — Codex
 export {
   CodexRolloutParser,
+  DEFAULT_MAX_TRACKED_TOOL_CALLS,
   extractPatchFilePaths,
   normalizeCodexToolName,
   normalizeCodexToolInput,
   resolveCodexCallUsage,
 } from './parsers/codexParser';
+export type { CodexRolloutParserOptions } from './parsers/codexParser';
 
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo, readAgentMeta } from './parsers/subagentScanner';

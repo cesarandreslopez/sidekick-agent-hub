@@ -242,6 +242,32 @@ export function extractPatchFilePaths(input: string): string[] {
   return paths;
 }
 
+/** Default cap on each piece of per-call correlation state the parser keeps. */
+export const DEFAULT_MAX_TRACKED_TOOL_CALLS = 4096;
+
+export interface CodexRolloutParserOptions {
+  /**
+   * How many call ids each correlation table (emitted tool uses, expanded
+   * patches, pending exec and MCP calls) remembers before forgetting the
+   * oldest. Bounds memory on long-running rollouts; default 4096.
+   */
+  maxTrackedToolCalls?: number;
+}
+
+/** Adds `key`, refreshing its position, and evicts the oldest past `max`. */
+function rememberBounded<K>(set: Set<K>, key: K, max: number): void {
+  set.delete(key);
+  set.add(key);
+  while (set.size > max) set.delete(set.values().next().value as K);
+}
+
+/** Sets `key`, refreshing its position, and evicts the oldest past `max`. */
+function setBounded<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > max) map.delete(map.keys().next().value as K);
+}
+
 /**
  * Stateful parser for Codex JSONL rollout lines.
  *
@@ -265,6 +291,13 @@ export class CodexRolloutParser {
   private inPlanMode = false;
   private emittedToolUseIds = new Set<string>();
   private patchExpandedToolUseIds = new Map<string, string[]>();
+  private readonly maxTrackedToolCalls: number;
+
+  constructor(options: CodexRolloutParserOptions = {}) {
+    const max = options.maxTrackedToolCalls;
+    this.maxTrackedToolCalls =
+      typeof max === 'number' && max >= 1 ? Math.floor(max) : DEFAULT_MAX_TRACKED_TOOL_CALLS;
+  }
 
   /** Get stored session metadata. */
   getSessionMeta(): CodexSessionMeta | null {
@@ -457,7 +490,7 @@ export class CodexRolloutParser {
 
     const canonicalName = normalizeCodexToolName(item.name);
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedArgs);
-    this.emittedToolUseIds.add(item.call_id);
+    rememberBounded(this.emittedToolUseIds, item.call_id, this.maxTrackedToolCalls);
 
     return [
       {
@@ -507,7 +540,7 @@ export class CodexRolloutParser {
 
   private handleLocalShellCall(timestamp: string, item: CodexLocalShellCallItem): SessionEvent[] {
     const command = item.action?.command?.join(' ') || '';
-    this.emittedToolUseIds.add(item.call_id);
+    rememberBounded(this.emittedToolUseIds, item.call_id, this.maxTrackedToolCalls);
     return [
       {
         type: 'assistant',
@@ -538,9 +571,9 @@ export class CodexRolloutParser {
       const filePaths = extractPatchFilePaths(item.input);
       if (filePaths.length === 0) return [];
       const toolUseIds = filePaths.map((fp) => `${item.call_id}-${fp}`);
-      this.patchExpandedToolUseIds.set(item.call_id, toolUseIds);
+      setBounded(this.patchExpandedToolUseIds, item.call_id, toolUseIds, this.maxTrackedToolCalls);
       for (const id of toolUseIds) {
-        this.emittedToolUseIds.add(id);
+        rememberBounded(this.emittedToolUseIds, id, this.maxTrackedToolCalls);
       }
       return filePaths.map((fp) => ({
         type: 'assistant' as const,
@@ -574,7 +607,7 @@ export class CodexRolloutParser {
 
     const canonicalName = normalizeCodexToolName(item.name);
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedInput);
-    this.emittedToolUseIds.add(item.call_id);
+    rememberBounded(this.emittedToolUseIds, item.call_id, this.maxTrackedToolCalls);
 
     return [
       {
@@ -692,12 +725,17 @@ export class CodexRolloutParser {
 
       case 'exec_command_begin': {
         const e = event as CodexExecCommandBeginEvent;
-        this.pendingExecCommands.set(e.call_id, {
-          call_id: e.call_id,
-          command: e.command,
-          workdir: e.workdir,
-          timestamp,
-        });
+        setBounded(
+          this.pendingExecCommands,
+          e.call_id,
+          {
+            call_id: e.call_id,
+            command: e.command,
+            workdir: e.workdir,
+            timestamp,
+          },
+          this.maxTrackedToolCalls,
+        );
         return [];
       }
 
@@ -709,7 +747,7 @@ export class CodexRolloutParser {
         const events: SessionEvent[] = [];
 
         if (!this.emittedToolUseIds.has(e.call_id)) {
-          this.emittedToolUseIds.add(e.call_id);
+          rememberBounded(this.emittedToolUseIds, e.call_id, this.maxTrackedToolCalls);
           events.push({
             type: 'assistant',
             message: {
@@ -757,13 +795,18 @@ export class CodexRolloutParser {
 
       case 'mcp_tool_call_begin': {
         const e = event as CodexMcpToolCallBeginEvent;
-        this.pendingMcpToolCalls.set(e.call_id, {
-          call_id: e.call_id,
-          server_name: e.server_name,
-          tool_name: e.tool_name,
-          arguments: e.arguments,
-          timestamp,
-        });
+        setBounded(
+          this.pendingMcpToolCalls,
+          e.call_id,
+          {
+            call_id: e.call_id,
+            server_name: e.server_name,
+            tool_name: e.tool_name,
+            arguments: e.arguments,
+            timestamp,
+          },
+          this.maxTrackedToolCalls,
+        );
         return [];
       }
 
@@ -775,7 +818,7 @@ export class CodexRolloutParser {
         const events: SessionEvent[] = [];
 
         if (!this.emittedToolUseIds.has(e.call_id)) {
-          this.emittedToolUseIds.add(e.call_id);
+          rememberBounded(this.emittedToolUseIds, e.call_id, this.maxTrackedToolCalls);
           events.push({
             type: 'assistant',
             message: {
