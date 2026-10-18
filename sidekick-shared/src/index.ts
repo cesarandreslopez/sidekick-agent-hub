@@ -31,7 +31,11 @@ export {
   TOKEN_TOTAL_LABEL,
 } from './tokenSummary';
 export type { TokenSummary, TokenTotalsLike } from './tokenSummary';
-export { estimateTextTokens, estimateSerializedTokens } from './tokenEstimation';
+export {
+  ASCII_CHARS_PER_TOKEN,
+  estimateTextTokens,
+  estimateSerializedTokens,
+} from './tokenEstimation';
 export type {
   ExactTokenCounterContext,
   ExactTokenCounter,

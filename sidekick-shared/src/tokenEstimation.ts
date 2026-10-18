@@ -21,6 +21,9 @@ export interface TokenEstimate {
   provenance: string;
 }
 
+/** Latin/source-code characters per token in the fallback estimate. */
+export const ASCII_CHARS_PER_TOKEN = 3.5;
+
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const EMOJI = /\p{Extended_Pictographic}/u;
 
@@ -54,15 +57,21 @@ export function estimateTextTokens(
     };
   }
 
-  let asciiChars = 0;
+  // ASCII is never CJK or pictographic, so the leading ASCII run is counted
+  // without the per-code-point regex tests; most source text is all ASCII.
+  let firstNonAscii = 0;
+  while (firstNonAscii < text.length && text.charCodeAt(firstNonAscii) <= 127) firstNonAscii++;
+  let asciiChars = firstNonAscii;
   let conservativeTokens = 0;
-  for (const codePoint of text) {
-    if (EMOJI.test(codePoint)) conservativeTokens += 2;
-    else if (CJK.test(codePoint)) conservativeTokens += 1;
-    else if ((codePoint.codePointAt(0) ?? 128) <= 127) asciiChars += codePoint.length;
-    else conservativeTokens += 1;
+  if (firstNonAscii < text.length) {
+    for (const codePoint of text.slice(firstNonAscii)) {
+      if (EMOJI.test(codePoint)) conservativeTokens += 2;
+      else if (CJK.test(codePoint)) conservativeTokens += 1;
+      else if ((codePoint.codePointAt(0) ?? 128) <= 127) asciiChars += codePoint.length;
+      else conservativeTokens += 1;
+    }
   }
-  const count = Math.ceil(asciiChars / 3.5) + conservativeTokens;
+  const count = Math.ceil(asciiChars / ASCII_CHARS_PER_TOKEN) + conservativeTokens;
   return {
     count: Number.isFinite(count) && count >= 0 ? count : 0,
     method: 'sidekick-fallback-v1',

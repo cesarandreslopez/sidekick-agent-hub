@@ -49,7 +49,11 @@ export {
 } from './tokenSummary';
 export type { TokenSummary, TokenTotalsLike } from './tokenSummary';
 export { ClaudeUsageDeduper, SYNTHETIC_MODEL } from './usage/claudeUsageDedupe';
-export { estimateTextTokens, estimateSerializedTokens } from './tokenEstimation';
+export {
+  ASCII_CHARS_PER_TOKEN,
+  estimateTextTokens,
+  estimateSerializedTokens,
+} from './tokenEstimation';
 export type {
   ExactTokenCounterContext,
   ExactTokenCounter,
