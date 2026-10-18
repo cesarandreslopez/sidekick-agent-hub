@@ -459,6 +459,34 @@ describe('findCodexRolloutFile', () => {
     expect(findCodexRolloutFile('   ')).toBeNull();
   });
 
+  it('finds an archived rollout and watches the archive directory', async () => {
+    const { findCodexRolloutFile, CodexProvider } = await import('./codex');
+    const home = path.join(tmpDir, '.codex');
+    fs.mkdirSync(path.join(home, 'sessions'), { recursive: true });
+    const archived = path.join(
+      home,
+      'archived_sessions',
+      `rollout-2026-08-18T13-31-03-${uuid}.jsonl`,
+    );
+    fs.mkdirSync(path.dirname(archived), { recursive: true });
+    fs.writeFileSync(archived, '{}\n');
+
+    expect(findCodexRolloutFile(uuid)).toBe(archived);
+    expect(findCodexRolloutFile(uuid, { codexHome: home })).toBe(archived);
+    const provider = new CodexProvider();
+    try {
+      expect(provider.getWatchRoots()).toEqual([
+        path.join(home, 'sessions'),
+        path.join(home, 'archived_sessions'),
+      ]);
+      expect(provider.getProjectsBaseDir()).toBe(path.join(home, 'sessions'));
+      const listed = await provider.listSessionFilesAsync();
+      expect(listed.map((file) => file.path)).toEqual([archived]);
+    } finally {
+      provider.dispose();
+    }
+  });
+
   it('returns null when the sessions tree does not exist', async () => {
     const { findCodexRolloutFile } = await import('./codex');
 

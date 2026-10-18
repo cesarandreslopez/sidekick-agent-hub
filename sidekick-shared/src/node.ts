@@ -257,7 +257,11 @@ export {
   getCodexMonitoringHomes,
   resolveSidekickCodexHome,
   getCodexExecutionEnv,
+  getCodexSessionsDirs,
+  CODEX_SESSIONS_SUBDIR,
+  CODEX_ARCHIVED_SESSIONS_SUBDIR,
 } from './codexPaths';
+export type { CodexSessionsDirsOptions } from './codexPaths';
 
 export type {
   ProviderServiceSeverity,

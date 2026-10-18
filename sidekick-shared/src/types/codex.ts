@@ -358,4 +358,8 @@ export interface CodexDbThread {
   source?: string;
   agent_nickname?: string | null;
   agent_role?: string | null;
+  /** 1 once the thread is archived; Codex then moves its rollout to `archived_sessions/`. */
+  archived?: number;
+  /** Unix seconds when the thread was archived. */
+  archived_at?: number | null;
 }

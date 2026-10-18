@@ -183,3 +183,30 @@ export function getCodexMonitoringHomes(): string[] {
 
   return dedupePaths(homes);
 }
+
+/** Where Codex writes live rollouts, below each home. */
+export const CODEX_SESSIONS_SUBDIR = 'sessions';
+/** Where Codex moves a rollout when its thread is archived, below each home. */
+export const CODEX_ARCHIVED_SESSIONS_SUBDIR = 'archived_sessions';
+
+export interface CodexSessionsDirsOptions {
+  /** Also list each home's `archived_sessions` directory when it exists (default true). */
+  includeArchived?: boolean;
+}
+
+/**
+ * Every directory that may hold Codex rollouts: each home's `sessions`, then
+ * each home's `archived_sessions` that exists. Live directories come first so
+ * callers that pick one directory pick a live one.
+ */
+export function getCodexSessionsDirs(
+  homes: string[] = getCodexMonitoringHomes(),
+  options: CodexSessionsDirsOptions = {},
+): string[] {
+  const live = homes.map((home) => path.join(home, CODEX_SESSIONS_SUBDIR));
+  if (options.includeArchived === false) return live;
+  const archived = homes
+    .map((home) => path.join(home, CODEX_ARCHIVED_SESSIONS_SUBDIR))
+    .filter((dir) => fs.existsSync(dir));
+  return [...live, ...archived];
+}

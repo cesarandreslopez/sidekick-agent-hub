@@ -28,6 +28,7 @@ import {
   walkRolloutFiles,
 } from './rolloutWalker';
 import type { RolloutFileInfo } from './rolloutWalker';
+import { getCodexSessionsDirs } from '../codexPaths';
 import {
   cwdMatches,
   getSessionsDirs,
@@ -99,7 +100,9 @@ export interface FindCodexRolloutFileOptions {
 
 /**
  * Locates the rollout file for a Codex session id by walking
- * `<home>/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl`.
+ * `<home>/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl`, then
+ * `<home>/archived_sessions/`, where Codex moves the rollouts of archived
+ * threads.
  *
  * Filename-only match, case-insensitive on the id — no file contents are read
  * and files are only stat'ed once their name matches, so the walk stays cheap
@@ -116,7 +119,7 @@ export function findCodexRolloutFile(
   if (!normalizedId) return null;
 
   const sessionsDirs = options.codexHome
-    ? [path.join(options.codexHome, 'sessions')]
+    ? getCodexSessionsDirs([options.codexHome])
     : getSessionsDirs();
 
   // Name-only filter, one walk across the homes, newest modification first.
@@ -125,7 +128,7 @@ export function findCodexRolloutFile(
 
 /** Pick the best sessions directory for UI/search entrypoints. */
 function getSessionsDir(): string {
-  const dirs = getSessionsDirs();
+  const dirs = getCodexSessionsDirs(undefined, { includeArchived: false });
   for (const dir of dirs) {
     if (hasRolloutFile(dir)) {
       return dir;

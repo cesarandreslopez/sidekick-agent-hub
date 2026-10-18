@@ -1398,3 +1398,11 @@ export type {
   CodexCredentialRepairResult,
 } from './codexCredentialDoctor';
 export { readStoredCodexAccount, syncCodexLiveStateAsync } from './codexProfiles';
+
+// Codex rollout directories (live and archived)
+export {
+  getCodexSessionsDirs,
+  CODEX_SESSIONS_SUBDIR,
+  CODEX_ARCHIVED_SESSIONS_SUBDIR,
+} from './codexPaths';
+export type { CodexSessionsDirsOptions } from './codexPaths';

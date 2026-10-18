@@ -7,15 +7,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCodexMonitoringHomes } from '../codexPaths';
+import { getCodexSessionsDirs } from '../codexPaths';
 import type { CodexRolloutLine, CodexSessionMeta } from '../types/codex';
 import { DirectoryListingCache } from './directoryListingCache';
 import { walkRolloutFilesAsync } from './rolloutWalker';
 import type { ListSessionFilesOptions, SessionFileInfo } from './types';
 
-/** Get every sessions base directory that may contain live Codex rollouts. */
+/** Every directory across the monitored homes that may hold rollouts, archived ones included. */
 export function getSessionsDirs(): string[] {
-  return getCodexMonitoringHomes().map((home) => path.join(home, 'sessions'));
+  return getCodexSessionsDirs();
 }
 
 /**

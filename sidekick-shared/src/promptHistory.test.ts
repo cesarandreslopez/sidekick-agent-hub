@@ -298,6 +298,43 @@ describe('collectPromptHistory — Codex', () => {
     expect(result.entries[1].usage).toBeUndefined();
   });
 
+  it('follows a rollout Codex moved to archived_sessions without re-reading it', async () => {
+    const file = codexFile();
+    writeJsonl(file, [
+      codexMeta(repo),
+      { timestamp: ts(1), type: 'turn_context', payload: { cwd: repo, model: 'm1' } },
+      codexUser(['first'], 2),
+      codexTokenCount(3),
+      codexUser(['second'], 4),
+      codexTokenCount(5),
+    ]);
+    const first = await collectPromptHistory({ workspacePaths: [repo], providers: ['codex'] });
+    expect(texts(first.entries)).toEqual(['first', 'second']);
+
+    const archived = path.join(tmpDir, '.codex', 'archived_sessions', path.basename(file));
+    fs.mkdirSync(path.dirname(archived), { recursive: true });
+    fs.renameSync(file, archived);
+    const moved = await collectPromptHistory({
+      workspacePaths: [repo],
+      providers: ['codex'],
+      cursor: first.cursor,
+    });
+    expect(moved.entries.some((entry) => entry.text === 'first')).toBe(false);
+    expect(Object.keys(moved.cursor.sessions)).toHaveLength(1);
+
+    appendJsonl(archived, [codexUser(['third'], 6), codexTokenCount(7)]);
+    const resumed = await collectPromptHistory({
+      workspacePaths: [repo],
+      providers: ['codex'],
+      cursor: moved.cursor,
+    });
+    expect(resumed.entries.map((entry) => [entry.text, entry.ordinal])).toContainEqual([
+      'third',
+      2,
+    ]);
+    expect(resumed.entries.some((entry) => entry.text === 'first')).toBe(false);
+  });
+
   it('skips subagent, forked, and out-of-scope sessions; includes exec sessions', async () => {
     writeJsonl(codexFile(), [
       codexMeta(repo, { subagent: { thread_spawn: { parent_thread_id: 'p' } } }),

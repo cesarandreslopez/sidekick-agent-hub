@@ -361,6 +361,7 @@ export async function collectPromptHistory(
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ALL_PROVIDERS;
   const candidates = rotate(await listCandidates(providers, listingRoots, sinceMs), previousNext);
+  const moved = movedSessionKeys(previous, candidates);
 
   const context: ScanContext = {
     roots,
@@ -401,7 +402,17 @@ export async function collectPromptHistory(
     } catch {
       continue;
     }
-    const prior = validSession(previous[candidate.key]);
+    let prior = validSession(previous[candidate.key]);
+    const movedFrom = prior ? undefined : moved.get(`${candidate.provider}:${candidate.sessionId}`);
+    if (movedFrom) {
+      // The same session under a new path (Codex archives a thread by moving its
+      // rollout): carry the entry over. scanFile re-verifies the head, so a
+      // different file under the same id still reads as a rewrite.
+      moved.delete(`${candidate.provider}:${candidate.sessionId}`);
+      prior = validSession(previous[movedFrom]);
+      delete cursor.sessions[movedFrom];
+      if (prior) cursor.sessions[candidate.key] = prior;
+    }
     if (prior && isSettled(prior) && prior.size === stat.size && prior.mtimeMs === stat.mtimeMs) {
       stats.sessionsSkippedUnchanged++;
       continue;
@@ -695,6 +706,29 @@ export async function listCandidates(
       compareStrings(left.sessionId, right.sessionId) ||
       compareStrings(left.key, right.key),
   );
+}
+
+/**
+ * Cursor entries whose file is no longer listed, by `provider:sessionId`, for
+ * sessions that are listed again under another path.
+ */
+function movedSessionKeys(
+  previous: Record<string, PromptHistoryCursorSession>,
+  candidates: Candidate[],
+): Map<string, string> {
+  const listedKeys = new Set(candidates.map((candidate) => candidate.key));
+  const listedIds = new Set(
+    candidates.map((candidate) => `${candidate.provider}:${candidate.sessionId}`),
+  );
+  const moved = new Map<string, string>();
+  for (const [key, value] of Object.entries(previous)) {
+    if (listedKeys.has(key)) continue;
+    const session = validSession(value);
+    if (!session) continue;
+    const id = `${session.provider}:${session.sessionId}`;
+    if (listedIds.has(id) && !moved.has(id)) moved.set(id, key);
+  }
+  return moved;
 }
 
 function hashPath(filePath: string): string {
