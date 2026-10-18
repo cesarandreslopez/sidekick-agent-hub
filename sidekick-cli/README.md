@@ -481,7 +481,7 @@ While mouse capture is on, the terminal's own click-drag text selection and copy
 
 Auto-detects the most recently active session provider:
 
-- **Claude Code** — `~/.claude/projects/`
+- **Claude Code** — `~/.claude/projects/` (`$CLAUDE_CONFIG_DIR/projects/` when `CLAUDE_CONFIG_DIR` is set)
 - **OpenCode** — OpenCode's data directory:
   Linux `~/.local/share/opencode/`, macOS `~/Library/Application Support/opencode/`, Windows `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
 - **Codex** — `~/.codex/`

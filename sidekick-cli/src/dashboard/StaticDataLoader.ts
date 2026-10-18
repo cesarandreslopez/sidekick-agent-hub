@@ -71,7 +71,7 @@ export async function loadStaticData(workspacePath?: string): Promise<StaticData
     if (plans.length > 0) break;
   }
 
-  // Supplement with raw plan files from ~/.claude/plans/ (always available,
+  // Supplement with raw plan files from the Claude home's plans/ (always available,
   // even before the persistence pipeline runs)
   if (plans.length === 0) {
     plans = await readClaudeCodePlanFiles(workspacePath).catch(() => []);

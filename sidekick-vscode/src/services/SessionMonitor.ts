@@ -67,8 +67,18 @@ import {
   calculateCodeImpact,
   scoreSessionQuality,
   summarizeTokens,
+  getLiveClaudeHome,
 } from 'sidekick-shared';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
+
+/**
+ * True for a plan file Claude Code writes: under the live Claude home's
+ * `plans/` (which follows `CLAUDE_CONFIG_DIR`), or any `.claude/plans/` path.
+ */
+export function isClaudePlanFile(filePath: string): boolean {
+  const plansDir = path.join(getLiveClaudeHome(), 'plans') + path.sep;
+  return filePath.includes('.claude/plans/') || path.resolve(filePath).startsWith(plansDir);
+}
 
 /**
  * Session monitoring service for Claude Code sessions.
@@ -470,7 +480,9 @@ export class SessionMonitor implements vscode.Disposable {
       log(`No active ${this.provider.displayName} session detected, entering discovery mode`);
       log(`Expected session directory: ${sessionDir}`);
       if (this.provider.id === 'claude-code') {
-        log('Tip: Check if ~/.claude/projects/ contains a directory matching your workspace path');
+        log(
+          `Tip: Check if ${this.provider.getProjectsBaseDir()} contains a directory matching your workspace path`,
+        );
       }
       this.isWaitingForSession = true;
       this._onDiscoveryModeChange.fire(true);
@@ -3155,13 +3167,13 @@ export class SessionMonitor implements vscode.Disposable {
     if (toolUse.name === 'Write' && this.planModeActive) {
       const filePath = toolUse.input?.file_path as string | undefined;
       const content = toolUse.input?.content as string | undefined;
-      if (filePath && content && filePath.includes('.claude/plans/')) {
+      if (filePath && content && isClaudePlanFile(filePath)) {
         this.planFileContent = content;
         this.planFilePath = filePath;
       }
     } else if (toolUse.name === 'Edit' && this.planModeActive) {
       const filePath = toolUse.input?.file_path as string | undefined;
-      if (filePath?.includes('.claude/plans/')) {
+      if (filePath && isClaudePlanFile(filePath)) {
         this.planFilePath = filePath;
       }
     } else if (toolUse.name === 'EnterPlanMode') {

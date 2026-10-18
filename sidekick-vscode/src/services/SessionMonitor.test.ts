@@ -48,7 +48,7 @@ vi.mock('sidekick-shared', async (importOriginal) => ({
   deleteSnapshot: vi.fn(),
 }));
 
-import { SessionMonitor } from './SessionMonitor';
+import { SessionMonitor, isClaudePlanFile } from './SessionMonitor';
 import { loadSnapshot, saveSnapshot } from 'sidekick-shared';
 
 afterEach(() => vi.useRealTimers());
@@ -402,4 +402,21 @@ it('does not restart discovery when stopped during an asynchronous start', async
   expect(monitor.isStopped()).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
   monitor.dispose();
+});
+
+describe('isClaudePlanFile', () => {
+  afterEach(() => {
+    delete process.env.CLAUDE_CONFIG_DIR;
+  });
+
+  it('recognizes plans under the default Claude home', () => {
+    expect(isClaudePlanFile('/home/user/.claude/plans/plan-a.md')).toBe(true);
+    expect(isClaudePlanFile('/home/user/project/plans/plan-a.md')).toBe(false);
+  });
+
+  it('recognizes plans under CLAUDE_CONFIG_DIR', () => {
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/custom-claude-home';
+    expect(isClaudePlanFile('/tmp/custom-claude-home/plans/plan-a.md')).toBe(true);
+    expect(isClaudePlanFile('/tmp/custom-claude-home/projects/x.jsonl')).toBe(false);
+  });
 });

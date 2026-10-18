@@ -459,7 +459,7 @@
             ],
             "enumDescriptions": [
               "Auto-detect based on installed CLI agents",
-              "Monitor Claude Code sessions (~/.claude/projects/)",
+              "Monitor Claude Code sessions (~/.claude/projects/, or $CLAUDE_CONFIG_DIR/projects/ when set)",
               "Monitor OpenCode sessions (~/.local/share/opencode/)",
               "Monitor Codex CLI sessions (~/.codex/sessions/)"
             ],
