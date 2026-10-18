@@ -25,8 +25,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { HUMAN_CODEX_SOURCES, humanPromptText, type HumanPromptProvider } from './humanPrompt';
 import { discoverWorktreeSiblings, resolveWorktreeMainRepo } from './parsers/sessionPathResolver';
-import { ClaudeCodeProvider } from './providers/claudeCode';
-import { CodexProvider } from './providers/codex';
+import { listClaudeSessionFilesAsync } from './providers/claudeListing';
+import { listCodexSessionFilesAsync } from './providers/codexRollouts';
+import { DirectoryListingCache } from './providers/directoryListingCache';
 import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
 
@@ -666,11 +667,13 @@ export async function listCandidates(
   for (const provider of [...new Set(providers)]) {
     if (!ALL_PROVIDERS.includes(provider)) continue;
     // Listings are only candidate supersets; scope is re-checked per prompt.
-    const source = provider === 'claude-code' ? new ClaudeCodeProvider() : new CodexProvider();
+    const list =
+      provider === 'claude-code' ? listClaudeSessionFilesAsync : listCodexSessionFilesAsync;
+    const cache = new DirectoryListingCache();
     for (const root of listingRoots) {
       let files: SessionFileInfo[];
       try {
-        files = (await source.listSessionFilesAsync?.(root, listOptions)) ?? [];
+        files = await list(root, listOptions, cache);
       } catch {
         files = [];
       }
@@ -685,7 +688,6 @@ export async function listCandidates(
         });
       }
     }
-    source.dispose();
   }
   return [...byPath.values()].sort(
     (left, right) =>
