@@ -349,11 +349,13 @@ const result = await collectPromptHistory({
 });
 
 for (const entry of result.entries) {
-  // { provider, sessionId, ordinal, timestamp, text, cwd, gitBranch?, model?, usage?, metadataStatus }
+  // { provider, sessionId, ordinal, timestamp, text, cwd, gitBranch?, model?, usage?, metadataStatus, sessionKey }
   // Upsert by (provider, sessionId, ordinal): a prompt comes back when its answer metadata changes.
 }
 saveCursor(result.cursor); // sensitive local state; fully read unchanged files are skipped next time
 if (result.hasMore) scheduleAnotherCall(); // a bound stopped the pass; the cursor resumes it
+// result.changed: sessions whose cursor entry moved this call; result.progressed: anything new was read;
+// result.roots: the realpaths scanned after worktree expansion
 for (const exclusion of result.exclusions) console.warn('record left out', exclusion); // permanent
 ```
 
@@ -364,6 +366,8 @@ for (const exclusion of result.exclusions) console.warn('record left out', exclu
 - **Late answers enrich the same prompt.** A prompt can be collected before its answer is written. `metadataStatus` is `pending` (no answering call yet), `provisional` (Claude call still being written, `stop_reason: null`), or `final`. While a file's last prompt is not final, the cursor keeps the byte offset and length of its line, its timestamp, and its answer state so far (first-answer message id, model, and usage, never prompt or answer text). The next call continues from where the file stopped, however far the answer is, and returns the prompt again with the same provider, sessionId, ordinal, timestamp, and text only when its model, usage, or status changed; the text comes from re-reading that one line. A prompt closed by the next prompt without an answer comes back once as `final` with no usage. Consumers should upsert by identity.
 - **Large files are streamed and resumable.** Files are read in 1 MiB chunks and every pass stops after a complete line, so memory stays near one chunk plus one record whatever the file size. `maxFileBytes` is the most one file may read in one call: a file with more left keeps what it returned, records `backlog` in its cursor, is counted in `stats.filesOverSizeLimit`, and continues on the next call even if its size and mtime have not changed. `maxSessions`, `maxTotalBytes`, `maxEntries`, the deadline, and an abort stop the whole call the same way, and `cursor.next` makes the next call start with the file that was stopped, so a large or busy session cannot starve the others. The first file of a call always finishes its first record, so a record larger than the budget still moves forward. Bytes appended during a call and a half-written final line wait for the next call. `boundsHit` lists these resumable stops and `hasMore` says whether calling again would read more. No bound throws.
 - **Permanent exclusions are reported.** A record over `maxRecordBytes` is skipped as it streams past without being buffered, even when it is still being written, and a complete line that is not JSON is skipped. Each is counted (`stats.recordsOverSizeLimit`, `stats.recordsMalformed`) and listed in `exclusions` with its byte offset. A prompt inside such a record is lost and does not consume an ordinal. A file that shrank or whose first 4 KiB changed is treated as rewritten: it is read again from the start with fresh ordinals and counted in `stats.sessionsRewritten`.
+- **Change reporting.** `changed` lists the sessions (provider, sessionId, `sessionKey`) whose cursor entry this call added, advanced, moved, or dropped after a rewrite, so a consumer never has to diff cursor internals. `progressed` is false when nothing new was read, which tells a stalled `hasMore` loop apart from one that is moving. `sessionKey` is opaque and equal to the cursor key; it tells apart two files that carry the same session id. `isPromptHistorySessionSettled(cursor.sessions[key])` says whether a cursor entry is fully read with no prompt waiting for its answer, and `parsePromptHistoryCursor(stored)` validates a stored cursor (versions 1 to 3) and returns it as `version: 3` with malformed entries dropped, or `undefined`.
+- **Moved files.** A session whose file is listed again under another path (Codex moves an archived thread's rollout to `archived_sessions/`) keeps its cursor entry and ordinals instead of being read again as a new session.
 - **Cursor versions.** Output is `version: 3`. Cursors from 0.27.0 (`version: 1`) and 0.27.1 (`version: 2`) are accepted: each file is re-verified once, and a 0.27.1 pending prompt is replayed from its line in resumable passes, so it now settles even when its answer is far away. Files 0.27.1 skipped for size were never in its cursor and are read in full on the first call. Metadata that 0.27.1 already gave up on (a pending replay that exceeded `maxFileBytes`) was not saved and cannot be recovered, and a 0.27.0 cursor still cannot recover prompts it returned without metadata.
 
 ### Collect whole sessions of prompts
@@ -377,7 +381,8 @@ const result = await collectSessionPromptHistory({
   workspacePaths: ['/Users/me/code/app'], // plus git worktree siblings
   providers: ['claude-code', 'codex'], // default: both
   since: new Date('2026-09-01'), // sessions whose file changed since then, returned whole
-  // sessionIds: ['…'],             // or exact session ids
+  // sessionIds: ['…'],             // or exact session ids (any provider)
+  // sessionRefs: result.changed,   // or (provider, sessionId), pinned to one file by sessionKey
   // limit: 20,                     // most recent sessions with prompts
   include: { signals: true, replies: true }, // default: prompts only
   bounds: {
@@ -389,18 +394,18 @@ const result = await collectSessionPromptHistory({
 });
 
 for (const session of result.sessions) {
-  // { provider, sessionId, startedAt, lastActivityAt, cwds, gitBranches, models,
+  // { provider, sessionId, sessionKey, startedAt, lastActivityAt, cwds, gitBranches, models,
   //   prompts: [{ ordinal, timestamp, text, cwd, gitBranch?, model?, usage?, metadataStatus, reply? }],
   //   signals?: [{ kind, timestamp, afterOrdinal, tool?, text?, textTruncated? }],
   //   complete, truncated, droppedPrompts, excludedRecords }
 }
 if (result.unread.length > 0) {
   // A bound stopped the call, or a session changed while it was read:
-  // pass these back as `sessionIds` to continue.
+  // pass these back as `sessionRefs` to continue.
 }
 ```
 
-- **Whole sessions, no cursor.** Every call reads each session from its first line and never resumes one mid-file. `since` selects files by modification time and never drops older prompts from a returned session. A long-lived consumer can use the `collectPromptHistory()` cursor to learn which sessions changed, then fetch those sessions whole by `sessionIds`.
+- **Whole sessions, no cursor.** Every call reads each session from its first line and never resumes one mid-file. `since` selects files by modification time and never drops older prompts from a returned session. A long-lived consumer can keep a `collectPromptHistory()` cursor, then fetch the sessions in its result's `changed` whole with `sessionRefs: result.changed`. `sessionRefs` match on provider and id, or on one file when `sessionKey` is set; `sessionIds` match on id alone across providers.
 - **Bounds.** `maxSessions`, `maxTotalBytes`, the deadline, and an abort stop the call. Any session they interrupt is listed in `unread` rather than returned partially, and `boundsHit` names the bound. A session that changed while it was being read is also listed in `unread`, with no `boundsHit` entry. A session longer than `maxSessionBytes` is returned with `truncated: true`, and `boundsHit` includes `maxSessionBytes`; keep `maxSessionBytes` at or below `maxTotalBytes`, or a session larger than `maxTotalBytes` is never read. A record over `maxRecordBytes` (default 16 MiB) is skipped and counted in `excludedRecords`.
 - **Completeness.** `complete` is false when the session was truncated, when `droppedPrompts` > 0 (prompts out of scope or without a timestamp, visible as gaps in `ordinal`), or when `excludedRecords` > 0 (oversized or malformed records).
 - **Replies** (`include.replies`): the agent's last text for the prompt's turn. For Claude Code this is the last assistant message with text before the next prompt, with split records joined. For Codex it is `task_complete.last_agent_message`, falling back to the last agent message.

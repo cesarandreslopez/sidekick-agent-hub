@@ -24,7 +24,11 @@ export type {
   ObservedContextWindowStore,
 } from './observedContextWindows';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
-export { collectPromptHistory } from './promptHistory';
+export {
+  collectPromptHistory,
+  isPromptHistorySessionSettled,
+  parsePromptHistoryCursor,
+} from './promptHistory';
 export type {
   CollectPromptHistoryOptions,
   PromptHistoryAnswerState,

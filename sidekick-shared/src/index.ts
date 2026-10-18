@@ -56,7 +56,11 @@ export type {
   ProjectSessionTranscriptOptions,
 } from './transcript';
 export { listRecentSessions, readSessionTranscript } from './sessionTranscripts';
-export { collectPromptHistory } from './promptHistory';
+export {
+  collectPromptHistory,
+  isPromptHistorySessionSettled,
+  parsePromptHistoryCursor,
+} from './promptHistory';
 export type {
   CollectPromptHistoryOptions,
   PromptHistoryAnswerState,

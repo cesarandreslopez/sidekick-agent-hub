@@ -177,6 +177,19 @@ export interface PromptHistoryEntry {
    * and text, by a later call once its metadata or status changes.
    */
   metadataStatus: PromptHistoryMetadataStatus;
+  /**
+   * Opaque key of the session file this entry came from, the same as its
+   * cursor key. It tells apart two files that carry the same session id.
+   */
+  sessionKey?: string;
+}
+
+/** A session by provider and id, optionally pinned to one file by `sessionKey`. */
+export interface PromptHistorySessionRef {
+  provider: PromptHistoryProvider;
+  sessionId: string;
+  /** Opaque key of one session file; see `PromptHistoryEntry.sessionKey`. */
+  sessionKey?: string;
 }
 
 /**
@@ -240,6 +253,15 @@ export interface PromptHistoryResult {
   exclusions: PromptHistoryExclusion[];
   /** A bound left bytes or files unread; call again with the cursor to continue. */
   hasMore: boolean;
+  /**
+   * Sessions whose cursor entry this call added, advanced, moved, or dropped
+   * after a rewrite. Fetch them whole with `collectSessionPromptHistory({ sessionRefs })`.
+   */
+  changed?: PromptHistorySessionRef[];
+  /** Whether this call read past where the cursor stood for any session. */
+  progressed?: boolean;
+  /** Realpaths of the roots scanned, after worktree expansion. */
+  roots?: string[];
 }
 
 /** @internal */
@@ -334,7 +356,17 @@ export async function collectPromptHistory(
   const cursor: PromptHistoryCursor = { version: 3, sessions: { ...previous } };
   const entries: PromptHistoryEntry[] = [];
   const exclusions: PromptHistoryExclusion[] = [];
+  const changed = new Map<string, PromptHistorySessionRef>();
   let hasMore = false;
+  let progressed = false;
+  let scannedRoots: string[] = [];
+  const markChanged = (candidate: Candidate): void => {
+    changed.set(candidate.key, {
+      provider: candidate.provider,
+      sessionId: candidate.sessionId,
+      sessionKey: candidate.key,
+    });
+  };
 
   const shouldStop = (): PromptHistoryBound | null => {
     if (options.signal?.aborted) return 'aborted';
@@ -348,6 +380,9 @@ export async function collectPromptHistory(
     boundsHit: [...boundsHit],
     exclusions,
     hasMore,
+    changed: [...changed.values()],
+    progressed,
+    roots: scannedRoots,
   });
 
   const realpaths = new Map<string, string | null>();
@@ -356,6 +391,7 @@ export async function collectPromptHistory(
     options.includeWorktrees !== false,
     realpaths,
   );
+  scannedRoots = roots;
   if (roots.length === 0) return finish();
 
   const sinceMs = options.since ? options.since.getTime() : null;
@@ -412,6 +448,7 @@ export async function collectPromptHistory(
       prior = validSession(previous[movedFrom]);
       delete cursor.sessions[movedFrom];
       if (prior) cursor.sessions[candidate.key] = prior;
+      markChanged(candidate);
     }
     if (prior && isSettled(prior) && prior.size === stat.size && prior.mtimeMs === stat.mtimeMs) {
       stats.sessionsSkippedUnchanged++;
@@ -444,7 +481,15 @@ export async function collectPromptHistory(
       continue;
     }
     totalBytes += outcome.bytesRead;
+    for (const entry of outcome.entries) entry.sessionKey = candidate.key;
     entries.push(...outcome.entries);
+    if (outcome.progressed) progressed = true;
+    if (
+      !outcome.session ||
+      JSON.stringify(outcome.session) !== JSON.stringify(previous[candidate.key])
+    ) {
+      markChanged(candidate);
+    }
     if (outcome.notInteractive) stats.sessionsNotInteractive++;
     else if (outcome.inScope === 0 && outcome.outOfScope > 0) stats.sessionsOutOfScope++;
 
@@ -532,6 +577,33 @@ function validSession(
     typeof session.size === 'number' &&
     typeof session.mtimeMs === 'number';
   return valid ? session : undefined;
+}
+
+/**
+ * True when a cursor entry's last pass reached the end of its file with no
+ * prompt still waiting for its answer: an unchanged file needs no read.
+ */
+export function isPromptHistorySessionSettled(session: PromptHistoryCursorSession): boolean {
+  return validSession(session) !== undefined && isSettled(session);
+}
+
+/**
+ * Validates a stored cursor (versions 1 to 3). Returns it as a version-3
+ * cursor with malformed session entries dropped, or undefined when it is
+ * not a cursor at all.
+ */
+export function parsePromptHistoryCursor(value: unknown): PromptHistoryCursor | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as { version?: unknown };
+  if (typeof candidate.version !== 'number' || ![1, 2, 3].includes(candidate.version)) {
+    return undefined;
+  }
+  const { sessions, next } = acceptedCursor(value as PromptHistoryCursor);
+  const valid: Record<string, PromptHistoryCursorSession> = {};
+  for (const [key, session] of Object.entries(sessions)) {
+    if (validSession(session)) valid[key] = session;
+  }
+  return { version: 3, sessions: valid, ...(next !== undefined ? { next } : {}) };
 }
 
 /** A session whose last pass reached the end and needs no migration. */

@@ -121,7 +121,9 @@ describe('collectSessionPromptHistory — prompts', () => {
         .filter(
           (entry) => entry.provider === grouped.provider && entry.sessionId === grouped.sessionId,
         )
-        .map(({ provider: _provider, sessionId: _sessionId, ...prompt }) => prompt);
+        .map(
+          ({ provider: _provider, sessionId: _sessionId, sessionKey: _key, ...prompt }) => prompt,
+        );
       expect(grouped.prompts).toEqual(expected);
       expect(grouped).not.toHaveProperty('signals');
       expect(grouped.prompts.every((prompt) => !('reply' in prompt))).toBe(true);
@@ -191,6 +193,35 @@ describe('collectSessionPromptHistory — prompts', () => {
     });
     expect(picked.sessions.map((candidate) => candidate.sessionId)).toEqual(['s1']);
     expect(picked.stats.sessionsMatched).toBe(1);
+  });
+
+  it('tells apart two files with one session id and selects either by sessionRefs', async () => {
+    const top = claudeFile(repo, 'dup');
+    writeJsonl(top, [claudeUser('from the root', 1)]);
+    const nested = claudeFile(path.join(repo, 'pkg'), 'dup');
+    writeJsonl(nested, [claudeUser('from pkg', 2)]);
+
+    const both = await collectSessionPromptHistory({ workspacePaths: [repo], sessionIds: ['dup'] });
+    expect(both.sessions).toHaveLength(2);
+    const keys = both.sessions.map((session) => session.sessionKey);
+    expect(new Set(keys).size).toBe(2);
+
+    const byRef = await collectSessionPromptHistory({
+      workspacePaths: [repo],
+      sessionRefs: [{ provider: 'claude-code', sessionId: 'dup' }],
+    });
+    expect(byRef.sessions).toHaveLength(2);
+    const pinned = both.sessions.find((session) => session.prompts[0].text === 'from pkg')!;
+    const one = await collectSessionPromptHistory({
+      workspacePaths: [repo],
+      sessionRefs: [{ provider: 'claude-code', sessionId: 'dup', sessionKey: pinned.sessionKey }],
+    });
+    expect(one.sessions.map((session) => session.prompts[0].text)).toEqual(['from pkg']);
+    const wrongProvider = await collectSessionPromptHistory({
+      workspacePaths: [repo],
+      sessionRefs: [{ provider: 'codex', sessionId: 'dup' }],
+    });
+    expect(wrongProvider.sessions).toEqual([]);
   });
 
   it('skips non-interactive Codex sessions', async () => {
@@ -451,13 +482,13 @@ describe('collectSessionPromptHistory — bounds', () => {
     expect(first.sessions.map((candidate) => candidate.sessionId)).toEqual(['c']);
     expect(first.boundsHit).toEqual(['maxSessions']);
     expect(first.unread).toEqual([
-      { provider: 'claude-code', sessionId: 'b' },
-      { provider: 'claude-code', sessionId: 'a' },
+      { provider: 'claude-code', sessionId: 'b', sessionKey: expect.any(String) },
+      { provider: 'claude-code', sessionId: 'a', sessionKey: expect.any(String) },
     ]);
 
     const rest = await collectSessionPromptHistory({
       workspacePaths: [repo],
-      sessionIds: first.unread.map((ref) => ref.sessionId),
+      sessionRefs: first.unread,
     });
     expect(rest.sessions.map((candidate) => candidate.sessionId)).toEqual(['b', 'a']);
     expect(rest.unread).toEqual([]);
@@ -498,7 +529,9 @@ describe('collectSessionPromptHistory — bounds', () => {
     });
 
     expect(result.sessions.map((candidate) => candidate.sessionId)).toEqual(['small']);
-    expect(result.unread).toEqual([{ provider: 'claude-code', sessionId: 'large' }]);
+    expect(result.unread).toEqual([
+      { provider: 'claude-code', sessionId: 'large', sessionKey: expect.any(String) },
+    ]);
     expect(result.boundsHit).toEqual(['maxTotalBytes']);
     expect(result.stats.sessionsTruncated).toBe(0);
   });

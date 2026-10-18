@@ -27,6 +27,7 @@ import {
   type PromptHistoryEntry,
   type PromptHistoryExclusion,
   type PromptHistoryProvider,
+  type PromptHistorySessionRef,
   type ScanContext,
 } from './promptHistory';
 import {
@@ -63,8 +64,14 @@ export interface CollectSessionPromptHistoryOptions {
   includeWorktrees?: boolean;
   /** Default both. */
   providers?: PromptHistoryProvider[];
-  /** Only these sessions (exact ids). */
+  /** Only these sessions (exact ids, any provider). */
   sessionIds?: string[];
+  /**
+   * Only these sessions, matched on provider and id, or on the exact file
+   * when `sessionKey` is given. Combined with `sessionIds`, a session that
+   * matches either is read.
+   */
+  sessionRefs?: PromptHistorySessionRef[];
   /** Only sessions whose file changed at or after this. Each comes back whole. */
   since?: Date;
   /** Return at most this many sessions, most recently modified first. */
@@ -77,7 +84,7 @@ export interface CollectSessionPromptHistoryOptions {
 
 export interface PromptHistorySessionPrompt extends Omit<
   PromptHistoryEntry,
-  'provider' | 'sessionId'
+  'provider' | 'sessionId' | 'sessionKey'
 > {
   /** With `include.replies`: the agent's last text for this prompt's turn. */
   reply?: PromptHistoryReply;
@@ -108,12 +115,11 @@ export interface PromptHistorySession {
   droppedPrompts: number;
   /** Records left out as oversized or malformed (see `exclusions`). */
   excludedRecords: number;
+  /** Opaque key of the session file; tells apart two files with one session id. */
+  sessionKey?: string;
 }
 
-export interface PromptHistorySessionRef {
-  provider: PromptHistoryProvider;
-  sessionId: string;
-}
+export type { PromptHistorySessionRef };
 
 export type SessionPromptHistoryBound =
   | 'maxSessions'
@@ -233,6 +239,7 @@ export async function collectSessionPromptHistory(
   const refOf = ({ candidate }: StatedCandidate): PromptHistorySessionRef => ({
     provider: candidate.provider,
     sessionId: candidate.sessionId,
+    sessionKey: candidate.key,
   });
   let totalBytes = 0;
 
@@ -361,9 +368,20 @@ async function selectCandidates(
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ['claude-code', 'codex'];
   let candidates = await listCandidates(providers, listingRoots, sinceMs);
-  if (options.sessionIds) {
-    const wanted = new Set(options.sessionIds);
-    candidates = candidates.filter((candidate) => wanted.has(candidate.sessionId));
+  if (options.sessionIds || options.sessionRefs) {
+    const ids = new Set(options.sessionIds ?? []);
+    const keys = new Set<string>();
+    const refs = new Set<string>();
+    for (const ref of options.sessionRefs ?? []) {
+      if (ref.sessionKey) keys.add(ref.sessionKey);
+      else refs.add(`${ref.provider}:${ref.sessionId}`);
+    }
+    candidates = candidates.filter(
+      (candidate) =>
+        ids.has(candidate.sessionId) ||
+        keys.has(candidate.key) ||
+        refs.has(`${candidate.provider}:${candidate.sessionId}`),
+    );
   }
   const selected: StatedCandidate[] = [];
   for (const candidate of candidates) {
@@ -398,6 +416,7 @@ function buildSession(
   const session: PromptHistorySession = {
     provider: candidate.provider,
     sessionId: candidate.sessionId,
+    sessionKey: candidate.key,
     startedAt: extraction.firstTimestamp ?? ordered[0].timestamp,
     lastActivityAt: extraction.lastTimestamp ?? ordered[ordered.length - 1].timestamp,
     cwds: distinct(ordered.map((entry) => entry.cwd)),

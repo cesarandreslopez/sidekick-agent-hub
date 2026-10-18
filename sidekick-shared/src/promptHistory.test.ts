@@ -30,6 +30,8 @@ vi.mock('./providers/codexDatabase', () => ({
 import {
   __promptHistoryTesting,
   collectPromptHistory,
+  isPromptHistorySessionSettled,
+  parsePromptHistoryCursor,
   type PromptHistoryCursor,
   type PromptHistoryEntry,
 } from './promptHistory';
@@ -552,6 +554,55 @@ describe('collectPromptHistory — bounds, cursor, and filters', () => {
       ['done', 0, 'final'],
       ['half', 1, 'pending'],
     ]);
+  });
+
+  it('reports changed sessions, progress, roots, and settled cursor entries', async () => {
+    const stable = claudeFile(repo, 'stable');
+    const growing = claudeFile(repo, 'growing');
+    writeJsonl(stable, [claudeUser('s0', 1), claudeAssistant('msg_s', 2)]);
+    writeJsonl(growing, [claudeUser('g0', 1), claudeAssistant('msg_g', 2)]);
+
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(first.progressed).toBe(true);
+    expect(first.roots).toEqual([repo]);
+    expect(first.changed?.map((ref) => ref.sessionId).sort()).toEqual(['growing', 'stable']);
+    expect(first.entries.every((entry) => typeof entry.sessionKey === 'string')).toBe(true);
+    for (const session of Object.values(first.cursor.sessions)) {
+      expect(isPromptHistorySessionSettled(session)).toBe(true);
+    }
+
+    const idle = await collectPromptHistory({ workspacePaths: [repo], cursor: first.cursor });
+    expect(idle.progressed).toBe(false);
+    expect(idle.changed).toEqual([]);
+
+    appendJsonl(growing, [claudeUser('g1', 3), claudeAssistant('msg_g2', 4)]);
+    const next = await collectPromptHistory({ workspacePaths: [repo], cursor: idle.cursor });
+    expect(next.progressed).toBe(true);
+    expect(next.changed).toEqual([
+      {
+        provider: 'claude-code',
+        sessionId: 'growing',
+        sessionKey: next.entries.find((entry) => entry.text === 'g1')!.sessionKey,
+      },
+    ]);
+  });
+
+  it('parses stored cursors and rejects anything else', async () => {
+    writeJsonl(claudeFile(repo, 'one'), [claudeUser('p0', 1), claudeAssistant('msg_1', 2)]);
+    const { cursor } = await collectPromptHistory({ workspacePaths: [repo] });
+    const stored = JSON.parse(JSON.stringify(cursor));
+    expect(parsePromptHistoryCursor(stored)).toEqual(cursor);
+    const withJunk = { ...stored, sessions: { ...stored.sessions, junk: { offset: -1 } } };
+    expect(Object.keys(parsePromptHistoryCursor(withJunk)!.sessions)).toEqual(
+      Object.keys(cursor.sessions),
+    );
+    expect(parsePromptHistoryCursor({ version: 2, sessions: {} })).toEqual({
+      version: 3,
+      sessions: {},
+    });
+    for (const bad of [null, undefined, 'x', 3, {}, { version: 9, sessions: {} }]) {
+      expect(parsePromptHistoryCursor(bad)).toBeUndefined();
+    }
   });
 
   it('applies the since filter without shifting ordinals', async () => {
