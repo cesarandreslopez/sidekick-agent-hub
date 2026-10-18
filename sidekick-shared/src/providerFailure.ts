@@ -1,11 +1,23 @@
 import type { AccountProviderId } from './providerIds';
 
-export type ProviderCredentialKind = 'oauth' | 'api-key' | 'unknown';
+export const PROVIDER_CREDENTIAL_KINDS = ['oauth', 'api-key', 'unknown'] as const;
+export type ProviderCredentialKind = (typeof PROVIDER_CREDENTIAL_KINDS)[number];
+
+export const PROVIDER_AUTHENTICATION_STATES = [
+  'authenticated',
+  'missing',
+  'signed-out',
+  'expired',
+  'rejected',
+  'unknown',
+] as const;
+export const PROVIDER_AUTHENTICATION_SOURCES = ['local-check', 'provider-response'] as const;
+
 export interface ProviderAuthenticationEvidence {
   credentialKind: ProviderCredentialKind;
-  state: 'authenticated' | 'missing' | 'signed-out' | 'expired' | 'rejected' | 'unknown';
+  state: (typeof PROVIDER_AUTHENTICATION_STATES)[number];
   checkedAt: string;
-  source: 'local-check' | 'provider-response';
+  source: (typeof PROVIDER_AUTHENTICATION_SOURCES)[number];
 }
 
 export interface ProviderFailureInput {
@@ -17,38 +29,49 @@ export interface ProviderFailureInput {
   authentication?: ProviderAuthenticationEvidence;
 }
 
-export type ProviderFailureCode =
-  | 'missing_credentials'
-  | 'oauth_reauthentication_required'
-  | 'api_credentials_rejected'
-  | 'authentication_rejected'
-  | 'invalid_provider_session'
-  | 'service_unavailable'
-  | 'connection_failed'
-  | 'timeout'
-  | 'rate_limited'
-  | 'overloaded'
-  | 'execution_policy_denied'
-  | 'runtime_unavailable'
-  | 'context_overflow'
-  | 'unknown';
+export const PROVIDER_FAILURE_CODES = [
+  'missing_credentials',
+  'oauth_reauthentication_required',
+  'api_credentials_rejected',
+  'authentication_rejected',
+  'invalid_provider_session',
+  'service_unavailable',
+  'connection_failed',
+  'timeout',
+  'rate_limited',
+  'overloaded',
+  'execution_policy_denied',
+  'runtime_unavailable',
+  'context_overflow',
+  'unknown',
+] as const;
+export type ProviderFailureCode = (typeof PROVIDER_FAILURE_CODES)[number];
 
-export type ProviderRecoveryAction =
-  | 'sign_in'
-  | 'update_credentials'
-  | 'check_authentication'
-  | 'start_new_session'
-  | 'retry_later'
-  | 'check_connection'
-  | 'review_execution_policy'
-  | 'repair_runtime'
-  | 'reduce_context'
-  | 'inspect_error';
+export const PROVIDER_RECOVERY_ACTIONS = [
+  'sign_in',
+  'update_credentials',
+  'check_authentication',
+  'start_new_session',
+  'retry_later',
+  'check_connection',
+  'review_execution_policy',
+  'repair_runtime',
+  'reduce_context',
+  'inspect_error',
+] as const;
+export type ProviderRecoveryAction = (typeof PROVIDER_RECOVERY_ACTIONS)[number];
 
 export type ProviderRetryAfter = { kind: 'delay'; delayMs: number } | { kind: 'date'; at: string };
 
+export const PROVIDER_FAILURE_EVIDENCE_SOURCES = [
+  'structured-error',
+  'http-status',
+  'message',
+  'authentication-check',
+] as const;
+
 export interface ProviderFailureEvidence {
-  source: 'structured-error' | 'http-status' | 'message' | 'authentication-check';
+  source: (typeof PROVIDER_FAILURE_EVIDENCE_SOURCES)[number];
   rule: ProviderFailureCode;
   checkedAt?: string;
 }

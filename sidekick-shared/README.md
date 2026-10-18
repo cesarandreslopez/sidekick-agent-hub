@@ -593,6 +593,8 @@ console.log(`Found ${tasks.length} tasks`);
 
 `diagnoseProviderFailure()` is a pure, synchronous helper exported from `sidekick-shared` and `sidekick-shared/browser`. The caller decides whether an SDK event is terminal: a Codex `ErrorItem`, including a reconnect notice, must not become terminal merely because its message can be classified.
 
+The identifier lists behind the result types are exported alongside it as readonly arrays (`PROVIDER_FAILURE_CODES`, `PROVIDER_RECOVERY_ACTIONS`, `PROVIDER_CREDENTIAL_KINDS`, `PROVIDER_AUTHENTICATION_STATES`, `PROVIDER_AUTHENTICATION_SOURCES`, `PROVIDER_FAILURE_EVIDENCE_SOURCES`). To validate a diagnosis that crossed a process boundary, use `providerFailureDiagnosisSchema` from `sidekick-shared/schemas`; it is built from the same arrays, so it accepts every value a given release can return.
+
 ```typescript
 import { diagnoseProviderFailure } from 'sidekick-shared/browser';
 

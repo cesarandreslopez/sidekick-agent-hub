@@ -42,6 +42,18 @@ export type { NormalizedUsage, NormalizedUsageCost } from '../usageNormalization
 export { tokenEstimateSchema } from './tokenEstimation';
 export type { TokenEstimate } from '../tokenEstimation';
 export {
+  providerAuthenticationEvidenceSchema,
+  providerFailureEvidenceSchema,
+  providerRetryAfterSchema,
+  providerFailureDiagnosisSchema,
+} from './providerFailure';
+export type {
+  ProviderAuthenticationEvidence,
+  ProviderFailureDiagnosis,
+  ProviderFailureEvidence,
+  ProviderRetryAfter,
+} from '../providerFailure';
+export {
   transcriptSourceProvenanceSchema,
   canonicalTranscriptBlockSchema,
   canonicalToolCallSchema,

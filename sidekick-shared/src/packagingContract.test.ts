@@ -139,6 +139,17 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       expect(typeof m[k]).toBe('function');
     }
     expect(Array.isArray(m.HUMAN_CLAUDE_ENTRYPOINTS)).toBe(true);
+    for (const name of [
+      'PROVIDER_FAILURE_CODES',
+      'PROVIDER_RECOVERY_ACTIONS',
+      'PROVIDER_CREDENTIAL_KINDS',
+      'PROVIDER_AUTHENTICATION_STATES',
+      'PROVIDER_AUTHENTICATION_SOURCES',
+      'PROVIDER_FAILURE_EVIDENCE_SOURCES',
+    ]) {
+      expect(Array.isArray(m[name]), name).toBe(true);
+    }
+    expect(m.providerFailureDiagnosisSchema).toBeUndefined();
     expect(typeof m.DEFAULT_CONTEXT_WINDOW).toBe('number');
     expect(typeof m.RESOLVED_MODEL_CATALOG_SCHEMA_VERSION).toBe('number');
     for (const name of [
@@ -209,6 +220,10 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'normalizedUsageSchema',
       'normalizedUsageCostSchema',
       'tokenEstimateSchema',
+      'providerAuthenticationEvidenceSchema',
+      'providerFailureEvidenceSchema',
+      'providerRetryAfterSchema',
+      'providerFailureDiagnosisSchema',
       'canonicalTranscriptBlockSchema',
       'transcriptSourceProvenanceSchema',
       'canonicalToolCallSchema',

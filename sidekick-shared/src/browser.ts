@@ -211,7 +211,15 @@ export {
 } from './failingTools';
 export type { FailingToolTrend, FailingToolTrendRow, FailingToolWindow } from './failingTools';
 
-export { diagnoseProviderFailure } from './providerFailure';
+export {
+  diagnoseProviderFailure,
+  PROVIDER_AUTHENTICATION_SOURCES,
+  PROVIDER_AUTHENTICATION_STATES,
+  PROVIDER_CREDENTIAL_KINDS,
+  PROVIDER_FAILURE_CODES,
+  PROVIDER_FAILURE_EVIDENCE_SOURCES,
+  PROVIDER_RECOVERY_ACTIONS,
+} from './providerFailure';
 export type {
   ProviderCredentialKind,
   ProviderAuthenticationEvidence,
