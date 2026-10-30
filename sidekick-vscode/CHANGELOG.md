@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.2] - 2026-10-30
+
+### Fixed
+
+- Bundle sidekick-shared 0.28.2 so costs and context gauges work offline for GPT-6.1 and current Claude, Gemini, DeepSeek, and GLM coding models, including corrected Sonnet 5.5 cache reads and DeepSeek context limits.
+
 ## [0.28.1] - 2026-10-18
 
 ### Changed

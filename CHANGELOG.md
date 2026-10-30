@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.2] - 2026-10-30
+
+### Fixed
+
+- Offline pricing and context metadata now covers GPT-6.1 Sol/Terra, Claude Sonnet/Haiku 5.5, Gemini 4 Argon/3.8 Flash, DeepSeek Flash/V4 Pro, and GLM-5.3/Flash/FlashX, including direct-provider IDs. Sonnet 5.5 uses its own lower cache-read rate, and newer DeepSeek models use 1M context instead of the old 128K fallback. Fixes #18.
+
 ## [0.28.1] - 2026-10-18
 
 ### Fixed

@@ -5,6 +5,12 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.2] - 2026-10-30
+
+### Fixed
+
+- Add verified offline pricing and context baselines for GPT-6.1 Sol/Terra, Claude Sonnet/Haiku 5.5 (dashed and dotted), Gemini 4 Argon/3.8 Flash, DeepSeek Flash/V4 Pro (including accepted Flash aliases), and GLM-5.3/Flash/FlashX. Direct-provider IDs resolve offline too. Preserve runtime overrides and observed account limits; document standard/short-context rates, DeepSeek peak rates, and Gemini promotions. Fixes #18.
+
 ## [0.28.1] - 2026-10-18
 
 ### Fixed
