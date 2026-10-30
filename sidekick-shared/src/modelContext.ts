@@ -32,6 +32,38 @@ import { resolveModelAlias } from './modelAliases';
 
 /** Known model context window sizes (in tokens); current models verified 2026-09-05. */
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
+  // Published API limits verified 2026-10-30; GLM's API documents 1M even
+  // though local weights may support more. Catalog/observed overrides win.
+  'gpt-6.1-sol': 1_050_000,
+  'openai/gpt-6.1-sol': 1_050_000,
+  'gpt-6.1-terra': 1_050_000,
+  'openai/gpt-6.1-terra': 1_050_000,
+  'claude-sonnet-5-5': 1_000_000,
+  'anthropic/claude-sonnet-5-5': 1_000_000,
+  'claude-sonnet-5.5': 1_000_000,
+  'anthropic/claude-sonnet-5.5': 1_000_000,
+  'claude-haiku-5-5': 1_000_000,
+  'anthropic/claude-haiku-5-5': 1_000_000,
+  'claude-haiku-5.5': 1_000_000,
+  'anthropic/claude-haiku-5.5': 1_000_000,
+  'gemini-4-argon': 1_048_576,
+  'gemini/gemini-4-argon': 1_048_576,
+  'gemini-3.8-flash': 1_048_576,
+  'gemini/gemini-3.8-flash': 1_048_576,
+  'deepseek-flash': 1_000_000,
+  'deepseek/deepseek-flash': 1_000_000,
+  'deepseek-v4-flash': 1_000_000,
+  'deepseek/deepseek-v4-flash': 1_000_000,
+  'deepseek-v4-flash-vision-exp': 1_000_000,
+  'deepseek/deepseek-v4-flash-vision-exp': 1_000_000,
+  'deepseek-v4-pro': 1_000_000,
+  'deepseek/deepseek-v4-pro': 1_000_000,
+  'glm-5.3': 1_000_000,
+  'zai/glm-5.3': 1_000_000,
+  'glm-5.3-flash': 1_000_000,
+  'zai/glm-5.3-flash': 1_000_000,
+  'glm-5.3-flashx': 1_000_000,
+  'zai/glm-5.3-flashx': 1_000_000,
   // Claude — native 1M context (Fable 5+, Opus 4.6+, Sonnet 4.6+)
   'claude-fable-5-1': 1_000_000,
   'claude-fable-5.1': 1_000_000,

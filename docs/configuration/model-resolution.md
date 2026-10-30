@@ -92,19 +92,49 @@ take precedence over published limits when they match the same model, so a
 provider's effective account limit can be smaller than the published maximum.
 Quota utilization comes from separate provider APIs or local samples.
 
-The bundled metadata was refreshed on September 22, 2026 (adding Claude Opus 5.5) using
-[Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing)
-and the OpenAI model pages for
-[GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol),
-[GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna),
-[Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol),
-[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra),
-[Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna),
-[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra),
-[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), and
-[GPT-5.4 nano](https://developers.openai.com/api/docs/models/gpt-5.4-nano).
-It includes Fable 5.1's lower cache-read rate, Astra's pricing and context limit,
-current GPT-5.6 rates, and the smaller GPT-5.4 mini/nano context windows. Sonnet
-5's $2/$10 input/output rates are now permanent. Prices remain estimates at
-standard rates; service tiers and other billing adjustments can change actual
-charges.
+The offline baseline was refreshed on October 30, 2026 for GPT-6.1 Sol and
+Terra, Claude Sonnet 5.5 and Haiku 5.5, Gemini 4 Argon and 3.8 Flash,
+DeepSeek Flash and V4 Pro, and GLM-5.3, Flash, and FlashX. It includes direct
+provider-qualified IDs and the accepted legacy DeepSeek Flash names. Inference
+tier defaults are independent of this metadata refresh.
+
+Verification sources:
+
+- [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and
+  [GPT-6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra):
+  published context maxima of 1,050,000 tokens; account-specific Codex limits can be smaller.
+- [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing)
+  and [model overview](https://platform.claude.com/docs/en/models/overview):
+  Sonnet 5.5 cache reads cost $0.10 per million tokens; Haiku 5.5 supports 1M context.
+- [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing),
+  [Argon limits](https://ai.google.dev/gemini-api/docs/models/gemini-4-argon), and
+  [Flash limits](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash).
+- [DeepSeek models and pricing](https://api-docs.deepseek.com/quick_start/pricing/).
+- [z.ai pricing](https://docs.z.ai/guides/overview/pricing),
+  [GLM-5.3](https://docs.z.ai/guides/llm/glm-5.3), and
+  [Flash/FlashX API limits](https://docs.z.ai/guides/vlm/glm-5.3-flash):
+  the static API baseline uses the documented 1M context; local weights and
+  hydrated catalogs may offer a different limit.
+
+Prices remain estimates at global standard, short-context rates. Cache-write
+rates use the shortest published retention period. Haiku 5.5 charges higher
+rates for prompts over 100,000 tokens; the baseline uses its lower tier.
+DeepSeek baselines use peak rates; off-peak rates are half as much. Gemini
+Argon's introductory $2/$10 input/output rates ($0.10 cached input) end on
+November 30, 2026, then double. Gemini 3.8 Flash's introductory $0.75/$3.75
+rates ($0.075 cached input) end on December 31, 2026, then double. These offline
+baselines do not change with the clock; catalog hydration can refresh rates.
+Cache-storage charges, request tools, service tiers, regional adjustments, and
+other billing modifiers are excluded. Provider-reported costs remain preferred
+when available.
+
+When reviewing a new coding model:
+
+1. Verify its input, output, cache-write, and cache-read prices against official
+   documentation, including promotions and prompt-length tiers.
+2. Verify its published API context limit separately from output caps and
+   account-specific effective limits.
+3. Add explicit baseline keys for distinct rates and context limits, supported
+   spellings, and direct-provider forms; avoid generic pricing fallbacks.
+4. Test exact provenance, snapshot suffixes, offline and failed-download paths,
+   predecessor rates, override precedence, and browser catalog export/import.

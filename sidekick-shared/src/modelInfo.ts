@@ -136,6 +136,193 @@ export interface ModelDisplayInfo {
  * prefix matching cannot bridge the two, so both are needed.
  */
 const PRICING_TABLE: Record<string, ModelPricing> = {
+  // Current coding models verified 2026-10-30. Standard short-context rates;
+  // DeepSeek uses peak rates. Gemini promotions end 2026-11-30 (Argon) and
+  // 2026-12-31 (Flash). Haiku 5.5 costs more above 100K prompt tokens.
+  // Sources and estimation limits: docs/configuration/model-resolution.md.
+  // Explicit direct-provider keys support offline OpenCode model IDs without
+  // stripping arbitrary deployment prefixes or changing alias resolution.
+  'gpt-6.1-sol': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'openai/gpt-6.1-sol': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'gpt-6.1-terra': {
+    inputCostPerMillion: 1,
+    outputCostPerMillion: 5,
+    cacheWriteCostPerMillion: 1.25,
+    cacheReadCostPerMillion: 0.05,
+  },
+  'openai/gpt-6.1-terra': {
+    inputCostPerMillion: 1,
+    outputCostPerMillion: 5,
+    cacheWriteCostPerMillion: 1.25,
+    cacheReadCostPerMillion: 0.05,
+  },
+  'claude-sonnet-5-5': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'anthropic/claude-sonnet-5-5': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'claude-sonnet-5.5': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'anthropic/claude-sonnet-5.5': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'claude-haiku-5-5': {
+    inputCostPerMillion: 0.1,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.01,
+  },
+  'anthropic/claude-haiku-5-5': {
+    inputCostPerMillion: 0.1,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.01,
+  },
+  'claude-haiku-5.5': {
+    inputCostPerMillion: 0.1,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.01,
+  },
+  'anthropic/claude-haiku-5.5': {
+    inputCostPerMillion: 0.1,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.01,
+  },
+  'gemini-4-argon': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'gemini/gemini-4-argon': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.1,
+  },
+  'gemini-3.8-flash': {
+    inputCostPerMillion: 0.75,
+    outputCostPerMillion: 3.75,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.075,
+  },
+  'gemini/gemini-3.8-flash': {
+    inputCostPerMillion: 0.75,
+    outputCostPerMillion: 3.75,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.075,
+  },
+  'deepseek-flash': {
+    inputCostPerMillion: 0.3,
+    outputCostPerMillion: 1.2,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.006,
+  },
+  'deepseek/deepseek-flash': {
+    inputCostPerMillion: 0.3,
+    outputCostPerMillion: 1.2,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.006,
+  },
+  'deepseek-v4-flash': {
+    inputCostPerMillion: 0.3,
+    outputCostPerMillion: 1.2,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.006,
+  },
+  'deepseek/deepseek-v4-flash': {
+    inputCostPerMillion: 0.3,
+    outputCostPerMillion: 1.2,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.006,
+  },
+  'deepseek-v4-flash-vision-exp': {
+    inputCostPerMillion: 0.3,
+    outputCostPerMillion: 1.2,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.006,
+  },
+  'deepseek/deepseek-v4-flash-vision-exp': {
+    inputCostPerMillion: 0.3,
+    outputCostPerMillion: 1.2,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.006,
+  },
+  'deepseek-v4-pro': {
+    inputCostPerMillion: 1.32,
+    outputCostPerMillion: 3.96,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.044,
+  },
+  'deepseek/deepseek-v4-pro': {
+    inputCostPerMillion: 1.32,
+    outputCostPerMillion: 3.96,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.044,
+  },
+  'glm-5.3': {
+    inputCostPerMillion: 1.4,
+    outputCostPerMillion: 4.4,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.26,
+  },
+  'zai/glm-5.3': {
+    inputCostPerMillion: 1.4,
+    outputCostPerMillion: 4.4,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.26,
+  },
+  'glm-5.3-flash': {
+    inputCostPerMillion: 0.15,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.03,
+  },
+  'zai/glm-5.3-flash': {
+    inputCostPerMillion: 0.15,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.03,
+  },
+  'glm-5.3-flashx': {
+    inputCostPerMillion: 0.37,
+    outputCostPerMillion: 1.25,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.075,
+  },
+  'zai/glm-5.3-flashx': {
+    inputCostPerMillion: 0.37,
+    outputCostPerMillion: 1.25,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.075,
+  },
+
   // ── Anthropic: Claude ──
   // Fable 5.1 cache reads cost 0.025x input; Fable 5 retains its 0.1x rate.
   'claude-fable-5-1': {
