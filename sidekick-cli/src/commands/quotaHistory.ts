@@ -13,6 +13,7 @@ import {
   getWorkspaceIdFromPath,
   parseLocalDateKey,
   readQuotaHistoryDailyBuckets,
+  readQuotaHistoryRange,
   type QuotaHistoryDailyBucket,
   type QuotaHistoryRuntimeProvider,
 } from 'sidekick-shared';
@@ -219,6 +220,31 @@ function clampWeeks(value: unknown): number {
   return Math.max(1, Math.min(26, parsed));
 }
 
+function isDefaultOption(cmd: Command, name: string): boolean {
+  const source =
+    typeof cmd.getOptionValueSource === 'function' ? cmd.getOptionValueSource(name) : undefined;
+  return source === undefined || source === 'default';
+}
+
+/** Whether the newest Claude history sample of the last week marks the five-hour window absent. */
+async function latestClaudeSampleLacksFiveHour(
+  workspaceId: string,
+  nowMs: number,
+): Promise<boolean> {
+  try {
+    const samples = await readQuotaHistoryRange({
+      workspaceId,
+      provider: 'claude',
+      from: new Date(nowMs - 7 * MS_PER_DAY).toISOString(),
+      to: new Date(nowMs).toISOString(),
+    });
+    const latest = samples.filter((sample) => sample.available).at(-1);
+    return latest?.fiveHour.absent === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function quotaHistoryAction(
   _localOpts: Record<string, unknown>,
   cmd: Command,
@@ -227,7 +253,7 @@ export async function quotaHistoryAction(
   const localOpts = cmd.opts();
   const jsonOutput: boolean = !!globalOpts.json;
   const csvOutput: boolean = !!localOpts.csv;
-  const window = parseWindow(localOpts.window);
+  let window = parseWindow(localOpts.window);
 
   const weeks = clampWeeks(localOpts.weeks);
   const providerFilter = parseProviderFilter(localOpts.provider ?? globalOpts.provider);
@@ -245,6 +271,19 @@ export async function quotaHistoryAction(
 
   const wanted: QuotaHistoryRuntimeProvider[] =
     providerFilter === 'auto' ? ['claude', 'codex', 'zai'] : [providerFilter];
+
+  // The default five-hour heatmap is all zeros on a plan without a five-hour
+  // limit (Claude Ultra); show the seven-day window unless --window was given.
+  let autoWeekly = false;
+  if (
+    window === '5h' &&
+    isDefaultOption(cmd, 'window') &&
+    wanted.includes('claude') &&
+    (await latestClaudeSampleLacksFiveHour(workspaceId, toMs))
+  ) {
+    window = '7d';
+    autoWeekly = true;
+  }
 
   const providerCells: Partial<Record<QuotaHistoryRuntimeProvider, QuotaHistoryDailyCell[]>> = {};
   const csvRows: Array<{ provider: string; bucket: QuotaHistoryDailyBucket }> = [];
@@ -309,7 +348,8 @@ export async function quotaHistoryAction(
   }
 
   const header = chalk.dim(
-    `workspace ${workspaceId}  ·  ${formatLocalDateKey(fromMs)} → ${formatLocalDateKey(toMs)}  ·  ${windowLabel(window)}`,
+    `workspace ${workspaceId}  ·  ${formatLocalDateKey(fromMs)} → ${formatLocalDateKey(toMs)}  ·  ${windowLabel(window)}` +
+      (autoWeekly ? ' (no 5-hour limit on this plan; --window 5h to override)' : ''),
   );
   process.stdout.write(`${header}\n${legend()}\n\n${sections.join('\n\n')}\n`);
 }

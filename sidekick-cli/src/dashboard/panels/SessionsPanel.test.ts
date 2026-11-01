@@ -79,4 +79,42 @@ describe('SessionsPanel Summary tab', () => {
     expect(out.split('\n').filter((line) => line.includes('{grey-fg}')).length).toBeLessThan(20);
     panel.dispose?.();
   });
+
+  it('draws only the windows a plan has, plus extra meters', () => {
+    const panel = new SessionsPanel();
+    const metrics = {
+      ...metricsWithTasks(),
+      providerId: 'claude-code',
+      quota: {
+        available: true,
+        fiveHour: { utilization: 0, resetsAt: '', absent: true },
+        sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
+        projectedSevenDay: 136,
+        planLabel: 'Ultra',
+        limits: [
+          {
+            kind: 'weekly_scoped',
+            group: 'weekly',
+            label: '7-Day (Fable)',
+            utilization: 4,
+            resetsAt: '2026-11-07T06:00:00Z',
+            windowMs: 7 * 86_400_000,
+            scopeModel: 'Fable',
+          },
+        ],
+      },
+    } as DashboardMetrics;
+    const item: PanelItem = {
+      id: 'active',
+      label: 'session',
+      sortKey: 0,
+      data: { type: 'active', metrics },
+    };
+    const out = panel.detailTabs[0].render(item, metrics, {} as never, { width: 80 });
+    expect(out).not.toContain('{grey-fg}5h{/grey-fg}');
+    expect(out).toContain('{grey-fg}7d{/grey-fg}');
+    expect(out).toContain('{grey-fg}7d Fable{/grey-fg}');
+    expect(out).toContain('no 5-hour limit on Ultra');
+    panel.dispose?.();
+  });
 });

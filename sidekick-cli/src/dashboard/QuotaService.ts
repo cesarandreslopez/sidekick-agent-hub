@@ -28,7 +28,8 @@ export class QuotaService {
       getAccessToken: async () => {
         const creds = await readClaudeMaxCredentials();
         if (!creds) throw new Error(NO_CREDENTIALS_ERROR);
-        return creds.accessToken;
+        // The full record lets the poller stamp the plan label (e.g. Ultra).
+        return creds;
       },
     });
 

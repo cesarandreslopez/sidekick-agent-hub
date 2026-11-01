@@ -110,7 +110,19 @@ const {
   mockActiveCodexAccount: vi.fn(),
 }));
 
-vi.mock('sidekick-shared', () => ({
+async function pureQuotaHelpers() {
+  const actual = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
+  return {
+    extraQuotaRows: actual.extraQuotaRows,
+    formatExtraUsage: actual.formatExtraUsage,
+    quotaWindowApplies: actual.quotaWindowApplies,
+    quotaWindowHasData: actual.quotaWindowHasData,
+  };
+}
+
+vi.mock('sidekick-shared', async () => ({
+  // Pure window helpers come from the real module so rendering is tested as shipped.
+  ...(await pureQuotaHelpers()),
   CodexProvider: class {
     id = 'codex';
     dispose = vi.fn();
@@ -352,6 +364,86 @@ describe('quotaAction', () => {
     // Projections shown with arrow
     expect(stdoutData).toContain('100%');
     expect(stdoutData).toContain('85%');
+  });
+
+  it('prints a plan without a five-hour limit: weekly row, extra meters, plan, and extra usage', async () => {
+    const weeklyReset = new Date(Date.now() + 6 * 86400_000).toISOString();
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 0, resetsAt: '', absent: true },
+      sevenDay: { utilization: 17, resetsAt: weeklyReset },
+      available: true,
+      projectedSevenDay: 136,
+      planType: 'max',
+      planLabel: 'Ultra',
+      limits: [
+        {
+          kind: 'weekly_all',
+          group: 'weekly',
+          label: '7-Day',
+          utilization: 17,
+          resetsAt: weeklyReset,
+        },
+        {
+          kind: 'weekly_scoped',
+          group: 'weekly',
+          label: '7-Day (Fable)',
+          utilization: 4,
+          resetsAt: weeklyReset,
+          scopeModel: 'Fable',
+          allowancePercentOfWeekly: 50,
+        },
+      ],
+      extraUsage: {
+        enabled: false,
+        monthlyLimit: 20000,
+        usedCredits: 0,
+        utilization: 0,
+        currency: 'USD',
+        decimalPlaces: 2,
+        disabledReason: 'out_of_credits',
+      },
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stdoutData).toContain('Subscription Quota (plan: Ultra)');
+    expect(stdoutData).not.toContain('5-Hour');
+    expect(stdoutData).toMatch(/7-Day\s+█+░+\s+17%\s+136%/);
+    expect(stdoutData).toMatch(/7-Day \(Fable\)\s+[█░]+\s+4%/);
+    expect(stdoutData).toContain('no 5-hour limit on Ultra');
+    expect(stdoutData).toContain('may use up to 50% of the weekly limit');
+    expect(stdoutData).toContain('$0.00 of $200.00 used · off (out of credits)');
+    // Peak hours only drain a five-hour session limit, which this plan does not have.
+    expect(stdoutData).not.toContain('Peak');
+    // The headline weekly meter is not repeated as an extra row.
+    expect(stdoutData.match(/7-Day\s+[█░]/g)).toHaveLength(1);
+  });
+
+  it('labels a weekly-only Codex plan by its window and hides the missing window', async () => {
+    mockResolveProvider.mockReturnValue({ id: 'codex', dispose: () => {} });
+    mockResolveCodexQuota.mockResolvedValue({
+      runtimeProvider: 'codex',
+      providerId: 'codex',
+      fiveHour: {
+        utilization: 37,
+        resetsAt: new Date(Date.now() + 5 * 86400_000).toISOString(),
+        windowMs: 7 * 86400_000,
+      },
+      sevenDay: { utilization: 0, resetsAt: '', absent: true },
+      available: true,
+      source: 'api',
+      resolution: 'api',
+      fiveHourLabel: 'Weekly',
+      sevenDayLabel: 'Secondary',
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stdoutData).toMatch(/Weekly\s+[█░]+\s+37%/);
+    expect(stdoutData).not.toContain('Secondary');
+    expect(stdoutData).not.toContain('Primary');
   });
 
   it('outputs JSON when --json flag is set', async () => {

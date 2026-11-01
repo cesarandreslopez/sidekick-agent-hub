@@ -6,6 +6,7 @@ import {
   getWorkspaceIdFromPath,
   parseClaudeStatuslinePayload,
   quotaFromStatuslinePayload,
+  quotaHistoryWindow,
   quotaToStateFile,
   readQuotaSnapshot,
   writeQuotaSnapshot,
@@ -42,6 +43,7 @@ export function readStatuslineStdin(
 function sameWindows(left: QuotaState | null, right: QuotaState): boolean {
   if (!left) return false;
   return (
+    Boolean(left.fiveHour.absent) === Boolean(right.fiveHour.absent) &&
     left.fiveHour.utilization === right.fiveHour.utilization &&
     left.fiveHour.resetsAt === right.fiveHour.resetsAt &&
     left.sevenDay.utilization === right.sevenDay.utilization &&
@@ -74,8 +76,8 @@ async function persistOfficialQuota(
       runtimeProvider: 'claude',
       providerId: accountId,
       workspaceId: getWorkspaceIdFromPath(workspacePath),
-      fiveHour: quota.fiveHour,
-      sevenDay: quota.sevenDay,
+      fiveHour: quotaHistoryWindow(quota.fiveHour),
+      sevenDay: quotaHistoryWindow(quota.sevenDay),
       available: true,
       source: 'statusline',
       stale: false,

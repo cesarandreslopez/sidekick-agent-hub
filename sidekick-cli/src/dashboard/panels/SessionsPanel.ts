@@ -32,9 +32,13 @@ import {
 } from '../formatters';
 import {
   calculateCompactionLedger,
+  extraQuotaRows,
   formatCompactionLedger,
   formatCost,
   formatTokenCount,
+  quotaWindowApplies,
+  quotaWindowHasData,
+  quotaWindowShortLabel,
 } from 'sidekick-shared';
 
 function getUtilizationColor(percent: number): string {
@@ -499,30 +503,43 @@ export class SessionsPanel implements SidePanel {
       if (m.quota?.available) {
         const q = m.quota;
         lines.push('', sectionHeader(quotaLabel, w));
-        const fiveColor = getUtilizationColor(q.fiveHour.utilization);
-        const fiveBar = makeColorBar(q.fiveHour.utilization, 18, fiveColor);
-        const fiveProj =
-          q.projectedFiveHour != null
-            ? (() => {
-                const pc = getUtilizationColor(q.projectedFiveHour!);
-                return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedFiveHour!.toFixed(0)}%{/${pc}-fg}`;
-              })()
-            : '';
-        lines.push(
-          `  {grey-fg}5h{/grey-fg}  ${fiveBar} {bold}${q.fiveHour.utilization.toFixed(0)}%{/bold}${fiveProj}`,
-        );
-        const sevenColor = getUtilizationColor(q.sevenDay.utilization);
-        const sevenBar = makeColorBar(q.sevenDay.utilization, 18, sevenColor);
-        const sevenProj =
-          q.projectedSevenDay != null
-            ? (() => {
-                const pc = getUtilizationColor(q.projectedSevenDay!);
-                return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${q.projectedSevenDay!.toFixed(0)}%{/${pc}-fg}`;
-              })()
-            : '';
-        lines.push(
-          `  {grey-fg}7d{/grey-fg}  ${sevenBar} {bold}${q.sevenDay.utilization.toFixed(0)}%{/bold}${sevenProj}`,
-        );
+        // Only the windows the plan reports: Claude Ultra has no five-hour
+        // window, and a weekly-only Codex plan has no second one. Labels follow
+        // the reported window length (a Codex weekly primary reads `7d`).
+        if (
+          quotaWindowApplies(q.fiveHour) &&
+          (m.providerId !== 'codex' || quotaWindowHasData(q.fiveHour))
+        ) {
+          lines.push(
+            quotaBarLine(
+              quotaWindowShortLabel(q.fiveHour.windowMs, '5h'),
+              q.fiveHour.utilization,
+              q.projectedFiveHour,
+            ),
+          );
+        }
+        if (
+          quotaWindowApplies(q.sevenDay) &&
+          (m.providerId !== 'codex' || quotaWindowHasData(q.sevenDay))
+        ) {
+          lines.push(
+            quotaBarLine(
+              quotaWindowShortLabel(q.sevenDay.windowMs, '7d'),
+              q.sevenDay.utilization,
+              q.projectedSevenDay,
+            ),
+          );
+        }
+        for (const row of extraQuotaRows(q)) {
+          const scope = row.scopeModel ?? row.scopeSurface;
+          const label = `${quotaWindowShortLabel(row.windowMs, row.group || row.kind)}${scope ? ` ${scope}` : ''}`;
+          lines.push(quotaBarLine(label, row.utilization, row.projected));
+        }
+        if (!quotaWindowApplies(q.fiveHour) && m.providerId !== 'codex') {
+          lines.push(
+            `  {grey-fg}no 5-hour limit${q.planLabel ? ` on ${q.planLabel}` : ''}{/grey-fg}`,
+          );
+        }
       } else if ((m.providerId === 'claude-code' || m.providerId === 'codex') && m.quota) {
         const descriptor = describeQuotaFailure(m.quota);
         if (descriptor) {
@@ -920,4 +937,18 @@ function renderContextAttribution(attr: ContextAttribution): string[] {
   }
 
   return lines;
+}
+
+/** One quota bar row: `  7d  ████░░░░ 17% → 136%`. */
+function quotaBarLine(label: string, utilization: number, projected: number | undefined): string {
+  const color = getUtilizationColor(utilization);
+  const bar = makeColorBar(utilization, 18, color);
+  const projection =
+    projected != null
+      ? (() => {
+          const pc = getUtilizationColor(projected);
+          return ` {grey-fg}\u2192{/grey-fg} {${pc}-fg}${projected.toFixed(0)}%{/${pc}-fg}`;
+        })()
+      : '';
+  return `  {grey-fg}${label}{/grey-fg}  ${bar} {bold}${utilization.toFixed(0)}%{/bold}${projection}`;
 }

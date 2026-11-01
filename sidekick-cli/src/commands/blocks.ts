@@ -256,18 +256,19 @@ export function formatBlocksTable(report: BlocksReport): string {
   );
   if (report.official) {
     const { fiveHour, sevenDay } = report.official;
-    const resets = fiveHour.resetsAt
-      ? ` · resets in ${formatBlockDuration(Math.max(0, Date.parse(fiveHour.resetsAt) - Date.parse(report.now)))}`
-      : '';
+    const resetsIn = (iso: string) =>
+      iso
+        ? ` · resets in ${formatBlockDuration(Math.max(0, Date.parse(iso) - Date.parse(report.now)))}`
+        : '';
     const age =
       report.official.ageMs !== undefined
         ? ` (sample ${formatQuotaAge(report.official.ageMs)})`
         : '';
-    lines.push(
-      chalk.cyan(
-        `  Official (status line): 5h ${fiveHour.utilization.toFixed(0)}% used${resets} · 7d ${sevenDay.utilization.toFixed(0)}%${age}`,
-      ),
-    );
+    // Plans without a five-hour limit (Claude Ultra) only have the weekly window.
+    const official = fiveHour.absent
+      ? `7d ${sevenDay.utilization.toFixed(0)}% used${resetsIn(sevenDay.resetsAt)} · no 5-hour limit`
+      : `5h ${fiveHour.utilization.toFixed(0)}% used${resetsIn(fiveHour.resetsAt)} · 7d ${sevenDay.utilization.toFixed(0)}%`;
+    lines.push(chalk.cyan(`  Official (status line): ${official}${age}`));
   } else if (report.provider === 'claude-code') {
     lines.push(
       chalk.dim(

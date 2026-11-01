@@ -417,7 +417,7 @@ quotaCmd
   .option('--workspace <path>', 'Workspace path used to derive the history scope (default: cwd)')
   .option(
     '--window <window>',
-    'Which limit the heatmap shows: 5h (default), 7d, or max (the higher of the two)',
+    'Which limit the heatmap shows: 5h (default; 7d on plans without a 5-hour limit), 7d, or max',
     '5h',
   )
   .option('--csv', 'Print the daily buckets as CSV instead of a heatmap')

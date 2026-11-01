@@ -5,8 +5,12 @@
 import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
 import {
+  extraQuotaRows,
+  formatExtraUsage,
   formatQuotaAge,
   describeQuotaFailure,
+  quotaWindowApplies,
+  quotaWindowHasData,
   resolveActiveClaudeAccount,
   getOpenCodeDataDir,
   CodexProvider,
@@ -329,29 +333,78 @@ function printClaudeQuota(quota: ClaudeQuota, peak: PeakHoursState): void {
     process.stdout.write(chalk.dim(`Account: ${account}\n`));
   }
 
-  const peakLine = formatPeakHoursLine(peak);
+  printQuotaTable(
+    quota.planLabel ? `Subscription Quota (plan: ${quota.planLabel})` : 'Subscription Quota',
+    claudeQuotaRows(quota),
+    claudeQuotaMetaRows(quota, peak),
+  );
+}
+
+/**
+ * Table rows for a Claude sample: the five-hour window only when the plan has
+ * one (Ultra does not), the weekly window, then every extra meter the usage
+ * endpoint reported (e.g. a Fable weekly cap), in server order.
+ */
+function claudeQuotaRows(quota: ClaudeQuota): QuotaTableRow[] {
+  const rows: QuotaTableRow[] = [];
+  if (quotaWindowApplies(quota.fiveHour)) {
+    rows.push({
+      label: '5-Hour',
+      utilization: quota.fiveHour.utilization,
+      projected: quota.projectedFiveHour,
+      resetsAt: quota.fiveHour.resetsAt,
+    });
+  }
+  if (quotaWindowApplies(quota.sevenDay)) {
+    rows.push({
+      label: '7-Day',
+      utilization: quota.sevenDay.utilization,
+      projected: quota.projectedSevenDay,
+      resetsAt: quota.sevenDay.resetsAt,
+    });
+  }
+  for (const row of extraQuotaRows(quota)) {
+    rows.push({
+      label: row.label,
+      utilization: row.utilization,
+      projected: row.projected,
+      resetsAt: row.resetsAt,
+    });
+  }
+  return rows;
+}
+
+function claudeQuotaMetaRows(quota: ClaudeQuota, peak: PeakHoursState): QuotaMetaRow[] {
   const metaRows: QuotaMetaRow[] = [];
   const source = sourceMetaRow(quota);
   if (source) metaRows.push(source);
+  if (!quotaWindowApplies(quota.fiveHour)) {
+    metaRows.push({
+      label: 'Session',
+      value: quota.planLabel ? `no 5-hour limit on ${quota.planLabel}` : 'no 5-hour limit',
+      color: chalk.cyan,
+    });
+  }
+  for (const row of extraQuotaRows(quota)) {
+    const scope = row.scopeModel ?? row.scopeSurface;
+    if (!scope || row.allowancePercentOfWeekly === undefined) continue;
+    metaRows.push({
+      label: scope,
+      value: `may use up to ${row.allowancePercentOfWeekly}% of the weekly limit`,
+    });
+  }
+  if (quota.extraUsage) {
+    metaRows.push({
+      label: 'Extra usage',
+      value: formatExtraUsage(quota.extraUsage),
+      color: quota.extraUsage.enabled ? (value) => value : chalk.dim,
+    });
+  }
+  // Peak hours drain the five-hour session limit faster; a plan without one
+  // (Ultra) is unaffected, so the row would only mislead.
+  const peakLine = quotaWindowApplies(quota.fiveHour) ? formatPeakHoursLine(peak) : null;
   if (peakLine) metaRows.push({ label: 'Peak', value: peakLine, color: (value) => value });
-  printQuotaTable(
-    'Subscription Quota',
-    [
-      {
-        label: '5-Hour',
-        utilization: quota.fiveHour.utilization,
-        projected: quota.projectedFiveHour,
-        resetsAt: quota.fiveHour.resetsAt,
-      },
-      {
-        label: '7-Day',
-        utilization: quota.sevenDay.utilization,
-        projected: quota.projectedSevenDay,
-        resetsAt: quota.sevenDay.resetsAt,
-      },
-    ],
-    metaRows,
-  );
+  return metaRows;
 }
 
 async function fetchClaudeQuotaPayload(
@@ -427,8 +480,9 @@ function printCodexQuota(quota: ResolvedQuota<'codex'>, resolved: ResolvedActive
     process.stdout.write(chalk.dim(`Account: ${account}\n`));
   }
 
+  // Show only the windows the plan reports; a weekly-only plan has no second row.
   const rows: QuotaTableRow[] = [];
-  if (quota.fiveHour.resetsAt || quota.fiveHour.utilization > 0) {
+  if (quotaWindowHasData(quota.fiveHour)) {
     rows.push({
       label: fiveLabel,
       utilization: quota.fiveHour.utilization,
@@ -436,7 +490,7 @@ function printCodexQuota(quota: ResolvedQuota<'codex'>, resolved: ResolvedActive
       resetsAt: quota.fiveHour.resetsAt,
     });
   }
-  if (quota.sevenDay.resetsAt || quota.sevenDay.utilization > 0) {
+  if (quotaWindowHasData(quota.sevenDay)) {
     rows.push({
       label: sevenLabel,
       utilization: quota.sevenDay.utilization,
