@@ -5,6 +5,70 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-11-01
+
+### Fixed
+
+- **OpenCode usage on the OpenAI provider is no longer under-counted.** OpenCode stores every token bucket separately for every provider: input without cached tokens since 2025-11, output without reasoning since 2026-04. The parser still treated `openai` messages as cache-inclusive with reasoning inside output, so it subtracted cache reads from input a second time and never billed reasoning. It now reads the layout from the message's stored `total` (older layouts are still recognized) and defaults to the current one.
+- **Cache tokens from OpenCode's older file storage are now counted.** Messages in that storage keep cache counts under `tokens.cache`, and the parser had ignored them.
+
+### Added
+
+- **Lean subpaths.** Every new subpath has types, a CommonJS build and a tree-shakable ES-module build, and a contract test pins each one's module set to the root's bindings.
+  - `sidekick-shared/pricing`: pure, 8 modules, no Zod. Model pricing and identity, usage normalization and cost, cost provenance, cost/token/duration formatting, and text token estimates.
+  - `sidekick-shared/codex`: Node only, 13 modules, no Zod. Codex homes and child-process env, `auth.json` helpers, credential-store mode, `findCodexRolloutFile()`, `codexRolloutOrigin()`, auth-status parsers and atomic JSON writers.
+  - `sidekick-shared/providerFailure`: pure, 1 module.
+  - `sidekick-shared/statusline/payload`: pure, 2 modules. The status-line stdin parser without the account, credential and snapshot code the full `statusline` entry loads.
+- **Usage events.** `collectUsageEvents()` events gain:
+  - `tokens.reasoningTokens`
+  - `promptOrdinal`: the prompt the call answered, using the same ordinals as `collectPromptHistory()` with default bounds
+  - `requestId`: the provider message id; Codex has none
+  - `subagent: { agentId, parentSessionId }`: Claude Code subagent transcripts, and Codex forks and spawned subagents
+
+  Priced cost is unchanged.
+
+- **`bucketUsage()`:**
+  - a `session` group dimension
+  - `pricedCostUsd`, null when no call in the row was priced
+  - `reasoningTokens`
+  - `excludeSynthetic`
+  - `modelKey: 'canonical'`, which merges model spellings into one row
+- **`findToolCallOrigins({ ids, workspacePaths, since })`** (Node) maps Claude Code `tool_use` ids and Codex `call_id`s to their session, file, time, tool name and the prompt ordinal they answered. Subagents and forks count against the parent's prompts.
+  - Workspace scoping and session keys match prompt history.
+  - Only lines containing a wanted id are parsed, and the walk stops once every id is found.
+- **Model identity and pricing:**
+  - `canonicalModelId()` strips provider/region prefixes, Bedrock and Vertex forms, date suffixes, `-latest` and `[1m]`.
+  - `isMovingModelAlias()`.
+  - `parseModelId().variant` for GPT tier names, and `compareModelIds()` ranks astra > sol > terra > luna within a version.
+  - `registerModelPricing(entries, { onlyIfMissing })` / `clearRegisteredModelPricing()` add a local price layer (provenance `source: 'registered'`). It survives LiteLLM hydration and imported catalogs and is never exported in catalog snapshots.
+  - `getPricingCatalogInfo()` reports the active catalog source (`static`, `litellm`, `stale-cache`, `imported`), when it was fetched, and a stable `digest`. `HydrateResult` gains `digest`.
+- **Cost provenance:** `costSourceFromPricingProvenance()`, and `mergeCostComponents()`, which ignores components not seen yet and zero-token unpriced parts. `formatCost(value, { source })` renders null or unpriced as "—" and estimates with " (est.)"; numeric output is unchanged.
+- **Provider failures:** `diagnoseProviderFailure()` decodes Codex `codexErrorInfo` in string or object form (`decodeCodexErrorInfo()`, `CODEX_ERROR_INFO_KINDS`). Every diagnosis gains `retryable`, optional in the type and schema. Evidence for inputs without `codexErrorInfo` is unchanged.
+- **Auth status parsers:** pure `parseClaudeAuthStatus()` for `claude auth status --json` and `parseCodexLoginStatus()` for `codex login status`. The Codex profile code now uses the latter.
+- **Prompt history:**
+  - `collectPromptHistory({ includeText: false })` returns metadata only. Ordinals, cursors and exclusions are identical in both modes, and cursors resume across modes.
+  - `PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES` documents that ordinals are only comparable with the default record bound.
+- **`codexRolloutOrigin()` / `codexSpawnParentFromSource()`:** pure fork and subagent detection from a rollout's `session_meta`.
+- **`createJsonlTail()`:**
+  - `onRewrite: 'restart' | 'end'`
+  - `noFollow` (`JsonlTailSymlinkError`)
+  - `checkpoint()` / `resumeFrom()`, which survive a restart
+  - an async `read()`
+- **`CodexRolloutParser`:** `maxPendingBytes`, `metadataOnly`, and `getPendingStats()`.
+- **`installCredentialGuard({ preserveEnv })`** keeps listed variables when they point at safe locations, and throws when one points at a real home.
+- **More exports:** `ProviderId` on `sidekick-shared/browser`. On `sidekick-shared/node`: `codexRefreshFingerprint()`, `compareCodexAuthFreshness()`, `getCodexCredentialStoreMode()`, `forceFileCredentialStore()` and the atomic JSON writers.
+
+### Changed
+
+- **Usage cache v3.** `USAGE_CACHE_VERSION` is 3, and files are named `*.v3.json`, so a 0.28 reader sharing `usage-cache/` and this version never overwrite each other. The first collection after upgrading re-reads each session once, and old files age out through the existing LRU pruning.
+- **Transcript projections.**
+  - Tool items gain `rawToolName` / `mcpServerName`, and projected `input` no longer carries internal `_sidekick*` keys. Raw `SessionEvent`s are unchanged.
+  - HTML reports show the raw tool and MCP server instead of those keys.
+  - The transcript schemas accept the new fields.
+- **Lighter bundles.** `formatCost()` moved to the `formatting` module (still exported from `modelInfo`), and table-derived pricing lookups are lazy. A tree-shaken bundle that imports only `formatCost()`, `shortModelName()` and `parseModelId()` drops from 12.7 KB to 2.1 KB minified.
+- `shortModelName()` / `getModelDisplayInfo()` use `canonicalModelId()`, so date-suffixed and provider-prefixed ids show their family label.
+- `findCodexRolloutFile()` lives in the light rollout-helpers module; it is still exported from the provider.
+
 ## [0.28.3] - 2026-10-31
 
 ### Fixed

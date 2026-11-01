@@ -5,6 +5,30 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-11-01
+
+### Fixed
+
+- **Unpriced costs no longer read `$0.0000`.** The dashboard's session total and Model Usage showed `$0.0000` for a session whose models had no price, and the open billing block always showed a projected cost. Both now show `—`.
+- **OpenCode costs on the OpenAI provider are no longer under-counted.** Cached input was subtracted twice and reasoning was never billed. Cache tokens from OpenCode's older file storage are counted too.
+
+### Added
+
+- **One cost rule in every report.** `—` when nothing was priced, `$x (est.)` for catalog estimates, and `$x (partial)` when some calls had no price (the figure covers only the priced calls). This covers the usage reports, `blocks` (including the projection), `stats`, the dashboard, the event stream and plans panels, and the narrative.
+- **Pricing basis.** Usage reports and `blocks` name the pricing catalog in their footer (for example `Pricing: LiteLLM catalog, fetched 9h ago · fnv1a64:…`), and their `--json` output adds `pricingCatalog`. `doctor` checks the catalog and warns when only the built-in table or a stale cache is active.
+- **Custom model prices.** `cli-config.json` `pricing.models` sets per-model prices in USD per million tokens. By default they win over the catalogs; `onlyIfMissing: true` uses them only to fill gaps. Invalid entries are skipped with a warning.
+- **Reasoning tokens.** Usage reports add a Reasoning column when any row has reasoning tokens, and `--csv` appends a `reasoning` column last.
+- **Sessions.** `sessions --breakdown` prints its per-model sub-rows. Codex subagent and fork sessions are tagged `↳ subagent of <parent>` (`sessionParents` in JSON).
+- **Model spellings.** Dated, provider-prefixed and Bedrock ids of one model share a row in the usage reports, `stats` and the dashboard, and the `<synthetic>` placeholder is left out.
+- **Per-prompt cost.** `dump --prompts` shows tokens and cost for each prompt (subagent calls included) and per session (`promptUsage` / `sessionUsage` in JSON). The lookup stops after 30 seconds with a notice, and `--no-usage` skips it.
+- **Retry hints.** The narrative's retry hint is shown only for failures worth retrying, and rate-limit messages include the provider's retry-after.
+
+### Changed
+
+- **Usage cache v3.** Usage events now record the prompt they answered, reasoning tokens and subagent attribution. The first run after upgrading re-reads each session once. The new files are named `*.v3.json`, so an older Sidekick sharing `usage-cache/` keeps its own.
+- **`state.json`** writes a `null` session cost when nothing in the session was priced. The schema already allowed it.
+- **Blocks table:** a long start label no longer runs into the status column.
+
 ## [0.28.3] - 2026-10-31
 
 ### Fixed

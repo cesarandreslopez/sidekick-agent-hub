@@ -5,6 +5,28 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-11-01
+
+### Fixed
+
+- **Codex reasoning is no longer priced twice.** Codex output tokens already include reasoning, but the dashboard's cost calculation added the reasoning tokens again at the output rate. One sample turn was $0.00964 before and is $0.00664 now. Every cost path uses one normalized calculation, so the live dashboard total and the rebuilt and summary totals agree.
+- **Unpriced costs no longer read `$0.0000`.** The dashboard shows `—` when nothing was priced and `(partial)` when some calls had no price, with an "N model(s) unpriced" note. This covers the cost metric, model list, summary, history and billing block. The session narrative is told when costs are unknown.
+- **OpenCode costs on the OpenAI provider are no longer under-counted.** Cached input was subtracted twice and reasoning was never billed.
+- The conversation view escapes the model tag it shows.
+
+### Added
+
+- **Custom model pricing.** `sidekick.customModelPricing` sets per-model prices in USD per million tokens, for local models or negotiated rates. By default they win over the catalogs; `sidekick.customModelPricingOnlyIfMissing` makes them fill gaps only. Changes apply immediately.
+- **Pricing basis.** The dashboard Health tab and `Sidekick: Run Doctor` show which catalog priced your costs: source, age, entry count, custom entries and digest.
+- **Codex errors.** Codex structured errors are diagnosed, and the code-transform error notification offers Retry only when the failure is retryable, with the wait the provider asked for. Codex readiness also checks `codex login status`.
+- **Tool Inspector** shows the raw tool name and MCP server and hides internal `_sidekick*` keys, which no longer count toward token attribution.
+- **Model labels and rows.** Labels keep GPT tier variants (for example "GPT-6.1 Sol"), and model rows merge spellings of one model.
+
+### Changed
+
+- **Webview helpers.** The dashboard webview imports the shared quota, token-label and trend helpers instead of keeping copies.
+- **Snapshots.** Older dashboard snapshots are replayed once after upgrading.
+
 ## [0.28.3] - 2026-10-31
 
 ### Fixed

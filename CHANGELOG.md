@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-11-01
+
+### Fixed
+
+- **Codex reasoning is no longer priced twice in VS Code.** Codex output tokens already include reasoning, but the dashboard added the reasoning tokens again at the output rate (one sample turn: $0.00964 before, $0.00664 now). Every cost path now uses one normalized calculation, so live and rebuilt totals agree.
+- **Unpriced costs no longer read `$0.0000`** in the CLI dashboard or the VS Code dashboard. Both show `—` when nothing was priced and `(partial)` when some calls had no price; the CLI also marks catalog estimates `(est.)`.
+- **OpenCode costs on the OpenAI provider are no longer under-counted.** Cached input was subtracted twice and reasoning was never billed. Cache tokens from OpenCode's older file storage are counted too.
+
+### Added
+
+- **Pricing basis and custom prices.**
+  - Usage reports, `blocks`, `doctor`, the VS Code Health tab and `Sidekick: Run Doctor` name the pricing catalog behind every estimate.
+  - Custom per-model prices can be set in `cli-config.json` `pricing.models` or `sidekick.customModelPricing`.
+- **CLI.**
+  - Usage reports gain a Reasoning column and a `reasoning` CSV column (appended last), and merge model spellings into one row.
+  - `sessions --breakdown` prints its sub-rows and tags Codex subagent sessions.
+  - `dump --prompts` shows the cost of each prompt.
+- **VS Code.**
+  - Codex structured errors are diagnosed, and a failed code transform offers Retry only when the failure is retryable.
+  - The Tool Inspector shows raw tool and MCP server names.
+  - Model labels keep GPT tier variants.
+- **`sidekick-shared`:**
+  - **Lean subpaths:** `sidekick-shared/pricing` (pure, 8 modules), `sidekick-shared/codex` (Node, no Zod), `sidekick-shared/providerFailure`, and `sidekick-shared/statusline/payload`.
+  - **Usage attribution:** usage events record the prompt ordinal they answered, reasoning tokens, the provider message id, and subagent attribution. `bucketUsage()` gains a session dimension, `pricedCostUsd`, `excludeSynthetic` and `modelKey: 'canonical'`.
+  - **Tool-call origins:** `findToolCallOrigins()` maps tool-call ids to their session, time and prompt.
+  - **Pricing:** `canonicalModelId()`, `registerModelPricing()`, `getPricingCatalogInfo()`, `mergeCostComponents()`, and `formatCost(value, { source })`.
+  - **Provider failures:** Codex `codexErrorInfo` decoding and `retryable`.
+  - **Auth status:** `parseClaudeAuthStatus()` and `parseCodexLoginStatus()`.
+  - **Prompt history:** `collectPromptHistory({ includeText: false })`.
+  - **JSONL tail:** `createJsonlTail()` checkpoints, `onRewrite` and `noFollow`.
+  - **Codex parser:** `maxPendingBytes` and `metadataOnly`.
+  - **Transcripts:** projections expose `rawToolName` / `mcpServerName` without internal keys.
+  - **Testing:** `installCredentialGuard({ preserveEnv })`.
+
+### Changed
+
+- **Usage cache v3.** The cache moved to version 3 (`*.v3.json` files, so older versions sharing the folder keep their own). The first run after upgrading re-reads each session once.
+
 ## [0.28.3] - 2026-10-31
 
 ### Fixed
