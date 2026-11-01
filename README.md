@@ -24,6 +24,15 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **0.29.1: subagents tracked again, verified dashboard resume**
+  - **Subagents:** Claude Code renamed its subagent tool from `Task` to `Agent`; both names are recognized, so the CLI dashboard, both mind maps and the VS Code Subagents view show subagents again.
+  - **Background agents:** they stay running until Claude Code reports them finished, failed, killed or stopped, instead of completing at launch.
+  - **Subagents view:** one row per spawn, each linked to its transcript, and click-to-open finds transcripts in the session's `subagents/` folder again.
+  - **`auto` permission mode:** sessions in it keep their user lines (prompts, tool results and agent notifications) instead of dropping them.
+  - **Object-member names:** model ids and tool names such as `constructor` or `__proto__` no longer return a function as a price or context window, lose pricing provenance, or make tool summaries throw.
+  - **Dashboard resume:** both dashboards reuse a saved snapshot only when the session file is the same file with the same opening content, and replay the session otherwise; existing snapshots replay once after upgrading.
+  - **Retry:** Generate Commit Message, Review My Changes, Generate PR Description, Generate Documentation and Quick Ask (Inline Chat) offer Retry when the provider failure is retryable, as Transform Selected Code already did.
+  - **Library:** `sidekick-shared` adds subagent-spawn and task-notification helpers, opt-in task-notification events from `extractSessionEvents()` and `createWatcher()`, and checkpoint-verified snapshot resume for readers, watchers and parsers.
 - **0.29.0: honest costs and your own prices**
   - **Cost display:** costs that could not be priced read `—` instead of `$0.0000` in both dashboards, `(partial)` marks totals where some calls had no price, and CLI estimates carry `(est.)`.
   - **Cost fixes:** Codex reasoning is no longer priced twice in VS Code, and OpenCode costs on the OpenAI provider are no longer under-counted.

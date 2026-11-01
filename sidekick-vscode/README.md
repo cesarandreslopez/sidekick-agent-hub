@@ -15,6 +15,13 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.29.1: subagents with current Claude Code, and Retry for more commands**
+  - **Subagents view:** Claude Code's subagent tool is now `Agent` (formerly `Task`), and the view shows one row per spawn, with no `live-worker` placeholders or duplicate rows. Background agents stay running until Claude Code reports them finished, failed, killed, or stopped, and clicking a row opens its transcript from the session's `subagents/` folder.
+  - **Mind map and Kanban board:** they recognize `Agent` spawns and refresh when a background agent finishes; agent notifications show in the timeline as a short entry instead of raw XML.
+  - **`auto` permission mode:** sessions in it keep their user lines (prompts, tool results, and notifications).
+  - **Session resume:** after a reload, a saved snapshot is used only when the session file is the same file with the same opening content; existing snapshots replay once after upgrading.
+  - **Retry:** Generate Commit Message, Review My Changes, Generate PR Description, Generate Documentation, and Quick Ask (Inline Chat) now offer **Retry** with the provider's suggested wait when the failure is retryable, as Transform Selected Code already did. A retried PR description reuses the base branch it already chose.
+  - **Model ids:** ids such as `constructor` no longer produce a nonsense price or context window.
 - **0.29.0: honest costs and custom prices**
   - **Unpriced costs:** they show `—` when nothing was priced, and `(partial)` with an "N model(s) unpriced" note when only some calls were, instead of `$0.0000`. This covers the cost metric, model list, summary, history, and Billing block.
   - **Cost fixes:** Codex reasoning tokens are no longer billed twice, and OpenCode costs on the OpenAI provider are no longer under-counted.
@@ -132,11 +139,11 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 - **Conversation Viewer** — full session transcript that interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode; tool calls render as concise rows with expandable outputs, with search across the conversation
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.) with paired tool outputs (file content, stdout, search results), plus the raw tool name and MCP server
-- **Subagents Tree** — hierarchical view of subagent spawns (Claude Code and Codex) with nested parent/child relationships and each subagent's cache-inclusive token total
+- **[Subagents Tree](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/#subagent-tree)** — one row per Claude Code subagent spawn (the `Agent` tool, formerly `Task`) with nested parent/child relationships; background agents show as running until they finish, fail, or are stopped; each row shows the subagent's cache-inclusive token total and opens its transcript on click. Codex subagents appear in the dashboard and mind map
 - **Plans Board** — agent plans discovered for the project, surfaced as a dedicated sidebar view
 - **Latest Files Touched** — sidebar tree of files the current session has read or modified
 - **Cross-Session Search** — search across all sessions
-- **Notification Triggers** — alerts for credential access, destructive commands, compaction, token thresholds, and quota thresholds (once per reset window)
+- **Notification Triggers** — alerts for credential access, sensitive-path writes, destructive commands, repeated tool errors, cycling without progress, compaction, token thresholds, and quota thresholds (once per reset window)
 - **Provider Status** — live API health indicator scoped to the monitored provider: Claude for Claude Code sessions, OpenAI for Codex sessions, not shown for OpenCode sessions (use `sidekick status` in the CLI for a one-shot check)
 
 ### Session Intelligence
@@ -244,7 +251,7 @@ Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS. 
 
 **Codex issues?** Verify `codex login status` shows you are logged in, or that `OPENAI_API_KEY` / `CODEX_API_KEY` is set.
 
-**Request failed?** Inference failures name the problem — missing or rejected credentials, an expired OAuth sign-in, an invalid provider conversation, a service or connection failure, a timeout, rate limiting, an execution-policy denial, a missing runtime, or a context limit — with a recovery hint. Sidekick never signs in, changes credentials, switches providers, or replays a turn for you. When a code transform fails with a retryable error (such as a rate limit), the notification offers **Retry**, with the wait the provider asked for. "Test Connection" distinguishes local CLI readiness (Claude Max, Codex) from a successful authenticated request (Claude API), and a network or service error is not reported as a rejected key.
+**Request failed?** Inference failures name the problem — missing or rejected credentials, an expired OAuth sign-in, an invalid provider conversation, a service or connection failure, a timeout, rate limiting, an execution-policy denial, a missing runtime, or a context limit — with a recovery hint. Sidekick never signs in, changes credentials, switches providers, or replays a turn for you. When Transform Selected Code, Generate Commit Message, Review My Changes, Generate PR Description, Generate Documentation, or Quick Ask (Inline Chat) fails with a retryable error (such as a rate limit), the notification offers **Retry**, with the wait the provider asked for. "Test Connection" distinguishes local CLI readiness (Claude Max, Codex) from a successful authenticated request (Claude API), and a network or service error is not reported as a rejected key.
 
 **Status card says unavailable?** The dashboard's public status card shows **Status unavailable** when the vendor status page could not be fetched, and **Incident information unavailable** when the feed omitted incidents. Details list every unresolved incident with its component associations and separate check and provider-update timestamps. A public incident does not establish the cause of a failed request, and an operational status page does not prove your connection works.
 

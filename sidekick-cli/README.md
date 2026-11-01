@@ -8,6 +8,12 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.29.1: subagents again and verified resume**
+  - **Subagents:** the dashboard's Agents tab and mind map show them again for current Claude Code, which renamed its subagent tool from `Task` to `Agent`; both names are recognized.
+  - **Background agents:** they stay running until Claude Code reports them finished, failed, killed or stopped, and the timeline shows a short `Agent "…" finished` entry instead of raw notification XML.
+  - **`auto` permission mode:** sessions keep their user lines in the dashboard and `dump`.
+  - **Dashboard resume:** a saved snapshot is used only while the session file is the same file with the same opening content; a replaced or rewritten file is replayed, a response split across the snapshot point is counted once, and existing snapshots replay once after upgrading.
+  - **Model ids:** names such as `constructor` no longer produce a nonsense price or context window.
 - **0.29.0: honest costs and custom prices**
   - **Cost display:** an unpriced session or billing block reads `—` instead of `$0.0000`. Every report uses one rule: `—` when nothing was priced, `$x (est.)` for catalog estimates, and `$x (partial)` when some calls had no price.
   - **Pricing catalog:** the usage reports and `blocks` name it in their footer (`pricingCatalog` in `--json`). `doctor` warns when only the built-in table or a stale cache is active.
@@ -47,7 +53,7 @@ See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/
 
 ## Replay and Recovery
 
-Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex can reuse compatible complete-history checkpoints. Live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
+Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.29.1 replay once. Live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
 
 ## Installation
 
