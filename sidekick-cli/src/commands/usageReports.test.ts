@@ -27,6 +27,7 @@ import {
   formatUsageCsv,
   formatUsageTable,
   selectProviders,
+  sessionParentMap,
   usageReportAction,
 } from './usageReports';
 
@@ -134,7 +135,7 @@ describe('buildUsageReport', () => {
 
     const csv = formatUsageCsv(report);
     expect(csv.split('\n')[0]).toBe(
-      'period,provider,project,model,sessions,calls,input,output,cache_write,cache_read,total,cost_usd,cost_provenance,unpriced_calls,first_event,last_event,models',
+      'period,provider,project,model,sessions,calls,input,output,cache_write,cache_read,total,cost_usd,cost_provenance,unpriced_calls,first_event,last_event,models,reasoning',
     );
     expect(csv).toContain('2026-09-03,claude-code,,,1,1,500,250,0,250,1000,0.01,estimated,0,');
 
@@ -169,6 +170,161 @@ describe('buildUsageReport', () => {
       until: NOW,
     });
     expect(formatUsageTable(report)).toContain('No usage events in this window.');
+  });
+});
+
+describe('usage report costs, pricing basis, reasoning, and sessions', () => {
+  const since = new Date('2026-09-01T00:00:00Z');
+  const collect = (events: unknown[]) =>
+    mockCollect.mockResolvedValue({
+      events,
+      sessions: [...new Set(events.map((event) => (event as { sessionId: string }).sessionId))].map(
+        (sessionId) => ({ sessionId }),
+      ),
+      diagnostics: [],
+      cacheHits: 0,
+      cacheMisses: 0,
+    });
+
+  beforeEach(() => {
+    chalk.level = 0;
+    mockCollect.mockReset();
+  });
+
+  it('prints "—" for unpriced rows, (est.) for estimates, and marks partially priced rows', async () => {
+    collect([
+      // 09-01: provider-reported only
+      usage('2026-09-01T10:00:00Z', { costUsd: 0.5, costProvenance: 'provider-reported' }),
+      // 09-02: nothing priced
+      usage('2026-09-02T10:00:00Z', { costUsd: null, costProvenance: 'unpriced' }),
+      // 09-03: one estimated call and one unpriced call
+      usage('2026-09-03T10:00:00Z', { costUsd: 0.25 }),
+      usage('2026-09-03T11:00:00Z', { costUsd: null, costProvenance: 'unpriced' }),
+    ]);
+    const report = await buildUsageReport({
+      providers: [claude] as never,
+      granularity: 'day',
+      since,
+      until: NOW,
+      utc: true,
+    });
+    const lines = formatUsageTable(report).split('\n');
+    const row = (key: string) => lines.find((line) => line.trimStart().startsWith(key)) ?? '';
+    expect(row('2026-09-01')).toMatch(/\$0\.50$/);
+    expect(row('2026-09-02')).toMatch(/—$/);
+    expect(row('2026-09-02')).not.toContain('$0.00');
+    expect(row('2026-09-03')).toMatch(/\$0\.25 \(est\., partial\)$/);
+    expect(row('Total')).toMatch(/\$0\.75 \(est\., partial\)$/);
+    expect(lines.join('\n')).toContain('(partial) = priced calls only');
+    // CSV keeps the raw number; cost_provenance disambiguates.
+    expect(formatUsageCsv(report)).toContain(',0,unpriced,1,');
+  });
+
+  it('states the pricing basis in the footer and in --json', async () => {
+    collect([usage('2026-09-03T10:00:00Z')]);
+    const report = await buildUsageReport({
+      providers: [claude] as never,
+      granularity: 'day',
+      since,
+      until: NOW,
+    });
+    expect(report.pricingCatalog).toMatchObject({
+      source: expect.any(String),
+      digest: expect.stringMatching(/^fnv1a64:[0-9a-f]{16}$/),
+    });
+    const text = formatUsageTable(report);
+    expect(text).toContain(`Pricing: `);
+    expect(text).toContain(report.pricingCatalog.digest);
+  });
+
+  it('shows a Reasoning column and appends a reasoning CSV column only when reported', async () => {
+    const withReasoning = usage('2026-09-03T10:00:00Z', {
+      provider: 'codex',
+      model: 'gpt-6.1-sol',
+    });
+    (withReasoning.tokens as Record<string, number>).reasoningTokens = 120;
+    collect([withReasoning, usage('2026-09-03T11:00:00Z')]);
+    const report = await buildUsageReport({
+      providers: [claude, codex] as never,
+      granularity: 'day',
+      since,
+      until: NOW,
+      utc: true,
+    });
+    const text = formatUsageTable(report);
+    expect(text).toContain('Reasoning');
+    expect(text).toContain('Reasoning is already included in Total');
+    const csv = formatUsageCsv(report).trim().split('\n');
+    expect(csv[0].split(',').at(-1)).toBe('reasoning');
+    expect(csv[1].split(',').at(-1)).toBe('0');
+    expect(csv[2].split(',').at(-1)).toBe('120');
+
+    collect([usage('2026-09-03T11:00:00Z')]);
+    const plain = await buildUsageReport({
+      providers: [claude] as never,
+      granularity: 'day',
+      since,
+      until: NOW,
+    });
+    expect(formatUsageTable(plain)).not.toContain('Reasoning');
+  });
+
+  it('merges model spellings, drops <synthetic> placeholders, and renders session sub-rows', async () => {
+    collect([
+      usage('2026-09-03T10:00:00Z', { model: 'claude-opus-5-5-20261001' }),
+      usage('2026-09-03T10:05:00Z', { model: 'claude-opus-5-5' }),
+      usage('2026-09-03T10:06:00Z', {
+        model: '<synthetic>',
+        costUsd: null,
+        costProvenance: 'unpriced',
+        total: 0,
+      }),
+      usage('2026-09-03T12:00:00Z', {
+        provider: 'codex',
+        sessionId: 'child-session-1',
+        model: 'gpt-6.1-sol',
+        subagent: { agentId: 'child-session-1', parentSessionId: 'parent-session-9' },
+      }),
+      // A Claude subagent call carries its parent's session id: not a child session.
+      usage('2026-09-03T10:07:00Z', {
+        model: 'claude-opus-5-5',
+        subagent: { agentId: 'a1', parentSessionId: 's1' },
+      }),
+    ]);
+    const report = await buildUsageReport({
+      providers: [claude, codex] as never,
+      granularity: 'session',
+      since,
+      until: NOW,
+      utc: true,
+      breakdown: true,
+    });
+    expect(report.sessionParents).toEqual({ 'child-session-1': 'parent-session-9' });
+    const claudeRow = report.rows.find((row) => row.sessionId === 's1')!;
+    expect(claudeRow.calls).toBe(3);
+    expect(claudeRow.models).toEqual(['claude-opus-5-5']);
+    expect(claudeRow.unpricedCalls).toBe(0);
+    expect(report.breakdown['s1|claude-code|/Users/dev/work/project']).toEqual([
+      expect.objectContaining({ model: 'claude-opus-5-5', calls: 3 }),
+    ]);
+
+    const text = formatUsageTable(report);
+    expect(text).toContain('└ claude-opus-5-5');
+    expect(text).toContain('└ gpt-6.1-sol');
+    expect(text).toContain('↳ subagent of parent-s');
+    expect(text).not.toContain('<synthetic>');
+  });
+});
+
+describe('sessionParentMap', () => {
+  it('maps only sessions whose parent is another session', () => {
+    expect(
+      sessionParentMap([
+        { sessionId: 'a', subagent: { agentId: 'x', parentSessionId: 'a' } },
+        { sessionId: 'b', subagent: { agentId: 'b', parentSessionId: 'a' } },
+        { sessionId: 'c' },
+      ]),
+    ).toEqual({ b: 'a' });
   });
 });
 
@@ -259,6 +415,9 @@ describe('usageReportAction', () => {
     expect(parsed.since.startsWith('2026-01-15')).toBe(true);
     expect(parsed.rows[0].key).toBe('2026-09');
     expect(parsed.totals.calls).toBe(1);
+    // Additive: the pricing basis and the priced-cost figure.
+    expect(parsed.pricingCatalog.digest).toMatch(/^fnv1a64:/);
+    expect(parsed.rows[0].pricedCostUsd).toBe(0.01);
   });
 
   it('rejects an unparseable window without reading logs', async () => {

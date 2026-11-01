@@ -134,6 +134,7 @@ const dumpCmd = new Command('dump')
     'With --prompts, add interrupts, rejected/failed tools, compactions, API errors, rollbacks',
   )
   .option('--replies', "With --prompts, add the agent's final reply to each prompt")
+  .option('--no-usage', 'With --prompts, skip the per-prompt tokens and cost')
   .addHelpText('after', DUMP_EXAMPLES)
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { dumpAction } = await import('./commands/dump');

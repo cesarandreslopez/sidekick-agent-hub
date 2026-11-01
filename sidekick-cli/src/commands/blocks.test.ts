@@ -152,8 +152,10 @@ describe('blocks rendering', () => {
     expect(text).toContain('Total (incl. cache)');
     expect(text).toContain('active');
     expect(text).toContain('2.0k');
-    expect(text).toContain('$0.02');
+    expect(text).toContain('$0.02 (est.)');
     expect(text).toContain('Local estimate from session logs');
+    expect(text).toContain(`Pricing: `);
+    expect(text).toContain(report.pricingCatalog.digest);
     expect(text).toContain('estimated from catalog pricing');
     expect(text).toContain('Official (status line): 5h 42% used');
     expect(text).toContain('7d 61%');
@@ -166,6 +168,41 @@ describe('blocks rendering', () => {
     expect(csv).toContain(
       '2026-09-04T12:00:00.000Z,2026-09-04T17:00:00.000Z,active,2,1000,500,0,500,2000,0.02,estimated,0',
     );
+  });
+
+  it('hides the projection of an unpriced block and marks a partially priced one', async () => {
+    const unpriced = { costUsd: null, costProvenance: 'unpriced' };
+    mockCollect.mockResolvedValue({
+      events: [usage(0, 1000, unpriced), usage(30 * 60_000, 1000, unpriced)],
+      sessions: [{ sessionId: 's1' }],
+      diagnostics: [],
+      cacheHits: 0,
+      cacheMisses: 1,
+    });
+    const build = () =>
+      buildBlocksReport({
+        provider: provider as never,
+        now: NOW,
+        mode: 'active',
+        windowStart: new Date(NOW.getTime() - 5 * 3_600_000),
+        resolveOfficial: async () => null,
+      });
+    // The block row, not the "· active block" title.
+    const row = (text: string) => text.split('\n').find((line) => /active\s+\d/.test(line)) ?? '';
+    const unpricedRow = row(formatBlocksTable(await build()));
+    expect(unpricedRow).not.toContain('$');
+    expect(unpricedRow.match(/—/g)?.length).toBeGreaterThanOrEqual(2);
+
+    mockCollect.mockResolvedValue({
+      events: [usage(0), usage(30 * 60_000, 1000, unpriced)],
+      sessions: [{ sessionId: 's1' }],
+      diagnostics: [],
+      cacheHits: 0,
+      cacheMisses: 1,
+    });
+    const partialRow = row(formatBlocksTable(await build()));
+    expect(partialRow).toContain('$0.01 (est., partial)');
+    expect(partialRow.match(/\(est\., partial\)/g)).toHaveLength(2);
   });
 
   it('explains an empty active view', async () => {
@@ -237,6 +274,12 @@ describe('blocksAction', () => {
     expect(parsed.mode).toBe('since');
     expect(Array.isArray(parsed.blocks)).toBe(true);
     expect(parsed.official).toBeNull();
+    // Additive: the price tables behind the figures.
+    expect(parsed.pricingCatalog).toMatchObject({
+      source: expect.any(String),
+      digest: expect.stringMatching(/^fnv1a64:/),
+      registeredEntries: expect.any(Number),
+    });
     expect(dispose).toHaveBeenCalledOnce();
   });
 

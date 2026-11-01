@@ -6,6 +6,10 @@ import type {
 } from 'sidekick-shared';
 import {
   collectAllPromptSessions,
+  collectPromptUsage,
+  formatPromptUsage,
+  indexPromptUsage,
+  withPromptUsage,
   formatPromptSessionsJsonl,
   formatPromptSessionsMarkdown,
   formatPromptSessionsText,
@@ -252,5 +256,119 @@ describe('formatPromptSessionsJsonl', () => {
       .map((line) => JSON.parse(line) as PromptHistorySession);
     expect(rows.map((row) => row.sessionId)).toEqual(['a', 'b']);
     expect(rows[0].prompts[0].reply?.text).toBe('Fixed the token refresh.');
+  });
+});
+
+function usageEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    timestamp: Date.parse('2026-09-20T10:02:00.000Z'),
+    provider: 'claude-code',
+    sessionId: 'abc-123',
+    project: '/work/repo',
+    model: 'claude-opus-5-5',
+    tokens: {
+      inputTokens: 1000,
+      outputTokens: 500,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 8500,
+      totalTokens: 10_000,
+    },
+    costUsd: 0.05,
+    costProvenance: 'model-catalog',
+    promptOrdinal: 0,
+    ...overrides,
+  } as never;
+}
+
+describe('per-prompt usage', () => {
+  const events = [
+    usageEvent(),
+    // A subagent call carries the parent session and the prompt that spawned it.
+    usageEvent({ subagent: { agentId: 'a1', parentSessionId: 'abc-123' }, costUsd: 0.02 }),
+    usageEvent({ promptOrdinal: 2, costUsd: null, costProvenance: 'unpriced' }),
+    usageEvent({ promptOrdinal: 2, costUsd: 0.01 }),
+    usageEvent({ promptOrdinal: null }),
+    usageEvent({ model: '<synthetic>', costUsd: null, costProvenance: 'unpriced' }),
+    usageEvent({ sessionId: 'other' }),
+  ];
+
+  it('sums tokens and cost per (provider, session, ordinal), subagents included', () => {
+    const index = indexPromptUsage(events);
+    const usage = index.get('claude-code\u0000abc-123')!;
+    expect(usage.byOrdinal.get(0)).toEqual({
+      calls: 2,
+      totalTokens: 20_000,
+      reasoningTokens: 0,
+      costUsd: expect.closeTo(0.07, 10),
+      costSource: 'estimated',
+      partial: false,
+    });
+    expect(usage.byOrdinal.get(2)).toMatchObject({ calls: 2, costUsd: 0.01, partial: true });
+    // The whole session counts the call before the first prompt; never <synthetic>.
+    expect(usage.total.calls).toBe(5);
+    expect(index.get('claude-code\u0000other')?.total.calls).toBe(1);
+    expect(formatPromptUsage(usage.byOrdinal.get(0)!)).toBe('20.0k tokens · $0.07 (est.)');
+    expect(formatPromptUsage(usage.byOrdinal.get(2)!)).toBe('20.0k tokens · $0.01 (est., partial)');
+  });
+
+  it('shows usage beside each prompt and in each session header', () => {
+    const index = indexPromptUsage(events);
+    const text = formatPromptSessionsText([session()], { width: 140, usage: index });
+    expect(text).toContain('usage: 50.0k tokens');
+    expect(text).toMatch(/#0 {2}\S+ {2}· {2}20\.0k tokens · \$0\.07 \(est\.\)/);
+    expect(text).toMatch(/#2 {2}\S+ {2}· {2}20\.0k tokens · \$0\.01 \(est\., partial\)/);
+    const markdown = formatPromptSessionsMarkdown([session()], { usage: index });
+    expect(markdown).toContain('- **Usage:** 50.0k tokens');
+    expect(markdown).toMatch(/### #0 · \S+ · 20\.0k tokens · \$0\.07 \(est\.\)/);
+    // Without an index nothing changes.
+    expect(formatPromptSessionsText([session()], { width: 140 })).not.toContain('tokens ·');
+  });
+
+  it('adds promptUsage and sessionUsage to JSON without touching the existing usage field', () => {
+    const base = session();
+    base.prompts[0].usage = { inputTokens: 7 };
+    const [augmented] = withPromptUsage([base], indexPromptUsage(events));
+    expect(augmented.sessionUsage?.calls).toBe(5);
+    expect(augmented.prompts[0].usage).toEqual({ inputTokens: 7 });
+    expect(augmented.prompts[0].promptUsage?.calls).toBe(2);
+    expect(augmented.prompts[1].promptUsage?.partial).toBe(true);
+    expect(withPromptUsage([base], undefined)).toEqual([base]);
+  });
+
+  it('reads usage over the dumped sessions only, from their earliest start', async () => {
+    const collect = vi.fn(async () => ({
+      events,
+      sessions: [],
+      diagnostics: [],
+      cacheHits: 0,
+      cacheMisses: 0,
+    }));
+    const index = await collectPromptUsage([session()], {
+      workspacePath: '/work/repo',
+      collect: collect as never,
+    });
+    expect(collect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspacePaths: ['/work/repo'],
+        since: new Date('2026-09-20T10:00:00.000Z'),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(index instanceof Map && [...index.keys()]).toEqual(['claude-code\u0000abc-123']);
+  });
+
+  it('gives up with a notice when the usage read runs past its deadline', async () => {
+    const collect = vi.fn(
+      (options: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => reject(options.signal?.reason));
+        }),
+    );
+    const outcome = await collectPromptUsage([session()], {
+      workspacePath: '/work/repo',
+      deadlineMs: 5,
+      collect: collect as never,
+    });
+    expect(outcome).toEqual({ error: expect.stringContaining('took longer than 0 s') });
   });
 });

@@ -8,7 +8,7 @@
 import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics } from '../DashboardState';
 import { formatTime, sectionHeader, wordWrap, detailWidth } from '../formatters';
-import { highlightEvent } from 'sidekick-shared';
+import { formatCost, highlightEvent } from 'sidekick-shared';
 
 const EVENT_TYPE_BADGES: Record<string, string> = {
   user: '{green-fg}[USR]{/green-fg}',
@@ -100,8 +100,9 @@ export class EventStreamPanel implements SidePanel {
         );
       }
     }
+    // An event's cost is the provider-reported figure (OpenCode), never an estimate.
     if (typeof ev.cost === 'number') {
-      lines.push(`{bold}Cost:{/bold}     $${(ev.cost as number).toFixed(4)}`);
+      lines.push(`{bold}Cost:{/bold}     ${formatCost(ev.cost)}`);
     }
 
     lines.push('');

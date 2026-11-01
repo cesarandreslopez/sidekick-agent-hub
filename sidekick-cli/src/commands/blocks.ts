@@ -17,13 +17,14 @@ import {
   computeBillingBlocks,
   describeCostProvenance,
   findActiveBillingBlock,
-  formatCost,
   formatQuotaAge,
   formatTokenCount,
+  getPricingCatalogInfo,
   resolveQuota,
 } from 'sidekick-shared';
 import type {
   BillingBlock,
+  PricingCatalogInfo,
   ProviderId,
   QuotaFreshness,
   QuotaWindow,
@@ -31,7 +32,9 @@ import type {
   SessionProviderBase,
 } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { blockCostCells } from '../costDisplay';
 import { toCsv, type CsvColumn } from '../csv';
+import { formatPricingFooter } from '../pricingBasis';
 import { parseTimeOption } from '../timeRange';
 
 const RECENT_WINDOW_MS = 3 * 86_400_000;
@@ -65,6 +68,8 @@ export interface BlocksReport {
   cacheHits: number;
   cacheMisses: number;
   diagnostics: string[];
+  /** The price tables that priced these blocks, captured when the report was built. */
+  pricingCatalog: PricingCatalogInfo;
 }
 
 export interface BuildBlocksReportOptions {
@@ -127,6 +132,7 @@ export async function buildBlocksReport(options: BuildBlocksReportOptions): Prom
     cacheHits: collected.cacheHits,
     cacheMisses: collected.cacheMisses,
     diagnostics: collected.diagnostics.map((diagnostic) => diagnostic.message),
+    pricingCatalog: getPricingCatalogInfo(),
   };
 }
 
@@ -207,41 +213,43 @@ export function formatBlocksTable(report: BlocksReport): string {
     return lines.join('\n') + '\n';
   }
 
+  const cells = report.blocks.map(blockCostCells);
+  const costWidth = Math.max('Cost'.length, ...cells.map((cell) => cell.cost.length)) + 2;
+  const projectedWidth =
+    Math.max('Proj. cost'.length, ...cells.map((cell) => cell.projected.length)) + 2;
   const header =
     '  ' +
-    'Start'.padEnd(16) +
+    'Start'.padEnd(17) +
     'Status'.padEnd(8) +
     'Elapsed'.padStart(9) +
     TOKEN_TOTAL_LABEL.padStart(21) +
-    'Cost'.padStart(10) +
+    'Cost'.padStart(costWidth) +
     'Burn/min'.padStart(10) +
     'Projected'.padStart(11) +
-    'Proj. cost'.padStart(12) +
+    'Proj. cost'.padStart(projectedWidth) +
     'Remaining'.padStart(11);
   lines.push(chalk.dim(header));
 
-  for (const block of report.blocks) {
+  report.blocks.forEach((block, index) => {
     const status = (block.isActive ? chalk.green : chalk.dim)(
       (block.isActive ? 'active' : 'closed').padEnd(8),
     );
     const tokens = formatTokenCount(block.tokens.total);
-    const unpriced = block.costProvenance === 'unpriced';
     const projected = block.isActive ? formatTokenCount(block.projectedTokens) : '—';
-    const projectedCost = block.isActive && !unpriced ? formatCost(block.projectedCostUsd) : '—';
-    const cost = unpriced ? '—' : formatCost(block.costUsd);
+    const { cost, projected: projectedCost } = cells[index];
     lines.push(
       '  ' +
-        formatStart(block.start).padEnd(16) +
+        formatStart(block.start).padEnd(17) +
         status +
         formatBlockDuration(block.elapsedMs).padStart(9) +
         tokens.padStart(21) +
-        cost.padStart(10) +
+        cost.padStart(costWidth) +
         formatTokenCount(Math.round(block.burnRatePerMinute)).padStart(10) +
         projected.padStart(11) +
-        projectedCost.padStart(12) +
+        projectedCost.padStart(projectedWidth) +
         formatRemaining(block).padStart(11),
     );
-  }
+  });
 
   const reference = report.active ?? report.blocks[report.blocks.length - 1];
   const provenance = describeCostProvenance(reference);
@@ -254,6 +262,7 @@ export function formatBlocksTable(report: BlocksReport): string {
           : ''),
     ),
   );
+  lines.push(chalk.dim(`  ${formatPricingFooter(report.pricingCatalog)}`));
   if (report.official) {
     const { fiveHour, sevenDay } = report.official;
     const resetsIn = (iso: string) =>

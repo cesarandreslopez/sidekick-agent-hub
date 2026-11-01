@@ -7,6 +7,7 @@ import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext 
 import type { DashboardMetrics, PlanInfo } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { PersistedPlan, PlanSource } from 'sidekick-shared';
+import { formatCost } from 'sidekick-shared';
 import { wordWrap, detailWidth, makeBar, fmtNum, formatDuration, truncate } from '../formatters';
 import { copyToClipboard } from '../clipboard';
 
@@ -265,7 +266,7 @@ export class PlansPanel implements SidePanel {
         lines.push(`{bold}Tokens:{/bold}      ${fmtNum(hist.totalTokensUsed)}`);
       }
       if (hist.totalCostUsd) {
-        lines.push(`{bold}Cost:{/bold}        $${hist.totalCostUsd.toFixed(4)}`);
+        lines.push(`{bold}Cost:{/bold}        ${formatCost(hist.totalCostUsd)}`);
       }
       if (hist.totalToolCalls) {
         lines.push(`{bold}Tool Calls:{/bold}  ${hist.totalToolCalls}`);

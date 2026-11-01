@@ -150,6 +150,41 @@ describe('DashboardState', () => {
       expect(sonnet?.calls).toBe(2);
       expect(sonnet?.tokens).toBe(4500);
     });
+
+    it('merges spellings of one model into a canonical row', () => {
+      const state = new DashboardState();
+      for (const model of ['claude-opus-5-5-20261001', 'claude-opus-5-5', 'claude-haiku-4-5']) {
+        state.processEvent(makeEvent({ model, tokens: { input: 100, output: 10 } }));
+      }
+      const m = state.getMetrics();
+      expect(m.modelStats.map((row) => [row.model, row.calls])).toEqual([
+        ['claude-opus-5-5', 2],
+        ['claude-haiku-4-5', 1],
+      ]);
+    });
+  });
+
+  describe('cost provenance', () => {
+    it('carries the session provenance and unpriced calls for honest rendering', () => {
+      const unpriced = new DashboardState();
+      unpriced.processEvent(
+        makeEvent({ model: 'acme-unknown-model-1', tokens: { input: 1000, output: 100 } }),
+      );
+      expect(unpriced.getMetrics().tokens).toMatchObject({
+        cost: 0,
+        costProvenance: 'unpriced',
+        unpricedCalls: 1,
+      });
+
+      const estimated = new DashboardState();
+      estimated.processEvent(
+        makeEvent({ model: 'claude-haiku-4-5', tokens: { input: 1000, output: 100 } }),
+      );
+      expect(estimated.getMetrics().tokens).toMatchObject({
+        costProvenance: 'estimated',
+        unpricedCalls: 0,
+      });
+    });
   });
 
   describe('timeline', () => {

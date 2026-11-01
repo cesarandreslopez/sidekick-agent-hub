@@ -8,6 +8,7 @@ import type { DashboardMetrics } from '../dashboard/DashboardState';
 import type { DiffStat } from '../dashboard/GitDiffCache';
 import { fmtNum } from '../dashboard/formatters';
 import { formatCost, summarizeTokens } from 'sidekick-shared';
+import { formatAggregateCost } from '../costDisplay';
 
 export function buildNarrativePrompt(
   metrics: DashboardMetrics,
@@ -25,7 +26,11 @@ export function buildNarrativePrompt(
     cacheReadTokens: t.cacheRead,
     cacheWriteTokens: t.cacheWrite,
   }).total;
-  const costStr = formatCost(t.cost);
+  const costStr = formatAggregateCost({
+    costUsd: t.cost,
+    costProvenance: t.costProvenance,
+    unpricedCalls: t.unpricedCalls,
+  });
 
   // Task summary
   const completed = metrics.tasks.filter((tk) => tk.status === 'completed').length;
@@ -74,7 +79,7 @@ export function buildNarrativePrompt(
       ? metrics.modelStats
           .map(
             (m) =>
-              `  - ${m.model}: ${formatCost(m.cost)} (${m.calls} calls, ${fmtNum(m.tokens)} tokens)`,
+              `  - ${m.model}: ${m.priced === false ? '— (unpriced)' : formatCost(m.cost)} (${m.calls} calls, ${fmtNum(m.tokens)} tokens)`,
           )
           .join('\n')
       : '  (no model data)';

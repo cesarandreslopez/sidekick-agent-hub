@@ -7,7 +7,13 @@
  */
 
 import { ensureDefaultAccounts } from 'sidekick-shared';
-import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
+import {
+  hydratePricingCatalog,
+  loadObservedContextWindows,
+  registerModelPricing,
+} from 'sidekick-shared/node';
+import { recordConfiguredPricing, recordPricingHydration } from './pricingBasis';
+import { readPricingConfig } from './utils/cliConfig';
 
 /** Commands that answer purely from cached local state. */
 const CACHE_ONLY_COMMANDS = new Set(['statusline', 'today', 'history']);
@@ -39,6 +45,34 @@ export function isOfflineRun(
   if (argv.includes('--offline')) return true;
   const value = env.SIDEKICK_OFFLINE;
   return value === '1' || value === 'true';
+}
+
+/**
+ * Register the custom prices in cli-config.json's `pricing` section. Invalid
+ * entries are skipped with a warning on stderr; nothing here can fail a run.
+ * The registered layer survives catalog hydration, so the order relative to
+ * `hydratePricingCatalog` does not matter — only that it precedes pricing.
+ */
+export function applyConfiguredPricing(
+  write: (text: string) => void = (text) => process.stderr.write(text),
+): void {
+  try {
+    const pricing = readPricingConfig();
+    for (const warning of pricing.warnings) write(`Warning: ${warning}\n`);
+    const entries = Object.keys(pricing.entries).length;
+    if (entries > 0) {
+      registerModelPricing(pricing.entries, { onlyIfMissing: pricing.onlyIfMissing });
+    }
+    recordConfiguredPricing({
+      entries,
+      onlyIfMissing: pricing.onlyIfMissing,
+      warnings: pricing.warnings,
+    });
+  } catch (error) {
+    write(
+      `Warning: custom prices in cli-config.json were not applied: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
 }
 
 let started: Promise<void> | null = null;
@@ -75,11 +109,19 @@ export function runStartupSideEffects(
 
     if (!needsFullStartup(commandToken)) return;
 
+    // Before anything is priced: every command that runs full startup prices
+    // usage (or can), and they must all apply the same custom prices.
+    applyConfiguredPricing();
+
     // cacheDir defaults to the config dir, which honors SIDEKICK_CONFIG_DIR.
+    // The result is kept so report footers and doctor can say how the active
+    // prices were obtained (fresh fetch, cache, offline, or not at all).
+    const offline = isOfflineRun();
     await Promise.all([
-      hydratePricingCatalog({ offline: isOfflineRun() }).catch(() => {
-        /* non-fatal; static table still works */
-      }),
+      hydratePricingCatalog({ offline }).then(
+        (result) => recordPricingHydration({ state: 'done', result, offline }),
+        () => recordPricingHydration({ state: 'failed' }),
+      ),
       ensureDefaultAccounts().catch(() => {
         /* non-fatal; account bootstrap must not block startup */
       }),

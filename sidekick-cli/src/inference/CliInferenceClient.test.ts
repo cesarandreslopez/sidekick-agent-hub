@@ -112,8 +112,11 @@ describe('CliInferenceClient', () => {
       expect(result.diagnosis).toMatchObject({
         provider: provider === 'codex' ? 'codex' : 'claude-code',
         diagnosis: 'api_credentials_rejected',
+        // Rejected credentials stay rejected, whatever retry-after says.
+        retryable: false,
         httpStatus: 403,
         retryAfter: { kind: 'delay', delayMs: 5000 },
+        evidence: [{ source: 'structured-error', rule: 'api_credentials_rejected' }],
       });
       expect(JSON.stringify(result.diagnosis)).not.toContain('private detail');
       expect(fetchMock).toHaveBeenCalledOnce();
@@ -160,6 +163,7 @@ describe('CliInferenceClient', () => {
           credentialKind: 'api-key',
           diagnosis,
           recovery,
+          retryable: false,
           httpStatus: status,
           evidence: [{ source, rule: diagnosis }],
         });
@@ -210,6 +214,7 @@ describe('CliInferenceClient', () => {
         credentialKind: 'unknown',
         diagnosis,
         recovery,
+        retryable: false,
         evidence: [{ source: 'message', rule: diagnosis }],
       });
       expect(describeInferenceFailure(result.diagnosis!)).toContain(guidance);
@@ -217,6 +222,27 @@ describe('CliInferenceClient', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });
+
+  it.each(['codex', 'opencode'] as const)(
+    'marks a %s rate limit retryable and passes the retry-after through to the guidance',
+    async (provider) => {
+      vi.stubEnv(provider === 'codex' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY', 'test-key');
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: 'Too many requests' } }), {
+          status: 429,
+          headers: { 'retry-after': '30' },
+        }),
+      );
+      const result = await new CliInferenceClient(provider).complete('Summarize');
+      expect(result.diagnosis).toMatchObject({
+        diagnosis: 'rate_limited',
+        recovery: 'retry_later',
+        retryable: true,
+        evidence: [{ source: 'http-status', rule: 'rate_limited' }],
+      });
+      expect(describeInferenceFailure(result.diagnosis!)).toContain('Retry in 30s.');
+    },
+  );
 
   it.each([
     ['claude-code', 'claude', ['--print']],

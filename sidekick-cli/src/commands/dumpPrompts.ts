@@ -11,17 +11,24 @@
 import {
   ClaudeCodeProvider,
   CodexProvider,
+  SYNTHETIC_MODEL,
   collectSessionPromptHistory,
+  collectUsageEvents,
   formatDurationMs,
+  formatTokenCount,
 } from 'sidekick-shared';
 import type {
   CollectSessionPromptHistoryOptions,
+  CollectUsageEventsOptions,
+  CostSource,
   PromptHistoryProvider,
   PromptHistorySession,
   PromptHistorySessionPrompt,
   PromptHistorySignal,
   SessionPromptHistoryResult,
+  UsageEventRecord,
 } from 'sidekick-shared';
+import { eventsCostDisplay, formatCostDisplay } from '../costDisplay';
 import { parseTimeOption } from '../timeRange';
 import { parseLimit } from '../utils/parseLimit';
 
@@ -136,6 +143,182 @@ export async function collectAllPromptSessions(
   return merged;
 }
 
+// ── Per-prompt usage ──
+
+/** Tokens and cost of the calls that answered one prompt (or a whole session). */
+export interface PromptUsage {
+  calls: number;
+  /** Cache-inclusive, provider-semantics-aware total. */
+  totalTokens: number;
+  /** Informational, already inside `totalTokens`. */
+  reasoningTokens: number;
+  /** Sum of the priced calls; null when none was priced. */
+  costUsd: number | null;
+  costSource?: CostSource;
+  /** Some calls carried tokens but no price: `costUsd` covers the priced ones. */
+  partial: boolean;
+}
+
+/** One session's usage: per prompt ordinal, plus the whole session. */
+export interface SessionPromptUsage {
+  total: PromptUsage;
+  byOrdinal: Map<number, PromptUsage>;
+}
+
+/** Usage events by `(provider, sessionId)`, for `indexPromptUsage`. */
+export type PromptUsageIndex = Map<string, SessionPromptUsage>;
+
+function sessionKey(provider: string, sessionId: string): string {
+  return `${provider}\u0000${sessionId}`;
+}
+
+function summarizePromptUsage(events: readonly UsageEventRecord[]): PromptUsage {
+  const display = eventsCostDisplay(events);
+  return {
+    calls: events.length,
+    totalTokens: events.reduce((sum, event) => sum + event.tokens.totalTokens, 0),
+    reasoningTokens: events.reduce((sum, event) => sum + (event.tokens.reasoningTokens ?? 0), 0),
+    costUsd: display.cost,
+    ...(display.source ? { costSource: display.source } : {}),
+    partial: display.partial,
+  };
+}
+
+/**
+ * Group usage events by session and by the prompt they answered. A Claude
+ * Code subagent's calls carry their parent session's id and prompt ordinal,
+ * so they count toward the prompt that spawned the subagent.
+ */
+export function indexPromptUsage(events: readonly UsageEventRecord[]): PromptUsageIndex {
+  type Group = { all: UsageEventRecord[]; byOrdinal: Map<number, UsageEventRecord[]> };
+  const grouped = new Map<string, Group>();
+  for (const event of events) {
+    if (event.model === SYNTHETIC_MODEL) continue;
+    const key = sessionKey(event.provider, event.sessionId);
+    const entry: Group = grouped.get(key) ?? { all: [], byOrdinal: new Map() };
+    entry.all.push(event);
+    if (typeof event.promptOrdinal === 'number') {
+      const list = entry.byOrdinal.get(event.promptOrdinal) ?? [];
+      list.push(event);
+      entry.byOrdinal.set(event.promptOrdinal, list);
+    }
+    grouped.set(key, entry);
+  }
+  const index: PromptUsageIndex = new Map();
+  for (const [key, entry] of grouped) {
+    index.set(key, {
+      total: summarizePromptUsage(entry.all),
+      byOrdinal: new Map(
+        [...entry.byOrdinal].map(([ordinal, list]) => [ordinal, summarizePromptUsage(list)]),
+      ),
+    });
+  }
+  return index;
+}
+
+export function sessionPromptUsage(
+  index: PromptUsageIndex | undefined,
+  session: Pick<PromptHistorySession, 'provider' | 'sessionId'>,
+): SessionPromptUsage | undefined {
+  return index?.get(sessionKey(session.provider, session.sessionId));
+}
+
+/** `45.2k tokens · $0.12 (est.)` */
+export function formatPromptUsage(usage: PromptUsage): string {
+  const cost = formatCostDisplay({
+    cost: usage.costUsd,
+    source: usage.costSource,
+    partial: usage.partial,
+  });
+  return `${formatTokenCount(usage.totalTokens)} tokens · ${cost}`;
+}
+
+/**
+ * Bound on reading usage for a dump. A warm usage cache answers in well under
+ * a second; a cold one over many sessions can take tens of seconds, and the
+ * prompts are the point of the dump, so past this it is skipped with a notice.
+ */
+export const PROMPT_USAGE_DEADLINE_MS = 30_000;
+
+/**
+ * Usage events for the dumped sessions, read through the shared usage
+ * collector (and its cache) over the same workspace and time span.
+ */
+export async function collectPromptUsage(
+  sessions: readonly PromptHistorySession[],
+  options: {
+    workspacePath: string;
+    deadlineMs?: number;
+    collect?: (options: CollectUsageEventsOptions) => ReturnType<typeof collectUsageEvents>;
+  },
+): Promise<PromptUsageIndex | { error: string }> {
+  if (sessions.length === 0) return new Map();
+  const starts = sessions.map((session) => Date.parse(session.startedAt)).filter(Number.isFinite);
+  const since = starts.length > 0 ? new Date(Math.min(...starts)) : undefined;
+  const wanted = new Set(
+    sessions.map((session) => sessionKey(session.provider, session.sessionId)),
+  );
+  const providers = [...new Set(sessions.map((session) => session.provider))].map((id) =>
+    id === 'claude-code' ? new ClaudeCodeProvider() : new CodexProvider(),
+  );
+  const deadlineMs = options.deadlineMs ?? PROMPT_USAGE_DEADLINE_MS;
+  try {
+    const collected = await (options.collect ?? collectUsageEvents)({
+      providers,
+      workspacePaths: [options.workspacePath],
+      ...(since ? { since } : {}),
+      signal: AbortSignal.timeout(deadlineMs),
+    });
+    return indexPromptUsage(
+      collected.events.filter((event) => wanted.has(sessionKey(event.provider, event.sessionId))),
+    );
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === 'TimeoutError';
+    return {
+      error: timedOut
+        ? `Per-prompt usage skipped: reading usage took longer than ${Math.round(deadlineMs / 1000)} s (\`sidekick sessions\` warms the usage cache; --no-usage skips this).`
+        : `Per-prompt usage skipped: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  } finally {
+    for (const provider of providers) provider.dispose();
+  }
+}
+
+/** A session for JSON output, with the usage totals this command adds. */
+export type PromptSessionWithUsage = PromptHistorySession & {
+  /** Every call of the session, subagents included. */
+  sessionUsage?: PromptUsage;
+  prompts: Array<
+    PromptHistorySessionPrompt & {
+      /**
+       * Every call that answered this prompt, subagents included. (The
+       * existing `usage` field is the first answering call only.)
+       */
+      promptUsage?: PromptUsage;
+    }
+  >;
+};
+
+/** Sessions with `sessionUsage` and per-prompt `promptUsage`, for JSON output. */
+export function withPromptUsage(
+  sessions: readonly PromptHistorySession[],
+  index: PromptUsageIndex | undefined,
+): PromptSessionWithUsage[] {
+  if (!index) return [...sessions];
+  return sessions.map((session) => {
+    const usage = sessionPromptUsage(index, session);
+    if (!usage) return session;
+    return {
+      ...session,
+      sessionUsage: usage.total,
+      prompts: session.prompts.map((prompt) => {
+        const promptUsage = usage.byOrdinal.get(prompt.ordinal);
+        return promptUsage ? { ...prompt, promptUsage } : prompt;
+      }),
+    };
+  });
+}
+
 // ── Formatting ──
 
 function pad(value: number): string {
@@ -213,7 +396,7 @@ function firstLine(text: string, width: number): string {
 /** Plain-text report: a header per session, then each prompt in full. */
 export function formatPromptSessionsText(
   sessions: PromptHistorySession[],
-  options: { width?: number } = {},
+  options: { width?: number; usage?: PromptUsageIndex } = {},
 ): string {
   const width = Math.max(40, options.width ?? 120);
   const rule = '─'.repeat(Math.min(width, 80));
@@ -235,6 +418,8 @@ export function formatPromptSessionsText(
     if (session.cwds.length > 0) details.push(`cwd: ${session.cwds.join(', ')}`);
     const notes = completenessNotes(session);
     if (notes.length > 0) details.push(`incomplete: ${notes.join(', ')}`);
+    const usage = sessionPromptUsage(options.usage, session);
+    if (usage) details.push(`usage: ${formatPromptUsage(usage.total)}`);
     if (details.length > 0) lines.push(details.join('  ·  '));
     lines.push(rule);
 
@@ -255,7 +440,11 @@ export function formatPromptSessionsText(
     writeSignals(-1);
     for (const prompt of session.prompts) {
       lines.push('');
-      lines.push(`#${prompt.ordinal}  ${formatPromptTime(prompt.timestamp, session.startedAt)}`);
+      const promptUsage = usage?.byOrdinal.get(prompt.ordinal);
+      lines.push(
+        `#${prompt.ordinal}  ${formatPromptTime(prompt.timestamp, session.startedAt)}` +
+          (promptUsage ? `  ·  ${formatPromptUsage(promptUsage)}` : ''),
+      );
       lines.push(...indent(prompt.text, '    '));
       if (prompt.reply) {
         lines.push(`    ↳ reply  ${formatPromptTime(prompt.reply.timestamp, session.startedAt)}`);
@@ -279,9 +468,11 @@ function markdownPrompt(
   prompt: PromptHistorySessionPrompt,
   session: PromptHistorySession,
   signals: PromptHistorySignal[],
+  usage?: PromptUsage,
 ): string[] {
   const lines = [
-    `### #${prompt.ordinal} · ${formatPromptTime(prompt.timestamp, session.startedAt)}`,
+    `### #${prompt.ordinal} · ${formatPromptTime(prompt.timestamp, session.startedAt)}` +
+      (usage ? ` · ${formatPromptUsage(usage)}` : ''),
     '',
   ];
   lines.push(...fenced(prompt.text), '');
@@ -309,10 +500,14 @@ function markdownSignals(signals: PromptHistorySignal[], session: PromptHistoryS
 }
 
 /** Markdown report: one section per session, prompts and replies fenced verbatim. */
-export function formatPromptSessionsMarkdown(sessions: PromptHistorySession[]): string {
+export function formatPromptSessionsMarkdown(
+  sessions: PromptHistorySession[],
+  options: { usage?: PromptUsageIndex } = {},
+): string {
   const lines: string[] = ['# Session prompts', ''];
   for (const session of sessions) {
     const bySignal = signalsByPrompt(session);
+    const usage = sessionPromptUsage(options.usage, session);
     lines.push(`## ${session.provider} · \`${session.sessionId}\``, '');
     lines.push(`- **Span:** ${sessionSpan(session)}`);
     lines.push(`- **Prompts:** ${session.prompts.length}`);
@@ -320,12 +515,20 @@ export function formatPromptSessionsMarkdown(sessions: PromptHistorySession[]): 
       lines.push(`- **Branches:** ${session.gitBranches.join(', ')}`);
     }
     if (session.models.length > 0) lines.push(`- **Models:** ${session.models.join(', ')}`);
+    if (usage) lines.push(`- **Usage:** ${formatPromptUsage(usage.total)}`);
     const notes = completenessNotes(session);
     lines.push(`- **Complete:** ${notes.length === 0 ? 'yes' : `no (${notes.join(', ')})`}`);
     lines.push('');
     lines.push(...markdownSignals(bySignal.get(-1) ?? [], session));
     for (const prompt of session.prompts) {
-      lines.push(...markdownPrompt(prompt, session, bySignal.get(prompt.ordinal) ?? []));
+      lines.push(
+        ...markdownPrompt(
+          prompt,
+          session,
+          bySignal.get(prompt.ordinal) ?? [],
+          usage?.byOrdinal.get(prompt.ordinal),
+        ),
+      );
     }
   }
   return lines.join('\n').trimEnd() + '\n';
@@ -430,22 +633,35 @@ export async function dumpPromptsAction(
     process.stderr.write('No sessions with prompts found for this project.\n');
     return;
   }
+  // Tokens and cost per prompt, joined on (provider, session, ordinal).
+  // `--no-usage` skips the usage read entirely.
+  let usage: PromptUsageIndex | undefined;
+  if (opts.usage !== false && result.sessions.length > 0) {
+    const collected = await collectPromptUsage(result.sessions, { workspacePath });
+    if ('error' in collected) process.stderr.write(`${collected.error}\n`);
+    else usage = collected;
+  }
+
   exitQuietlyOnClosedPipe();
   switch (format) {
     case 'json':
-      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+      process.stdout.write(
+        JSON.stringify({ ...result, sessions: withPromptUsage(result.sessions, usage) }, null, 2) +
+          '\n',
+      );
       break;
     case 'jsonl':
-      process.stdout.write(formatPromptSessionsJsonl(result.sessions));
+      process.stdout.write(formatPromptSessionsJsonl(withPromptUsage(result.sessions, usage)));
       break;
     case 'markdown':
-      process.stdout.write(formatPromptSessionsMarkdown(result.sessions));
+      process.stdout.write(formatPromptSessionsMarkdown(result.sessions, { usage }));
       break;
     case 'text':
     default:
       process.stdout.write(
         formatPromptSessionsText(result.sessions, {
           width: opts.width ? parseInt(String(opts.width), 10) : process.stdout.columns || 120,
+          usage,
         }),
       );
       break;

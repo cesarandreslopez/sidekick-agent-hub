@@ -5,6 +5,7 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import {
+  SYNTHETIC_MODEL,
   readHistory,
   formatCost,
   getTopFailingTools,
@@ -16,6 +17,7 @@ import {
 import type { FailingToolTrendRow } from 'sidekick-shared';
 import type { DailyData, HistoricalDataStore, TopFailingTool } from 'sidekick-shared';
 import { toCsv, type CsvColumn } from '../csv';
+import { mergeModelUsage } from '../modelUsage';
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -77,7 +79,12 @@ function printStatsSummary(
     process.stdout.write(chalk.bold('Model Usage\n'));
     process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
-    const sorted = [...at.modelUsage].sort((a, b) => b.calls - a.calls);
+    // One row per model, whatever spelling (dated, prefixed, Bedrock) recorded it.
+    // Claude Code's `<synthetic>` placeholders are never billed, so they are
+    // neither a model nor an unpriced one.
+    const sorted = mergeModelUsage(
+      at.modelUsage.filter((usage) => usage.model !== SYNTHETIC_MODEL),
+    ).sort((a, b) => b.calls - a.calls);
     const unpricedModels: string[] = [];
     for (const m of sorted) {
       // Honest rendering: priced === false means no pricing was available
@@ -86,6 +93,8 @@ function printStatsSummary(
       if (m.priced === false) {
         costStr = chalk.yellow(' (—)');
         unpricedModels.push(m.model);
+      } else if (m.partiallyPriced) {
+        costStr = chalk.dim(` (${formatCost(m.cost)}, partial)`);
       } else if (m.cost > 0) {
         costStr = chalk.dim(` (${formatCost(m.cost)})`);
       }

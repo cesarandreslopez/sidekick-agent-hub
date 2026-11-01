@@ -7,11 +7,18 @@
  */
 
 import * as fs from 'fs';
-import type { BillingBlock, FollowEvent, SessionTokenTotals, SubagentStats } from 'sidekick-shared';
+import type {
+  AggregatedCostProvenance,
+  BillingBlock,
+  FollowEvent,
+  SessionTokenTotals,
+  SubagentStats,
+} from 'sidekick-shared';
 import { EventAggregator, combineSessionTokenTotals, summarizeTokens } from 'sidekick-shared';
 import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared';
 import type { SessionSnapshot } from 'sidekick-shared';
 import { quotaFromCodexRateLimits } from 'sidekick-shared';
+import { mergeModelUsage } from '../modelUsage';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
 import type { ProviderStatusState } from './ProviderStatusService';
@@ -28,8 +35,12 @@ export interface TokenStats {
   reasoning: number;
   /** Every billed token, cache included — `summarizeTokens().total` for the main thread. */
   total: number;
-  /** Session cost in USD (`AggregatedTokens.costUsd`). */
+  /** Session cost in USD (`AggregatedTokens.costUsd`): the priced part only. */
   cost: number;
+  /** How `cost` was produced; `unpriced` means nothing could be priced (render "—"). */
+  costProvenance?: AggregatedCostProvenance;
+  /** Usage events that could not be priced; non-zero beside a cost means it is partial. */
+  unpricedCalls?: number;
 }
 
 export interface ToolStats {
@@ -49,6 +60,11 @@ export interface ModelStats {
    * render "—"). Omit for legacy records; undefined means "priced".
    */
   priced?: boolean;
+  /**
+   * Set when this row merges spellings of one model (see `mergeModelUsage`)
+   * and only some of them were priced: `cost` covers the priced ones.
+   */
+  partiallyPriced?: boolean;
 }
 
 export interface ContextGauge {
@@ -622,16 +638,10 @@ export class DashboardState {
       lastCallTime: undefined,
     }));
 
-    // Map model stats from aggregator's ModelUsageStats to CLI's ModelStats.
-    // Aggregator's `priced` flag flows through so the UI renders "—" for
-    // models without a known pricing entry.
-    const modelStats: ModelStats[] = m.modelStats.map((ms) => ({
-      model: ms.model,
-      calls: ms.calls,
-      tokens: ms.tokens,
-      cost: ms.cost,
-      priced: ms.priced,
-    }));
+    // Map model stats from aggregator's ModelUsageStats to CLI's ModelStats,
+    // one row per canonical model. Aggregator's `priced` flag flows through so
+    // the UI renders "—" for models without a known pricing entry.
+    const modelStats: ModelStats[] = mergeModelUsage(m.modelStats);
 
     // Map tasks from aggregator's TrackedTask to CLI's TaskItem
     const taskMap = new Map<string, TaskItem>();
@@ -713,6 +723,8 @@ export class DashboardState {
         reasoning: m.tokens.reasoningTokens,
         total: summarizeTokens(m.tokens).total,
         cost: m.tokens.costUsd,
+        costProvenance: m.tokens.costProvenance,
+        unpricedCalls: m.tokens.unpricedCalls,
       },
       sessionTokens: combineSessionTokenTotals(m.tokens, this._subagentStats),
       context: this.computeContextGauge(m.currentContextSize, m.currentModel),

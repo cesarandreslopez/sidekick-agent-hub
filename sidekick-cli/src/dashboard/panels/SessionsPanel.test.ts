@@ -118,3 +118,131 @@ describe('SessionsPanel Summary tab', () => {
     panel.dispose?.();
   });
 });
+
+describe('SessionsPanel honest costs', () => {
+  const activeItem = (metrics: DashboardMetrics): PanelItem => ({
+    id: 'active',
+    label: 'session',
+    sortKey: 0,
+    data: { type: 'active', metrics },
+  });
+  const render = (metrics: DashboardMetrics) => {
+    const panel = new SessionsPanel();
+    const out = panel.detailTabs[0].render(activeItem(metrics), metrics, {} as never, {
+      width: 100,
+    });
+    panel.dispose?.();
+    return out;
+  };
+
+  it('renders "—" for an unpriced session and its unpriced model, never $0', () => {
+    const base = metricsWithTasks();
+    const out = render({
+      ...base,
+      tokens: { ...base.tokens, cost: 0, costProvenance: 'unpriced', unpricedCalls: 4 },
+      modelStats: [{ model: 'acme-unknown', calls: 4, tokens: 1000, cost: 0, priced: false }],
+    });
+    expect(out).not.toContain('$0.0000');
+    expect(out).toContain('{yellow-fg}—{/yellow-fg}');
+  });
+
+  it('marks estimated and partially priced figures', () => {
+    const base = metricsWithTasks();
+    const out = render({
+      ...base,
+      tokens: { ...base.tokens, cost: 1.5, costProvenance: 'estimated', unpricedCalls: 1 },
+      modelStats: [
+        { model: 'claude-opus-5-5', calls: 3, tokens: 1000, cost: 1.5, partiallyPriced: true },
+      ],
+    });
+    expect(out).toContain('{green-fg}$1.50 (est., partial){/green-fg}');
+  });
+
+  it('shows no projected cost for an unpriced billing block', () => {
+    const block = {
+      id: '2026-11-01T10:00:00.000Z',
+      start: '2026-11-01T10:00:00.000Z',
+      end: '2026-11-01T15:00:00.000Z',
+      isActive: true,
+      calls: 2,
+      tokens: {
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        total: 2,
+      },
+      costUsd: 0,
+      costProvenance: 'unpriced',
+      unpricedCalls: 2,
+      models: {},
+      elapsedMs: 3_600_000,
+      remainingMs: 3_600_000,
+      burnRatePerMinute: 10,
+      projectedTokens: 5000,
+      projectedCostUsd: 0,
+    } as unknown as DashboardMetrics['billingBlock'];
+    const out = render({ ...metricsWithTasks(), billingBlock: block });
+    const byEnd = out.split('\n').find((line) => line.includes('by end')) ?? '';
+    expect(byEnd).toContain('{yellow-fg}—{/yellow-fg}');
+    expect(byEnd).not.toContain('$');
+  });
+});
+
+describe('SessionsPanel narrative retry hint', () => {
+  async function failNarrative(diagnosis: Record<string, unknown> | undefined): Promise<string> {
+    const panel = new SessionsPanel();
+    const metrics = metricsWithTasks();
+    const item: PanelItem = {
+      id: 'active',
+      label: 's',
+      sortKey: 0,
+      data: { type: 'active', metrics },
+    };
+    const internals = panel as unknown as {
+      inferenceClient: unknown;
+      generateNarrative(): void;
+    };
+    internals.inferenceClient = {
+      isAvailable: true,
+      getEnableHint: () => '',
+      complete: async () => ({ text: '', error: 'request failed', diagnosis }),
+    };
+    panel.detailTabs[6].render(item, metrics, {} as never);
+    internals.generateNarrative();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const out = panel.detailTabs[6].render(item, metrics, {} as never);
+    panel.dispose?.();
+    return out;
+  }
+
+  const diagnosis = (overrides: Record<string, unknown>) => ({
+    provider: 'claude-code',
+    credentialKind: 'api-key',
+    evidence: [],
+    ...overrides,
+  });
+
+  it('offers a retry only when the failure is retryable', async () => {
+    const overloaded = await failNarrative(
+      diagnosis({ diagnosis: 'overloaded', recovery: 'retry_later', retryable: true }),
+    );
+    expect(overloaded).toContain("Press 'n' to retry");
+
+    const signedOut = await failNarrative(
+      diagnosis({
+        diagnosis: 'missing_credentials',
+        recovery: 'update_credentials',
+        retryable: false,
+      }),
+    );
+    expect(signedOut).toContain('API key is not configured');
+    expect(signedOut).not.toContain("Press 'n' to retry");
+
+    // Older diagnoses without the flag, and failures with no diagnosis, keep the hint.
+    expect(
+      await failNarrative(diagnosis({ diagnosis: 'timeout', recovery: 'retry_later' })),
+    ).toContain("Press 'n' to retry");
+    expect(await failNarrative(undefined)).toContain("Press 'n' to retry");
+  });
+});

@@ -12,26 +12,31 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import {
+  SYNTHETIC_MODEL,
   TOKEN_TOTAL_LABEL,
   bucketUsage,
   collectUsageEvents,
   createSessionProviders,
   describeCostProvenance,
-  formatCost,
   formatTokenCount,
   getAllDetectedProviders,
+  getPricingCatalogInfo,
   summarizeUsageRows,
 } from 'sidekick-shared';
 import type {
+  PricingCatalogInfo,
   ProviderId,
   SessionProviderBase,
   UsageBucketRow,
+  UsageEventRecord,
   UsageGranularity,
   UsageGroupDimension,
   UsageTotals,
 } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { formatAggregateCost } from '../costDisplay';
 import { toCsv, type CsvColumn } from '../csv';
+import { formatPricingFooter } from '../pricingBasis';
 import { parseTimeOption } from '../timeRange';
 
 const DAY_MS = 86_400_000;
@@ -51,6 +56,14 @@ export interface UsageReport {
   cacheHits: number;
   cacheMisses: number;
   diagnostics: string[];
+  /** The price tables that priced these events, captured when the report was built. */
+  pricingCatalog: PricingCatalogInfo;
+  /**
+   * Session rows only: a Codex spawned subagent's or fork's session id → the
+   * session it came from. (Claude Code subagent usage is already inside its
+   * parent session's row.)
+   */
+  sessionParents?: Record<string, string>;
 }
 
 export interface BuildUsageReportOptions {
@@ -86,6 +99,22 @@ export function defaultWindowStart(granularity: UsageGranularity, now: Date): Da
   }
 }
 
+/**
+ * Sessions that are a Codex spawned subagent or fork of another session, from
+ * the events' `subagent` tags. A Claude Code subagent's events carry its
+ * parent's own session id, so they never map a session to another.
+ */
+export function sessionParentMap(
+  events: readonly Pick<UsageEventRecord, 'sessionId' | 'subagent'>[],
+): Record<string, string> {
+  const parents: Record<string, string> = {};
+  for (const event of events) {
+    const parent = event.subagent?.parentSessionId;
+    if (parent && parent !== event.sessionId) parents[event.sessionId] ??= parent;
+  }
+  return parents;
+}
+
 export async function buildUsageReport(options: BuildUsageReportOptions): Promise<UsageReport> {
   const groupBy: UsageGroupDimension[] = [
     'provider',
@@ -98,12 +127,21 @@ export async function buildUsageReport(options: BuildUsageReportOptions): Promis
     workspacePath: options.workspacePath,
     noCache: options.noCache,
   });
-  const bucketOptions = { granularity: options.granularity, utc: options.utc ?? false };
-  const rows = bucketUsage(collected.events, { ...bucketOptions, groupBy });
+  // Claude Code's `<synthetic>` messages are local placeholders, never billed:
+  // left in, they show up as unpriced calls and phantom model rows.
+  const events = collected.events.filter((event) => event.model !== SYNTHETIC_MODEL);
+  const bucketOptions = {
+    granularity: options.granularity,
+    utc: options.utc ?? false,
+    excludeSynthetic: true,
+    // One row per model, whatever spelling (dated, region-prefixed, Bedrock) logged it.
+    modelKey: 'canonical' as const,
+  };
+  const rows = bucketUsage(events, { ...bucketOptions, groupBy });
 
   const breakdown: Record<string, UsageBucketRow[]> = {};
   if (options.breakdown) {
-    for (const row of bucketUsage(collected.events, {
+    for (const row of bucketUsage(events, {
       ...bucketOptions,
       groupBy: [...groupBy, 'model'],
     })) {
@@ -124,11 +162,15 @@ export async function buildUsageReport(options: BuildUsageReportOptions): Promis
     providers: options.providers.map((provider) => provider.id),
     rows,
     breakdown,
-    totals: summarizeUsageRows(rows, collected.events),
+    totals: summarizeUsageRows(rows, events),
     sessions: collected.sessions.length,
     cacheHits: collected.cacheHits,
     cacheMisses: collected.cacheMisses,
     diagnostics: collected.diagnostics.map((diagnostic) => diagnostic.message),
+    // Events are priced as the collector loads them, so the tables active now
+    // are the ones behind every figure in this report.
+    pricingCatalog: getPricingCatalogInfo(),
+    ...(options.granularity === 'session' ? { sessionParents: sessionParentMap(events) } : {}),
   };
 }
 
@@ -151,8 +193,10 @@ function shortProject(project: string | null): string {
   return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : project;
 }
 
-function costCell(row: Pick<UsageBucketRow, 'costUsd' | 'costProvenance'>): string {
-  return row.costProvenance === 'unpriced' ? '—' : formatCost(row.costUsd);
+function costCell(
+  row: Pick<UsageBucketRow, 'costUsd' | 'pricedCostUsd' | 'costProvenance' | 'unpricedCalls'>,
+): string {
+  return formatAggregateCost(row);
 }
 
 function windowLabel(report: UsageReport): string {
@@ -180,15 +224,26 @@ function formatStarted(ms: number, utc: boolean): string {
       });
 }
 
-function tokenColumns(row: Pick<UsageBucketRow, 'tokens' | 'totalTokens'>): string {
+function reasoningOf(row: { reasoningTokens?: number }): number {
+  return row.reasoningTokens ?? 0;
+}
+
+function tokenColumns(
+  row: Pick<UsageBucketRow, 'tokens' | 'totalTokens' | 'reasoningTokens'>,
+  showReasoning: boolean,
+): string {
   return (
     formatTokenCount(row.tokens.inputTokens).padStart(9) +
     formatTokenCount(row.tokens.outputTokens).padStart(9) +
     formatTokenCount(row.tokens.cacheWriteTokens).padStart(9) +
     formatTokenCount(row.tokens.cacheReadTokens).padStart(9) +
+    (showReasoning ? formatTokenCount(reasoningOf(row)).padStart(11) : '') +
     formatTokenCount(row.totalTokens).padStart(21)
   );
 }
+
+const MIN_RULE_WIDTH = 110;
+const SHORT_ID = 8;
 
 /** Render the report as a terminal table with totals and a provenance footer. */
 export function formatUsageTable(report: UsageReport): string {
@@ -197,9 +252,9 @@ export function formatUsageTable(report: UsageReport): string {
   lines.push(
     chalk.bold(TITLES[report.granularity]) + chalk.dim(` · ${windowLabel(report)} · ${providers}`),
   );
-  lines.push(chalk.dim('─'.repeat(110)));
 
   if (report.rows.length === 0) {
+    lines.push(chalk.dim('─'.repeat(MIN_RULE_WIDTH)));
     lines.push(chalk.dim('  No usage events in this window.'));
     return lines.join('\n') + '\n';
   }
@@ -207,82 +262,111 @@ export function formatUsageTable(report: UsageReport): string {
   const byProject = report.groupBy.includes('project');
   const isSession = report.granularity === 'session';
   const keyWidth = isSession ? 17 : 12;
+  const subRows = (row: UsageBucketRow) => report.breakdown[rowGroupKey(row)] ?? [];
+  const allRows = report.rows.flatMap((row) => [row, ...subRows(row)]);
+  // Reasoning is informational (already inside Total); the column only
+  // appears when a provider reported some, so Claude-only tables stay narrow.
+  const showReasoning = allRows.some((row) => reasoningOf(row) > 0);
+  const reasoningColumn = (row: { reasoningTokens?: number }) =>
+    showReasoning ? formatTokenCount(reasoningOf(row)).padStart(11) : '';
+  // Wide enough for the widest cell, e.g. "$12.34 (est., partial)".
+  const costWidth =
+    Math.max('Cost'.length, ...[...allRows, report.totals].map((row) => costCell(row).length)) + 2;
+  const cost = (row: Parameters<typeof costCell>[0]) => costCell(row).padStart(costWidth);
+  const providerLabel = (row: UsageBucketRow) =>
+    (PROVIDER_LABELS[row.provider ?? 'claude-code'] ?? row.provider ?? '').padEnd(10);
 
+  const body: string[] = [];
+  let header: string;
   if (isSession) {
-    lines.push(
-      chalk.dim(
-        '  ' +
-          KEY_LABELS.session.padEnd(keyWidth) +
-          'Provider'.padEnd(10) +
-          'Session'.padEnd(10) +
-          'Project'.padEnd(28) +
-          'Calls'.padStart(7) +
-          TOKEN_TOTAL_LABEL.padStart(21) +
-          'Cost'.padStart(10) +
-          '  Models',
-      ),
-    );
+    const leadWidth = keyWidth + 10 + 10 + 28;
+    header =
+      '  ' +
+      KEY_LABELS.session.padEnd(keyWidth) +
+      'Provider'.padEnd(10) +
+      'Session'.padEnd(10) +
+      'Project'.padEnd(28) +
+      'Calls'.padStart(7) +
+      (showReasoning ? 'Reasoning'.padStart(11) : '') +
+      TOKEN_TOTAL_LABEL.padStart(21) +
+      'Cost'.padStart(costWidth) +
+      '  Models';
     for (const row of report.rows) {
-      lines.push(
+      const parent = row.sessionId ? report.sessionParents?.[row.sessionId] : undefined;
+      const tag = parent ? `↳ subagent of ${parent.slice(0, SHORT_ID)} · ` : '';
+      body.push(
         '  ' +
           formatStarted(row.firstTimestamp, report.utc).padEnd(keyWidth) +
-          (PROVIDER_LABELS[row.provider ?? 'claude-code'] ?? row.provider ?? '').padEnd(10) +
-          (row.sessionId ?? '').slice(0, 8).padEnd(10) +
+          providerLabel(row) +
+          (row.sessionId ?? '').slice(0, SHORT_ID).padEnd(10) +
           shortProject(row.project).slice(0, 27).padEnd(28) +
           String(row.calls).padStart(7) +
+          reasoningColumn(row) +
           formatTokenCount(row.totalTokens).padStart(21) +
-          costCell(row).padStart(10) +
+          cost(row) +
           '  ' +
-          chalk.dim(row.models.join(', ')),
+          chalk.dim(tag + row.models.join(', ')),
       );
+      for (const sub of subRows(row)) {
+        body.push(
+          chalk.dim(
+            '  ' +
+              `  └ ${sub.model ?? 'unknown'}`.slice(0, leadWidth - 1).padEnd(leadWidth) +
+              String(sub.calls).padStart(7) +
+              reasoningColumn(sub) +
+              formatTokenCount(sub.totalTokens).padStart(21) +
+              cost(sub),
+          ),
+        );
+      }
     }
   } else {
-    lines.push(
-      chalk.dim(
-        '  ' +
-          KEY_LABELS[report.granularity].padEnd(keyWidth) +
-          'Provider'.padEnd(10) +
-          (byProject ? 'Project'.padEnd(28) : '') +
-          'Sessions'.padStart(9) +
-          'Calls'.padStart(7) +
-          'Input'.padStart(9) +
-          'Output'.padStart(9) +
-          'Cache W'.padStart(9) +
-          'Cache R'.padStart(9) +
-          TOKEN_TOTAL_LABEL.padStart(21) +
-          'Cost'.padStart(10),
-      ),
-    );
+    const leadWidth = keyWidth + 10 + (byProject ? 28 : 0);
+    header =
+      '  ' +
+      KEY_LABELS[report.granularity].padEnd(keyWidth) +
+      'Provider'.padEnd(10) +
+      (byProject ? 'Project'.padEnd(28) : '') +
+      'Sessions'.padStart(9) +
+      'Calls'.padStart(7) +
+      'Input'.padStart(9) +
+      'Output'.padStart(9) +
+      'Cache W'.padStart(9) +
+      'Cache R'.padStart(9) +
+      (showReasoning ? 'Reasoning'.padStart(11) : '') +
+      TOKEN_TOTAL_LABEL.padStart(21) +
+      'Cost'.padStart(costWidth);
     for (const row of report.rows) {
-      lines.push(
+      body.push(
         '  ' +
           row.key.padEnd(keyWidth) +
-          (PROVIDER_LABELS[row.provider ?? 'claude-code'] ?? row.provider ?? '').padEnd(10) +
+          providerLabel(row) +
           (byProject ? shortProject(row.project).slice(0, 27).padEnd(28) : '') +
           String(row.sessions).padStart(9) +
           String(row.calls).padStart(7) +
-          tokenColumns(row) +
-          costCell(row).padStart(10),
+          tokenColumns(row, showReasoning) +
+          cost(row),
       );
-      for (const sub of report.breakdown[rowGroupKey(row)] ?? []) {
-        lines.push(
+      for (const sub of subRows(row)) {
+        body.push(
           chalk.dim(
             '  ' +
-              `  └ ${sub.model ?? 'unknown'}`
-                .slice(0, keyWidth + 10 + (byProject ? 28 : 0) - 1)
-                .padEnd(keyWidth + 10 + (byProject ? 28 : 0)) +
+              `  └ ${sub.model ?? 'unknown'}`.slice(0, leadWidth - 1).padEnd(leadWidth) +
               ''.padStart(9) +
               String(sub.calls).padStart(7) +
-              tokenColumns(sub) +
-              costCell(sub).padStart(10),
+              tokenColumns(sub, showReasoning) +
+              cost(sub),
           ),
         );
       }
     }
   }
 
+  const rule = chalk.dim('─'.repeat(Math.max(MIN_RULE_WIDTH, header.length)));
+  lines.push(rule, chalk.dim(header), ...body);
+
   const totals = report.totals;
-  lines.push(chalk.dim('─'.repeat(110)));
+  lines.push(rule);
   lines.push(
     chalk.bold(
       '  ' +
@@ -292,11 +376,12 @@ export function formatUsageTable(report: UsageReport): string {
         (isSession
           ? ''.padEnd(10 + 28) +
             String(totals.calls).padStart(7) +
+            reasoningColumn(totals) +
             formatTokenCount(totals.totalTokens).padStart(21)
           : String(totals.sessions).padStart(9) +
             String(totals.calls).padStart(7) +
-            tokenColumns(totals)) +
-        costCell(totals).padStart(10),
+            tokenColumns(totals, showReasoning)) +
+        cost(totals),
     ),
   );
 
@@ -309,6 +394,13 @@ export function formatUsageTable(report: UsageReport): string {
         ` · ${report.sessions} session${report.sessions === 1 ? '' : 's'} read`,
     ),
   );
+  const notes: string[] = [];
+  if (allRows.some((row) => row.unpricedCalls > 0 && row.pricedCostUsd !== null)) {
+    notes.push('(partial) = priced calls only; the unpriced ones are left out');
+  }
+  if (showReasoning) notes.push('Reasoning is already included in Total');
+  if (notes.length > 0) lines.push(chalk.dim(`  ${notes.join(' · ')}`));
+  lines.push(chalk.dim(`  ${formatPricingFooter(report.pricingCatalog)}`));
   for (const diagnostic of report.diagnostics) {
     lines.push(chalk.yellow(`  ⚠ ${diagnostic}`));
   }
@@ -334,6 +426,8 @@ function csvColumns(report: UsageReport): CsvColumn<UsageBucketRow>[] {
     { header: 'first_event', value: (row) => new Date(row.firstTimestamp).toISOString() },
     { header: 'last_event', value: (row) => new Date(row.lastTimestamp).toISOString() },
     { header: 'models', value: (row) => row.models.join(';') },
+    // Appended last so existing column positions never move.
+    { header: 'reasoning', value: (row) => row.reasoningTokens ?? 0 },
   ];
 }
 

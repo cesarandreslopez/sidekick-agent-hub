@@ -31,6 +31,12 @@ import {
   truncate,
 } from '../formatters';
 import {
+  aggregateCostDisplay,
+  blockCostCells,
+  costSourceFromAggregate,
+  formatCostDisplay,
+} from '../../costDisplay';
+import {
   calculateCompactionLedger,
   extraQuotaRows,
   formatCompactionLedger,
@@ -40,6 +46,11 @@ import {
   quotaWindowHasData,
   quotaWindowShortLabel,
 } from 'sidekick-shared';
+
+/** Green for a figure, yellow for "—" (nothing could be priced). */
+function costMarkup(text: string): string {
+  return text === '—' ? '{yellow-fg}—{/yellow-fg}' : `{green-fg}${text}{/green-fg}`;
+}
 
 function getUtilizationColor(percent: number): string {
   if (percent < 60) return 'green';
@@ -93,6 +104,11 @@ export class SessionsPanel implements SidePanel {
   private narrativeText: string | null = null;
   private narrativeLoading = false;
   private narrativeError: string | null = null;
+  /**
+   * The failed request's `retryable` diagnosis; `false` hides the retry hint,
+   * since sending the same request again cannot succeed until something changes.
+   */
+  private narrativeRetryable: boolean | undefined = undefined;
   /** Set externally to trigger re-render after async narrative generation. */
   onNarrativeComplete?: () => void;
 
@@ -253,6 +269,7 @@ export class SessionsPanel implements SidePanel {
 
     this.narrativeLoading = true;
     this.narrativeError = null;
+    this.narrativeRetryable = undefined;
     this.viewVersion++;
     this.onNarrativeComplete?.();
 
@@ -268,6 +285,7 @@ export class SessionsPanel implements SidePanel {
             result.diagnosis && result.diagnosis.diagnosis !== 'unknown'
               ? describeInferenceFailure(result.diagnosis)
               : result.error;
+          this.narrativeRetryable = result.diagnosis?.retryable;
         } else {
           this.narrativeText = result.text;
         }
@@ -304,7 +322,10 @@ export class SessionsPanel implements SidePanel {
     }
 
     if (this.narrativeError) {
-      return `{red-fg}Error: ${this.narrativeError}{/red-fg}\n\n{grey-fg}Press 'n' to retry{/grey-fg}`;
+      const error = `{red-fg}Error: ${this.narrativeError}{/red-fg}`;
+      return this.narrativeRetryable === false
+        ? error
+        : `${error}\n\n{grey-fg}Press 'n' to retry{/grey-fg}`;
     }
 
     if (this.narrativeText) {
@@ -407,6 +428,11 @@ export class SessionsPanel implements SidePanel {
 
       // ── Tokens section (shared vocabulary: the total includes cache reads/writes)
       const main = m.sessionTokens.mainThread;
+      const sessionCost = aggregateCostDisplay({
+        costUsd: t.cost,
+        costProvenance: t.costProvenance,
+        unpricedCalls: t.unpricedCalls,
+      });
       const cacheRate =
         main.cacheHitRatio !== null
           ? `{grey-fg}Cache hit{/grey-fg} {bold}${(main.cacheHitRatio * 100).toFixed(1)}%{/bold}`
@@ -414,7 +440,7 @@ export class SessionsPanel implements SidePanel {
       lines.push(
         '',
         sectionHeader('Tokens', w),
-        `{grey-fg}${TOKEN_TOTAL_LABEL}{/grey-fg} {bold}${fmtNum(main.total)}{/bold}  {green-fg}${formatCost(t.cost)}{/green-fg}`,
+        `{grey-fg}${TOKEN_TOTAL_LABEL}{/grey-fg} {bold}${fmtNum(main.total)}{/bold}  ${costMarkup(formatCostDisplay(sessionCost))}`,
         `{grey-fg}In{/grey-fg} {bold}${fmtNum(main.input)}{/bold}  {grey-fg}Cache read{/grey-fg} {bold}${fmtNum(main.cacheRead)}{/bold}  {grey-fg}Cache write{/grey-fg} {bold}${fmtNum(main.cacheWrite)}{/bold}  {grey-fg}Out{/grey-fg} {bold}${fmtNum(main.output)}{/bold}${
           main.billedOutsideBuckets > 0
             ? `  {grey-fg}Reasoning{/grey-fg} {bold}${fmtNum(main.billedOutsideBuckets)}{/bold}`
@@ -485,13 +511,21 @@ export class SessionsPanel implements SidePanel {
       // ── Model Usage section
       if (m.modelStats.length > 0) {
         lines.push('', sectionHeader('Model Usage', w));
+        // Per-model provenance is not tracked; the session's applies to every
+        // priced row (mixed sessions read as estimated, least certain wins).
+        const modelSource = costSourceFromAggregate(t.costProvenance);
         for (const ms of m.modelStats) {
           const modelName = ms.model.length > 20 ? ms.model.substring(0, 17) + '...' : ms.model;
           // priced === false means pricing is unknown — show "—" not "$0".
-          const costDisplay =
+          const costDisplay = costMarkup(
             ms.priced === false
-              ? '{yellow-fg}—{/yellow-fg}'
-              : `{green-fg}${formatCost(ms.cost)}{/green-fg}`;
+              ? '—'
+              : formatCostDisplay({
+                  cost: ms.cost,
+                  source: modelSource === 'unpriced' ? undefined : modelSource,
+                  partial: ms.partiallyPriced === true,
+                }),
+          );
           lines.push(
             `  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  ${costDisplay}`,
           );
@@ -572,15 +606,13 @@ export class SessionsPanel implements SidePanel {
         lines.push(
           `  {grey-fg}${hhmm(block.start)}–${hhmm(block.end)}{/grey-fg}  ${hm(block.elapsedMs)} elapsed  {grey-fg}${hm(block.remainingMs)} left{/grey-fg}`,
         );
-        const cost =
-          block.costProvenance === 'unpriced'
-            ? '{yellow-fg}—{/yellow-fg}'
-            : `{green-fg}${formatCost(block.costUsd)}{/green-fg}`;
+        const cells = blockCostCells(block);
         lines.push(
-          `  {bold}${formatTokenCount(block.tokens.total)}{/bold} tokens  ${cost}  {grey-fg}${formatTokenCount(Math.round(block.burnRatePerMinute))}/min{/grey-fg}`,
+          `  {bold}${formatTokenCount(block.tokens.total)}{/bold} tokens  ${costMarkup(cells.cost)}  {grey-fg}${formatTokenCount(Math.round(block.burnRatePerMinute))}/min{/grey-fg}`,
         );
+        // An unpriced block has no cost to project; say so instead of "$0".
         lines.push(
-          `  {grey-fg}→ by end:{/grey-fg} ${formatTokenCount(block.projectedTokens)} tokens  ${formatCost(block.projectedCostUsd)}`,
+          `  {grey-fg}→ by end:{/grey-fg} ${formatTokenCount(block.projectedTokens)} tokens  ${cells.projected === '—' ? '{yellow-fg}—{/yellow-fg}' : cells.projected}`,
         );
       }
 

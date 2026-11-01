@@ -797,7 +797,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           sessionId: metrics.sessionId ?? null,
           cwd: workspacePath,
           model: metrics.currentModel ?? null,
-          costUsd: metrics.tokens.cost,
+          // null, not 0, when nothing in the session could be priced.
+          costUsd: metrics.tokens.costProvenance === 'unpriced' ? null : metrics.tokens.cost,
           durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : null,
           linesAdded: null,
           linesRemoved: null,
