@@ -6,7 +6,7 @@ import * as path from 'path';
 import { getOpenCodeDataDir } from '../providers/openCode';
 import type { SessionProviderBase } from '../providers/types';
 import type { SessionWatcher, SessionWatcherCallbacks } from './types';
-import { JsonlSessionWatcher } from './jsonlWatcher';
+import { JsonlSessionWatcher, type JsonlSessionWatcherOptions } from './jsonlWatcher';
 import { ProviderReaderSessionWatcher } from './providerReaderWatcher';
 import { SqliteSessionWatcher } from './sqliteWatcher';
 
@@ -15,6 +15,12 @@ export interface CreateWatcherOptions {
   workspacePath: string;
   sessionId?: string;
   callbacks: SessionWatcherCallbacks;
+  /**
+   * Claude Code only: also emit a `system` event for each mid-turn
+   * task-notification attachment, so an `EventAggregator` fed by this watcher
+   * can finish background subagents. Default `false`.
+   */
+  includeTaskNotifications?: boolean;
 }
 
 /**
@@ -67,7 +73,9 @@ export function createWatcher(options: CreateWatcherOptions): {
 } {
   const { provider, workspacePath, sessionId, callbacks } = options;
   const sessionPath = resolveSessionPath(provider, workspacePath, sessionId);
-  const watcher = createWatcherForProvider(provider, sessionPath, callbacks);
+  const watcher = createWatcherForProvider(provider, sessionPath, callbacks, {
+    includeTaskNotifications: options.includeTaskNotifications === true,
+  });
   return { watcher, sessionPath };
 }
 
@@ -75,10 +83,11 @@ function createWatcherForProvider(
   provider: SessionProviderBase,
   sessionPath: string,
   callbacks: SessionWatcherCallbacks,
+  jsonlOptions: JsonlSessionWatcherOptions,
 ): SessionWatcher {
   switch (provider.id) {
     case 'claude-code':
-      return new JsonlSessionWatcher(provider.id, sessionPath, callbacks);
+      return new JsonlSessionWatcher(provider.id, sessionPath, callbacks, jsonlOptions);
 
     case 'codex':
       return new ProviderReaderSessionWatcher(provider, sessionPath, callbacks);

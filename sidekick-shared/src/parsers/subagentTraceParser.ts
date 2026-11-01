@@ -5,10 +5,13 @@
  * (not just stats) for drill-down trace visualization. Applies noise classification
  * and tool summary formatting from the formatters module.
  *
- * Three-phase parent-child linking:
- * 1. Result-based: match toolUseResult.agentId → parent tool_use_id
- * 2. Team summary: parse <teammate-message> XML blocks
- * 3. Positional fallback: timestamp ordering + proximity
+ * Parent-child linking, exact links first:
+ * 1. Meta `parentAgentId` (Claude Code writes it for nested spawns)
+ * 2. The child's spawning tool_use id (meta `toolUseId`) found in another
+ *    trace's `Agent` / `Task` calls
+ * Only traces without that spawn metadata (older Claude Code) fall back to:
+ * 3. Team summary: parse <teammate-message> XML blocks
+ * 4. Positional fallback: timestamp ordering + proximity
  *
  * @module parsers/subagentTraceParser
  */
@@ -22,6 +25,8 @@ import type { MessageClassification } from '../formatters/noiseClassifier';
 import { ClaudeUsageDeduper, dedupedRawClaudeUsage } from '../usage/claudeUsageDedupe';
 import { addUsageToSubagent } from '../usage/subagentUsage';
 import { readAgentMeta } from './subagentScanner';
+import { isSubagentSpawnTool } from '../subagentSpawn';
+import { ownValue } from '../ownKey';
 
 // ── Types ──
 
@@ -53,8 +58,25 @@ export interface SubagentTrace {
   children: SubagentTrace[];
   /** Basic stats (tokens, duration, etc.) */
   stats: SubagentStats;
-  /** Parent tool_use_id that spawned this agent */
+  /**
+   * Parent tool_use_id that spawned this agent: the spawning `Agent` / `Task`
+   * call's id when Claude Code recorded it (also for top-level traces, whose
+   * spawn is in the main session). For a heuristic link without that
+   * metadata it holds the parent's agent id, as before; see `parentAgentId`.
+   */
   parentToolUseId?: string;
+  /** Path of this agent's `agent-<id>.jsonl` transcript. */
+  filePath?: string;
+  /** The tool_use id of the call that spawned this agent (meta `toolUseId`). */
+  spawnToolUseId?: string;
+  /** Agent id of the parent trace, for agents spawned by another subagent. */
+  parentAgentId?: string;
+  /** Launched in the background (meta `requestShape: 'background'`). */
+  background?: boolean;
+  /** Claude Code marked the background agent done (meta `finished`). */
+  finished?: boolean;
+  /** The user stopped the agent (meta `stoppedByUser`). */
+  stoppedByUser?: boolean;
 }
 
 // ── Constants ──
@@ -93,11 +115,8 @@ export function scanSubagentTraces(sessionDir: string, sessionId: string): Subag
       if (trace) traces.push(trace);
     }
 
-    // Link parent-child relationships
-    linkTraces(traces);
-
-    // Return only top-level traces (those without parents)
-    return traces.filter((t) => !t.parentToolUseId);
+    // Link parent-child relationships; returns the traces with no parent agent.
+    return linkTraces(traces);
   } catch {
     return [];
   }
@@ -185,8 +204,8 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
                 timestamp,
               });
 
-              // Extract agent info from Task tool
-              if (block.name === 'Task' && block.input) {
+              // Extract agent info from an Agent/Task spawn
+              if (isSubagentSpawnTool(block.name) && block.input) {
                 if (block.input.subagent_type && !agentType) {
                   agentType = String(block.input.subagent_type);
                 }
@@ -228,6 +247,14 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
       agentId,
       agentType,
       description,
+      filePath,
+      ...(meta.toolUseId
+        ? { spawnToolUseId: meta.toolUseId, parentToolUseId: meta.toolUseId }
+        : {}),
+      ...(meta.parentAgentId ? { parentAgentId: meta.parentAgentId } : {}),
+      ...(meta.requestShape ? { background: meta.requestShape === 'background' } : {}),
+      ...(meta.finished !== undefined ? { finished: meta.finished } : {}),
+      ...(meta.stoppedByUser !== undefined ? { stoppedByUser: meta.stoppedByUser } : {}),
       events,
       children: [],
       stats: {
@@ -253,25 +280,60 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
 
 // ── Parent-Child Linking ──
 
-function linkTraces(traces: SubagentTrace[]): void {
+/**
+ * Nests child traces under their parents and returns the traces with no
+ * parent agent. Exact metadata links come first; the heuristics only place
+ * traces Claude Code recorded no spawn metadata for.
+ */
+function linkTraces(traces: SubagentTrace[]): SubagentTrace[] {
   const traceById = new Map<string, SubagentTrace>();
   for (const trace of traces) {
     traceById.set(trace.agentId, trace);
   }
+  const parentOf = new Map<SubagentTrace, SubagentTrace>();
 
-  // Phase 1: Result-based linking
-  // Look for tool_result events that contain agentId references
-  for (const trace of traces) {
-    for (const traceEvent of trace.events) {
-      const evt = traceEvent.event;
-      if (evt.type === 'tool_use' && evt.tool?.name === 'Task') {
-        // The tool_use_id from this call should appear as a result in the parent
-        // but we can link via timestamp proximity to child traces
-      }
+  const attach = (parent: SubagentTrace, child: SubagentTrace): boolean => {
+    if (parent === child || parentOf.has(child)) return false;
+    // Never nest an agent under its own descendant (malformed metadata).
+    for (let up: SubagentTrace | undefined = parent; up; up = parentOf.get(up)) {
+      if (up === child) return false;
     }
+    parentOf.set(child, parent);
+    parent.children.push(child);
+    return true;
+  };
+
+  // Phase 1: the meta file names the parent agent
+  for (const child of traces) {
+    const parent = child.parentAgentId ? traceById.get(child.parentAgentId) : undefined;
+    if (parent) attach(parent, child);
   }
 
-  // Phase 2: Team summary linking
+  // Phase 2: the child's spawning call is in another trace
+  const spawnOwner = new Map<string, SubagentTrace>();
+  for (const trace of traces) {
+    for (const id of spawnToolUseIdsOf(trace)) {
+      if (!spawnOwner.has(id)) spawnOwner.set(id, trace);
+    }
+  }
+  for (const child of traces) {
+    if (parentOf.has(child) || !child.spawnToolUseId) continue;
+    const parent = spawnOwner.get(child.spawnToolUseId);
+    if (parent && attach(parent, child)) child.parentAgentId ??= parent.agentId;
+  }
+
+  // Heuristic links set parentAgentId and, as before, parentToolUseId to the
+  // parent's agent id.
+  const unresolved = (trace: SubagentTrace): boolean =>
+    !parentOf.has(trace) && !trace.spawnToolUseId && !trace.parentAgentId;
+  const linkHeuristically = (parent: SubagentTrace, child: SubagentTrace): boolean => {
+    if (!attach(parent, child)) return false;
+    child.parentAgentId = parent.agentId;
+    child.parentToolUseId = parent.agentId;
+    return true;
+  };
+
+  // Phase 3: Team summary linking
   for (const trace of traces) {
     for (const traceEvent of trace.events) {
       const content = traceEvent.event.message?.content;
@@ -279,44 +341,58 @@ function linkTraces(traces: SubagentTrace[]): void {
         // Parse teammate agent IDs from XML blocks
         const matches = content.matchAll(/agent[_-]id['":\s]+([a-f0-9]+)/gi);
         for (const match of matches) {
-          const childId = match[1];
-          const child = traceById.get(childId);
-          if (child && child !== trace && !child.parentToolUseId) {
-            child.parentToolUseId = trace.agentId;
-            trace.children.push(child);
-          }
+          const child = traceById.get(match[1]);
+          if (child && unresolved(child)) linkHeuristically(trace, child);
         }
       }
     }
   }
 
-  // Phase 3: Positional fallback — timestamp proximity
+  // Phase 4: Positional fallback — timestamp proximity
   // Traces without parents that fall within another trace's time window
-  const parentless = traces.filter((t) => !t.parentToolUseId);
-  for (const child of parentless) {
+  for (const child of traces.filter(unresolved)) {
     if (!child.stats.startTime) continue;
     const childStart = child.stats.startTime.getTime();
 
-    // Find a trace that was active (Task tool call) right before this child started
+    // Find a top-level trace that spawned an agent right before this child started
     for (const potential of traces) {
-      if (potential === child) continue;
-      if (potential.parentToolUseId) continue; // Already linked
+      if (potential === child || parentOf.has(potential)) continue;
 
       for (const traceEvent of potential.events) {
         const evt = traceEvent.event;
-        if (evt.type === 'assistant' && evt.tool?.name === 'Task') {
+        if (evt.type === 'assistant' && isSubagentSpawnTool(evt.tool?.name)) {
           const taskTime = new Date(evt.timestamp).getTime();
           // Within 2 seconds before child start
           if (taskTime <= childStart && childStart - taskTime < 2000) {
-            child.parentToolUseId = potential.agentId;
-            potential.children.push(child);
+            linkHeuristically(potential, child);
             break;
           }
         }
       }
-      if (child.parentToolUseId) break;
+      if (parentOf.has(child)) break;
     }
   }
+
+  return traces.filter((trace) => !parentOf.has(trace));
+}
+
+/** Ids of the `Agent` / `Task` calls a trace made. */
+function spawnToolUseIdsOf(trace: SubagentTrace): string[] {
+  const ids: string[] = [];
+  for (const traceEvent of trace.events) {
+    const content = traceEvent.event.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (
+        block?.type === 'tool_use' &&
+        typeof block.id === 'string' &&
+        isSubagentSpawnTool(block.name as string)
+      ) {
+        ids.push(block.id);
+      }
+    }
+  }
+  return ids;
 }
 
 // ── Helpers ──
@@ -334,7 +410,7 @@ function rawToSessionEvent(raw: Record<string, unknown>): SessionEvent | null {
     summary: 'summary',
   };
 
-  const mappedType = typeMap[type];
+  const mappedType = ownValue(typeMap, type);
   if (!mappedType) return null;
 
   const message = raw.message as SessionEvent['message'] | undefined;

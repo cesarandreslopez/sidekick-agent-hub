@@ -1,5 +1,6 @@
 import { formatToolSummary, truncate } from '../formatters/toolSummary';
 import type { SessionEvent } from '../types/sessionEvent';
+import { isSubagentSpawnTool } from '../subagentSpawn';
 
 export type AssistantTurnEventType =
   | 'text'
@@ -81,7 +82,6 @@ const DEFAULT_REASONING_CHARS = 8000;
 const DEFAULT_PROCESS_STEPS = 60;
 const DEFAULT_REASONING_BLOCKS = 24;
 const DEFAULT_TOOL_INPUT_CHARS = 200;
-const SUBAGENT_TOOL_NAMES: ReadonlySet<string> = new Set(['Task']);
 const LABEL_MAX = 80;
 const TITLE_RE = /^\s*\*\*([^*\n]+)\*\*[ \t]*(?:\n+([\s\S]*))?$/;
 const TITLE_MAX = 100;
@@ -125,8 +125,9 @@ export function reasoningSummary(text: string): ReasoningSummary {
   return { title: null, body: trimmed };
 }
 
+/** Whether a tool call spawns a subagent (`Agent`, or its earlier name `Task`). */
 export function isAssistantTurnSubagentTool(toolName: string | undefined): boolean {
-  return toolName != null && SUBAGENT_TOOL_NAMES.has(toolName);
+  return isSubagentSpawnTool(toolName);
 }
 
 export function segmentAssistantTurn(

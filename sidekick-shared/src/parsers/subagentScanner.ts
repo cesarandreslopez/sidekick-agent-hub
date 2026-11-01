@@ -20,6 +20,7 @@ import type {
 import { ClaudeUsageDeduper, dedupedRawClaudeUsage } from '../usage/claudeUsageDedupe';
 import { addUsageToSubagent } from '../usage/subagentUsage';
 import { cachedSubagentStats } from './subagentStatsCache';
+import { isSubagentSpawnTool } from '../subagentSpawn';
 
 /**
  * Pattern for matching subagent JSONL files.
@@ -27,23 +28,52 @@ import { cachedSubagentStats } from './subagentStatsCache';
  */
 const AGENT_FILE_PATTERN = /^agent-(.+)\.jsonl$/;
 
+/** Fields of a Claude Code `agent-<id>.meta.json`; each is present only when well-typed. */
+export interface AgentMeta {
+  agentType?: string;
+  description?: string;
+  /** The tool_use id of the `Agent` / `Task` call that spawned this agent. */
+  toolUseId?: string;
+  /** The agent that spawned this one, for spawns nested inside a subagent. */
+  parentAgentId?: string;
+  /** `'background'` for an agent launched in the background. */
+  requestShape?: string;
+  /** Written as `true` once a background agent is done (newer Claude Code). */
+  finished?: boolean;
+  /** The user stopped the agent. */
+  stoppedByUser?: boolean;
+}
+
+function metaString(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
+}
+
 /**
  * Reads `agent-<id>.meta.json` (written by Claude Code next to the transcript)
- * for the spawn's agent type and description. Missing or malformed files
- * yield an empty object.
+ * for the spawn's agent type, description, spawning tool_use id, parent agent,
+ * and completion flags. Missing or malformed files yield an empty object;
+ * wrongly typed fields are left out.
  */
-export function readAgentMeta(agentFilePath: string): { agentType?: string; description?: string } {
+export function readAgentMeta(agentFilePath: string): AgentMeta {
   try {
     const metaPath = agentFilePath.replace(/\.jsonl$/, '.meta.json');
-    const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Record<string, unknown>;
-    return {
-      ...(typeof parsed.agentType === 'string' && parsed.agentType
-        ? { agentType: parsed.agentType }
-        : {}),
-      ...(typeof parsed.description === 'string' && parsed.description
-        ? { description: parsed.description }
-        : {}),
-    };
+    const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const record = parsed as Record<string, unknown>;
+    const meta: AgentMeta = {};
+    const agentType = metaString(record.agentType);
+    if (agentType) meta.agentType = agentType;
+    const description = metaString(record.description);
+    if (description) meta.description = description;
+    const toolUseId = metaString(record.toolUseId);
+    if (toolUseId) meta.toolUseId = toolUseId;
+    const parentAgentId = metaString(record.parentAgentId);
+    if (parentAgentId) meta.parentAgentId = parentAgentId;
+    const requestShape = metaString(record.requestShape);
+    if (requestShape) meta.requestShape = requestShape;
+    if (typeof record.finished === 'boolean') meta.finished = record.finished;
+    if (typeof record.stoppedByUser === 'boolean') meta.stoppedByUser = record.stoppedByUser;
+    return meta;
   } catch {
     return {};
   }
@@ -265,8 +295,8 @@ function parseAgentFile(
 
               toolCalls.push(toolCall);
 
-              // If this is a Task tool call (spawning another subagent), extract info
-              if (toolUse.name === 'Task' && toolUse.input) {
+              // If this is an Agent/Task call (spawning another subagent), extract info
+              if (isSubagentSpawnTool(toolUse.name) && toolUse.input) {
                 if (toolUse.input.subagent_type && !agentType) {
                   agentType = String(toolUse.input.subagent_type);
                 }

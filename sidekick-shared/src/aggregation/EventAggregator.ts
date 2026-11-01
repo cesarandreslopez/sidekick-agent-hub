@@ -59,6 +59,17 @@ import type { SerializedPatternState } from './PatternExtractor';
 import { categorizeError, type ErrorCategory } from '../extractors/errorTaxonomy';
 import { estimateTextTokens } from '../tokenEstimation';
 import {
+  isSubagentSpawnTool,
+  isTaskNotificationSystemEvent,
+  parseAsyncAgentLaunch,
+  parseTaskNotification,
+  taskNotificationFromEvent,
+  taskNotificationOutcome,
+  taskNotificationPromptFromAttachment,
+  type AsyncAgentLaunch,
+  type TaskNotification,
+} from '../subagentSpawn';
+import {
   calculateNormalizedUsageCost,
   extractNormalizedUsage,
   normalizeProviderUsage,
@@ -173,6 +184,22 @@ interface ModelAccumulator {
 
 const GOAL_GATE_REGEX =
   /\b(CRITICAL|MUST|blocker|required|must.?complete|goal.?gate|essential|do.?not.?skip|blocking)\b/i;
+
+// ── Task notifications delivered as attachments ──
+
+/**
+ * The notification a `system` FollowEvent carries when it stands for a
+ * mid-turn task-notification attachment (its `raw` is the attachment line or
+ * the SessionEvent `extractSessionEvents` made from it).
+ */
+function taskNotificationFromAttachmentFollowEvent(event: FollowEvent): TaskNotification | null {
+  const raw = event.raw as Record<string, unknown> | undefined;
+  if (!raw || typeof raw !== 'object') return null;
+  const prompt = taskNotificationPromptFromAttachment(raw);
+  if (prompt !== null) return parseTaskNotification(prompt);
+  const asEvent = raw as unknown as SessionEvent;
+  return isTaskNotificationSystemEvent(asEvent) ? taskNotificationFromEvent(asEvent) : null;
+}
 
 // ── Pending task create input ──
 
@@ -366,6 +393,18 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   processEvent(event: SessionEvent): void {
+    // Opt-in mid-turn task notifications (`extractSessionEvents` with
+    // `includeTaskNotifications`) only finish background subagents and mark
+    // the timeline: they are not messages, prompts, context, or activity.
+    if (isTaskNotificationSystemEvent(event)) {
+      const notification = taskNotificationFromEvent(event);
+      if (notification) {
+        this.applyTaskNotification(notification, event.timestamp);
+        this.addTaskNotificationTimeline(event.timestamp, notification);
+      }
+      return;
+    }
+
     // 1. Increment counters, capture timestamps
     this.eventCount++;
     if (!this.sessionStartTime) {
@@ -458,6 +497,16 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   processFollowEvent(event: FollowEvent): void {
+    // A mid-turn task-notification attachment, like its SessionEvent form above.
+    if (event.type === 'system') {
+      const notification = taskNotificationFromAttachmentFollowEvent(event);
+      if (notification) {
+        this.applyTaskNotification(notification, event.timestamp);
+        this.addTaskNotificationTimeline(event.timestamp, notification);
+        return;
+      }
+    }
+
     // 1. Increment counters, capture timestamps
     this.eventCount++;
     if (!this.sessionStartTime) {
@@ -909,6 +958,14 @@ export class EventAggregator {
     this.pendingToolCalls.clear();
     this.pendingTaskCreates.clear();
     this.pendingSubagents.clear();
+    // A spawn still waiting for its tool_result is resolved by that result,
+    // which can land after the snapshot boundary. Background agents need no
+    // entry: their notifications are matched against every subagent.
+    this.subagents.forEach((agent, idx) => {
+      if (agent.status === 'running' && !agent.background && agent.id) {
+        this.pendingSubagents.set(agent.id, idx);
+      }
+    });
     this.pendingUserRequest = null;
     this.planExtractor.reset();
     return true;
@@ -1443,7 +1500,7 @@ export class EventAggregator {
           this.handleTodoWrite(input, new Date(event.timestamp));
         } else if (name === 'UpdatePlan') {
           this.handleUpdatePlan(input, new Date(event.timestamp));
-        } else if ((name === 'Agent' || name === 'Task') && toolUseId) {
+        } else if (isSubagentSpawnTool(name) && toolUseId) {
           this.handleAgentSpawn(toolUseId, input, new Date(event.timestamp));
         }
       } else if (block.type === 'tool_result') {
@@ -1451,7 +1508,7 @@ export class EventAggregator {
         if (!toolUseId) continue;
         const isError = (block.is_error as boolean) ?? false;
         this.resolveTaskCreate(toolUseId, block.content ?? block.output, event.timestamp, isError);
-        this.resolveAgentResult(toolUseId, isError, event.timestamp);
+        this.resolveAgentResult(toolUseId, isError, event.timestamp, block.content ?? block.output);
       }
     }
   }
@@ -1484,7 +1541,7 @@ export class EventAggregator {
         this.handleTodoWrite(input, new Date(event.timestamp));
       } else if (event.toolName === 'UpdatePlan') {
         this.handleUpdatePlan(input, new Date(event.timestamp));
-      } else if ((event.toolName === 'Agent' || event.toolName === 'Task') && toolUseId) {
+      } else if (isSubagentSpawnTool(event.toolName) && toolUseId) {
         this.handleAgentSpawn(toolUseId, input, new Date(event.timestamp));
       }
     } else if (event.type === 'tool_result') {
@@ -1493,7 +1550,7 @@ export class EventAggregator {
       if (!toolUseId) return;
       const isError = (raw.is_error as boolean) ?? false;
       this.resolveTaskCreate(toolUseId, raw.content, event.timestamp, isError);
-      this.resolveAgentResult(toolUseId, isError, event.timestamp);
+      this.resolveAgentResult(toolUseId, isError, event.timestamp, raw.content);
     }
   }
 
@@ -1817,10 +1874,17 @@ export class EventAggregator {
     this.tasks.set(agentTaskId, task);
   }
 
-  private resolveAgentResult(toolUseId: string, isError: boolean, timestamp: string): void {
+  private resolveAgentResult(
+    toolUseId: string,
+    isError: boolean,
+    timestamp: string,
+    content?: unknown,
+  ): void {
     const agentTaskId = `agent-${toolUseId}`;
     const agentTask = this.tasks.get(agentTaskId);
     if (!agentTask) return;
+    // A background launch returns at once; its task notification finishes it.
+    if (!isError && parseAsyncAgentLaunch(content)) return;
 
     agentTask.status = isError ? 'deleted' : 'completed';
     agentTask.updatedAt = new Date(timestamp);
@@ -1842,30 +1906,27 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private extractSubagentFromEvent(event: SessionEvent): void {
+    const notification = taskNotificationFromEvent(event);
+    if (notification) this.applyTaskNotification(notification, event.timestamp);
+
     const content = event.message?.content;
     if (!Array.isArray(content)) return;
 
     for (const block of content as Array<Record<string, unknown>>) {
-      if (block.type === 'tool_use' && block.name === 'Task') {
+      if (block.type === 'tool_use' && isSubagentSpawnTool(block.name as string)) {
         const input = block.input as Record<string, unknown> | undefined;
         const toolUseId = block.id as string;
         if (!input || !toolUseId) continue;
-
-        const info: SubagentLifecycle = {
-          id: toolUseId,
-          description: (input.description as string) || 'Unknown task',
-          subagentType:
-            (input.subagent_type as string) || (input.subagentType as string) || 'general',
-          spawnTime: event.timestamp,
-          status: 'running',
-        };
-        const idx = this.subagents.length;
-        this.subagents.push(info);
-        this.pendingSubagents.set(toolUseId, idx);
+        this.trackSubagentSpawn(toolUseId, input, event.timestamp);
       } else if (block.type === 'tool_result') {
         const toolUseId = block.tool_use_id as string;
         if (!toolUseId) continue;
-        this.completeSubagent(toolUseId, event.timestamp);
+        this.resolveSubagentResult(
+          toolUseId,
+          block.content ?? block.output,
+          block.is_error === true,
+          event.timestamp,
+        );
       }
     }
   }
@@ -1877,44 +1938,160 @@ export class EventAggregator {
   private extractSubagentFromFollowEvent(event: FollowEvent): void {
     const raw = event.raw as Record<string, unknown> | undefined;
 
-    if (event.type === 'tool_use' && event.toolName === 'Task') {
+    if (event.type === 'tool_use' && isSubagentSpawnTool(event.toolName)) {
       if (!raw?.input) return;
-      const input = raw.input as Record<string, unknown>;
-      const toolUseId = (raw.id as string) || '';
-
-      const info: SubagentLifecycle = {
-        id: toolUseId,
-        description: (input.description as string) || 'Unknown task',
-        subagentType:
-          (input.subagent_type as string) || (input.subagentType as string) || 'general',
-        spawnTime: event.timestamp,
-        status: 'running',
-      };
-      const idx = this.subagents.length;
-      this.subagents.push(info);
-      if (toolUseId) {
-        this.pendingSubagents.set(toolUseId, idx);
-      }
+      this.trackSubagentSpawn(
+        (raw.id as string) || '',
+        raw.input as Record<string, unknown>,
+        event.timestamp,
+      );
     } else if (event.type === 'tool_result') {
       if (!raw) return;
       const toolUseId = raw.tool_use_id as string | undefined;
       if (!toolUseId) return;
-      this.completeSubagent(toolUseId, event.timestamp);
+      this.resolveSubagentResult(toolUseId, raw.content, raw.is_error === true, event.timestamp);
+    } else if (event.type === 'user' && raw?.type === 'user') {
+      // Claude Code delivers most task notifications as their own user line.
+      const notification = taskNotificationFromEvent(raw as unknown as SessionEvent);
+      if (notification) this.applyTaskNotification(notification, event.timestamp);
     }
   }
 
-  private completeSubagent(toolUseId: string, timestamp: string): void {
+  private trackSubagentSpawn(
+    toolUseId: string,
+    input: Record<string, unknown>,
+    timestamp: string,
+  ): void {
+    const info: SubagentLifecycle = {
+      id: toolUseId,
+      description: (input.description as string) || 'Unknown task',
+      subagentType: (input.subagent_type as string) || (input.subagentType as string) || 'general',
+      spawnTime: timestamp,
+      status: 'running',
+    };
+    const idx = this.subagents.length;
+    this.subagents.push(info);
+    if (toolUseId) {
+      this.pendingSubagents.set(toolUseId, idx);
+    }
+  }
+
+  /**
+   * The spawning tool call's result. A foreground agent ends here; a
+   * background launch only reports the agent id, and the agent keeps running
+   * until its task notification arrives.
+   */
+  private resolveSubagentResult(
+    toolUseId: string,
+    content: unknown,
+    isError: boolean,
+    timestamp: string,
+  ): void {
     const idx = this.pendingSubagents.get(toolUseId);
     if (idx === undefined) return;
-    this.pendingSubagents.delete(toolUseId);
+    const launch = isError ? null : parseAsyncAgentLaunch(content);
+    if (launch) {
+      this.markBackgroundLaunch(idx, launch);
+      return;
+    }
+    this.completeSubagent(toolUseId, timestamp, isError ? 'failed' : 'completed');
+  }
 
+  private markBackgroundLaunch(idx: number, launch: AsyncAgentLaunch): void {
     const agent = this.subagents[idx];
+    this.pendingSubagents.delete(agent.id);
+    agent.background = true;
+    if (launch.agentId) agent.agentId = launch.agentId;
+  }
+
+  private completeSubagent(
+    toolUseId: string,
+    timestamp: string,
+    outcome: SubagentLifecycle['outcome'] = 'completed',
+  ): void {
+    const idx = this.pendingSubagents.get(toolUseId);
+    if (idx === undefined) return;
+    this.finishSubagent(this.subagents[idx], timestamp, outcome);
+  }
+
+  private finishSubagent(
+    agent: SubagentLifecycle,
+    timestamp: string,
+    outcome: SubagentLifecycle['outcome'],
+  ): void {
+    this.pendingSubagents.delete(agent.id);
     agent.status = 'completed';
     agent.completionTime = timestamp;
+    agent.outcome = outcome;
     const start = new Date(agent.spawnTime).getTime();
     const end = new Date(timestamp).getTime();
     if (!isNaN(start) && !isNaN(end) && end >= start) {
       agent.durationMs = end - start;
+    }
+  }
+
+  /**
+   * Applies a background task's notification to the subagent it reports on,
+   * matched by the spawning tool_use id (or by agent id when the notification
+   * has none). The latest notification wins: an interim one ("waiting on its
+   * own background work") keeps or puts the agent back to running, a final one
+   * completes it. Notifications for background shell tasks match nothing.
+   */
+  private applyTaskNotification(notification: TaskNotification, timestamp: string): void {
+    const agent = this.findNotifiedSubagent(notification);
+    const toolUseId = agent?.id || notification.toolUseId;
+    const outcome = taskNotificationOutcome(notification.status);
+
+    if (agent) {
+      agent.background = true;
+      if (!agent.agentId) agent.agentId = notification.taskId;
+      if (notification.interim) {
+        this.pendingSubagents.delete(agent.id);
+        agent.status = 'running';
+        delete agent.completionTime;
+        delete agent.durationMs;
+        delete agent.outcome;
+      } else {
+        this.finishSubagent(agent, timestamp, outcome);
+      }
+    }
+
+    const agentTask = toolUseId ? this.tasks.get(`agent-${toolUseId}`) : undefined;
+    if (agentTask?.isSubagent) {
+      agentTask.status = notification.interim
+        ? 'in_progress'
+        : outcome === 'failed'
+          ? 'deleted'
+          : 'completed';
+      agentTask.updatedAt = new Date(timestamp);
+    }
+  }
+
+  private findNotifiedSubagent(notification: TaskNotification): SubagentLifecycle | undefined {
+    const { toolUseId, taskId } = notification;
+    for (let i = this.subagents.length - 1; i >= 0; i--) {
+      if (toolUseId && this.subagents[i].id === toolUseId) return this.subagents[i];
+    }
+    for (let i = this.subagents.length - 1; i >= 0; i--) {
+      if (this.subagents[i].agentId === taskId) return this.subagents[i];
+    }
+    return undefined;
+  }
+
+  private addTaskNotificationTimeline(timestamp: string, notification: TaskNotification): void {
+    let description =
+      notification.summary ?? `Background task ${notification.status ?? 'finished'}`;
+    if (description.length > 200) description = description.substring(0, 197) + '...';
+    this.timeline.push({
+      type: 'tool_result',
+      timestamp,
+      description,
+      noiseLevel: 'system',
+      messageClassification: 'system',
+      ...(notification.toolUseId ? { metadata: { toolUseId: notification.toolUseId } } : {}),
+    });
+    if (this.timeline.length > this.timelineCap) {
+      this.timeline.shift();
     }
   }
 

@@ -163,15 +163,29 @@ export interface BurnRateInfo {
   sampleCount: number;
 }
 
+/** How a subagent ended: a failed spawn, or a background agent's notification status. */
+export type SubagentOutcome = 'completed' | 'failed' | 'killed' | 'stopped';
+
 /** Subagent lifecycle info (for tracking spawn/completion from tool events). */
 export interface SubagentLifecycle {
+  /** The spawning tool_use id (`Agent` / `Task`). */
   id: string;
   description: string;
   subagentType: string;
   spawnTime: string;
   completionTime?: string;
+  /**
+   * A background agent stays `running` after its spawn's immediate result
+   * until its task notification arrives.
+   */
   status: 'running' | 'completed';
   durationMs?: number;
+  /** Claude Code's agent id (the `agent-<id>.jsonl` transcript name), once known. */
+  agentId?: string;
+  /** The agent was launched in the background (its spawn returned at once). */
+  background?: boolean;
+  /** How the agent ended, once `status` is `completed`. */
+  outcome?: SubagentOutcome;
 }
 
 /** Frequency entry for tool/word frequency tracking. */

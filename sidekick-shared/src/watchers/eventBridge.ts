@@ -12,6 +12,7 @@ import type { SessionEvent } from '../types/sessionEvent';
 import type { ProviderId } from '../providers/types';
 import type { FollowEvent } from './types';
 import { formatToolSummary } from '../formatters/toolSummary';
+import { isTaskNotificationSystemEvent, taskNotificationFromEvent } from '../subagentSpawn';
 
 /**
  * Converts a single SessionEvent to one or more FollowEvents.
@@ -159,6 +160,20 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
     }
 
     case 'system': {
+      // A background task's notice (opt-in reader event): its summary, not the raw block.
+      const notification = isTaskNotificationSystemEvent(event)
+        ? taskNotificationFromEvent(event)
+        : null;
+      if (notification) {
+        events.push({
+          providerId,
+          type: 'system',
+          timestamp: ts,
+          summary: notification.summary ?? `Background task ${notification.status ?? 'finished'}`,
+          raw: event,
+        });
+        break;
+      }
       const text = extractTextContent(event.message?.content);
       const label = event.message?.sourceLabel || event.message?.role || 'system';
       const summary =

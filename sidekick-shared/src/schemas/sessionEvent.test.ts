@@ -94,6 +94,26 @@ describe('permissionModeSchema', () => {
   it('rejects unknown mode', () => {
     expect(permissionModeSchema.safeParse('admin').success).toBe(false);
   });
+
+  it('keeps an event whose permission mode is unknown and drops only the mode', () => {
+    // Claude Code writes `auto` on every user line in auto mode.
+    const events = extractSessionEvents({
+      type: 'user',
+      timestamp: '2026-11-01T10:00:00Z',
+      permissionMode: 'auto',
+      message: { role: 'user', content: 'run the tests' },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].message?.content).toBe('run the tests');
+    expect(events[0].permissionMode).toBeUndefined();
+    const known = extractSessionEvents({
+      type: 'user',
+      timestamp: '2026-11-01T10:00:00Z',
+      permissionMode: 'plan',
+      message: { role: 'user', content: 'plan it' },
+    });
+    expect(known[0].permissionMode).toBe('plan');
+  });
 });
 
 describe('sessionEventSchema', () => {
@@ -296,5 +316,67 @@ describe('extractSessionEvents', () => {
       wrapped = { type: 'progress', data: { message: wrapped } };
     }
     expect(extractSessionEvents(wrapped)).toEqual([]);
+  });
+});
+
+describe('extractSessionEvents task-notification attachments', () => {
+  // Redacted from a real Claude Code mid-turn delivery.
+  const prompt =
+    '<task-notification>\n<task-id>a35998d20ba7e3e9c</task-id>\n<tool-use-id>toolu_018Mg9LTJkK3QyzSHWC4bmou</tool-use-id>\n<status>completed</status>\n<summary>Agent "Explore quota pipeline" finished</summary>\n<result>Done.</result>\n</task-notification>';
+  const attachmentLine = {
+    parentUuid: 'cba4d532-87c8-47a2-8b98-671a5e0c54c3',
+    isSidechain: false,
+    type: 'attachment',
+    uuid: '36c44cbe-7b20-494f-aa97-b7626679b072',
+    timestamp: '2026-11-01T03:06:53.351Z',
+    cwd: '/work/repo',
+    gitBranch: 'main',
+    rendered: [{ content: '<system-reminder>[SYSTEM NOTIFICATION - NOT USER INPUT]…' }],
+    attachment: { type: 'queued_command', prompt, commandMode: 'task-notification' },
+  };
+
+  it('drops attachment lines by default, keeping both call signatures', () => {
+    expect(extractSessionEvents(attachmentLine)).toEqual([]);
+    expect(extractSessionEvents(attachmentLine, 0)).toEqual([]);
+    expect(extractSessionEvents(attachmentLine, {})).toEqual([]);
+  });
+
+  it('turns one into a system event when opted in', () => {
+    expect(extractSessionEvents(attachmentLine, { includeTaskNotifications: true })).toEqual([
+      {
+        type: 'system',
+        timestamp: '2026-11-01T03:06:53.351Z',
+        isSidechain: false,
+        cwd: '/work/repo',
+        gitBranch: 'main',
+        origin: { kind: 'task-notification' },
+        message: { role: 'user', sourceLabel: 'task notification', content: prompt },
+      },
+    ]);
+  });
+
+  it('ignores other attachments and malformed notifications when opted in', () => {
+    const options = { includeTaskNotifications: true };
+    for (const attachment of [
+      { type: 'queued_command', prompt: 'next prompt', commandMode: 'prompt' },
+      { type: 'queued_command', commandMode: 'task-notification' },
+      { type: 'file', filename: 'a.ts' },
+    ]) {
+      expect(extractSessionEvents({ ...attachmentLine, attachment }, options)).toEqual([]);
+    }
+    expect(extractSessionEvents({ ...attachmentLine, timestamp: undefined }, options)).toEqual([]);
+  });
+
+  it('leaves ordinary events unchanged when opted in', () => {
+    const user = {
+      type: 'user',
+      timestamp: '2026-11-01T03:40:59.938Z',
+      origin: { kind: 'task-notification' },
+      promptSource: 'system',
+      message: { role: 'user', content: prompt },
+    };
+    expect(extractSessionEvents(user, { includeTaskNotifications: true })).toEqual(
+      extractSessionEvents(user),
+    );
   });
 });

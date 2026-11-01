@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { EventAggregator } from './EventAggregator';
 import type { SessionEvent, MessageUsage } from '../types/sessionEvent';
 import type { FollowEvent } from '../watchers/types';
+import { toFollowEvents } from '../watchers/eventBridge';
 
 // ── Helpers ──
 
@@ -1671,6 +1672,350 @@ describe('EventAggregator', () => {
       const subagents = agg.getSubagents();
       expect(subagents[0].status).toBe('completed');
       expect(subagents[0].durationMs).toBe(3000);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Agent spawns and background agents
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('Agent spawns and background agents', () => {
+    const SPAWN_TS = '2026-11-01T03:00:00.000Z';
+    const LAUNCH_TS = '2026-11-01T03:00:01.000Z';
+    const DONE_TS = '2026-11-01T03:05:00.000Z';
+    const launchText = (agentId: string) =>
+      `Async agent launched successfully. (internal metadata)\nagentId: ${agentId} (internal ID - do not mention to user.)\nThe agent is working in the background.`;
+    const notificationText = (opts: {
+      taskId: string;
+      toolUseId?: string;
+      status?: string;
+      summary?: string;
+    }) =>
+      [
+        '<task-notification>',
+        `<task-id>${opts.taskId}</task-id>`,
+        opts.toolUseId ? `<tool-use-id>${opts.toolUseId}</tool-use-id>` : '',
+        `<output-file>/tmp/tasks/${opts.taskId}.output</output-file>`,
+        opts.status ? `<status>${opts.status}</status>` : '',
+        `<summary>${opts.summary ?? 'Agent "Explore auth" finished'}</summary>`,
+        '<result>Done.</result>',
+        '</task-notification>',
+      ].join('\n');
+
+    const spawn = (toolName = 'Agent', id = 'toolu_spawn') => ({
+      ...makeToolUseEvent(toolName, id, { description: 'Explore auth', subagent_type: 'Explore' }),
+      timestamp: SPAWN_TS,
+    });
+    const launch = (id = 'toolu_spawn', agentId = 'a1b2c3d4e5f6a7b8c') => ({
+      ...makeToolResultEvent(id, [{ type: 'text', text: launchText(agentId) }]),
+      timestamp: LAUNCH_TS,
+    });
+    const userNotification = (text: string, timestamp = DONE_TS): SessionEvent => ({
+      type: 'user',
+      timestamp,
+      origin: { kind: 'task-notification' },
+      promptSource: 'system',
+      message: { role: 'user', content: text },
+    });
+    const systemNotification = (text: string, timestamp = DONE_TS): SessionEvent => ({
+      type: 'system',
+      timestamp,
+      origin: { kind: 'task-notification' },
+      message: { role: 'user', sourceLabel: 'task notification', content: text },
+    });
+
+    it('tracks an Agent tool_use as a subagent spawn and its agent task', () => {
+      agg.processEvent(spawn());
+      expect(agg.getSubagents()).toMatchObject([
+        { id: 'toolu_spawn', subagentType: 'Explore', status: 'running' },
+      ]);
+      expect(agg.getTaskState().tasks.get('agent-toolu_spawn')?.status).toBe('in_progress');
+    });
+
+    it('completes a foreground Agent on its tool_result, failing on is_error', () => {
+      agg.processEvent(spawn('Agent', 'fg-ok'));
+      agg.processEvent(spawn('Agent', 'fg-err'));
+      agg.processEvent({ ...makeToolResultEvent('fg-ok', 'Found it.'), timestamp: DONE_TS });
+      agg.processEvent({ ...makeToolResultEvent('fg-err', 'Rejected', true), timestamp: DONE_TS });
+      const [ok, err] = agg.getSubagents();
+      expect(ok).toMatchObject({ status: 'completed', outcome: 'completed', durationMs: 300_000 });
+      expect(ok.background).toBeUndefined();
+      expect(err).toMatchObject({ status: 'completed', outcome: 'failed' });
+    });
+
+    it('keeps a background agent running after its async-launch result', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      const [agent] = agg.getSubagents();
+      expect(agent).toMatchObject({
+        status: 'running',
+        background: true,
+        agentId: 'a1b2c3d4e5f6a7b8c',
+      });
+      expect(agent.completionTime).toBeUndefined();
+      expect(agg.getTaskState().tasks.get('agent-toolu_spawn')?.status).toBe('in_progress');
+    });
+
+    it('completes a background agent from its task-notification user line', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      agg.processEvent(
+        userNotification(
+          notificationText({
+            taskId: 'a1b2c3d4e5f6a7b8c',
+            toolUseId: 'toolu_spawn',
+            status: 'completed',
+          }),
+        ),
+      );
+      expect(agg.getSubagents()[0]).toMatchObject({
+        status: 'completed',
+        outcome: 'completed',
+        completionTime: DONE_TS,
+        durationMs: 300_000,
+      });
+      expect(agg.getTaskState().tasks.get('agent-toolu_spawn')?.status).toBe('completed');
+    });
+
+    it('completes from the opt-in system event without counting it as a message', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      const before = agg.getMetrics();
+      agg.processEvent(
+        systemNotification(
+          notificationText({
+            taskId: 'a1b2c3d4e5f6a7b8c',
+            toolUseId: 'toolu_spawn',
+            status: 'failed',
+          }),
+        ),
+      );
+      const after = agg.getMetrics();
+      expect(after.subagents[0]).toMatchObject({ status: 'completed', outcome: 'failed' });
+      expect(agg.getTaskState().tasks.get('agent-toolu_spawn')?.status).toBe('deleted');
+      expect(after.messageCount).toBe(before.messageCount);
+      expect(after.eventCount).toBe(before.eventCount);
+      expect(after.lastEventTime).toBe(before.lastEventTime);
+      expect(after.contextAttribution).toEqual(before.contextAttribution);
+      expect(after.timeline.at(-1)).toMatchObject({
+        type: 'tool_result',
+        description: 'Agent "Explore auth" finished',
+        noiseLevel: 'system',
+        metadata: { toolUseId: 'toolu_spawn' },
+      });
+    });
+
+    it('matches a notification without a tool-use id by agent id', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      agg.processEvent(userNotification(notificationText({ taskId: 'a1b2c3d4e5f6a7b8c' })));
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'completed', outcome: 'completed' });
+    });
+
+    it('keeps an agent waiting on its own background work running; the latest notice wins', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      const interim = notificationText({
+        taskId: 'a1b2c3d4e5f6a7b8c',
+        toolUseId: 'toolu_spawn',
+        status: 'completed',
+        summary: 'Agent "Explore auth" is waiting on its own background work',
+      });
+      const final = notificationText({
+        taskId: 'a1b2c3d4e5f6a7b8c',
+        toolUseId: 'toolu_spawn',
+        status: 'completed',
+      });
+
+      agg.processEvent(userNotification(interim, '2026-11-01T03:02:00.000Z'));
+      expect(agg.getSubagents()[0].status).toBe('running');
+
+      agg.processEvent(userNotification(final, '2026-11-01T03:03:00.000Z'));
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'completed', durationMs: 180_000 });
+
+      // Resumed later: an interim notice reopens it, a final one closes it again.
+      agg.processEvent(systemNotification(interim, '2026-11-01T03:04:00.000Z'));
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'running' });
+      expect(agg.getSubagents()[0].completionTime).toBeUndefined();
+      expect(agg.getTaskState().tasks.get('agent-toolu_spawn')?.status).toBe('in_progress');
+      agg.processEvent(systemNotification(final, DONE_TS));
+      expect(agg.getSubagents()[0]).toMatchObject({
+        status: 'completed',
+        completionTime: DONE_TS,
+      });
+    });
+
+    it('ignores background shell notifications', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      agg.processEvent(
+        userNotification(
+          notificationText({
+            taskId: 'bz5gt6jc3',
+            toolUseId: 'toolu_bash',
+            status: 'completed',
+            summary: 'Background command "npm test" completed (exit code 0)',
+          }),
+        ),
+      );
+      expect(agg.getSubagents()[0].status).toBe('running');
+    });
+
+    it('still tracks Task spawns (OpenCode and older Claude Code)', () => {
+      agg.processEvent(spawn('Task', 'task-1'));
+      agg.processEvent({ ...makeToolResultEvent('task-1', 'done'), timestamp: DONE_TS });
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'completed', outcome: 'completed' });
+    });
+
+    it('carries the new fields through serialize/restore and completes afterwards', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      const restored = new EventAggregator();
+      expect(restored.restore(agg.serialize())).toBe(true);
+      expect(restored.getSubagents()[0]).toMatchObject({
+        status: 'running',
+        background: true,
+        agentId: 'a1b2c3d4e5f6a7b8c',
+      });
+      restored.processEvent(
+        systemNotification(
+          notificationText({
+            taskId: 'a1b2c3d4e5f6a7b8c',
+            toolUseId: 'toolu_spawn',
+            status: 'killed',
+          }),
+        ),
+      );
+      expect(restored.getSubagents()[0]).toMatchObject({ status: 'completed', outcome: 'killed' });
+    });
+
+    it('completes a foreground spawn whose result lands after a snapshot boundary', () => {
+      agg.processEvent(spawn());
+      const restored = new EventAggregator();
+      expect(restored.restore(agg.serialize())).toBe(true);
+      restored.processEvent({
+        ...makeToolResultEvent('toolu_spawn', 'All done.'),
+        timestamp: DONE_TS,
+      });
+      expect(restored.getSubagents()[0]).toMatchObject({
+        status: 'completed',
+        outcome: 'completed',
+        durationMs: 300_000,
+      });
+    });
+
+    it('restores older serialized subagents without the new fields', () => {
+      const snapshot = agg.serialize();
+      snapshot.subagents = [
+        {
+          id: 'old-1',
+          description: 'Legacy',
+          subagentType: 'general',
+          spawnTime: SPAWN_TS,
+          status: 'completed',
+          completionTime: DONE_TS,
+          durationMs: 300_000,
+        },
+      ];
+      const restored = new EventAggregator();
+      expect(restored.restore(snapshot)).toBe(true);
+      expect(restored.getSubagents()).toEqual(snapshot.subagents);
+    });
+
+    it('follows background agents through FollowEvents, including attachments', () => {
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Agent',
+          timestamp: SPAWN_TS,
+          raw: {
+            id: 'toolu_spawn',
+            input: { description: 'Explore auth', subagent_type: 'Explore' },
+          },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          timestamp: LAUNCH_TS,
+          raw: {
+            type: 'tool_result',
+            tool_use_id: 'toolu_spawn',
+            content: [{ type: 'text', text: launchText('a1b2c3d4e5f6a7b8c') }],
+          },
+        }),
+      );
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'running', background: true });
+
+      const eventCount = agg.getMetrics().eventCount;
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'system',
+          timestamp: DONE_TS,
+          summary: 'Agent "Explore auth" finished',
+          raw: {
+            type: 'attachment',
+            timestamp: DONE_TS,
+            attachment: {
+              type: 'queued_command',
+              commandMode: 'task-notification',
+              prompt: notificationText({
+                taskId: 'a1b2c3d4e5f6a7b8c',
+                toolUseId: 'toolu_spawn',
+                status: 'completed',
+              }),
+            },
+          },
+        }),
+      );
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'completed', outcome: 'completed' });
+      expect(agg.getMetrics().eventCount).toBe(eventCount);
+    });
+
+    it('completes from a FollowEvent user line carrying the notification', () => {
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_use',
+          toolName: 'Agent',
+          timestamp: SPAWN_TS,
+          raw: { id: 'toolu_spawn', input: { description: 'Explore auth' } },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'tool_result',
+          timestamp: LAUNCH_TS,
+          raw: { tool_use_id: 'toolu_spawn', content: launchText('a1b2c3d4e5f6a7b8c') },
+        }),
+      );
+      agg.processFollowEvent(
+        makeFollowEvent({
+          type: 'user',
+          timestamp: DONE_TS,
+          raw: userNotification(
+            notificationText({ taskId: 'a1b2c3d4e5f6a7b8c', toolUseId: 'toolu_spawn' }),
+          ),
+        }),
+      );
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'completed', durationMs: 300_000 });
+    });
+
+    it('bridges the opt-in system event to a short FollowEvent the aggregator applies', () => {
+      agg.processEvent(spawn());
+      agg.processEvent(launch());
+      const [follow] = toFollowEvents(
+        systemNotification(
+          notificationText({
+            taskId: 'a1b2c3d4e5f6a7b8c',
+            toolUseId: 'toolu_spawn',
+            status: 'stopped',
+          }),
+        ),
+        'claude-code',
+      );
+      expect(follow).toMatchObject({ type: 'system', summary: 'Agent "Explore auth" finished' });
+      agg.processFollowEvent(follow);
+      expect(agg.getSubagents()[0]).toMatchObject({ status: 'completed', outcome: 'stopped' });
     });
   });
 

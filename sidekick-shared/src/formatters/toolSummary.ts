@@ -8,6 +8,8 @@
  * @module formatters/toolSummary
  */
 
+import { ownValue } from '../ownKey';
+
 // ── Types ──
 
 type ToolInput = Record<string, unknown>;
@@ -170,6 +172,8 @@ const TOOL_FORMATTERS: Record<string, ToolFormatter> = {
   Bash: formatBash,
   Grep: formatGrep,
   Glob: formatGlob,
+  // Claude Code's subagent tool; `Task` is its earlier name.
+  Agent: formatTask,
   Task: formatTask,
   WebFetch: formatWebFetch,
   WebSearch: formatWebSearch,
@@ -211,7 +215,7 @@ export function formatToolSummary(toolName: string, input: Record<string, unknow
   // Strip MCP prefixes: "mcp__server__tool" → use "tool" for matching
   const baseName = toolName.includes('__') ? (toolName.split('__').pop() ?? toolName) : toolName;
 
-  const formatter = TOOL_FORMATTERS[toolName] ?? TOOL_FORMATTERS[baseName];
+  const formatter = ownValue(TOOL_FORMATTERS, toolName) ?? ownValue(TOOL_FORMATTERS, baseName);
   if (formatter) {
     const result = formatter(input);
     if (result) return result;

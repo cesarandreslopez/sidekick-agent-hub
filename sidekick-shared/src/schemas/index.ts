@@ -31,6 +31,7 @@ export {
   toolUseSessionEventSchema,
   toolResultSessionEventSchema,
 } from './sessionEvent';
+export type { ExtractSessionEventsOptions } from './sessionEvent';
 export type {
   MessageUsage,
   SessionMessage,
