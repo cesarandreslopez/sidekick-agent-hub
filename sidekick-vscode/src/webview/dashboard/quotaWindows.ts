@@ -8,102 +8,31 @@
  * report a single weekly window. Drawing a 0% gauge for a window that does not
  * exist reads as "unused", so the card is hidden instead.
  *
- * Kept local rather than imported from sidekick-shared/browser (the shared
- * package is CommonJS, so one helper would pull the whole browser entry into
- * this bundle). quotaWindows.test.ts pins these to the shared
- * `quotaWindowApplies` / `quotaWindowHasData` / `extraQuotaRows` /
- * `formatExtraUsage` so the two cannot drift.
+ * Window presence, extra rows, and the extra-usage text come from
+ * sidekick-shared/browser; the webview bundle resolves its ES-module build and
+ * keeps only these helpers.
  *
  * @module webview/dashboard/quotaWindows
  */
 
-export interface QuotaWindowView {
-  utilization: number;
-  resetsAt: string;
-  absent?: boolean;
-}
+import {
+  extraQuotaRows,
+  formatExtraUsage,
+  quotaWindowApplies,
+  quotaWindowHasData,
+  type QuotaExtraUsage,
+  type QuotaLimitRow,
+  type QuotaWindow,
+} from 'sidekick-shared/browser';
 
-export interface QuotaLimitRowView {
-  kind: string;
-  label: string;
-  utilization: number;
-  resetsAt: string;
-  projected?: number;
-  scopeModel?: string;
-  scopeSurface?: string;
-  severity?: string;
-  allowancePercentOfWeekly?: number;
-}
-
-export interface QuotaExtraUsageView {
-  enabled: boolean;
-  monthlyLimit: number | null;
-  usedCredits: number | null;
-  utilization: number | null;
-  currency?: string;
-  decimalPlaces?: number;
-  disabledReason?: string;
-}
-
+/** The quota fields these helpers read, as the extension posts them. */
 export interface QuotaView {
   providerId?: string;
-  fiveHour: QuotaWindowView;
-  sevenDay: QuotaWindowView;
+  fiveHour: QuotaWindow;
+  sevenDay: QuotaWindow;
   planLabel?: string;
-  limits?: QuotaLimitRowView[];
-  extraUsage?: QuotaExtraUsageView;
-}
-
-/** Mirrors `quotaWindowApplies` in sidekick-shared. */
-export function windowApplies(window: QuotaWindowView | null | undefined): boolean {
-  return Boolean(window) && window?.absent !== true;
-}
-
-/** Mirrors `quotaWindowHasData` in sidekick-shared. */
-export function windowHasData(window: QuotaWindowView | null | undefined): boolean {
-  if (!window || window.absent === true) return false;
-  return Boolean(window.resetsAt) || window.utilization > 0;
-}
-
-/** Mirrors `extraQuotaRows` in sidekick-shared. */
-export function extraRows(quota: Pick<QuotaView, 'limits'>): QuotaLimitRowView[] {
-  return (quota.limits ?? []).filter((row) => row.kind !== 'session' && row.kind !== 'weekly_all');
-}
-
-function formatMinorUnits(amount: number, currency: string | undefined, decimals: number): string {
-  const value = amount / 10 ** decimals;
-  if (currency) {
-    try {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency,
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      }).format(value);
-    } catch {
-      return `${value.toFixed(decimals)} ${currency}`;
-    }
-  }
-  return value.toFixed(decimals);
-}
-
-/** Mirrors `formatExtraUsage` in sidekick-shared. */
-export function formatExtraUsage(extra: QuotaExtraUsageView): string {
-  const decimals =
-    typeof extra.decimalPlaces === 'number' &&
-    Number.isInteger(extra.decimalPlaces) &&
-    extra.decimalPlaces >= 0 &&
-    extra.decimalPlaces <= 6
-      ? extra.decimalPlaces
-      : 2;
-  const used = formatMinorUnits(extra.usedCredits ?? 0, extra.currency, decimals);
-  const amount =
-    extra.monthlyLimit !== null
-      ? `${used} of ${formatMinorUnits(extra.monthlyLimit, extra.currency, decimals)} used`
-      : `${used} used`;
-  if (extra.enabled) return amount;
-  const reason = extra.disabledReason ? ` (${extra.disabledReason.replace(/_/g, ' ')})` : '';
-  return `${amount} · off${reason}`;
+  limits?: QuotaLimitRow[];
+  extraUsage?: QuotaExtraUsage;
 }
 
 function isCodex(quota: QuotaView, providerId: string | undefined): boolean {
@@ -119,7 +48,7 @@ export function quotaCardVisibility(
   quota: QuotaView,
   providerId: string | undefined,
 ): { fiveHour: boolean; sevenDay: boolean } {
-  const show = isCodex(quota, providerId) ? windowHasData : windowApplies;
+  const show = isCodex(quota, providerId) ? quotaWindowHasData : quotaWindowApplies;
   const fiveHour = show(quota.fiveHour);
   const sevenDay = show(quota.sevenDay);
   if (!fiveHour && !sevenDay) return { fiveHour: true, sevenDay: true };
@@ -147,7 +76,7 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-function severityClass(row: QuotaLimitRowView): string {
+function severityClass(row: QuotaLimitRow): string {
   if (row.severity === 'critical' || row.utilization >= 90) return ' danger';
   if (row.severity === 'warning' || row.utilization >= 75) return ' warning';
   return '';
@@ -163,7 +92,7 @@ export function renderQuotaExtrasHtml(
   formatReset: (iso: string) => string,
 ): string {
   const parts: string[] = [];
-  for (const row of extraRows(quota)) {
+  for (const row of extraQuotaRows(quota)) {
     const percent = Math.max(0, Math.min(100, Math.round(row.utilization)));
     const scope = row.scopeModel ?? row.scopeSurface;
     const allowance =

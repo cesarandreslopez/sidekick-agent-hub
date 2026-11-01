@@ -1,17 +1,14 @@
 /**
  * Health tab (typed): renders the shared doctor report, the session-provider
- * diagnostics, and the failing-tool trend table. `renderHealthHtml` is the
- * pure, unit-tested core; `createHealthView` binds it to the document.
+ * diagnostics, the failing-tool trend table, and the pricing basis behind
+ * cost estimates. `renderHealthHtml` is the pure, unit-tested core;
+ * `createHealthView` binds it to the document.
  *
  * @module webview/dashboard/health
  */
 
+import { FAILING_TOOL_TREND_ARROWS } from 'sidekick-shared/browser';
 import type { DashboardHealthPayload, DashboardWebviewMessage } from '../../types/dashboard';
-
-// Kept local rather than imported from sidekick-shared/browser: the shared
-// package is CommonJS, so one helper would pull the whole browser entry
-// into this bundle. The rows arrive pre-merged from the extension.
-const TREND_ARROWS: Record<string, string> = { up: '↑', down: '↓', flat: '→' };
 
 export const HEALTH_IDS = {
   loading: 'health-loading',
@@ -19,6 +16,7 @@ export const HEALTH_IDS = {
   checks: 'health-checks',
   diagnostics: 'health-diagnostics',
   tools: 'health-tools',
+  pricing: 'health-pricing',
   refresh: 'health-refresh',
 } as const;
 
@@ -38,9 +36,10 @@ export interface HealthHtml {
   checks: string;
   diagnostics: string;
   tools: string;
+  pricing: string;
 }
 
-/** The four sections of the Health tab as HTML fragments. */
+/** The sections of the Health tab as HTML fragments. */
 export function renderHealthHtml(data: DashboardHealthPayload): HealthHtml {
   const { report } = data;
   const attention = report.checks.filter(
@@ -99,13 +98,24 @@ export function renderHealthHtml(data: DashboardHealthPayload): HealthHtml {
             return (
               `<tr title="${escapeHtml(categories)}"><td>${escapeHtml(row.tool)}</td>` +
               `<td>${row.last7}</td><td>${row.last30}</td>` +
-              `<td class="health-trend ${row.trend}" aria-label="${row.trend}">${TREND_ARROWS[row.trend] ?? '→'}</td></tr>`
+              `<td class="health-trend ${row.trend}" aria-label="${row.trend}">${FAILING_TOOL_TREND_ARROWS[row.trend] ?? '→'}</td></tr>`
             );
           })
           .join('') +
         '</tbody></table>';
 
-  return { banner, checks, diagnostics, tools };
+  const pricing = data.pricing
+    ? data.pricing
+        .map(
+          (line) =>
+            `<div class="health-check ${line.warning ? 'warning' : 'info'}">` +
+            `<div class="health-check-body"><div class="health-check-title">${escapeHtml(line.label)}</div>` +
+            `<div class="health-check-message">${escapeHtml(line.value)}</div></div></div>`,
+        )
+        .join('')
+    : '<div class="health-empty">Pricing information is unavailable.</div>';
+
+  return { banner, checks, diagnostics, tools, pricing };
 }
 
 export interface HealthMountOptions {
@@ -135,6 +145,7 @@ export function createHealthView(doc: Document): HealthView {
       set(HEALTH_IDS.checks, html.checks);
       set(HEALTH_IDS.diagnostics, html.diagnostics);
       set(HEALTH_IDS.tools, html.tools);
+      set(HEALTH_IDS.pricing, html.pricing);
     },
     setLoading(loading) {
       const el = doc.getElementById(HEALTH_IDS.loading);

@@ -3,20 +3,20 @@
  * vocabulary — every billed bucket, cache included — with a breakdown whose
  * parts add up to the headline, plus the session's subagents.
  *
- * Kept local rather than imported from sidekick-shared/browser (the shared
- * package is CommonJS, so one helper would pull the whole browser entry into
- * this bundle). tokens.test.ts pins the arithmetic and labels to the shared
- * `summarizeTokens` / `TOKEN_*_LABEL` so the two cannot drift.
+ * The labels are sidekick-shared's `TOKEN_*_LABEL`, from its browser entry.
+ * The four-bucket sum is the same arithmetic as the shared `summarizeTokens`
+ * (tokens.test.ts pins it), done here so the bundle does not carry the whole
+ * summary for one addition.
  *
  * @module webview/dashboard/tokens
  */
 
-/** Mirrors `TOKEN_TOTAL_LABEL` in sidekick-shared. */
-export const TOTAL_LABEL = 'Total (incl. cache)';
-/** Mirrors `TOKEN_SUBAGENTS_LABEL` in sidekick-shared. */
-export const SUBAGENTS_LABEL = 'Subagents';
-/** Mirrors `TOKEN_SESSION_TOTAL_LABEL` in sidekick-shared. */
-export const SESSION_TOTAL_LABEL = 'Session total (incl. subagents)';
+import {
+  TOKEN_MAIN_THREAD_LABEL,
+  TOKEN_SESSION_TOTAL_LABEL,
+  TOKEN_SUBAGENTS_LABEL,
+  TOKEN_TOTAL_LABEL,
+} from 'sidekick-shared/browser';
 
 export interface TokenMetricState {
   totalInputTokens: number;
@@ -57,11 +57,11 @@ export function tokenMetricDisplay(
   const lines =
     subagents && subagents.count > 0
       ? [
-          SESSION_TOTAL_LABEL,
-          `Main thread ${fmt(mainTotal)} (${breakdown})`,
-          `${SUBAGENTS_LABEL} (${subagents.count}) ${fmt(subagentTotal)}`,
+          TOKEN_SESSION_TOTAL_LABEL,
+          `${TOKEN_MAIN_THREAD_LABEL} ${fmt(mainTotal)} (${breakdown})`,
+          `${TOKEN_SUBAGENTS_LABEL} (${subagents.count}) ${fmt(subagentTotal)}`,
         ]
-      : [TOTAL_LABEL, breakdown];
+      : [TOKEN_TOTAL_LABEL, breakdown];
   return {
     mainTotal,
     sessionTotal: mainTotal + subagentTotal,

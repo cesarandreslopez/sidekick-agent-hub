@@ -1,18 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  extraQuotaRows,
-  formatExtraUsage as sharedFormatExtraUsage,
-  quotaWindowApplies,
-  quotaWindowHasData,
-} from 'sidekick-shared/browser';
-import {
-  extraRows,
-  formatExtraUsage,
   quotaCardVisibility,
   quotaSectionTooltip,
   renderQuotaExtrasHtml,
-  windowApplies,
-  windowHasData,
   type QuotaView,
 } from './quotaWindows';
 
@@ -22,9 +12,16 @@ const ULTRA: QuotaView = {
   sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
   planLabel: 'Ultra',
   limits: [
-    { kind: 'weekly_all', label: '7-Day', utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
+    {
+      kind: 'weekly_all',
+      group: 'weekly',
+      label: '7-Day',
+      utilization: 17,
+      resetsAt: '2026-11-07T06:00:00Z',
+    },
     {
       kind: 'weekly_scoped',
+      group: 'weekly',
       label: '7-Day (Fable)',
       utilization: 4,
       resetsAt: '2026-11-07T06:00:00Z',
@@ -42,35 +39,6 @@ const ULTRA: QuotaView = {
     disabledReason: 'out_of_credits',
   },
 };
-
-describe('quota window helpers match sidekick-shared', () => {
-  const windows = [
-    { utilization: 0, resetsAt: '', absent: true },
-    { utilization: 0, resetsAt: '' },
-    { utilization: 12, resetsAt: '' },
-    { utilization: 0, resetsAt: '2026-11-07T06:00:00Z' },
-  ];
-
-  it('agrees on window presence and data', () => {
-    for (const window of windows) {
-      expect(windowApplies(window)).toBe(quotaWindowApplies(window));
-      expect(windowHasData(window)).toBe(quotaWindowHasData(window));
-    }
-  });
-
-  it('agrees on extra rows and extra-usage text', () => {
-    expect(extraRows(ULTRA)).toEqual(extraQuotaRows(ULTRA as Parameters<typeof extraQuotaRows>[0]));
-    const samples = [
-      ULTRA.extraUsage!,
-      { enabled: true, monthlyLimit: null, usedCredits: 1234, utilization: null, currency: 'USD' },
-      { enabled: true, monthlyLimit: 5000, usedCredits: 50, utilization: 1, currency: 'EUR' },
-      { enabled: false, monthlyLimit: 100, usedCredits: 0, utilization: 0 },
-    ];
-    for (const extra of samples) {
-      expect(formatExtraUsage(extra)).toBe(sharedFormatExtraUsage(extra));
-    }
-  });
-});
 
 describe('quotaCardVisibility', () => {
   it('hides the five-hour card on a plan without one', () => {
@@ -127,7 +95,15 @@ describe('renderQuotaExtrasHtml', () => {
       {
         ...ULTRA,
         extraUsage: undefined,
-        limits: [{ kind: 'weekly_scoped', label: '<b>x</b>', utilization: 1, resetsAt: '' }],
+        limits: [
+          {
+            kind: 'weekly_scoped',
+            group: 'weekly',
+            label: '<b>x</b>',
+            utilization: 1,
+            resetsAt: '',
+          },
+        ],
       },
       'claude-code',
       () => '',

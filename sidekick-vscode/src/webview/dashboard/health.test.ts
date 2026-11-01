@@ -60,6 +60,22 @@ describe('renderHealthHtml', () => {
     expect(html.tools).toContain('health-trend up');
     expect(html.tools).toContain('<td>Read</td><td>0</td><td>8</td>');
     expect(html.tools).toContain('health-trend down');
+    expect(html.tools).toContain('↑');
+  });
+
+  it('renders the pricing lines, escaped, with warnings flagged', () => {
+    const html = renderHealthHtml(
+      payload({
+        pricing: [
+          { label: 'Source', value: 'LiteLLM catalog · fetched 3h ago' },
+          { label: 'Ignored', value: '<bad>', warning: true },
+        ],
+      }),
+    );
+    expect(html.pricing).toContain('LiteLLM catalog · fetched 3h ago');
+    expect(html.pricing).toContain('health-check warning');
+    expect(html.pricing).toContain('&lt;bad&gt;');
+    expect(renderHealthHtml(payload()).pricing).toContain('unavailable');
   });
 
   it('shows empty states', () => {

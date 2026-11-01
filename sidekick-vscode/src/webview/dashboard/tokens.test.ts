@@ -5,18 +5,12 @@ import {
   TOKEN_SUBAGENTS_LABEL,
   TOKEN_TOTAL_LABEL,
 } from 'sidekick-shared/browser';
-import { SESSION_TOTAL_LABEL, SUBAGENTS_LABEL, TOTAL_LABEL, tokenMetricDisplay } from './tokens';
+import { tokenMetricDisplay } from './tokens';
 
 const fmt = (n: number) => String(n);
 
 describe('tokenMetricDisplay', () => {
-  it('uses the shared labels', () => {
-    expect(TOTAL_LABEL).toBe(TOKEN_TOTAL_LABEL);
-    expect(SUBAGENTS_LABEL).toBe(TOKEN_SUBAGENTS_LABEL);
-    expect(SESSION_TOTAL_LABEL).toBe(TOKEN_SESSION_TOTAL_LABEL);
-  });
-
-  it('matches summarizeTokens and lists every bucket', () => {
+  it('totals every bucket like summarizeTokens and lists each one', () => {
     const state = {
       totalInputTokens: 96,
       totalOutputTokens: 100,
@@ -24,6 +18,7 @@ describe('tokenMetricDisplay', () => {
       totalCacheReadTokens: 7500,
     };
     const display = tokenMetricDisplay(state, fmt);
+    expect(display.value).toBe(7896);
     expect(display.value).toBe(
       summarizeTokens({
         inputTokens: 96,
@@ -33,7 +28,7 @@ describe('tokenMetricDisplay', () => {
       }).total,
     );
     expect(display.lines).toEqual([
-      TOTAL_LABEL,
+      TOKEN_TOTAL_LABEL,
       '96 in · 7500 cache read · 200 cache write · 100 out',
     ]);
   });
@@ -51,9 +46,9 @@ describe('tokenMetricDisplay', () => {
     expect(display.mainTotal).toBe(6);
     expect(display.value).toBe(56);
     expect(display.lines).toEqual([
-      SESSION_TOTAL_LABEL,
+      TOKEN_SESSION_TOTAL_LABEL,
       'Main thread 6 (1 in · 3 cache read · 0 cache write · 2 out)',
-      'Subagents (2) 50',
+      `${TOKEN_SUBAGENTS_LABEL} (2) 50`,
     ]);
   });
 });

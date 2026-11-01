@@ -26,12 +26,17 @@ module.exports = tseslint.config(
             {
               name: 'sidekick-shared',
               message:
-                "Webview code must not import the package root. Use 'sidekick-shared/browser' for pure helpers, or a named subpath for types/phrases.",
+                "Webview code must not import the package root. Use 'sidekick-shared/browser' or 'sidekick-shared/pricing' for pure helpers, or a named subpath for types/phrases.",
             },
             {
               name: 'sidekick-shared/node',
               message:
                 'Webview code must not import Node-only subpaths. This pulls node:fs/node:path into the browser bundle.',
+            },
+            {
+              name: 'sidekick-shared/codex',
+              message:
+                'Webview code must not import Node-only subpaths. sidekick-shared/codex reads Codex homes and auth files; use sidekick-shared/browser for pure helpers.',
             },
             {
               name: 'sidekick-shared/dist/pricingCatalog',
