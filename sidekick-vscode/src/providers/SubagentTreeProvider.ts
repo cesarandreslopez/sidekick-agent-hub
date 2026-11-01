@@ -1,18 +1,19 @@
 /**
  * @fileoverview Tree data provider for displaying subagent activity.
  *
- * This module provides a TreeDataProvider implementation that shows
- * running and completed subagents spawned during Claude Code sessions.
- * It integrates with SessionMonitor to detect subagent activity from
- * timeline events and displays them in the Session Monitor activity bar.
+ * Shows the subagents spawned during a session, one row per spawn. Rows come
+ * from the session's subagent lifecycles (the shared EventAggregator tracks
+ * every `Agent` / `Task` call and keeps a background agent running until its
+ * task notification arrives), joined with the transcripts Claude Code writes
+ * under `<sessionDir>/<sessionId>/subagents/` on the spawning tool_use id or
+ * the agent id.
  *
  * Key features:
  * - Hierarchical display of nested subagents (parent → children)
- * - Detects subagents from timeline event descriptions
  * - Shows running (spinner) vs completed (check) status
  * - Displays agent type (Explore, Plan, Task, Unknown)
- * - Click-to-open transcript files when available
- * - Scans session directory for existing agent files
+ * - Click-to-open transcript files
+ * - Token and duration stats from the transcripts, parallel-run detection
  *
  * @module providers/SubagentTreeProvider
  */
@@ -20,9 +21,15 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SessionMonitor } from '../services/SessionMonitor';
-import { TimelineEvent, SubagentStats } from '../types/claudeSession';
-import { formatTokenCount, scanSubagentTraces, type SubagentTrace } from 'sidekick-shared';
+import type { SessionMonitor } from '../services/SessionMonitor';
+import type { TimelineEvent, SubagentStats } from '../types/claudeSession';
+import {
+  formatTokenCount,
+  isSubagentSpawnTool,
+  scanSubagentTraces,
+  type SubagentLifecycle,
+  type SubagentTrace,
+} from 'sidekick-shared';
 
 /**
  * Type for subagent classification based on description keywords.
@@ -33,14 +40,20 @@ type AgentType = 'Explore' | 'Plan' | 'Task' | 'Unknown';
  * Represents a subagent item in the tree view.
  */
 interface SubagentItem {
-  /** Unique agent identifier extracted from description */
+  /** Row key: the spawning tool_use id when known, else the agent id */
   id: string;
 
-  /** Display name (e.g., "worker-1 (Explore)") */
+  /** Claude Code agent id (the `agent-<id>.jsonl` name), once known */
+  agentId?: string;
+
+  /** Display name (e.g., "a1b2c3d4 (Explore)") */
   label: string;
 
   /** Running or completed status */
   type: 'running' | 'completed';
+
+  /** How the agent ended (`failed`, `killed`, `stopped`, …), when known */
+  outcome?: SubagentLifecycle['outcome'];
 
   /** Agent type based on description keywords */
   agentType: AgentType;
@@ -48,7 +61,7 @@ interface SubagentItem {
   /** Path to agent transcript file if available */
   transcriptPath: string | undefined;
 
-  /** When the agent was first detected */
+  /** When the agent was spawned (or its transcript started) */
   timestamp: Date;
 
   /** Total input tokens consumed */
@@ -73,12 +86,24 @@ interface SubagentItem {
   children: SubagentItem[];
 }
 
+/** Options for {@link SubagentTreeProvider}. */
+export interface SubagentTreeProviderOptions {
+  /** Minimum gap between transcript rescans; requests in between coalesce. Default 1000 ms. */
+  minRescanIntervalMs?: number;
+}
+
+const DEFAULT_MIN_RESCAN_INTERVAL_MS = 1_000;
+const LABEL_DESCRIPTION_MAX = 40;
+const SUBAGENT_KEYWORDS = /subagent|sidechain|spawned/i;
+const AGENT_FILE = /^agent-.+\.(?:jsonl|meta\.json)$/;
+const ENDED_STOP_REASONS = new Set(['end_turn', 'stop_sequence']);
+
 /**
  * Tree data provider for subagent activity during Claude Code sessions.
  *
- * Monitors timeline events for subagent spawning indicators and tracks
- * their lifecycle. Uses the shared trace parser to build hierarchical
- * parent-child trees when scan data is available.
+ * Rebuilds its rows from the monitor's subagent lifecycles whenever a spawn,
+ * a spawn's result, or a background agent's notification arrives, and
+ * enriches them with the shared trace parser's transcript data.
  *
  * @example
  * ```typescript
@@ -87,8 +112,6 @@ interface SubagentItem {
  *
  * // Register as tree data provider
  * vscode.window.registerTreeDataProvider('sidekick.subagents', subagentProvider);
- *
- * // Provider automatically updates when timeline events fire
  * ```
  */
 export class SubagentTreeProvider
@@ -103,7 +126,7 @@ export class SubagentTreeProvider
   /** Event fired when tree data changes */
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  /** Map of agent ID to SubagentItem (includes all agents, flat index) */
+  /** Map of row id to SubagentItem (includes all agents, flat index) */
   private subagents: Map<string, SubagentItem> = new Map();
 
   /** Top-level agents for getChildren(undefined) */
@@ -115,11 +138,15 @@ export class SubagentTreeProvider
   /** Subscriptions to dispose */
   private disposables: vscode.Disposable[] = [];
 
-  /** Monotonic live-worker sequence; independent of map size and trace merges. */
-  private nextWorkerId = 1;
+  /** Top-level transcript traces from the last scan */
+  private traces: SubagentTrace[] = [];
 
-  /** Correlates Task results with the exact live worker they complete. */
-  private taskWorkers = new Map<string, string>();
+  /** Names, sizes, and mtimes of the transcript files behind `traces` */
+  private traceSignature: string | null = null;
+
+  private lastTraceScanAt = 0;
+  private rescanTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly minRescanIntervalMs: number;
 
   /**
    * Creates a new SubagentTreeProvider.
@@ -129,16 +156,22 @@ export class SubagentTreeProvider
    *
    * @param sessionMonitor - The session monitor to subscribe to
    */
-  constructor(private readonly sessionMonitor: SessionMonitor) {
-    // Subscribe to session start to initialize session directory
+  constructor(
+    private readonly sessionMonitor: SessionMonitor,
+    options: SubagentTreeProviderOptions = {},
+  ) {
+    this.minRescanIntervalMs = Math.max(
+      0,
+      options.minRescanIntervalMs ?? DEFAULT_MIN_RESCAN_INTERVAL_MS,
+    );
+
+    // A new session: start over from its lifecycles and transcripts
     this.disposables.push(
       sessionMonitor.onSessionStart((sessionPath: string) => {
         this.sessionDir = path.dirname(sessionPath);
-        this.subagents.clear();
-        this.topLevelAgents = [];
-        this.taskWorkers.clear();
-        this.scanForAgentFiles();
-        this.refresh();
+        this.resetTraces();
+        this.rescanTraces();
+        this.rebuild();
       }),
     );
 
@@ -153,109 +186,201 @@ export class SubagentTreeProvider
     const currentSessionPath = sessionMonitor.getSessionPath();
     if (currentSessionPath) {
       this.sessionDir = path.dirname(currentSessionPath);
-      this.scanForAgentFiles();
+      this.rescanTraces();
+      this.rebuild();
     }
   }
 
   /**
-   * Handles a timeline event to detect subagent activity.
-   *
-   * Checks event descriptions for subagent-related keywords and
-   * extracts agent information when found.
+   * A spawn (`Agent` / `Task` call) adds a row; its result or a background
+   * agent's notification changes one, and means transcripts have grown, so
+   * those also rescan the transcripts.
    *
    * @param event - Timeline event from SessionMonitor
    */
   private handleTimelineEvent(event: TimelineEvent): void {
-    // Handle Task tool_result events to mark subagents as completed
-    if (event.type === 'tool_result' && event.metadata?.toolName === 'Task') {
-      this.markRunningAsCompleted(event.metadata.toolUseId);
-      // Re-scan with trace parser to pick up hierarchy
-      this.scanForAgentFiles();
+    const spawnTool = isSubagentSpawnTool(event.metadata?.toolName);
+
+    if (event.type === 'tool_call') {
+      if (spawnTool || SUBAGENT_KEYWORDS.test(event.description)) this.rebuild();
       return;
     }
 
-    // Only detect subagents from tool_call events
-    if (event.type !== 'tool_call') {
+    if ((event.type === 'tool_result' || event.type === 'error') && spawnTool) {
+      this.requestTraceRescan();
+      this.rebuild();
+    }
+  }
+
+  /** Rescans now when the last scan is old enough, else once the interval has passed. */
+  private requestTraceRescan(): void {
+    const wait = this.lastTraceScanAt + this.minRescanIntervalMs - Date.now();
+    if (wait <= 0) {
+      this.rescanTraces();
       return;
     }
+    if (this.rescanTimer) return;
+    this.rescanTimer = setTimeout(() => {
+      this.rescanTimer = undefined;
+      if (this.rescanTraces()) this.rebuild();
+    }, wait);
+  }
 
-    // Detect Task tool calls — the new rich formatters produce "Task: [Explore] description"
-    const isTaskTool = event.metadata?.toolName === 'Task';
-    const description = event.description.toLowerCase();
-    const isSubagentKeyword =
-      description.includes('subagent') ||
-      description.includes('sidechain') ||
-      description.includes('spawned');
+  private resetTraces(): void {
+    this.traces = [];
+    this.traceSignature = null;
+    if (this.rescanTimer) clearTimeout(this.rescanTimer);
+    this.rescanTimer = undefined;
+  }
 
-    if (!isTaskTool && !isSubagentKeyword) {
-      return;
+  /**
+   * Re-reads the session's subagent transcripts when their files changed.
+   *
+   * @returns Whether the traces changed
+   */
+  private rescanTraces(): boolean {
+    this.lastTraceScanAt = Date.now();
+    const sessionId = this.sessionMonitor.getSessionId();
+    if (!this.sessionDir || !sessionId) {
+      const changed = this.traces.length > 0;
+      this.traces = [];
+      this.traceSignature = null;
+      return changed;
     }
 
-    // Generate sequential worker ID
-    const agentId = `live-worker-${this.nextWorkerId++}`;
-
-    // Extract agent type — prefer from rich formatted description (e.g., "Task: [Explore] search auth")
-    let agentType = this.detectAgentType(event.description);
-    let agentDescription: string | undefined;
-
-    // Parse rich Task tool summary format: "Task: [Type] description"
-    const taskMatch = event.description.match(/Task:\s*\[(\w+)\]\s*(.*)/);
-    if (taskMatch) {
-      const rawType = taskMatch[1];
-      agentType = this.classifyAgentType(rawType);
-      agentDescription = taskMatch[2] || undefined;
+    const subagentsDir = path.join(this.sessionDir, sessionId, 'subagents');
+    const signature = directorySignature(subagentsDir);
+    if (signature === this.traceSignature) return false;
+    this.traceSignature = signature;
+    try {
+      this.traces = signature ? scanSubagentTraces(this.sessionDir, sessionId) : [];
+    } catch {
+      this.traces = [];
     }
+    return true;
+  }
 
-    // Create subagent item (always starts as running)
-    const item: SubagentItem = {
-      id: agentId,
-      label: `${agentId} (${agentType})`,
-      type: 'running',
-      agentType,
-      transcriptPath: undefined,
-      timestamp: new Date(event.timestamp),
-      description: agentDescription,
-      children: [],
-    };
+  /**
+   * Rebuilds the rows: one per spawn, transcript data joined in, nested
+   * agents under their parents. Spawns with no transcript yet get a row from
+   * their lifecycle alone.
+   */
+  private rebuild(): void {
+    const lifecycles = this.sessionMonitor.getAggregatedMetrics().subagents ?? [];
+    const { byTrace, unmatched } = this.matchLifecycles(lifecycles);
 
-    this.subagents.set(agentId, item);
-    this.topLevelAgents.push(item);
-    if (event.metadata?.toolUseId) this.taskWorkers.set(event.metadata.toolUseId, agentId);
+    this.subagents.clear();
+    const rows = this.traces.map((trace) => this.traceToItem(trace, byTrace));
+    for (const lifecycle of unmatched) {
+      const item = this.lifecycleToItem(lifecycle);
+      this.subagents.set(item.id, item);
+      rows.push(item);
+    }
+    // Older Claude Code kept transcripts flat in the session directory.
+    if (this.traces.length === 0) this.addFlatLayoutAgents(rows);
+    this.topLevelAgents = rows;
+
+    this.detectParallelExecution();
     this.refresh();
   }
 
   /**
-   * Marks the oldest running subagent as completed.
-   * Called when a Task tool_result event is received.
+   * Pairs each lifecycle with its transcript trace: by the spawning tool_use
+   * id, then by agent id, then (transcripts without spawn metadata) by an
+   * unambiguous description.
    */
-  private markRunningAsCompleted(toolUseId?: string): void {
-    const correlatedId = toolUseId ? this.taskWorkers.get(toolUseId) : undefined;
-    const correlated = correlatedId ? this.subagents.get(correlatedId) : undefined;
-    if (correlated?.type === 'running') {
-      correlated.type = 'completed';
-      correlated.transcriptPath = this.findTranscriptPath(correlated.id);
-      if (toolUseId) this.taskWorkers.delete(toolUseId);
-      this.refresh();
-      return;
+  private matchLifecycles(lifecycles: readonly SubagentLifecycle[]): {
+    byTrace: Map<SubagentTrace, SubagentLifecycle>;
+    unmatched: SubagentLifecycle[];
+  } {
+    const bySpawn = new Map<string, SubagentTrace>();
+    const byAgent = new Map<string, SubagentTrace>();
+    for (const trace of flattenTraces(this.traces)) {
+      if (trace.spawnToolUseId) bySpawn.set(trace.spawnToolUseId, trace);
+      byAgent.set(trace.agentId, trace);
     }
 
-    // Legacy timeline events did not carry tool-use IDs.
-    // Find oldest running subagent (by timestamp)
-    let oldestRunning: SubagentItem | undefined;
-    for (const item of this.subagents.values()) {
-      if (item.type === 'running') {
-        if (!oldestRunning || item.timestamp < oldestRunning.timestamp) {
-          oldestRunning = item;
-        }
-      }
+    const byTrace = new Map<SubagentTrace, SubagentLifecycle>();
+    let unmatched: SubagentLifecycle[] = [];
+    for (const lifecycle of lifecycles) {
+      const trace =
+        bySpawn.get(lifecycle.id) ??
+        (lifecycle.agentId ? byAgent.get(lifecycle.agentId) : undefined);
+      if (trace && !byTrace.has(trace)) byTrace.set(trace, lifecycle);
+      else unmatched.push(lifecycle);
     }
 
-    if (oldestRunning) {
-      oldestRunning.type = 'completed';
-      // Try to find transcript now that it's completed
-      oldestRunning.transcriptPath = this.findTranscriptPath(oldestRunning.id);
-      this.refresh();
+    const spare = this.traces.filter((trace) => !byTrace.has(trace) && !trace.spawnToolUseId);
+    if (spare.length > 0) {
+      unmatched = unmatched.filter((lifecycle) => {
+        const candidates = spare.filter(
+          (trace) => !byTrace.has(trace) && trace.description === lifecycle.description,
+        );
+        if (candidates.length !== 1) return true;
+        byTrace.set(candidates[0], lifecycle);
+        return false;
+      });
     }
+    return { byTrace, unmatched };
+  }
+
+  /**
+   * Converts a SubagentTrace tree into a SubagentItem tree.
+   */
+  private traceToItem(
+    trace: SubagentTrace,
+    lifecycles: Map<SubagentTrace, SubagentLifecycle>,
+  ): SubagentItem {
+    const lifecycle = lifecycles.get(trace);
+    const description = trace.description ?? lifecycle?.description;
+    const agentType = this.resolveAgentType(
+      trace.agentType ?? lifecycle?.subagentType,
+      description,
+    );
+
+    const item: SubagentItem = {
+      id: lifecycle?.id || trace.spawnToolUseId || trace.agentId,
+      agentId: trace.agentId,
+      label: `${trace.agentId.substring(0, 8)} (${agentType})`,
+      // The lifecycle knows; without one, Claude Code's meta flags or the
+      // transcript's last turn tell.
+      type: lifecycle ? lifecycle.status : traceLooksFinished(trace) ? 'completed' : 'running',
+      outcome: lifecycle?.outcome ?? (trace.stoppedByUser ? 'stopped' : undefined),
+      agentType,
+      transcriptPath: trace.filePath ?? this.findTranscriptPath(trace.agentId),
+      timestamp: parseDate(lifecycle?.spawnTime) ?? trace.stats.startTime ?? new Date(),
+      inputTokens: trace.stats.inputTokens,
+      outputTokens: trace.stats.outputTokens,
+      totalTokens: trace.stats.totalTokens,
+      durationMs: lifecycle?.durationMs ?? trace.stats.durationMs,
+      description,
+      children: trace.children.map((child) => this.traceToItem(child, lifecycles)),
+    };
+
+    // Register in flat map for lookup
+    this.subagents.set(item.id, item);
+    return item;
+  }
+
+  /** A spawn whose transcript has not been found (yet). */
+  private lifecycleToItem(lifecycle: SubagentLifecycle): SubagentItem {
+    const agentType = this.resolveAgentType(lifecycle.subagentType, lifecycle.description);
+    const label = lifecycle.agentId
+      ? `${lifecycle.agentId.substring(0, 8)} (${agentType})`
+      : `${truncate(lifecycle.description, LABEL_DESCRIPTION_MAX)} (${agentType})`;
+    return {
+      id: lifecycle.id || lifecycle.agentId || `spawn-${lifecycle.spawnTime}`,
+      agentId: lifecycle.agentId,
+      label,
+      type: lifecycle.status,
+      outcome: lifecycle.outcome,
+      agentType,
+      transcriptPath: lifecycle.agentId ? this.findTranscriptPath(lifecycle.agentId) : undefined,
+      timestamp: parseDate(lifecycle.spawnTime) ?? new Date(),
+      durationMs: lifecycle.durationMs,
+      description: lifecycle.description,
+      children: [],
+    };
   }
 
   /**
@@ -287,8 +412,16 @@ export class SubagentTreeProvider
     return 'Unknown';
   }
 
+  /** Classifies a raw agent type, falling back to description keywords. */
+  private resolveAgentType(raw: string | undefined, description: string | undefined): AgentType {
+    const classified = this.classifyAgentType(raw);
+    if (classified !== 'Unknown' || !description) return classified;
+    return this.detectAgentType(description);
+  }
+
   /**
-   * Finds the transcript file path for an agent.
+   * Finds the transcript file path for an agent: the current
+   * `<sessionDir>/<sessionId>/subagents/` layout, then the older flat one.
    *
    * @param agentId - Agent identifier
    * @returns Path to transcript if exists, undefined otherwise
@@ -298,158 +431,71 @@ export class SubagentTreeProvider
       return undefined;
     }
 
-    const transcriptPath = path.join(this.sessionDir, `agent-${agentId}.jsonl`);
-    return fs.existsSync(transcriptPath) ? transcriptPath : undefined;
-  }
-
-  /**
-   * Converts a SubagentTrace tree into a SubagentItem tree.
-   */
-  private traceToItem(trace: SubagentTrace): SubagentItem {
-    const agentType = this.classifyAgentType(trace.agentType);
-    const label = `${trace.agentId.substring(0, 8)} (${agentType})`;
-    const children = trace.children.map((c) => this.traceToItem(c));
-
-    const item: SubagentItem = {
-      id: trace.agentId,
-      label,
-      type: trace.stats.endTime ? 'completed' : 'running',
-      agentType,
-      transcriptPath: this.findTranscriptPath(trace.agentId),
-      timestamp: trace.stats.startTime || new Date(),
-      inputTokens: trace.stats.inputTokens,
-      outputTokens: trace.stats.outputTokens,
-      totalTokens: trace.stats.totalTokens,
-      durationMs: trace.stats.durationMs,
-      description: trace.description,
-      children,
-    };
-
-    // Register in flat map for lookup
-    this.subagents.set(trace.agentId, item);
-    return item;
-  }
-
-  /**
-   * Scans the session directory for existing agent transcript files.
-   *
-   * First tries the trace parser for hierarchical results, then
-   * falls back to flat file scanning for backward compatibility.
-   */
-  private scanForAgentFiles(): void {
-    if (!this.sessionDir) {
-      return;
-    }
-
-    // Try hierarchical scan via trace parser
     const sessionId = this.sessionMonitor.getSessionId();
-    if (sessionId) {
-      try {
-        const traces = scanSubagentTraces(this.sessionDir, sessionId);
-        if (traces.length > 0) {
-          this.applyTraceResults(traces);
-          return;
-        }
-      } catch {
-        // Fall through to flat scan
-      }
-    }
-
-    // Fallback: flat file scan (original behavior)
-    this.flatScanForAgentFiles();
+    const candidates = [
+      ...(sessionId
+        ? [path.join(this.sessionDir, sessionId, 'subagents', `agent-${agentId}.jsonl`)]
+        : []),
+      path.join(this.sessionDir, `agent-${agentId}.jsonl`),
+    ];
+    return candidates.find((candidate) => fs.existsSync(candidate));
   }
 
   /**
-   * Applies trace parser results, preserving any live-tracked running agents.
+   * Flat-layout fallback: older Claude Code wrote `agent-<id>.jsonl` next to
+   * the session file. Enriches matching rows and adds the rest as completed.
    */
-  private applyTraceResults(traces: SubagentTrace[]): void {
-    // Save running agents (from timeline events) to merge back
-    const runningAgents: SubagentItem[] = [];
-    for (const item of this.subagents.values()) {
-      if (item.type === 'running') {
-        runningAgents.push(item);
-      }
-    }
-
-    // Build tree from traces
-    this.subagents.clear();
-    this.topLevelAgents = traces.map((t) => this.traceToItem(t));
-
-    // Re-add running agents that weren't found in trace results
-    for (const running of runningAgents) {
-      if (!this.subagents.has(running.id)) {
-        this.subagents.set(running.id, running);
-        this.topLevelAgents.push(running);
-      }
-    }
-
-    this.detectParallelExecution();
-    this.refresh();
-  }
-
-  /**
-   * Flat scan fallback — original behavior for backward compatibility.
-   */
-  private flatScanForAgentFiles(): void {
+  private addFlatLayoutAgents(rows: SubagentItem[]): void {
     if (!this.sessionDir) return;
 
+    let files: string[];
+    try {
+      files = fs.readdirSync(this.sessionDir);
+    } catch {
+      return; // Directory read failed - ignore, will update on events
+    }
+    const agentFilePattern = /^agent-(.*)\.jsonl$/;
+    const flatFiles = files.filter((file) => agentFilePattern.test(file));
+    if (flatFiles.length === 0) return;
+
     // Enrich with SubagentStats from monitor (has token metrics)
-    const agentStats = this.sessionMonitor.getSubagentStats();
     const statsMap = new Map<string, SubagentStats>();
-    for (const s of agentStats) {
+    for (const s of this.sessionMonitor.getSubagentStats()) {
       statsMap.set(s.agentId, s);
     }
 
-    try {
-      const files = fs.readdirSync(this.sessionDir);
-      const agentFilePattern = /^agent-(.*)\.jsonl$/;
+    for (const file of flatFiles) {
+      const agentId = file.match(agentFilePattern)?.[1];
+      if (!agentId) continue;
+      const transcriptPath = path.join(this.sessionDir, file);
+      const stats = statsMap.get(agentId);
 
-      for (const file of files) {
-        const match = file.match(agentFilePattern);
-        if (match) {
-          const agentId = match[1];
-
-          // Skip if already tracked
-          const existing = this.subagents.get(agentId);
-          if (existing) {
-            // Already tracked — still enrich with stats if available
-            const stats = statsMap.get(agentId);
-            if (stats) {
-              this.enrichFromStats(existing, stats);
-            }
-            continue;
-          }
-
-          // Add discovered agent
-          const transcriptPath = path.join(this.sessionDir, file);
-          const stats = statsMap.get(agentId);
-          const agentType = this.classifyAgentType(stats?.agentType);
-          const item: SubagentItem = {
-            id: agentId,
-            label: `${agentId.substring(0, 8)} (${agentType})`,
-            type: 'completed',
-            agentType,
-            transcriptPath,
-            timestamp: stats?.startTime || new Date(),
-            inputTokens: stats?.inputTokens,
-            outputTokens: stats?.outputTokens,
-            totalTokens: stats?.totalTokens,
-            durationMs: stats?.durationMs,
-            description: stats?.description,
-            children: [],
-          };
-
-          this.subagents.set(agentId, item);
-          this.topLevelAgents.push(item);
-        }
+      const existing = rows.find((row) => row.agentId === agentId);
+      if (existing) {
+        existing.transcriptPath ??= transcriptPath;
+        if (stats) this.enrichFromStats(existing, stats);
+        continue;
       }
 
-      // Detect parallel execution (agents with overlapping time ranges)
-      this.detectParallelExecution();
+      const agentType = this.resolveAgentType(stats?.agentType, stats?.description);
+      const item: SubagentItem = {
+        id: agentId,
+        agentId,
+        label: `${agentId.substring(0, 8)} (${agentType})`,
+        type: 'completed',
+        agentType,
+        transcriptPath,
+        timestamp: stats?.startTime || new Date(),
+        inputTokens: stats?.inputTokens,
+        outputTokens: stats?.outputTokens,
+        totalTokens: stats?.totalTokens,
+        durationMs: stats?.durationMs,
+        description: stats?.description,
+        children: [],
+      };
 
-      this.refresh();
-    } catch {
-      // Directory read failed - ignore, will update on events
+      this.subagents.set(agentId, item);
+      rows.push(item);
     }
   }
 
@@ -473,7 +519,7 @@ export class SubagentTreeProvider
           item.agentType = detected;
         }
       }
-      item.label = `${item.id.substring(0, 8)} (${item.agentType})`;
+      item.label = `${(item.agentId ?? item.id).substring(0, 8)} (${item.agentType})`;
     }
   }
 
@@ -544,6 +590,7 @@ export class SubagentTreeProvider
       treeItem.description = 'Running...';
     } else {
       const descParts: string[] = [];
+      if (element.outcome && element.outcome !== 'completed') descParts.push(element.outcome);
       // Cache-inclusive total, the same figure as the session's token totals.
       const tokens =
         element.totalTokens ?? (element.inputTokens || 0) + (element.outputTokens || 0);
@@ -613,10 +660,73 @@ export class SubagentTreeProvider
    * Disposes resources.
    */
   dispose(): void {
+    if (this.rescanTimer) clearTimeout(this.rescanTimer);
+    this.rescanTimer = undefined;
     this._onDidChangeTreeData.dispose();
     for (const disposable of this.disposables) {
       disposable.dispose();
     }
     this.disposables = [];
   }
+}
+
+/** Every trace in a forest, parents before their children. */
+function flattenTraces(traces: readonly SubagentTrace[]): SubagentTrace[] {
+  return traces.flatMap((trace) => [trace, ...flattenTraces(trace.children)]);
+}
+
+/**
+ * Names, sizes, and mtimes of a subagents directory's transcript and meta
+ * files; empty when there are none, so unchanged files skip a rescan.
+ */
+function directorySignature(dir: string): string {
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir).filter((name) => AGENT_FILE.test(name));
+  } catch {
+    return '';
+  }
+  const parts: string[] = [];
+  for (const name of names.sort()) {
+    try {
+      const stat = fs.statSync(path.join(dir, name));
+      parts.push(`${name}:${stat.size}:${stat.mtimeMs}`);
+    } catch {
+      // Removed between listing and stat
+    }
+  }
+  return parts.length > 0 ? `${dir}\n${parts.join('\n')}` : '';
+}
+
+/**
+ * Without a lifecycle: done when Claude Code says so (meta `finished` or
+ * `stoppedByUser`) or the transcript's last turn ended without a tool call.
+ */
+function traceLooksFinished(trace: SubagentTrace): boolean {
+  if (trace.finished || trace.stoppedByUser) return true;
+  for (let i = trace.events.length - 1; i >= 0; i--) {
+    const event = trace.events[i].event;
+    if (event.type !== 'assistant' && event.type !== 'user') continue;
+    if (event.type !== 'assistant') return false;
+    const content = event.message?.content;
+    const callsTool =
+      Array.isArray(content) &&
+      content.some(
+        (block: unknown) =>
+          !!block && typeof block === 'object' && (block as { type?: unknown }).type === 'tool_use',
+      );
+    return !callsTool && ENDED_STOP_REASONS.has(event.message?.stop_reason ?? '');
+  }
+  return false;
+}
+
+function parseDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function truncate(text: string, max: number): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  return clean.length > max ? `${clean.substring(0, max - 1)}…` : clean;
 }

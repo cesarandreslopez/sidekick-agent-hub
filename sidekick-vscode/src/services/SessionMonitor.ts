@@ -68,6 +68,8 @@ import {
   isSnapshotValid,
   loadSnapshot,
   saveSnapshot,
+  captureJsonlCheckpoint,
+  type JsonlTailCheckpoint,
   type SessionSnapshot,
   categorizeError,
   extractErrorMessage,
@@ -75,6 +77,9 @@ import {
   scoreSessionQuality,
   summarizeTokens,
   getLiveClaudeHome,
+  isSubagentSpawnTool,
+  isTaskNotificationSystemEvent,
+  taskNotificationFromEvent,
 } from 'sidekick-shared';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 
@@ -127,10 +132,13 @@ export function isClaudePlanFile(filePath: string): boolean {
 const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
 
 /**
- * Revision of the VS Code part of a session snapshot. 3: model rows are keyed
- * by `canonicalModelId` and carry pricing buckets; older snapshots replay.
+ * Revision of the VS Code part of a session snapshot; older snapshots replay.
+ * 3: model rows are keyed by `canonicalModelId` and carry pricing buckets.
+ * 4: file-backed snapshots record a `sourceCheckpoint` (restore verifies the
+ * file is the same, append-only one) and the reader's `readerState`, and the
+ * aggregator's subagent state changed.
  */
-const VSCODE_CHECKPOINT_REVISION = 3;
+const VSCODE_CHECKPOINT_REVISION = 4;
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -216,6 +224,7 @@ export class SessionMonitor implements vscode.Disposable {
     'TaskUpdate',
     'TaskGet',
     'TaskList',
+    'Agent',
     'Task',
     'TodoWrite',
     'TodoRead',
@@ -1802,9 +1811,9 @@ export class SessionMonitor implements vscode.Disposable {
   /**
    * Attempts to restore session state from a snapshot sidecar file.
    *
-   * If a valid snapshot exists for this session, restores the aggregator state,
-   * local stats, and seeks the reader past already-processed content.
-   * Returns true if restoration succeeded (readInitialContent will only
+   * If a valid snapshot exists for this session, seeks the reader past
+   * already-processed content and restores its parse state, the aggregator
+   * state, and local stats. Returns true if restoration succeeded (readInitialContent will only
    * process new events), false if full replay is needed.
    */
   private tryRestoreFromSnapshot(sessionPath: string): boolean {
@@ -1835,14 +1844,27 @@ export class SessionMonitor implements vscode.Disposable {
       // DB-backed providers may not have a real file — sourceSize stays 0
     }
 
-    if (!isSnapshotValid(snapshot, sourceSize)) {
+    // With the path, the snapshot's checkpoint must still match this file's identity and content.
+    if (!isSnapshotValid(snapshot, sourceSize, sessionPath)) {
       log(`Snapshot invalidated for ${this.sessionId} (source changed)`);
+      deleteSnapshot(this.sessionId);
+      return false;
+    }
+
+    // Seek the reader past already-processed content, then give it the parse
+    // state it had there (for Claude, which split-line responses it already
+    // counted). A reader that rejects that state cannot resume: replay.
+    this.reader.seekTo(snapshot.readerPosition);
+    if (this.reader.restoreResumeState?.(snapshot.readerState) === false) {
+      log(`Snapshot invalidated for ${this.sessionId} (reader state rejected)`);
+      this.reader.reset();
       deleteSnapshot(this.sessionId);
       return false;
     }
 
     // Restore aggregator state
     if (!this.aggregator.restore(snapshot.aggregator)) {
+      this.reader.reset();
       deleteSnapshot(this.sessionId);
       return false;
     }
@@ -1924,9 +1946,6 @@ export class SessionMonitor implements vscode.Disposable {
       this.seenHashes = new Set(c.seenHashes as string[]);
     }
 
-    // Seek reader past already-processed content
-    this.reader.seekTo(snapshot.readerPosition);
-
     log(
       `Restored snapshot for ${this.sessionId}: position=${snapshot.readerPosition}, events=${snapshot.aggregator.eventCount}`,
     );
@@ -1941,23 +1960,32 @@ export class SessionMonitor implements vscode.Disposable {
     if (!this.sessionId || !this.reader) return;
     if (this.provider.id === 'opencode') return;
 
+    const readerPosition = this.reader.getPosition();
     let sourceSize = 0;
+    let sourceCheckpoint: JsonlTailCheckpoint | null = null;
     if (this.sessionPath) {
       try {
         const stat = fs.statSync(this.sessionPath);
         sourceSize = stat.size;
+        // Which file, and which content, readerPosition refers to; null when
+        // the position is not resume-safe, so restore replays instead.
+        sourceCheckpoint = captureJsonlCheckpoint(this.sessionPath, readerPosition);
       } catch {
         // DB-backed — leave as 0
       }
     }
 
+    // Parse state that belongs to readerPosition; restore hands it back after seeking.
+    const readerState = this.reader.getResumeState?.();
     const aggregator = this.aggregator.serialize();
     const snapshot: SessionSnapshot = {
       version: aggregator.version,
       sessionId: this.sessionId,
       providerId: this.provider.id,
-      readerPosition: this.reader.getPosition(),
+      readerPosition,
       sourceSize,
+      ...(sourceCheckpoint ? { sourceCheckpoint } : {}),
+      ...(readerState !== undefined ? { readerState } : {}),
       createdAt: new Date().toISOString(),
       aggregator,
       consumer: {
@@ -2389,6 +2417,26 @@ export class SessionMonitor implements vscode.Disposable {
 
     // ── VS Code-specific processing below ──
 
+    // A background agent's task notification: the aggregator completed it, so
+    // refresh the boards and trees (as for a spawn's own result).
+    const notification = taskNotificationFromEvent(event);
+    if (notification && !this._isReplaying) {
+      const subagent = this.aggregator
+        .getSubagents()
+        .find((s) => s.id === notification.toolUseId || s.agentId === notification.taskId);
+      if (subagent) {
+        const name = this.toolCallsById.get(subagent.id)?.name ?? 'Agent';
+        this._onToolCall.fire({ name, input: {}, timestamp: new Date(event.timestamp) });
+      }
+    }
+
+    // The opt-in mid-turn notification event is bookkeeping, not a message.
+    if (isTaskNotificationSystemEvent(event)) {
+      this.stats.lastUpdated = new Date();
+      this.addTimelineEvent(event);
+      return;
+    }
+
     // Exclude synthetic provider token-count events from user-facing message count.
     const isSyntheticTokenCount =
       event.type === 'assistant' &&
@@ -2795,6 +2843,7 @@ export class SessionMonitor implements vscode.Disposable {
         }
         break;
 
+      case 'Agent':
       case 'Task':
         // Include "subagent spawned" for detection by MindMap and SubagentTreeProvider
         if (input.description) {
@@ -2864,6 +2913,26 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns Timeline event or null if not relevant for timeline
    */
   private createTimelineEvent(event: SessionEvent): TimelineEvent | null {
+    // A background task's notification reads as its spawning tool finishing.
+    const notification = taskNotificationFromEvent(event);
+    if (notification) {
+      const subagent = this.aggregator
+        .getSubagents()
+        .find((s) => s.id === notification.toolUseId || s.agentId === notification.taskId);
+      const toolUseId = notification.toolUseId ?? subagent?.id;
+      const toolName =
+        (toolUseId ? this.toolCallsById.get(toolUseId)?.name : undefined) ??
+        (subagent ? 'Agent' : undefined);
+      return {
+        type: 'tool_result',
+        timestamp: event.timestamp,
+        description: notification.summary ?? `Background task ${notification.status ?? 'finished'}`,
+        noiseLevel: 'system',
+        isSidechain: event.isSidechain,
+        metadata: { toolName, toolUseId, isError: notification.status === 'failed' },
+      };
+    }
+
     switch (event.type) {
       case 'user': {
         // Extract user prompt text
@@ -3435,9 +3504,13 @@ export class SessionMonitor implements vscode.Disposable {
         const pending = this.pendingToolCalls.get(toolResult.tool_use_id);
         if (pending) {
           // Task tracking (TaskCreate, Task/Agent results) is handled by the shared EventAggregator.
-          // Fire tool call event for Task results so the board refreshes immediately.
-          if (pending.name === 'Task' && !this._isReplaying) {
-            this._onToolCall.fire({ name: 'Task', input: {}, timestamp: new Date(timestamp) });
+          // Fire tool call event for Agent/Task results so the board refreshes immediately.
+          if (isSubagentSpawnTool(pending.name) && !this._isReplaying) {
+            this._onToolCall.fire({
+              name: pending.name,
+              input: {},
+              timestamp: new Date(timestamp),
+            });
           }
 
           // Prefer provider-supplied duration (from OpenCode tool parts) over

@@ -464,6 +464,82 @@ it('resumes the saved custom directory and retains discovery subscriptions', asy
   monitor.dispose();
 });
 
+it('completes a background Agent from a task notification without counting a message', () => {
+  const monitor = new SessionMonitor(createProvider({ id: 'claude-code' }) as never);
+  const handle = (monitor as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+    monitor,
+  );
+  const timeline: Array<{ type: string; description: string; metadata?: unknown }> = [];
+  const toolCalls: string[] = [];
+  monitor.onTimelineEvent((event) => timeline.push(event));
+  monitor.onToolCall((call) => toolCalls.push(call.name));
+  const notification =
+    '<task-notification>\n<task-id>a1b2c3d4e5f6a7b8c</task-id>\n<tool-use-id>toolu_spawn</tool-use-id>\n<status>completed</status>\n<summary>Agent "Explore" finished</summary>\n<result>Done.</result>\n</task-notification>';
+
+  handle({
+    type: 'assistant',
+    timestamp: '2026-11-01T03:00:00.000Z',
+    message: {
+      role: 'assistant',
+      id: 'msg_1',
+      content: [
+        {
+          type: 'tool_use',
+          id: 'toolu_spawn',
+          name: 'Agent',
+          input: { description: 'Explore', subagent_type: 'Explore' },
+        },
+      ],
+    },
+  });
+  handle({
+    type: 'user',
+    timestamp: '2026-11-01T03:00:01.000Z',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'toolu_spawn',
+          content: [
+            {
+              type: 'text',
+              text: 'Async agent launched successfully.\nagentId: a1b2c3d4e5f6a7b8c (internal ID)',
+            },
+          ],
+        },
+      ],
+    },
+  });
+  expect(monitor.getAggregatedMetrics().subagents[0]).toMatchObject({ status: 'running' });
+  expect(timeline.at(-2)).toMatchObject({
+    type: 'tool_call',
+    description: 'Agent: Subagent spawned: Explore',
+  });
+  const messages = monitor.getStats().messageCount;
+
+  // Mid-turn delivery: the reader's opt-in system event.
+  handle({
+    type: 'system',
+    timestamp: '2026-11-01T03:05:00.000Z',
+    origin: { kind: 'task-notification' },
+    message: { role: 'user', sourceLabel: 'task notification', content: notification },
+  });
+
+  expect(monitor.getAggregatedMetrics().subagents[0]).toMatchObject({
+    status: 'completed',
+    agentId: 'a1b2c3d4e5f6a7b8c',
+  });
+  expect(monitor.getStats().messageCount).toBe(messages);
+  expect(timeline.at(-1)).toMatchObject({
+    type: 'tool_result',
+    description: 'Agent "Explore" finished',
+    metadata: { toolName: 'Agent', toolUseId: 'toolu_spawn' },
+  });
+  expect(toolCalls.filter((name) => name === 'Agent')).toHaveLength(3);
+  monitor.dispose();
+});
+
 it('does not restart discovery when stopped during an asynchronous start', async () => {
   vi.useFakeTimers();
   const monitor = new SessionMonitor(createProvider() as never);

@@ -18,6 +18,7 @@ import { toErrorMessage } from '../utils/errors';
 import {
   assistantTurnEventsFromSessionEvents,
   canonicalModelId,
+  isTaskNotificationSystemEvent,
   parseModelId,
   segmentAssistantTurn,
 } from 'sidekick-shared';
@@ -104,6 +105,9 @@ export function conversationChunksFromSessionEvents(
       assistantEvents.push(event);
       continue;
     }
+    // A mid-turn background-task notice: not part of the conversation, and it
+    // must not split the assistant turn around it.
+    if (isTaskNotificationSystemEvent(event)) continue;
 
     flushAssistantEvents();
 
