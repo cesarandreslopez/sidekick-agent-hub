@@ -1819,6 +1819,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             sevenDayUtilization: quota.sevenDay.utilization,
             capturedAt: quota.capturedAt,
             ageMs: quota.ageMs,
+            // Ultra has no five-hour window; the webview shows the weekly one instead.
+            ...(quota.fiveHour.absent
+              ? { fiveHourAbsent: true, sevenDayResetsAt: quota.sevenDay.resetsAt }
+              : {}),
           };
         }
       }

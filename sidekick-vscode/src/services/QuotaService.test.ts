@@ -32,6 +32,11 @@ vi.mock('vscode', () => ({
 vi.mock('sidekick-shared', () => ({
   readClaudeMaxCredentials: (...args: unknown[]) => mockReadClaudeMaxCredentials(...args),
   fetchQuota: (...args: unknown[]) => mockFetchQuota(...args),
+  quotaHistoryWindow: (window: { utilization: number; resetsAt: string; absent?: boolean }) => ({
+    utilization: window.utilization,
+    resetsAt: window.resetsAt,
+    ...(window.absent ? { absent: true } : {}),
+  }),
   QuotaPoller: class {
     start = mockPollerStart;
     stop = mockPollerStop;
@@ -165,6 +170,27 @@ describe('QuotaService', () => {
       failureKind: 'unknown',
       httpStatus: 403,
     });
+  });
+
+  it('passes the credential plan facts so the quota carries a plan label', async () => {
+    const creds = {
+      accessToken: 'token',
+      subscriptionType: 'max',
+      rateLimitTier: 'default_claude_max_20x',
+    };
+    mockReadClaudeMaxCredentials.mockResolvedValue(creds);
+    mockFetchQuota.mockResolvedValueOnce({
+      fiveHour: { utilization: 0, resetsAt: '', absent: true },
+      sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
+      available: true,
+      planLabel: 'Ultra',
+    });
+
+    const service = new QuotaService();
+    const result = await service.fetchQuota();
+
+    expect(mockFetchQuota).toHaveBeenCalledWith('token', { plan: creds });
+    expect(result).toMatchObject({ planLabel: 'Ultra', fiveHour: { absent: true } });
   });
 
   it('delegates refresh lifecycle to the shared poller', () => {

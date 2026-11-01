@@ -12,6 +12,7 @@
  */
 import { renderProviderStatus as renderPublicStatus } from './providerStatus';
 import { tokenMetricDisplay } from './tokens';
+import { quotaCardVisibility, quotaSectionTooltip, renderQuotaExtrasHtml } from './quotaWindows';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
 
@@ -876,10 +877,16 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         projectionEl.innerHTML = 'Projected by end: <strong>' + formatTokensShort(block.projectedTokens) + '</strong> tokens · <strong>'
           + (unpriced ? '—' : '$' + block.projectedCostUsd.toFixed(2)) + '</strong>';
         if (official) {
-          const resetMs = official.fiveHourResetsAt ? Date.parse(official.fiveHourResetsAt) - Date.now() : NaN;
-          const resets = Number.isFinite(resetMs) && resetMs > 0 ? ' · resets in ' + hm(resetMs) : '';
-          officialEl.textContent = 'Official (status line): 5h ' + Math.round(official.fiveHourUtilization) + '% used' + resets
-            + ' · 7d ' + Math.round(official.sevenDayUtilization) + '%';
+          const resetsIn = (iso) => {
+            const resetMs = iso ? Date.parse(iso) - Date.now() : NaN;
+            return Number.isFinite(resetMs) && resetMs > 0 ? ' · resets in ' + hm(resetMs) : '';
+          };
+          // Plans without a five-hour window (Claude Ultra) only have the weekly one.
+          officialEl.textContent = official.fiveHourAbsent
+            ? 'Official (status line): 7d ' + Math.round(official.sevenDayUtilization) + '% used'
+              + resetsIn(official.sevenDayResetsAt) + ' · no 5-hour limit'
+            : 'Official (status line): 5h ' + Math.round(official.fiveHourUtilization) + '% used'
+              + resetsIn(official.fiveHourResetsAt) + ' · 7d ' + Math.round(official.sevenDayUtilization) + '%';
           officialEl.classList.add('official');
         } else {
           officialEl.textContent = 'No official sample yet — install the status line to compare.';
@@ -899,6 +906,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const label5hEl = document.getElementById('quota-5h-label');
         const label7dEl = document.getElementById('quota-7d-label');
         const resetCreditsEl = document.getElementById('quota-reset-credits');
+        const extrasEl = document.getElementById('quota-extras');
+        const card5hEl = document.getElementById('quota-5h-card');
+        const card7dEl = document.getElementById('quota-7d-card');
 
         if (!sectionEl || !contentEl || !errorEl) return;
 
@@ -917,11 +927,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         if (titleEl) {
           titleEl.textContent = currentProviderId === 'codex' ? 'Rate Limits' : isZaiQuota ? 'z.ai Quota' : 'Subscription Quota';
         }
-        sectionEl.title = currentProviderId === 'codex'
-          ? 'Codex CLI rate limits'
-          : isZaiQuota
-          ? 'z.ai Coding Plan quota'
-          : 'Claude Max subscription usage limits';
+        sectionEl.title = quotaSectionTooltip(quota, currentProviderId);
         if (label5hEl) label5hEl.textContent = quota?.fiveHourLabel || (currentProviderId === 'codex' ? 'Primary' : '5-Hour');
         if (label7dEl) label7dEl.textContent = quota?.sevenDayLabel || (currentProviderId === 'codex' ? 'Secondary' : '7-Day');
 
@@ -987,6 +993,17 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           metaEl.style.display = metaParts.length ? 'block' : 'none';
         }
         renderResetCredits(resetCreditsEl, quota.resetCredits);
+
+        // Draw only the windows the plan has (Ultra has no five-hour window; a
+        // weekly-only Codex plan has no second one), then any extra meters.
+        const visibility = quotaCardVisibility(quota, currentProviderId);
+        if (card5hEl) card5hEl.style.display = visibility.fiveHour ? '' : 'none';
+        if (card7dEl) card7dEl.style.display = visibility.sevenDay ? '' : 'none';
+        if (extrasEl) {
+          const extrasHtml = renderQuotaExtrasHtml(quota, currentProviderId, formatResetTime);
+          extrasEl.innerHTML = extrasHtml;
+          extrasEl.style.display = extrasHtml ? 'flex' : 'none';
+        }
 
         // Update 5-hour gauge
         const percent5hEl = document.getElementById('quota-5h-percent');

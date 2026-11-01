@@ -13,6 +13,7 @@ import {
   fetchQuota,
   appendQuotaHistorySample,
   getActiveSavedAccount,
+  quotaHistoryWindow,
   QuotaPoller,
 } from 'sidekick-shared';
 import type { QuotaState, QuotaWindow } from 'sidekick-shared';
@@ -57,7 +58,8 @@ export class QuotaService implements vscode.Disposable {
       getAccessToken: async () => {
         const creds = await readClaudeMaxCredentials();
         if (!creds) throw new Error(NO_CREDENTIALS_ERROR);
-        return creds.accessToken;
+        // The full record lets the poller stamp the plan label (e.g. Ultra).
+        return creds;
       },
     });
     this._disposables.push(this._poller.onUpdate((state) => this._handleQuotaState(state)));
@@ -82,7 +84,7 @@ export class QuotaService implements vscode.Disposable {
       return state;
     }
 
-    const state = await fetchQuota(creds.accessToken);
+    const state = await fetchQuota(creds.accessToken, { plan: creds });
 
     // Keep stale quota only for retryable failures.
     if (shouldKeepCachedQuota(state) && this._cachedQuota?.available) {
@@ -155,8 +157,8 @@ export class QuotaService implements vscode.Disposable {
       runtimeProvider: 'claude',
       providerId: account.id,
       workspaceId,
-      fiveHour: { utilization: state.fiveHour.utilization, resetsAt: state.fiveHour.resetsAt },
-      sevenDay: { utilization: state.sevenDay.utilization, resetsAt: state.sevenDay.resetsAt },
+      fiveHour: quotaHistoryWindow(state.fiveHour),
+      sevenDay: quotaHistoryWindow(state.sevenDay),
       available: state.available,
       error: state.error,
       source: state.source,

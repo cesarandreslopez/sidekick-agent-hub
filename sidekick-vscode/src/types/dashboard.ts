@@ -23,6 +23,8 @@ import type {
   FailingToolTrendRow,
   HealthReport,
   PeakHoursState,
+  QuotaExtraUsage,
+  QuotaLimitRow,
   SessionProviderDiagnostic,
 } from 'sidekick-shared';
 
@@ -30,7 +32,11 @@ import type {
 export interface BillingBlockOfficialSample {
   fiveHourUtilization: number;
   fiveHourResetsAt: string;
+  /** True when the plan has no five-hour window (Claude Ultra); the line shows the weekly window. */
+  fiveHourAbsent?: boolean;
   sevenDayUtilization: number;
+  /** Weekly reset, sent when the five-hour window is absent. */
+  sevenDayResetsAt?: string;
   capturedAt?: string;
   ageMs?: number;
 }
@@ -76,10 +82,14 @@ export interface QuotaWindow {
   utilization: number;
   /** ISO timestamp when the quota resets */
   resetsAt: string;
+  /** True when the plan has no such window (Claude Ultra has no five-hour limit) */
+  absent?: boolean;
+  /** Window length in milliseconds when the provider reports it */
+  windowMs?: number;
 }
 
 /**
- * Complete quota state for Claude Max subscription.
+ * Complete quota state for a Claude subscription (or Codex / z.ai limits).
  */
 export interface QuotaState {
   /** 5-hour rolling quota */
@@ -122,6 +132,13 @@ export interface QuotaState {
   accountDetail?: string;
   /** Codex reset credits available for rate-limit resets */
   resetCredits?: CodexResetCreditsSnapshot;
+  /** Subscription plan type and display name, e.g. `max` / `Ultra` */
+  planType?: string;
+  planLabel?: string;
+  /** Every usage meter the provider reported (see sidekick-shared `extraQuotaRows`) */
+  limits?: QuotaLimitRow[];
+  /** Claude extra-usage (usage credits) spend */
+  extraUsage?: QuotaExtraUsage;
 }
 
 export interface QuotaFailureDisplay {

@@ -1284,6 +1284,53 @@ export const DASHBOARD_STYLES = `
       color: var(--vscode-editorError-foreground);
     }
 
+    .quota-extras {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: 10px;
+    }
+
+    .quota-extra-row {
+      display: grid;
+      grid-template-columns: minmax(70px, auto) 1fr auto auto;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .quota-extra-label,
+    .quota-extra-reset,
+    .quota-extra-note {
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .quota-extra-bar {
+      height: 4px;
+      border-radius: 2px;
+      background: var(--vscode-input-background, rgba(127, 127, 127, 0.12));
+      overflow: hidden;
+    }
+
+    .quota-extra-fill {
+      display: block;
+      height: 100%;
+      background: var(--vscode-charts-green, #4caf50);
+    }
+
+    .quota-extra-fill.warning {
+      background: var(--vscode-editorWarning-foreground);
+    }
+
+    .quota-extra-fill.danger {
+      background: var(--vscode-editorError-foreground);
+    }
+
+    .quota-extra-value {
+      font-family: var(--vscode-editor-font-family);
+      font-weight: bold;
+    }
+
     .quota-reset-credits {
       margin-top: 8px;
       padding-top: 6px;

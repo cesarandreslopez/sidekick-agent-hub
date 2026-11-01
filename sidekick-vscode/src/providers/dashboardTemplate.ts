@@ -166,12 +166,12 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
           <div id="truncation-info" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 2px;"></div>
         </div>
 
-        <div class="gauge-row-item quota-item quota-section" id="quota-section" title="Claude Max subscription usage limits">
+        <div class="gauge-row-item quota-item quota-section" id="quota-section" title="Claude subscription usage limits">
           <div class="section-title">Subscription Quota</div>
           <div class="section-subtitle" id="quota-meta" style="display: none;"></div>
           <div id="quota-content">
             <div class="quota-grid">
-              <div class="quota-card" title="Usage in the last 5 hours">
+              <div class="quota-card" id="quota-5h-card" title="Usage in the last 5 hours">
                 <div class="quota-label" id="quota-5h-label">5-Hour</div>
                 <div class="quota-gauge">
                   <canvas id="quota5hChart"></canvas>
@@ -180,7 +180,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
                 <div class="quota-reset" id="quota-5h-reset">-</div>
                 <div class="quota-projection" id="quota-5h-projection"></div>
               </div>
-              <div class="quota-card" title="Usage in the last 7 days">
+              <div class="quota-card" id="quota-7d-card" title="Usage in the last 7 days">
                 <div class="quota-label" id="quota-7d-label">7-Day</div>
                 <div class="quota-gauge">
                   <canvas id="quota7dChart"></canvas>
@@ -190,6 +190,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
                 <div class="quota-projection" id="quota-7d-projection"></div>
               </div>
             </div>
+            <div class="quota-extras" id="quota-extras" style="display: none;"></div>
             <div class="quota-reset-credits" id="quota-reset-credits" style="display: none;"></div>
           </div>
           <div class="quota-error" id="quota-error" style="display: none;"></div>
