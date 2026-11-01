@@ -2,6 +2,10 @@
 
 Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 
+!!! note "Plan names"
+
+    The `claude-max` provider works with any Claude subscription that includes Claude Code: Pro, Max, or Ultra. On 2026-10-30 Anthropic renamed Max 5x to **Max** and Max 20x to **Ultra**; Ultra has no 5-hour session limit. Sidekick reads your plan from the Claude Code credentials and shows it in quota views.
+
 ## Setup
 
 1. Install Claude Code CLI:
@@ -25,7 +29,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 Claude Code sessions are monitored from `~/.claude/projects/`, or from `$CLAUDE_CONFIG_DIR/projects/` when `CLAUDE_CONFIG_DIR` is set, the same home the `claude` CLI writes to. The dashboard shows:
 
 - Token usage with elapsed-time quota projections
-- 5-hour and 7-day subscription quota gauges with projected end-of-window utilization
+- 5-hour and 7-day subscription quota gauges with projected end-of-window utilization. The quota section names your plan (Pro, Max, or Ultra). On Ultra, which has no 5-hour session limit, the 5-hour gauge is replaced by a "No 5-hour limit on Ultra" note. Extra meters the usage endpoint reports, such as the weekly Fable cap, and your extra-usage (usage credit) spend appear below the gauges
 - Cost tracking (included in subscription)
 
 If quota data becomes unavailable, Sidekick now keeps the quota surface visible and classifies the failure: missing credentials / expired Claude Code sign-in, rate limits, transient network or server failures, and unexpected API responses are shown as distinct states instead of a single generic error.
