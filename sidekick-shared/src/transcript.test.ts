@@ -188,4 +188,99 @@ describe('projectSessionTranscript', () => {
       'system',
     ]);
   });
+
+  it('lifts parser bookkeeping keys out of projected tool inputs without touching events', () => {
+    const parser = new CodexRolloutParser();
+    const events: SessionEvent[] = [
+      ...parser.convertLine({
+        timestamp: '2026-07-22T00:00:00Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'fc-1',
+          name: 'exec_command',
+          arguments: JSON.stringify({ cmd: 'npm test' }),
+        },
+      } as CodexRolloutLine),
+      ...parser.convertLine({
+        timestamp: '2026-07-22T00:00:01Z',
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_begin',
+          call_id: 'mcp-1',
+          server_name: 'docs',
+          tool_name: 'search',
+          arguments: { query: 'retry policy' },
+        },
+      } as CodexRolloutLine),
+      ...parser.convertLine({
+        timestamp: '2026-07-22T00:00:02Z',
+        type: 'event_msg',
+        payload: { type: 'mcp_tool_call_end', call_id: 'mcp-1', result: 'hit' },
+      } as CodexRolloutLine),
+      {
+        type: 'tool_use',
+        timestamp: '2026-07-22T00:00:03Z',
+        tool: {
+          name: 'Bash',
+          input: { command: 'ls', _sidekickRawToolName: 'local_shell_call', _sidekickOther: 1 },
+        },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-07-22T00:00:04Z',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'plain', name: 'Read', input: { file_path: 'a.ts' } }],
+        },
+      },
+    ];
+    const before = structuredClone(events);
+
+    for (const fidelity of ['snippet', 'full'] as const) {
+      const transcript = projectSessionTranscript(events, { fidelity });
+      const tools = [
+        ...transcript.tools,
+        ...transcript.messages.flatMap((message) => message.tools),
+      ];
+      const inputs = [
+        ...tools.map((tool) => tool.input),
+        ...transcript.messages.flatMap((message) =>
+          message.content.filter((block) => block.type === 'tool_use').map((block) => block.input),
+        ),
+      ];
+      expect(inputs.length).toBeGreaterThan(0);
+      for (const input of inputs) {
+        expect(Object.keys(input as object).filter((key) => key.startsWith('_sidekick'))).toEqual(
+          [],
+        );
+      }
+
+      expect(
+        transcript.tools.map((tool) => [tool.name, tool.rawToolName, tool.mcpServerName]),
+      ).toEqual([
+        ['Bash', 'exec_command', undefined],
+        ['Search', 'search', 'docs'],
+        ['Bash', 'local_shell_call', undefined],
+        ['Read', undefined, undefined],
+      ]);
+      expect(transcript.tools[0]).toMatchObject({
+        input: { cmd: 'npm test', command: 'npm test' },
+        command: 'npm test',
+      });
+      expect(transcript.tools[1].input).toEqual({ query: 'retry policy' });
+      expect(transcript.tools[3]).not.toHaveProperty('rawToolName');
+      expect(transcript.tools[3]).not.toHaveProperty('mcpServerName');
+      const block = transcript.messages[1].content[0];
+      expect(block).toMatchObject({
+        type: 'tool_use',
+        rawToolName: 'search',
+        mcpServerName: 'docs',
+      });
+    }
+
+    expect(events).toEqual(before);
+    const raw = (events[0].message?.content as Array<{ input: Record<string, unknown> }>)[0].input;
+    expect(raw._sidekickRawToolName).toBe('exec_command');
+  });
 });

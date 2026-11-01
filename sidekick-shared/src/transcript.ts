@@ -40,6 +40,13 @@ export interface CanonicalTranscriptBlock {
   command?: string;
   truncated?: boolean;
   raw?: unknown;
+  /**
+   * The provider's own tool name before normalization (for example Codex
+   * `exec_command` behind `Bash`), when the parser recorded one.
+   */
+  rawToolName?: string;
+  /** The MCP server that served this tool call, when the parser recorded one. */
+  mcpServerName?: string;
 }
 
 export interface CanonicalTranscriptMessage {
@@ -61,10 +68,15 @@ export interface CanonicalToolCall {
   id?: string;
   name: string;
   timestamp: string;
+  /** Tool input without the parsers' internal `_sidekick*` bookkeeping keys. */
   input?: unknown;
   output?: unknown;
   isError?: boolean;
   command?: string;
+  /** The provider's own tool name before normalization, when recorded. */
+  rawToolName?: string;
+  /** The MCP server that served this tool call, when recorded. */
+  mcpServerName?: string;
   source: TranscriptSourceProvenance;
 }
 
@@ -186,10 +198,12 @@ export function projectSessionTranscript(
       blocks.push({ type: 'text', ...boundedText(event.summary, fidelity, maxContentChars) });
     }
     if (event.type === 'tool_use') {
+      const projected = projectToolInput(event.tool.input);
       blocks.push({
         type: 'tool_use',
         toolName: event.tool.name,
-        input: boundedValue(event.tool.input, fidelity, maxContentChars),
+        input: boundedValue(projected.input, fidelity, maxContentChars),
+        ...toolIdentity(projected),
       });
     }
     if (event.type === 'tool_result') {
@@ -211,6 +225,7 @@ export function projectSessionTranscript(
           timestamp: event.timestamp,
           input: block.input,
           command,
+          ...toolIdentity(block),
           source,
         };
         tools.push(call);
@@ -309,12 +324,14 @@ function contentBlocks(
         ...boundedText(String(block.thinking ?? block.text), fidelity, maxChars),
       });
     } else if (block.type === 'tool_use' && typeof block.name === 'string') {
+      const projected = projectToolInput(block.input);
       result.push({
         type: 'tool_use',
         toolName: block.name,
         toolUseId: typeof block.id === 'string' ? block.id : undefined,
-        input: boundedValue(block.input, fidelity, maxChars),
-        command: commandFromTool(block.name, block.input),
+        input: boundedValue(projected.input, fidelity, maxChars),
+        command: commandFromTool(block.name, projected.input),
+        ...toolIdentity(projected),
       });
     } else if (block.type === 'tool_result') {
       result.push({
@@ -334,6 +351,50 @@ function contentBlocks(
     }
   }
   return result;
+}
+
+/** Prefix of the bookkeeping keys session parsers stash inside tool inputs. */
+const SIDEKICK_INPUT_KEY_PREFIX = '_sidekick';
+
+interface ProjectedToolInput {
+  input: unknown;
+  rawToolName?: string;
+  mcpServerName?: string;
+}
+
+/**
+ * Lifts the parsers' `_sidekickRawToolName` / `_sidekickMcpServerName` out of
+ * a tool input and drops every other top-level `_sidekick*` key. Returns a
+ * copy when anything is removed; the source event is never modified.
+ */
+function projectToolInput(input: unknown): ProjectedToolInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { input };
+  const source = input as Record<string, unknown>;
+  const keys = Object.keys(source);
+  if (!keys.some((key) => key.startsWith(SIDEKICK_INPUT_KEY_PREFIX))) return { input };
+  const clean: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (!key.startsWith(SIDEKICK_INPUT_KEY_PREFIX)) clean[key] = source[key];
+  }
+  return {
+    input: clean,
+    rawToolName: nonEmptyString(source._sidekickRawToolName),
+    mcpServerName: nonEmptyString(source._sidekickMcpServerName),
+  };
+}
+
+function toolIdentity(value: {
+  rawToolName?: string;
+  mcpServerName?: string;
+}): Pick<CanonicalToolCall, 'rawToolName' | 'mcpServerName'> {
+  return {
+    ...(value.rawToolName ? { rawToolName: value.rawToolName } : {}),
+    ...(value.mcpServerName ? { mcpServerName: value.mcpServerName } : {}),
+  };
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
 function boundedText(text: string, fidelity: TranscriptFidelity, maxChars: number) {

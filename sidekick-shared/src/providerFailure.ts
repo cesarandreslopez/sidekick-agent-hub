@@ -70,10 +70,46 @@ export const PROVIDER_FAILURE_EVIDENCE_SOURCES = [
   'authentication-check',
 ] as const;
 
+/**
+ * The variants Codex reports in `codexErrorInfo` on `error` and failed-turn
+ * payloads (app-server camelCase spelling; the snake_case spelling Codex
+ * writes to rollout files is accepted too). `rateLimitExceeded` is an older
+ * spelling some Codex builds emitted.
+ */
+export const CODEX_ERROR_INFO_KINDS = [
+  'contextWindowExceeded',
+  'sessionBudgetExceeded',
+  'usageLimitExceeded',
+  'rateLimitExceeded',
+  'serverOverloaded',
+  'cyberPolicy',
+  'httpConnectionFailed',
+  'responseStreamConnectionFailed',
+  'internalServerError',
+  'unauthorized',
+  'badRequest',
+  'threadRollbackFailed',
+  'sandboxError',
+  'responseStreamDisconnected',
+  'responseTooManyFailedAttempts',
+  'activeTurnNotSteerable',
+  'other',
+] as const;
+export type CodexErrorInfoKind = (typeof CODEX_ERROR_INFO_KINDS)[number];
+
+/** A decoded `codexErrorInfo`: its closed variant and any upstream HTTP status. */
+export interface CodexErrorInfoSummary {
+  kind: CodexErrorInfoKind;
+  /** Present when a transport variant carried a valid `httpStatusCode`. */
+  httpStatusCode?: number;
+}
+
 export interface ProviderFailureEvidence {
   source: (typeof PROVIDER_FAILURE_EVIDENCE_SOURCES)[number];
   rule: ProviderFailureCode;
   checkedAt?: string;
+  /** Present only when a Codex `codexErrorInfo` decided the rule. */
+  codexErrorInfo?: CodexErrorInfoKind;
 }
 
 /** Safe diagnostic projection. No raw error text, request data, or credentials. */
@@ -82,6 +118,20 @@ export interface ProviderFailureDiagnosis {
   credentialKind: ProviderCredentialKind;
   diagnosis: ProviderFailureCode;
   recovery: ProviderRecoveryAction;
+  /**
+   * Whether sending the same request again, unchanged and after any
+   * `retryAfter`, can reasonably succeed. True for a rate limit that will
+   * lift, overload, an unavailable service (5xx), a timeout, or a failed
+   * connection. False for authentication, missing runtime or configuration,
+   * execution policy, an invalid provider session, context overflow, a usage
+   * quota exhausted with no known reset, and unknown failures. Conservative:
+   * a hint for retry policy, not a promise. The caller still decides whether
+   * a repeat is safe (idempotency, output already delivered).
+   *
+   * Always set by `diagnoseProviderFailure()` since 0.29.0; optional in the
+   * type so diagnoses stored or built by older producers stay valid.
+   */
+  retryable?: boolean;
   evidence: ProviderFailureEvidence[];
   authentication?: ProviderAuthenticationEvidence;
   httpStatus?: number;
@@ -125,6 +175,44 @@ function retryAfter(value: unknown): ProviderRetryAfter | undefined {
   }
   const at = timestamp(value);
   return at ? { kind: 'date', at } : undefined;
+}
+
+function compactKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const CODEX_ERROR_INFO_BY_KEY = new Map<string, CodexErrorInfoKind>(
+  CODEX_ERROR_INFO_KINDS.map((kind) => [compactKey(kind), kind]),
+);
+
+/**
+ * Decode one Codex `codexErrorInfo` value: a string variant
+ * (`"serverOverloaded"`, `"usage_limit_exceeded"`) or an object variant
+ * (`{ "httpConnectionFailed": { "httpStatusCode": 503 } }`, snake_case keys
+ * accepted). Returns `undefined` for anything else, including `null`.
+ */
+export function decodeCodexErrorInfo(value: unknown): CodexErrorInfoSummary | undefined {
+  if (typeof value === 'string') {
+    const kind = value.length <= 64 ? CODEX_ERROR_INFO_BY_KEY.get(compactKey(value)) : undefined;
+    return kind ? { kind } : undefined;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  let keys: string[];
+  try {
+    keys = Object.keys(value);
+  } catch {
+    return undefined;
+  }
+  for (const key of keys.slice(0, 8)) {
+    const kind = key.length <= 64 ? CODEX_ERROR_INFO_BY_KEY.get(compactKey(key)) : undefined;
+    if (!kind) continue;
+    const payload = read(value, key);
+    const status = statusNumber(
+      read(payload, 'httpStatusCode') ?? read(payload, 'http_status_code'),
+    );
+    return status === undefined ? { kind } : { kind, httpStatusCode: status };
+  }
+  return undefined;
 }
 
 function rejected(kind: ProviderCredentialKind): ProviderFailureCode {
@@ -216,6 +304,53 @@ function classifyStatus(
   if (status === 529) return 'overloaded';
   if (status >= 500) return 'service_unavailable';
   return undefined;
+}
+
+/** Variants with no matching failure code (bad request, policy, budget, other) stay unclassified. */
+function classifyCodexErrorInfo(
+  info: CodexErrorInfoSummary,
+  kind: ProviderCredentialKind,
+): ProviderFailureCode | undefined {
+  switch (info.kind) {
+    case 'usageLimitExceeded':
+    case 'rateLimitExceeded':
+      return 'rate_limited';
+    case 'serverOverloaded':
+      return 'overloaded';
+    case 'internalServerError':
+      return 'service_unavailable';
+    case 'unauthorized':
+      return rejected(kind);
+    case 'contextWindowExceeded':
+      return 'context_overflow';
+    case 'httpConnectionFailed':
+    case 'responseStreamConnectionFailed':
+    case 'responseStreamDisconnected':
+    case 'responseTooManyFailedAttempts':
+      return info.httpStatusCode === undefined
+        ? 'connection_failed'
+        : classifyStatus(info.httpStatusCode, kind);
+    default:
+      return undefined;
+  }
+}
+
+function isRetryable(
+  code: ProviderFailureCode,
+  quotaExhausted: boolean,
+  retry: ProviderRetryAfter | undefined,
+): boolean {
+  switch (code) {
+    case 'rate_limited':
+      return !quotaExhausted || retry !== undefined;
+    case 'overloaded':
+    case 'service_unavailable':
+    case 'timeout':
+    case 'connection_failed':
+      return true;
+    default:
+      return false;
+  }
 }
 
 function classifyMessage(
@@ -321,9 +456,16 @@ function recovery(code: ProviderFailureCode, kind: ProviderCredentialKind): Prov
 /**
  * Classify a caller-designated terminal failure without I/O or recovery actions.
  * Public status and runtime readiness do not establish request authentication.
+ *
+ * A Codex `codexErrorInfo` (or `codex_error_info`) on the error or on any
+ * nested `error` / `cause` / `response` / `data` / `body` / `errors` entry is
+ * structured evidence. It ranks ahead of the same object's `code` / `type` /
+ * `name`, objects are read outer first, and every structured code ranks ahead
+ * of HTTP status and message text. Its transport variants also supply
+ * `httpStatus`.
  */
 export function diagnoseProviderFailure(input: ProviderFailureInput): ProviderFailureDiagnosis {
-  const codes: string[] = [];
+  const codes: Array<string | CodexErrorInfoSummary> = [];
   const messages: string[] = [];
   const visited = new Set<object>();
   const queue: Array<{ value: unknown; depth: number }> = [{ value: input.error, depth: 0 }];
@@ -337,10 +479,15 @@ export function diagnoseProviderFailure(input: ProviderFailureInput): ProviderFa
     }
     if (!value || typeof value !== 'object' || visited.has(value)) continue;
     visited.add(value);
+    const codex = decodeCodexErrorInfo(
+      read(value, 'codexErrorInfo') ?? read(value, 'codex_error_info'),
+    );
+    if (codex) codes.push(codex);
     for (const key of ['code', 'type', 'name']) codes.push(text(read(value, key)));
     messages.push(text(read(value, 'message')));
     for (const key of ['status', 'statusCode', 'httpStatus', 'status_code'])
       httpStatus ??= statusNumber(read(value, key));
+    httpStatus ??= codex?.httpStatusCode;
     const headers = read(value, 'headers');
     const header =
       typeof Headers !== 'undefined' && headers instanceof Headers
@@ -401,9 +548,17 @@ export function diagnoseProviderFailure(input: ProviderFailureInput): ProviderFa
     };
   }
 
-  let diagnosis = codes
-    .map((code) => classifyCode(code, input.credentialKind))
-    .find((code) => code !== undefined);
+  let diagnosis: ProviderFailureCode | undefined;
+  let codexErrorInfo: CodexErrorInfoKind | undefined;
+  for (const code of codes) {
+    if (typeof code === 'string') {
+      diagnosis = classifyCode(code, input.credentialKind);
+    } else {
+      diagnosis = classifyCodexErrorInfo(code, input.credentialKind);
+      if (diagnosis) codexErrorInfo = code.kind;
+    }
+    if (diagnosis) break;
+  }
   let source: ProviderFailureEvidence['source'] = 'structured-error';
   if (!diagnosis && httpStatus !== undefined) {
     diagnosis = classifyStatus(httpStatus, input.credentialKind);
@@ -439,6 +594,7 @@ export function diagnoseProviderFailure(input: ProviderFailureInput): ProviderFa
     credentialKind: input.credentialKind,
     diagnosis,
     recovery: recovery(diagnosis, input.credentialKind),
+    retryable: isRetryable(diagnosis, codexErrorInfo === 'usageLimitExceeded', retry),
     evidence:
       diagnosis === 'unknown'
         ? []
@@ -449,6 +605,7 @@ export function diagnoseProviderFailure(input: ProviderFailureInput): ProviderFa
               ...(source === 'authentication-check'
                 ? { checkedAt: authentication!.checkedAt }
                 : {}),
+              ...(codexErrorInfo ? { codexErrorInfo } : {}),
             },
           ],
     ...(authentication ? { authentication } : {}),

@@ -10,7 +10,8 @@
  * - `HOME` (and the Windows equivalents) point at a per-process temp dir,
  *   removed on exit, and the home overrides (`CLAUDE_CONFIG_DIR`,
  *   `CLAUDE_SECURESTORAGE_CONFIG_DIR`, `CODEX_HOME`, `SIDEKICK_CONFIG_DIR`)
- *   are unset, so every `os.homedir()`-derived path is isolated structurally;
+ *   are unset (unless named in `preserveEnv` and pointed at a fixture), so
+ *   every `os.homedir()`-derived path is isolated structurally;
  * - the real `child_process` module object is patched, which reaches both ESM
  *   named imports (after `syncBuiltinESMExports`) and CommonJS code loaded
  *   through native `require`; per-file `vi.mock('child_process')` factories
@@ -45,12 +46,33 @@ export interface CredentialGuardOptions {
   blockedBinaries?: string[];
   /** Extra real paths to protect, besides the Claude, Codex, and Sidekick homes. */
   protectedPaths?: string[];
+  /**
+   * Home overrides to keep instead of unsetting, for a suite that points one
+   * at its own fixture before the guard installs. Accepts only the variables
+   * the guard unsets: `CLAUDE_CONFIG_DIR`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`,
+   * `CODEX_HOME`, and `SIDEKICK_CONFIG_DIR`.
+   *
+   * Install throws, before changing anything, for any other name, or when a
+   * preserved value is, contains, or lies inside a real protected location:
+   * the real home's `.claude`, `.claude.json`, and `.codex`, the default
+   * Sidekick config dir, or a `protectedPaths` entry. Symlinks are resolved
+   * first. The guard cannot tell a real store kept elsewhere from a fixture,
+   * so preserve only paths the suite created. Blank values are kept unchecked.
+   */
+  preserveEnv?: readonly string[];
 }
 
 type AnyFn = (...args: unknown[]) => unknown;
 
 const GUARD_KEY = '__sidekickCredentialGuard';
 const DEFAULT_BLOCKED_BINARIES = ['security', 'claude', 'codex'];
+/** Home overrides the guard unsets; only these can be preserved. */
+const SCRUBBED_ENV = [
+  'CLAUDE_CONFIG_DIR',
+  'CLAUDE_SECURESTORAGE_CONFIG_DIR',
+  'CODEX_HOME',
+  'SIDEKICK_CONFIG_DIR',
+] as const;
 const CHILD_PROCESS_FUNCTIONS = [
   'spawn',
   'spawnSync',
@@ -106,6 +128,8 @@ export function installCredentialGuard(options: CredentialGuardOptions = {}): Cr
   // os.userInfo() reads the passwd entry, so it still names the real home
   // after HOME is redirected below.
   const realHome = os.userInfo().homedir;
+  // Validated before any side effect, so a refused install changes nothing.
+  const preserved = checkPreservedEnv(options, realHome, realFs);
   const testHome = realFs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-test-home-'));
 
   const removeTestHome = realFs.rmSync.bind(realFs);
@@ -138,10 +162,7 @@ export function installCredentialGuard(options: CredentialGuardOptions = {}): Cr
   process.env.USERPROFILE = testHome;
   process.env.APPDATA = path.join(testHome, 'AppData', 'Roaming');
   process.env.LOCALAPPDATA = path.join(testHome, 'AppData', 'Local');
-  delete process.env.CLAUDE_CONFIG_DIR;
-  delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
-  delete process.env.CODEX_HOME;
-  delete process.env.SIDEKICK_CONFIG_DIR;
+  for (const name of SCRUBBED_ENV) if (!preserved.has(name)) delete process.env[name];
 
   const protectedRoots =
     path.resolve(realHome) === path.resolve(testHome)
@@ -243,6 +264,91 @@ export function installCredentialGuard(options: CredentialGuardOptions = {}): Cr
   syncBuiltinESMExports();
   (globalThis as Record<string, unknown>)[GUARD_KEY] = state;
   return state;
+}
+
+/** The `preserveEnv` names, after refusing unknown names and unsafe values. */
+function checkPreservedEnv(
+  options: CredentialGuardOptions,
+  realHome: string,
+  realFs: typeof import('node:fs'),
+): Set<string> {
+  const preserved = new Set<string>();
+  for (const name of options.preserveEnv ?? []) {
+    if (!(SCRUBBED_ENV as readonly unknown[]).includes(name)) {
+      throw new Error(
+        `installCredentialGuard: preserveEnv accepts only ${SCRUBBED_ENV.join(', ')}; got ${JSON.stringify(name)}.`,
+      );
+    }
+    preserved.add(name);
+  }
+  if (preserved.size === 0) return preserved;
+
+  const roots = [
+    path.join(realHome, '.claude'),
+    path.join(realHome, '.claude.json'),
+    path.join(realHome, '.codex'),
+    path.join(realHome, '.config', 'sidekick'),
+    // The Windows default config dir, read before HOME and APPDATA move.
+    ...(process.platform === 'win32' && process.env.APPDATA
+      ? [path.join(process.env.APPDATA, 'sidekick')]
+      : []),
+    ...(options.protectedPaths ?? []),
+  ];
+  for (const name of preserved) {
+    const value = process.env[name]?.trim();
+    if (!value) continue;
+    const hit = protectedLocation(value, roots, realFs);
+    if (hit) {
+      throw new Error(
+        `installCredentialGuard: preserveEnv ${name}=${value} reaches the real protected location ${hit}. Point it at a temporary fixture instead.`,
+      );
+    }
+  }
+  return preserved;
+}
+
+/** The root `target` equals, contains, or lies inside, comparing plain and symlink-resolved paths. */
+function protectedLocation(
+  target: string,
+  roots: readonly string[],
+  realFs: typeof import('node:fs'),
+): string | null {
+  // Case-insensitive by default on macOS and Windows; folding can only over-refuse.
+  const fold = process.platform === 'darwin' || process.platform === 'win32';
+  const normal = (value: string): string => {
+    const resolved = path.resolve(value);
+    return fold ? resolved.toLowerCase() : resolved;
+  };
+  const within = (parent: string, child: string): boolean =>
+    child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
+  const related = (a: string, b: string): boolean => within(a, b) || within(b, a);
+
+  // Plain paths first, so an obviously unsafe value never reaches the filesystem.
+  const plain = normal(target);
+  for (const root of roots) if (related(normal(root), plain)) return root;
+  const real = normal(realpathOfNearest(target, realFs));
+  for (const root of roots) {
+    const realRoot = normal(realpathOfNearest(root, realFs));
+    if (related(realRoot, real) || related(normal(root), real) || related(realRoot, plain))
+      return root;
+  }
+  return null;
+}
+
+/** `realpath` of the nearest existing ancestor, with the missing tail re-appended. */
+function realpathOfNearest(target: string, realFs: typeof import('node:fs')): string {
+  let current = path.resolve(target);
+  let tail: string[] = [];
+  for (;;) {
+    try {
+      return path.join(realFs.realpathSync.native(current), ...tail);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return path.resolve(target);
+      tail = [path.basename(current), ...tail];
+      current = parent;
+    }
+  }
 }
 
 /**

@@ -440,3 +440,363 @@ describe('duplicate token_count events', () => {
     });
   });
 });
+
+/** A rollout touching every handler that carries tool or reasoning payloads. */
+function mixedRollout(): CodexRolloutLine[] {
+  const at = (second: number) => `2026-06-01T12:00:${String(second).padStart(2, '0')}.000Z`;
+  return [
+    line(
+      'session_meta',
+      { id: 'session-1', cwd: '/w', base_instructions: { text: 'Base rules.' } },
+      at(0),
+    ),
+    line('turn_context', { model: 'gpt-5' }, at(1)),
+    line(
+      'response_item',
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Fix it' }] },
+      at(2),
+    ),
+    line(
+      'response_item',
+      { type: 'reasoning', id: 'r-1', summary: [{ type: 'summary_text', text: 'Secret plan' }] },
+      at(3),
+    ),
+    line(
+      'response_item',
+      {
+        type: 'function_call',
+        call_id: 'fc-1',
+        name: 'exec_command',
+        arguments: JSON.stringify({ cmd: 'cat secrets.txt' }),
+      },
+      at(4),
+    ),
+    line(
+      'response_item',
+      { type: 'function_call_output', call_id: 'fc-1', output: 'Process exited with code 1' },
+      at(5),
+    ),
+    line(
+      'response_item',
+      {
+        type: 'local_shell_call',
+        call_id: 'ls-1',
+        action: { command: ['ls', '-la'], workdir: '/w' },
+      },
+      at(6),
+    ),
+    line(
+      'response_item',
+      {
+        type: 'custom_tool_call',
+        call_id: 'patch-1',
+        name: 'apply_patch',
+        input: '*** Begin Patch\n*** Update File: src/a.ts\n-old\n+new\n*** End Patch',
+      },
+      at(7),
+    ),
+    line(
+      'response_item',
+      {
+        type: 'custom_tool_call_output',
+        call_id: 'patch-1',
+        output: '{"output":"Done","metadata":{"exit_code":0,"duration_seconds":0.25}}',
+      },
+      at(8),
+    ),
+    line(
+      'event_msg',
+      { type: 'exec_command_begin', call_id: 'ex-1', command: ['rg', 'token'], workdir: '/w' },
+      at(9),
+    ),
+    line(
+      'event_msg',
+      {
+        type: 'exec_command_end',
+        call_id: 'ex-1',
+        stdout: 'found it',
+        exit_code: 0,
+        duration_ms: 12,
+      },
+      at(10),
+    ),
+    line(
+      'event_msg',
+      {
+        type: 'mcp_tool_call_begin',
+        call_id: 'mcp-1',
+        server_name: 'docs',
+        tool_name: 'search',
+        arguments: { query: 'private query' },
+      },
+      at(11),
+    ),
+    line(
+      'event_msg',
+      { type: 'mcp_tool_call_end', call_id: 'mcp-1', result: 'hit', duration_ms: 7 },
+      at(12),
+    ),
+    line(
+      'event_msg',
+      { type: 'patch_applied', file_path: 'src/b.ts', additions: 3, deletions: 1 },
+      at(13),
+    ),
+    line('event_msg', { type: 'task_started', collaboration_mode_kind: 'plan' }, at(14)),
+    line(
+      'event_msg',
+      {
+        type: 'token_count',
+        info: {
+          last_token_usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 20 },
+        },
+      },
+      at(15),
+    ),
+    line(
+      'response_item',
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Done.' }] },
+      at(16),
+    ),
+  ];
+}
+
+function runRollout(parser: CodexRolloutParser, lines = mixedRollout()) {
+  return lines.flatMap((rolloutLine) => parser.convertLine(rolloutLine));
+}
+
+type Block = Record<string, unknown>;
+
+function blocksOf(events: ReturnType<typeof runRollout>): Block[] {
+  return events.flatMap((event) =>
+    Array.isArray(event.message?.content) ? (event.message.content as Block[]) : [],
+  );
+}
+
+describe('CodexRolloutParser metadataOnly', () => {
+  it('keeps names, ids, raw-name keys, timestamps, models, usage, and message text', () => {
+    const full = runRollout(new CodexRolloutParser());
+    const meta = runRollout(new CodexRolloutParser({ metadataOnly: true }));
+
+    expect(meta).toHaveLength(full.length);
+    meta.forEach((event, index) => {
+      const reference = full[index];
+      expect(event.type).toBe(reference.type);
+      expect(event.timestamp).toBe(reference.timestamp);
+      expect(event.message?.id).toBe(reference.message?.id);
+      expect(event.message?.model).toBe(reference.message?.model);
+      expect(event.message?.usage).toEqual(reference.message?.usage);
+      expect(event.cwd).toBe(reference.cwd);
+    });
+
+    const fullBlocks = blocksOf(full);
+    const metaBlocks = blocksOf(meta);
+    expect(metaBlocks).toHaveLength(fullBlocks.length);
+    metaBlocks.forEach((block, index) => {
+      const reference = fullBlocks[index];
+      expect(block.type).toBe(reference.type);
+      if (block.type === 'tool_use') {
+        expect(block.id).toBe(reference.id);
+        expect(block.name).toBe(reference.name);
+        const rawKeys = Object.fromEntries(
+          Object.entries(reference.input as Block).filter(([key]) => key.startsWith('_sidekick')),
+        );
+        expect(Object.keys(rawKeys).length).toBeGreaterThan(0);
+        expect(block.input).toEqual(rawKeys);
+      } else if (block.type === 'tool_result') {
+        expect(block.tool_use_id).toBe(reference.tool_use_id);
+        expect(block.is_error).toBe(reference.is_error);
+        expect(block.duration).toBe(reference.duration);
+        expect(block.content).toBe('');
+        expect(reference.content).not.toBe('');
+      } else if (block.type === 'thinking') {
+        expect(block.thinking).toBe('');
+        expect(reference.thinking).toBe('Secret plan');
+      } else {
+        expect(block).toEqual(reference);
+      }
+    });
+
+    const serialized = JSON.stringify(meta);
+    for (const secret of ['secrets.txt', 'Secret plan', 'private query', 'found it', 'rg']) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).toContain('Base rules.');
+    expect(serialized).toContain('Done.');
+    expect(metaBlocks).toContainEqual(
+      expect.objectContaining({
+        type: 'tool_use',
+        id: 'mcp-1',
+        input: { _sidekickRawToolName: 'search', _sidekickMcpServerName: 'docs' },
+      }),
+    );
+  });
+
+  it('buffers no command or arguments for pending calls', () => {
+    const parser = new CodexRolloutParser({ metadataOnly: true });
+    parser.convertLine(
+      line('event_msg', {
+        type: 'exec_command_begin',
+        call_id: 'ex-1',
+        command: ['echo', 'x'.repeat(1000)],
+        workdir: '/w',
+      }),
+    );
+    parser.convertLine(
+      line('event_msg', {
+        type: 'mcp_tool_call_begin',
+        call_id: 'mcp-1',
+        server_name: 'docs',
+        tool_name: 'search',
+        arguments: { query: 'y'.repeat(1000) },
+      }),
+    );
+    const state = parser as unknown as {
+      pendingExecCommands: Map<string, { command: string[]; workdir?: string }>;
+      pendingMcpToolCalls: Map<string, { arguments?: unknown; server_name?: string }>;
+    };
+    expect(state.pendingExecCommands.get('ex-1')).toMatchObject({ command: [] });
+    expect(state.pendingExecCommands.get('ex-1')?.workdir).toBeUndefined();
+    expect(state.pendingMcpToolCalls.get('mcp-1')).toMatchObject({ server_name: 'docs' });
+    expect(state.pendingMcpToolCalls.get('mcp-1')?.arguments).toBeUndefined();
+  });
+
+  it('leaves the default output unchanged', () => {
+    const defaults = runRollout(new CodexRolloutParser());
+    expect(runRollout(new CodexRolloutParser({ metadataOnly: false }))).toEqual(defaults);
+    expect(runRollout(new CodexRolloutParser({ maxPendingBytes: undefined }))).toEqual(defaults);
+    expect(blocksOf(defaults)).toContainEqual(
+      expect.objectContaining({
+        type: 'tool_use',
+        id: 'fc-1',
+        input: {
+          cmd: 'cat secrets.txt',
+          command: 'cat secrets.txt',
+          _sidekickRawToolName: 'exec_command',
+        },
+      }),
+    );
+  });
+});
+
+describe('CodexRolloutParser maxPendingBytes', () => {
+  function mcpBegin(callId: string, pad: number, server = 'docs'): CodexRolloutLine {
+    return line('event_msg', {
+      type: 'mcp_tool_call_begin',
+      call_id: callId,
+      server_name: server,
+      tool_name: 'search',
+      arguments: { query: 'q'.repeat(pad) },
+    });
+  }
+
+  function mcpEnd(parser: CodexRolloutParser, callId: string): Block {
+    const events = parser.convertLine(
+      line('event_msg', { type: 'mcp_tool_call_end', call_id: callId, result: 'ok' }),
+    );
+    return (events[0].message?.content as Block[])[0];
+  }
+
+  it('evicts the oldest pending calls first and counts them', () => {
+    const parser = new CodexRolloutParser({ maxPendingBytes: 1_000 });
+    for (let i = 0; i < 10; i++) parser.convertLine(mcpBegin(`mcp-${i}`, 200));
+
+    const stats = parser.getPendingStats();
+    expect(stats.pendingBytes).not.toBeNull();
+    expect(stats.pendingBytes!).toBeLessThanOrEqual(1_000);
+    expect(stats.pendingCalls).toBeGreaterThan(0);
+    expect(stats.pendingCalls).toBeLessThan(10);
+    expect(stats.evictedByBytes).toBe(10 - stats.pendingCalls);
+    expect(stats.evictedByCount).toBe(0);
+
+    // The newest call still has its details; the oldest lost them.
+    expect(mcpEnd(parser, 'mcp-9')).toMatchObject({
+      name: 'Search',
+      input: { query: 'q'.repeat(200), _sidekickMcpServerName: 'docs' },
+    });
+    const forgotten = mcpEnd(parser, 'mcp-0');
+    expect(forgotten).toMatchObject({ id: 'mcp-0', input: { _sidekickRawToolName: 'McpTool' } });
+    expect((forgotten.input as Block).query).toBeUndefined();
+  });
+
+  it('keeps one oldest-first order across exec, MCP, and patch calls', () => {
+    const parser = new CodexRolloutParser({ maxPendingBytes: 700 });
+    parser.convertLine(
+      line('event_msg', {
+        type: 'exec_command_begin',
+        call_id: 'ex-old',
+        command: ['echo', 'e'.repeat(250)],
+      }),
+    );
+    parser.convertLine(mcpBegin('mcp-mid', 200));
+    parser.convertLine(
+      line('response_item', {
+        type: 'custom_tool_call',
+        call_id: 'patch-new',
+        name: 'apply_patch',
+        input: `*** Begin Patch\n*** Update File: ${'p'.repeat(150)}.ts\n*** End Patch`,
+      }),
+    );
+
+    const state = parser as unknown as {
+      pendingExecCommands: Map<string, unknown>;
+      pendingMcpToolCalls: Map<string, unknown>;
+      patchExpandedToolUseIds: Map<string, unknown>;
+    };
+    expect(state.pendingExecCommands.has('ex-old')).toBe(false);
+    expect(state.pendingMcpToolCalls.has('mcp-mid')).toBe(true);
+    expect(state.patchExpandedToolUseIds.has('patch-new')).toBe(true);
+    expect(parser.getPendingStats()).toMatchObject({ pendingCalls: 2, evictedByBytes: 1 });
+  });
+
+  it('releases bytes when calls finish and does not keep a call larger than the budget', () => {
+    const parser = new CodexRolloutParser({ maxPendingBytes: 500 });
+    parser.convertLine(mcpBegin('mcp-1', 100));
+    expect(parser.getPendingStats().pendingBytes).toBeGreaterThan(100);
+    mcpEnd(parser, 'mcp-1');
+    expect(parser.getPendingStats()).toMatchObject({ pendingCalls: 0, pendingBytes: 0 });
+
+    parser.convertLine(mcpBegin('mcp-huge', 5_000));
+    expect(parser.getPendingStats()).toMatchObject({
+      pendingCalls: 0,
+      pendingBytes: 0,
+      evictedByBytes: 1,
+    });
+
+    // Re-beginning a call replaces its bytes instead of adding to them.
+    parser.convertLine(mcpBegin('mcp-2', 100));
+    const once = parser.getPendingStats().pendingBytes;
+    parser.convertLine(mcpBegin('mcp-2', 100));
+    expect(parser.getPendingStats().pendingBytes).toBe(once);
+
+    parser.reset();
+    expect(parser.getPendingStats()).toEqual({
+      pendingCalls: 0,
+      pendingBytes: 0,
+      evictedByCount: 0,
+      evictedByBytes: 0,
+    });
+  });
+
+  it('counts count-cap evictions and keeps byte accounting in step with them', () => {
+    const parser = new CodexRolloutParser({ maxTrackedToolCalls: 2, maxPendingBytes: 100_000 });
+    for (let i = 0; i < 5; i++) parser.convertLine(mcpBegin(`mcp-${i}`, 10));
+    const stats = parser.getPendingStats();
+    expect(stats).toMatchObject({ pendingCalls: 2, evictedByCount: 3, evictedByBytes: 0 });
+    mcpEnd(parser, 'mcp-3');
+    mcpEnd(parser, 'mcp-4');
+    expect(parser.getPendingStats()).toMatchObject({ pendingCalls: 0, pendingBytes: 0 });
+  });
+
+  it('is unlimited by default and for invalid budgets', () => {
+    for (const maxPendingBytes of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const parser = new CodexRolloutParser({ maxPendingBytes });
+      for (let i = 0; i < 20; i++) parser.convertLine(mcpBegin(`mcp-${i}`, 10_000));
+      expect(parser.getPendingStats()).toEqual({
+        pendingCalls: 20,
+        pendingBytes: null,
+        evictedByCount: 0,
+        evictedByBytes: 0,
+      });
+    }
+  });
+});

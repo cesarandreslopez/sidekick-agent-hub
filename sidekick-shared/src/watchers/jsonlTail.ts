@@ -14,24 +14,42 @@ const DEFAULT_CATCHUP_INTERVAL_MS = 30_000;
 export const DEFAULT_JSONL_TAIL_READ_BYTES = 1024 * 1024;
 /** Default longest line parsed; longer lines are skipped and reported. */
 export const DEFAULT_JSONL_TAIL_MAX_LINE_BYTES = 16 * 1024 * 1024;
+/** The `version` written into, and accepted from, {@link JsonlTailCheckpoint}. */
+export const JSONL_TAIL_CHECKPOINT_VERSION = 1;
 
-/** Skip old complete events while retaining an in-progress final line. */
-function lastCompleteLineOffset(filePath: string): number {
-  const fd = fs.openSync(filePath, 'r');
-  try {
-    let end = fs.fstatSync(fd).size;
-    const buffer = Buffer.alloc(64 * 1024);
-    while (end > 0) {
-      const start = Math.max(0, end - buffer.length);
-      const count = fs.readSync(fd, buffer, 0, end - start, start);
-      const newline = buffer.subarray(0, count).lastIndexOf(0x0a);
-      if (newline >= 0) return start + newline + 1;
-      end = start;
-    }
-    return 0;
-  } finally {
-    fs.closeSync(fd);
+const BACKWARD_SCAN_BYTES = 64 * 1024;
+
+/**
+ * Skip old complete events while retaining an in-progress final line: the
+ * offset just after the last newline in the first `size` bytes, or 0.
+ */
+function lastCompleteLineOffset(fd: number, size: number): number {
+  let end = size;
+  const buffer = Buffer.alloc(BACKWARD_SCAN_BYTES);
+  while (end > 0) {
+    const start = Math.max(0, end - buffer.length);
+    const count = fs.readSync(fd, buffer, 0, end - start, start);
+    const newline = buffer.subarray(0, count).lastIndexOf(0x0a);
+    if (newline >= 0) return start + newline + 1;
+    end = start;
   }
+  return 0;
+}
+
+async function lastCompleteLineOffsetAsync(
+  handle: fs.promises.FileHandle,
+  size: number,
+): Promise<number> {
+  let end = size;
+  const buffer = Buffer.alloc(BACKWARD_SCAN_BYTES);
+  while (end > 0) {
+    const start = Math.max(0, end - buffer.length);
+    const { bytesRead } = await handle.read(buffer, 0, end - start, start);
+    const newline = buffer.subarray(0, bytesRead).lastIndexOf(0x0a);
+    if (newline >= 0) return start + newline + 1;
+    end = start;
+  }
+  return 0;
 }
 
 export interface JsonlTailBatch {
@@ -50,12 +68,70 @@ export interface JsonlTailLine {
 
 export type JsonlTailResetReason = 'truncated' | 'rewritten' | 'replaced';
 
-/** The tail started over from the beginning of the file. */
+/**
+ * What the tail does when the file it follows shrank, was rewritten, or was
+ * replaced: `'restart'` replays it from offset 0; `'end'` continues from its
+ * current end, skipping what it already holds.
+ */
+export type JsonlTailRewritePolicy = 'restart' | 'end';
+
+/** The tail started over from the beginning, or (with `onRewrite: 'end'`) the end, of the file. */
 export interface JsonlTailReset {
   /** `truncated`: the file shrank; `rewritten`: its first bytes or the resume point changed; `replaced`: another file now has the path. */
   reason: JsonlTailResetReason;
   /** The committed offset before the reset. */
   previousOffset: number;
+  /**
+   * Where reading continues. Present only with `onRewrite: 'end'`; with the
+   * default `'restart'` policy reading always continues from 0.
+   */
+  offset?: number;
+}
+
+/** An event parsed by {@link JsonlTail.read}, with its line's position. */
+export interface JsonlTailEntry<T> {
+  event: T;
+  line: JsonlTailLine;
+}
+
+/** What one {@link JsonlTail.read} call read. */
+export interface JsonlTailReadResult<T> extends JsonlTailBatch {
+  /** Events from the lines that became complete, in file order: the same ones `onEvent` received. */
+  events: JsonlTailEntry<T>[];
+  /** Present when the tail reset before reading; `onReset` received the same object. */
+  reset?: JsonlTailReset;
+}
+
+/**
+ * A JSON-serializable resume point from {@link JsonlTail.checkpoint}. It
+ * identifies the file by device and inode plus a digest of its first bytes,
+ * so a new tail (in this or a later process) can verify it is still reading
+ * the same, append-only file before continuing from `offset`.
+ */
+export interface JsonlTailCheckpoint {
+  version: typeof JSONL_TAIL_CHECKPOINT_VERSION;
+  /** Resume-safe byte offset: 0, or just after a newline. */
+  offset: number;
+  /** Device and inode of the file the offset refers to; `null` before the first read. */
+  identity: { dev: number; ino: number } | null;
+  /**
+   * Length (at most 4096) and truncated SHA-256 hex of the file's first
+   * bytes when last read; `null` before the first read.
+   */
+  prefixDigest: { bytes: number; hash: string } | null;
+}
+
+/**
+ * Reported to `onError` (and nothing is read) when `noFollow` is set and the
+ * tailed path is a symbolic link.
+ */
+export class JsonlTailSymlinkError extends Error {
+  readonly code = 'JSONL_TAIL_SYMLINK';
+
+  constructor(readonly path: string) {
+    super(`Refusing to follow the symbolic link at ${path} (noFollow is set).`);
+    this.name = 'JsonlTailSymlinkError';
+  }
 }
 
 export interface JsonlTailOptions<T> {
@@ -68,29 +144,76 @@ export interface JsonlTailOptions<T> {
   onEvent: (event: T, line: JsonlTailLine) => void;
   onBatchComplete?: (batch: JsonlTailBatch) => void;
   onError?: (error: Error, line?: string) => void;
-  /** Called after the tail resets to offset 0; events from the start follow. */
+  /** Called after the tail resets (see `onRewrite`); events from the new position follow. */
   onReset?: (reset: JsonlTailReset) => void;
   /** Bytes read per chunk (default 1 MiB); one poll reads chunk by chunk to the end. */
   maxReadBytes?: number;
   /** Longest line parsed (default 16 MiB); a longer line is skipped and reported to `onError`. */
   maxLineBytes?: number;
+  /**
+   * Where to continue after the file is truncated, rewritten, or replaced,
+   * and after `resumeFrom()` rejects a checkpoint. `'restart'` (default)
+   * replays from offset 0. `'end'` continues from the file's current end, or
+   * from the start of an unfinished final line as `startAtEnd` does. `onReset`
+   * fires either way.
+   */
+  onRewrite?: JsonlTailRewritePolicy;
+  /**
+   * Refuse to follow a symbolic link at `path`: the file is opened with
+   * `O_NOFOLLOW` where the platform defines it (a no-op where it does not,
+   * such as Windows). A symlinked path is reported to `onError` as a
+   * {@link JsonlTailSymlinkError} and not read or watched. Only the final
+   * path component is checked; symlinked parent directories still resolve.
+   */
+  noFollow?: boolean;
 }
 
-export interface JsonlTail {
+export interface JsonlTail<T = unknown> {
   readonly isActive: boolean;
   start(): void;
   stop(): void;
   dispose(): void;
+  /**
+   * Reads every newly complete line now, synchronously, through the
+   * callbacks. While `read()` calls are queued or running, the call is
+   * deferred until the last of them settles.
+   */
   readNow(): void;
+  /**
+   * Reads like `readNow()`, with asynchronous I/O, and resolves with what it
+   * read; the callbacks fire as they do for `readNow()`. Never rejects for
+   * I/O or parse problems (those go to `onError`). Concurrent calls run one
+   * after another.
+   */
+  read(): Promise<JsonlTailReadResult<T>>;
   getOffset(): number;
   seekTo(offset: number): void;
+  /** A JSON-serializable resume point at the committed offset; does no I/O. */
+  checkpoint(): JsonlTailCheckpoint;
+  /**
+   * Validates `checkpoint` (shape, file identity, prefix digest, and that its
+   * offset still follows a newline) against the file now at the path. On
+   * success reading continues from its offset and this returns true.
+   * Otherwise the `onRewrite` policy picks the position (0, or the file's
+   * current end) and this returns false; `onReset` is not called. Either way
+   * the position overrides `startAtEnd` on a later `start()`.
+   */
+  resumeFrom(checkpoint: unknown): boolean;
 }
 
-export function createJsonlTail<T>(options: JsonlTailOptions<T>): JsonlTail {
+export function createJsonlTail<T>(options: JsonlTailOptions<T>): JsonlTail<T> {
   return new JsonlTailReader(options);
 }
 
-class JsonlTailReader<T> implements JsonlTail {
+/** The bytes the continuity check needs, read before any state changes. */
+interface ContinuityProbe {
+  /** The file's first `min(HEAD_BYTES, size)` bytes. */
+  prefix: Buffer;
+  /** The byte before the committed offset, when there is one. */
+  before: Buffer | null;
+}
+
+class JsonlTailReader<T> implements JsonlTail<T> {
   private active = false;
   /** Physical byte position already read from the file. */
   private readOffset: number;
@@ -106,21 +229,35 @@ class JsonlTailReader<T> implements JsonlTail {
   private lastMtimeMs = -1;
   private readonly maxReadBytes: number;
   private readonly maxLineBytes: number;
+  private readonly rewritePolicy: JsonlTailRewritePolicy;
   private fsWatcher: fs.FSWatcher | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private catchupTimer: ReturnType<typeof setInterval> | null = null;
   private eventsInCurrentBatch = 0;
   private readonly parser: JsonlParser<T>;
+  /** Collects parsed events while a `read()` is running. */
+  private collector: JsonlTailEntry<T>[] | null = null;
+  /** Serializes `read()` calls. */
+  private readChain: Promise<unknown> = Promise.resolve();
+  /** `read()` calls queued or running; `readNow()` waits for them. */
+  private queuedReads = 0;
+  private readNowDeferred = false;
+  /** Bumped by repositioning calls so an in-flight `read()` stops early. */
+  private generation = 0;
+  /** `resumeFrom()` chose the position; `start()` must not move it to the end. */
+  private positioned = false;
 
   constructor(private readonly options: JsonlTailOptions<T>) {
     this.readOffset = options.startOffset ?? 0;
     this.committedOffset = this.readOffset;
     this.maxReadBytes = positiveInteger(options.maxReadBytes, DEFAULT_JSONL_TAIL_READ_BYTES);
     this.maxLineBytes = positiveInteger(options.maxLineBytes, DEFAULT_JSONL_TAIL_MAX_LINE_BYTES);
+    this.rewritePolicy = options.onRewrite === 'end' ? 'end' : 'restart';
     this.parser = new JsonlParser<T>(
       {
         onEvent: (event) => {
           this.eventsInCurrentBatch += 1;
+          this.collector?.push({ event, line: this.currentLine });
           this.options.onEvent(event, this.currentLine);
         },
         onError: (error, line) => this.options.onError?.(error, line),
@@ -137,11 +274,15 @@ class JsonlTailReader<T> implements JsonlTail {
     if (this.active) return;
     this.active = true;
 
-    if (this.options.startAtEnd && this.options.startOffset === undefined) {
+    if (this.options.startAtEnd && this.options.startOffset === undefined && !this.positioned) {
+      let fd: number | null = null;
       try {
-        this.readOffset = lastCompleteLineOffset(this.options.path);
+        fd = this.openSync();
+        this.readOffset = lastCompleteLineOffset(fd, fs.fstatSync(fd).size);
       } catch {
         this.readOffset = 0;
+      } finally {
+        closeQuietly(fd);
       }
       this.committedOffset = this.readOffset;
     }
@@ -180,11 +321,23 @@ class JsonlTailReader<T> implements JsonlTail {
   }
 
   readNow(): void {
+    if (this.queuedReads > 0) {
+      this.readNowDeferred = true;
+      return;
+    }
     let fd: number | null = null;
     try {
-      fd = fs.openSync(this.options.path, 'r');
+      fd = this.openSync();
       const stat = fs.fstatSync(fd);
-      this.checkContinuity(fd, stat);
+      const probe = this.probeNeeded(stat) ? this.probeSync(fd, stat) : null;
+      const reason = this.resetReason(stat, probe);
+      if (reason !== null) {
+        this.reset(
+          reason,
+          this.rewritePolicy === 'end' ? lastCompleteLineOffset(fd, stat.size) : 0,
+        );
+      }
+      this.adoptFile(stat, probe);
       if (stat.size <= this.readOffset) return;
 
       this.eventsInCurrentBatch = 0;
@@ -205,59 +358,174 @@ class JsonlTailReader<T> implements JsonlTail {
         offset: this.committedOffset,
       });
     } catch (error) {
-      this.options.onError?.(error instanceof Error ? error : new Error(String(error)));
+      this.options.onError?.(toError(error));
     } finally {
-      if (fd !== null) {
-        try {
-          fs.closeSync(fd);
-        } catch {
-          /* ignore close errors */
+      closeQuietly(fd);
+    }
+  }
+
+  read(): Promise<JsonlTailReadResult<T>> {
+    this.queuedReads += 1;
+    const run = this.readChain.then(() => this.readAsync());
+    this.readChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async readAsync(): Promise<JsonlTailReadResult<T>> {
+    const generation = this.generation;
+    const events: JsonlTailEntry<T>[] = [];
+    let reset: JsonlTailReset | undefined;
+    let bytesRead = 0;
+    let eventsRead = 0;
+    let handle: fs.promises.FileHandle | null = null;
+    try {
+      handle = await this.openAsync();
+      const stat = await handle.stat();
+      const probe = this.probeNeeded(stat) ? await this.probeAsync(handle, stat) : null;
+      if (generation === this.generation) {
+        const reason = this.resetReason(stat, probe);
+        const offset =
+          reason !== null && this.rewritePolicy === 'end'
+            ? await lastCompleteLineOffsetAsync(handle, stat.size)
+            : 0;
+        if (generation === this.generation) {
+          if (reason !== null) reset = this.reset(reason, offset);
+          this.adoptFile(stat, probe);
+          if (stat.size > this.readOffset) {
+            this.eventsInCurrentBatch = 0;
+            const chunk = Buffer.alloc(Math.min(this.maxReadBytes, stat.size - this.readOffset));
+            while (this.readOffset < stat.size) {
+              const want = Math.min(chunk.length, stat.size - this.readOffset);
+              const position = this.readOffset;
+              const { bytesRead: count } = await handle.read(chunk, 0, want, position);
+              if (count <= 0 || generation !== this.generation) break;
+              this.collector = events;
+              try {
+                this.consume(chunk.subarray(0, count), position);
+              } finally {
+                this.collector = null;
+              }
+              this.readOffset += count;
+              bytesRead += count;
+            }
+            eventsRead = this.eventsInCurrentBatch;
+            if (bytesRead > 0) {
+              this.options.onBatchComplete?.({
+                bytesRead,
+                eventsRead,
+                offset: this.committedOffset,
+              });
+            }
+          }
         }
       }
+    } catch (error) {
+      this.options.onError?.(toError(error));
+    } finally {
+      if (handle) await handle.close().catch(() => undefined);
+      this.queuedReads -= 1;
+      if (this.queuedReads === 0 && this.readNowDeferred) {
+        this.readNowDeferred = false;
+        this.readNow();
+      }
     }
+    return {
+      bytesRead,
+      eventsRead,
+      offset: this.committedOffset,
+      events,
+      ...(reset ? { reset } : {}),
+    };
+  }
+
+  /** Whether the continuity check needs bytes from the file. */
+  private probeNeeded(stat: fs.Stats): boolean {
+    return (
+      this.identity === null ||
+      stat.dev !== this.identity.dev ||
+      stat.ino !== this.identity.ino ||
+      stat.size < this.readOffset ||
+      stat.mtimeMs !== this.lastMtimeMs ||
+      this.head === null ||
+      this.head.bytes < Math.min(HEAD_BYTES, stat.size)
+    );
+  }
+
+  private probeSync(fd: number, stat: fs.Stats): ContinuityProbe {
+    return {
+      prefix: readAt(fd, 0, Math.min(HEAD_BYTES, stat.size)),
+      before:
+        this.committedOffset > 0 && this.committedOffset <= stat.size
+          ? readAt(fd, this.committedOffset - 1, 1)
+          : null,
+    };
+  }
+
+  private async probeAsync(
+    handle: fs.promises.FileHandle,
+    stat: fs.Stats,
+  ): Promise<ContinuityProbe> {
+    const committedOffset = this.committedOffset;
+    return {
+      prefix: await readAtAsync(handle, 0, Math.min(HEAD_BYTES, stat.size)),
+      before:
+        committedOffset > 0 && committedOffset <= stat.size
+          ? await readAtAsync(handle, committedOffset - 1, 1)
+          : null,
+    };
   }
 
   /**
-   * Starts over when the path now names another file, the file shrank, its
-   * first bytes changed, or the resume point no longer follows a newline.
+   * Why the tail must reposition: the path now names another file, the file
+   * shrank, its first bytes changed, or the resume point no longer follows a
+   * newline. `null` when it can continue.
    */
-  private checkContinuity(fd: number, stat: fs.Stats): void {
-    let reason: JsonlTailResetReason | null = null;
+  private resetReason(stat: fs.Stats, probe: ContinuityProbe | null): JsonlTailResetReason | null {
     if (this.identity && (stat.dev !== this.identity.dev || stat.ino !== this.identity.ino)) {
-      reason = 'replaced';
-    } else if (stat.size < this.readOffset) {
-      reason = 'truncated';
+      return 'replaced';
     }
-    if (reason === null && this.identity && stat.mtimeMs !== this.lastMtimeMs) {
-      const prefix = readAt(fd, 0, Math.min(HEAD_BYTES, stat.size));
-      const before = this.committedOffset > 0 ? readAt(fd, this.committedOffset - 1, 1) : null;
-      if ((this.head && !headMatches(this.head, prefix)) || (before && before[0] !== 0x0a)) {
-        reason = 'rewritten';
-      }
+    if (stat.size < this.readOffset) return 'truncated';
+    if (this.identity && stat.mtimeMs !== this.lastMtimeMs && probe) {
+      if (this.head && !headMatches(this.head, probe.prefix)) return 'rewritten';
+      if (probe.before && probe.before[0] !== 0x0a) return 'rewritten';
     }
-    if (reason !== null) this.reset(reason);
+    return null;
+  }
+
+  /** Records the identity and prefix of the file the offsets now refer to. */
+  private adoptFile(stat: fs.Stats, probe: ContinuityProbe | null): void {
     this.identity = { dev: stat.dev, ino: stat.ino };
     this.lastMtimeMs = stat.mtimeMs;
-    if (!this.head || this.head.bytes < Math.min(HEAD_BYTES, stat.size)) {
-      this.head = fileHeadOf(readAt(fd, 0, Math.min(HEAD_BYTES, stat.size)));
+    if (probe && (!this.head || this.head.bytes < Math.min(HEAD_BYTES, stat.size))) {
+      this.head = fileHeadOf(probe.prefix);
     }
   }
 
-  private reset(reason: JsonlTailResetReason): void {
+  private reset(reason: JsonlTailResetReason, offset: number): JsonlTailReset {
     const previousOffset = this.committedOffset;
-    this.readOffset = 0;
-    this.committedOffset = 0;
-    this.pendingBytes = Buffer.alloc(0);
-    this.skippingLine = false;
+    this.position(offset);
     this.head = null;
-    this.parser.reset();
     if (reason === 'replaced' && this.active) {
       // fs.watch follows the old inode; watch the file now at the path.
       this.fsWatcher?.close();
       this.fsWatcher = null;
       this.watchFile();
     }
-    this.options.onReset?.({ reason, previousOffset });
+    const reset: JsonlTailReset =
+      this.rewritePolicy === 'end'
+        ? { reason, previousOffset, offset }
+        : { reason, previousOffset };
+    this.options.onReset?.(reset);
+    return reset;
+  }
+
+  /** Moves both offsets to `offset` and drops any partial-line state. */
+  private position(offset: number): void {
+    this.readOffset = offset;
+    this.committedOffset = offset;
+    this.pendingBytes = Buffer.alloc(0);
+    this.skippingLine = false;
+    this.parser.reset();
   }
 
   /** Parses the complete lines in `bytes`, which start at file offset `position`. */
@@ -313,14 +581,96 @@ class JsonlTailReader<T> implements JsonlTail {
   }
 
   seekTo(offset: number): void {
-    this.readOffset = Math.max(0, offset);
-    this.committedOffset = this.readOffset;
-    this.pendingBytes = Buffer.alloc(0);
-    this.skippingLine = false;
-    this.parser.reset();
+    this.generation += 1;
+    this.position(Math.max(0, offset));
+  }
+
+  checkpoint(): JsonlTailCheckpoint {
+    return {
+      version: JSONL_TAIL_CHECKPOINT_VERSION,
+      offset: this.committedOffset,
+      identity: this.identity ? { dev: this.identity.dev, ino: this.identity.ino } : null,
+      prefixDigest: this.head ? { bytes: this.head.bytes, hash: this.head.hash } : null,
+    };
+  }
+
+  resumeFrom(checkpoint: unknown): boolean {
+    this.generation += 1;
+    this.positioned = true;
+    const parsed = parseCheckpoint(checkpoint);
+    let fd: number | null = null;
+    try {
+      fd = this.openSync();
+      const stat = fs.fstatSync(fd);
+      const prefix = readAt(fd, 0, Math.min(HEAD_BYTES, stat.size));
+      const matches = parsed !== null && checkpointMatches(parsed, fd, stat, prefix);
+      const offset = matches
+        ? parsed.offset
+        : this.rewritePolicy === 'end'
+          ? lastCompleteLineOffset(fd, stat.size)
+          : 0;
+      this.position(offset);
+      this.identity = { dev: stat.dev, ino: stat.ino };
+      this.lastMtimeMs = stat.mtimeMs;
+      this.head = fileHeadOf(prefix);
+      return matches;
+    } catch (error) {
+      this.position(0);
+      this.identity = null;
+      this.head = null;
+      this.lastMtimeMs = -1;
+      this.options.onError?.(toError(error));
+      return false;
+    } finally {
+      closeQuietly(fd);
+    }
+  }
+
+  private openFlags(): string | number {
+    const noFollow = this.options.noFollow ? fs.constants.O_NOFOLLOW : undefined;
+    return typeof noFollow === 'number' ? fs.constants.O_RDONLY | noFollow : 'r';
+  }
+
+  private openSync(): number {
+    try {
+      return fs.openSync(this.options.path, this.openFlags());
+    } catch (error) {
+      throw this.refusedSymlink(error) ?? error;
+    }
+  }
+
+  private async openAsync(): Promise<fs.promises.FileHandle> {
+    try {
+      return await fs.promises.open(this.options.path, this.openFlags());
+    } catch (error) {
+      throw this.refusedSymlink(error) ?? error;
+    }
+  }
+
+  /** The typed error for an open that `O_NOFOLLOW` refused because the path is a symlink. */
+  private refusedSymlink(error: unknown): JsonlTailSymlinkError | null {
+    if (!this.options.noFollow) return null;
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    // ELOOP on Linux and macOS; EMLINK on FreeBSD.
+    if (code !== 'ELOOP' && code !== 'EMLINK') return null;
+    try {
+      return fs.lstatSync(this.options.path).isSymbolicLink()
+        ? new JsonlTailSymlinkError(this.options.path)
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   private watchFile(): void {
+    if (this.options.noFollow) {
+      try {
+        // fs.watch follows links; a refused symlink is not watched either.
+        if (fs.lstatSync(this.options.path).isSymbolicLink()) return;
+      } catch {
+        // Missing: fs.watch below fails the same way and polling covers it.
+      }
+    }
     try {
       this.fsWatcher = fs.watch(this.options.path, { persistent: false }, () => {
         this.debouncedRead();
@@ -342,14 +692,93 @@ class JsonlTailReader<T> implements JsonlTail {
   }
 }
 
+/** The checkpoint when `value` has the documented shape, else `null`. */
+function parseCheckpoint(value: unknown): JsonlTailCheckpoint | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.version !== JSONL_TAIL_CHECKPOINT_VERSION) return null;
+  const { offset, identity, prefixDigest } = candidate;
+  if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) return null;
+
+  let parsedIdentity: JsonlTailCheckpoint['identity'] = null;
+  if (identity !== null) {
+    if (!identity || typeof identity !== 'object') return null;
+    const { dev, ino } = identity as Record<string, unknown>;
+    if (!isFiniteNumber(dev) || !isFiniteNumber(ino)) return null;
+    parsedIdentity = { dev, ino };
+  }
+
+  let parsedDigest: JsonlTailCheckpoint['prefixDigest'] = null;
+  if (prefixDigest !== null) {
+    if (!prefixDigest || typeof prefixDigest !== 'object') return null;
+    const { bytes, hash } = prefixDigest as Record<string, unknown>;
+    if (typeof bytes !== 'number' || !Number.isInteger(bytes) || bytes < 0 || bytes > HEAD_BYTES) {
+      return null;
+    }
+    if (typeof hash !== 'string' || hash.length === 0) return null;
+    parsedDigest = { bytes, hash };
+  }
+
+  return {
+    version: JSONL_TAIL_CHECKPOINT_VERSION,
+    offset,
+    identity: parsedIdentity,
+    prefixDigest: parsedDigest,
+  };
+}
+
+/** Whether `checkpoint` still describes the open file. */
+function checkpointMatches(
+  checkpoint: JsonlTailCheckpoint,
+  fd: number,
+  stat: fs.Stats,
+  prefix: Buffer,
+): boolean {
+  const { offset, identity, prefixDigest } = checkpoint;
+  // Taken before the first read: nothing was consumed, so nothing can be stale.
+  if (identity === null && prefixDigest === null) return offset === 0;
+  if (identity === null || prefixDigest === null) return false;
+  if (identity.dev !== stat.dev || identity.ino !== stat.ino) return false;
+  if (!headMatches(prefixDigest, prefix)) return false;
+  if (offset > stat.size) return false;
+  return offset === 0 || readAt(fd, offset - 1, 1)[0] === 0x0a;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 function positiveInteger(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 1
     ? Math.floor(value)
     : fallback;
 }
 
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function closeQuietly(fd: number | null): void {
+  if (fd === null) return;
+  try {
+    fs.closeSync(fd);
+  } catch {
+    /* ignore close errors */
+  }
+}
+
 function readAt(fd: number, position: number, length: number): Buffer {
   const buffer = Buffer.alloc(length);
   const count = length > 0 ? fs.readSync(fd, buffer, 0, length, position) : 0;
+  return buffer.subarray(0, count);
+}
+
+async function readAtAsync(
+  handle: fs.promises.FileHandle,
+  position: number,
+  length: number,
+): Promise<Buffer> {
+  const buffer = Buffer.alloc(length);
+  const count = length > 0 ? (await handle.read(buffer, 0, length, position)).bytesRead : 0;
   return buffer.subarray(0, count);
 }

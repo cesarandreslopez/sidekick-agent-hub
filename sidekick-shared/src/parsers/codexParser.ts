@@ -252,7 +252,45 @@ export interface CodexRolloutParserOptions {
    * oldest. Bounds memory on long-running rollouts; default 4096.
    */
   maxTrackedToolCalls?: number;
+  /**
+   * Approximate bytes the parser may hold for pending tool calls: exec and
+   * MCP calls still waiting for their end event (with their buffered command
+   * or arguments) and `apply_patch` calls waiting for their output. Past the
+   * budget the oldest pending call is forgotten first, as
+   * `maxTrackedToolCalls` does by count, so its end event still emits a tool
+   * use but without the forgotten details; a single call larger than the
+   * budget is not kept at all. `getPendingStats()` counts the evictions.
+   * Default: unlimited.
+   */
+  maxPendingBytes?: number;
+  /**
+   * Metadata-only scan: tool-call inputs are emitted as `{}` plus the
+   * `_sidekick*` raw-name keys, tool results carry empty content (their
+   * `is_error` and `duration` are kept), reasoning is emitted with empty
+   * thinking text, and pending calls buffer no command or arguments. Tool
+   * names, ids, timestamps, models, usage, rate limits, and message text are
+   * unchanged. For cheap passes over large rollouts; default false.
+   */
+  metadataOnly?: boolean;
 }
+
+/** Pending tool-call state counters from {@link CodexRolloutParser.getPendingStats}. */
+export interface CodexPendingStats {
+  /** Tool calls waiting for their end or output event. */
+  pendingCalls: number;
+  /** Approximate bytes they hold; `null` unless `maxPendingBytes` is set. */
+  pendingBytes: number | null;
+  /** Pending calls forgotten because a table exceeded `maxTrackedToolCalls`. */
+  evictedByCount: number;
+  /** Pending calls forgotten because `maxPendingBytes` was exceeded. */
+  evictedByBytes: number;
+}
+
+/** Fixed per-entry cost added to each pending call's byte estimate. */
+const PENDING_ENTRY_OVERHEAD_BYTES = 64;
+
+/** Prefix of the bookkeeping keys the parser stashes inside tool inputs. */
+const SIDEKICK_INPUT_KEY_PREFIX = '_sidekick';
 
 /** Adds `key`, refreshing its position, and evicts the oldest past `max`. */
 function rememberBounded<K>(set: Set<K>, key: K, max: number): void {
@@ -261,11 +299,35 @@ function rememberBounded<K>(set: Set<K>, key: K, max: number): void {
   while (set.size > max) set.delete(set.values().next().value as K);
 }
 
-/** Sets `key`, refreshing its position, and evicts the oldest past `max`. */
-function setBounded<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
-  map.delete(key);
-  map.set(key, value);
-  while (map.size > max) map.delete(map.keys().next().value as K);
+/** A pending call's place in the oldest-first byte budget. */
+interface PendingLedgerEntry {
+  table: Map<string, unknown>;
+  callId: string;
+  bytes: number;
+}
+
+function stringBytes(...values: Array<string | undefined>): number {
+  let total = 0;
+  for (const value of values) if (typeof value === 'string') total += value.length;
+  return total;
+}
+
+function approxJsonBytes(value: unknown): number {
+  if (value === undefined) return 0;
+  try {
+    return JSON.stringify(value)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Only the `_sidekick*` bookkeeping keys of a tool input. */
+function sidekickKeysOnly(input: Record<string, unknown>): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const key of Object.keys(input)) {
+    if (key.startsWith(SIDEKICK_INPUT_KEY_PREFIX)) kept[key] = input[key];
+  }
+  return kept;
 }
 
 /**
@@ -292,11 +354,38 @@ export class CodexRolloutParser {
   private emittedToolUseIds = new Set<string>();
   private patchExpandedToolUseIds = new Map<string, string[]>();
   private readonly maxTrackedToolCalls: number;
+  /** Byte budget for pending calls; `null` = unlimited (no accounting). */
+  private readonly maxPendingBytes: number | null;
+  private readonly metadataOnly: boolean;
+  /** Pending calls in insertion order, for the byte budget. */
+  private pendingLedger = new Map<string, PendingLedgerEntry>();
+  private pendingBytes = 0;
+  private evictedByCount = 0;
+  private evictedByBytes = 0;
 
   constructor(options: CodexRolloutParserOptions = {}) {
     const max = options.maxTrackedToolCalls;
     this.maxTrackedToolCalls =
       typeof max === 'number' && max >= 1 ? Math.floor(max) : DEFAULT_MAX_TRACKED_TOOL_CALLS;
+    const maxBytes = options.maxPendingBytes;
+    this.maxPendingBytes =
+      typeof maxBytes === 'number' && Number.isFinite(maxBytes) && maxBytes >= 1
+        ? Math.floor(maxBytes)
+        : null;
+    this.metadataOnly = options.metadataOnly === true;
+  }
+
+  /** Counters for the pending tool-call state and what the caps evicted. */
+  getPendingStats(): CodexPendingStats {
+    return {
+      pendingCalls:
+        this.pendingExecCommands.size +
+        this.pendingMcpToolCalls.size +
+        this.patchExpandedToolUseIds.size,
+      pendingBytes: this.maxPendingBytes === null ? null : this.pendingBytes,
+      evictedByCount: this.evictedByCount,
+      evictedByBytes: this.evictedByBytes,
+    };
   }
 
   /** Get stored session metadata. */
@@ -358,6 +447,85 @@ export class CodexRolloutParser {
     this.inPlanMode = false;
     this.emittedToolUseIds.clear();
     this.patchExpandedToolUseIds.clear();
+    this.pendingLedger.clear();
+    this.pendingBytes = 0;
+    this.evictedByCount = 0;
+    this.evictedByBytes = 0;
+  }
+
+  // --- Pending call state ---
+
+  /**
+   * Stores a pending call, refreshing its position, then enforces the count
+   * cap on its table and the byte budget across all pending tables, oldest
+   * first.
+   */
+  private putPending<V>(
+    table: Map<string, V>,
+    callId: string,
+    value: V,
+    estimateBytes: () => number,
+  ): void {
+    this.forgetPendingBytes(table, callId);
+    table.delete(callId);
+    table.set(callId, value);
+    while (table.size > this.maxTrackedToolCalls) {
+      const oldest = table.keys().next().value as string;
+      table.delete(oldest);
+      this.forgetPendingBytes(table, oldest);
+      this.evictedByCount += 1;
+    }
+    if (this.maxPendingBytes === null) return;
+    const bytes = PENDING_ENTRY_OVERHEAD_BYTES + estimateBytes();
+    this.pendingLedger.set(this.ledgerKey(table, callId), {
+      table: table as Map<string, unknown>,
+      callId,
+      bytes,
+    });
+    this.pendingBytes += bytes;
+    while (this.pendingBytes > this.maxPendingBytes && this.pendingLedger.size > 0) {
+      const [key, oldest] = this.pendingLedger.entries().next().value as [
+        string,
+        PendingLedgerEntry,
+      ];
+      this.pendingLedger.delete(key);
+      this.pendingBytes -= oldest.bytes;
+      oldest.table.delete(oldest.callId);
+      this.evictedByBytes += 1;
+    }
+  }
+
+  /** Removes and returns a pending call. */
+  private takePending<V>(table: Map<string, V>, callId: string): V | undefined {
+    const value = table.get(callId);
+    table.delete(callId);
+    this.forgetPendingBytes(table, callId);
+    return value;
+  }
+
+  private forgetPendingBytes(table: Map<string, unknown>, callId: string): void {
+    if (this.maxPendingBytes === null) return;
+    const key = this.ledgerKey(table, callId);
+    const entry = this.pendingLedger.get(key);
+    if (!entry) return;
+    this.pendingLedger.delete(key);
+    this.pendingBytes -= entry.bytes;
+  }
+
+  private ledgerKey(table: Map<string, unknown>, callId: string): string {
+    const kind =
+      table === this.pendingExecCommands ? 'e' : table === this.pendingMcpToolCalls ? 'm' : 'p';
+    return `${kind}\u0000${callId}`;
+  }
+
+  /** The emitted tool input: unchanged, or only its `_sidekick*` keys in metadata-only mode. */
+  private toolInput(input: Record<string, unknown>): Record<string, unknown> {
+    return this.metadataOnly ? sidekickKeysOnly(input) : input;
+  }
+
+  /** The emitted tool-result content: unchanged, or empty in metadata-only mode. */
+  private toolOutput<V>(content: V): V | string {
+    return this.metadataOnly ? '' : content;
   }
 
   // --- Handlers ---
@@ -473,7 +641,9 @@ export class CodexRolloutParser {
           role: 'assistant',
           id: item.id,
           model: this.currentModel || undefined,
-          content: [{ type: 'thinking', thinking: summaryTexts.join('\n') }],
+          content: [
+            { type: 'thinking', thinking: this.metadataOnly ? '' : summaryTexts.join('\n') },
+          ],
         },
         timestamp,
       },
@@ -482,10 +652,12 @@ export class CodexRolloutParser {
 
   private handleFunctionCall(timestamp: string, item: CodexFunctionCallItem): SessionEvent[] {
     let parsedArgs: Record<string, unknown> = {};
-    try {
-      parsedArgs = JSON.parse(item.arguments);
-    } catch {
-      parsedArgs = { raw: item.arguments };
+    if (!this.metadataOnly) {
+      try {
+        parsedArgs = JSON.parse(item.arguments);
+      } catch {
+        parsedArgs = { raw: item.arguments };
+      }
     }
 
     const canonicalName = normalizeCodexToolName(item.name);
@@ -504,7 +676,7 @@ export class CodexRolloutParser {
               type: 'tool_use',
               id: item.call_id,
               name: canonicalName,
-              input: normalizedInput,
+              input: this.toolInput(normalizedInput),
             },
           ],
         },
@@ -528,7 +700,7 @@ export class CodexRolloutParser {
             {
               type: 'tool_result',
               tool_use_id: item.call_id,
-              content: item.output,
+              content: this.toolOutput(item.output),
               is_error: isError,
             },
           ],
@@ -553,11 +725,11 @@ export class CodexRolloutParser {
               type: 'tool_use',
               id: item.call_id,
               name: 'Bash',
-              input: {
+              input: this.toolInput({
                 command,
                 workdir: item.action?.workdir,
                 _sidekickRawToolName: 'local_shell_call',
-              },
+              }),
             },
           ],
         },
@@ -571,7 +743,9 @@ export class CodexRolloutParser {
       const filePaths = extractPatchFilePaths(item.input);
       if (filePaths.length === 0) return [];
       const toolUseIds = filePaths.map((fp) => `${item.call_id}-${fp}`);
-      setBounded(this.patchExpandedToolUseIds, item.call_id, toolUseIds, this.maxTrackedToolCalls);
+      this.putPending(this.patchExpandedToolUseIds, item.call_id, toolUseIds, () =>
+        stringBytes(item.call_id, ...toolUseIds),
+      );
       for (const id of toolUseIds) {
         rememberBounded(this.emittedToolUseIds, id, this.maxTrackedToolCalls);
       }
@@ -586,10 +760,10 @@ export class CodexRolloutParser {
               type: 'tool_use',
               id: `${item.call_id}-${fp}`,
               name: 'Edit',
-              input: {
+              input: this.toolInput({
                 file_path: fp,
                 _sidekickRawToolName: 'apply_patch',
-              },
+              }),
             },
           ],
         },
@@ -598,11 +772,13 @@ export class CodexRolloutParser {
     }
 
     // Generic custom tool
-    let parsedInput: Record<string, unknown>;
-    try {
-      parsedInput = JSON.parse(item.input);
-    } catch {
-      parsedInput = { raw: item.input };
+    let parsedInput: Record<string, unknown> = {};
+    if (!this.metadataOnly) {
+      try {
+        parsedInput = JSON.parse(item.input);
+      } catch {
+        parsedInput = { raw: item.input };
+      }
     }
 
     const canonicalName = normalizeCodexToolName(item.name);
@@ -621,7 +797,7 @@ export class CodexRolloutParser {
               type: 'tool_use',
               id: item.call_id,
               name: canonicalName,
-              input: normalizedInput,
+              input: this.toolInput(normalizedInput),
             },
           ],
         },
@@ -646,8 +822,9 @@ export class CodexRolloutParser {
       isError = parsePlainTextFailure(item.output);
     }
 
-    const toolUseIds = this.patchExpandedToolUseIds.get(item.call_id) ?? [item.call_id];
-    this.patchExpandedToolUseIds.delete(item.call_id);
+    const toolUseIds = this.takePending(this.patchExpandedToolUseIds, item.call_id) ?? [
+      item.call_id,
+    ];
     return toolUseIds.map((toolUseId) => ({
       type: 'user',
       message: {
@@ -657,7 +834,7 @@ export class CodexRolloutParser {
           {
             type: 'tool_result',
             tool_use_id: toolUseId,
-            content: item.output,
+            content: this.toolOutput(item.output),
             is_error: isError,
             duration,
           },
@@ -725,24 +902,23 @@ export class CodexRolloutParser {
 
       case 'exec_command_begin': {
         const e = event as CodexExecCommandBeginEvent;
-        setBounded(
-          this.pendingExecCommands,
-          e.call_id,
-          {
-            call_id: e.call_id,
-            command: e.command,
-            workdir: e.workdir,
-            timestamp,
-          },
-          this.maxTrackedToolCalls,
+        const pending: PendingExecCommand = this.metadataOnly
+          ? { call_id: e.call_id, command: [], timestamp }
+          : { call_id: e.call_id, command: e.command, workdir: e.workdir, timestamp };
+        this.putPending(this.pendingExecCommands, e.call_id, pending, () =>
+          stringBytes(
+            pending.call_id,
+            pending.workdir,
+            pending.timestamp,
+            ...(Array.isArray(pending.command) ? pending.command : []),
+          ),
         );
         return [];
       }
 
       case 'exec_command_end': {
         const e = event as CodexExecCommandEndEvent;
-        const pending = this.pendingExecCommands.get(e.call_id);
-        this.pendingExecCommands.delete(e.call_id);
+        const pending = this.takePending(this.pendingExecCommands, e.call_id);
         const command = pending?.command?.join(' ') || '';
         const events: SessionEvent[] = [];
 
@@ -759,11 +935,11 @@ export class CodexRolloutParser {
                   type: 'tool_use',
                   id: e.call_id,
                   name: 'Bash',
-                  input: {
+                  input: this.toolInput({
                     command,
                     workdir: pending?.workdir,
                     _sidekickRawToolName: 'exec_command',
-                  },
+                  }),
                 },
               ],
             },
@@ -771,7 +947,9 @@ export class CodexRolloutParser {
           });
         }
 
-        const output = [e.stdout, e.stderr].filter(Boolean).join('\n') || '';
+        const output = this.metadataOnly
+          ? ''
+          : [e.stdout, e.stderr].filter(Boolean).join('\n') || '';
         events.push({
           type: 'user',
           message: {
@@ -795,25 +973,27 @@ export class CodexRolloutParser {
 
       case 'mcp_tool_call_begin': {
         const e = event as CodexMcpToolCallBeginEvent;
-        setBounded(
+        const pending: PendingMcpToolCall = {
+          call_id: e.call_id,
+          server_name: e.server_name,
+          tool_name: e.tool_name,
+          arguments: this.metadataOnly ? undefined : e.arguments,
+          timestamp,
+        };
+        this.putPending(
           this.pendingMcpToolCalls,
           e.call_id,
-          {
-            call_id: e.call_id,
-            server_name: e.server_name,
-            tool_name: e.tool_name,
-            arguments: e.arguments,
-            timestamp,
-          },
-          this.maxTrackedToolCalls,
+          pending,
+          () =>
+            stringBytes(pending.call_id, pending.server_name, pending.tool_name, timestamp) +
+            approxJsonBytes(pending.arguments),
         );
         return [];
       }
 
       case 'mcp_tool_call_end': {
         const e = event as CodexMcpToolCallEndEvent;
-        const pendingMcp = this.pendingMcpToolCalls.get(e.call_id);
-        this.pendingMcpToolCalls.delete(e.call_id);
+        const pendingMcp = this.takePending(this.pendingMcpToolCalls, e.call_id);
         const toolName = pendingMcp?.tool_name || 'McpTool';
         const events: SessionEvent[] = [];
 
@@ -830,11 +1010,11 @@ export class CodexRolloutParser {
                   type: 'tool_use',
                   id: e.call_id,
                   name: normalizeCodexToolName(toolName),
-                  input: {
+                  input: this.toolInput({
                     ...(pendingMcp?.arguments || {}),
                     _sidekickRawToolName: toolName,
                     _sidekickMcpServerName: pendingMcp?.server_name,
-                  },
+                  }),
                 },
               ],
             },
@@ -851,7 +1031,7 @@ export class CodexRolloutParser {
               {
                 type: 'tool_result',
                 tool_use_id: e.call_id,
-                content: e.result || '',
+                content: this.toolOutput(e.result || ''),
                 is_error: e.is_error || false,
                 duration: e.duration_ms,
               },
@@ -913,12 +1093,12 @@ export class CodexRolloutParser {
                   type: 'tool_use',
                   id: patchId,
                   name: 'Edit',
-                  input: {
+                  input: this.toolInput({
                     file_path: e.file_path,
                     additions: e.additions ?? 0,
                     deletions: e.deletions ?? 0,
                     _sidekickRawToolName: 'patch_applied',
-                  },
+                  }),
                 },
               ],
             },
@@ -945,10 +1125,10 @@ export class CodexRolloutParser {
                   type: 'tool_use',
                   id: `plan-enter-${timestamp}`,
                   name: 'EnterPlanMode',
-                  input: {
+                  input: this.toolInput({
                     source: 'codex_task_started',
                     _sidekickRawToolName: 'task_started',
-                  },
+                  }),
                 },
               ],
             },
@@ -972,10 +1152,10 @@ export class CodexRolloutParser {
                   type: 'tool_use',
                   id: `plan-exit-${timestamp}`,
                   name: 'ExitPlanMode',
-                  input: {
+                  input: this.toolInput({
                     source: 'codex_task_complete',
                     _sidekickRawToolName: 'task_complete',
-                  },
+                  }),
                 },
               ],
             },

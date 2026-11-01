@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  decodeCodexErrorInfo,
   diagnoseProviderFailure,
   type ProviderAuthenticationEvidence,
   type ProviderCredentialKind,
   type ProviderFailureCode,
+  type ProviderFailureDiagnosis,
+  type ProviderFailureInput,
 } from './providerFailure';
 import { ACCOUNT_PROVIDER_IDS } from './providerIds';
 
@@ -148,6 +151,7 @@ describe.each(ACCOUNT_PROVIDER_IDS)('diagnoseProviderFailure: %s', (provider) =>
       credentialKind: 'oauth',
       diagnosis: 'oauth_reauthentication_required',
       recovery: 'sign_in',
+      retryable: false,
       evidence: [{ source: 'message', rule: 'oauth_reauthentication_required' }],
     });
   });
@@ -164,6 +168,7 @@ describe.each(ACCOUNT_PROVIDER_IDS)('diagnoseProviderFailure: %s', (provider) =>
         credentialKind,
         diagnosis,
         recovery,
+        retryable: false,
         evidence: [{ source: 'message', rule: diagnosis }],
       });
     });
@@ -242,6 +247,7 @@ describe.each(ACCOUNT_PROVIDER_IDS)('diagnoseProviderFailure: %s', (provider) =>
           credentialKind,
           diagnosis: 'unknown',
           recovery: 'inspect_error',
+          retryable: false,
           evidence: [],
         });
       });
@@ -429,5 +435,534 @@ describe.each(ACCOUNT_PROVIDER_IDS)('diagnoseProviderFailure: %s', (provider) =>
     });
     expect(result.retryAfter).toBeUndefined();
     expect(result.authentication).toBeUndefined();
+  });
+});
+
+describe('diagnoseProviderFailure compatibility', () => {
+  const evidenceCheckedAt = '2026-09-09T12:00:00.000Z';
+  // Recorded from the classifier before `retryable` and `codexErrorInfo` existed.
+  const previous: Array<
+    [string, ProviderFailureInput, Omit<ProviderFailureDiagnosis, 'retryable'>]
+  > = [
+    [
+      'OAuth 401',
+      { provider: 'claude-code', credentialKind: 'oauth', error: { status: 401 } },
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        diagnosis: 'oauth_reauthentication_required',
+        recovery: 'sign_in',
+        evidence: [{ source: 'http-status', rule: 'oauth_reauthentication_required' }],
+        httpStatus: 401,
+      },
+    ],
+    [
+      'API key code with 403',
+      {
+        provider: 'codex',
+        credentialKind: 'api-key',
+        error: { status: 403, error: { code: 'invalid_api_key' } },
+      },
+      {
+        provider: 'codex',
+        credentialKind: 'api-key',
+        diagnosis: 'api_credentials_rejected',
+        recovery: 'update_credentials',
+        evidence: [{ source: 'structured-error', rule: 'api_credentials_rejected' }],
+        httpStatus: 403,
+      },
+    ],
+    [
+      '429 with Retry-After',
+      {
+        provider: 'codex',
+        credentialKind: 'unknown',
+        error: { status: 429, headers: { 'retry-after': '2' } },
+      },
+      {
+        provider: 'codex',
+        credentialKind: 'unknown',
+        diagnosis: 'rate_limited',
+        recovery: 'retry_later',
+        evidence: [{ source: 'http-status', rule: 'rate_limited' }],
+        httpStatus: 429,
+        retryAfter: { kind: 'delay', delayMs: 2000 },
+      },
+    ],
+    [
+      '503 in prose',
+      { provider: 'codex', credentialKind: 'oauth', error: new Error(reconnect) },
+      {
+        provider: 'codex',
+        credentialKind: 'oauth',
+        diagnosis: 'service_unavailable',
+        recovery: 'retry_later',
+        evidence: [{ source: 'message', rule: 'service_unavailable' }],
+        httpStatus: 503,
+      },
+    ],
+    [
+      'overloaded type',
+      {
+        provider: 'claude-code',
+        credentialKind: 'api-key',
+        error: { error: { type: 'overloaded_error' } },
+      },
+      {
+        provider: 'claude-code',
+        credentialKind: 'api-key',
+        diagnosis: 'overloaded',
+        recovery: 'retry_later',
+        evidence: [{ source: 'structured-error', rule: 'overloaded' }],
+      },
+    ],
+    [
+      'nested DNS failure',
+      { provider: 'claude-code', credentialKind: 'oauth', error: { cause: { code: 'ENOTFOUND' } } },
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        diagnosis: 'connection_failed',
+        recovery: 'check_connection',
+        evidence: [{ source: 'structured-error', rule: 'connection_failed' }],
+      },
+    ],
+    [
+      'spawn ENOENT',
+      {
+        provider: 'codex',
+        credentialKind: 'unknown',
+        error: { code: 'ENOENT', syscall: 'spawn codex' },
+      },
+      {
+        provider: 'codex',
+        credentialKind: 'unknown',
+        diagnosis: 'runtime_unavailable',
+        recovery: 'repair_runtime',
+        evidence: [{ source: 'structured-error', rule: 'runtime_unavailable' }],
+      },
+    ],
+    [
+      'context length code',
+      {
+        provider: 'codex',
+        credentialKind: 'api-key',
+        error: { error: { code: 'context_length_exceeded' } },
+      },
+      {
+        provider: 'codex',
+        credentialKind: 'api-key',
+        diagnosis: 'context_overflow',
+        recovery: 'reduce_context',
+        evidence: [{ source: 'structured-error', rule: 'context_overflow' }],
+      },
+    ],
+    [
+      'thread prose',
+      { provider: 'codex', credentialKind: 'oauth', error: 'Thread not found' },
+      {
+        provider: 'codex',
+        credentialKind: 'oauth',
+        diagnosis: 'invalid_provider_session',
+        recovery: 'start_new_session',
+        evidence: [{ source: 'message', rule: 'invalid_provider_session' }],
+      },
+    ],
+    [
+      'policy prose',
+      { provider: 'codex', credentialKind: 'oauth', error: policyDenial },
+      {
+        provider: 'codex',
+        credentialKind: 'oauth',
+        diagnosis: 'execution_policy_denied',
+        recovery: 'review_execution_policy',
+        evidence: [{ source: 'message', rule: 'execution_policy_denied' }],
+      },
+    ],
+    [
+      'authentication check',
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        error: 'Failed',
+        authentication: { ...auth, state: 'expired' },
+      },
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        diagnosis: 'oauth_reauthentication_required',
+        recovery: 'sign_in',
+        evidence: [
+          {
+            source: 'authentication-check',
+            rule: 'oauth_reauthentication_required',
+            checkedAt: evidenceCheckedAt,
+          },
+        ],
+        authentication: { ...auth, state: 'expired' },
+      },
+    ],
+    [
+      'signed-out prose',
+      { provider: 'codex', credentialKind: 'oauth', error: 'You are not logged in' },
+      {
+        provider: 'codex',
+        credentialKind: 'oauth',
+        diagnosis: 'missing_credentials',
+        recovery: 'sign_in',
+        evidence: [{ source: 'message', rule: 'missing_credentials' }],
+      },
+    ],
+    [
+      'timeout name',
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        error: Object.assign(new Error('slow'), { name: 'TimeoutError' }),
+      },
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        diagnosis: 'timeout',
+        recovery: 'retry_later',
+        evidence: [{ source: 'structured-error', rule: 'timeout' }],
+      },
+    ],
+    [
+      'bare 403',
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        error: { status: 403, message: 'Forbidden' },
+      },
+      {
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        diagnosis: 'unknown',
+        recovery: 'inspect_error',
+        evidence: [],
+        httpStatus: 403,
+      },
+    ],
+    [
+      'Codex exec turn.failed (message only)',
+      {
+        provider: 'codex',
+        credentialKind: 'unknown',
+        error: new Error('Codex error: stream disconnected before completion', {
+          cause: { message: 'stream disconnected before completion' },
+        }),
+      },
+      {
+        provider: 'codex',
+        credentialKind: 'unknown',
+        diagnosis: 'unknown',
+        recovery: 'inspect_error',
+        evidence: [],
+      },
+    ],
+  ];
+
+  it.each(previous)(
+    '%s keeps its previous diagnosis and evidence bytes',
+    (_name, input, before) => {
+      const { retryable, ...rest } = diagnoseProviderFailure(input);
+      expect(rest).toEqual(before);
+      expect(JSON.stringify(rest.evidence)).toBe(JSON.stringify(before.evidence));
+      expect(typeof retryable).toBe('boolean');
+    },
+  );
+});
+
+describe('diagnoseProviderFailure retryable', () => {
+  it.each([
+    [{ status: 429 }, 'rate_limited', true],
+    [{ status: 529 }, 'overloaded', true],
+    [{ status: 503 }, 'service_unavailable', true],
+    [{ status: 504 }, 'timeout', true],
+    [{ code: 'ECONNRESET' }, 'connection_failed', true],
+    [{ code: 'missing_credentials' }, 'missing_credentials', false],
+    [{ status: 401 }, 'oauth_reauthentication_required', false],
+    [{ code: 'thread_not_found' }, 'invalid_provider_session', false],
+    [{ code: 'execution_policy_denied' }, 'execution_policy_denied', false],
+    [{ code: 'ENOENT', syscall: 'spawn claude' }, 'runtime_unavailable', false],
+    [{ code: 'context_length_exceeded' }, 'context_overflow', false],
+    [{ status: 403 }, 'unknown', false],
+  ] as const)('%j is %s, retryable=%s', (error, diagnosis, retryable) => {
+    const result = diagnoseProviderFailure({ provider: 'codex', credentialKind: 'oauth', error });
+    expect(result.diagnosis).toBe(diagnosis);
+    expect(result.retryable).toBe(retryable);
+  });
+
+  it('marks an authentication-check diagnosis as not retryable', () => {
+    expect(
+      diagnoseProviderFailure({
+        provider: 'claude-code',
+        credentialKind: 'oauth',
+        error: 'Failed',
+        authentication: { ...auth, state: 'signed-out' },
+      }).retryable,
+    ).toBe(false);
+  });
+});
+
+describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
+  const turnError = (codexErrorInfo: unknown, message = 'turn failed') => ({
+    message,
+    codexErrorInfo,
+    additionalDetails: null,
+  });
+
+  it.each([
+    ['usageLimitExceeded', 'oauth', 'rate_limited', 'retry_later', false, undefined],
+    ['usage_limit_exceeded', 'oauth', 'rate_limited', 'retry_later', false, undefined],
+    ['rateLimitExceeded', 'oauth', 'rate_limited', 'retry_later', true, undefined],
+    ['serverOverloaded', 'api-key', 'overloaded', 'retry_later', true, undefined],
+    ['internalServerError', 'oauth', 'service_unavailable', 'retry_later', true, undefined],
+    ['unauthorized', 'oauth', 'oauth_reauthentication_required', 'sign_in', false, undefined],
+    ['unauthorized', 'api-key', 'api_credentials_rejected', 'update_credentials', false, undefined],
+    [
+      'unauthorized',
+      'unknown',
+      'authentication_rejected',
+      'check_authentication',
+      false,
+      undefined,
+    ],
+    ['contextWindowExceeded', 'oauth', 'context_overflow', 'reduce_context', false, undefined],
+    [
+      { httpConnectionFailed: { httpStatusCode: 503 } },
+      'oauth',
+      'service_unavailable',
+      'retry_later',
+      true,
+      503,
+    ],
+    [
+      { httpConnectionFailed: { httpStatusCode: 429 } },
+      'oauth',
+      'rate_limited',
+      'retry_later',
+      true,
+      429,
+    ],
+    [
+      { httpConnectionFailed: { httpStatusCode: 401 } },
+      'api-key',
+      'api_credentials_rejected',
+      'update_credentials',
+      false,
+      401,
+    ],
+    [
+      { httpConnectionFailed: { httpStatusCode: null } },
+      'oauth',
+      'connection_failed',
+      'check_connection',
+      true,
+      undefined,
+    ],
+    [
+      { responseStreamConnectionFailed: { httpStatusCode: 502 } },
+      'oauth',
+      'service_unavailable',
+      'retry_later',
+      true,
+      502,
+    ],
+    [
+      { responseStreamDisconnected: { httpStatusCode: null } },
+      'oauth',
+      'connection_failed',
+      'check_connection',
+      true,
+      undefined,
+    ],
+    [
+      { responseTooManyFailedAttempts: { httpStatusCode: 504 } },
+      'oauth',
+      'timeout',
+      'retry_later',
+      true,
+      504,
+    ],
+    [
+      { http_connection_failed: { http_status_code: 529 } },
+      'oauth',
+      'overloaded',
+      'retry_later',
+      true,
+      529,
+    ],
+  ] as const)(
+    'decodes %j (%s credentials)',
+    (info, credentialKind, diagnosis, recovery, retryable, httpStatus) => {
+      const kind = decodeCodexErrorInfo(info)!.kind;
+      for (const error of [
+        turnError(info),
+        new Error('Codex error: turn failed', { cause: turnError(info) }),
+        { error: turnError(info), willRetry: false },
+        { data: { codex_error_info: info, message: 'turn failed' } },
+      ]) {
+        const result = diagnoseProviderFailure({ provider: 'codex', credentialKind, error });
+        expect(result).toMatchObject({ diagnosis, recovery, retryable });
+        expect(result.httpStatus).toBe(httpStatus);
+        expect(result.evidence).toEqual([
+          { source: 'structured-error', rule: diagnosis, codexErrorInfo: kind },
+        ]);
+      }
+    },
+  );
+
+  it('keeps a usage limit retryable when the provider says when to retry', () => {
+    const result = diagnoseProviderFailure({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: { ...turnError('usageLimitExceeded'), headers: { 'retry-after': '60' } },
+    });
+    expect(result).toMatchObject({
+      diagnosis: 'rate_limited',
+      retryable: true,
+      retryAfter: { kind: 'delay', delayMs: 60_000 },
+    });
+  });
+
+  it('outranks prose and HTTP status on the same error', () => {
+    const result = diagnoseProviderFailure({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: {
+        status: 401,
+        ...turnError('serverOverloaded', 'Your login has expired, please log in again.'),
+      },
+    });
+    expect(result).toMatchObject({ diagnosis: 'overloaded', retryable: true, httpStatus: 401 });
+  });
+
+  it('lets an outer structured code outrank a nested codexErrorInfo', () => {
+    const result = diagnoseProviderFailure({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: { code: 'thread_not_found', cause: turnError('internalServerError') },
+    });
+    expect(result.diagnosis).toBe('invalid_provider_session');
+    expect(result.evidence).toEqual([
+      { source: 'structured-error', rule: 'invalid_provider_session' },
+    ]);
+  });
+
+  it('treats an unclassified codex HTTP status like a structured status', () => {
+    for (const message of ['unexpected status 503 Service Unavailable', 'Forbidden']) {
+      const result = diagnoseProviderFailure({
+        provider: 'codex',
+        credentialKind: 'oauth',
+        error: turnError({ httpConnectionFailed: { httpStatusCode: 403 } }, message),
+      });
+      expect(result.httpStatus).toBe(403);
+      expect(result).toEqual(
+        diagnoseProviderFailure({
+          provider: 'codex',
+          credentialKind: 'oauth',
+          error: { status: 403, message },
+        }),
+      );
+    }
+  });
+
+  it.each([
+    'badRequest',
+    'cyberPolicy',
+    'sandboxError',
+    'sessionBudgetExceeded',
+    'threadRollbackFailed',
+    'other',
+    { activeTurnNotSteerable: { turnKind: 'review' } },
+    'notAVariant',
+    { somethingElse: { httpStatusCode: 503 } },
+    null,
+    42,
+  ])('leaves %j to the existing rules', (info) => {
+    for (const message of ['Rate limit exceeded', 'Prompt is too long', 'something odd']) {
+      const withInfo = diagnoseProviderFailure({
+        provider: 'codex',
+        credentialKind: 'oauth',
+        error: turnError(info, message),
+      });
+      const without = diagnoseProviderFailure({
+        provider: 'codex',
+        credentialKind: 'oauth',
+        error: { message, additionalDetails: null },
+      });
+      expect(withInfo).toEqual(without);
+    }
+  });
+
+  it('projects no provider text from a codexErrorInfo error', () => {
+    const result = diagnoseProviderFailure({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: {
+        message: 'secret-detail',
+        codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 503, body: 'secret-detail' } },
+        additionalDetails: 'secret-detail',
+      },
+    });
+    expect(result.diagnosis).toBe('service_unavailable');
+    expect(JSON.stringify(result)).not.toMatch(/secret-detail|message|additionalDetails/);
+  });
+});
+
+describe('decodeCodexErrorInfo', () => {
+  it.each([
+    ['serverOverloaded', { kind: 'serverOverloaded' }],
+    ['server_overloaded', { kind: 'serverOverloaded' }],
+    ['usage_limit_exceeded', { kind: 'usageLimitExceeded' }],
+    ['other', { kind: 'other' }],
+    [
+      { httpConnectionFailed: { httpStatusCode: 503 } },
+      { kind: 'httpConnectionFailed', httpStatusCode: 503 },
+    ],
+    [{ httpConnectionFailed: { httpStatusCode: null } }, { kind: 'httpConnectionFailed' }],
+    [{ httpConnectionFailed: { httpStatusCode: 99 } }, { kind: 'httpConnectionFailed' }],
+    [
+      { response_too_many_failed_attempts: { http_status_code: 429 } },
+      { kind: 'responseTooManyFailedAttempts', httpStatusCode: 429 },
+    ],
+    [{ activeTurnNotSteerable: { turnKind: 'compact' } }, { kind: 'activeTurnNotSteerable' }],
+  ] as const)('decodes %j', (value, expected) => {
+    expect(decodeCodexErrorInfo(value)).toEqual(expected);
+  });
+
+  it.each([
+    null,
+    undefined,
+    '',
+    'nope',
+    42,
+    [],
+    ['serverOverloaded'],
+    { nope: {} },
+    'x'.repeat(65),
+  ])('ignores %j', (value) => {
+    expect(decodeCodexErrorInfo(value)).toBeUndefined();
+  });
+
+  it('survives hostile objects', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error('boom');
+        },
+      },
+    );
+    expect(decodeCodexErrorInfo(hostile)).toBeUndefined();
+    expect(
+      diagnoseProviderFailure({
+        provider: 'codex',
+        credentialKind: 'oauth',
+        error: { codexErrorInfo: hostile, status: 503 },
+      }).diagnosis,
+    ).toBe('service_unavailable');
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateHtmlReport } from './htmlReportGenerator';
+import { parseTranscriptFromEvents } from './transcriptParser';
 import { escapeHtml, simpleMarkdownToHtml, highlightCodeBlock } from './htmlHelpers';
 import type { AggregatedMetrics } from '../aggregation/types';
 import type { TranscriptEntry } from './types';
@@ -204,6 +205,62 @@ describe('generateHtmlReport', () => {
   it('handles no model stats', () => {
     const html = generateHtmlReport(makeMetrics({ modelStats: [] }), transcript);
     expect(html).not.toContain('Model Breakdown');
+  });
+
+  it('hides parser bookkeeping keys and names the raw tool and MCP server', () => {
+    const projected = parseTranscriptFromEvents([
+      {
+        type: 'assistant',
+        timestamp: '2025-01-15T10:00:01Z',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'Search',
+              input: {
+                query: 'retry policy',
+                _sidekickRawToolName: 'search',
+                _sidekickMcpServerName: 'docs',
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    // Entries assembled by hand may still carry the keys inside toolInput.
+    const handBuilt: TranscriptEntry[] = [
+      {
+        type: 'assistant',
+        timestamp: '2025-01-15T10:00:02Z',
+        content: [
+          {
+            type: 'tool_use',
+            toolName: 'Bash',
+            toolUseId: 'call-2',
+            toolInput: { command: 'ls', _sidekickRawToolName: 'exec_command' },
+          },
+        ],
+      },
+    ];
+
+    for (const includeToolDetail of [true, false]) {
+      const html = generateHtmlReport(makeMetrics(), [...projected, ...handBuilt], {
+        includeToolDetail,
+      });
+      expect(html).not.toContain('_sidekick');
+      expect(html).toContain('search · MCP: docs');
+      expect(html).toContain('exec_command');
+    }
+    const detailed = generateHtmlReport(makeMetrics(), [...projected, ...handBuilt]);
+    expect(detailed).toContain('retry policy');
+    expect(handBuilt[0].content[0].toolInput).toHaveProperty('_sidekickRawToolName');
+  });
+
+  it('adds no raw-name hint when the raw name matches the tool name', () => {
+    const html = generateHtmlReport(makeMetrics(), transcript);
+    expect(html).not.toContain('tool-raw-name');
   });
 
   it('handles no tool stats', () => {

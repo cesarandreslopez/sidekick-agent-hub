@@ -24,6 +24,7 @@ import type {
   SavedAccountProfile,
 } from './accountRegistry';
 import type { AccountManagerResult } from './accounts';
+import { parseCodexLoginStatus } from './authStatus';
 import {
   identitiesMatch,
   codexRefreshFingerprint,
@@ -357,21 +358,15 @@ interface CodexLoginStatus {
 
 const PROBE_TIMEOUT_MS = 4000;
 
+/** `codex login status` counts only on exit 0; the text is read by {@link parseCodexLoginStatus}. */
 export function parseCodexLoginStatusOutput(
   status: number | null,
   stdout: string,
 ): CodexLoginStatus {
-  const trimmed = stdout.trim();
-  if (status === 0 && /^Logged in/i.test(trimmed)) {
-    if (/API key/i.test(trimmed)) {
-      return { loggedIn: true, authMode: 'api-key' };
-    }
-    if (/ChatGPT/i.test(trimmed)) {
-      return { loggedIn: true, authMode: 'chatgpt' };
-    }
-    return { loggedIn: true };
-  }
-  return { loggedIn: false };
+  if (status !== 0) return { loggedIn: false };
+  const parsed = parseCodexLoginStatus(stdout);
+  if (!parsed.loggedIn) return { loggedIn: false };
+  return parsed.method ? { loggedIn: true, authMode: parsed.method } : { loggedIn: true };
 }
 
 /**

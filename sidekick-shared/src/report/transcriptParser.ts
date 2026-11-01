@@ -7,6 +7,16 @@ import { projectSessionTranscript, type CanonicalTranscriptBlock } from '../tran
 import type { SessionEvent } from '../types/sessionEvent';
 import type { TranscriptEntry, TranscriptContentBlock } from './types';
 
+/**
+ * A report tool block that also names the provider's raw tool and MCP
+ * server. Internal: the extra fields are optional and read only by the HTML
+ * renderer.
+ */
+export type ReportToolUseBlock = TranscriptContentBlock & {
+  rawToolName?: string;
+  mcpServerName?: string;
+};
+
 /** Parse a Claude Code JSONL session through the canonical provider reader. */
 export function parseTranscript(sessionPath: string): TranscriptEntry[] {
   try {
@@ -47,18 +57,20 @@ function toReportBlock(block: CanonicalTranscriptBlock): TranscriptContentBlock[
       return block.text ? [{ type: 'text', text: block.text }] : [];
     case 'thinking':
       return block.text ? [{ type: 'thinking', text: block.text }] : [];
-    case 'tool_use':
-      return [
-        {
-          type: 'tool_use',
-          toolName: block.toolName ?? 'unknown',
-          toolInput:
-            block.input && typeof block.input === 'object'
-              ? (block.input as Record<string, unknown>)
-              : {},
-          toolUseId: block.toolUseId,
-        },
-      ];
+    case 'tool_use': {
+      const toolBlock: ReportToolUseBlock = {
+        type: 'tool_use',
+        toolName: block.toolName ?? 'unknown',
+        toolInput:
+          block.input && typeof block.input === 'object'
+            ? (block.input as Record<string, unknown>)
+            : {},
+        toolUseId: block.toolUseId,
+        ...(block.rawToolName ? { rawToolName: block.rawToolName } : {}),
+        ...(block.mcpServerName ? { mcpServerName: block.mcpServerName } : {}),
+      };
+      return [toolBlock];
+    }
     case 'tool_result':
       return [
         {

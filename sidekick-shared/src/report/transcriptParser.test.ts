@@ -117,6 +117,33 @@ describe('parseTranscript', () => {
     });
   });
 
+  it('carries raw tool identity instead of parser bookkeeping keys', () => {
+    const result = parseTranscriptFromEvents([
+      {
+        type: 'assistant',
+        timestamp: '2026-06-01T12:00:00Z',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'Bash',
+              input: { command: 'npm test', _sidekickRawToolName: 'exec_command' },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(result[0].content[0]).toEqual({
+      type: 'tool_use',
+      toolName: 'Bash',
+      toolUseId: 'call-1',
+      toolInput: { command: 'npm test' },
+      rawToolName: 'exec_command',
+    });
+  });
+
   it('parses assistant message with text and usage', () => {
     const line = JSON.stringify({
       type: 'assistant',

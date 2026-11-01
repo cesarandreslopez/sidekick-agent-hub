@@ -25,6 +25,8 @@ export const canonicalTranscriptBlockSchema = z.object({
   type: z.enum(['text', 'thinking', 'tool_use', 'tool_result', 'image', 'unknown']),
   text: z.string().optional(),
   toolName: z.string().optional(),
+  rawToolName: z.string().optional(),
+  mcpServerName: z.string().optional(),
   toolUseId: z.string().optional(),
   input: z.unknown().optional(),
   output: z.unknown().optional(),
@@ -37,6 +39,8 @@ export const canonicalTranscriptBlockSchema = z.object({
 export const canonicalToolCallSchema: z.ZodType<CanonicalToolCall> = z.object({
   id: z.string().optional(),
   name: z.string(),
+  rawToolName: z.string().optional(),
+  mcpServerName: z.string().optional(),
   timestamp: z.string(),
   input: z.unknown().optional(),
   output: z.unknown().optional(),

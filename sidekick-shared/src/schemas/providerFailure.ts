@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import { ACCOUNT_PROVIDER_IDS } from '../providerIds';
 import {
+  CODEX_ERROR_INFO_KINDS,
   PROVIDER_AUTHENTICATION_SOURCES,
   PROVIDER_AUTHENTICATION_STATES,
   PROVIDER_CREDENTIAL_KINDS,
@@ -36,6 +37,7 @@ export const providerFailureEvidenceSchema = z.object({
   source: z.enum(PROVIDER_FAILURE_EVIDENCE_SOURCES),
   rule: z.enum(PROVIDER_FAILURE_CODES),
   checkedAt: z.string().optional(),
+  codexErrorInfo: z.enum(CODEX_ERROR_INFO_KINDS).optional(),
 }) satisfies z.ZodType<ProviderFailureEvidence>;
 
 export const providerRetryAfterSchema = z.discriminatedUnion('kind', [
@@ -48,6 +50,7 @@ export const providerFailureDiagnosisSchema = z.object({
   credentialKind: z.enum(PROVIDER_CREDENTIAL_KINDS),
   diagnosis: z.enum(PROVIDER_FAILURE_CODES),
   recovery: z.enum(PROVIDER_RECOVERY_ACTIONS),
+  retryable: z.boolean().optional(),
   evidence: z.array(providerFailureEvidenceSchema),
   authentication: providerAuthenticationEvidenceSchema.optional(),
   httpStatus: z.number().optional(),

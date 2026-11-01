@@ -15,6 +15,7 @@ import {
 } from '../tokenSummary';
 import { combineSessionTokenTotals, type SessionTokenTotals } from '../sessionTokenTotals';
 import type { TranscriptEntry, TranscriptContentBlock, HtmlReportOptions } from './types';
+import type { ReportToolUseBlock } from './transcriptParser';
 import {
   escapeHtml,
   simpleMarkdownToHtml,
@@ -683,16 +684,56 @@ function renderContentBlock(
   }
 }
 
-function renderToolUse(block: TranscriptContentBlock, includeDetail: boolean): string {
+/** Prefix of the bookkeeping keys session parsers stash inside tool inputs. */
+const SIDEKICK_INPUT_KEY_PREFIX = '_sidekick';
+
+/**
+ * The tool's display identity and user-facing input. Entries built outside
+ * the canonical projection may still carry the parsers' `_sidekick*` keys in
+ * `toolInput`; those are hidden here and read as the raw identity.
+ */
+function toolDisplay(block: ReportToolUseBlock): {
+  name: string;
+  hint: string;
+  input: Record<string, unknown> | undefined;
+} {
   const name = block.toolName || 'unknown';
+  const raw = block.toolInput;
+  let input = raw;
+  let rawToolName = block.rawToolName;
+  let mcpServerName = block.mcpServerName;
+  if (raw && Object.keys(raw).some((key) => key.startsWith(SIDEKICK_INPUT_KEY_PREFIX))) {
+    const clean: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (!key.startsWith(SIDEKICK_INPUT_KEY_PREFIX)) clean[key] = value;
+    }
+    input = clean;
+    if (!rawToolName && typeof raw._sidekickRawToolName === 'string') {
+      rawToolName = raw._sidekickRawToolName;
+    }
+    if (!mcpServerName && typeof raw._sidekickMcpServerName === 'string') {
+      mcpServerName = raw._sidekickMcpServerName;
+    }
+  }
+  const parts: string[] = [];
+  if (rawToolName && rawToolName.trim() && rawToolName !== name) parts.push(rawToolName);
+  if (mcpServerName && mcpServerName.trim()) parts.push(`MCP: ${mcpServerName}`);
+  const hint = parts.length
+    ? ` <span class="tool-raw-name" style="color:var(--text-muted);font-size:11px">${escapeHtml(parts.join(' · '))}</span>`
+    : '';
+  return { name, hint, input };
+}
+
+function renderToolUse(block: TranscriptContentBlock, includeDetail: boolean): string {
+  const { name, hint, input } = toolDisplay(block);
 
   if (!includeDetail) {
-    return `<div class="tool-block" data-block-type="tool"><div style="padding:8px 12px;background:rgba(245,166,35,0.08);color:var(--accent-orange);font-family:monospace;font-size:13px;">${escapeHtml(name)}</div></div>`;
+    return `<div class="tool-block" data-block-type="tool"><div style="padding:8px 12px;background:rgba(245,166,35,0.08);color:var(--accent-orange);font-family:monospace;font-size:13px;">${escapeHtml(name)}${hint}</div></div>`;
   }
 
   let inputHtml = '';
-  if (block.toolInput && Object.keys(block.toolInput).length > 0) {
-    const inputJson = JSON.stringify(block.toolInput, null, 2);
+  if (input && Object.keys(input).length > 0) {
+    const inputJson = JSON.stringify(input, null, 2);
     const highlighted = highlightCodeBlock(inputJson, 'json');
     inputHtml = `<div class="tool-io">
     <div class="tool-label">Input</div>
@@ -701,7 +742,7 @@ function renderToolUse(block: TranscriptContentBlock, includeDetail: boolean): s
   }
 
   return `<details class="tool-block" data-block-type="tool">
-  <summary>${escapeHtml(name)}${block.toolUseId ? ` <span style="color:var(--text-muted);font-size:11px">${escapeHtml(block.toolUseId)}</span>` : ''}</summary>
+  <summary>${escapeHtml(name)}${hint}${block.toolUseId ? ` <span style="color:var(--text-muted);font-size:11px">${escapeHtml(block.toolUseId)}</span>` : ''}</summary>
   <div class="tool-content">
     ${inputHtml}
   </div>
