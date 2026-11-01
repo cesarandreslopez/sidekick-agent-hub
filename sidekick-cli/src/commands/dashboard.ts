@@ -397,26 +397,14 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     if (stopped || !sessionPath || !watcher?.getPosition) return;
     const now = Date.now();
     if (now - lastSnapshotTime <= SNAPSHOT_INTERVAL_MS) return;
-    let sourceSize = 0;
-    try {
-      sourceSize = fs.statSync(sessionPath).size;
-    } catch {
-      /* DB-backed sessions have no physical session file. */
-    }
-    state.persistSnapshot(watcher.getPosition(), sourceSize);
+    state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
     lastSnapshotTime = now;
   }
 
   function switchToSession(newSessionPath: string) {
     // Save snapshot for current session before switching
     if (watcher?.getPosition && sessionPath) {
-      let sourceSize = 0;
-      try {
-        sourceSize = fs.statSync(sessionPath).size;
-      } catch {
-        /* ignore */
-      }
-      state.persistSnapshot(watcher.getPosition(), sourceSize);
+      state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
     }
 
     // Stop current watcher
@@ -440,6 +428,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         provider: activeProvider,
         workspacePath,
         sessionId: newSessionId,
+        // Mid-turn task notifications finish background subagents.
+        includeTaskNotifications: true,
         callbacks: {
           onEvent: (event: FollowEvent) => {
             if (stopped) return;
@@ -466,17 +456,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       // Try snapshot restore
       let switchRestored = false;
       if (watcher.seekTo) {
-        let sourceSize = 0;
-        try {
-          sourceSize = fs.statSync(sessionPath).size;
-        } catch {
-          /* DB-backed */
-        }
-        const seekPos = state.tryRestoreFromSnapshot(newSessionId, activeProvider.id, sourceSize);
-        if (seekPos !== null) {
-          watcher.seekTo(seekPos);
-          switchRestored = true;
-        }
+        // Seeks the watcher and restores its reader state when the snapshot is usable.
+        switchRestored =
+          state.tryRestoreFromSnapshot(newSessionId, activeProvider.id, sessionPath, watcher) !==
+          null;
       }
 
       watcher.start(true); // replay from current position (snapshot or start)
@@ -484,13 +467,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
       // Save snapshot after catching up
       if (!switchRestored && watcher.getPosition) {
-        let sourceSize = 0;
-        try {
-          sourceSize = fs.statSync(sessionPath).size;
-        } catch {
-          /* ignore */
-        }
-        state.persistSnapshot(watcher.getPosition(), sourceSize);
+        state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
         lastSnapshotTime = Date.now();
       }
     } catch {
@@ -933,6 +910,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       provider: activeProvider,
       workspacePath,
       sessionId,
+      // Mid-turn task notifications finish background subagents.
+      includeTaskNotifications: true,
       callbacks: {
         onEvent: (event: FollowEvent) => {
           if (stopped) return;
@@ -962,17 +941,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
     // Try snapshot restore before starting the watcher
     if (sessionId && replay && watcher.seekTo) {
-      let sourceSize = 0;
-      try {
-        sourceSize = fs.statSync(sessionPath).size;
-      } catch {
-        /* DB-backed */
-      }
-      const seekPosition = state.tryRestoreFromSnapshot(sessionId, activeProvider.id, sourceSize);
-      if (seekPosition !== null) {
-        watcher.seekTo(seekPosition);
-        restoredFromSnapshot = true;
-      }
+      // Seeks the watcher and restores its reader state when the snapshot is usable.
+      restoredFromSnapshot =
+        state.tryRestoreFromSnapshot(sessionId, activeProvider.id, sessionPath, watcher) !== null;
     }
   } catch {
     // No active session — still show dashboard with static data
@@ -996,13 +967,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       watcher.start(true);
       // Save updated snapshot after catching up
       if (watcher.getPosition && sessionPath) {
-        let sourceSize = 0;
-        try {
-          sourceSize = fs.statSync(sessionPath).size;
-        } catch {
-          /* ignore */
-        }
-        state.persistSnapshot(watcher.getPosition(), sourceSize);
+        state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
         lastSnapshotTime = Date.now();
       }
     } else {
@@ -1010,13 +975,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       if (replay) state.markHistoryReplayed(activeProvider.id);
       // Save initial snapshot after full replay
       if (replay && watcher.getPosition && sessionPath) {
-        let sourceSize = 0;
-        try {
-          sourceSize = fs.statSync(sessionPath).size;
-        } catch {
-          /* ignore */
-        }
-        state.persistSnapshot(watcher.getPosition(), sourceSize);
+        state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
         lastSnapshotTime = Date.now();
       }
     }

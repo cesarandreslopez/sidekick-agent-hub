@@ -12,10 +12,17 @@ import type {
   BillingBlock,
   FollowEvent,
   SessionTokenTotals,
+  SessionWatcher,
   SubagentStats,
 } from 'sidekick-shared';
 import { EventAggregator, combineSessionTokenTotals, summarizeTokens } from 'sidekick-shared';
-import { saveSnapshot, loadSnapshot, isSnapshotValid, deleteSnapshot } from 'sidekick-shared';
+import {
+  saveSnapshot,
+  loadSnapshot,
+  isSnapshotValid,
+  deleteSnapshot,
+  captureJsonlCheckpoint,
+} from 'sidekick-shared';
 import type { SessionSnapshot } from 'sidekick-shared';
 import { quotaFromCodexRateLimits } from 'sidekick-shared';
 import { mergeModelUsage } from '../modelUsage';
@@ -229,6 +236,24 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 
 const TIMELINE_RING_SIZE = 200;
 
+/**
+ * Revision of the CLI part of a session snapshot; older snapshots replay.
+ * 4: file-backed snapshots record a `sourceCheckpoint` (restore verifies the
+ * file is the same, append-only one) and the watcher's `readerState`, and the
+ * aggregator's subagent state changed.
+ */
+const CLI_CHECKPOINT_REVISION = 4;
+
+/** Size of the session file, or 0 when there is none (DB-backed sessions). */
+function sourceFileSize(sourcePath: string | undefined): number {
+  if (!sourcePath) return 0;
+  try {
+    return fs.statSync(sourcePath).size;
+  } catch {
+    return 0;
+  }
+}
+
 // ── State class ──
 
 export class DashboardState {
@@ -362,23 +387,39 @@ export class DashboardState {
 
   /**
    * Attempts to restore state from a snapshot sidecar file.
-   * Returns the reader position to seek to, or null if no valid snapshot.
+   * Returns the reader position, or null if no valid snapshot.
+   * `sourcePath` is the session file: a file-backed snapshot is used only
+   * while its recorded checkpoint still matches that file's identity and
+   * content (see `isSnapshotValid`).
+   *
+   * With `watcher` (not yet started), the watcher is also sought to that
+   * position and given the snapshot's `readerState`; if it rejects that
+   * state, the watcher is sought back to 0 and the snapshot is treated as
+   * invalid (deleted, null returned). Without `watcher` the caller seeks and
+   * the reader state is not restored.
    */
-  tryRestoreFromSnapshot(sessionId: string, providerId: string, sourceSize: number): number | null {
+  tryRestoreFromSnapshot(
+    sessionId: string,
+    providerId: string,
+    sourcePath: string,
+    watcher?: Pick<SessionWatcher, 'seekTo' | 'restoreResumeState'>,
+  ): number | null {
     this.touch();
     this._checkpointProviderId = undefined;
     if (providerId === 'opencode') return null;
+    // A watcher that cannot seek would replay everything on top of the snapshot.
+    if (watcher && !watcher.seekTo) return null;
     const snapshot = loadSnapshot(sessionId);
     if (!snapshot) return null;
     if (
       snapshot.providerId !== providerId ||
-      snapshot.consumer?.checkpointRevision !== 3 ||
+      snapshot.consumer?.checkpointRevision !== CLI_CHECKPOINT_REVISION ||
       snapshot.consumer.consumerType !== 'cli'
     ) {
       deleteSnapshot(sessionId);
       return null;
     }
-    if (!isSnapshotValid(snapshot, sourceSize)) {
+    if (!isSnapshotValid(snapshot, sourceFileSize(sourcePath), sourcePath)) {
       deleteSnapshot(sessionId);
       return null;
     }
@@ -387,6 +428,18 @@ export class DashboardState {
     if (!this._aggregator.restore(snapshot.aggregator)) {
       deleteSnapshot(sessionId);
       return null;
+    }
+
+    // The watcher's parse state at that position (for Claude, which
+    // split-line responses it already counted). Rejected state: replay.
+    if (watcher?.seekTo) {
+      watcher.seekTo(snapshot.readerPosition);
+      if (watcher.restoreResumeState?.(snapshot.readerState) === false) {
+        watcher.seekTo(0);
+        this._aggregator.reset();
+        deleteSnapshot(sessionId);
+        return null;
+      }
     }
 
     // Restore CLI-specific state
@@ -463,11 +516,22 @@ export class DashboardState {
   }
 
   /**
-   * Persists the current state as a snapshot sidecar file.
+   * Persists the current state as a snapshot sidecar file. `sourcePath` is
+   * the session file the reader position refers to; when it exists, the
+   * snapshot records its size and a checkpoint of its identity and content
+   * at `readerPosition`. `readerState` is the watcher's `getResumeState()`
+   * taken together with `readerPosition`.
    */
-  persistSnapshot(readerPosition: number, sourceSize: number): void {
+  persistSnapshot(
+    readerPosition: number,
+    sourcePath: string | undefined,
+    readerState?: unknown,
+  ): void {
     if (!this._sessionId || !this._checkpointProviderId) return;
 
+    const sourceSize = sourceFileSize(sourcePath);
+    // Null for a missing file or a position that is not resume-safe; restore then replays.
+    const sourceCheckpoint = sourcePath ? captureJsonlCheckpoint(sourcePath, readerPosition) : null;
     const aggregator = this._aggregator.serialize();
     const snapshot: SessionSnapshot = {
       version: aggregator.version,
@@ -475,11 +539,13 @@ export class DashboardState {
       providerId: this._checkpointProviderId,
       readerPosition,
       sourceSize,
+      ...(sourceCheckpoint ? { sourceCheckpoint } : {}),
+      ...(readerState !== undefined ? { readerState } : {}),
       createdAt: new Date().toISOString(),
       aggregator,
       consumer: {
         consumerType: 'cli',
-        checkpointRevision: 3,
+        checkpointRevision: CLI_CHECKPOINT_REVISION,
         timeline: this._timeline,
         fileMap: Array.from(this._fileMap.entries()),
         urlMap: Array.from(this._urlMap.entries()),

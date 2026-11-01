@@ -217,6 +217,8 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
         provider,
         workspacePath,
         sessionId,
+        // Mid-turn task notifications finish background subagents.
+        includeTaskNotifications: true,
         callbacks: {
           onEvent: (event: FollowEvent) => {
             events.push(event);
