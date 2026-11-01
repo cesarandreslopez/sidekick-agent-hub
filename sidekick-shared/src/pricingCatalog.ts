@@ -21,7 +21,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
 import { _setCatalogContextWindows } from './modelContext';
-import { _setPricingOverrides, type ModelPricing } from './modelInfo';
+import { _setPricingOverrides, getPricingCatalogInfo, type ModelPricing } from './modelInfo';
 import { getConfigDir } from './paths';
 import { atomicWriteJson } from './writers/atomic';
 
@@ -62,6 +62,12 @@ export interface HydrateResult {
   contextWindowEntries: number;
   /** ISO timestamp of the fetch that produced the cache. */
   fetchedAt: string;
+  /**
+   * `getPricingCatalogInfo().digest` after hydration: a stable fingerprint of
+   * every active pricing table, so callers can record which prices produced
+   * an estimate. See `getPricingCatalogInfo()` for the source and staleness.
+   */
+  digest: string;
 }
 
 interface CacheFile {
@@ -110,6 +116,10 @@ const DEFAULT_TIMEOUT_MS = 3_000;
  *   2. Otherwise attempt a network fetch; on success, persist + apply.
  *   3. On any failure, load a stale cache if present; else leave overrides empty.
  *
+ * `getPricingCatalogInfo().source` afterwards reads `litellm` for a fresh fetch
+ * or a cache within `ttlMs`, and `stale-cache` for a cache older than `ttlMs`
+ * — whether the refresh failed or `offline` skipped it.
+ *
  * Always resolves — never throws. Offline-safe.
  */
 export async function hydratePricingCatalog(options: HydrateOptions = {}): Promise<HydrateResult> {
@@ -128,8 +138,9 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
 
   // 1. Fresh cache? (Offline callers take any cache, however old.)
   const cached = await readCache(cachePath);
-  if (cached && (offline || now - Date.parse(cached.fetchedAt) < ttlMs)) {
-    return applyCacheFile(cached, 'cache');
+  const cacheFresh = cached !== null && now - Date.parse(cached.fetchedAt) < ttlMs;
+  if (cached && (offline || cacheFresh)) {
+    return applyCacheFile(cached, 'cache', cacheFresh ? 'litellm' : 'stale-cache');
   }
 
   // 2. Try network.
@@ -143,13 +154,13 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
         contextWindows: normalizeLiteLlmContextWindows(fetched),
       };
       await writeCache(cachePath, payload, logger);
-      return applyCacheFile(payload, 'network');
+      return applyCacheFile(payload, 'network', 'litellm');
     }
   }
 
   // 3. Fall back to stale cache if present.
   if (cached) {
-    return applyCacheFile(cached, 'cache');
+    return applyCacheFile(cached, 'cache', 'stale-cache');
   }
 
   // 4. Nothing we can do — stay on static tables.
@@ -158,6 +169,7 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
     entries: 0,
     contextWindowEntries: 0,
     fetchedAt: new Date(now).toISOString(),
+    digest: getPricingCatalogInfo().digest,
   };
 }
 
@@ -166,9 +178,13 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
  * `contextWindows` is absent on caches written before context hydration; those
  * contribute no overrides rather than clearing whatever is already loaded.
  */
-function applyCacheFile(cache: CacheFile, source: 'cache' | 'network'): HydrateResult {
+function applyCacheFile(
+  cache: CacheFile,
+  source: 'cache' | 'network',
+  basis: 'litellm' | 'stale-cache',
+): HydrateResult {
   const contextWindows = cache.contextWindows ?? {};
-  _setPricingOverrides(cache.overrides);
+  _setPricingOverrides(cache.overrides, { source: basis, fetchedAt: cache.fetchedAt });
   if (Object.keys(contextWindows).length > 0) {
     _setCatalogContextWindows(contextWindows);
   }
@@ -177,6 +193,7 @@ function applyCacheFile(cache: CacheFile, source: 'cache' | 'network'): HydrateR
     entries: Object.keys(cache.overrides).length,
     contextWindowEntries: Object.keys(contextWindows).length,
     fetchedAt: cache.fetchedAt,
+    digest: getPricingCatalogInfo().digest,
   };
 }
 

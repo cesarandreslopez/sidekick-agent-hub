@@ -8,7 +8,14 @@ import {
   normalizeLiteLlmCatalog,
   normalizeLiteLlmContextWindows,
 } from './pricingCatalog';
-import { _clearPricingOverrides, _getPricingOverrides, getModelPricing } from './modelInfo';
+import {
+  _clearPricingOverrides,
+  _getPricingOverrides,
+  clearRegisteredModelPricing,
+  getModelPricing,
+  getPricingCatalogInfo,
+  registerModelPricing,
+} from './modelInfo';
 import {
   _clearCatalogContextWindows,
   _getCatalogContextWindows,
@@ -416,5 +423,157 @@ describe('hydratePricingCatalog', { timeout: 30_000 }, () => {
       // Falls through to the static table, not to the default.
       expect(getModelContextWindowSize('gpt-4o')).toBe(128_000);
     });
+  });
+});
+
+describe('pricing basis after hydration', { timeout: 30_000 }, () => {
+  let cacheDir: string;
+  const STALE_AT = new Date(0).toISOString();
+
+  async function writeCacheFile(fetchedAt: string, inputCostPerMillion = 99): Promise<void> {
+    await fs.writeFile(
+      path.join(cacheDir, 'pricing-catalog.json'),
+      JSON.stringify({
+        fetchedAt,
+        url: 'test',
+        overrides: {
+          'gpt-4o': {
+            inputCostPerMillion,
+            outputCostPerMillion: 99,
+            cacheWriteCostPerMillion: 0,
+            cacheReadCostPerMillion: 0,
+          },
+        },
+      }),
+    );
+  }
+
+  beforeEach(async () => {
+    cacheDir = await makeTempDir();
+    _clearPricingOverrides();
+    _clearCatalogContextWindows();
+    clearRegisteredModelPricing();
+  });
+
+  afterEach(async () => {
+    _clearPricingOverrides();
+    _clearCatalogContextWindows();
+    clearRegisteredModelPricing();
+    await fs.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it('reports a fresh network fetch as litellm and returns the active digest', async () => {
+    const staticDigest = getPricingCatalogInfo().digest;
+    const result = await hydratePricingCatalog({
+      cacheDir,
+      fetchImpl: mockFetchOk(SAMPLE_CATALOG),
+    });
+
+    const info = getPricingCatalogInfo();
+    expect(info).toMatchObject({
+      source: 'litellm',
+      fetchedAt: result.fetchedAt,
+      catalogEntries: result.entries,
+      registeredEntries: 0,
+    });
+    expect(result.digest).toBe(info.digest);
+    expect(result.digest).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
+    expect(result.digest).not.toBe(staticDigest);
+  });
+
+  it('reports a cache within its TTL as litellm with the same digest as the fetch', async () => {
+    const fetched = await hydratePricingCatalog({
+      cacheDir,
+      fetchImpl: mockFetchOk(SAMPLE_CATALOG),
+    });
+    _clearPricingOverrides();
+
+    const cached = await hydratePricingCatalog({
+      cacheDir,
+      fetchImpl: mockFetchFails(new Error('should not be called')),
+    });
+    expect(cached.source).toBe('cache');
+    expect(getPricingCatalogInfo()).toMatchObject({
+      source: 'litellm',
+      fetchedAt: fetched.fetchedAt,
+    });
+    expect(cached.digest).toBe(fetched.digest);
+  });
+
+  it('reports a stale cache loaded after a failed refresh as stale-cache', async () => {
+    await writeCacheFile(STALE_AT);
+    const result = await hydratePricingCatalog({
+      cacheDir,
+      fetchImpl: mockFetchFails(new Error('offline')),
+      ttlMs: 1_000,
+    });
+
+    expect(result.source).toBe('cache');
+    expect(getPricingCatalogInfo()).toMatchObject({
+      source: 'stale-cache',
+      fetchedAt: STALE_AT,
+      catalogEntries: 1,
+    });
+    expect(result.digest).toBe(getPricingCatalogInfo().digest);
+
+    // The next successful refresh clears the stale marker.
+    await hydratePricingCatalog({ cacheDir, fetchImpl: mockFetchOk(SAMPLE_CATALOG), ttlMs: 1_000 });
+    expect(getPricingCatalogInfo().source).toBe('litellm');
+  });
+
+  it('reports an offline load of an expired cache as stale-cache', async () => {
+    await writeCacheFile(STALE_AT);
+    await hydratePricingCatalog({ cacheDir, offline: true, ttlMs: 1_000 });
+    expect(getPricingCatalogInfo()).toMatchObject({ source: 'stale-cache', fetchedAt: STALE_AT });
+
+    const freshAt = new Date().toISOString();
+    await writeCacheFile(freshAt);
+    await hydratePricingCatalog({ cacheDir, offline: true });
+    expect(getPricingCatalogInfo()).toMatchObject({ source: 'litellm', fetchedAt: freshAt });
+  });
+
+  it('stays static, with the static digest, when nothing could be loaded', async () => {
+    const staticDigest = getPricingCatalogInfo().digest;
+    const result = await hydratePricingCatalog({
+      cacheDir,
+      fetchImpl: mockFetchFails(new Error('no route to host')),
+    });
+    expect(result.source).toBe('offline');
+    expect(result.digest).toBe(staticDigest);
+    expect(getPricingCatalogInfo()).toEqual({
+      source: 'static',
+      digest: staticDigest,
+      catalogEntries: 0,
+      registeredEntries: 0,
+    });
+  });
+
+  it('changes the digest when the cached prices change', async () => {
+    await writeCacheFile(new Date().toISOString(), 1);
+    const first = await hydratePricingCatalog({ cacheDir, offline: true });
+    await writeCacheFile(new Date().toISOString(), 2);
+    const second = await hydratePricingCatalog({ cacheDir, offline: true });
+    expect(second.digest).not.toBe(first.digest);
+  });
+
+  it('keeps registered prices across hydration and folds them into the digest', async () => {
+    registerModelPricing({
+      'gpt-4o': {
+        inputCostPerMillion: 0.5,
+        outputCostPerMillion: 10,
+        cacheWriteCostPerMillion: 0,
+        cacheReadCostPerMillion: 1.25,
+      },
+    });
+    const withRegistered = await hydratePricingCatalog({
+      cacheDir,
+      fetchImpl: mockFetchOk(SAMPLE_CATALOG),
+    });
+    expect(getModelPricing('gpt-4o')!.inputCostPerMillion).toBe(0.5);
+    expect(getPricingCatalogInfo().registeredEntries).toBe(1);
+
+    clearRegisteredModelPricing();
+    expect(getModelPricing('gpt-4o')!.inputCostPerMillion).toBe(2.5);
+    expect(getPricingCatalogInfo().digest).not.toBe(withRegistered.digest);
   });
 });

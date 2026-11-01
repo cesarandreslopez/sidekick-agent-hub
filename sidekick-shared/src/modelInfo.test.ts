@@ -9,14 +9,43 @@ import {
   mergeCostSources,
   shortModelName,
   sortModelIds,
+  compareModelIds,
   formatCost,
+  canonicalModelId,
+  isMovingModelAlias,
+  registerModelPricing,
+  clearRegisteredModelPricing,
+  resolveModelPricing,
+  getPricingCatalogInfo,
+  costSourceFromPricingProvenance,
+  mergeCostComponents,
   _setPricingOverrides,
   _clearPricingOverrides,
   _getPricingOverrides,
+  _clearImportedResolvedPricing,
+  _getModelPricingIds,
+  type ModelPricing,
 } from './modelInfo';
+import { formatCost as formattingFormatCost } from './formatting';
+import { exportResolvedModelCatalog, importResolvedModelCatalog } from './modelCatalog';
+import { _clearModelAliases, registerModelAlias } from './modelAliases';
 
-// Keep tests isolated from each other when they poke the override map.
-afterEach(() => _clearPricingOverrides());
+// Keep tests isolated from each other when they poke the pricing layers.
+afterEach(() => {
+  _clearPricingOverrides();
+  _clearImportedResolvedPricing();
+  clearRegisteredModelPricing();
+  _clearModelAliases();
+});
+
+function rates(input: number, output = input * 5): ModelPricing {
+  return {
+    inputCostPerMillion: input,
+    outputCostPerMillion: output,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0,
+  };
+}
 
 describe('parseModelId', () => {
   it('parses versioned Claude model IDs', () => {
@@ -727,5 +756,522 @@ describe('override map helpers', () => {
     });
     _clearPricingOverrides();
     expect(_getPricingOverrides()).toEqual({});
+  });
+});
+
+describe('canonicalModelId', () => {
+  it.each([
+    // Case, whitespace, and the 1M-context marker.
+    [' Claude-Opus-4-8 ', 'claude-opus-4-8'],
+    ['claude-sonnet-4-6[1m]', 'claude-sonnet-4-6'],
+    ['CLAUDE-FABLE-5[1M]', 'claude-fable-5'],
+    // Every leading provider/region segment.
+    ['openai/gpt-6.1-sol', 'gpt-6.1-sol'],
+    ['anthropic/claude-sonnet-5-5', 'claude-sonnet-5-5'],
+    ['azure/us/gpt-6.1-terra', 'gpt-6.1-terra'],
+    ['openrouter/anthropic/claude-opus-5-5', 'claude-opus-5-5'],
+    ['z-ai/glm-5.3', 'glm-5.3'],
+    // Bedrock forms, with and without a cross-region prefix.
+    ['us.anthropic.claude-opus-5-5-20261001-v1:0', 'claude-opus-5-5'],
+    ['eu.anthropic.claude-sonnet-4-5-20250929-v1:0', 'claude-sonnet-4-5'],
+    ['apac.anthropic.claude-haiku-4-5-20251001-v1:0', 'claude-haiku-4-5'],
+    ['global.anthropic.claude-sonnet-4-20250514-v1:0', 'claude-sonnet-4'],
+    ['anthropic.claude-opus-4-6-v1', 'claude-opus-4-6'],
+    ['bedrock/us.anthropic.claude-opus-5-5-20261001-v1:0', 'claude-opus-5-5'],
+    // Legacy Bedrock names keep the revision that names the model.
+    ['anthropic.claude-v2:1', 'claude-v2:1'],
+    ['anthropic.claude-instant-v1', 'claude-instant-v1'],
+    // Vertex version pins.
+    ['claude-opus-4-5@20251101', 'claude-opus-4-5'],
+    ['vertex_ai/claude-sonnet-4-5@20250929', 'claude-sonnet-4-5'],
+    // Date and moving suffixes.
+    ['claude-opus-4-20250514', 'claude-opus-4'],
+    ['gpt-6.1-sol-2026-09-29', 'gpt-6.1-sol'],
+    ['gpt-4o-2024-05-13', 'gpt-4o'],
+    ['claude-3-5-sonnet-latest', 'claude-3-5-sonnet'],
+    ['gpt-5.3-chat-latest', 'gpt-5.3-chat'],
+    ['some-model-20250101-latest', 'some-model'],
+    // Meaningful suffixes survive.
+    ['gpt-5.4-mini', 'gpt-5.4-mini'],
+    ['gpt-5.3-codex', 'gpt-5.3-codex'],
+    ['gpt-6-sol', 'gpt-6-sol'],
+    ['gpt-6.1-terra', 'gpt-6.1-terra'],
+    ['gpt-6-luna-2026-01-01', 'gpt-6-luna'],
+    ['gpt-6-astra', 'gpt-6-astra'],
+    ['gpt-5-codex-high', 'gpt-5-codex-high'],
+    ['deepseek-v4-flash', 'deepseek-v4-flash'],
+    ['claude-opus-5-5', 'claude-opus-5-5'],
+    // Degenerate input.
+    ['', ''],
+    ['   ', ''],
+    ['openai/', 'openai/'],
+  ])('%j → %j', (input, expected) => {
+    expect(canonicalModelId(input)).toBe(expected);
+  });
+
+  it('does not apply registered aliases', () => {
+    registerModelAlias('house-model', 'claude-opus-5-5');
+    expect(canonicalModelId('house-model')).toBe('house-model');
+  });
+
+  it('does not change what pricing lookups resolve', () => {
+    // Deployment-prefixed ids stay unpriced: their bills can differ from the
+    // direct provider's, so only an explicit table entry may price them.
+    expect(getModelPricing('us.anthropic.claude-opus-5-5-20261001-v1:0')).toBeNull();
+    expect(getModelPricing('azure/us/gpt-6.1-terra')).toBeNull();
+    // A pinned snapshot keeps its own rate rather than the canonical model's.
+    expect(getModelPricing('gpt-4o-2024-05-13')!.inputCostPerMillion).toBe(5);
+    expect(resolveModelPricing('claude-opus-4-5-20251101').provenance).toMatchObject({
+      source: 'static',
+      match: 'prefix',
+      matchedModelId: 'claude-opus-4-5',
+    });
+    // The resolver's own canonicalModelId field keeps its meaning.
+    expect(resolveModelPricing('Claude-Opus-4-5-20251101').canonicalModelId).toBe(
+      'claude-opus-4-5-20251101',
+    );
+  });
+});
+
+describe('isMovingModelAlias', () => {
+  it.each([
+    'default',
+    'auto',
+    'latest',
+    'sonnet',
+    'opus',
+    'haiku',
+    'fable',
+    'opusplan',
+    ' Sonnet ',
+    'OPUS',
+    'sonnet[1m]',
+    'Opus[1M]',
+  ])('treats %j as a moving alias', (id) => {
+    expect(isMovingModelAlias(id)).toBe(true);
+  });
+
+  it.each([
+    'claude-sonnet-4-5',
+    'claude-opus-5-5-20261001',
+    'gpt-6-sol',
+    'sonnet-4',
+    'anthropic/sonnet',
+    'defaults',
+    'constructor',
+    '__proto__',
+    '',
+  ])('treats %j as a concrete id', (id) => {
+    expect(isMovingModelAlias(id)).toBe(false);
+  });
+});
+
+describe('GPT tier variants', () => {
+  it('reports the tier as variant and keeps every existing field', () => {
+    expect(parseModelId('gpt-6.1-sol')).toEqual({
+      provider: 'openai',
+      family: 'gpt',
+      version: '6.1-sol',
+      variant: 'sol',
+    });
+    expect(parseModelId('gpt-6-luna')).toMatchObject({ version: '6-luna', variant: 'luna' });
+    expect(parseModelId('gpt-6-astra')).toMatchObject({ version: '6-astra', variant: 'astra' });
+    expect(parseModelId('gpt-6.1-terra-2026-09-29')).toMatchObject({
+      version: '6.1-terra-2026-09-29',
+      variant: 'terra',
+    });
+    expect(parseModelId('GPT-5.6-Terra')).toMatchObject({ version: '5.6-terra', variant: 'terra' });
+  });
+
+  it('adds no variant key to untiered ids', () => {
+    for (const id of [
+      'gpt-5.4',
+      'gpt-5.3-codex',
+      'gpt-4o',
+      'gpt-6',
+      'gpt-6-solar',
+      'o3-mini',
+      'claude-sonnet-5',
+      'gemini-4-argon',
+    ]) {
+      const parsed = parseModelId(id);
+      expect(parsed, id).not.toBeNull();
+      expect(Object.prototype.hasOwnProperty.call(parsed, 'variant'), id).toBe(false);
+    }
+  });
+
+  it('ranks variants astra > sol > terra > luna within a version, newest version first', () => {
+    expect(sortModelIds(['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-terra', 'gpt-6-sol'])).toEqual([
+      'gpt-6.1-sol',
+      'gpt-6-sol',
+      'gpt-6-terra',
+      'gpt-6-luna',
+    ]);
+    expect(
+      sortModelIds([
+        'gpt-6.1-terra',
+        'gpt-6.1-luna',
+        'gpt-6.1-astra',
+        'gpt-6.1-sol',
+        'gpt-6-astra',
+      ]),
+    ).toEqual(['gpt-6.1-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6.1-luna', 'gpt-6-astra']);
+    expect(compareModelIds('gpt-5.6-luna', 'gpt-5.6-sol')).toBeGreaterThan(0);
+  });
+
+  it('leaves orderings that do not compare two variants unchanged', () => {
+    // Untiered vs tiered of the same version: plain id order, as before.
+    expect(sortModelIds(['gpt-6-sol', 'gpt-6'])).toEqual(['gpt-6', 'gpt-6-sol']);
+    // Same variant: plain id order.
+    expect(sortModelIds(['gpt-6-sol-2026-09-29', 'gpt-6-sol'])).toEqual([
+      'gpt-6-sol',
+      'gpt-6-sol-2026-09-29',
+    ]);
+    // Codex ids share one rank across versions; variants only reorder within a version.
+    expect(sortModelIds(['gpt-6-sol-codex', 'gpt-6.1-luna-codex'])).toEqual([
+      'gpt-6-sol-codex',
+      'gpt-6.1-luna-codex',
+    ]);
+    expect(sortModelIds(['gpt-6-luna-codex', 'gpt-6-sol-codex'])).toEqual([
+      'gpt-6-sol-codex',
+      'gpt-6-luna-codex',
+    ]);
+  });
+});
+
+describe('registerModelPricing', () => {
+  it('wins over static, catalog, and imported prices by default', () => {
+    registerModelPricing({ 'claude-opus-5-5': rates(1, 2) });
+    expect(resolveModelPricing('claude-opus-5-5')).toMatchObject({
+      pricing: rates(1, 2),
+      provenance: {
+        source: 'registered',
+        match: 'exact',
+        matchedModelId: 'claude-opus-5-5',
+        inheritedByPrefix: false,
+      },
+    });
+
+    _setPricingOverrides({ 'claude-opus-5-5': rates(9) });
+    expect(getModelPricing('claude-opus-5-5')).toEqual(rates(1, 2));
+
+    const snapshot = JSON.parse(
+      JSON.stringify(exportResolvedModelCatalog(['claude-opus-5-5', 'gpt-6-sol'])),
+    );
+    snapshot.models['claude-opus-5-5'].pricing.pricing = rates(7);
+    snapshot.models['claude-opus-5-5'].pricing.provenance = {
+      source: 'imported',
+      match: 'exact',
+      inheritedByPrefix: false,
+    };
+    importResolvedModelCatalog(snapshot);
+    expect(getModelPricing('claude-opus-5-5')).toEqual(rates(1, 2));
+  });
+
+  it('survives every reset of the catalog and imported layers', () => {
+    registerModelPricing({ 'house-model-1': rates(3) });
+    _setPricingOverrides({ 'gpt-4o': rates(1) });
+    _setPricingOverrides({});
+    _clearPricingOverrides();
+    _clearImportedResolvedPricing();
+    expect(getModelPricing('house-model-1')).toEqual(rates(3));
+
+    clearRegisteredModelPricing();
+    expect(getModelPricing('house-model-1')).toBeNull();
+  });
+
+  it('matches canonical forms exactly, never by prefix', () => {
+    registerModelPricing({ 'claude-opus-5-5': rates(1) });
+    for (const id of [
+      'Claude-Opus-5-5',
+      'claude-opus-5-5[1m]',
+      'claude-opus-5-5-20261001',
+      'us.anthropic.claude-opus-5-5-20261001-v1:0',
+      'anthropic/claude-opus-5-5',
+      'claude-opus-5-5@20261001',
+    ]) {
+      expect(resolveModelPricing(id).provenance.source, id).toBe('registered');
+    }
+    // A longer, different model id is not answered by a shorter key.
+    expect(resolveModelPricing('claude-opus-5-5-thinking').provenance.source).toBe('static');
+
+    registerModelPricing({ 'claude-opus-5': rates(2) });
+    expect(getModelPricing('claude-opus-5-5')).toEqual(rates(1));
+    expect(getModelPricing('claude-opus-5-1')).toEqual(getModelPricing('claude-opus-5-1-x'));
+    expect(resolveModelPricing('claude-opus-5-1').provenance.source).toBe('static');
+  });
+
+  it('prefers the most specific registered key', () => {
+    registerModelPricing({
+      'azure/us/gpt-6.1-terra': rates(4),
+      'gpt-6.1-terra': rates(2),
+    });
+    expect(getModelPricing('azure/us/gpt-6.1-terra')).toEqual(rates(4));
+    expect(getModelPricing('azure/eu/gpt-6.1-terra')).toEqual(rates(2));
+  });
+
+  it('follows registered aliases', () => {
+    registerModelPricing({ 'claude-opus-5-5': rates(1) });
+    registerModelAlias('house-opus', 'claude-opus-5-5');
+    expect(resolveModelPricing('house-opus').provenance).toMatchObject({
+      source: 'registered',
+      matchedModelId: 'claude-opus-5-5',
+    });
+  });
+
+  describe('onlyIfMissing', () => {
+    it('never replaces an exact static, catalog, or imported price', () => {
+      registerModelPricing(
+        { 'claude-opus-5-5': rates(1), 'gpt-4o': rates(1), 'house-x': rates(1) },
+        { onlyIfMissing: true },
+      );
+      expect(resolveModelPricing('claude-opus-5-5').provenance).toMatchObject({
+        source: 'static',
+        match: 'exact',
+      });
+
+      _setPricingOverrides({ 'gpt-4o': rates(8) });
+      expect(getModelPricing('gpt-4o')).toEqual(rates(8));
+
+      const snapshot = JSON.parse(JSON.stringify(exportResolvedModelCatalog(['claude-opus-5'])));
+      snapshot.models['house-x'] = {
+        ...snapshot.models['claude-opus-5'],
+        id: 'house-x',
+        canonicalId: 'house-x',
+      };
+      importResolvedModelCatalog(snapshot);
+      expect(resolveModelPricing('house-x').provenance.source).toBe('static');
+      expect(getModelPricing('house-x')).toEqual(getModelPricing('claude-opus-5'));
+    });
+
+    it('replaces prefix-inherited and missing prices', () => {
+      registerModelPricing(
+        { 'gpt-5.6-unlisted': rates(6), 'claude-opus-5-5': rates(1), 'gpt-9': rates(9) },
+        { onlyIfMissing: true },
+      );
+      // Would otherwise inherit `gpt-5.6` by prefix.
+      expect(resolveModelPricing('gpt-5.6-unlisted')).toMatchObject({
+        pricing: rates(6),
+        provenance: { source: 'registered', match: 'exact' },
+      });
+      // A dated snapshot only has a prefix-inherited price of its own.
+      expect(resolveModelPricing('claude-opus-5-5-20261001').provenance.source).toBe('registered');
+      // Deployment forms have no price at all without it.
+      expect(getModelPricing('us.anthropic.claude-opus-5-5-20261001-v1:0')).toEqual(rates(1));
+      expect(getModelPricing('gpt-9')).toEqual(rates(9));
+    });
+
+    it('re-registering a key replaces its mode', () => {
+      registerModelPricing({ 'claude-opus-5-5': rates(1) }, { onlyIfMissing: true });
+      expect(resolveModelPricing('claude-opus-5-5').provenance.source).toBe('static');
+      registerModelPricing({ 'claude-opus-5-5': rates(1) });
+      expect(resolveModelPricing('claude-opus-5-5').provenance.source).toBe('registered');
+    });
+  });
+
+  it('normalizes keys and skips invalid entries', () => {
+    registerModelPricing({
+      '  House-Model[1M] ': rates(2),
+      'bad-nan': rates(Number.NaN),
+      'bad-negative': rates(-1),
+      'bad-missing': { inputCostPerMillion: 1, outputCostPerMillion: 1 } as ModelPricing,
+      '': rates(1),
+    });
+    expect(getModelPricing('house-model')).toEqual(rates(2));
+    expect(getModelPricing('bad-nan')).toBeNull();
+    expect(getModelPricing('bad-negative')).toBeNull();
+    expect(getModelPricing('bad-missing')).toBeNull();
+    expect(getPricingCatalogInfo().registeredEntries).toBe(1);
+  });
+
+  it('stores copies and keeps prototype-like keys as data', () => {
+    const entry = rates(2);
+    registerModelPricing(
+      JSON.parse(
+        '{"__proto__": {"inputCostPerMillion": 1, "outputCostPerMillion": 1, "cacheWriteCostPerMillion": 0, "cacheReadCostPerMillion": 0}}',
+      ),
+    );
+    registerModelPricing({ 'copy-check': entry });
+    entry.inputCostPerMillion = 99;
+    expect(getModelPricing('copy-check')!.inputCostPerMillion).toBe(2);
+    getModelPricing('copy-check')!.inputCostPerMillion = 50;
+    expect(getModelPricing('copy-check')!.inputCostPerMillion).toBe(2);
+    expect(getModelPricing('__proto__')).toEqual(rates(1, 1));
+    expect(getPricingCatalogInfo().registeredEntries).toBe(2);
+  });
+
+  it('can be bypassed to see the package layers', () => {
+    registerModelPricing({ 'claude-opus-5-5': rates(1) });
+    expect(
+      resolveModelPricing('claude-opus-5-5', { includeRegistered: false }).provenance.source,
+    ).toBe('static');
+  });
+
+  it('stays out of the catalog id enumeration', () => {
+    registerModelPricing({ 'house-only-model': rates(1) });
+    expect(_getModelPricingIds()).not.toContain('house-only-model');
+  });
+
+  it('feeds every cost calculation', () => {
+    registerModelPricing({ 'claude-sonnet-5': rates(1, 1) });
+    expect(
+      calculateCost(
+        { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+        'claude-sonnet-5',
+      ),
+    ).toBe(1);
+  });
+});
+
+describe('getPricingCatalogInfo', () => {
+  it('describes the built-in baseline by default', () => {
+    const info = getPricingCatalogInfo();
+    expect(info).toEqual({
+      source: 'static',
+      digest: expect.stringMatching(/^fnv1a64:[0-9a-f]{16}$/),
+      catalogEntries: 0,
+      registeredEntries: 0,
+    });
+    expect(info).not.toHaveProperty('fetchedAt');
+  });
+
+  it('keeps the digest stable across calls and table round-trips', () => {
+    const baseline = getPricingCatalogInfo().digest;
+    expect(getPricingCatalogInfo().digest).toBe(baseline);
+
+    _setPricingOverrides({ 'gpt-4o': rates(2.5, 10) });
+    const withCatalog = getPricingCatalogInfo().digest;
+    expect(withCatalog).not.toBe(baseline);
+    // Key order and case do not matter; content does.
+    _setPricingOverrides({ 'GPT-4O': rates(2.5, 10) });
+    expect(getPricingCatalogInfo().digest).toBe(withCatalog);
+
+    _clearPricingOverrides();
+    expect(getPricingCatalogInfo().digest).toBe(baseline);
+  });
+
+  it('changes the digest when any single price changes', () => {
+    _setPricingOverrides({ a: rates(1), b: rates(2) });
+    const before = getPricingCatalogInfo().digest;
+    _setPricingOverrides({ a: rates(1), b: { ...rates(2), cacheReadCostPerMillion: 0.01 } });
+    expect(getPricingCatalogInfo().digest).not.toBe(before);
+  });
+
+  it('tracks the registered layer in the digest and count', () => {
+    const baseline = getPricingCatalogInfo().digest;
+    registerModelPricing({ 'house-model': rates(1) });
+    const registered = getPricingCatalogInfo();
+    expect(registered.registeredEntries).toBe(1);
+    expect(registered.source).toBe('static');
+    expect(registered.digest).not.toBe(baseline);
+
+    registerModelPricing({ 'house-model': rates(1) }, { onlyIfMissing: true });
+    expect(getPricingCatalogInfo().digest).not.toBe(registered.digest);
+
+    clearRegisteredModelPricing();
+    expect(getPricingCatalogInfo()).toMatchObject({ digest: baseline, registeredEntries: 0 });
+  });
+
+  it('reports the catalog basis recorded with the overrides', () => {
+    _setPricingOverrides({ 'gpt-4o': rates(1) });
+    expect(getPricingCatalogInfo()).toMatchObject({ source: 'litellm', catalogEntries: 1 });
+    expect(getPricingCatalogInfo()).not.toHaveProperty('fetchedAt');
+
+    _setPricingOverrides(
+      { 'gpt-4o': rates(1) },
+      { source: 'stale-cache', fetchedAt: '2026-01-01T00:00:00.000Z' },
+    );
+    expect(getPricingCatalogInfo()).toMatchObject({
+      source: 'stale-cache',
+      fetchedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    // An empty catalog is no catalog, whatever basis came with it.
+    _setPricingOverrides({}, { source: 'litellm', fetchedAt: '2026-01-01T00:00:00.000Z' });
+    expect(getPricingCatalogInfo()).toMatchObject({ source: 'static', catalogEntries: 0 });
+    expect(getPricingCatalogInfo()).not.toHaveProperty('fetchedAt');
+  });
+
+  it('reports imported resolutions when no catalog is loaded', () => {
+    const baseline = getPricingCatalogInfo().digest;
+    importResolvedModelCatalog(
+      JSON.parse(JSON.stringify(exportResolvedModelCatalog(['gpt-6-sol']))),
+    );
+    const imported = getPricingCatalogInfo();
+    expect(imported.source).toBe('imported');
+    expect(imported.digest).not.toBe(baseline);
+
+    _setPricingOverrides({ 'gpt-4o': rates(1) });
+    expect(getPricingCatalogInfo().source).toBe('litellm');
+
+    _clearPricingOverrides();
+    _clearImportedResolvedPricing();
+    expect(getPricingCatalogInfo()).toMatchObject({ source: 'static', digest: baseline });
+  });
+});
+
+describe('cost source helpers', () => {
+  it('maps pricing provenance to cost sources', () => {
+    expect(costSourceFromPricingProvenance('provider-reported')).toBe('reported');
+    expect(costSourceFromPricingProvenance('explicit-pricing')).toBe('estimated');
+    expect(costSourceFromPricingProvenance('model-catalog')).toBe('estimated');
+    expect(costSourceFromPricingProvenance('unpriced')).toBe('unpriced');
+  });
+
+  it('merges components with the least certain source winning', () => {
+    expect(
+      mergeCostComponents([
+        { source: 'reported', tokens: 10 },
+        { source: 'estimated', tokens: 5 },
+      ]),
+    ).toBe('estimated');
+    expect(
+      mergeCostComponents([
+        { source: 'reported', tokens: 10 },
+        { source: 'unpriced', tokens: 1 },
+        { source: 'estimated', tokens: 5 },
+      ]),
+    ).toBe('unpriced');
+    expect(mergeCostComponents([{ source: 'reported', tokens: 0 }])).toBe('reported');
+  });
+
+  it('ignores unseen components and token-free unpriced ones', () => {
+    expect(mergeCostComponents([])).toBeUndefined();
+    expect(mergeCostComponents([{ tokens: 100 }])).toBeUndefined();
+    expect(mergeCostComponents([{ source: 'unpriced', tokens: 0 }])).toBeUndefined();
+    expect(
+      mergeCostComponents([
+        { source: 'unpriced', tokens: 0 },
+        { tokens: 50 },
+        { source: 'reported', tokens: 50 },
+      ]),
+    ).toBe('reported');
+    expect(mergeCostComponents([{ source: 'unpriced', tokens: Number.NaN }])).toBeUndefined();
+  });
+
+  it('accepts any iterable', () => {
+    function* parts() {
+      yield { source: 'estimated' as const, tokens: 1 };
+      yield { source: 'reported' as const, tokens: 1 };
+    }
+    expect(mergeCostComponents(parts())).toBe('estimated');
+    expect(mergeCostComponents(new Set([{ source: 'reported' as const, tokens: 1 }]))).toBe(
+      'reported',
+    );
+  });
+});
+
+describe('formatCost compatibility', () => {
+  it('is the formatting module implementation', () => {
+    expect(formatCost).toBe(formattingFormatCost);
+  });
+
+  it('keeps shortModelName labels for canonical forms', () => {
+    expect(shortModelName('us.anthropic.claude-opus-5-5-20261001-v1:0')).toBe('Opus');
+    expect(shortModelName('openrouter/anthropic/claude-sonnet-4.5')).toBe('Sonnet');
+    expect(shortModelName('gpt-6.1-sol-2026-09-29')).toBe('GPT-6.1-sol');
+    expect(shortModelName('gpt-5.4-20260301')).toBe('GPT-5.4');
+    expect(shortModelName('openai/gpt-5.3-codex')).toBe('Codex');
+    expect(shortModelName('mystery-model')).toBe('mystery-model');
   });
 });

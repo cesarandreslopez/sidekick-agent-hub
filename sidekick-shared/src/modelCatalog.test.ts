@@ -11,7 +11,9 @@ import {
   _clearImportedResolvedPricing,
   _clearPricingOverrides,
   _setPricingOverrides,
+  clearRegisteredModelPricing,
   getModelPricing,
+  registerModelPricing,
   resolveModelPricing,
 } from './modelInfo';
 import { _clearModelAliases, registerModelAlias } from './modelAliases';
@@ -24,9 +26,24 @@ afterEach(() => {
   _clearImportedResolvedContextWindows();
   _clearImportedResolvedPricing();
   _clearModelAliases();
+  clearRegisteredModelPricing();
 });
 
 describe('resolved model catalog', () => {
+  it('never exports prices registered in this realm', () => {
+    const negotiated = {
+      inputCostPerMillion: 1,
+      outputCostPerMillion: 2,
+      cacheWriteCostPerMillion: 1.25,
+      cacheReadCostPerMillion: 0.1,
+    };
+    registerModelPricing({ 'claude-opus-5-5': negotiated });
+    expect(resolveModelPricing('claude-opus-5-5').provenance.source).toBe('registered');
+    const exported = exportResolvedModelCatalog(['claude-opus-5-5']).models['claude-opus-5-5'];
+    expect(exported.pricing.provenance.source).not.toBe('registered');
+    expect(exported.pricing.pricing).not.toEqual(negotiated);
+  });
+
   it('round-trips exact effective windows and pricing across realms', () => {
     _setObservedContextWindows({ 'gpt-5.6-sol': 258_400 });
     _setCatalogContextWindows({ 'gpt-5.6-sol': 1_050_000 });

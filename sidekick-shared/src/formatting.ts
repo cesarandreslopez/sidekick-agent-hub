@@ -2,10 +2,14 @@
  * Pure display formatting helpers shared by CLI, extension host, webviews,
  * and downstream apps.
  *
- * This module intentionally has no Node-only imports.
+ * This module intentionally has no Node-only imports, and no runtime imports
+ * at all: bundles that only format values must not retain the pricing tables
+ * in `modelInfo.ts`. Type-only imports are fine.
  *
  * @module formatting
  */
+
+import type { CostSource } from './modelInfo';
 
 export interface FormatTokenCountOptions {
   /** Suffix casing for thousands. Millions always use `M`. Defaults to `lower`. */
@@ -21,6 +25,38 @@ export interface FormatDurationMsOptions {
   secondsFractionDigits?: number;
   /** Value to return for negative, non-finite, or otherwise invalid durations. */
   invalid?: string;
+}
+
+export interface FormatCostOptions {
+  /**
+   * Provenance of the value. `unpriced` renders `—` whatever the number says;
+   * `estimated` appends ` (est.)`; `reported` (or omitted) renders the number
+   * alone.
+   */
+  source?: CostSource;
+}
+
+/**
+ * Formats a USD cost as a currency string.
+ *
+ * - `null` / `undefined`, or `source: 'unpriced'` → `"—"` (honest "pricing
+ *   unavailable", never `$0`).
+ * - `< $0.01` → 4 decimals, so sub-cent costs are still visible.
+ * - otherwise → 2 decimals.
+ * - `source: 'estimated'` appends `" (est.)"`.
+ *
+ * Also re-exported from `modelInfo` for existing imports; it lives here so a
+ * formatting-only bundle does not pull in the pricing tables.
+ */
+// The one-argument overload keeps `values.map(formatCost)` type-checking as it
+// did before `options` existed; the implementation ignores a non-object index.
+export function formatCost(cost: number | null | undefined): string;
+export function formatCost(cost: number | null | undefined, options?: FormatCostOptions): string;
+export function formatCost(cost: number | null | undefined, options?: FormatCostOptions): string {
+  const source = options?.source;
+  if (cost === null || cost === undefined || source === 'unpriced') return '—';
+  const formatted = cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(2)}`;
+  return source === 'estimated' ? `${formatted} (est.)` : formatted;
 }
 
 /** Format a token count with compact `k` / `M` suffixes. */

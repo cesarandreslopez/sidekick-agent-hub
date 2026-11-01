@@ -67,7 +67,8 @@ export function exportResolvedModelCatalog(ids?: readonly string[]): ResolvedMod
       id,
       canonicalId,
       contextWindow: resolveModelContextWindow(id),
-      pricing: resolveModelPricing(id),
+      // Registered prices are this realm's local configuration, never exported.
+      pricing: resolveModelPricing(id, { includeRegistered: false }),
     };
   }
 
