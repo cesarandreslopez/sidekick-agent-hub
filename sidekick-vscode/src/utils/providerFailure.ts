@@ -45,3 +45,36 @@ export class ProviderRequestError extends Error {
     this.diagnosis = diagnosis;
   }
 }
+
+/** A retry the error notification can offer, with how long the provider asked to wait. */
+export interface ProviderRetryOffer {
+  /** Milliseconds until the provider's `retryAfter`; 0 when none was given or it has passed. */
+  waitMs: number;
+  /** Sentence to append to the notification, '' when there is no wait. */
+  hint: string;
+}
+
+function formatWait(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds < 90) return `${seconds}s`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes < 90 ? `${minutes} min` : `${Math.ceil(minutes / 60)} h`;
+}
+
+/**
+ * Whether a failed request is worth retrying unchanged, from the shared
+ * diagnosis's `retryable` and `retryAfter`. Null when a retry would not help
+ * (authentication, policy, context overflow, unknown) or the error carries no
+ * diagnosis.
+ */
+export function providerRetryOffer(
+  error: unknown,
+  now: number = Date.now(),
+): ProviderRetryOffer | null {
+  const diagnosis = error instanceof ProviderRequestError ? error.diagnosis : undefined;
+  if (diagnosis?.retryable !== true) return null;
+  const after = diagnosis.retryAfter;
+  const raw = !after ? 0 : after.kind === 'delay' ? after.delayMs : Date.parse(after.at) - now;
+  const waitMs = Number.isFinite(raw) && raw > 0 ? raw : 0;
+  return { waitMs, hint: waitMs > 0 ? ` The provider asked to wait ${formatWait(waitMs)}.` : '' };
+}

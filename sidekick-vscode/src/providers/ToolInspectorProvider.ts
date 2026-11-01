@@ -16,6 +16,7 @@ import type { ToolCall } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log } from '../services/Logger';
 import { formatToolSummary } from 'sidekick-shared';
+import { splitToolInput } from '../utils/toolInputOrigin';
 
 /**
  * Opens a tool inspector panel for the current session.
@@ -346,11 +347,18 @@ export class ToolInspectorProvider implements vscode.Disposable {
       : '';
     const durationStr = call.duration ? `${Math.round(call.duration)}ms` : '';
     const errorBadge = call.isError ? '<span class="tool-error-badge">ERROR</span>' : '';
+    // Where the call came from: the provider's own tool name and MCP server,
+    // recorded by the parser in `_sidekick*` input keys.
+    const origin = splitToolInput(call.input);
+    const rawName = call.rawName ?? origin.rawToolName;
     const rawNameBadge =
-      call.rawName && call.rawName !== call.name
-        ? `<span class="tool-raw-name">raw: ${this.escapeHtml(call.rawName)}</span>`
+      rawName && rawName !== call.name
+        ? `<span class="tool-raw-name" title="Provider tool name">raw: ${this.escapeHtml(rawName)}</span>`
         : '';
-    const toolSummary = formatToolSummary(call.name, call.input);
+    const mcpBadge = origin.mcpServerName
+      ? `<span class="tool-raw-name" title="MCP server">mcp: ${this.escapeHtml(origin.mcpServerName)}</span>`
+      : '';
+    const toolSummary = formatToolSummary(call.name, origin.input);
 
     let bodyContent = '';
 
@@ -382,6 +390,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
         <span class="tool-name">${this.escapeHtml(call.name)}</span>
         <span class="tool-summary">${this.escapeHtml(toolSummary)}</span>
         ${rawNameBadge}
+        ${mcpBadge}
         ${errorBadge}
         ${durationStr ? `<span class="tool-duration">${durationStr}</span>` : ''}
         <span class="tool-time">${time}</span>
@@ -486,7 +495,8 @@ export class ToolInspectorProvider implements vscode.Disposable {
   }
 
   private renderGenericCall(call: ToolCall): string {
-    const inputStr = JSON.stringify(call.input, null, 2);
+    // The input as the model sent it; the origin keys are shown as badges.
+    const inputStr = JSON.stringify(splitToolInput(call.input).input, null, 2);
     const preview = inputStr.substring(0, 2000);
 
     return `<div class="tool-section">

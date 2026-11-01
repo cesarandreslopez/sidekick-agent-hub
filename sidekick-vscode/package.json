@@ -475,6 +475,46 @@
             "default": 24,
             "minimum": 1,
             "description": "How long (in hours) to trust the cached pricing catalog before refetching."
+          },
+          "sidekick.customModelPricing": {
+            "type": "object",
+            "default": {},
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "inputCostPerMillion",
+                "outputCostPerMillion"
+              ],
+              "properties": {
+                "inputCostPerMillion": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "USD per million uncached input tokens."
+                },
+                "outputCostPerMillion": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "USD per million output tokens (reasoning included)."
+                },
+                "cacheWriteCostPerMillion": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "USD per million cache-write tokens. Defaults to the input rate."
+                },
+                "cacheReadCostPerMillion": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "USD per million cache-read tokens. Defaults to the input rate."
+                }
+              },
+              "additionalProperties": false
+            },
+            "markdownDescription": "Your own prices for models, in USD per million tokens: models Sidekick cannot price (local or private deployments), or negotiated rates. Keys are model ids as sessions report them; a key also matches the same model's dated, `[1m]`, Bedrock, and provider-prefixed ids (`claude-opus-5-5` covers `claude-opus-5-5-20261001`). Omitted cache rates default to the input rate.\n\nExample: `{ \"my-local-model\": { \"inputCostPerMillion\": 0.5, \"outputCostPerMillion\": 1.5 } }`\n\nWhether these prices fill gaps or override the catalog is set by `#sidekick.customModelPricingOnlyIfMissing#`. Changes apply immediately; the dashboard Health tab lists what was applied and any entry that was ignored."
+          },
+          "sidekick.customModelPricingOnlyIfMissing": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "By default `#sidekick.customModelPricing#` wins over every other price source (for example, negotiated rates). Enable to only fill gaps: an entry is then used only when neither the built-in prices nor the LiteLLM catalog have an exact price for that model."
           }
         }
       },

@@ -66,9 +66,10 @@ vi.mock('../services/Logger', () => ({
   logError: vi.fn(),
 }));
 
-import { formatLocalDateKey } from 'sidekick-shared';
+import { formatLocalDateKey, normalizeProviderUsage } from 'sidekick-shared';
 import { commands } from 'vscode';
 import { DashboardViewProvider } from './DashboardViewProvider';
+import { addUsageToPricing, type ModelUsageEntry } from '../services/ModelPricingService';
 
 // The behaviour lives in the bundled legacy module now; the document only
 // loads it. Script assertions therefore read the module source.
@@ -86,7 +87,13 @@ function makeSessionMonitor() {
     {};
   return {
     handlers,
-    getStatsView: vi.fn(() => ({ sessionStartTime: null, planState: undefined })),
+    getStatsView: vi.fn(
+      (): { sessionStartTime: null; planState: undefined; modelUsage: Map<string, unknown> } => ({
+        sessionStartTime: null,
+        planState: undefined,
+        modelUsage: new Map(),
+      }),
+    ),
     getStats: vi.fn(() => ({ sessionStartTime: null, planState: undefined })),
     onTokenUsage: vi.fn((handler: (usage: unknown) => void) => {
       handlers.tokenUsage = handler;
@@ -234,6 +241,73 @@ describe('DashboardViewProvider quota UI', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('prices the token hot path from the monitor rows, the way a rebuild does', () => {
+    const monitor = makeSessionMonitor();
+    const modelUsage = new Map<string, ModelUsageEntry>();
+    monitor.getStatsView.mockReturnValue({
+      sessionStartTime: null,
+      planState: undefined,
+      modelUsage,
+    });
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+    );
+    const codex = normalizeProviderUsage({
+      semantics: 'openai',
+      model: 'gpt-6-sol',
+      inputTokens: 1000,
+      cacheReadTokens: 200,
+      outputTokens: 500,
+      reasoningTokens: 300,
+    });
+    const row: ModelUsageEntry = {
+      calls: 1,
+      tokens: 1500,
+      inputTokens: 800,
+      outputTokens: 500,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 200,
+    };
+    addUsageToPricing(row, 'gpt-6-sol', codex);
+    modelUsage.set('gpt-6-sol', row);
+    modelUsage.set('local-model', {
+      calls: 1,
+      tokens: 10,
+      inputTokens: 10,
+      outputTokens: 0,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 0,
+    });
+
+    monitor.handlers.tokenUsage!({
+      model: 'gpt-6-sol',
+      inputTokens: 800,
+      outputTokens: 500,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 200,
+      reasoningTokens: 300,
+      timestamp: new Date('2026-11-01T00:00:00Z'),
+    });
+
+    const state = (
+      provider as unknown as {
+        _state: {
+          totalCost: number;
+          unpricedModelIds?: string[];
+          modelBreakdown: Array<{ model: string; priced?: boolean }>;
+        };
+      }
+    )._state;
+    expect(state.totalCost).toBeCloseTo(0.00664, 8);
+    expect(state.unpricedModelIds).toEqual(['local-model']);
+    expect(state.modelBreakdown.map((m) => [m.model, m.priced])).toEqual([
+      ['gpt-6-sol', true],
+      ['local-model', false],
+    ]);
+    provider.dispose();
   });
 
   it('drops the resolved view and its bindings when VS Code disposes it', () => {

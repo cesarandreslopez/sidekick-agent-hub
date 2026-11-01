@@ -719,6 +719,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
         <div class="stat-value" id="history-total-cost">$0.00</div>
         <div class="stat-label">Total Cost</div>
         <div class="stat-delta" id="history-total-cost-delta"></div>
+        <div class="cost-note" id="history-total-cost-note"></div>
       </div>
       <div class="history-stat">
         <div class="stat-value" id="history-sessions">0</div>
@@ -775,6 +776,10 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     <div class="section">
       <div class="section-title">Failing Tools <span class="section-hint">last 7 and 30 days</span></div>
       <div id="health-tools"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Pricing <span class="section-hint">basis for cost estimates</span></div>
+      <div id="health-pricing"></div>
     </div>
   </div>
 

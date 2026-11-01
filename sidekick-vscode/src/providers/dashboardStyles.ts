@@ -990,6 +990,12 @@ export const DASHBOARD_STYLES = `
       font-size: 10px;
     }
 
+    .cost-note {
+      color: var(--vscode-descriptionForeground);
+      font-size: 10px;
+      margin-top: 4px;
+    }
+
     .empty-state {
       text-align: center;
       padding: 24px 12px;

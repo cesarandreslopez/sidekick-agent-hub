@@ -74,6 +74,7 @@ import { KnowledgeNoteService } from './services/KnowledgeNoteService';
 import {
   appendErrorHistory,
   formatHealthReport,
+  getPricingCatalogInfo,
   getProjectSlug,
   migrateLegacyProjectStores,
   renderHandoffUrlTemplate,
@@ -95,6 +96,12 @@ import { buildCommandCatalog } from './utils/commandCatalog';
 import { openCliDashboard, disposeDashboardTerminal } from './services/SidekickCliService';
 import { showExtractedSessionAssets } from './services/SessionAssetService';
 import { initLogger, log, logError, showLog } from './services/Logger';
+import {
+  applyCustomModelPricing,
+  getCustomModelPricingStatus,
+} from './services/customModelPricing';
+import { describePricingCatalog } from './utils/pricingCatalogLabel';
+import { providerRetryOffer } from './utils/providerFailure';
 import {
   getTransformSystemPrompt,
   getTransformUserPrompt,
@@ -195,6 +202,43 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   );
 
+  // Custom model pricing (sidekick.customModelPricing) is its own pricing
+  // layer, which catalog hydration never resets. Applied before session
+  // monitoring starts and again when the setting changes; costs are priced on
+  // read, so the dashboard re-prices the whole session in place.
+  const applyCustomPricing = (): void => {
+    const sidekickConfig = vscode.workspace.getConfiguration('sidekick');
+    const status = applyCustomModelPricing(
+      sidekickConfig.get<unknown>('customModelPricing', {}),
+      sidekickConfig.get<boolean>('customModelPricingOnlyIfMissing', false),
+    );
+    if (status.applied.length > 0) {
+      log(
+        `Custom model pricing applied for ${status.applied.length} model(s)` +
+          (status.onlyIfMissing ? ' (filling gaps only).' : ' (overriding other prices).'),
+      );
+    }
+    if (status.invalid.length > 0) {
+      log(
+        `Custom model pricing ignored ${status.invalid.join(', ')}: each entry needs ` +
+          'inputCostPerMillion and outputCostPerMillion (numbers ≥ 0).',
+      );
+    }
+  };
+  applyCustomPricing();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        !event.affectsConfiguration('sidekick.customModelPricing') &&
+        !event.affectsConfiguration('sidekick.customModelPricingOnlyIfMissing')
+      ) {
+        return;
+      }
+      applyCustomPricing();
+      dashboardProvider?.refreshCosts();
+    }),
+  );
+
   // Fire-and-forget hydrate the pricing catalog from LiteLLM so Codex/GPT
   // sessions display correct USD costs. Falls back to the static baseline if
   // offline. Never blocks activation.
@@ -212,8 +256,11 @@ export async function activate(context: vscode.ExtensionContext) {
       .then((result) => {
         log(
           `Pricing catalog ready (${result.source}, ${result.entries} price entries, ` +
-            `${result.contextWindowEntries} context windows).`,
+            `${result.contextWindowEntries} context windows, ${result.digest}).`,
         );
+        // A session replayed before the catalog loaded was priced from the
+        // built-in table; re-price it now.
+        dashboardProvider?.refreshCosts();
       })
       .catch((err) => {
         logError('pricing catalog hydration failed', err);
@@ -1597,6 +1644,13 @@ export async function activate(context: vscode.ExtensionContext) {
         provider: sessionMonitor?.getProvider().id,
       });
       log(formatHealthReport(report));
+      log('Pricing:');
+      for (const line of describePricingCatalog(
+        getPricingCatalogInfo(),
+        getCustomModelPricingStatus(),
+      )) {
+        log(`  ${line.warning ? '!' : '·'} ${line.label}: ${line.value}`);
+      }
       showLog();
       const message = `Sidekick Doctor: ${report.status} (${report.checks.filter((check) => check.status === 'warning' || check.status === 'error').length} items need attention)`;
       if (report.status === 'healthy') vscode.window.showInformationMessage(message);
@@ -2289,91 +2343,106 @@ export async function activate(context: vscode.ExtensionContext) {
       const originalSelection = editor.selection;
       const selectedText = editor.document.getText(originalSelection);
 
-      statusBarManager?.setLoading('Transforming');
+      // One request; a retryable provider failure offers to run it again.
+      const attempt = async (): Promise<void> => {
+        statusBarManager?.setLoading('Transforming');
 
-      try {
-        log(`Transform starting: model=${model}, language=${language}`);
+        try {
+          log(`Transform starting: model=${model}, language=${language}`);
 
-        // Build prompt using prompt templates
-        const prompt =
-          getTransformSystemPrompt() +
-          '\n\n' +
-          getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
+          // Build prompt using prompt templates
+          const prompt =
+            getTransformSystemPrompt() +
+            '\n\n' +
+            getTransformUserPrompt(selectedText, instruction, language, prefix, suffix);
 
-        log(`Calling authService.complete...`);
+          log(`Calling authService.complete...`);
 
-        // Calculate context size for timeout scaling
-        const contextSize = new TextEncoder().encode(prompt).length;
-        const timeoutManager = getTimeoutManager();
-        const timeoutConfig = timeoutManager.getTimeoutConfig('codeTransform');
+          // Calculate context size for timeout scaling
+          const contextSize = new TextEncoder().encode(prompt).length;
+          const timeoutManager = getTimeoutManager();
+          const timeoutConfig = timeoutManager.getTimeoutConfig('codeTransform');
 
-        // Execute with timeout management and retry support
-        const operationLabel = `Transforming code via ${authService!.getProviderDisplayName()} · ${model}`;
-        const result = await timeoutManager.executeWithTimeout({
-          operation: operationLabel,
-          task: (signal: AbortSignal) =>
-            authService!.complete(prompt, {
-              model,
-              maxTokens: 4096,
-              signal,
-            }),
-          config: timeoutConfig,
-          contextSize,
-          showProgress: true,
-          cancellable: true,
-          onTimeout: (timeoutMs: number, contextKb: number) =>
-            timeoutManager.promptRetry(operationLabel, timeoutMs, contextKb),
-        });
+          // Execute with timeout management and retry support
+          const operationLabel = `Transforming code via ${authService!.getProviderDisplayName()} · ${model}`;
+          const result = await timeoutManager.executeWithTimeout({
+            operation: operationLabel,
+            task: (signal: AbortSignal) =>
+              authService!.complete(prompt, {
+                model,
+                maxTokens: 4096,
+                signal,
+              }),
+            config: timeoutConfig,
+            contextSize,
+            showProgress: true,
+            cancellable: true,
+            onTimeout: (timeoutMs: number, contextKb: number) =>
+              timeoutManager.promptRetry(operationLabel, timeoutMs, contextKb),
+          });
 
-        if (!result.success) {
-          if (result.timedOut) {
-            statusBarManager?.setError('Timeout');
-            vscode.window.showErrorMessage(
-              `Transform timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
-            );
+          if (!result.success) {
+            if (result.timedOut) {
+              statusBarManager?.setError('Timeout');
+              vscode.window.showErrorMessage(
+                `Transform timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+              );
+              return;
+            }
+            if (result.error?.name === 'AbortError') {
+              statusBarManager?.setConnected();
+              return; // User cancelled
+            }
+            throw result.error ?? new Error('Unknown error');
+          }
+
+          log(`Transform completed, result length: ${result.result!.length}`);
+
+          // Clean the response
+          const cleaned = cleanTransformResponse(result.result!);
+          if (!cleaned) {
+            vscode.window.showWarningMessage('No transformation returned');
+            statusBarManager?.setConnected();
             return;
           }
-          if (result.error?.name === 'AbortError') {
+
+          // Verify selection hasn't changed
+          if (!editor.selection.isEqual(originalSelection)) {
+            vscode.window.showWarningMessage(
+              'Selection changed during transform. Please try again.',
+            );
             statusBarManager?.setConnected();
-            return; // User cancelled
+            return;
           }
-          throw result.error ?? new Error('Unknown error');
+
+          // Apply the edit
+          const success = await editor.edit((editBuilder) => {
+            editBuilder.replace(originalSelection, cleaned);
+          });
+
+          if (success) {
+            statusBarManager?.setConnected();
+          } else {
+            statusBarManager?.setError('Edit failed');
+            vscode.window.showErrorMessage('Failed to apply transformation');
+          }
+        } catch (error) {
+          logError('Transform failed', error);
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          statusBarManager?.setError(message);
+          const retry = providerRetryOffer(error);
+          if (!retry) {
+            vscode.window.showErrorMessage(`Transform failed: ${message}`);
+            return;
+          }
+          const choice = await vscode.window.showErrorMessage(
+            `Transform failed: ${message}${retry.hint}`,
+            'Retry',
+          );
+          if (choice === 'Retry') await attempt();
         }
-
-        log(`Transform completed, result length: ${result.result!.length}`);
-
-        // Clean the response
-        const cleaned = cleanTransformResponse(result.result!);
-        if (!cleaned) {
-          vscode.window.showWarningMessage('No transformation returned');
-          statusBarManager?.setConnected();
-          return;
-        }
-
-        // Verify selection hasn't changed
-        if (!editor.selection.isEqual(originalSelection)) {
-          vscode.window.showWarningMessage('Selection changed during transform. Please try again.');
-          statusBarManager?.setConnected();
-          return;
-        }
-
-        // Apply the edit
-        const success = await editor.edit((editBuilder) => {
-          editBuilder.replace(originalSelection, cleaned);
-        });
-
-        if (success) {
-          statusBarManager?.setConnected();
-        } else {
-          statusBarManager?.setError('Edit failed');
-          vscode.window.showErrorMessage('Failed to apply transformation');
-        }
-      } catch (error) {
-        logError('Transform failed', error);
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        statusBarManager?.setError(message);
-        vscode.window.showErrorMessage(`Transform failed: ${message}`);
-      }
+      };
+      await attempt();
     }),
   );
 

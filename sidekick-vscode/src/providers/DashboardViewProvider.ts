@@ -34,6 +34,7 @@ import type { HandoffService } from '../services/HandoffService';
 import {
   combineSessionTokenTotals,
   createSessionProviders,
+  getPricingCatalogInfo,
   getProjectSlug,
   getTopFailingTools,
   mergeFailingToolWindows,
@@ -65,7 +66,9 @@ import type { SessionEventLogger } from '../services/SessionEventLogger';
 import type { DecisionLogService } from '../services/DecisionLogService';
 import type { NotificationPersistenceService } from '../services/NotificationPersistenceService';
 import type { SessionSummaryData } from '../types/sessionSummary';
-import { ModelPricingService } from '../services/ModelPricingService';
+import { priceSessionModelUsage, type ModelUsageEntry } from '../services/ModelPricingService';
+import { getCustomModelPricingStatus } from '../services/customModelPricing';
+import { describePricingCatalog } from '../utils/pricingCatalogLabel';
 import { parseChangelog } from '../utils/changelogParser';
 import type { ChangelogEntry } from '../utils/changelogParser';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
@@ -1258,7 +1261,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /**
    * Answers the Health tab: the shared doctor report (with the deprecated
    * settings the doctor command reports), diagnostics the session providers
-   * emit when probed for this workspace, and the failing-tool windows.
+   * emit when probed for this workspace, the failing-tool windows, and the
+   * pricing basis behind cost estimates.
    */
   private async _sendHealth(): Promise<void> {
     if (this._healthInFlight) return;
@@ -1307,7 +1311,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       ]);
       this._postMessage({
         type: 'updateHealth',
-        data: { report, providerDiagnostics, failingTools: mergeFailingToolWindows(last7, last30) },
+        data: {
+          report,
+          providerDiagnostics,
+          failingTools: mergeFailingToolWindows(last7, last30),
+          pricing: describePricingCatalog(getPricingCatalogInfo(), getCustomModelPricingStatus()),
+        },
       });
     } catch (error) {
       logError('Dashboard: failed to build the Health tab', error);
@@ -1383,74 +1392,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Track model for dynamic context window limit
     this._lastModelId = usage.model;
 
-    // Use provider-reported cost when available, else calculate from pricing.
-    // `null` pricing means the model isn't in our catalog (or LiteLLM hydration
-    // hasn't happened yet) — contribute 0 to totals and flag it in
-    // `unpricedModelIds` so the UI renders "—" instead of "$0".
-    let cost: number;
-    let priced: boolean;
-    if (usage.reportedCost !== undefined && usage.reportedCost > 0) {
-      cost = usage.reportedCost;
-      priced = true;
-    } else {
-      const pricing = ModelPricingService.getPricing(usage.model);
-      const computed = ModelPricingService.calculateCost(
-        {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-          reasoningTokens: usage.reasoningTokens,
-        },
-        pricing,
-      );
-      if (computed !== null) {
-        cost = computed;
-        priced = true;
-      } else {
-        cost = 0;
-        priced = false;
-      }
-    }
-
-    if (!priced) {
-      const seen = this._state.unpricedModelIds ?? [];
-      if (!seen.includes(usage.model)) {
-        this._state.unpricedModelIds = [...seen, usage.model];
-      }
-    }
-
     // Update totals
     this._state.totalInputTokens += usage.inputTokens;
     this._state.totalOutputTokens += usage.outputTokens;
     this._state.totalCacheWriteTokens += usage.cacheWriteTokens;
     this._state.totalCacheReadTokens += usage.cacheReadTokens;
-    this._state.totalCost += cost;
     this._state.lastUpdated = new Date().toISOString();
     this._state.sessionActive = true;
 
-    // Update model breakdown (keep `priced` sticky: one unpriced event taints
-    // the aggregate so the UI shows "—" for the row).
-    // Per-model tokens use the shared vocabulary (every billed bucket, cache
-    // included) so this row agrees with the aggregator's per-model stats.
+    // The monitor has already added this usage to its per-model rows; price
+    // them the way a rebuild does, so the live total and the rebuilt total agree.
+    this._applyModelCosts(this._sessionMonitor.getStatsView().modelUsage);
+
     const usageTokens = summarizeTokens(usage).total;
-    // A correction tops up a response already counted: tokens and cost, no call.
+    // A correction tops up a response already counted: not a context sample.
     const isCorrection = usage.usageKind === 'correction';
-    const existingModel = this._state.modelBreakdown.find((m) => m.model === usage.model);
-    if (existingModel) {
-      if (!isCorrection) existingModel.calls += 1;
-      existingModel.tokens += usageTokens;
-      existingModel.cost += cost;
-      if (!priced) existingModel.priced = false;
-    } else {
-      this._state.modelBreakdown.push({
-        model: usage.model,
-        calls: 1,
-        tokens: usageTokens,
-        cost: cost,
-        priced,
-      });
-    }
 
     // Track burn rate on the same total the aggregator samples.
     this._burnRateCalculator.addEvent(usageTokens, usage.timestamp);
@@ -1741,8 +1697,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         session: {
           sessionId: this._sessionMonitor.getSessionId(),
           cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null,
-          model: this._state.modelBreakdown[0]?.model ?? null,
-          costUsd: this._state.totalCost,
+          model: this._firstRawModelId(),
+          // Nothing priced is unknown, not free.
+          costUsd:
+            this._state.unpricedModelIds?.length && !(this._state.totalCost > 0)
+              ? null
+              : this._state.totalCost,
           durationMs: null,
           linesAdded: this._state.fileChangeSummary?.totalAdditions ?? null,
           linesRemoved: this._state.fileChangeSummary?.totalDeletions ?? null,
@@ -2094,6 +2054,45 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /**
    * Syncs state from SessionMonitor stats.
    */
+  /**
+   * Model breakdown, total cost, and unpriced models from the monitor's
+   * per-model rows. Both the token hot path and a rebuild price through here
+   * (and so does the session summary), so their totals agree. Unpriced usage
+   * contributes 0 and marks its row `priced: false`, which the webview renders
+   * as "—" rather than "$0".
+   */
+  private _applyModelCosts(modelUsage: ReadonlyMap<string, ModelUsageEntry>): void {
+    const priced = priceSessionModelUsage(modelUsage);
+    this._state.modelBreakdown = priced.rows.map((row) => ({
+      model: row.model,
+      calls: row.calls,
+      tokens: row.tokens,
+      cost: row.cost,
+      priced: row.priced,
+    }));
+    this._state.totalCost = priced.totalCost;
+    this._state.unpricedModelIds =
+      priced.unpricedModelIds.length > 0 ? priced.unpricedModelIds : undefined;
+  }
+
+  /**
+   * The session's first model as the provider reported it (`[1m]`, dates and
+   * prefixes kept); model rows are keyed by `canonicalModelId`.
+   */
+  private _firstRawModelId(): string | null {
+    const first = this._sessionMonitor.getStatsView().modelUsage.entries().next().value as
+      | [string, ModelUsageEntry]
+      | undefined;
+    if (!first) return null;
+    return Object.keys(first[1].pricing ?? {})[0] ?? first[0];
+  }
+
+  /** Re-price the session after a pricing change (catalog refresh, custom pricing). */
+  refreshCosts(): void {
+    this._applyModelCosts(this._sessionMonitor.getStatsView().modelUsage);
+    this._scheduleFlush('stats');
+  }
+
   private _syncFromSessionMonitor(): void {
     const stats: SessionStats = this._sessionMonitor.getStats();
 
@@ -2122,61 +2121,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._refreshSubagentTokens(true);
 
     // Rebuild model breakdown with costs
-    this._state.modelBreakdown = [];
-    this._state.totalCost = 0;
-    const unpricedThisRebuild: string[] = [];
-
-    if (stats.totalReportedCost !== undefined && stats.totalReportedCost > 0) {
-      // Use provider-reported cost, distribute proportionally by token count.
-      // Provider-reported cost is assumed authoritative — mark each row as priced.
-      const totalTokens = Array.from(stats.modelUsage.values()).reduce(
-        (sum, u) => sum + u.tokens,
-        0,
-      );
-
-      stats.modelUsage.forEach((usage, model) => {
-        const proportion = totalTokens > 0 ? usage.tokens / totalTokens : 0;
-        const cost = stats.totalReportedCost! * proportion;
-
-        this._state.modelBreakdown.push({
-          model,
-          calls: usage.calls,
-          tokens: usage.tokens,
-          cost,
-          priced: true,
-        });
-
-        this._state.totalCost += cost;
-      });
-    } else {
-      stats.modelUsage.forEach((usage, model) => {
-        // Honest pricing: null pricing → priced=false, cost=0, row renders as "—".
-        const pricing = ModelPricingService.getPricing(model);
-        const computed = ModelPricingService.calculateCost(
-          {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            cacheWriteTokens: usage.cacheWriteTokens,
-            cacheReadTokens: usage.cacheReadTokens,
-          },
-          pricing,
-        );
-        const priced = computed !== null;
-        const cost = computed ?? 0;
-        if (!priced) unpricedThisRebuild.push(model);
-
-        this._state.modelBreakdown.push({
-          model,
-          calls: usage.calls,
-          tokens: usage.tokens,
-          cost,
-          priced,
-        });
-
-        this._state.totalCost += cost;
-      });
-    }
-    this._state.unpricedModelIds = unpricedThisRebuild.length > 0 ? unpricedThisRebuild : undefined;
+    this._applyModelCosts(stats.modelUsage);
 
     // Calculate context window usage (uses _currentContextSize synced above)
     this._updateContextUsage();
