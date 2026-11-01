@@ -5,6 +5,32 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-11-01
+
+### Added
+
+- **Codex subagent activity (opt-in).** `CodexRolloutParserOptions.includeSubagentActivity` turns Codex's `SubAgentActivity` records (`started`, `completed`, `interacted`, `interrupted`) and `FINAL_ANSWER` agent messages into `system` events with `origin: { kind: 'subagent-activity' }`. Read them with `subagentActivityFromEvent()` / `isSubagentActivitySystemEvent()`; `describeSubagentActivity()` and `parseCodexAgentMessageText()` help display them. The Codex reader turns the option on; transcripts, context sources and the aggregator's counters skip these events.
+- **Codex subagent lifecycles.** `EventAggregator` follows `spawn_agent` from its `{"task_name"}` launch to `completed` or `FINAL_ANSWER` (matched by agent path); `followup_task` reopens a child, `interrupt_agent` stops it, and a failed spawn is `failed`. `isCodexSubagentSpawnTool()` and `parseCodexSpawnLaunch()` are exported.
+- **Codex child discovery.** `scanSubagents()` recurses to every depth and reports `SubagentStats.filePath`, `spawnToolUseId`, `agentNickname`, `agentPath`, `parentAgentId`, `depth` and `endedCleanly`, with stats from the child's own records. `CodexDatabase.getSpawnedDescendantThreads()` and `isCodexSubagentThread()` are exported.
+- **Settling agents that never report.** `EventAggregator.applySubagentEvidence({ agentId?, toolUseId?, finished?, stoppedByUser? }, timestamp)` lets a host apply meta-file evidence. In-stream evidence settles running agents too: `agents_killed` system lines (`SystemSessionEvent.subtype` is kept), stop notices (`parseAgentsStoppedNotice()`, `agentsStoppedNoticeFromEvent()`) and post-compaction task status (`taskStatusFromAttachment()`, `taskStatusFromEvent()`, `isTaskStatusSystemEvent()`). `SubagentLifecycle` gains `settledBy` and `agentPath`. `resolveSubagentDisplayState(lifecycle, trace?, { now, parentLastActivity })` adds the reversible display states `finished-unreported` (clean end, quiet for `SUBAGENT_UNREPORTED_QUIET_MS`) and `ended` (parent idle for `SUBAGENT_PARENT_IDLE_ENDED_MS`); `subagentDisplayLabel()` names them. `SubagentTrace` gains `lastActivityAt` and `endedCleanly`. `EventAggregator.getLastEventTime()` is a cheap getter.
+- **Compressed Codex rollouts (opt-in).** `includeCompressedRollouts` on `createSessionProviders()` / `CodexProviderOptions`, `collectPromptHistory()`, `collectSessionPromptHistory()` and `findToolCallOrigins()` reads `.jsonl.zst` rollouts when `zlib.zstdDecompressSync` exists (`isZstdDecompressionAvailable()`), and skips them with a diagnostic otherwise. `readRolloutText()`, `readRolloutBuffer()`, `resolveRolloutPath()`, `isCompressedRolloutPath()` and `COMPRESSED_ROLLOUT_SUFFIX` are exported; `walkRolloutFiles()` and `findCodexRolloutFile()` take `includeCompressed`. Live tailing stays `.jsonl`-only, and a `.jsonl` is preferred over its `.zst` twin.
+- **Reader resets.** Optional `SessionReader.lastReset()` returns `{ reason: 'truncated' | 'rewritten' | 'replaced', previousPosition }` for the last restart.
+
+### Fixed
+
+- **Rewritten or replaced session files.** The Claude Code and Codex readers check the open file's identity and first 4 KiB on every changed read, as `createJsonlTail()` does, and restart from 0 when the file was rewritten or replaced, not only when it shrank. `ProviderReaderSessionWatcher` and `SessionMonitor.poll()` checked `wasTruncated()` before reading, which counted a truncated file's events twice (and left `SessionMonitor`'s aggregator wrong); both now read first and reset before delivering the replay.
+- **Codex child rollouts.** Records a forked child inherits from its parent (before `subagent_history_start_ordinal`, after an embedded ancestor `session_meta`) are no longer parsed as the child's, and the child's own first `session_meta` is kept. Inherited tool calls were counted in subagent stats; token totals were unaffected.
+- **Codex active-session detection** skips subagent threads.
+
+### Changed
+
+- `PermissionMode` (and `permissionModeSchema`) add `'auto'` and `'dontAsk'`; unknown future modes are still dropped rather than rejected. `EventAggregator` now tracks the mode from followed events too.
+- `SessionReader.wasTruncated()` is true whenever the last `readNew()` restarted from offset 0: after a truncation, a rewrite or a replacement.
+- `isSubagentSpawnTool()` also matches Codex `spawn_agent`. `SUBAGENT_SPAWN_TOOL_NAMES` and `isAssistantTurnSubagentTool()` stay Claude Code-only.
+- With `includeTaskNotifications`, `extractSessionEvents()` and the JSONL watcher also emit `system` events for post-compaction `task_status` attachments and stop notices. The Claude Code provider's reader turns it on, so its consumers can see these rare events.
+- `classifyTool()`: `wait` is `other` (Codex code-mode cell waits) and `interrupt_agent` is `subagent`.
+- `SNAPSHOT_SCHEMA_VERSION` is 7, so saved aggregator snapshots replay once.
+
 ## [0.29.1] - 2026-11-01
 
 ### Fixed

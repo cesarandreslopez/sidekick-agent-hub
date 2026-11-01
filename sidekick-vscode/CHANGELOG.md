@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-11-01
+
+### Added
+
+- **Codex subagents in the Subagents view.** Children started with `spawn_agent` appear with their nickname or task name, nested by depth, and open their rollout on click. They are followed from launch to completion, including follow-up tasks, interrupts and failed spawns, and show on the task board.
+- **Agents that never report are settled.** Stop markers, post-compaction task status and the subagent's meta file settle background agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", and one in a session idle for more than 6 hours shows "ended"; both go back to running if the agent writes again. The view rechecks every 15 seconds while an agent is unresolved, and task-board agent cards show the same state.
+- **`auto` and `dontAsk` permission modes** have their own status-bar icon and tooltip label.
+- **Compressed Codex sessions** (`.jsonl.zst`) are read when VS Code's runtime has Node's built-in zstd; otherwise they are skipped as before.
+
+### Fixed
+
+- **Session files rewritten or replaced while monitored** are replayed from the start instead of being read from the old position, and the dashboard and event stream no longer count the replay twice.
+- **Auto permission mode** no longer leaves the status bar showing the previous mode.
+- **Codex subagent statistics** count only the child's own work, and session following no longer switches to a subagent's rollout.
+- Saved session snapshots replay once after upgrading.
+
 ## [0.29.1] - 2026-11-01
 
 ### Fixed

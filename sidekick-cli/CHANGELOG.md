@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-11-01
+
+### Added
+
+- **Codex subagents** appear in the Agents tab, the mind map and the task list, linked to their spawn calls and followed to completion.
+- **Agents that never report are settled.** Stop markers, post-compaction task status and the subagent's meta file settle background agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", and one in a session idle for more than 6 hours shows "ended". Stopped, killed and failed agents show distinctly.
+- **Permission mode** is shown in the dashboard, including Claude Code's `auto` and `dontAsk` modes.
+- **Compressed Codex sessions** (`.jsonl.zst`) are read by every command that reads Codex sessions except `extract` and `history --path`, when Node has built-in zstd (22.15 or later).
+
+### Fixed
+
+- **A Codex session file that was truncated is no longer counted twice**, and a Claude Code or Codex file rewritten or replaced while followed is replayed from the start. After such a replay the dashboard saves a fresh snapshot.
+- **Codex subagent counts** no longer include the parent history a forked child embeds.
+- The session-ended toast no longer fires for activity whose summary merely contains "ended".
+- Saved dashboard snapshots replay once after upgrading.
+
 ## [0.29.1] - 2026-11-01
 
 ### Fixed

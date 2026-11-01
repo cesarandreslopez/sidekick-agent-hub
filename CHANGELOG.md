@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-11-01
+
+### Added
+
+- **Codex subagents in every view.** Children started with Codex's `spawn_agent` appear in the VS Code Subagents view (labelled by nickname or task name, nested by depth, click to open the child rollout), the CLI Agents tab and mind map, and both task boards. Each one is linked to its spawn call and followed from launch to completion, including follow-up tasks, interrupts and failed spawns.
+- **Compressed Codex sessions.** Codex compresses older rollouts to `.jsonl.zst`; Sidekick reads them when the runtime has Node's built-in zstd (Node 22.15 or later) and skips them as before otherwise.
+- **Background agents that never report are settled.** Claude Code's stop markers, post-compaction task status and the subagent's meta file settle agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", and one whose parent session has been idle for more than 6 hours shows "ended"; both go back to running if the agent writes again. The CLI shows stopped, killed and failed agents distinctly.
+- **`auto` and `dontAsk` permission modes** are recognized and labelled in the VS Code status bar and the CLI. The CLI dashboard shows the session's permission mode for the first time.
+- **`sidekick-shared`:**
+  - **Codex subagents:** `CodexRolloutParserOptions.includeSubagentActivity` and `subagentActivityFromEvent()`, `isCodexSubagentSpawnTool()`, `parseCodexSpawnLaunch()`, recursive `scanSubagents()` with `SubagentStats.filePath` / `spawnToolUseId` / `agentNickname` / `agentPath` / `parentAgentId` / `depth`.
+  - **Stale agents:** `EventAggregator.applySubagentEvidence()`, `resolveSubagentDisplayState()` and `subagentDisplayLabel()`, `parseAgentsStoppedNotice()`, `taskStatusFromEvent()`, `SubagentLifecycle.settledBy`, `SubagentTrace.lastActivityAt` / `endedCleanly`.
+  - **Compressed rollouts (opt-in):** `includeCompressedRollouts` on `createSessionProviders()`, prompt history and `findToolCallOrigins()`, plus `readRolloutText()` and `isZstdDecompressionAvailable()`.
+  - **Readers:** `SessionReader.lastReset()` reports why the last read restarted (`truncated`, `rewritten` or `replaced`).
+
+### Fixed
+
+- **Session files rewritten or replaced while followed.** The Claude Code and Codex readers now notice a file that was rewritten in place or replaced, not only one that shrank, and replay it from the start. The VS Code dashboard no longer counts that replay twice, and the CLI's Codex follower and the shared `SessionMonitor` no longer count a truncated file's events twice.
+- **Codex subagent statistics count only the child's own work.** Forked children embed their parent's history, and its tool calls were counted as the child's (one child: 66 before, 12 now). A child's own session metadata is no longer replaced by its parent's.
+- **Codex session following no longer switches to a subagent's rollout.**
+
+### Changed
+
+- `PermissionMode` adds `'auto'` and `'dontAsk'`.
+- `SessionReader.wasTruncated()` is true whenever the last `readNew()` restarted from the beginning: after a truncation, a rewrite or a replacement.
+- `isSubagentSpawnTool()` also matches Codex `spawn_agent`; `SUBAGENT_SPAWN_TOOL_NAMES` and `isAssistantTurnSubagentTool()` stay Claude Code-only.
+- With `includeTaskNotifications`, extraction also emits `system` events for Claude Code's post-compaction task status and stop notices; the Claude Code provider's reader turns it on.
+- Tool categories: `wait` (a Codex code-mode cell wait) is `other`, and `interrupt_agent` is `subagent`.
+- Saved dashboard snapshots replay once after upgrading.
+
 ## [0.29.1] - 2026-11-01
 
 ### Fixed
