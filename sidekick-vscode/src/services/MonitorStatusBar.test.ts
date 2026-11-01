@@ -83,4 +83,44 @@ describe('MonitorStatusBar', () => {
     expect(mocks.statusBarItem.text).toContain('250');
     statusBar.dispose();
   });
+
+  it.each([
+    ['auto', '$(sparkle)', 'Auto (classifier'],
+    ['dontAsk', '$(circle-slash)', "Don't Ask"],
+  ])('labels the %s permission mode', (permissionMode, icon, label) => {
+    let onTokenUsage: (() => void) | undefined;
+    const stats = {
+      totalInputTokens: 100,
+      totalOutputTokens: 0,
+      totalCacheWriteTokens: 0,
+      totalCacheReadTokens: 0,
+      currentContextSize: 100,
+      lastModelId: 'model',
+    };
+    const disposable = { dispose: vi.fn() };
+    const monitor = {
+      isReplaying: false,
+      isActive: () => false,
+      onSessionStart: () => disposable,
+      onSessionEnd: () => disposable,
+      onReplayStateChange: () => disposable,
+      onTokenUsage: (handler: () => void) => {
+        onTokenUsage = handler;
+        return disposable;
+      },
+      getStats: () => stats,
+      getStatsView: () => stats,
+      getProvider: () => ({
+        id: 'claude-code',
+        displayName: 'Claude Code',
+        getContextWindowLimit: () => 1_000,
+      }),
+      getAggregatedMetrics: () => ({ permissionMode }),
+    };
+    const statusBar = new MonitorStatusBar(monitor as never);
+    onTokenUsage!();
+    expect(mocks.statusBarItem.text).toContain(icon);
+    expect(String(mocks.statusBarItem.tooltip)).toContain(label);
+    statusBar.dispose();
+  });
 });

@@ -3,14 +3,19 @@
  *
  * Shows the subagents spawned during a session, one row per spawn. Rows come
  * from the session's subagent lifecycles (the shared EventAggregator tracks
- * every `Agent` / `Task` call and keeps a background agent running until its
- * task notification arrives), joined with the transcripts Claude Code writes
- * under `<sessionDir>/<sessionId>/subagents/` on the spawning tool_use id or
- * the agent id.
+ * every `Agent` / `Task` / Codex `spawn_agent` call and keeps a background
+ * agent running until a notification or another record settles it), joined
+ * with the agents' transcripts on the spawning tool_use id or the agent id:
+ * for Claude Code, the transcripts under `<sessionDir>/<sessionId>/subagents/`;
+ * for Codex, the child rollouts the provider discovers (children and their
+ * children).
  *
  * Key features:
  * - Hierarchical display of nested subagents (parent → children)
- * - Shows running (spinner) vs completed (check) status
+ * - Shows each agent's display state (`resolveSubagentDisplayState`): running,
+ *   finished without a report, ended, or its outcome
+ * - Feeds Claude Code's meta flags (`finished`, `stoppedByUser`) to the
+ *   lifecycles, and rescans every 15 s while an agent is unresolved
  * - Displays agent type (Explore, Plan, Task, Unknown)
  * - Click-to-open transcript files
  * - Token and duration stats from the transcripts, parallel-run detection
@@ -26,7 +31,11 @@ import type { TimelineEvent, SubagentStats } from '../types/claudeSession';
 import {
   formatTokenCount,
   isSubagentSpawnTool,
+  resolveSubagentDisplayState,
   scanSubagentTraces,
+  subagentDisplayLabel,
+  type SubagentDisplayStateName,
+  type SubagentDisplayTrace,
   type SubagentLifecycle,
   type SubagentTrace,
 } from 'sidekick-shared';
@@ -54,6 +63,9 @@ interface SubagentItem {
 
   /** How the agent ended (`failed`, `killed`, `stopped`, …), when known */
   outcome?: SubagentLifecycle['outcome'];
+
+  /** How the row reads now (`resolveSubagentDisplayState`) */
+  displayState: SubagentDisplayStateName;
 
   /** Agent type based on description keywords */
   agentType: AgentType;
@@ -90,9 +102,26 @@ interface SubagentItem {
 export interface SubagentTreeProviderOptions {
   /** Minimum gap between transcript rescans; requests in between coalesce. Default 1000 ms. */
   minRescanIntervalMs?: number;
+  /** Rescan cadence while any agent is unresolved. Default 15 000 ms. */
+  pollIntervalMs?: number;
+  /** Clock for display states (tests). Default `Date.now`. */
+  now?: () => number;
 }
 
+/**
+ * A transcript joined to a row: a Claude Code trace, or a Codex child built
+ * from its `SubagentStats`.
+ */
+type TreeTrace = SubagentTrace & {
+  /** Codex: the nickname Codex gave the child. */
+  agentNickname?: string;
+  /** Codex: the child's agent path. */
+  agentPath?: string;
+  codex?: boolean;
+};
+
 const DEFAULT_MIN_RESCAN_INTERVAL_MS = 1_000;
+const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const LABEL_DESCRIPTION_MAX = 40;
 const SUBAGENT_KEYWORDS = /subagent|sidechain|spawned/i;
 const AGENT_FILE = /^agent-.+\.(?:jsonl|meta\.json)$/;
@@ -139,14 +168,18 @@ export class SubagentTreeProvider
   private disposables: vscode.Disposable[] = [];
 
   /** Top-level transcript traces from the last scan */
-  private traces: SubagentTrace[] = [];
+  private traces: TreeTrace[] = [];
 
   /** Names, sizes, and mtimes of the transcript files behind `traces` */
   private traceSignature: string | null = null;
 
   private lastTraceScanAt = 0;
   private rescanTimer: ReturnType<typeof setTimeout> | undefined;
+  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private rebuilding = false;
   private readonly minRescanIntervalMs: number;
+  private readonly pollIntervalMs: number;
+  private readonly now: () => number;
 
   /**
    * Creates a new SubagentTreeProvider.
@@ -164,6 +197,8 @@ export class SubagentTreeProvider
       0,
       options.minRescanIntervalMs ?? DEFAULT_MIN_RESCAN_INTERVAL_MS,
     );
+    this.pollIntervalMs = Math.max(1, options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS);
+    this.now = options.now ?? Date.now;
 
     // A new session: start over from its lifecycles and transcripts
     this.disposables.push(
@@ -179,6 +214,16 @@ export class SubagentTreeProvider
     this.disposables.push(
       sessionMonitor.onTimelineEvent((event: TimelineEvent) => {
         this.handleTimelineEvent(event);
+      }),
+    );
+
+    // A notification, stop marker, task status, or Codex lifecycle record
+    // settled or reopened an agent; its transcript has probably grown too.
+    this.disposables.push(
+      sessionMonitor.onSubagentsChanged(() => {
+        if (this.rebuilding) return;
+        this.requestTraceRescan();
+        this.rebuild();
       }),
     );
 
@@ -233,8 +278,14 @@ export class SubagentTreeProvider
     this.rescanTimer = undefined;
   }
 
+  private isCodexSession(): boolean {
+    return this.sessionMonitor.getProvider?.()?.id === 'codex';
+  }
+
   /**
-   * Re-reads the session's subagent transcripts when their files changed.
+   * Re-reads the session's subagent transcripts when their files changed:
+   * Claude Code's `subagents/` directory, or the Codex child rollouts the
+   * provider discovers.
    *
    * @returns Whether the traces changed
    */
@@ -248,6 +299,8 @@ export class SubagentTreeProvider
       return changed;
     }
 
+    if (this.isCodexSession()) return this.rescanCodexTraces();
+
     const subagentsDir = path.join(this.sessionDir, sessionId, 'subagents');
     const signature = directorySignature(subagentsDir);
     if (signature === this.traceSignature) return false;
@@ -260,28 +313,107 @@ export class SubagentTreeProvider
     return true;
   }
 
+  /** Codex: children (and their children) from the provider's discovery. */
+  private rescanCodexTraces(): boolean {
+    let stats: SubagentStats[];
+    try {
+      stats = this.sessionMonitor.getSubagentStats();
+    } catch {
+      stats = [];
+    }
+    const signature = codexSignature(stats);
+    if (signature === this.traceSignature) return false;
+    this.traceSignature = signature;
+    this.traces = codexTraces(stats);
+    return true;
+  }
+
   /**
    * Rebuilds the rows: one per spawn, transcript data joined in, nested
    * agents under their parents. Spawns with no transcript yet get a row from
    * their lifecycle alone.
    */
   private rebuild(): void {
-    const lifecycles = this.sessionMonitor.getAggregatedMetrics().subagents ?? [];
-    const { byTrace, unmatched } = this.matchLifecycles(lifecycles);
+    if (this.rebuilding) return;
+    this.rebuilding = true;
+    try {
+      this.applyMetaEvidence();
+      const metrics = this.sessionMonitor.getAggregatedMetrics();
+      const lifecycles = metrics.subagents ?? [];
+      const { byTrace, unmatched } = this.matchLifecycles(lifecycles);
+      const display = {
+        now: this.now(),
+        parentLastActivity: metrics.lastEventTime ?? null,
+      };
 
-    this.subagents.clear();
-    const rows = this.traces.map((trace) => this.traceToItem(trace, byTrace));
-    for (const lifecycle of unmatched) {
-      const item = this.lifecycleToItem(lifecycle);
-      this.subagents.set(item.id, item);
-      rows.push(item);
+      this.subagents.clear();
+      const rows = this.traces.map((trace) => this.traceToItem(trace, byTrace, display));
+      for (const lifecycle of unmatched) {
+        const item = this.lifecycleToItem(lifecycle, display);
+        this.subagents.set(item.id, item);
+        rows.push(item);
+      }
+      // Older Claude Code kept transcripts flat in the session directory.
+      if (this.traces.length === 0 && !this.isCodexSession()) this.addFlatLayoutAgents(rows);
+      this.topLevelAgents = rows;
+
+      this.reportTraceFacts(byTrace);
+      this.detectParallelExecution();
+      this.updatePollTimer();
+      this.refresh();
+    } finally {
+      this.rebuilding = false;
     }
-    // Older Claude Code kept transcripts flat in the session directory.
-    if (this.traces.length === 0) this.addFlatLayoutAgents(rows);
-    this.topLevelAgents = rows;
+  }
 
-    this.detectParallelExecution();
-    this.refresh();
+  /**
+   * Feeds Claude Code's meta flags to the lifecycles: a background agent the
+   * user stopped from the UI, or one marked finished, settles even when no
+   * notification ever arrives.
+   */
+  private applyMetaEvidence(): void {
+    for (const trace of flattenTraces(this.traces)) {
+      if (trace.finished === undefined && trace.stoppedByUser === undefined) continue;
+      const at = trace.lastActivityAt ?? trace.stats.endTime;
+      this.sessionMonitor.applySubagentEvidence(
+        {
+          agentId: trace.agentId,
+          ...(trace.spawnToolUseId ? { toolUseId: trace.spawnToolUseId } : {}),
+          ...(trace.finished !== undefined ? { finished: trace.finished } : {}),
+          ...(trace.stoppedByUser !== undefined ? { stoppedByUser: trace.stoppedByUser } : {}),
+        },
+        (at ?? new Date(this.now())).toISOString(),
+      );
+    }
+  }
+
+  /** Shares the joined transcript facts with the monitor (the task board reads them). */
+  private reportTraceFacts(byTrace: Map<TreeTrace, SubagentLifecycle>): void {
+    const facts = new Map<string, SubagentDisplayTrace>();
+    for (const [trace, lifecycle] of byTrace) facts.set(lifecycle.id, displayTraceOf(trace));
+    this.sessionMonitor.setSubagentTraceFacts(facts);
+  }
+
+  /**
+   * Rescans every `pollIntervalMs` while an agent is unresolved (running, or
+   * finished without a report): transcripts keep growing without parent
+   * events, the user can stop an agent from the UI (meta only), and display
+   * states change with time. Agents read as ended stop the polling; parent
+   * events still rebuild.
+   */
+  private updatePollTimer(): void {
+    const unresolved = Array.from(this.subagents.values()).some(
+      (item) => item.displayState === 'running' || item.displayState === 'finished-unreported',
+    );
+    if (unresolved && !this.pollTimer) {
+      this.pollTimer = setInterval(() => {
+        this.rescanTraces();
+        this.rebuild();
+      }, this.pollIntervalMs);
+    } else if (!unresolved && this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = undefined;
+    }
   }
 
   /**
@@ -290,17 +422,17 @@ export class SubagentTreeProvider
    * unambiguous description.
    */
   private matchLifecycles(lifecycles: readonly SubagentLifecycle[]): {
-    byTrace: Map<SubagentTrace, SubagentLifecycle>;
+    byTrace: Map<TreeTrace, SubagentLifecycle>;
     unmatched: SubagentLifecycle[];
   } {
-    const bySpawn = new Map<string, SubagentTrace>();
-    const byAgent = new Map<string, SubagentTrace>();
+    const bySpawn = new Map<string, TreeTrace>();
+    const byAgent = new Map<string, TreeTrace>();
     for (const trace of flattenTraces(this.traces)) {
       if (trace.spawnToolUseId) bySpawn.set(trace.spawnToolUseId, trace);
       byAgent.set(trace.agentId, trace);
     }
 
-    const byTrace = new Map<SubagentTrace, SubagentLifecycle>();
+    const byTrace = new Map<TreeTrace, SubagentLifecycle>();
     let unmatched: SubagentLifecycle[] = [];
     for (const lifecycle of lifecycles) {
       const trace =
@@ -328,8 +460,9 @@ export class SubagentTreeProvider
    * Converts a SubagentTrace tree into a SubagentItem tree.
    */
   private traceToItem(
-    trace: SubagentTrace,
-    lifecycles: Map<SubagentTrace, SubagentLifecycle>,
+    trace: TreeTrace,
+    lifecycles: Map<TreeTrace, SubagentLifecycle>,
+    display: { now: number; parentLastActivity: string | null },
   ): SubagentItem {
     const lifecycle = lifecycles.get(trace);
     const description = trace.description ?? lifecycle?.description;
@@ -337,15 +470,29 @@ export class SubagentTreeProvider
       trace.agentType ?? lifecycle?.subagentType,
       description,
     );
+    // The lifecycle knows; without one (an agent spawned by a subagent, or
+    // older sessions), Claude Code's meta flags or the transcript's last turn tell.
+    const looksFinished = traceLooksFinished(trace);
+    const basis: Pick<SubagentLifecycle, 'status' | 'outcome'> = lifecycle ?? {
+      status: looksFinished ? 'completed' : 'running',
+      outcome: trace.stoppedByUser ? 'stopped' : looksFinished ? 'completed' : undefined,
+    };
+    const displayState = resolveSubagentDisplayState(basis, displayTraceOf(trace), display).state;
+    // Codex ids are UUIDv7: siblings share a prefix, so name them instead.
+    const name = trace.codex
+      ? truncate(
+          trace.agentNickname ?? taskNameOf(trace.agentPath) ?? description ?? trace.agentId,
+          LABEL_DESCRIPTION_MAX,
+        )
+      : trace.agentId.substring(0, 8);
 
     const item: SubagentItem = {
       id: lifecycle?.id || trace.spawnToolUseId || trace.agentId,
       agentId: trace.agentId,
-      label: `${trace.agentId.substring(0, 8)} (${agentType})`,
-      // The lifecycle knows; without one, Claude Code's meta flags or the
-      // transcript's last turn tell.
-      type: lifecycle ? lifecycle.status : traceLooksFinished(trace) ? 'completed' : 'running',
-      outcome: lifecycle?.outcome ?? (trace.stoppedByUser ? 'stopped' : undefined),
+      label: `${name} (${agentType})`,
+      type: basis.status,
+      outcome: basis.outcome,
+      displayState,
       agentType,
       transcriptPath: trace.filePath ?? this.findTranscriptPath(trace.agentId),
       timestamp: parseDate(lifecycle?.spawnTime) ?? trace.stats.startTime ?? new Date(),
@@ -354,7 +501,7 @@ export class SubagentTreeProvider
       totalTokens: trace.stats.totalTokens,
       durationMs: lifecycle?.durationMs ?? trace.stats.durationMs,
       description,
-      children: trace.children.map((child) => this.traceToItem(child, lifecycles)),
+      children: trace.children.map((child) => this.traceToItem(child, lifecycles, display)),
     };
 
     // Register in flat map for lookup
@@ -363,19 +510,27 @@ export class SubagentTreeProvider
   }
 
   /** A spawn whose transcript has not been found (yet). */
-  private lifecycleToItem(lifecycle: SubagentLifecycle): SubagentItem {
+  private lifecycleToItem(
+    lifecycle: SubagentLifecycle,
+    display: { now: number; parentLastActivity: string | null },
+  ): SubagentItem {
     const agentType = this.resolveAgentType(lifecycle.subagentType, lifecycle.description);
-    const label = lifecycle.agentId
-      ? `${lifecycle.agentId.substring(0, 8)} (${agentType})`
-      : `${truncate(lifecycle.description, LABEL_DESCRIPTION_MAX)} (${agentType})`;
+    // Codex child ids are UUIDv7 (shared prefixes): use the task name.
+    const codex = lifecycle.agentPath !== undefined || this.isCodexSession();
+    const label =
+      lifecycle.agentId && !codex
+        ? `${lifecycle.agentId.substring(0, 8)} (${agentType})`
+        : `${truncate(taskNameOf(lifecycle.agentPath) ?? lifecycle.description, LABEL_DESCRIPTION_MAX)} (${agentType})`;
     return {
       id: lifecycle.id || lifecycle.agentId || `spawn-${lifecycle.spawnTime}`,
       agentId: lifecycle.agentId,
       label,
       type: lifecycle.status,
       outcome: lifecycle.outcome,
+      displayState: resolveSubagentDisplayState(lifecycle, null, display).state,
       agentType,
-      transcriptPath: lifecycle.agentId ? this.findTranscriptPath(lifecycle.agentId) : undefined,
+      transcriptPath:
+        lifecycle.agentId && !codex ? this.findTranscriptPath(lifecycle.agentId) : undefined,
       timestamp: parseDate(lifecycle.spawnTime) ?? new Date(),
       durationMs: lifecycle.durationMs,
       description: lifecycle.description,
@@ -483,6 +638,7 @@ export class SubagentTreeProvider
         agentId,
         label: `${agentId.substring(0, 8)} (${agentType})`,
         type: 'completed',
+        displayState: 'completed',
         agentType,
         transcriptPath,
         timestamp: stats?.startTime || new Date(),
@@ -529,9 +685,16 @@ export class SubagentTreeProvider
   private classifyAgentType(raw?: string): AgentType {
     if (!raw) return 'Unknown';
     const lower = raw.toLowerCase();
+    // Codex roles: `explorer`, `worker`, `default`.
     if (lower.includes('explore') || lower === 'explore') return 'Explore';
     if (lower.includes('plan') || lower === 'plan') return 'Plan';
-    if (lower.includes('task') || lower.includes('bash') || lower.includes('general'))
+    if (
+      lower.includes('task') ||
+      lower.includes('bash') ||
+      lower.includes('general') ||
+      lower === 'worker' ||
+      lower === 'default'
+    )
       return 'Task';
     return 'Unknown';
   }
@@ -574,9 +737,13 @@ export class SubagentTreeProvider
         : vscode.TreeItemCollapsibleState.None;
     const treeItem = new vscode.TreeItem(element.label, collapsible);
 
-    // Set icon based on status
-    if (element.type === 'running') {
+    // Set icon based on how the agent reads now
+    const state = element.displayState;
+    const stateIcon = STATE_ICONS[state];
+    if (state === 'running') {
       treeItem.iconPath = new vscode.ThemeIcon('sync~spin');
+    } else if (stateIcon) {
+      treeItem.iconPath = new vscode.ThemeIcon(stateIcon);
     } else if (element.children.length > 0) {
       treeItem.iconPath = new vscode.ThemeIcon('symbol-class');
     } else if (element.isParallel) {
@@ -586,11 +753,11 @@ export class SubagentTreeProvider
     }
 
     // Build description with metrics, falling back to status text
-    if (element.type === 'running') {
+    if (state === 'running') {
       treeItem.description = 'Running...';
     } else {
       const descParts: string[] = [];
-      if (element.outcome && element.outcome !== 'completed') descParts.push(element.outcome);
+      if (state !== 'completed') descParts.push(subagentDisplayLabel(state));
       // Cache-inclusive total, the same figure as the session's token totals.
       const tokens =
         element.totalTokens ?? (element.inputTokens || 0) + (element.outputTokens || 0);
@@ -612,8 +779,13 @@ export class SubagentTreeProvider
       treeItem.description = descParts.length > 0 ? descParts.join(' | ') : 'Completed';
     }
 
-    // Set click-to-open command if transcript exists
-    if (element.transcriptPath && fs.existsSync(element.transcriptPath)) {
+    // Set click-to-open command if a readable transcript exists (a
+    // compressed Codex rollout is not)
+    if (
+      element.transcriptPath &&
+      !element.transcriptPath.endsWith('.zst') &&
+      fs.existsSync(element.transcriptPath)
+    ) {
       treeItem.command = {
         command: 'vscode.open',
         title: 'Open Transcript',
@@ -662,6 +834,8 @@ export class SubagentTreeProvider
   dispose(): void {
     if (this.rescanTimer) clearTimeout(this.rescanTimer);
     this.rescanTimer = undefined;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = undefined;
     this._onDidChangeTreeData.dispose();
     for (const disposable of this.disposables) {
       disposable.dispose();
@@ -670,9 +844,85 @@ export class SubagentTreeProvider
   }
 }
 
+/** Theme icons for settled and stale display states (running spins; completed keeps the old icons). */
+const STATE_ICONS: Partial<Record<SubagentDisplayStateName, string>> = {
+  'finished-unreported': 'pass',
+  ended: 'circle-slash',
+  failed: 'error',
+  stopped: 'debug-stop',
+  killed: 'close',
+};
+
 /** Every trace in a forest, parents before their children. */
-function flattenTraces(traces: readonly SubagentTrace[]): SubagentTrace[] {
-  return traces.flatMap((trace) => [trace, ...flattenTraces(trace.children)]);
+function flattenTraces<T extends SubagentTrace>(traces: readonly T[]): T[] {
+  return traces.flatMap((trace) => [trace, ...flattenTraces(trace.children as T[])]);
+}
+
+/** The transcript facts the display rule reads. */
+function displayTraceOf(trace: TreeTrace): SubagentDisplayTrace {
+  return {
+    ...(trace.endedCleanly !== undefined ? { endedCleanly: trace.endedCleanly } : {}),
+    ...(trace.lastActivityAt || trace.stats.endTime
+      ? { lastActivityAt: trace.lastActivityAt ?? trace.stats.endTime }
+      : {}),
+    ...(trace.finished !== undefined ? { finished: trace.finished } : {}),
+    ...(trace.stoppedByUser !== undefined ? { stoppedByUser: trace.stoppedByUser } : {}),
+  };
+}
+
+/** The last segment of a Codex agent path (`/root/review_builder` → `review_builder`). */
+function taskNameOf(agentPath: string | undefined): string | undefined {
+  const name = agentPath?.split('/').filter(Boolean).pop();
+  return name || undefined;
+}
+
+/** Codex children as a trace forest, nested by `parentAgentId`. */
+function codexTraces(stats: readonly SubagentStats[]): TreeTrace[] {
+  const traces = stats.map(
+    (entry): TreeTrace => ({
+      agentId: entry.agentId,
+      agentType: entry.agentType,
+      description: entry.description,
+      events: [],
+      children: [],
+      stats: entry,
+      filePath: entry.filePath,
+      spawnToolUseId: entry.spawnToolUseId,
+      parentToolUseId: entry.spawnToolUseId,
+      parentAgentId: entry.parentAgentId,
+      background: true,
+      lastActivityAt: entry.endTime,
+      endedCleanly: entry.endedCleanly,
+      agentNickname: entry.agentNickname,
+      agentPath: entry.agentPath,
+      codex: true,
+    }),
+  );
+  const byId = new Map(traces.map((trace) => [trace.agentId, trace]));
+  const roots: TreeTrace[] = [];
+  for (const trace of traces) {
+    const parent = trace.parentAgentId ? byId.get(trace.parentAgentId) : undefined;
+    if (parent && parent !== trace) parent.children.push(trace);
+    else roots.push(trace);
+  }
+  return roots;
+}
+
+/** Ids, rollouts, and the rollouts' sizes and mtimes; unchanged children skip a rebuild. */
+function codexSignature(stats: readonly SubagentStats[]): string {
+  const parts = stats.map((entry) => {
+    let stamp = '';
+    if (entry.filePath) {
+      try {
+        const stat = fs.statSync(entry.filePath);
+        stamp = `${stat.size}:${stat.mtimeMs}`;
+      } catch {
+        stamp = 'missing';
+      }
+    }
+    return `${entry.agentId}:${entry.spawnToolUseId ?? ''}:${entry.parentAgentId ?? ''}:${entry.filePath ?? ''}:${stamp}`;
+  });
+  return parts.length > 0 ? `codex\n${parts.sort().join('\n')}` : '';
 }
 
 /**
@@ -700,10 +950,12 @@ function directorySignature(dir: string): string {
 
 /**
  * Without a lifecycle: done when Claude Code says so (meta `finished` or
- * `stoppedByUser`) or the transcript's last turn ended without a tool call.
+ * `stoppedByUser`), the trace parser saw a clean end, or the transcript's
+ * last turn ended without a tool call.
  */
-function traceLooksFinished(trace: SubagentTrace): boolean {
+function traceLooksFinished(trace: TreeTrace): boolean {
   if (trace.finished || trace.stoppedByUser) return true;
+  if (trace.endedCleanly !== undefined) return trace.endedCleanly;
   for (let i = trace.events.length - 1; i >= 0; i--) {
     const event = trace.events[i].event;
     if (event.type !== 'assistant' && event.type !== 'user') continue;

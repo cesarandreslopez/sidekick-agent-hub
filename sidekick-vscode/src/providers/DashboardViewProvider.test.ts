@@ -83,8 +83,11 @@ function disposable() {
 }
 
 function makeSessionMonitor() {
-  const handlers: { tokenUsage?: (usage: unknown) => void; timeline?: (event: unknown) => void } =
-    {};
+  const handlers: {
+    tokenUsage?: (usage: unknown) => void;
+    timeline?: (event: unknown) => void;
+    sessionReset?: (event: unknown) => void;
+  } = {};
   return {
     handlers,
     getStatsView: vi.fn(
@@ -104,6 +107,10 @@ function makeSessionMonitor() {
       return disposable();
     }),
     onSessionStart: vi.fn(() => disposable()),
+    onSessionReset: vi.fn((handler: (event: unknown) => void) => {
+      handlers.sessionReset = handler;
+      return disposable();
+    }),
     onSessionEnd: vi.fn(() => disposable()),
     onToolAnalytics: vi.fn(() => disposable()),
     onDiscoveryModeChange: vi.fn(() => disposable()),

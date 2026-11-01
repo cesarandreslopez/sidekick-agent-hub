@@ -70,6 +70,7 @@ import {
   saveSnapshot,
   captureJsonlCheckpoint,
   type JsonlTailCheckpoint,
+  type JsonlTailResetReason,
   type SessionSnapshot,
   categorizeError,
   extractErrorMessage,
@@ -79,7 +80,18 @@ import {
   getLiveClaudeHome,
   isSubagentSpawnTool,
   isTaskNotificationSystemEvent,
+  isTaskStatusSystemEvent,
+  isAgentsKilledSystemEvent,
+  isSubagentActivitySystemEvent,
+  agentsStoppedNoticeFromEvent,
+  describeSubagentActivity,
+  resolveSubagentDisplayState,
+  subagentActivityFromEvent,
   taskNotificationFromEvent,
+  taskStatusFromEvent,
+  type SubagentDisplayState,
+  type SubagentDisplayTrace,
+  type SubagentEvidence,
 } from 'sidekick-shared';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 
@@ -90,6 +102,14 @@ import { calculateLineChanges } from '../utils/lineChangeCalculator';
 export function isClaudePlanFile(filePath: string): boolean {
   const plansDir = path.resolve(getLiveClaudeHome(), 'plans') + path.sep;
   return filePath.includes('.claude/plans/') || path.resolve(filePath).startsWith(plansDir);
+}
+
+/** Payload of `SessionMonitor.onSessionReset`. */
+export interface SessionResetEvent {
+  /** The session file, which the monitor keeps following. */
+  sessionPath: string;
+  /** Why the reader started over from the beginning of the file. */
+  reason: JsonlTailResetReason;
 }
 
 /**
@@ -137,8 +157,10 @@ const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
  * 4: file-backed snapshots record a `sourceCheckpoint` (restore verifies the
  * file is the same, append-only one) and the reader's `readerState`, and the
  * aggregator's subagent state changed.
+ * 5: subagent lifecycles track Codex spawns and record what settled a
+ * background agent (aggregator schema 7).
  */
-const VSCODE_CHECKPOINT_REVISION = 4;
+const VSCODE_CHECKPOINT_REVISION = 5;
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -309,6 +331,16 @@ export class SessionMonitor implements vscode.Disposable {
   >();
   private readonly _onQuotaUpdate = new vscode.EventEmitter<QuotaState>();
   private readonly _onReplayStateChange = new vscode.EventEmitter<boolean>();
+  private readonly _onSessionReset = new vscode.EventEmitter<SessionResetEvent>();
+  private readonly _onSubagentsChanged = new vscode.EventEmitter<void>();
+
+  /**
+   * Transcript facts per subagent lifecycle id, reported by the Subagents
+   * tree from its scans, for {@link getSubagentDisplayStates}.
+   */
+  private subagentTraceFacts = new Map<string, SubagentDisplayTrace>();
+  /** Display states as of the last `setSubagentTraceFacts`, to notice changes. */
+  private subagentDisplayKey = '';
 
   /** Fires when token usage is detected in session */
   readonly onTokenUsage = this._onTokenUsage.event;
@@ -348,6 +380,24 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Fires when replay state changes (true = replaying historical events, false = live) */
   readonly onReplayStateChange = this._onReplayStateChange.event;
+
+  /**
+   * Fires after the monitored session file was truncated, rewritten, or
+   * replaced and the monitor rebuilt its state by replaying it from the
+   * start (with `isReplaying` set, so no per-event notifications fired).
+   * Views that keep running totals from `onTokenUsage` / `onTimelineEvent`
+   * must drop them and resync from `getStats()`. Unlike `onSessionStart`,
+   * the session is the same one.
+   */
+  readonly onSessionReset = this._onSessionReset.event;
+
+  /**
+   * Fires when a subagent lifecycle changed outside its spawn's own tool
+   * call: a background agent's notification, task status, or stop marker, a
+   * Codex subagent lifecycle record, or host evidence
+   * ({@link applySubagentEvidence}). Not fired while replaying.
+   */
+  readonly onSubagentsChanged = this._onSubagentsChanged.event;
 
   /**
    * Sets or clears the event logger for JSONL audit trail recording.
@@ -1326,6 +1376,56 @@ export class SessionMonitor implements vscode.Disposable {
   }
 
   /**
+   * Applies evidence from a subagent's transcript metadata (Claude Code's
+   * `finished` / `stoppedByUser` meta flags) to its lifecycle; see
+   * `EventAggregator.applySubagentEvidence`. Fires `onSubagentsChanged` when
+   * a lifecycle changed.
+   *
+   * @returns Whether a lifecycle changed
+   */
+  applySubagentEvidence(evidence: SubagentEvidence, timestamp: string): boolean {
+    const changed = this.aggregator.applySubagentEvidence(evidence, timestamp);
+    if (changed && !this._isReplaying) this._onSubagentsChanged.fire();
+    return changed;
+  }
+
+  /**
+   * Records the latest transcript facts per lifecycle id (the spawning
+   * tool_use id), as the Subagents tree reads them, so other views resolve
+   * the same display state. Replaces the previous set, and fires
+   * `onSubagentsChanged` when an agent now reads differently (a display
+   * state can change with time alone, e.g. to "finished (no report)").
+   */
+  setSubagentTraceFacts(facts: ReadonlyMap<string, SubagentDisplayTrace>): void {
+    this.subagentTraceFacts = new Map(facts);
+    const key = Array.from(this.getSubagentDisplayStates())
+      .map(([id, display]) => `${id}=${display.state}`)
+      .join('\n');
+    if (key === this.subagentDisplayKey) return;
+    this.subagentDisplayKey = key;
+    if (!this._isReplaying) this._onSubagentsChanged.fire();
+  }
+
+  /**
+   * How each subagent reads now (running, finished without a report, ended,
+   * or its outcome), keyed by lifecycle id. Recomputed on every call.
+   */
+  getSubagentDisplayStates(now: number = Date.now()): Map<string, SubagentDisplayState> {
+    const parentLastActivity = this.aggregator.getLastEventTime();
+    const states = new Map<string, SubagentDisplayState>();
+    for (const lifecycle of this.aggregator.getSubagents()) {
+      states.set(
+        lifecycle.id,
+        resolveSubagentDisplayState(lifecycle, this.subagentTraceFacts.get(lifecycle.id), {
+          now,
+          parentLastActivity,
+        }),
+      );
+    }
+    return states;
+  }
+
+  /**
    * Scans subagent directory and updates cached stats.
    */
   private scanSubagents(): void {
@@ -1773,6 +1873,8 @@ export class SessionMonitor implements vscode.Disposable {
     this._onCycleDetected.dispose();
     this._onQuotaUpdate.dispose();
     this._onReplayStateChange.dispose();
+    this._onSessionReset.dispose();
+    this._onSubagentsChanged.dispose();
 
     this.workspacePath = null;
   }
@@ -1792,6 +1894,12 @@ export class SessionMonitor implements vscode.Disposable {
     this._onReplayStateChange.fire(true);
     try {
       const events = this.reader.readNew();
+      // A restored snapshot's position no longer fits the file (it shrank
+      // since): the reader started over, so drop the restored state too.
+      if (this.reader.wasTruncated()) {
+        this.logReaderReset('while resuming');
+        this.resetSessionProcessingState();
+      }
       log(`Reading initial content: ${events.length} events`);
       for (const event of events) {
         this.handleEvent(event);
@@ -2065,14 +2173,14 @@ export class SessionMonitor implements vscode.Disposable {
 
       const newEvents = this.reader.readNew();
 
-      // Handle file truncation detected by reader
       if (this.reader.wasTruncated()) {
-        log('Session file truncated, resetting stats');
-        this.resetSessionProcessingState();
-      }
-
-      for (const event of newEvents) {
-        this.handleEvent(event);
+        // The file was truncated, rewritten, or replaced and the reader
+        // started over: these events are the whole session again.
+        this.replayAfterReaderReset(newEvents);
+      } else {
+        for (const event of newEvents) {
+          this.handleEvent(event);
+        }
       }
 
       // Propagate session-based quota data (e.g., Codex rate_limits, z.ai API quota)
@@ -2429,9 +2537,22 @@ export class SessionMonitor implements vscode.Disposable {
         this._onToolCall.fire({ name, input: {}, timestamp: new Date(event.timestamp) });
       }
     }
+    // Any record that can settle or reopen a subagent outside its spawn's result.
+    const subagentRecord =
+      isTaskNotificationSystemEvent(event) ||
+      isTaskStatusSystemEvent(event) ||
+      isSubagentActivitySystemEvent(event) ||
+      isAgentsKilledSystemEvent(event) ||
+      notification !== null;
+    if (subagentRecord && !this._isReplaying) this._onSubagentsChanged.fire();
 
-    // The opt-in mid-turn notification event is bookkeeping, not a message.
-    if (isTaskNotificationSystemEvent(event)) {
+    // The opt-in mid-turn notification and task-status events are
+    // bookkeeping, not messages; so are opt-in Codex subagent lifecycle records.
+    if (
+      isTaskNotificationSystemEvent(event) ||
+      isTaskStatusSystemEvent(event) ||
+      isSubagentActivitySystemEvent(event)
+    ) {
       this.stats.lastUpdated = new Date();
       this.addTimelineEvent(event);
       return;
@@ -2913,6 +3034,9 @@ export class SessionMonitor implements vscode.Disposable {
    * @returns Timeline event or null if not relevant for timeline
    */
   private createTimelineEvent(event: SessionEvent): TimelineEvent | null {
+    const subagentTimeline = this.createSubagentRecordTimelineEvent(event);
+    if (subagentTimeline !== undefined) return subagentTimeline;
+
     // A background task's notification reads as its spawning tool finishing.
     const notification = taskNotificationFromEvent(event);
     if (notification) {
@@ -3008,6 +3132,57 @@ export class SessionMonitor implements vscode.Disposable {
       default:
         return null;
     }
+  }
+
+  /**
+   * Timeline entry for subagent bookkeeping other than a task notification:
+   * a stop notice, a final task status, or a Codex subagent lifecycle record
+   * (short, content-free text). `undefined` when the event is none of those.
+   */
+  private createSubagentRecordTimelineEvent(event: SessionEvent): TimelineEvent | null | undefined {
+    const activity = subagentActivityFromEvent(event);
+    if (activity) {
+      const subagent = this.aggregator
+        .getSubagents()
+        .find(
+          (s) =>
+            (activity.kind === 'started' && s.id === activity.callId) ||
+            (!!activity.agentThreadId && s.agentId === activity.agentThreadId) ||
+            (!!activity.agentPath && s.agentPath === activity.agentPath),
+        );
+      return {
+        type: 'tool_result',
+        timestamp: event.timestamp,
+        description: describeSubagentActivity(activity),
+        noiseLevel: 'system',
+        isSidechain: event.isSidechain,
+        metadata: { toolName: 'Spawn_agent', toolUseId: subagent?.id, isError: false },
+      };
+    }
+    const stopped = agentsStoppedNoticeFromEvent(event);
+    const taskStatus = stopped ? null : taskStatusFromEvent(event);
+    if (!stopped && !taskStatus) {
+      return isSubagentActivitySystemEvent(event) || isTaskStatusSystemEvent(event)
+        ? null
+        : undefined;
+    }
+    const subagent = taskStatus
+      ? this.aggregator.getSubagents().find((s) => s.agentId === taskStatus.taskId)
+      : undefined;
+    return {
+      type: 'tool_result',
+      timestamp: event.timestamp,
+      description: stopped
+        ? `Background agents stopped by the user (${stopped.descriptions.length})`
+        : `Background agent${taskStatus!.description ? ` "${taskStatus!.description}"` : ''} ${taskStatus!.status}`,
+      noiseLevel: 'system',
+      isSidechain: event.isSidechain,
+      metadata: {
+        toolName: subagent ? (this.toolCallsById.get(subagent.id)?.name ?? 'Agent') : 'Agent',
+        toolUseId: subagent?.id,
+        isError: taskStatus?.status === 'failed',
+      },
+    };
   }
 
   /**
@@ -3692,6 +3867,43 @@ export class SessionMonitor implements vscode.Disposable {
     this.planStepToolCalls = 0;
     this.planRevisionCount = 0;
     this.lastUserPromptForPlan = undefined;
+  }
+
+  /** Logs why the reader started over, and from where. */
+  private logReaderReset(context: string): void {
+    const reset = this.reader?.lastReset?.();
+    const why = reset ? `${reset.reason} (was at byte ${reset.previousPosition})` : 'truncated';
+    log(`Session file ${why} ${context}; replaying it from the start`);
+  }
+
+  /**
+   * Rebuilds the session from `events`, which a reader returned after
+   * starting over from offset 0 (the file was truncated, rewritten, or
+   * replaced). The replay runs like the initial load, with `isReplaying`
+   * set, so per-event notifications (token usage, timeline, tool calls) do
+   * not fire again for history listeners already counted. Afterwards
+   * `onSessionReset` tells views to resync, and a snapshot of the rebuilt
+   * state replaces the one taken from the old content.
+   */
+  private replayAfterReaderReset(events: SessionEvent[]): void {
+    const reason = this.reader?.lastReset?.()?.reason ?? 'truncated';
+    this.logReaderReset('while monitoring');
+    this.resetSessionProcessingState();
+    this._isReplaying = true;
+    this._onReplayStateChange.fire(true);
+    try {
+      for (const event of events) {
+        this.handleEvent(event);
+      }
+    } finally {
+      this._isReplaying = false;
+      this._onReplayStateChange.fire(false);
+    }
+    this.persistSnapshot();
+    this.lastSnapshotSaveTime = Date.now();
+    if (this.sessionPath) {
+      this._onSessionReset.fire({ sessionPath: this.sessionPath, reason });
+    }
   }
 
   /** Clears every derived structure before replaying a truncated session file. */

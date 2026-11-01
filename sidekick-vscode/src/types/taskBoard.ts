@@ -52,6 +52,12 @@ export interface TaskCard {
   /** Subagent type (e.g. "Explore", "Plan", "Bash") */
   subagentType?: string;
 
+  /**
+   * Subagent cards: how the agent reads now when that is not plain running or
+   * completed, e.g. "finished (no report)", "ended", "stopped", "killed".
+   */
+  agentState?: string;
+
   /** Whether this task was carried over from a prior session */
   carriedOver?: boolean;
 

@@ -75,6 +75,15 @@ export class EventStreamTreeProvider
         this.scheduleRefresh();
       }),
     );
+
+    // The session file started over and was replayed silently: the events
+    // listed so far describe content that is gone, as after a session start.
+    this.disposables.push(
+      sessionMonitor.onSessionReset(() => {
+        this.events = [];
+        this.scheduleRefresh();
+      }),
+    );
   }
 
   private addEvent(event: TimelineEvent): void {

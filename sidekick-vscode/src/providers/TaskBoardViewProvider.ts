@@ -23,6 +23,7 @@ import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
+import { subagentDisplayLabel } from 'sidekick-shared';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
 import { PERSIST_INTERVAL_MS } from '../constants';
 
@@ -88,6 +89,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     };
 
     this._disposables.push(this._sessionMonitor.onToolCall(() => this._updateBoard()));
+    // A background agent settled (or reopened) without a tool call of its own.
+    this._disposables.push(this._sessionMonitor.onSubagentsChanged(() => this._updateBoard()));
 
     this._disposables.push(
       this._sessionMonitor.onSessionStart((path) => this._handleSessionStart(path)),
@@ -301,6 +304,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Add current session tasks
     const currentTaskIds = new Set<string>();
+    const agentStates = this._sessionMonitor.getSubagentDisplayStates();
     for (const task of tasks.values()) {
       const status = task.status ?? 'pending';
       if (status === 'deleted') {
@@ -309,7 +313,13 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       currentTaskIds.add(task.taskId);
       const column = columnLookup.get(status) ?? columnLookup.get('pending');
       if (column) {
-        column.tasks.push(this._toCard(task, activeTaskId));
+        const card = this._toCard(task, activeTaskId);
+        const agentState =
+          task.isSubagent && task.toolUseId ? agentStates.get(task.toolUseId) : undefined;
+        if (agentState && agentState.state !== 'running' && agentState.state !== 'completed') {
+          card.agentState = subagentDisplayLabel(agentState.state);
+        }
+        column.tasks.push(card);
       }
     }
 
@@ -965,6 +975,13 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         activeChip.className = 'chip';
         activeChip.textContent = task.activeForm;
         card.appendChild(activeChip);
+      }
+
+      if (task.isSubagent && task.agentState) {
+        const stateChip = document.createElement('span');
+        stateChip.className = 'chip agent-state';
+        stateChip.textContent = task.agentState;
+        card.appendChild(stateChip);
       }
 
       if (task.description) {

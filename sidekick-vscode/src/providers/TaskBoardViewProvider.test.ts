@@ -15,19 +15,27 @@ import { TaskBoardViewProvider } from './TaskBoardViewProvider';
 
 const disposable = { dispose: vi.fn() };
 
-function monitor() {
-  const handlers: { toolCall?: () => void } = {};
+function monitor(
+  taskState?: { tasks: Map<string, unknown>; activeTaskId: string | null },
+  displayStates = new Map<string, { state: string }>(),
+) {
+  const handlers: { toolCall?: () => void; subagents?: () => void } = {};
   return {
     handlers,
     onToolCall: (handler: () => void) => {
       handlers.toolCall = handler;
       return disposable;
     },
+    onSubagentsChanged: (handler: () => void) => {
+      handlers.subagents = handler;
+      return disposable;
+    },
     onSessionStart: () => disposable,
     onSessionEnd: () => disposable,
-    getStats: () => ({ taskState: undefined }),
-    getStatsView: () => ({ taskState: undefined }),
-    isActive: () => false,
+    getStats: () => ({ taskState }),
+    getStatsView: () => ({ taskState }),
+    getSubagentDisplayStates: () => displayStates,
+    isActive: () => taskState !== undefined,
     getSessionPath: () => null,
   };
 }
@@ -90,6 +98,52 @@ describe('TaskBoardViewProvider lifecycle', () => {
     sessionMonitor.handlers.toolCall!();
     vi.advanceTimersByTime(250);
     expect(postMessage).toHaveBeenCalledTimes(posted + 1);
+    provider.dispose();
+  });
+
+  it('labels agent cards that stopped in all but name, and refreshes on subagent changes', () => {
+    const now = new Date('2026-10-12T20:00:00.000Z');
+    const agentTask = (toolUseId: string, status: string) => ({
+      taskId: `agent-${toolUseId}`,
+      subject: `Agent ${toolUseId}`,
+      status,
+      createdAt: now,
+      updatedAt: now,
+      activeForm: 'Running general-purpose agent',
+      blockedBy: [],
+      blocks: [],
+      associatedToolCalls: [],
+      isSubagent: true,
+      subagentType: 'general-purpose',
+      toolUseId,
+    });
+    const tasks = new Map<string, unknown>([
+      ['agent-t1', agentTask('t1', 'in_progress')],
+      ['agent-t2', agentTask('t2', 'completed')],
+      ['agent-t3', agentTask('t3', 'in_progress')],
+    ]);
+    const states = new Map([
+      ['t1', { state: 'finished-unreported' }],
+      ['t2', { state: 'stopped' }],
+      ['t3', { state: 'running' }],
+    ]);
+    const sessionMonitor = monitor({ tasks, activeTaskId: null }, states);
+    const provider = new TaskBoardViewProvider({} as never, sessionMonitor as never, undefined);
+    const cards = () =>
+      (
+        provider as unknown as {
+          _state: { columns: Array<{ tasks: Array<{ taskId: string; agentState?: string }> }> };
+        }
+      )._state.columns.flatMap((column) => column.tasks);
+    const byId = (id: string) => cards().find((card) => card.taskId === id);
+    expect(byId('agent-t1')?.agentState).toBe('finished (no report)');
+    expect(byId('agent-t2')?.agentState).toBe('stopped');
+    expect(byId('agent-t3')?.agentState).toBeUndefined();
+
+    states.set('t3', { state: 'ended' });
+    sessionMonitor.handlers.subagents!();
+    vi.advanceTimersByTime(250);
+    expect(byId('agent-t3')?.agentState).toBe('ended');
     provider.dispose();
   });
 });

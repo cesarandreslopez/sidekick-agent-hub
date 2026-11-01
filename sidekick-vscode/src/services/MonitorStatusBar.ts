@@ -240,6 +240,10 @@ export class MonitorStatusBar implements vscode.Disposable {
       permissionIndicator = ' $(warning)';
     } else if (this.permissionMode === 'plan') {
       permissionIndicator = ' $(note)';
+    } else if (this.permissionMode === 'auto') {
+      permissionIndicator = ' $(sparkle)';
+    } else if (this.permissionMode === 'dontAsk') {
+      permissionIndicator = ' $(circle-slash)';
     }
 
     // Add skull emoji when context is critically high (>= 80%)
@@ -287,6 +291,8 @@ export class MonitorStatusBar implements vscode.Disposable {
         bypassPermissions: '⚠️ Bypass Permissions (dangerous)',
         acceptEdits: '📝 Accept Edits',
         plan: '📋 Plan Mode',
+        auto: '✨ Auto (classifier approves or denies prompts)',
+        dontAsk: "🚫 Don't Ask (denies anything not pre-approved)",
       };
       tooltipLines.push(`Permission: ${modeLabels[this.permissionMode] || this.permissionMode}`);
     }

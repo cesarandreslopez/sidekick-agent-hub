@@ -17,7 +17,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SessionMonitor } from '../services/SessionMonitor';
+import type { SessionMonitor, SessionResetEvent } from '../services/SessionMonitor';
 import type { QuotaService } from '../services/QuotaService';
 import type { HistoricalDataService } from '../services/HistoricalDataService';
 import type { GuidanceAdvisor } from '../services/GuidanceAdvisor';
@@ -365,6 +365,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     this._disposables.push(
       this._sessionMonitor.onSessionStart((path) => this._handleSessionStart(path)),
+    );
+
+    this._disposables.push(
+      this._sessionMonitor.onSessionReset((event) => this._handleSessionReset(event)),
     );
 
     this._disposables.push(this._sessionMonitor.onSessionEnd(() => this._handleSessionEnd()));
@@ -1272,6 +1276,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       const providerDiagnostics: SessionProviderDiagnostic[] = [];
       const created = createSessionProviders({
+        includeCompressedRollouts: true,
         onDiagnostic: (diagnostic) =>
           providerDiagnostics.push(
             diagnostic.providerId === this._sessionMonitor.getProvider().id
@@ -1575,6 +1580,36 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _handleSessionStart(sessionPath: string): void {
     log(`Dashboard: session started at ${sessionPath}`);
     this._state.sessionActive = true;
+    this._clearSessionDerivedState();
+    this._syncFromSessionMonitor();
+
+    // Notify webview
+    this._postMessage({ type: 'sessionStart', sessionPath });
+    this._sendStateToWebview();
+    this._sendPlanState();
+    this._sendBurnRateUpdate();
+    this._sendSessionList();
+  }
+
+  /**
+   * Handles a session file that was truncated, rewritten, or replaced. The
+   * monitor replayed it without per-event notifications, so the running
+   * totals built from `onTokenUsage` / `onTimelineEvent` are dropped and
+   * rebuilt from the monitor, as on session start but for the same session.
+   */
+  private _handleSessionReset(event: SessionResetEvent): void {
+    log(`Dashboard: session file ${event.reason}, rebuilt from ${event.sessionPath}`);
+    this._clearSessionDerivedState();
+    this._syncFromSessionMonitor();
+    this._sendStateToWebview();
+    this._sendPlanState();
+    this._sendBurnRateUpdate();
+    this._sendTimelineToWebview();
+    this._sendToolAnalyticsToWebview();
+  }
+
+  /** Drops everything accumulated from the current session's events. */
+  private _clearSessionDerivedState(): void {
     this._burnRateCalculator.reset();
     this._toolAnalytics.clear();
     this._timeline = [];
@@ -1588,14 +1623,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.subagentTokens = null;
     this._lastSubagentTokenRefresh = 0;
     this._currentContextSize = 0;
-    this._syncFromSessionMonitor();
-
-    // Notify webview
-    this._postMessage({ type: 'sessionStart', sessionPath });
-    this._sendStateToWebview();
-    this._sendPlanState();
-    this._sendBurnRateUpdate();
-    this._sendSessionList();
   }
 
   /**
@@ -1738,7 +1765,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (cached) return cached;
     const created =
       id === 'codex'
-        ? new CodexProvider()
+        ? new CodexProvider({ includeCompressedRollouts: true })
         : id === 'opencode'
           ? new OpenCodeProvider()
           : id === 'claude-code'

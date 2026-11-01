@@ -42,7 +42,14 @@ vi.mock('vscode', () => ({
   Uri: { file: (fsPath: string) => ({ fsPath }) },
 }));
 
-import { EventAggregator, type SessionEvent, type TimelineEvent } from 'sidekick-shared';
+import {
+  EventAggregator,
+  type SessionEvent,
+  type SubagentDisplayTrace,
+  type SubagentEvidence,
+  type SubagentStats,
+  type TimelineEvent,
+} from 'sidekick-shared';
 import { SubagentTreeProvider } from './SubagentTreeProvider';
 import type { SessionMonitor } from '../services/SessionMonitor';
 
@@ -52,16 +59,40 @@ const SPAWN_ID = 'toolu_spawn';
 
 /** The parts of SessionMonitor the tree reads, over a real shared aggregator. */
 class FakeSessionMonitor {
-  readonly aggregator = new EventAggregator({ providerId: 'claude-code' });
+  readonly aggregator: EventAggregator;
   private readonly sessionStart = new MockEventEmitter<string>();
   private readonly timeline = new MockEventEmitter<TimelineEvent>();
+  private readonly subagentsChanged = new MockEventEmitter<void>();
   readonly onSessionStart = this.sessionStart.event;
   readonly onTimelineEvent = this.timeline.event;
+  readonly onSubagentsChanged = this.subagentsChanged.event;
+  traceFacts = new Map<string, SubagentDisplayTrace>();
+  subagentStats: SubagentStats[] = [];
+  evidenceCalls = 0;
 
   constructor(
     private readonly sessionPath: string | null,
     private readonly sessionId: string | null,
-  ) {}
+    private readonly providerId: 'claude-code' | 'codex' = 'claude-code',
+  ) {
+    this.aggregator = new EventAggregator({ providerId });
+  }
+
+  getProvider() {
+    return { id: this.providerId };
+  }
+  applySubagentEvidence(evidence: SubagentEvidence, timestamp: string): boolean {
+    this.evidenceCalls++;
+    const changed = this.aggregator.applySubagentEvidence(evidence, timestamp);
+    if (changed) this.subagentsChanged.fire();
+    return changed;
+  }
+  setSubagentTraceFacts(facts: ReadonlyMap<string, SubagentDisplayTrace>): void {
+    this.traceFacts = new Map(facts);
+  }
+  fireSubagentsChanged(): void {
+    this.subagentsChanged.fire();
+  }
 
   getSessionPath(): string | null {
     return this.sessionPath;
@@ -73,7 +104,7 @@ class FakeSessionMonitor {
     return this.aggregator.getMetrics();
   }
   getSubagentStats() {
-    return [];
+    return this.subagentStats;
   }
 
   /** Feeds a session event, then fires the timeline event SessionMonitor would. */
@@ -178,15 +209,24 @@ function traceLines(stopReason: string | null = 'end_turn'): unknown[] {
   ];
 }
 
-function create(monitor: FakeSessionMonitor): SubagentTreeProvider {
+/** The tests' clock: shortly after the fixtures' events. */
+let now = Date.parse('2026-11-01T03:06:00.000Z');
+
+function create(
+  monitor: FakeSessionMonitor,
+  options: { pollIntervalMs?: number } = {},
+): SubagentTreeProvider {
   const provider = new SubagentTreeProvider(monitor as unknown as SessionMonitor, {
     minRescanIntervalMs: 0,
+    now: () => now,
+    ...options,
   });
   providers.push(provider);
   return provider;
 }
 
 beforeEach(() => {
+  now = Date.parse('2026-11-01T03:06:00.000Z');
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-subagent-tree-'));
   sessionDir = path.join(root, 'project');
   fs.mkdirSync(sessionDir, { recursive: true });
@@ -376,5 +416,302 @@ describe('SubagentTreeProvider', () => {
     const rows = provider.getChildren();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: '0ld0ld0ld', type: 'completed', transcriptPath: flat });
+  });
+
+  it('reads an interim-only agent that ended cleanly as finished (no report), then running on resume', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
+    try {
+      const monitor = new FakeSessionMonitor(sessionPath, SESSION_ID);
+      monitor.aggregator.processEvent(spawnEvent());
+      monitor.aggregator.processEvent(resultEvent(launchResult));
+      const transcript = writeTrace(
+        AGENT_ID,
+        { agentType: 'Explore', toolUseId: SPAWN_ID, requestShape: 'background' },
+        traceLines(),
+      );
+      now = Date.parse('2026-11-01T03:04:30.000Z');
+      const provider = create(monitor, { pollIntervalMs: 15_000 });
+      expect(provider.getChildren()[0]).toMatchObject({ type: 'running', displayState: 'running' });
+
+      // Quiet for two minutes after its clean end: the next poll says so.
+      now = Date.parse('2026-11-01T03:06:00.000Z');
+      vi.advanceTimersByTime(15_000);
+      const [row] = provider.getChildren();
+      expect(row).toMatchObject({ type: 'running', displayState: 'finished-unreported' });
+      const item = provider.getTreeItem(row);
+      expect((item.iconPath as { id: string }).id).toBe('pass');
+      expect(item.description).toContain('finished (no report)');
+      expect(monitor.traceFacts.get(SPAWN_ID)).toMatchObject({ endedCleanly: true });
+
+      // SendMessage resumed it: a new prompt lands in the transcript.
+      fs.appendFileSync(
+        transcript,
+        JSON.stringify({
+          type: 'user',
+          timestamp: '2026-11-01T03:06:10.000Z',
+          message: { role: 'user', content: 'One more thing.' },
+        }) + '\n',
+      );
+      now = Date.parse('2026-11-01T03:06:15.000Z');
+      vi.advanceTimersByTime(15_000);
+      expect(provider.getChildren()[0].displayState).toBe('running');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('settles a silent UI stop from the meta flags', () => {
+    const monitor = new FakeSessionMonitor(sessionPath, SESSION_ID);
+    monitor.aggregator.processEvent(spawnEvent());
+    monitor.aggregator.processEvent(resultEvent(launchResult));
+    writeTrace(
+      AGENT_ID,
+      {
+        agentType: 'Explore',
+        toolUseId: SPAWN_ID,
+        requestShape: 'background',
+        stoppedByUser: true,
+      },
+      traceLines(null).slice(0, 1),
+    );
+    const provider = create(monitor);
+    const [row] = provider.getChildren();
+    expect(row).toMatchObject({ type: 'completed', outcome: 'stopped', displayState: 'stopped' });
+    expect(monitor.aggregator.getSubagents()[0]).toMatchObject({
+      outcome: 'stopped',
+      settledBy: 'meta',
+    });
+    const item = provider.getTreeItem(row);
+    expect((item.iconPath as { id: string }).id).toBe('debug-stop');
+    expect(item.description).toContain('stopped');
+  });
+
+  it('reads an agent killed mid-work as ended once the parent is idle for 6 hours, and stops polling', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
+    try {
+      const monitor = new FakeSessionMonitor(sessionPath, SESSION_ID);
+      monitor.aggregator.processEvent(spawnEvent());
+      monitor.aggregator.processEvent(resultEvent(launchResult));
+      writeTrace(
+        AGENT_ID,
+        { agentType: 'Explore', toolUseId: SPAWN_ID, requestShape: 'background' },
+        [traceLines()[0], { ...(traceLines('tool_use')[1] as object) }],
+      );
+      const provider = create(monitor, { pollIntervalMs: 15_000 });
+      expect(provider.getChildren()[0].displayState).toBe('running');
+      expect(vi.getTimerCount()).toBe(1);
+
+      now = Date.parse('2026-11-01T09:30:00.000Z');
+      vi.advanceTimersByTime(15_000);
+      const [row] = provider.getChildren();
+      expect(row.displayState).toBe('ended');
+      expect((provider.getTreeItem(row).iconPath as { id: string }).id).toBe('circle-slash');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears its poll timer on dispose', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
+    try {
+      const monitor = new FakeSessionMonitor(sessionPath, SESSION_ID);
+      monitor.aggregator.processEvent(spawnEvent());
+      const provider = create(monitor, { pollIntervalMs: 15_000 });
+      expect(vi.getTimerCount()).toBe(1);
+      provider.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('SubagentTreeProvider (Codex)', () => {
+  const PARENT_ID = '01a18f87-0000-7000-8000-000000000001';
+  const CHILD_ID = '01a18f9d-0000-7000-8000-000000000002';
+  const SIBLING_ID = '01a18f9d-0000-7000-8000-000000000009';
+  const GRANDCHILD_ID = '01a18fa0-0000-7000-8000-000000000003';
+
+  function codexEvent(
+    timestamp: string,
+    content: unknown[],
+    type: 'assistant' | 'user' = 'assistant',
+  ): SessionEvent {
+    return { type, timestamp, message: { role: type, content } } as SessionEvent;
+  }
+  function spawn(callId: string, taskName: string, agentType?: string): SessionEvent {
+    return codexEvent('2026-10-31T01:40:33.000Z', [
+      {
+        type: 'tool_use',
+        id: callId,
+        name: 'Spawn_agent',
+        input: {
+          task_name: taskName,
+          message: 'gAAAA',
+          ...(agentType ? { agent_type: agentType } : {}),
+          _sidekickRawToolName: 'spawn_agent',
+        },
+      },
+    ]);
+  }
+  function activity(timestamp: string, block: Record<string, unknown>): SessionEvent {
+    return {
+      type: 'system',
+      timestamp,
+      origin: { kind: 'subagent-activity' },
+      message: {
+        role: 'system',
+        id: `subagent-activity:${String(block.callId ?? block.kind)}`,
+        sourceLabel: 'subagent activity',
+        content: [{ type: 'subagent_activity', ...block }],
+      },
+    };
+  }
+
+  function childStats(file: string): SubagentStats[] {
+    const base = { toolCalls: [], inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+    return [
+      {
+        ...base,
+        agentId: CHILD_ID,
+        description: 'Banach',
+        filePath: file,
+        spawnToolUseId: 'call_spawn_builder',
+        agentNickname: 'Banach',
+        agentPath: '/root/review_builder',
+        parentAgentId: PARENT_ID,
+        depth: 1,
+        startTime: new Date('2026-10-31T01:40:33.000Z'),
+        endTime: new Date('2026-10-31T01:42:20.000Z'),
+        endedCleanly: true,
+      },
+      {
+        ...base,
+        agentId: SIBLING_ID,
+        description: 'Hopper',
+        filePath: file + '.sibling',
+        spawnToolUseId: 'call_spawn_infra',
+        agentNickname: 'Hopper',
+        agentPath: '/root/review_infra',
+        parentAgentId: PARENT_ID,
+        depth: 1,
+        endTime: new Date('2026-10-31T01:42:00.000Z'),
+      },
+      {
+        ...base,
+        agentId: GRANDCHILD_ID,
+        agentType: 'explorer',
+        description: 'Noether',
+        filePath: file + '.grandchild',
+        spawnToolUseId: 'call_spawn_deep_dive',
+        agentNickname: 'Noether',
+        agentPath: '/root/review_builder/deep_dive',
+        parentAgentId: CHILD_ID,
+        depth: 2,
+        endTime: new Date('2026-10-31T01:40:41.000Z'),
+        endedCleanly: true,
+      },
+    ];
+  }
+
+  it('builds rows from child discovery, joined to the Codex lifecycles', () => {
+    now = Date.parse('2026-10-31T01:43:00.000Z');
+    const rollout = path.join(sessionDir, `rollout-${CHILD_ID}.jsonl`);
+    fs.writeFileSync(rollout, '{}\n');
+    const monitor = new FakeSessionMonitor(sessionPath, PARENT_ID, 'codex');
+    monitor.subagentStats = childStats(rollout);
+    monitor.aggregator.processEvent(spawn('call_spawn_builder', 'review_builder'));
+    monitor.aggregator.processEvent(
+      activity('2026-10-31T01:40:33.100Z', {
+        kind: 'started',
+        callId: 'call_spawn_builder',
+        agentThreadId: CHILD_ID,
+        agentPath: '/root/review_builder',
+      }),
+    );
+    monitor.aggregator.processEvent(spawn('call_spawn_infra', 'review_infra', 'worker'));
+    monitor.aggregator.processEvent(
+      activity('2026-10-31T01:40:34.000Z', {
+        kind: 'started',
+        callId: 'call_spawn_infra',
+        agentThreadId: SIBLING_ID,
+        agentPath: '/root/review_infra',
+      }),
+    );
+    monitor.aggregator.processEvent(
+      activity('2026-10-31T01:42:21.000Z', {
+        kind: 'completed',
+        agentThreadId: CHILD_ID,
+        agentPath: '/root/review_builder',
+      }),
+    );
+
+    const provider = create(monitor);
+    const rows = provider.getChildren();
+    expect(rows).toHaveLength(2);
+    const builder = rows.find((row) => row.agentId === CHILD_ID)!;
+    const infra = rows.find((row) => row.agentId === SIBLING_ID)!;
+    // Nicknames, not the shared UUIDv7 prefix.
+    expect(builder).toMatchObject({
+      id: 'call_spawn_builder',
+      label: 'Banach (Task)',
+      type: 'completed',
+      displayState: 'completed',
+      transcriptPath: rollout,
+      totalTokens: 15,
+    });
+    expect(infra).toMatchObject({
+      id: 'call_spawn_infra',
+      label: 'Hopper (Task)',
+      type: 'running',
+      displayState: 'running',
+    });
+    expect(builder.children).toHaveLength(1);
+    expect(builder.children[0]).toMatchObject({
+      agentId: GRANDCHILD_ID,
+      label: 'Noether (Explore)',
+      type: 'completed',
+    });
+    expect(provider.getTreeItem(builder).command).toMatchObject({
+      command: 'vscode.open',
+      arguments: [{ fsPath: rollout }],
+    });
+  });
+
+  it('labels a Codex spawn without a rollout yet by its task name, and rescans on activity', () => {
+    now = Date.parse('2026-10-31T01:41:00.000Z');
+    const monitor = new FakeSessionMonitor(sessionPath, PARENT_ID, 'codex');
+    const provider = create(monitor);
+    monitor.ingest(spawn('call_spawn_builder', 'review_builder'), {
+      type: 'tool_call',
+      metadata: { toolName: 'Spawn_agent', toolUseId: 'call_spawn_builder' },
+    });
+    expect(provider.getChildren()[0]).toMatchObject({
+      label: 'review_builder (Task)',
+      type: 'running',
+    });
+
+    const rollout = path.join(sessionDir, `rollout-${CHILD_ID}.jsonl`);
+    fs.writeFileSync(rollout, '{}\n');
+    monitor.subagentStats = childStats(rollout).slice(0, 1);
+    monitor.ingest(
+      activity('2026-10-31T01:40:33.100Z', {
+        kind: 'started',
+        callId: 'call_spawn_builder',
+        agentThreadId: CHILD_ID,
+        agentPath: '/root/review_builder',
+      }),
+      {
+        description: 'Subagent /root/review_builder started',
+        metadata: { toolName: 'Spawn_agent', toolUseId: 'call_spawn_builder' },
+      },
+    );
+    expect(provider.getChildren()).toHaveLength(1);
+    expect(provider.getChildren()[0]).toMatchObject({
+      id: 'call_spawn_builder',
+      label: 'Banach (Task)',
+      transcriptPath: rollout,
+    });
   });
 });

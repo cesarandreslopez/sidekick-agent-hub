@@ -65,6 +65,7 @@ export class RetroactiveDataLoader {
       this.ownsProviders = false;
     } else {
       this.providers = createSessionProviders({
+        includeCompressedRollouts: true,
         onDiagnostic: (diagnostic) =>
           log(
             `RetroactiveDataLoader: ${diagnostic.providerId} ${diagnostic.kind}: ${diagnostic.message}`,

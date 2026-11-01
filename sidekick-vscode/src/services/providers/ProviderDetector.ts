@@ -19,7 +19,8 @@ function createSessionProvider(providerId: ProviderId): SessionProvider {
     case 'opencode':
       return new OpenCodeSessionProvider();
     case 'codex':
-      return new CodexSessionProvider();
+      // Codex compresses older rollouts (`.jsonl.zst`); read them too.
+      return new CodexSessionProvider({ includeCompressedRollouts: true });
     case 'claude-code':
     default:
       return new ClaudeCodeSessionProvider();
