@@ -21,6 +21,7 @@ import type {
 } from '../types/sessionEvent';
 import { SESSION_PROVIDER_IDS } from '../providerIds';
 import type { AggregatedCostProvenance } from '../aggregation/types';
+import type { JsonlTailResetReason } from '../watchers/jsonlTail';
 
 /** Stable runtime list for consumers that must enumerate session providers. */
 export { SESSION_PROVIDER_IDS } from '../providerIds';
@@ -195,6 +196,13 @@ export interface ProviderRuntimeStatus {
   message?: string;
 }
 
+/** Why a {@link SessionReader} started over from offset 0 (see `SessionReader.lastReset`). */
+export interface SessionReaderReset {
+  reason: JsonlTailResetReason;
+  /** The committed position (`getPosition()`) before the restart. */
+  previousPosition: number;
+}
+
 /**
  * Incremental reader for session data.
  *
@@ -216,8 +224,22 @@ export interface SessionReader {
   getPosition(): number;
   /** Seek to a specific position (byte offset for JSONL, timestamp for DB-backed). */
   seekTo(position: number): void;
-  /** Check if file was truncated (size < position). */
+  /**
+   * Whether the last `readNew()` restarted from offset 0 because the file was
+   * truncated, rewritten, or replaced. Its events are then the session from
+   * the beginning: discard anything built from earlier reads before
+   * processing them. (Before 0.30.0 the built-in readers reported only a
+   * file that shrank below the read position.)
+   */
   wasTruncated(): boolean;
+  /**
+   * Why the last `readNew()` restarted from offset 0, and the committed
+   * position it left: `truncated` (the file shrank below the read
+   * position), `rewritten` (its first bytes, or the byte before the resume
+   * point, changed), or `replaced` (another file now has the path). `null`
+   * when it continued where it was. Optional; the JSONL readers implement it.
+   */
+  lastReset?(): SessionReaderReset | null;
   /**
    * Parse state the reader needs, beyond `getPosition()`, to continue
    * correctly after a restart: JSON-serializable data to persist together

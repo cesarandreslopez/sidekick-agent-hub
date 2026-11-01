@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import type { ZodType } from 'zod';
 import { fileHeadOf, HEAD_BYTES, headMatches, type FileHead } from '../fileHead';
+import { FileContinuity, probeFileContinuity, type FileContinuityProbe } from '../fileContinuity';
 import { JsonlParser } from '../parsers/jsonl';
 
 const DEFAULT_DEBOUNCE_MS = 100;
@@ -260,14 +261,6 @@ export function verifyJsonlCheckpoint(filePath: string, checkpoint: unknown): bo
   }
 }
 
-/** The bytes the continuity check needs, read before any state changes. */
-interface ContinuityProbe {
-  /** The file's first `min(HEAD_BYTES, size)` bytes. */
-  prefix: Buffer;
-  /** The byte before the committed offset, when there is one. */
-  before: Buffer | null;
-}
-
 class JsonlTailReader<T> implements JsonlTail<T> {
   private active = false;
   /** Physical byte position already read from the file. */
@@ -278,10 +271,8 @@ class JsonlTailReader<T> implements JsonlTail<T> {
   /** Inside a line over `maxLineBytes`: drop bytes until its newline. */
   private skippingLine = false;
   private currentLine: JsonlTailLine = { offset: 0, length: 0 };
-  /** Identity and prefix of the file the offsets refer to, once read. */
-  private identity: { dev: number; ino: number } | null = null;
-  private head: FileHead | null = null;
-  private lastMtimeMs = -1;
+  /** Identity, mtime, and prefix of the file the offsets refer to, once read. */
+  private readonly continuity = new FileContinuity();
   private readonly maxReadBytes: number;
   private readonly maxLineBytes: number;
   private readonly rewritePolicy: JsonlTailRewritePolicy;
@@ -495,31 +486,17 @@ class JsonlTailReader<T> implements JsonlTail<T> {
 
   /** Whether the continuity check needs bytes from the file. */
   private probeNeeded(stat: fs.Stats): boolean {
-    return (
-      this.identity === null ||
-      stat.dev !== this.identity.dev ||
-      stat.ino !== this.identity.ino ||
-      stat.size < this.readOffset ||
-      stat.mtimeMs !== this.lastMtimeMs ||
-      this.head === null ||
-      this.head.bytes < Math.min(HEAD_BYTES, stat.size)
-    );
+    return this.continuity.needsProbe(stat, this.readOffset);
   }
 
-  private probeSync(fd: number, stat: fs.Stats): ContinuityProbe {
-    return {
-      prefix: readPrefix(fd, stat),
-      before:
-        this.committedOffset > 0 && this.committedOffset <= stat.size
-          ? readAt(fd, this.committedOffset - 1, 1)
-          : null,
-    };
+  private probeSync(fd: number, stat: fs.Stats): FileContinuityProbe {
+    return probeFileContinuity(fd, stat, this.committedOffset);
   }
 
   private async probeAsync(
     handle: fs.promises.FileHandle,
     stat: fs.Stats,
-  ): Promise<ContinuityProbe> {
+  ): Promise<FileContinuityProbe> {
     const committedOffset = this.committedOffset;
     return {
       prefix: await readAtAsync(handle, 0, Math.min(HEAD_BYTES, stat.size)),
@@ -535,31 +512,22 @@ class JsonlTailReader<T> implements JsonlTail<T> {
    * shrank, its first bytes changed, or the resume point no longer follows a
    * newline. `null` when it can continue.
    */
-  private resetReason(stat: fs.Stats, probe: ContinuityProbe | null): JsonlTailResetReason | null {
-    if (this.identity && (stat.dev !== this.identity.dev || stat.ino !== this.identity.ino)) {
-      return 'replaced';
-    }
-    if (stat.size < this.readOffset) return 'truncated';
-    if (this.identity && stat.mtimeMs !== this.lastMtimeMs && probe) {
-      if (this.head && !headMatches(this.head, probe.prefix)) return 'rewritten';
-      if (probe.before && probe.before[0] !== 0x0a) return 'rewritten';
-    }
-    return null;
+  private resetReason(
+    stat: fs.Stats,
+    probe: FileContinuityProbe | null,
+  ): JsonlTailResetReason | null {
+    return this.continuity.reasonFor(stat, this.readOffset, probe);
   }
 
   /** Records the identity and prefix of the file the offsets now refer to. */
-  private adoptFile(stat: fs.Stats, probe: ContinuityProbe | null): void {
-    this.identity = { dev: stat.dev, ino: stat.ino };
-    this.lastMtimeMs = stat.mtimeMs;
-    if (probe && (!this.head || this.head.bytes < Math.min(HEAD_BYTES, stat.size))) {
-      this.head = fileHeadOf(probe.prefix);
-    }
+  private adoptFile(stat: fs.Stats, probe: FileContinuityProbe | null): void {
+    this.continuity.record(stat, probe);
   }
 
   private reset(reason: JsonlTailResetReason, offset: number): JsonlTailReset {
     const previousOffset = this.committedOffset;
     this.position(offset);
-    this.head = null;
+    this.continuity.discardHead();
     if (reason === 'replaced' && this.active) {
       // fs.watch follows the old inode; watch the file now at the path.
       this.fsWatcher?.close();
@@ -641,7 +609,11 @@ class JsonlTailReader<T> implements JsonlTail<T> {
   }
 
   checkpoint(): JsonlTailCheckpoint {
-    return checkpointOf(this.committedOffset, this.identity, this.head);
+    return checkpointOf(
+      this.committedOffset,
+      this.continuity.knownIdentity,
+      this.continuity.knownHead,
+    );
   }
 
   resumeFrom(checkpoint: unknown): boolean {
@@ -660,15 +632,11 @@ class JsonlTailReader<T> implements JsonlTail<T> {
           ? lastCompleteLineOffset(fd, stat.size)
           : 0;
       this.position(offset);
-      this.identity = { dev: stat.dev, ino: stat.ino };
-      this.lastMtimeMs = stat.mtimeMs;
-      this.head = fileHeadOf(prefix);
+      this.continuity.adoptPrefix(stat, prefix);
       return matches;
     } catch (error) {
       this.position(0);
-      this.identity = null;
-      this.head = null;
-      this.lastMtimeMs = -1;
+      this.continuity.forget();
       this.options.onError?.(toError(error));
       return false;
     } finally {

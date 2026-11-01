@@ -121,11 +121,11 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
   private readNewEvents(): void {
     if (!this._isActive) return;
     try {
-      if (this.reader.wasTruncated()) {
-        this.reader.reset();
-        this.callbacks.onReset?.();
-      }
       const events = this.reader.readNew();
+      // The reader started over (truncated, rewritten, or replaced file):
+      // these events are the session from the beginning, so consumers must
+      // drop what they built before receiving them.
+      if (this.reader.wasTruncated()) this.callbacks.onReset?.();
       for (const event of events) {
         for (const followEvent of toFollowEvents(event, this.provider.id)) {
           this.callbacks.onEvent(followEvent);

@@ -53,10 +53,16 @@ export class SessionMonitor {
     return sessionPath ? this.attach(sessionPath, replay) : null;
   }
 
+  /**
+   * Reads and aggregates what the session gained since the last call. When
+   * the reader had to start over (the file was truncated, rewritten, or
+   * replaced) the aggregator is reset first and the returned events are the
+   * session from the beginning.
+   */
   poll(): SessionEvent[] {
     if (!this.reader) return [];
-    if (this.reader.wasTruncated()) this.aggregator.reset();
     const events = this.reader.readNew();
+    if (this.reader.wasTruncated()) this.aggregator.reset();
     this.consume(events);
     return events;
   }

@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { ClaudeCodeProvider } from './providers/claudeCode';
 import { SessionMonitor } from './sessionMonitor';
 import type { SessionProviderBase, SessionReader } from './providers/types';
 
@@ -80,6 +81,61 @@ describe('SessionMonitor subscriptions', () => {
     } finally {
       subscription.dispose();
       monitor.dispose();
+    }
+  });
+});
+
+describe('SessionMonitor.poll after the file starts over', () => {
+  const block = (id: string, output: number, text: string) =>
+    JSON.stringify({
+      type: 'assistant',
+      timestamp: '2026-11-01T12:00:00Z',
+      message: {
+        id,
+        role: 'assistant',
+        model: 'claude-sonnet-4-20250514',
+        content: [{ type: 'text', text }],
+        usage: { input_tokens: 10, output_tokens: output, cache_read_input_tokens: 500 },
+      },
+    }) + '\n';
+  const session =
+    block('msg_1', 4, 'thinking') + block('msg_1', 323, 'done') + block('msg_2', 7, 'ok');
+
+  it.each([
+    ['truncated', (file: string) => writeFileSync(file, block('msg_1', 4, 'thinking'))],
+    [
+      'rewritten',
+      (file: string) => {
+        writeFileSync(file, session.replace('thinking', 'THINKING'));
+        utimesSync(file, new Date(), new Date(Date.now() + 5_000));
+      },
+    ],
+    [
+      'replaced',
+      (file: string) => {
+        writeFileSync(`${file}.next`, session + block('msg_3', 9, 'more'));
+        renameSync(`${file}.next`, file);
+      },
+    ],
+  ])('resets the aggregate in the same poll (%s) and matches a fresh attach', (_reason, change) => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'sidekick-monitor-reset-'));
+    const sessionPath = path.join(directory, 'session.jsonl');
+    writeFileSync(sessionPath, session);
+    const monitor = new SessionMonitor(new ClaudeCodeProvider());
+    const fresh = new SessionMonitor(new ClaudeCodeProvider());
+    try {
+      expect(monitor.attach(sessionPath).tokens.outputTokens).toBe(323 + 7);
+      change(sessionPath);
+      expect(monitor.poll().length).toBeGreaterThan(0);
+      const expected = fresh.attach(sessionPath).tokens;
+      expect(monitor.getMetrics().tokens).toEqual(expected);
+      // A later poll has nothing to add and leaves the totals alone.
+      expect(monitor.poll()).toEqual([]);
+      expect(monitor.getMetrics().tokens).toEqual(expected);
+    } finally {
+      monitor.dispose();
+      fresh.dispose();
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
