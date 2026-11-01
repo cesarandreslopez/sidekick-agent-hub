@@ -5,6 +5,19 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.3] - 2026-10-31
+
+### Fixed
+
+- **Claude Ultra quota no longer shows a fake 5-hour window.** Anthropic renamed Max 20x to Ultra on 2026-10-30 and removed its 5-hour session limit. `sidekick quota` printed `5-Hour 0% — —` and the status line `5h 0% resets <now>`. `quota` now shows the 7-Day row with a `Session  no 5-hour limit on Ultra` note. The status line leads with the weekly window (`7d 17% resets Fri 01:00`), and the dashboard and `blocks` drop the 5-hour bar. `quota history` defaults to the 7-day window on such plans, and the peak-hours row is omitted (peak hours only drain the 5-hour session limit).
+- **The cached Claude quota no longer freezes.** After the 5-hour window disappeared (or reset without restarting), every new sample lost to the old snapshot, so the status line, `today`, the dashboard, `state.json`, and the MCP server kept serving the pre-change numbers.
+- **A months-old cached quota is reported as expired**, not printed as live percentages with "resets now"; `quota --all` hides a z.ai cache whose windows have all reset unless z.ai traffic is detected.
+- **Codex windows are named by their length**: a weekly primary window reads `Weekly` (and `7d` in the status line) instead of `Primary`, and a missing second window is hidden.
+
+### Added
+
+- `sidekick quota` titles Claude quota with the plan (`Subscription Quota (plan: Ultra)`) and lists every extra meter the usage endpoint reports, such as `7-Day (Fable)` with a note on how much of the weekly limit Fable may use. An `Extra usage` row shows usage-credit spend. `--json` includes `fiveHour.absent`, `planLabel`, `limits`, and `extraUsage`.
+
 ## [0.28.2] - 2026-10-30
 
 ### Fixed

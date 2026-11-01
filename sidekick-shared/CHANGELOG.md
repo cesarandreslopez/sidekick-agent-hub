@@ -5,6 +5,25 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.3] - 2026-10-31
+
+### Fixed
+
+- **`fetchQuota()` marks a missing window instead of reporting 0%.** Claude Ultra (formerly Max 20x) has no 5-hour limit since 2026-10-30, and the usage endpoint returns `five_hour: null`. `fetchQuota()` read that as `{ utilization: 0, resetsAt: '' }`, the same as an idle window. Null or missing windows are now `{ utilization: 0, resetsAt: '', absent: true }`, with no projection; consumers that ignore `absent` see the old values.
+- **`writeQuotaSnapshot()` no longer freezes a provider's snapshot.** It kept the sample with the later first-window reset, so once that window disappeared or reset without restarting, every newer sample (empty reset) lost and readers kept the pre-change numbers. An existing window that had already reset at the newer sample's capture time now yields. A newer capture wins when a window appears or disappears (`absent` changes). Status-line and history writes keep an API sample's `planLabel`, `planType`, `extraUsage`, and still-running extra meters.
+- **`quotaFromStatuslinePayload()` no longer resurrects expired windows.** It copies a missing window from the fallback only when the fallback is `absent` or has not reset yet.
+- **`resolveQuota()` and `resolveZaiQuota()` report an expired cache.** A snapshot whose every window has reset since is returned as unavailable, with an error naming its date and age, instead of as live numbers.
+- `evaluateQuotaThresholds()` never alerts on an absent window. Quota-history daily averages count only samples where the window exists, and history samples keep `absent`.
+- `formatStatusline()` leads with the second window when the first is absent, shows its reset day when more than a day away, never prints the current time for an empty reset, and labels windows from `windowMs`.
+- Codex quota from `quotaFromCodexRateLimits()` names windows by `window_minutes` (`5-Hour`, `Weekly`), falling back to `Primary` / `Secondary`. It sets `windowMs` and marks a null window `absent`.
+
+### Added
+
+- `quotaStateFromClaudeUsagePayload()` parses the usage endpoint's server-driven `limits[]` meters into `QuotaState.limits`: `QuotaLimitRow` with kind, group, a derived label such as `7-Day (Fable)`, utilization, reset, window length, projection, scope, severity, the headline pick, and `weekly_scoped_shares` allowances. Older servers' `seven_day_opus` / `seven_day_sonnet` / `seven_day_overage_included` fill it instead. It also parses `extra_usage` into `QuotaState.extraUsage`, and a missing headline window is filled from its `session` / `weekly_all` meter.
+- `fetchQuota(token, { plan })` and `withClaudePlan()` stamp `planType` and `planLabel` from credential plan facts. `claudePlanLabel()` maps `default_claude_max_20x` to Ultra and `default_claude_max_5x` to Max. `resolveQuota()` passes the plan automatically, and `QuotaPoller`'s `getAccessToken` may return the credentials record (`QuotaPollerCredentials`) to do the same.
+- Pure helpers on the root and `sidekick-shared/browser`: `quotaWindowApplies()`, `quotaWindowHasData()`, `quotaWindowLabel()`, `quotaWindowShortLabel()`, `extraQuotaRows()`, `formatExtraUsage()`, and `claudePlanLabel()`. Also `quotaSampleExpired()`, plus `quotaHistoryWindow()` on the root and statusline entries.
+- Schemas: `quotaWindowSchema` gains `absent` / `windowMs`, `quotaStateSchema` gains `limits` / `extraUsage` / `planLabel` (`quotaLimitRowSchema`, `quotaExtraUsageSchema`), history samples gain `absent`, and `state.json` gains window `absent` plus quota `planLabel` / `extraLimits` (`stateFileQuotaLimitSchema`; `schemaVersion` stays 1).
+
 ## [0.28.2] - 2026-10-30
 
 ### Fixed

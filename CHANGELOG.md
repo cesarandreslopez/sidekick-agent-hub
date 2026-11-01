@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.3] - 2026-10-31
+
+### Fixed
+
+- **Claude Ultra quota no longer shows a fake 5-hour window.** On 2026-10-30 Anthropic renamed Max 20x to Ultra and removed its 5-hour session limit, and the usage endpoint now reports `five_hour: null`. Sidekick turned that into a `5-Hour 0%` row with no reset, and the status line printed `5h 0% resets <now>`. The window is now marked absent: `sidekick quota`, the CLI dashboard, the VS Code dashboard and its Billing block card, `blocks`, and the status line show only the weekly window, plus a "no 5-hour limit" note. Five-hour alerts and the peak-hours row in `sidekick quota` stay quiet, and `quota history` defaults to the 7-day window. The status line leads with the weekly window and its reset day (`7d 17% resets Fri 01:00`).
+- **The cached Claude quota no longer freezes.** The snapshot store kept the sample with the later 5-hour reset time, so after the 5-hour window disappeared (or had simply reset and not restarted), every newer sample lost to the old one. Status line, dashboards, `state.json`, `sidekick today`, and the MCP server kept serving the pre-change numbers. A window that had already reset no longer outranks a newer sample, and a newer sample wins when a window appears or disappears. The status line also stops copying an expired window from the cache into new samples.
+- **A months-old cached quota is no longer shown as current.** When the API fails and the only cached sample has had every window reset since (for example a z.ai sample from three months ago), `sidekick quota` reports it as expired instead of printing old percentages with "resets now", and `quota --all` hides z.ai unless z.ai traffic is detected.
+- **Codex windows are named by their length.** A Codex plan whose primary window is now weekly was labelled `Primary` (and `5h` in the status line); windows are now named `5-Hour` / `Weekly` from the reported window length, and a missing second window is hidden instead of drawn as 0%.
+
+### Added
+
+- **Plan names and every usage meter.** Quota views name the Claude plan (Pro, Max, or Ultra) from the Claude Code credentials, so `sidekick quota` reads `Subscription Quota (plan: Ultra)`. They also list every extra meter the usage endpoint reports, such as the weekly Fable cap ("Fable may use up to 50% of the weekly limit"), and show extra-usage (usage credit) spend.
+- `sidekick-shared`: `QuotaWindow.absent` / `windowMs`, `QuotaState.limits` / `extraUsage` / `planLabel`, `quotaStateFromClaudeUsagePayload()`, `quotaWindowApplies()`, `quotaWindowHasData()`, `quotaWindowLabel()`, `quotaWindowShortLabel()`, `extraQuotaRows()`, `formatExtraUsage()`, `claudePlanLabel()`, `withClaudePlan()`, `quotaSampleExpired()`, and `quotaHistoryWindow()`; `fetchQuota(token, { plan })`; `QuotaPoller`'s `getAccessToken` may return the credentials record. `state.json` windows gain an optional `absent`, and quota entries an optional `planLabel` and `extraLimits` (schema version unchanged).
+
 ## [0.28.2] - 2026-10-30
 
 ### Fixed

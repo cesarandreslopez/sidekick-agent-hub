@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.28.2",
+  "version": "0.28.3",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -609,7 +609,7 @@
               80,
               95
             ],
-            "description": "Five-hour window utilization percentages that raise a quota warning. The highest value is raised as an error."
+            "description": "Five-hour window utilization percentages that raise a quota warning. The highest value is raised as an error. Ignored on plans without a five-hour limit (Claude Ultra)."
           },
           "sidekick.notifications.quotaSevenDayThresholds": {
             "type": "array",

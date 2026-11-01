@@ -5,6 +5,18 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.3] - 2026-10-31
+
+### Fixed
+
+- **Claude Ultra no longer shows a fake 5-hour gauge.** Anthropic renamed Max 20x to Ultra on 2026-10-30 and removed its 5-hour session limit. The dashboard drew that missing window as a 0% gauge with no reset. It now hides the 5-hour gauge, shows "No 5-hour limit on Ultra", and five-hour quota alerts stay quiet. The Billing block card's official status-line line shows the weekly window (`7d N% used · resets in … · no 5-hour limit`) instead of `5h 0% used`.
+- **Cached Claude quota no longer freezes** at the last sample taken before a 5-hour window disappeared or reset, so the dashboard's first paint, `state.json`, and auto-switch see current numbers.
+- **Codex windows are named by their length** (`5-Hour`, `Weekly`) instead of `Primary` / `Secondary`, and a missing second window is hidden.
+
+### Added
+
+- The quota section names your Claude plan (Pro, Max, or Ultra) in its tooltip. Extra meters the usage endpoint reports (such as the weekly Fable cap) appear as rows under the gauges, along with your extra-usage (usage credit) spend.
+
 ## [0.28.2] - 2026-10-30
 
 ### Fixed
