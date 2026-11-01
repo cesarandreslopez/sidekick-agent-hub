@@ -30,8 +30,11 @@ vi.mock('./providers/codexDatabase', () => ({
 import {
   __promptHistoryTesting,
   collectPromptHistory,
+  DEFAULT_BOUNDS,
   isPromptHistorySessionSettled,
   parsePromptHistoryCursor,
+  PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
+  readPromptOrdinalMarks,
   type PromptHistoryCursor,
   type PromptHistoryEntry,
 } from './promptHistory';
@@ -1499,5 +1502,215 @@ describe('collectPromptHistory — streaming and resumability', () => {
     for (const secret of ['PROMPT-SECRET', 'ANSWER-SECRET', 'ffffffffff', 'tool_result']) {
       expect(serialized).not.toContain(secret);
     }
+  });
+});
+
+describe('collectPromptHistory — metadata mode (includeText: false)', () => {
+  /** Everything an entry carries except its text. */
+  function metadataOf(entry: PromptHistoryEntry): Omit<PromptHistoryEntry, 'text' | 'textOmitted'> {
+    const { text: _text, textOmitted: _omitted, ...rest } = entry;
+    return rest;
+  }
+
+  function writeMixedFixture(): void {
+    writeJsonl(claudeFile(repo, 'meta-c'), [
+      claudeUser('first prompt', 1),
+      claudeAssistant('msg_1', 2),
+      claudeUser('second prompt', 3),
+      // An oversized answer: skipped in both modes, reported once each.
+      claudeAssistant('msg_big', 4, {}, { content: [{ type: 'text', text: 'a'.repeat(5000) }] }),
+      // An oversized prompt: never seen, so the next prompt's ordinal does not count it.
+      claudeUser('p'.repeat(5000), 5),
+      claudeUser('third prompt', 6),
+      claudeAssistant('msg_3', 7, {}, { stop_reason: null }),
+      claudeUser('no timestamp', 8, { timestamp: undefined }),
+      claudeUser('fourth prompt', 9, { cwd: path.join(repo, 'pkg') }),
+    ]);
+    fs.appendFileSync(claudeFile(repo, 'meta-c'), '{"type":"user", not json\n');
+    appendJsonl(claudeFile(repo, 'meta-c'), [claudeUser('fifth prompt', 10)]);
+    writeJsonl(codexFile(), [
+      codexMeta(repo),
+      { timestamp: ts(1), type: 'turn_context', payload: { cwd: repo, model: 'gpt-5.5-codex' } },
+      codexUser(['codex one'], 2),
+      codexTokenCount(3),
+      codexFiller(5000, 4),
+      codexUser(['codex two'], 5),
+    ]);
+  }
+
+  it('returns the same ordinals, timestamps, metadata, exclusions, and cursor without text', async () => {
+    writeMixedFixture();
+    const bounds = { maxRecordBytes: 1024 };
+    const withText = await collectPromptHistory({ workspacePaths: [repo], bounds });
+    const without = await collectPromptHistory({
+      workspacePaths: [repo],
+      bounds,
+      includeText: false,
+    });
+
+    expect(texts(withText.entries)).toEqual([
+      'first prompt',
+      'second prompt',
+      'third prompt',
+      'fourth prompt',
+      'fifth prompt',
+      'codex one',
+      'codex two',
+    ]);
+    expect(withText.entries.map((entry) => entry.ordinal)).toEqual([0, 1, 2, 4, 5, 0, 1]);
+    expect(withText.entries.every((entry) => entry.textOmitted === undefined)).toBe(true);
+    expect(without.entries.every((entry) => entry.text === '' && entry.textOmitted)).toBe(true);
+    expect(without.entries.map(metadataOf)).toEqual(withText.entries.map(metadataOf));
+    expect(without.exclusions).toEqual(withText.exclusions);
+    expect(without.exclusions.map((exclusion) => exclusion.reason).sort()).toEqual([
+      'malformedRecord',
+      'oversizedRecord',
+      'oversizedRecord',
+      'oversizedRecord',
+    ]);
+    expect(without.stats).toEqual(withText.stats);
+    expect(without.cursor).toEqual(withText.cursor);
+    expect(without.boundsHit).toEqual(withText.boundsHit);
+    expect(without.changed).toEqual(withText.changed);
+  });
+
+  it('resumes a cursor written in either mode in the other without skips or duplicates', async () => {
+    writeMixedFixture();
+    const bounds = { maxRecordBytes: 1024, maxFileBytes: 600 };
+    const reference = await drain({ workspacePaths: [repo], bounds });
+
+    for (const startWithText of [false, true]) {
+      const seen = new Map<string, PromptHistoryEntry>();
+      const emitted: string[] = [];
+      let cursor: PromptHistoryCursor | undefined;
+      let includeText = startWithText;
+      for (let call = 0; call < 200; call++) {
+        const result = await collectPromptHistory({
+          workspacePaths: [repo],
+          bounds,
+          cursor,
+          includeText,
+        });
+        for (const entry of result.entries) {
+          emitted.push(`${identity(entry)}:${entry.metadataStatus}:${entry.model ?? ''}`);
+          expect(entry.text === '').toBe(!includeText);
+          seen.set(identity(entry), entry);
+        }
+        cursor = roundTrip(result.cursor);
+        includeText = !includeText;
+        if (!result.hasMore) break;
+      }
+      // Every prompt is returned; one returned again is a metadata update, not a copy.
+      expect(new Set(emitted).size).toBe(emitted.length);
+      const rows = [...seen.values()].sort(byIdentity);
+      const expected = [...reference.rows.values()].sort(byIdentity);
+      expect(rows.map(metadataOf)).toEqual(expected.map(metadataOf));
+    }
+  });
+
+  it('returns a carried prompt again in the other mode once its answer arrives', async () => {
+    const file = claudeFile(repo, 'carried');
+    writeJsonl(file, [claudeUser('waiting prompt', 1)]);
+    const first = await collectPromptHistory({ workspacePaths: [repo], includeText: false });
+    expect(first.entries).toEqual([
+      expect.objectContaining({
+        ordinal: 0,
+        text: '',
+        textOmitted: true,
+        metadataStatus: 'pending',
+      }),
+    ]);
+
+    appendJsonl(file, [claudeAssistant('msg_1', 2)]);
+    const second = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(first.cursor),
+    });
+    expect(second.entries).toEqual([
+      expect.objectContaining({
+        ordinal: 0,
+        timestamp: ts(1),
+        text: 'waiting prompt',
+        metadataStatus: 'final',
+        model: 'claude-opus-5',
+      }),
+    ]);
+    expect(second.entries[0].textOmitted).toBeUndefined();
+
+    // And the reverse: a text-mode cursor resumed without text.
+    writeJsonl(claudeFile(repo, 'carried-2'), [claudeUser('second waiting', 1)]);
+    const third = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(second.cursor),
+    });
+    expect(texts(third.entries)).toEqual(['second waiting']);
+    appendJsonl(claudeFile(repo, 'carried-2'), [claudeAssistant('msg_2', 2)]);
+    const fourth = await collectPromptHistory({
+      workspacePaths: [repo],
+      cursor: roundTrip(third.cursor),
+      includeText: false,
+    });
+    expect(fourth.entries).toEqual([
+      expect.objectContaining({
+        sessionId: 'carried-2',
+        ordinal: 0,
+        text: '',
+        textOmitted: true,
+        metadataStatus: 'final',
+      }),
+    ]);
+  });
+
+  it('uses PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES as the default record bound', () => {
+    expect(PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES).toBe(16 * 1024 * 1024);
+    expect(DEFAULT_BOUNDS.maxRecordBytes).toBe(PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES);
+  });
+});
+
+describe('readPromptOrdinalMarks', () => {
+  it('numbers every prompt as collectPromptHistory does, in scope or not', async () => {
+    const outside = path.join(tmpDir, 'elsewhere');
+    fs.mkdirSync(outside, { recursive: true });
+    const file = claudeFile(repo, 'marks');
+    writeJsonl(file, [
+      claudeUser('first', 1),
+      claudeAssistant('msg_1', 2),
+      claudeUser('outside the roots', 3, { cwd: outside }),
+      claudeUser('no timestamp', 4, { timestamp: undefined }),
+      claudeUser('subagent task', 5, { isSidechain: true }),
+      claudeUser('last', 6),
+    ]);
+    const history = await collectPromptHistory({ workspacePaths: [repo] });
+    const marks = await readPromptOrdinalMarks('claude-code', 'marks', file);
+
+    expect(marks).toEqual([
+      { ordinal: 0, timestampMs: Date.parse(ts(1)) },
+      { ordinal: 1, timestampMs: Date.parse(ts(3)) },
+      { ordinal: 3, timestampMs: Date.parse(ts(6)) },
+    ]);
+    const returned = history.entries.map((entry) => [entry.ordinal, Date.parse(entry.timestamp)]);
+    expect(returned).toEqual([
+      [0, Date.parse(ts(1))],
+      [3, Date.parse(ts(6))],
+    ]);
+    for (const [ordinal, timestampMs] of returned) {
+      expect(marks).toContainEqual({ ordinal, timestampMs });
+    }
+  });
+
+  it('finds no prompts in a non-interactive Codex rollout', async () => {
+    const fork = codexFile();
+    writeJsonl(fork, [
+      codexMeta(repo, { subagent: { thread_spawn: { parent_thread_id: 'parent' } } }),
+      codexUser(['replayed parent prompt'], 1),
+    ]);
+    const interactive = codexFile();
+    writeJsonl(interactive, [codexMeta(repo), codexUser(['typed'], 1), codexUser(['again'], 2)]);
+
+    expect(await readPromptOrdinalMarks('codex', 'fork', fork)).toEqual([]);
+    expect(await readPromptOrdinalMarks('codex', 'interactive', interactive)).toEqual([
+      { ordinal: 0, timestampMs: Date.parse(ts(1)) },
+      { ordinal: 1, timestampMs: Date.parse(ts(2)) },
+    ]);
   });
 });

@@ -100,7 +100,7 @@ describe('collectUsageEvents', () => {
         lastTimestamp: Date.parse('2026-09-04T12:30:05.000Z'),
       }),
     ]);
-    expect(fs.readdirSync(getUsageCacheDir())).toEqual(['claude-code--session-usage.json']);
+    expect(fs.readdirSync(getUsageCacheDir())).toEqual(['claude-code--session-usage.v3.json']);
 
     const createReader = vi.spyOn(provider, 'createReader');
     const second = await collectUsageEvents({ providers: [provider] });
@@ -284,7 +284,7 @@ describe('collectUsageEvents', () => {
   it('re-reads cache files written by an older cache version', async () => {
     writeSession(BASE_ROWS);
     await collectUsageEvents({ providers: [provider] });
-    const cacheFile = path.join(getUsageCacheDir(), 'claude-code--session-usage.json');
+    const cacheFile = path.join(getUsageCacheDir(), 'claude-code--session-usage.v3.json');
     const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
     expect(cached.version).toBe(USAGE_CACHE_VERSION);
     fs.writeFileSync(cacheFile, JSON.stringify({ ...cached, version: 1 }));

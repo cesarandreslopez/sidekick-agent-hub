@@ -8,6 +8,7 @@ import * as path from 'path';
 import { execFile, execFileSync } from 'child_process';
 import type { CodexDbThread } from '../types/codex';
 import type { ProviderRuntimeStatus } from './types';
+import { codexSpawnParentFromSource as spawnParentFromSource } from '../parsers/codexRolloutOrigin';
 
 /**
  * Ids per inlined `IN (…)` query. Values are passed inside a single argv
@@ -15,22 +16,8 @@ import type { ProviderRuntimeStatus } from './types';
  */
 const SQL_ID_CHUNK_SIZE = 400;
 
-/** Parent thread id recorded in a Codex `threads.source` JSON value, if any. */
-export function spawnParentFromSource(source: unknown): string | undefined {
-  let parsed: unknown = source;
-  if (typeof source === 'string') {
-    if (!source.startsWith('{')) return undefined;
-    try {
-      parsed = JSON.parse(source);
-    } catch {
-      return undefined;
-    }
-  }
-  if (!parsed || typeof parsed !== 'object') return undefined;
-  const parent = (parsed as { subagent?: { thread_spawn?: { parent_thread_id?: unknown } } })
-    .subagent?.thread_spawn?.parent_thread_id;
-  return typeof parent === 'string' ? parent : undefined;
-}
+/** Parent thread id of a spawned subagent's `source`; one rule shared with rollout parsing. */
+export { spawnParentFromSource };
 
 export class CodexDatabase {
   private readonly dbPath: string;

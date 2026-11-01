@@ -11,9 +11,19 @@
  * every hit and pruned least-recently-used, once per collection.
  *
  * A Claude Code session's subagents write their own transcripts under
- * `<sessionId>/subagents/`; their usage is attributed to the parent session
- * and their sizes and mtimes join the fingerprint. (Codex spawned subagents
- * are top-level rollouts, already listed as sessions of their own.)
+ * `<sessionId>/subagents/`; their usage is attributed to the parent session,
+ * tagged with the subagent, and their sizes and mtimes join the fingerprint.
+ * (Codex spawned subagents and forks are top-level rollouts, already listed
+ * as sessions of their own; their events are tagged with the parent read
+ * from the rollout's first line.)
+ *
+ * Each event also carries the ordinal of the human prompt it answered, from
+ * the same scanner as `collectPromptHistory()`, so usage joins prompt history
+ * on `(provider, sessionId, ordinal)`.
+ *
+ * Cache files are named per cache version (`<provider>--<session>.v3.json`)
+ * so readers of different versions sharing the directory never overwrite each
+ * other's files; pruning ages out every version's files alike.
  *
  * Node-only: reads session files and the cache directory.
  *
@@ -22,7 +32,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
 import { getConfigDir } from '../paths';
+import { readPromptOrdinalMarks, type PromptOrdinalMark } from '../promptHistory';
+import { readFirstLineAsync } from '../providers/codexRollouts';
 import type {
   ProviderId,
   SessionProviderBase,
@@ -39,9 +52,11 @@ import { resolveWorkspaceRoots, type ResolvedWorkspaceRoots } from '../workspace
 /**
  * Bump when the cached record shape or the counting rules change; older files
  * are re-read. v2: Claude split lines and duplicate Codex `token_count` events
- * are counted once, and Claude subagent transcripts are included.
+ * are counted once, and Claude subagent transcripts are included. v3: events
+ * keep reasoning tokens, prompt ordinal, message id, and subagent, and files
+ * move to a versioned name (`<provider>--<session>.v3.json`).
  */
-export const USAGE_CACHE_VERSION = 2;
+export const USAGE_CACHE_VERSION = 3;
 /**
  * Most-recently-used cache files kept on disk. Sized for a busy month of
  * sessions (files are a few KB each); a collection larger than this still
@@ -60,11 +75,42 @@ export interface UsageEventRecord {
   project: string | null;
   model: string;
   /** Four buckets plus the provider-semantics-aware total. */
-  tokens: TokenTotals & { totalTokens: number };
+  tokens: TokenTotals & {
+    totalTokens: number;
+    /**
+     * Reasoning tokens the provider reported, when any. Informational, never
+     * added to a total: Codex counts them inside `outputTokens`; OpenCode
+     * reports them apart, inside `totalTokens` but not `outputTokens`.
+     */
+    reasoningTokens?: number;
+  };
   costUsd: number | null;
   costProvenance: PricingProvenance;
   /** Session file the event came from; tells apart two files with one session id. */
   filePath?: string;
+  /**
+   * Ordinal of the human prompt this call followed: the highest ordinal among
+   * the session's prompts timestamped at or before the event, as
+   * `collectPromptHistory()` numbers them with default bounds. Claude Code
+   * subagent calls map to the parent session's prompts. `null` when no prompt
+   * precedes the call, or the session has none (a Codex subagent or fork is a
+   * session of its own without human prompts). Absent when
+   * unknown: a provider without prompt history (OpenCode), or a cache entry
+   * written before prompt ordinals were recorded.
+   */
+  promptOrdinal?: number | null;
+  /**
+   * The provider's message id for the call (Claude Code, OpenCode). Absent for
+   * Codex, whose `token_count` lines carry no request id (the reader's
+   * timestamp-derived placeholder is not passed through).
+   */
+  requestId?: string;
+  /**
+   * Set when a subagent made the call. Claude Code: the agent id from its
+   * transcript name (`agent-<id>.jsonl`), parent = this session. Codex: the
+   * forked or spawned rollout's own session id and the session it came from.
+   */
+  subagent?: { agentId: string; parentSessionId: string };
 }
 
 /** One session that contributed events. */
@@ -138,6 +184,14 @@ interface CachedUsageEvent {
   bo: number;
   tt: number;
   rc?: number;
+  /** Reasoning tokens, when nonzero. */
+  rt?: number;
+  /** Prompt ordinal; null before the first prompt, absent when unknown. */
+  po?: number | null;
+  /** Message id. */
+  rid?: string;
+  /** Claude subagent agent id; the parent is the cache file's session. */
+  sa?: string;
 }
 
 interface UsageCacheFile {
@@ -147,15 +201,23 @@ interface UsageCacheFile {
   fingerprint: string;
   project: string | null;
   events: CachedUsageEvent[];
+  /** The whole session is a subagent or fork (Codex): applies to events without `sa`. */
+  subagent?: { agentId: string; parentSessionId: string };
 }
 
 export function getUsageCacheDir(): string {
   return path.join(getConfigDir(), 'usage-cache');
 }
 
+/**
+ * Cache file of one session. The name carries the cache version, so a reader
+ * of another version sharing the directory (which rejects this version, and
+ * versions before 3 use the unversioned `<provider>--<session>.json`) never
+ * overwrites it, and this version never overwrites theirs.
+ */
 function cacheFilePath(dir: string, provider: ProviderId, sessionId: string): string {
   const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_');
-  return path.join(dir, `${provider}--${safe}.json`);
+  return path.join(dir, `${provider}--${safe}.v${USAGE_CACHE_VERSION}.json`);
 }
 
 function toMs(value: Date | string | undefined, label: string): number | null {
@@ -185,7 +247,11 @@ function readCache(filePath: string): UsageCacheFile | null {
   }
 }
 
-/** Deletes all but the `keep` most recently used cache files (by mtime). Best-effort. */
+/**
+ * Deletes all but the `keep` most recently used cache files (by mtime), of
+ * every cache version alike, so files no reader touches any more age out.
+ * Best-effort.
+ */
 export function pruneUsageCache(keep = MAX_USAGE_CACHE_FILES, dir = getUsageCacheDir()): number {
   try {
     const entries = fs
@@ -216,7 +282,13 @@ export function pruneUsageCache(keep = MAX_USAGE_CACHE_FILES, dir = getUsageCach
   }
 }
 
-function cachedEventFromUsage(usage: NormalizedUsage, timestamp: number, model: string) {
+function cachedEventFromUsage(
+  usage: NormalizedUsage,
+  timestamp: number,
+  model: string,
+  messageId: string | undefined,
+  agentId: string | undefined,
+) {
   const record: CachedUsageEvent = {
     t: timestamp,
     m: model,
@@ -228,23 +300,34 @@ function cachedEventFromUsage(usage: NormalizedUsage, timestamp: number, model: 
     tt: usage.totalTokens,
   };
   if (usage.reportedCostUsd !== undefined) record.rc = usage.reportedCostUsd;
+  if (usage.reasoningTokens > 0) record.rt = usage.reasoningTokens;
+  if (messageId && !messageId.startsWith('token-count-')) record.rid = messageId;
+  if (agentId) record.sa = agentId;
   return record;
 }
 
-/** Price a cached event with the current catalog (or its provider-reported cost). */
+/**
+ * Price a cached event with the current catalog (or its provider-reported
+ * cost). Output is priced from the billable output (`bo`), which already
+ * holds reasoning however the provider reports it, so restoring the reasoning
+ * count never changes the cost.
+ */
 function priceCachedEvent(
   cached: CachedUsageEvent,
   provider: ProviderId,
   sessionId: string,
   project: string | null,
   sessionFile: string,
+  sessionSubagent: UsageCacheFile['subagent'],
 ): UsageEventRecord {
+  const reasoningTokens = typeof cached.rt === 'number' && cached.rt > 0 ? cached.rt : 0;
   const usage: NormalizedUsage = {
     uncachedInputTokens: cached.i,
     cacheReadTokens: cached.cr,
     cacheWriteTokens: cached.cw,
     outputTokens: cached.o,
-    reasoningTokens: 0,
+    reasoningTokens,
+    // `bo` is already the billable output; nothing is added to it.
     reasoningIncludedInOutput: true,
     cacheInclusiveInputTokens: cached.i + cached.cr + cached.cw,
     billableOutputTokens: cached.bo,
@@ -256,6 +339,10 @@ function priceCachedEvent(
     usage,
     modelId: cached.m === 'unknown' ? undefined : cached.m,
   });
+  const subagent =
+    typeof cached.sa === 'string' && cached.sa
+      ? { agentId: cached.sa, parentSessionId: sessionId }
+      : sessionSubagent;
   return {
     timestamp: cached.t,
     provider,
@@ -268,21 +355,29 @@ function priceCachedEvent(
       cacheWriteTokens: cached.cw,
       cacheReadTokens: cached.cr,
       totalTokens: cached.tt,
+      ...(reasoningTokens > 0 ? { reasoningTokens } : {}),
     },
     costUsd: priced.costUsd,
     costProvenance: priced.source,
     filePath: sessionFile,
+    ...(cached.po === null || (typeof cached.po === 'number' && Number.isInteger(cached.po))
+      ? { promptOrdinal: cached.po }
+      : {}),
+    ...(typeof cached.rid === 'string' ? { requestId: cached.rid } : {}),
+    ...(subagent ? { subagent: { ...subagent } } : {}),
   };
 }
 
 interface SubagentFile {
   path: string;
   name: string;
+  /** Agent id from the file name: `agent-<id>.jsonl` → `<id>`. */
+  agentId: string;
   sizeBytes: number;
   modifiedAt: number;
 }
 
-const CLAUDE_AGENT_FILE = /^agent-.+\.jsonl$/;
+const CLAUDE_AGENT_FILE = /^agent-(.+)\.jsonl$/;
 
 /** Claude Code subagent transcripts of a session, sorted by name. */
 function claudeSubagentFiles(preview: SessionPreview): SubagentFile[] {
@@ -301,6 +396,7 @@ function claudeSubagentFiles(preview: SessionPreview): SubagentFile[] {
       files.push({
         path: path.join(dir, name),
         name,
+        agentId: CLAUDE_AGENT_FILE.exec(name)?.[1] ?? name,
         sizeBytes: stat.size,
         modifiedAt: stat.mtimeMs,
       });
@@ -321,6 +417,7 @@ function readTranscriptUsage(
   provider: SessionProviderBase,
   filePath: string,
   cached: CachedUsageEvent[],
+  agentId?: string,
 ): void {
   const reader = provider.createReader(filePath);
   const events = reader.readAll();
@@ -343,6 +440,7 @@ function readTranscriptUsage(
       target.cr += usage.cacheReadTokens;
       target.bo += usage.billableOutputTokens;
       target.tt += usage.totalTokens;
+      if (usage.reasoningTokens > 0) target.rt = (target.rt ?? 0) + usage.reasoningTokens;
       continue;
     }
     const timestamp = Date.parse(event.timestamp);
@@ -351,6 +449,8 @@ function readTranscriptUsage(
       usage,
       timestamp,
       event.message?.model ?? usage.model ?? 'unknown',
+      messageId,
+      agentId,
     );
     cached.push(record);
     if (messageId) byMessageId.set(messageId, record);
@@ -364,9 +464,76 @@ function readSessionUsage(
 ): CachedUsageEvent[] {
   const cached: CachedUsageEvent[] = [];
   readTranscriptUsage(provider, preview.filePath, cached);
-  for (const file of subagents) readTranscriptUsage(provider, file.path, cached);
+  for (const file of subagents) readTranscriptUsage(provider, file.path, cached, file.agentId);
   cached.sort((a, b) => a.t - b.t);
   return cached;
+}
+
+/**
+ * Sets each event's `po` to the highest ordinal among the prompts timestamped
+ * at or before it, or null when none is. With prompts in time order (the
+ * usual case) that is the last prompt before the event.
+ */
+function assignPromptOrdinals(
+  events: CachedUsageEvent[],
+  marks: readonly PromptOrdinalMark[],
+): void {
+  const sorted = [...marks].sort((a, b) => a.timestampMs - b.timestampMs || a.ordinal - b.ordinal);
+  const highest: number[] = [];
+  let max = -1;
+  for (const mark of sorted) {
+    max = Math.max(max, mark.ordinal);
+    highest.push(max);
+  }
+  for (const event of events) {
+    let low = 0;
+    let high = sorted.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (sorted[middle].timestampMs <= event.t) low = middle + 1;
+      else high = middle;
+    }
+    event.po = low === 0 ? null : highest[low - 1];
+  }
+}
+
+/**
+ * Prompt ordinals for a freshly read session, from its main transcript.
+ * Returns false when the transcript could not be scanned (the events then
+ * keep no ordinal and the session is not cached, so the next run retries).
+ */
+async function addPromptOrdinals(
+  preview: SessionPreview,
+  events: CachedUsageEvent[],
+): Promise<boolean> {
+  if (preview.provider !== 'claude-code' && preview.provider !== 'codex') return true;
+  let marks: PromptOrdinalMark[];
+  try {
+    marks = await readPromptOrdinalMarks(preview.provider, preview.sessionId, preview.filePath);
+  } catch {
+    return false;
+  }
+  assignPromptOrdinals(events, marks);
+  return true;
+}
+
+/** Parent of a Codex rollout that is a fork or a spawned subagent, from its first line only. */
+async function codexSessionSubagent(
+  preview: SessionPreview,
+): Promise<UsageCacheFile['subagent'] | undefined> {
+  if (preview.provider !== 'codex') return undefined;
+  const { line } = await readFirstLineAsync(preview.filePath);
+  if (!line) return undefined;
+  let first: unknown;
+  try {
+    first = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  const origin = codexRolloutOrigin(first);
+  if (!origin.parentId || (!origin.isSubagent && !origin.forkedFromId)) return undefined;
+  if (origin.parentId === preview.sessionId) return undefined;
+  return { agentId: preview.sessionId, parentSessionId: origin.parentId };
 }
 
 function yieldToEventLoop(): Promise<void> {
@@ -413,12 +580,14 @@ export async function collectUsageEvents(
     const filePath = cacheFilePath(cacheDir, preview.provider, preview.sessionId);
 
     let cachedEvents: CachedUsageEvent[] | null = null;
+    let sessionSubagent: UsageCacheFile['subagent'];
     let project = preview.workspacePath;
     let fromCache = false;
     if (useCache) {
       const cached = readCache(filePath);
       if (cached && cached.fingerprint === fingerprint && cached.sessionId === preview.sessionId) {
         cachedEvents = cached.events;
+        sessionSubagent = validSubagent(cached.subagent);
         project = project ?? cached.project;
         fromCache = true;
         cacheHits += 1;
@@ -444,7 +613,10 @@ export async function collectUsageEvents(
         options.onDiagnostic?.(diagnostic);
         continue;
       }
-      if (useCache) {
+      // Ordinals and origin are best-effort: a failure costs only the cache write.
+      const ordinalsRead = await addPromptOrdinals(preview, cachedEvents);
+      sessionSubagent = await codexSessionSubagent(preview).catch(() => undefined);
+      if (useCache && ordinalsRead) {
         const record: UsageCacheFile = {
           version: USAGE_CACHE_VERSION,
           provider: preview.provider,
@@ -452,6 +624,7 @@ export async function collectUsageEvents(
           fingerprint,
           project,
           events: cachedEvents,
+          ...(sessionSubagent ? { subagent: sessionSubagent } : {}),
         };
         try {
           await atomicWriteJson(filePath, record);
@@ -470,7 +643,14 @@ export async function collectUsageEvents(
       if (sinceMs !== null && cached.t < sinceMs) continue;
       if (untilMs !== null && cached.t > untilMs) continue;
       events.push(
-        priceCachedEvent(cached, preview.provider, preview.sessionId, project, preview.filePath),
+        priceCachedEvent(
+          cached,
+          preview.provider,
+          preview.sessionId,
+          project,
+          preview.filePath,
+          sessionSubagent,
+        ),
       );
       first = first === null ? cached.t : Math.min(first, cached.t);
       last = last === null ? cached.t : Math.max(last, cached.t);
@@ -500,6 +680,14 @@ export async function collectUsageEvents(
     cacheMisses,
     ...(scope ? { roots: scope.roots } : {}),
   };
+}
+
+function validSubagent(value: unknown): UsageCacheFile['subagent'] {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { agentId, parentSessionId } = value as Record<string, unknown>;
+  return typeof agentId === 'string' && typeof parentSessionId === 'string'
+    ? { agentId, parentSessionId }
+    : undefined;
 }
 
 /** The roots to list, or undefined for an unscoped (or legacy single-root) call. */

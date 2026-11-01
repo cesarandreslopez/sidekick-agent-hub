@@ -9,14 +9,19 @@
 import { classifyCostProvenance } from '../aggregation/costProvenance';
 import type { AggregatedCostProvenance } from '../aggregation/types';
 import { formatLocalDateKey } from '../formatting';
+import { canonicalModelId } from '../modelInfo';
 import type { ProviderId } from '../providers/types';
 import type { TokenTotals } from '../types/historicalData';
+import { SYNTHETIC_MODEL } from './claudeUsageDedupe';
 import type { UsageEventRecord } from './usageEvents';
 
 export type UsageGranularity = 'day' | 'week' | 'month' | 'session';
 
-/** Extra dimensions a bucket is split by, beyond the time key. */
-export type UsageGroupDimension = 'provider' | 'project' | 'model';
+/**
+ * Extra dimensions a bucket is split by, beyond the time key. `session`
+ * splits each time bucket per session (rows then carry `sessionId`).
+ */
+export type UsageGroupDimension = 'provider' | 'project' | 'model' | 'session';
 
 export interface BucketUsageOptions {
   granularity: UsageGranularity;
@@ -26,6 +31,19 @@ export interface BucketUsageOptions {
   weekStartsOn?: 0 | 1;
   /** Dimensions to group by in addition to the time key (default `['provider']`). */
   groupBy?: readonly UsageGroupDimension[];
+  /**
+   * Drop events whose model is Claude Code's `<synthetic>` placeholder
+   * (`SYNTHETIC_MODEL`: locally generated, unbilled messages). Default false.
+   */
+  excludeSynthetic?: boolean;
+  /**
+   * How model ids are keyed in `model` rows and the `models` list. `'raw'`
+   * (default) keeps each id as recorded; `'canonical'` merges spellings of one
+   * model (date suffixes, provider/region prefixes, Bedrock forms) through
+   * `canonicalModelId()`, so `claude-opus-5-5-20261001` and `claude-opus-5-5`
+   * share a row. Pricing is unaffected: events arrive already priced.
+   */
+  modelKey?: 'raw' | 'canonical';
 }
 
 export interface UsageBucketRow {
@@ -36,7 +54,7 @@ export interface UsageBucketRow {
   project: string | null;
   /** Set when grouping by model; null for rows spanning every model. */
   model: string | null;
-  /** Session id for `session` rows; null otherwise. */
+  /** Session id for `session` rows and rows grouped by `session`; null otherwise. */
   sessionId: string | null;
   /** Models seen in the row, most tokens first. */
   models: string[];
@@ -48,8 +66,18 @@ export interface UsageBucketRow {
   totalTokens: number;
   /** Priced portion of the cost; read `costProvenance` before labelling it. */
   costUsd: number;
+  /**
+   * Sum of the priced calls' costs, or null when no call in the row was
+   * priced (where `costUsd` reads 0).
+   */
+  pricedCostUsd: number | null;
   costProvenance: AggregatedCostProvenance;
   unpricedCalls: number;
+  /**
+   * Reasoning tokens reported by the row's calls. Informational, already
+   * inside the token buckets and `totalTokens`. Always set by `bucketUsage`.
+   */
+  reasoningTokens?: number;
   /** First and last event in the row, ms since epoch. */
   firstTimestamp: number;
   lastTimestamp: number;
@@ -61,8 +89,12 @@ export interface UsageTotals {
   tokens: TokenTotals;
   totalTokens: number;
   costUsd: number;
+  /** Sum of the rows' priced costs, or null when no row had a priced call. */
+  pricedCostUsd: number | null;
   costProvenance: AggregatedCostProvenance;
   unpricedCalls: number;
+  /** Sum of the rows' `reasoningTokens`. Always set by `summarizeUsageRows`. */
+  reasoningTokens?: number;
 }
 
 interface Accumulator {
@@ -151,25 +183,34 @@ function addTokens(target: TokenTotals, source: TokenTotals): void {
 
 /**
  * Group usage events into rows. Rows are sorted by key (sessions by first
- * event), then provider, project, and model, so tables read oldest first.
+ * event), then provider, project, and model, so tables read oldest first;
+ * rows grouped by `session` within one of those follow their first event.
  */
 export function bucketUsage(
   events: readonly UsageEventRecord[],
   options: BucketUsageOptions,
 ): UsageBucketRow[] {
-  const groupBy = new Set(options.groupBy ?? ['provider']);
+  const groupBy = new Set<UsageGroupDimension>(options.groupBy ?? ['provider']);
   const isSession = options.granularity === 'session';
   const byProvider = isSession || groupBy.has('provider');
   const byProject = isSession || groupBy.has('project');
   const byModel = groupBy.has('model');
+  const bySession = isSession || groupBy.has('session');
+  const keyModel =
+    options.modelKey === 'canonical'
+      ? (model: string) => (model === SYNTHETIC_MODEL ? model : canonicalModelId(model) || model)
+      : (model: string) => model;
   const buckets = new Map<string, Accumulator>();
 
   for (const event of events) {
+    if (options.excludeSynthetic && event.model === SYNTHETIC_MODEL) continue;
     const key = usageBucketKey(event, options);
     const provider = byProvider ? event.provider : null;
     const project = byProject ? event.project : null;
-    const model = byModel ? event.model : null;
-    const id = [key, provider ?? '', project ?? '', model ?? ''].join('|');
+    const eventModel = keyModel(event.model);
+    const model = byModel ? eventModel : null;
+    const sessionId = bySession ? event.sessionId : null;
+    const id = JSON.stringify([key, provider, project, model, sessionId]);
 
     let acc = buckets.get(id);
     if (!acc) {
@@ -180,15 +221,17 @@ export function bucketUsage(
           provider,
           project,
           model,
-          sessionId: isSession ? event.sessionId : null,
+          sessionId,
           models: [],
           calls: 0,
           sessions: 0,
           tokens: emptyTokens(),
           totalTokens: 0,
           costUsd: 0,
+          pricedCostUsd: null,
           costProvenance: 'none',
           unpricedCalls: 0,
+          reasoningTokens: 0,
           firstTimestamp: event.timestamp,
           lastTimestamp: event.timestamp,
         },
@@ -204,15 +247,17 @@ export function bucketUsage(
     row.calls += 1;
     addTokens(row.tokens, event.tokens);
     row.totalTokens += event.tokens.totalTokens;
+    row.reasoningTokens = (row.reasoningTokens ?? 0) + reasoningOf(event.tokens.reasoningTokens);
     row.firstTimestamp = Math.min(row.firstTimestamp, event.timestamp);
     row.lastTimestamp = Math.max(row.lastTimestamp, event.timestamp);
     acc.sessionIds.add(event.sessionId);
     acc.modelTokens.set(
-      event.model,
-      (acc.modelTokens.get(event.model) ?? 0) + event.tokens.totalTokens,
+      eventModel,
+      (acc.modelTokens.get(eventModel) ?? 0) + event.tokens.totalTokens,
     );
     if (event.costUsd !== null) {
       row.costUsd += event.costUsd;
+      row.pricedCostUsd = (row.pricedCostUsd ?? 0) + event.costUsd;
       if (event.costProvenance === 'provider-reported') acc.reportedCalls += 1;
       else acc.estimatedCalls += 1;
     } else {
@@ -238,8 +283,16 @@ export function bucketUsage(
       (isSession ? a.firstTimestamp - b.firstTimestamp : a.key.localeCompare(b.key)) ||
       (a.provider ?? '').localeCompare(b.provider ?? '') ||
       (a.project ?? '').localeCompare(b.project ?? '') ||
-      (a.model ?? '').localeCompare(b.model ?? ''),
+      (a.model ?? '').localeCompare(b.model ?? '') ||
+      (bySession && !isSession
+        ? a.firstTimestamp - b.firstTimestamp ||
+          (a.sessionId ?? '').localeCompare(b.sessionId ?? '')
+        : 0),
   );
+}
+
+function reasoningOf(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 /**
@@ -257,8 +310,10 @@ export function summarizeUsageRows(
     tokens: emptyTokens(),
     totalTokens: 0,
     costUsd: 0,
+    pricedCostUsd: null,
     costProvenance: 'none',
     unpricedCalls: 0,
+    reasoningTokens: 0,
   };
   let reportedCalls = 0;
   let estimatedCalls = 0;
@@ -268,6 +323,15 @@ export function summarizeUsageRows(
     addTokens(totals.tokens, row.tokens);
     totals.totalTokens += row.totalTokens;
     totals.costUsd += row.costUsd;
+    // Rows from before `pricedCostUsd` existed: any priced call means a priced cost.
+    const rowPriced =
+      row.pricedCostUsd !== undefined
+        ? row.pricedCostUsd
+        : row.calls > row.unpricedCalls
+          ? row.costUsd
+          : null;
+    if (rowPriced !== null) totals.pricedCostUsd = (totals.pricedCostUsd ?? 0) + rowPriced;
+    totals.reasoningTokens = (totals.reasoningTokens ?? 0) + reasoningOf(row.reasoningTokens);
     totals.unpricedCalls += row.unpricedCalls;
     const priced = row.calls - row.unpricedCalls;
     if (row.costProvenance === 'reported') reportedCalls += priced;

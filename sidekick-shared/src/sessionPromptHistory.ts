@@ -17,6 +17,7 @@
 import * as fs from 'fs';
 import {
   DEFAULT_BOUNDS,
+  PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
   compareStrings,
   emptyStats,
   listCandidates,
@@ -51,7 +52,13 @@ export interface SessionPromptHistoryBounds {
   maxSessionBytes?: number;
   /** Bytes read across all sessions in one call. Default 256 MiB. */
   maxTotalBytes?: number;
-  /** Largest single log record that is parsed. Default 16 MiB. */
+  /**
+   * Largest single log record that is parsed. Default 16 MiB
+   * (`PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES`). A prompt inside a longer
+   * record is never seen, so later ordinals do not count it: ordinals match
+   * `collectPromptHistory()` (and usage events' `promptOrdinal`) only when
+   * both use the default.
+   */
   maxRecordBytes?: number;
   /** Wall-clock budget for the call. Default 60 000 ms. */
   deadlineMs?: number;
@@ -164,7 +171,7 @@ const DEFAULT_SESSION_BOUNDS: Required<SessionPromptHistoryBounds> = {
   maxSessions: 1000,
   maxSessionBytes: 256 * 1024 * 1024,
   maxTotalBytes: 256 * 1024 * 1024,
-  maxRecordBytes: DEFAULT_BOUNDS.maxRecordBytes,
+  maxRecordBytes: PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
   deadlineMs: 60_000,
 };
 

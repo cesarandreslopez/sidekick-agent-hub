@@ -14,6 +14,10 @@
  * record over `maxRecordBytes` is skipped without being buffered and reported
  * in `exclusions`, the only way a record is permanently left out.
  *
+ * `includeText: false` returns the same entries, ordinals, timestamps,
+ * metadata, exclusions, and cursor without prompt text, for consumers that
+ * only count or attribute prompts. Cursors are interchangeable between modes.
+ *
  * A prompt can be written before its answer. The cursor then keeps the byte
  * offset of that prompt's line and its answer-tracking state (never text), and
  * the prompt is returned again under the same identity once its first
@@ -53,8 +57,14 @@ export interface PromptHistoryBounds {
   /** Bytes read across all files in this call. Default 256 MiB. */
   maxTotalBytes?: number;
   /**
-   * Largest single log record that is parsed. Default 16 MiB. A longer record
-   * is skipped without being buffered and reported in `exclusions`.
+   * Largest single log record that is parsed. Default 16 MiB
+   * (`PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES`). A longer record is skipped
+   * without being buffered and reported in `exclusions`.
+   *
+   * Ordinals depend on this bound: a prompt inside a skipped record is never
+   * seen, so later prompts in that file do not count it. Ordinals are only
+   * stable across runs and across consumers (for example usage events'
+   * `promptOrdinal`) when every reader uses the default.
    */
   maxRecordBytes?: number;
   /** Entries returned by one call. Default 10 000. */
@@ -163,8 +173,10 @@ export interface PromptHistoryEntry {
   ordinal: number;
   /** ISO timestamp from the log line; never synthesized. */
   timestamp: string;
-  /** Full prompt text, untruncated. */
+  /** Full prompt text, untruncated; `''` when the call passed `includeText: false`. */
   text: string;
+  /** Set when `text` was left out by `includeText: false`; the prompt was not empty. */
+  textOmitted?: true;
   /** Realpath of the working directory; always inside an allowed root. */
   cwd: string;
   gitBranch?: string;
@@ -196,7 +208,9 @@ export interface PromptHistorySessionRef {
 /**
  * A log record permanently left out. Records over `maxRecordBytes` and lines
  * that are not valid JSON are never parsed, so any prompt inside is lost, and
- * the ordinals of later prompts in that file do not count it.
+ * the ordinals of later prompts in that file do not count it. Because of
+ * that, ordinals are only stable across runs and consumers that all use the
+ * default `maxRecordBytes` (`PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES`).
  */
 export interface PromptHistoryExclusion {
   provider: PromptHistoryProvider;
@@ -241,6 +255,14 @@ export interface CollectPromptHistoryOptions {
   cursor?: PromptHistoryCursor;
   bounds?: PromptHistoryBounds;
   signal?: AbortSignal;
+  /**
+   * Return prompt text. Default true. With `false`, entries keep their
+   * ordinal, timestamp, cwd, branch, and answer metadata but carry `text: ''`
+   * and `textOmitted: true`, and no prompt text is kept past classifying its
+   * line. Ordinals, timestamps, exclusions, and the cursor are identical in
+   * both modes, so a cursor written in one mode resumes in the other.
+   */
+  includeText?: boolean;
 }
 
 export interface PromptHistoryResult {
@@ -265,12 +287,20 @@ export interface PromptHistoryResult {
   roots?: string[];
 }
 
+/**
+ * The default `maxRecordBytes` (16 MiB). Prompt ordinals are only comparable
+ * between readers that skip the same records, so every reader that publishes
+ * or joins on ordinals (prompt history, session prompt history, usage events'
+ * `promptOrdinal`) uses this bound.
+ */
+export const PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES = 16 * 1024 * 1024;
+
 /** @internal */
 export const DEFAULT_BOUNDS: Required<PromptHistoryBounds> = {
   maxSessions: 1000,
   maxFileBytes: 16 * 1024 * 1024,
   maxTotalBytes: 256 * 1024 * 1024,
-  maxRecordBytes: 16 * 1024 * 1024,
+  maxRecordBytes: PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
   maxEntries: 10_000,
   deadlineMs: 30_000,
 };
@@ -307,6 +337,18 @@ export type RecordObserver = (
   info: { ordinal: number; lineOffset: number },
 ) => void;
 
+/**
+ * Sees every human prompt as it is given its ordinal, before the timestamp and
+ * scope checks, so prompts that are not returned are seen too. `timestamp` is
+ * undefined when the line has no usable one.
+ * @internal
+ */
+export type PromptObserver = (prompt: {
+  ordinal: number;
+  timestamp: string | undefined;
+  lineOffset: number;
+}) => void;
+
 /** @internal */
 export interface ScanContext {
   roots: string[];
@@ -319,6 +361,9 @@ export interface ScanContext {
   entriesSoFar: () => number;
   exclude: (exclusion: PromptHistoryExclusion) => void;
   observe?: RecordObserver;
+  onPrompt?: PromptObserver;
+  /** Keep prompt text on entries. Default true. */
+  includeText?: boolean;
 }
 
 /** @internal */
@@ -410,6 +455,7 @@ export async function collectPromptHistory(
     exclude: (exclusion) => {
       if (exclusions.length < MAX_EXCLUSIONS) exclusions.push(exclusion);
     },
+    includeText: options.includeText !== false,
   };
   let totalBytes = 0;
   let scannedAny = false;
@@ -522,6 +568,63 @@ export async function collectPromptHistory(
   }
 
   return finish();
+}
+
+/** One human prompt of a session file: its ordinal and parsed timestamp. @internal */
+export interface PromptOrdinalMark {
+  ordinal: number;
+  /** Prompt line timestamp, ms since epoch. */
+  timestampMs: number;
+}
+
+/**
+ * Every human prompt of one session file with its ordinal and timestamp, read
+ * whole in one pass with the default record bound, so the ordinals are the
+ * ones `collectPromptHistory()` returns with default bounds. No scope check
+ * and no text: prompts are counted wherever their cwd points. Prompts whose
+ * line has no usable timestamp still take an ordinal but are left out. A
+ * non-interactive Codex session (subagent, fork, unknown source) has none.
+ * In file order. Rejects when the file cannot be opened or changes while its
+ * head is read.
+ * @internal
+ */
+export async function readPromptOrdinalMarks(
+  provider: PromptHistoryProvider,
+  sessionId: string,
+  filePath: string,
+): Promise<PromptOrdinalMark[]> {
+  const marks: PromptOrdinalMark[] = [];
+  const stat = await fs.promises.stat(filePath);
+  const unbounded = Number.MAX_SAFE_INTEGER;
+  const context: ScanContext = {
+    roots: [],
+    sinceMs: null,
+    stats: emptyStats(),
+    realpaths: new Map(),
+    bounds: {
+      maxSessions: unbounded,
+      maxFileBytes: unbounded,
+      maxTotalBytes: unbounded,
+      maxRecordBytes: PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
+      maxEntries: unbounded,
+      deadlineMs: unbounded,
+    },
+    shouldStop: () => null,
+    entriesSoFar: () => 0,
+    exclude: () => undefined,
+    includeText: false,
+    onPrompt: ({ ordinal, timestamp }) => {
+      if (timestamp !== undefined) marks.push({ ordinal, timestampMs: Date.parse(timestamp) });
+    },
+  };
+  await scanFile(
+    { provider, sessionId, filePath, key: `${provider}:${sessionId}:${hashPath(filePath)}` },
+    stat,
+    undefined,
+    { bytes: unbounded, bound: 'maxFileBytes', forceProgress: true },
+    context,
+  );
+  return marks;
 }
 
 /** @internal */
@@ -1324,7 +1427,7 @@ abstract class LineScanner {
     return {
       entry: {
         ...entry,
-        text,
+        ...this.textFields(text),
         cwd: scoped,
         ...(place.gitBranch ? { gitBranch: place.gitBranch } : {}),
         ...(entry.usage ? { usage: { ...entry.usage } } : {}),
@@ -1343,6 +1446,11 @@ abstract class LineScanner {
     this.open = null;
   }
 
+  /** Entry text fields: the text, or an empty string flagged as omitted. */
+  private textFields(text: string): Pick<PromptHistoryEntry, 'text' | 'textOmitted'> {
+    return this.context.includeText === false ? { text: '', textOmitted: true } : { text };
+  }
+
   /** Assign an ordinal to a human prompt and emit it when in scope. */
   protected recordPrompt(
     text: string,
@@ -1355,7 +1463,13 @@ abstract class LineScanner {
   ): void {
     const ordinal = this.nextOrdinal++;
     this.closeOpen();
-    if (typeof timestamp !== 'string' || Number.isNaN(Date.parse(timestamp))) {
+    const usable = typeof timestamp === 'string' && !Number.isNaN(Date.parse(timestamp));
+    this.context.onPrompt?.({
+      ordinal,
+      timestamp: usable ? (timestamp as string) : undefined,
+      lineOffset,
+    });
+    if (!usable) {
       this.context.stats.promptsMissingTimestamp++;
       return;
     }
@@ -1372,7 +1486,7 @@ abstract class LineScanner {
       sessionId: this.candidate.sessionId,
       ordinal,
       timestamp,
-      text,
+      ...this.textFields(text),
       cwd: scoped,
       ...(gitBranch ? { gitBranch } : {}),
       metadataStatus: 'pending',
