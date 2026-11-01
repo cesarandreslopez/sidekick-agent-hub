@@ -28,7 +28,10 @@ export {
   collectPromptHistory,
   isPromptHistorySessionSettled,
   parsePromptHistoryCursor,
+  PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
 } from './promptHistory';
+export { findToolCallOrigins } from './toolCallOrigins';
+export type { FindToolCallOriginsOptions, ToolCallOrigin } from './toolCallOrigins';
 export type {
   CollectPromptHistoryOptions,
   PromptHistoryAnswerState,
@@ -262,10 +265,37 @@ export {
   resolveSidekickCodexHome,
   getCodexExecutionEnv,
   getCodexSessionsDirs,
+  getCodexCredentialStoreMode,
+  forceFileCredentialStore,
   CODEX_SESSIONS_SUBDIR,
   CODEX_ARCHIVED_SESSIONS_SUBDIR,
 } from './codexPaths';
-export type { CodexSessionsDirsOptions } from './codexPaths';
+export type { CodexCredentialStoreMode, CodexSessionsDirsOptions } from './codexPaths';
+export {
+  parseAuthJson as parseCodexAuthJson,
+  readAuthIdentityFromRaw as readCodexAuthIdentity,
+  readLastRefresh as readCodexLastRefresh,
+  readAccessTokenExpiry as readCodexAccessTokenExpiry,
+  identitiesMatch as codexIdentitiesMatch,
+  codexRefreshFingerprint,
+  compareCodexAuthFreshness,
+} from './codexAuth';
+export type { CodexAuthIdentity, CodexAuthJsonFile } from './codexAuth';
+export { atomicWriteJson, atomicWriteJsonSync } from './writers/atomic';
+export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
+export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
+export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
+export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+export {
+  getPricingCatalogInfo,
+  registerModelPricing,
+  clearRegisteredModelPricing,
+} from './modelInfo';
+export type {
+  PricingCatalogInfo,
+  PricingCatalogSource,
+  RegisterModelPricingOptions,
+} from './modelInfo';
 
 export type {
   ProviderServiceSeverity,
@@ -294,9 +324,15 @@ export {
   createJsonlTail,
   DEFAULT_JSONL_TAIL_MAX_LINE_BYTES,
   DEFAULT_JSONL_TAIL_READ_BYTES,
+  JSONL_TAIL_CHECKPOINT_VERSION,
+  JsonlTailSymlinkError,
 } from './watchers/jsonlTail';
 export type {
   JsonlTail,
+  JsonlTailCheckpoint,
+  JsonlTailReadResult,
+  JsonlTailEntry,
+  JsonlTailRewritePolicy,
   JsonlTailBatch,
   JsonlTailLine,
   JsonlTailOptions,

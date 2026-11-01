@@ -60,7 +60,10 @@ export {
   collectPromptHistory,
   isPromptHistorySessionSettled,
   parsePromptHistoryCursor,
+  PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
 } from './promptHistory';
+export { findToolCallOrigins } from './toolCallOrigins';
+export type { FindToolCallOriginsOptions, ToolCallOrigin } from './toolCallOrigins';
 export type {
   CollectPromptHistoryOptions,
   PromptHistoryAnswerState,
@@ -505,7 +508,9 @@ export {
   normalizeCodexToolInput,
   resolveCodexCallUsage,
 } from './parsers/codexParser';
-export type { CodexRolloutParserOptions } from './parsers/codexParser';
+export type { CodexPendingStats, CodexRolloutParserOptions } from './parsers/codexParser';
+export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
+export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
 
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo, readAgentMeta } from './parsers/subagentScanner';
@@ -682,9 +687,15 @@ export {
   createJsonlTail,
   DEFAULT_JSONL_TAIL_MAX_LINE_BYTES,
   DEFAULT_JSONL_TAIL_READ_BYTES,
+  JSONL_TAIL_CHECKPOINT_VERSION,
+  JsonlTailSymlinkError,
 } from './watchers/jsonlTail';
 export type {
   JsonlTail,
+  JsonlTailCheckpoint,
+  JsonlTailReadResult,
+  JsonlTailEntry,
+  JsonlTailRewritePolicy,
   JsonlTailBatch,
   JsonlTailLine,
   JsonlTailOptions,
@@ -864,6 +875,8 @@ export {
   readLastRefresh as readCodexLastRefresh,
   readAccessTokenExpiry as readCodexAccessTokenExpiry,
   identitiesMatch as codexIdentitiesMatch,
+  codexRefreshFingerprint,
+  compareCodexAuthFreshness,
 } from './codexAuth';
 export type { CodexAuthIdentity, CodexAuthJsonFile } from './codexAuth';
 
@@ -1209,9 +1222,22 @@ export {
   sortModelIds,
   formatCost,
   MODEL_PROVIDER_IDS,
+  canonicalModelId,
+  isMovingModelAlias,
+  registerModelPricing,
+  clearRegisteredModelPricing,
+  getPricingCatalogInfo,
+  costSourceFromPricingProvenance,
+  mergeCostComponents,
 } from './modelInfo';
 export type {
   ModelPricing,
+  ResolveModelPricingOptions,
+  RegisterModelPricingOptions,
+  PricingCatalogInfo,
+  PricingCatalogSource,
+  CostComponent,
+  FormatCostOptions,
   CostTokenUsage,
   CostSource,
   CostProvenanceInput,
@@ -1398,8 +1424,14 @@ export {
   PROVIDER_FAILURE_CODES,
   PROVIDER_FAILURE_EVIDENCE_SOURCES,
   PROVIDER_RECOVERY_ACTIONS,
+  CODEX_ERROR_INFO_KINDS,
+  decodeCodexErrorInfo,
 } from './providerFailure';
+export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
+export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 export type {
+  CodexErrorInfoKind,
+  CodexErrorInfoSummary,
   ProviderCredentialKind,
   ProviderAuthenticationEvidence,
   ProviderFailureInput,
@@ -1434,6 +1466,7 @@ export { readStoredCodexAccount, syncCodexLiveStateAsync } from './codexProfiles
 // Codex rollout directories (live and archived)
 export {
   getCodexSessionsDirs,
+  forceFileCredentialStore,
   CODEX_SESSIONS_SUBDIR,
   CODEX_ARCHIVED_SESSIONS_SUBDIR,
 } from './codexPaths';

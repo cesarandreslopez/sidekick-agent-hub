@@ -102,6 +102,8 @@ export type {
   QuotaProviderId,
   RuntimeQuotaProviderId,
   SessionProviderId,
+  /** Same type as `ProviderId` from the package root and `sidekick-shared/node`. */
+  SessionProviderId as ProviderId,
 } from './providerIds';
 export type {
   BuildSessionContextSnapshotOptions,
@@ -150,10 +152,23 @@ export {
   compareModelIds,
   sortModelIds,
   formatCost,
+  canonicalModelId,
+  isMovingModelAlias,
+  registerModelPricing,
+  clearRegisteredModelPricing,
+  getPricingCatalogInfo,
+  costSourceFromPricingProvenance,
+  mergeCostComponents,
 } from './modelInfo';
 
 export type {
   ModelPricing,
+  ResolveModelPricingOptions,
+  RegisterModelPricingOptions,
+  PricingCatalogInfo,
+  PricingCatalogSource,
+  CostComponent,
+  FormatCostOptions,
   CostTokenUsage,
   CostSource,
   CostProvenanceInput,
@@ -223,8 +238,14 @@ export {
   PROVIDER_FAILURE_CODES,
   PROVIDER_FAILURE_EVIDENCE_SOURCES,
   PROVIDER_RECOVERY_ACTIONS,
+  CODEX_ERROR_INFO_KINDS,
+  decodeCodexErrorInfo,
 } from './providerFailure';
+export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
+export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 export type {
+  CodexErrorInfoKind,
+  CodexErrorInfoSummary,
   ProviderCredentialKind,
   ProviderAuthenticationEvidence,
   ProviderFailureInput,
@@ -334,7 +355,9 @@ export {
   normalizeCodexToolInput,
   resolveCodexCallUsage,
 } from './parsers/codexParser';
-export type { CodexRolloutParserOptions } from './parsers/codexParser';
+export type { CodexPendingStats, CodexRolloutParserOptions } from './parsers/codexParser';
+export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
+export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
 
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,

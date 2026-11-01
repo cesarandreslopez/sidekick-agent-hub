@@ -31,6 +31,7 @@ import type { RolloutFileInfo } from './rolloutWalker';
 import { getCodexSessionsDirs } from '../codexPaths';
 import {
   cwdMatches,
+  findCodexRolloutFile,
   getSessionsDirs,
   listCodexSessionFilesAsync,
   normalizePath,
@@ -89,42 +90,8 @@ function findRolloutFilesInConfiguredHomes(options: { limit?: number } = {}): Ro
   return walkRolloutFiles(getSessionsDirs(), options);
 }
 
-export interface FindCodexRolloutFileOptions {
-  /**
-   * Codex home whose `sessions/` subtree to search. Defaults to every
-   * monitored home: `$CODEX_HOME` if set, else `~/.codex`, plus managed
-   * profile homes that recorded sessions.
-   */
-  codexHome?: string;
-}
-
-/**
- * Locates the rollout file for a Codex session id by walking
- * `<home>/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl`, then
- * `<home>/archived_sessions/`, where Codex moves the rollouts of archived
- * threads.
- *
- * Filename-only match, case-insensitive on the id — no file contents are read
- * and files are only stat'ed once their name matches, so the walk stays cheap
- * even over a large history. When the same id exists in more than one home,
- * the most recently modified copy wins. Returns `null` for an unknown, empty,
- * or whitespace id. Consumers who want the database's answer instead can query
- * the already-public `CodexDatabase` (requires the external `sqlite3` binary).
- */
-export function findCodexRolloutFile(
-  sessionId: string,
-  options: FindCodexRolloutFileOptions = {},
-): string | null {
-  const normalizedId = sessionId.trim().toLowerCase();
-  if (!normalizedId) return null;
-
-  const sessionsDirs = options.codexHome
-    ? getCodexSessionsDirs([options.codexHome])
-    : getSessionsDirs();
-
-  // Name-only filter, one walk across the homes, newest modification first.
-  return walkRolloutFiles(sessionsDirs, { sessionId: normalizedId })[0]?.path ?? null;
-}
+export { findCodexRolloutFile };
+export type { FindCodexRolloutFileOptions } from './codexRollouts';
 
 /** Pick the best sessions directory for UI/search entrypoints. */
 function getSessionsDir(): string {

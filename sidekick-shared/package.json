@@ -103,6 +103,34 @@
       "require": "./dist/testing/index.js",
       "default": "./dist/testing/index.js"
     },
+    "./pricing": {
+      "types": "./dist/pricing.d.ts",
+      "module": "./dist/esm/pricing.js",
+      "import": "./dist/pricing.js",
+      "require": "./dist/pricing.js",
+      "default": "./dist/pricing.js"
+    },
+    "./codex": {
+      "types": "./dist/codex.d.ts",
+      "module": "./dist/esm/codex.js",
+      "import": "./dist/codex.js",
+      "require": "./dist/codex.js",
+      "default": "./dist/codex.js"
+    },
+    "./providerFailure": {
+      "types": "./dist/providerFailure.d.ts",
+      "module": "./dist/esm/providerFailure.js",
+      "import": "./dist/providerFailure.js",
+      "require": "./dist/providerFailure.js",
+      "default": "./dist/providerFailure.js"
+    },
+    "./statusline/payload": {
+      "types": "./dist/statusline/payload.d.ts",
+      "module": "./dist/esm/statusline/payload.js",
+      "import": "./dist/statusline/payload.js",
+      "require": "./dist/statusline/payload.js",
+      "default": "./dist/statusline/payload.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -140,6 +168,18 @@
       ],
       "testing": [
         "dist/testing/index.d.ts"
+      ],
+      "pricing": [
+        "dist/pricing.d.ts"
+      ],
+      "codex": [
+        "dist/codex.d.ts"
+      ],
+      "providerFailure": [
+        "dist/providerFailure.d.ts"
+      ],
+      "statusline/payload": [
+        "dist/statusline/payload.d.ts"
       ]
     }
   },
