@@ -5,6 +5,20 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.1] - 2026-11-01
+
+### Fixed
+
+- **The Subagents view works with current Claude Code.** Claude Code renamed its subagent tool from `Task` to `Agent`, so spawns were missed. The view now shows one row per spawn, with no `live-worker` placeholders or duplicate rows. Background agents stay running until Claude Code reports them finished, failed, killed or stopped, and clicking a row opens its transcript from the session's `subagents/` folder.
+- **Mind map and task board** recognize `Agent` spawns and refresh when a background agent finishes; agent notifications appear in the timeline as a short entry instead of raw XML.
+- **Sessions in Claude Code's `auto` permission mode keep their user lines.** Prompts, tool results and notifications on those lines were dropped.
+- **Session resume after a reload is verified.** A saved snapshot is used only when the session file is the same file with the same opening content, a response split across the snapshot point is counted once, and a foreground subagent running at the snapshot completes afterwards. Existing snapshots replay once after upgrading.
+- Model ids such as `constructor` no longer produce a nonsense price or context window.
+
+### Added
+
+- **Retry for more commands.** Generate Commit Message, Review My Changes, Generate PR Description, Generate Documentation and Quick Ask (Inline Chat) offer Retry, with the provider's suggested wait, when the failure is retryable. A retried PR description reuses the base branch it already chose.
+
 ## [0.29.0] - 2026-11-01
 
 ### Fixed

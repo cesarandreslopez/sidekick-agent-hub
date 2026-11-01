@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.1] - 2026-11-01
+
+### Fixed
+
+- **Subagents show up again for current Claude Code.** Claude Code renamed its subagent tool from `Task` to `Agent`, and most subagent tracking still looked only for `Task`, so the CLI dashboard, both mind maps and the VS Code Subagents view showed no subagents. Both names are recognized.
+- **Background agents are tracked until they finish.** A background agent's spawn returns at once, so it was marked completed at launch. It now stays running until Claude Code reports it finished, failed, killed or stopped, including reports delivered mid-turn.
+- **The VS Code Subagents view shows one row per spawn.** Running agents no longer appear twice, each row is linked to its transcript through the spawning tool call in Claude Code's meta file, and click-to-open finds transcripts in the session's `subagents/` folder again.
+- **Sessions in Claude Code's `auto` permission mode keep their user lines.** Lines carrying a permission mode Sidekick didn't know were dropped whole, losing prompts, tool results and agent notifications.
+- **Model ids and tool names that match JavaScript object members** (`constructor`, `toString`, `__proto__`, …) no longer return a function as a price or context window, lose pricing provenance, or make tool summaries throw.
+- **Dashboard resume after a restart is verified.** A saved snapshot is used only when the session file is the same file with the same opening content; otherwise the session is replayed. A response split across the snapshot point is no longer counted twice, and a foreground subagent still running at the snapshot completes when its result arrives. Existing snapshots replay once after upgrading.
+
+### Added
+
+- **VS Code Retry for more commands.** Generate Commit Message, Review My Changes, Generate PR Description, Generate Documentation and Quick Ask (Inline Chat) offer Retry when the provider failure is retryable, as Transform Selected Code already did.
+- **`sidekick-shared`:**
+  - **Subagents:** `isSubagentSpawnTool()`, `SUBAGENT_SPAWN_TOOL_NAMES`, `parseTaskNotification()`, `taskNotificationFromEvent()` and `isTaskNotificationSystemEvent()`. `SubagentLifecycle` gains `agentId`, `background` and `outcome`. `SubagentTrace` gains `filePath`, `spawnToolUseId`, `parentAgentId`, `background`, `finished` and `stoppedByUser`. `readAgentMeta()` returns the meta file's spawn link and state.
+  - **Task notifications (opt-in):** `extractSessionEvents(raw, { includeTaskNotifications: true })` and `createWatcher({ includeTaskNotifications: true })` turn mid-turn task-notification attachments into `system` events.
+  - **Verified resume:** `captureJsonlCheckpoint()`, `verifyJsonlCheckpoint()`, `SessionSnapshot.sourceCheckpoint` / `readerState`, `isSnapshotValid(snapshot, size, sourcePath)`, reader and watcher `getResumeState()` / `restoreResumeState()`, `ClaudeUsageDeduper.exportState()` / `importState()` and `CodexRolloutParser.exportResumeState()` / `importResumeState()`.
+
+### Changed
+
+- **`SubagentTrace.parentToolUseId` holds the spawning tool-use id**, as documented, when Claude Code's meta file records it. Heuristic links still store the parent's agent id there and now also set `parentAgentId`.
+
 ## [0.29.0] - 2026-11-01
 
 ### Fixed

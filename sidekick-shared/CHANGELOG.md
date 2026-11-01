@@ -5,6 +5,28 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.1] - 2026-11-01
+
+### Fixed
+
+- **Claude Code `Agent` spawns are tracked.** Claude Code renamed its subagent tool from `Task` to `Agent`. `EventAggregator`, the subagent trace parser and scanner, the `Agent` tool summary and `isAssistantTurnSubagentTool()` recognize both names (OpenCode's `task` still maps to `Task`).
+- **Background agents complete when they finish, not at launch.** An `Async agent launched` result keeps the lifecycle running and records the agent id; a `<task-notification>` completes it with `outcome: 'completed' | 'failed' | 'killed' | 'stopped'`. An interim notification keeps or puts the agent back to running. A foreground spawn still running at a snapshot completes after `restore()`.
+- **Unknown permission modes no longer drop events.** `extractSessionEvents` rejected every line whose `permissionMode` it didn't know, such as Claude Code's `auto`, losing prompts, tool results and notifications. The unknown mode is now dropped and the line kept; `PermissionMode` is unchanged.
+- **Lookups keyed by ids that match `Object.prototype` members.** `getModelPricing`, `resolveModelPricing` (which returned no `provenance` for `constructor` and `__proto__`), `getModelContextWindowSize` / `resolveModelContextWindow`, `getModelInfo`, `normalizeToolName`, `formatToolSummary` and `parseZaiQuotaError` read only own keys, and catalog, observed-window and LiteLLM tables store a `__proto__` id as data.
+- **Snapshot resume can verify the source file.** `isSnapshotValid(snapshot, size, sourcePath)` also checks the file's identity, the digest of its first 4 KiB and the newline before the offset, and rejects a snapshot without `sourceCheckpoint`; without `sourcePath` it behaves as before. Restoring `readerState` keeps the Claude usage deduper and the Codex parser state, so a response split across the snapshot point is counted once.
+
+### Added
+
+- `isSubagentSpawnTool()`, `SUBAGENT_SPAWN_TOOL_NAMES`, `parseTaskNotification()`, `taskNotificationFromEvent()`, `isTaskNotificationSystemEvent()` and the `TaskNotification` / `SubagentOutcome` types (root and `browser`).
+- `extractSessionEvents(raw, { includeTaskNotifications })` (`ExtractSessionEventsOptions`, also from `sidekick-shared/schemas`) and `CreateWatcherOptions.includeTaskNotifications`. When enabled, Claude Code's mid-turn `queued_command` task-notification attachments become one `system` event with `origin: { kind: 'task-notification' }`. The Claude Code provider's reader enables it; the default is off.
+- `SubagentLifecycle.agentId` / `background` / `outcome`; `SubagentTrace.filePath` / `spawnToolUseId` / `parentAgentId` / `background` / `finished` / `stoppedByUser`. `readAgentMeta()` (type `AgentMeta`) also returns `toolUseId`, `parentAgentId`, `requestShape`, `finished` and `stoppedByUser`. `scanSubagentTraces` links traces exactly by meta `parentAgentId` and spawn id before falling back to heuristics.
+- `captureJsonlCheckpoint(filePath, offset)` and `verifyJsonlCheckpoint(filePath, checkpoint)` (root and `node`); `SessionSnapshot.sourceCheckpoint` and `readerState`.
+- Optional `getResumeState()` / `restoreResumeState(state)` on `SessionReader` and `SessionWatcher`, implemented by the Claude Code and Codex readers and the JSONL and reader-backed watchers. `ClaudeUsageDeduper.exportState()` / `importState()` (`ClaudeUsageDedupeState`) and `CodexRolloutParser.exportResumeState()` / `importResumeState()` (`CodexRolloutResumeState`). `CodexReader.seekTo()` defers its re-parse to the first read, which a successful `restoreResumeState()` makes unnecessary.
+
+### Changed
+
+- `SubagentTrace.parentToolUseId` holds the spawning tool-use id from Claude Code's meta file when present, as its documentation says. Heuristic links keep storing the parent's agent id there and also set `parentAgentId`; top-level traces are those without a parent agent.
+
 ## [0.29.0] - 2026-11-01
 
 ### Fixed

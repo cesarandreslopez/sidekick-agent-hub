@@ -5,6 +5,15 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.1] - 2026-11-01
+
+### Fixed
+
+- **Subagents show up again for current Claude Code.** The dashboard and mind map counted only `Task` spawns, and Claude Code now names its subagent tool `Agent`. Background agents stay running until Claude Code reports them finished, failed, killed or stopped, and the timeline shows a short `Agent "…" finished` entry instead of raw notification XML.
+- **Sessions in Claude Code's `auto` permission mode keep their user lines** in the dashboard and `dump`.
+- **Dashboard resume is verified.** A saved snapshot is used only when the session file is the same file with the same opening content; a replaced or rewritten file is replayed instead of resumed mid-content. A response split across the snapshot point is no longer counted twice. Existing snapshots replay once after upgrading.
+- Model ids such as `constructor` no longer produce a nonsense price or context window.
+
 ## [0.29.0] - 2026-11-01
 
 ### Fixed
