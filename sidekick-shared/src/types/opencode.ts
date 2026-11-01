@@ -44,6 +44,8 @@ export interface OpenCodeMessage {
     cacheRead?: number;
     cacheWrite?: number;
     reasoning?: number;
+    /** Provider-reported total; tells OpenCode's token layouts apart (see `normalizeOpenCodeUsage`). */
+    total?: number;
   };
   time: {
     created: string | number;

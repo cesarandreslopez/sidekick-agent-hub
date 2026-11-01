@@ -13,7 +13,7 @@
 
 import type { SessionEvent } from '../types/sessionEvent';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../types/opencode';
-import { normalizeProviderUsage } from '../usageNormalization';
+import { normalizeProviderUsage, type NormalizedUsage } from '../usageNormalization';
 
 /**
  * OpenCode → Claude Code tool name mapping.
@@ -121,6 +121,100 @@ function toISOString(time: string | number | undefined): string {
   if (!time) return new Date().toISOString();
   if (typeof time === 'string') return time;
   return new Date(time).toISOString();
+}
+
+/** OpenCode token counts as stored on an assistant message or step. */
+export interface OpenCodeTokenCounts {
+  input?: number;
+  output?: number;
+  reasoning?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  /** Provider-reported total, stored by OpenCode since late 2025. */
+  total?: number;
+}
+
+/**
+ * Token counts from a message in either storage shape: database rows are
+ * mapped to flat `cacheRead` / `cacheWrite`, while file-storage messages keep
+ * OpenCode's nested `cache: { read, write }`.
+ * @internal
+ */
+export function openCodeTokenCounts(tokens: unknown): OpenCodeTokenCounts {
+  const raw = (tokens ?? {}) as Record<string, unknown>;
+  const cache = (raw.cache ?? {}) as Record<string, unknown>;
+  const num = (value: unknown) => (typeof value === 'number' ? value : undefined);
+  return {
+    input: num(raw.input),
+    output: num(raw.output),
+    reasoning: num(raw.reasoning),
+    cacheRead: num(raw.cacheRead) ?? num(cache.read),
+    cacheWrite: num(raw.cacheWrite) ?? num(cache.write),
+    total: num(raw.total),
+  };
+}
+
+/**
+ * How a stored OpenCode message splits its tokens. Current OpenCode stores
+ * every bucket disjoint for every provider: `input` excludes cache reads and
+ * writes (since 2025-11) and `output` excludes `reasoning` (since 2026-04),
+ * with `total` equal to their sum. Older messages either counted cached input
+ * in `input` (OpenAI-compatible providers) or reasoning in `output`. The
+ * stored `total` tells the layouts apart; without it the current layout is
+ * assumed.
+ * @internal
+ */
+export function openCodeTokenLayout(tokens: OpenCodeTokenCounts): {
+  inputIncludesCache: boolean;
+  reasoningInOutput: boolean;
+} {
+  const n = (value: number | undefined) =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+  const input = n(tokens.input);
+  const output = n(tokens.output);
+  const reasoning = n(tokens.reasoning);
+  const cache = n(tokens.cacheRead) + n(tokens.cacheWrite);
+  const total = n(tokens.total);
+  if (total > 0 && total !== input + cache + output + reasoning) {
+    if (reasoning > 0 && total === input + cache + output) {
+      return { inputIncludesCache: false, reasoningInOutput: true };
+    }
+    if (cache > 0 && total === input + output + reasoning) {
+      return { inputIncludesCache: true, reasoningInOutput: false };
+    }
+    if (cache > 0 && reasoning > 0 && total === input + output) {
+      return { inputIncludesCache: true, reasoningInOutput: true };
+    }
+  }
+  return { inputIncludesCache: false, reasoningInOutput: false };
+}
+
+/** Normalizes one OpenCode message's or step's stored tokens. @internal */
+export function normalizeOpenCodeUsage(
+  tokens: OpenCodeTokenCounts,
+  providerID: string | undefined,
+  extra: { source?: string; model?: string; reportedCostUsd?: number } = {},
+): NormalizedUsage {
+  const layout = openCodeTokenLayout(tokens);
+  return normalizeProviderUsage({
+    // `openai` semantics subtract cache reads from input; only an old
+    // cache-inclusive message needs that.
+    semantics: layout.inputIncludesCache
+      ? 'openai'
+      : providerID === 'anthropic'
+        ? 'anthropic'
+        : 'sidekick',
+    provider: providerID ?? 'opencode',
+    ...(extra.source ? { source: extra.source } : {}),
+    ...(extra.model ? { model: extra.model } : {}),
+    inputTokens: tokens.input,
+    outputTokens: tokens.output,
+    cacheReadTokens: tokens.cacheRead,
+    cacheWriteTokens: tokens.cacheWrite,
+    reasoningTokens: tokens.reasoning,
+    reasoningIncludedInOutput: layout.reasoningInOutput,
+    ...(extra.reportedCostUsd !== undefined ? { reportedCostUsd: extra.reportedCostUsd } : {}),
+  });
 }
 
 /**
@@ -351,32 +445,20 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
         ? stepFinishCost
         : undefined;
 
-  const usage = {
-    input_tokens: message.tokens.input || 0,
-    output_tokens: message.tokens.output || 0,
-    cache_creation_input_tokens: message.tokens.cacheWrite || 0,
-    cache_read_input_tokens: message.tokens.cacheRead || 0,
-    reported_cost: reportedCost,
-    reasoning_tokens: message.tokens.reasoning || 0,
-  };
-  const normalizedUsage = normalizeProviderUsage({
-    semantics:
-      message.providerID === 'openai'
-        ? 'openai'
-        : message.providerID === 'anthropic'
-          ? 'anthropic'
-          : 'sidekick',
-    provider: message.providerID ?? 'opencode',
+  const counts = openCodeTokenCounts(message.tokens);
+  const normalizedUsage = normalizeOpenCodeUsage(counts, message.providerID, {
     source: 'opencode-message',
     model: message.modelID,
-    inputTokens: message.tokens.input,
-    outputTokens: message.tokens.output,
-    cacheReadTokens: message.tokens.cacheRead,
-    cacheWriteTokens: message.tokens.cacheWrite,
-    reasoningTokens: message.tokens.reasoning,
-    reasoningIncludedInOutput: message.providerID === 'openai',
     reportedCostUsd: reportedCost,
   });
+  const usage = {
+    input_tokens: normalizedUsage.uncachedInputTokens,
+    output_tokens: counts.output || 0,
+    cache_creation_input_tokens: counts.cacheWrite || 0,
+    cache_read_input_tokens: counts.cacheRead || 0,
+    reported_cost: reportedCost,
+    reasoning_tokens: counts.reasoning || 0,
+  };
 
   const timestamp = toISOString(message.time.completed || message.time.created);
   const retryAttempts = parts
@@ -534,6 +616,7 @@ export function parseDbMessageData(row: DbMessage): OpenCodeMessage {
       cacheRead: (cache?.read as number) || 0,
       cacheWrite: (cache?.write as number) || 0,
       reasoning: (tokens?.reasoning as number) || 0,
+      ...(typeof tokens?.total === 'number' ? { total: tokens.total } : {}),
     },
     time: {
       created: (time?.created as number) || row.time_created,

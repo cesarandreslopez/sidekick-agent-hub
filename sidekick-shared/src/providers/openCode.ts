@@ -30,11 +30,11 @@ import {
   convertOpenCodeMessage,
   parseDbMessageData,
   parseDbPartData,
+  normalizeOpenCodeUsage,
   normalizeToolName,
   normalizeToolInput,
 } from '../parsers/openCodeParser';
 import { OpenCodeDatabase } from './openCodeDatabase';
-import { normalizeProviderUsage } from '../usageNormalization';
 import { addUsageToSubagent } from '../usage/subagentUsage';
 import type { DbPart } from '../types/opencode';
 import {
@@ -1669,24 +1669,19 @@ export class OpenCodeProvider implements SessionProviderBase {
               if (tokens) {
                 // Same semantics as the main-session parser (openCodeParser).
                 const cache = tokens.cache as Record<string, unknown> | undefined;
-                const providerID = msgData.providerID as string | undefined;
                 addUsageToSubagent(
                   tokenTotals,
-                  normalizeProviderUsage({
-                    semantics:
-                      providerID === 'openai'
-                        ? 'openai'
-                        : providerID === 'anthropic'
-                          ? 'anthropic'
-                          : 'sidekick',
-                    provider: providerID ?? 'opencode',
-                    inputTokens: tokens.input as number,
-                    outputTokens: tokens.output as number,
-                    cacheReadTokens: cache?.read as number,
-                    cacheWriteTokens: cache?.write as number,
-                    reasoningTokens: tokens.reasoning as number,
-                    reasoningIncludedInOutput: providerID === 'openai',
-                  }),
+                  normalizeOpenCodeUsage(
+                    {
+                      input: tokens.input as number,
+                      output: tokens.output as number,
+                      cacheRead: cache?.read as number,
+                      cacheWrite: cache?.write as number,
+                      reasoning: tokens.reasoning as number,
+                      total: tokens.total as number,
+                    },
+                    msgData.providerID as string | undefined,
+                  ),
                 );
               }
             } catch {
