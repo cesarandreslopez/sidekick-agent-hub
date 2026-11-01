@@ -31,6 +31,11 @@ export interface CommitMessageResult {
   message: string | null;
   /** Error message if generation failed */
   error?: string;
+  /**
+   * The original error behind `error` when the request itself failed, so the
+   * caller can offer a retry. Absent for no changes, timeouts, and cancellation.
+   */
+  cause?: unknown;
   /** Whether the diff was from staged or unstaged changes */
   diffType?: 'staged' | 'unstaged';
   /** Path to the repository where changes were found */
@@ -193,6 +198,7 @@ export class CommitMessageService implements vscode.Disposable {
         return {
           message: null,
           error: result.error?.message ?? 'Unknown error',
+          cause: result.error,
         };
       }
 
@@ -244,7 +250,7 @@ export class CommitMessageService implements vscode.Disposable {
         errorMessage = 'An unexpected error occurred.';
       }
 
-      return { message: null, error: errorMessage };
+      return { message: null, error: errorMessage, cause: error };
     }
   }
 

@@ -26,6 +26,11 @@ export interface ReviewResult {
   issueCount: number;
   /** Error message if review failed */
   error?: string;
+  /**
+   * The original error behind `error` when the request itself failed, so the
+   * caller can offer a retry. Absent for no changes, timeouts, and cancellation.
+   */
+  cause?: unknown;
 }
 
 /**
@@ -150,7 +155,11 @@ export class PreCommitReviewService implements vscode.Disposable {
         if (result.error?.name === 'AbortError') {
           return { issueCount: 0, error: 'Review cancelled' };
         }
-        return { issueCount: 0, error: result.error?.message ?? 'Unknown error' };
+        return {
+          issueCount: 0,
+          error: result.error?.message ?? 'Unknown error',
+          cause: result.error,
+        };
       }
 
       const response = result.result!;
@@ -167,7 +176,7 @@ export class PreCommitReviewService implements vscode.Disposable {
     } catch (error) {
       logError('PreCommitReviewService: Review failed', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return { issueCount: 0, error: message };
+      return { issueCount: 0, error: message, cause: error };
     }
   }
 

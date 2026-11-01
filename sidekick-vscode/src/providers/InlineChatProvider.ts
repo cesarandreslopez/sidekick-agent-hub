@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { InlineChatService } from '../services/InlineChatService';
 import type { InlineChatRequest } from '../types/inlineChat';
 import { log, logError } from '../services/Logger';
+import { showProviderFailure } from '../utils/providerRetryPrompt';
 
 /**
  * InlineChatProvider - Orchestrates inline chat interactions.
@@ -137,8 +138,11 @@ export class InlineChatProvider implements vscode.Disposable {
     // Handle result
     if (!result.success) {
       if (result.error !== 'Request cancelled') {
-        vscode.window.showErrorMessage(`Inline chat failed: ${result.error}`);
         logError('Inline chat failed', new Error(result.error));
+        // Retry sends the same query with the context captured for this request.
+        await showProviderFailure(`Inline chat failed: ${result.error}`, result.cause, () =>
+          this.processWithProgress(editor, request),
+        );
       }
       return;
     }

@@ -101,7 +101,7 @@ import {
   getCustomModelPricingStatus,
 } from './services/customModelPricing';
 import { describePricingCatalog } from './utils/pricingCatalogLabel';
-import { providerRetryOffer } from './utils/providerFailure';
+import { showProviderFailure } from './utils/providerRetryPrompt';
 import {
   getTransformSystemPrompt,
   getTransformUserPrompt,
@@ -2091,7 +2091,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
           if (result.error) {
             statusBarManager?.setError(result.error);
-            vscode.window.showErrorMessage(`Commit message generation failed: ${result.error}`);
+            // Not awaited, so the progress closes while the notification is open.
+            void showProviderFailure(
+              `Commit message generation failed: ${result.error}`,
+              result.cause,
+              () => generateCommitMessageWithProgress(guidance),
+            );
             return;
           }
 
@@ -2142,7 +2147,9 @@ export async function activate(context: vscode.ExtensionContext) {
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
           statusBarManager?.setError(message);
-          vscode.window.showErrorMessage(`Commit message generation failed: ${message}`);
+          void showProviderFailure(`Commit message generation failed: ${message}`, error, () =>
+            generateCommitMessageWithProgress(guidance),
+          );
         }
       },
     );
@@ -2197,7 +2204,10 @@ export async function activate(context: vscode.ExtensionContext) {
             progress.report({ increment: 100 });
 
             if (result.error) {
-              vscode.window.showErrorMessage(`Review failed: ${result.error}`);
+              // Not awaited, so the progress closes while the notification is open.
+              void showProviderFailure(`Review failed: ${result.error}`, result.cause, () =>
+                vscode.commands.executeCommand('sidekick.reviewChanges'),
+              );
               return;
             }
 
@@ -2218,7 +2228,9 @@ export async function activate(context: vscode.ExtensionContext) {
           } catch (error) {
             if (!token.isCancellationRequested) {
               const message = error instanceof Error ? error.message : 'Unknown error';
-              vscode.window.showErrorMessage(`Review failed: ${message}`);
+              void showProviderFailure(`Review failed: ${message}`, error, () =>
+                vscode.commands.executeCommand('sidekick.reviewChanges'),
+              );
             }
           }
         },
@@ -2236,6 +2248,62 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  /**
+   * Generates a PR description with a progress notification.
+   * @param baseBranch - Base to compare against; a retry passes the one the
+   *   failed attempt used, so the user is not asked for it again
+   */
+  async function generatePrDescriptionWithProgress(baseBranch?: string): Promise<void> {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Generating PR description...',
+        cancellable: true,
+      },
+      async (progress, token) => {
+        try {
+          progress.report({ increment: 20, message: 'Getting commits...' });
+
+          const result = await prDescriptionService!.generatePrDescription(baseBranch);
+
+          if (token.isCancellationRequested) {
+            return;
+          }
+
+          progress.report({ increment: 100 });
+
+          if (result.error) {
+            // Not awaited, so the progress closes while the notification is open.
+            void showProviderFailure(`PR description failed: ${result.error}`, result.cause, () =>
+              generatePrDescriptionWithProgress(result.baseBranch ?? baseBranch),
+            );
+            return;
+          }
+
+          if (result.description) {
+            vscode.window
+              .showInformationMessage(
+                `PR description copied to clipboard! (${result.commitCount} commit${result.commitCount === 1 ? '' : 's'} analyzed)`,
+                'Open GitHub',
+              )
+              .then((action) => {
+                if (action === 'Open GitHub') {
+                  vscode.env.openExternal(vscode.Uri.parse('https://github.com'));
+                }
+              });
+          }
+        } catch (error) {
+          if (!token.isCancellationRequested) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            void showProviderFailure(`PR description failed: ${message}`, error, () =>
+              generatePrDescriptionWithProgress(baseBranch),
+            );
+          }
+        }
+      },
+    );
+  }
+
   // Register generate PR description command
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.generatePrDescription', async () => {
@@ -2247,49 +2315,7 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Generating PR description...',
-          cancellable: true,
-        },
-        async (progress, token) => {
-          try {
-            progress.report({ increment: 20, message: 'Getting commits...' });
-
-            const result = await prDescriptionService!.generatePrDescription();
-
-            if (token.isCancellationRequested) {
-              return;
-            }
-
-            progress.report({ increment: 100 });
-
-            if (result.error) {
-              vscode.window.showErrorMessage(`PR description failed: ${result.error}`);
-              return;
-            }
-
-            if (result.description) {
-              vscode.window
-                .showInformationMessage(
-                  `PR description copied to clipboard! (${result.commitCount} commit${result.commitCount === 1 ? '' : 's'} analyzed)`,
-                  'Open GitHub',
-                )
-                .then((action) => {
-                  if (action === 'Open GitHub') {
-                    vscode.env.openExternal(vscode.Uri.parse('https://github.com'));
-                  }
-                });
-            }
-          } catch (error) {
-            if (!token.isCancellationRequested) {
-              const message = error instanceof Error ? error.message : 'Unknown error';
-              vscode.window.showErrorMessage(`PR description failed: ${message}`);
-            }
-          }
-        },
-      );
+      await generatePrDescriptionWithProgress();
     }),
   );
 
@@ -2430,16 +2456,7 @@ export async function activate(context: vscode.ExtensionContext) {
           logError('Transform failed', error);
           const message = error instanceof Error ? error.message : 'Unknown error';
           statusBarManager?.setError(message);
-          const retry = providerRetryOffer(error);
-          if (!retry) {
-            vscode.window.showErrorMessage(`Transform failed: ${message}`);
-            return;
-          }
-          const choice = await vscode.window.showErrorMessage(
-            `Transform failed: ${message}${retry.hint}`,
-            'Retry',
-          );
-          if (choice === 'Retry') await attempt();
+          await showProviderFailure(`Transform failed: ${message}`, error, attempt);
         }
       };
       await attempt();
@@ -2484,7 +2501,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
             if (result.error) {
               statusBarManager?.setError(result.error);
-              vscode.window.showErrorMessage(`Documentation generation failed: ${result.error}`);
+              // Not awaited, so the progress closes while the notification is
+              // open. Retry re-runs the command on the editor active then.
+              void showProviderFailure(
+                `Documentation generation failed: ${result.error}`,
+                result.cause,
+                () => vscode.commands.executeCommand('sidekick.generateDocs'),
+              );
               return;
             }
 
@@ -2521,7 +2544,9 @@ export async function activate(context: vscode.ExtensionContext) {
             logError('Documentation generation failed', error);
             const message = error instanceof Error ? error.message : 'Unknown error';
             statusBarManager?.setError(message);
-            vscode.window.showErrorMessage(`Documentation generation failed: ${message}`);
+            void showProviderFailure(`Documentation generation failed: ${message}`, error, () =>
+              vscode.commands.executeCommand('sidekick.generateDocs'),
+            );
           }
         },
       );

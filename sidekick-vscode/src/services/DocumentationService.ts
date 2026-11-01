@@ -28,6 +28,12 @@ export interface DocumentationResult {
   insertLine?: number;
   /** Error message if generation failed */
   error?: string;
+  /**
+   * The original error behind `error` when the request itself failed, so the
+   * caller can offer a retry. Absent for undetectable code, existing docs,
+   * timeouts, and cancellation.
+   */
+  cause?: unknown;
 }
 
 /**
@@ -156,7 +162,10 @@ export class DocumentationService implements vscode.Disposable {
         if (timeoutResult.error?.name === 'AbortError') {
           return { error: 'Request cancelled' };
         }
-        return { error: timeoutResult.error?.message ?? 'Unknown error' };
+        return {
+          error: timeoutResult.error?.message ?? 'Unknown error',
+          cause: timeoutResult.error,
+        };
       }
 
       const result = timeoutResult.result!;
@@ -177,7 +186,7 @@ export class DocumentationService implements vscode.Disposable {
     } catch (error) {
       logError('Documentation generation failed', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return { error: message };
+      return { error: message, cause: error };
     }
   }
 

@@ -92,7 +92,11 @@ export class InlineChatService {
       if (result.error?.name === 'AbortError') {
         return { success: false, error: 'Request cancelled' };
       }
-      return { success: false, error: result.error?.message ?? 'Unknown error' };
+      return {
+        success: false,
+        error: result.error?.message ?? 'Unknown error',
+        cause: result.error,
+      };
     }
 
     // Parse response to detect mode

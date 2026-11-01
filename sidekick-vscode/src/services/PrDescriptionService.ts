@@ -25,8 +25,15 @@ export interface PrDescriptionResult {
   description: string | null;
   /** Error message if generation failed */
   error?: string;
+  /**
+   * The original error behind `error` when the request itself failed, so the
+   * caller can offer a retry. Absent for no commits, timeouts, and cancellation.
+   */
+  cause?: unknown;
   /** Number of commits analyzed */
   commitCount?: number;
+  /** Base branch the failed request compared against; pass it back to retry against the same base */
+  baseBranch?: string;
 }
 
 /**
@@ -68,9 +75,12 @@ export class PrDescriptionService implements vscode.Disposable {
   /**
    * Generates a PR description from current branch commits and diff.
    *
+   * @param base - Base branch to compare against; detected (possibly by
+   *   prompting) when omitted
    * @returns Promise resolving to PR description result
    */
-  async generatePrDescription(): Promise<PrDescriptionResult> {
+  async generatePrDescription(base?: string): Promise<PrDescriptionResult> {
+    let baseBranch: string | undefined;
     try {
       log('PrDescriptionService: Starting generation');
 
@@ -81,7 +91,7 @@ export class PrDescriptionService implements vscode.Disposable {
       }
 
       // Detect base branch
-      const baseBranch = await this.detectBaseBranch(repository.rootUri.fsPath);
+      baseBranch = base ?? (await this.detectBaseBranch(repository.rootUri.fsPath));
       log(`PrDescriptionService: Using base branch '${baseBranch}'`);
 
       // Get commits on this branch
@@ -150,7 +160,12 @@ export class PrDescriptionService implements vscode.Disposable {
         if (result.error?.name === 'AbortError') {
           return { description: null, error: 'Request cancelled' };
         }
-        return { description: null, error: result.error?.message ?? 'Unknown error' };
+        return {
+          description: null,
+          error: result.error?.message ?? 'Unknown error',
+          cause: result.error,
+          baseBranch,
+        };
       }
 
       const response = result.result!;
@@ -173,7 +188,7 @@ export class PrDescriptionService implements vscode.Disposable {
     } catch (error) {
       logError('PrDescriptionService: Generation failed', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return { description: null, error: message };
+      return { description: null, error: message, cause: error, baseBranch };
     }
   }
 

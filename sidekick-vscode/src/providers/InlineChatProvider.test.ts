@@ -19,17 +19,25 @@ const mocks = vi.hoisted(() => {
     channels.push(channel);
     return channel;
   });
-  return { channels, createOutputChannel };
+  const showErrorMessage = vi.fn(() => Promise.resolve<string | undefined>(undefined));
+  // Runs the task immediately with a token that is never cancelled.
+  const withProgress = vi.fn(
+    (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+      task({ report: vi.fn() }, { onCancellationRequested: vi.fn() }),
+  );
+  return { channels, createOutputChannel, showErrorMessage, withProgress };
 });
 
-const { channels, createOutputChannel } = mocks;
+const { channels, createOutputChannel, showErrorMessage } = mocks;
 
 vi.mock('vscode', () => ({
   window: {
     createOutputChannel: mocks.createOutputChannel,
     showInformationMessage: vi.fn(() => Promise.resolve(undefined)),
-    showErrorMessage: vi.fn(() => Promise.resolve(undefined)),
+    showErrorMessage: mocks.showErrorMessage,
+    withProgress: mocks.withProgress,
   },
+  ProgressLocation: { Notification: 15 },
   env: { clipboard: { writeText: vi.fn() } },
   workspace: { getConfiguration: vi.fn(() => ({ get: vi.fn() })) },
 }));
@@ -38,6 +46,8 @@ vi.mock('../services/Logger', () => ({ log: vi.fn(), logError: vi.fn() }));
 
 import { InlineChatProvider } from './InlineChatProvider';
 import type { InlineChatService } from '../services/InlineChatService';
+import type { InlineChatRequest, InlineChatResult } from '../types/inlineChat';
+import { ProviderRequestError } from '../utils/providerFailure';
 
 /** Long enough to take the output-channel branch (threshold is 500 chars). */
 const LONG_ANSWER = 'x'.repeat(600);
@@ -97,5 +107,71 @@ describe('InlineChatProvider output channels', () => {
   it('dispose is safe when no channel was ever created', () => {
     const provider = makeProvider();
     expect(() => provider.dispose()).not.toThrow();
+  });
+});
+
+describe('InlineChatProvider failure retry', () => {
+  const request: InlineChatRequest = {
+    query: 'explain',
+    selectedText: 'const x = 1;',
+    languageId: 'typescript',
+    contextBefore: '',
+    contextAfter: '',
+    cursorPosition: { line: 0, character: 0 },
+    documentUri: 'file:///tmp/test.ts',
+  };
+
+  function run(results: InlineChatResult[]) {
+    const process = vi.fn(async () => results.shift() ?? { success: false, error: 'exhausted' });
+    const provider = new InlineChatProvider({ process } as unknown as InlineChatService);
+    const done = (
+      provider as unknown as {
+        processWithProgress(editor: unknown, request: InlineChatRequest): Promise<void>;
+      }
+    ).processWithProgress({}, request);
+    return { process, done };
+  }
+
+  beforeEach(() => {
+    showErrorMessage.mockReset();
+    showErrorMessage.mockResolvedValue(undefined);
+  });
+
+  it('offers Retry for a retryable failure and re-sends the same request', async () => {
+    const cause = new ProviderRequestError({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: new Error('Codex error: turn failed', {
+        cause: { message: 'turn failed', codexErrorInfo: 'serverOverloaded' },
+      }),
+    });
+    showErrorMessage.mockResolvedValueOnce('Retry');
+    const { process, done } = run([
+      { success: false, error: cause.message, cause },
+      { success: false, error: 'Request cancelled' },
+    ]);
+    await done;
+
+    expect(showErrorMessage).toHaveBeenCalledTimes(1);
+    expect(showErrorMessage).toHaveBeenCalledWith(`Inline chat failed: ${cause.message}`, 'Retry');
+    expect(process).toHaveBeenCalledTimes(2);
+    expect(process.mock.calls[1]).toEqual([request, expect.any(AbortSignal)]);
+  });
+
+  it('shows the plain message when the failure is not retryable', async () => {
+    const { process, done } = run([{ success: false, error: 'Request timed out after 5ms' }]);
+    await done;
+
+    expect(showErrorMessage).toHaveBeenCalledWith(
+      'Inline chat failed: Request timed out after 5ms',
+    );
+    expect(process).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays silent for a cancelled request', async () => {
+    const { done } = run([{ success: false, error: 'Request cancelled' }]);
+    await done;
+
+    expect(showErrorMessage).not.toHaveBeenCalled();
   });
 });

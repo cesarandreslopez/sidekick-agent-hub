@@ -102,4 +102,10 @@ export interface InlineChatResult {
 
   /** Error message (only present if success === false) */
   error?: string;
+
+  /**
+   * The original error behind `error` when the request itself failed, so the
+   * caller can offer a retry. Absent for timeouts and cancellation.
+   */
+  cause?: unknown;
 }
