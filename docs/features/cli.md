@@ -10,7 +10,7 @@ The Sidekick CLI provides a full-screen terminal dashboard for monitoring agent 
 
 ## Replay and Recovery
 
-Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.29.1 replay once. Live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
+Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.30.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
 
 ## Installation
 
@@ -18,7 +18,7 @@ Selecting a session in the picker loads its history. When starting with `--sessi
 npm install -g sidekick-agent-hub
 ```
 
-Requires **Node.js 20+**.
+Requires **Node.js 20+**. Reading compressed Codex sessions (`.jsonl.zst`, which Codex writes for older sessions) needs Node 22.15 or later (built-in zstd); older Node versions skip them.
 
 Or build from source:
 
@@ -817,19 +817,21 @@ Switch panels with number keys `1`–`8`.
 
 Browse and select from recent agent sessions. The detail pane has seven tabs:
 
-| Tab            | Description                                                                                                                                                                                                                                                                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Summary**    | Token usage ("Total (incl. cache)" with input, cache read, cache write, and output; cache hit rate; and, when subagents ran, **Subagents (n)** and **Session total (incl. subagents)**), cost, duration, model, session metadata, quota, and the active five-hour billing block (a local estimate from session logs, refreshed every minute) |
-| **Timeline**   | Chronological activity feed with tool calls, messages, and events                                                                                                                                                                                                                                                                            |
-| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, and relationships. Press `v` to cycle views (tree/boxed/flow), `F` to filter node types                                                                                                                                                                                  |
-| **Tools**      | Breakdown of tool usage with counts and categories                                                                                                                                                                                                                                                                                           |
-| **Files**      | Files touched during the session                                                                                                                                                                                                                                                                                                             |
-| **Agents**     | Subagent activity and delegation chain                                                                                                                                                                                                                                                                                                       |
-| **AI Summary** | AI-generated narrative of the session. Press `n` to generate                                                                                                                                                                                                                                                                                 |
+| Tab            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Summary**    | Token usage ("Total (incl. cache)" with input, cache read, cache write, and output; cache hit rate; and, when subagents ran, **Subagents (n)** and **Session total (incl. subagents)**), cost, duration, model, session metadata, Claude Code's permission mode when it is not `default` (including `auto` and `dontAsk`), subagent counts by state, quota, and the active five-hour billing block (a local estimate from session logs, refreshed every minute) |
+| **Timeline**   | Chronological activity feed with tool calls, messages, and events, including subagent entries such as `Background agent "…" completed`, `Background agents stopped by the user (n)`, and Codex `Subagent … started`                                                                                                                                                                                                                                             |
+| **Mind Map**   | Terminal-rendered graph of session structure — files, tools, tasks, Claude Code and Codex subagents (labelled with their state when not running or done), and relationships. Press `v` to cycle views (tree/boxed/flow), `F` to filter node types                                                                                                                                                                                                               |
+| **Tools**      | Breakdown of tool usage with counts and categories                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Files**      | Files touched during the session                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Agents**     | Claude Code and Codex subagents with type, description, duration, and state: running (`↻`), done (`✓`), `finished (no report)` (transcript ended cleanly and quiet for 2 minutes), `ended` (session idle for more than 6 hours), `stopped`, `killed`, or `failed`. The header counts each state and parallel agents, and **Tasks from Subagents** follows                                                                                                       |
+| **AI Summary** | AI-generated narrative of the session. Press `n` to generate                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+Background agents that never get a completion notification are settled by stop markers, post-compaction task status, and (for Claude Code) the subagent's meta file. Once an agent is no longer running, its task item moves to completed and drops its "Running …" label. The status bar shows Claude Code's permission mode when it is not `default`: `BYPASS`, `EDITS`, `PLAN`, `AUTO`, or `DONT-ASK`.
 
 ### Tasks (2)
 
-View persisted tasks filtered by status. Tasks carry over across sessions from `~/.config/sidekick/tasks/`.
+Persisted tasks from `~/.config/sidekick/tasks/` merged with the live session's tasks and subagent spawns (Claude Code and Codex), in progress first, then pending, then completed.
 
 ### Kanban (3)
 
@@ -845,7 +847,7 @@ Architectural decisions extracted from sessions. Stored in `~/.config/sidekick/d
 
 ### Plans (6)
 
-Discovered agent plans from `~/.claude/plans/`. Shows plan steps with completion status. Plans are matched to the current session via slug cross-reference.
+Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions; when the store has none, raw plan files from the Claude home's `plans/` are shown. Shows plan steps with completion status.
 
 ### Events (7)
 

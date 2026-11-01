@@ -10,7 +10,7 @@ Tasks and subagent spawns grouped by status in a dedicated Kanban view.
 
 - **Status Columns** — tasks grouped by Pending, In Progress, and Completed
 - **Real-time Updates** — board updates as tasks and agents progress
-- **Subagent Cards** — spawned Task agents shown with cyan accent and type chips (Explore, Plan, Bash, etc.)
+- **Subagent Cards** — spawned subagents (Claude Code's `Agent` tool, formerly `Task`, and Codex's `spawn_agent`) shown with cyan accent and type chips (Explore, Plan, Bash, etc.)
 - **Collapsible Columns** — collapse columns with hidden-task summaries
 - **Cross-Session Persistence** — tasks persist across sessions in `~/.config/sidekick/tasks/`
 - **Terminal Capture** — tasks added via `sidekick tasks add` / `sidekick tasks done` appear on the board live, without restarting the extension
@@ -29,9 +29,9 @@ If a goal-gate task is still pending when a session ends, the handoff document i
 
 ## Subagent Tracking
 
-When your agent spawns subagents via the Task tool:
+When your agent spawns subagents (Claude Code's `Agent` tool, formerly `Task`, or Codex's `spawn_agent`):
 
 - Each subagent creates an "In Progress" card with the agent's description
 - Cards show agent type (Explore, Plan, Bash, etc.)
-- Cards move to "Completed" when the subagent finishes
+- Cards move to "Completed" when the subagent finishes; a chip says when it finished without a report, ended, was stopped or killed, or failed ([Subagent states](session-monitor.md#subagent-states))
 - Visually distinguished from regular tasks with a cyan left border

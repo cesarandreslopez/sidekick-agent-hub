@@ -21,7 +21,17 @@ Uses your authenticated Codex CLI for inference.
 
 Codex CLI sessions are monitored from the system `~/.codex/sessions/` directory — the single live Codex home regardless of which managed profile is active — and from `~/.codex/archived_sessions/`, where Codex moves the rollout of an archived thread. Profile directories that recorded sessions under the old per-profile-home model are still scanned so historical sessions remain visible. When `CODEX_HOME` is explicitly set, only that directory is used. Set `sidekick.sessionProvider` to `codex` or leave as `auto`.
 
+Codex compresses rollouts it no longer writes, in place, to `rollout-<timestamp>-<id>.jsonl.zst`. The extension and the CLI read them when their runtime has Node's built-in Zstandard support (`zlib.zstdDecompressSync`, Node 22.15 or later): they appear in session lists, search, historical import, usage reports, and subagent statistics, and are read whole rather than tailed. On an older runtime they are skipped as before, and the skip is reported once as a provider diagnostic. When a rollout's `.jsonl` is still beside its `.jsonl.zst`, the `.jsonl` is read. In `sidekick-shared` this is opt-in: pass `includeCompressedRollouts: true` to `createSessionProviders()` or `new CodexProvider()`.
+
 Codex evidence is captured at full fidelity: base instructions and developer/system messages surface as `system` audit entries, `token_count` records are normalized into system events that carry rate limits (a call's tokens count only when `total_token_usage` changes, so repeated `token_count` events are not re-counted), an `apply_patch` is expanded into one edit per file, repeated tool emissions are de-duplicated, and MCP tool calls keep their server attribution. Codex sessions are parsed through the same canonical event pipeline as the other providers, so the dashboard, reports, and project timeline render consistent transcripts.
+
+### Subagents
+
+Children that Codex's `spawn_agent` starts, and their own children at any depth, are found in the state database's `threads.source` (older schemas record direct forks in `forked_from_id`), or, without the database, in the `session_meta` of the 50 newest rollouts. Each child is linked to its spawn call by the `SubAgentActivity` `started` record in the parent's rollout; older rollouts without that record are linked by the `task_name` the spawn call returned. The same `SubAgentActivity` records follow the child through follow-up tasks (`followup_task` runs it again), interrupts (`interrupt_agent` shows it as stopped), and completion (a finished child turn, recorded by Codex 0.150 and later, or the child's `FINAL_ANSWER` report); a spawn that failed (`collab spawn failed: …`) ends its agent.
+
+A forked child's rollout embeds the parent's history before `session_meta.subagent_history_start_ordinal`. Sidekick skips that prefix, so a child's tool calls, tokens, and timestamps are its own, and its session metadata is never replaced by the parent's. Children appear in the VS Code Subagents view (labelled by nickname or task name, nested by depth; clicking a row opens an uncompressed rollout), the CLI Agents tab and mind map, and both task boards.
+
+Subagent threads share their parent's working directory, so active-session detection skips them: a database thread with `thread_source: 'subagent'` or a `{ subagent: … }` source, or a rollout whose `session_meta.source` is a `{ subagent: … }` object, is never chosen as the workspace's session, and session following does not switch to a child's rollout.
 
 ## Rate Limits
 

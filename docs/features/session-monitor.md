@@ -84,7 +84,23 @@ Generate a self-contained HTML report for any session — full transcript with c
 
 ## Subagent Tree
 
-The subagent tree view displays spawned subagents in a hierarchical parent/child structure, one row per spawn. When an agent spawns other agents, they appear as nested children in the tree, with collapsible nodes showing the agent count. Claude Code's subagent tool is recognized under both its current name, `Agent`, and its earlier name, `Task`. Each row is linked to its transcript through the spawning tool call recorded in `agent-*.meta.json`, and clicking it opens the transcript from the session's `subagents/` folder. Background agents stay running until Claude Code reports them finished, failed, killed or stopped, including reports delivered mid-turn. Trace parsing falls back to a flat list for providers that use different directory structures. Each agent shows its cache-inclusive token total, counted once per response, with the agent type and description read from Claude Code's `agent-*.meta.json`. Codex spawned subagents are discovered through the Codex state database's `threads.source` and appear in the dashboard and mind map; the tree lists Claude Code spawns.
+The **Subagents** view lists the subagents a session spawned, one row per spawn, for Claude Code and Codex. Agents spawned by a subagent appear as nested children, with collapsible nodes showing the child count. Each row shows the agent's state, its cache-inclusive token total (counted once per response), its duration, and whether it ran in parallel with another agent. A spawn whose transcript has not been found yet still gets a row from its spawn call.
+
+- **Claude Code** — the subagent tool is recognized under both its current name, `Agent`, and its earlier name, `Task`. Each row is linked to its transcript through the spawning tool call recorded in `agent-*.meta.json`, which also supplies the agent type and description, and clicking it opens the transcript from the session's `subagents/` folder (older sessions that kept `agent-*.jsonl` beside the session file are read from there).
+- **Codex** — children started with `spawn_agent` are found through the Codex state database's `threads.source` (or, without it, the rollouts' own `session_meta`), including children of children, and nested under the thread that spawned them. Rows are labelled with the child's nickname or task name, since Codex ids share a prefix, and each is linked to its parent's spawn call. Clicking a row opens the child's rollout, except one Codex has compressed to `.jsonl.zst`. A forked child's tokens and tool calls count only its own work, not the parent history it embeds. Codex children also appear in the dashboard and mind map.
+
+### Subagent states
+
+A background agent stays running until something reports its outcome. For Claude Code that is its completion notification (including one delivered mid-turn), a stop marker, its post-compaction task status, or its meta file (`finished`, `stoppedByUser`). For Codex it is a child's completed turn or final report, or `interrupt_agent` (stopped); a `followup_task` puts a finished child back to running. A spawn that fails reads as failed. When nothing reports, the transcript decides:
+
+| State                              | Shown when                                                                                                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| running                            | The agent is working, or nothing shows it has stopped                                                                                                                               |
+| finished (no report)               | The transcript ended cleanly (Claude Code: last turn `end_turn` or `stop_sequence` with no tool call unanswered; Codex: last turn `task_complete`) and has been quiet for 2 minutes |
+| ended                              | Neither the parent session nor the transcript has been active for more than 6 hours                                                                                                 |
+| completed, failed, stopped, killed | The reported outcome                                                                                                                                                                |
+
+Neither "finished (no report)" nor "ended" is stored: an agent that writes again reads as running. While any agent reads as running or finished (no report), the view rescans transcripts every 15 seconds; agents that read as ended stop the polling. The [Kanban Board](kanban-board.md) labels subagent cards with the same states, and the Agents tab of the [CLI dashboard](cli.md) uses the same rule.
 
 ## Event Stream
 
@@ -166,6 +182,7 @@ The monitor automatically discovers sessions based on your configured provider. 
 - Use **"Sidekick: Browse Session Folders..."** to manually select a session folder
 - Selection persists across VS Code restarts
 - **"Sidekick: Reset to Auto-Detect Session"** clears manual selection
+- Codex sessions that Codex compressed (`.jsonl.zst`) are listed and read whole when VS Code's Node runtime has built-in Zstandard (Node 22.15 or later), and skipped otherwise
 
 ## When no session is visible
 
@@ -177,6 +194,10 @@ The dashboard distinguishes an empty session list, an unavailable provider, and 
 - **Resume** restarts paused monitoring, preserving your provider and custom folder. Refreshing the list while paused keeps monitoring paused.
 
 Use **Sidekick: Stop Session Monitoring** to pause and **Sidekick: Start Session Monitoring** to resume. Views continue updating after resume without a window reload.
+
+## Session Status Bar
+
+The session item in the status bar shows the cache-inclusive token total and context usage and opens the dashboard on click. It turns yellow at 50% context and red at 80%. When the session is not in the default permission mode, an icon follows: a warning icon for Bypass Permissions (which also colours the item), a note for Plan Mode, a sparkle for Auto (a classifier approves or denies prompts), and a slashed circle for Don't Ask (anything not pre-approved is denied). The tooltip names the mode, including Accept Edits, which has no icon.
 
 ## Configuration
 
@@ -199,4 +220,4 @@ All webview panels include:
 
 ## Reopening Sessions
 
-Claude Code and Codex restore compatible dashboard checkpoints and catch up with complete events written since the checkpoint. Older or incompatible snapshots are replaced after replay. OpenCode reloads its history on reopen so boundary rows are not counted twice. Stopping and resuming monitoring preserves subscriptions and your selected session folder.
+Claude Code and Codex restore compatible dashboard checkpoints and catch up with complete events written since the checkpoint. Older or incompatible snapshots are replaced after replay. OpenCode reloads its history on reopen so boundary rows are not counted twice. Stopping and resuming monitoring preserves subscriptions and your selected session folder. Snapshots saved before 0.30.0 replay once after upgrading. While a session is followed, a Claude Code or Codex session file that shrinks, is rewritten in place, or is replaced by another file is replayed from the start: the dashboard rebuilds its totals, timeline, and tool analytics from that replay without counting it twice, the Event Stream starts over, and the checkpoint is replaced with one of the new content.

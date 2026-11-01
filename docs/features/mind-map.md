@@ -13,7 +13,7 @@ Interactive D3.js force-directed graph showing session structure and relationshi
 - **Tool Usage** — displays tool calls as connected nodes
 - **URL Nodes** — WebFetch and WebSearch calls appear as clickable cyan nodes
 - **Directory & Command Nodes** — Grep/Glob targets and Bash commands shown
-- **Subagent Visibility** — spawned Task agents appear as distinct nodes
+- **Subagent Visibility** — spawned subagents (Claude Code `Agent`/`Task`, Codex `spawn_agent`) appear as distinct nodes
 - **Plan Nodes** — plan steps with status indicators
 - **Cycling File Indicators** — files caught in agent loops are visually marked so you can spot stuck behavior at a glance
 - **Goal Gate Tasks** — critical tasks are distinguished from regular task nodes

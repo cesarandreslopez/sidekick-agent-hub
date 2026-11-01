@@ -8,6 +8,13 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.30.0: Codex subagents and agents that never report**
+  - **Codex subagents:** the dashboard's Agents tab, mind map and task list show them, linked to their spawn calls and followed to completion.
+  - **Settled agents:** stop markers, post-compaction task status and the subagent's meta file settle background agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", one in a session idle for more than 6 hours shows "ended", and stopped, killed and failed agents show distinctly.
+  - **Permission mode:** the dashboard's status bar and Summary tab show it, including Claude Code's `auto` and `dontAsk` modes.
+  - **Compressed Codex sessions:** `.jsonl.zst` sessions are read by every command that reads Codex sessions except `extract` and `history --path`, when Node has built-in zstd (22.15 or later).
+  - **Replay:** a truncated Codex file is no longer counted twice, a Claude Code or Codex file rewritten or replaced while followed is replayed from the start and the dashboard then saves a fresh snapshot, and saved snapshots replay once after upgrading.
+  - **Fixes:** Codex subagent counts no longer include the parent history a forked child embeds, and the session-ended toast no longer fires for activity whose summary merely contains "ended".
 - **0.29.1: subagents again and verified resume**
   - **Subagents:** the dashboard's Agents tab and mind map show them again for current Claude Code, which renamed its subagent tool from `Task` to `Agent`; both names are recognized.
   - **Background agents:** they stay running until Claude Code reports them finished, failed, killed or stopped, and the timeline shows a short `Agent "…" finished` entry instead of raw notification XML.
@@ -53,7 +60,7 @@ See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/
 
 ## Replay and Recovery
 
-Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.29.1 replay once. Live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
+Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.30.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
 
 ## Installation
 
@@ -63,7 +70,7 @@ Selecting a session in the picker loads its history. When starting with `--sessi
 npm install -g sidekick-agent-hub
 ```
 
-Requires **Node.js 20+**.
+Requires **Node.js 20+**. Reading compressed Codex sessions (`.jsonl.zst`, which Codex writes for older sessions) needs Node 22.15 or later (built-in zstd); older Node versions skip them.
 
 ## Quick Start
 
@@ -444,13 +451,15 @@ The dashboard is a two-pane terminal UI. The left side shows a navigable list, t
 | #   | Panel         | Description                                                                                            |
 | --- | ------------- | ------------------------------------------------------------------------------------------------------ |
 | 1   | **Sessions**  | Browse recent sessions with detail tabs: Summary, Timeline, Mind Map, Tools, Files, Agents, AI Summary |
-| 2   | **Tasks**     | View persisted tasks filtered by status                                                                |
+| 2   | **Tasks**     | Persisted tasks plus the live session's tasks and subagents, in progress first                         |
 | 3   | **Kanban**    | Task board with status columns                                                                         |
 | 4   | **Notes**     | Knowledge notes attached to files                                                                      |
 | 5   | **Decisions** | Architectural decisions from sessions                                                                  |
 | 6   | **Plans**     | Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions              |
 | 7   | **Events**    | Live event stream with type badges, timestamps, and keyword-highlighted summaries                      |
 | 8   | **Charts**    | Tool frequency bars, event distribution, activity heatmap, and pattern analysis                        |
+
+The Agents tab and mind map list Claude Code and Codex subagents with their state: running, done, `finished (no report)` (transcript ended cleanly and quiet for 2 minutes), `ended` (session idle for more than 6 hours), `stopped`, `killed` or `failed`. The status bar shows Claude Code's permission mode when it is not `default` (`BYPASS`, `EDITS`, `PLAN`, `AUTO`, `DONT-ASK`), and the Summary tab shows it as a Permission line.
 
 ## Layout Modes
 

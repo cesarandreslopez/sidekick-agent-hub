@@ -24,6 +24,14 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **0.30.0: Codex subagents, settled background agents, compressed Codex sessions**
+  - **Codex subagents:** children started with Codex's `spawn_agent` appear in the VS Code Subagents view (labelled by nickname or task name, nested under the agent that spawned them, click to open the child rollout), the CLI Agents tab and mind map, and both task boards. Each is linked to its spawn call and followed from launch to completion, including follow-up tasks, interrupts and failed spawns.
+  - **Codex subagent statistics:** a forked child's tool calls and tokens count only its own work, not the parent history it embeds, and Codex session following no longer switches to a subagent's rollout.
+  - **Compressed Codex sessions:** older rollouts that Codex compressed to `.jsonl.zst` are read when the runtime has Node's built-in zstd (Node 22.15 or later), and skipped as before otherwise.
+  - **Background agents that never report:** Claude Code's stop markers, post-compaction task status and the subagent's meta file now settle them. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", one whose parent session has been idle for more than 6 hours shows "ended", and either goes back to running if the agent writes again. The CLI shows stopped, killed and failed agents distinctly.
+  - **Permission modes:** `auto` and `dontAsk` are labelled in the VS Code status bar and the CLI, and the CLI dashboard shows the session's permission mode for the first time.
+  - **Rewritten session files:** the Claude Code and Codex readers notice a session file that was rewritten in place or replaced, not only one that shrank, and replay it from the start. The VS Code dashboard no longer counts that replay twice, and the CLI's Codex follower and the shared `SessionMonitor` no longer count a truncated file's events twice. Saved dashboard snapshots replay once after upgrading.
+  - **Library:** `sidekick-shared` adds Codex subagent discovery and lifecycle events (`includeSubagentActivity`, `subagentActivityFromEvent()`), `resolveSubagentDisplayState()` and `subagentDisplayLabel()`, opt-in compressed-rollout reading (`includeCompressedRollouts` on `createSessionProviders()`), and `SessionReader.lastReset()`; `PermissionMode` adds `'auto'` and `'dontAsk'`.
 - **0.29.1: subagents tracked again, verified dashboard resume**
   - **Subagents:** Claude Code renamed its subagent tool from `Task` to `Agent`; both names are recognized, so the CLI dashboard, both mind maps and the VS Code Subagents view show subagents again.
   - **Background agents:** they stay running until Claude Code reports them finished, failed, killed or stopped, instead of completing at launch.
@@ -97,7 +105,7 @@ Full-screen TUI for monitoring agent sessions — standalone, no VS Code require
 > **Note:** The npm package is `sidekick-agent-hub`, but the binary is called **`sidekick`**.
 
 ```bash
-npm install -g sidekick-agent-hub    # requires Node.js 20+
+npm install -g sidekick-agent-hub    # requires Node.js 20+ (22.15+ to read compressed Codex sessions)
 sidekick dashboard
 ```
 

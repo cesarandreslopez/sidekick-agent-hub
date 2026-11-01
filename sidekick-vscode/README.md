@@ -15,6 +15,12 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.30.0: Codex subagents in the Subagents view, and agents that never report**
+  - **Codex subagents:** children started with `spawn_agent` appear in the Subagents view with their nickname or task name, nested by depth, and open their rollout on click. Each is linked to its spawn call and followed from launch to completion, including follow-up tasks, interrupts, and failed spawns, and shows on the Kanban board. Their statistics count only the child's own work, and session following no longer switches to a subagent's rollout.
+  - **Agents that never report:** stop markers, post-compaction task status, and the subagent's meta file settle background agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", and one in a session idle for more than 6 hours shows "ended"; both go back to running if the agent writes again. The view rechecks every 15 seconds while an agent is unresolved, and Kanban agent cards show the same state.
+  - **Permission modes:** `auto` and `dontAsk` have their own status-bar icon and tooltip label, and `auto` no longer leaves the status bar showing the previous mode.
+  - **Compressed Codex sessions:** `.jsonl.zst` rollouts are read when VS Code's runtime has Node's built-in zstd; otherwise they are skipped as before.
+  - **Rewritten session files:** a session file rewritten or replaced while monitored is replayed from the start instead of being read from the old position, and the dashboard and Event Stream no longer count the replay twice. Saved session snapshots replay once after upgrading.
 - **0.29.1: subagents with current Claude Code, and Retry for more commands**
   - **Subagents view:** Claude Code's subagent tool is now `Agent` (formerly `Task`), and the view shows one row per spawn, with no `live-worker` placeholders or duplicate rows. Background agents stay running until Claude Code reports them finished, failed, killed, or stopped, and clicking a row opens its transcript from the session's `subagents/` folder.
   - **Mind map and Kanban board:** they recognize `Agent` spawns and refresh when a background agent finishes; agent notifications show in the timeline as a short entry instead of raw XML.
@@ -116,7 +122,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Mind map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/mind-map.png)
 
-- **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — task and subagent tracking with real-time updates
+- **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — task and subagent tracking with real-time updates; subagent cards say when an agent finished without a report, ended, or was stopped
 
 ![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban-board.png)
 
@@ -139,7 +145,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 - **Conversation Viewer** — full session transcript that interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode; tool calls render as concise rows with expandable outputs, with search across the conversation
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.) with paired tool outputs (file content, stdout, search results), plus the raw tool name and MCP server
-- **[Subagents Tree](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/#subagent-tree)** — one row per Claude Code subagent spawn (the `Agent` tool, formerly `Task`) with nested parent/child relationships; background agents show as running until they finish, fail, or are stopped; each row shows the subagent's cache-inclusive token total and opens its transcript on click. Codex subagents appear in the dashboard and mind map
+- **[Subagents Tree](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/#subagent-tree)** — one row per subagent spawn, from Claude Code (the `Agent` tool, formerly `Task`) or Codex (`spawn_agent`, labelled by nickname or task name), with nested parent/child relationships; background agents show as running until they finish, fail, or are stopped, an agent that ended cleanly without reporting shows "finished (no report)", and one in a session idle for more than 6 hours shows "ended"; each row shows the subagent's cache-inclusive token total and opens its transcript or Codex rollout on click. Codex subagents also appear in the dashboard and mind map
 - **Plans Board** — agent plans discovered for the project, surfaced as a dedicated sidebar view
 - **Latest Files Touched** — sidebar tree of files the current session has read or modified
 - **Cross-Session Search** — search across all sessions
