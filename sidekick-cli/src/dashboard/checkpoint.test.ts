@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CodexProvider,
   createWatcher,
   loadSnapshot,
   saveSnapshot,
@@ -192,10 +193,10 @@ describe('a checkpoint that splits one Claude response', () => {
   });
 });
 
-it('records a source checkpoint at the reader position and revision 4', () => {
+it('records a source checkpoint at the reader position and revision 5', () => {
   const { filename, size } = checkpointedSession();
   const snapshot = loadSnapshot('session')!;
-  expect(snapshot.consumer.checkpointRevision).toBe(4);
+  expect(snapshot.consumer.checkpointRevision).toBe(5);
   expect(snapshot.sourceSize).toBe(size);
   expect(snapshot.sourceCheckpoint).toMatchObject({ version: 1, offset: size });
   fs.appendFileSync(filename, event('three', 3));
@@ -204,7 +205,7 @@ it('records a source checkpoint at the reader position and revision 4', () => {
   );
 });
 
-it.each([undefined, 2, 3])('rejects unsafe CLI checkpoint revision %s', (revision) => {
+it.each([undefined, 2, 3, 4])('rejects unsafe CLI checkpoint revision %s', (revision) => {
   const { filename } = checkpointedSession();
   const snapshot = loadSnapshot('session')!;
   snapshot.consumer.checkpointRevision = revision;
@@ -311,4 +312,106 @@ it('does not restore or replace OpenCode snapshots with timestamp-only cursors',
   reopened.markHistoryReplayed('opencode');
   reopened.persistSnapshot(200, database);
   expect(loadSnapshot('session')).toEqual(snapshot);
+});
+
+describe('a session file that starts over while followed', () => {
+  const codexLine = (row: unknown) => JSON.stringify(row) + '\n';
+  const codexTokens = (input: number, output: number) =>
+    codexLine({
+      type: 'event_msg',
+      timestamp: '2026-11-01T12:00:02Z',
+      payload: {
+        type: 'token_count',
+        info: {
+          total_token_usage: {
+            input_tokens: input,
+            cached_input_tokens: 0,
+            output_tokens: output,
+            total_tokens: input + output,
+          },
+        },
+      },
+    });
+  const codexHead =
+    codexLine({ type: 'session_meta', payload: { id: 'session', cwd: '/workspace' } }) +
+    codexLine({ type: 'turn_context', payload: { model: 'gpt-5-codex', cwd: '/workspace' } });
+
+  const cases = {
+    'claude-code': {
+      before: () => Buffer.concat([event('one', 1), event('two', 2)]),
+      // Same size, other usage: only the rewrite's totals may remain.
+      after: () => Buffer.concat([event('one', 5), event('two', 6)]),
+      provider: (file: string) =>
+        ({
+          id: 'claude-code',
+          findAllSessions: () => [file],
+          getSessionId: () => 'session',
+        }) as unknown as SessionProviderBase,
+      expectedInput: 11,
+    },
+    codex: {
+      before: () => Buffer.from(codexHead + codexTokens(1000, 100)),
+      after: () => Buffer.from(codexHead + codexTokens(3000, 300)),
+      provider: (file: string) =>
+        new (class extends CodexProvider {
+          findAllSessions(): string[] {
+            return [file];
+          }
+          getSessionId(): string {
+            return 'session';
+          }
+        })(),
+      expectedInput: 3000,
+    },
+  } as const;
+
+  it.each(Object.keys(cases) as Array<keyof typeof cases>)(
+    'replaces the stale checkpoint once the replay batch completes (%s)',
+    (providerId) => {
+      vi.useFakeTimers();
+      const scenario = cases[providerId];
+      const filename = path.join(directory, 'session.jsonl');
+      fs.writeFileSync(filename, scenario.before());
+      const state = new DashboardState();
+      state.setSessionId('session');
+      // Wired as the dashboard wires it.
+      const { watcher } = createWatcher({
+        provider: scenario.provider(filename),
+        workspacePath: directory,
+        callbacks: {
+          onEvent: (followed) => state.processEvent(followed),
+          onError: (error) => {
+            throw error;
+          },
+          onReset: () => state.beginResetReplay(),
+          onBatchComplete: () => {
+            if (state.completeResetReplay(providerId)) {
+              state.persistSnapshot(watcher.getPosition!(), filename, watcher.getResumeState?.());
+            }
+          },
+        },
+      });
+      watchers.push(watcher);
+      watcher.start(true);
+      state.markHistoryReplayed(providerId);
+      state.persistSnapshot(watcher.getPosition!(), filename, watcher.getResumeState?.());
+      const stale = loadSnapshot('session')!;
+
+      const size = fs.statSync(filename).size;
+      fs.writeFileSync(filename, scenario.after());
+      expect(fs.statSync(filename).size).toBe(size);
+      fs.utimesSync(filename, new Date(), new Date(Date.now() + 5_000));
+      vi.advanceTimersByTime(30_000);
+
+      expect(state.getMetrics().tokens.input).toBe(scenario.expectedInput);
+      const fresh = loadSnapshot('session')!;
+      expect(fresh.createdAt >= stale.createdAt).toBe(true);
+      expect(fresh.sourceCheckpoint).not.toEqual(stale.sourceCheckpoint);
+      // The new checkpoint describes the rewritten file, so it resumes.
+      const reopened = new DashboardState();
+      reopened.setSessionId('session');
+      expect(reopened.tryRestoreFromSnapshot('session', providerId, filename)).toBe(size);
+      expect(reopened.getMetrics().tokens.input).toBe(scenario.expectedInput);
+    },
+  );
 });

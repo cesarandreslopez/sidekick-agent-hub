@@ -140,7 +140,9 @@ export function Dashboard({
     )) {
       if (e.type === 'summary') {
         addToast(e.summary || 'Context compacted', 'warning');
-      } else if (e.type === 'system' && e.summary?.includes('ended')) {
+      } else if (e.type === 'system' && e.summary === 'Session ended') {
+        // Only the session's own end: other system summaries (subagent
+        // activity, task notifications) carry names that may contain "ended".
         addToast(e.summary, 'info');
       }
     }

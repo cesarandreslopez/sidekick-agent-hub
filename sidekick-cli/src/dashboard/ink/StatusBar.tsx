@@ -60,7 +60,11 @@ export function StatusBar({
         ? 'magenta'
         : permissionMode === 'plan'
           ? 'green'
-          : undefined;
+          : permissionMode === 'auto'
+            ? 'yellow'
+            : permissionMode === 'dontAsk'
+              ? 'blue'
+              : undefined;
   const permissionLabel =
     permissionMode === 'bypassPermissions'
       ? 'BYPASS'
@@ -68,7 +72,11 @@ export function StatusBar({
         ? 'EDITS'
         : permissionMode === 'plan'
           ? 'PLAN'
-          : undefined;
+          : permissionMode === 'auto'
+            ? 'AUTO'
+            : permissionMode === 'dontAsk'
+              ? 'DONT-ASK'
+              : permissionMode?.toUpperCase();
 
   const claudeDisplay = providerStatus ? presentProviderStatus(providerStatus) : null;
   const openaiDisplay = openaiStatus ? presentProviderStatus(openaiStatus) : null;

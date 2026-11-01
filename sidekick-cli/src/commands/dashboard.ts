@@ -38,6 +38,7 @@ import {
   undoLastSwitch,
   writeStateFile,
 } from 'sidekick-shared';
+import { applyClaudeSubagentMeta } from '../dashboard/subagentEvidence';
 import type {
   AccountView,
   FollowEvent,
@@ -84,7 +85,7 @@ function createProviderById(id: ProviderId) {
     case 'opencode':
       return new OpenCodeProvider();
     case 'codex':
-      return new CodexProvider();
+      return new CodexProvider({ includeCompressedRollouts: true });
     case 'claude-code':
     default:
       return new ClaudeCodeProvider();
@@ -396,7 +397,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   function checkpointBatch(): void {
     if (stopped || !sessionPath || !watcher?.getPosition) return;
     const now = Date.now();
-    if (now - lastSnapshotTime <= SNAPSHOT_INTERVAL_MS) return;
+    // The batch that replayed a restarted file holds the whole session again:
+    // checkpoint it at once, replacing the snapshot of the old content.
+    const replayedAfterReset = state.completeResetReplay(activeProvider.id);
+    if (!replayedAfterReset && now - lastSnapshotTime <= SNAPSHOT_INTERVAL_MS) return;
     state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
     lastSnapshotTime = now;
   }
@@ -445,7 +449,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           onBatchComplete: checkpointBatch,
           onReset: () => {
             if (stopped) return;
-            state.resetSessionEvents();
+            // The file starts over: what follows replays the whole session.
+            state.beginResetReplay();
             scheduleRender();
           },
         },
@@ -492,9 +497,13 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Subagents write their own transcripts, which the session watcher never
   // sees. Rescan them on the static cadence; unchanged files are a stat each.
+  // Claude Code's meta flags settle background agents no notification
+  // reports (a stop from the UI, a finish after an interim notice).
   function refreshSubagentTokens(): void {
     if (stopped || !sessionPath) return;
-    state.setSubagentStats(scanSessionSubagents(activeProvider, sessionPath));
+    const stats = scanSessionSubagents(activeProvider, sessionPath);
+    state.setSubagentStats(stats);
+    if (activeProvider.id === 'claude-code') applyClaudeSubagentMeta(state, sessionPath, stats);
     scheduleRender();
   }
 
@@ -927,7 +936,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         onBatchComplete: checkpointBatch,
         onReset: () => {
           if (stopped) return;
-          state.resetSessionEvents();
+          // The file starts over: what follows replays the whole session.
+          state.beginResetReplay();
           scheduleRender();
         },
       },

@@ -8,7 +8,19 @@
  * annotations — since a force-directed graph can't render in a terminal.
  */
 
-import type { DashboardMetrics, TaskItem, FileTouch, PlanStep } from './DashboardState';
+import type {
+  DashboardMetrics,
+  TaskItem,
+  FileTouch,
+  PlanStep,
+  SubagentInfo,
+} from './DashboardState';
+import {
+  isSubagentRunning,
+  subagentDisplayStateOf,
+  subagentStateLabel,
+  summarizeSubagentStates,
+} from './DashboardState';
 import type { DiffStat } from './GitDiffCache';
 
 const NOTE_TYPE_ICON: Record<string, string> = { gotcha: '[!]', pattern: '[~]' };
@@ -414,20 +426,35 @@ function formatPlanStepEntry(step: PlanStep, tasks: TaskItem[]): string {
 function addSubagentsSection(children: Record<string, TreeData>, metrics: DashboardMetrics): void {
   if (metrics.subagents.length === 0) return;
 
-  const running = metrics.subagents.filter((a) => a.status === 'running').length;
+  const running = metrics.subagents.filter(isSubagentRunning).length;
   const countSuffix = running > 0 ? `, ${running} running` : '';
   const label = tag('subagent', `Subagents (${metrics.subagents.length}${countSuffix})`);
   const subChildren: Record<string, TreeData> = {};
 
   for (const s of metrics.subagents) {
-    const icon = s.status === 'running' ? '\u21BB' : s.isParallel ? '\u229A' : '\u2713';
+    const icon = subagentTreeIcon(s, '\u21BB', '\u229A', '\u2713');
     const duration = s.durationMs !== undefined ? ` [${formatDuration(s.durationMs)}]` : '';
+    const state = subagentStateLabel(s);
+    const stateSuffix = state ? ` (${state})` : '';
     subChildren[
-      `${icon} ${tag('subagent', `${s.subagentType}: "${truncate(s.description, 40)}"`)}${duration}`
+      `${icon} ${tag('subagent', `${s.subagentType}: "${truncate(s.description, 40)}"`)}${duration}${stateSuffix}`
     ] = {};
   }
 
   children[label] = { extended: true, children: subChildren };
+}
+
+/** An agent's mind-map icon: running, parallel, or done; `x` for a stop, kill, or failure. */
+function subagentTreeIcon(
+  agent: SubagentInfo,
+  running: string,
+  parallel: string,
+  done: string,
+): string {
+  const state = subagentDisplayStateOf(agent);
+  if (state === 'running') return running;
+  if (state === 'stopped' || state === 'killed' || state === 'failed') return 'x';
+  return agent.isParallel ? parallel : done;
 }
 
 function addTodosSection(children: Record<string, TreeData>, metrics: DashboardMetrics): void {
@@ -924,17 +951,21 @@ function formatPlanStepBox(step: PlanStep, tasks: TaskItem[], w: number): string
 function buildSubagentsBoxSection(metrics: DashboardMetrics): BoxSection | null {
   if (metrics.subagents.length === 0) return null;
 
-  const running = metrics.subagents.filter((a) => a.status === 'running').length;
-  const completed = metrics.subagents.filter((a) => a.status === 'completed').length;
+  const summary = summarizeSubagentStates(metrics.subagents);
   const subtitleParts = [`${metrics.subagents.length}`];
-  if (running > 0) subtitleParts.push(`${running} running`);
-  if (completed > 0) subtitleParts.push(`${completed} done`);
+  if (summary.running > 0) subtitleParts.push(`${summary.running} running`);
+  if (summary.done > 0) subtitleParts.push(`${summary.done} done`);
+  for (const { label, count } of summary.other) subtitleParts.push(`${count} ${label}`);
 
   const lines: string[] = [];
   for (const s of metrics.subagents) {
-    const icon = s.status === 'running' ? '>' : s.isParallel ? '*' : 'v';
+    const icon = subagentTreeIcon(s, '>', '*', 'v');
     const duration = s.durationMs !== undefined ? ` [${formatDuration(s.durationMs)}]` : '';
-    lines.push(`${icon} ${s.subagentType}: "${truncate(s.description, 25)}"${duration}`);
+    const state = subagentStateLabel(s);
+    const stateSuffix = state ? ` (${state})` : '';
+    lines.push(
+      `${icon} ${s.subagentType}: "${truncate(s.description, 25)}"${duration}${stateSuffix}`,
+    );
   }
 
   return {

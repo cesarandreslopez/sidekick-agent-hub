@@ -14,7 +14,13 @@ import type {
   DetailRenderContext,
   KeyBinding,
 } from './types';
-import type { DashboardMetrics, ContextAttribution } from '../DashboardState';
+import type { DashboardMetrics, ContextAttribution, SubagentInfo } from '../DashboardState';
+import {
+  isSubagentRunning,
+  subagentDisplayStateOf,
+  subagentStateLabel,
+  summarizeSubagentStates,
+} from '../DashboardState';
 import type { StaticData, SessionRecord } from '../StaticDataLoader';
 import {
   fmtNum,
@@ -149,7 +155,7 @@ export class SessionsPanel implements SidePanel {
     if (metrics.eventCount > 0) {
       const sessionId = (metrics.sessionId || metrics.sessionStartTime || 'active').substring(0, 8);
       const providerSuffix = metrics.providerName ? ` (${metrics.providerName})` : '';
-      const runningAgents = metrics.subagents.filter((a) => a.status === 'running').length;
+      const runningAgents = metrics.subagents.filter(isSubagentRunning).length;
       const agentBadge =
         runningAgents > 0 ? ` {magenta-fg}[${runningAgents}\u229B]{/magenta-fg}` : '';
       items.push({
@@ -404,11 +410,15 @@ export class SessionsPanel implements SidePanel {
           bypassPermissions: 'red',
           acceptEdits: 'magenta',
           plan: 'green',
+          auto: 'yellow',
+          dontAsk: 'blue',
         };
         const modeLabels: Record<string, string> = {
           bypassPermissions: 'Bypass Permissions',
           acceptEdits: 'Accept Edits',
           plan: 'Plan Mode',
+          auto: 'Auto (classifier)',
+          dontAsk: "Don't Ask",
         };
         const modeColor = modeColors[m.permissionMode] || 'grey';
         const modeLabel = modeLabels[m.permissionMode] || m.permissionMode;
@@ -419,10 +429,10 @@ export class SessionsPanel implements SidePanel {
 
       // Subagents (inline if present)
       if (m.subagents.length > 0) {
-        const runningAgents = m.subagents.filter((a) => a.status === 'running').length;
-        const completedAgents = m.subagents.filter((a) => a.status === 'completed').length;
+        const summary = summarizeSubagentStates(m.subagents);
+        const other = summary.other.map(({ label, count }) => `, ${count} ${label}`).join('');
         lines.push(
-          `{grey-fg}Subagents{/grey-fg} {bold}${m.subagents.length}{/bold} ({green-fg}${runningAgents} running{/green-fg}, ${completedAgents} done)`,
+          `{grey-fg}Subagents{/grey-fg} {bold}${m.subagents.length}{/bold} ({green-fg}${summary.running} running{/green-fg}, ${summary.done} done${other})`,
         );
       }
 
@@ -863,30 +873,30 @@ export class SessionsPanel implements SidePanel {
     const agents = metrics.subagents;
     if (agents.length === 0) return '{grey-fg}(no subagents spawned){/grey-fg}';
 
-    const running = agents.filter((a) => a.status === 'running').length;
-    const completed = agents.filter((a) => a.status === 'completed').length;
+    const summary = summarizeSubagentStates(agents);
     const parallel = agents.filter((a) => a.isParallel).length;
     const w = ctx?.width ?? detailWidth();
 
     const lines: string[] = [
       sectionHeader('Subagents', w),
-      `  {bold}${agents.length}{/bold}{grey-fg} total{/grey-fg}  {green-fg}{bold}${running}{/bold} running{/green-fg}  {cyan-fg}{bold}${completed}{/bold} done{/cyan-fg}` +
+      `  {bold}${agents.length}{/bold}{grey-fg} total{/grey-fg}  {green-fg}{bold}${summary.running}{/bold} running{/green-fg}  {cyan-fg}{bold}${summary.done}{/bold} done{/cyan-fg}` +
+        summary.other
+          .map(({ label, count }) => `  {yellow-fg}{bold}${count}{/bold} ${label}{/yellow-fg}`)
+          .join('') +
         (parallel > 0 ? `  {magenta-fg}{bold}${parallel}{/bold} parallel{/magenta-fg}` : ''),
       '',
     ];
 
     for (const a of agents) {
-      const icon =
-        a.status === 'running'
-          ? '{green-fg}\u21BB{/green-fg}' // ↻
-          : a.isParallel
-            ? '{magenta-fg}\u229A{/magenta-fg}' // ⊚
-            : '{cyan-fg}\u2713{/cyan-fg}'; // ✓
+      const icon = agentStateIcon(a);
 
       const duration = a.durationMs !== undefined ? formatDuration(a.durationMs) : '';
       const durationSuffix = duration ? `  {grey-fg}${duration}{/grey-fg}` : '';
+      const stateLabel = subagentStateLabel(a);
+      const stateFlag = stateLabel ? ` {yellow-fg}[${stateLabel}]{/yellow-fg}` : '';
       const parallelFlag =
-        a.isParallel && a.status === 'completed' ? ' {magenta-fg}(parallel){/magenta-fg}' : '';
+        (a.isParallel && a.status === 'completed' ? ' {magenta-fg}(parallel){/magenta-fg}' : '') +
+        stateFlag;
 
       // Compute available width for description, accounting for suffix on first line
       const prefixVisible = 2 + visibleLength(a.subagentType) + 1; // "icon type "
@@ -983,4 +993,25 @@ function quotaBarLine(label: string, utilization: number, projected: number | un
         })()
       : '';
   return `  {grey-fg}${label}{/grey-fg}  ${bar} {bold}${utilization.toFixed(0)}%{/bold}${projection}`;
+}
+
+/** Agents-tab icon for how an agent reads now. */
+function agentStateIcon(agent: SubagentInfo): string {
+  switch (subagentDisplayStateOf(agent)) {
+    case 'running':
+      return '{green-fg}\u21BB{/green-fg}'; // ↻
+    case 'finished-unreported':
+      return '{yellow-fg}\u2713{/yellow-fg}'; // ✓
+    case 'ended':
+      return '{grey-fg}\u25CC{/grey-fg}'; // ◌
+    case 'stopped':
+      return '{yellow-fg}\u25A0{/yellow-fg}'; // ■
+    case 'killed':
+    case 'failed':
+      return '{red-fg}\u2717{/red-fg}'; // ✗
+    default:
+      return agent.isParallel
+        ? '{magenta-fg}\u229A{/magenta-fg}' // ⊚
+        : '{cyan-fg}\u2713{/cyan-fg}'; // ✓
+  }
 }

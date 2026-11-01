@@ -86,7 +86,8 @@ export function resolveProvider(opts: { provider?: string }): SessionProviderBas
     case 'opencode':
       return new OpenCodeProvider();
     case 'codex':
-      return new CodexProvider();
+      // Codex compresses older rollouts (`.jsonl.zst`); read them too.
+      return new CodexProvider({ includeCompressedRollouts: true });
     case 'claude-code':
     default:
       return new ClaudeCodeProvider();

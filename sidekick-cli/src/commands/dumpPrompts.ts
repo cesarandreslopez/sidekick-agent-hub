@@ -86,7 +86,10 @@ function listSessionIds(
 ): SessionIdCandidate[] {
   const candidates: SessionIdCandidate[] = [];
   for (const id of providers) {
-    const provider = id === 'claude-code' ? new ClaudeCodeProvider() : new CodexProvider();
+    const provider =
+      id === 'claude-code'
+        ? new ClaudeCodeProvider()
+        : new CodexProvider({ includeCompressedRollouts: true });
     try {
       for (const sessionPath of provider.findAllSessions(workspacePath)) {
         candidates.push({ provider: id, sessionId: provider.getSessionId(sessionPath) });
@@ -259,7 +262,9 @@ export async function collectPromptUsage(
     sessions.map((session) => sessionKey(session.provider, session.sessionId)),
   );
   const providers = [...new Set(sessions.map((session) => session.provider))].map((id) =>
-    id === 'claude-code' ? new ClaudeCodeProvider() : new CodexProvider(),
+    id === 'claude-code'
+      ? new ClaudeCodeProvider()
+      : new CodexProvider({ includeCompressedRollouts: true }),
   );
   const deadlineMs = options.deadlineMs ?? PROMPT_USAGE_DEADLINE_MS;
   try {
@@ -608,6 +613,7 @@ export async function dumpPromptsAction(
     providers,
     include: { signals: !!opts.signals, replies: !!opts.replies },
     bounds: { deadlineMs: CLI_DEADLINE_MS },
+    includeCompressedRollouts: true,
     ...(since ? { since } : {}),
   };
   if (opts.session) {

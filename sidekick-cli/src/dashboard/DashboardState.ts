@@ -13,9 +13,18 @@ import type {
   FollowEvent,
   SessionTokenTotals,
   SessionWatcher,
+  SubagentDisplayStateName,
+  SubagentEvidence,
+  SubagentOutcome,
   SubagentStats,
 } from 'sidekick-shared';
-import { EventAggregator, combineSessionTokenTotals, summarizeTokens } from 'sidekick-shared';
+import {
+  EventAggregator,
+  combineSessionTokenTotals,
+  resolveSubagentDisplayState,
+  subagentDisplayLabel,
+  summarizeTokens,
+} from 'sidekick-shared';
 import {
   saveSnapshot,
   loadSnapshot,
@@ -92,6 +101,11 @@ export interface TaskItem {
   activeForm?: string;
   sessionOrigin?: string;
   createdAt?: string;
+  /**
+   * Subagent items: how the agent reads when that is not plain running or
+   * completed ("finished (no report)", "ended", "stopped", "killed", "failed").
+   */
+  agentState?: string;
 }
 
 export interface FileTouch {
@@ -110,6 +124,72 @@ export interface SubagentInfo {
   status: 'running' | 'completed';
   durationMs?: number; // computed on completion
   isParallel?: boolean; // true if time overlaps another agent
+  /** How the agent ended (`failed`, `killed`, `stopped`, `completed`), once settled. */
+  outcome?: SubagentOutcome;
+  /** Launched in the background. */
+  background?: boolean;
+  /** Claude Code agent id, or the Codex child thread id, once known. */
+  agentId?: string;
+  /**
+   * How the agent reads now (`resolveSubagentDisplayState`): `running`,
+   * `finished-unreported`, `ended`, or its outcome. Recomputed on every build;
+   * when absent, `status` and `outcome` stand in.
+   */
+  displayState?: SubagentDisplayStateName;
+}
+
+type SubagentStateFields = Pick<SubagentInfo, 'displayState' | 'status' | 'outcome'>;
+
+/** An agent's display state, from `status` / `outcome` when it carries none. */
+export function subagentDisplayStateOf(agent: SubagentStateFields): SubagentDisplayStateName {
+  return (
+    agent.displayState ?? (agent.status === 'running' ? 'running' : (agent.outcome ?? 'completed'))
+  );
+}
+
+/** Whether an agent reads as still working (its display state is `running`). */
+export function isSubagentRunning(agent: SubagentStateFields): boolean {
+  return subagentDisplayStateOf(agent) === 'running';
+}
+
+/**
+ * Counts of agents by how they read: `running`, `done` (completed), and the
+ * other states with their labels (`finished (no report)`, `ended`, `stopped`,
+ * `killed`, `failed`), in that order.
+ */
+export function summarizeSubagentStates(agents: readonly SubagentStateFields[]): {
+  running: number;
+  done: number;
+  other: Array<{ label: string; count: number }>;
+} {
+  const counts = new Map<SubagentDisplayStateName, number>();
+  for (const agent of agents) {
+    const state = subagentDisplayStateOf(agent);
+    counts.set(state, (counts.get(state) ?? 0) + 1);
+  }
+  const order: SubagentDisplayStateName[] = [
+    'finished-unreported',
+    'ended',
+    'stopped',
+    'killed',
+    'failed',
+  ];
+  return {
+    running: counts.get('running') ?? 0,
+    done: counts.get('completed') ?? 0,
+    other: order
+      .filter((state) => (counts.get(state) ?? 0) > 0)
+      .map((state) => ({ label: subagentDisplayLabel(state), count: counts.get(state)! })),
+  };
+}
+
+/**
+ * A short state label for an agent whose display state is neither running
+ * nor a plain completion, e.g. `finished (no report)`, `stopped`; else `null`.
+ */
+export function subagentStateLabel(agent: SubagentStateFields): string | null {
+  const state = subagentDisplayStateOf(agent);
+  return state === 'running' || state === 'completed' ? null : subagentDisplayLabel(state);
 }
 
 /** @deprecated Use SubagentInfo instead */
@@ -241,8 +321,23 @@ const TIMELINE_RING_SIZE = 200;
  * 4: file-backed snapshots record a `sourceCheckpoint` (restore verifies the
  * file is the same, append-only one) and the watcher's `readerState`, and the
  * aggregator's subagent state changed.
+ * 5: subagent lifecycles track Codex spawns and record what settled a
+ * background agent (aggregator schema 7).
  */
-const CLI_CHECKPOINT_REVISION = 4;
+const CLI_CHECKPOINT_REVISION = 5;
+
+/**
+ * Shows an agent's task item as the agent reads: still "Running …" only while
+ * it runs; an agent that finished without a report or ended moves to done,
+ * labelled; a settled agent keeps its status with its outcome labelled.
+ */
+function applyAgentTaskState(item: TaskItem, agent: SubagentInfo): void {
+  const label = subagentStateLabel(agent);
+  if (label) item.agentState = label;
+  if (isSubagentRunning(agent)) return;
+  item.activeForm = undefined;
+  if (item.status === 'in_progress') item.status = 'completed';
+}
 
 /** Size of the session file, or 0 when there is none (DB-backed sessions). */
 function sourceFileSize(sourcePath: string | undefined): number {
@@ -311,6 +406,8 @@ export class DashboardState {
   // Only complete history can be reused by a later replay. Live-only runs must
   // leave any existing complete checkpoint untouched.
   private _checkpointProviderId: string | undefined;
+  /** The watcher restarted the file; the batch replaying it has not completed yet. */
+  private _resetReplayPending = false;
 
   /**
    * Monotonic mutation counter. `getMetrics()` returns the same object while
@@ -365,9 +462,34 @@ export class DashboardState {
     this._todos = [];
     this._todoSeen.clear();
     this._checkpointProviderId = undefined;
+    this._resetReplayPending = false;
     this._lastKnownCompactionCount = 0;
     this._taskToolCallCounts.clear();
     this._subagentStats = [];
+  }
+
+  /**
+   * The watcher started the session file over (it was truncated, rewritten,
+   * or replaced): forget what the old content built, and treat the events
+   * that follow as a full replay. Checkpoints stay off until that replay's
+   * batch completes (see `completeResetReplay`).
+   */
+  beginResetReplay(): void {
+    this.resetSessionEvents();
+    this._resetReplayPending = true;
+  }
+
+  /**
+   * Call when a watcher batch completes. After `beginResetReplay()` the
+   * state again holds the session's whole history, so checkpoints are
+   * re-enabled for `providerId` and this returns true: the caller should
+   * persist now, replacing the snapshot taken from the old content.
+   */
+  completeResetReplay(providerId: string): boolean {
+    if (!this._resetReplayPending) return false;
+    this._resetReplayPending = false;
+    this.markHistoryReplayed(providerId);
+    return true;
   }
 
   /** Set the session ID for plan persistence. */
@@ -643,6 +765,19 @@ export class DashboardState {
     this._subagentStats = stats;
   }
 
+  /**
+   * Applies evidence from a subagent's metadata (Claude Code's `finished` /
+   * `stoppedByUser` meta flags) to its lifecycle; see
+   * `EventAggregator.applySubagentEvidence`.
+   *
+   * @returns Whether a lifecycle changed
+   */
+  applySubagentEvidence(evidence: SubagentEvidence, timestamp: string): boolean {
+    const changed = this._aggregator.applySubagentEvidence(evidence, timestamp);
+    if (changed) this.touch();
+    return changed;
+  }
+
   /** Update the active billing block computed from session logs. */
   setBillingBlock(block: BillingBlock | null): void {
     this.touch();
@@ -683,18 +818,39 @@ export class DashboardState {
   private buildMetrics(): DashboardMetrics {
     const m = this._aggregator.getMetrics();
 
-    // Map subagents from aggregator's SubagentLifecycle to CLI's SubagentInfo
-    const subagents: SubagentInfo[] = m.subagents.map((s) => ({
-      id: s.id,
-      description: s.description,
-      subagentType: s.subagentType,
-      spawnTime: s.spawnTime,
-      completionTime: s.completionTime,
-      status: s.status,
-      durationMs: s.durationMs,
-      isParallel: false,
-    }));
+    // Map subagents from aggregator's SubagentLifecycle to CLI's SubagentInfo,
+    // reading each against its transcript stats (scanned every 15 s).
+    const statsByAgent = new Map<string, SubagentStats>();
+    const statsBySpawn = new Map<string, SubagentStats>();
+    for (const stats of this._subagentStats) {
+      statsByAgent.set(stats.agentId, stats);
+      if (stats.spawnToolUseId) statsBySpawn.set(stats.spawnToolUseId, stats);
+    }
+    const now = Date.now();
+    const subagents: SubagentInfo[] = m.subagents.map((s) => {
+      const stats = statsBySpawn.get(s.id) ?? (s.agentId ? statsByAgent.get(s.agentId) : undefined);
+      const displayState = resolveSubagentDisplayState(
+        s,
+        stats ? { endedCleanly: stats.endedCleanly, lastActivityAt: stats.endTime } : null,
+        { now, parentLastActivity: m.lastEventTime },
+      ).state;
+      return {
+        id: s.id,
+        description: s.description,
+        subagentType: s.subagentType,
+        spawnTime: s.spawnTime,
+        completionTime: s.completionTime,
+        status: s.status,
+        durationMs: s.durationMs,
+        isParallel: false,
+        ...(s.outcome ? { outcome: s.outcome } : {}),
+        ...(s.background ? { background: true } : {}),
+        ...(s.agentId ? { agentId: s.agentId } : {}),
+        displayState,
+      };
+    });
     this.detectParallelSubagents(subagents);
+    const subagentById = new Map(subagents.map((s) => [s.id, s]));
 
     // Map tool stats from aggregator's ToolAnalytics to CLI's ToolStats
     const toolStats: ToolStats[] = m.toolStats.map((t) => ({
@@ -712,7 +868,7 @@ export class DashboardState {
     // Map tasks from aggregator's TrackedTask to CLI's TaskItem
     const taskMap = new Map<string, TaskItem>();
     for (const t of m.taskState.tasks.values()) {
-      taskMap.set(t.taskId, {
+      const item: TaskItem = {
         taskId: t.taskId,
         subject: t.subject,
         status: t.status as TaskItem['status'],
@@ -722,13 +878,18 @@ export class DashboardState {
         isGoalGate: t.isGoalGate,
         toolCallCount: this._taskToolCallCounts.get(t.taskId) || 0,
         activeForm: t.activeForm,
-      });
+      };
+      // An agent's card reads as the agent does: one that stopped in all but
+      // name is no longer "Running …".
+      const agent = t.isSubagent && t.toolUseId ? subagentById.get(t.toolUseId) : undefined;
+      if (agent) applyAgentTaskState(item, agent);
+      taskMap.set(t.taskId, item);
     }
 
     // Include subagent spawns as tasks (matches VS Code SessionMonitor behavior)
-    for (const s of m.subagents) {
+    for (const s of subagents) {
       if (!taskMap.has(s.id)) {
-        taskMap.set(s.id, {
+        const item: TaskItem = {
           taskId: s.id,
           subject: s.description || `${s.subagentType} agent`,
           status: s.status === 'completed' ? 'completed' : 'in_progress',
@@ -737,7 +898,9 @@ export class DashboardState {
           subagentType: s.subagentType,
           toolCallCount: 0,
           activeForm: s.status === 'running' ? `Running ${s.subagentType}` : undefined,
-        });
+        };
+        applyAgentTaskState(item, s);
+        taskMap.set(s.id, item);
       }
     }
 

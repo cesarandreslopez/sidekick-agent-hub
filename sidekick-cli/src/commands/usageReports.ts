@@ -448,7 +448,8 @@ export function selectProviders(globalOpts: { provider?: string }): SessionProvi
   }
   const detected = getAllDetectedProviders();
   if (detected.length === 0) return [resolveProvider(globalOpts)];
-  return createSessionProviders({ providerIds: detected }).providers;
+  return createSessionProviders({ providerIds: detected, includeCompressedRollouts: true })
+    .providers;
 }
 
 export async function usageReportAction(

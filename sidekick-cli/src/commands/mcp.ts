@@ -26,7 +26,7 @@ interface McpFactsOptions {
 }
 
 function createProvider(providerId: ProviderId): SessionProviderBase {
-  if (providerId === 'codex') return new CodexProvider();
+  if (providerId === 'codex') return new CodexProvider({ includeCompressedRollouts: true });
   if (providerId === 'opencode') return new OpenCodeProvider();
   return new ClaudeCodeProvider();
 }
